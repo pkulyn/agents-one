@@ -11,6 +11,12 @@ export interface ConnectionConfig {
   apiKey: string;
 }
 
+export interface PublicConnectionConfig {
+  mode: "local" | "remote";
+  remoteUrl: string;
+  hasApiKey: boolean;
+}
+
 // Lazy getter — avoids circular dependency with installer.ts
 // (HERMES_HOME may not be assigned yet when this module first loads)
 function desktopConfigFile(): string {
@@ -43,12 +49,34 @@ export function getConnectionConfig(): ConnectionConfig {
   };
 }
 
+export function getPublicConnectionConfig(): PublicConnectionConfig {
+  const config = getConnectionConfig();
+  return {
+    mode: config.mode,
+    remoteUrl: config.remoteUrl,
+    hasApiKey: config.apiKey.length > 0,
+  };
+}
+
 export function setConnectionConfig(config: ConnectionConfig): void {
   const data = readDesktopConfig();
   data.connectionMode = config.mode;
   data.remoteUrl = config.remoteUrl;
   data.remoteApiKey = config.apiKey;
   writeDesktopConfig(data);
+}
+
+export function resolveConnectionApiKeyUpdate(
+  existing: ConnectionConfig,
+  mode: "local" | "remote",
+  remoteUrl: string,
+  apiKey?: string,
+): string {
+  if (apiKey !== undefined) return apiKey;
+  if (existing.mode === mode && existing.remoteUrl === remoteUrl) {
+    return existing.apiKey;
+  }
+  return "";
 }
 
 // ── In-memory cache with TTL ─────────────────────────────
@@ -194,7 +222,11 @@ export function getModelConfig(profile?: string): {
   baseUrl: string;
 } {
   const cacheKey = `mc:${profile || "default"}`;
-  const cached = getCached<{ provider: string; model: string; baseUrl: string }>(cacheKey);
+  const cached = getCached<{
+    provider: string;
+    model: string;
+    baseUrl: string;
+  }>(cacheKey);
   if (cached) return cached;
 
   const { configFile } = profilePaths(profile);
@@ -272,7 +304,13 @@ export function getHermesHome(profile?: string): string {
 
 // ── Platform enabled/disabled in config.yaml ────────────
 
-const SUPPORTED_PLATFORMS = ["telegram", "discord", "slack", "whatsapp", "signal"];
+const SUPPORTED_PLATFORMS = [
+  "telegram",
+  "discord",
+  "slack",
+  "whatsapp",
+  "signal",
+];
 
 export function getPlatformEnabled(profile?: string): Record<string, boolean> {
   const { configFile } = profilePaths(profile);

@@ -59,7 +59,7 @@ interface HermesAPI {
   getConnectionConfig: () => Promise<{
     mode: "local" | "remote";
     remoteUrl: string;
-    apiKey: string;
+    hasApiKey: boolean;
   }>;
   setConnectionConfig: (
     mode: "local" | "remote",

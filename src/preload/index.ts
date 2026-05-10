@@ -95,7 +95,7 @@ const hermesAPI = {
   getConnectionConfig: (): Promise<{
     mode: "local" | "remote";
     remoteUrl: string;
-    apiKey: string;
+    hasApiKey: boolean;
   }> => ipcRenderer.invoke("get-connection-config"),
 
   setConnectionConfig: (

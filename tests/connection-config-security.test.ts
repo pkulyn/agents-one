@@ -1,0 +1,105 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import http from "http";
+import type { AddressInfo } from "net";
+
+let testHome: string;
+
+async function loadConnectionConfigModule(): Promise<
+  typeof import("../src/main/config")
+> {
+  vi.resetModules();
+  vi.stubEnv("HERMES_HOME", testHome);
+  return await import("../src/main/config");
+}
+
+function listen(server: http.Server): Promise<string> {
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address() as AddressInfo;
+      resolve(`http://127.0.0.1:${address.port}`);
+    });
+  });
+}
+
+describe("connection config secret exposure", () => {
+  beforeEach(() => {
+    testHome = mkdtempSync(join(tmpdir(), "hermes-connection-config-"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(testHome, { recursive: true, force: true });
+  });
+
+  it("keeps the remote API key out of the public renderer config", async () => {
+    const {
+      getConnectionConfig,
+      getPublicConnectionConfig,
+      resolveConnectionApiKeyUpdate,
+      setConnectionConfig,
+    } = await loadConnectionConfigModule();
+
+    setConnectionConfig({
+      mode: "remote",
+      remoteUrl: "https://hermes.example",
+      apiKey: "remote-secret",
+    });
+
+    expect(getConnectionConfig().apiKey).toBe("remote-secret");
+
+    const publicConfig = getPublicConnectionConfig();
+    expect(publicConfig).toEqual({
+      mode: "remote",
+      remoteUrl: "https://hermes.example",
+      hasApiKey: true,
+    });
+    expect("apiKey" in publicConfig).toBe(false);
+    expect(JSON.stringify(publicConfig)).not.toContain("remote-secret");
+
+    const existing = getConnectionConfig();
+    expect(
+      resolveConnectionApiKeyUpdate(
+        existing,
+        "remote",
+        "https://hermes.example",
+      ),
+    ).toBe("remote-secret");
+    expect(
+      resolveConnectionApiKeyUpdate(
+        existing,
+        "remote",
+        "https://attacker.example",
+      ),
+    ).toBe("");
+  });
+
+  it("uses the stored remote API key for main-process connection tests", async () => {
+    const { setConnectionConfig } = await loadConnectionConfigModule();
+    const { testRemoteConnection } = await import("../src/main/hermes");
+    const server = http.createServer((req, res) => {
+      res.statusCode =
+        req.headers.authorization === "Bearer remote-secret" ? 200 : 401;
+      res.end();
+    });
+
+    const url = await listen(server);
+
+    try {
+      setConnectionConfig({
+        mode: "remote",
+        remoteUrl: url,
+        apiKey: "remote-secret",
+      });
+
+      await expect(testRemoteConnection(url)).resolves.toBe(true);
+      await expect(testRemoteConnection(url, "wrong-secret")).resolves.toBe(
+        false,
+      );
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});

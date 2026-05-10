@@ -31,10 +31,7 @@ function App(): React.JSX.Element {
       isRemote = conn.mode === "remote";
 
       if (isRemote && conn.remoteUrl) {
-        const ok = await window.hermesAPI.testRemoteConnection(
-          conn.remoteUrl,
-          conn.apiKey,
-        );
+        const ok = await window.hermesAPI.testRemoteConnection(conn.remoteUrl);
         if (ok) {
           next = "main";
         } else {

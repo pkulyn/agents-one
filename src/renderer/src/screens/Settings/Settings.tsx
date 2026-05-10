@@ -12,6 +12,8 @@ const LANGUAGE_LABEL_KEYS: Record<AppLocale, string> = {
   "zh-CN": "settings.language.chinese",
 };
 
+const REMOTE_API_KEY_MASK = "********";
+
 // Read cached values from localStorage for instant display
 function getCachedVersion(): string | null {
   try {
@@ -70,7 +72,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   // Connection mode
   const [connMode, setConnMode] = useState<"local" | "remote">("local");
   const [connRemoteUrl, setConnRemoteUrl] = useState("");
+  const [connSavedRemoteUrl, setConnSavedRemoteUrl] = useState("");
   const [connApiKey, setConnApiKey] = useState("");
+  const [connHasApiKey, setConnHasApiKey] = useState(false);
   const [connTesting, setConnTesting] = useState(false);
   const [connStatus, setConnStatus] = useState<string | null>(null);
   const connLoaded = useRef(false);
@@ -107,7 +111,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setAppVersion(aVersion);
     setConnMode(conn.mode);
     setConnRemoteUrl(conn.remoteUrl);
-    setConnApiKey(conn.apiKey);
+    setConnSavedRemoteUrl(conn.remoteUrl);
+    setConnHasApiKey(conn.hasApiKey);
+    setConnApiKey(conn.hasApiKey ? REMOTE_API_KEY_MASK : "");
     connLoaded.current = true;
 
     // Load network settings from config.yaml
@@ -182,12 +188,22 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setMigrationDismissed(true);
   }
 
+  function getConnectionApiKeyForSave(): string | undefined {
+    if (connHasApiKey && connApiKey === REMOTE_API_KEY_MASK) {
+      return connRemoteUrl === connSavedRemoteUrl ? undefined : "";
+    }
+    return connApiKey.trim();
+  }
+
   async function handleSaveConnection(): Promise<void> {
-    await window.hermesAPI.setConnectionConfig(
-      connMode,
-      connRemoteUrl,
-      connApiKey,
-    );
+    const apiKey = getConnectionApiKeyForSave();
+    await window.hermesAPI.setConnectionConfig(connMode, connRemoteUrl, apiKey);
+    setConnSavedRemoteUrl(connRemoteUrl);
+    if (apiKey !== undefined) {
+      const hasApiKey = apiKey.length > 0;
+      setConnHasApiKey(hasApiKey);
+      if (hasApiKey) setConnApiKey(REMOTE_API_KEY_MASK);
+    }
     setConnStatus("Saved");
     setTimeout(() => setConnStatus(null), 2000);
   }
@@ -202,7 +218,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setConnStatus(null);
     const ok = await window.hermesAPI.testRemoteConnection(
       url,
-      connApiKey.trim(),
+      getConnectionApiKeyForSave(),
     );
     setConnTesting(false);
     setConnStatus(ok ? "Connected successfully!" : "Could not reach server");
@@ -211,7 +227,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   async function handleSwitchToLocal(): Promise<void> {
     setConnMode("local");
     setConnRemoteUrl("");
+    setConnSavedRemoteUrl("");
     setConnApiKey("");
+    setConnHasApiKey(false);
     await window.hermesAPI.setConnectionConfig("local", "", "");
     setConnStatus(t("settings.switchedToLocal"));
     setTimeout(() => setConnStatus(null), 2000);
@@ -508,6 +526,11 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
                 type="password"
                 value={connApiKey}
                 onChange={(e) => setConnApiKey(e.target.value)}
+                onFocus={(e) => {
+                  if (connApiKey === REMOTE_API_KEY_MASK) {
+                    e.currentTarget.select();
+                  }
+                }}
                 placeholder={t("settings.remoteApiKey")}
                 onBlur={handleSaveConnection}
               />

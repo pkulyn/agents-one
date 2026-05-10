@@ -65,6 +65,8 @@ import {
   getCredentialPool,
   setCredentialPool,
   getConnectionConfig,
+  getPublicConnectionConfig,
+  resolveConnectionApiKeyUpdate,
   setConnectionConfig,
   getPlatformEnabled,
   setPlatformEnabled,
@@ -302,12 +304,22 @@ function setupIPC(): void {
 
   // Connection mode (local vs remote)
   ipcMain.handle("is-remote-mode", () => isRemoteMode());
-  ipcMain.handle("get-connection-config", () => getConnectionConfig());
+  ipcMain.handle("get-connection-config", () => getPublicConnectionConfig());
 
   ipcMain.handle(
     "set-connection-config",
     (_event, mode: "local" | "remote", remoteUrl: string, apiKey?: string) => {
-      setConnectionConfig({ mode, remoteUrl, apiKey: apiKey || "" });
+      const existing = getConnectionConfig();
+      setConnectionConfig({
+        mode,
+        remoteUrl,
+        apiKey: resolveConnectionApiKeyUpdate(
+          existing,
+          mode,
+          remoteUrl,
+          apiKey,
+        ),
+      });
       return true;
     },
   );
