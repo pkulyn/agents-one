@@ -4,6 +4,7 @@ import { join } from "path";
 import { homedir } from "os";
 import type { BrowserWindow } from "electron";
 import { getModelConfig, getConnectionConfig } from "./config";
+import { providerDoesNotNeedApiKey } from "./providers";
 import { stripAnsi } from "./utils";
 import { setupAskpass, AskpassHandle } from "./askpass";
 
@@ -101,11 +102,10 @@ export function checkInstallStatus(): InstallStatus {
   let hasApiKey = false;
   const verified = installed;
 
-  // Local/custom providers don't need an API key
+  // Providers backed by local servers or OAuth-based CLIs don't need an API key
   try {
     const mc = getModelConfig();
-    const localProviders = ["custom", "lmstudio", "ollama", "vllm", "llamacpp"];
-    if (localProviders.includes(mc.provider)) {
+    if (providerDoesNotNeedApiKey(mc.provider)) {
       hasApiKey = true;
     }
   } catch {
