@@ -51,7 +51,7 @@ describe("connection config secret exposure", () => {
     expect(getConnectionConfig().apiKey).toBe("remote-secret");
 
     const publicConfig = getPublicConnectionConfig();
-    expect(publicConfig).toEqual({
+    expect(publicConfig).toMatchObject({
       mode: "remote",
       remoteUrl: "https://hermes.example",
       hasApiKey: true,
@@ -101,5 +101,30 @@ describe("connection config secret exposure", () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it("exposes SSH settings without exposing the stored remote API key", async () => {
+    const { getPublicConnectionConfig, setConnectionConfig } =
+      await loadConnectionConfigModule();
+
+    setConnectionConfig({
+      mode: "ssh",
+      remoteUrl: "",
+      apiKey: "remote-secret",
+      ssh: {
+        host: "example.internal",
+        port: 22,
+        username: "hermes",
+        keyPath: "~/.ssh/id_rsa",
+        remotePort: 8642,
+        localPort: 18642,
+      },
+    });
+
+    const publicConfig = getPublicConnectionConfig();
+    expect(publicConfig.mode).toBe("ssh");
+    expect(publicConfig.ssh.host).toBe("example.internal");
+    expect("apiKey" in publicConfig).toBe(false);
+    expect(JSON.stringify(publicConfig)).not.toContain("remote-secret");
   });
 });

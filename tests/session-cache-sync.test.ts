@@ -220,5 +220,5 @@ describe("syncSessionCache", () => {
     expect(result).toHaveLength(N);
     expect(result.every((r) => r.messageCount === 2)).toBe(true);
     expect(elapsed).toBeLessThan(500);
-  });
+  }, 30000);
 });

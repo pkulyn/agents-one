@@ -3,11 +3,14 @@ import { useTheme } from "../../components/ThemeProvider";
 import { THEME_OPTIONS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import { APP_LOCALES, type AppLocale } from "../../../../shared/i18n";
-import { Download, Upload, FileText } from "lucide-react";
+import { Download, Upload, FileText, Send } from "lucide-react";
+
+const TELEGRAM_COMMUNITY_URL = "https://t.me/hermes_agent_desktop";
 
 const LANGUAGE_LABEL_KEYS: Record<AppLocale, string> = {
   en: "settings.language.english",
   es: "settings.language.spanish",
+  id: "settings.language.indonesian",
   "pt-BR": "settings.language.portuguese",
   "zh-CN": "settings.language.chinese",
 };
@@ -70,7 +73,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   const migrationLogRef = useRef<HTMLPreElement>(null);
 
   // Connection mode
-  const [connMode, setConnMode] = useState<"local" | "remote">("local");
+  const [connMode, setConnMode] = useState<"local" | "remote" | "ssh">("local");
   const [connRemoteUrl, setConnRemoteUrl] = useState("");
   const [connSavedRemoteUrl, setConnSavedRemoteUrl] = useState("");
   const [connApiKey, setConnApiKey] = useState("");
@@ -78,6 +81,13 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   const [connTesting, setConnTesting] = useState(false);
   const [connStatus, setConnStatus] = useState<string | null>(null);
   const connLoaded = useRef(false);
+
+  // SSH connection state
+  const [sshHost, setSshHost] = useState("");
+  const [sshPort, setSshPort] = useState("");
+  const [sshUser, setSshUser] = useState("");
+  const [sshKeyPath, setSshKeyPath] = useState("");
+  const [sshRemotePort, setSshRemotePort] = useState("");
 
   // Backup / Import state
   const [backingUp, setBackingUp] = useState(false);
@@ -114,6 +124,11 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setConnSavedRemoteUrl(conn.remoteUrl);
     setConnHasApiKey(conn.hasApiKey);
     setConnApiKey(conn.hasApiKey ? REMOTE_API_KEY_MASK : "");
+    setSshHost(conn.ssh?.host || "");
+    setSshPort(conn.ssh?.port ? String(conn.ssh.port) : "");
+    setSshUser(conn.ssh?.username || "");
+    setSshKeyPath(conn.ssh?.keyPath || "");
+    setSshRemotePort(conn.ssh?.remotePort ? String(conn.ssh.remotePort) : "");
     connLoaded.current = true;
 
     // Load network settings from config.yaml
@@ -150,7 +165,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   }, [profile]);
 
   useEffect(() => {
-    loadConfig();
+    void Promise.resolve().then(loadConfig);
   }, [loadConfig]);
 
   async function handleMigrate(): Promise<void> {
@@ -196,32 +211,65 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   }
 
   async function handleSaveConnection(): Promise<void> {
-    const apiKey = getConnectionApiKeyForSave();
-    await window.hermesAPI.setConnectionConfig(connMode, connRemoteUrl, apiKey);
-    setConnSavedRemoteUrl(connRemoteUrl);
-    if (apiKey !== undefined) {
-      const hasApiKey = apiKey.length > 0;
-      setConnHasApiKey(hasApiKey);
-      if (hasApiKey) setConnApiKey(REMOTE_API_KEY_MASK);
+    if (connMode === "ssh") {
+      await window.hermesAPI.setSshConfig(
+        sshHost.trim(),
+        parseInt(sshPort, 10) || 22,
+        sshUser.trim(),
+        sshKeyPath.trim(),
+        parseInt(sshRemotePort, 10) || 8642,
+        18642,
+      );
+    } else {
+      const apiKey = getConnectionApiKeyForSave();
+      await window.hermesAPI.setConnectionConfig(
+        connMode,
+        connRemoteUrl,
+        apiKey,
+      );
+      setConnSavedRemoteUrl(connRemoteUrl);
+      if (apiKey !== undefined) {
+        const hasApiKey = apiKey.length > 0;
+        setConnHasApiKey(hasApiKey);
+        if (hasApiKey) setConnApiKey(REMOTE_API_KEY_MASK);
+      }
     }
     setConnStatus("Saved");
     setTimeout(() => setConnStatus(null), 2000);
   }
 
   async function handleTestConnection(): Promise<void> {
-    const url = connRemoteUrl.trim();
-    if (!url) {
-      setConnStatus("Please enter a URL");
-      return;
+    if (connMode === "ssh") {
+      if (!sshHost.trim() || !sshUser.trim()) {
+        setConnStatus("Host and username are required");
+        return;
+      }
+      setConnTesting(true);
+      setConnStatus(null);
+      const ok = await window.hermesAPI.testSshConnection(
+        sshHost.trim(),
+        parseInt(sshPort, 10) || 22,
+        sshUser.trim(),
+        sshKeyPath.trim(),
+        parseInt(sshRemotePort, 10) || 8642,
+      );
+      setConnTesting(false);
+      setConnStatus(ok ? "SSH tunnel connected!" : "Could not connect via SSH");
+    } else {
+      const url = connRemoteUrl.trim();
+      if (!url) {
+        setConnStatus("Please enter a URL");
+        return;
+      }
+      setConnTesting(true);
+      setConnStatus(null);
+      const ok = await window.hermesAPI.testRemoteConnection(
+        url,
+        getConnectionApiKeyForSave(),
+      );
+      setConnTesting(false);
+      setConnStatus(ok ? "Connected successfully!" : "Could not reach server");
     }
-    setConnTesting(true);
-    setConnStatus(null);
-    const ok = await window.hermesAPI.testRemoteConnection(
-      url,
-      getConnectionApiKeyForSave(),
-    );
-    setConnTesting(false);
-    setConnStatus(ok ? "Connected successfully!" : "Could not reach server");
   }
 
   async function handleSwitchToLocal(): Promise<void> {
@@ -462,6 +510,28 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
       </div>
 
       <div className="settings-section">
+        <div className="settings-section-title">Community</div>
+        <div className="settings-field">
+          <div className="settings-field-hint" style={{ marginBottom: 10 }}>
+            Join our Telegram group to ask questions, report issues, and chat
+            with other Hermes users.
+          </div>
+          <div className="settings-hermes-actions">
+            <button
+              className="btn btn-secondary"
+              onClick={() =>
+                window.hermesAPI.openExternal(TELEGRAM_COMMUNITY_URL)
+              }
+              title={TELEGRAM_COMMUNITY_URL}
+            >
+              <Send size={14} style={{ marginRight: 6 }} />
+              Join Telegram Community
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-section">
         <div className="settings-section-title">
           {t("settings.connectionSection")}
           {connStatus && (
@@ -491,11 +561,19 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
             >
               {t("settings.modeRemote")}
             </button>
+            <button
+              className={`settings-theme-option ${connMode === "ssh" ? "active" : ""}`}
+              onClick={() => setConnMode("ssh")}
+            >
+              SSH Tunnel
+            </button>
           </div>
           <div className="settings-field-hint">
             {connMode === "local"
               ? t("settings.modeLocalHint")
-              : t("settings.modeRemoteHint")}
+              : connMode === "ssh"
+                ? "Tunnel to a remote Hermes over SSH — no exposed ports or API keys needed."
+                : t("settings.modeRemoteHint")}
           </div>
         </div>
 
@@ -547,6 +625,98 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
                 {connTesting
                   ? t("settings.testingConnection")
                   : t("settings.testConnection")}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleSaveConnection}
+              >
+                {t("settings.save")}
+              </button>
+            </div>
+          </>
+        )}
+
+        {connMode === "ssh" && (
+          <>
+            <div className="settings-field">
+              <label className="settings-field-label">SSH Host</label>
+              <input
+                className="input"
+                type="text"
+                value={sshHost}
+                onChange={(e) => setSshHost(e.target.value)}
+                placeholder="192.168.1.100 or myserver.local"
+              />
+            </div>
+            <div className="settings-field">
+              <label className="settings-field-label">SSH Port</label>
+              <input
+                className="input"
+                type="number"
+                value={sshPort}
+                onChange={(e) => setSshPort(e.target.value)}
+                placeholder="22"
+              />
+            </div>
+            <div className="settings-field">
+              <label className="settings-field-label">Username</label>
+              <input
+                className="input"
+                type="text"
+                value={sshUser}
+                onChange={(e) => setSshUser(e.target.value)}
+                placeholder="hermes"
+              />
+            </div>
+            <div className="settings-field">
+              <label className="settings-field-label">
+                Private Key Path{" "}
+                <span style={{ fontWeight: 400, opacity: 0.6 }}>
+                  (optional, defaults to ~/.ssh/id_rsa)
+                </span>
+              </label>
+              <input
+                className="input"
+                type="text"
+                value={sshKeyPath}
+                onChange={(e) => setSshKeyPath(e.target.value)}
+                placeholder="~/.ssh/id_rsa"
+              />
+            </div>
+            <div className="settings-field">
+              <label className="settings-field-label">
+                Remote Hermes Port{" "}
+                <span style={{ fontWeight: 400, opacity: 0.6 }}>
+                  (default 8642)
+                </span>
+              </label>
+              <input
+                className="input"
+                type="number"
+                value={sshRemotePort}
+                onChange={(e) => setSshRemotePort(e.target.value)}
+                placeholder="8642"
+              />
+              <div className="settings-field-hint">
+                Make sure you can run{" "}
+                <code style={{ fontFamily: "monospace" }}>
+                  ssh {sshUser || "user"}@{sshHost || "host"}
+                </code>{" "}
+                without a password prompt. The first connection trusts the host
+                key and stores it in{" "}
+                <code style={{ fontFamily: "monospace" }}>
+                  ~/.ssh/known_hosts
+                </code>
+                ; SSH will fail closed if that key changes later.
+              </div>
+            </div>
+            <div className="settings-hermes-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={handleTestConnection}
+                disabled={connTesting}
+              >
+                {connTesting ? "Testing SSH…" : "Test SSH Connection"}
               </button>
               <button
                 className="btn btn-primary"
