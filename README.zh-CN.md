@@ -1,17 +1,27 @@
-# Hermes Desktop
+<img width="100%" alt="HERMES DESKTOP" src="https://github.com/user-attachments/assets/80585955-3bae-4aee-af90-a1e61757ccb8" />
 
+<br/>
 <p align="center">
-  <img src="docs/hermes-banner.png" alt="HERMES DESKTOP" />
+  <a href="https://hermes-agent.nousresearch.com/docs/"><img src="https://img.shields.io/badge/Docs-hermes--agent.nousresearch.com-FFD700?style=for-the-badge" alt="Documentation"></a>
+  <a href="https://discord.gg/NousResearch"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://github.com/fathah/hermes-desktop/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://github.com/fathah/hermes-desktop/releases/"><img src="https://img.shields.io/badge/Download-Releases-FF6600?style=for-the-badge" alt="Releases"></a>
+  <a href="https://github.com/fathah/hermes-desktop/stargazers">
+    <img src="https://img.shields.io/github/stars/fathah/hermes-desktop?style=for-the-badge&color=FFD700&label=Stars" alt="Stars">
+  </a>
+  <a href="https://github.com/fathah/hermes-desktop/releases/">
+    <img src="https://img.shields.io/github/downloads/fathah/hermes-desktop/total?style=for-the-badge&color=00B496&label=Total%20Downloads" alt="Downloads">
+  </a>
 </p>
 
-> **本项目仍在积极开发中。** 功能可能变化，部分内容可能出现问题。如有问题或想法，欢迎提交 issue。欢迎贡献！
+> **本项目仍在积极开发中。** 功能可能变化，部分内容可能出现问题。如有问题或想法，欢迎[提交 issue](https://github.com/fathah/hermes-desktop/issues)。欢迎贡献！
 
 ## 语言
 
 - 英文：`README.md`
 - 简体中文：`README.zh-CN.md`
 
-Hermes Desktop 是一款原生桌面应用，用于安装、配置 Hermes Agent 并与之对话——Hermes Agent 是一个具备工具调用、多平台消息接入和闭环学习能力的自我改进 AI 助手。
+Hermes Desktop 是一款原生桌面应用，用于安装、配置 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 并与之对话——Hermes Agent 是一个具备工具调用、多平台消息接入和闭环学习能力的自我改进 AI 助手。
 
 与其手动维护 CLI，不如让应用一站式引导你完成安装、供应商配置和日常使用。它使用官方 Hermes 安装脚本，将 Hermes 存储在 `~/.hermes` 中，并提供聊天、会话、档案、记忆、技能、工具、定时任务、消息网关等 GUI 功能。
 
@@ -82,17 +92,20 @@ sudo dnf install ./hermes-desktop-<version>.rpm
 
 ## 预览
 
-<details>
-<summary>界面截图（点击展开）</summary>
-
-![Office](docs/screenshots/office.png)
-![Chat](docs/screenshots/chat.png)
-![Profiles](docs/screenshots/profiles.png)
-![Tools](docs/screenshots/tools.png)
-![Settings](docs/screenshots/settings.png)
-![Skills](docs/screenshots/skills.png)
-
-</details>
+<table>
+<tr>
+<td width="50%" align="center"><b>Office</b><br/><img width="100%" alt="Office" src="https://github.com/user-attachments/assets/214bfa60-48ec-4449-be40-370628205147" /></td>
+<td width="50%" align="center"><b>Chat</b><br/><img width="100%" alt="Chat" src="https://github.com/user-attachments/assets/ca84a56c-4d14-4775-96bb-c725069988be" /></td>
+</tr>
+<tr>
+<td width="50%" align="center"><b>Profiles</b><br/><img width="100%" alt="Profiles" src="https://github.com/user-attachments/assets/bd812e4a-bbdc-4141-b3a8-1ab5b0e561d4" /></td>
+<td width="50%" align="center"><b>Tools</b><br/><img width="100%" alt="Tools" src="https://github.com/user-attachments/assets/ad051fbe-055d-40d2-b6dd-959c522412d2" /></td>
+</tr>
+<tr>
+<td width="50%" align="center"><b>Settings</b><br/><img width="100%" alt="Settings" src="https://github.com/user-attachments/assets/b3f7e0d8-b087-4935-b57c-f8db30491f2e" /></td>
+<td width="50%" align="center"><b>Skills</b><br/><img width="100%" alt="Skills" src="https://github.com/user-attachments/assets/508c3501-52eb-419d-8cfd-06268875ff62" /></td>
+</tr>
+</table>
 
 ## 工作原理
 
@@ -249,7 +262,7 @@ Hermes 相关文件存放位置：
 
 ## 贡献
 
-欢迎贡献！请查看贡献指南开始参与。如果不知道从哪里入手，可以看看已有的 open issues。发现 bug 或有功能需求？欢迎提交 issue。
+欢迎贡献！请查看[贡献指南](https://github.com/fathah/hermes-desktop/blob/main/CONTRIBUTING.md)开始参与。如果不知道从哪里入手，可以看看已有的 [open issues](https://github.com/fathah/hermes-desktop/issues)。发现 bug 或有功能需求？欢迎[提交 issue](https://github.com/fathah/hermes-desktop/issues/new)。
 
 ## 相关项目
 
