@@ -1,12 +1,19 @@
-import { spawn, execSync, execFile } from "child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from "fs";
+import { spawn, execFile, execFileSync } from "child_process";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  unlinkSync,
+} from "fs";
 import { join, delimiter } from "path";
 import { homedir, tmpdir } from "os";
 import { randomBytes } from "crypto";
 import type { BrowserWindow } from "electron";
 import { getModelConfig, getConnectionConfig } from "./config";
-import { stripAnsi } from "./utils";
+import { profileHome, stripAnsi } from "./utils";
 import { setupAskpass, AskpassHandle } from "./askpass";
+import { precacheSudoCredentials } from "./sudoCreds";
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -17,10 +24,19 @@ export const HERMES_VENV = join(HERMES_REPO, "venv");
 export const HERMES_PYTHON = IS_WINDOWS
   ? join(HERMES_VENV, "Scripts", "python.exe")
   : join(HERMES_VENV, "bin", "python");
-export const HERMES_SCRIPT = join(HERMES_REPO, "hermes");
+export const HERMES_SCRIPT = IS_WINDOWS
+  ? join(HERMES_VENV, "Scripts", "hermes.exe")
+  : join(HERMES_REPO, "hermes");
 export const HERMES_ENV_FILE = join(HERMES_HOME, ".env");
 export const HERMES_CONFIG_FILE = join(HERMES_HOME, "config.yaml");
 export const HERMES_AUTH_FILE = join(HERMES_HOME, "auth.json");
+
+export function hermesCliArgs(args: string[] = []): string[] {
+  if (process.platform === "win32") {
+    return ["-m", "hermes_cli.main", ...args];
+  }
+  return [HERMES_SCRIPT, ...args];
+}
 
 export interface InstallStatus {
   installed: boolean;
@@ -39,34 +55,52 @@ export interface InstallProgress {
 
 export function getEnhancedPath(): string {
   const home = homedir();
-  const extra: string[] = IS_WINDOWS
-    ? [
-        // Bundled by install.ps1 inside HERMES_HOME — these matter when the
-        // user's system PATH doesn't include git or node yet.
-        join(HERMES_HOME, "git", "bin"),
-        join(HERMES_HOME, "git", "cmd"),
-        join(HERMES_HOME, "git", "usr", "bin"),
-        join(HERMES_HOME, "node"),
-        join(HERMES_VENV, "Scripts"),
-        // Where `uv` lands when astral.sh's installer runs.
-        join(home, ".local", "bin"),
-        join(home, ".cargo", "bin"),
-      ]
-    : [
-        join(home, ".local", "bin"),
-        join(home, ".cargo", "bin"),
-        join(HERMES_VENV, "bin"),
-        // Node version manager shim directories
-        join(home, ".volta", "bin"),
-        join(home, ".asdf", "shims"),
-        join(home, ".local", "share", "fnm", "aliases", "default", "bin"),
-        join(home, ".fnm", "aliases", "default", "bin"),
-        ...resolveNvmBin(home),
-        "/usr/local/bin",
-        "/opt/homebrew/bin",
-        "/opt/homebrew/sbin",
-      ];
-  return [...extra, process.env.PATH || ""].join(delimiter);
+  const extra = (
+    IS_WINDOWS
+      ? [
+          // Bundled by install.ps1 inside HERMES_HOME — these matter when the
+          // user's system PATH doesn't include git or node yet.
+          join(HERMES_HOME, "git", "bin"),
+          join(HERMES_HOME, "git", "cmd"),
+          join(HERMES_HOME, "git", "usr", "bin"),
+          join(HERMES_HOME, "node"),
+          join(HERMES_VENV, "Scripts"),
+          // Common user/system installs used when Claw3D setup runs before or
+          // outside the bundled installer.
+          process.env.NVM_SYMLINK,
+          process.env.APPDATA ? join(process.env.APPDATA, "npm") : undefined,
+          process.env.ProgramFiles
+            ? join(process.env.ProgramFiles, "nodejs")
+            : undefined,
+          process.env["ProgramFiles(x86)"]
+            ? join(process.env["ProgramFiles(x86)"], "nodejs")
+            : undefined,
+          process.env.ProgramFiles
+            ? join(process.env.ProgramFiles, "Git", "cmd")
+            : undefined,
+          process.env.LOCALAPPDATA
+            ? join(process.env.LOCALAPPDATA, "Programs", "Git", "cmd")
+            : undefined,
+          // Where `uv` lands when astral.sh's installer runs.
+          join(home, ".local", "bin"),
+          join(home, ".cargo", "bin"),
+        ]
+      : [
+          join(home, ".local", "bin"),
+          join(home, ".cargo", "bin"),
+          join(HERMES_VENV, "bin"),
+          // Node version manager shim directories
+          join(home, ".volta", "bin"),
+          join(home, ".asdf", "shims"),
+          join(home, ".local", "share", "fnm", "aliases", "default", "bin"),
+          join(home, ".fnm", "aliases", "default", "bin"),
+          ...resolveNvmBin(home),
+          "/usr/local/bin",
+          "/opt/homebrew/bin",
+          "/opt/homebrew/sbin",
+        ]
+  ).filter((entry): entry is string => Boolean(entry));
+  return [...extra, process.env.PATH || ""].filter(Boolean).join(delimiter);
 }
 
 /** Resolve the active nvm node version's bin directory. */
@@ -191,7 +225,7 @@ export async function verifyInstall(): Promise<boolean> {
   return new Promise((resolve) => {
     execFile(
       HERMES_PYTHON,
-      [HERMES_SCRIPT, "--version"],
+      hermesCliArgs(["--version"]),
       {
         cwd: HERMES_REPO,
         env: {
@@ -233,7 +267,7 @@ export async function getHermesVersion(): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(
       HERMES_PYTHON,
-      [HERMES_SCRIPT, "--version"],
+      hermesCliArgs(["--version"]),
       {
         cwd: HERMES_REPO,
         env: {
@@ -266,7 +300,7 @@ export function runHermesDoctor(): string {
     return "Hermes is not installed.";
   }
   try {
-    const output = execSync(`"${HERMES_PYTHON}" "${HERMES_SCRIPT}" doctor`, {
+    const output = execFileSync(HERMES_PYTHON, hermesCliArgs(["doctor"]), {
       cwd: HERMES_REPO,
       env: {
         ...process.env,
@@ -323,7 +357,7 @@ export async function runClawMigrate(
   emit(`Migrating from ${openclaw.path}...\n`);
 
   return new Promise((resolve, reject) => {
-    const args = [HERMES_SCRIPT, "claw", "migrate", "--preset", "full"];
+    const args = hermesCliArgs(["claw", "migrate", "--preset", "full"]);
 
     const proc = spawn(HERMES_PYTHON, args, {
       cwd: HERMES_REPO,
@@ -382,7 +416,7 @@ export async function runHermesUpdate(
   emit("Running hermes update...\n");
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(HERMES_PYTHON, [HERMES_SCRIPT, "update"], {
+    const proc = spawn(HERMES_PYTHON, hermesCliArgs(["update"]), {
       cwd: HERMES_REPO,
       env: {
         ...process.env,
@@ -467,8 +501,12 @@ const STAGE_MARKERS: { pattern: RegExp; step: number; title: string }[] = [
     title: "Installing dependencies",
   },
   {
+    // Only fire step 7 on the install script's actual final lines.
+    // Intermediate "Browser engine setup complete" / "All dependencies installed"
+    // used to match here and pinned the progress bar at 100% while Playwright
+    // and TUI deps were still running — see issue #104.
     pattern:
-      /Configuration|config|Setup complete|Installation complete|Configuration directory ready|hermes command ready|All dependencies installed/i,
+      /Installation complete|hermes command ready|Configuration directory ready|Hermes (installation )?(finished|is ready)/i,
     step: 7,
     title: "Finishing setup",
   },
@@ -510,8 +548,28 @@ export async function runInstall(
     return runInstallWindows(emit);
   }
 
-  // Bridge any sudo prompts from install.sh to a GUI password dialog.
-  // Windows has no sudo, so skip the bridge there.
+  // Ask for the sudo password ONCE upfront and warm sudo's credential cache
+  // before install.sh runs. Playwright's `install --with-deps` later invokes
+  // `sudo apt-get` from a subprocess with no TTY — without a warm cache it
+  // hangs forever waiting on stdin. See issues #104 and #109.
+  emit("→ Checking administrator access...\n");
+  const sudoPrecache = await precacheSudoCredentials(parentWindow ?? null);
+  if (sudoPrecache.cancelled) {
+    throw new Error(
+      "Installation cancelled: administrator password is required to install browser libraries.",
+    );
+  }
+  if (!sudoPrecache.ok) {
+    emit(
+      "⚠ Administrator password was not accepted. Continuing without — install may stall at the browser dependency step.\n",
+    );
+  } else {
+    emit("✓ Administrator access granted\n");
+  }
+
+  // Keep the legacy askpass bridge as a fallback for any sudo call that
+  // somehow escapes the cred cache (e.g. install runs past sudo's 15min TTL
+  // and the keepalive failed).
   let askpass: AskpassHandle | null = null;
   try {
     askpass = await setupAskpass(parentWindow ?? null);
@@ -584,6 +642,7 @@ export async function runInstall(
     });
   } finally {
     askpass?.cleanup();
+    sudoPrecache.stop();
   }
 }
 
@@ -746,8 +805,9 @@ export async function runHermesBackup(
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
     return { success: false, error: "Hermes is not installed." };
   }
-  const args = [HERMES_SCRIPT, "backup"];
+  const args = hermesCliArgs();
   if (profile && profile !== "default") args.push("-p", profile);
+  args.push("backup");
 
   return new Promise((resolve) => {
     execFile(
@@ -793,8 +853,9 @@ export async function runHermesImport(
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
     return { success: false, error: "Hermes is not installed." };
   }
-  const args = [HERMES_SCRIPT, "import", archivePath];
+  const args = hermesCliArgs();
   if (profile && profile !== "default") args.push("-p", profile);
+  args.push("import", archivePath);
 
   return new Promise((resolve) => {
     execFile(
@@ -836,7 +897,7 @@ export function runHermesDump(): Promise<string> {
   return new Promise((resolve) => {
     execFile(
       HERMES_PYTHON,
-      [HERMES_SCRIPT, "dump"],
+      hermesCliArgs(["dump"]),
       {
         cwd: HERMES_REPO,
         env: {
@@ -964,11 +1025,7 @@ export function discoverMemoryProviders(
  */
 export function getActiveMemoryProvider(profile?: string): string {
   try {
-    const configDir =
-      profile && profile !== "default"
-        ? join(HERMES_HOME, "profiles", profile)
-        : HERMES_HOME;
-    const configPath = join(configDir, "config.yaml");
+    const configPath = join(profileHome(profile), "config.yaml");
     if (!existsSync(configPath)) return "";
     const content = readFileSync(configPath, "utf-8");
     const match = content.match(/^\s*provider:\s*["']?(\w+)["']?\s*$/m);
@@ -986,12 +1043,7 @@ export function listMcpServers(
   profile?: string,
 ): Array<{ name: string; type: string; enabled: boolean; detail: string }> {
   try {
-    const configPath = join(
-      profile && profile !== "default"
-        ? join(HERMES_HOME, "profiles", profile)
-        : HERMES_HOME,
-      "config.yaml",
-    );
+    const configPath = join(profileHome(profile), "config.yaml");
     if (!existsSync(configPath)) return [];
     const content = readFileSync(configPath, "utf-8");
     // Simple YAML parse for mcp_servers section
