@@ -6,7 +6,7 @@ import {
   unlinkSync,
   mkdirSync,
 } from "fs";
-import { join } from "path";
+import { join, win32 } from "path";
 import { homedir } from "os";
 import { createConnection } from "net";
 import { getEnhancedPath, HERMES_HOME } from "./installer";
@@ -34,11 +34,23 @@ export interface ResolvedCommand {
   windowsScript: boolean;
 }
 
-interface CommandInvocation {
+export interface CommandInvocation {
   command: string;
   args: string[];
   windowsVerbatimArguments?: boolean;
 }
+
+interface NpmInvocationOptions {
+  platform?: NodeJS.Platform;
+  fileExists?: (path: string) => boolean;
+}
+
+type Claw3dScript = "dev" | "hermes-adapter";
+
+const CLAW3D_SCRIPT_ARGS: Record<Claw3dScript, string[]> = {
+  dev: ["server/index.js", "--dev"],
+  "hermes-adapter": ["server/hermes-gateway-adapter.js"],
+};
 
 export function isWindowsCommandScript(command: string): boolean {
   return /\.(cmd|bat)$/i.test(command);
@@ -130,6 +142,61 @@ function createCommandInvocation(
   }
 
   return { command: resolved.command, args };
+}
+
+function createWindowsNpmCliInvocation(
+  npmCommand: string,
+  args: string[],
+  fileExists: (path: string) => boolean,
+): CommandInvocation | null {
+  const npmDir = win32.dirname(npmCommand);
+  const nodeCandidates = [
+    win32.join(npmDir, "node.exe"),
+    win32.join(npmDir, "..", "..", "..", "node.exe"),
+  ];
+  const npmCliCandidates = [
+    win32.join(npmDir, "node_modules", "npm", "bin", "npm-cli.js"),
+    win32.join(npmDir, "npm-cli.js"),
+  ];
+
+  const nodeExe = nodeCandidates.find(fileExists);
+  const npmCli = npmCliCandidates.find(fileExists);
+  if (!npmCli) return null;
+
+  return {
+    command: nodeExe || "node",
+    args: [npmCli, ...args],
+  };
+}
+
+export function createNpmCommandInvocation(
+  resolved: ResolvedCommand,
+  args: string[],
+  options: NpmInvocationOptions = {},
+): CommandInvocation {
+  const platform = options.platform ?? process.platform;
+  const fileExists = options.fileExists ?? existsSync;
+
+  if (platform === "win32") {
+    const directNpm = createWindowsNpmCliInvocation(
+      resolved.command,
+      args,
+      fileExists,
+    );
+    if (directNpm) return directNpm;
+  }
+
+  return createCommandInvocation(resolved, args);
+}
+
+export function createClaw3dScriptInvocation(
+  script: Claw3dScript,
+  nodeCommand = "node",
+): CommandInvocation {
+  return {
+    command: nodeCommand,
+    args: CLAW3D_SCRIPT_ARGS[script],
+  };
 }
 
 function getSavedPort(): number {
@@ -509,7 +576,7 @@ export async function setupClaw3d(
 
   // Step 2: npm install
   emit(2, "Installing dependencies...", "Running npm install...\n");
-  const npm = createCommandInvocation(findNpm(env.PATH), ["install"]);
+  const npm = createNpmCommandInvocation(findNpm(env.PATH), ["install"]);
 
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(npm.command, npm.args, {
@@ -584,14 +651,15 @@ export function startDevServer(): boolean {
     TERM: "dumb",
     PORT: String(port),
   };
-  const npm = createCommandInvocation(findNpm(env.PATH), ["run", "dev"]);
-  const proc = spawn(npm.command, npm.args, {
+  const node = resolveCommand("node", env.PATH);
+  const devScript = createClaw3dScriptInvocation("dev", node.command);
+  const proc = spawn(devScript.command, devScript.args, {
     cwd: HERMES_OFFICE_DIR,
     env,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
     windowsHide: true,
-    windowsVerbatimArguments: npm.windowsVerbatimArguments,
+    windowsVerbatimArguments: devScript.windowsVerbatimArguments,
   });
 
   devServerProcess = proc;
@@ -661,17 +729,18 @@ export function startAdapter(): boolean {
     HOME: homedir(),
     TERM: "dumb",
   };
-  const npm = createCommandInvocation(findNpm(env.PATH), [
-    "run",
+  const node = resolveCommand("node", env.PATH);
+  const adapterScript = createClaw3dScriptInvocation(
     "hermes-adapter",
-  ]);
-  const proc = spawn(npm.command, npm.args, {
+    node.command,
+  );
+  const proc = spawn(adapterScript.command, adapterScript.args, {
     cwd: HERMES_OFFICE_DIR,
     env,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
     windowsHide: true,
-    windowsVerbatimArguments: npm.windowsVerbatimArguments,
+    windowsVerbatimArguments: adapterScript.windowsVerbatimArguments,
   });
 
   adapterProcess = proc;

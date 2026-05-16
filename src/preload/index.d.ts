@@ -442,7 +442,9 @@ interface HermesAPI {
   claw3dSetPort: (port: number) => Promise<boolean>;
   claw3dGetWsUrl: () => Promise<string>;
   claw3dSetWsUrl: (url: string) => Promise<boolean>;
-  claw3dStartAll: () => Promise<{ success: boolean; error?: string }>;
+  claw3dStartAll: (
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
   claw3dStopAll: () => Promise<boolean>;
   claw3dGetLogs: () => Promise<string>;
   claw3dStartDev: () => Promise<boolean>;

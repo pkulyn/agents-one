@@ -313,7 +313,7 @@ function Layout({
 
         {visitedViews.has("office") && (
           <div style={paneStyle("office")}>
-            <Office visible={view === "office"} />
+            <Office profile={activeProfile} visible={view === "office"} />
           </div>
         )}
 

@@ -17,7 +17,13 @@ interface SetupProgress {
   log: string;
 }
 
-function Office({ visible }: { visible?: boolean }): React.JSX.Element {
+function Office({
+  profile,
+  visible,
+}: {
+  profile?: string;
+  visible?: boolean;
+}): React.JSX.Element {
   const { t } = useI18n();
   const [state, setState] = useState<OfficeState>("checking");
   const [running, setRunning] = useState(false);
@@ -168,7 +174,7 @@ function Office({ visible }: { visible?: boolean }): React.JSX.Element {
       setError("");
       setWebviewError("");
       setStarting(true);
-      const result = await window.hermesAPI.claw3dStartAll();
+      const result = await window.hermesAPI.claw3dStartAll(profile);
       if (!result.success) {
         setError(result.error || "Failed to start Claw3D");
         setStarting(false);
