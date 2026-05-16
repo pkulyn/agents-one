@@ -188,7 +188,7 @@ function Models(): React.JSX.Element {
     <div className="settings-container">
       <div className="models-header">
         <div>
-          <h1 className="settings-header" style={{ marginBottom: 4 }}>
+          <h1 className="settings-header models-title-tight">
             {t("models.title")}
           </h1>
           <p className="models-subtitle">{t("models.subtitle")}</p>
@@ -250,8 +250,8 @@ function Models(): React.JSX.Element {
                   >
                     <span>{t("models.deleteConfirm")}</span>
                     <button
-                      className="btn btn-sm"
-                      style={{ color: "var(--error)" }}
+                      type="button"
+                      className="btn btn-sm btn-danger-text"
                       onClick={() => handleDelete(m.id)}
                     >
                       {t("models.yes")}
@@ -288,7 +288,13 @@ function Models(): React.JSX.Element {
               <h2 className="models-modal-title">
                 {editingModel ? t("models.editModel") : t("models.addModel")}
               </h2>
-              <button className="btn-ghost" onClick={closeModal}>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={closeModal}
+                aria-label={t("common.close")}
+                title={t("common.close")}
+              >
                 <X size={18} />
               </button>
             </div>
@@ -309,7 +315,7 @@ function Models(): React.JSX.Element {
               </div>
 
               <div className="models-modal-field">
-                <label className="models-modal-label">
+                <label className="models-modal-label" htmlFor="model-form-provider">
                   {t("common.provider")}
                   {providerAutoFilled && !providerTouched && (
                     <span className="models-modal-auto-badge">
@@ -318,6 +324,7 @@ function Models(): React.JSX.Element {
                   )}
                 </label>
                 <select
+                  id="model-form-provider"
                   className="input"
                   value={formProvider}
                   onChange={(e) => {
@@ -325,6 +332,7 @@ function Models(): React.JSX.Element {
                     setProviderTouched(true);
                     setProviderAutoFilled(false);
                   }}
+                  aria-label={t("common.provider")}
                 >
                   {PROVIDERS.options.map((p) => (
                     <option key={p.value} value={p.value}>
