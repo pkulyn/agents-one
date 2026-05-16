@@ -852,7 +852,12 @@ function setupIPC(): void {
   ipcMain.handle("sync-session-cache", () => {
     const conn = getConnectionConfig();
     if (conn.mode === "ssh" && conn.ssh) return sshListCachedSessions(conn.ssh, 50);
-    return syncSessionCache();
+    try {
+      return syncSessionCache();
+    } catch (error) {
+      console.error("sync-session-cache failed; using local cache", error);
+      return listCachedSessions(50);
+    }
   });
   ipcMain.handle(
     "update-session-title",
