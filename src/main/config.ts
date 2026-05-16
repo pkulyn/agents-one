@@ -27,7 +27,7 @@ function desktopConfigFile(): string {
   return join(HERMES_HOME, "desktop.json");
 }
 
-function readDesktopConfig(): Record<string, unknown> {
+export function readDesktopConfig(): Record<string, unknown> {
   try {
     const f = desktopConfigFile();
     if (!existsSync(f)) return {};
@@ -37,7 +37,7 @@ function readDesktopConfig(): Record<string, unknown> {
   }
 }
 
-function writeDesktopConfig(data: Record<string, unknown>): void {
+export function writeDesktopConfig(data: Record<string, unknown>): void {
   if (!existsSync(HERMES_HOME)) {
     mkdirSync(HERMES_HOME, { recursive: true });
   }
@@ -274,7 +274,7 @@ export function setModelConfig(
     // Append base_url line after the provider line in the model section
     content = content.replace(
       /^(\s*provider:\s*"[^"]*"\s*\n)/m,
-      `$1  base_url: "${baseUrl}"\n`
+      `$1  base_url: "${baseUrl}"\n`,
     );
   }
 
