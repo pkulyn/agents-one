@@ -11,6 +11,8 @@ import { homedir } from "os";
 import { createConnection } from "net";
 import { getEnhancedPath, HERMES_HOME } from "./installer";
 import { stripAnsi, safeWriteFile } from "./utils";
+import { getConnectionConfig } from "./config";
+import http from "http";
 
 const HERMES_OFFICE_REPO = "https://github.com/fathah/hermes-office";
 const HERMES_OFFICE_DIR = join(HERMES_HOME, "hermes-office");
@@ -254,6 +256,12 @@ export interface Claw3dStatus {
   portInUse: boolean;
   wsUrl: string;
   error: string; // last error from either process
+  // Populated in SSH tunnel mode when a Claw3D / hermes-office service is
+  // running on the remote host. Renderer should prefer this over launching
+  // a local dev server. Null/undefined when not in SSH mode or when the
+  // remote service is unreachable.
+  remoteUrl?: string | null;
+  remoteSource?: "ssh" | null;
 }
 
 export interface Claw3dSetupProgress {
@@ -310,6 +318,25 @@ function isAdapterRunning(): boolean {
   return false;
 }
 
+// Probe an HTTP endpoint with a short timeout. Returns true if any response
+// arrives (we don't care about the status code — even a 404 confirms a
+// listener). Used to detect remote Claw3D / hermes-office without dragging
+// in the SSH tunnel machinery.
+function probeHttp(url: string, timeoutMs = 1500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(url, { method: "GET", timeout: timeoutMs }, (res) => {
+      res.resume();
+      resolve(true);
+    });
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
 export async function getClaw3dStatus(): Promise<Claw3dStatus> {
   const cloned = existsSync(join(HERMES_OFFICE_DIR, "package.json"));
   const installed = existsSync(join(HERMES_OFFICE_DIR, "node_modules"));
@@ -319,16 +346,32 @@ export async function getClaw3dStatus(): Promise<Claw3dStatus> {
   const portInUse = devRunning ? false : await checkPort(port);
   const adapterUp = isAdapterRunning();
   const error = devServerError || adapterError;
+
+  // SSH tunnel mode: probe the remote host for a Claw3D / hermes-office
+  // service. The official systemd unit binds Next.js to :3000 by default,
+  // so we try the SSH host at the saved Claw3D port. When reachable, the
+  // renderer can point its webview at it instead of asking the user to
+  // install Claw3D locally.
+  let remoteUrl: string | null = null;
+  const conn = getConnectionConfig();
+  if (conn.mode === "ssh" && conn.ssh?.host) {
+    const candidateUrl = `http://${conn.ssh.host}:${port}`;
+    const reachable = await probeHttp(candidateUrl, 1500);
+    if (reachable) remoteUrl = candidateUrl;
+  }
+
   return {
     cloned,
-    installed,
+    installed: installed || Boolean(remoteUrl),
     devServerRunning: devRunning,
     adapterRunning: adapterUp,
-    running: devRunning && adapterUp,
+    running: (devRunning && adapterUp) || Boolean(remoteUrl),
     port,
     portInUse,
     wsUrl: getSavedWsUrl(),
     error,
+    remoteUrl,
+    remoteSource: remoteUrl ? "ssh" : null,
   };
 }
 

@@ -427,6 +427,8 @@ interface HermesAPI {
     wsUrl: string;
     running: boolean;
     error: string;
+    remoteUrl?: string | null;
+    remoteSource?: "ssh" | null;
   }>;
   claw3dSetup: () => Promise<{ success: boolean; error?: string }>;
   onClaw3dSetupProgress: (
