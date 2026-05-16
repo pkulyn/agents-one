@@ -186,6 +186,9 @@ import {
   sshListCachedSessions,
   sshRunDoctor,
   sshListModels,
+  sshAddModel,
+  sshRemoveModel,
+  sshUpdateModel,
   sshRunUpdate,
   sshRunDump,
   sshDiscoverMemoryProviders,
@@ -889,14 +892,26 @@ function setupIPC(): void {
   });
   ipcMain.handle(
     "add-model",
-    (_event, name: string, provider: string, model: string, baseUrl: string) =>
-      addModel(name, provider, model, baseUrl),
+    (_event, name: string, provider: string, model: string, baseUrl: string) => {
+      const conn = getConnectionConfig();
+      if (conn.mode === "ssh" && conn.ssh) {
+        return sshAddModel(conn.ssh, name, provider, model, baseUrl);
+      }
+      return addModel(name, provider, model, baseUrl);
+    },
   );
-  ipcMain.handle("remove-model", (_event, id: string) => removeModel(id));
+  ipcMain.handle("remove-model", (_event, id: string) => {
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" && conn.ssh) return sshRemoveModel(conn.ssh, id);
+    return removeModel(id);
+  });
   ipcMain.handle(
     "update-model",
-    (_event, id: string, fields: Record<string, string>) =>
-      updateModel(id, fields),
+    (_event, id: string, fields: Record<string, string>) => {
+      const conn = getConnectionConfig();
+      if (conn.mode === "ssh" && conn.ssh) return sshUpdateModel(conn.ssh, id, fields);
+      return updateModel(id, fields);
+    },
   );
 
   // Claw3D
