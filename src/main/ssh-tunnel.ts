@@ -110,7 +110,7 @@ function buildSshArgs(config: SshConfig, localPort: number): string[] {
     "-i", keyPath,
     "-o", "StrictHostKeyChecking=accept-new",
     "-o", "BatchMode=yes",
-    ...buildSshControlOptions(),
+    ...buildSshControlOptions(process.platform, { forTunnel: true }),
     "-o", "ExitOnForwardFailure=yes",
     "-o", "ServerAliveInterval=30",
     "-o", "ServerAliveCountMax=3",
