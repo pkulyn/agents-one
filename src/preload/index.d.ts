@@ -1,5 +1,15 @@
-import { ElectronAPI } from "@electron-toolkit/preload";
 import type { AppLocale } from "../shared/i18n/types";
+
+interface ElectronAPI {
+  process: {
+    platform: NodeJS.Platform;
+    versions: {
+      chrome: string;
+      electron: string;
+      node: string;
+    };
+  };
+}
 
 interface InstallStatus {
   installed: boolean;
@@ -14,6 +24,90 @@ interface InstallProgress {
   title: string;
   detail: string;
   log: string;
+}
+
+interface KanbanTask {
+  id: string;
+  title: string;
+  body: string | null;
+  assignee: string | null;
+  status: string;
+  priority: number;
+  tenant: string | null;
+  workspace_kind: string;
+  workspace_path: string | null;
+  created_by: string | null;
+  created_at: number | null;
+  started_at: number | null;
+  completed_at: number | null;
+  result: string | null;
+  skills: string[];
+  max_retries: number | null;
+}
+
+interface KanbanBoard {
+  slug: string;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  is_current: boolean;
+  archived?: boolean;
+  total: number;
+  counts: Record<string, number>;
+  db_path?: string;
+}
+
+interface KanbanComment {
+  id: number;
+  task_id: string;
+  author: string | null;
+  body: string;
+  created_at: number;
+}
+
+interface KanbanEvent {
+  id: number;
+  task_id: string;
+  kind: string;
+  payload: Record<string, unknown> | null;
+  created_at: number;
+  run_id: number | null;
+}
+
+interface KanbanRun {
+  id: number;
+  task_id: string;
+  profile: string | null;
+  status: string | null;
+  outcome: string | null;
+  summary: string | null;
+  error: string | null;
+  started_at: number | null;
+  ended_at: number | null;
+  last_heartbeat_at: number | null;
+}
+
+interface KanbanTaskDetail {
+  task: KanbanTask;
+  comments: KanbanComment[];
+  events: KanbanEvent[];
+  parents: string[];
+  children: string[];
+  runs: KanbanRun[];
+  latest_summary: string | null;
+}
+
+interface KanbanCreateTaskInput {
+  title: string;
+  body?: string;
+  assignee?: string;
+  priority?: number;
+  tenant?: string;
+  workspace?: string;
+  triage?: boolean;
+  skills?: string[];
+  maxRetries?: number;
 }
 
 interface HermesAPI {
@@ -368,6 +462,7 @@ interface HermesAPI {
     callback: (info: { percent: number }) => void,
   ) => () => void;
   onUpdateDownloaded: (callback: () => void) => () => void;
+  onUpdateError: (callback: (message: string) => void) => () => void;
 
   // Menu events
   onMenuNewChat: (callback: () => void) => () => void;
@@ -418,6 +513,87 @@ interface HermesAPI {
     jobId: string,
     profile?: string,
   ) => Promise<{ success: boolean; error?: string }>;
+
+  // Kanban
+  kanbanListBoards: (
+    includeArchived?: boolean,
+    profile?: string,
+  ) => Promise<{ success: boolean; data?: KanbanBoard[]; error?: string }>;
+  kanbanCurrentBoard: (
+    profile?: string,
+  ) => Promise<{ success: boolean; data?: string; error?: string }>;
+  kanbanSwitchBoard: (
+    slug: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanCreateBoard: (
+    slug: string,
+    name?: string,
+    switchAfter?: boolean,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanRemoveBoard: (
+    slug: string,
+    hardDelete?: boolean,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanListTasks: (filters?: {
+    status?: string;
+    assignee?: string;
+    tenant?: string;
+    includeArchived?: boolean;
+    profile?: string;
+  }) => Promise<{ success: boolean; data?: KanbanTask[]; error?: string }>;
+  kanbanGetTask: (
+    taskId: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; data?: KanbanTaskDetail; error?: string }>;
+  kanbanCreateTask: (
+    input: KanbanCreateTaskInput,
+    profile?: string,
+  ) => Promise<{ success: boolean; data?: { id: string }; error?: string }>;
+  selectFolder: () => Promise<string | null>;
+  kanbanAssignTask: (
+    taskId: string,
+    assignee: string | null,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanCompleteTask: (
+    taskId: string,
+    result?: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanBlockTask: (
+    taskId: string,
+    reason?: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanUnblockTask: (
+    taskId: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanArchiveTask: (
+    taskId: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanSpecifyTask: (
+    taskId: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanReclaimTask: (
+    taskId: string,
+    reason?: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanCommentTask: (
+    taskId: string,
+    body: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanDispatchOnce: (
+    dryRun?: boolean,
+    profile?: string,
+  ) => Promise<{ success: boolean; data?: unknown; error?: string }>;
 
   // Shell
   openExternal: (url: string) => Promise<void>;

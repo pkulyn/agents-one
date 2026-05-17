@@ -6,7 +6,6 @@ import Install from "./screens/Install/Install";
 import Setup from "./screens/Setup/Setup";
 import Layout from "./screens/Layout/Layout";
 import SplashScreen from "./screens/SplashScreen/SplashScreen";
-import { useI18n } from "./components/useI18n";
 
 type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
 
@@ -15,9 +14,17 @@ type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
 const SPLASH_MIN_MS = 1300;
 
 function App(): React.JSX.Element {
-  const { t } = useI18n();
   const [screen, setScreen] = useState<Screen>("splash");
   const [installError, setInstallError] = useState<string | null>(null);
+  const [connectionMode, setConnectionMode] = useState<
+    "local" | "remote" | "ssh"
+  >("local");
+  // Soft warning: install files exist but the deep `verifyInstall` probe
+  // failed (e.g. slow Python startup, restricted network). We surface this
+  // as a dismissible banner instead of bouncing the user back to Welcome,
+  // which previously trapped restricted-network users in a reinstall
+  // loop on every launch (#130).
+  const [verifyWarning, setVerifyWarning] = useState(false);
   const isMac = window.electron?.process?.platform === "darwin";
 
   const runInstallCheck = useCallback(async () => {
@@ -29,6 +36,7 @@ function App(): React.JSX.Element {
     try {
       const conn = await window.hermesAPI.getConnectionConfig();
       isRemote = conn.mode === "remote" || conn.mode === "ssh";
+      setConnectionMode(conn.mode);
 
       if (conn.mode === "ssh" && conn.ssh) {
         // Start (or ensure) the SSH tunnel, then go straight to main
@@ -83,13 +91,12 @@ function App(): React.JSX.Element {
     // error immediately after a successful remote connect. (#47, #41, #30)
     if ((next === "main" || next === "setup") && !isRemote) {
       window.hermesAPI.verifyInstall().then((ok) => {
-        if (!ok) {
-          setInstallError(t("errors.installBroken"));
-          setScreen("welcome");
-        }
+        // Files exist (checkInstall passed) but the probe failed. Surface
+        // a soft warning instead of bouncing to Welcome — see #130.
+        if (!ok) setVerifyWarning(true);
       });
     }
-  }, [t]);
+  }, []);
 
   useEffect(() => {
     runInstallCheck();
@@ -120,6 +127,22 @@ function App(): React.JSX.Element {
     runInstallCheck();
   }
 
+  async function handleSwitchToLocal(): Promise<void> {
+    await window.hermesAPI.setConnectionConfig("local", "", "");
+    setConnectionMode("local");
+    handleRecheck();
+  }
+
+  function handleVerifyReinstall(): void {
+    setVerifyWarning(false);
+    setInstallError(null);
+    setScreen("installing");
+  }
+
+  function handleDismissVerifyWarning(): void {
+    setVerifyWarning(false);
+  }
+
   function renderScreen(): React.JSX.Element {
     switch (screen) {
       case "splash":
@@ -128,8 +151,10 @@ function App(): React.JSX.Element {
         return (
           <Welcome
             error={installError}
+            connectionMode={connectionMode}
             onStart={handleRetryInstall}
             onRecheck={handleRecheck}
+            onSwitchToLocal={handleSwitchToLocal}
           />
         );
       case "installing":
@@ -140,9 +165,22 @@ function App(): React.JSX.Element {
           />
         );
       case "setup":
-        return <Setup onComplete={() => setScreen("main")} />;
+        return (
+          <Setup
+            onComplete={() => setScreen("main")}
+            verifyWarning={verifyWarning}
+            onReinstall={handleVerifyReinstall}
+            onDismissVerifyWarning={handleDismissVerifyWarning}
+          />
+        );
       case "main":
-        return <Layout />;
+        return (
+          <Layout
+            verifyWarning={verifyWarning}
+            onReinstall={handleVerifyReinstall}
+            onDismissVerifyWarning={handleDismissVerifyWarning}
+          />
+        );
     }
   }
 

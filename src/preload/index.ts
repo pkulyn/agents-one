@@ -1,6 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { electronAPI } from "@electron-toolkit/preload";
 import type { AppLocale } from "../shared/i18n/types";
+
+const electronAPI = {
+  process: {
+    platform: process.platform,
+    versions: {
+      chrome: process.versions.chrome,
+      electron: process.versions.electron,
+      node: process.versions.node,
+    },
+  },
+};
 
 const hermesAPI = {
   // Installation
@@ -549,6 +559,13 @@ const hermesAPI = {
     return () => ipcRenderer.removeListener("update-downloaded", handler);
   },
 
+  onUpdateError: (callback: (message: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: unknown): void =>
+      callback(String(message));
+    ipcRenderer.on("update-error", handler);
+    return () => ipcRenderer.removeListener("update-error", handler);
+  },
+
   // Menu events (from native menu bar)
   onMenuNewChat: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
@@ -624,6 +641,82 @@ const hermesAPI = {
     profile?: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("trigger-cron-job", jobId, profile),
+
+  // Kanban
+  kanbanListBoards: (includeArchived?: boolean, profile?: string) =>
+    ipcRenderer.invoke("kanban-list-boards", includeArchived, profile),
+  kanbanCurrentBoard: (profile?: string) =>
+    ipcRenderer.invoke("kanban-current-board", profile),
+  kanbanSwitchBoard: (slug: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-switch-board", slug, profile),
+  kanbanCreateBoard: (
+    slug: string,
+    name?: string,
+    switchAfter?: boolean,
+    profile?: string,
+  ) =>
+    ipcRenderer.invoke(
+      "kanban-create-board",
+      slug,
+      name,
+      switchAfter,
+      profile,
+    ),
+  kanbanRemoveBoard: (
+    slug: string,
+    hardDelete?: boolean,
+    profile?: string,
+  ) =>
+    ipcRenderer.invoke("kanban-remove-board", slug, hardDelete, profile),
+  kanbanListTasks: (filters?: {
+    status?: string;
+    assignee?: string;
+    tenant?: string;
+    includeArchived?: boolean;
+    profile?: string;
+  }) => ipcRenderer.invoke("kanban-list-tasks", filters),
+  kanbanGetTask: (taskId: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-get-task", taskId, profile),
+  kanbanCreateTask: (
+    input: {
+      title: string;
+      body?: string;
+      assignee?: string;
+      priority?: number;
+      tenant?: string;
+      workspace?: string;
+      triage?: boolean;
+      skills?: string[];
+      maxRetries?: number;
+    },
+    profile?: string,
+  ) => ipcRenderer.invoke("kanban-create-task", input, profile),
+  selectFolder: (): Promise<string | null> =>
+    ipcRenderer.invoke("select-folder"),
+  kanbanAssignTask: (
+    taskId: string,
+    assignee: string | null,
+    profile?: string,
+  ) => ipcRenderer.invoke("kanban-assign-task", taskId, assignee, profile),
+  kanbanCompleteTask: (taskId: string, result?: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-complete-task", taskId, result, profile),
+  kanbanBlockTask: (taskId: string, reason?: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-block-task", taskId, reason, profile),
+  kanbanUnblockTask: (taskId: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-unblock-task", taskId, profile),
+  kanbanArchiveTask: (taskId: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-archive-task", taskId, profile),
+  kanbanSpecifyTask: (taskId: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-specify-task", taskId, profile),
+  kanbanReclaimTask: (
+    taskId: string,
+    reason?: string,
+    profile?: string,
+  ) => ipcRenderer.invoke("kanban-reclaim-task", taskId, reason, profile),
+  kanbanCommentTask: (taskId: string, body: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-comment-task", taskId, body, profile),
+  kanbanDispatchOnce: (dryRun?: boolean, profile?: string) =>
+    ipcRenderer.invoke("kanban-dispatch-once", dryRun, profile),
 
   // Shell
   openExternal: (url: string): Promise<void> =>

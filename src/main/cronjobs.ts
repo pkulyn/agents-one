@@ -2,9 +2,10 @@ import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { execFile } from "child_process";
-import { HERMES_HOME, HERMES_PYTHON, HERMES_SCRIPT } from "./installer";
+import { HERMES_HOME, HERMES_PYTHON, hermesCliArgs } from "./installer";
 import { profileHome } from "./utils";
 import { isRemoteMode, getApiUrl, getRemoteAuthHeader } from "./hermes";
+import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 export interface CronJob {
   id: string;
@@ -142,7 +143,7 @@ function runCronCommand(
   args: string[],
   profile?: string,
 ): Promise<{ success: boolean; output: string; error?: string }> {
-  const cliArgs = [HERMES_SCRIPT];
+  const cliArgs = hermesCliArgs();
   if (profile && profile !== "default") {
     cliArgs.push("-p", profile);
   }
@@ -152,7 +153,11 @@ function runCronCommand(
     execFile(
       HERMES_PYTHON,
       cliArgs,
-      { cwd: join(HERMES_HOME, "hermes-agent"), timeout: 15000 },
+      {
+        cwd: join(HERMES_HOME, "hermes-agent"),
+        timeout: 15000,
+        ...HIDDEN_SUBPROCESS_OPTIONS,
+      },
       (err, stdout, stderr) => {
         if (err) {
           resolve({

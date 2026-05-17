@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   Notification,
+  dialog,
 } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
@@ -116,7 +117,34 @@ import {
   resumeCronJob,
   triggerCronJob,
 } from "./cronjobs";
+import {
+  listBoards as kanbanListBoards,
+  currentBoard as kanbanCurrentBoard,
+  switchBoard as kanbanSwitchBoard,
+  createBoard as kanbanCreateBoard,
+  removeBoard as kanbanRemoveBoard,
+  listTasks as kanbanListTasks,
+  getTask as kanbanGetTask,
+  createTask as kanbanCreateTask,
+  assignTask as kanbanAssignTask,
+  completeTask as kanbanCompleteTask,
+  blockTask as kanbanBlockTask,
+  unblockTask as kanbanUnblockTask,
+  archiveTask as kanbanArchiveTask,
+  specifyTask as kanbanSpecifyTask,
+  reclaimTask as kanbanReclaimTask,
+  commentTask as kanbanCommentTask,
+  dispatchOnce as kanbanDispatchOnce,
+  CreateTaskInput,
+} from "./kanban";
 import { getAppLocale, setAppLocale } from "./locale";
+import {
+  hardenAttachedWebContents,
+  hardenWebviewPreferences,
+  isAllowedAppNavigationUrl,
+  isAllowedExternalUrl,
+  isAllowedWebviewUrl,
+} from "./security";
 import type { AppLocale } from "../shared/i18n/types";
 import {
   sshListInstalledSkills,
@@ -174,12 +202,25 @@ process.on("unhandledRejection", (reason) => {
 let mainWindow: BrowserWindow | null = null;
 let currentChatAbort: (() => void) | null = null;
 
+function openExternalUrl(rawUrl: unknown): void {
+  if (!isAllowedExternalUrl(rawUrl)) {
+    console.warn("[SECURITY] Blocked unsafe external URL");
+    return;
+  }
+
+  shell.openExternal(rawUrl).catch((err) => {
+    console.error("[SECURITY] Failed to open external URL:", err);
+  });
+}
+
 function createWindow(): void {
+  const rendererHtmlPath = join(__dirname, "../renderer/index.html");
+
   mainWindow = new BrowserWindow({
     width: 1100,
-    height: 750,
-    minWidth: 800,
-    minHeight: 600,
+    height: 850,
+    minWidth: 900,
+    minHeight: 820,
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : undefined,
@@ -189,7 +230,11 @@ function createWindow(): void {
     ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
-      sandbox: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
       webviewTag: true,
     },
   });
@@ -223,14 +268,42 @@ function createWindow(): void {
   );
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    openExternalUrl(details.url);
     return { action: "deny" };
   });
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (
+      isAllowedAppNavigationUrl(
+        url,
+        rendererHtmlPath,
+        is.dev ? process.env["ELECTRON_RENDERER_URL"] : undefined,
+      )
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    openExternalUrl(url);
+  });
+
+  mainWindow.webContents.on(
+    "will-attach-webview",
+    (event, webPreferences, params) => {
+      if (!isAllowedWebviewUrl(params.src)) {
+        event.preventDefault();
+        console.warn("[SECURITY] Blocked webview attachment for untrusted URL");
+        return;
+      }
+
+      hardenWebviewPreferences(webPreferences);
+    },
+  );
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
-    mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    mainWindow.loadFile(rendererHtmlPath);
   }
 }
 
@@ -900,9 +973,115 @@ function setupIPC(): void {
     (_event, jobId: string, profile?: string) => triggerCronJob(jobId, profile),
   );
 
+  // Kanban
+  ipcMain.handle(
+    "kanban-list-boards",
+    (_event, includeArchived?: boolean, profile?: string) =>
+      kanbanListBoards(includeArchived, profile),
+  );
+  ipcMain.handle("kanban-current-board", (_event, profile?: string) =>
+    kanbanCurrentBoard(profile),
+  );
+  ipcMain.handle(
+    "kanban-switch-board",
+    (_event, slug: string, profile?: string) =>
+      kanbanSwitchBoard(slug, profile),
+  );
+  ipcMain.handle(
+    "kanban-create-board",
+    (
+      _event,
+      slug: string,
+      name?: string,
+      switchAfter?: boolean,
+      profile?: string,
+    ) => kanbanCreateBoard(slug, name, switchAfter, profile),
+  );
+  ipcMain.handle(
+    "kanban-remove-board",
+    (_event, slug: string, hardDelete?: boolean, profile?: string) =>
+      kanbanRemoveBoard(slug, hardDelete, profile),
+  );
+  ipcMain.handle(
+    "kanban-list-tasks",
+    (
+      _event,
+      filters?: {
+        status?: string;
+        assignee?: string;
+        tenant?: string;
+        includeArchived?: boolean;
+        profile?: string;
+      },
+    ) => kanbanListTasks(filters || {}),
+  );
+  ipcMain.handle(
+    "kanban-get-task",
+    (_event, taskId: string, profile?: string) =>
+      kanbanGetTask(taskId, profile),
+  );
+  ipcMain.handle(
+    "kanban-create-task",
+    (_event, input: CreateTaskInput, profile?: string) =>
+      kanbanCreateTask(input, profile),
+  );
+  ipcMain.handle("select-folder", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = win
+      ? await dialog.showOpenDialog(win, { properties: ["openDirectory"] })
+      : await dialog.showOpenDialog({ properties: ["openDirectory"] });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+  ipcMain.handle(
+    "kanban-assign-task",
+    (_event, taskId: string, assignee: string | null, profile?: string) =>
+      kanbanAssignTask(taskId, assignee, profile),
+  );
+  ipcMain.handle(
+    "kanban-complete-task",
+    (_event, taskId: string, result?: string, profile?: string) =>
+      kanbanCompleteTask(taskId, result, profile),
+  );
+  ipcMain.handle(
+    "kanban-block-task",
+    (_event, taskId: string, reason?: string, profile?: string) =>
+      kanbanBlockTask(taskId, reason, profile),
+  );
+  ipcMain.handle(
+    "kanban-unblock-task",
+    (_event, taskId: string, profile?: string) =>
+      kanbanUnblockTask(taskId, profile),
+  );
+  ipcMain.handle(
+    "kanban-archive-task",
+    (_event, taskId: string, profile?: string) =>
+      kanbanArchiveTask(taskId, profile),
+  );
+  ipcMain.handle(
+    "kanban-specify-task",
+    (_event, taskId: string, profile?: string) =>
+      kanbanSpecifyTask(taskId, profile),
+  );
+  ipcMain.handle(
+    "kanban-reclaim-task",
+    (_event, taskId: string, reason?: string, profile?: string) =>
+      kanbanReclaimTask(taskId, reason, profile),
+  );
+  ipcMain.handle(
+    "kanban-comment-task",
+    (_event, taskId: string, body: string, profile?: string) =>
+      kanbanCommentTask(taskId, body, profile),
+  );
+  ipcMain.handle(
+    "kanban-dispatch-once",
+    (_event, dryRun?: boolean, profile?: string) =>
+      kanbanDispatchOnce(dryRun, profile),
+  );
+
   // Shell
   ipcMain.handle("open-external", (_event, url: string) => {
-    shell.openExternal(url);
+    openExternalUrl(url);
   });
 
   // Backup / Import
@@ -1029,15 +1208,13 @@ function buildMenu(): void {
         {
           label: "Hermes Agent on GitHub",
           click: (): void => {
-            shell.openExternal("https://github.com/NousResearch/hermes-agent/");
+            openExternalUrl("https://github.com/NousResearch/hermes-agent/");
           },
         },
         {
           label: "Report an Issue",
           click: (): void => {
-            shell.openExternal(
-              "https://github.com/fathah/hermes-desktop/issues",
-            );
+            openExternalUrl("https://github.com/fathah/hermes-desktop/issues");
           },
         },
       ],
@@ -1099,9 +1276,15 @@ function setupUpdater(): void {
     }
   });
 
-  ipcMain.handle("download-update", () => {
-    autoUpdater.downloadUpdate();
-    return true;
+  ipcMain.handle("download-update", async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      mainWindow?.webContents.send("update-error", message);
+      return false;
+    }
   });
 
   ipcMain.handle("install-update", () => {
@@ -1119,6 +1302,12 @@ app.whenReady().then(() => {
 
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
+  });
+
+  app.on("web-contents-created", (_event, contents) => {
+    if (contents.getType() === "webview") {
+      hardenAttachedWebContents(contents);
+    }
   });
 
   buildMenu();

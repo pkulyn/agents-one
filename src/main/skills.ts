@@ -5,11 +5,12 @@ import { homedir } from "os";
 import {
   HERMES_HOME,
   HERMES_PYTHON,
-  HERMES_SCRIPT,
   HERMES_REPO,
+  hermesCliArgs,
   getEnhancedPath,
 } from "./installer";
 import { profileHome } from "./utils";
+import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 export interface InstalledSkill {
   name: string;
@@ -137,7 +138,7 @@ export function searchSkills(query: string): SkillSearchResult[] {
   try {
     const output = execFileSync(
       HERMES_PYTHON,
-      [HERMES_SCRIPT, "skills", "browse", "--query", query, "--json"],
+      hermesCliArgs(["skills", "browse", "--query", query, "--json"]),
       {
         cwd: HERMES_REPO,
         env: {
@@ -148,6 +149,7 @@ export function searchSkills(query: string): SkillSearchResult[] {
         },
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 30000,
+        ...HIDDEN_SUBPROCESS_OPTIONS,
       },
     );
 
@@ -238,9 +240,9 @@ export function installSkill(
   profile?: string,
 ): { success: boolean; error?: string } {
   try {
-    const args = [HERMES_SCRIPT, "skills", "install", identifier, "--yes"];
+    const args = hermesCliArgs(["skills", "install", identifier, "--yes"]);
     if (profile && profile !== "default") {
-      args.splice(1, 0, "-p", profile);
+      args.splice(process.platform === "win32" ? 2 : 1, 0, "-p", profile);
     }
 
     execFileSync(HERMES_PYTHON, args, {
@@ -253,6 +255,7 @@ export function installSkill(
       },
       stdio: "pipe",
       timeout: 60000,
+      ...HIDDEN_SUBPROCESS_OPTIONS,
     });
     return { success: true };
   } catch (err) {
@@ -267,9 +270,9 @@ export function uninstallSkill(
   profile?: string,
 ): { success: boolean; error?: string } {
   try {
-    const args = [HERMES_SCRIPT, "skills", "uninstall", name];
+    const args = hermesCliArgs(["skills", "uninstall", name]);
     if (profile && profile !== "default") {
-      args.splice(1, 0, "-p", profile);
+      args.splice(process.platform === "win32" ? 2 : 1, 0, "-p", profile);
     }
 
     execFileSync(HERMES_PYTHON, args, {
@@ -282,6 +285,7 @@ export function uninstallSkill(
       },
       stdio: "pipe",
       timeout: 30000,
+      ...HIDDEN_SUBPROCESS_OPTIONS,
     });
     return { success: true };
   } catch (err) {

@@ -3,6 +3,8 @@ import { homedir } from "os";
 import { join } from "path";
 import net from "net";
 import http from "http";
+import { buildSshControlOptions } from "./ssh-options";
+import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 export interface SshConfig {
   host: string;
@@ -108,9 +110,7 @@ function buildSshArgs(config: SshConfig, localPort: number): string[] {
     "-i", keyPath,
     "-o", "StrictHostKeyChecking=accept-new",
     "-o", "BatchMode=yes",
-    "-o", "ControlMaster=auto",
-    "-o", "ControlPath=~/.ssh/cm-hermes-%r@%h:%p",
-    "-o", "ControlPersist=60s",
+    ...buildSshControlOptions(),
     "-o", "ExitOnForwardFailure=yes",
     "-o", "ServerAliveInterval=30",
     "-o", "ServerAliveCountMax=3",
@@ -128,6 +128,7 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
   tunnelProcess = spawn("ssh", buildSshArgs(config, localPort), {
     stdio: "ignore",
     detached: false,
+    ...HIDDEN_SUBPROCESS_OPTIONS,
   });
 
   tunnelProcess.on("exit", () => {
@@ -170,7 +171,10 @@ export function testSshConnection(config: SshConfig): Promise<boolean> {
   return findFreePort(config.localPort || 19642)
     .then((localPort) => new Promise<boolean>((resolve) => {
       const args = buildSshArgs(config, localPort);
-      const proc = spawn("ssh", args, { stdio: "ignore" });
+      const proc = spawn("ssh", args, {
+        stdio: "ignore",
+        ...HIDDEN_SUBPROCESS_OPTIONS,
+      });
 
       let done = false;
       const finish = (result: boolean): void => {

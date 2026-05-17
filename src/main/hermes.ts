@@ -8,13 +8,14 @@ import {
   HERMES_HOME,
   HERMES_REPO,
   HERMES_PYTHON,
-  HERMES_SCRIPT,
+  hermesCliArgs,
   getEnhancedPath,
 } from "./installer";
 import { getModelConfig, readEnv, getConnectionConfig } from "./config";
 import { getSshTunnelUrl, isSshTunnelActive, isSshTunnelHealthy, startSshTunnel } from "./ssh-tunnel";
 import { stripAnsi } from "./utils";
 import { readModels } from "./models";
+import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 const LOCAL_API_URL = "http://127.0.0.1:8642";
 
@@ -190,6 +191,7 @@ function sendMessageViaApi(
     model: mc.model || "hermes-agent",
     messages,
     stream: true,
+    ...(_resumeSessionId ? { session_id: _resumeSessionId } : {}),
   });
 
   const headers: Record<string, string> = {
@@ -447,7 +449,7 @@ function sendMessageViaCli(
   const mc = getModelConfig(profile);
   const profileEnv = readEnv(profile);
 
-  const args = [HERMES_SCRIPT];
+  const args = hermesCliArgs();
   if (profile && profile !== "default") {
     args.push("-p", profile);
   }
@@ -561,6 +563,7 @@ function sendMessageViaCli(
     cwd: HERMES_REPO,
     env,
     stdio: ["ignore", "pipe", "pipe"],
+    ...HIDDEN_SUBPROCESS_OPTIONS,
   });
 
   let hasOutput = false;
@@ -660,7 +663,7 @@ export async function sendMessage(
 
   // Remote mode: always use API, no CLI fallback
   if (isRemoteMode()) {
-    return sendMessageViaApi(message, cb, profile, resumeSessionId);
+    return sendMessageViaApi(message, cb, profile, resumeSessionId, history);
   }
 
   // Check API server availability (cache the result, re-check periodically)
@@ -736,11 +739,12 @@ export function startGateway(profile?: string): boolean {
     }
   }
 
-  gatewayProcess = spawn(HERMES_PYTHON, [HERMES_SCRIPT, "gateway"], {
+  gatewayProcess = spawn(HERMES_PYTHON, hermesCliArgs(["gateway"]), {
     cwd: HERMES_REPO,
     env: gatewayEnv,
     stdio: "ignore",
     detached: true,
+    ...HIDDEN_SUBPROCESS_OPTIONS,
   });
 
   gatewayProcess.unref();

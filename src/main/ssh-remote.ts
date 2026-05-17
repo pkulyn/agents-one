@@ -8,6 +8,7 @@ import { spawn } from "child_process";
 import { homedir } from "os";
 import { join } from "path";
 import type { SshConfig } from "./ssh-tunnel";
+import { buildSshControlOptions } from "./ssh-options";
 import type { InstalledSkill, SkillSearchResult } from "./skills";
 import type { MemoryInfo } from "./memory";
 import type { SessionSummary, SessionMessage, SearchResult } from "./sessions";
@@ -17,6 +18,7 @@ import type { SavedModel } from "./models";
 import type { MemoryProviderInfo } from "./installer";
 import { t } from "../shared/i18n";
 import { getAppLocale } from "./locale";
+import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 // ── SSH exec core ────────────────────────────────────────────────────────────
 
@@ -26,9 +28,7 @@ function buildExecArgs(config: SshConfig): string[] {
     "-o", "BatchMode=yes",
     "-o", "StrictHostKeyChecking=accept-new",
     "-o", "ConnectTimeout=15",
-    "-o", "ControlMaster=auto",
-    "-o", "ControlPath=~/.ssh/cm-hermes-%r@%h:%p",
-    "-o", "ControlPersist=60s",
+    ...buildSshControlOptions(),
     "-i", keyPath,
     "-p", String(config.port || 22),
     `${config.username}@${config.host}`,
@@ -39,6 +39,7 @@ export function sshExec(config: SshConfig, command: string, stdin?: string, time
   return new Promise((resolve, reject) => {
     const child = spawn("ssh", [...buildExecArgs(config), command], {
       stdio: ["pipe", "pipe", "pipe"],
+      ...HIDDEN_SUBPROCESS_OPTIONS,
     });
     let stdout = "";
     let stderr = "";
