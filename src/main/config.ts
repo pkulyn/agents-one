@@ -177,6 +177,7 @@ export function setEnvValue(
 
   const { envFile } = profilePaths(profile);
   invalidateCache(`env:${profile || "default"}`);
+  if (key === "API_SERVER_KEY") invalidateCache("apiServerKey:");
 
   if (!existsSync(envFile)) {
     safeWriteFile(envFile, `${key}=${value}\n`);
@@ -233,6 +234,7 @@ export function setConfigValue(
   value: string,
   profile?: string,
 ): void {
+  if (key === "API_SERVER_KEY") invalidateCache("apiServerKey:");
   const { configFile } = profilePaths(profile);
   if (!existsSync(configFile)) return;
 
@@ -486,6 +488,45 @@ export function setModelConfig(
 
 export function getHermesHome(profile?: string): string {
   return profilePaths(profile).home;
+}
+
+/**
+ * Resolve the API server's shared secret. Honoured by the local hermes
+ * gateway (api_server.token in config.yaml / API_SERVER_KEY in .env) when
+ * present; the desktop must include it as `Authorization: Bearer …` on
+ * every chat request, otherwise the gateway responds with "Invalid API
+ * key".
+ *
+ * Search order: profile's config.yaml → default config.yaml → profile's
+ * .env → default .env. Returns "" when none configured.
+ *
+ * Hot path: called per chat message and per error-probe. Reuse the same
+ * 5s TTL cache as readEnv() so we don't re-parse config.yaml + .env
+ * every call. Invalidated by setEnvValue / setConfigValue when the key
+ * being written is API_SERVER_KEY.
+ */
+export function getApiServerKey(profile?: string): string {
+  const cacheKey = `apiServerKey:${profile || "default"}`;
+  const cached = getCached<string>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const candidates = [
+    getConfigValue("API_SERVER_KEY", profile),
+    profile && profile !== "default" ? getConfigValue("API_SERVER_KEY") : null,
+    readEnv(profile).API_SERVER_KEY || null,
+    profile && profile !== "default" ? readEnv().API_SERVER_KEY || null : null,
+  ];
+
+  let value = "";
+  for (const candidate of candidates) {
+    const trimmed = String(candidate || "").trim();
+    if (trimmed) {
+      value = trimmed;
+      break;
+    }
+  }
+  setCache(cacheKey, value);
+  return value;
 }
 
 // ── Platform enabled/disabled ─────────────────────────────
