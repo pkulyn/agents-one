@@ -151,6 +151,107 @@ export function hasHermesAuthCredential(provider: string): boolean {
   }
 }
 
+// Canonical env-var name per known model provider. Keys here are values
+// the user might see in `model.provider` in config.yaml; values are the
+// env vars the gateway expects to read from .env. Names that don't
+// appear here either don't need a key (local providers, nous) or have
+// OAuth-style credentials (covered separately via hasHermesAuthCredential).
+//
+// Used by the install-gate check below. Previously that check
+// hard-coded only OPENROUTER_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY,
+// so any user configured for DeepSeek, Groq, Mistral, etc. saw the
+// "set AI provider" first-run screen even with a valid key in .env.
+// See issue #236.
+const PROVIDER_ENV_KEYS: Record<string, string> = {
+  openrouter: "OPENROUTER_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  google: "GOOGLE_API_KEY",
+  xai: "XAI_API_KEY",
+  groq: "GROQ_API_KEY",
+  deepseek: "DEEPSEEK_API_KEY",
+  together: "TOGETHER_API_KEY",
+  fireworks: "FIREWORKS_API_KEY",
+  cerebras: "CEREBRAS_API_KEY",
+  mistral: "MISTRAL_API_KEY",
+  perplexity: "PERPLEXITY_API_KEY",
+  huggingface: "HF_TOKEN",
+  hf: "HF_TOKEN",
+  qwen: "QWEN_API_KEY",
+  minimax: "MINIMAX_API_KEY",
+  glm: "GLM_API_KEY",
+  kimi: "KIMI_API_KEY",
+};
+
+// When provider is "custom" or "auto", the desktop's setup flow falls
+// back to recognizing the endpoint by base URL. Same patterns hermes.ts
+// uses for runtime header injection.
+const URL_TO_ENV_KEY: Array<[RegExp, string]> = [
+  [/openrouter\.ai/i, "OPENROUTER_API_KEY"],
+  [/anthropic\.com/i, "ANTHROPIC_API_KEY"],
+  [/openai\.com/i, "OPENAI_API_KEY"],
+  [/huggingface\.co/i, "HF_TOKEN"],
+  [/api\.groq\.com/i, "GROQ_API_KEY"],
+  [/api\.deepseek\.com/i, "DEEPSEEK_API_KEY"],
+  [/api\.together\.xyz/i, "TOGETHER_API_KEY"],
+  [/api\.fireworks\.ai/i, "FIREWORKS_API_KEY"],
+  [/api\.cerebras\.ai/i, "CEREBRAS_API_KEY"],
+  [/api\.mistral\.ai/i, "MISTRAL_API_KEY"],
+  [/api\.perplexity\.ai/i, "PERPLEXITY_API_KEY"],
+];
+
+/**
+ * Resolve the env var name the gateway expects for a given model config.
+ * Returns null when the provider/URL combination has no known canonical
+ * env var (the caller falls back to a permissive `*_API_KEY|*_TOKEN`
+ * scan, matching the spirit of the prior hard-coded check).
+ *
+ * Exported for unit testing.
+ */
+export function expectedEnvKeyForModel(
+  provider: string,
+  baseUrl: string,
+): string | null {
+  const direct = PROVIDER_ENV_KEYS[provider.trim().toLowerCase()];
+  if (direct) return direct;
+  for (const [pattern, envKey] of URL_TO_ENV_KEY) {
+    if (pattern.test(baseUrl)) return envKey;
+  }
+  return null;
+}
+
+function envHasUsableValue(content: string, expectedKey: string | null): boolean {
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const m = trimmed.match(/^([A-Z][A-Z0-9_]*)=(.*)$/);
+    if (!m) continue;
+    const key = m[1];
+    let value = m[2].trim();
+    // Strip surrounding quotes so `KEY=""` or `KEY="abc"` parse the
+    // same way as `KEY=abc`.
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!value) continue;
+
+    if (expectedKey) {
+      if (key === expectedKey) return true;
+    } else {
+      // No known mapping for this provider/URL — accept any value that
+      // looks like a credential. Avoids regressing users on providers
+      // we haven't catalogued explicitly, while still rejecting
+      // unrelated env vars (TELEGRAM_BOT_TOKEN etc. shouldn't satisfy
+      // the model install gate, but a custom `*_API_KEY` should).
+      if (/_API_KEY$/.test(key)) return true;
+    }
+  }
+  return false;
+}
+
 export function checkInstallStatus(): InstallStatus {
   // Remote mode: skip local checks entirely
   const conn = getConnectionConfig();
@@ -174,8 +275,9 @@ export function checkInstallStatus(): InstallStatus {
 
   // Local/custom providers don't need an API key. OAuth-backed providers
   // can be configured through Hermes auth.json instead of .env.
+  let mc: { provider: string; model: string; baseUrl: string } | null = null;
   try {
-    const mc = getModelConfig();
+    mc = getModelConfig();
     const localProviders = ["custom", "lmstudio", "ollama", "vllm", "llamacpp"];
     if (
       localProviders.includes(mc.provider) ||
@@ -190,21 +292,10 @@ export function checkInstallStatus(): InstallStatus {
   if (!hasApiKey && configured) {
     try {
       const content = readFileSync(HERMES_ENV_FILE, "utf-8");
-      for (const line of content.split("\n")) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith("#")) continue;
-        const match = trimmed.match(
-          /^(OPENROUTER_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)=(.+)$/,
-        );
-        if (
-          match &&
-          match[2].trim() &&
-          !['""', "''", ""].includes(match[2].trim())
-        ) {
-          hasApiKey = true;
-          break;
-        }
-      }
+      const expectedKey = mc
+        ? expectedEnvKeyForModel(mc.provider, mc.baseUrl)
+        : null;
+      hasApiKey = envHasUsableValue(content, expectedKey);
     } catch {
       /* ignore read errors */
     }
