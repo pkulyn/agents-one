@@ -464,15 +464,18 @@ const hermesAPI = {
     }>
   > => ipcRenderer.invoke("search-sessions", query, limit),
 
-  // Credential Pool
-  getCredentialPool: (): Promise<
-    Record<string, Array<{ key: string; label: string }>>
-  > => ipcRenderer.invoke("get-credential-pool"),
+  // Credential Pool (profile-aware: reads/writes the named profile's
+  // auth.json; defaults to the currently active profile when omitted)
+  getCredentialPool: (
+    profile?: string,
+  ): Promise<Record<string, Array<{ key: string; label: string }>>> =>
+    ipcRenderer.invoke("get-credential-pool", profile),
   setCredentialPool: (
     provider: string,
     entries: Array<{ key: string; label: string }>,
+    profile?: string,
   ): Promise<boolean> =>
-    ipcRenderer.invoke("set-credential-pool", provider, entries),
+    ipcRenderer.invoke("set-credential-pool", provider, entries, profile),
 
   // Models
   listModels: (): Promise<

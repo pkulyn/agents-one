@@ -952,16 +952,22 @@ function setupIPC(): void {
     return searchSessions(query, limit);
   });
 
-  // Credential Pool
-  ipcMain.handle("get-credential-pool", () => getCredentialPool());
+  // Credential Pool — profile-aware. When `profile` is omitted, the
+  // credential pool helpers default to the currently active profile's
+  // auth.json (see config.ts:authFilePath), so the renderer can pass an
+  // explicit profile or rely on the active-profile fallback.
+  ipcMain.handle("get-credential-pool", (_event, profile?: string) =>
+    getCredentialPool(profile),
+  );
   ipcMain.handle(
     "set-credential-pool",
     (
       _event,
       provider: string,
       entries: Array<{ key: string; label: string }>,
+      profile?: string,
     ) => {
-      setCredentialPool(provider, entries);
+      setCredentialPool(provider, entries, profile);
       return true;
     },
   );
