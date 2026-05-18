@@ -1,7 +1,7 @@
 // Shared attachment constants + helpers used by renderer, preload, and main.
 // Do not import renderer-only or main-only modules from this file.
 
-export type AttachmentKind = "image" | "text-file";
+export type AttachmentKind = "image" | "text-file" | "path-ref";
 
 export interface Attachment {
   id: string;
@@ -13,6 +13,10 @@ export interface Attachment {
   dataUrl?: string;
   // Text files: raw UTF-8 contents (already validated to be text)
   text?: string;
+  // Path-ref attachments (PDFs, docx, etc.): absolute filesystem path.
+  // Origin is the original file path for picker/drag-drop, or a staged
+  // copy under %LOCALAPPDATA%/hermes/desktop-staging/<session>/ for paste.
+  path?: string;
 }
 
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB

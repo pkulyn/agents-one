@@ -199,6 +199,13 @@ interface HermesAPI {
     attachments?: Attachment[],
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  getPathForFile: (file: File) => string;
+  stageAttachment: (
+    sessionId: string,
+    filename: string,
+    base64Bytes: string,
+  ) => Promise<string>;
+  clearStagedAttachments: (sessionId: string) => Promise<void>;
   onChatChunk: (callback: (chunk: string) => void) => () => void;
   onChatDone: (callback: (sessionId?: string) => void) => () => void;
   onChatToolProgress: (callback: (tool: string) => void) => () => void;

@@ -89,6 +89,22 @@ function textFile(
   };
 }
 
+function pathRef(
+  name: string,
+  path: string | undefined,
+  mime = "application/octet-stream",
+  id = name,
+): Attachment {
+  return {
+    id,
+    kind: "path-ref",
+    name,
+    mime,
+    size: 0,
+    path,
+  };
+}
+
 // ── tests ────────────────────────────────────────────────
 
 describe("buildUserContent", () => {
@@ -204,5 +220,57 @@ describe("buildUserContent", () => {
     ]);
     // No images and no valid text-files → result is just the user text
     expect(result).toBe("hi");
+  });
+
+  it("appends path-ref attachments as [Attached file: <path>] lines", () => {
+    const result = buildUserContent("summarize this", [
+      pathRef("report.pdf", "C:/Users/pmos6/Downloads/report.pdf", "application/pdf"),
+    ]);
+    expect(typeof result).toBe("string");
+    expect(result).toBe(
+      "summarize this\n\n[Attached file: C:/Users/pmos6/Downloads/report.pdf]",
+    );
+  });
+
+  it("groups multiple path-refs into one block, one per line", () => {
+    const result = buildUserContent("compare these", [
+      pathRef("a.pdf", "/tmp/a.pdf", "application/pdf"),
+      pathRef("b.docx", "/tmp/b.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ]);
+    expect(result).toBe(
+      "compare these\n\n[Attached file: /tmp/a.pdf]\n[Attached file: /tmp/b.docx]",
+    );
+  });
+
+  it("path-refs combine with text-file wrappers and images in the right order", () => {
+    const result = buildUserContent("review", [
+      textFile("code.py", "print(1)"),
+      pathRef("doc.pdf", "/tmp/doc.pdf", "application/pdf"),
+      image("screen.png", "data:image/png;base64,AAA="),
+    ]);
+    expect(Array.isArray(result)).toBe(true);
+    const arr = result as Array<{ type: string; text?: string; image_url?: { url: string } }>;
+    expect(arr).toHaveLength(2);
+    // Text part contains user text, text-file wrapper, AND path-ref line
+    expect(arr[0].type).toBe("text");
+    expect(arr[0].text).toContain("review");
+    expect(arr[0].text).toContain("<file name=\"code.py\"");
+    expect(arr[0].text).toContain("[Attached file: /tmp/doc.pdf]");
+    expect(arr[1]).toEqual({
+      type: "image_url",
+      image_url: { url: "data:image/png;base64,AAA=" },
+    });
+  });
+
+  it("silently drops path-refs with no path field", () => {
+    const result = buildUserContent("look", [pathRef("missing", undefined)]);
+    expect(result).toBe("look");
+  });
+
+  it("path-ref only, no other text → result is just the [Attached file] line", () => {
+    const result = buildUserContent("", [
+      pathRef("a.pdf", "/tmp/a.pdf", "application/pdf"),
+    ]);
+    expect(result).toBe("[Attached file: /tmp/a.pdf]");
   });
 });

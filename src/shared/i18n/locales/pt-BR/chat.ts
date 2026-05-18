@@ -30,6 +30,8 @@ export default {
   attachTextTooLarge: "{{name}}: arquivo muito grande (máx. 256 KB)",
   attachTooMany: "Anexos demais (máx. 10 por mensagem)",
   attachReadFailed: "{{name}}: não foi possível ler",
+  attachRemoteModeBinary:
+    "{{name}}: anexos PDF/binários exigem o modo local — imagens e arquivos de texto continuam funcionando.",
   fastMode: "Modo Rápido",
   fastModeOn: "Modo Rápido LIGADO",
   fastModeActive: "Processamento prioritário ativo — menor latência em modelos suportados. Clique para desativar.",

@@ -29,6 +29,8 @@ export default {
   attachTextTooLarge: "{{name}}：文件过大（最大 256 KB）",
   attachTooMany: "附件数量过多（每条消息最多 10 个）",
   attachReadFailed: "{{name}}：无法读取",
+  attachRemoteModeBinary:
+    "{{name}}：PDF/二进制附件需要本地模式 — 图片和文本文件仍可使用。",
   fastMode: "快速模式",
   fastModeOn: "快速模式 开启",
   fastModeActive: "优先处理已激活 — 在支持的模型上降低延迟。点击禁用。",

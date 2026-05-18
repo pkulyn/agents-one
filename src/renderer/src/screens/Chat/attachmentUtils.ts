@@ -13,9 +13,20 @@ export interface AttachmentError {
     | "image-too-large"
     | "text-too-large"
     | "unsupported-type"
-    | "read-failed";
+    | "read-failed"
+    | "remote-mode-binary";
   filename: string;
   detail?: string;
+}
+
+export interface ProcessFilesOptions {
+  // Session id used to scope staged-paste attachments.  May be empty
+  // before the agent has assigned one — staging falls back to "default".
+  sessionId?: string;
+  // True when the chat is running against a non-local gateway (SSH or
+  // remote-URL mode).  Path-ref attachments require the file path to
+  // exist on the same host as the agent, so binaries are blocked.
+  remoteMode?: boolean;
 }
 
 function newId(): string {
@@ -40,19 +51,35 @@ function readAsText(file: File): Promise<string> {
   });
 }
 
+function readAsBase64(file: File): Promise<string> {
+  return readAsDataUrl(file).then((dataUrl) => {
+    const comma = dataUrl.indexOf(",");
+    return comma >= 0 ? dataUrl.slice(comma + 1) : "";
+  });
+}
+
 export interface ProcessFilesResult {
   attachments: Attachment[];
   errors: AttachmentError[];
 }
 
 /**
- * Convert browser File objects into Attachment values, applying size/type
- * limits.  Returns successful attachments and a list of per-file errors so
- * the caller can surface them without aborting the whole batch.
+ * Convert browser File objects into Attachment values.
+ *
+ * Routing rules:
+ *   - Image MIME (png/jpeg/webp/gif) → inline `image` attachment with
+ *     a data URL.
+ *   - Text/code file (by MIME prefix or extension allowlist) → inline
+ *     `text-file` attachment with UTF-8 contents.
+ *   - Everything else → `path-ref` attachment carrying the file's
+ *     absolute path.  Picker / drag-drop expose the path via
+ *     `webUtils.getPathForFile`; clipboard-pasted blobs have no origin
+ *     path and are staged to disk via the main process.
  */
 export async function processFiles(
   files: File[] | FileList,
   existingCount: number,
+  options: ProcessFilesOptions = {},
 ): Promise<ProcessFilesResult> {
   const list = Array.from(files);
   const attachments: Attachment[] = [];
@@ -123,7 +150,53 @@ export async function processFiles(
       continue;
     }
 
-    errors.push({ code: "unsupported-type", filename: name });
+    // Path-ref path — binary/document attachment that the agent will
+    // read via its own file tools.  Requires a filesystem path that's
+    // valid on the agent's host.
+    if (options.remoteMode) {
+      errors.push({ code: "remote-mode-binary", filename: name });
+      continue;
+    }
+
+    let path = "";
+    try {
+      path = window.hermesAPI.getPathForFile(file) || "";
+    } catch {
+      path = "";
+    }
+
+    if (!path) {
+      // No origin path (clipboard paste) — stage the bytes to disk.
+      try {
+        const base64 = await readAsBase64(file);
+        path = await window.hermesAPI.stageAttachment(
+          options.sessionId || "",
+          name,
+          base64,
+        );
+      } catch (err) {
+        errors.push({
+          code: "read-failed",
+          filename: name,
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
+    }
+
+    if (!path) {
+      errors.push({ code: "read-failed", filename: name });
+      continue;
+    }
+
+    attachments.push({
+      id: newId(),
+      kind: "path-ref",
+      name,
+      mime: mime || "application/octet-stream",
+      size: file.size,
+      path,
+    });
   }
 
   return { attachments, errors };

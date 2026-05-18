@@ -186,6 +186,9 @@ type ChatContent =
  *   gateway/platforms/api_server.py:263).
  * - Image attachments → emitted as `image_url` parts in the OpenAI vision
  *   format, which the gateway accepts and converts for Anthropic providers.
+ * - Path-ref attachments → appended as `[Attached file: <abs-path>]` lines
+ *   so the agent's existing file-reading skills can pick them up.  Works
+ *   for PDFs/docx/binaries the gateway won't pass through inline.
  */
 export function buildUserContent(
   text: string,
@@ -194,6 +197,9 @@ export function buildUserContent(
   if (!attachments || attachments.length === 0) return text;
 
   const textFiles = attachments.filter((a) => a.kind === "text-file");
+  const pathRefs = attachments.filter(
+    (a) => a.kind === "path-ref" && typeof a.path === "string" && a.path,
+  );
   const images = attachments.filter(
     (a) => a.kind === "image" && typeof a.dataUrl === "string" && a.dataUrl,
   );
@@ -205,6 +211,10 @@ export function buildUserContent(
     const name = escapeXmlAttr(f.name);
     const mime = escapeXmlAttr(f.mime || "text/plain");
     parts.push(`<file name="${name}" mime="${mime}">\n${f.text}\n</file>`);
+  }
+  if (pathRefs.length > 0) {
+    const lines = pathRefs.map((f) => `[Attached file: ${f.path}]`);
+    parts.push(lines.join("\n"));
   }
   const composedText = parts.join("\n\n");
 

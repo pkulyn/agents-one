@@ -31,6 +31,8 @@ export interface ChatInputHandle {
 interface ChatInputProps {
   isLoading: boolean;
   hasSession: boolean;
+  sessionId?: string | null;
+  remoteMode?: boolean;
   onSubmit: (text: string, attachments: Attachment[]) => void;
   onQuickAsk: (text: string, attachments: Attachment[]) => void;
   onAbort: () => void;
@@ -38,7 +40,15 @@ interface ChatInputProps {
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   function ChatInput(
-    { isLoading, hasSession, onSubmit, onQuickAsk, onAbort },
+    {
+      isLoading,
+      hasSession,
+      sessionId,
+      remoteMode,
+      onSubmit,
+      onQuickAsk,
+      onAbort,
+    },
     ref,
   ): React.JSX.Element {
     const { t } = useI18n();
@@ -88,6 +98,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             return t("chat.attachUnsupported", { name: err.filename });
           case "read-failed":
             return t("chat.attachReadFailed", { name: err.filename });
+          case "remote-mode-binary":
+            return t("chat.attachRemoteModeBinary", { name: err.filename });
           default:
             return err.filename;
         }
@@ -100,6 +112,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         const { attachments: added, errors } = await processFiles(
           files,
           attachments.length,
+          {
+            sessionId: sessionId || undefined,
+            remoteMode: !!remoteMode,
+          },
         );
         if (added.length > 0) {
           setAttachments((prev) => [...prev, ...added]);
@@ -111,7 +127,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         }
         return errors;
       },
-      [attachments.length, formatError],
+      [attachments.length, formatError, sessionId, remoteMode],
     );
 
     useImperativeHandle(
@@ -370,7 +386,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/png,image/jpeg,image/webp,image/gif,text/*,.md,.json,.yaml,.yml,.toml,.csv,.tsv,.log,.py,.js,.ts,.tsx,.jsx,.go,.rs,.c,.cpp,.h,.java,.rb,.php,.sh,.html,.css,.sql,.xml,.vue,.svelte"
             style={{ display: "none" }}
             onChange={handleFileInputChange}
           />

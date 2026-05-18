@@ -30,6 +30,8 @@ export default {
   attachTextTooLarge: "{{name}}: ファイルが大きすぎます（最大 256 KB）",
   attachTooMany: "添付が多すぎます（1 メッセージにつき最大 10 件）",
   attachReadFailed: "{{name}}: 読み込めませんでした",
+  attachRemoteModeBinary:
+    "{{name}}: PDF/バイナリの添付にはローカルモードが必要です — 画像やテキストファイルは引き続き使用できます。",
   fastMode: "Fast Mode",
   fastModeOn: "Fast Mode ON",
   fastModeActive: "優先処理が有効 — 対応モデルで低レイテンシ。クリックで無効化。",

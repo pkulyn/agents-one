@@ -38,8 +38,20 @@ function Chat({
   const [toolProgress, setToolProgress] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [remoteMode, setRemoteMode] = useState(false);
   const dragCounter = useRef(0);
   const chatInputRef = useRef<ChatInputHandle>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async (): Promise<void> => {
+      const flag = await window.hermesAPI.isRemoteMode();
+      if (!cancelled) setRemoteMode(flag);
+    })();
+    return (): void => {
+      cancelled = true;
+    };
+  }, []);
 
   const { containerRef, bottomRef } = useChatScroll(messages);
   const modelConfig = useModelConfig(profile);
@@ -212,6 +224,8 @@ function Chat({
           ref={chatInputRef}
           isLoading={isLoading}
           hasSession={!!hermesSessionId}
+          sessionId={hermesSessionId}
+          remoteMode={remoteMode}
           onSubmit={actions.handleSend}
           onQuickAsk={actions.handleQuickAsk}
           onAbort={actions.handleAbort}

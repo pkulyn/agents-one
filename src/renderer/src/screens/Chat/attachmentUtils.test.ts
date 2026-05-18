@@ -1,6 +1,20 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { processFiles, filesFromClipboard } from "./attachmentUtils";
+
+// Stub the window.hermesAPI surface used by the path-ref code path.
+// Picker / drag-drop normally return an absolute path via webUtils; we
+// simulate the paste path (no origin) by leaving getPathForFile empty
+// and routing through a fake stageAttachment.
+beforeEach(() => {
+  (window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI = {
+    getPathForFile: vi.fn(() => ""),
+    stageAttachment: vi.fn(
+      async (sessionId: string, filename: string): Promise<string> =>
+        `C:/staging/${sessionId || "default"}/${filename}`,
+    ),
+  };
+});
 
 // ── helpers ──────────────────────────────────────────────
 
@@ -86,14 +100,44 @@ describe("processFiles", () => {
     expect(out.attachments[0].mime).toBe("text/plain");
   });
 
-  it("rejects an unsupported file type", async () => {
-    const file = makeFile("malware.exe", "application/octet-stream", "MZ");
+  it("routes non-image, non-text files to a path-ref via staging when no origin path", async () => {
+    const file = makeFile("report.pdf", "application/pdf", "%PDF-1.4");
+    const out = await processFiles([file], 0, { sessionId: "sess-1" });
+    expect(out.errors).toEqual([]);
+    expect(out.attachments).toHaveLength(1);
+    const a = out.attachments[0];
+    expect(a.kind).toBe("path-ref");
+    expect(a.name).toBe("report.pdf");
+    expect(a.path).toBe("C:/staging/sess-1/report.pdf");
+    expect(a.mime).toBe("application/pdf");
+  });
+
+  it("uses the origin path returned by webUtils for picker/drag-drop files", async () => {
+    (window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI = {
+      getPathForFile: vi.fn(() => "C:/Users/me/Downloads/doc.pdf"),
+      stageAttachment: vi.fn(),
+    };
+    const file = makeFile("doc.pdf", "application/pdf", "%PDF-1.4");
     const out = await processFiles([file], 0);
+    expect(out.errors).toEqual([]);
+    expect(out.attachments).toHaveLength(1);
+    const a = out.attachments[0];
+    expect(a.kind).toBe("path-ref");
+    expect(a.path).toBe("C:/Users/me/Downloads/doc.pdf");
+    expect(
+      (window as unknown as { hermesAPI: { stageAttachment: ReturnType<typeof vi.fn> } })
+        .hermesAPI.stageAttachment,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("blocks path-ref attachments in remote mode", async () => {
+    const file = makeFile("report.pdf", "application/pdf", "%PDF-1.4");
+    const out = await processFiles([file], 0, { remoteMode: true });
     expect(out.attachments).toEqual([]);
     expect(out.errors).toHaveLength(1);
     expect(out.errors[0]).toEqual({
-      code: "unsupported-type",
-      filename: "malware.exe",
+      code: "remote-mode-binary",
+      filename: "report.pdf",
     });
   });
 
