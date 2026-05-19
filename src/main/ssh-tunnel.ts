@@ -25,7 +25,7 @@ export function getSshTunnelUrl(): string | null {
 }
 
 export function isSshTunnelActive(): boolean {
-  return tunnelProcess !== null && tunnelRunning;
+  return tunnelRunning && activeConfig !== null;
 }
 
 function checkTunnelHealth(port: number, timeoutMs = 3000): Promise<boolean> {
@@ -132,15 +132,26 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
   });
 
   tunnelProcess.on("exit", () => {
-    tunnelRunning = false;
     tunnelProcess = null;
-    activeConfig = null;
+    // With ControlMaster=auto, the spawned SSH process exits immediately
+    // after handing off to the master. The tunnel may still be alive via
+    // the mux master, so check health before declaring it dead.
+    checkTunnelHealth(localPort, 2000).then((healthy) => {
+      if (!healthy) {
+        tunnelRunning = false;
+        activeConfig = null;
+      }
+    });
   });
 
   tunnelProcess.on("error", () => {
-    tunnelRunning = false;
     tunnelProcess = null;
-    activeConfig = null;
+    checkTunnelHealth(localPort, 2000).then((healthy) => {
+      if (!healthy) {
+        tunnelRunning = false;
+        activeConfig = null;
+      }
+    });
   });
 
   try {
