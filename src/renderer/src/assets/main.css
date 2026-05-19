@@ -4560,6 +4560,18 @@ body {
   font-style: italic;
 }
 
+/* Tighten the Models page heading so the subtitle hugs the title.
+   Replaces an inline `style={{ marginBottom: 4 }}`. */
+.models-title-tight {
+  margin-bottom: 4px;
+}
+
+/* Red text on a small confirmation button (e.g. "Yes, delete").
+   Replaces an inline `style={{ color: "var(--error)" }}`. */
+.btn-danger-text {
+  color: var(--error);
+}
+
 .models-modal-field .input,
 .models-modal-field select.input {
   padding: 8px 12px;
