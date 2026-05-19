@@ -33,6 +33,21 @@ function Providers({
   const [poolNewKey, setPoolNewKey] = useState("");
   const [poolNewLabel, setPoolNewLabel] = useState("");
 
+  // Per-key debounce timers for env auto-save on change. Previously env
+  // values were persisted only on input blur, so users who clicked the
+  // model dropdown (triggering the model-config auto-save) without first
+  // blurring the API key input lost their typed key — config.yaml
+  // updated but .env didn't. Issue #236. The on-blur handler stays as a
+  // "flush immediately" fast path; the debounce here catches the
+  // change-but-no-blur case.
+  const envSaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+  // Mirror of `env` state, kept in a ref so the unmount cleanup can read
+  // the latest value when flushing pending debounces (a closure over
+  // `env` directly would capture a stale snapshot).
+  const envRef = useRef<Record<string, string>>({});
+
   const loadConfig = useCallback(async (): Promise<void> => {
     const [envData, mc, pool] = await Promise.all([
       window.hermesAPI.getEnv(profile),
@@ -104,6 +119,13 @@ function Providers({
   }, [modelProvider, modelName, modelBaseUrl, saveModelConfig]);
 
   async function handleBlur(key: string): Promise<void> {
+    // Cancel any pending debounced save for this key — the blur handler
+    // is a faster flush path with the "Saved" indicator.
+    const pending = envSaveTimers.current.get(key);
+    if (pending) {
+      clearTimeout(pending);
+      envSaveTimers.current.delete(key);
+    }
     const value = env[key] || "";
     await window.hermesAPI.setEnv(key, value, profile);
     setSavedKey(key);
@@ -112,7 +134,46 @@ function Providers({
 
   function handleChange(key: string, value: string): void {
     setEnv((prev) => ({ ...prev, [key]: value }));
+
+    // Persist the typed value on change (debounced 400ms) so users who
+    // navigate away — or trigger the model-config auto-save by changing
+    // the provider dropdown — don't lose what they typed if they never
+    // explicitly blurred the input. Matches the model config's
+    // auto-save behavior; resolves the asymmetry behind issue #236.
+    const pending = envSaveTimers.current.get(key);
+    if (pending) clearTimeout(pending);
+    const timer = setTimeout(() => {
+      envSaveTimers.current.delete(key);
+      void window.hermesAPI.setEnv(key, value, profile);
+    }, 400);
+    envSaveTimers.current.set(key, timer);
   }
+
+  // Keep envRef in sync with the latest env state so the unmount
+  // cleanup below can read it without stale-closure issues.
+  useEffect(() => {
+    envRef.current = env;
+  }, [env]);
+
+  useEffect(() => {
+    // On unmount, flush any pending debounced env writes synchronously
+    // (fire-and-forget — the IPC handler in the main process completes
+    // regardless of React lifecycle). Without this, typing an API key
+    // and immediately navigating away within the debounce window would
+    // lose the typed value, exactly the original bug.
+    const timers = envSaveTimers.current;
+    return () => {
+      for (const [key, timer] of timers) {
+        clearTimeout(timer);
+        void window.hermesAPI.setEnv(
+          key,
+          envRef.current[key] || "",
+          profile,
+        );
+      }
+      timers.clear();
+    };
+  }, [profile]);
 
   async function handleAddPoolKey(): Promise<void> {
     if (!poolProvider || !poolNewKey.trim()) return;
