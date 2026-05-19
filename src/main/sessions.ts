@@ -270,3 +270,15 @@ export function getSessionMessages(sessionId: string): SessionMessage[] {
     db.close();
   }
 }
+
+export function deleteSession(sessionId: string): void {
+  const db = getDb();
+  if (!db) return;
+
+  try {
+    db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+    db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+  } finally {
+    db.close();
+  }
+}

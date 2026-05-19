@@ -87,7 +87,7 @@ import {
   getPlatformEnabled,
   setPlatformEnabled,
 } from "./config";
-import { listSessions, getSessionMessages, searchSessions } from "./sessions";
+import { listSessions, getSessionMessages, searchSessions, deleteSession } from "./sessions";
 import {
   syncSessionCache,
   listCachedSessions,
@@ -776,6 +776,10 @@ function setupIPC(): void {
     if (conn.mode === "ssh" && conn.ssh)
       return sshGetSessionMessages(conn.ssh, sessionId);
     return getSessionMessages(sessionId);
+  });
+
+  ipcMain.handle("delete-session", (_event, sessionId: string) => {
+    return deleteSession(sessionId);
   });
 
   // Profiles
