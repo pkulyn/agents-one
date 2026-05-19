@@ -19,6 +19,7 @@ export default {
   localName: "ローカル",
   localDesc: "OpenAI 互換",
   localTag: "",
+  customOpenAICompatibleName: "OpenAI 互換 / ローカル",
   // Local presets
   lmstudio: "LM Studio",
   ollama: "Ollama",

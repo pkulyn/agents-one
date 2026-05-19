@@ -19,6 +19,7 @@ export default {
   localName: "Local",
   localDesc: "Compatible con OpenAI",
   localTag: "",
+  customOpenAICompatibleName: "Compatible con OpenAI / Local",
   // Local presets
   lmstudio: "LM Studio",
   ollama: "Ollama",

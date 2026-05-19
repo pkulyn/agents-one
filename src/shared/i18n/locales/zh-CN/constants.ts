@@ -19,6 +19,7 @@ export default {
   localName: "本地 / OpenAI 兼容",
   localDesc: "LM Studio、Ollama、Groq、DeepSeek、Together 等",
   localTag: "任意 OpenAI 兼容 API",
+  customOpenAICompatibleName: "OpenAI 兼容 / 本地",
   // Local presets
   lmstudio: "LM Studio",
   ollama: "Ollama",
