@@ -243,8 +243,17 @@ function Providers({
               onChange={(e) => {
                 const v = e.target.value;
                 setModelProvider(v);
-                if (v === "custom" && !modelBaseUrl) {
-                  setModelBaseUrl("http://localhost:1234/v1");
+                if (v === "custom") {
+                  // Seed a local-LLM placeholder only when the field is empty
+                  // (don't clobber an existing custom URL the user has typed).
+                  if (!modelBaseUrl) {
+                    setModelBaseUrl("http://localhost:1234/v1");
+                  }
+                } else {
+                  // Switching to a named provider — its base_url is hardcoded
+                  // by the gateway, and a stale URL from a prior provider
+                  // would either be ignored (best case) or misroute (worst).
+                  setModelBaseUrl("");
                 }
               }}
             >
