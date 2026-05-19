@@ -92,7 +92,9 @@ import {
   normaliseRemoteUrl,
   startGateway,
   restartGateway,
+  testRemoteConnection,
 } from "../src/main/hermes";
+import http from "http";
 
 describe("normaliseRemoteUrl", () => {
   it("strips a trailing /v1 segment so callers don't double it", () => {
@@ -152,6 +154,39 @@ describe("normaliseRemoteUrl", () => {
     expect(normaliseRemoteUrl("")).toBe("");
     // @ts-expect-error — defending against the undefined case
     expect(normaliseRemoteUrl(undefined)).toBe("");
+  });
+});
+
+describe("testRemoteConnection URL probe", () => {
+  it("strips trailing /v1 before appending /health", async () => {
+    // Capture the URL handed to http.request by the health probe.
+    // Reported in #266: stale code path was building
+    // `http://host/v1/health` from a user-supplied `http://host/v1`,
+    // which 404s and produces the "Cannot reach remote Hermes" splash.
+    let capturedTarget: string | undefined;
+    const reqSpy = vi
+      .spyOn(http, "request")
+      .mockImplementation((target: unknown, ...rest: unknown[]) => {
+        capturedTarget = String(target);
+        // Find the response callback (last arg) and immediately fire it
+        // with a fake 200 so the promise resolves cleanly.
+        const cb = rest[rest.length - 1] as (res: unknown) => void;
+        cb({ statusCode: 200, resume: () => {} });
+        // Stub minimal request handle
+        return {
+          on: () => {},
+          end: () => {},
+          destroy: () => {},
+        } as unknown as ReturnType<typeof http.request>;
+      });
+
+    await testRemoteConnection("http://127.0.0.1:8642/v1");
+    expect(capturedTarget).toBe("http://127.0.0.1:8642/health");
+
+    await testRemoteConnection("http://127.0.0.1:8642/V1/");
+    expect(capturedTarget).toBe("http://127.0.0.1:8642/health");
+
+    reqSpy.mockRestore();
   });
 });
 

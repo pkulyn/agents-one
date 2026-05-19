@@ -91,16 +91,12 @@ export function getRemoteAuthHeader(): Record<string, string> {
   return {};
 }
 
-function stripTrailingSlashes(url: string): string {
-  return url.replace(/\/+$/, "");
-}
-
 function resolveRemoteApiKey(url: string, apiKey?: string): string {
   if (apiKey !== undefined) return apiKey;
 
   const conn = getConnectionConfig();
   if (conn.mode !== "remote" || !conn.apiKey || !conn.remoteUrl) return "";
-  if (stripTrailingSlashes(conn.remoteUrl) !== stripTrailingSlashes(url)) {
+  if (normaliseRemoteUrl(conn.remoteUrl) !== normaliseRemoteUrl(url)) {
     return "";
   }
   return conn.apiKey;
@@ -1005,7 +1001,7 @@ export function testRemoteConnection(
   apiKey?: string,
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const target = `${stripTrailingSlashes(url)}/health`;
+    const target = `${normaliseRemoteUrl(url)}/health`;
     const mod = target.startsWith("https") ? https : http;
     const headers: Record<string, string> = {};
     const resolvedApiKey = resolveRemoteApiKey(url, apiKey);
