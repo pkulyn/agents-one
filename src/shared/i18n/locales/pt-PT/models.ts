@@ -10,12 +10,12 @@ export default {
   modelIdPlaceholder: "ex: anthropic/claude-sonnet-4-20250514",
   baseUrlPlaceholder: "http://localhost:1234/v1",
   subtitle:
-    "Gira a sua biblioteca de modelos. Estes modelos aparecerão no seletor da página de chat.",
+    "Gira a sua biblioteca de modelos. Estes modelos aparecerão no selector da página de chat.",
   addModel: "Adicionar Modelo",
   emptyHint:
-    "Depois de adicionar modelos aqui, poderá usá-los no seletor da página de chat. Modelos configurados nas definições também serão adicionados automaticamente aqui.",
+    "Depois de adicionar modelos aqui, poderá usá-los no selector da página de chat. Modelos configurados nas definições também serão adicionados automaticamente aqui.",
   editModel: "Editar Modelo",
-  update: "Atualizar",
+  update: "Actualizar",
   deleteModelTitle: "Eliminar Modelo",
   yes: "Sim",
   no: "Não",

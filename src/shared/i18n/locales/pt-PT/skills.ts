@@ -1,7 +1,7 @@
 export default {
   title: "Competências/Skills",
   subtitle: "Estenda o seu agente com competências e fluxos de trabalho reutilizáveis",
-  refresh: "Atualizar",
+  refresh: "Actualizar",
   installedTab: "Instaladas",
   browseTab: "Explorar",
   filterInstalled: "Filtrar competências instaladas...",

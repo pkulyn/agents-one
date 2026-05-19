@@ -1,7 +1,7 @@
 export default {
   title: "Definições",
   sections: {
-    hermesAgent: "Hermes Agent",
+    hermesAgent: "Agente Hermes",
     appearance: "Aparência",
     credentialPool: "Pool de Credenciais",
   },
@@ -13,17 +13,18 @@ export default {
   },
   language: {
     label: "Idioma",
-    english: "English",
-    indonesian: "Indonesio",
-    japanese: "日本語",
-    chinese: "中文",
+    english: "Inglês",
+    indonesian: "Indonésio",
+    japanese: "Japonês",
+    spanish: "Espanhol",
+    chinese: "Chinês",
     portuguese: "Português",
     hint: "Escolha o idioma da interface",
   },
-  notDetected: "Não detetado",
-  updatedSuccessfully: "Atualizado com sucesso!",
-  updateSuccess: "Hermes atualizado com sucesso.",
-  updateFailed: "Falha na atualização.",
+  notDetected: "Não detectado",
+  updatedSuccessfully: "Actualizado com sucesso!",
+  updateSuccess: "Hermes actualizado com sucesso.",
+  updateFailed: "Falha na actualização.",
   version: "v{{version}}",
   proxyPlaceholder: "ex: socks5://127.0.0.1:1080 ou http://proxy:8080",
   modelNamePlaceholder: "ex: anthropic/claude-opus-4.6",
@@ -31,13 +32,13 @@ export default {
   networkSection: "Rede",
   forceIpv4: "Forçar IPv4",
   forceIpv4Hint:
-    "Desativar IPv6 para corrigir problemas de tempo limite de ligação em algumas redes",
+    "Desactivar IPv6 para corrigir problemas de tempo limite de ligação em algumas redes",
   httpProxy: "Proxy HTTP",
   httpProxyHint:
-    "Proxy SOCKS ou HTTP para todas as ligações de saída (deixe em branco para deteção automática)",
+    "Proxy SOCKS ou HTTP para todas as ligações de saída (deixe em branco para detecção automática)",
   saved: "Guardado",
   providerHint:
-    "Selecione um fornecedor de inferência ou detete automaticamente com base na Chave da API",
+    "Seleccione um fornecedor de inferência ou detecte automaticamente com base na Chave da API",
   customProviderHint:
     "Use qualquer API compatível com OpenAI (LM Studio, Ollama, vLLM, etc.)",
   modelHint:
@@ -57,16 +58,16 @@ export default {
   importing: "A importar...",
   importBackup: "Importar Cópia de Segurança",
   logsSection: "Logs",
-  refresh: "Atualizar",
+  refresh: "Actualizar",
   emptyLog: "(vazio)",
-  updating: "A atualizar...",
-  updateEngine: "Atualizar Motor",
-  latestVersion: "Já está atualizado",
+  updating: "A actualizar...",
+  updateEngine: "Actualizar Motor",
+  latestVersion: "Já está actualizado",
   runningDiagnosis: "A executar diagnóstico...",
   runDiagnosis: "Executar Diagnóstico",
   running: "A executar...",
   debugDump: "Dump de Depuração",
-  migrationDetected: "Instalação do OpenClaw Detetada",
+  migrationDetected: "Instalação do OpenClaw Detectada",
   migrationDesc:
     "Encontrámos o OpenClaw em <code>{{path}}</code>. Pode migrar a sua configuração, chaves de API, sessões e competências para o Hermes.",
   migrationDismiss: "Não mostrar novamente",
@@ -93,7 +94,7 @@ export default {
   save: "Guardar",
   serverConfigTitle: "Configuração do Servidor",
   serverConfigHint:
-    "Está ligado a um servidor remoto do Hermes. A seleção de modelos, as chaves de API dos fornecedores e as credenciais são geridas no host remoto em <code>~/.hermes/.env</code> e <code>config.yaml</code>. Edite-os aí e reinicie o servidor.",
+    "Está ligado a um servidor remoto do Hermes. A selecção de modelos, as chaves de API dos fornecedores e as credenciais são geridas no host remoto em <code>~/.hermes/.env</code> e <code>config.yaml</code>. Edite-os aí e reinicie o servidor.",
   connectionMode: "Modo",
   switchedToLocal: "Mudou para o modo local",
 } as const;

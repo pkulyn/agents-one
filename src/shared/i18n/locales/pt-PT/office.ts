@@ -21,6 +21,6 @@ export default {
   cannotLoadClaw3d: "Não foi possível carregar o Claw3D",
   startingClaw3dService: "A iniciar o serviço Claw3D...",
   clickToStart: "Clique em \"Iniciar\" para executar o Claw3D",
-  setupDesc1: "O Claw3D é um ambiente de visualização 3D para os seus agentes Hermes. Permite-lhe ver os seus agentes a trabalhar num espaço de escritório interativo.",
+  setupDesc1: "O Claw3D é um ambiente de visualização 3D para os seus agentes Hermes. Permite-lhe ver os seus agentes a trabalhar num espaço de escritório interactivo.",
   setupDesc2: "Clique abaixo para transferir e configurar automaticamente o Claw3D. Isto irá clonar o repositório e instalar todas as dependências.",
 } as const;

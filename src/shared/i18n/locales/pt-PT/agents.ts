@@ -8,7 +8,7 @@ export default {
   createFailed: "Falha ao criar o perfil",
   creating: "A criar...",
   create: "Criar",
-  active: "Ativo",
+  active: "Activo",
   noModel: "Nenhum modelo definido",
   skillsCount: "{{count}} competências",
   gatewayRunning: "Gateway em execução",

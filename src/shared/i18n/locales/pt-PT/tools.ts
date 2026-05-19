@@ -1,6 +1,6 @@
 export default {
   title: "Ferramentas",
-  subtitle: "Ative ou desative os conjuntos de ferramentas que o seu agente pode usar durante as conversas",
+  subtitle: "Active ou desactive os conjuntos de ferramentas que o seu agente pode usar durante as conversas",
   web: {
     label: "Pesquisa na Web",
     description: "Pesquisa na web e extrai conteúdo de URLs",
@@ -63,5 +63,5 @@ export default {
   mcpDescription: "Servidores Model Context Protocol configurados no config.yaml. Faça a gestão via <code>hermes mcp add/remove</code> no terminal.",
   http: "HTTP",
   stdio: "stdio",
-  disabled: "desativado",
+  disabled: "desactivado",
 } as const;
