@@ -13,6 +13,7 @@ import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
 import type { Attachment } from "../shared/attachments";
 import { stageAttachment, clearStagedAttachments } from "./attachment-staging";
+import { discoverProviderModels } from "./model-discovery";
 import {
   checkInstallStatus,
   verifyInstall,
@@ -724,6 +725,20 @@ function setupIPC(): void {
   ipcMain.handle("clear-staged-attachments", (_event, sessionId: string) => {
     clearStagedAttachments(sessionId);
   });
+
+  // Model discovery — fetch the provider's /v1/models for autocomplete.
+  ipcMain.handle(
+    "discover-provider-models",
+    (
+      _event,
+      provider: string,
+      baseUrl: string | undefined,
+      apiKey: string | undefined,
+      profile?: string,
+    ) => {
+      return discoverProviderModels(provider, baseUrl, apiKey, profile);
+    },
+  );
 
   // Gateway
   ipcMain.handle("start-gateway", async () => {
