@@ -34,7 +34,7 @@ function desktopConfigFile(): string {
   return join(HERMES_HOME, "desktop.json");
 }
 
-function readDesktopConfig(): Record<string, unknown> {
+export function readDesktopConfig(): Record<string, unknown> {
   try {
     const f = desktopConfigFile();
     if (!existsSync(f)) return {};
@@ -44,7 +44,7 @@ function readDesktopConfig(): Record<string, unknown> {
   }
 }
 
-function writeDesktopConfig(data: Record<string, unknown>): void {
+export function writeDesktopConfig(data: Record<string, unknown>): void {
   if (!existsSync(HERMES_HOME)) {
     mkdirSync(HERMES_HOME, { recursive: true });
   }
