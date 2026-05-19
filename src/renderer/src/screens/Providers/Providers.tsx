@@ -85,7 +85,8 @@ function Providers({
     })();
   }, [visible, profile]);
 
-  // Auto-save model config when values change (debounced)
+  // Auto-save the active model config (config.yaml) — debounced 500 ms so
+  // typing in the Model field still feels responsive.
   const saveModelConfig = useCallback(async () => {
     if (!modelLoaded.current) return;
     await window.hermesAPI.setModelConfig(
@@ -94,15 +95,6 @@ function Providers({
       modelBaseUrl,
       profile,
     );
-    if (modelName.trim()) {
-      const displayName = modelName.split("/").pop() || modelName;
-      await window.hermesAPI.addModel(
-        displayName,
-        modelProvider,
-        modelName,
-        modelBaseUrl,
-      );
-    }
     setModelSaved(true);
     setTimeout(() => setModelSaved(false), 2000);
   }, [modelProvider, modelName, modelBaseUrl, profile]);
@@ -117,6 +109,31 @@ function Providers({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [modelProvider, modelName, modelBaseUrl, saveModelConfig]);
+
+  // Separately, persist the (provider, model) pair to the Models library
+  // — but only after the user has been idle long enough that they've
+  // plausibly finished typing the model name.  The active-save debounce
+  // at 500 ms used to call `addModel` on every keystroke pause, leaving
+  // dead intermediate entries ("deepseek-reaso", "deepseek-reason", …)
+  // every time someone typed slowly.  2 s wait is enough for almost any
+  // real edit while still landing the entry without an explicit Save click.
+  const modelLibTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!modelLoaded.current) return;
+    if (!modelName.trim()) return;
+    if (modelLibTimer.current) clearTimeout(modelLibTimer.current);
+    modelLibTimer.current = setTimeout(() => {
+      const displayName = modelName.split("/").pop() || modelName;
+      window.hermesAPI
+        .addModel(displayName, modelProvider, modelName, modelBaseUrl)
+        .catch(() => {
+          /* non-fatal — library write is best-effort */
+        });
+    }, 2000);
+    return () => {
+      if (modelLibTimer.current) clearTimeout(modelLibTimer.current);
+    };
+  }, [modelProvider, modelName, modelBaseUrl]);
 
   async function handleBlur(key: string): Promise<void> {
     // Cancel any pending debounced save for this key — the blur handler
