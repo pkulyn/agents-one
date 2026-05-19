@@ -17,7 +17,16 @@ const LANGUAGE_NATIVE_NAMES: Record<AppLocale, string> = {
   "zh-TW": "繁體中文（台灣）",
 };
 
-const REMOTE_API_KEY_MASK = "********";
+// Build a mask string the same width as the stored API key so the
+// "saved" state of the input looks like a key, not a constant blob.
+// Length is exposed by the main process via PublicConnectionConfig.
+// 0 falls back to 8 dots so the user gets a visible "set" indicator
+// even if main didn't report a length yet. Capped to keep absurdly
+// long keys from blowing up the field.
+function makeApiKeyMask(length: number): string {
+  const n = Math.min(Math.max(length, 8), 128);
+  return "*".repeat(n);
+}
 
 // Read cached values from localStorage for instant display
 function getCachedVersion(): string | null {
@@ -78,6 +87,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   const [connMode, setConnMode] = useState<"local" | "remote" | "ssh">("local");
   const [connRemoteUrl, setConnRemoteUrl] = useState("");
   const [connApiKey, setConnApiKey] = useState("");
+  const [connApiKeyMask, setConnApiKeyMask] = useState("");
   const [connHasApiKey, setConnHasApiKey] = useState(false);
   const [connTesting, setConnTesting] = useState(false);
   const [connStatus, setConnStatus] = useState<string | null>(null);
@@ -123,7 +133,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setConnMode(conn.mode);
     setConnRemoteUrl(conn.remoteUrl);
     setConnHasApiKey(conn.hasApiKey);
-    setConnApiKey(conn.hasApiKey ? REMOTE_API_KEY_MASK : "");
+    const mask = conn.hasApiKey ? makeApiKeyMask(conn.apiKeyLength) : "";
+    setConnApiKeyMask(mask);
+    setConnApiKey(mask);
     setSshHost(conn.ssh?.host || "");
     setSshPort(conn.ssh?.port ? String(conn.ssh.port) : "");
     setSshUser(conn.ssh?.username || "");
@@ -204,13 +216,13 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   }
 
   function getConnectionApiKeyForSave(): string | undefined {
-    // Mask sentinel ("********") in the field means "the secret is still
-    // server-side and the user hasn't touched it" — always preserve the
-    // stored key. The old code wiped the key whenever the URL changed,
-    // so a one-character URL edit (fix typo, add /v1) silently dropped
-    // the saved credential. To clear the key, the user must explicitly
-    // erase the field.
-    if (connHasApiKey && connApiKey === REMOTE_API_KEY_MASK) {
+    // Mask sentinel in the field means "the secret is still server-side
+    // and the user hasn't touched it" — always preserve the stored key.
+    // The old code wiped the key whenever the URL changed, so a one-
+    // character URL edit (fix typo, add /v1) silently dropped the saved
+    // credential. To clear the key, the user must explicitly erase the
+    // field.
+    if (connHasApiKey && connApiKey === connApiKeyMask) {
       return undefined;
     }
     return connApiKey.trim();
@@ -236,7 +248,13 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
       if (apiKey !== undefined) {
         const hasApiKey = apiKey.length > 0;
         setConnHasApiKey(hasApiKey);
-        if (hasApiKey) setConnApiKey(REMOTE_API_KEY_MASK);
+        if (hasApiKey) {
+          const mask = makeApiKeyMask(apiKey.length);
+          setConnApiKeyMask(mask);
+          setConnApiKey(mask);
+        } else {
+          setConnApiKeyMask("");
+        }
       }
     }
     setConnStatus("Saved");
@@ -281,6 +299,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setConnMode("local");
     setConnRemoteUrl("");
     setConnApiKey("");
+    setConnApiKeyMask("");
     setConnHasApiKey(false);
     await window.hermesAPI.setConnectionConfig("local", "", "");
     setConnStatus(t("settings.switchedToLocal"));
@@ -609,7 +628,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
                 value={connApiKey}
                 onChange={(e) => setConnApiKey(e.target.value)}
                 onFocus={(e) => {
-                  if (connApiKey === REMOTE_API_KEY_MASK) {
+                  if (connApiKey === connApiKeyMask) {
                     e.currentTarget.select();
                   }
                 }}
