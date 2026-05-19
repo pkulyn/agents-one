@@ -77,7 +77,6 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   // Connection mode
   const [connMode, setConnMode] = useState<"local" | "remote" | "ssh">("local");
   const [connRemoteUrl, setConnRemoteUrl] = useState("");
-  const [connSavedRemoteUrl, setConnSavedRemoteUrl] = useState("");
   const [connApiKey, setConnApiKey] = useState("");
   const [connHasApiKey, setConnHasApiKey] = useState(false);
   const [connTesting, setConnTesting] = useState(false);
@@ -123,7 +122,6 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setAppVersion(aVersion);
     setConnMode(conn.mode);
     setConnRemoteUrl(conn.remoteUrl);
-    setConnSavedRemoteUrl(conn.remoteUrl);
     setConnHasApiKey(conn.hasApiKey);
     setConnApiKey(conn.hasApiKey ? REMOTE_API_KEY_MASK : "");
     setSshHost(conn.ssh?.host || "");
@@ -206,8 +204,14 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   }
 
   function getConnectionApiKeyForSave(): string | undefined {
+    // Mask sentinel ("********") in the field means "the secret is still
+    // server-side and the user hasn't touched it" — always preserve the
+    // stored key. The old code wiped the key whenever the URL changed,
+    // so a one-character URL edit (fix typo, add /v1) silently dropped
+    // the saved credential. To clear the key, the user must explicitly
+    // erase the field.
     if (connHasApiKey && connApiKey === REMOTE_API_KEY_MASK) {
-      return connRemoteUrl === connSavedRemoteUrl ? undefined : "";
+      return undefined;
     }
     return connApiKey.trim();
   }
@@ -229,7 +233,6 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
         connRemoteUrl,
         apiKey,
       );
-      setConnSavedRemoteUrl(connRemoteUrl);
       if (apiKey !== undefined) {
         const hasApiKey = apiKey.length > 0;
         setConnHasApiKey(hasApiKey);
@@ -277,7 +280,6 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   async function handleSwitchToLocal(): Promise<void> {
     setConnMode("local");
     setConnRemoteUrl("");
-    setConnSavedRemoteUrl("");
     setConnApiKey("");
     setConnHasApiKey(false);
     await window.hermesAPI.setConnectionConfig("local", "", "");
