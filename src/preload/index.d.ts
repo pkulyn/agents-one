@@ -1,4 +1,5 @@
 import type { AppLocale } from "../shared/i18n/types";
+import type { Attachment } from "../shared/attachments";
 
 interface ElectronAPI {
   process: {
@@ -195,8 +196,16 @@ interface HermesAPI {
     profile?: string,
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
+    attachments?: Attachment[],
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  getPathForFile: (file: File) => string;
+  stageAttachment: (
+    sessionId: string,
+    filename: string,
+    base64Bytes: string,
+  ) => Promise<string>;
+  clearStagedAttachments: (sessionId: string) => Promise<void>;
   onChatChunk: (callback: (chunk: string) => void) => () => void;
   onChatDone: (callback: (sessionId?: string) => void) => () => void;
   onChatToolProgress: (callback: (tool: string) => void) => () => void;
@@ -247,6 +256,7 @@ interface HermesAPI {
       role: "user" | "assistant";
       content: string;
       timestamp: number;
+      attachments?: Attachment[];
     }>
   >;
 

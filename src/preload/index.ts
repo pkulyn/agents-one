@@ -1,5 +1,6 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
+import type { Attachment } from "../shared/attachments";
 
 const electronAPI = {
   process: {
@@ -176,6 +177,7 @@ const hermesAPI = {
     profile?: string,
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
+    attachments?: Attachment[],
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -183,9 +185,31 @@ const hermesAPI = {
       profile,
       resumeSessionId,
       history,
+      attachments,
     ),
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
+
+  // Resolve the absolute filesystem path for a File coming from drag-drop
+  // or the file picker.  Returns "" for blobs that have no origin path
+  // (e.g. clipboard paste) — caller should stageAttachment for those.
+  getPathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file) || "";
+    } catch {
+      return "";
+    }
+  },
+
+  stageAttachment: (
+    sessionId: string,
+    filename: string,
+    base64Bytes: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke("stage-attachment", sessionId, filename, base64Bytes),
+
+  clearStagedAttachments: (sessionId: string): Promise<void> =>
+    ipcRenderer.invoke("clear-staged-attachments", sessionId),
 
   onChatChunk: (callback: (chunk: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: string): void =>
@@ -282,6 +306,7 @@ const hermesAPI = {
       role: "user" | "assistant";
       content: string;
       timestamp: number;
+      attachments?: Attachment[];
     }>
   > => ipcRenderer.invoke("get-session-messages", sessionId),
 

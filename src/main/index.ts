@@ -11,6 +11,11 @@ import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
+import type { Attachment } from "../shared/attachments";
+import {
+  stageAttachment,
+  clearStagedAttachments,
+} from "./attachment-staging";
 import {
   checkInstallStatus,
   verifyInstall,
@@ -601,6 +606,7 @@ function setupIPC(): void {
       profile?: string,
       resumeSessionId?: string,
       history?: Array<{ role: string; content: string }>,
+      attachments?: Attachment[],
     ) => {
       if (!isRemoteMode() && !isGatewayRunning()) {
         startGateway(profile);
@@ -683,6 +689,7 @@ function setupIPC(): void {
         profile,
         resumeSessionId,
         history,
+        attachments,
       );
 
       currentChatAbort = handle.abort;
@@ -695,6 +702,17 @@ function setupIPC(): void {
       currentChatAbort();
       currentChatAbort = null;
     }
+  });
+
+  // Attachment staging — for pasted blobs that have no filesystem origin.
+  ipcMain.handle(
+    "stage-attachment",
+    (_event, sessionId: string, filename: string, base64Bytes: string) => {
+      return stageAttachment(sessionId, filename, base64Bytes);
+    },
+  );
+  ipcMain.handle("clear-staged-attachments", (_event, sessionId: string) => {
+    clearStagedAttachments(sessionId);
   });
 
   // Gateway

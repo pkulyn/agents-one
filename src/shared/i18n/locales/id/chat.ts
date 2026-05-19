@@ -23,6 +23,16 @@ export default {
   deny: "Tolak",
   newChat: "Chat baru (Cmd+N)",
   clearChat: "Bersihkan chat",
+  attach: "Lampirkan file",
+  removeAttachment: "Hapus lampiran",
+  dropToAttach: "Lepaskan file untuk dilampirkan",
+  attachUnsupported: "{{name}}: tipe file tidak didukung",
+  attachImageTooLarge: "{{name}}: gambar terlalu besar (maks. 20 MB)",
+  attachTextTooLarge: "{{name}}: file terlalu besar (maks. 256 KB)",
+  attachTooMany: "Terlalu banyak lampiran (maks. 10 per pesan)",
+  attachReadFailed: "{{name}}: tidak dapat dibaca",
+  attachRemoteModeBinary:
+    "{{name}}: lampiran PDF/biner memerlukan mode lokal — gambar dan file teks tetap berfungsi.",
   fastMode: "Mode Cepat",
   fastModeOn: "Mode Cepat AKTIF",
   fastModeActive:
