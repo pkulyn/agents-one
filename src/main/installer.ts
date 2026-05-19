@@ -18,8 +18,51 @@ import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 const IS_WINDOWS = process.platform === "win32";
 
+// Resolve the Hermes data directory. Precedence:
+//   1. HERMES_HOME env var if set (install.ps1 sets it User-scope on
+//      Windows; users may also override manually for WSL/custom setups).
+//   2. On Windows, probe both candidates and pick whichever already has
+//      data. install.ps1's default is %LOCALAPPDATA%\hermes, but some
+//      setups put data at ~/.hermes (e.g. a junction into WSL, or a
+//      custom -HermesHome flag on install). Without probing we'd silently
+//      switch directories on users who had it working before.
+//   3. Fresh install fallback: %LOCALAPPDATA%\hermes on Windows (matches
+//      install.ps1's default), ~/.hermes elsewhere.
+//
+// Motivating bug: Electron launched from the Start Menu doesn't always
+// inherit shell-set env vars, so relying on HERMES_HOME alone left
+// Windows users staring at an empty ~/.hermes while their real data
+// sat in %LOCALAPPDATA%\hermes.
+function looksLikeHermesHome(dir: string): boolean {
+  if (!existsSync(dir)) return false;
+  return (
+    existsSync(join(dir, "hermes-agent")) ||
+    existsSync(join(dir, "gateway.pid")) ||
+    existsSync(join(dir, "config.yaml")) ||
+    existsSync(join(dir, "active_profile")) ||
+    existsSync(join(dir, ".env"))
+  );
+}
+
+function defaultHermesHome(): string {
+  const homeDot = join(homedir(), ".hermes");
+  if (!IS_WINDOWS) return homeDot;
+
+  const localApp = process.env.LOCALAPPDATA
+    ? join(process.env.LOCALAPPDATA, "hermes")
+    : null;
+
+  // Prefer whichever location already has hermes data.
+  if (localApp && looksLikeHermesHome(localApp)) return localApp;
+  if (looksLikeHermesHome(homeDot)) return homeDot;
+
+  // Neither populated yet — fall back to install.ps1's default so a
+  // fresh install lines up with where the installer will write.
+  return localApp ?? homeDot;
+}
+
 export const HERMES_HOME =
-  process.env.HERMES_HOME?.trim() || join(homedir(), ".hermes");
+  process.env.HERMES_HOME?.trim() || defaultHermesHome();
 export const HERMES_REPO = join(HERMES_HOME, "hermes-agent");
 export const HERMES_VENV = join(HERMES_REPO, "venv");
 export const HERMES_PYTHON = IS_WINDOWS
