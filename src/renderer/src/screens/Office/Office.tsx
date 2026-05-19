@@ -39,6 +39,10 @@ function Office({ visible }: { visible?: boolean }): React.JSX.Element {
   });
   const [webviewReady, setWebviewReady] = useState(false);
   const [webviewError, setWebviewError] = useState("");
+  // Set when the main process detects a Claw3D / hermes-office service
+  // running on the remote host (SSH tunnel mode). When present the webview
+  // points at this URL and the local install/start UX is bypassed.
+  const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const webviewRef = useRef<HTMLWebViewElement>(null);
 
@@ -53,13 +57,14 @@ function Office({ visible }: { visible?: boolean }): React.JSX.Element {
   const checkStatus = useCallback(async (): Promise<void> => {
     setState("checking");
     const status = await window.hermesAPI.claw3dStatus();
+    setRemoteUrl(status.remoteUrl ?? null);
     setRunning(status.running);
     setPort(status.port);
     setPortInput(String(status.port));
     setPortInUse(status.portInUse);
     setWsUrlInput(status.wsUrl || "ws://localhost:18789");
     if (status.error) setError(status.error);
-    if (status.installed) {
+    if (status.installed || status.remoteUrl) {
       setState("ready");
     } else {
       setState("not-installed");
@@ -75,6 +80,7 @@ function Office({ visible }: { visible?: boolean }): React.JSX.Element {
     if (state !== "ready" || !visible) return;
     const interval = setInterval(async () => {
       const status = await window.hermesAPI.claw3dStatus();
+      setRemoteUrl(status.remoteUrl ?? null);
       setRunning(status.running);
       setPort(status.port);
       setPortInUse(status.portInUse);
@@ -213,7 +219,10 @@ function Office({ visible }: { visible?: boolean }): React.JSX.Element {
       ? Math.round((progress.step / progress.totalSteps) * 100)
       : 0;
 
-  const claw3dUrl = `http://localhost:${port}`;
+  // Remote Claw3D (SSH tunnel mode) takes precedence: the remote
+  // hermes-office.service already runs, so we point the webview at it
+  // rather than asking the user to install Claw3D locally.
+  const claw3dUrl = remoteUrl || `http://localhost:${port}`;
 
   // --- Checking ---
   if (state === "checking") {
