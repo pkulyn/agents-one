@@ -129,6 +129,46 @@ describe("setModelConfig — known-host custom provider auto-api-key (issue #260
     expect(out).not.toContain("api_key:");
   });
 
+  it("does not clobber api_key lines outside the model: block (auxiliary scoping)", async () => {
+    // Real-world configs have `api_key: ''` lines under `auxiliary.vision`,
+    // `auxiliary.web_extract`, etc.  A naive `/^api_key:/m` replace would
+    // mangle those.  The model-block-scoped logic must leave them alone.
+    const realisticYaml = `model:
+  provider: "auto"
+  default: ""
+  base_url: ""
+providers: {}
+auxiliary:
+  vision:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 120
+  web_extract:
+    provider: auto
+    model: ''
+    base_url: ''
+    api_key: ''
+    timeout: 360
+`;
+    writeBaseFiles("DEEPSEEK_API_KEY=sk-deepseek-real\n", realisticYaml);
+    const { setModelConfig } = await loadConfig();
+
+    setModelConfig("custom", "deepseek-reasoner", "https://api.deepseek.com/v1");
+
+    const out = readFileSync(join(testHome, "config.yaml"), "utf-8");
+    // Model block must have the auto-key
+    const modelBlock = out.match(/^model:[\s\S]*?(?=^\S)/m)?.[0] || "";
+    expect(modelBlock).toContain('api_key: "sk-deepseek-real"');
+    // Auxiliary sections must still have their original empty api_key
+    expect(out).toContain("vision:\n    provider: auto\n    model: ''\n    base_url: ''\n    api_key: ''");
+    expect(out).toContain("web_extract:\n    provider: auto\n    model: ''\n    base_url: ''\n    api_key: ''");
+    // Exactly one non-empty api_key value in the whole file (the model one)
+    const realKeys = out.match(/api_key:\s*"[^"]+"/g) || [];
+    expect(realKeys).toHaveLength(1);
+  });
+
   it("updates the existing api_key in place when the env var changes", async () => {
     const initial = `model:
   provider: "custom"
