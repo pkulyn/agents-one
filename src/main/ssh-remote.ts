@@ -1130,6 +1130,47 @@ export async function sshGetHermesVersion(config: SshConfig): Promise<string | n
   }
 }
 
+// Run a Hermes Kanban CLI subcommand over SSH and return a structured result.
+export interface SshKanbanResult<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  stdout?: string;
+}
+
+export async function sshRunKanban<T = unknown>(
+  config: SshConfig,
+  args: string[],
+  opts: { profile?: string; parseJson?: boolean; timeoutMs?: number } = {},
+): Promise<SshKanbanResult<T>> {
+  const cliArgs: string[] = [];
+  if (opts.profile && opts.profile !== "default") {
+    cliArgs.push("-p", opts.profile);
+  }
+  cliArgs.push("kanban", ...args);
+  const cmd = buildRemoteHermesCmd(cliArgs);
+  try {
+    const stdout = await sshExec(config, cmd, undefined, opts.timeoutMs ?? 20000);
+    if (opts.parseJson) {
+      try {
+        return { success: true, data: JSON.parse(stdout) as T, stdout };
+      } catch (err) {
+        return {
+          success: false,
+          error: `Failed to parse JSON from remote 'hermes kanban': ${(err as Error).message}`,
+          stdout,
+        };
+      }
+    }
+    return { success: true, stdout };
+  } catch (err) {
+    return {
+      success: false,
+      error: (err as Error).message || "Remote kanban command failed",
+    };
+  }
+}
+
 // ── Logs ──────────────────────────────────────────────────────────────────────
 
 export async function sshReadLogs(
