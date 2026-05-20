@@ -527,14 +527,21 @@ export async function sshReadEnv(config: SshConfig, profile?: string): Promise<R
     if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
     if (v) result[k] = v;
   }
-  // Alias alternate env var names so the app can display them regardless of which name the server uses
-  const ENV_ALIASES: Array<[string, string]> = [
-    ["HA_URL", "HOMEASSISTANT_URL"],
-    ["HA_TOKEN", "HOMEASSISTANT_TOKEN"],
+  // Home Assistant has accumulated three naming conventions across hermes
+  // versions: HASS_* (what gateway/config.py currently reads), HOMEASSISTANT_*
+  // (legacy), and HA_* (older desktop builds). Mirror all three so the UI
+  // can display the value regardless of which one the remote server uses.
+  const HA_ALIAS_GROUPS: string[][] = [
+    ["HASS_URL", "HOMEASSISTANT_URL", "HA_URL"],
+    ["HASS_TOKEN", "HOMEASSISTANT_TOKEN", "HA_TOKEN"],
   ];
-  for (const [appKey, serverKey] of ENV_ALIASES) {
-    if (!result[appKey] && result[serverKey]) result[appKey] = result[serverKey];
-    if (!result[serverKey] && result[appKey]) result[serverKey] = result[appKey];
+  for (const group of HA_ALIAS_GROUPS) {
+    const present = group.find((k) => result[k]);
+    if (!present) continue;
+    const value = result[present];
+    for (const k of group) {
+      if (!result[k]) result[k] = value;
+    }
   }
   return result;
 }
@@ -567,6 +574,171 @@ export async function sshSetEnvValue(
   await sshWriteFile(config, envPath, lines.join("\n"));
 }
 
+// ─── Dotted-path YAML helpers (mirror of the local-mode fix) ───────────────
+//
+// The previous implementation used `^\s*<key>:` against the whole remote
+// config.yaml. Two problems, both observed in the wild (#240): dotted-path
+// keys like `model.provider` looked for a literal `model.provider:` line
+// that doesn't exist in real YAML, and flat keys leaked across blocks
+// (the first `default:` at any indent — typically `personalities.default`
+// — would shadow `model.default`). The new helpers walk path segments at
+// strictly-greater indent than each parent and pin single-segment keys
+// to column 0.
+//
+// Duplicates the navigator in config.ts intentionally to keep this PR
+// self-contained and independent. Once both land, a small consolidation
+// PR can lift these into a shared module.
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripYamlQuotes(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return trimmed.slice(1, -1);
+    }
+  }
+  return trimmed;
+}
+
+interface YamlPathHit {
+  value: string;
+  valueStart: number;
+  valueEnd: number;
+}
+
+interface SegmentMatch {
+  indent: number;
+  rawValue: string;
+  valueStart: number;
+  valueEnd: number;
+  afterLine: number;
+}
+
+function findSegmentInBlock(
+  content: string,
+  startAt: number,
+  parentIndent: number,
+  segment: string,
+): SegmentMatch | null {
+  const escapedSegment = escapeRegex(segment);
+  let directChildIndent: number | null = null;
+  let cursor = startAt;
+
+  while (cursor < content.length) {
+    const lineEnd = content.indexOf("\n", cursor);
+    const lineEndExclusive = lineEnd === -1 ? content.length : lineEnd;
+    const line = content.slice(cursor, lineEndExclusive);
+    const trimmed = line.trim();
+
+    if (trimmed === "" || trimmed.startsWith("#")) {
+      cursor =
+        lineEndExclusive === content.length ? content.length : lineEndExclusive + 1;
+      continue;
+    }
+
+    const indent = line.length - line.trimStart().length;
+    // Block boundary: a non-blank line at or shallower than the parent
+    // closes the parent's block.
+    if (indent <= parentIndent) return null;
+
+    if (directChildIndent === null) directChildIndent = indent;
+
+    if (indent === directChildIndent) {
+      // `[ \t]*` so this also matches top-level keys at column 0 (the
+      // first segment of a dotted path); the `indent === directChild`
+      // gate above already enforces depth.
+      const m = line.match(
+        new RegExp(
+          `^([ \\t]*)(${escapedSegment}):([ \\t]*)([^\\n#]*?)([ \\t]*)(#.*)?$`,
+        ),
+      );
+      if (m) {
+        const indentStr = m[1];
+        const gapBeforeValue = m[3];
+        const rawValue = m[4];
+        const keyEnd = cursor + indentStr.length + segment.length + 1;
+        const valueStart = keyEnd + gapBeforeValue.length;
+        const valueEnd = valueStart + rawValue.length;
+        return {
+          indent: indentStr.length,
+          rawValue,
+          valueStart,
+          valueEnd,
+          afterLine:
+            lineEndExclusive === content.length
+              ? content.length
+              : lineEndExclusive + 1,
+        };
+      }
+    }
+
+    cursor =
+      lineEndExclusive === content.length ? content.length : lineEndExclusive + 1;
+  }
+
+  return null;
+}
+
+/** Exported for unit testing. Walks a dotted YAML path through `content`. */
+export function findYamlPath(content: string, dottedPath: string): YamlPathHit | null {
+  const segments = dottedPath.split(".").filter(Boolean);
+  if (segments.length === 0) return null;
+
+  let cursor = 0;
+  let parentIndent = -1;
+
+  for (let i = 0; i < segments.length; i++) {
+    const isLast = i === segments.length - 1;
+    const found = findSegmentInBlock(content, cursor, parentIndent, segments[i]);
+    if (!found) return null;
+
+    if (isLast) {
+      return {
+        value: stripYamlQuotes(found.rawValue),
+        valueStart: found.valueStart,
+        valueEnd: found.valueEnd,
+      };
+    }
+    cursor = found.afterLine;
+    parentIndent = found.indent;
+  }
+
+  return null;
+}
+
+/** Exported for unit testing. Matches `<key>:` at column 0 only. */
+export function findTopLevelKey(content: string, key: string): YamlPathHit | null {
+  const re = new RegExp(
+    `^(${escapeRegex(key)}):([ \\t]*)([^\\n#]*?)([ \\t]*)(#.*)?$`,
+    "m",
+  );
+  const m = content.match(re);
+  if (!m || m.index === undefined) return null;
+  const gap = m[2];
+  const rawValue = m[3];
+  const lineStart = m.index;
+  const valueStart = lineStart + key.length + 1 + gap.length;
+  const valueEnd = valueStart + rawValue.length;
+  return {
+    value: stripYamlQuotes(rawValue),
+    valueStart,
+    valueEnd,
+  };
+}
+
+function locateInYaml(content: string, key: string): YamlPathHit | null {
+  const segments = key.split(".").filter(Boolean);
+  if (segments.length === 0) return null;
+  return segments.length === 1
+    ? findTopLevelKey(content, segments[0])
+    : findYamlPath(content, key);
+}
+
 export async function sshGetConfigValue(
   config: SshConfig,
   key: string,
@@ -574,9 +746,8 @@ export async function sshGetConfigValue(
 ): Promise<string | null> {
   const content = await sshReadFile(config, remoteConfigPath(profile));
   if (!content) return null;
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = content.match(new RegExp(`^\\s*${escapedKey}:\\s*["']?([^"'\\n#]+)["']?`, "m"));
-  return match ? match[1].trim() : null;
+  const hit = locateInYaml(content, key);
+  return hit ? hit.value : null;
 }
 
 export async function sshSetConfigValue(
@@ -591,9 +762,24 @@ export async function sshSetConfigValue(
   const configPath = remoteConfigPath(profile);
   const content = await sshReadFile(config, configPath);
   if (!content) return;
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(`^(\\s*#?\\s*${escapedKey}:\\s*)["']?[^"'\\n#]*["']?`, "m");
-  const updated = regex.test(content) ? content.replace(regex, `$1"${value}"`) : content;
+
+  const hit = locateInYaml(content, key);
+  let updated: string;
+  if (hit) {
+    updated =
+      content.slice(0, hit.valueStart) +
+      `"${value}"` +
+      content.slice(hit.valueEnd);
+  } else if (!key.includes(".")) {
+    // Flat key missing → append at top level.
+    const sep = content.endsWith("\n") || content === "" ? "" : "\n";
+    updated = `${content}${sep}${key}: "${value}"\n`;
+  } else {
+    // Missing nested path — don't guess where to materialize a parent
+    // block; that risks corrupting the file. Leave the content alone.
+    return;
+  }
+
   await sshWriteFile(config, configPath, updated);
 }
 
@@ -606,10 +792,17 @@ export async function sshGetModelConfig(
   config: SshConfig,
   profile?: string,
 ): Promise<{ provider: string; model: string; baseUrl: string }> {
+  // Use dotted paths so the lookup is scoped to the `model:` block. The
+  // previous flat keys `provider` / `default` / `base_url` would each
+  // match the first occurrence at any indent — typically picking up
+  // `personalities.default` or `auxiliary.vision.provider` and reporting
+  // them as the model fields (#240).
   return {
-    provider: (await sshGetConfigValue(config, "provider", profile)) || "auto",
-    model: (await sshGetConfigValue(config, "default", profile)) || "",
-    baseUrl: (await sshGetConfigValue(config, "base_url", profile)) || "",
+    provider:
+      (await sshGetConfigValue(config, "model.provider", profile)) || "auto",
+    model: (await sshGetConfigValue(config, "model.default", profile)) || "",
+    baseUrl:
+      (await sshGetConfigValue(config, "model.base_url", profile)) || "",
   };
 }
 
@@ -620,9 +813,11 @@ export async function sshSetModelConfig(
   baseUrl: string,
   profile?: string,
 ): Promise<void> {
-  await sshSetConfigValue(config, "provider", provider, profile);
-  await sshSetConfigValue(config, "default", model, profile);
-  await sshSetConfigValue(config, "base_url", baseUrl, profile);
+  await sshSetConfigValue(config, "model.provider", provider, profile);
+  await sshSetConfigValue(config, "model.default", model, profile);
+  if (baseUrl) {
+    await sshSetConfigValue(config, "model.base_url", baseUrl, profile);
+  }
   const configPath = remoteConfigPath(profile);
   const content = await sshReadFile(config, configPath);
   if (!content) return;
@@ -931,10 +1126,55 @@ export async function sshReadRemoteApiKey(config: SshConfig): Promise<string> {
 
 export async function sshGetHermesVersion(config: SshConfig): Promise<string | null> {
   try {
-    const out = await sshExec(config, `hermes --version 2>/dev/null || hermes version 2>/dev/null || echo ""`);
+    // Use the venv-probe path so the version string is the real multi-line
+    // output (Engine / Released / Python / OpenAI SDK) the Settings UI
+    // parses, not an empty string when the /usr/local/bin/hermes wrapper
+    // refuses to run as the hermes user. See buildRemoteHermesCmd notes.
+    const out = await sshExec(config, buildRemoteHermesCmd(["--version"], " 2>/dev/null"));
     return out.trim() || null;
   } catch {
     return null;
+  }
+}
+
+// Run a Hermes Kanban CLI subcommand over SSH and return a structured result.
+export interface SshKanbanResult<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  stdout?: string;
+}
+
+export async function sshRunKanban<T = unknown>(
+  config: SshConfig,
+  args: string[],
+  opts: { profile?: string; parseJson?: boolean; timeoutMs?: number } = {},
+): Promise<SshKanbanResult<T>> {
+  const cliArgs: string[] = [];
+  if (opts.profile && opts.profile !== "default") {
+    cliArgs.push("-p", opts.profile);
+  }
+  cliArgs.push("kanban", ...args);
+  const cmd = buildRemoteHermesCmd(cliArgs);
+  try {
+    const stdout = await sshExec(config, cmd, undefined, opts.timeoutMs ?? 20000);
+    if (opts.parseJson) {
+      try {
+        return { success: true, data: JSON.parse(stdout) as T, stdout };
+      } catch (err) {
+        return {
+          success: false,
+          error: `Failed to parse JSON from remote 'hermes kanban': ${(err as Error).message}`,
+          stdout,
+        };
+      }
+    }
+    return { success: true, stdout };
+  } catch (err) {
+    return {
+      success: false,
+      error: (err as Error).message || "Remote kanban command failed",
+    };
   }
 }
 
@@ -1057,9 +1297,37 @@ export async function sshListCachedSessions(
 
 // ── Doctor / diagnostics ──────────────────────────────────────────────────────
 
+// Build a remote shell command that invokes the Hermes CLI, bypassing the
+// common `/usr/local/bin/hermes` sudo-wrapper that production installs ship.
+// That wrapper does `sudo -u hermes <venv>/bin/hermes "$@"`, and the sudoers
+// policy refuses to let the hermes service user run it as itself ("Sorry,
+// user hermes is not allowed to execute … as hermes"). The wrapper writes the
+// refusal to stderr and exits non-zero, breaking `hermes doctor`,
+// `hermes update`, `hermes dump`, and `hermes --version` when called over
+// SSH as the hermes user.
+//
+// Probe the well-known venv install paths first; fall back to bare `hermes`
+// on PATH only if none of those exist, preserving the old behavior for
+// non-installer deployments.
+function buildRemoteHermesCmd(args: string[], extraShell = ""): string {
+  const candidates = [
+    "$HOME/hermes-agent/.venv/bin/hermes",
+    "$HOME/.hermes/hermes-agent/.venv/bin/hermes",
+    "/opt/hermes/hermes-agent/.venv/bin/hermes",
+  ];
+  const quotedArgs = args.map((a) => shellQuote(a)).join(" ");
+  const probe = candidates
+    .map((p) => `[ -x ${p} ] && exec ${p} ${quotedArgs}${extraShell}`)
+    .join("; ");
+  return `bash -c '${probe}; command -v hermes >/dev/null && exec hermes ${quotedArgs}${extraShell}; echo "ERR: hermes CLI not found on remote PATH or in any known venv location" >&2; exit 1'`;
+}
+
 export async function sshRunDoctor(config: SshConfig): Promise<string> {
   try {
-    const out = await sshExec(config, `hermes doctor 2>&1 || echo "hermes not found in PATH"`);
+    // `hermes doctor` writes diagnostics to stdout; redirect stderr too so
+    // any wrapper-refusal output is visible to the user rather than silently
+    // dropped.
+    const out = await sshExec(config, buildRemoteHermesCmd(["doctor"], " 2>&1"));
     return out.trim() || "No output from doctor.";
   } catch (err) {
     return `SSH doctor failed: ${(err as Error).message}`;
@@ -1067,12 +1335,12 @@ export async function sshRunDoctor(config: SshConfig): Promise<string> {
 }
 
 export async function sshRunUpdate(config: SshConfig): Promise<void> {
-  await sshExec(config, "hermes update 2>&1", undefined, 120000);
+  await sshExec(config, buildRemoteHermesCmd(["update"], " 2>&1"), undefined, 120000);
 }
 
 export async function sshRunDump(config: SshConfig): Promise<string> {
   try {
-    const out = await sshExec(config, "hermes dump 2>&1", undefined, 60000);
+    const out = await sshExec(config, buildRemoteHermesCmd(["dump"], " 2>&1"), undefined, 60000);
     return out.trim() || "No output from dump.";
   } catch (err) {
     return `SSH dump failed: ${(err as Error).message}`;
@@ -1141,4 +1409,59 @@ export async function sshListModels(config: SshConfig): Promise<SavedModel[]> {
 
 export async function sshSaveModels(config: SshConfig, models: SavedModel[]): Promise<void> {
   await sshWriteFile(config, "$HOME/.hermes/models.json", JSON.stringify(models, null, 2));
+}
+
+// Mirror the local CRUD helpers in models.ts against the remote
+// ~/.hermes/models.json. Each operation does a full read/mutate/write so the
+// SSH cost is the same as a manual edit — there is no remote API to call
+// instead, and the file is small (a few KB at most).
+
+function randomId(): string {
+  // RFC4122-ish v4 UUID without pulling in crypto.randomUUID, which is fine
+  // here because IDs only need to be unique within models.json.
+  const hex = (n: number): string => Math.floor(Math.random() * 16 ** n).toString(16).padStart(n, "0");
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${(8 + Math.floor(Math.random() * 4)).toString(16)}${hex(3)}-${hex(12)}`;
+}
+
+export async function sshAddModel(
+  config: SshConfig,
+  name: string,
+  provider: string,
+  model: string,
+  baseUrl: string,
+): Promise<SavedModel> {
+  const models = await sshListModels(config);
+  const existing = models.find((m) => m.model === model && m.provider === provider);
+  if (existing) return existing;
+  const entry: SavedModel = {
+    id: randomId(),
+    name,
+    provider,
+    model,
+    baseUrl: baseUrl || "",
+    createdAt: Date.now(),
+  };
+  await sshSaveModels(config, [...models, entry]);
+  return entry;
+}
+
+export async function sshRemoveModel(config: SshConfig, id: string): Promise<boolean> {
+  const models = await sshListModels(config);
+  const filtered = models.filter((m) => m.id !== id);
+  if (filtered.length === models.length) return false;
+  await sshSaveModels(config, filtered);
+  return true;
+}
+
+export async function sshUpdateModel(
+  config: SshConfig,
+  id: string,
+  fields: Partial<Pick<SavedModel, "name" | "provider" | "model" | "baseUrl">>,
+): Promise<boolean> {
+  const models = await sshListModels(config);
+  const idx = models.findIndex((m) => m.id === id);
+  if (idx === -1) return false;
+  models[idx] = { ...models[idx], ...fields };
+  await sshSaveModels(config, models);
+  return true;
 }
