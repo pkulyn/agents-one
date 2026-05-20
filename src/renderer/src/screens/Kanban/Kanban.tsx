@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus,
   Refresh,
@@ -105,6 +105,19 @@ const POLL_INTERVAL_MS = 6000;
 // the backend CLI).
 const HQ_BOARD_SLUG = "__claw3d_hq__";
 
+// localStorage key for remembering which board the user last viewed across
+// sessions. Stored value is either a real board slug or HQ_BOARD_SLUG.
+const ACTIVE_BOARD_LS_KEY = "hermes:kanban:active-board";
+
+function readStoredActiveBoard(): string | null {
+  try {
+    const v = window.localStorage.getItem(ACTIVE_BOARD_LS_KEY);
+    return v && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 function priorityLabel(p: number): string {
   if (p >= 10) return "P0";
   if (p >= 5) return "P1";
@@ -139,10 +152,18 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
 
   // When the Claw3D HQ virtual board is active we route reads to the
   // task-store JSON on the remote (via kanbanListClaw3dHqTasks) and hide all
-  // mutation affordances. Null means "follow the real boards' is_current".
-  const [activeBoardSlug, setActiveBoardSlug] = useState<string | null>(null);
+  // mutation affordances. Initialized from localStorage so the user's last
+  // selection survives reloads; null means "follow the real boards'
+  // is_current" until autoDefaultRef below decides otherwise.
+  const [activeBoardSlug, setActiveBoardSlug] = useState<string | null>(
+    readStoredActiveBoard,
+  );
   const isHqActive = activeBoardSlug === HQ_BOARD_SLUG;
   const [hqAvailable, setHqAvailable] = useState(false);
+  // One-shot guard: only auto-default to HQ on the first loadAll. After
+  // that, respect the user's explicit choice (including switching back to
+  // Default), and never re-jump them to HQ on subsequent refreshes.
+  const autoDefaultedRef = useRef(false);
 
   // Create task form
   const [newTitle, setNewTitle] = useState("");
@@ -203,6 +224,27 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
         setHqAvailable(hqOk);
         setRemoteUnsupported(false);
         setBoards(boardsRes.data || []);
+
+        // One-shot auto-default to HQ: if this is the first load AND the
+        // user has no stored preference AND HQ is available, jump straight
+        // to HQ. `hqOk` already implies SSH tunnel mode (the SSH reader
+        // only succeeds when conn.mode === "ssh"), so this also satisfies
+        // "if I'm running tunnel mode, use tunnel not default". After this
+        // one-shot fires, respect the user's explicit choice — never
+        // re-jump them on subsequent refreshes.
+        if (
+          !autoDefaultedRef.current &&
+          activeBoardSlug === null &&
+          hqOk
+        ) {
+          autoDefaultedRef.current = true;
+          setActiveBoardSlug(HQ_BOARD_SLUG);
+          setTasks(hqTasks);
+          setError("");
+          return;
+        }
+        autoDefaultedRef.current = true;
+
         if (wantHq) {
           setTasks(hqTasks);
         } else {
@@ -225,6 +267,19 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Persist the user's board choice across reloads. Skip the initial null
+  // state (= "not yet decided") so we don't overwrite a previously-stored
+  // value before auto-default fires.
+  useEffect(() => {
+    if (activeBoardSlug === null) return;
+    try {
+      window.localStorage.setItem(ACTIVE_BOARD_LS_KEY, activeBoardSlug);
+    } catch {
+      // localStorage unavailable (private mode, quota) — fall back to
+      // session-only memory of the selection.
+    }
+  }, [activeBoardSlug]);
 
   useEffect(() => {
     if (!showCreate) return;
