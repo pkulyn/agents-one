@@ -194,6 +194,14 @@ vi.mock("better-sqlite3", () => {
       return new FakeStatement(sql, this.store, this.readonlyMode);
     }
 
+    // better-sqlite3's `transaction(fn)` returns a callable that runs
+    // `fn` inside a transaction. The fake doesn't need real atomicity —
+    // a synchronous passthrough is enough for deleteSession's two-step
+    // delete. Previously absent, which broke deleteSession's tests.
+    transaction<T extends (...args: never[]) => unknown>(fn: T): T {
+      return ((...args: never[]) => fn(...args)) as T;
+    }
+
     close(): void {
       /* no-op */
     }
