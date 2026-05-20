@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { SETTINGS_SECTIONS, PROVIDERS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
+import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 
 function Providers({
   profile,
@@ -225,6 +226,20 @@ function Providers({
 
   const isCustomProvider = modelProvider === "custom";
 
+  // Live model discovery: fetch the provider's /v1/models list and feed
+  // it into a datalist that powers the Model field's autocomplete.  Only
+  // runs once the Providers tab is visible so we don't fire on every
+  // background remount.
+  const [discoveryRefresh, setDiscoveryRefresh] = useState(0);
+  const discovery = useDiscoveredModels({
+    provider: modelProvider,
+    baseUrl: isCustomProvider ? modelBaseUrl : undefined,
+    profile,
+    enabled: !!visible && modelProvider !== "auto",
+    refreshToken: discoveryRefresh,
+  });
+  const discoveryListId = "provider-model-discovery";
+
   return (
     <div className="settings-container">
       <h1 className="settings-header">{t("providers.title")}</h1>
@@ -282,14 +297,51 @@ function Providers({
 
         <div className="settings-field">
           <label className="settings-field-label">{t("common.model")}</label>
-          <input
-            className="input"
-            type="text"
-            value={modelName}
-            onChange={(e) => setModelName(e.target.value)}
-            placeholder={t("settings.modelNamePlaceholder")}
-          />
-          <div className="settings-field-hint">{t("settings.modelHint")}</div>
+          <div className="settings-model-row">
+            <input
+              className="input"
+              type="text"
+              value={modelName}
+              onChange={(e) => setModelName(e.target.value)}
+              placeholder={t("settings.modelNamePlaceholder")}
+              list={
+                discovery.models.length > 0 ? discoveryListId : undefined
+              }
+              autoComplete="off"
+            />
+            {discovery.status !== "unsupported" &&
+              discovery.status !== "idle" && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setDiscoveryRefresh((n) => n + 1)}
+                  disabled={discovery.status === "loading"}
+                  title={t("settings.refreshModels")}
+                >
+                  ↻
+                </button>
+              )}
+          </div>
+          {discovery.models.length > 0 && (
+            <datalist id={discoveryListId}>
+              {discovery.models.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          )}
+          <div className="settings-field-hint">
+            {discovery.status === "loading"
+              ? t("settings.discoveringModels")
+              : discovery.status === "ok"
+                ? t("settings.discoveredCount", {
+                    count: discovery.models.length,
+                  })
+                : discovery.status === "no-key"
+                  ? t("settings.discoveryNoKey")
+                  : discovery.status === "error"
+                    ? t("settings.discoveryError")
+                    : t("settings.modelHint")}
+          </div>
         </div>
 
         {isCustomProvider && (

@@ -211,6 +211,24 @@ const hermesAPI = {
   clearStagedAttachments: (sessionId: string): Promise<void> =>
     ipcRenderer.invoke("clear-staged-attachments", sessionId),
 
+  discoverProviderModels: (
+    provider: string,
+    baseUrl?: string,
+    apiKey?: string,
+    profile?: string,
+  ): Promise<{
+    models: string[];
+    status: "ok" | "no-key" | "unsupported" | "unknown-host";
+    cached: boolean;
+  }> =>
+    ipcRenderer.invoke(
+      "discover-provider-models",
+      provider,
+      baseUrl,
+      apiKey,
+      profile,
+    ),
+
   onChatChunk: (callback: (chunk: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: string): void =>
       callback(chunk);

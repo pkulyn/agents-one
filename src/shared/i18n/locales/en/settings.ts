@@ -41,6 +41,13 @@ export default {
   customProviderHint:
     "Use any OpenAI-compatible API (LM Studio, Ollama, vLLM, etc.)",
   modelHint: "Default model name (leave blank to use provider default)",
+  refreshModels: "Refresh model list",
+  discoveringModels: "Loading available models…",
+  discoveredCount: "{{count}} models available — start typing to filter",
+  discoveryNoKey:
+    "Set this provider's API key in .env to load the available model list",
+  discoveryError:
+    "Couldn't reach the provider's model list — you can still type a model name",
   customBaseUrlHint: "OpenAI-compatible API endpoint",
   poolHint:
     "Add multiple API Keys for the same provider for automatic rotation and load balancing. Hermes will cycle through them.",

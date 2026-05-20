@@ -4,6 +4,7 @@ import { PROVIDERS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import { detectProviderFromUrl } from "./detect-provider";
+import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 
 interface SavedModel {
   id: string;
@@ -78,6 +79,20 @@ function Models({ visible }: ModelsProps = {}): React.JSX.Element {
   useEffect(() => {
     if (visible) loadModels();
   }, [visible, loadModels]);
+
+  // Live model discovery for the Add/Edit modal — feeds an HTML
+  // <datalist> off the Model ID input.  Pauses when the modal is closed
+  // so we don't fire background requests on every keystroke elsewhere.
+  const isCustomForm = formProvider === "custom";
+  const [discoveryRefresh, setDiscoveryRefresh] = useState(0);
+  const discovery = useDiscoveredModels({
+    provider: formProvider,
+    baseUrl: isCustomForm ? formBaseUrl : undefined,
+    apiKey: formApiKey || undefined,
+    enabled: showModal && formProvider !== "auto",
+    refreshToken: discoveryRefresh,
+  });
+  const modelDiscoveryListId = "models-modal-discovery";
 
   function openAddModal(): void {
     setEditingModel(null);
@@ -370,13 +385,56 @@ function Models({ visible }: ModelsProps = {}): React.JSX.Element {
                 <label className="models-modal-label">
                   {t("models.modelId")}
                 </label>
-                <input
-                  className="input"
-                  type="text"
-                  value={formModel}
-                  onChange={(e) => setFormModel(e.target.value)}
-                  placeholder={t("models.modelIdPlaceholder")}
-                />
+                <div className="settings-model-row">
+                  <input
+                    className="input"
+                    type="text"
+                    value={formModel}
+                    onChange={(e) => setFormModel(e.target.value)}
+                    placeholder={t("models.modelIdPlaceholder")}
+                    list={
+                      discovery.models.length > 0
+                        ? modelDiscoveryListId
+                        : undefined
+                    }
+                    autoComplete="off"
+                  />
+                  {discovery.status !== "unsupported" &&
+                    discovery.status !== "idle" && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setDiscoveryRefresh((n) => n + 1)}
+                        disabled={discovery.status === "loading"}
+                        title={t("settings.refreshModels")}
+                      >
+                        ↻
+                      </button>
+                    )}
+                </div>
+                {discovery.models.length > 0 && (
+                  <datalist id={modelDiscoveryListId}>
+                    {discovery.models.map((m) => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                )}
+                {discovery.status !== "idle" &&
+                  discovery.status !== "unsupported" && (
+                    <span className="models-modal-hint">
+                      {discovery.status === "loading"
+                        ? t("settings.discoveringModels")
+                        : discovery.status === "ok"
+                          ? t("settings.discoveredCount", {
+                              count: discovery.models.length,
+                            })
+                          : discovery.status === "no-key"
+                            ? t("settings.discoveryNoKey")
+                            : discovery.status === "error"
+                              ? t("settings.discoveryError")
+                              : ""}
+                    </span>
+                  )}
               </div>
 
               <div className="models-modal-field">
