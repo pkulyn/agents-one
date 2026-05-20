@@ -99,7 +99,9 @@ describe("model-discovery", () => {
 
   it("returns status=unsupported for known no-discovery providers", async () => {
     const { discoverProviderModels } = await loadDiscovery();
-    for (const provider of ["nous", "google", "xai", "openai-codex", "qwen-oauth"]) {
+    // openai-codex / qwen-oauth are no longer here — OAuth providers are
+    // discovered via hermes-agent's provider_model_ids instead.
+    for (const provider of ["nous", "google", "xai"]) {
       const result = await discoverProviderModels(provider, undefined, "sk-x", undefined);
       expect(result.status).toBe("unsupported");
       expect(result.models).toEqual([]);
