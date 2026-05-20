@@ -131,6 +131,14 @@ interface HermesAPI {
   checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
   runClawMigrate: () => Promise<{ success: boolean; error?: string }>;
 
+  // OAuth provider sign-in
+  oauthLogin: (
+    provider: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  cancelOAuthLogin: () => Promise<boolean>;
+  onOAuthLoginProgress: (callback: (chunk: string) => void) => () => void;
+
   getLocale: () => Promise<AppLocale>;
   setLocale: (locale: AppLocale) => Promise<AppLocale>;
 
