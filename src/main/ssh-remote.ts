@@ -25,17 +25,27 @@ import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 function buildExecArgs(config: SshConfig): string[] {
   const keyPath = config.keyPath?.trim() || join(homedir(), ".ssh", "id_rsa");
   return [
-    "-o", "BatchMode=yes",
-    "-o", "StrictHostKeyChecking=accept-new",
-    "-o", "ConnectTimeout=15",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "ConnectTimeout=15",
     ...buildSshControlOptions(),
-    "-i", keyPath,
-    "-p", String(config.port || 22),
+    "-i",
+    keyPath,
+    "-p",
+    String(config.port || 22),
     `${config.username}@${config.host}`,
   ];
 }
 
-export function sshExec(config: SshConfig, command: string, stdin?: string, timeoutMs = 30000): Promise<string> {
+export function sshExec(
+  config: SshConfig,
+  command: string,
+  stdin?: string,
+  timeoutMs = 30000,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn("ssh", [...buildExecArgs(config), command], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -49,8 +59,12 @@ export function sshExec(config: SshConfig, command: string, stdin?: string, time
     }, timeoutMs);
     child.stdout.setEncoding("utf-8");
     child.stderr.setEncoding("utf-8");
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
     child.on("error", (err) => {
       clearTimeout(timeout);
       reject(err);
@@ -65,7 +79,12 @@ export function sshExec(config: SshConfig, command: string, stdin?: string, time
   });
 }
 
-function sshPython(config: SshConfig, script: string, stdin?: string, timeoutMs = 30000): Promise<string> {
+function sshPython(
+  config: SshConfig,
+  script: string,
+  stdin?: string,
+  timeoutMs = 30000,
+): Promise<string> {
   if (stdin === undefined) {
     return sshExec(config, "python3 -", script, timeoutMs);
   }
@@ -80,10 +99,18 @@ function sanitizeSshError(stderr: string): string {
     .filter((line) => !/identity file .* not accessible/i.test(line))
     .join("\n")
     .trim();
-  if (/Permission denied \(publickey\)|no such identity|could not open a connection|publickey/i.test(cleaned)) {
+  if (
+    /Permission denied \(publickey\)|no such identity|could not open a connection|publickey/i.test(
+      cleaned,
+    )
+  ) {
     return "SSH authentication failed. Configure an SSH key for this host and try again.";
   }
-  if (/Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED/i.test(cleaned)) {
+  if (
+    /Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED/i.test(
+      cleaned,
+    )
+  ) {
     return "SSH host key verification failed. Check the host key before reconnecting.";
   }
   return cleaned;
@@ -101,7 +128,10 @@ function pythonJsonInput(payload: unknown): string {
   return JSON.stringify(payload);
 }
 
-async function sshReadFile(config: SshConfig, remotePath: string): Promise<string> {
+async function sshReadFile(
+  config: SshConfig,
+  remotePath: string,
+): Promise<string> {
   try {
     return await sshExec(
       config,
@@ -112,7 +142,11 @@ async function sshReadFile(config: SshConfig, remotePath: string): Promise<strin
   }
 }
 
-async function sshWriteFile(config: SshConfig, remotePath: string, content: string): Promise<void> {
+async function sshWriteFile(
+  config: SshConfig,
+  remotePath: string,
+  content: string,
+): Promise<void> {
   const p = normalizeRemotePath(remotePath);
   const dir = p.includes("/") ? p.substring(0, p.lastIndexOf("/")) : ".";
   await sshExec(
@@ -126,7 +160,10 @@ async function sshWriteFile(config: SshConfig, remotePath: string, content: stri
 
 const REMOTE_PREFIX = "REMOTE:";
 
-export async function sshListInstalledSkills(config: SshConfig, profile?: string): Promise<InstalledSkill[]> {
+export async function sshListInstalledSkills(
+  config: SshConfig,
+  profile?: string,
+): Promise<InstalledSkill[]> {
   const script = `
 import os, json, sys
 payload = json.load(sys.stdin)
@@ -173,7 +210,10 @@ print(json.dumps(skills))
   try {
     const out = await sshPython(config, script, pythonJsonInput({ profile }));
     const parsed = JSON.parse(out.trim() || "[]") as Array<{
-      name: string; category: string; description: string; path: string;
+      name: string;
+      category: string;
+      description: string;
+      path: string;
     }>;
     return parsed.map((s) => ({ ...s, path: REMOTE_PREFIX + s.path }));
   } catch {
@@ -181,23 +221,37 @@ print(json.dumps(skills))
   }
 }
 
-export async function sshGetSkillContent(config: SshConfig, skillPath: string): Promise<string> {
+export async function sshGetSkillContent(
+  config: SshConfig,
+  skillPath: string,
+): Promise<string> {
   const remote = skillPath.startsWith(REMOTE_PREFIX)
     ? skillPath.slice(REMOTE_PREFIX.length)
     : skillPath;
   return await sshReadFile(config, `${remote}/SKILL.md`);
 }
 
-export async function sshInstallSkill(config: SshConfig, identifier: string): Promise<{ success: boolean; error?: string }> {
+export async function sshInstallSkill(
+  config: SshConfig,
+  identifier: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
-    await sshExec(config, `hermes skills install ${shellQuote(identifier)} --yes 2>&1`, undefined, 120000);
+    await sshExec(
+      config,
+      `hermes skills install ${shellQuote(identifier)} --yes 2>&1`,
+      undefined,
+      120000,
+    );
     return { success: true };
   } catch (err) {
     return { success: false, error: (err as Error).message };
   }
 }
 
-export async function sshUninstallSkill(config: SshConfig, name: string): Promise<{ success: boolean; error?: string }> {
+export async function sshUninstallSkill(
+  config: SshConfig,
+  name: string,
+): Promise<{ success: boolean; error?: string }> {
   try {
     await sshExec(config, `hermes skills uninstall ${shellQuote(name)} 2>&1`);
     return { success: true };
@@ -206,7 +260,10 @@ export async function sshUninstallSkill(config: SshConfig, name: string): Promis
   }
 }
 
-export async function sshSearchSkills(config: SshConfig, query: string): Promise<SkillSearchResult[]> {
+export async function sshSearchSkills(
+  config: SshConfig,
+  query: string,
+): Promise<SkillSearchResult[]> {
   try {
     const out = await sshExec(
       config,
@@ -228,7 +285,9 @@ export async function sshSearchSkills(config: SshConfig, query: string): Promise
   }
 }
 
-export async function sshListBundledSkills(config: SshConfig): Promise<SkillSearchResult[]> {
+export async function sshListBundledSkills(
+  config: SshConfig,
+): Promise<SkillSearchResult[]> {
   return await sshSearchSkills(config, "");
 }
 
@@ -238,7 +297,9 @@ const ENTRY_DELIMITER = "\n§\n";
 const MEMORY_CHAR_LIMIT = 2200;
 const USER_CHAR_LIMIT = 1375;
 
-function parseMemoryEntries(content: string): Array<{ index: number; content: string }> {
+function parseMemoryEntries(
+  content: string,
+): Array<{ index: number; content: string }> {
   if (!content.trim()) return [];
   return content
     .split(ENTRY_DELIMITER)
@@ -246,7 +307,9 @@ function parseMemoryEntries(content: string): Array<{ index: number; content: st
     .filter((e) => e.content.length > 0);
 }
 
-function serializeEntries(entries: Array<{ index: number; content: string }>): string {
+function serializeEntries(
+  entries: Array<{ index: number; content: string }>,
+): string {
   return entries.map((e) => e.content).join(ENTRY_DELIMITER);
 }
 
@@ -294,7 +357,10 @@ finally:
   }
 }
 
-export async function sshReadMemory(config: SshConfig, profile?: string): Promise<MemoryInfo> {
+export async function sshReadMemory(
+  config: SshConfig,
+  profile?: string,
+): Promise<MemoryInfo> {
   const memContent = await sshReadFile(config, remoteMemoryPath(profile));
   const userContent = await sshReadFile(config, remoteUserPath(profile));
   const stats = await sshGetSessionStats(config, profile);
@@ -326,9 +392,15 @@ export async function sshAddMemoryEntry(
 ): Promise<{ success: boolean; error?: string }> {
   const current = await sshReadFile(config, remoteMemoryPath(profile));
   const entries = parseMemoryEntries(current);
-  const newContent = serializeEntries([...entries, { index: entries.length, content: content.trim() }]);
+  const newContent = serializeEntries([
+    ...entries,
+    { index: entries.length, content: content.trim() },
+  ]);
   if (newContent.length > MEMORY_CHAR_LIMIT) {
-    return { success: false, error: `Would exceed memory limit (${newContent.length}/${MEMORY_CHAR_LIMIT} chars)` };
+    return {
+      success: false,
+      error: `Would exceed memory limit (${newContent.length}/${MEMORY_CHAR_LIMIT} chars)`,
+    };
   }
   await sshWriteFile(config, remoteMemoryPath(profile), newContent);
   return { success: true };
@@ -342,11 +414,15 @@ export async function sshUpdateMemoryEntry(
 ): Promise<{ success: boolean; error?: string }> {
   const current = await sshReadFile(config, remoteMemoryPath(profile));
   const entries = parseMemoryEntries(current);
-  if (index < 0 || index >= entries.length) return { success: false, error: "Entry not found" };
+  if (index < 0 || index >= entries.length)
+    return { success: false, error: "Entry not found" };
   entries[index] = { ...entries[index], content: content.trim() };
   const newContent = serializeEntries(entries);
   if (newContent.length > MEMORY_CHAR_LIMIT) {
-    return { success: false, error: `Would exceed memory limit (${newContent.length}/${MEMORY_CHAR_LIMIT} chars)` };
+    return {
+      success: false,
+      error: `Would exceed memory limit (${newContent.length}/${MEMORY_CHAR_LIMIT} chars)`,
+    };
   }
   await sshWriteFile(config, remoteMemoryPath(profile), newContent);
   return { success: true };
@@ -361,7 +437,11 @@ export async function sshRemoveMemoryEntry(
   const entries = parseMemoryEntries(current);
   if (index < 0 || index >= entries.length) return false;
   entries.splice(index, 1);
-  await sshWriteFile(config, remoteMemoryPath(profile), serializeEntries(entries));
+  await sshWriteFile(
+    config,
+    remoteMemoryPath(profile),
+    serializeEntries(entries),
+  );
   return true;
 }
 
@@ -371,7 +451,10 @@ export async function sshWriteUserProfile(
   profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (content.length > USER_CHAR_LIMIT) {
-    return { success: false, error: `Exceeds limit (${content.length}/${USER_CHAR_LIMIT} chars)` };
+    return {
+      success: false,
+      error: `Exceeds limit (${content.length}/${USER_CHAR_LIMIT} chars)`,
+    };
   }
   await sshWriteFile(config, remoteUserPath(profile), content);
   return { success: true };
@@ -387,15 +470,23 @@ You strive to be helpful while being safe and responsible. You respect the user'
 `;
 
 function remoteSoulPath(profile?: string): string {
-  if (profile && profile !== "default") return `~/.hermes/profiles/${profile}/SOUL.md`;
+  if (profile && profile !== "default")
+    return `~/.hermes/profiles/${profile}/SOUL.md`;
   return "~/.hermes/SOUL.md";
 }
 
-export async function sshReadSoul(config: SshConfig, profile?: string): Promise<string> {
+export async function sshReadSoul(
+  config: SshConfig,
+  profile?: string,
+): Promise<string> {
   return await sshReadFile(config, remoteSoulPath(profile));
 }
 
-export async function sshWriteSoul(config: SshConfig, content: string, profile?: string): Promise<boolean> {
+export async function sshWriteSoul(
+  config: SshConfig,
+  content: string,
+  profile?: string,
+): Promise<boolean> {
   try {
     await sshWriteFile(config, remoteSoulPath(profile), content);
     return true;
@@ -404,7 +495,10 @@ export async function sshWriteSoul(config: SshConfig, content: string, profile?:
   }
 }
 
-export async function sshResetSoul(config: SshConfig, profile?: string): Promise<string> {
+export async function sshResetSoul(
+  config: SshConfig,
+  profile?: string,
+): Promise<string> {
   await sshWriteSoul(config, DEFAULT_SOUL, profile);
   return DEFAULT_SOUL;
 }
@@ -412,19 +506,71 @@ export async function sshResetSoul(config: SshConfig, profile?: string): Promise
 // ── Tools ────────────────────────────────────────────────────────────────────
 
 const TOOLSET_DEFS = [
-  { key: "web", labelKey: "tools.web.label", descriptionKey: "tools.web.description" },
-  { key: "browser", labelKey: "tools.browser.label", descriptionKey: "tools.browser.description" },
-  { key: "terminal", labelKey: "tools.terminal.label", descriptionKey: "tools.terminal.description" },
-  { key: "file", labelKey: "tools.file.label", descriptionKey: "tools.file.description" },
-  { key: "code_execution", labelKey: "tools.code_execution.label", descriptionKey: "tools.code_execution.description" },
-  { key: "vision", labelKey: "tools.vision.label", descriptionKey: "tools.vision.description" },
-  { key: "image_gen", labelKey: "tools.image_gen.label", descriptionKey: "tools.image_gen.description" },
-  { key: "tts", labelKey: "tools.tts.label", descriptionKey: "tools.tts.description" },
-  { key: "skills", labelKey: "tools.skills.label", descriptionKey: "tools.skills.description" },
-  { key: "memory", labelKey: "tools.memory.label", descriptionKey: "tools.memory.description" },
-  { key: "session_search", labelKey: "tools.session_search.label", descriptionKey: "tools.session_search.description" },
-  { key: "clarify", labelKey: "tools.clarify.label", descriptionKey: "tools.clarify.description" },
-  { key: "delegation", labelKey: "tools.delegation.label", descriptionKey: "tools.delegation.description" },
+  {
+    key: "web",
+    labelKey: "tools.web.label",
+    descriptionKey: "tools.web.description",
+  },
+  {
+    key: "browser",
+    labelKey: "tools.browser.label",
+    descriptionKey: "tools.browser.description",
+  },
+  {
+    key: "terminal",
+    labelKey: "tools.terminal.label",
+    descriptionKey: "tools.terminal.description",
+  },
+  {
+    key: "file",
+    labelKey: "tools.file.label",
+    descriptionKey: "tools.file.description",
+  },
+  {
+    key: "code_execution",
+    labelKey: "tools.code_execution.label",
+    descriptionKey: "tools.code_execution.description",
+  },
+  {
+    key: "vision",
+    labelKey: "tools.vision.label",
+    descriptionKey: "tools.vision.description",
+  },
+  {
+    key: "image_gen",
+    labelKey: "tools.image_gen.label",
+    descriptionKey: "tools.image_gen.description",
+  },
+  {
+    key: "tts",
+    labelKey: "tools.tts.label",
+    descriptionKey: "tools.tts.description",
+  },
+  {
+    key: "skills",
+    labelKey: "tools.skills.label",
+    descriptionKey: "tools.skills.description",
+  },
+  {
+    key: "memory",
+    labelKey: "tools.memory.label",
+    descriptionKey: "tools.memory.description",
+  },
+  {
+    key: "session_search",
+    labelKey: "tools.session_search.label",
+    descriptionKey: "tools.session_search.description",
+  },
+  {
+    key: "clarify",
+    labelKey: "tools.clarify.label",
+    descriptionKey: "tools.clarify.description",
+  },
+  {
+    key: "delegation",
+    labelKey: "tools.delegation.label",
+    descriptionKey: "tools.delegation.description",
+  },
 ];
 
 function parseEnabledToolsets(content: string): Set<string> {
@@ -433,16 +579,35 @@ function parseEnabledToolsets(content: string): Set<string> {
   let inCli = false;
   for (const line of content.split("\n")) {
     const trimmed = line.trimEnd();
-    if (/^\s*platform_toolsets\s*:/.test(trimmed)) { inPlatformToolsets = true; inCli = false; continue; }
-    if (inPlatformToolsets && /^\s+cli\s*:/.test(trimmed)) { inCli = true; continue; }
-    if (inPlatformToolsets && /^\S/.test(trimmed) && !/^\s*$/.test(trimmed)) { inPlatformToolsets = false; inCli = false; continue; }
-    if (inCli && /^\s{4}\S/.test(trimmed) && !/^\s{4,}-/.test(trimmed)) { inCli = false; continue; }
-    if (inCli) { const m = trimmed.match(/^\s+-\s+["']?(\w+)["']?/); if (m) enabled.add(m[1]); }
+    if (/^\s*platform_toolsets\s*:/.test(trimmed)) {
+      inPlatformToolsets = true;
+      inCli = false;
+      continue;
+    }
+    if (inPlatformToolsets && /^\s+cli\s*:/.test(trimmed)) {
+      inCli = true;
+      continue;
+    }
+    if (inPlatformToolsets && /^\S/.test(trimmed) && !/^\s*$/.test(trimmed)) {
+      inPlatformToolsets = false;
+      inCli = false;
+      continue;
+    }
+    if (inCli && /^\s{4}\S/.test(trimmed) && !/^\s{4,}-/.test(trimmed)) {
+      inCli = false;
+      continue;
+    }
+    if (inCli) {
+      const m = trimmed.match(/^\s+-\s+["']?(\w+)["']?/);
+      if (m) enabled.add(m[1]);
+    }
   }
   return enabled;
 }
 
-function localizeToolDefs(enabled: boolean | ((key: string) => boolean)): ToolsetInfo[] {
+function localizeToolDefs(
+  enabled: boolean | ((key: string) => boolean),
+): ToolsetInfo[] {
   const locale = getAppLocale();
   return TOOLSET_DEFS.map((d) => ({
     key: d.key,
@@ -453,15 +618,20 @@ function localizeToolDefs(enabled: boolean | ((key: string) => boolean)): Toolse
 }
 
 function remoteConfigPath(profile?: string): string {
-  if (profile && profile !== "default") return `$HOME/.hermes/profiles/${profile}/config.yaml`;
+  if (profile && profile !== "default")
+    return `$HOME/.hermes/profiles/${profile}/config.yaml`;
   return `$HOME/.hermes/config.yaml`;
 }
 
-export async function sshGetToolsets(config: SshConfig, profile?: string): Promise<ToolsetInfo[]> {
+export async function sshGetToolsets(
+  config: SshConfig,
+  profile?: string,
+): Promise<ToolsetInfo[]> {
   const content = await sshReadFile(config, remoteConfigPath(profile));
   if (!content) return localizeToolDefs(true);
   const enabled = parseEnabledToolsets(content);
-  if (enabled.size === 0 && !content.includes("platform_toolsets")) return localizeToolDefs(true);
+  if (enabled.size === 0 && !content.includes("platform_toolsets"))
+    return localizeToolDefs(true);
   return localizeToolDefs((key) => enabled.has(key));
 }
 
@@ -477,28 +647,54 @@ export async function sshSetToolsetEnabled(
     if (!content) return false;
 
     const current = parseEnabledToolsets(content);
-    if (enabled) current.add(key); else current.delete(key);
+    if (enabled) current.add(key);
+    else current.delete(key);
 
-    const toolsetLines = Array.from(current).sort().map((t) => `      - ${t}`).join("\n");
+    const toolsetLines = Array.from(current)
+      .sort()
+      .map((t) => `      - ${t}`)
+      .join("\n");
     const newSection = `  cli:\n${toolsetLines}`;
 
     let newContent: string;
     if (content.includes("platform_toolsets")) {
       const lines = content.split("\n");
       const result: string[] = [];
-      let inPT = false, inCli = false, inserted = false;
+      let inPT = false,
+        inCli = false,
+        inserted = false;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmed = line.trimEnd();
-        if (/^\s*platform_toolsets\s*:/.test(trimmed)) { inPT = true; result.push(line); continue; }
-        if (inPT && /^\s+cli\s*:/.test(trimmed)) { inCli = true; result.push(newSection); inserted = true; continue; }
-        if (inCli) { if (/^\s+-\s/.test(trimmed)) continue; inCli = false; result.push(line); continue; }
-        if (inPT && /^\S/.test(trimmed) && trimmed !== "") { inPT = false; if (!inserted) { result.push(newSection); } }
+        if (/^\s*platform_toolsets\s*:/.test(trimmed)) {
+          inPT = true;
+          result.push(line);
+          continue;
+        }
+        if (inPT && /^\s+cli\s*:/.test(trimmed)) {
+          inCli = true;
+          result.push(newSection);
+          inserted = true;
+          continue;
+        }
+        if (inCli) {
+          if (/^\s+-\s/.test(trimmed)) continue;
+          inCli = false;
+          result.push(line);
+          continue;
+        }
+        if (inPT && /^\S/.test(trimmed) && trimmed !== "") {
+          inPT = false;
+          if (!inserted) {
+            result.push(newSection);
+          }
+        }
         result.push(line);
       }
       newContent = result.join("\n");
     } else {
-      newContent = content.trimEnd() + "\n\nplatform_toolsets:\n" + newSection + "\n";
+      newContent =
+        content.trimEnd() + "\n\nplatform_toolsets:\n" + newSection + "\n";
     }
 
     await sshWriteFile(config, configPath, newContent);
@@ -511,11 +707,15 @@ export async function sshSetToolsetEnabled(
 // ── Env / Config (Providers) ─────────────────────────────────────────────────
 
 function remoteEnvPath(profile?: string): string {
-  if (profile && profile !== "default") return `~/.hermes/profiles/${profile}/.env`;
+  if (profile && profile !== "default")
+    return `~/.hermes/profiles/${profile}/.env`;
   return "~/.hermes/.env";
 }
 
-export async function sshReadEnv(config: SshConfig, profile?: string): Promise<Record<string, string>> {
+export async function sshReadEnv(
+  config: SshConfig,
+  profile?: string,
+): Promise<Record<string, string>> {
   const content = await sshReadFile(config, remoteEnvPath(profile));
   const result: Record<string, string> = {};
   for (const line of content.split("\n")) {
@@ -524,17 +724,28 @@ export async function sshReadEnv(config: SshConfig, profile?: string): Promise<R
     const eqIdx = trimmed.indexOf("=");
     const k = trimmed.substring(0, eqIdx).trim();
     let v = trimmed.substring(eqIdx + 1).trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+    if (
+      (v.startsWith('"') && v.endsWith('"')) ||
+      (v.startsWith("'") && v.endsWith("'"))
+    )
+      v = v.slice(1, -1);
     if (v) result[k] = v;
   }
-  // Alias alternate env var names so the app can display them regardless of which name the server uses
-  const ENV_ALIASES: Array<[string, string]> = [
-    ["HA_URL", "HOMEASSISTANT_URL"],
-    ["HA_TOKEN", "HOMEASSISTANT_TOKEN"],
+  // Home Assistant has accumulated three naming conventions across hermes
+  // versions: HASS_* (what gateway/config.py currently reads), HOMEASSISTANT_*
+  // (legacy), and HA_* (older desktop builds). Mirror all three so the UI
+  // can display the value regardless of which one the remote server uses.
+  const HA_ALIAS_GROUPS: string[][] = [
+    ["HASS_URL", "HOMEASSISTANT_URL", "HA_URL"],
+    ["HASS_TOKEN", "HOMEASSISTANT_TOKEN", "HA_TOKEN"],
   ];
-  for (const [appKey, serverKey] of ENV_ALIASES) {
-    if (!result[appKey] && result[serverKey]) result[appKey] = result[serverKey];
-    if (!result[serverKey] && result[appKey]) result[serverKey] = result[appKey];
+  for (const group of HA_ALIAS_GROUPS) {
+    const present = group.find((k) => result[k]);
+    if (!present) continue;
+    const value = result[present];
+    for (const k of group) {
+      if (!result[k]) result[k] = value;
+    }
   }
   return result;
 }
@@ -567,6 +778,186 @@ export async function sshSetEnvValue(
   await sshWriteFile(config, envPath, lines.join("\n"));
 }
 
+// ─── Dotted-path YAML helpers (mirror of the local-mode fix) ───────────────
+//
+// The previous implementation used `^\s*<key>:` against the whole remote
+// config.yaml. Two problems, both observed in the wild (#240): dotted-path
+// keys like `model.provider` looked for a literal `model.provider:` line
+// that doesn't exist in real YAML, and flat keys leaked across blocks
+// (the first `default:` at any indent — typically `personalities.default`
+// — would shadow `model.default`). The new helpers walk path segments at
+// strictly-greater indent than each parent and pin single-segment keys
+// to column 0.
+//
+// Duplicates the navigator in config.ts intentionally to keep this PR
+// self-contained and independent. Once both land, a small consolidation
+// PR can lift these into a shared module.
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripYamlQuotes(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return trimmed.slice(1, -1);
+    }
+  }
+  return trimmed;
+}
+
+interface YamlPathHit {
+  value: string;
+  valueStart: number;
+  valueEnd: number;
+}
+
+interface SegmentMatch {
+  indent: number;
+  rawValue: string;
+  valueStart: number;
+  valueEnd: number;
+  afterLine: number;
+}
+
+function findSegmentInBlock(
+  content: string,
+  startAt: number,
+  parentIndent: number,
+  segment: string,
+): SegmentMatch | null {
+  const escapedSegment = escapeRegex(segment);
+  let directChildIndent: number | null = null;
+  let cursor = startAt;
+
+  while (cursor < content.length) {
+    const lineEnd = content.indexOf("\n", cursor);
+    const lineEndExclusive = lineEnd === -1 ? content.length : lineEnd;
+    const line = content.slice(cursor, lineEndExclusive);
+    const trimmed = line.trim();
+
+    if (trimmed === "" || trimmed.startsWith("#")) {
+      cursor =
+        lineEndExclusive === content.length
+          ? content.length
+          : lineEndExclusive + 1;
+      continue;
+    }
+
+    const indent = line.length - line.trimStart().length;
+    // Block boundary: a non-blank line at or shallower than the parent
+    // closes the parent's block.
+    if (indent <= parentIndent) return null;
+
+    if (directChildIndent === null) directChildIndent = indent;
+
+    if (indent === directChildIndent) {
+      // `[ \t]*` so this also matches top-level keys at column 0 (the
+      // first segment of a dotted path); the `indent === directChild`
+      // gate above already enforces depth.
+      const m = line.match(
+        new RegExp(
+          `^([ \\t]*)(${escapedSegment}):([ \\t]*)([^\\n#]*?)([ \\t]*)(#.*)?$`,
+        ),
+      );
+      if (m) {
+        const indentStr = m[1];
+        const gapBeforeValue = m[3];
+        const rawValue = m[4];
+        const keyEnd = cursor + indentStr.length + segment.length + 1;
+        const valueStart = keyEnd + gapBeforeValue.length;
+        const valueEnd = valueStart + rawValue.length;
+        return {
+          indent: indentStr.length,
+          rawValue,
+          valueStart,
+          valueEnd,
+          afterLine:
+            lineEndExclusive === content.length
+              ? content.length
+              : lineEndExclusive + 1,
+        };
+      }
+    }
+
+    cursor =
+      lineEndExclusive === content.length
+        ? content.length
+        : lineEndExclusive + 1;
+  }
+
+  return null;
+}
+
+/** Exported for unit testing. Walks a dotted YAML path through `content`. */
+export function findYamlPath(
+  content: string,
+  dottedPath: string,
+): YamlPathHit | null {
+  const segments = dottedPath.split(".").filter(Boolean);
+  if (segments.length === 0) return null;
+
+  let cursor = 0;
+  let parentIndent = -1;
+
+  for (let i = 0; i < segments.length; i++) {
+    const isLast = i === segments.length - 1;
+    const found = findSegmentInBlock(
+      content,
+      cursor,
+      parentIndent,
+      segments[i],
+    );
+    if (!found) return null;
+
+    if (isLast) {
+      return {
+        value: stripYamlQuotes(found.rawValue),
+        valueStart: found.valueStart,
+        valueEnd: found.valueEnd,
+      };
+    }
+    cursor = found.afterLine;
+    parentIndent = found.indent;
+  }
+
+  return null;
+}
+
+/** Exported for unit testing. Matches `<key>:` at column 0 only. */
+export function findTopLevelKey(
+  content: string,
+  key: string,
+): YamlPathHit | null {
+  const re = new RegExp(
+    `^(${escapeRegex(key)}):([ \\t]*)([^\\n#]*?)([ \\t]*)(#.*)?$`,
+    "m",
+  );
+  const m = content.match(re);
+  if (!m || m.index === undefined) return null;
+  const gap = m[2];
+  const rawValue = m[3];
+  const lineStart = m.index;
+  const valueStart = lineStart + key.length + 1 + gap.length;
+  const valueEnd = valueStart + rawValue.length;
+  return {
+    value: stripYamlQuotes(rawValue),
+    valueStart,
+    valueEnd,
+  };
+}
+
+function locateInYaml(content: string, key: string): YamlPathHit | null {
+  const segments = key.split(".").filter(Boolean);
+  if (segments.length === 0) return null;
+  return segments.length === 1
+    ? findTopLevelKey(content, segments[0])
+    : findYamlPath(content, key);
+}
+
 export async function sshGetConfigValue(
   config: SshConfig,
   key: string,
@@ -574,9 +965,8 @@ export async function sshGetConfigValue(
 ): Promise<string | null> {
   const content = await sshReadFile(config, remoteConfigPath(profile));
   if (!content) return null;
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = content.match(new RegExp(`^\\s*${escapedKey}:\\s*["']?([^"'\\n#]+)["']?`, "m"));
-  return match ? match[1].trim() : null;
+  const hit = locateInYaml(content, key);
+  return hit ? hit.value : null;
 }
 
 export async function sshSetConfigValue(
@@ -586,14 +976,31 @@ export async function sshSetConfigValue(
   profile?: string,
 ): Promise<void> {
   if (/["\\\n\r]/.test(value)) {
-    throw new Error('Config value contains illegal characters: ", \\, or newline');
+    throw new Error(
+      'Config value contains illegal characters: ", \\, or newline',
+    );
   }
   const configPath = remoteConfigPath(profile);
   const content = await sshReadFile(config, configPath);
   if (!content) return;
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(`^(\\s*#?\\s*${escapedKey}:\\s*)["']?[^"'\\n#]*["']?`, "m");
-  const updated = regex.test(content) ? content.replace(regex, `$1"${value}"`) : content;
+
+  const hit = locateInYaml(content, key);
+  let updated: string;
+  if (hit) {
+    updated =
+      content.slice(0, hit.valueStart) +
+      `"${value}"` +
+      content.slice(hit.valueEnd);
+  } else if (!key.includes(".")) {
+    // Flat key missing → append at top level.
+    const sep = content.endsWith("\n") || content === "" ? "" : "\n";
+    updated = `${content}${sep}${key}: "${value}"\n`;
+  } else {
+    // Missing nested path — don't guess where to materialize a parent
+    // block; that risks corrupting the file. Leave the content alone.
+    return;
+  }
+
   await sshWriteFile(config, configPath, updated);
 }
 
@@ -606,10 +1013,16 @@ export async function sshGetModelConfig(
   config: SshConfig,
   profile?: string,
 ): Promise<{ provider: string; model: string; baseUrl: string }> {
+  // Use dotted paths so the lookup is scoped to the `model:` block. The
+  // previous flat keys `provider` / `default` / `base_url` would each
+  // match the first occurrence at any indent — typically picking up
+  // `personalities.default` or `auxiliary.vision.provider` and reporting
+  // them as the model fields (#240).
   return {
-    provider: (await sshGetConfigValue(config, "provider", profile)) || "auto",
-    model: (await sshGetConfigValue(config, "default", profile)) || "",
-    baseUrl: (await sshGetConfigValue(config, "base_url", profile)) || "",
+    provider:
+      (await sshGetConfigValue(config, "model.provider", profile)) || "auto",
+    model: (await sshGetConfigValue(config, "model.default", profile)) || "",
+    baseUrl: (await sshGetConfigValue(config, "model.base_url", profile)) || "",
   };
 }
 
@@ -620,16 +1033,15 @@ export async function sshSetModelConfig(
   baseUrl: string,
   profile?: string,
 ): Promise<void> {
-  await sshSetConfigValue(config, "provider", provider, profile);
-  await sshSetConfigValue(config, "default", model, profile);
-  await sshSetConfigValue(config, "base_url", baseUrl, profile);
+  await sshSetConfigValue(config, "model.provider", provider, profile);
+  await sshSetConfigValue(config, "model.default", model, profile);
+  if (baseUrl) {
+    await sshSetConfigValue(config, "model.base_url", baseUrl, profile);
+  }
   const configPath = remoteConfigPath(profile);
   const content = await sshReadFile(config, configPath);
   if (!content) return;
-  let updated = content.replace(
-    /^(\s*streaming:\s*)(\S+)/m,
-    "$1true",
-  );
+  let updated = content.replace(/^(\s*streaming:\s*)(\S+)/m, "$1true");
   const lines = updated.split("\n");
   for (let i = 0; i < lines.length; i++) {
     if (
@@ -680,7 +1092,11 @@ print(json.dumps(result))
 conn.close()
 `;
   try {
-    const out = await sshPython(config, script, pythonJsonInput({ profile, limit, offset }));
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ profile, limit, offset }),
+    );
     return JSON.parse(out.trim() || "[]");
   } catch {
     return [];
@@ -710,7 +1126,11 @@ print(json.dumps([{"id": r["id"], "role": r["role"], "content": r["content"] or 
 conn.close()
 `;
   try {
-    const out = await sshPython(config, script, pythonJsonInput({ profile, sessionId }));
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ profile, sessionId }),
+    );
     return JSON.parse(out.trim() || "[]");
   } catch {
     return [];
@@ -747,7 +1167,11 @@ except Exception as e:
 conn.close()
 `;
   try {
-    const out = await sshPython(config, script, pythonJsonInput({ profile, query, limit }));
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ profile, query, limit }),
+    );
     return JSON.parse(out.trim() || "[]");
   } catch {
     return [];
@@ -769,7 +1193,9 @@ export interface SshProfileInfo {
   gatewayRunning: boolean;
 }
 
-export async function sshListProfiles(config: SshConfig): Promise<SshProfileInfo[]> {
+export async function sshListProfiles(
+  config: SshConfig,
+): Promise<SshProfileInfo[]> {
   const script = `
 import os, json
 hermes_home = os.path.expanduser("~/.hermes")
@@ -841,7 +1267,20 @@ print(json.dumps(profiles))
     const out = await sshPython(config, script);
     return JSON.parse(out.trim() || "[]");
   } catch {
-    return [{ name: "default", path: "~/.hermes", isDefault: true, isActive: true, model: "", provider: "auto", hasEnv: false, hasSoul: false, skillCount: 0, gatewayRunning: false }];
+    return [
+      {
+        name: "default",
+        path: "~/.hermes",
+        isDefault: true,
+        isActive: true,
+        model: "",
+        provider: "auto",
+        hasEnv: false,
+        hasSoul: false,
+        skillCount: 0,
+        gatewayRunning: false,
+      },
+    ];
   }
 }
 
@@ -855,9 +1294,15 @@ export async function sshCreateProfile(
     if (!safe) return false;
     const quoted = shellQuote(safe);
     if (clone) {
-      await sshExec(config, `hermes profiles create ${quoted} --clone-from default 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`);
+      await sshExec(
+        config,
+        `hermes profiles create ${quoted} --clone-from default 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`,
+      );
     } else {
-      await sshExec(config, `hermes profiles create ${quoted} 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`);
+      await sshExec(
+        config,
+        `hermes profiles create ${quoted} 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`,
+      );
     }
     return true;
   } catch {
@@ -865,12 +1310,18 @@ export async function sshCreateProfile(
   }
 }
 
-export async function sshDeleteProfile(config: SshConfig, name: string): Promise<boolean> {
+export async function sshDeleteProfile(
+  config: SshConfig,
+  name: string,
+): Promise<boolean> {
   try {
     const safe = name.replace(/[^a-zA-Z0-9_-]/g, "");
     if (!safe || safe === "default") return false;
     const quoted = shellQuote(safe);
-    await sshExec(config, `hermes profiles delete ${quoted} --yes 2>&1 || rm -rf ~/.hermes/profiles/${quoted}`);
+    await sshExec(
+      config,
+      `hermes profiles delete ${quoted} --yes 2>&1 || rm -rf ~/.hermes/profiles/${quoted}`,
+    );
     return true;
   } catch {
     return false;
@@ -884,9 +1335,9 @@ export async function sshGatewayStatus(config: SshConfig): Promise<boolean> {
     const out = await sshExec(
       config,
       `if [ -f $HOME/.hermes/gateway.pid ]; then ` +
-      `pid=$(python3 -c "import json,sys; d=json.load(open('$HOME/.hermes/gateway.pid')); print(d.get('pid',d) if isinstance(d,dict) else d)" 2>/dev/null || cat $HOME/.hermes/gateway.pid); ` +
-      `kill -0 $pid 2>/dev/null && echo "running" || echo "stopped"; ` +
-      `else echo "stopped"; fi`,
+        `pid=$(python3 -c "import json,sys; d=json.load(open('$HOME/.hermes/gateway.pid')); print(d.get('pid',d) if isinstance(d,dict) else d)" 2>/dev/null || cat $HOME/.hermes/gateway.pid); ` +
+        `kill -0 $pid 2>/dev/null && echo "running" || echo "stopped"; ` +
+        `else echo "stopped"; fi`,
     );
     return out.trim() === "running";
   } catch {
@@ -896,7 +1347,10 @@ export async function sshGatewayStatus(config: SshConfig): Promise<boolean> {
 
 export async function sshStartGateway(config: SshConfig): Promise<void> {
   try {
-    await sshExec(config, `nohup hermes gateway start > $HOME/.hermes/gateway.log 2>&1 &`);
+    await sshExec(
+      config,
+      `nohup hermes gateway start > $HOME/.hermes/gateway.log 2>&1 &`,
+    );
   } catch {
     // best effort
   }
@@ -907,9 +1361,9 @@ export async function sshStopGateway(config: SshConfig): Promise<void> {
     await sshExec(
       config,
       `hermes gateway stop 2>/dev/null || ` +
-      `(if [ -f $HOME/.hermes/gateway.pid ]; then ` +
-      `pid=$(python3 -c "import json; d=json.load(open('$HOME/.hermes/gateway.pid')); print(d['pid'] if isinstance(d,dict) else d)" 2>/dev/null); ` +
-      `[ -n "$pid" ] && kill $pid 2>/dev/null; fi); true`,
+        `(if [ -f $HOME/.hermes/gateway.pid ]; then ` +
+        `pid=$(python3 -c "import json; d=json.load(open('$HOME/.hermes/gateway.pid')); print(d['pid'] if isinstance(d,dict) else d)" 2>/dev/null); ` +
+        `[ -n "$pid" ] && kill $pid 2>/dev/null; fi); true`,
     );
   } catch {
     // best effort
@@ -929,12 +1383,67 @@ export async function sshReadRemoteApiKey(config: SshConfig): Promise<string> {
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
-export async function sshGetHermesVersion(config: SshConfig): Promise<string | null> {
+export async function sshGetHermesVersion(
+  config: SshConfig,
+): Promise<string | null> {
   try {
-    const out = await sshExec(config, `hermes --version 2>/dev/null || hermes version 2>/dev/null || echo ""`);
+    // Use the venv-probe path so the version string is the real multi-line
+    // output (Engine / Released / Python / OpenAI SDK) the Settings UI
+    // parses, not an empty string when the /usr/local/bin/hermes wrapper
+    // refuses to run as the hermes user. See buildRemoteHermesCmd notes.
+    const out = await sshExec(
+      config,
+      buildRemoteHermesCmd(["--version"], " 2>/dev/null"),
+    );
     return out.trim() || null;
   } catch {
     return null;
+  }
+}
+
+// Run a Hermes Kanban CLI subcommand over SSH and return a structured result.
+export interface SshKanbanResult<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  stdout?: string;
+}
+
+export async function sshRunKanban<T = unknown>(
+  config: SshConfig,
+  args: string[],
+  opts: { profile?: string; parseJson?: boolean; timeoutMs?: number } = {},
+): Promise<SshKanbanResult<T>> {
+  const cliArgs: string[] = [];
+  if (opts.profile && opts.profile !== "default") {
+    cliArgs.push("-p", opts.profile);
+  }
+  cliArgs.push("kanban", ...args);
+  const cmd = buildRemoteHermesCmd(cliArgs);
+  try {
+    const stdout = await sshExec(
+      config,
+      cmd,
+      undefined,
+      opts.timeoutMs ?? 20000,
+    );
+    if (opts.parseJson) {
+      try {
+        return { success: true, data: JSON.parse(stdout) as T, stdout };
+      } catch (err) {
+        return {
+          success: false,
+          error: `Failed to parse JSON from remote 'hermes kanban': ${(err as Error).message}`,
+          stdout,
+        };
+      }
+    }
+    return { success: true, stdout };
+  } catch (err) {
+    return {
+      success: false,
+      error: (err as Error).message || "Remote kanban command failed",
+    };
   }
 }
 
@@ -949,7 +1458,10 @@ export async function sshReadLogs(
   const file = logFile && allowed.includes(logFile) ? logFile : "agent.log";
   const remotePath = `$HOME/.hermes/logs/${file}`;
   try {
-    const safeLines = Math.max(1, Math.min(5000, Number.parseInt(String(lines), 10) || 300));
+    const safeLines = Math.max(
+      1,
+      Math.min(5000, Number.parseInt(String(lines), 10) || 300),
+    );
     const content = await sshExec(
       config,
       `bash -c 'case "$2" in "~/"*) p="$HOME/\${2#~/}" ;; "\\$HOME/"*) p="$HOME/\${2#\\$HOME/}" ;; *) p="$2" ;; esac; tail -n "$1" -- "$p" 2>/dev/null || echo ""' -- ${shellQuote(String(safeLines))} ${shellQuote(remotePath)}`,
@@ -963,9 +1475,22 @@ export async function sshReadLogs(
 // ── Platform toggles (Gateway page) ──────────────────────────────────────────
 
 const SSH_SUPPORTED_PLATFORMS = [
-  "telegram", "discord", "slack", "whatsapp", "signal",
-  "matrix", "mattermost", "email", "sms", "bluebubbles",
-  "dingtalk", "feishu", "wecom", "weixin", "webhooks", "home_assistant",
+  "telegram",
+  "discord",
+  "slack",
+  "whatsapp",
+  "signal",
+  "matrix",
+  "mattermost",
+  "email",
+  "sms",
+  "bluebubbles",
+  "dingtalk",
+  "feishu",
+  "wecom",
+  "weixin",
+  "webhooks",
+  "home_assistant",
 ];
 
 // Map from app platform keys to gateway_state.json keys (where they differ)
@@ -987,7 +1512,9 @@ export async function sshGetPlatformEnabled(
       for (const platform of SSH_SUPPORTED_PLATFORMS) {
         const stateKey = PLATFORM_STATE_KEY[platform] || platform;
         const p = platforms[stateKey];
-        result[platform] = p ? p.state === "connected" || p.state === "running" : false;
+        result[platform] = p
+          ? p.state === "connected" || p.state === "running"
+          : false;
       }
       return result;
     }
@@ -1025,11 +1552,15 @@ export async function sshSetPlatformEnabled(
       const lines = after.split("\n");
       let insertOffset = platformsIdx + 1 + lines[0].length + 1;
       for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim() === "" || /^\s/.test(lines[i])) insertOffset += lines[i].length + 1;
+        if (lines[i].trim() === "" || /^\s/.test(lines[i]))
+          insertOffset += lines[i].length + 1;
         else break;
       }
       const entry = `  ${platform}:\n    enabled: ${enabled}\n`;
-      updated = updated.substring(0, insertOffset) + entry + updated.substring(insertOffset);
+      updated =
+        updated.substring(0, insertOffset) +
+        entry +
+        updated.substring(insertOffset);
     }
   }
 
@@ -1057,9 +1588,40 @@ export async function sshListCachedSessions(
 
 // ── Doctor / diagnostics ──────────────────────────────────────────────────────
 
+// Build a remote shell command that invokes the Hermes CLI, bypassing the
+// common `/usr/local/bin/hermes` sudo-wrapper that production installs ship.
+// That wrapper does `sudo -u hermes <venv>/bin/hermes "$@"`, and the sudoers
+// policy refuses to let the hermes service user run it as itself ("Sorry,
+// user hermes is not allowed to execute … as hermes"). The wrapper writes the
+// refusal to stderr and exits non-zero, breaking `hermes doctor`,
+// `hermes update`, `hermes dump`, and `hermes --version` when called over
+// SSH as the hermes user.
+//
+// Probe the well-known venv install paths first; fall back to bare `hermes`
+// on PATH only if none of those exist, preserving the old behavior for
+// non-installer deployments.
+function buildRemoteHermesCmd(args: string[], extraShell = ""): string {
+  const candidates = [
+    "$HOME/hermes-agent/.venv/bin/hermes",
+    "$HOME/.hermes/hermes-agent/.venv/bin/hermes",
+    "/opt/hermes/hermes-agent/.venv/bin/hermes",
+  ];
+  const quotedArgs = args.map((a) => shellQuote(a)).join(" ");
+  const probe = candidates
+    .map((p) => `[ -x ${p} ] && exec ${p} ${quotedArgs}${extraShell}`)
+    .join("; ");
+  return `bash -c '${probe}; command -v hermes >/dev/null && exec hermes ${quotedArgs}${extraShell}; echo "ERR: hermes CLI not found on remote PATH or in any known venv location" >&2; exit 1'`;
+}
+
 export async function sshRunDoctor(config: SshConfig): Promise<string> {
   try {
-    const out = await sshExec(config, `hermes doctor 2>&1 || echo "hermes not found in PATH"`);
+    // `hermes doctor` writes diagnostics to stdout; redirect stderr too so
+    // any wrapper-refusal output is visible to the user rather than silently
+    // dropped.
+    const out = await sshExec(
+      config,
+      buildRemoteHermesCmd(["doctor"], " 2>&1"),
+    );
     return out.trim() || "No output from doctor.";
   } catch (err) {
     return `SSH doctor failed: ${(err as Error).message}`;
@@ -1067,12 +1629,22 @@ export async function sshRunDoctor(config: SshConfig): Promise<string> {
 }
 
 export async function sshRunUpdate(config: SshConfig): Promise<void> {
-  await sshExec(config, "hermes update 2>&1", undefined, 120000);
+  await sshExec(
+    config,
+    buildRemoteHermesCmd(["update"], " 2>&1"),
+    undefined,
+    120000,
+  );
 }
 
 export async function sshRunDump(config: SshConfig): Promise<string> {
   try {
-    const out = await sshExec(config, "hermes dump 2>&1", undefined, 60000);
+    const out = await sshExec(
+      config,
+      buildRemoteHermesCmd(["dump"], " 2>&1"),
+      undefined,
+      60000,
+    );
     return out.trim() || "No output from dump.";
   } catch (err) {
     return `SSH dump failed: ${(err as Error).message}`;
@@ -1083,7 +1655,8 @@ export async function sshDiscoverMemoryProviders(
   config: SshConfig,
   profile?: string,
 ): Promise<MemoryProviderInfo[]> {
-  const activeProvider = (await sshGetConfigValue(config, "memory.provider", profile)) || "";
+  const activeProvider =
+    (await sshGetConfigValue(config, "memory.provider", profile)) || "";
   const script = `
 import json, os
 known = {
@@ -1139,6 +1712,76 @@ export async function sshListModels(config: SshConfig): Promise<SavedModel[]> {
   return [];
 }
 
-export async function sshSaveModels(config: SshConfig, models: SavedModel[]): Promise<void> {
-  await sshWriteFile(config, "$HOME/.hermes/models.json", JSON.stringify(models, null, 2));
+export async function sshSaveModels(
+  config: SshConfig,
+  models: SavedModel[],
+): Promise<void> {
+  await sshWriteFile(
+    config,
+    "$HOME/.hermes/models.json",
+    JSON.stringify(models, null, 2),
+  );
+}
+
+// Mirror the local CRUD helpers in models.ts against the remote
+// ~/.hermes/models.json. Each operation does a full read/mutate/write so the
+// SSH cost is the same as a manual edit — there is no remote API to call
+// instead, and the file is small (a few KB at most).
+
+function randomId(): string {
+  // RFC4122-ish v4 UUID without pulling in crypto.randomUUID, which is fine
+  // here because IDs only need to be unique within models.json.
+  const hex = (n: number): string =>
+    Math.floor(Math.random() * 16 ** n)
+      .toString(16)
+      .padStart(n, "0");
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${(8 + Math.floor(Math.random() * 4)).toString(16)}${hex(3)}-${hex(12)}`;
+}
+
+export async function sshAddModel(
+  config: SshConfig,
+  name: string,
+  provider: string,
+  model: string,
+  baseUrl: string,
+): Promise<SavedModel> {
+  const models = await sshListModels(config);
+  const existing = models.find(
+    (m) => m.model === model && m.provider === provider,
+  );
+  if (existing) return existing;
+  const entry: SavedModel = {
+    id: randomId(),
+    name,
+    provider,
+    model,
+    baseUrl: baseUrl || "",
+    createdAt: Date.now(),
+  };
+  await sshSaveModels(config, [...models, entry]);
+  return entry;
+}
+
+export async function sshRemoveModel(
+  config: SshConfig,
+  id: string,
+): Promise<boolean> {
+  const models = await sshListModels(config);
+  const filtered = models.filter((m) => m.id !== id);
+  if (filtered.length === models.length) return false;
+  await sshSaveModels(config, filtered);
+  return true;
+}
+
+export async function sshUpdateModel(
+  config: SshConfig,
+  id: string,
+  fields: Partial<Pick<SavedModel, "name" | "provider" | "model" | "baseUrl">>,
+): Promise<boolean> {
+  const models = await sshListModels(config);
+  const idx = models.findIndex((m) => m.id === id);
+  if (idx === -1) return false;
+  models[idx] = { ...models[idx], ...fields };
+  await sshSaveModels(config, models);
+  return true;
 }

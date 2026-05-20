@@ -1,5 +1,6 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
+import type { Attachment } from "../shared/attachments";
 
 const electronAPI = {
   process: {
@@ -102,11 +103,12 @@ const hermesAPI = {
 
   // Connection mode (local / remote / ssh)
   isRemoteMode: (): Promise<boolean> => ipcRenderer.invoke("is-remote-mode"),
-  isRemoteOnlyMode: (): Promise<boolean> => ipcRenderer.invoke("is-remote-only-mode"),
+  isRemoteOnlyMode: (): Promise<boolean> =>
+    ipcRenderer.invoke("is-remote-only-mode"),
   getConnectionConfig: (): Promise<{
     mode: "local" | "remote" | "ssh";
     remoteUrl: string;
-    apiKey: string;
+    hasApiKey: boolean;
     ssh: {
       host: string;
       port: number;
@@ -132,7 +134,15 @@ const hermesAPI = {
     remotePort: number,
     localPort: number,
   ): Promise<boolean> =>
-    ipcRenderer.invoke("set-ssh-config", host, port, username, keyPath, remotePort, localPort),
+    ipcRenderer.invoke(
+      "set-ssh-config",
+      host,
+      port,
+      username,
+      keyPath,
+      remotePort,
+      localPort,
+    ),
 
   testRemoteConnection: (url: string, apiKey?: string): Promise<boolean> =>
     ipcRenderer.invoke("test-remote-connection", url, apiKey),
@@ -144,7 +154,14 @@ const hermesAPI = {
     keyPath: string,
     remotePort: number,
   ): Promise<boolean> =>
-    ipcRenderer.invoke("test-ssh-connection", host, port, username, keyPath, remotePort),
+    ipcRenderer.invoke(
+      "test-ssh-connection",
+      host,
+      port,
+      username,
+      keyPath,
+      remotePort,
+    ),
 
   isSshTunnelActive: (): Promise<boolean> =>
     ipcRenderer.invoke("is-ssh-tunnel-active"),
@@ -152,8 +169,7 @@ const hermesAPI = {
   startSshTunnel: (): Promise<boolean> =>
     ipcRenderer.invoke("start-ssh-tunnel"),
 
-  stopSshTunnel: (): Promise<boolean> =>
-    ipcRenderer.invoke("stop-ssh-tunnel"),
+  stopSshTunnel: (): Promise<boolean> => ipcRenderer.invoke("stop-ssh-tunnel"),
 
   // Chat
   sendMessage: (
@@ -161,6 +177,7 @@ const hermesAPI = {
     profile?: string,
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
+    attachments?: Attachment[],
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -168,9 +185,49 @@ const hermesAPI = {
       profile,
       resumeSessionId,
       history,
+      attachments,
     ),
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
+
+  // Resolve the absolute filesystem path for a File coming from drag-drop
+  // or the file picker.  Returns "" for blobs that have no origin path
+  // (e.g. clipboard paste) — caller should stageAttachment for those.
+  getPathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file) || "";
+    } catch {
+      return "";
+    }
+  },
+
+  stageAttachment: (
+    sessionId: string,
+    filename: string,
+    base64Bytes: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke("stage-attachment", sessionId, filename, base64Bytes),
+
+  clearStagedAttachments: (sessionId: string): Promise<void> =>
+    ipcRenderer.invoke("clear-staged-attachments", sessionId),
+
+  discoverProviderModels: (
+    provider: string,
+    baseUrl?: string,
+    apiKey?: string,
+    profile?: string,
+  ): Promise<{
+    models: string[];
+    status: "ok" | "no-key" | "unsupported" | "unknown-host";
+    cached: boolean;
+  }> =>
+    ipcRenderer.invoke(
+      "discover-provider-models",
+      provider,
+      baseUrl,
+      apiKey,
+      profile,
+    ),
 
   onChatChunk: (callback: (chunk: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: string): void =>
@@ -267,6 +324,7 @@ const hermesAPI = {
       role: "user" | "assistant";
       content: string;
       timestamp: number;
+      attachments?: Attachment[];
     }>
   > => ipcRenderer.invoke("get-session-messages", sessionId),
 
@@ -405,6 +463,8 @@ const hermesAPI = {
 
   updateSessionTitle: (sessionId: string, title: string): Promise<void> =>
     ipcRenderer.invoke("update-session-title", sessionId, title),
+  deleteSession: (sessionId: string): Promise<void> =>
+    ipcRenderer.invoke("delete-session", sessionId),
 
   // Session search
   searchSessions: (
@@ -422,15 +482,18 @@ const hermesAPI = {
     }>
   > => ipcRenderer.invoke("search-sessions", query, limit),
 
-  // Credential Pool
-  getCredentialPool: (): Promise<
-    Record<string, Array<{ key: string; label: string }>>
-  > => ipcRenderer.invoke("get-credential-pool"),
+  // Credential Pool (profile-aware: reads/writes the named profile's
+  // auth.json; defaults to the currently active profile when omitted)
+  getCredentialPool: (
+    profile?: string,
+  ): Promise<Record<string, Array<{ key: string; label: string }>>> =>
+    ipcRenderer.invoke("get-credential-pool", profile),
   setCredentialPool: (
     provider: string,
     entries: Array<{ key: string; label: string }>,
+    profile?: string,
   ): Promise<boolean> =>
-    ipcRenderer.invoke("set-credential-pool", provider, entries),
+    ipcRenderer.invoke("set-credential-pool", provider, entries, profile),
 
   // Models
   listModels: (): Promise<
@@ -475,6 +538,8 @@ const hermesAPI = {
     wsUrl: string;
     running: boolean;
     error: string;
+    remoteUrl?: string | null;
+    remoteSource?: "ssh" | null;
   }> => ipcRenderer.invoke("claw3d-status"),
 
   claw3dSetup: (): Promise<{ success: boolean; error?: string }> =>
@@ -514,8 +579,10 @@ const hermesAPI = {
   claw3dSetWsUrl: (url: string): Promise<boolean> =>
     ipcRenderer.invoke("claw3d-set-ws-url", url),
 
-  claw3dStartAll: (): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("claw3d-start-all"),
+  claw3dStartAll: (
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("claw3d-start-all", profile),
   claw3dStopAll: (): Promise<boolean> => ipcRenderer.invoke("claw3d-stop-all"),
   claw3dGetLogs: (): Promise<string> => ipcRenderer.invoke("claw3d-get-logs"),
 
@@ -560,8 +627,10 @@ const hermesAPI = {
   },
 
   onUpdateError: (callback: (message: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, message: unknown): void =>
-      callback(String(message));
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      message: unknown,
+    ): void => callback(String(message));
     ipcRenderer.on("update-error", handler);
     return () => ipcRenderer.removeListener("update-error", handler);
   },
@@ -655,18 +724,8 @@ const hermesAPI = {
     switchAfter?: boolean,
     profile?: string,
   ) =>
-    ipcRenderer.invoke(
-      "kanban-create-board",
-      slug,
-      name,
-      switchAfter,
-      profile,
-    ),
-  kanbanRemoveBoard: (
-    slug: string,
-    hardDelete?: boolean,
-    profile?: string,
-  ) =>
+    ipcRenderer.invoke("kanban-create-board", slug, name, switchAfter, profile),
+  kanbanRemoveBoard: (slug: string, hardDelete?: boolean, profile?: string) =>
     ipcRenderer.invoke("kanban-remove-board", slug, hardDelete, profile),
   kanbanListTasks: (filters?: {
     status?: string;
@@ -708,11 +767,8 @@ const hermesAPI = {
     ipcRenderer.invoke("kanban-archive-task", taskId, profile),
   kanbanSpecifyTask: (taskId: string, profile?: string) =>
     ipcRenderer.invoke("kanban-specify-task", taskId, profile),
-  kanbanReclaimTask: (
-    taskId: string,
-    reason?: string,
-    profile?: string,
-  ) => ipcRenderer.invoke("kanban-reclaim-task", taskId, reason, profile),
+  kanbanReclaimTask: (taskId: string, reason?: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-reclaim-task", taskId, reason, profile),
   kanbanCommentTask: (taskId: string, body: string, profile?: string) =>
     ipcRenderer.invoke("kanban-comment-task", taskId, body, profile),
   kanbanDispatchOnce: (dryRun?: boolean, profile?: string) =>

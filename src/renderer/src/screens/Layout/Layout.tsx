@@ -199,6 +199,9 @@ function Layout({
         id: `db-${m.id}`,
         role: m.role === "user" ? "user" : "agent",
         content: m.content,
+        ...(m.attachments && m.attachments.length > 0
+          ? { attachments: m.attachments }
+          : {}),
       }));
       setMessages(chatMessages);
       setCurrentSessionId(sessionId);
@@ -313,13 +316,13 @@ function Layout({
 
         {visitedViews.has("office") && (
           <div style={paneStyle("office")}>
-            <Office visible={view === "office"} />
+            <Office profile={activeProfile} visible={view === "office"} />
           </div>
         )}
 
         {visitedViews.has("models") && (
           <div style={paneStyle("models")}>
-            <Models />
+            <Models visible={view === "models"} />
           </div>
         )}
 
@@ -387,10 +390,7 @@ function Layout({
             {remoteMode ? (
               <RemoteNotice feature="Kanban" />
             ) : (
-              <Kanban
-                profile={activeProfile}
-                visible={view === "kanban"}
-              />
+              <Kanban profile={activeProfile} visible={view === "kanban"} />
             )}
           </div>
         )}

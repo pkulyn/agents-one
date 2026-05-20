@@ -433,11 +433,12 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
       <div className="kanban-container">
         <div className="kanban-empty">
           <p className="schedules-empty-text">
-            Kanban requires a local Hermes install.
+            Kanban requires a local Hermes install or SSH tunnel mode.
           </p>
           <p className="schedules-empty-hint">
-            Switch to local mode in Settings to manage the board from the
-            desktop. (Remote/SSH support is coming in a follow-up.)
+            Plain remote (HTTP + API key) mode does not yet expose the kanban
+            API. Switch to local or SSH tunnel mode in Settings to manage the
+            board.
           </p>
         </div>
       </div>
@@ -460,8 +461,8 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
         <div>
           <h2 className="schedules-title">Kanban</h2>
           <p className="schedules-subtitle">
-            Durable multi-agent board for tasks the agent can pick up and
-            finish on its own.
+            Durable multi-agent board for tasks the agent can pick up and finish
+            on its own.
           </p>
         </div>
         <div className="schedules-header-actions">
@@ -531,8 +532,9 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
       <div className="kanban-columns">
         {COLUMNS.map((col) => {
           const colTasks = tasksByStatus[col.key] || [];
-          const draggingTask =
-            draggingTaskId ? tasks.find((t) => t.id === draggingTaskId) : null;
+          const draggingTask = draggingTaskId
+            ? tasks.find((t) => t.id === draggingTaskId)
+            : null;
           const canDropHere =
             !!draggingTask &&
             isValidDragTransition(draggingTask.status, col.key);
@@ -576,7 +578,9 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                     <div
                       key={task.id}
                       className={`kanban-card${
-                        draggingTaskId === task.id ? " kanban-card-dragging" : ""
+                        draggingTaskId === task.id
+                          ? " kanban-card-dragging"
+                          : ""
                       }`}
                       draggable
                       onDragStart={(e) => {
@@ -698,10 +702,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
           className="skills-detail-overlay"
           onClick={() => setShowCreate(false)}
         >
-          <div
-            className="schedules-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="schedules-modal" onClick={(e) => e.stopPropagation()}>
             <div className="schedules-modal-header">
               <span>New kanban task</span>
               <button
@@ -734,7 +735,9 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                 />
               </div>
               <div className="schedules-field">
-                <label className="schedules-field-label">Assignee profile</label>
+                <label className="schedules-field-label">
+                  Assignee profile
+                </label>
                 <select
                   className="input"
                   value={newAssignee}
@@ -830,10 +833,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
           className="skills-detail-overlay"
           onClick={() => setShowNewBoard(false)}
         >
-          <div
-            className="schedules-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="schedules-modal" onClick={(e) => e.stopPropagation()}>
             <div className="schedules-modal-header">
               <span>New board</span>
               <button
@@ -878,9 +878,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
               <button
                 className="btn btn-primary"
                 onClick={handleCreateBoard}
-                disabled={
-                  !newBoardSlug.trim() || actionBusy === "board-create"
-                }
+                disabled={!newBoardSlug.trim() || actionBusy === "board-create"}
               >
                 {actionBusy === "board-create" ? "Creating…" : "Create board"}
               </button>
@@ -919,9 +917,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                       </span>
                     )}
                     {detail.task.tenant && (
-                      <span className="kanban-pill">
-                        {detail.task.tenant}
-                      </span>
+                      <span className="kanban-pill">{detail.task.tenant}</span>
                     )}
                     <span className="kanban-pill kanban-pill-id">
                       {detail.task.id}

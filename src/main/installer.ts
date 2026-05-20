@@ -10,16 +10,64 @@ import { join, delimiter } from "path";
 import { homedir, tmpdir } from "os";
 import { randomBytes } from "crypto";
 import type { BrowserWindow } from "electron";
-import { getModelConfig, getConnectionConfig } from "./config";
-import { profileHome, stripAnsi } from "./utils";
+import {
+  getConnectionConfig,
+  getModelConfig,
+  hasOAuthCredentials,
+} from "./config";
+import { providerDoesNotNeedApiKey } from "./providers";
+import { getActiveProfileNameSync, profileHome, stripAnsi } from "./utils";
 import { setupAskpass, AskpassHandle } from "./askpass";
 import { precacheSudoCredentials } from "./sudoCreds";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 const IS_WINDOWS = process.platform === "win32";
 
+// Resolve the Hermes data directory. Precedence:
+//   1. HERMES_HOME env var if set (install.ps1 sets it User-scope on
+//      Windows; users may also override manually for WSL/custom setups).
+//   2. On Windows, probe both candidates and pick whichever already has
+//      data. install.ps1's default is %LOCALAPPDATA%\hermes, but some
+//      setups put data at ~/.hermes (e.g. a junction into WSL, or a
+//      custom -HermesHome flag on install). Without probing we'd silently
+//      switch directories on users who had it working before.
+//   3. Fresh install fallback: %LOCALAPPDATA%\hermes on Windows (matches
+//      install.ps1's default), ~/.hermes elsewhere.
+//
+// Motivating bug: Electron launched from the Start Menu doesn't always
+// inherit shell-set env vars, so relying on HERMES_HOME alone left
+// Windows users staring at an empty ~/.hermes while their real data
+// sat in %LOCALAPPDATA%\hermes.
+function looksLikeHermesHome(dir: string): boolean {
+  if (!existsSync(dir)) return false;
+  return (
+    existsSync(join(dir, "hermes-agent")) ||
+    existsSync(join(dir, "gateway.pid")) ||
+    existsSync(join(dir, "config.yaml")) ||
+    existsSync(join(dir, "active_profile")) ||
+    existsSync(join(dir, ".env"))
+  );
+}
+
+function defaultHermesHome(): string {
+  const homeDot = join(homedir(), ".hermes");
+  if (!IS_WINDOWS) return homeDot;
+
+  const localApp = process.env.LOCALAPPDATA
+    ? join(process.env.LOCALAPPDATA, "hermes")
+    : null;
+
+  // Prefer whichever location already has hermes data.
+  if (localApp && looksLikeHermesHome(localApp)) return localApp;
+  if (looksLikeHermesHome(homeDot)) return homeDot;
+
+  // Neither populated yet — fall back to install.ps1's default so a
+  // fresh install lines up with where the installer will write.
+  return localApp ?? homeDot;
+}
+
 export const HERMES_HOME =
-  process.env.HERMES_HOME?.trim() || join(homedir(), ".hermes");
+  process.env.HERMES_HOME?.trim() || defaultHermesHome();
 export const HERMES_REPO = join(HERMES_HOME, "hermes-agent");
 export const HERMES_VENV = join(HERMES_REPO, "venv");
 export const HERMES_PYTHON = IS_WINDOWS
@@ -44,6 +92,7 @@ export interface InstallStatus {
   configured: boolean;
   hasApiKey: boolean;
   verified: boolean;
+  activeProfile?: string;
 }
 
 export interface InstallProgress {
@@ -134,24 +183,126 @@ function resolveNvmBin(home: string): string[] {
   return [];
 }
 
-export function hasHermesAuthCredential(provider: string): boolean {
-  if (!provider || !existsSync(HERMES_AUTH_FILE)) return false;
-  try {
-    const auth = JSON.parse(readFileSync(HERMES_AUTH_FILE, "utf-8")) as {
-      active_provider?: string;
-      credential_pool?: Record<string, unknown[]>;
-      providers?: Record<string, unknown>;
-    };
-    const pool = auth.credential_pool?.[provider];
-    if (Array.isArray(pool) && pool.length > 0) return true;
-    if (auth.active_provider === provider) return true;
-    return Boolean(auth.providers?.[provider]);
-  } catch {
-    return false;
+function activeEnvFile(profile: string): string {
+  return profile === "default"
+    ? HERMES_ENV_FILE
+    : join(HERMES_HOME, "profiles", profile, ".env");
+}
+
+function activeAuthFile(profile: string): string {
+  return profile === "default"
+    ? HERMES_AUTH_FILE
+    : join(HERMES_HOME, "profiles", profile, "auth.json");
+}
+
+// Canonical env-var name per known model provider. Keys here are values
+// the user might see in `model.provider` in config.yaml; values are the
+// env vars the gateway expects to read from .env. Names that don't
+// appear here either don't need a key (local providers, nous) or have
+// OAuth-style credentials (covered separately via hasHermesAuthCredential).
+//
+// Used by the install-gate check below. Previously that check
+// hard-coded only OPENROUTER_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY,
+// so any user configured for DeepSeek, Groq, Mistral, etc. saw the
+// "set AI provider" first-run screen even with a valid key in .env.
+// See issue #236.
+const PROVIDER_ENV_KEYS: Record<string, string> = {
+  openrouter: "OPENROUTER_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  google: "GOOGLE_API_KEY",
+  xai: "XAI_API_KEY",
+  groq: "GROQ_API_KEY",
+  deepseek: "DEEPSEEK_API_KEY",
+  together: "TOGETHER_API_KEY",
+  fireworks: "FIREWORKS_API_KEY",
+  cerebras: "CEREBRAS_API_KEY",
+  mistral: "MISTRAL_API_KEY",
+  perplexity: "PERPLEXITY_API_KEY",
+  huggingface: "HF_TOKEN",
+  hf: "HF_TOKEN",
+  qwen: "QWEN_API_KEY",
+  minimax: "MINIMAX_API_KEY",
+  glm: "GLM_API_KEY",
+  kimi: "KIMI_API_KEY",
+  nvidia: "NVIDIA_API_KEY",
+};
+
+// When provider is "custom" or "auto", the desktop's setup flow falls
+// back to recognizing the endpoint by base URL. Same patterns hermes.ts
+// uses for runtime header injection.
+const URL_TO_ENV_KEY: Array<[RegExp, string]> = [
+  [/openrouter\.ai/i, "OPENROUTER_API_KEY"],
+  [/anthropic\.com/i, "ANTHROPIC_API_KEY"],
+  [/openai\.com/i, "OPENAI_API_KEY"],
+  [/huggingface\.co/i, "HF_TOKEN"],
+  [/api\.groq\.com/i, "GROQ_API_KEY"],
+  [/api\.deepseek\.com/i, "DEEPSEEK_API_KEY"],
+  [/api\.together\.xyz/i, "TOGETHER_API_KEY"],
+  [/api\.fireworks\.ai/i, "FIREWORKS_API_KEY"],
+  [/api\.cerebras\.ai/i, "CEREBRAS_API_KEY"],
+  [/api\.mistral\.ai/i, "MISTRAL_API_KEY"],
+  [/api\.perplexity\.ai/i, "PERPLEXITY_API_KEY"],
+];
+
+/**
+ * Resolve the env var name the gateway expects for a given model config.
+ * Returns null when the provider/URL combination has no known canonical
+ * env var (the caller falls back to a permissive `*_API_KEY|*_TOKEN`
+ * scan, matching the spirit of the prior hard-coded check).
+ *
+ * Exported for unit testing.
+ */
+export function expectedEnvKeyForModel(
+  provider: string,
+  baseUrl: string,
+): string | null {
+  const direct = PROVIDER_ENV_KEYS[provider.trim().toLowerCase()];
+  if (direct) return direct;
+  for (const [pattern, envKey] of URL_TO_ENV_KEY) {
+    if (pattern.test(baseUrl)) return envKey;
   }
+  return null;
+}
+
+function envHasUsableValue(
+  content: string,
+  expectedKey: string | null,
+): boolean {
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const m = trimmed.match(/^([A-Z][A-Z0-9_]*)=(.*)$/);
+    if (!m) continue;
+    const key = m[1];
+    let value = m[2].trim();
+    // Strip surrounding quotes so `KEY=""` or `KEY="abc"` parse the
+    // same way as `KEY=abc`.
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!value) continue;
+
+    if (expectedKey) {
+      if (key === expectedKey) return true;
+    } else {
+      // No known mapping for this provider/URL — accept any value that
+      // looks like a credential. Avoids regressing users on providers
+      // we haven't catalogued explicitly, while still rejecting
+      // unrelated env vars (TELEGRAM_BOT_TOKEN etc. shouldn't satisfy
+      // the model install gate, but a custom `*_API_KEY` should).
+      if (/_API_KEY$/.test(key)) return true;
+    }
+  }
+  return false;
 }
 
 export function checkInstallStatus(): InstallStatus {
+  const activeProfile = getActiveProfileNameSync();
+
   // Remote mode: skip local checks entirely
   const conn = getConnectionConfig();
   if (conn.mode === "remote" && conn.remoteUrl) {
@@ -160,6 +311,7 @@ export function checkInstallStatus(): InstallStatus {
       configured: true,
       hasApiKey: true,
       verified: true,
+      activeProfile,
     };
   }
 
@@ -168,18 +320,21 @@ export function checkInstallStatus(): InstallStatus {
   // latency, so it now lives in `verifyInstall()` and is invoked lazily
   // by the renderer after the main UI is mounted.
   const installed = existsSync(HERMES_PYTHON) && existsSync(HERMES_SCRIPT);
-  const configured = existsSync(HERMES_ENV_FILE);
+  const envFile = activeEnvFile(activeProfile);
+  const authFile = activeAuthFile(activeProfile);
+  const configured = existsSync(envFile) || existsSync(authFile);
   let hasApiKey = false;
   const verified = installed;
 
   // Local/custom providers don't need an API key. OAuth-backed providers
-  // can be configured through Hermes auth.json instead of .env.
+  // (including credential-pool entries) can be configured through Hermes
+  // auth.json instead of .env, so check those before falling back to keys.
+  let mc: { provider: string; model: string; baseUrl: string } | null = null;
   try {
-    const mc = getModelConfig();
-    const localProviders = ["custom", "lmstudio", "ollama", "vllm", "llamacpp"];
+    mc = getModelConfig(activeProfile);
     if (
-      localProviders.includes(mc.provider) ||
-      hasHermesAuthCredential(mc.provider)
+      providerDoesNotNeedApiKey(mc.provider) ||
+      hasOAuthCredentials(mc.provider, activeProfile)
     ) {
       hasApiKey = true;
     }
@@ -187,30 +342,19 @@ export function checkInstallStatus(): InstallStatus {
     /* ignore */
   }
 
-  if (!hasApiKey && configured) {
+  if (!hasApiKey && configured && existsSync(envFile)) {
     try {
-      const content = readFileSync(HERMES_ENV_FILE, "utf-8");
-      for (const line of content.split("\n")) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith("#")) continue;
-        const match = trimmed.match(
-          /^(OPENROUTER_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)=(.+)$/,
-        );
-        if (
-          match &&
-          match[2].trim() &&
-          !['""', "''", ""].includes(match[2].trim())
-        ) {
-          hasApiKey = true;
-          break;
-        }
-      }
+      const content = readFileSync(envFile, "utf-8");
+      const expectedKey = mc
+        ? expectedEnvKeyForModel(mc.provider, mc.baseUrl)
+        : null;
+      hasApiKey = envHasUsableValue(content, expectedKey);
     } catch {
       /* ignore read errors */
     }
   }
 
-  return { installed, configured, hasApiKey, verified };
+  return { installed, configured, hasApiKey, verified, activeProfile };
 }
 
 // Lazy background verification: actually invoke Python to confirm the
