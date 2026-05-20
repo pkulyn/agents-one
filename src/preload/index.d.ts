@@ -17,6 +17,7 @@ interface InstallStatus {
   configured: boolean;
   hasApiKey: boolean;
   verified: boolean;
+  activeProfile?: string;
 }
 
 interface InstallProgress {
@@ -391,13 +392,14 @@ interface HermesAPI {
     }>
   >;
 
-  // Credential Pool
-  getCredentialPool: () => Promise<
-    Record<string, Array<{ key: string; label: string }>>
-  >;
+  // Credential Pool (profile-aware)
+  getCredentialPool: (
+    profile?: string,
+  ) => Promise<Record<string, Array<{ key: string; label: string }>>>;
   setCredentialPool: (
     provider: string,
     entries: Array<{ key: string; label: string }>,
+    profile?: string,
   ) => Promise<boolean>;
 
   // Models

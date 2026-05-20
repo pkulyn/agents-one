@@ -201,15 +201,22 @@ describe("Memory provider discovery", () => {
   });
 });
 
-// ─── Hermes auth credential discovery ─────────────────
+// ─── OAuth credential discovery ─────────────────
+//
+// The previous installer-side `hasHermesAuthCredential` accepted a bare
+// `active_provider` and empty `providers: { name: {} }` entries as
+// configured. That looser check could mask onboarding failures where a
+// credential record existed but contained no token. The replacement,
+// `hasOAuthCredentials` (in config.ts, profile-aware), only counts an
+// entry that has at least one of access_token / refresh_token / api_key.
 
-describe("Hermes auth credential discovery", () => {
-  async function importInstallerWithHome(
+describe("OAuth credential discovery", () => {
+  async function importConfigWithHome(
     home: string,
-  ): Promise<typeof import("../src/main/installer")> {
+  ): Promise<typeof import("../src/main/config")> {
     vi.resetModules();
     process.env.HERMES_HOME = home;
-    return await import("../src/main/installer");
+    return await import("../src/main/config");
   }
 
   afterEach(() => {
@@ -220,40 +227,53 @@ describe("Hermes auth credential discovery", () => {
   it("detects OAuth credentials stored in auth.json credential_pool", async () => {
     writeFileSync(
       join(TEST_DIR, "auth.json"),
-      JSON.stringify({ credential_pool: { "openai-codex": [{ id: "acct" }] } }),
+      JSON.stringify({
+        credential_pool: {
+          "openai-codex": [{ access_token: "sk-test-token" }],
+        },
+      }),
     );
 
-    const { HERMES_AUTH_FILE, hasHermesAuthCredential } =
-      await importInstallerWithHome(TEST_DIR);
+    const { hasOAuthCredentials } = await importConfigWithHome(TEST_DIR);
 
-    expect(HERMES_AUTH_FILE).toBe(join(TEST_DIR, "auth.json"));
-    expect(hasHermesAuthCredential("openai-codex")).toBe(true);
-    expect(hasHermesAuthCredential("anthropic")).toBe(false);
+    expect(hasOAuthCredentials("openai-codex")).toBe(true);
+    expect(hasOAuthCredentials("anthropic")).toBe(false);
   });
 
-  it("accepts active_provider and providers entries as configured credentials", async () => {
+  it("requires actual token fields, not just a provider entry", async () => {
     writeFileSync(
       join(TEST_DIR, "auth.json"),
       JSON.stringify({
         active_provider: "openrouter",
-        providers: { anthropic: {} },
+        providers: {
+          anthropic: {}, // empty — no token, so not "configured"
+          openai: { access_token: "tok-openai" },
+          claude: { refresh_token: "ref-claude" },
+          mistral: { api_key: "key-mistral" },
+        },
       }),
     );
 
-    const { hasHermesAuthCredential } = await importInstallerWithHome(TEST_DIR);
+    const { hasOAuthCredentials } = await importConfigWithHome(TEST_DIR);
 
-    expect(hasHermesAuthCredential("openrouter")).toBe(true);
-    expect(hasHermesAuthCredential("anthropic")).toBe(true);
-    expect(hasHermesAuthCredential("openai-codex")).toBe(false);
+    // Empty providers entries and a bare active_provider no longer count
+    // — the previous behavior reported them as configured even with no
+    // actual credentials, which masked real onboarding errors.
+    expect(hasOAuthCredentials("anthropic")).toBe(false);
+    expect(hasOAuthCredentials("openrouter")).toBe(false);
+    // Any of access_token / refresh_token / api_key qualifies.
+    expect(hasOAuthCredentials("openai")).toBe(true);
+    expect(hasOAuthCredentials("claude")).toBe(true);
+    expect(hasOAuthCredentials("mistral")).toBe(true);
   });
 
   it("returns false when auth.json is missing or malformed", async () => {
-    const missing = await importInstallerWithHome(TEST_DIR);
-    expect(missing.hasHermesAuthCredential("openai-codex")).toBe(false);
+    const missing = await importConfigWithHome(TEST_DIR);
+    expect(missing.hasOAuthCredentials("openai-codex")).toBe(false);
 
     writeFileSync(join(TEST_DIR, "auth.json"), "{not-json");
-    const malformed = await importInstallerWithHome(TEST_DIR);
-    expect(malformed.hasHermesAuthCredential("openai-codex")).toBe(false);
+    const malformed = await importConfigWithHome(TEST_DIR);
+    expect(malformed.hasOAuthCredentials("openai-codex")).toBe(false);
   });
 });
 

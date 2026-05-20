@@ -1,7 +1,13 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { HERMES_HOME } from "./installer";
-import { profilePaths, escapeRegex, safeWriteFile } from "./utils";
+import {
+  escapeRegex,
+  getActiveProfileNameSync,
+  profileHome,
+  profilePaths,
+  safeWriteFile,
+} from "./utils";
 import { getYamlPath } from "./yaml-path";
 
 // ── Connection Config (local / remote / ssh) ─────────────
@@ -171,6 +177,7 @@ export function setEnvValue(
 
   const { envFile } = profilePaths(profile);
   invalidateCache(`env:${profile || "default"}`);
+  if (key === "API_SERVER_KEY") invalidateCache("apiServerKey:");
 
   if (!existsSync(envFile)) {
     safeWriteFile(envFile, `${key}=${value}\n`);
@@ -670,6 +677,45 @@ export function getHermesHome(profile?: string): string {
   return profilePaths(profile).home;
 }
 
+/**
+ * Resolve the API server's shared secret. Honoured by the local hermes
+ * gateway (api_server.token in config.yaml / API_SERVER_KEY in .env) when
+ * present; the desktop must include it as `Authorization: Bearer …` on
+ * every chat request, otherwise the gateway responds with "Invalid API
+ * key".
+ *
+ * Search order: profile's config.yaml → default config.yaml → profile's
+ * .env → default .env. Returns "" when none configured.
+ *
+ * Hot path: called per chat message and per error-probe. Reuse the same
+ * 5s TTL cache as readEnv() so we don't re-parse config.yaml + .env
+ * every call. Invalidated by setEnvValue / setConfigValue when the key
+ * being written is API_SERVER_KEY.
+ */
+export function getApiServerKey(profile?: string): string {
+  const cacheKey = `apiServerKey:${profile || "default"}`;
+  const cached = getCached<string>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const candidates = [
+    getConfigValue("API_SERVER_KEY", profile),
+    profile && profile !== "default" ? getConfigValue("API_SERVER_KEY") : null,
+    readEnv(profile).API_SERVER_KEY || null,
+    profile && profile !== "default" ? readEnv().API_SERVER_KEY || null : null,
+  ];
+
+  let value = "";
+  for (const candidate of candidates) {
+    const trimmed = String(candidate || "").trim();
+    if (trimmed) {
+      value = trimmed;
+      break;
+    }
+  }
+  setCache(cacheKey, value);
+  return value;
+}
+
 // ── Platform enabled/disabled ─────────────────────────────
 //
 // The Python hermes gateway (gateway/config.py) decides which messaging
@@ -889,20 +935,23 @@ export function setPlatformEnabled(
   }
 }
 
-// ── Credential Pool (auth.json) ──────────────────────────
+// ── Credential Pool / OAuth store (auth.json) ─────────────────────────
 
-function authFilePath(): string {
-  return join(HERMES_HOME, "auth.json");
+function authFilePath(profile?: string): string {
+  return join(profileHome(profile || getActiveProfileNameSync()), "auth.json");
 }
 
 interface CredentialEntry {
-  key: string;
-  label: string;
+  key?: string;
+  api_key?: string;
+  access_token?: string;
+  refresh_token?: string;
+  label?: string;
 }
 
-function readAuthStore(): Record<string, unknown> {
+function readAuthStore(profile?: string): Record<string, unknown> {
   try {
-    const p = authFilePath();
+    const p = authFilePath(profile);
     if (!existsSync(p)) return {};
     return JSON.parse(readFileSync(p, "utf-8"));
   } catch {
@@ -910,12 +959,14 @@ function readAuthStore(): Record<string, unknown> {
   }
 }
 
-function writeAuthStore(store: Record<string, unknown>): void {
-  safeWriteFile(authFilePath(), JSON.stringify(store, null, 2));
+function writeAuthStore(store: Record<string, unknown>, profile?: string): void {
+  safeWriteFile(authFilePath(profile), JSON.stringify(store, null, 2));
 }
 
-export function getCredentialPool(): Record<string, CredentialEntry[]> {
-  const store = readAuthStore();
+export function getCredentialPool(
+  profile?: string,
+): Record<string, CredentialEntry[]> {
+  const store = readAuthStore(profile);
   const pool = store.credential_pool;
   if (!pool || typeof pool !== "object") return {};
   return pool as Record<string, CredentialEntry[]>;
@@ -924,12 +975,75 @@ export function getCredentialPool(): Record<string, CredentialEntry[]> {
 export function setCredentialPool(
   provider: string,
   entries: CredentialEntry[],
+  profile?: string,
 ): void {
-  const store = readAuthStore();
+  const store = readAuthStore(profile);
   if (!store.credential_pool || typeof store.credential_pool !== "object") {
     store.credential_pool = {};
   }
   (store.credential_pool as Record<string, CredentialEntry[]>)[provider] =
     entries;
-  writeAuthStore(store);
+  writeAuthStore(store, profile);
+}
+
+/**
+ * True iff the given provider has usable OAuth or stored-credential evidence
+ * in auth.json. Recognized fields are `access_token`, `refresh_token`, and
+ * `api_key`, looked up under both `providers[<name>]` and any entry in
+ * `credential_pool[<name>]`. When a named profile is given without its own
+ * auth.json, fall back to the default-profile store.
+ *
+ * Stricter than just "provider key exists in JSON" — an empty
+ * `providers: { anthropic: {} }` or a bare `active_provider` no longer
+ * counts as configured. The previous looser check masked real onboarding
+ * errors where a credential record existed but contained no token.
+ */
+export function hasOAuthCredentials(
+  provider: string,
+  profile?: string,
+): boolean {
+  const cleanProvider = provider.trim();
+  if (!cleanProvider) return false;
+
+  const stores = [readAuthStore(profile)];
+  if (profile && profile !== "default") {
+    stores.push(readAuthStore());
+  }
+
+  for (const store of stores) {
+    const providers = store.providers;
+    if (providers && typeof providers === "object") {
+      const entry = (providers as Record<string, CredentialEntry>)[cleanProvider];
+      if (
+        entry &&
+        (String(entry.access_token || "").trim() ||
+          String(entry.refresh_token || "").trim() ||
+          String(entry.api_key || "").trim())
+      ) {
+        return true;
+      }
+    }
+
+    const pool = store.credential_pool;
+    const entries =
+      pool && typeof pool === "object"
+        ? (pool as Record<string, CredentialEntry[]>)[cleanProvider]
+        : undefined;
+    if (
+      Array.isArray(entries) &&
+      entries.some(
+        (entry) =>
+          !!(
+            entry &&
+            (String(entry.api_key || "").trim() ||
+              String(entry.access_token || "").trim() ||
+              String(entry.refresh_token || "").trim())
+          ),
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }

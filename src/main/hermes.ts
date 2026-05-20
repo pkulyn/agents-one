@@ -11,7 +11,12 @@ import {
   hermesCliArgs,
   getEnhancedPath,
 } from "./installer";
-import { getModelConfig, readEnv, getConnectionConfig } from "./config";
+import {
+  getApiServerKey,
+  getConnectionConfig,
+  getModelConfig,
+  readEnv,
+} from "./config";
 import {
   getSshTunnelUrl,
   isSshTunnelActive,
@@ -294,6 +299,16 @@ function sendMessageViaApi(
     "Content-Type": "application/json",
     ...getRemoteAuthHeader(),
   };
+  // Local API server key (API_SERVER_KEY in the profile's .env /
+  // config.yaml) only applies in local mode — in remote/SSH mode the
+  // remote endpoint's own auth header (set above) is authoritative and
+  // must not be overwritten.
+  if (!isRemoteMode()) {
+    const apiServerKey = getApiServerKey(profile);
+    if (apiServerKey) {
+      headers.Authorization = `Bearer ${apiServerKey}`;
+    }
+  }
 
   let sessionId = _resumeSessionId || "";
   let hasContent = false;
@@ -323,13 +338,7 @@ function sendMessageViaApi(
     const probeMod = probeUrl.startsWith("https") ? https : http;
     const probeReq = probeMod.request(
       probeUrl,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getRemoteAuthHeader(),
-        },
-      },
+      { method: "POST", headers },
       (res) => {
         let raw = "";
         res.on("data", (d) => {
