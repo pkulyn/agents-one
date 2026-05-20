@@ -44,7 +44,8 @@ export const PROVIDERS = {
     { value: "minimax", label: "MiniMax" },
     { value: "nous", label: "constants.nousName" },
     // Subscription / OAuth plans
-    { value: "openai-codex", label: "ChatGPT (Codex Plan)" },
+    // openai-codex is listed once above (first-party group) via #102 —
+    // not repeated here to avoid a duplicate <option> value.
     { value: "xai-oauth", label: "xAI Grok (OAuth)" },
     { value: "qwen-oauth", label: "Qwen (OAuth)" },
     { value: "google-gemini-cli", label: "Gemini (CLI OAuth)" },
