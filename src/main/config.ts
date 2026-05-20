@@ -32,6 +32,10 @@ export interface PublicConnectionConfig {
   mode: "local" | "remote" | "ssh";
   remoteUrl: string;
   hasApiKey: boolean;
+  // Length of the stored API key, exposed so the renderer can show a
+  // mask that matches the real value's width. The secret itself never
+  // leaves the main process. 0 when no key is set.
+  apiKeyLength: number;
   ssh: SshConnectionConfig;
 }
 
@@ -82,6 +86,7 @@ export function getPublicConnectionConfig(): PublicConnectionConfig {
     mode: config.mode,
     remoteUrl: config.remoteUrl,
     hasApiKey: config.apiKey.length > 0,
+    apiKeyLength: config.apiKey.length,
     ssh: config.ssh,
   };
 }

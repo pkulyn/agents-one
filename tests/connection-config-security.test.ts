@@ -55,6 +55,10 @@ describe("connection config secret exposure", () => {
       mode: "remote",
       remoteUrl: "https://hermes.example",
       hasApiKey: true,
+      // Length is intentionally exposed so the renderer can render a
+      // mask that matches the stored key's width. The secret itself
+      // must NOT be present — covered by the assertions below.
+      apiKeyLength: "remote-secret".length,
     });
     expect("apiKey" in publicConfig).toBe(false);
     expect(JSON.stringify(publicConfig)).not.toContain("remote-secret");
