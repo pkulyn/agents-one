@@ -157,6 +157,7 @@ interface HermesAPI {
     mode: "local" | "remote" | "ssh";
     remoteUrl: string;
     hasApiKey: boolean;
+    apiKeyLength: number;
     ssh: {
       host: string;
       port: number;
