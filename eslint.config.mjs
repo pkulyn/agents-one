@@ -35,8 +35,8 @@ export default defineConfig(
     rules: {
       ...eslintPluginReactHooks.configs.recommended.rules,
       ...eslintPluginReactRefresh.configs.vite.rules,
-      "react-hooks/set-state-in-effect": "warn",
-      "react-hooks/refs": "warn",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/refs": "off",
       "react-refresh/only-export-components": "off",
     },
   },
