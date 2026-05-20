@@ -1,7 +1,13 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { HERMES_HOME } from "./installer";
-import { profilePaths, escapeRegex, safeWriteFile } from "./utils";
+import {
+  escapeRegex,
+  getActiveProfileNameSync,
+  profileHome,
+  profilePaths,
+  safeWriteFile,
+} from "./utils";
 import { getYamlPath } from "./yaml-path";
 
 // ── Connection Config (local / remote / ssh) ─────────────
@@ -26,6 +32,10 @@ export interface PublicConnectionConfig {
   mode: "local" | "remote" | "ssh";
   remoteUrl: string;
   hasApiKey: boolean;
+  // Length of the stored API key, exposed so the renderer can show a
+  // mask that matches the real value's width. The secret itself never
+  // leaves the main process. 0 when no key is set.
+  apiKeyLength: number;
   ssh: SshConnectionConfig;
 }
 
@@ -76,6 +86,7 @@ export function getPublicConnectionConfig(): PublicConnectionConfig {
     mode: config.mode,
     remoteUrl: config.remoteUrl,
     hasApiKey: config.apiKey.length > 0,
+    apiKeyLength: config.apiKey.length,
     ssh: config.ssh,
   };
 }
@@ -155,7 +166,7 @@ export function readEnv(profile?: string): Record<string, string> {
       value = value.slice(1, -1);
     }
 
-    if (value) result[key] = value;
+    result[key] = value;
   }
 
   setCache(cacheKey, result);
@@ -171,6 +182,7 @@ export function setEnvValue(
 
   const { envFile } = profilePaths(profile);
   invalidateCache(`env:${profile || "default"}`);
+  if (key === "API_SERVER_KEY") invalidateCache("apiServerKey:");
 
   if (!existsSync(envFile)) {
     safeWriteFile(envFile, `${key}=${value}\n`);
@@ -209,6 +221,187 @@ export function validateEnvEntry(key: string, value: string): void {
   }
 }
 
+function stripYamlQuotes(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return trimmed.slice(1, -1);
+    }
+  }
+  return trimmed;
+}
+
+/**
+ * Locate a dotted YAML path in `content` (e.g. "agent.service_tier" finds
+ * the `service_tier` field nested under top-level `agent:`). Returns the
+ * value plus the substring offsets a writer can splice over, or null
+ * when any segment of the path is missing.
+ *
+ * Why this exists: the renderer passes dotted paths like
+ * `agent.service_tier`, `memory.provider`, `network.force_ipv4` through
+ * `getConfig`/`setConfig`. The old implementation used the key string as
+ * a literal regex fragment, so it looked for a flat line spelled exactly
+ * `agent.service_tier:` — which never exists in real YAML and silently
+ * returned null. Flat keys also leaked across blocks (a `service_tier`
+ * under `telegram:` could shadow `agent.service_tier`). See issue #247.
+ *
+ * Each segment must appear at strictly-greater indent than its parent's
+ * line. Segments without dots are treated as 1-segment paths and pinned
+ * to the top level (column-0 keys only) — so a flat `provider` no longer
+ * matches `model.provider` or `auxiliary.vision.provider` by accident.
+ *
+ * Returns the first match in document order at each level; later
+ * duplicates at the same level are ignored, matching YAML semantics for
+ * mappings.
+ */
+interface YamlPathHit {
+  value: string;
+  /** Absolute offset where the writer should splice the new value. */
+  valueStart: number;
+  /** Absolute offset just past the substring the writer should replace.
+   *  Excludes any trailing comment so we don't clobber `# notes`. */
+  valueEnd: number;
+}
+
+function findYamlPath(content: string, dottedPath: string): YamlPathHit | null {
+  const segments = dottedPath.split(".").filter(Boolean);
+  if (segments.length === 0) return null;
+
+  let cursor = 0;
+  let parentIndent = -1;
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const isLast = i === segments.length - 1;
+    const found = findSegmentInBlock(content, cursor, parentIndent, segment);
+    if (!found) return null;
+
+    if (isLast) {
+      return {
+        value: stripYamlQuotes(found.rawValue),
+        valueStart: found.valueStart,
+        valueEnd: found.valueEnd,
+      };
+    }
+
+    // Descend: subsequent search continues after the segment's header
+    // line, bounded by indent > parentIndent.
+    cursor = found.afterLine;
+    parentIndent = found.indent;
+  }
+
+  return null;
+}
+
+interface SegmentMatch {
+  /** Indent length of the matched line. */
+  indent: number;
+  /** Raw value substring (between the colon's gap and any trailing comment). */
+  rawValue: string;
+  valueStart: number;
+  valueEnd: number;
+  /** Absolute offset of the byte just past the matched line's newline. */
+  afterLine: number;
+}
+
+function findSegmentInBlock(
+  content: string,
+  startAt: number,
+  parentIndent: number,
+  segment: string,
+): SegmentMatch | null {
+  // Walk lines from startAt until we leave the parent's block (a line
+  // with indent <= parentIndent). Within the block, return the first
+  // line whose key matches `segment` at the *minimum* indent > parent's
+  // — which is the depth of direct children.
+  const escapedSegment = escapeRegex(segment);
+  let directChildIndent: number | null = null;
+  let cursor = startAt;
+
+  while (cursor < content.length) {
+    const lineEnd = content.indexOf("\n", cursor);
+    const lineEndExclusive = lineEnd === -1 ? content.length : lineEnd;
+    const line = content.slice(cursor, lineEndExclusive);
+    const trimmed = line.trim();
+
+    if (trimmed === "" || trimmed.startsWith("#")) {
+      cursor = lineEndExclusive === content.length ? content.length : lineEndExclusive + 1;
+      continue;
+    }
+
+    const indent = line.length - line.trimStart().length;
+
+    // Block boundary: a non-blank line at or shallower than the parent
+    // closes the parent's block.
+    if (indent <= parentIndent) return null;
+
+    // First non-blank child sets the canonical "direct child" indent for
+    // this block. Deeper-nested lines (grandchildren) are walked past
+    // without being treated as siblings of `segment`.
+    if (directChildIndent === null) directChildIndent = indent;
+
+    if (indent === directChildIndent) {
+      // `[ \t]*` (zero-or-more) so this works at column 0 too — the
+      // first segment of a dotted path is a top-level key with no
+      // leading whitespace. The `indent === directChildIndent` gate
+      // above already enforces depth.
+      const m = line.match(
+        new RegExp(
+          `^([ \\t]*)(${escapedSegment}):([ \\t]*)([^\\n#]*?)([ \\t]*)(#.*)?$`,
+        ),
+      );
+      if (m) {
+        const indentStr = m[1];
+        const gapBeforeValue = m[3];
+        const rawValue = m[4];
+        const keyEnd = cursor + indentStr.length + segment.length + 1; // past `:`
+        const valueStart = keyEnd + gapBeforeValue.length;
+        const valueEnd = valueStart + rawValue.length;
+        return {
+          indent: indentStr.length,
+          rawValue,
+          valueStart,
+          valueEnd,
+          afterLine:
+            lineEndExclusive === content.length
+              ? content.length
+              : lineEndExclusive + 1,
+        };
+      }
+    }
+
+    cursor = lineEndExclusive === content.length ? content.length : lineEndExclusive + 1;
+  }
+
+  return null;
+}
+
+/**
+ * Read a top-level key at column 0 (no indent). Used when a caller
+ * passes a single-segment "path" — we don't want it to silently match
+ * a nested occurrence with the same name.
+ */
+function findTopLevelKey(content: string, key: string): YamlPathHit | null {
+  const re = new RegExp(
+    `^(${escapeRegex(key)}):([ \\t]*)([^\\n#]*?)([ \\t]*)(#.*)?$`,
+    "m",
+  );
+  const m = content.match(re);
+  if (!m || m.index === undefined) return null;
+  const gap = m[2];
+  const rawValue = m[3];
+  const lineStart = m.index;
+  const valueStart = lineStart + key.length + 1 + gap.length; // past `:` and gap
+  const valueEnd = valueStart + rawValue.length;
+  return {
+    value: stripYamlQuotes(rawValue),
+    valueStart,
+    valueEnd,
+  };
+}
+
 export function getConfigValue(key: string, profile?: string): string | null {
   const { configFile } = profilePaths(profile);
   if (!existsSync(configFile)) return null;
@@ -227,20 +420,39 @@ export function setConfigValue(
   value: string,
   profile?: string,
 ): void {
+  if (key === "API_SERVER_KEY") invalidateCache("apiServerKey:");
   const { configFile } = profilePaths(profile);
   if (!existsSync(configFile)) return;
 
   let content = readFileSync(configFile, "utf-8");
-  const regex = new RegExp(
-    `^(\\s*#?\\s*${escapeRegex(key)}:\\s*)["']?[^"'\\n#]*["']?`,
-    "m",
-  );
+  const segments = key.split(".").filter(Boolean);
+  if (segments.length === 0) return;
 
-  if (regex.test(content)) {
-    content = content.replace(regex, `$1"${value}"`);
+  const hit =
+    segments.length === 1
+      ? findTopLevelKey(content, segments[0])
+      : findYamlPath(content, key);
+
+  // Existing key → in-place replace, preserving surrounding whitespace
+  // and any trailing comment.
+  if (hit) {
+    content =
+      content.slice(0, hit.valueStart) +
+      `"${value}"` +
+      content.slice(hit.valueEnd);
+    safeWriteFile(configFile, content);
+    return;
   }
 
-  safeWriteFile(configFile, content);
+  // Key missing. For multi-segment paths we don't know how deep the
+  // user's existing parent block goes (or which segments exist), so
+  // avoid guessing — drop the write rather than corrupting the file.
+  // Top-level single keys are safe to append.
+  if (segments.length === 1) {
+    const sep = content.endsWith("\n") || content === "" ? "" : "\n";
+    content = `${content}${sep}${key}: "${value}"\n`;
+    safeWriteFile(configFile, content);
+  }
 }
 
 /**
@@ -341,18 +553,6 @@ function readTopLevelBlock(
     blockBodyStart,
     childIndent: firstChildIndent ?? "  ",
   };
-}
-
-function stripYamlQuotes(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.length >= 2) {
-    const first = trimmed[0];
-    const last = trimmed[trimmed.length - 1];
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      return trimmed.slice(1, -1);
-    }
-  }
-  return trimmed;
 }
 
 export function getModelConfig(profile?: string): {
@@ -480,6 +680,45 @@ export function setModelConfig(
 
 export function getHermesHome(profile?: string): string {
   return profilePaths(profile).home;
+}
+
+/**
+ * Resolve the API server's shared secret. Honoured by the local hermes
+ * gateway (api_server.token in config.yaml / API_SERVER_KEY in .env) when
+ * present; the desktop must include it as `Authorization: Bearer …` on
+ * every chat request, otherwise the gateway responds with "Invalid API
+ * key".
+ *
+ * Search order: profile's config.yaml → default config.yaml → profile's
+ * .env → default .env. Returns "" when none configured.
+ *
+ * Hot path: called per chat message and per error-probe. Reuse the same
+ * 5s TTL cache as readEnv() so we don't re-parse config.yaml + .env
+ * every call. Invalidated by setEnvValue / setConfigValue when the key
+ * being written is API_SERVER_KEY.
+ */
+export function getApiServerKey(profile?: string): string {
+  const cacheKey = `apiServerKey:${profile || "default"}`;
+  const cached = getCached<string>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const candidates = [
+    getConfigValue("API_SERVER_KEY", profile),
+    profile && profile !== "default" ? getConfigValue("API_SERVER_KEY") : null,
+    readEnv(profile).API_SERVER_KEY || null,
+    profile && profile !== "default" ? readEnv().API_SERVER_KEY || null : null,
+  ];
+
+  let value = "";
+  for (const candidate of candidates) {
+    const trimmed = String(candidate || "").trim();
+    if (trimmed) {
+      value = trimmed;
+      break;
+    }
+  }
+  setCache(cacheKey, value);
+  return value;
 }
 
 // ── Platform enabled/disabled ─────────────────────────────
@@ -701,20 +940,23 @@ export function setPlatformEnabled(
   }
 }
 
-// ── Credential Pool (auth.json) ──────────────────────────
+// ── Credential Pool / OAuth store (auth.json) ─────────────────────────
 
-function authFilePath(): string {
-  return join(HERMES_HOME, "auth.json");
+function authFilePath(profile?: string): string {
+  return join(profileHome(profile || getActiveProfileNameSync()), "auth.json");
 }
 
 interface CredentialEntry {
-  key: string;
-  label: string;
+  key?: string;
+  api_key?: string;
+  access_token?: string;
+  refresh_token?: string;
+  label?: string;
 }
 
-function readAuthStore(): Record<string, unknown> {
+function readAuthStore(profile?: string): Record<string, unknown> {
   try {
-    const p = authFilePath();
+    const p = authFilePath(profile);
     if (!existsSync(p)) return {};
     return JSON.parse(readFileSync(p, "utf-8"));
   } catch {
@@ -722,12 +964,14 @@ function readAuthStore(): Record<string, unknown> {
   }
 }
 
-function writeAuthStore(store: Record<string, unknown>): void {
-  safeWriteFile(authFilePath(), JSON.stringify(store, null, 2));
+function writeAuthStore(store: Record<string, unknown>, profile?: string): void {
+  safeWriteFile(authFilePath(profile), JSON.stringify(store, null, 2));
 }
 
-export function getCredentialPool(): Record<string, CredentialEntry[]> {
-  const store = readAuthStore();
+export function getCredentialPool(
+  profile?: string,
+): Record<string, CredentialEntry[]> {
+  const store = readAuthStore(profile);
   const pool = store.credential_pool;
   if (!pool || typeof pool !== "object") return {};
   return pool as Record<string, CredentialEntry[]>;
@@ -736,12 +980,75 @@ export function getCredentialPool(): Record<string, CredentialEntry[]> {
 export function setCredentialPool(
   provider: string,
   entries: CredentialEntry[],
+  profile?: string,
 ): void {
-  const store = readAuthStore();
+  const store = readAuthStore(profile);
   if (!store.credential_pool || typeof store.credential_pool !== "object") {
     store.credential_pool = {};
   }
   (store.credential_pool as Record<string, CredentialEntry[]>)[provider] =
     entries;
-  writeAuthStore(store);
+  writeAuthStore(store, profile);
+}
+
+/**
+ * True iff the given provider has usable OAuth or stored-credential evidence
+ * in auth.json. Recognized fields are `access_token`, `refresh_token`, and
+ * `api_key`, looked up under both `providers[<name>]` and any entry in
+ * `credential_pool[<name>]`. When a named profile is given without its own
+ * auth.json, fall back to the default-profile store.
+ *
+ * Stricter than just "provider key exists in JSON" — an empty
+ * `providers: { anthropic: {} }` or a bare `active_provider` no longer
+ * counts as configured. The previous looser check masked real onboarding
+ * errors where a credential record existed but contained no token.
+ */
+export function hasOAuthCredentials(
+  provider: string,
+  profile?: string,
+): boolean {
+  const cleanProvider = provider.trim();
+  if (!cleanProvider) return false;
+
+  const stores = [readAuthStore(profile)];
+  if (profile && profile !== "default") {
+    stores.push(readAuthStore());
+  }
+
+  for (const store of stores) {
+    const providers = store.providers;
+    if (providers && typeof providers === "object") {
+      const entry = (providers as Record<string, CredentialEntry>)[cleanProvider];
+      if (
+        entry &&
+        (String(entry.access_token || "").trim() ||
+          String(entry.refresh_token || "").trim() ||
+          String(entry.api_key || "").trim())
+      ) {
+        return true;
+      }
+    }
+
+    const pool = store.credential_pool;
+    const entries =
+      pool && typeof pool === "object"
+        ? (pool as Record<string, CredentialEntry[]>)[cleanProvider]
+        : undefined;
+    if (
+      Array.isArray(entries) &&
+      entries.some(
+        (entry) =>
+          !!(
+            entry &&
+            (String(entry.api_key || "").trim() ||
+              String(entry.access_token || "").trim() ||
+              String(entry.refresh_token || "").trim())
+          ),
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }

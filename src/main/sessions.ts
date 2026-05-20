@@ -4,6 +4,7 @@ import { existsSync } from "fs";
 import { HERMES_HOME } from "./installer";
 import type { Attachment } from "../shared/attachments";
 import { isImageMime } from "../shared/attachments";
+import { removeSessionFromCache } from "./session-cache";
 
 const DB_PATH = join(HERMES_HOME, "state.db");
 
@@ -66,7 +67,9 @@ export function decodeContent(raw: string, messageId: number): DecodedContent {
       continue;
     }
     if (!p || typeof p !== "object") continue;
-    const type = String((p as Record<string, unknown>).type || "").toLowerCase();
+    const type = String(
+      (p as Record<string, unknown>).type || "",
+    ).toLowerCase();
     if (type === "text" || type === "input_text" || type === "output_text") {
       const t = (p as Record<string, unknown>).text;
       if (typeof t === "string" && t) texts.push(t);
@@ -118,9 +121,9 @@ export interface SearchResult {
   snippet: string;
 }
 
-function getDb(): Database.Database | null {
+function getDb(readonly = true): Database.Database | null {
   if (!existsSync(DB_PATH)) return null;
-  return new Database(DB_PATH, { readonly: true });
+  return new Database(DB_PATH, readonly ? { readonly: true } : {});
 }
 
 export function listSessions(limit = 30, offset = 0): SessionSummary[] {
@@ -272,13 +275,18 @@ export function getSessionMessages(sessionId: string): SessionMessage[] {
 }
 
 export function deleteSession(sessionId: string): void {
-  const db = getDb();
+  const db = getDb(false);
   if (!db) return;
 
   try {
-    db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
-    db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+    const tx = db.transaction((id: string) => {
+      db.prepare("DELETE FROM messages WHERE session_id = ?").run(id);
+      db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+    });
+    tx(sessionId);
   } finally {
     db.close();
   }
+
+  removeSessionFromCache(sessionId);
 }

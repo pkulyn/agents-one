@@ -10,9 +10,13 @@ import { join, delimiter } from "path";
 import { homedir, tmpdir } from "os";
 import { randomBytes } from "crypto";
 import type { BrowserWindow } from "electron";
-import { getModelConfig, getConnectionConfig } from "./config";
+import {
+  getConnectionConfig,
+  getModelConfig,
+  hasOAuthCredentials,
+} from "./config";
 import { providerDoesNotNeedApiKey } from "./providers";
-import { profileHome, stripAnsi } from "./utils";
+import { getActiveProfileNameSync, profileHome, stripAnsi } from "./utils";
 import { setupAskpass, AskpassHandle } from "./askpass";
 import { precacheSudoCredentials } from "./sudoCreds";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
@@ -88,6 +92,7 @@ export interface InstallStatus {
   configured: boolean;
   hasApiKey: boolean;
   verified: boolean;
+  activeProfile?: string;
 }
 
 export interface InstallProgress {
@@ -178,21 +183,16 @@ function resolveNvmBin(home: string): string[] {
   return [];
 }
 
-export function hasHermesAuthCredential(provider: string): boolean {
-  if (!provider || !existsSync(HERMES_AUTH_FILE)) return false;
-  try {
-    const auth = JSON.parse(readFileSync(HERMES_AUTH_FILE, "utf-8")) as {
-      active_provider?: string;
-      credential_pool?: Record<string, unknown[]>;
-      providers?: Record<string, unknown>;
-    };
-    const pool = auth.credential_pool?.[provider];
-    if (Array.isArray(pool) && pool.length > 0) return true;
-    if (auth.active_provider === provider) return true;
-    return Boolean(auth.providers?.[provider]);
-  } catch {
-    return false;
-  }
+function activeEnvFile(profile: string): string {
+  return profile === "default"
+    ? HERMES_ENV_FILE
+    : join(HERMES_HOME, "profiles", profile, ".env");
+}
+
+function activeAuthFile(profile: string): string {
+  return profile === "default"
+    ? HERMES_AUTH_FILE
+    : join(HERMES_HOME, "profiles", profile, "auth.json");
 }
 
 // Canonical env-var name per known model provider. Keys here are values
@@ -225,6 +225,7 @@ const PROVIDER_ENV_KEYS: Record<string, string> = {
   minimax: "MINIMAX_API_KEY",
   glm: "GLM_API_KEY",
   kimi: "KIMI_API_KEY",
+  nvidia: "NVIDIA_API_KEY",
 };
 
 // When provider is "custom" or "auto", the desktop's setup flow falls
@@ -297,6 +298,8 @@ function envHasUsableValue(content: string, expectedKey: string | null): boolean
 }
 
 export function checkInstallStatus(): InstallStatus {
+  const activeProfile = getActiveProfileNameSync();
+
   // Remote mode: skip local checks entirely
   const conn = getConnectionConfig();
   if (conn.mode === "remote" && conn.remoteUrl) {
@@ -305,6 +308,7 @@ export function checkInstallStatus(): InstallStatus {
       configured: true,
       hasApiKey: true,
       verified: true,
+      activeProfile,
     };
   }
 
@@ -313,18 +317,21 @@ export function checkInstallStatus(): InstallStatus {
   // latency, so it now lives in `verifyInstall()` and is invoked lazily
   // by the renderer after the main UI is mounted.
   const installed = existsSync(HERMES_PYTHON) && existsSync(HERMES_SCRIPT);
-  const configured = existsSync(HERMES_ENV_FILE);
+  const envFile = activeEnvFile(activeProfile);
+  const authFile = activeAuthFile(activeProfile);
+  const configured = existsSync(envFile) || existsSync(authFile);
   let hasApiKey = false;
   const verified = installed;
 
   // Local/custom providers don't need an API key. OAuth-backed providers
-  // can be configured through Hermes auth.json instead of .env.
+  // (including credential-pool entries) can be configured through Hermes
+  // auth.json instead of .env, so check those before falling back to keys.
   let mc: { provider: string; model: string; baseUrl: string } | null = null;
   try {
-    mc = getModelConfig();
+    mc = getModelConfig(activeProfile);
     if (
       providerDoesNotNeedApiKey(mc.provider) ||
-      hasHermesAuthCredential(mc.provider)
+      hasOAuthCredentials(mc.provider, activeProfile)
     ) {
       hasApiKey = true;
     }
@@ -332,9 +339,9 @@ export function checkInstallStatus(): InstallStatus {
     /* ignore */
   }
 
-  if (!hasApiKey && configured) {
+  if (!hasApiKey && configured && existsSync(envFile)) {
     try {
-      const content = readFileSync(HERMES_ENV_FILE, "utf-8");
+      const content = readFileSync(envFile, "utf-8");
       const expectedKey = mc
         ? expectedEnvKeyForModel(mc.provider, mc.baseUrl)
         : null;
@@ -344,7 +351,7 @@ export function checkInstallStatus(): InstallStatus {
     }
   }
 
-  return { installed, configured, hasApiKey, verified };
+  return { installed, configured, hasApiKey, verified, activeProfile };
 }
 
 // Lazy background verification: actually invoke Python to confirm the

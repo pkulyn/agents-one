@@ -10,6 +10,7 @@ import {
   getEnhancedPath,
 } from "./installer";
 import {
+  getActiveProfileNameSync,
   isValidNamedProfileName,
   isValidProfileName,
   pidIsAliveAs,
@@ -97,13 +98,7 @@ async function isGatewayRunning(profilePath: string): Promise<boolean> {
 }
 
 async function getActiveProfileName(): Promise<string> {
-  const activeFile = join(HERMES_HOME, "active_profile");
-  try {
-    const name = await fs.readFile(activeFile, "utf-8");
-    return name.trim() || "default";
-  } catch {
-    return "default";
-  }
+  return getActiveProfileNameSync();
 }
 
 async function fileExists(path: string): Promise<boolean> {

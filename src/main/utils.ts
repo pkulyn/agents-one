@@ -1,6 +1,6 @@
 import { execFileSync } from "child_process";
 import { join, dirname } from "path";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { HERMES_HOME } from "./installer";
 
 const PROFILE_NAME_RE = /^[a-z0-9_][a-z0-9_-]{0,63}$/;
@@ -147,6 +147,22 @@ export function pidIsAliveAs(
   return expectedImagePrefixes.some((prefix) =>
     lower.startsWith(prefix.toLowerCase()),
   );
+}
+
+/**
+ * Read the active profile name from ~/.hermes/active_profile. Returns "default"
+ * when the file is missing, empty, or unreadable. Shared sync helper used by
+ * installer.ts and config.ts; profiles.ts's async wrapper delegates here.
+ */
+export function getActiveProfileNameSync(): string {
+  try {
+    const activeFile = join(HERMES_HOME, "active_profile");
+    if (!existsSync(activeFile)) return "default";
+    const name = readFileSync(activeFile, "utf-8").trim();
+    return name || "default";
+  } catch {
+    return "default";
+  }
 }
 
 /**
