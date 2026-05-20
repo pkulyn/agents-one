@@ -161,7 +161,7 @@ export function readEnv(profile?: string): Record<string, string> {
       value = value.slice(1, -1);
     }
 
-    if (value) result[key] = value;
+    result[key] = value;
   }
 
   setCache(cacheKey, result);
