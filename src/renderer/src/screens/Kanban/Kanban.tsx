@@ -590,7 +590,11 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
       {error && (
         <div className="skills-error">
           {error}
-          <button className="btn-ghost" onClick={() => setError("")}>
+          <button
+            className="btn-ghost"
+            title="Dismiss error"
+            onClick={() => setError("")}
+          >
             <X size={14} />
           </button>
         </div>
@@ -697,6 +701,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                           <button
                             className="btn-ghost kanban-card-action"
                             data-tooltip="Specify (expand spec → to-do)"
+                            title="Specify (expand spec → to-do)"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSpecify(task);
@@ -710,6 +715,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                           <button
                             className="btn-ghost kanban-card-action"
                             data-tooltip="Mark done"
+                            title="Mark done"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleMove(task, "done");
@@ -723,6 +729,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                           <button
                             className="btn-ghost kanban-card-action"
                             data-tooltip="Reclaim worker"
+                            title="Reclaim worker"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleReclaim(task);
@@ -736,6 +743,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                           <button
                             className="btn-ghost kanban-card-action"
                             data-tooltip="Unblock"
+                            title="Unblock"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleMove(task, "ready");
@@ -828,6 +836,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                 </label>
                 <select
                   className="input"
+                  aria-label="Assignee profile"
                   value={newAssignee}
                   onChange={(e) => setNewAssignee(e.target.value)}
                 >
@@ -843,6 +852,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                 <label className="schedules-field-label">Priority</label>
                 <select
                   className="input"
+                  aria-label="Priority"
                   value={newPriority}
                   onChange={(e) => setNewPriority(e.target.value)}
                 >
@@ -856,6 +866,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                 <label className="schedules-field-label">Workspace</label>
                 <select
                   className="input"
+                  aria-label="Workspace"
                   value={newWorkspace}
                   onChange={(e) => setNewWorkspace(e.target.value)}
                 >
@@ -988,6 +999,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
               <span>{detail?.task.title || "Task"}</span>
               <button
                 className="btn-ghost"
+                title="Close task details"
                 onClick={() => setDetailTaskId(null)}
               >
                 <X size={14} />
