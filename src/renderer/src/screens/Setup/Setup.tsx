@@ -214,7 +214,7 @@ function Setup({
               {t("setup.defaultModelHint")}
             </div>
           </>
-        ) : (
+        ) : provider.needsKey ? (
           <>
             <label className="setup-label">
               {t("setup.apiKeyLabel", { provider: t(provider.name) })}
@@ -248,6 +248,31 @@ function Setup({
               {t("setup.noKeyHint")}
               <ExternalLink size={12} />
             </button>
+          </>
+        ) : (
+          <>
+            <div className="setup-field-hint">
+              {t("setup.noApiKeyRequired", { provider: t(provider.name) })}
+            </div>
+
+            <label className="setup-label" style={{ marginTop: 16 }}>
+              {t("setup.modelName")}{" "}
+              <span className="setup-label-optional">
+                {t("common.optional")}
+              </span>
+            </label>
+            <input
+              className="input"
+              type="text"
+              placeholder={t("setup.modelNamePlaceholder")}
+              value={modelName}
+              onChange={(e) => setModelName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleContinue()}
+              autoFocus
+            />
+            <div className="setup-field-hint">
+              {t("setup.defaultModelHint")}
+            </div>
           </>
         )}
 

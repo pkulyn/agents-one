@@ -15,6 +15,7 @@ import {
   getModelConfig,
   hasOAuthCredentials,
 } from "./config";
+import { providerDoesNotNeedApiKey } from "./providers";
 import { getActiveProfileNameSync, profileHome, stripAnsi } from "./utils";
 import { setupAskpass, AskpassHandle } from "./askpass";
 import { precacheSudoCredentials } from "./sudoCreds";
@@ -331,9 +332,8 @@ export function checkInstallStatus(): InstallStatus {
   let mc: { provider: string; model: string; baseUrl: string } | null = null;
   try {
     mc = getModelConfig(activeProfile);
-    const localProviders = ["custom", "lmstudio", "ollama", "vllm", "llamacpp"];
     if (
-      localProviders.includes(mc.provider) ||
+      providerDoesNotNeedApiKey(mc.provider) ||
       hasOAuthCredentials(mc.provider, activeProfile)
     ) {
       hasApiKey = true;

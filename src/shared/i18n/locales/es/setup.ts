@@ -48,6 +48,8 @@ export default {
   continue: "Continuar",
   saving: "Guardando...",
   apiKeyLabel: "API key de {{provider}}",
+  noApiKeyRequired:
+    "{{provider}} no requiere API key. Hermes usará tu configuración local de CLI/OAuth.",
   localNoKeyNeeded: "No se necesita API key",
   localLlm: "LLM local",
   modelBaseUrlPlaceholder: "http://localhost:1234/v1",
