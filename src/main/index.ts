@@ -1387,8 +1387,15 @@ function setupUpdater(): void {
   // IPC handlers must always be registered to avoid invoke errors
   ipcMain.handle("get-app-version", () => app.getVersion());
 
-  if (!app.isPackaged) {
-    // Skip auto-update in dev mode
+  // Portable Windows builds set PORTABLE_EXECUTABLE_DIR. They have no
+  // install location for electron-updater to replace in place, so an
+  // update check just fails and surfaces a spurious "Update failed".
+  // Skip the updater for them (users update by downloading a new
+  // portable .exe), same as dev mode.
+  const isPortableBuild = !!process.env.PORTABLE_EXECUTABLE_DIR;
+
+  if (!app.isPackaged || isPortableBuild) {
+    // Skip auto-update in dev mode and portable builds
     ipcMain.handle("check-for-updates", async () => null);
     ipcMain.handle("download-update", () => true);
     ipcMain.handle("install-update", () => {});
