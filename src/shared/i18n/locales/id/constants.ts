@@ -76,6 +76,8 @@ export default {
   mistralHint: "Model Mistral dan Codestral",
   perplexityApiKey: "Perplexity API Key",
   perplexityHint: "Model Perplexity Sonar dengan pencarian web",
+  nvidiaApiKey: "NVIDIA API Key",
+  nvidiaHint: "Model yang di-host di NVIDIA NIM (build.nvidia.com)",
   customApiKey: "Custom API Key",
   customHint: "Key fallback untuk endpoint apa pun yang kompatibel OpenAI",
   googleApiKey: "Google AI Studio Key",
