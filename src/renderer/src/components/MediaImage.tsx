@@ -80,7 +80,7 @@ export function MediaImage({
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              className="chat-media-file"
+              className="chat-image-preview-btn"
               onClick={() =>
                 window.hermesAPI.saveMediaFile(token.src, token.name)
               }
@@ -89,7 +89,7 @@ export function MediaImage({
               Save image
             </button>
             <button
-              className="chat-media-file"
+              className="chat-image-preview-btn"
               onClick={() => setZoomed(false)}
               aria-label="Close"
             >

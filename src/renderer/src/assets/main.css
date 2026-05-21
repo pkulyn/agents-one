@@ -1960,6 +1960,25 @@ body {
   z-index: 201;
 }
 
+/* Lightbox action buttons — light-on-dark so they read on the backdrop. */
+.chat-image-preview-btn {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.chat-image-preview-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
 /* ── Agent-generated media (issue #299) ─────────────── */
 
 .chat-media-image {
