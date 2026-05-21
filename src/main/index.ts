@@ -322,15 +322,31 @@ function createWindow(): void {
     const { editFlags, isEditable } = params;
     const template: Electron.MenuItemConstructorOptions[] = [];
     if (isEditable) {
-      template.push({ role: "cut", enabled: editFlags.canCut });
-    }
-    template.push({ role: "copy", enabled: editFlags.canCopy });
-    if (isEditable) {
-      template.push({ role: "paste", enabled: editFlags.canPaste });
+      template.push(
+        { role: "cut", enabled: editFlags.canCut },
+        { role: "copy", enabled: editFlags.canCopy },
+        { role: "paste", enabled: editFlags.canPaste },
+        { type: "separator" },
+        // The selectAll role scopes correctly to the focused input field.
+        { role: "selectAll" },
+      );
+    } else {
+      template.push(
+        { role: "copy", enabled: editFlags.canCopy },
+        { type: "separator" },
+        // The selectAll role would select the entire window for non-editable
+        // content — scope it to the message bubble under the cursor instead.
+        {
+          label: "Select All",
+          click: () =>
+            mainWindow?.webContents.send("context-menu-select-bubble", {
+              x: params.x,
+              y: params.y,
+            }),
+        },
+      );
     }
     template.push(
-      { type: "separator" },
-      { role: "selectAll" },
       { type: "separator" },
       {
         label: "Copy entire chat (text)",

@@ -260,6 +260,18 @@ const hermesAPI = {
       ipcRenderer.removeListener("context-menu-copy-chat", handler);
   },
 
+  onContextMenuSelectBubble: (
+    callback: (point: { x: number; y: number }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      point: { x: number; y: number },
+    ): void => callback(point);
+    ipcRenderer.on("context-menu-select-bubble", handler);
+    return () =>
+      ipcRenderer.removeListener("context-menu-select-bubble", handler);
+  },
+
   onChatToolProgress: (callback: (tool: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, tool: string): void =>
       callback(tool);

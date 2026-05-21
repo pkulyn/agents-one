@@ -107,6 +107,19 @@ function Chat({
     });
   }, []);
 
+  // "Select All" on a message (issue #298): the native selectAll role would
+  // select the entire window, so scope it to the .chat-bubble under the
+  // cursor — the user can then Copy that message.
+  useEffect(() => {
+    return window.hermesAPI.onContextMenuSelectBubble(({ x, y }) => {
+      const bubble = document.elementFromPoint(x, y)?.closest(".chat-bubble");
+      if (!bubble) return;
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.selectAllChildren(bubble);
+    });
+  }, []);
+
   const addAgentMessage = useCallback(
     (content: string) => {
       setMessages((prev) => [

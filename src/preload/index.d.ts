@@ -205,6 +205,9 @@ interface HermesAPI {
   onContextMenuCopyChat: (
     callback: (format: "text" | "markdown") => void,
   ) => () => void;
+  onContextMenuSelectBubble: (
+    callback: (point: { x: number; y: number }) => void,
+  ) => () => void;
   getPathForFile: (file: File) => string;
   stageAttachment: (
     sessionId: string,
