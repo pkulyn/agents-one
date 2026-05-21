@@ -201,6 +201,10 @@ interface HermesAPI {
     attachments?: Attachment[],
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  copyToClipboard: (text: string) => Promise<void>;
+  onContextMenuCopyChat: (
+    callback: (format: "text" | "markdown") => void,
+  ) => () => void;
   getPathForFile: (file: File) => string;
   stageAttachment: (
     sessionId: string,

@@ -6,6 +6,7 @@ import {
   Menu,
   Notification,
   dialog,
+  clipboard,
 } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
@@ -313,6 +314,37 @@ function createWindow(): void {
       hardenWebviewPreferences(webPreferences);
     },
   );
+
+  // Right-click context menu (issue #298): native Cut/Copy/Paste/Select All
+  // via Electron roles — they act on the focused field / selection and work
+  // across the whole app — plus two items to copy the whole conversation.
+  mainWindow.webContents.on("context-menu", (_event, params) => {
+    const { editFlags, isEditable } = params;
+    const template: Electron.MenuItemConstructorOptions[] = [];
+    if (isEditable) {
+      template.push({ role: "cut", enabled: editFlags.canCut });
+    }
+    template.push({ role: "copy", enabled: editFlags.canCopy });
+    if (isEditable) {
+      template.push({ role: "paste", enabled: editFlags.canPaste });
+    }
+    template.push(
+      { type: "separator" },
+      { role: "selectAll" },
+      { type: "separator" },
+      {
+        label: "Copy entire chat (text)",
+        click: () =>
+          mainWindow?.webContents.send("context-menu-copy-chat", "text"),
+      },
+      {
+        label: "Copy entire chat (Markdown)",
+        click: () =>
+          mainWindow?.webContents.send("context-menu-copy-chat", "markdown"),
+      },
+    );
+    Menu.buildFromTemplate(template).popup();
+  });
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
@@ -713,6 +745,13 @@ function setupIPC(): void {
       currentChatAbort();
       currentChatAbort = null;
     }
+  });
+
+  // Renderer-driven clipboard write (issue #298 — "Copy entire chat").
+  // Routed through the main process so it doesn't depend on the renderer's
+  // document being focused, which the navigator.clipboard API requires.
+  ipcMain.handle("copy-to-clipboard", (_event, text: string) => {
+    clipboard.writeText(typeof text === "string" ? text : "");
   });
 
   // Attachment staging — for pasted blobs that have no filesystem origin.
