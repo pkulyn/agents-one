@@ -232,6 +232,8 @@ const hermesAPI = {
     ipcRenderer.invoke("read-media-file", filePath),
   saveMediaFile: (src: string, name: string): Promise<boolean> =>
     ipcRenderer.invoke("save-media-file", src, name),
+  mediaFileExists: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke("media-file-exists", filePath),
 
   // Resolve the absolute filesystem path for a File coming from drag-drop
   // or the file picker.  Returns "" for blobs that have no origin path

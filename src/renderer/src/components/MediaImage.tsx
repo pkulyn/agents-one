@@ -102,4 +102,69 @@ export function MediaImage({
   );
 }
 
+/** A compact, clickable chip for non-image media — saves the file. */
+export function DownloadChip({
+  token,
+}: {
+  token: MediaToken;
+}): React.JSX.Element {
+  return (
+    <button
+      className="chat-media-file"
+      onClick={() =>
+        window.hermesAPI.saveMediaFile(token.src, token.name)
+      }
+    >
+      <Download size={14} />
+      {token.name}
+    </button>
+  );
+}
+
+/**
+ * Renders one media segment (issue #299). Explicit `MEDIA:` tokens are
+ * trusted and shown eagerly; a bare-path candidate is first verified to
+ * point at a real file — until then, and if verification fails, its
+ * original text is shown verbatim, so a path merely mentioned in prose is
+ * never turned into media.
+ */
+export function MediaSegmentView({
+  token,
+  raw,
+  source,
+}: {
+  token: MediaToken;
+  raw: string;
+  source: "media-token" | "bare-path";
+}): React.JSX.Element {
+  const [verified, setVerified] = useState<boolean | null>(
+    source === "media-token" ? true : null,
+  );
+
+  useEffect(() => {
+    // Only an inferred local path needs verifying; explicit tokens and
+    // URLs are trusted as-is.
+    if (source !== "bare-path" || token.isUrl) return;
+    let cancelled = false;
+    window.hermesAPI
+      .mediaFileExists(token.src)
+      .then((ok) => {
+        if (!cancelled) setVerified(ok);
+      })
+      .catch(() => {
+        if (!cancelled) setVerified(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [source, token.src, token.isUrl]);
+
+  if (verified !== true) return <>{raw}</>;
+  return token.isImage ? (
+    <MediaImage token={token} />
+  ) : (
+    <DownloadChip token={token} />
+  );
+}
+
 export default MediaImage;

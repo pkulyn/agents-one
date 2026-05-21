@@ -15,7 +15,7 @@ import icon from "../../resources/icon.png?asset";
 import type { Attachment } from "../shared/attachments";
 import { stageAttachment, clearStagedAttachments } from "./attachment-staging";
 import { discoverProviderModels } from "./model-discovery";
-import { readMediaAsDataUrl, saveMedia } from "./media";
+import { readMediaAsDataUrl, saveMedia, mediaFileExists } from "./media";
 import {
   checkInstallStatus,
   verifyInstall,
@@ -860,6 +860,9 @@ function setupIPC(): void {
   );
   ipcMain.handle("save-media-file", (event, src: string, name: string) =>
     saveMedia(src, name, BrowserWindow.fromWebContents(event.sender)),
+  );
+  ipcMain.handle("media-file-exists", (_event, filePath: string) =>
+    mediaFileExists(filePath),
   );
 
   // Attachment staging — for pasted blobs that have no filesystem origin.

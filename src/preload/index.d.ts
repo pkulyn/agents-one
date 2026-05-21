@@ -227,6 +227,7 @@ interface HermesAPI {
   ) => () => void;
   readMediaFile: (filePath: string) => Promise<string | null>;
   saveMediaFile: (src: string, name: string) => Promise<boolean>;
+  mediaFileExists: (filePath: string) => Promise<boolean>;
   getPathForFile: (file: File) => string;
   stageAttachment: (
     sessionId: string,

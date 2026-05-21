@@ -48,6 +48,21 @@ export function readMediaAsDataUrl(filePath: string): string | null {
 }
 
 /**
+ * True only when `filePath` points at an existing regular file. Used to
+ * verify a bare (untagged) path the agent mentioned really is a delivered
+ * file before the renderer treats it as media (issue #299).
+ */
+export function mediaFileExists(filePath: string): boolean {
+  try {
+    return (
+      !!filePath && existsSync(filePath) && statSync(filePath).isFile()
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Prompt the user for a destination and write `src` there. `src` may be a
  * `data:` URL, an http(s) URL, or a local filesystem path. Returns true on
  * success, false when canceled or on any error.
