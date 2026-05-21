@@ -228,6 +228,11 @@ interface HermesAPI {
   readMediaFile: (filePath: string) => Promise<string | null>;
   saveMediaFile: (src: string, name: string) => Promise<boolean>;
   mediaFileExists: (filePath: string) => Promise<boolean>;
+  showMediaMenu: (
+    src: string,
+    name: string,
+    labels: { open: string; saveAs: string },
+  ) => void;
   getPathForFile: (file: File) => string;
   stageAttachment: (
     sessionId: string,

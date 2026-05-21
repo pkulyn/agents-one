@@ -1,6 +1,27 @@
 import { useState, useEffect } from "react";
 import { Download, X } from "lucide-react";
 import type { MediaToken } from "../screens/Chat/mediaUtils";
+import { useI18n } from "./useI18n";
+
+/**
+ * Returns an `onContextMenu` handler that opens a native right-click menu
+ * for a media element — "Open" (hands the file to the OS default handler,
+ * or a web URL to the browser) and "Save as…". The labels are resolved
+ * through i18n here so the native menu matches the active UI locale, since
+ * the menu itself is built in the main process (issue #299).
+ */
+function useMediaContextMenu(
+  token: MediaToken,
+): (event: React.MouseEvent) => void {
+  const { t } = useI18n();
+  return (event) => {
+    event.preventDefault();
+    window.hermesAPI.showMediaMenu(token.src, token.name, {
+      open: t("chat.media.open"),
+      saveAs: t("chat.media.saveAs"),
+    });
+  };
+}
 
 /**
  * Renders an agent-delivered image (issue #299). Data URLs and http(s)
@@ -20,6 +41,7 @@ export function MediaImage({
   );
   const [failed, setFailed] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  const onContextMenu = useMediaContextMenu(token);
 
   useEffect(() => {
     if (isDirect) return;
@@ -60,6 +82,7 @@ export function MediaImage({
         src={resolved}
         alt={token.name}
         onClick={() => setZoomed(true)}
+        onContextMenu={onContextMenu}
         onError={() => setFailed(true)}
       />
       {zoomed && (
@@ -74,6 +97,7 @@ export function MediaImage({
             src={resolved}
             alt={token.name}
             onClick={(e) => e.stopPropagation()}
+            onContextMenu={onContextMenu}
           />
           <div
             className="chat-image-preview-actions"
@@ -108,12 +132,14 @@ export function DownloadChip({
 }: {
   token: MediaToken;
 }): React.JSX.Element {
+  const onContextMenu = useMediaContextMenu(token);
   return (
     <button
       className="chat-media-file"
       onClick={() =>
         window.hermesAPI.saveMediaFile(token.src, token.name)
       }
+      onContextMenu={onContextMenu}
     >
       <Download size={14} />
       {token.name}

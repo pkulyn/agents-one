@@ -865,6 +865,50 @@ function setupIPC(): void {
     mediaFileExists(filePath),
   );
 
+  // Native right-click menu for a rendered media element (#299): "Open"
+  // hands the file to the OS default handler (or a web URL to the browser),
+  // "Save as…" writes a copy elsewhere. Labels are passed in from the
+  // renderer so the menu honours the active UI locale.
+  ipcMain.on(
+    "show-media-menu",
+    (
+      event,
+      src: string,
+      name: string,
+      labels: { open: string; saveAs: string },
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || !src) return;
+      const isUrl = /^https?:\/\//i.test(src);
+      const isData = src.startsWith("data:");
+      const template: Electron.MenuItemConstructorOptions[] = [];
+      // "Open" needs a real target — a local file or a web URL. A data:
+      // URL is inline bytes with nothing to hand to the OS, so it is
+      // save-only.
+      if (!isData) {
+        template.push({
+          label: labels.open,
+          click: () => {
+            if (isUrl) {
+              openExternalUrl(src);
+            } else {
+              shell.openPath(src).then((err) => {
+                if (err) console.error("[media] open failed:", err);
+              });
+            }
+          },
+        });
+      }
+      template.push({
+        label: labels.saveAs,
+        click: () => {
+          void saveMedia(src, name, win);
+        },
+      });
+      Menu.buildFromTemplate(template).popup({ window: win });
+    },
+  );
+
   // Attachment staging — for pasted blobs that have no filesystem origin.
   ipcMain.handle(
     "stage-attachment",
