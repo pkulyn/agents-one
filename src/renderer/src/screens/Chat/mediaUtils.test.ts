@@ -3,7 +3,17 @@ import {
   parseMediaTokens,
   hasMediaTokens,
   describeImageSrc,
+  type MediaSegment,
 } from "./mediaUtils";
+
+/** Find the first media segment, or fail the assertion if there is none. */
+function media(segs: MediaSegment[]): Extract<MediaSegment, { type: "media" }> {
+  const hit = segs.find((s) => s.type === "media");
+  if (!hit || hit.type !== "media") {
+    throw new Error("expected a media segment, got none");
+  }
+  return hit;
+}
 
 describe("parseMediaTokens (issue #299)", () => {
   it("returns a single text segment when there is nothing to extract", () => {
@@ -36,10 +46,15 @@ describe("parseMediaTokens (issue #299)", () => {
 
   it("strips trailing punctuation from a bare MEDIA: token", () => {
     const segs = parseMediaTokens("see MEDIA:/tmp/out.png.");
-    const media = segs.find((s) => s.type === "media");
-    expect((media as { token: { src: string } }).token.src).toBe(
-      "/tmp/out.png",
-    );
+    expect(media(segs).token.src).toBe("/tmp/out.png");
+  });
+
+  it("honours a quoted MEDIA: token containing spaces", () => {
+    const segs = parseMediaTokens('MEDIA:"C:\\My Folder\\a file.pdf"');
+    expect(media(segs).token).toMatchObject({
+      src: "C:\\My Folder\\a file.pdf",
+      name: "a file.pdf",
+    });
   });
 
   // ── Whole-line bare paths ──────────────────────────────
@@ -47,7 +62,7 @@ describe("parseMediaTokens (issue #299)", () => {
     const segs = parseMediaTokens(
       "Criei o PDF aqui:\n\nC:\\Users\\pmos6\\proverbios.pdf\n\nInclui 10.",
     );
-    expect(segs.find((s) => s.type === "media")).toMatchObject({
+    expect(media(segs)).toMatchObject({
       type: "media",
       source: "bare-path",
       raw: "C:\\Users\\pmos6\\proverbios.pdf",
@@ -57,7 +72,7 @@ describe("parseMediaTokens (issue #299)", () => {
 
   it("detects a whole-line POSIX path", () => {
     const segs = parseMediaTokens("Done:\n/home/me/out.png");
-    expect(segs.find((s) => s.type === "media")).toMatchObject({
+    expect(media(segs)).toMatchObject({
       source: "bare-path",
       token: { src: "/home/me/out.png", isImage: true },
     });
@@ -72,9 +87,52 @@ describe("parseMediaTokens (issue #299)", () => {
     });
   });
 
-  // ── False-positive guards ──────────────────────────────
-  it("does NOT detect a path mentioned mid-sentence", () => {
+  // ── Inline bare paths (mid-sentence) ───────────────────
+  it("detects an inline absolute path mentioned mid-sentence", () => {
     const segs = parseMediaTokens("I saved it to C:\\Users\\me\\x.pdf today.");
+    expect(segs[0]).toEqual({ type: "text", value: "I saved it to " });
+    expect(media(segs)).toMatchObject({
+      type: "media",
+      source: "bare-path",
+      raw: "C:\\Users\\me\\x.pdf",
+      token: { src: "C:\\Users\\me\\x.pdf", isImage: false },
+    });
+    expect(segs[segs.length - 1]).toEqual({ type: "text", value: " today." });
+  });
+
+  it("detects an inline POSIX absolute path", () => {
+    const segs = parseMediaTokens("Generated at /home/me/out.png — enjoy.");
+    expect(media(segs)).toMatchObject({
+      source: "bare-path",
+      token: { src: "/home/me/out.png", isImage: true },
+    });
+  });
+
+  it("excludes trailing punctuation from an inline path", () => {
+    const segs = parseMediaTokens("The chart is at C:\\d\\chart.png, see above.");
+    expect(media(segs).token.src).toBe("C:\\d\\chart.png");
+    expect(media(segs).raw).toBe("C:\\d\\chart.png");
+  });
+
+  it("keeps the matched path as `raw` so it can be shown verbatim", () => {
+    // `raw` is what MediaSegmentView renders until the file is verified.
+    const segs = parseMediaTokens("file: /var/data/report.csv done");
+    expect(media(segs).raw).toBe("/var/data/report.csv");
+  });
+
+  // ── False-positive guards ──────────────────────────────
+  it("does NOT start an inline match mid-token", () => {
+    const segs = parseMediaTokens("fooC:\\Users\\me\\x.pdf");
+    expect(segs.every((s) => s.type === "text")).toBe(true);
+  });
+
+  it("does NOT match an inline http URL as a path", () => {
+    const segs = parseMediaTokens("See https://example.com/pic.png for more.");
+    expect(segs.every((s) => s.type === "text")).toBe(true);
+  });
+
+  it("does NOT match an inline relative path", () => {
+    const segs = parseMediaTokens("Check output/cat.png please.");
     expect(segs.every((s) => s.type === "text")).toBe(true);
   });
 
@@ -82,6 +140,11 @@ describe("parseMediaTokens (issue #299)", () => {
     const segs = parseMediaTokens(
       "Example:\n```\nC:\\Users\\me\\x.png\n```\ndone",
     );
+    expect(segs.every((s) => s.type === "text")).toBe(true);
+  });
+
+  it("does NOT detect a path inside an inline code span", () => {
+    const segs = parseMediaTokens("Run `C:\\tmp\\x.png` to see it.");
     expect(segs.every((s) => s.type === "text")).toBe(true);
   });
 
@@ -95,13 +158,28 @@ describe("parseMediaTokens (issue #299)", () => {
     expect(segs.every((s) => s.type === "text")).toBe(true);
   });
 
+  it("does NOT match a bare path with an unknown extension", () => {
+    const segs = parseMediaTokens("Config at C:\\app\\settings.ini reloaded.");
+    expect(segs.every((s) => s.type === "text")).toBe(true);
+  });
+
   // ── Misc ───────────────────────────────────────────────
   it("does not double-count a MEDIA: token as a bare path", () => {
-    const media = parseMediaTokens("MEDIA:/tmp/a.png").filter(
+    const hits = parseMediaTokens("MEDIA:/tmp/a.png").filter(
       (s) => s.type === "media",
     );
-    expect(media).toHaveLength(1);
-    expect(media[0]).toMatchObject({ source: "media-token" });
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ source: "media-token" });
+  });
+
+  it("detects several inline paths in one reply", () => {
+    const segs = parseMediaTokens(
+      "First /home/a/one.png and then /home/b/two.pdf are ready.",
+    );
+    const hits = segs.filter((s) => s.type === "media");
+    expect(hits).toHaveLength(2);
+    expect(hits.every((h) => h.type === "media" && h.source === "bare-path"))
+      .toBe(true);
   });
 
   it("keeps text after a token", () => {
@@ -114,6 +192,7 @@ describe("parseMediaTokens (issue #299)", () => {
 
   it("hasMediaTokens detects explicit tokens only", () => {
     expect(hasMediaTokens("MEDIA:/tmp/a.png")).toBe(true);
+    expect(hasMediaTokens("see /tmp/a.png")).toBe(false);
     expect(hasMediaTokens("no media")).toBe(false);
   });
 
