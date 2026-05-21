@@ -3,6 +3,8 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy } from "lucide-react";
 import { useI18n } from "./useI18n";
+import { MediaImage } from "./MediaImage";
+import { describeImageSrc } from "../screens/Chat/mediaUtils";
 
 // Lazy-load the heavy syntax highlighter — only imported when a code block renders
 let _highlighterMod: typeof import("react-syntax-highlighter") | null = null;
@@ -153,6 +155,10 @@ const AgentMarkdown = memo(function AgentMarkdown({
             {children}
           </a>
         ),
+        img: ({ src }) =>
+          typeof src === "string" && src.length > 0 ? (
+            <MediaImage token={describeImageSrc(src)} />
+          ) : null,
         code: ({ className, children, ...props }) => {
           const isInline =
             !className &&

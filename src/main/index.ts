@@ -15,6 +15,7 @@ import icon from "../../resources/icon.png?asset";
 import type { Attachment } from "../shared/attachments";
 import { stageAttachment, clearStagedAttachments } from "./attachment-staging";
 import { discoverProviderModels } from "./model-discovery";
+import { readMediaAsDataUrl, saveMedia } from "./media";
 import {
   checkInstallStatus,
   verifyInstall,
@@ -852,6 +853,14 @@ function setupIPC(): void {
   ipcMain.handle("copy-to-clipboard", (_event, text: string) => {
     clipboard.writeText(typeof text === "string" ? text : "");
   });
+
+  // Media — render agent-generated images and save them to disk (#299).
+  ipcMain.handle("read-media-file", (_event, filePath: string) =>
+    readMediaAsDataUrl(filePath),
+  );
+  ipcMain.handle("save-media-file", (event, src: string, name: string) =>
+    saveMedia(src, name, BrowserWindow.fromWebContents(event.sender)),
+  );
 
   // Attachment staging — for pasted blobs that have no filesystem origin.
   ipcMain.handle(

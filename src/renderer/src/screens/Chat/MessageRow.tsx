@@ -1,8 +1,11 @@
 import { memo, useState } from "react";
+import { Download } from "lucide-react";
 import icon from "../../assets/icon.png";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AttachmentChip } from "../../components/AttachmentChip";
+import { MediaImage } from "../../components/MediaImage";
 import { useI18n } from "../../components/useI18n";
+import { parseMediaTokens } from "./mediaUtils";
 import type { Attachment, ChatBubbleMessage, ChatMessage } from "./types";
 
 export const APPROVAL_RE =
@@ -88,7 +91,29 @@ export const MessageRow = memo(function MessageRow({
         )}
         {msg.content &&
           (msg.role === "agent" ? (
-            <AgentMarkdown>{msg.content}</AgentMarkdown>
+            parseMediaTokens(msg.content).map((segment, i) => {
+              if (segment.type === "text") {
+                return segment.value.trim() ? (
+                  <AgentMarkdown key={i}>{segment.value}</AgentMarkdown>
+                ) : null;
+              }
+              const { token } = segment;
+              if (token.isImage) {
+                return <MediaImage key={i} token={token} />;
+              }
+              return (
+                <button
+                  key={i}
+                  className="chat-media-file"
+                  onClick={() =>
+                    window.hermesAPI.saveMediaFile(token.src, token.name)
+                  }
+                >
+                  <Download size={14} />
+                  {token.name}
+                </button>
+              );
+            })
           ) : (
             msg.content
           ))}
