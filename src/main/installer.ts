@@ -399,10 +399,19 @@ export async function getHermesVersion(): Promise<string | null> {
   if (_cachedVersion !== null) return _cachedVersion;
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) return null;
   if (_versionFetching) {
-    // Wait for in-flight fetch
+    // Wait for the in-flight fetch but cap the wait. The execFile below
+    // has a 15s timeout and its callback unconditionally clears
+    // `_versionFetching`, so under normal failure paths the poll
+    // unblocks on its own. Pathological cases (callback never invoked,
+    // worker killed mid-callback, async exception in handler) would
+    // otherwise leak a 100 ms interval per caller forever. Cap at 20s
+    // — comfortably above the execFile timeout — and resolve with
+    // whatever `_cachedVersion` happens to be (typically `null`),
+    // which matches the same return shape callers already handle.
     return new Promise((resolve) => {
+      const startedAt = Date.now();
       const check = setInterval(() => {
-        if (!_versionFetching) {
+        if (!_versionFetching || Date.now() - startedAt > 20_000) {
           clearInterval(check);
           resolve(_cachedVersion);
         }
