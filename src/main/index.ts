@@ -651,16 +651,35 @@ function setupIPC(): void {
         },
       );
 
+      // Streaming sends to `event.sender` will throw "Object has been
+      // destroyed" if the renderer WebContents goes away mid-response
+      // (window closed, reloaded, navigated away). Guard every send so a
+      // dead sender doesn't crash the IPC handler, and abort the in-flight
+      // chat the first time we see one — there's nobody listening anymore.
+      const safeSend = (channel: string, payload: unknown): boolean => {
+        if (event.sender.isDestroyed()) return false;
+        try {
+          event.sender.send(channel, payload);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
       const handle = await sendMessage(
         message,
         {
           onChunk: (chunk) => {
             fullResponse += chunk;
-            event.sender.send("chat-chunk", chunk);
+            if (!safeSend("chat-chunk", chunk) && currentChatAbort) {
+              // Renderer is gone — stop generating and resolve with what we
+              // have so the awaiting promise doesn't leak.
+              currentChatAbort();
+            }
           },
           onDone: (sessionId) => {
             currentChatAbort = null;
-            event.sender.send("chat-done", sessionId || "");
+            safeSend("chat-done", sessionId || "");
             resolveChat({ response: fullResponse, sessionId });
             // Desktop notification when window is not focused and response took >10s
             if (
@@ -680,7 +699,7 @@ function setupIPC(): void {
           },
           onError: (error) => {
             currentChatAbort = null;
-            event.sender.send("chat-error", error);
+            safeSend("chat-error", error);
             rejectChat(new Error(error));
             // Notify on error too if window not focused
             if (mainWindow && !mainWindow.isFocused()) {
@@ -691,10 +710,10 @@ function setupIPC(): void {
             }
           },
           onToolProgress: (tool) => {
-            event.sender.send("chat-tool-progress", tool);
+            safeSend("chat-tool-progress", tool);
           },
           onUsage: (usage) => {
-            event.sender.send("chat-usage", usage);
+            safeSend("chat-usage", usage);
           },
         },
         profile,
