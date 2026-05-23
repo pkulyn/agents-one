@@ -468,10 +468,34 @@ export function runHermesDoctor(): string {
 
 const OPENCLAW_DIR_NAMES = [".openclaw", ".clawdbot", ".moldbot"];
 
-export function checkOpenClawExists(): { found: boolean; path: string | null } {
+// hermes-desktop itself creates ~/.openclaw/claw3d/ as a stub when preparing
+// Claw3D settings (see claw3d.ts:writeClaw3dSettings), so a bare `existsSync`
+// check would surface that empty stub as a "real" OpenClaw install and
+// prompt the user to migrate from themselves. Require at least one regular
+// file anywhere in the tree so empty scaffolding doesn't trigger the banner.
+function dirContainsAnyFile(dir: string, maxDepth = 3): boolean {
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile()) return true;
+      if (entry.isDirectory() && maxDepth > 0) {
+        if (dirContainsAnyFile(join(dir, entry.name), maxDepth - 1)) {
+          return true;
+        }
+      }
+    }
+  } catch {
+    // unreadable → treat as empty
+  }
+  return false;
+}
+
+export function checkOpenClawExists(
+  home: string = homedir(),
+): { found: boolean; path: string | null } {
   for (const name of OPENCLAW_DIR_NAMES) {
-    const dir = join(homedir(), name);
-    if (existsSync(dir)) {
+    const dir = join(home, name);
+    if (existsSync(dir) && dirContainsAnyFile(dir)) {
       return { found: true, path: dir };
     }
   }
