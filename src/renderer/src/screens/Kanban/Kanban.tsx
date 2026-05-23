@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus,
   Refresh,
@@ -100,6 +100,24 @@ const COLUMNS: { key: string; label: string }[] = [
 
 const POLL_INTERVAL_MS = 6000;
 
+// Sentinel slug for the read-only Claw3D HQ virtual board. Distinct from any
+// real hermes-agent kanban board slug (which is bash-safe alphanumeric per
+// the backend CLI).
+const HQ_BOARD_SLUG = "__claw3d_hq__";
+
+// localStorage key for remembering which board the user last viewed across
+// sessions. Stored value is either a real board slug or HQ_BOARD_SLUG.
+const ACTIVE_BOARD_LS_KEY = "hermes:kanban:active-board";
+
+function readStoredActiveBoard(): string | null {
+  try {
+    const v = window.localStorage.getItem(ACTIVE_BOARD_LS_KEY);
+    return v && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 function priorityLabel(p: number): string {
   if (p >= 10) return "P0";
   if (p >= 5) return "P1";
@@ -132,6 +150,21 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
 
+  // When the Claw3D HQ virtual board is active we route reads to the
+  // task-store JSON on the remote (via kanbanListClaw3dHqTasks) and hide all
+  // mutation affordances. Initialized from localStorage so the user's last
+  // selection survives reloads; null means "follow the real boards'
+  // is_current" until autoDefaultRef below decides otherwise.
+  const [activeBoardSlug, setActiveBoardSlug] = useState<string | null>(
+    readStoredActiveBoard,
+  );
+  const isHqActive = activeBoardSlug === HQ_BOARD_SLUG;
+  const [hqAvailable, setHqAvailable] = useState(false);
+  // One-shot guard: only auto-default to HQ on the first loadAll. After
+  // that, respect the user's explicit choice (including switching back to
+  // Default), and never re-jump them to HQ on subsequent refreshes.
+  const autoDefaultedRef = useRef(false);
+
   // Create task form
   const [newTitle, setNewTitle] = useState("");
   const [newBody, setNewBody] = useState("");
@@ -154,12 +187,23 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
     async (silent = false): Promise<void> => {
       if (!silent) setLoading(true);
       try {
-        const [boardsRes, tasksRes] = await Promise.all([
+        // Always refresh the real boards list, plus either the active real
+        // board's tasks OR the Claw3D HQ tasks depending on which is selected.
+        const wantHq = activeBoardSlug === HQ_BOARD_SLUG;
+        type TasksRes = {
+          success: boolean;
+          data?: KanbanTask[];
+          error?: string;
+        };
+        const [boardsRes, tasksRes, hqRes] = await Promise.all([
           window.hermesAPI.kanbanListBoards(false, profile),
-          window.hermesAPI.kanbanListTasks({
-            includeArchived: false,
-            profile,
-          }),
+          wantHq
+            ? Promise.resolve<TasksRes>({ success: true, data: [] })
+            : window.hermesAPI.kanbanListTasks({
+                includeArchived: false,
+                profile,
+              }),
+          window.hermesAPI.kanbanListClaw3dHqTasks(),
         ]);
         if (!boardsRes.success) {
           if (
@@ -172,13 +216,44 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
           setError(boardsRes.error || "Failed to load boards");
           return;
         }
-        if (!tasksRes.success) {
-          setError(tasksRes.error || "Failed to load tasks");
-          return;
-        }
+        // HQ availability: we treat the board as available whenever the SSH
+        // reader succeeds (even with zero tasks — that's a valid empty board).
+        // Failure (not in SSH mode, file unreadable) → hide the chip entirely.
+        const hqOk = hqRes.success;
+        const hqTasks = hqOk ? hqRes.data || [] : [];
+        setHqAvailable(hqOk);
         setRemoteUnsupported(false);
         setBoards(boardsRes.data || []);
-        setTasks(tasksRes.data || []);
+
+        // One-shot auto-default to HQ: if this is the first load AND the
+        // user has no stored preference AND HQ is available, jump straight
+        // to HQ. `hqOk` already implies SSH tunnel mode (the SSH reader
+        // only succeeds when conn.mode === "ssh"), so this also satisfies
+        // "if I'm running tunnel mode, use tunnel not default". After this
+        // one-shot fires, respect the user's explicit choice — never
+        // re-jump them on subsequent refreshes.
+        if (
+          !autoDefaultedRef.current &&
+          activeBoardSlug === null &&
+          hqOk
+        ) {
+          autoDefaultedRef.current = true;
+          setActiveBoardSlug(HQ_BOARD_SLUG);
+          setTasks(hqTasks);
+          setError("");
+          return;
+        }
+        autoDefaultedRef.current = true;
+
+        if (wantHq) {
+          setTasks(hqTasks);
+        } else {
+          if (!tasksRes.success) {
+            setError(tasksRes.error || "Failed to load tasks");
+            return;
+          }
+          setTasks(tasksRes.data || []);
+        }
         setError("");
       } catch (e) {
         setError((e as Error).message);
@@ -186,12 +261,25 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
         if (!silent) setLoading(false);
       }
     },
-    [profile],
+    [profile, activeBoardSlug],
   );
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Persist the user's board choice across reloads. Skip the initial null
+  // state (= "not yet decided") so we don't overwrite a previously-stored
+  // value before auto-default fires.
+  useEffect(() => {
+    if (activeBoardSlug === null) return;
+    try {
+      window.localStorage.setItem(ACTIVE_BOARD_LS_KEY, activeBoardSlug);
+    } catch {
+      // localStorage unavailable (private mode, quota) — fall back to
+      // session-only memory of the selection.
+    }
+  }, [activeBoardSlug]);
 
   useEffect(() => {
     if (!showCreate) return;
@@ -296,7 +384,14 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
   }
 
   async function handleBoardSwitch(slug: string): Promise<void> {
-    if (currentBoard?.slug === slug) return;
+    // HQ is a virtual, renderer-only view; don't call the backend switch RPC.
+    if (slug === HQ_BOARD_SLUG) {
+      if (isHqActive) return;
+      setActiveBoardSlug(HQ_BOARD_SLUG);
+      setDetailTaskId(null);
+      return;
+    }
+    if (currentBoard?.slug === slug && !isHqActive) return;
     setActionBusy("board-switch");
     const res = await window.hermesAPI.kanbanSwitchBoard(slug, profile);
     setActionBusy(null);
@@ -304,6 +399,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
       setError(res.error || "Failed to switch board");
       return;
     }
+    setActiveBoardSlug(slug);
     loadAll();
   }
 
@@ -474,58 +570,95 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
             <Refresh size={14} />
             Refresh
           </button>
-          <button
-            className="btn btn-secondary"
-            onClick={handleDispatch}
-            disabled={actionBusy !== null}
-            data-tooltip="Run one dispatcher pass — promote ready tasks and spawn workers"
-          >
-            <Zap size={14} />
-            Dispatch
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowCreate(true)}
-          >
-            <Plus size={14} />
-            New task
-          </button>
+          {!isHqActive && (
+            <>
+              <button
+                className="btn btn-secondary"
+                onClick={handleDispatch}
+                disabled={actionBusy !== null}
+                data-tooltip="Run one dispatcher pass — promote ready tasks and spawn workers"
+              >
+                <Zap size={14} />
+                Dispatch
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowCreate(true)}
+              >
+                <Plus size={14} />
+                New task
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {boards.length > 0 && (
+      {(boards.length > 0 || hqAvailable) && (
         <div className="kanban-boards-bar">
-          {boards.map((b) => (
+          {boards.map((b) => {
+            const active = isHqActive ? false : b.is_current;
+            return (
+              <button
+                key={b.slug}
+                className={`kanban-board-chip${
+                  active ? " kanban-board-chip-active" : ""
+                }`}
+                onClick={() => handleBoardSwitch(b.slug)}
+                disabled={actionBusy === "board-switch"}
+                title={b.description || b.slug}
+              >
+                {active && <span className="kanban-board-dot" />}
+                <span>{b.name || b.slug}</span>
+                <span className="kanban-board-count">{b.total}</span>
+              </button>
+            );
+          })}
+          {hqAvailable && (
             <button
-              key={b.slug}
+              key={HQ_BOARD_SLUG}
               className={`kanban-board-chip${
-                b.is_current ? " kanban-board-chip-active" : ""
+                isHqActive ? " kanban-board-chip-active" : ""
               }`}
-              onClick={() => handleBoardSwitch(b.slug)}
+              onClick={() => handleBoardSwitch(HQ_BOARD_SLUG)}
               disabled={actionBusy === "board-switch"}
-              title={b.description || b.slug}
+              title="Claw3D headquarters board (read-only mirror)"
             >
-              {b.is_current && <span className="kanban-board-dot" />}
-              <span>{b.name || b.slug}</span>
-              <span className="kanban-board-count">{b.total}</span>
+              {isHqActive && <span className="kanban-board-dot" />}
+              <span>HQ (Claw3D)</span>
+              <span className="kanban-board-count">
+                {isHqActive ? tasks.length : ""}
+              </span>
             </button>
-          ))}
-          <button
-            className="kanban-board-chip kanban-board-chip-add"
-            onClick={() => setShowNewBoard(true)}
-          >
-            <Plus size={12} />
-            New board
-          </button>
+          )}
+          {!isHqActive && (
+            <button
+              className="kanban-board-chip kanban-board-chip-add"
+              onClick={() => setShowNewBoard(true)}
+            >
+              <Plus size={12} />
+              New board
+            </button>
+          )}
         </div>
       )}
 
       {error && (
         <div className="skills-error">
           {error}
-          <button className="btn-ghost" onClick={() => setError("")}>
+          <button
+            className="btn-ghost"
+            title="Dismiss error"
+            onClick={() => setError("")}
+          >
             <X size={14} />
           </button>
+        </div>
+      )}
+
+      {isHqActive && (
+        <div className="kanban-hq-banner">
+          Read-only mirror of Claw3D&apos;s headquarters board. Edits made
+          here would not sync — use the Office screen to manage HQ tasks.
         </div>
       )}
 
@@ -542,12 +675,12 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
             <div
               key={col.key}
               className={`kanban-column${
-                dragOverCol === col.key && canDropHere
+                dragOverCol === col.key && canDropHere && !isHqActive
                   ? " kanban-column-drop"
                   : ""
               }`}
               onDragOver={(e) => {
-                if (!canDropHere) return;
+                if (isHqActive || !canDropHere) return;
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "move";
                 if (dragOverCol !== col.key) setDragOverCol(col.key);
@@ -559,7 +692,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
               onDrop={(e) => {
                 e.preventDefault();
                 setDragOverCol(null);
-                if (!draggingTask) return;
+                if (isHqActive || !draggingTask) return;
                 handleDrop(draggingTask, col.key);
               }}
             >
@@ -581,9 +714,10 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                         draggingTaskId === task.id
                           ? " kanban-card-dragging"
                           : ""
-                      }`}
-                      draggable
+                      }${isHqActive ? " kanban-card-readonly" : ""}`}
+                      draggable={!isHqActive}
                       onDragStart={(e) => {
+                        if (isHqActive) return;
                         e.dataTransfer.effectAllowed = "move";
                         e.dataTransfer.setData("text/plain", task.id);
                         setDraggingTaskId(task.id);
@@ -592,7 +726,10 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                         setDraggingTaskId(null);
                         setDragOverCol(null);
                       }}
-                      onClick={() => setDetailTaskId(task.id)}
+                      onClick={() => {
+                        if (isHqActive) return;
+                        setDetailTaskId(task.id);
+                      }}
                     >
                       <div className="kanban-card-title">{task.title}</div>
                       <div className="kanban-card-meta">
@@ -610,10 +747,16 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                         {age && <span className="kanban-pill-age">{age}</span>}
                       </div>
                       <div className="kanban-card-actions">
-                        {task.status === "triage" && (
+                        {isHqActive && (
+                          <span className="kanban-pill kanban-pill-readonly">
+                            read-only
+                          </span>
+                        )}
+                        {!isHqActive && task.status === "triage" && (
                           <button
                             className="btn-ghost kanban-card-action"
                             data-tooltip="Specify (expand spec → to-do)"
+                            title="Specify (expand spec → to-do)"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSpecify(task);
@@ -623,10 +766,11 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                             <Sparkles size={14} />
                           </button>
                         )}
-                        {task.status === "ready" && (
+                        {!isHqActive && task.status === "ready" && (
                           <button
                             className="btn-ghost kanban-card-action"
                             data-tooltip="Mark done"
+                            title="Mark done"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleMove(task, "done");
@@ -636,10 +780,11 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                             <Check size={14} />
                           </button>
                         )}
-                        {task.status === "running" && (
+                        {!isHqActive && task.status === "running" && (
                           <button
                             className="btn-ghost kanban-card-action"
                             data-tooltip="Reclaim worker"
+                            title="Reclaim worker"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleReclaim(task);
@@ -649,10 +794,11 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                             <Alert size={14} />
                           </button>
                         )}
-                        {task.status === "blocked" && (
+                        {!isHqActive && task.status === "blocked" && (
                           <button
                             className="btn-ghost kanban-card-action"
                             data-tooltip="Unblock"
+                            title="Unblock"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleMove(task, "ready");
@@ -662,31 +808,36 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                             <RotateCcw size={14} />
                           </button>
                         )}
-                        {(task.status === "todo" ||
-                          task.status === "ready") && (
+                        {!isHqActive &&
+                          (task.status === "todo" ||
+                            task.status === "ready") && (
+                            <button
+                              className="btn-ghost kanban-card-action"
+                              data-tooltip="Block"
+                              title="Block"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMove(task, "blocked");
+                              }}
+                              disabled={actionBusy === task.id}
+                            >
+                              <Ban size={14} />
+                            </button>
+                          )}
+                        {!isHqActive && (
                           <button
-                            className="btn-ghost kanban-card-action"
-                            data-tooltip="Block"
+                            className="btn-ghost kanban-card-action kanban-card-action-danger"
+                            data-tooltip="Archive"
+                            title="Archive"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleMove(task, "blocked");
+                              handleArchive(task);
                             }}
                             disabled={actionBusy === task.id}
                           >
-                            <Ban size={14} />
+                            <Trash size={12} />
                           </button>
                         )}
-                        <button
-                          className="btn-ghost kanban-card-action kanban-card-action-danger"
-                          data-tooltip="Archive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleArchive(task);
-                          }}
-                          disabled={actionBusy === task.id}
-                        >
-                          <Trash size={12} />
-                        </button>
                       </div>
                     </div>
                   );
@@ -740,6 +891,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                 </label>
                 <select
                   className="input"
+                  aria-label="Assignee profile"
                   value={newAssignee}
                   onChange={(e) => setNewAssignee(e.target.value)}
                 >
@@ -755,6 +907,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                 <label className="schedules-field-label">Priority</label>
                 <select
                   className="input"
+                  aria-label="Priority"
                   value={newPriority}
                   onChange={(e) => setNewPriority(e.target.value)}
                 >
@@ -768,6 +921,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
                 <label className="schedules-field-label">Workspace</label>
                 <select
                   className="input"
+                  aria-label="Workspace"
                   value={newWorkspace}
                   onChange={(e) => setNewWorkspace(e.target.value)}
                 >
@@ -900,6 +1054,7 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
               <span>{detail?.task.title || "Task"}</span>
               <button
                 className="btn-ghost"
+                title="Close task details"
                 onClick={() => setDetailTaskId(null)}
               >
                 <X size={14} />

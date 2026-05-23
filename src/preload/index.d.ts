@@ -622,6 +622,11 @@ interface HermesAPI {
     dryRun?: boolean,
     profile?: string,
   ) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+  kanbanListClaw3dHqTasks: () => Promise<{
+    success: boolean;
+    data?: KanbanTask[];
+    error?: string;
+  }>;
 
   // Shell
   openExternal: (url: string) => Promise<void>;
