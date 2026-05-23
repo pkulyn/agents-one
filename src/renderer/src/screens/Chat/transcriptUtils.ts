@@ -15,9 +15,11 @@ export function buildChatTranscript(
   format: TranscriptFormat,
 ): string {
   return messages
+    .filter((m) => "content" in m && typeof m.content === "string")
     .map((m) => {
-      const speaker = m.role === "user" ? "You" : "Hermes";
-      const content = (m.content ?? "").trim();
+      const msg = m as { role: "user" | "agent"; content: string };
+      const speaker = msg.role === "user" ? "You" : "Hermes";
+      const content = msg.content.trim();
       return format === "markdown"
         ? `**${speaker}:**\n\n${content}`
         : `${speaker}: ${content}`;

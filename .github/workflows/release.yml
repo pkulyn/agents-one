@@ -82,6 +82,9 @@ jobs:
         run: npm ci
 
       - name: Build app
+        env:
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
         run: npm run build
 
       - name: Stage App Store Connect API key
@@ -137,6 +140,9 @@ jobs:
         run: npm ci
 
       - name: Build app
+        env:
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
         run: npm run build
 
       - name: Install rpmbuild
@@ -174,6 +180,9 @@ jobs:
         run: npm ci
 
       - name: Build app
+        env:
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
         run: npm run build
 
       - name: Package Windows artifacts

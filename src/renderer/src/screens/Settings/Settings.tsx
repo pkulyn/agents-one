@@ -11,6 +11,10 @@ import {
   FileText,
   Send,
 } from "lucide-react";
+import {
+  getAnalyticsConsent,
+  setAnalyticsConsent,
+} from "../../utils/analytics";
 
 const TELEGRAM_COMMUNITY_URL = "https://t.me/hermes_agent_desktop";
 
@@ -128,6 +132,11 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   // Debug dump
   const [dumpOutput, setDumpOutput] = useState<string | null>(null);
   const [dumpRunning, setDumpRunning] = useState(false);
+
+  // Analytics consent
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(() =>
+    getAnalyticsConsent(),
+  );
 
   const loadConfig = useCallback(async (): Promise<void> => {
     // Load fast config first (cached in main process)
@@ -850,6 +859,29 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
           <LanguageSelect locale={locale} onSelect={setLocale} />
           <div className="settings-field-hint">
             {t("settings.language.hint")}
+          </div>
+        </div>
+        <div className="settings-field">
+          <label className="settings-field-label">
+            {t("settings.analytics.label")}
+            <label
+              className="tools-toggle"
+              style={{ marginLeft: 12, verticalAlign: "middle" }}
+            >
+              <input
+                type="checkbox"
+                checked={analyticsEnabled}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setAnalyticsEnabled(enabled);
+                  setAnalyticsConsent(enabled);
+                }}
+              />
+              <span className="tools-toggle-track" />
+            </label>
+          </label>
+          <div className="settings-field-hint">
+            {t("settings.analytics.hint")}
           </div>
         </div>
       </div>

@@ -3,10 +3,18 @@ import icon from "../../assets/icon.png";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { useI18n } from "../../components/useI18n";
-import type { Attachment, ChatMessage } from "./types";
+import type { Attachment, ChatBubbleMessage, ChatMessage } from "./types";
 
 export const APPROVAL_RE =
   /⚠️.*dangerous|requires? (your )?approval|\/approve.*\/deny|do you want (me )?to (proceed|continue|run|execute)/i;
+
+function isChatBubbleMessage(msg: ChatMessage): msg is ChatBubbleMessage {
+  return (
+    msg.kind === "user" ||
+    msg.kind === "assistant" ||
+    (!msg.kind && (msg.role === "user" || msg.role === "agent"))
+  );
+}
 
 export const HermesAvatar = memo(function HermesAvatar({
   size = 30,
@@ -39,6 +47,19 @@ export const MessageRow = memo(function MessageRow({
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(
     null,
   );
+
+  // Only chat bubble messages have content/attachments
+  if (!isChatBubbleMessage(msg)) {
+    return (
+      <div className={`chat-message chat-message-${msg.role}`}>
+        <HermesAvatar />
+        <div className={`chat-bubble chat-bubble-${msg.role}`}>
+          {/* Reasoning/tool messages handled separately */}
+        </div>
+      </div>
+    );
+  }
+
   const showApprovalBar =
     msg.role === "agent" &&
     !isLoading &&

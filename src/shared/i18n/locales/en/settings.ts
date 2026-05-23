@@ -21,6 +21,10 @@ export default {
     portuguese: "Portuguese",
     hint: "Choose the interface language",
   },
+  analytics: {
+    label: "Analytics",
+    hint: "Help improve Hermes by sending anonymous usage data. No personal information or chat content is collected.",
+  },
   notDetected: "Not detected",
   updatedSuccessfully: "Updated successfully!",
   updateSuccess: "Hermes updated successfully.",

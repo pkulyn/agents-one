@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ChatInputHandle } from "../ChatInput";
-import type { Attachment, ChatMessage } from "../types";
+import type { Attachment, ChatMessage, ChatBubbleMessage } from "../types";
+
+function hasContent(msg: ChatMessage): msg is ChatBubbleMessage {
+  return (
+    msg.kind === "user" ||
+    msg.kind === "assistant" ||
+    (!msg.kind && (msg.role === "user" || msg.role === "agent"))
+  );
+}
 
 interface LocalCommands {
   isLocal: (text: string) => boolean;
@@ -76,7 +84,7 @@ export function useChatActions({
           text,
           profile,
           hermesSessionId || undefined,
-          messagesRef.current.map((m) => ({
+          messagesRef.current.filter(hasContent).map((m) => ({
             role: m.role,
             content: m.content,
           })),
