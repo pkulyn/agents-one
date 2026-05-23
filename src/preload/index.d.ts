@@ -263,13 +263,47 @@ interface HermesAPI {
     }>
   >;
   getSessionMessages: (sessionId: string) => Promise<
-    Array<{
-      id: number;
-      role: "user" | "assistant";
-      content: string;
-      timestamp: number;
-      attachments?: Attachment[];
-    }>
+    Array<
+      | {
+          kind: "user";
+          id: number;
+          content: string;
+          timestamp: number;
+          attachments?: Attachment[];
+        }
+      | {
+          kind: "assistant";
+          id: number;
+          content: string;
+          timestamp: number;
+          attachments?: Attachment[];
+        }
+      | {
+          kind: "reasoning";
+          id: number;
+          assistantId: number;
+          text: string;
+          timestamp: number;
+        }
+      | {
+          kind: "tool_call";
+          id: number;
+          assistantId: number;
+          callId: string;
+          name: string;
+          args: string;
+          timestamp: number;
+        }
+      | {
+          kind: "tool_result";
+          id: number;
+          callId: string;
+          name: string;
+          content: string;
+          timestamp: number;
+          attachments?: Attachment[];
+        }
+    >
   >;
 
   // Profiles
