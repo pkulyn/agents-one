@@ -416,6 +416,9 @@ function setupIPC(): void {
       return runHermesAuthLogin(
         provider,
         (chunk) => {
+          // The user can close the modal mid-flow before cancelHermesAuthLogin
+          // tears down the subprocess; any send on a destroyed sender throws.
+          if (event.sender.isDestroyed()) return;
           event.sender.send("oauth-login-progress", chunk);
           if (deviceHandled) return;
           buffer += chunk;

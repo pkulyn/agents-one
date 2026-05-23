@@ -49,10 +49,13 @@ export interface OAuthLoginResult {
 export function detectDeviceCode(
   text: string,
 ): { url: string; code: string } | null {
+  // `[^\S\n]*` is horizontal-whitespace-only — using `\s*` here would
+  // silently consume a blank line between the label and the value, making
+  // a false-positive match against the wrong line possible.
   const urlMatch = text.match(
-    /Open this URL in your browser:\s*\n\s*(https:\/\/\S+)/,
+    /Open this URL in your browser:[^\S\n]*\n[^\S\n]*(https:\/\/\S+)/,
   );
-  const codeMatch = text.match(/Enter this code:\s*\n\s*(\S+)/);
+  const codeMatch = text.match(/Enter this code:[^\S\n]*\n[^\S\n]*(\S+)/);
   if (urlMatch && codeMatch) {
     return { url: urlMatch[1], code: codeMatch[1] };
   }

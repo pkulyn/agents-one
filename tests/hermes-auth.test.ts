@@ -111,6 +111,31 @@ describe("detectDeviceCode", () => {
       "  https://accounts.google.com/o/oauth2/v2/auth?client_id=x\n";
     expect(detectDeviceCode(gemini)).toBeNull();
   });
+
+  it("does not silently consume a blank line between label and value", () => {
+    // A naive `\s*` for indentation would skip across the empty line and
+    // wrongly attach the wrong URL/code as the value (fathah's review on
+    // PR #280). Horizontal-whitespace-only stops at the linebreak.
+    const blankUrlGap = [
+      "  1. Open this URL in your browser:",
+      "",
+      "     https://attacker.example/phish",
+      "",
+      "  2. Enter this code:",
+      "     BVY0-XEPCD",
+    ].join("\n");
+    expect(detectDeviceCode(blankUrlGap)).toBeNull();
+
+    const blankCodeGap = [
+      "  1. Open this URL in your browser:",
+      "     https://auth.openai.com/codex/device",
+      "",
+      "  2. Enter this code:",
+      "",
+      "     BVY0-XEPCD",
+    ].join("\n");
+    expect(detectDeviceCode(blankCodeGap)).toBeNull();
+  });
 });
 
 describe("isOAuthLoginProvider", () => {

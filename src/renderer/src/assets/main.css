@@ -2274,13 +2274,13 @@ body {
 }
 
 .oauth-login-result-success {
-  color: var(--success, #2e7d32);
-  background: var(--success-bg, rgba(46, 125, 50, 0.12));
+  color: var(--success);
+  background: var(--success-bg);
 }
 
 .oauth-login-result-error {
-  color: var(--danger, #e5484d);
-  background: var(--danger-bg, rgba(229, 72, 77, 0.12));
+  color: var(--error);
+  background: var(--error-bg);
 }
 
 .settings-pool-entry {

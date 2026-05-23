@@ -544,6 +544,7 @@ function Providers({
               <div className="settings-field-hint">{t(p.desc)}</div>
               <button
                 className="btn btn-secondary btn-sm oauth-signin-btn"
+                aria-label={`${t("providers.oauth.signIn")} — ${p.name}`}
                 onClick={() => setOauthModal(p)}
               >
                 <KeyRound size={14} />
