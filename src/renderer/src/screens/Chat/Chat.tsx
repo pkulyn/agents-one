@@ -79,6 +79,15 @@ function Chat({
     }
   }, [messages]);
 
+  // Sync the gateway session id when the parent swaps to a different session.
+  // Chat is not remounted on session switch, so a stale hermesSessionId from a
+  // previous conversation would otherwise survive — causing sends to resume,
+  // and the Clear button to delete, the WRONG session (issue #276).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHermesSessionId(sessionId);
+  }, [sessionId]);
+
   // Cmd/Ctrl+N → new chat
   useEffect(() => {
     function onKey(e: KeyboardEvent): void {
