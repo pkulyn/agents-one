@@ -733,7 +733,7 @@ body {
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   width: 100%;
-  max-width: 580px;
+  max-width: 620px;
   margin-bottom: 32px;
 }
 
