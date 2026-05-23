@@ -11,6 +11,7 @@ import { useModelConfig } from "./hooks/useModelConfig";
 import { useFastMode } from "./hooks/useFastMode";
 import { useLocalCommands } from "./hooks/useLocalCommands";
 import { useI18n } from "../../components/useI18n";
+import { buildChatTranscript } from "./transcriptUtils";
 import type { ChatMessage, UsageState } from "./types";
 
 export type { ChatMessage } from "./types";
@@ -106,6 +107,34 @@ function Chat({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onNewChat]);
+
+  // "Copy entire chat" context-menu items (issue #298) — serialise the whole
+  // conversation in the requested format and copy it. A ref keeps the latest
+  // messages without re-registering the IPC listener on every chunk.
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  });
+  useEffect(() => {
+    return window.hermesAPI.onContextMenuCopyChat((format) => {
+      const msgs = messagesRef.current;
+      if (msgs.length === 0) return;
+      void window.hermesAPI.copyToClipboard(buildChatTranscript(msgs, format));
+    });
+  }, []);
+
+  // "Select All" on a message (issue #298): the native selectAll role would
+  // select the entire window, so scope it to the .chat-bubble under the
+  // cursor — the user can then Copy that message.
+  useEffect(() => {
+    return window.hermesAPI.onContextMenuSelectBubble(({ x, y }) => {
+      const bubble = document.elementFromPoint(x, y)?.closest(".chat-bubble");
+      if (!bubble) return;
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.selectAllChildren(bubble);
+    });
+  }, []);
 
   const addAgentMessage = useCallback(
     (content: string) => {

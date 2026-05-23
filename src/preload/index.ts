@@ -192,6 +192,9 @@ const hermesAPI = {
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
 
+  copyToClipboard: (text: string): Promise<void> =>
+    ipcRenderer.invoke("copy-to-clipboard", text),
+
   // Resolve the absolute filesystem path for a File coming from drag-drop
   // or the file picker.  Returns "" for blobs that have no origin path
   // (e.g. clipboard paste) — caller should stageAttachment for those.
@@ -245,6 +248,30 @@ const hermesAPI = {
     ): void => callback(sessionId);
     ipcRenderer.on("chat-done", handler);
     return () => ipcRenderer.removeListener("chat-done", handler);
+  },
+
+  onContextMenuCopyChat: (
+    callback: (format: "text" | "markdown") => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      format: "text" | "markdown",
+    ): void => callback(format);
+    ipcRenderer.on("context-menu-copy-chat", handler);
+    return () =>
+      ipcRenderer.removeListener("context-menu-copy-chat", handler);
+  },
+
+  onContextMenuSelectBubble: (
+    callback: (point: { x: number; y: number }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      point: { x: number; y: number },
+    ): void => callback(point);
+    ipcRenderer.on("context-menu-select-bubble", handler);
+    return () =>
+      ipcRenderer.removeListener("context-menu-select-bubble", handler);
   },
 
   onChatToolProgress: (callback: (tool: string) => void): (() => void) => {
