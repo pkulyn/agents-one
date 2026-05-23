@@ -2494,6 +2494,40 @@ body {
   color: var(--text-muted);
 }
 
+.oauth-signin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  align-self: flex-start;
+}
+
+.oauth-login-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+/* Prominent outcome banner shown when the sign-in finishes — the raw
+   CLI log below stays append-only, so the result needs to stand out. */
+.oauth-login-result {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin: 0 0 10px;
+}
+
+.oauth-login-result-success {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.oauth-login-result-error {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
 .settings-pool-entry {
   display: flex;
   align-items: center;
