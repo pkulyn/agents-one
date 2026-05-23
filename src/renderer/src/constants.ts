@@ -116,8 +116,13 @@ export const PROVIDERS = {
       envKey: "OPENAI_API_KEY",
       url: "https://platform.openai.com/api-keys",
       placeholder: "sk-...",
-      configProvider: "openai",
-      baseUrl: "",
+      // Routed through the `custom` provider with an explicit base_url:
+      // hermes-agent's resolve_provider does not recognise a bare `openai`
+      // provider id (issue #294). The `custom` + api.openai.com path is
+      // accepted, and the OpenAI key is picked up via the known-host
+      // base-URL mapping.
+      configProvider: "custom",
+      baseUrl: "https://api.openai.com/v1",
       needsKey: true,
     },
     {
