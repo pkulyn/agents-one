@@ -206,10 +206,12 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
           window.hermesAPI.kanbanListClaw3dHqTasks(),
         ]);
         if (!boardsRes.success) {
-          if (
-            boardsRes.error &&
-            boardsRes.error.toLowerCase().includes("remote")
-          ) {
+          // Only the genuine unsupported-mode result (plain remote HTTP)
+          // flips the "switch modes" screen. A real SSH-Kanban failure
+          // must surface its actual error rather than be mislabelled as a
+          // mode problem — its message can contain the word "remote"
+          // without the mode being unsupported (issue #319).
+          if (boardsRes.unsupportedMode) {
             setRemoteUnsupported(true);
             return;
           }

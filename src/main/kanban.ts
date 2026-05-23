@@ -87,6 +87,14 @@ export interface KanbanResult<T = unknown> {
   data?: T;
   error?: string;
   stdout?: string;
+  /**
+   * Set only when the failure is the connection mode genuinely not
+   * supporting Kanban (plain remote HTTP). The renderer keys its
+   * "switch modes" screen off this flag — never off the error text —
+   * so a real SSH-Kanban failure surfaces its actual error instead of
+   * being mislabelled as a mode problem (issue #319).
+   */
+  unsupportedMode?: boolean;
 }
 
 const KANBAN_TIMEOUT_MS = 20000;
@@ -152,9 +160,10 @@ async function runKanban(
   });
 }
 
-function unsupportedInRemote<T>(): KanbanResult<T> {
+export function unsupportedInRemote<T>(): KanbanResult<T> {
   return {
     success: false,
+    unsupportedMode: true,
     error:
       "Kanban requires either a local Hermes install or SSH tunnel mode. " +
       "Plain remote (HTTP+API key) mode does not yet expose the kanban API. " +

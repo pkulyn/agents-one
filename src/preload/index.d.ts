@@ -596,7 +596,12 @@ interface HermesAPI {
   kanbanListBoards: (
     includeArchived?: boolean,
     profile?: string,
-  ) => Promise<{ success: boolean; data?: KanbanBoard[]; error?: string }>;
+  ) => Promise<{
+    success: boolean;
+    data?: KanbanBoard[];
+    error?: string;
+    unsupportedMode?: boolean;
+  }>;
   kanbanCurrentBoard: (
     profile?: string,
   ) => Promise<{ success: boolean; data?: string; error?: string }>;
