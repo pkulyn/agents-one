@@ -38,6 +38,11 @@ import {
 } from "./installer";
 import { updaterLogger } from "./updater-log";
 import {
+  runHermesAuthLogin,
+  cancelHermesAuthLogin,
+  detectDeviceCode,
+} from "./hermes-auth";
+import {
   isRemoteMode,
   isRemoteOnlyMode,
   sendMessage,
@@ -465,6 +470,42 @@ function setupIPC(): void {
       return { success: false, error: (err as Error).message };
     }
   });
+
+  // OAuth provider sign-in — spawns `hermes auth add <provider> --type
+  // oauth`, streaming the CLI's output to the renderer's sign-in modal.
+  ipcMain.handle(
+    "oauth-login",
+    (event, provider: string, profile?: string) => {
+      // Codex uses a device-code flow: it prints a URL + code instead
+      // of opening a browser. Watch the stream for that prompt, then
+      // open the page and pre-copy the code so the user just pastes.
+      let buffer = "";
+      let deviceHandled = false;
+      return runHermesAuthLogin(
+        provider,
+        (chunk) => {
+          // The user can close the modal mid-flow before cancelHermesAuthLogin
+          // tears down the subprocess; any send on a destroyed sender throws.
+          if (event.sender.isDestroyed()) return;
+          event.sender.send("oauth-login-progress", chunk);
+          if (deviceHandled) return;
+          buffer += chunk;
+          const device = detectDeviceCode(buffer);
+          if (device) {
+            deviceHandled = true;
+            openExternalUrl(device.url);
+            clipboard.writeText(device.code);
+            event.sender.send(
+              "oauth-login-progress",
+              `\n→ Code ${device.code} copied to clipboard — opening browser...\n`,
+            );
+          }
+        },
+        profile,
+      );
+    },
+  );
+  ipcMain.handle("oauth-login-cancel", () => cancelHermesAuthLogin());
 
   // Configuration (profile-aware)
   ipcMain.handle("get-locale", () => getAppLocale());
