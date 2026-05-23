@@ -249,7 +249,13 @@ function seedDb(
       session_id TEXT,
       role TEXT,
       content TEXT,
-      timestamp INTEGER
+      tool_call_id TEXT,
+      tool_calls TEXT,
+      tool_name TEXT,
+      timestamp INTEGER,
+      reasoning TEXT,
+      reasoning_content TEXT,
+      reasoning_details TEXT
     );
   `);
   const insSession = db.prepare(
