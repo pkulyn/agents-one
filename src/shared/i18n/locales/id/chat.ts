@@ -23,6 +23,9 @@ export default {
   deny: "Tolak",
   newChat: "Chat baru (Cmd+N)",
   clearChat: "Bersihkan chat",
+  setContextFolder: "Atur folder konteks",
+  contextFolderActive: "Folder konteks: {{path}}",
+  removeContextFolder: "Hapus folder konteks",
   attach: "Lampirkan file",
   removeAttachment: "Hapus lampiran",
   dropToAttach: "Lepaskan file untuk dilampirkan",
@@ -45,6 +48,10 @@ export default {
   categoryTools: "Alat",
   categoryInfo: "Info",
   noUsageData: "Belum ada data penggunaan. Kirim pesan terlebih dahulu.",
+  media: {
+    open: "Buka",
+    saveAs: "Simpan sebagai…",
+  },
   commands: {
     new: "Mulai chat baru",
     clear: "Bersihkan riwayat percakapan",

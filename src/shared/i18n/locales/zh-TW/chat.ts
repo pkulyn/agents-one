@@ -21,6 +21,9 @@ export default {
   deny: "拒絕",
   newChat: "新聊天 (Cmd+N)",
   clearChat: "清除聊天",
+  setContextFolder: "設定上下文資料夾",
+  contextFolderActive: "上下文資料夾：{{path}}",
+  removeContextFolder: "移除上下文資料夾",
   fastMode: "快速模式",
   fastModeOn: "快速模式 開啟",
   fastModeActive: "優先處理已啟用，在支援的模型上降低延遲。點擊停用。",
@@ -31,6 +34,10 @@ export default {
   categoryTools: "工具",
   categoryInfo: "資訊",
   noUsageData: "目前沒有使用資料。請先傳送一則訊息。",
+  media: {
+    open: "開啟",
+    saveAs: "另存新檔…",
+  },
   commands: {
     new: "開始新對話",
     clear: "清除對話歷史",

@@ -116,8 +116,13 @@ export const PROVIDERS = {
       envKey: "OPENAI_API_KEY",
       url: "https://platform.openai.com/api-keys",
       placeholder: "sk-...",
-      configProvider: "openai",
-      baseUrl: "",
+      // Routed through the `custom` provider with an explicit base_url:
+      // hermes-agent's resolve_provider does not recognise a bare `openai`
+      // provider id (issue #294). The `custom` + api.openai.com path is
+      // accepted, and the OpenAI key is picked up via the known-host
+      // base-URL mapping.
+      configProvider: "custom",
+      baseUrl: "https://api.openai.com/v1",
       needsKey: true,
     },
     {
@@ -182,6 +187,36 @@ export const PROVIDERS = {
     },
   ],
 };
+
+// Subscription / OAuth-plan providers — these authenticate through an
+// interactive browser login (`hermes auth add <id> --type oauth`) rather
+// than a static API key. The Providers screen renders a "Sign in" card
+// for each. Values must match hermes-agent's provider registry.
+export interface OAuthProviderDef {
+  id: string;
+  name: string;
+  desc: string;
+}
+
+export const OAUTH_PROVIDERS: OAuthProviderDef[] = [
+  {
+    id: "openai-codex",
+    name: "ChatGPT (Codex Plan)",
+    desc: "providers.oauth.codexDesc",
+  },
+  { id: "xai-oauth", name: "xAI Grok (OAuth)", desc: "providers.oauth.xaiDesc" },
+  { id: "qwen-oauth", name: "Qwen (OAuth)", desc: "providers.oauth.qwenDesc" },
+  {
+    id: "google-gemini-cli",
+    name: "Gemini (CLI OAuth)",
+    desc: "providers.oauth.geminiDesc",
+  },
+  {
+    id: "minimax-oauth",
+    name: "MiniMax (OAuth)",
+    desc: "providers.oauth.minimaxDesc",
+  },
+];
 
 export interface LocalPreset {
   id: string;

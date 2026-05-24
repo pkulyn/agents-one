@@ -117,6 +117,14 @@ interface HermesAPI {
   checkInstall: () => Promise<InstallStatus>;
   verifyInstall: () => Promise<boolean>;
   startInstall: () => Promise<{ success: boolean; error?: string }>;
+  inspectInstallTarget: () => Promise<{
+    hermesHome: string;
+    repoPath: string;
+    state: "fresh" | "update" | "replace";
+  }>;
+  validateHermesHome: (dir: string) => Promise<boolean>;
+  adoptHermesHome: (dir: string) => Promise<boolean>;
+  quitApp: () => Promise<void>;
   onInstallProgress: (
     callback: (progress: InstallProgress) => void,
   ) => () => void;
@@ -130,6 +138,14 @@ interface HermesAPI {
   // OpenClaw migration
   checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
   runClawMigrate: () => Promise<{ success: boolean; error?: string }>;
+
+  // OAuth provider sign-in
+  oauthLogin: (
+    provider: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  cancelOAuthLogin: () => Promise<boolean>;
+  onOAuthLoginProgress: (callback: (chunk: string) => void) => () => void;
 
   getLocale: () => Promise<AppLocale>;
   setLocale: (locale: AppLocale) => Promise<AppLocale>;
@@ -199,8 +215,24 @@ interface HermesAPI {
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
     attachments?: Attachment[],
+    contextFolder?: string,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  copyToClipboard: (text: string) => Promise<void>;
+  onContextMenuCopyChat: (
+    callback: (format: "text" | "markdown") => void,
+  ) => () => void;
+  onContextMenuSelectBubble: (
+    callback: (point: { x: number; y: number }) => void,
+  ) => () => void;
+  readMediaFile: (filePath: string) => Promise<string | null>;
+  saveMediaFile: (src: string, name: string) => Promise<boolean>;
+  mediaFileExists: (filePath: string) => Promise<boolean>;
+  showMediaMenu: (
+    src: string,
+    name: string,
+    labels: { open: string; saveAs: string },
+  ) => void;
   getPathForFile: (file: File) => string;
   stageAttachment: (
     sessionId: string,
@@ -263,13 +295,47 @@ interface HermesAPI {
     }>
   >;
   getSessionMessages: (sessionId: string) => Promise<
-    Array<{
-      id: number;
-      role: "user" | "assistant";
-      content: string;
-      timestamp: number;
-      attachments?: Attachment[];
-    }>
+    Array<
+      | {
+          kind: "user";
+          id: number;
+          content: string;
+          timestamp: number;
+          attachments?: Attachment[];
+        }
+      | {
+          kind: "assistant";
+          id: number;
+          content: string;
+          timestamp: number;
+          attachments?: Attachment[];
+        }
+      | {
+          kind: "reasoning";
+          id: number;
+          assistantId: number;
+          text: string;
+          timestamp: number;
+        }
+      | {
+          kind: "tool_call";
+          id: number;
+          assistantId: number;
+          callId: string;
+          name: string;
+          args: string;
+          timestamp: number;
+        }
+      | {
+          kind: "tool_result";
+          id: number;
+          callId: string;
+          name: string;
+          content: string;
+          timestamp: number;
+          attachments?: Attachment[];
+        }
+    >
   >;
 
   // Profiles
@@ -546,7 +612,12 @@ interface HermesAPI {
   kanbanListBoards: (
     includeArchived?: boolean,
     profile?: string,
-  ) => Promise<{ success: boolean; data?: KanbanBoard[]; error?: string }>;
+  ) => Promise<{
+    success: boolean;
+    data?: KanbanBoard[];
+    error?: string;
+    unsupportedMode?: boolean;
+  }>;
   kanbanCurrentBoard: (
     profile?: string,
   ) => Promise<{ success: boolean; data?: string; error?: string }>;
@@ -622,6 +693,11 @@ interface HermesAPI {
     dryRun?: boolean,
     profile?: string,
   ) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+  kanbanListClaw3dHqTasks: () => Promise<{
+    success: boolean;
+    data?: KanbanTask[];
+    error?: string;
+  }>;
 
   // Shell
   openExternal: (url: string) => Promise<void>;

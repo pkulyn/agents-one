@@ -8,10 +8,11 @@ import { spawn } from "child_process";
 import { homedir } from "os";
 import { join } from "path";
 import type { SshConfig } from "./ssh-tunnel";
+import type { KanbanTask } from "./kanban";
 import { buildSshControlOptions } from "./ssh-options";
 import type { InstalledSkill, SkillSearchResult } from "./skills";
 import type { MemoryInfo } from "./memory";
-import type { SessionSummary, SessionMessage, SearchResult } from "./sessions";
+import type { SessionSummary, SearchResult } from "./sessions";
 import type { CachedSession } from "./session-cache";
 import type { ToolsetInfo } from "./tools";
 import type { SavedModel } from "./models";
@@ -1107,7 +1108,12 @@ export async function sshGetSessionMessages(
   config: SshConfig,
   sessionId: string,
   profile?: string,
-): Promise<SessionMessage[]> {
+): Promise<import("./sessions").HistoryItem[]> {
+  // Mirror the local getSessionMessages logic over SSH: widen the SELECT to
+  // include tool_calls / tool_name / tool_call_id / reasoning columns, then
+  // expand each row into one or more HistoryItem entries. Kept inline in
+  // Python for transport simplicity. See src/main/sessions.ts for the
+  // canonical implementation and column documentation.
   const script = `
 import sqlite3, json, os, sys
 payload = json.load(sys.stdin)
@@ -1118,11 +1124,108 @@ if not os.path.exists(db):
     print("[]"); sys.exit(0)
 conn = sqlite3.connect(db)
 conn.row_factory = sqlite3.Row
+
+CONTENT_JSON_PREFIX = "\\x00json:"
+
+def decode(raw):
+    """Mirror src/main/sessions.ts::decodeContent — strip multimodal
+    sentinel, concat text parts, ignore images here (SSH path drops
+    attachments)."""
+    if not raw or not raw.startswith(CONTENT_JSON_PREFIX):
+        return raw or ""
+    try:
+        parts = json.loads(raw[len(CONTENT_JSON_PREFIX):])
+    except Exception:
+        return raw
+    if isinstance(parts, str):
+        return parts
+    if not isinstance(parts, list):
+        return raw
+    texts = []
+    for p in parts:
+        if isinstance(p, str):
+            if p: texts.append(p)
+            continue
+        if not isinstance(p, dict): continue
+        t = str(p.get("type") or "").lower()
+        if t in ("text", "input_text", "output_text"):
+            v = p.get("text")
+            if isinstance(v, str) and v: texts.append(v)
+    return "\\n\\n".join(texts)
+
+def pick_reasoning(row):
+    for col in ("reasoning", "reasoning_content"):
+        v = (row[col] or "").strip() if row[col] else ""
+        if v: return v
+    details = (row["reasoning_details"] or "").strip()
+    if not details: return ""
+    try:
+        parsed = json.loads(details)
+    except Exception:
+        return ""
+    if isinstance(parsed, str): return parsed
+    if isinstance(parsed, list):
+        texts = []
+        for entry in parsed:
+            if not isinstance(entry, dict): continue
+            for k in ("text", "thinking"):
+                v = entry.get(k)
+                if isinstance(v, str) and v: texts.append(v); break
+        if texts: return "\\n\\n".join(texts)
+    return ""
+
+def parse_tool_calls(raw):
+    if not raw or not raw.strip(): return []
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(parsed, list): return []
+    out = []
+    for entry in parsed:
+        if not isinstance(entry, dict): continue
+        fn = entry.get("function") or {}
+        name = fn.get("name")
+        if not isinstance(name, str) or not name: continue
+        call_id = entry.get("call_id") or entry.get("id") or ""
+        raw_args = fn.get("arguments")
+        args = raw_args if isinstance(raw_args, str) else ""
+        try:
+            args = json.dumps(json.loads(args), indent=2)
+        except Exception:
+            pass
+        out.append({"callId": call_id, "name": name, "args": args})
+    return out
+
 rows = conn.execute(
-    "SELECT id, role, content, timestamp FROM messages WHERE session_id=? ORDER BY id ASC",
+    "SELECT id, role, content, timestamp, tool_call_id, tool_calls, tool_name, "
+    "reasoning, reasoning_content, reasoning_details "
+    "FROM messages WHERE session_id = ? AND role IN ('user','assistant','tool') "
+    "ORDER BY timestamp, id",
     (session_id,)
 ).fetchall()
-print(json.dumps([{"id": r["id"], "role": r["role"], "content": r["content"] or "", "timestamp": r["timestamp"]} for r in rows]))
+
+items = []
+for r in rows:
+    text = decode(r["content"] or "")
+    if r["role"] == "user":
+        if not text: continue
+        items.append({"kind":"user","id":r["id"],"content":text,"timestamp":r["timestamp"]})
+        continue
+    if r["role"] == "assistant":
+        reasoning_text = pick_reasoning(r)
+        if reasoning_text:
+            items.append({"kind":"reasoning","id":r["id"],"assistantId":r["id"],"text":reasoning_text,"timestamp":r["timestamp"]})
+        if text:
+            items.append({"kind":"assistant","id":r["id"],"content":text,"timestamp":r["timestamp"]})
+        for tc in parse_tool_calls(r["tool_calls"]):
+            items.append({"kind":"tool_call","id":r["id"],"assistantId":r["id"],"callId":tc["callId"],"name":tc["name"],"args":tc["args"],"timestamp":r["timestamp"]})
+        continue
+    if r["role"] == "tool":
+        items.append({"kind":"tool_result","id":r["id"],"callId":r["tool_call_id"] or "","name":r["tool_name"] or "tool","content":text,"timestamp":r["timestamp"]})
+        continue
+
+print(json.dumps(items))
 conn.close()
 `;
   try {
@@ -1329,17 +1432,92 @@ export async function sshDeleteProfile(
 }
 
 // ── Gateway ───────────────────────────────────────────────────────────────────
+//
+// In SSH mode the remote gateway may be owned by a systemd `hermes.service`
+// unit — the standard VPS installer sets this up. Starting our own detached
+// `nohup` gateway then strands that unit in a restart crash-loop (issue
+// #285). Each operation below therefore asks the remote, in a single shell
+// `if`, whether such a unit is installed and routes the request through
+// systemd when it is — one SSH round-trip, atomic decision. The command
+// strings are built by the exported helpers below so they can be unit
+// tested without a live host.
+
+/**
+ * Shell test that succeeds when a systemd `hermes.service` unit file is
+ * installed on the remote. Safe on hosts without systemd: a missing
+ * `systemctl` yields empty output, so the test simply fails and callers
+ * fall back to the plain (`nohup` / pidfile) path.
+ */
+const SYSTEMD_HERMES_UNIT_TEST =
+  "systemctl list-unit-files hermes.service 2>/dev/null | " +
+  "grep -q '^hermes\\.service'";
+
+/**
+ * Command to start the remote gateway (issue #285). When a systemd
+ * `hermes.service` exists it owns the lifecycle, so the request is handed
+ * to systemd — `hermes.service` is a system unit, so `sudo` is tried first,
+ * then a direct call for when the SSH user is root. If neither works the
+ * command does nothing on purpose: an unmanaged `nohup` orphan that
+ * crash-loops the systemd unit is worse than a gateway that simply did not
+ * start (the status check will then report it as down). The detached
+ * `nohup` start is used only when there is no unit to collide with.
+ */
+export function buildGatewayStartCommand(): string {
+  return (
+    `if ${SYSTEMD_HERMES_UNIT_TEST}; then ` +
+    `sudo -n systemctl start hermes.service 2>/dev/null || ` +
+    `systemctl start hermes.service 2>/dev/null || true; ` +
+    `else ` +
+    `(nohup hermes gateway start > $HOME/.hermes/gateway.log 2>&1 &); ` +
+    `fi`
+  );
+}
+
+/**
+ * Command to stop the remote gateway (issue #285). Routed through systemd
+ * when a `hermes.service` unit exists, so the unit is left cleanly inactive
+ * rather than the desktop killing a process systemd would just restart;
+ * otherwise it falls back to `hermes gateway stop` and, last resort, the
+ * recorded pid.
+ */
+export function buildGatewayStopCommand(): string {
+  return (
+    `if ${SYSTEMD_HERMES_UNIT_TEST}; then ` +
+    `sudo -n systemctl stop hermes.service 2>/dev/null || ` +
+    `systemctl stop hermes.service 2>/dev/null || true; ` +
+    `else ` +
+    `hermes gateway stop 2>/dev/null || ` +
+    `(if [ -f $HOME/.hermes/gateway.pid ]; then ` +
+    `pid=$(python3 -c "import json; d=json.load(open('$HOME/.hermes/gateway.pid')); print(d['pid'] if isinstance(d,dict) else d)" 2>/dev/null); ` +
+    `[ -n "$pid" ] && kill $pid 2>/dev/null; fi); true; ` +
+    `fi`
+  );
+}
+
+/**
+ * Command to report remote gateway state (issue #285). For a systemd-managed
+ * gateway this is the unit's `is-active` state (`active` when up); otherwise
+ * it is a liveness check on the recorded pid. Prints `active` or `running`
+ * when up, anything else when not.
+ */
+export function buildGatewayStatusCommand(): string {
+  return (
+    `if ${SYSTEMD_HERMES_UNIT_TEST}; then ` +
+    `systemctl is-active hermes.service 2>/dev/null || true; ` +
+    `else ` +
+    `if [ -f $HOME/.hermes/gateway.pid ]; then ` +
+    `pid=$(python3 -c "import json,sys; d=json.load(open('$HOME/.hermes/gateway.pid')); print(d.get('pid',d) if isinstance(d,dict) else d)" 2>/dev/null || cat $HOME/.hermes/gateway.pid); ` +
+    `kill -0 $pid 2>/dev/null && echo "running" || echo "stopped"; ` +
+    `else echo "stopped"; fi; ` +
+    `fi`
+  );
+}
 
 export async function sshGatewayStatus(config: SshConfig): Promise<boolean> {
   try {
-    const out = await sshExec(
-      config,
-      `if [ -f $HOME/.hermes/gateway.pid ]; then ` +
-        `pid=$(python3 -c "import json,sys; d=json.load(open('$HOME/.hermes/gateway.pid')); print(d.get('pid',d) if isinstance(d,dict) else d)" 2>/dev/null || cat $HOME/.hermes/gateway.pid); ` +
-        `kill -0 $pid 2>/dev/null && echo "running" || echo "stopped"; ` +
-        `else echo "stopped"; fi`,
-    );
-    return out.trim() === "running";
+    const out = await sshExec(config, buildGatewayStatusCommand());
+    const state = out.trim();
+    return state === "running" || state === "active";
   } catch {
     return false;
   }
@@ -1347,10 +1525,7 @@ export async function sshGatewayStatus(config: SshConfig): Promise<boolean> {
 
 export async function sshStartGateway(config: SshConfig): Promise<void> {
   try {
-    await sshExec(
-      config,
-      `nohup hermes gateway start > $HOME/.hermes/gateway.log 2>&1 &`,
-    );
+    await sshExec(config, buildGatewayStartCommand());
   } catch {
     // best effort
   }
@@ -1358,13 +1533,7 @@ export async function sshStartGateway(config: SshConfig): Promise<void> {
 
 export async function sshStopGateway(config: SshConfig): Promise<void> {
   try {
-    await sshExec(
-      config,
-      `hermes gateway stop 2>/dev/null || ` +
-        `(if [ -f $HOME/.hermes/gateway.pid ]; then ` +
-        `pid=$(python3 -c "import json; d=json.load(open('$HOME/.hermes/gateway.pid')); print(d['pid'] if isinstance(d,dict) else d)" 2>/dev/null); ` +
-        `[ -n "$pid" ] && kill $pid 2>/dev/null; fi); true`,
-    );
+    await sshExec(config, buildGatewayStopCommand());
   } catch {
     // best effort
   }
@@ -1445,6 +1614,124 @@ export async function sshRunKanban<T = unknown>(
       error: (err as Error).message || "Remote kanban command failed",
     };
   }
+}
+
+// ── Claw3D HQ board (read-only) ───────────────────────────────────────────────
+//
+// Claw3D ("hermes-office") maintains its own headquarters task board independent
+// of `hermes kanban`. It stores tasks at
+// `<state-dir>/claw3d/task-manager/tasks.json`, where <state-dir> resolves to
+// `~/.openclaw` (new) or `~/.clawdbot` / `~/.moltbot` (legacy) — see
+// hermes-office/src/lib/clawdbot/paths.ts. We surface it as a virtual,
+// read-only second board in the desktop's Kanban tab so the Claw3D HQ cards
+// are visible alongside the agent dispatcher's own board.
+
+interface Claw3dSharedTaskRecord {
+  id: string;
+  title: string;
+  description?: string;
+  status?: string;
+  source?: string;
+  assignedAgentId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  channel?: string | null;
+  notes?: unknown;
+  isArchived?: boolean;
+}
+
+// Claw3D's TaskBoardStatus → desktop kanban column. Claw3D has no "triage" or
+// "ready" semantics, so `review` (awaiting attention) lands in "ready" and
+// `in_progress` maps to "running". Everything else is straight-through.
+const CLAW3D_STATUS_MAP: Record<string, KanbanTask["status"]> = {
+  todo: "todo",
+  in_progress: "running",
+  blocked: "blocked",
+  review: "ready",
+  done: "done",
+};
+
+function parseIsoToEpochSeconds(value: string | undefined): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+}
+
+function mapClaw3dTaskToKanbanTask(raw: Claw3dSharedTaskRecord): KanbanTask {
+  const status = (raw.status && CLAW3D_STATUS_MAP[raw.status]) || "todo";
+  const createdAt = parseIsoToEpochSeconds(raw.createdAt);
+  return {
+    id: raw.id,
+    title: raw.title,
+    body: raw.description?.trim() || null,
+    assignee: raw.assignedAgentId?.trim() || null,
+    status,
+    priority: 0,
+    tenant: null,
+    workspace_kind: "scratch",
+    workspace_path: null,
+    created_by: raw.source || null,
+    created_at: createdAt,
+    started_at: null,
+    completed_at:
+      status === "done" ? parseIsoToEpochSeconds(raw.updatedAt) : null,
+    result: null,
+    skills: [],
+    max_retries: null,
+  };
+}
+
+// Candidate state dirs mirror hermes-office's resolveStateDir() precedence:
+// new `.openclaw` first, then legacy `.clawdbot` / `.moltbot`.
+const CLAW3D_TASKS_PATHS = [
+  "~/.openclaw/claw3d/task-manager/tasks.json",
+  "~/.clawdbot/claw3d/task-manager/tasks.json",
+  "~/.moltbot/claw3d/task-manager/tasks.json",
+];
+
+export interface SshClaw3dHqResult {
+  success: boolean;
+  tasks?: KanbanTask[];
+  error?: string;
+  source?: string; // resolved remote path
+}
+
+export async function sshListClaw3dHqTasks(
+  config: SshConfig,
+): Promise<SshClaw3dHqResult> {
+  for (const remotePath of CLAW3D_TASKS_PATHS) {
+    let raw = "";
+    try {
+      raw = await sshReadFile(config, remotePath);
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+    if (!raw.trim()) continue;
+    try {
+      const parsed = JSON.parse(raw) as { tasks?: unknown };
+      const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+      const mapped = tasks
+        .filter(
+          (t): t is Claw3dSharedTaskRecord =>
+            Boolean(t) &&
+            typeof t === "object" &&
+            typeof (t as Claw3dSharedTaskRecord).id === "string" &&
+            typeof (t as Claw3dSharedTaskRecord).title === "string",
+        )
+        .filter((t) => !t.isArchived)
+        .map(mapClaw3dTaskToKanbanTask);
+      return { success: true, tasks: mapped, source: remotePath };
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to parse Claw3D tasks.json: ${(err as Error).message}`,
+      };
+    }
+  }
+  // No file found at any candidate path — that's fine, just means the user
+  // hasn't run Claw3D's HQ board yet. Return empty rather than erroring so
+  // the renderer can still show an empty HQ board placeholder.
+  return { success: true, tasks: [] };
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
@@ -1600,11 +1887,25 @@ export async function sshListCachedSessions(
 // Probe the well-known venv install paths first; fall back to bare `hermes`
 // on PATH only if none of those exist, preserving the old behavior for
 // non-installer deployments.
-function buildRemoteHermesCmd(args: string[], extraShell = ""): string {
+//
+// Each install base is probed with both `.venv` and `venv` — the venv
+// directory name is not fixed, and an install that uses the un-dotted
+// `venv` was otherwise invisible even when fully working (issue #284).
+// `~/.local/bin/hermes` is also probed, where `pip install --user` flows
+// place a wrapper. `command -v hermes` alone is not enough: the desktop's
+// non-interactive SSH does not source `~/.profile`/`~/.bashrc`, so any
+// PATH additions made there are not visible.
+//
+// Exported for unit testing the probe list without a live remote host.
+export function buildRemoteHermesCmd(args: string[], extraShell = ""): string {
   const candidates = [
     "$HOME/hermes-agent/.venv/bin/hermes",
+    "$HOME/hermes-agent/venv/bin/hermes",
     "$HOME/.hermes/hermes-agent/.venv/bin/hermes",
+    "$HOME/.hermes/hermes-agent/venv/bin/hermes",
     "/opt/hermes/hermes-agent/.venv/bin/hermes",
+    "/opt/hermes/hermes-agent/venv/bin/hermes",
+    "$HOME/.local/bin/hermes",
   ];
   const quotedArgs = args.map((a) => shellQuote(a)).join(" ");
   const probe = candidates

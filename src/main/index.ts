@@ -6,6 +6,7 @@ import {
   Menu,
   Notification,
   dialog,
+  clipboard,
 } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
@@ -14,10 +15,14 @@ import icon from "../../resources/icon.png?asset";
 import type { Attachment } from "../shared/attachments";
 import { stageAttachment, clearStagedAttachments } from "./attachment-staging";
 import { discoverProviderModels } from "./model-discovery";
+import { readMediaAsDataUrl, saveMedia, mediaFileExists } from "./media";
 import {
   checkInstallStatus,
   verifyInstall,
   runInstall,
+  inspectInstallTarget,
+  validateHermesHome,
+  setHermesHomeOverride,
   getHermesVersion,
   clearVersionCache,
   runHermesDoctor,
@@ -32,6 +37,12 @@ import {
   readLogs,
   InstallProgress,
 } from "./installer";
+import { updaterLogger } from "./updater-log";
+import {
+  runHermesAuthLogin,
+  cancelHermesAuthLogin,
+  detectDeviceCode,
+} from "./hermes-auth";
 import {
   isRemoteMode,
   isRemoteOnlyMode,
@@ -146,6 +157,7 @@ import {
   reclaimTask as kanbanReclaimTask,
   commentTask as kanbanCommentTask,
   dispatchOnce as kanbanDispatchOnce,
+  listClaw3dHqTasks as kanbanListClaw3dHqTasks,
   CreateTaskInput,
 } from "./kanban";
 import { getAppLocale, setAppLocale } from "./locale";
@@ -314,6 +326,53 @@ function createWindow(): void {
     },
   );
 
+  // Right-click context menu (issue #298): native Cut/Copy/Paste/Select All
+  // via Electron roles — they act on the focused field / selection and work
+  // across the whole app — plus two items to copy the whole conversation.
+  mainWindow.webContents.on("context-menu", (_event, params) => {
+    const { editFlags, isEditable } = params;
+    const template: Electron.MenuItemConstructorOptions[] = [];
+    if (isEditable) {
+      template.push(
+        { role: "cut", enabled: editFlags.canCut },
+        { role: "copy", enabled: editFlags.canCopy },
+        { role: "paste", enabled: editFlags.canPaste },
+        { type: "separator" },
+        // The selectAll role scopes correctly to the focused input field.
+        { role: "selectAll" },
+      );
+    } else {
+      template.push(
+        { role: "copy", enabled: editFlags.canCopy },
+        { type: "separator" },
+        // The selectAll role would select the entire window for non-editable
+        // content — scope it to the message bubble under the cursor instead.
+        {
+          label: "Select All",
+          click: () =>
+            mainWindow?.webContents.send("context-menu-select-bubble", {
+              x: params.x,
+              y: params.y,
+            }),
+        },
+      );
+    }
+    template.push(
+      { type: "separator" },
+      {
+        label: "Copy entire chat (text)",
+        click: () =>
+          mainWindow?.webContents.send("context-menu-copy-chat", "text"),
+      },
+      {
+        label: "Copy entire chat (Markdown)",
+        click: () =>
+          mainWindow?.webContents.send("context-menu-copy-chat", "markdown"),
+      },
+    );
+    Menu.buildFromTemplate(template).popup();
+  });
+
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
@@ -339,6 +398,22 @@ function setupIPC(): void {
       return { success: false, error: (err as Error).message };
     }
   });
+
+  // Pre-install inspection + "use an existing installation" (issue #272).
+  ipcMain.handle("inspect-install-target", () => inspectInstallTarget());
+  ipcMain.handle("validate-hermes-home", (_event, dir: string) =>
+    validateHermesHome(dir),
+  );
+  ipcMain.handle("adopt-hermes-home", (_event, dir: string) => {
+    if (!validateHermesHome(dir)) return false;
+    // Persist the choice only. HERMES_HOME is resolved once at module
+    // load, so the override takes effect on the next launch — the renderer
+    // asks the user to restart. (An app-driven relaunch is unreliable
+    // under the dev server, which is torn down with the process.)
+    setHermesHomeOverride(dir);
+    return true;
+  });
+  ipcMain.handle("quit-app", () => app.quit());
 
   // Hermes engine info
   ipcMain.handle("get-hermes-version", async () => {
@@ -396,6 +471,42 @@ function setupIPC(): void {
       return { success: false, error: (err as Error).message };
     }
   });
+
+  // OAuth provider sign-in — spawns `hermes auth add <provider> --type
+  // oauth`, streaming the CLI's output to the renderer's sign-in modal.
+  ipcMain.handle(
+    "oauth-login",
+    (event, provider: string, profile?: string) => {
+      // Codex uses a device-code flow: it prints a URL + code instead
+      // of opening a browser. Watch the stream for that prompt, then
+      // open the page and pre-copy the code so the user just pastes.
+      let buffer = "";
+      let deviceHandled = false;
+      return runHermesAuthLogin(
+        provider,
+        (chunk) => {
+          // The user can close the modal mid-flow before cancelHermesAuthLogin
+          // tears down the subprocess; any send on a destroyed sender throws.
+          if (event.sender.isDestroyed()) return;
+          event.sender.send("oauth-login-progress", chunk);
+          if (deviceHandled) return;
+          buffer += chunk;
+          const device = detectDeviceCode(buffer);
+          if (device) {
+            deviceHandled = true;
+            openExternalUrl(device.url);
+            clipboard.writeText(device.code);
+            event.sender.send(
+              "oauth-login-progress",
+              `\n→ Code ${device.code} copied to clipboard — opening browser...\n`,
+            );
+          }
+        },
+        profile,
+      );
+    },
+  );
+  ipcMain.handle("oauth-login-cancel", () => cancelHermesAuthLogin());
 
   // Configuration (profile-aware)
   ipcMain.handle("get-locale", () => getAppLocale());
@@ -618,6 +729,7 @@ function setupIPC(): void {
       resumeSessionId?: string,
       history?: Array<{ role: string; content: string }>,
       attachments?: Attachment[],
+      contextFolder?: string,
     ) => {
       if (!isRemoteMode() && !isGatewayRunning()) {
         startGateway(profile);
@@ -651,16 +763,35 @@ function setupIPC(): void {
         },
       );
 
+      // Streaming sends to `event.sender` will throw "Object has been
+      // destroyed" if the renderer WebContents goes away mid-response
+      // (window closed, reloaded, navigated away). Guard every send so a
+      // dead sender doesn't crash the IPC handler, and abort the in-flight
+      // chat the first time we see one — there's nobody listening anymore.
+      const safeSend = (channel: string, payload: unknown): boolean => {
+        if (event.sender.isDestroyed()) return false;
+        try {
+          event.sender.send(channel, payload);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
       const handle = await sendMessage(
         message,
         {
           onChunk: (chunk) => {
             fullResponse += chunk;
-            event.sender.send("chat-chunk", chunk);
+            if (!safeSend("chat-chunk", chunk) && currentChatAbort) {
+              // Renderer is gone — stop generating and resolve with what we
+              // have so the awaiting promise doesn't leak.
+              currentChatAbort();
+            }
           },
           onDone: (sessionId) => {
             currentChatAbort = null;
-            event.sender.send("chat-done", sessionId || "");
+            safeSend("chat-done", sessionId || "");
             resolveChat({ response: fullResponse, sessionId });
             // Desktop notification when window is not focused and response took >10s
             if (
@@ -680,7 +811,7 @@ function setupIPC(): void {
           },
           onError: (error) => {
             currentChatAbort = null;
-            event.sender.send("chat-error", error);
+            safeSend("chat-error", error);
             rejectChat(new Error(error));
             // Notify on error too if window not focused
             if (mainWindow && !mainWindow.isFocused()) {
@@ -691,16 +822,17 @@ function setupIPC(): void {
             }
           },
           onToolProgress: (tool) => {
-            event.sender.send("chat-tool-progress", tool);
+            safeSend("chat-tool-progress", tool);
           },
           onUsage: (usage) => {
-            event.sender.send("chat-usage", usage);
+            safeSend("chat-usage", usage);
           },
         },
         profile,
         resumeSessionId,
         history,
         attachments,
+        contextFolder,
       );
 
       currentChatAbort = handle.abort;
@@ -714,6 +846,68 @@ function setupIPC(): void {
       currentChatAbort = null;
     }
   });
+
+  // Renderer-driven clipboard write (issue #298 — "Copy entire chat").
+  // Routed through the main process so it doesn't depend on the renderer's
+  // document being focused, which the navigator.clipboard API requires.
+  ipcMain.handle("copy-to-clipboard", (_event, text: string) => {
+    clipboard.writeText(typeof text === "string" ? text : "");
+  });
+
+  // Media — render agent-generated images and save them to disk (#299).
+  ipcMain.handle("read-media-file", (_event, filePath: string) =>
+    readMediaAsDataUrl(filePath),
+  );
+  ipcMain.handle("save-media-file", (event, src: string, name: string) =>
+    saveMedia(src, name, BrowserWindow.fromWebContents(event.sender)),
+  );
+  ipcMain.handle("media-file-exists", (_event, filePath: string) =>
+    mediaFileExists(filePath),
+  );
+
+  // Native right-click menu for a rendered media element (#299): "Open"
+  // hands the file to the OS default handler (or a web URL to the browser),
+  // "Save as…" writes a copy elsewhere. Labels are passed in from the
+  // renderer so the menu honours the active UI locale.
+  ipcMain.on(
+    "show-media-menu",
+    (
+      event,
+      src: string,
+      name: string,
+      labels: { open: string; saveAs: string },
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || !src) return;
+      const isUrl = /^https?:\/\//i.test(src);
+      const isData = src.startsWith("data:");
+      const template: Electron.MenuItemConstructorOptions[] = [];
+      // "Open" needs a real target — a local file or a web URL. A data:
+      // URL is inline bytes with nothing to hand to the OS, so it is
+      // save-only.
+      if (!isData) {
+        template.push({
+          label: labels.open,
+          click: () => {
+            if (isUrl) {
+              openExternalUrl(src);
+            } else {
+              shell.openPath(src).then((err) => {
+                if (err) console.error("[media] open failed:", err);
+              });
+            }
+          },
+        });
+      }
+      template.push({
+        label: labels.saveAs,
+        click: () => {
+          void saveMedia(src, name, win);
+        },
+      });
+      Menu.buildFromTemplate(template).popup({ window: win });
+    },
+  );
 
   // Attachment staging — for pasted blobs that have no filesystem origin.
   ipcMain.handle(
@@ -1238,6 +1432,9 @@ function setupIPC(): void {
     (_event, dryRun?: boolean, profile?: string) =>
       kanbanDispatchOnce(dryRun, profile),
   );
+  ipcMain.handle("kanban-list-claw3d-hq-tasks", () =>
+    kanbanListClaw3dHqTasks(),
+  );
 
   // Shell
   ipcMain.handle("open-external", (_event, url: string) => {
@@ -1391,8 +1588,15 @@ function setupUpdater(): void {
   // IPC handlers must always be registered to avoid invoke errors
   ipcMain.handle("get-app-version", () => app.getVersion());
 
-  if (!app.isPackaged) {
-    // Skip auto-update in dev mode
+  // Portable Windows builds set PORTABLE_EXECUTABLE_DIR. They have no
+  // install location for electron-updater to replace in place, so an
+  // update check just fails and surfaces a spurious "Update failed".
+  // Skip the updater for them (users update by downloading a new
+  // portable .exe), same as dev mode.
+  const isPortableBuild = !!process.env.PORTABLE_EXECUTABLE_DIR;
+
+  if (!app.isPackaged || isPortableBuild) {
+    // Skip auto-update in dev mode and portable builds
     ipcMain.handle("check-for-updates", async () => null);
     ipcMain.handle("download-update", () => true);
     ipcMain.handle("install-update", () => {});
@@ -1405,6 +1609,9 @@ function setupUpdater(): void {
     autoUpdater: AppUpdater;
   };
 
+  // Log the updater's own lifecycle to <userData>/logs/updater.log so a
+  // failed update (e.g. issue #271) leaves something to diagnose.
+  autoUpdater.logger = updaterLogger;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -1450,6 +1657,11 @@ function setupUpdater(): void {
   });
 
   ipcMain.handle("install-update", () => {
+    // Bracket the suspect call: if the log shows this line but the app
+    // never relaunches, the failure is in quitAndInstall / the installer.
+    updaterLogger.info(
+      "Restart requested by user — calling quitAndInstall(isSilent=false, isForceRunAfter=true)",
+    );
     autoUpdater.quitAndInstall(false, true);
   });
 

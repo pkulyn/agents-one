@@ -3,6 +3,25 @@ import { join } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 
+// installer.ts transitively imports modules that pull in `electron` at value
+// scope (askpass.ts, sudoCreds.ts). Loading the real package in a plain
+// Node/vitest environment fails ("Electron failed to install correctly"),
+// which breaks every test that dynamically imports the installer module.
+// Provide a minimal stub so the import resolves.
+vi.mock("electron", () => ({
+  BrowserWindow: class {
+    static getAllWindows(): unknown[] {
+      return [];
+    }
+  },
+  ipcMain: {
+    on: (): void => {},
+    handle: (): void => {},
+    removeHandler: (): void => {},
+    removeAllListeners: (): void => {},
+  },
+}));
+
 // We test the extracted pure functions by importing them.
 // Some functions depend on HERMES_HOME — we mock the module-level constants.
 
@@ -288,6 +307,47 @@ describe("OAuth credential discovery", () => {
     writeFileSync(join(TEST_DIR, "auth.json"), "{not-json");
     const malformed = await importConfigWithHome(TEST_DIR);
     expect(malformed.hasOAuthCredentials("openai-codex")).toBe(false);
+  });
+});
+
+// ─── OpenClaw detector ─────────────────────────────────
+
+describe("checkOpenClawExists", () => {
+  it("ignores an empty .openclaw directory (self-created stub)", async () => {
+    // Mirrors the real-world case where hermes-desktop's own Claw3D settings
+    // helper has mkdirSync'd ~/.openclaw/claw3d/ without writing any files.
+    mkdirSync(join(TEST_DIR, ".openclaw", "claw3d"), { recursive: true });
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: false, path: null });
+  });
+
+  it("detects a populated .openclaw directory", async () => {
+    const dir = join(TEST_DIR, ".openclaw");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "openclaw.json"), "{}");
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: true, path: dir });
+  });
+
+  it("detects files nested under subdirectories", async () => {
+    const dir = join(TEST_DIR, ".openclaw");
+    mkdirSync(join(dir, "skills", "my-skill"), { recursive: true });
+    writeFileSync(join(dir, "skills", "my-skill", "SKILL.md"), "hi");
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: true, path: dir });
+  });
+
+  it("returns not-found when no candidate directory exists", async () => {
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: false, path: null });
+  });
+
+  it("falls back to legacy .clawdbot and .moldbot names", async () => {
+    const dir = join(TEST_DIR, ".clawdbot");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "clawdbot.json"), "{}");
+    const { checkOpenClawExists } = await import("../src/main/installer");
+    expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: true, path: dir });
   });
 });
 

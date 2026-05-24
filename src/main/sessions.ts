@@ -1,12 +1,9 @@
 import Database from "better-sqlite3";
-import { join } from "path";
 import { existsSync } from "fs";
-import { HERMES_HOME } from "./installer";
+import { activeStateDbPath } from "./utils";
 import type { Attachment } from "../shared/attachments";
 import { isImageMime } from "../shared/attachments";
 import { removeSessionFromCache } from "./session-cache";
-
-const DB_PATH = join(HERMES_HOME, "state.db");
 
 // Sentinel prefix used by hermes-agent's hermes_state.py to mark
 // JSON-encoded multimodal content in the messages.content column.
@@ -31,6 +28,56 @@ export interface SessionMessage {
   timestamp: number;
   attachments?: Attachment[];
 }
+
+/**
+ * Renderer-facing union of timeline items reconstructed from the DB.
+ *
+ * `user` / `assistant` are visible message bubbles. `reasoning`,
+ * `tool_call`, and `tool_result` are surfaced as collapsible sub-rows
+ * — they exist in the agent's state DB but were dropped on read until
+ * this change. We emit them inline at the position they originally
+ * occurred so the resumed transcript matches the live conversation.
+ */
+export type HistoryItem =
+  | {
+      kind: "user";
+      id: number;
+      content: string;
+      timestamp: number;
+      attachments?: Attachment[];
+    }
+  | {
+      kind: "assistant";
+      id: number;
+      content: string;
+      timestamp: number;
+      attachments?: Attachment[];
+    }
+  | {
+      kind: "reasoning";
+      id: number;
+      assistantId: number;
+      text: string;
+      timestamp: number;
+    }
+  | {
+      kind: "tool_call";
+      id: number;
+      assistantId: number;
+      callId: string;
+      name: string;
+      args: string; // pretty-printed JSON when possible, otherwise raw
+      timestamp: number;
+    }
+  | {
+      kind: "tool_result";
+      id: number;
+      callId: string;
+      name: string;
+      content: string;
+      timestamp: number;
+      attachments?: Attachment[];
+    };
 
 interface DecodedContent {
   text: string;
@@ -122,8 +169,11 @@ export interface SearchResult {
 }
 
 function getDb(readonly = true): Database.Database | null {
-  if (!existsSync(DB_PATH)) return null;
-  return new Database(DB_PATH, readonly ? { readonly: true } : {});
+  // Open the active profile's session DB — named profiles keep their
+  // sessions under ~/.hermes/profiles/<name>/state.db (issue #311).
+  const dbPath = activeStateDbPath();
+  if (!existsSync(dbPath)) return null;
+  return new Database(dbPath, readonly ? { readonly: true } : {});
 }
 
 export function listSessions(limit = 30, offset = 0): SessionSummary[] {
@@ -238,37 +288,206 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
   }
 }
 
-export function getSessionMessages(sessionId: string): SessionMessage[] {
+/**
+ * Try hard to extract human-readable reasoning text from one of the three
+ * provider-specific columns the agent stores it in. Returns "" when nothing
+ * usable is present.
+ *
+ * Priority: `reasoning` (plain text from most providers) >
+ *           `reasoning_content` (legacy mirror) >
+ *           `reasoning_details` (Anthropic / OpenRouter signed-block JSON;
+ *            we flatten its `text` fields when present, otherwise drop it).
+ */
+export function pickReasoning(row: {
+  reasoning: string | null;
+  reasoning_content: string | null;
+  reasoning_details: string | null;
+}): string {
+  const direct = (row.reasoning || "").trim();
+  if (direct) return direct;
+  const legacy = (row.reasoning_content || "").trim();
+  if (legacy) return legacy;
+  const details = (row.reasoning_details || "").trim();
+  if (!details) return "";
+  try {
+    const parsed = JSON.parse(details);
+    if (typeof parsed === "string") return parsed;
+    if (Array.isArray(parsed)) {
+      const texts: string[] = [];
+      for (const entry of parsed) {
+        if (!entry || typeof entry !== "object") continue;
+        const e = entry as Record<string, unknown>;
+        if (typeof e.text === "string" && e.text) texts.push(e.text);
+        else if (typeof e.thinking === "string" && e.thinking)
+          texts.push(e.thinking);
+      }
+      if (texts.length) return texts.join("\n\n");
+    }
+  } catch {
+    /* fall through */
+  }
+  return "";
+}
+
+/**
+ * Parse the assistant row's `tool_calls` JSON. Each entry from the agent
+ * looks like `{id, call_id, type:"function", function:{name, arguments}}`.
+ * `arguments` is itself a JSON-encoded string the agent sent to the model.
+ * We pretty-print it for display when it parses, leave it raw otherwise.
+ *
+ * Returns `[]` on any parse failure — the caller silently skips bad rows
+ * so a malformed tool_calls cell never blocks history rendering.
+ */
+export function parseToolCalls(
+  raw: string | null,
+): Array<{ callId: string; name: string; args: string }> {
+  if (!raw || !raw.trim()) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: Array<{ callId: string; name: string; args: string }> = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const fn = (e.function || {}) as Record<string, unknown>;
+    const name = typeof fn.name === "string" ? fn.name : "";
+    if (!name) continue;
+    const callId =
+      (typeof e.call_id === "string" && e.call_id) ||
+      (typeof e.id === "string" && e.id) ||
+      "";
+    const rawArgs = typeof fn.arguments === "string" ? fn.arguments : "";
+    let args = rawArgs;
+    try {
+      args = JSON.stringify(JSON.parse(rawArgs), null, 2);
+    } catch {
+      // arguments wasn't JSON — leave as-is
+    }
+    out.push({ callId, name, args });
+  }
+  return out;
+}
+
+/**
+ * Row shape as returned by the widened SELECT inside getSessionMessages,
+ * exported so the unit tests can build fixture rows without going through
+ * sqlite (better-sqlite3 is an Electron-only native module).
+ */
+export interface RawMessageRow {
+  id: number;
+  role: string;
+  content: string | null;
+  timestamp: number;
+  tool_call_id: string | null;
+  tool_calls: string | null;
+  tool_name: string | null;
+  reasoning: string | null;
+  reasoning_content: string | null;
+  reasoning_details: string | null;
+}
+
+/**
+ * Pure expansion of DB rows → renderer-facing HistoryItem list. Kept pure
+ * (no I/O) so we can exercise the ordering and edge-case logic directly
+ * without booting sqlite.
+ */
+export function expandRowsToHistory(rows: RawMessageRow[]): HistoryItem[] {
+  const items: HistoryItem[] = [];
+  for (const r of rows) {
+    const decoded = decodeContent(r.content || "", r.id);
+
+    if (r.role === "user") {
+      if (!decoded.text && decoded.attachments.length === 0) continue;
+      items.push({
+        kind: "user",
+        id: r.id,
+        content: decoded.text,
+        timestamp: r.timestamp,
+        ...(decoded.attachments.length > 0
+          ? { attachments: decoded.attachments }
+          : {}),
+      });
+      continue;
+    }
+
+    if (r.role === "assistant") {
+      const reasoningText = pickReasoning(r);
+      if (reasoningText) {
+        items.push({
+          kind: "reasoning",
+          id: r.id,
+          assistantId: r.id,
+          text: reasoningText,
+          timestamp: r.timestamp,
+        });
+      }
+
+      if (decoded.text || decoded.attachments.length > 0) {
+        items.push({
+          kind: "assistant",
+          id: r.id,
+          content: decoded.text,
+          timestamp: r.timestamp,
+          ...(decoded.attachments.length > 0
+            ? { attachments: decoded.attachments }
+            : {}),
+        });
+      }
+
+      for (const tc of parseToolCalls(r.tool_calls)) {
+        items.push({
+          kind: "tool_call",
+          id: r.id,
+          assistantId: r.id,
+          callId: tc.callId,
+          name: tc.name,
+          args: tc.args,
+          timestamp: r.timestamp,
+        });
+      }
+      continue;
+    }
+
+    if (r.role === "tool") {
+      const name = r.tool_name || "tool";
+      items.push({
+        kind: "tool_result",
+        id: r.id,
+        callId: r.tool_call_id || "",
+        name,
+        content: decoded.text,
+        timestamp: r.timestamp,
+        ...(decoded.attachments.length > 0
+          ? { attachments: decoded.attachments }
+          : {}),
+      });
+      continue;
+    }
+  }
+  return items;
+}
+
+export function getSessionMessages(sessionId: string): HistoryItem[] {
   const db = getDb();
   if (!db) return [];
 
   try {
     const rows = db
       .prepare(
-        `SELECT id, role, content, timestamp
+        `SELECT id, role, content, timestamp,
+                tool_call_id, tool_calls, tool_name,
+                reasoning, reasoning_content, reasoning_details
          FROM messages
-         WHERE session_id = ? AND role IN ('user', 'assistant') AND content IS NOT NULL
+         WHERE session_id = ? AND role IN ('user', 'assistant', 'tool')
          ORDER BY timestamp, id`,
       )
-      .all(sessionId) as Array<{
-      id: number;
-      role: string;
-      content: string;
-      timestamp: number;
-    }>;
+      .all(sessionId) as RawMessageRow[];
 
-    return rows.map((r) => {
-      const decoded = decodeContent(r.content, r.id);
-      return {
-        id: r.id,
-        role: r.role as "user" | "assistant",
-        content: decoded.text,
-        timestamp: r.timestamp,
-        ...(decoded.attachments.length > 0
-          ? { attachments: decoded.attachments }
-          : {}),
-      };
-    });
+    return expandRowsToHistory(rows);
   } finally {
     db.close();
   }

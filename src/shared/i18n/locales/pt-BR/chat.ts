@@ -23,6 +23,9 @@ export default {
   deny: "Negar",
   newChat: "Novo chat (Cmd+N)",
   clearChat: "Limpar chat",
+  setContextFolder: "Definir pasta de contexto",
+  contextFolderActive: "Pasta de contexto: {{path}}",
+  removeContextFolder: "Remover pasta de contexto",
   attach: "Anexar arquivos",
   removeAttachment: "Remover anexo",
   dropToAttach: "Solte os arquivos para anexar",
@@ -45,6 +48,10 @@ export default {
   categoryTools: "Ferramentas",
   categoryInfo: "Informação",
   noUsageData: "Nenhum dado de uso ainda. Envie uma mensagem primeiro.",
+  media: {
+    open: "Abrir",
+    saveAs: "Salvar como…",
+  },
   commands: {
     new: "Iniciar um novo chat",
     clear: "Limpar o histórico da conversa",

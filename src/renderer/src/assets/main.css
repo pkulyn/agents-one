@@ -589,6 +589,77 @@ body {
   gap: 10px;
 }
 
+/* Pre-install confirmation (issue #272) */
+.install-confirm {
+  width: 100%;
+  max-width: 620px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.install-confirm-location {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.install-confirm-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.install-confirm-path {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-all;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.install-confirm-state {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.install-confirm-state--replace {
+  padding: 10px 12px;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+}
+
+.install-confirm-note,
+.install-confirm-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.install-confirm-hint {
+  color: var(--text-muted);
+}
+
+.install-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.install-confirm-error {
+  font-size: 13px;
+  color: var(--error);
+  margin: 0;
+}
+
 .verify-warning-banner {
   display: flex;
   align-items: center;
@@ -662,7 +733,7 @@ body {
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   width: 100%;
-  max-width: 580px;
+  max-width: 620px;
   margin-bottom: 32px;
 }
 
@@ -1096,6 +1167,44 @@ body {
 
 .chat-fast-wrapper:hover .chat-fast-popover {
   display: block;
+}
+
+/* Context folder control (issue #27) */
+.chat-ctxfolder {
+  display: flex;
+  align-items: center;
+}
+
+.chat-ctxfolder-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0.6;
+  max-width: 180px;
+}
+
+.chat-ctxfolder-btn:hover {
+  opacity: 1;
+}
+
+.chat-ctxfolder-set {
+  opacity: 0.85;
+}
+
+.chat-ctxfolder-name {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-ctxfolder-clear {
+  opacity: 0.45;
+  padding: 2px;
+}
+
+.chat-ctxfolder-clear:hover {
+  opacity: 1;
 }
 
 .chat-cost {
@@ -1690,7 +1799,9 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background var(--transition), color var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition);
 }
 
 .chat-attach-btn:hover:not(:disabled) {
@@ -1839,6 +1950,69 @@ body {
   cursor: default;
 }
 
+.chat-image-preview-actions {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  z-index: 201;
+}
+
+/* Lightbox action buttons — light-on-dark so they read on the backdrop. */
+.chat-image-preview-btn {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.chat-image-preview-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ── Agent-generated media (issue #299) ─────────────── */
+
+.chat-media-image {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: block;
+  margin: 6px 0;
+}
+
+.chat-media-loading,
+.chat-media-error {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.chat-media-error {
+  color: var(--warning, #d08770);
+}
+
+.chat-media-file {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+
 /* ── Slash Command Menu ─────────────────────────────── */
 
 .slash-menu {
@@ -1936,6 +2110,140 @@ body {
   color: var(--text-muted);
   padding: 2px 60px;
   animation: fadeIn 0.2s ease;
+}
+
+/* ── Chat history sub-rows (reasoning / tool_call / tool_result) ───────
+ *
+ * Surfaced for resumed sessions: see src/main/sessions.ts
+ * `expandRowsToHistory`. These are <details>/<summary> widgets so the
+ * default-closed state and toggle behavior are native — no JS event
+ * juggling required. The chevron is purely visual; the click target is
+ * the whole summary row.
+ */
+.chat-message-history > .chat-history {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-history {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.18));
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+}
+
+.chat-history--reasoning {
+  border-left: 3px solid var(--accent, #8b7cf6);
+}
+.chat-history--tool-call {
+  border-left: 3px solid var(--info, #4aa8ff);
+}
+.chat-history--tool-result {
+  border-left: 3px solid var(--success, #4ac38a);
+}
+
+.chat-history-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chat-history-header::-webkit-details-marker {
+  display: none;
+}
+
+.chat-history-header:hover {
+  background: var(--hover, rgba(127, 127, 127, 0.06));
+}
+
+.chat-history-chevron {
+  display: inline-block;
+  width: 12px;
+  transition: transform 0.15s ease;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.chat-history-chevron--open {
+  transform: rotate(90deg);
+}
+
+.chat-history-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.chat-history-title {
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.chat-history-tool-name {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--code-bg, rgba(127, 127, 127, 0.08));
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.chat-history-tool-summary,
+.chat-history-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.chat-history-body {
+  border-top: 1px solid var(--border, rgba(127, 127, 127, 0.12));
+  padding: 8px 10px;
+  background: var(--code-bg, rgba(127, 127, 127, 0.04));
+}
+
+.chat-history-pre {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.chat-history-pre--code {
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.chat-history-pre--scroll {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.chat-history-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 @keyframes fadeIn {
@@ -2247,6 +2555,40 @@ body {
 .provider-key-card .settings-field-hint {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.oauth-signin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  align-self: flex-start;
+}
+
+.oauth-login-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+/* Prominent outcome banner shown when the sign-in finishes — the raw
+   CLI log below stays append-only, so the result needs to stand out. */
+.oauth-login-result {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin: 0 0 10px;
+}
+
+.oauth-login-result-success {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.oauth-login-result-error {
+  color: var(--error);
+  background: var(--error-bg);
 }
 
 .settings-pool-entry {
@@ -5313,7 +5655,9 @@ body {
   flex-direction: column;
   gap: 6px;
   cursor: grab;
-  transition: border-color var(--transition), opacity var(--transition);
+  transition:
+    border-color var(--transition),
+    opacity var(--transition);
 }
 
 .kanban-card:hover {
@@ -5364,6 +5708,31 @@ body {
 .kanban-pill-prio {
   background: var(--accent-subtle);
   color: var(--accent-text);
+}
+
+.kanban-pill-readonly {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kanban-card-readonly {
+  cursor: default;
+}
+
+.kanban-card-readonly:hover {
+  background: var(--bg-tertiary);
+}
+
+.kanban-hq-banner {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  margin-bottom: 8px;
 }
 
 .kanban-pill-id {
@@ -5517,4 +5886,3 @@ body {
   font-size: 11px;
   color: var(--text-muted);
 }
-

@@ -11,6 +11,7 @@ import { useModelConfig } from "./hooks/useModelConfig";
 import { useFastMode } from "./hooks/useFastMode";
 import { useLocalCommands } from "./hooks/useLocalCommands";
 import { useI18n } from "../../components/useI18n";
+import { buildChatTranscript } from "./transcriptUtils";
 import type { ChatMessage, UsageState } from "./types";
 
 export type { ChatMessage } from "./types";
@@ -39,6 +40,9 @@ function Chat({
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [remoteMode, setRemoteMode] = useState(false);
+  // Working folder bound to this conversation (issue #27). Per-conversation,
+  // held in memory; reset on session switch / new chat below.
+  const [contextFolder, setContextFolder] = useState<string | null>(null);
   const dragCounter = useRef(0);
   const chatInputRef = useRef<ChatInputHandle>(null);
 
@@ -76,8 +80,21 @@ function Chat({
     if (messages.length === 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setHermesSessionId(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setContextFolder(null);
     }
   }, [messages]);
+
+  // When the parent swaps to a different session, sync local state to it:
+  // the gateway session id (a stale one resumes/deletes the WRONG session —
+  // issue #276) and the per-conversation context folder (issue #27). Chat is
+  // not remounted on session switch, so this must be done explicitly.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHermesSessionId(sessionId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setContextFolder(null);
+  }, [sessionId]);
 
   // Cmd/Ctrl+N → new chat
   useEffect(() => {
@@ -90,6 +107,34 @@ function Chat({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onNewChat]);
+
+  // "Copy entire chat" context-menu items (issue #298) — serialise the whole
+  // conversation in the requested format and copy it. A ref keeps the latest
+  // messages without re-registering the IPC listener on every chunk.
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  });
+  useEffect(() => {
+    return window.hermesAPI.onContextMenuCopyChat((format) => {
+      const msgs = messagesRef.current;
+      if (msgs.length === 0) return;
+      void window.hermesAPI.copyToClipboard(buildChatTranscript(msgs, format));
+    });
+  }, []);
+
+  // "Select All" on a message (issue #298): the native selectAll role would
+  // select the entire window, so scope it to the .chat-bubble under the
+  // cursor — the user can then Copy that message.
+  useEffect(() => {
+    return window.hermesAPI.onContextMenuSelectBubble(({ x, y }) => {
+      const bubble = document.elementFromPoint(x, y)?.closest(".chat-bubble");
+      if (!bubble) return;
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.selectAllChildren(bubble);
+    });
+  }, []);
 
   const addAgentMessage = useCallback(
     (content: string) => {
@@ -113,6 +158,7 @@ function Chat({
     }
     setMessages([]);
     setHermesSessionId(null);
+    setContextFolder(null);
     setUsage(null);
     setToolProgress(null);
   }, [isLoading, hermesSessionId, sessionId, setMessages]);
@@ -136,10 +182,20 @@ function Chat({
     onSessionStarted,
     chatInputRef,
     localCommands,
+    contextFolder,
   });
 
   const handleSuggestion = useCallback((text: string) => {
     chatInputRef.current?.setText(text);
+  }, []);
+
+  const handlePickFolder = useCallback(async () => {
+    const path = await window.hermesAPI.selectFolder();
+    if (path) setContextFolder(path);
+  }, []);
+
+  const handleClearFolder = useCallback(() => {
+    setContextFolder(null);
   }, []);
 
   // Drag-and-drop: filter for dragenter events carrying files (suppresses
@@ -204,6 +260,10 @@ function Chat({
         usage={usage}
         fastMode={fastMode}
         hasMessages={messages.length > 0}
+        contextFolder={contextFolder}
+        showContextFolder={!remoteMode}
+        onPickFolder={handlePickFolder}
+        onClearFolder={handleClearFolder}
         onToggleFast={toggleFastMode}
         onNewChat={onNewChat}
         onClear={handleClear}

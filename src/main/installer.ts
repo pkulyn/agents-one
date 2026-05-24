@@ -9,7 +9,7 @@ import {
 import { join, delimiter } from "path";
 import { homedir, tmpdir } from "os";
 import { randomBytes } from "crypto";
-import type { BrowserWindow } from "electron";
+import { app, type BrowserWindow } from "electron";
 import {
   getConnectionConfig,
   getModelConfig,
@@ -66,12 +66,73 @@ function defaultHermesHome(): string {
   return localApp ?? homeDot;
 }
 
+// A Hermes home the user explicitly pointed the app at via the "use an
+// existing installation" flow (issue #272). Persisted in the desktop's own
+// userData dir — outside any Hermes home — so it can be read here, before
+// HERMES_HOME is resolved. Strictly additive: with no override file the
+// behaviour is identical to before.
+function hermesHomeOverrideFile(): string {
+  // `app` is undefined outside an Electron runtime (e.g. unit tests) —
+  // optional-chain it so module load degrades to "no override" instead of
+  // throwing.
+  const userData = app?.getPath?.("userData");
+  return userData ? join(userData, "hermes-home.json") : "";
+}
+
+function readHermesHomeOverride(): string {
+  try {
+    const file = hermesHomeOverrideFile();
+    if (!file || !existsSync(file)) return "";
+    const parsed = JSON.parse(readFileSync(file, "utf-8")) as {
+      hermesHome?: unknown;
+    };
+    const p =
+      typeof parsed.hermesHome === "string" ? parsed.hermesHome.trim() : "";
+    // Ignore a stale override whose directory no longer exists.
+    return p && existsSync(p) ? p : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Persist (when `home` is set) or clear (when "") the Hermes home override. */
+export function setHermesHomeOverride(home: string): void {
+  try {
+    const file = hermesHomeOverrideFile();
+    if (!file) return;
+    if (!home.trim()) {
+      if (existsSync(file)) unlinkSync(file);
+      return;
+    }
+    writeFileSync(
+      file,
+      JSON.stringify({ hermesHome: home.trim() }, null, 2),
+      "utf-8",
+    );
+  } catch {
+    /* best effort — a failed write just means no override next launch */
+  }
+}
+
 export const HERMES_HOME =
-  process.env.HERMES_HOME?.trim() || defaultHermesHome();
+  process.env.HERMES_HOME?.trim() ||
+  readHermesHomeOverride() ||
+  defaultHermesHome();
 export const HERMES_REPO = join(HERMES_HOME, "hermes-agent");
 export const HERMES_VENV = join(HERMES_REPO, "venv");
+// On Windows, use `pythonw.exe` (the GUI-subsystem interpreter that ships in
+// every venv) instead of `python.exe` so that subprocess spawns don't flash
+// a blank console window before `windowsHide: true` / CREATE_NO_WINDOW takes
+// effect. Issue #342: on every chat send the `sendMessageViaCli` fallback
+// path spawned `python.exe`, and the console appeared for a few hundred ms
+// despite `windowsHide: true` — a well-known race between console allocation
+// and CREATE_NO_WINDOW on console-subsystem child binaries. `pythonw.exe`
+// is linked as Windows subsystem, so the OS can never allocate a console
+// for it regardless of creation flags. It's a bit-identical interpreter
+// otherwise — same modules, same stdout/stderr behaviour over piped stdio
+// (which is what every call site here uses).
 export const HERMES_PYTHON = IS_WINDOWS
-  ? join(HERMES_VENV, "Scripts", "python.exe")
+  ? join(HERMES_VENV, "Scripts", "pythonw.exe")
   : join(HERMES_VENV, "bin", "python");
 export const HERMES_SCRIPT = IS_WINDOWS
   ? join(HERMES_VENV, "Scripts", "hermes.exe")
@@ -79,6 +140,19 @@ export const HERMES_SCRIPT = IS_WINDOWS
 export const HERMES_ENV_FILE = join(HERMES_HOME, ".env");
 export const HERMES_CONFIG_FILE = join(HERMES_HOME, "config.yaml");
 export const HERMES_AUTH_FILE = join(HERMES_HOME, "auth.json");
+
+/** The Python + hermes-script paths for a Hermes install rooted at `home`,
+ *  in the layout the desktop's own installer produces. */
+function installBinariesFor(home: string): { python: string; script: string } {
+  const repo = join(home, "hermes-agent");
+  const venv = join(repo, "venv");
+  return IS_WINDOWS
+    ? {
+        python: join(venv, "Scripts", "python.exe"),
+        script: join(venv, "Scripts", "hermes.exe"),
+      }
+    : { python: join(venv, "bin", "python"), script: join(repo, "hermes") };
+}
 
 export function hermesCliArgs(args: string[] = []): string[] {
   if (process.platform === "win32") {
@@ -300,6 +374,54 @@ function envHasUsableValue(
   return false;
 }
 
+// ── Pre-install inspection (issue #272) ──────────────────────────────────────
+
+export type InstallTargetState = "fresh" | "update" | "replace";
+
+export interface InstallTargetInfo {
+  /** Where the desktop will install — shown to the user before they commit. */
+  hermesHome: string;
+  repoPath: string;
+  /** What the installer will do to `repoPath`:
+   *  - `fresh`   — nothing is there; a clean install.
+   *  - `update`  — a valid git checkout; install.sh/ps1 updates it in place.
+   *  - `replace` — a directory is there but not a valid checkout, so the
+   *                install script deletes and re-clones it. */
+  state: InstallTargetState;
+}
+
+/** Classify what the installer will do to the target directory. Pure — the
+ *  filesystem probing lives in `inspectInstallTarget`. */
+export function classifyInstallTarget(
+  repoExists: boolean,
+  repoIsGitRepo: boolean,
+): InstallTargetState {
+  if (!repoExists) return "fresh";
+  return repoIsGitRepo ? "update" : "replace";
+}
+
+/** Inspect the install target so the renderer can warn before installing. */
+export function inspectInstallTarget(): InstallTargetInfo {
+  const repoExists = existsSync(HERMES_REPO);
+  const repoIsGitRepo = repoExists && existsSync(join(HERMES_REPO, ".git"));
+  return {
+    hermesHome: HERMES_HOME,
+    repoPath: HERMES_REPO,
+    state: classifyInstallTarget(repoExists, repoIsGitRepo),
+  };
+}
+
+/** True when `dir` is a Hermes home the desktop can drive as-is — it must
+ *  contain a `hermes-agent` install with the venv binaries in the layout the
+ *  desktop expects. A hand-rolled install with a different layout fails here
+ *  rather than being silently adopted into a broken state (issue #272). */
+export function validateHermesHome(dir: string): boolean {
+  const home = dir?.trim();
+  if (!home || !existsSync(home)) return false;
+  const { python, script } = installBinariesFor(home);
+  return existsSync(python) && existsSync(script);
+}
+
 export function checkInstallStatus(): InstallStatus {
   const activeProfile = getActiveProfileNameSync();
 
@@ -399,10 +521,19 @@ export async function getHermesVersion(): Promise<string | null> {
   if (_cachedVersion !== null) return _cachedVersion;
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) return null;
   if (_versionFetching) {
-    // Wait for in-flight fetch
+    // Wait for the in-flight fetch but cap the wait. The execFile below
+    // has a 15s timeout and its callback unconditionally clears
+    // `_versionFetching`, so under normal failure paths the poll
+    // unblocks on its own. Pathological cases (callback never invoked,
+    // worker killed mid-callback, async exception in handler) would
+    // otherwise leak a 100 ms interval per caller forever. Cap at 20s
+    // — comfortably above the execFile timeout — and resolve with
+    // whatever `_cachedVersion` happens to be (typically `null`),
+    // which matches the same return shape callers already handle.
     return new Promise((resolve) => {
+      const startedAt = Date.now();
       const check = setInterval(() => {
-        if (!_versionFetching) {
+        if (!_versionFetching || Date.now() - startedAt > 20_000) {
           clearInterval(check);
           resolve(_cachedVersion);
         }
@@ -468,10 +599,35 @@ export function runHermesDoctor(): string {
 
 const OPENCLAW_DIR_NAMES = [".openclaw", ".clawdbot", ".moldbot"];
 
-export function checkOpenClawExists(): { found: boolean; path: string | null } {
+// hermes-desktop itself creates ~/.openclaw/claw3d/ as a stub when preparing
+// Claw3D settings (see claw3d.ts:writeClaw3dSettings), so a bare `existsSync`
+// check would surface that empty stub as a "real" OpenClaw install and
+// prompt the user to migrate from themselves. Require at least one regular
+// file anywhere in the tree so empty scaffolding doesn't trigger the banner.
+function dirContainsAnyFile(dir: string, maxDepth = 3): boolean {
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile()) return true;
+      if (entry.isDirectory() && maxDepth > 0) {
+        if (dirContainsAnyFile(join(dir, entry.name), maxDepth - 1)) {
+          return true;
+        }
+      }
+    }
+  } catch {
+    // unreadable → treat as empty
+  }
+  return false;
+}
+
+export function checkOpenClawExists(home: string = homedir()): {
+  found: boolean;
+  path: string | null;
+} {
   for (const name of OPENCLAW_DIR_NAMES) {
-    const dir = join(homedir(), name);
-    if (existsSync(dir)) {
+    const dir = join(home, name);
+    if (existsSync(dir) && dirContainsAnyFile(dir)) {
       return { found: true, path: dir };
     }
   }

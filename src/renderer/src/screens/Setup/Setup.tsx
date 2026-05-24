@@ -3,6 +3,7 @@ import { ArrowRight, ExternalLink } from "../../assets/icons";
 import { PROVIDERS, LOCAL_PRESETS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
+import BrandLogo from "../../components/common/BrandLogo";
 
 interface SetupProps {
   onComplete: () => void;
@@ -108,8 +109,8 @@ function Setup({
               setError("");
             }}
           >
+            <BrandLogo provider={p.id} size={24} matchTheme={true} />
             <div className="setup-provider-name">{t(p.name)}</div>
-            <div className="setup-provider-desc">{t(p.desc)}</div>
             {p.tag && <div className="setup-provider-tag">{t(p.tag)}</div>}
           </button>
         ))}

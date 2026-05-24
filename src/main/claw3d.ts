@@ -11,7 +11,11 @@ import { homedir } from "os";
 import { createConnection } from "net";
 import { getEnhancedPath, HERMES_HOME } from "./installer";
 import { stripAnsi, safeWriteFile } from "./utils";
-import { getConnectionConfig } from "./config";
+import {
+  getApiServerKey,
+  getConnectionConfig,
+  getModelConfig,
+} from "./config";
 import http from "http";
 
 const HERMES_OFFICE_REPO = "https://github.com/fathah/hermes-office";
@@ -240,11 +244,55 @@ export function getClaw3dWsUrl(): string {
 }
 
 /**
+ * The model Hermes Office should default to. Office runs against the same
+ * gateway as the desktop chat, so it should use the same configured model
+ * rather than a generic `hermes` agent the user never selected (issue
+ * #256). Falls back to `hermes` only when no model is configured.
+ */
+function resolveOfficeModel(): string {
+  try {
+    const model = getModelConfig().model?.trim();
+    if (model) return model;
+  } catch {
+    /* no model configured — fall through to the default */
+  }
+  return "hermes";
+}
+
+/**
+ * Build the `.env` Hermes Desktop writes into the hermes-office directory.
+ * Exported so the contents (notably `HERMES_MODEL`, issue #256) can be
+ * unit tested without a live Office install.
+ */
+export function buildOfficeEnv(opts: {
+  port: number;
+  url: string;
+  apiKey: string;
+  model: string;
+}): string {
+  return [
+    "# Auto-configured by Hermes Desktop",
+    `PORT=${opts.port}`,
+    `HOST=127.0.0.1`,
+    `NEXT_PUBLIC_GATEWAY_URL=${opts.url}`,
+    `CLAW3D_GATEWAY_URL=${opts.url}`,
+    `CLAW3D_GATEWAY_TOKEN=${opts.apiKey}`,
+    `HERMES_API_KEY=${opts.apiKey}`,
+    `HERMES_ADAPTER_PORT=18789`,
+    `HERMES_MODEL=${opts.model || "hermes"}`,
+    `HERMES_AGENT_NAME=Hermes`,
+    "",
+  ].join("\n");
+}
+
+/**
  * Write Claw3D settings to ~/.openclaw/claw3d/settings.json
  * and .env in the claw3d directory so onboarding is skipped.
  */
 function writeClaw3dSettings(wsUrl?: string): void {
   const url = wsUrl || getSavedWsUrl();
+  // Gateway bearer token — empty string when the gateway has no API_SERVER_KEY.
+  const apiKey = getApiServerKey();
 
   // Write ~/.openclaw/claw3d/settings.json
   try {
@@ -263,7 +311,7 @@ function writeClaw3dSettings(wsUrl?: string): void {
       ...existing,
       adapter: "hermes",
       url,
-      token: "",
+      token: apiKey,
     };
     safeWriteFile(settingsPath, JSON.stringify(settings, null, 2));
   } catch {
@@ -274,20 +322,15 @@ function writeClaw3dSettings(wsUrl?: string): void {
   try {
     if (existsSync(HERMES_OFFICE_DIR)) {
       const envPath = join(HERMES_OFFICE_DIR, ".env");
-      const port = getSavedPort();
-      const envContent = [
-        "# Auto-configured by Hermes Desktop",
-        `PORT=${port}`,
-        `HOST=127.0.0.1`,
-        `NEXT_PUBLIC_GATEWAY_URL=${url}`,
-        `CLAW3D_GATEWAY_URL=${url}`,
-        `CLAW3D_GATEWAY_TOKEN=`,
-        `HERMES_ADAPTER_PORT=18789`,
-        `HERMES_MODEL=hermes`,
-        `HERMES_AGENT_NAME=Hermes`,
-        "",
-      ].join("\n");
-      safeWriteFile(envPath, envContent);
+      safeWriteFile(
+        envPath,
+        buildOfficeEnv({
+          port: getSavedPort(),
+          url,
+          apiKey,
+          model: resolveOfficeModel(),
+        }),
+      );
     }
   } catch {
     /* non-fatal */
@@ -696,6 +739,7 @@ export function startDevServer(): boolean {
     PATH: getEnhancedPath(),
     HOME: homedir(),
     TERM: "dumb",
+    HERMES_API_KEY: getApiServerKey(),
     PORT: String(port),
   };
   const node = resolveCommand("node", env.PATH);
@@ -770,11 +814,15 @@ export function startAdapter(): boolean {
 
   adapterError = "";
   adapterLogs = "";
+  // The hermes-gateway-adapter authenticates to the Hermes gateway with
+  // `Authorization: Bearer ${HERMES_API_KEY}`. Without it, a gateway that
+  // has an API_SERVER_KEY configured rejects the Office chat with HTTP 401.
   const env = {
     ...process.env,
     PATH: getEnhancedPath(),
     HOME: homedir(),
     TERM: "dumb",
+    HERMES_API_KEY: getApiServerKey(),
   };
   const node = resolveCommand("node", env.PATH);
   const adapterScript = createClaw3dScriptInvocation(
@@ -852,6 +900,11 @@ export function startAll(): { success: boolean; error?: string } {
   }
 
   const port = getSavedPort();
+
+  // Refresh the `.env` before the processes read it, so Office always
+  // starts against the current port/URL and the desktop's configured
+  // model rather than a value frozen at first setup (issue #256).
+  writeClaw3dSettings();
 
   // Start dev server
   const devOk = startDevServer();

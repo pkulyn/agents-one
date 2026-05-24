@@ -26,6 +26,21 @@ const hermesAPI = {
   startInstall: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("start-install"),
 
+  // Pre-install inspection + "use an existing installation" (issue #272)
+  inspectInstallTarget: (): Promise<{
+    hermesHome: string;
+    repoPath: string;
+    state: "fresh" | "update" | "replace";
+  }> => ipcRenderer.invoke("inspect-install-target"),
+
+  validateHermesHome: (dir: string): Promise<boolean> =>
+    ipcRenderer.invoke("validate-hermes-home", dir),
+
+  adoptHermesHome: (dir: string): Promise<boolean> =>
+    ipcRenderer.invoke("adopt-hermes-home", dir),
+
+  quitApp: (): Promise<void> => ipcRenderer.invoke("quit-app"),
+
   onInstallProgress: (
     callback: (progress: {
       step: number;
@@ -67,6 +82,23 @@ const hermesAPI = {
     ipcRenderer.invoke("check-openclaw"),
   runClawMigrate: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("run-claw-migrate"),
+
+  // OAuth provider sign-in
+  oauthLogin: (
+    provider: string,
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("oauth-login", provider, profile),
+  cancelOAuthLogin: (): Promise<boolean> =>
+    ipcRenderer.invoke("oauth-login-cancel"),
+  onOAuthLoginProgress: (callback: (chunk: string) => void): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      chunk: unknown,
+    ): void => callback(String(chunk));
+    ipcRenderer.on("oauth-login-progress", handler);
+    return () => ipcRenderer.removeListener("oauth-login-progress", handler);
+  },
 
   getLocale: (): Promise<AppLocale> => ipcRenderer.invoke("get-locale"),
   setLocale: (locale: AppLocale): Promise<AppLocale> =>
@@ -178,6 +210,7 @@ const hermesAPI = {
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
     attachments?: Attachment[],
+    contextFolder?: string,
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -186,9 +219,28 @@ const hermesAPI = {
       resumeSessionId,
       history,
       attachments,
+      contextFolder,
     ),
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
+
+  copyToClipboard: (text: string): Promise<void> =>
+    ipcRenderer.invoke("copy-to-clipboard", text),
+
+  // Media (agent-generated images / files — issue #299)
+  readMediaFile: (filePath: string): Promise<string | null> =>
+    ipcRenderer.invoke("read-media-file", filePath),
+  saveMediaFile: (src: string, name: string): Promise<boolean> =>
+    ipcRenderer.invoke("save-media-file", src, name),
+  mediaFileExists: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke("media-file-exists", filePath),
+  showMediaMenu: (
+    src: string,
+    name: string,
+    labels: { open: string; saveAs: string },
+  ): void => {
+    ipcRenderer.send("show-media-menu", src, name, labels);
+  },
 
   // Resolve the absolute filesystem path for a File coming from drag-drop
   // or the file picker.  Returns "" for blobs that have no origin path
@@ -243,6 +295,29 @@ const hermesAPI = {
     ): void => callback(sessionId);
     ipcRenderer.on("chat-done", handler);
     return () => ipcRenderer.removeListener("chat-done", handler);
+  },
+
+  onContextMenuCopyChat: (
+    callback: (format: "text" | "markdown") => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      format: "text" | "markdown",
+    ): void => callback(format);
+    ipcRenderer.on("context-menu-copy-chat", handler);
+    return () => ipcRenderer.removeListener("context-menu-copy-chat", handler);
+  },
+
+  onContextMenuSelectBubble: (
+    callback: (point: { x: number; y: number }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      point: { x: number; y: number },
+    ): void => callback(point);
+    ipcRenderer.on("context-menu-select-bubble", handler);
+    return () =>
+      ipcRenderer.removeListener("context-menu-select-bubble", handler);
   },
 
   onChatToolProgress: (callback: (tool: string) => void): (() => void) => {
@@ -773,6 +848,8 @@ const hermesAPI = {
     ipcRenderer.invoke("kanban-comment-task", taskId, body, profile),
   kanbanDispatchOnce: (dryRun?: boolean, profile?: string) =>
     ipcRenderer.invoke("kanban-dispatch-once", dryRun, profile),
+  kanbanListClaw3dHqTasks: () =>
+    ipcRenderer.invoke("kanban-list-claw3d-hq-tasks"),
 
   // Shell
   openExternal: (url: string): Promise<void> =>

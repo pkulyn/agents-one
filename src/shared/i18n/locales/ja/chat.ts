@@ -21,6 +21,9 @@ export default {
   deny: "拒否",
   newChat: "新規チャット (Cmd+N)",
   clearChat: "チャットをクリア",
+  setContextFolder: "コンテキストフォルダを設定",
+  contextFolderActive: "コンテキストフォルダ: {{path}}",
+  removeContextFolder: "コンテキストフォルダを削除",
   attach: "ファイルを添付",
   removeAttachment: "添付を削除",
   dropToAttach: "ファイルをドロップして添付",
@@ -44,6 +47,10 @@ export default {
   categoryInfo: "情報",
   noUsageData:
     "まだ使用データがありません。まずメッセージを送ってみてください。",
+  media: {
+    open: "開く",
+    saveAs: "名前を付けて保存…",
+  },
   commands: {
     new: "新しいチャットを開始",
     clear: "会話履歴をクリア",
