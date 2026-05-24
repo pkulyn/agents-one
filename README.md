@@ -1,4 +1,4 @@
-<img width="100%" alt="HERMES DESKTOP" src="https://github.com/user-attachments/assets/80585955-3bae-4aee-af90-a1e61757ccb8" />
+<img width="100%" alt="HERMES DESKTOP" src="previews/header.webp" />
 
 <br/>
 <p align="center">
