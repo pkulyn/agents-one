@@ -1,5 +1,4 @@
-
-<img width="100%" alt="HERMES DESKTOP" src="https://github.com/user-attachments/assets/80585955-3bae-4aee-af90-a1e61757ccb8" />
+<img width="100%" alt="HERMES DESKTOP" src="previews/header.webp" />
 
 <br/>
 <p align="center">
@@ -28,7 +27,7 @@ Instead of managing the CLI by hand, the app walks through install, provider set
 
 ## Install
 
- <a href="https://hermesagents.cc/"><img width="240" alt="Download Now" src="https://github.com/user-attachments/assets/9dcc0259-d533-4922-aa8a-f79b6f0cebd5" /></a>
+<a href="https://hermesagents.cc/"><img width="240" alt="Download Now" src="https://github.com/user-attachments/assets/9dcc0259-d533-4922-aa8a-f79b6f0cebd5" /></a>
 
 ### ➡ [Download the latest build](https://hermesagents.cc/)
 
