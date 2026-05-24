@@ -15,6 +15,7 @@ import icon from "../../resources/icon.png?asset";
 import type { Attachment } from "../shared/attachments";
 import { stageAttachment, clearStagedAttachments } from "./attachment-staging";
 import { discoverProviderModels } from "./model-discovery";
+import { readMediaAsDataUrl, saveMedia, mediaFileExists } from "./media";
 import {
   checkInstallStatus,
   verifyInstall,
@@ -852,6 +853,61 @@ function setupIPC(): void {
   ipcMain.handle("copy-to-clipboard", (_event, text: string) => {
     clipboard.writeText(typeof text === "string" ? text : "");
   });
+
+  // Media — render agent-generated images and save them to disk (#299).
+  ipcMain.handle("read-media-file", (_event, filePath: string) =>
+    readMediaAsDataUrl(filePath),
+  );
+  ipcMain.handle("save-media-file", (event, src: string, name: string) =>
+    saveMedia(src, name, BrowserWindow.fromWebContents(event.sender)),
+  );
+  ipcMain.handle("media-file-exists", (_event, filePath: string) =>
+    mediaFileExists(filePath),
+  );
+
+  // Native right-click menu for a rendered media element (#299): "Open"
+  // hands the file to the OS default handler (or a web URL to the browser),
+  // "Save as…" writes a copy elsewhere. Labels are passed in from the
+  // renderer so the menu honours the active UI locale.
+  ipcMain.on(
+    "show-media-menu",
+    (
+      event,
+      src: string,
+      name: string,
+      labels: { open: string; saveAs: string },
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || !src) return;
+      const isUrl = /^https?:\/\//i.test(src);
+      const isData = src.startsWith("data:");
+      const template: Electron.MenuItemConstructorOptions[] = [];
+      // "Open" needs a real target — a local file or a web URL. A data:
+      // URL is inline bytes with nothing to hand to the OS, so it is
+      // save-only.
+      if (!isData) {
+        template.push({
+          label: labels.open,
+          click: () => {
+            if (isUrl) {
+              openExternalUrl(src);
+            } else {
+              shell.openPath(src).then((err) => {
+                if (err) console.error("[media] open failed:", err);
+              });
+            }
+          },
+        });
+      }
+      template.push({
+        label: labels.saveAs,
+        click: () => {
+          void saveMedia(src, name, win);
+        },
+      });
+      Menu.buildFromTemplate(template).popup({ window: win });
+    },
+  );
 
   // Attachment staging — for pasted blobs that have no filesystem origin.
   ipcMain.handle(

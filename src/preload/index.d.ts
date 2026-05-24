@@ -225,6 +225,14 @@ interface HermesAPI {
   onContextMenuSelectBubble: (
     callback: (point: { x: number; y: number }) => void,
   ) => () => void;
+  readMediaFile: (filePath: string) => Promise<string | null>;
+  saveMediaFile: (src: string, name: string) => Promise<boolean>;
+  mediaFileExists: (filePath: string) => Promise<boolean>;
+  showMediaMenu: (
+    src: string,
+    name: string,
+    labels: { open: string; saveAs: string },
+  ) => void;
   getPathForFile: (file: File) => string;
   stageAttachment: (
     sessionId: string,

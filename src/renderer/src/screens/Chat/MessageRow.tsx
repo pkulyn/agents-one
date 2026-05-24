@@ -2,7 +2,9 @@ import { memo, useState } from "react";
 import icon from "../../assets/icon.png";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AttachmentChip } from "../../components/AttachmentChip";
+import { MediaSegmentView } from "../../components/MediaImage";
 import { useI18n } from "../../components/useI18n";
+import { parseMediaTokens } from "./mediaUtils";
 import type { Attachment, ChatBubbleMessage, ChatMessage } from "./types";
 
 export const APPROVAL_RE =
@@ -88,7 +90,20 @@ export const MessageRow = memo(function MessageRow({
         )}
         {msg.content &&
           (msg.role === "agent" ? (
-            <AgentMarkdown>{msg.content}</AgentMarkdown>
+            parseMediaTokens(msg.content).map((segment, i) =>
+              segment.type === "text" ? (
+                segment.value.trim() ? (
+                  <AgentMarkdown key={i}>{segment.value}</AgentMarkdown>
+                ) : null
+              ) : (
+                <MediaSegmentView
+                  key={i}
+                  token={segment.token}
+                  raw={segment.raw}
+                  source={segment.source}
+                />
+              ),
+            )
           ) : (
             msg.content
           ))}
