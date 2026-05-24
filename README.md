@@ -27,9 +27,7 @@ Instead of managing the CLI by hand, the app walks through install, provider set
 
 ## Install
 
-<a href="https://hermesagents.cc/"><img width="240" alt="Download Now" src="https://github.com/user-attachments/assets/9dcc0259-d533-4922-aa8a-f79b6f0cebd5" /></a>
-
-### ➡ [Download the latest build](https://hermesagents.cc/)
+<a href="https://hermesagents.cc/"><img width="380" alt="Download Now" src="previews/download.webp" /></a>
 
 ### Windows
 
