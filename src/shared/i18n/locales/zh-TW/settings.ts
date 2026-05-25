@@ -12,9 +12,12 @@ export default {
     disclosure: {
       uuid: "僅儲存在本裝置上、每次安裝的隨機識別碼（不含姓名、電子郵件或帳戶資訊）。",
       platform: "您的作業系統、Electron 版本和 Node.js 版本。",
-      navigation: "您在應用程式中開啟的畫面（例如聊天、工作階段、設定）。不會收集任何聊天內容、提示、模型回應或檔案內容。",
-      endpoint: "資料會傳送至 eu.i.posthog.com（PostHog 歐盟雲端）。工作階段錄製和頁面瀏覽自動擷取均已停用。",
-      notCollected: "絕不收集：聊天訊息、檔案路徑、API 金鑰、模型設定、帳戶憑證。",
+      navigation:
+        "您在應用程式中開啟的畫面（例如聊天、工作階段、設定）。不會收集任何聊天內容、提示、模型回應或檔案內容。",
+      endpoint:
+        "資料會傳送至 eu.i.posthog.com（PostHog 歐盟雲端）。工作階段錄製和頁面瀏覽自動擷取均已停用。",
+      notCollected:
+        "絕不收集：聊天訊息、檔案路徑、API 金鑰、模型設定、帳戶憑證。",
     },
   },
   theme: {

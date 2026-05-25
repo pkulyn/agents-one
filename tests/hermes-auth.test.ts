@@ -92,7 +92,8 @@ describe("detectDeviceCode", () => {
   });
 
   it("returns null until both URL and code are present", () => {
-    const partial = "  1. Open this URL in your browser:\n     https://auth.openai.com/codex/device\n";
+    const partial =
+      "  1. Open this URL in your browser:\n     https://auth.openai.com/codex/device\n";
     expect(detectDeviceCode(partial)).toBeNull();
     expect(detectDeviceCode("")).toBeNull();
   });

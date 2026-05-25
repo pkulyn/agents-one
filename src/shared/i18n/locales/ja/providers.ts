@@ -7,8 +7,7 @@ export default {
       "API キーの代わりにプロバイダのサブスクリプションでサインインします。認証はブラウザで行われます。",
     signIn: "サインイン",
     runningHint: "以下の手順に従ってサインインを完了してください。",
-    successHint:
-      "サインインに成功しました。このプロバイダを選択できます。",
+    successHint: "サインインに成功しました。このプロバイダを選択できます。",
     failed: "サインインに失敗しました。",
     codexDesc: "ChatGPT Codex プランを使用",
     xaiDesc: "xAI Grok のサブスクリプションを使用",
