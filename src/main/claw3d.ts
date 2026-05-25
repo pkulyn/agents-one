@@ -11,11 +11,7 @@ import { homedir } from "os";
 import { createConnection } from "net";
 import { getEnhancedPath, HERMES_HOME } from "./installer";
 import { stripAnsi, safeWriteFile } from "./utils";
-import {
-  getApiServerKey,
-  getConnectionConfig,
-  getModelConfig,
-} from "./config";
+import { getApiServerKey, getConnectionConfig, getModelConfig } from "./config";
 import http from "http";
 
 const HERMES_OFFICE_REPO = "https://github.com/fathah/hermes-office";

@@ -50,6 +50,24 @@ export const MessageRow = memo(function MessageRow({
     null,
   );
 
+  // MessageRow is wrapped in memo() but still re-renders on any prop change
+  // (e.g. isLoading toggling at the end of a stream), and `parseMediaTokens`
+  // runs a full regex pipeline. Cache the result against the message content
+  // so a long conversation doesn't reparse every row on every render.
+  // Only agent bubbles need media parsing — user bubbles render content
+  // verbatim — so this is gated on the role to skip the work entirely for
+  // user rows. (Follow-up item from PR #303 review.)
+  const bubbleContent = isChatBubbleMessage(msg)
+    ? (msg as ChatBubbleMessage).content
+    : null;
+  const segments = useMemo(
+    () =>
+      msg.role === "agent" && bubbleContent
+        ? parseMediaTokens(bubbleContent)
+        : null,
+    [msg.role, bubbleContent],
+  );
+
   // Only chat bubble messages have content/attachments
   if (!isChatBubbleMessage(msg)) {
     return (
@@ -68,21 +86,6 @@ export const MessageRow = memo(function MessageRow({
     isLast &&
     APPROVAL_RE.test(msg.content);
   const hasAttachments = !!msg.attachments && msg.attachments.length > 0;
-
-  // MessageRow is wrapped in memo() but still re-renders on any prop change
-  // (e.g. isLoading toggling at the end of a stream), and `parseMediaTokens`
-  // runs a full regex pipeline. Cache the result against the message content
-  // so a long conversation doesn't reparse every row on every render.
-  // Only agent bubbles need media parsing — user bubbles render content
-  // verbatim — so this is gated on the role to skip the work entirely for
-  // user rows. (Follow-up item from PR #303 review.)
-  const segments = useMemo(
-    () =>
-      msg.role === "agent" && msg.content
-        ? parseMediaTokens(msg.content)
-        : null,
-    [msg.role, msg.content],
-  );
 
   return (
     <div className={`chat-message chat-message-${msg.role}`}>
