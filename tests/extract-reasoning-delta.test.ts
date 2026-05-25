@@ -18,7 +18,9 @@ import { extractReasoningDelta } from "../src/main/hermes";
 describe("extractReasoningDelta", () => {
   it("pulls DeepSeek-shaped `reasoning_content`", () => {
     expect(
-      extractReasoningDelta({ reasoning_content: "Let me think step by step…" }),
+      extractReasoningDelta({
+        reasoning_content: "Let me think step by step…",
+      }),
     ).toBe("Let me think step by step…");
   });
 

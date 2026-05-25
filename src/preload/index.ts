@@ -92,10 +92,8 @@ const hermesAPI = {
   cancelOAuthLogin: (): Promise<boolean> =>
     ipcRenderer.invoke("oauth-login-cancel"),
   onOAuthLoginProgress: (callback: (chunk: string) => void): (() => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      chunk: unknown,
-    ): void => callback(String(chunk));
+    const handler = (_event: Electron.IpcRendererEvent, chunk: unknown): void =>
+      callback(String(chunk));
     ipcRenderer.on("oauth-login-progress", handler);
     return () => ipcRenderer.removeListener("oauth-login-progress", handler);
   },
@@ -291,9 +289,7 @@ const hermesAPI = {
   /** Streaming reasoning / thinking tokens — separate from `onChatChunk`
    *  so the renderer can render a "thinking" bubble that grows
    *  independently of the assistant's content (#352). */
-  onChatReasoningChunk: (
-    callback: (chunk: string) => void,
-  ): (() => void) => {
+  onChatReasoningChunk: (callback: (chunk: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: string): void =>
       callback(chunk);
     ipcRenderer.on("chat-reasoning-chunk", handler);

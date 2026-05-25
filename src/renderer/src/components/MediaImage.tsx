@@ -63,16 +63,12 @@ export function MediaImage({
 
   if (failed) {
     return (
-      <span className="chat-media-error">
-        ⚠ Could not load {token.name}
-      </span>
+      <span className="chat-media-error">⚠ Could not load {token.name}</span>
     );
   }
 
   if (!resolved) {
-    return (
-      <span className="chat-media-loading">Loading {token.name}…</span>
-    );
+    return <span className="chat-media-loading">Loading {token.name}…</span>;
   }
 
   return (
@@ -136,9 +132,7 @@ export function DownloadChip({
   return (
     <button
       className="chat-media-file"
-      onClick={() =>
-        window.hermesAPI.saveMediaFile(token.src, token.name)
-      }
+      onClick={() => window.hermesAPI.saveMediaFile(token.src, token.name)}
       onContextMenu={onContextMenu}
     >
       <Download size={14} />

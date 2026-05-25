@@ -60,7 +60,6 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
   // Initial load + reload whenever the profile changes (canonical
   // load-on-mount; setState happens inside `reload` via an awaited IPC call).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     reload();
   }, [reload]);
 

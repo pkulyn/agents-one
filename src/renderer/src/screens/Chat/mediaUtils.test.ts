@@ -122,7 +122,9 @@ describe("parseMediaTokens (issue #299)", () => {
   });
 
   it("excludes trailing punctuation from an inline path", () => {
-    const segs = parseMediaTokens("The chart is at C:\\d\\chart.png, see above.");
+    const segs = parseMediaTokens(
+      "The chart is at C:\\d\\chart.png, see above.",
+    );
     expect(media(segs).token.src).toBe("C:\\d\\chart.png");
     expect(media(segs).raw).toBe("C:\\d\\chart.png");
   });
@@ -191,8 +193,9 @@ describe("parseMediaTokens (issue #299)", () => {
     );
     const hits = segs.filter((s) => s.type === "media");
     expect(hits).toHaveLength(2);
-    expect(hits.every((h) => h.type === "media" && h.source === "bare-path"))
-      .toBe(true);
+    expect(
+      hits.every((h) => h.type === "media" && h.source === "bare-path"),
+    ).toBe(true);
   });
 
   it("keeps text after a token", () => {
