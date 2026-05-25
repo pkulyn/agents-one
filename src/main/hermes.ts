@@ -114,12 +114,44 @@ export async function ensureSshTunnelIfNeeded(): Promise<void> {
   }
 }
 
-const LOCAL_PROVIDERS = new Set([
+/**
+ * Providers whose chat path the desktop wires up explicitly with
+ * `OPENAI_BASE_URL` + a resolved `OPENAI_API_KEY` — rather than relying
+ * on the agent's native provider routing.
+ *
+ * The original set was just *local* LLM endpoints (lmstudio / ollama /
+ * vllm / llamacpp) plus the generic `custom` entry. That meant the
+ * built-in remote OpenAI-compatible providers (Groq, DeepSeek,
+ * Together, Fireworks, Cerebras, Mistral) — which are defined in
+ * `src/renderer/src/constants.ts:LOCAL_PRESETS` with their own
+ * `baseUrl` + `envKey` — slipped past this branch and tripped an
+ * upstream hermes-agent fallback that misroutes the request to
+ * OpenAI's API while still sending the user's provider key, producing
+ * a 401 like *"Incorrect API key provided: sk-… You can find your
+ * API key at https://platform.openai.com/account/api-keys."*
+ *
+ * Including them here lets the same `URL_KEY_MAP` lookup that already
+ * handles `provider="custom"` with a known commercial host also fire
+ * when the user picks the built-in entry — same routing, same key,
+ * no upstream-fallback leak.
+ */
+const OPENAI_COMPAT_PROVIDERS = new Set([
+  // Generic
   "custom",
+  // Local LLMs
   "lmstudio",
   "ollama",
   "vllm",
   "llamacpp",
+  // Built-in remote OpenAI-compatible providers (must stay in sync
+  // with the `id` field of remote-group entries in renderer
+  // `LOCAL_PRESETS`).
+  "groq",
+  "deepseek",
+  "together",
+  "fireworks",
+  "cerebras",
+  "mistral",
 ]);
 
 // Map base-URL patterns to the API key env var they need
@@ -646,12 +678,24 @@ function sendMessageViaCli(
     PYTHONUNBUFFERED: "1",
   };
 
-  // Inject all API keys from the profile .env so the CLI can access them
+  // Inject all API keys from the profile .env so the CLI can access them.
+  // The built-in remote OpenAI-compatible providers (DeepSeek, Together,
+  // Fireworks, Cerebras, Mistral) are listed here too — without them the
+  // agent has no way to see the user-configured key when the user picked
+  // the built-in provider entry rather than a `custom` entry, and the
+  // upstream fallback chain then misroutes the request (see #260 / the
+  // `pickAutoApiKeyForCustomProvider` workaround in config.ts).
   const KNOWN_API_KEYS = [
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "GROQ_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "TOGETHER_API_KEY",
+    "FIREWORKS_API_KEY",
+    "CEREBRAS_API_KEY",
+    "MISTRAL_API_KEY",
+    "PERPLEXITY_API_KEY",
     "GLM_API_KEY",
     "KIMI_API_KEY",
     "MINIMAX_API_KEY",
@@ -675,7 +719,7 @@ function sendMessageViaCli(
     }
   }
 
-  const isCustomEndpoint = LOCAL_PROVIDERS.has(mc.provider);
+  const isCustomEndpoint = OPENAI_COMPAT_PROVIDERS.has(mc.provider);
   if (isCustomEndpoint && mc.baseUrl) {
     // Check if this model has an explicit apiMode from custom_providers
     let modelApiMode: string | null = null;

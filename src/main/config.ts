@@ -9,6 +9,7 @@ import {
   safeWriteFile,
 } from "./utils";
 import { getYamlPath } from "./yaml-path";
+import { canonicalProviderBaseUrl } from "./provider-registry";
 
 // ── Connection Config (local / remote / ssh) ─────────────
 
@@ -727,8 +728,26 @@ export function setModelConfig(
 
   content = upsertBlockChild(content, "model", "provider", provider);
   content = upsertBlockChild(content, "model", "default", model);
-  if (baseUrl) {
-    content = upsertBlockChild(content, "model", "base_url", baseUrl);
+
+  // Pick the effective base_url to write.  Precedence:
+  //   1. User-supplied `baseUrl` (the renderer passes this when the user
+  //      typed an explicit value into the "Base URL (optional)" field).
+  //   2. Otherwise, the canonical default for built-in providers
+  //      (DeepSeek → api.deepseek.com, Groq → api.groq.com, etc. — see
+  //      `provider-registry.ts`).
+  //   3. Otherwise (custom / auto / unknown provider with no baseUrl),
+  //      leave `base_url:` out of the model block entirely.
+  //
+  // Without (2), switching from a model with an explicit baseUrl (e.g.
+  // a previous OAuth Codex selection at `chatgpt.com/backend-api/codex`)
+  // to a built-in provider with no baseUrl in its library entry used to
+  // leave the stale URL in `config.yaml`. Chat then routed to the wrong
+  // host while still sending the new provider's key, producing a 401
+  // from OpenAI carrying e.g. a DeepSeek key. See issue analysis in
+  // PR description.
+  const effectiveBaseUrl = baseUrl || canonicalProviderBaseUrl(provider) || "";
+  if (effectiveBaseUrl) {
+    content = upsertBlockChild(content, "model", "base_url", effectiveBaseUrl);
   }
 
   // Workaround for upstream gateway bug — see pickAutoApiKeyForCustomProvider.
