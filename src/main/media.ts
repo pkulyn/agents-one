@@ -54,9 +54,7 @@ export function readMediaAsDataUrl(filePath: string): string | null {
  */
 export function mediaFileExists(filePath: string): boolean {
   try {
-    return (
-      !!filePath && existsSync(filePath) && statSync(filePath).isFile()
-    );
+    return !!filePath && existsSync(filePath) && statSync(filePath).isFile();
   } catch {
     return false;
   }
