@@ -204,7 +204,11 @@ export const OAUTH_PROVIDERS: OAuthProviderDef[] = [
     name: "ChatGPT (Codex Plan)",
     desc: "providers.oauth.codexDesc",
   },
-  { id: "xai-oauth", name: "xAI Grok (OAuth)", desc: "providers.oauth.xaiDesc" },
+  {
+    id: "xai-oauth",
+    name: "xAI Grok (OAuth)",
+    desc: "providers.oauth.xaiDesc",
+  },
   { id: "qwen-oauth", name: "Qwen (OAuth)", desc: "providers.oauth.qwenDesc" },
   {
     id: "google-gemini-cli",

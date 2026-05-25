@@ -78,9 +78,8 @@ function Chat({
   // remount would discard unrelated local state (model picker, etc.).
   useEffect(() => {
     if (messages.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHermesSessionId(null);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+
       setContextFolder(null);
     }
   }, [messages]);
@@ -90,9 +89,8 @@ function Chat({
   // issue #276) and the per-conversation context folder (issue #27). Chat is
   // not remounted on session switch, so this must be done explicitly.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHermesSessionId(sessionId);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+
     setContextFolder(null);
   }, [sessionId]);
 

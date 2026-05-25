@@ -31,7 +31,6 @@ vi.mock("../src/main/installer", () => ({
 }));
 
 vi.mock("../src/main/utils", () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const actual =
     vi.importActual<typeof import("../src/main/utils")>("../src/main/utils");
   return actual;

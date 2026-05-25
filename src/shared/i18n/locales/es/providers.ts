@@ -6,8 +6,7 @@ export default {
     sectionHint:
       "Inicia sesión con una suscripción del proveedor en lugar de una API key. La autorización se realiza en tu navegador.",
     signIn: "Iniciar sesión",
-    runningHint:
-      "Sigue los pasos de abajo para completar el inicio de sesión.",
+    runningHint: "Sigue los pasos de abajo para completar el inicio de sesión.",
     successHint:
       "Sesión iniciada correctamente. Ya puedes seleccionar este proveedor.",
     failed: "Error al iniciar sesión.",

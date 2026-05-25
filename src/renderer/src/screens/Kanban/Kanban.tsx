@@ -1069,7 +1069,9 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="schedules-modal-header">
-              <span>{detail?.task.title || t("kanban.detailFallbackTitle")}</span>
+              <span>
+                {detail?.task.title || t("kanban.detailFallbackTitle")}
+              </span>
               <button
                 className="btn-ghost"
                 title="Close task details"

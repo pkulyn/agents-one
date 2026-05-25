@@ -12,9 +12,12 @@ export default {
     disclosure: {
       uuid: "Pengenal acak per-instalasi yang disimpan hanya di perangkat ini (tanpa nama, email, atau info akun).",
       platform: "Sistem operasi, versi Electron, dan versi Node.js Anda.",
-      navigation: "Layar mana yang Anda kunjungi di dalam aplikasi (mis. Chat, Sesi, Pengaturan). Tidak ada konten chat, prompt, respons model, atau isi file yang dikumpulkan.",
-      endpoint: "Data dikirim ke eu.i.posthog.com (cloud PostHog UE). Rekaman sesi dan tangkapan pageview otomatis dinonaktifkan.",
-      notCollected: "Tidak pernah dikumpulkan: pesan chat, jalur file, kunci API, konfigurasi model, kredensial akun.",
+      navigation:
+        "Layar mana yang Anda kunjungi di dalam aplikasi (mis. Chat, Sesi, Pengaturan). Tidak ada konten chat, prompt, respons model, atau isi file yang dikumpulkan.",
+      endpoint:
+        "Data dikirim ke eu.i.posthog.com (cloud PostHog UE). Rekaman sesi dan tangkapan pageview otomatis dinonaktifkan.",
+      notCollected:
+        "Tidak pernah dikumpulkan: pesan chat, jalur file, kunci API, konfigurasi model, kredensial akun.",
     },
   },
   theme: {

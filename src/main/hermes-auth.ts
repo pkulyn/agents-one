@@ -27,7 +27,9 @@ export const OAUTH_LOGIN_PROVIDERS = [
 
 export type OAuthLoginProvider = (typeof OAUTH_LOGIN_PROVIDERS)[number];
 
-export function isOAuthLoginProvider(value: string): value is OAuthLoginProvider {
+export function isOAuthLoginProvider(
+  value: string,
+): value is OAuthLoginProvider {
   return (OAUTH_LOGIN_PROVIDERS as readonly string[]).includes(value);
 }
 
@@ -83,7 +85,10 @@ export function runHermesAuthLogin(
 ): Promise<OAuthLoginResult> {
   return new Promise((resolve) => {
     if (!isOAuthLoginProvider(provider)) {
-      resolve({ success: false, error: `Unsupported OAuth provider: ${provider}` });
+      resolve({
+        success: false,
+        error: `Unsupported OAuth provider: ${provider}`,
+      });
       return;
     }
     if (activeProc) {
@@ -133,7 +138,10 @@ export function runHermesAuthLogin(
     proc.stderr?.on("data", (data: Buffer) => emit(stripAnsi(data.toString())));
 
     proc.on("error", (err) => {
-      finish({ success: false, error: `Failed to start sign-in: ${err.message}` });
+      finish({
+        success: false,
+        error: `Failed to start sign-in: ${err.message}`,
+      });
     });
 
     proc.on("close", (code, signal) => {

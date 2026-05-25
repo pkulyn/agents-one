@@ -25,8 +25,7 @@ const BARE_PATH_EXT =
   "odt|rtf|zip|tar|gz|mp4|mov|webm|mkv|avi|mp3|wav|ogg|opus|m4a|flac";
 
 // MEDIA: + optional whitespace + (quoted) | (bare non-whitespace run).
-const MEDIA_RE =
-  /MEDIA:[ \t]*(?:`([^`\n]+)`|"([^"\n]+)"|'([^'\n]+)'|(\S+))/g;
+const MEDIA_RE = /MEDIA:[ \t]*(?:`([^`\n]+)`|"([^"\n]+)"|'([^'\n]+)'|(\S+))/g;
 
 // Inline bare absolute path (no whitespace in the path). The negative
 // lookbehind blocks matches that start mid-token or inside a URL (`://`);

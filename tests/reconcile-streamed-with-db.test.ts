@@ -112,9 +112,9 @@ describe("reconcileStreamedWithDb", () => {
     expect(merged[2].id).toBe("a-1");
     // Reasoning came in from DB — has the db-r- prefix.
     expect(merged[1].id).toBe("db-r-2");
-    expect((merged[1] as Extract<ChatMessage, { kind: "reasoning" }>).text).toBe(
-      "user said hi, respond politely",
-    );
+    expect(
+      (merged[1] as Extract<ChatMessage, { kind: "reasoning" }>).text,
+    ).toBe("user said hi, respond politely");
   });
 
   it("future: reasoning DOES stream — merge keeps the streamed id, no re-mount", () => {
