@@ -1,4 +1,5 @@
 import { ChildProcess, spawn } from "child_process";
+import { randomUUID } from "crypto";
 import { existsSync, readFileSync, appendFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -372,14 +373,6 @@ function sendMessageViaApi(
     "Content-Type": "application/json",
     ...getRemoteAuthHeader(),
   };
-  // Session continuity: the gateway resumes an existing session via the
-  // `X-Hermes-Session-Id` *request header* — the `session_id` body field
-  // above is not honoured. Without this header every request forks a new
-  // server-side session, fragmenting stored history and messageCount
-  // (issue #226). The gateway echoes the id back in the response header.
-  if (_resumeSessionId) {
-    headers["X-Hermes-Session-Id"] = _resumeSessionId;
-  }
   // Local API server key (API_SERVER_KEY in the profile's .env /
   // config.yaml) only applies in local mode — in remote/SSH mode the
   // remote endpoint's own auth header (set above) is authoritative and
@@ -391,7 +384,36 @@ function sendMessageViaApi(
     }
   }
 
-  let sessionId = _resumeSessionId || "";
+  // Session id: always send via `X-Hermes-Session-Id` so the gateway
+  // doesn't fall back to its `_derive_chat_session_id` fingerprint —
+  // sha256(system_prompt + first_user_message)[:16] — which collides
+  // across every chat whose first user message is the same (e.g. "Hi").
+  // The collision silently fragments state.db rows across unrelated
+  // conversations and, post-#352, surfaces as old-session content
+  // bleeding into new chats when our end-of-stream merge reads
+  // getSessionMessages(). Filed upstream as
+  // NousResearch/hermes-agent#7484 (security framing — same root cause).
+  //
+  // Format: `desk-<ms>-<uuidv4>`. UUIDv4 alone is collision-safe
+  // probabilistically (~10⁻³⁶ for any pair); the timestamp prefix makes
+  // it defensively unique even under a hypothetical PRNG bug, and the
+  // `desk-` tag makes desktop-originated sessions visually distinct
+  // from the gateway's fingerprint-derived `api-<hash>` ids in
+  // state.db / logs.
+  //
+  // Gate on auth: the gateway rejects `X-Hermes-Session-Id` with 403
+  // when API_SERVER_KEY isn't configured (its history-load is gated
+  // behind auth). The desktop auto-generates API_SERVER_KEY at install
+  // and remote mode supplies its own bearer, so in practice this
+  // branch is always taken; the guard exists only so a misconfigured
+  // local install degrades to the pre-fix (fingerprint) behaviour
+  // rather than 403-looping.
+  const hasAuth = "Authorization" in headers;
+  let sessionId =
+    _resumeSessionId || (hasAuth ? `desk-${Date.now()}-${randomUUID()}` : "");
+  if (sessionId) {
+    headers["X-Hermes-Session-Id"] = sessionId;
+  }
   let hasContent = false;
   let finished = false; // guard against double callbacks
   let lastError = ""; // capture embedded error messages
