@@ -99,7 +99,24 @@ function Models({ visible }: ModelsProps = {}): React.JSX.Element {
     setFormProvider(m.provider);
     setFormModel(m.model);
     setFormBaseUrl(m.baseUrl);
+    // Read back the saved API key so the user sees what's actually
+    // configured — previously the field was always reset to empty,
+    // which made the dialog look like the key was missing even when
+    // chat was working fine. Resolve the env var name from the base
+    // URL via the shared URL_KEY_MAP (or CUSTOM_API_KEY fallback for
+    // unknown hosts).
     setFormApiKey("");
+    const envKey = expectedEnvKeyForUrl(m.baseUrl);
+    window.hermesAPI
+      .getEnv()
+      .then((env) => {
+        const saved = env[envKey];
+        if (saved) setFormApiKey(saved);
+      })
+      .catch(() => {
+        // Leave the field empty on read failure — the user can still
+        // overwrite with a new value as before.
+      });
     setShowApiKey(false);
     setFormError("");
     // Editing an existing entry — respect the saved provider, don't auto-overwrite it.
