@@ -222,6 +222,12 @@ const hermesAPI = {
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
 
+  getApiServerKeyStatus: (profile?: string): Promise<{ hasKey: boolean }> =>
+    ipcRenderer.invoke("get-api-server-key-status", profile),
+
+  generateApiServerKey: (profile?: string): Promise<{ key: string }> =>
+    ipcRenderer.invoke("generate-api-server-key", profile),
+
   copyToClipboard: (text: string): Promise<void> =>
     ipcRenderer.invoke("copy-to-clipboard", text),
 

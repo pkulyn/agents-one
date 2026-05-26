@@ -218,6 +218,8 @@ interface HermesAPI {
     contextFolder?: string,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  getApiServerKeyStatus: (profile?: string) => Promise<{ hasKey: boolean }>;
+  generateApiServerKey: (profile?: string) => Promise<{ key: string }>;
   copyToClipboard: (text: string) => Promise<void>;
   onContextMenuCopyChat: (
     callback: (format: "text" | "markdown") => void,
