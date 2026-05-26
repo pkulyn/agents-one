@@ -2,6 +2,25 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
 
+/**
+ * Mirror of the renderer-side `CredentialPoolEntry` ambient type
+ * (src/preload/index.d.ts) — preload is type-checked under
+ * tsconfig.node.json which doesn't include the .d.ts. See #367.
+ */
+interface CredentialPoolEntry {
+  id?: string;
+  label?: string;
+  auth_type?: "api_key" | "oauth_device_code" | string;
+  priority?: number;
+  source?: string;
+  access_token?: string;
+  refresh_token?: string;
+  api_key?: string;
+  base_url?: string;
+  request_count?: number;
+  key?: string;
+}
+
 const electronAPI = {
   process: {
     platform: process.platform,
@@ -567,16 +586,35 @@ const hermesAPI = {
 
   // Credential Pool (profile-aware: reads/writes the named profile's
   // auth.json; defaults to the currently active profile when omitted)
+  //
+  // Pool entries follow the upstream engine schema (issue #367) —
+  // `access_token` for the secret, `auth_type` to distinguish OAuth
+  // from API key, plus `id`/`priority`/`source` for rotation.
   getCredentialPool: (
     profile?: string,
-  ): Promise<Record<string, Array<{ key: string; label: string }>>> =>
+  ): Promise<Record<string, Array<CredentialPoolEntry>>> =>
     ipcRenderer.invoke("get-credential-pool", profile),
   setCredentialPool: (
     provider: string,
-    entries: Array<{ key: string; label: string }>,
+    entries: Array<CredentialPoolEntry>,
     profile?: string,
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-credential-pool", provider, entries, profile),
+  // Add a manually-typed key as a properly-shaped pool entry. Returns
+  // the updated entries list for the provider.
+  addCredentialPoolEntry: (
+    provider: string,
+    apiKey: string,
+    label: string,
+    profile?: string,
+  ): Promise<Array<CredentialPoolEntry>> =>
+    ipcRenderer.invoke(
+      "add-credential-pool-entry",
+      provider,
+      apiKey,
+      label,
+      profile,
+    ),
 
   // Models
   listModels: (): Promise<
