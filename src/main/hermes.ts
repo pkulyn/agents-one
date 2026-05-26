@@ -28,6 +28,7 @@ import { pidIsAliveAs, stripAnsi } from "./utils";
 import { readModels } from "./models";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { type Attachment, escapeXmlAttr } from "../shared/attachments";
+import { URL_KEY_MAP } from "../shared/url-key-map";
 
 const LOCAL_API_URL = "http://127.0.0.1:8642";
 
@@ -154,21 +155,6 @@ const OPENAI_COMPAT_PROVIDERS = new Set([
   "cerebras",
   "mistral",
 ]);
-
-// Map base-URL patterns to the API key env var they need
-const URL_KEY_MAP: Array<{ pattern: RegExp; envKey: string }> = [
-  { pattern: /openrouter\.ai/i, envKey: "OPENROUTER_API_KEY" },
-  { pattern: /anthropic\.com/i, envKey: "ANTHROPIC_API_KEY" },
-  { pattern: /openai\.com/i, envKey: "OPENAI_API_KEY" },
-  { pattern: /huggingface\.co/i, envKey: "HF_TOKEN" },
-  { pattern: /api\.groq\.com/i, envKey: "GROQ_API_KEY" },
-  { pattern: /api\.deepseek\.com/i, envKey: "DEEPSEEK_API_KEY" },
-  { pattern: /api\.together\.xyz/i, envKey: "TOGETHER_API_KEY" },
-  { pattern: /api\.fireworks\.ai/i, envKey: "FIREWORKS_API_KEY" },
-  { pattern: /api\.cerebras\.ai/i, envKey: "CEREBRAS_API_KEY" },
-  { pattern: /api\.mistral\.ai/i, envKey: "MISTRAL_API_KEY" },
-  { pattern: /api\.perplexity\.ai/i, envKey: "PERPLEXITY_API_KEY" },
-];
 
 interface ChatHandle {
   abort: () => void;
