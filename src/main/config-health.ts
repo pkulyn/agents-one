@@ -20,6 +20,7 @@ import {
   appendConfigFixLog,
   getConfigValue,
   getModelConfig,
+  hasOAuthCredentials,
   maskKey,
   readEnv,
   setEnvValue,
@@ -237,16 +238,23 @@ function checkActiveModelKeyPresence(profile?: string): ConfigHealthIssue[] {
   const env = readEnv(profile);
   if (((env[expectedKey] ?? "")).trim()) return [];
 
+  // Secondary positive signal: auth.json may carry the credentials
+  // (OAuth tokens, or properly-shaped credential-pool entries).
+  // Issue #367 — Nous Portal in OAuth mode has no NOUS_API_KEY in
+  // .env, the engine resolves from auth.json instead. Don't flag if
+  // we see real evidence there.
+  if (hasOAuthCredentials(mc.provider, profile)) return [];
+
   const { envFile } = profilePaths(profile);
   return [
     {
       code: "MODEL_KEY_MISSING",
       severity: "warning",
-      message: `Active model uses ${mc.provider} but ${expectedKey} is not set in .env.`,
+      message: `Active model uses ${mc.provider} but ${expectedKey} is not set in .env (and no credentials in auth.json).`,
       detail:
         "Chat will fail with an upstream auth error until the key is " +
-        "configured. Add it under Providers, or switch to a model " +
-        "whose key is already set.",
+        "configured. Add it under Providers, sign in via the OAuth " +
+        "flow, or switch to a model whose credentials are already set.",
       locations: [envFile],
       autoFixable: false,
       fixLocation: "providers",

@@ -115,6 +115,47 @@ describe("runConfigHealthCheck", () => {
     expect(issue?.context?.expectedKey).toBe("OPENROUTER_API_KEY");
   });
 
+  // Issue #367 — Nous Portal accepts both NOUS_API_KEY and an auth.json
+  // OAuth/credential-pool entry. Audit should flag only when BOTH are
+  // empty (the actual misconfiguration), and should clear once either
+  // is set.
+
+  it("flags MODEL_KEY_MISSING for nous when neither NOUS_API_KEY nor auth.json is set (#367)", async () => {
+    writeConfig(
+      ["model:", "  provider: nous", "  default: hermes-4", ""].join("\n"),
+    );
+    const { runConfigHealthCheck } = await freshHealth(TEST_DIR);
+    const report = runConfigHealthCheck();
+    const issue = report.issues.find((i) => i.code === "MODEL_KEY_MISSING");
+    expect(issue).toBeDefined();
+    expect(issue?.context?.expectedKey).toBe("NOUS_API_KEY");
+    expect(issue?.context?.provider).toBe("nous");
+  });
+
+  it("does NOT flag MODEL_KEY_MISSING for nous when auth.json has OAuth credentials", async () => {
+    writeConfig(
+      ["model:", "  provider: nous", "  default: hermes-4", ""].join("\n"),
+    );
+    writeFileSync(
+      join(TEST_DIR, "auth.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          providers: {
+            nous: { access_token: "oauth-token", auth_type: "oauth_device_code" },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    const { runConfigHealthCheck } = await freshHealth(TEST_DIR);
+    const report = runConfigHealthCheck();
+    expect(
+      report.issues.find((i) => i.code === "MODEL_KEY_MISSING"),
+    ).toBeUndefined();
+  });
+
   it("does NOT flag MODEL_KEY_MISSING for localhost models", async () => {
     writeConfig(
       [

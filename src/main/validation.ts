@@ -16,7 +16,7 @@
  * surface the error like before.
  */
 
-import { getModelConfig, readEnv } from "./config";
+import { getModelConfig, hasOAuthCredentials, readEnv } from "./config";
 import { expectedEnvKeyForModel } from "./installer";
 
 export type ChatReadinessCode =
@@ -41,12 +41,14 @@ export interface ChatReadiness {
 
 const OK: ChatReadiness = { ok: true };
 
-// Provider ids that authenticate via interactive OAuth login rather
-// than a static API key (`hermes auth add <id> --type oauth`). Their
-// credential lives in a per-provider token cache that's harder to
-// probe synchronously, so we skip the env-var check for them and
-// fail open — the upstream error path still surfaces "not signed in"
-// at send time on those.
+// Provider ids that authenticate ONLY via interactive OAuth login —
+// no API-key variant exists for these in hermes-agent's registry.
+// For these, fail open after a negative auth.json probe (the upstream
+// "not signed in" error path is still the source of truth).
+//
+// Nous Portal used to live here but was moved out because it supports
+// BOTH OAuth (`nous`) AND API key (`nous-api`) — issue #367. It's now
+// handled by the generic "env key OR auth.json evidence" path below.
 const OAUTH_PROVIDERS = new Set([
   "openai-codex",
   "xai-oauth",
@@ -54,12 +56,18 @@ const OAUTH_PROVIDERS = new Set([
   "google-gemini-cli",
   "minimax-oauth",
   "kimi-coding",
-  "nous",
 ]);
 
-// Provider ids that don't need an API key at all (Nous-hosted gateway,
-// some local self-hosted setups when the server doesn't enforce auth).
-const NO_KEY_PROVIDERS = new Set(["nous", "auto"]);
+// Provider ids that don't need an API key at all. `auto` lets
+// hermes-agent pick at runtime; the others are local self-hosted
+// gateways that don't enforce auth.
+//
+// `nous` used to be in this set (back when the registry only knew the
+// OAuth variant) but it actually DOES need credentials — either
+// NOUS_API_KEY in .env or an OAuth/credential-pool entry in auth.json.
+// Issue #367 — silent misconfiguration when a user picked Nous Portal
+// from the dropdown but had nothing set up.
+const NO_KEY_PROVIDERS = new Set(["auto"]);
 
 function isLocalHost(url: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\[::\]|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/i.test(
@@ -115,17 +123,24 @@ export function validateChatReadiness(profile?: string): ChatReadiness {
 
     const env = readEnv(profile);
     const value = (env[expectedKey] ?? "").trim();
-    if (!value) {
-      return {
-        ok: false,
-        code: "MISSING_API_KEY",
-        message: `Missing ${expectedKey} for ${provider}. Set it in Providers.`,
-        fixLocation: "providers",
-        expectedEnvKey: expectedKey,
-      };
-    }
+    if (value) return OK;
 
-    return OK;
+    // Secondary positive signal: the engine also accepts credentials
+    // stored in auth.json (top-level `providers[<name>]` or any entry
+    // in `credential_pool[<name>]` with a non-empty access/refresh
+    // token or api_key). This is how Nous Portal (issue #367) works in
+    // OAuth mode — there's no NOUS_API_KEY in .env but the engine
+    // resolves the credential from a properly-shaped auth.json entry.
+    // If we have that evidence, allow Send.
+    if (hasOAuthCredentials(provider, profile)) return OK;
+
+    return {
+      ok: false,
+      code: "MISSING_API_KEY",
+      message: `Missing ${expectedKey} for ${provider}. Set it in Providers.`,
+      fixLocation: "providers",
+      expectedEnvKey: expectedKey,
+    };
   } catch {
     // Fail open on any unexpected error — never false-block a Send.
     return OK;

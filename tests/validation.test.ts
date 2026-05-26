@@ -113,13 +113,11 @@ describe("validateChatReadiness", () => {
     expect(validateChatReadiness()).toEqual({ ok: true });
   });
 
-  it("fails open for nous (gateway-side credentials)", async () => {
-    writeConfig(
-      ["model:", "  provider: nous", "  default: hermes-4", ""].join("\n"),
-    );
-    const { validateChatReadiness } = await freshValidation(TEST_DIR);
-    expect(validateChatReadiness()).toEqual({ ok: true });
-  });
+  // (`nous` previously fell open here on the assumption that the
+  // gateway always had its own credential cache. Issue #367 showed
+  // that's not true — Nous Portal supports BOTH OAuth and API key,
+  // and the user can land in a state where neither is configured.
+  // The Nous-specific tests below cover the new behaviour.)
 
   it("fails open for localhost base_url even with no key", async () => {
     writeConfig(
@@ -177,5 +175,125 @@ describe("validateChatReadiness", () => {
     const r = validateChatReadiness();
     expect(r.ok).toBe(false);
     expect(r.expectedEnvKey).toBe("OPENAI_API_KEY");
+  });
+
+  // ── Nous Portal (issue #367) ─────────────────────────────────
+  //
+  // Nous supports both API key (NOUS_API_KEY in .env) and OAuth (token
+  // cached in auth.json). The validator should fail open whenever the
+  // engine has a usable credential — either source — and block only
+  // when neither is present.
+
+  it("blocks for nous provider when neither NOUS_API_KEY nor auth.json evidence is present (#367)", async () => {
+    writeConfig(
+      ["model:", "  provider: nous", "  default: hermes-4", ""].join("\n"),
+    );
+    // No .env, no auth.json
+    const { validateChatReadiness } = await freshValidation(TEST_DIR);
+    const r = validateChatReadiness();
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("MISSING_API_KEY");
+    expect(r.expectedEnvKey).toBe("NOUS_API_KEY");
+  });
+
+  it("allows nous when NOUS_API_KEY is set in .env", async () => {
+    writeConfig(
+      ["model:", "  provider: nous", "  default: hermes-4", ""].join("\n"),
+    );
+    writeEnv("NOUS_API_KEY=sk-nous-test-12345\n");
+    const { validateChatReadiness } = await freshValidation(TEST_DIR);
+    expect(validateChatReadiness()).toEqual({ ok: true });
+  });
+
+  it("allows nous when auth.json has a properly-shaped OAuth entry", async () => {
+    writeConfig(
+      ["model:", "  provider: nous", "  default: hermes-4", ""].join("\n"),
+    );
+    // No NOUS_API_KEY in .env — OAuth-only setup
+    writeFileSync(
+      join(TEST_DIR, "auth.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          providers: {
+            nous: {
+              access_token: "oauth-token-from-nous-portal",
+              refresh_token: "rt-...",
+              auth_type: "oauth_device_code",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    const { validateChatReadiness } = await freshValidation(TEST_DIR);
+    expect(validateChatReadiness()).toEqual({ ok: true });
+  });
+
+  it("allows nous when credential_pool.nous has a usable entry", async () => {
+    writeConfig(
+      ["model:", "  provider: nous", "  default: hermes-4", ""].join("\n"),
+    );
+    writeFileSync(
+      join(TEST_DIR, "auth.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          credential_pool: {
+            nous: [
+              {
+                id: "n1",
+                label: "Key 1",
+                auth_type: "api_key",
+                access_token: "sk-nous-pooled-key",
+                base_url: "https://inference-api.nousresearch.com/v1",
+                priority: 0,
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    const { validateChatReadiness } = await freshValidation(TEST_DIR);
+    expect(validateChatReadiness()).toEqual({ ok: true });
+  });
+
+  it("blocks nous when auth.json has only an empty providers entry (the wrong-schema case from #367)", async () => {
+    // The exact malformed shape the credential-pool UI was writing —
+    // `key` field instead of `access_token`. Engine can't read it.
+    writeConfig(
+      ["model:", "  provider: nous", "  default: hermes-4", ""].join("\n"),
+    );
+    writeFileSync(
+      join(TEST_DIR, "auth.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          credential_pool: {
+            nous: [{ key: "sk-nous-but-saved-under-wrong-field", label: "Key 1" }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    const { validateChatReadiness } = await freshValidation(TEST_DIR);
+    const r = validateChatReadiness();
+    expect(r.ok).toBe(false);
+    expect(r.expectedEnvKey).toBe("NOUS_API_KEY");
+  });
+
+  it("nous-api variant is also recognized", async () => {
+    writeConfig(
+      ["model:", "  provider: nous-api", "  default: hermes-4", ""].join("\n"),
+    );
+    // No creds anywhere
+    const { validateChatReadiness } = await freshValidation(TEST_DIR);
+    const r = validateChatReadiness();
+    expect(r.ok).toBe(false);
+    expect(r.expectedEnvKey).toBe("NOUS_API_KEY");
   });
 });
