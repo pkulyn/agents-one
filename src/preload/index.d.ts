@@ -270,6 +270,8 @@ interface HermesAPI {
     models: string[];
     status: "ok" | "no-key" | "unsupported" | "unknown-host";
     cached: boolean;
+    /** Subset of `models` flagged as free (Nous Portal today). #367. */
+    freeModels?: string[];
   }>;
   onChatChunk: (callback: (chunk: string) => void) => () => void;
   onChatReasoningChunk: (callback: (chunk: string) => void) => () => void;

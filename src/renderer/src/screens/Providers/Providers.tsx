@@ -350,9 +350,16 @@ function Providers({
           </div>
           {discovery.models.length > 0 && (
             <datalist id={discoveryListId}>
-              {discovery.models.map((m) => (
-                <option key={m} value={m} />
-              ))}
+              {discovery.models.map((m) => {
+                const isFree = discovery.freeModels?.includes(m);
+                return (
+                  <option
+                    key={m}
+                    value={m}
+                    label={isFree ? t("models.freeBadge") : undefined}
+                  />
+                );
+              })}
             </datalist>
           )}
           <div className="settings-field-hint">

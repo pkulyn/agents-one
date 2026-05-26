@@ -289,6 +289,10 @@ const hermesAPI = {
     models: string[];
     status: "ok" | "no-key" | "unsupported" | "unknown-host";
     cached: boolean;
+    /** Subset of `models` flagged as free per the provider catalog
+     *  (Nous Portal today). Optional — providers without pricing
+     *  metadata return undefined. Issue #367. */
+    freeModels?: string[];
   }> =>
     ipcRenderer.invoke(
       "discover-provider-models",
