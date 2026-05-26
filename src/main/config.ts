@@ -871,13 +871,14 @@ export function getApiServerKey(profile?: string): string {
   const cached = getCached<string>(cacheKey);
   if (cached !== undefined) return cached;
 
-  const value = resolveApiServerKey({
+  const envForProfile = readEnv(profile);
+  const sources: ApiKeySources = {
     configTopLevelProfile: getConfigValue("API_SERVER_KEY", profile),
     configTopLevelDefault:
       profile && profile !== "default"
         ? getConfigValue("API_SERVER_KEY")
         : null,
-    envProfile: readEnv(profile).API_SERVER_KEY ?? null,
+    envProfile: envForProfile.API_SERVER_KEY ?? null,
     envDefault:
       profile && profile !== "default"
         ? (readEnv().API_SERVER_KEY ?? null)
@@ -887,7 +888,47 @@ export function getApiServerKey(profile?: string): string {
       profile && profile !== "default"
         ? getConfigValue("api_server.token")
         : null,
-  });
+  };
+  const { value, source } = resolveApiServerKeyWithSource(sources);
+
+  // Migration on read — if we resolved the key from a non-canonical
+  // location AND the canonical `.env` slot is empty for this profile,
+  // copy the value into `.env`. Keeps the original copy alone (additive
+  // only — never deletes), so a user who explicitly wrote to
+  // `api_server.token:` can still see their original entry there.
+  //
+  // The point of the migration is to make the gateway's own
+  // `os.getenv("API_SERVER_KEY")` lookup find the value: the gateway's
+  // env hydration at spawn time also injects it (Piece 0), but a
+  // user-edited `.env` is the canonical, file-of-record storage.
+  //
+  // Per-profile scope: cross-profile migration (e.g. copy default .env
+  // value into a profile that has neither) is out of scope — a user
+  // running multiple profiles may have intentionally per-profile keys.
+  if (
+    value &&
+    source &&
+    !CANONICAL_API_KEY_SOURCES.has(source) &&
+    !(envForProfile.API_SERVER_KEY ?? "").trim()
+  ) {
+    try {
+      setEnvValue("API_SERVER_KEY", value, profile);
+      appendConfigFixLog({
+        ts: Date.now(),
+        issueCode: "API_SERVER_KEY_NON_CANONICAL",
+        action: "migrate",
+        from: source,
+        to: profile && profile !== "default"
+          ? `~/.hermes/profiles/${profile}/.env`
+          : "~/.hermes/.env",
+        profile: profile || "default",
+        valueMasked: maskKey(value),
+      });
+    } catch {
+      // best-effort — don't block the read on a failed migration
+    }
+  }
+
   setCache(cacheKey, value);
   return value;
 }
