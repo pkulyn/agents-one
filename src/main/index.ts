@@ -1725,7 +1725,10 @@ function setupUpdater(): void {
 // and drive the UI without going through screenshots / OCR. Off by
 // default — no effect on normal dev or production builds.
 if (process.env.ENABLE_CDP === "1") {
-  app.commandLine.appendSwitch("remote-debugging-port", "9222");
+  app.commandLine.appendSwitch(
+    "remote-debugging-port",
+    process.env.CDP_PORT || "9222",
+  );
 }
 
 app.whenReady().then(() => {

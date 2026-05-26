@@ -26,7 +26,9 @@ const { chromium } = require("playwright");
  * @returns {Promise<{browser: import('playwright').Browser, context: import('playwright').BrowserContext, page: import('playwright').Page}>}
  */
 async function attach(opts = {}) {
-  const cdpUrl = opts.cdpUrl || "http://127.0.0.1:9222";
+  const cdpUrl =
+    opts.cdpUrl ||
+    `http://127.0.0.1:${process.env.CDP_PORT || "9222"}`;
   const titleHint = opts.titleHint || null;
 
   const browser = await chromium.connectOverCDP(cdpUrl);
