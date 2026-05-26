@@ -222,7 +222,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     function handleSend(): void {
       const text = input.trim();
       const hasPayload = text.length > 0 || attachments.length > 0;
-      if (!hasPayload || isLoading) return;
+      if (!hasPayload) return;
       setSlashMenuOpen(false);
       const sendAttachments = attachments;
       clearAfterSend(text);
@@ -231,7 +231,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     function handleQuickAsk(): void {
       const text = input.trim();
-      if (!text || isLoading) return;
+      if (!text) return;
       const sendAttachments = attachments;
       clearAfterSend(text);
       onQuickAsk(text, sendAttachments);
@@ -350,11 +350,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setAttachmentError(null);
     }
 
+    // Pre-send validation gate (#369): even with the queue model from
+    // PR #379, we still block Send when readiness fails — a queued message
+    // with a missing API key would just fail later. The !isLoading gate
+    // is intentionally dropped here vs. the pre-merge version, so users
+    // can queue messages while the agent is mid-response.
     const readinessOk = readiness?.ok !== false;
     const canSend =
-      (input.trim().length > 0 || attachments.length > 0) &&
-      !isLoading &&
-      readinessOk;
+      (input.trim().length > 0 || attachments.length > 0) && readinessOk;
 
     // Map fixLocation → user-facing call to action. The strings are
     // wrapped in i18n; the location ids come from main/validation.ts.

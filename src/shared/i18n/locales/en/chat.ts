@@ -89,4 +89,5 @@ export default {
     persona: "Show current persona",
     version: "Show Hermes version",
   },
+  queued: "{{count}} message(s) queued — will send when the agent finishes",
 } as const;
