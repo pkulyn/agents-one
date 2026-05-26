@@ -50,6 +50,7 @@ import {
   chatToolProgressLabel,
   type ChatToolEvent,
 } from "../shared/chat-stream";
+import { hostDerivedEnvKeyForUrl } from "./host-derived-env";
 
 /**
  * Resolve which profile a gateway call targets. An explicit profile always
