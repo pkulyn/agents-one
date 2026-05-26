@@ -55,6 +55,7 @@ import {
   restartGateway,
   ensureSshTunnelIfNeeded,
   setSshRemoteApiKey,
+  getRemoteAuthHeader,
 } from "./hermes";
 import {
   startSshTunnel,
@@ -740,6 +741,10 @@ function setupIPC(): void {
         if (!gatewayRunning || !tunnelHealthy) {
           await sshStartGateway(conn.ssh);
           await startSshTunnel(conn.ssh);
+        }
+        // Always ensure the API key is cached — the key may not have been
+        // read yet if the app-launch auto-start failed silently (#212).
+        if (!getRemoteAuthHeader().Authorization) {
           const key = await sshReadRemoteApiKey(conn.ssh);
           setSshRemoteApiKey(key);
         }
