@@ -5776,7 +5776,9 @@ body {
   color: var(--error);
 }
 
-.kanban-card-action[data-tooltip]::after {
+.kanban-card-action[data-tooltip]::after,
+.kanban-header .btn[data-tooltip]::after,
+.kanban-board-chip-add[data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: calc(100% + 6px);
@@ -5796,8 +5798,27 @@ body {
   z-index: 10;
 }
 
-.kanban-card-action[data-tooltip]:hover::after {
+.kanban-card-action[data-tooltip]:hover::after,
+.kanban-header .btn[data-tooltip]:hover:not(:disabled)::after,
+.kanban-board-chip-add[data-tooltip]:hover::after {
   opacity: 1;
+}
+
+/* Header buttons + add-board chip need an anchor for the absolutely-
+   positioned tooltip pseudo-element. The card actions already have
+   position:relative from their main rule. */
+.kanban-header .btn[data-tooltip],
+.kanban-board-chip-add[data-tooltip] {
+  position: relative;
+}
+
+/* The rightmost header button (New task) sits hard against the pane
+   edge, so its centered tooltip clips the viewport. Anchor to the
+   button's right edge instead. */
+.kanban-header .schedules-header-actions .btn[data-tooltip]:last-child::after {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 /* Detail modal */
