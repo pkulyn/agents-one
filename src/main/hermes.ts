@@ -1060,6 +1060,39 @@ export function startGateway(profile?: string): boolean {
     }
   }
 
+  // Inject the resolved API_SERVER_KEY into the gateway's env.
+  //
+  // The desktop's `getApiServerKey` reads the shared secret from six
+  // sources: config.yaml top-level `API_SERVER_KEY:`, `.env`
+  // `API_SERVER_KEY=`, and config.yaml `api_server.token:` (each per-profile
+  // and default-profile). The upstream gateway's `APIServerAdapter` (see
+  // `gateway/platforms/api_server.py:647`) only reads two of those:
+  // `api_server.extra.key` from config.yaml, or `os.getenv("API_SERVER_KEY")`
+  // at startup. Upstream `gateway/run.py:608-610` bridges *top-level*
+  // config.yaml keys into env vars, so `API_SERVER_KEY:` at the top
+  // level works — but the nested `api_server.token:` location does not
+  // become an env var, and the gateway never reads it directly.
+  //
+  // The result is a divergence: the desktop happily sends
+  // `Authorization: Bearer <key>` + `X-Hermes-Session-Id` for users
+  // whose key lives in `api_server.token`, while the gateway's
+  // `self._api_key` is empty and returns 403 with
+  //   "Session continuation requires API key authentication.
+  //    Configure API_SERVER_KEY to enable this feature."
+  // (api_server.py:1097-1109). This is what users on Telegram, Reddit,
+  // and several open issues have been hitting since v0.5.1 — PR #357
+  // started sending the session header on every fresh chat, which made
+  // the latent divergence user-visible on every send.
+  //
+  // Bridging the desktop's resolved value into the spawn env makes the
+  // gateway's `os.getenv("API_SERVER_KEY")` fallback see whatever the
+  // desktop sees, regardless of source. This is the canonical fix until
+  // upstream learns to read `api_server.token` directly.
+  const resolvedApiServerKey = getApiServerKey(profile);
+  if (resolvedApiServerKey) {
+    gatewayEnv.API_SERVER_KEY = resolvedApiServerKey;
+  }
+
   gatewayProcess = spawn(HERMES_PYTHON, hermesCliArgs(["gateway"]), {
     cwd: HERMES_REPO,
     env: gatewayEnv,
