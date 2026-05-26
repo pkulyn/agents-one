@@ -1695,6 +1695,17 @@ function setupUpdater(): void {
   }, 5000);
 }
 
+// Opt-in Chrome DevTools Protocol port for E2E testing. Set
+// ENABLE_CDP=1 (with optional CDP_PORT, default 9222) before
+// launching `npm run dev` to expose the renderer for Playwright
+// attach. Off by default — no effect on normal dev or prod builds.
+if (process.env.ENABLE_CDP === "1") {
+  app.commandLine.appendSwitch(
+    "remote-debugging-port",
+    process.env.CDP_PORT || "9222",
+  );
+}
+
 app.whenReady().then(() => {
   app.name = "Hermes";
   electronApp.setAppUserModelId("com.nousresearch.hermes");
