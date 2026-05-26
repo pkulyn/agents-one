@@ -219,7 +219,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     function handleQuickAsk(): void {
       const text = input.trim();
-      if (!text || isLoading) return;
+      if (!text) return;
       const sendAttachments = attachments;
       clearAfterSend(text);
       onQuickAsk(text, sendAttachments);

@@ -208,7 +208,12 @@ function Chat({
     const next = queueRef.current.shift();
     if (!next) return;
     setQueuedCount(queueRef.current.length);
-    handleSendRef.current(next.text, next.attachments);
+    handleSendRef.current(next.text, next.attachments, true).catch(() => {
+      // Put the message back at the front so it isn't silently lost if
+      // the send fails (e.g. IPC error before onChatError fires).
+      queueRef.current.unshift(next);
+      setQueuedCount(queueRef.current.length);
+    });
   }, [isLoading]);
 
   const handleSubmitOrQueue = useCallback(
@@ -218,9 +223,9 @@ function Chat({
         setQueuedCount(queueRef.current.length);
         return;
       }
-      actions.handleSend(text, attachments);
+      void handleSendRef.current(text, attachments);
     },
-    [isLoading, actions.handleSend],
+    [isLoading],
   );
 
   const handleSuggestion = useCallback((text: string) => {
