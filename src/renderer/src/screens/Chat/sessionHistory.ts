@@ -147,6 +147,27 @@ function reconciliationKey(m: ChatMessage): string | null {
 }
 
 /**
+ * Merge DB-only metadata (e.g. attachments) into a streamed message
+ * while preserving the streamed message's React identity (id).
+ * This prevents React from remounting the DOM node, which would
+ * disrupt scroll position and cause visual reordering.
+ */
+function mergeDbMetadataIntoStreamed(
+  streamed: ChatMessage,
+  db: ChatMessage,
+): ChatMessage {
+  // Only bubble messages carry mergeable metadata.
+  if ("kind" in streamed) return streamed;
+  const s = streamed as ChatBubbleMessage;
+  const d = db as ChatBubbleMessage;
+  // Attachments from the DB that the stream didn't deliver.
+  if (d.attachments && d.attachments.length > 0 && (!s.attachments || s.attachments.length === 0)) {
+    return { ...s, attachments: d.attachments };
+  }
+  return s;
+}
+
+/**
  * Merge an in-memory streamed transcript with the canonical state.db
  * transcript at end-of-stream.
  *
@@ -191,7 +212,15 @@ export function reconcileStreamedWithDb(
     const key = reconciliationKey(dbMsg);
     const bucket = key ? streamedByKey.get(key) : undefined;
     const streamedMatch = bucket?.shift();
-    result.push(streamedMatch ?? dbMsg);
+    if (streamedMatch) {
+      // Preserve the streamed message's React identity (id) so React
+      // doesn't remount the DOM node.  Carry over any DB-only metadata
+      // (e.g. attachments that the stream didn't deliver) into the
+      // streamed copy.
+      result.push(mergeDbMetadataIntoStreamed(streamedMatch, dbMsg));
+    } else {
+      result.push(dbMsg);
+    }
   }
 
   // Pathological case: the in-memory transcript carried something the
