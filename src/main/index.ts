@@ -111,6 +111,12 @@ import {
 import { listModels, addModel, removeModel, updateModel } from "./models";
 import { validateChatReadiness } from "./validation";
 import {
+  runConfigHealthCheck,
+  autoFixIssue,
+  readConfigFixLog,
+  type IssueCode,
+} from "./config-health";
+import {
   listProfiles,
   createProfile,
   deleteProfile,
@@ -523,6 +529,34 @@ function setupIPC(): void {
   // `ok: true`, so the renderer never false-blocks a Send.
   ipcMain.handle("validate-chat-readiness", (_event, profile?: string) => {
     return validateChatReadiness(profile);
+  });
+
+  // Config-health audit + per-issue auto-fix. The renderer renders a
+  // dismissible banner above the chat input and a full report in the
+  // Settings → Diagnose section. Auto-fixes are additive only — never
+  // delete; always log to ~/.hermes/logs/config-fixes.log.
+  ipcMain.handle("get-config-health", (_event, profile?: string) => {
+    return runConfigHealthCheck(profile);
+  });
+
+  ipcMain.handle("rerun-config-health", (_event, profile?: string) => {
+    return runConfigHealthCheck(profile);
+  });
+
+  ipcMain.handle(
+    "autofix-config-issue",
+    (
+      _event,
+      code: IssueCode,
+      profile?: string,
+      context?: Record<string, string>,
+    ) => {
+      return autoFixIssue(code, profile, context);
+    },
+  );
+
+  ipcMain.handle("get-config-fix-log", (_event, maxEntries?: number) => {
+    return readConfigFixLog(maxEntries);
   });
 
   ipcMain.handle(

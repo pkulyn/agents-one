@@ -12,6 +12,7 @@ import { useFastMode } from "./hooks/useFastMode";
 import { useLocalCommands } from "./hooks/useLocalCommands";
 import { useI18n } from "../../components/useI18n";
 import { buildChatTranscript } from "./transcriptUtils";
+import { ConfigHealthBanner } from "../../components/ConfigHealthBanner";
 import type { ChatMessage, UsageState } from "./types";
 
 export type { ChatMessage } from "./types";
@@ -23,6 +24,9 @@ interface ChatProps {
   profile?: string;
   onSessionStarted?: () => void;
   onNewChat?: () => void;
+  /** Optional callback to navigate to Settings → Diagnose section
+   *  when the user clicks "Show details" in the config-health banner. */
+  onOpenDiagnose?: () => void;
 }
 
 function Chat({
@@ -32,6 +36,7 @@ function Chat({
   profile,
   onSessionStarted,
   onNewChat,
+  onOpenDiagnose,
 }: ChatProps): React.JSX.Element {
   const { t } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
@@ -299,6 +304,8 @@ function Chat({
         onNewChat={onNewChat}
         onClear={handleClear}
       />
+
+      <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
 
       <div className="chat-messages" ref={containerRef}>
         {messages.length === 0 ? (

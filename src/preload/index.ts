@@ -124,6 +124,19 @@ const hermesAPI = {
     expectedEnvKey?: string;
   }> => ipcRenderer.invoke("validate-chat-readiness", profile),
 
+  getConfigHealth: (profile?: string): Promise<unknown> =>
+    ipcRenderer.invoke("get-config-health", profile),
+  rerunConfigHealth: (profile?: string): Promise<unknown> =>
+    ipcRenderer.invoke("rerun-config-health", profile),
+  autofixConfigIssue: (
+    code: string,
+    profile?: string,
+    context?: Record<string, string>,
+  ): Promise<{ ok: boolean; message?: string }> =>
+    ipcRenderer.invoke("autofix-config-issue", code, profile, context),
+  getConfigFixLog: (maxEntries?: number): Promise<unknown[]> =>
+    ipcRenderer.invoke("get-config-fix-log", maxEntries),
+
   getConfig: (key: string, profile?: string): Promise<string | null> =>
     ipcRenderer.invoke("get-config", key, profile),
 

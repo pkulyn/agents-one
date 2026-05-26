@@ -27,6 +27,7 @@ import memoryEn from "./locales/en/memory";
 import installEn from "./locales/en/install";
 import constantsEn from "./locales/en/constants";
 import kanbanEn from "./locales/en/kanban";
+import diagnoseEn from "./locales/en/diagnose";
 import commonEs from "./locales/es/common";
 import navigationEs from "./locales/es/navigation";
 import welcomeEs from "./locales/es/welcome";
@@ -193,6 +194,7 @@ export const resources = {
       install: installEn,
       constants: constantsEn,
       kanban: kanbanEn,
+      diagnose: diagnoseEn,
     },
   },
   es: {
