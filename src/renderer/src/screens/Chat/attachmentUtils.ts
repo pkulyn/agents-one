@@ -183,39 +183,45 @@ export async function compressImageToFit(
   probeCtx.drawImage(img, 0, 0);
   const hasAlpha = canvasHasTransparency(probeCanvas);
 
-  // Output-format choice:
-  //   - Alpha images: stay PNG (the lossless format with transparency).
-  //     We could try WebP-lossless, but PNG is universally accepted by
-  //     vision endpoints and WebP-lossless rarely beats it.
-  //   - Opaque images: prefer WebP (~25-30% smaller than JPEG at the
-  //     same perceptual quality), with JPEG as a runtime fallback.
-  //     WebP is accepted by all major vision providers (OpenAI,
-  //     Anthropic via OpenAI-compat, Google, OpenRouter), but Chromium
-  //     versions in extremely old Electron builds occasionally fail
-  //     to encode it — that's why we probe before committing.
+  // Candidate output formats. The base64 4/3× wire inflation is fixed
+  // by the OpenAI chat-completions content shape — what we control is
+  // the binary that gets inflated. So we encode each candidate at the
+  // current quality and pick the smallest blob:
   //
-  // The base64 inflation that goes on the wire (4/3×) is fixed by the
-  // OpenAI chat-completions content shape, but the binary that gets
-  // inflated is whatever we choose here, so smaller binary = smaller
-  // request body = more headroom under the gateway's 10 MB cap.
-  let outputType: string;
-  let outputExt: string;
+  //   - Alpha images: PNG only (the lossless format that preserves
+  //     transparency). We could try WebP-lossless too but it rarely
+  //     beats PNG for screenshot-style content and adds complexity.
+  //   - Opaque images: BOTH WebP and JPEG, pick the smaller. WebP is
+  //     usually ~25-50% smaller for screenshots/photos, but JPEG
+  //     marginally wins on high-frequency noise/grain content.
+  //     Running both costs ~2× encoding time per iteration but
+  //     guarantees the smallest wire payload regardless of content.
+  //
+  // WebP availability is probed once up-front — Chromium's `toBlob`
+  // silently produces PNG when it can't honour an unsupported type,
+  // so we explicitly check the returned blob type.
+  type Candidate = {
+    type: string;
+    ext: string;
+    quality: number | undefined; // undefined = lossless / format default
+  };
+  const candidates: Candidate[] = [];
   if (hasAlpha) {
-    outputType = "image/png";
-    outputExt = "png";
-  } else if (await canvasSupportsType(probeCanvas, "image/webp")) {
-    outputType = "image/webp";
-    outputExt = "webp";
+    candidates.push({ type: "image/png", ext: "png", quality: undefined });
   } else {
-    outputType = "image/jpeg";
-    outputExt = "jpg";
+    const webpOk = await canvasSupportsType(probeCanvas, "image/webp");
+    if (webpOk) {
+      candidates.push({ type: "image/webp", ext: "webp", quality: 0.85 });
+    }
+    candidates.push({ type: "image/jpeg", ext: "jpg", quality: 0.85 });
   }
-  const isLossy = outputType === "image/webp" || outputType === "image/jpeg";
+  const isLossy = !hasAlpha;
 
   // Compression loop:
-  //   Phase 1 — lossy format: step quality down from 0.85 to 0.5.
-  //   Phase 2 — PNG path or lossy still too big: scale dimensions down
-  //     by 20% per step, resetting quality to 0.85 each round.
+  //   Phase 1 — lossy formats: step quality down from 0.85 to 0.5
+  //     across all candidates, keeping the smallest blob ≤ target.
+  //   Phase 2 — PNG path or all lossy still too big: scale dimensions
+  //     down by 20% per step, resetting quality to 0.85 each round.
   let scale = 1.0;
   let quality = 0.85;
   // Reuse the probe canvas at scale=1 to skip a re-decode for the first
@@ -227,14 +233,34 @@ export async function compressImageToFit(
   // for any input we can decode (worst case: ~3 quality drops × ~6 scale
   // drops = 18 iters).
   for (let i = 0; i < 20; i++) {
-    const blob = await canvasToBlob(
-      workingCanvas,
-      outputType,
-      isLossy ? quality : undefined,
-    );
-    if (blob.size <= targetBytes) {
-      const newName = file.name.replace(/\.[^.]+$/, "") + "." + outputExt;
-      return new File([blob], newName, { type: outputType });
+    // Encode every candidate at the current quality and remember the
+    // smallest blob.  Skip candidates whose encode produces a blob of
+    // the wrong type (Chromium fallback to PNG) — those don't count.
+    let bestBlob: Blob | null = null;
+    let bestCandidate: Candidate | null = null;
+    for (const cand of candidates) {
+      let blob: Blob;
+      try {
+        blob = await canvasToBlob(
+          workingCanvas,
+          cand.type,
+          cand.quality === undefined ? undefined : quality,
+        );
+      } catch {
+        continue;
+      }
+      if (blob.type !== cand.type) continue;
+      if (!bestBlob || blob.size < bestBlob.size) {
+        bestBlob = blob;
+        bestCandidate = cand;
+      }
+    }
+    if (!bestBlob || !bestCandidate) throw new Error("canvas-unavailable");
+
+    if (bestBlob.size <= targetBytes) {
+      const newName =
+        file.name.replace(/\.[^.]+$/, "") + "." + bestCandidate.ext;
+      return new File([bestBlob], newName, { type: bestCandidate.type });
     }
 
     // For lossy formats: drop quality before scaling — visually preferable.
