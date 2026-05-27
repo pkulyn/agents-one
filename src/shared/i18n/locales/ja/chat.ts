@@ -28,7 +28,9 @@ export default {
   removeAttachment: "添付を削除",
   dropToAttach: "ファイルをドロップして添付",
   attachUnsupported: "{{name}}: 対応していないファイル形式です",
-  attachImageTooLarge: "{{name}}: 画像が大きすぎます（最大 20 MB）",
+  attachImageTooLarge: "{{name}}: 画像が大きすぎます（最大 50 MB）",
+  attachImageUncompressible:
+    "{{name}}: サイズに収まるよう画像を圧縮できませんでした（アニメーション GIF または非対応フォーマット）。静止画のスクリーンショットをお試しください。",
   attachTextTooLarge: "{{name}}: ファイルが大きすぎます（最大 256 KB）",
   attachTooMany: "添付が多すぎます（1 メッセージにつき最大 10 件）",
   attachReadFailed: "{{name}}: 読み込めませんでした",
