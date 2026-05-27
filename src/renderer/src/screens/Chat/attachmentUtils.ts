@@ -84,18 +84,22 @@ function readAsBase64(file: File): Promise<string> {
 // user decide whether to send the static thumbnail.
 
 function loadHtmlImage(file: File): Promise<HTMLImageElement> {
+  // Round-trip through FileReader → data URL → Image.src rather than
+  // `URL.createObjectURL` + `revokeObjectURL`. Data URLs are slightly
+  // more memory (~33% base64 overhead during decode) but they survive
+  // automation/CDP contexts where blob URLs sometimes fail to decode,
+  // and they avoid the URL lifecycle entirely (no race between revoke
+  // and decode-complete).
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = (): void => {
-      URL.revokeObjectURL(url);
-      resolve(img);
+    const reader = new FileReader();
+    reader.onload = (): void => {
+      const img = new Image();
+      img.onload = (): void => resolve(img);
+      img.onerror = (): void => reject(new Error("image-decode-failed"));
+      img.src = String(reader.result || "");
     };
-    img.onerror = (): void => {
-      URL.revokeObjectURL(url);
-      reject(new Error("image-decode-failed"));
-    };
-    img.src = url;
+    reader.onerror = (): void => reject(new Error("image-decode-failed"));
+    reader.readAsDataURL(file);
   });
 }
 
