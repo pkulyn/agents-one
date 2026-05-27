@@ -3455,6 +3455,39 @@ body {
   flex-wrap: wrap;
 }
 
+/* Delete (trash) button on each session card — #408.
+ * Slides into the right side of the tags row so it doesn't fight the
+ * card's main click target. Stays subtle until hover so the row doesn't
+ * look cluttered when the user is just browsing. */
+.sessions-card-delete {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0.45;
+  transition:
+    opacity var(--transition),
+    background var(--transition),
+    color var(--transition);
+}
+
+.sessions-card:hover .sessions-card-delete {
+  opacity: 1;
+}
+
+.sessions-card-delete:hover,
+.sessions-card-delete:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--danger, #e06c75);
+  opacity: 1;
+}
+
 .sessions-tag {
   font-size: 11px;
   color: var(--text-muted);

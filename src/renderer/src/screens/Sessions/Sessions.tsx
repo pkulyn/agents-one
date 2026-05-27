@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, memo } from "react";
-import { Plus, Search, X, ChatBubble } from "../../assets/icons";
+import { Plus, Search, X, ChatBubble, Trash } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 
 interface CachedSession {
@@ -110,16 +110,33 @@ const SessionCard = memo(function SessionCard({
   isActive,
   showFullDate,
   onClick,
+  onDelete,
+  deleteTitle,
 }: {
   session: CachedSession;
   isActive: boolean;
   showFullDate: boolean;
   onClick: () => void;
+  // When provided, renders a trash icon button on the card. Closes #408.
+  onDelete?: (id: string) => void;
+  deleteTitle?: string;
 }) {
+  // `div` instead of `button` because nesting a button-inside-button is
+  // invalid HTML and many a11y / interaction layers (focus trap, keyboard
+  // navigation) break on it. Click + Enter/Space behavior matches the
+  // previous semantics via explicit role + onKeyDown.
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       className={`sessions-card ${isActive ? "sessions-card--active" : ""}`}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       <div className="sessions-card-main">
         <span className="sessions-card-title">
@@ -143,8 +160,28 @@ const SessionCard = memo(function SessionCard({
             {formatModel(session.model)}
           </span>
         )}
+        {onDelete && (
+          <button
+            type="button"
+            className="sessions-card-delete"
+            onClick={(e) => {
+              // Stop propagation so the parent card's onClick (which
+              // resumes the session) doesn't also fire — clicking the
+              // trash must NEVER take the user into the chat they're
+              // trying to delete.
+              e.stopPropagation();
+              onDelete(session.id);
+            }}
+            // Block keyboard activation of the parent card-as-button too.
+            onKeyDown={(e) => e.stopPropagation()}
+            title={deleteTitle}
+            aria-label={deleteTitle}
+          >
+            <Trash size={14} />
+          </button>
+        )}
       </div>
-    </button>
+    </div>
   );
 });
 
@@ -197,6 +234,33 @@ function Sessions({
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
+
+  // Delete a session — confirm first, then remove via IPC and refresh the
+  // list. We use the browser-native `window.confirm` rather than a custom
+  // modal: the desktop's existing Clear-chat flow does the same, and a
+  // custom confirm component adds maintenance burden for a one-line UX
+  // we'd otherwise build identical to the OS-native dialog. Closes #408.
+  const handleDelete = useCallback(
+    async (sessionId: string): Promise<void> => {
+      if (!window.confirm(t("sessions.deleteConfirm"))) return;
+      // Optimistic UI update: drop the row from both the main list and
+      // any active search results so the user sees instant feedback even
+      // if the SQLite write or cache rewrite has any latency.  The
+      // subsequent refresh re-syncs from state.db so we recover if the
+      // backend deletion failed.
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      setSearchResults((prev) =>
+        prev.filter((r) => r.sessionId !== sessionId),
+      );
+      try {
+        await window.hermesAPI.deleteSession(sessionId);
+      } catch (err) {
+        console.error("Failed to delete session", sessionId, err);
+      }
+      await refreshSessions();
+    },
+    [refreshSessions, t],
+  );
 
   // Refresh sessions whenever the Sessions view becomes visible.
   // This ensures new sessions created in the Chat view (via "+")
@@ -303,10 +367,18 @@ function Sessions({
         ) : (
           <div className="sessions-list">
             {searchResults.map((r) => (
-              <button
+              <div
                 key={r.sessionId}
+                role="button"
+                tabIndex={0}
                 className={`sessions-card ${currentSessionId === r.sessionId ? "sessions-card--active" : ""}`}
                 onClick={() => onResumeSession(r.sessionId)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onResumeSession(r.sessionId);
+                  }
+                }}
               >
                 <div className="sessions-card-main">
                   <span className="sessions-card-title">
@@ -337,8 +409,21 @@ function Sessions({
                       {formatModel(r.model)}
                     </span>
                   )}
+                  <button
+                    type="button"
+                    className="sessions-card-delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDelete(r.sessionId);
+                    }}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    title={t("sessions.delete")}
+                    aria-label={t("sessions.delete")}
+                  >
+                    <Trash size={14} />
+                  </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )
@@ -364,6 +449,8 @@ function Sessions({
                     group.label === "thisWeek" || group.label === "earlier"
                   }
                   onClick={() => onResumeSession(s.id)}
+                  onDelete={handleDelete}
+                  deleteTitle={t("sessions.delete")}
                 />
               ))}
             </div>

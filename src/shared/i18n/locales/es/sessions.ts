@@ -13,4 +13,7 @@ export default {
   emptyHint: "Empieza a chatear para crear tu primera sesión",
   messages: "msg",
   messageSingular: "msg",
+  delete: "Eliminar conversación",
+  deleteConfirm:
+    "¿Eliminar esta conversación? Esta acción no se puede deshacer — los mensajes y el registro de la sesión se eliminarán permanentemente.",
 } as const;

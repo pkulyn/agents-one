@@ -13,4 +13,7 @@ export default {
   emptyHint: "Mulai chat untuk membuat sesi pertama Anda",
   messages: "pesan",
   messageSingular: "pesan",
+  delete: "Hapus percakapan",
+  deleteConfirm:
+    "Hapus percakapan ini? Tindakan ini tidak dapat dibatalkan — pesan dan catatan sesi akan dihapus secara permanen.",
 } as const;
