@@ -50,7 +50,10 @@ import {
   chatToolProgressLabel,
   type ChatToolEvent,
 } from "../shared/chat-stream";
-import { hostDerivedEnvKeyForUrl } from "./host-derived-env";
+import {
+  hostDerivedEnvKeyForUrl,
+  shouldPruneOpenRouterApiKey,
+} from "./host-derived-env";
 
 /**
  * Resolve which profile a gateway call targets. An explicit profile always
@@ -1004,7 +1007,7 @@ function sendMessageViaCli(
       env[hostDerivedEnvKey] = resolvedKey;
     }
 
-    if (hostDerivedEnvKey !== "OPENROUTER_API_KEY") {
+    if (shouldPruneOpenRouterApiKey(hostDerivedEnvKey)) {
       delete env.OPENROUTER_API_KEY;
     }
     delete env.ANTHROPIC_TOKEN;
