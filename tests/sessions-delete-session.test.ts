@@ -204,9 +204,8 @@ vi.mock("better-sqlite3", () => {
       throw new Error(`Unhandled fake all SQL: ${this.sql}`);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     get(..._args: unknown[]): unknown {
-      if (this.sql.includes("sqlite_master") && this.sql.includes("messages_fts")) {
+      if (this.sql.includes("FROM sqlite_master")) {
         return undefined;
       }
 
