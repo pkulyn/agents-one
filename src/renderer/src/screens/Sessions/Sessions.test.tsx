@@ -1,4 +1,10 @@
-import { act, render } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // useI18n needs an I18nProvider; the Sessions tab only uses `t` for labels,
@@ -34,6 +40,26 @@ function installHermesAPI(): {
     value: api,
   });
   return api;
+}
+
+function sessionSearchResult(title: string, snippet: string): {
+  sessionId: string;
+  title: string;
+  startedAt: number;
+  source: string;
+  messageCount: number;
+  model: string;
+  snippet: string;
+} {
+  return {
+    sessionId: title.toLowerCase().replace(/\s+/g, "-"),
+    title,
+    startedAt: Math.floor(Date.now() / 1000),
+    source: "desktop",
+    messageCount: 1,
+    model: "gpt-5.5",
+    snippet,
+  };
 }
 
 describe("Sessions tab live refresh (#322)", () => {
@@ -102,5 +128,104 @@ describe("Sessions tab live refresh (#322)", () => {
       window.dispatchEvent(new Event("focus"));
     });
     expect(api.syncSessionCache.mock.calls.length).toBe(afterMount + 1);
+  });
+
+  it("renders sessions recovered by sync when the fast cache starts empty", async () => {
+    vi.useRealTimers();
+    const api = installHermesAPI();
+    api.syncSessionCache.mockResolvedValue([
+      {
+        id: "recovered-session",
+        title: "Recovered older conversation",
+        startedAt: Math.floor(Date.now() / 1000),
+        source: "desktop",
+        messageCount: 4,
+        model: "gpt-5.5",
+      },
+    ]);
+
+    render(<Sessions {...baseProps} visible={true} />);
+    await act(async () => {});
+
+    await waitFor(() => {
+      expect(screen.getByText("Recovered older conversation")).toBeTruthy();
+    });
+    expect(screen.queryByText("sessions.empty")).toBeNull();
+  });
+
+  it("ignores stale search results from earlier keystrokes", async () => {
+    const api = installHermesAPI();
+    let resolveBroadSearch:
+      | ((value: ReturnType<typeof sessionSearchResult>[]) => void)
+      | undefined;
+    api.searchSessions.mockImplementation((query: string) => {
+      if (query === "h") {
+        return new Promise((resolve) => {
+          resolveBroadSearch = resolve;
+        });
+      }
+      if (query === "hello") {
+        return Promise.resolve([
+          sessionSearchResult("Hello match", "<<hello>>"),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(<Sessions {...baseProps} visible={true} />);
+    await act(async () => {});
+
+    const search = screen.getByPlaceholderText("sessions.searchPlaceholder");
+    fireEvent.change(search, { target: { value: "h" } });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+
+    fireEvent.change(search, { target: { value: "hello" } });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    await act(async () => {});
+    expect(screen.getByText("Hello match")).toBeTruthy();
+
+    await act(async () => {
+      resolveBroadSearch?.([
+        sessionSearchResult("Broad h match", "<<hermes>>"),
+      ]);
+    });
+
+    expect(screen.getByText("Hello match")).toBeTruthy();
+    expect(screen.queryByText("Broad h match")).toBeNull();
+  });
+
+  it("does not repopulate search results after clearing the input", async () => {
+    const api = installHermesAPI();
+    let resolveSearch:
+      | ((value: ReturnType<typeof sessionSearchResult>[]) => void)
+      | undefined;
+    api.searchSessions.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSearch = resolve;
+      }),
+    );
+
+    render(<Sessions {...baseProps} visible={true} />);
+    await act(async () => {});
+
+    const search = screen.getByPlaceholderText("sessions.searchPlaceholder");
+    fireEvent.change(search, { target: { value: "hello" } });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "" }));
+
+    await act(async () => {
+      resolveSearch?.([sessionSearchResult("Late hello", "<<hello>>")]);
+    });
+
+    expect(search).toHaveProperty("value", "");
+    expect(screen.queryByText("Late hello")).toBeNull();
+    expect(screen.queryByText("sessions.empty")).toBeTruthy();
   });
 });
