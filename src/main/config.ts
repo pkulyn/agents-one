@@ -905,9 +905,15 @@ export function getApiServerKey(profile?: string): string {
   // Per-profile scope: cross-profile migration (e.g. copy default .env
   // value into a profile that has neither) is out of scope — a user
   // running multiple profiles may have intentionally per-profile keys.
+  const isNamedProfile = Boolean(profile && profile !== "default");
+  const sourceBelongsToProfile =
+    !isNamedProfile ||
+    source === "configTopLevelProfile" ||
+    source === "apiServerTokenProfile";
   if (
     value &&
     source &&
+    sourceBelongsToProfile &&
     !CANONICAL_API_KEY_SOURCES.has(source) &&
     !(envForProfile.API_SERVER_KEY ?? "").trim()
   ) {

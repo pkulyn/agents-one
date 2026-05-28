@@ -63,3 +63,14 @@ export function isKnownProviderUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   return URL_KEY_MAP.some(({ pattern }) => pattern.test(url));
 }
+
+/**
+ * `true` iff the URL points at a local/private host that commonly runs
+ * without provider API-key auth (LM Studio, Ollama, LAN gateways, etc.).
+ */
+export function isLocalBaseUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\[::\]|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/i.test(
+    url,
+  );
+}

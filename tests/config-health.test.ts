@@ -23,6 +23,9 @@ async function freshHealth(
   home: string,
 ): Promise<typeof import("../src/main/config-health")> {
   vi.resetModules();
+  vi.doMock("../src/main/wsl-detection", () => ({
+    findSiblingHermesHomes: () => [],
+  }));
   process.env.HERMES_HOME = home;
   return await import("../src/main/config-health");
 }
@@ -163,6 +166,23 @@ describe("runConfigHealthCheck", () => {
         "  provider: custom",
         "  default: llama-3",
         "  base_url: http://localhost:11434/v1",
+        "",
+      ].join("\n"),
+    );
+    const { runConfigHealthCheck } = await freshHealth(TEST_DIR);
+    const report = runConfigHealthCheck();
+    expect(
+      report.issues.find((i) => i.code === "MODEL_KEY_MISSING"),
+    ).toBeUndefined();
+  });
+
+  it("does NOT flag MODEL_KEY_MISSING for private LAN model URLs", async () => {
+    writeConfig(
+      [
+        "model:",
+        "  provider: custom",
+        "  default: llama-3",
+        "  base_url: http://192.168.1.50:1234/v1",
         "",
       ].join("\n"),
     );

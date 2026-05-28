@@ -166,4 +166,25 @@ describe("getApiServerKey migration (default profile)", () => {
     expect(getApiServerKey()).toBe("");
     expect(existsSync(join(TEST_DIR, ".env"))).toBe(false);
   });
+
+  it("does not copy a default-profile config key into a named profile .env", async () => {
+    writeFileSync(
+      join(TEST_DIR, "config.yaml"),
+      ["api_server:", "  token: sk-default-token", ""].join("\n"),
+    );
+    mkdirSync(join(TEST_DIR, "profiles", "work"), { recursive: true });
+    writeFileSync(
+      join(TEST_DIR, "profiles", "work", "config.yaml"),
+      ["model:", "  provider: auto", ""].join("\n"),
+    );
+    const { getApiServerKey } = await freshConfig(TEST_DIR);
+
+    expect(getApiServerKey("work")).toBe("sk-default-token");
+    expect(existsSync(join(TEST_DIR, "profiles", "work", ".env"))).toBe(
+      false,
+    );
+    expect(existsSync(join(TEST_DIR, "logs", "config-fixes.log"))).toBe(
+      false,
+    );
+  });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   URL_KEY_MAP,
   expectedEnvKeyForUrl,
+  isLocalBaseUrl,
   isKnownProviderUrl,
   CUSTOM_API_KEY_ENV,
 } from "../src/shared/url-key-map";
@@ -86,6 +87,33 @@ describe("isKnownProviderUrl", () => {
     expect(isKnownProviderUrl("")).toBe(false);
     expect(isKnownProviderUrl(null)).toBe(false);
     expect(isKnownProviderUrl(undefined)).toBe(false);
+  });
+});
+
+describe("isLocalBaseUrl", () => {
+  it("recognizes localhost, loopback, and private LAN base URLs", () => {
+    const localUrls = [
+      "http://localhost:11434/v1",
+      "http://127.0.0.1:1234/v1",
+      "http://0.0.0.0:1234/v1",
+      "http://[::1]:1234/v1",
+      "http://192.168.1.50:1234/v1",
+      "http://10.0.0.12:1234/v1",
+      "http://172.16.4.2:1234/v1",
+      "http://172.31.4.2:1234/v1",
+    ];
+    for (const url of localUrls) {
+      expect(isLocalBaseUrl(url)).toBe(true);
+    }
+  });
+
+  it("does not treat public provider hosts as local", () => {
+    expect(isLocalBaseUrl("https://api.openai.com/v1")).toBe(false);
+    expect(isLocalBaseUrl("https://openrouter.ai/api/v1")).toBe(false);
+    expect(isLocalBaseUrl("http://172.32.0.1:1234/v1")).toBe(false);
+    expect(isLocalBaseUrl("")).toBe(false);
+    expect(isLocalBaseUrl(null)).toBe(false);
+    expect(isLocalBaseUrl(undefined)).toBe(false);
   });
 });
 

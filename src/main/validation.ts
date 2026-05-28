@@ -18,6 +18,7 @@
 
 import { getModelConfig, hasOAuthCredentials, readEnv } from "./config";
 import { expectedEnvKeyForModel } from "./installer";
+import { isLocalBaseUrl } from "../shared/url-key-map";
 
 export type ChatReadinessCode =
   | "NO_ACTIVE_MODEL"
@@ -69,12 +70,6 @@ const OAUTH_PROVIDERS = new Set([
 // from the dropdown but had nothing set up.
 const NO_KEY_PROVIDERS = new Set(["auto"]);
 
-function isLocalHost(url: string): boolean {
-  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\[::\]|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/i.test(
-    url,
-  );
-}
-
 /**
  * Synchronous readiness check against the desktop's own config —
  * no network calls. Fast (single readEnv + getModelConfig).
@@ -111,7 +106,7 @@ export function validateChatReadiness(profile?: string): ChatReadiness {
     // Local/private URLs typically don't require a key; the user may
     // intentionally hit an unauthenticated LM Studio / Ollama. Don't
     // block on missing key in that case.
-    if (baseUrl && isLocalHost(baseUrl)) return OK;
+    if (isLocalBaseUrl(baseUrl)) return OK;
 
     const expectedKey = expectedEnvKeyForModel(provider, baseUrl);
     if (!expectedKey) {

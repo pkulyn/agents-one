@@ -30,7 +30,7 @@ import {
 import { safeWriteFile } from "./utils";
 import { HERMES_HOME } from "./installer";
 import { expectedEnvKeyForModel } from "./installer";
-import { expectedEnvKeyForUrl } from "../shared/url-key-map";
+import { expectedEnvKeyForUrl, isLocalBaseUrl } from "../shared/url-key-map";
 import { findSiblingHermesHomes } from "./wsl-detection";
 
 export type Severity = "error" | "warning" | "info";
@@ -241,8 +241,8 @@ function checkActiveModelKeyPresence(profile?: string): ConfigHealthIssue[] {
   if (!mc.provider || mc.provider === "auto") return [];
   if (!mc.model) return [];
 
-  // Localhost / OAuth providers don't need a key.
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(mc.baseUrl)) return [];
+  // Local/private URLs commonly run without a provider API key.
+  if (isLocalBaseUrl(mc.baseUrl)) return [];
 
   const expectedKey = expectedEnvKeyForModel(mc.provider, mc.baseUrl);
   if (!expectedKey) return [];

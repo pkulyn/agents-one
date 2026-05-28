@@ -147,6 +147,20 @@ describe("validateChatReadiness", () => {
     expect(validateChatReadiness()).toEqual({ ok: true });
   });
 
+  it("fails open for private LAN base_url", async () => {
+    writeConfig(
+      [
+        "model:",
+        "  provider: custom",
+        "  default: llama-3",
+        "  base_url: http://192.168.1.50:1234/v1",
+        "",
+      ].join("\n"),
+    );
+    const { validateChatReadiness } = await freshValidation(TEST_DIR);
+    expect(validateChatReadiness()).toEqual({ ok: true });
+  });
+
   it("fails open for unknown provider + unknown URL (we can't decide which key to check)", async () => {
     writeConfig(
       [
