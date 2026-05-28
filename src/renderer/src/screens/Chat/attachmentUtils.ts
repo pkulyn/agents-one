@@ -71,17 +71,17 @@ function readAsBase64(file: File): Promise<string> {
 // (misleading) error "Invalid JSON in request body".
 //
 // Rather than reject oversized images, the desktop downscales them client-
-// side to fit under `MAX_IMAGE_TARGET_BYTES`. The loop drops JPEG quality
-// first (cheap, perceptually fine to ~0.5) then scales down by 20% steps
-// (lossier but bounded). Images already under the target pass through
+// side to fit under `MAX_IMAGE_TARGET_BYTES`. The loop drops lossy encoder
+// quality first (cheap, perceptually fine to ~0.5) then scales down by 20%
+// steps (lossier but bounded). Images already under the target pass through
 // untouched — no quality loss, no recompression.
 //
 // Format strategy: transparent PNGs (alpha channel detected via canvas
-// pixel sampling) stay as PNG so transparency survives; everything else
-// becomes JPEG which compresses photos ~10× better at imperceptible
-// quality loss. Animated GIFs only have their first frame captured by
-// canvas, so we explicitly bail with `image-uncompressible` and let the
-// user decide whether to send the static thumbnail.
+// pixel sampling) stay as PNG so transparency survives; opaque images are
+// encoded as WebP and JPEG and the smaller result wins. Animated GIFs only
+// have their first frame captured by canvas, so we explicitly bail with
+// `image-uncompressible` and let the user decide whether to send the static
+// thumbnail.
 
 function loadHtmlImage(file: File): Promise<HTMLImageElement> {
   // Round-trip through FileReader → data URL → Image.src rather than
@@ -400,7 +400,7 @@ export async function processFiles(
         attachments.push({
           id: newId(),
           kind: "image",
-          name,
+          name: compressedFile.name || name,
           mime: compressedFile.type || mime,
           size: compressedFile.size,
           dataUrl,
