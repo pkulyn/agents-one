@@ -14,6 +14,11 @@ export default {
   messages: "msg",
   messageSingular: "msg",
   delete: "Excluir conversa",
+  deleteConfirmTitle: "Excluir conversa",
   deleteConfirm:
     "Excluir esta conversa? Essa ação não pode ser desfeita — as mensagens e o registro da sessão serão removidos permanentemente.",
+  deleteClose: "Fechar confirmação de exclusão",
+  deleteCancel: "Cancelar",
+  deleteConfirmAction: "Excluir",
+  deleteDeleting: "Excluindo...",
 } as const;

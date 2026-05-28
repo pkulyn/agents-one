@@ -14,6 +14,11 @@ export default {
   messages: "pesan",
   messageSingular: "pesan",
   delete: "Hapus percakapan",
+  deleteConfirmTitle: "Hapus percakapan",
   deleteConfirm:
     "Hapus percakapan ini? Tindakan ini tidak dapat dibatalkan — pesan dan catatan sesi akan dihapus secara permanen.",
+  deleteClose: "Tutup konfirmasi penghapusan",
+  deleteCancel: "Batal",
+  deleteConfirmAction: "Hapus",
+  deleteDeleting: "Menghapus...",
 } as const;

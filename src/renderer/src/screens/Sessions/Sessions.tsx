@@ -202,6 +202,12 @@ function Sessions({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<
+    string | null
+  >(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
+    null,
+  );
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -235,19 +241,23 @@ function Sessions({
     loadSessions();
   }, [loadSessions]);
 
-  // Delete a session — confirm first, then remove via IPC and refresh the
-  // list. We use the browser-native `window.confirm` rather than a custom
-  // modal: the desktop's existing Clear-chat flow does the same, and a
-  // custom confirm component adds maintenance burden for a one-line UX
-  // we'd otherwise build identical to the OS-native dialog. Closes #408.
-  const handleDelete = useCallback(
+  const handleDelete = useCallback((sessionId: string): void => {
+    setPendingDeleteSessionId(sessionId);
+  }, []);
+
+  const cancelDelete = useCallback((): void => {
+    if (deletingSessionId) return;
+    setPendingDeleteSessionId(null);
+  }, [deletingSessionId]);
+
+  const confirmDelete = useCallback(
     async (sessionId: string): Promise<void> => {
-      if (!window.confirm(t("sessions.deleteConfirm"))) return;
       // Optimistic UI update: drop the row from both the main list and
       // any active search results so the user sees instant feedback even
       // if the SQLite write or cache rewrite has any latency.  The
       // subsequent refresh re-syncs from state.db so we recover if the
       // backend deletion failed.
+      setDeletingSessionId(sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       setSearchResults((prev) =>
         prev.filter((r) => r.sessionId !== sessionId),
@@ -256,11 +266,25 @@ function Sessions({
         await window.hermesAPI.deleteSession(sessionId);
       } catch (err) {
         console.error("Failed to delete session", sessionId, err);
+      } finally {
+        await refreshSessions();
+        setDeletingSessionId(null);
+        setPendingDeleteSessionId(null);
       }
-      await refreshSessions();
     },
-    [refreshSessions, t],
+    [refreshSessions],
   );
+
+  useEffect(() => {
+    if (!pendingDeleteSessionId || deletingSessionId) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setPendingDeleteSessionId(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [deletingSessionId, pendingDeleteSessionId]);
 
   // Refresh sessions whenever the Sessions view becomes visible.
   // This ensures new sessions created in the Chat view (via "+")
@@ -414,7 +438,7 @@ function Sessions({
                     className="sessions-card-delete"
                     onClick={(e) => {
                       e.stopPropagation();
-                      void handleDelete(r.sessionId);
+                      handleDelete(r.sessionId);
                     }}
                     onKeyDown={(e) => e.stopPropagation()}
                     title={t("sessions.delete")}
@@ -455,6 +479,59 @@ function Sessions({
               ))}
             </div>
           ))}
+        </div>
+      )}
+      {pendingDeleteSessionId && (
+        <div
+          className="sessions-confirm-overlay"
+          onClick={cancelDelete}
+          role="presentation"
+        >
+          <div
+            className="sessions-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sessions-delete-confirm-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sessions-confirm-header">
+              <h3 id="sessions-delete-confirm-title">
+                {t("sessions.deleteConfirmTitle")}
+              </h3>
+              <button
+                type="button"
+                className="btn-ghost sessions-confirm-close"
+                onClick={cancelDelete}
+                disabled={!!deletingSessionId}
+                aria-label={t("sessions.deleteClose")}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="sessions-confirm-body">
+              <p>{t("sessions.deleteConfirm")}</p>
+            </div>
+            <div className="sessions-confirm-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={cancelDelete}
+                disabled={!!deletingSessionId}
+              >
+                {t("sessions.deleteCancel")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => void confirmDelete(pendingDeleteSessionId)}
+                disabled={!!deletingSessionId}
+              >
+                {deletingSessionId
+                  ? t("sessions.deleteDeleting")
+                  : t("sessions.deleteConfirmAction")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

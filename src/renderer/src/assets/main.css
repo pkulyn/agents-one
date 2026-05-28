@@ -3488,6 +3488,64 @@ body {
   opacity: 1;
 }
 
+.sessions-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.58);
+  animation: fadeIn 0.15s ease;
+}
+
+.sessions-confirm-modal {
+  width: min(440px, 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.2s ease;
+}
+
+.sessions-confirm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sessions-confirm-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.sessions-confirm-close {
+  padding: 6px;
+}
+
+.sessions-confirm-body {
+  padding: 18px;
+}
+
+.sessions-confirm-body p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.sessions-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 18px 16px;
+  border-top: 1px solid var(--border);
+}
+
 .sessions-tag {
   font-size: 11px;
   color: var(--text-muted);

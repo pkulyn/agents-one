@@ -124,7 +124,6 @@ describe("Sessions tab — delete affordance (#408)", () => {
       },
     ];
     const api = installHermesAPI(sessions);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<Sessions {...baseProps} visible={true} />);
     await act(async () => {});
@@ -136,9 +135,18 @@ describe("Sessions tab — delete affordance (#408)", () => {
       fireEvent.click(deleteBtn);
     });
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "sessions.deleteConfirm",
+    );
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "sessions.deleteConfirmAction",
+        }),
+      );
+    });
+
     expect(api.deleteSession).toHaveBeenCalledWith("sess-abc-123");
-    confirmSpy.mockRestore();
   });
 
   it("does NOT call deleteSession when the confirm is cancelled", async () => {
@@ -153,7 +161,6 @@ describe("Sessions tab — delete affordance (#408)", () => {
       },
     ];
     const api = installHermesAPI(sessions);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     render(<Sessions {...baseProps} visible={true} />);
     await act(async () => {});
@@ -165,9 +172,15 @@ describe("Sessions tab — delete affordance (#408)", () => {
       fireEvent.click(deleteBtn);
     });
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "sessions.deleteCancel" }),
+      );
+    });
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(api.deleteSession).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
   });
 
   it("stops click propagation so the card's resume handler doesn't fire", async () => {
@@ -186,7 +199,6 @@ describe("Sessions tab — delete affordance (#408)", () => {
     ];
     installHermesAPI(sessions);
     const onResume = vi.fn();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(
       <Sessions {...baseProps} onResumeSession={onResume} visible={true} />,
@@ -201,6 +213,6 @@ describe("Sessions tab — delete affordance (#408)", () => {
     });
 
     expect(onResume).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });
