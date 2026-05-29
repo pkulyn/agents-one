@@ -8,6 +8,7 @@ export default {
   createFailed: "Failed to create profile",
   creating: "Creating...",
   create: "Create",
+  deleteFailed: "Failed to delete profile",
   active: "Active",
   noModel: "No model set",
   skillsCount: "{{count}} skills",
