@@ -1210,7 +1210,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1219,25 +1219,25 @@ body {
 }
 
 .file-viewer-modal {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 8px;
   width: 100%;
-  max-width: 800px;
-  height: 80vh;
+  max-width: 900px;
+  height: 85vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
 }
 
 .file-viewer-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-tertiary);
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  background: #252526;
   flex-shrink: 0;
 }
 
@@ -1249,39 +1249,43 @@ body {
 }
 
 .file-viewer-icon {
-  color: var(--accent-text);
+  color: #858585;
   flex-shrink: 0;
 }
 
 .file-viewer-filename {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  color: #cccccc;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-mono);
 }
 
 .file-viewer-size {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 11px;
+  color: #858585;
   margin-left: 8px;
+  font-family: var(--font-mono);
 }
 
 .file-viewer-close {
-  opacity: 0.6;
+  opacity: 0.7;
   padding: 4px;
+  color: #cccccc;
 }
 
 .file-viewer-close:hover {
   opacity: 1;
+  background: #3c3c3c;
+  border-radius: 4px;
 }
 
 .file-viewer-content {
   flex: 1;
   overflow: auto;
-  padding: 20px;
-  background: var(--bg-primary);
+  background: #1e1e1e;
 }
 
 .file-viewer-loading,
@@ -1291,39 +1295,173 @@ body {
   justify-content: center;
   height: 100%;
   font-size: 14px;
-  color: var(--text-muted);
+  color: #858585;
 }
 
 .file-viewer-error {
-  color: var(--error);
+  color: #f48771;
 }
 
 .file-viewer-truncated {
-  padding: 10px 14px;
-  background: var(--warning-bg);
-  border: 1px solid var(--warning);
-  border-radius: var(--radius-sm);
-  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: rgba(255, 204, 0, 0.1);
+  border-bottom: 1px solid #333;
   font-size: 12px;
-  color: var(--text-primary);
+  color: #cccccc;
+  font-family: var(--font-mono);
 }
 
+/* VS Code-like code viewer with line numbers */
 .file-viewer-code {
   margin: 0;
   padding: 0;
-  background: transparent;
+  background: #1e1e1e;
   font-family: var(--font-mono);
   font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-primary);
-  white-space: pre-wrap;
-  word-wrap: break-word;
+  line-height: 1.5;
+  display: flex;
 }
 
 .file-viewer-code code {
   display: block;
-  padding: 0;
-  background: transparent;
+  padding: 16px;
+  padding-left: 16px;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+/* Custom scrollbar for file viewer */
+.file-viewer-content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.file-viewer-content::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.file-viewer-content::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 5px;
+}
+
+.file-viewer-content::-webkit-scrollbar-thumb:hover {
+  background: #4f4f4f;
+}
+
+/* Override highlight.js styles for VS Code dark theme look */
+.file-viewer-modal .hljs {
+  background: #1e1e1e;
+  color: #d4d4d4;
+}
+
+/* Keyword - blue */
+.file-viewer-modal .hljs-keyword,
+.file-viewer-modal .hljs-selector-tag,
+.file-viewer-modal .hljs-subst {
+  color: #569cd6;
+  font-weight: normal;
+}
+
+/* String - orange/red */
+.file-viewer-modal .hljs-string,
+.file-viewer-modal .hljs-regexp,
+.file-viewer-modal .hljs-addition,
+.file-viewer-modal .hljs-attribute {
+  color: #ce9178;
+}
+
+/* Number - light green */
+.file-viewer-modal .hljs-number,
+.file-viewer-modal .hljs-literal {
+  color: #b5cea8;
+}
+
+/* Function/method - yellow */
+.file-viewer-modal .hljs-title,
+.file-viewer-modal .hljs-title.class_,
+.file-viewer-modal .hljs-title.function_,
+.file-viewer-modal .hljs-built_in {
+  color: #dcdcaa;
+}
+
+/* Variable - light blue */
+.file-viewer-modal .hljs-variable,
+.file-viewer-modal .hljs-template-variable,
+.file-viewer-modal .hljs-params {
+  color: #9cdcfe;
+}
+
+/* Property - light blue */
+.file-viewer-modal .hljs-property,
+.file-viewer-modal .hljs-attr {
+  color: #9cdcfe;
+}
+
+/* Comment - green */
+.file-viewer-modal .hljs-comment,
+.file-viewer-modal .hljs-quote {
+  color: #6a9955;
+  font-style: italic;
+}
+
+/* Operator - light */
+.file-viewer-modal .hljs-operator,
+.file-viewer-modal .hljs-punctuation {
+  color: #d4d4d4;
+}
+
+/* Tag (HTML/XML) - blue */
+.file-viewer-modal .hljs-tag {
+  color: #569cd6;
+}
+
+/* Tag name - red */
+.file-viewer-modal .hljs-name {
+  color: #569cd6;
+}
+
+/* Tag attribute - light blue */
+.file-viewer-modal .hljs-attr {
+  color: #9cdcfe;
+}
+
+/* CSS property - light blue */
+.file-viewer-modal .hljs-selector-id,
+.file-viewer-modal .hljs-selector-class,
+.file-viewer-modal .hljs-selector-attr,
+.file-viewer-modal .hljs-selector-pseudo {
+  color: #d7ba7d;
+}
+
+/* Type/Class - greenish */
+.file-viewer-modal .hljs-type,
+.file-viewer-modal .hljs-class_ {
+  color: #4ec9b0;
+}
+
+/* Meta - gray */
+.file-viewer-modal .hljs-meta {
+  color: #808080;
+}
+
+/* Emphasis - bold */
+.file-viewer-modal .hljs-emphasis {
+  font-style: italic;
+}
+
+/* Strong - bold */
+.file-viewer-modal .hljs-strong {
+  font-weight: bold;
+}
+
+/* Built-in constant */
+.file-viewer-modal .hljs-built_in,
+.file-viewer-modal .hljs-builtin-name {
+  color: #dcdcaa;
 }
 
 /* Clickable file rows in worktree */
