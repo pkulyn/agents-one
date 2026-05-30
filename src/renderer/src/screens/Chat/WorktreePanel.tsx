@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { Folder, File, ChevronRight, ChevronDown } from "lucide-react";
-import { useI18n } from "../../components/useI18n";
 import { FileViewer } from "./FileViewer";
 
 interface FileEntry {
@@ -25,7 +24,6 @@ function TreeItem({
   depth,
   onFileClick,
 }: TreeItemProps): React.JSX.Element {
-  const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(false);
   const [children, setChildren] = useState<FileEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -96,14 +94,14 @@ function TreeItem({
               className="worktree-loading"
               style={{ paddingLeft: paddingLeft + 12 }}
             >
-              {t("worktree.loading")}...
+              Loading...
             </div>
           ) : children === null ? null : children.length === 0 ? (
             <div
               className="worktree-empty"
               style={{ paddingLeft: paddingLeft + 12 }}
             >
-              {t("worktree.emptyFolder")}
+              Empty folder
             </div>
           ) : (
             children.map((child) => (
@@ -125,7 +123,6 @@ function TreeItem({
 export const WorktreePanel = memo(function WorktreePanel({
   folderPath,
 }: WorktreePanelProps): React.JSX.Element {
-  const { t } = useI18n();
   const [entries, setEntries] = useState<FileEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -140,7 +137,7 @@ export const WorktreePanel = memo(function WorktreePanel({
       const result = await window.hermesAPI.readDirectory(folderPath);
       if (cancelled) return;
       if (result === null) {
-        setError(t("worktree.errorLoading"));
+        setError("Failed to load folder contents");
       } else {
         // Sort: directories first, then files, both alphabetically
         const sorted = result.sort((a, b) => {
@@ -174,11 +171,11 @@ export const WorktreePanel = memo(function WorktreePanel({
       </div>
       <div className="worktree-content">
         {isLoading ? (
-          <div className="worktree-loading">{t("worktree.loading")}...</div>
+          <div className="worktree-loading">Loading...</div>
         ) : error ? (
           <div className="worktree-error">{error}</div>
         ) : entries === null || entries.length === 0 ? (
-          <div className="worktree-empty">{t("worktree.empty")}</div>
+          <div className="worktree-empty">Folder is empty</div>
         ) : (
           entries.map((entry) => (
             <TreeItem

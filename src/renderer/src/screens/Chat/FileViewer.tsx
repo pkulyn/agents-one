@@ -246,10 +246,10 @@ export const FileViewer = memo(function FileViewer({
             <span className="file-viewer-filename" title={filePath}>
               {fileName}
             </span>
-            {content && (
+            {(content || imageUrl) && (
               <span className="file-viewer-size">
-                {formatFileSize(content)}
-                {truncated && ` (${t("worktree.fileTruncated")})`}
+                {content ? formatFileSize(content) : imageUrl ? "Image" : ""}
+                {truncated && content && ` (${t("worktree.fileTruncated")})`}
               </span>
             )}
           </div>
