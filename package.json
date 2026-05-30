@@ -27,9 +27,11 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@types/highlight.js": "^9.12.4",
     "@types/react-syntax-highlighter": "^15.5.13",
     "better-sqlite3": "^12.8.0",
     "electron-updater": "^6.3.9",
+    "highlight.js": "^11.11.1",
     "i18next": "^25.6.0",
     "lucide-react": "^1.7.0",
     "posthog-js": "^1.376.0",

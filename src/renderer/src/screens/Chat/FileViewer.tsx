@@ -1,5 +1,7 @@
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import { X, FileCode } from "lucide-react";
+import hljs from "highlight.js";
+import "highlight.js/styles/github-dark.css";
 import { useI18n } from "../../components/useI18n";
 
 interface FileViewerProps {
@@ -7,22 +9,74 @@ interface FileViewerProps {
   onClose: () => void;
 }
 
-// Common file extensions for syntax highlighting detection
-const CODE_EXTENSIONS = new Set([
-  "js", "ts", "jsx", "tsx", "json", "html", "css", "scss", "less",
-  "py", "rb", "php", "java", "go", "rs", "c", "cpp", "h", "hpp",
-  "swift", "kt", "dart", "lua", "sh", "bash", "zsh", "ps1",
-  "yaml", "yml", "toml", "ini", "conf", "config", "xml", "sql",
-  "md", "markdown", "txt", "log",
-]);
+// Map file extensions to highlight.js language names
+const EXTENSION_TO_LANGUAGE: Record<string, string> = {
+  js: "javascript",
+  ts: "typescript",
+  jsx: "javascript",
+  tsx: "typescript",
+  json: "json",
+  html: "html",
+  htm: "html",
+  css: "css",
+  scss: "scss",
+  less: "less",
+  py: "python",
+  php: "php",
+  java: "java",
+  go: "go",
+  rs: "rust",
+  c: "c",
+  cpp: "cpp",
+  h: "c",
+  hpp: "cpp",
+  swift: "swift",
+  kt: "kotlin",
+  dart: "dart",
+  lua: "lua",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  ps1: "powershell",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  ini: "ini",
+  conf: "ini",
+  config: "ini",
+  xml: "xml",
+  sql: "sql",
+  md: "markdown",
+  markdown: "markdown",
+  txt: "plaintext",
+  log: "plaintext",
+  vue: "javascript",
+  svelte: "javascript",
+  dockerfile: "dockerfile",
+  rb: "ruby",
+  ex: "elixir",
+  exs: "elixir",
+  erl: "erlang",
+  scala: "scala",
+  r: "r",
+  m: "objectivec",
+  mm: "objectivec",
+  pl: "perl",
+  pm: "perl",
+  groovy: "groovy",
+  gradle: "groovy",
+  tf: "hcl",
+  hcl: "hcl",
+};
 
 function getFileExtension(filename: string): string {
   const parts = filename.split(".");
   return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
 }
 
-function isCodeFile(filename: string): boolean {
-  return CODE_EXTENSIONS.has(getFileExtension(filename));
+function getLanguage(filename: string): string | undefined {
+  const ext = getFileExtension(filename);
+  return EXTENSION_TO_LANGUAGE[ext];
 }
 
 function getFileName(filePath: string): string {
@@ -45,6 +99,9 @@ export const FileViewer = memo(function FileViewer({
   const [truncated, setTruncated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const codeRef = useRef<HTMLElement>(null);
+
+  const fileName = getFileName(filePath);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,8 +126,16 @@ export const FileViewer = memo(function FileViewer({
     };
   }, [filePath, t]);
 
-  const fileName = getFileName(filePath);
-  const isCode = isCodeFile(fileName);
+  // Apply syntax highlighting after content loads
+  useEffect(() => {
+    if (content && codeRef.current) {
+      const detectedLang = getLanguage(fileName);
+      if (detectedLang) {
+        codeRef.current.className = `hljs language-${detectedLang}`;
+        hljs.highlightElement(codeRef.current);
+      }
+    }
+  }, [content, fileName]);
 
   return (
     <div className="file-viewer-overlay" onClick={onClose}>
@@ -99,11 +164,15 @@ export const FileViewer = memo(function FileViewer({
 
         <div className="file-viewer-content">
           {isLoading ? (
-            <div className="file-viewer-loading">{t("worktree.loading")}...</div>
+            <div className="file-viewer-loading">
+              {t("worktree.loading")}...
+            </div>
           ) : error ? (
             <div className="file-viewer-error">{error}</div>
           ) : content === null ? (
-            <div className="file-viewer-error">{t("worktree.errorLoading")}</div>
+            <div className="file-viewer-error">
+              {t("worktree.errorLoading")}
+            </div>
           ) : (
             <>
               {truncated && (
@@ -111,8 +180,10 @@ export const FileViewer = memo(function FileViewer({
                   {t("worktree.fileTruncatedWarning")}
                 </div>
               )}
-              <pre className={`file-viewer-code ${isCode ? "file-viewer-code-syntax" : ""}`}>
-                <code>{content}</code>
+              <pre className="file-viewer-code">
+                <code ref={codeRef as React.RefObject<HTMLElement>}>
+                  {content}
+                </code>
               </pre>
             </>
           )}
