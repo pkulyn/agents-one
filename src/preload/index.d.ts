@@ -688,6 +688,10 @@ interface HermesAPI {
   readDirectory: (
     dirPath: string,
   ) => Promise<{ name: string; isDirectory: boolean }[] | null>;
+  readFile: (
+    filePath: string,
+    maxBytes?: number,
+  ) => Promise<{ content: string; truncated: boolean } | null>;
   kanbanAssignTask: (
     taskId: string,
     assignee: string | null,

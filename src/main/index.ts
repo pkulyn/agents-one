@@ -9,7 +9,7 @@ import {
   clipboard,
 } from "electron";
 import { join } from "path";
-import { readdir } from "fs/promises";
+import { readdir, readFile } from "fs/promises";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
@@ -1467,6 +1467,28 @@ function setupIPC(): void {
           name: entry.name,
           isDirectory: entry.isDirectory(),
         }));
+      } catch {
+        return null;
+      }
+    },
+  );
+
+  // Read file contents for file viewer
+  ipcMain.handle(
+    "read-file",
+    async (
+      _event,
+      filePath: string,
+      maxBytes?: number,
+    ): Promise<{ content: string; truncated: boolean } | null> => {
+      try {
+        const limit = maxBytes ?? 102400; // Default 100KB
+        const buffer = await readFile(filePath);
+        const truncated = buffer.byteLength > limit;
+        const content = truncated
+          ? buffer.subarray(0, limit).toString("utf-8")
+          : buffer.toString("utf-8");
+        return { content, truncated };
       } catch {
         return null;
       }

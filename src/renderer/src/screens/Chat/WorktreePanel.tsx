@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { Folder, File, ChevronRight, ChevronDown } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import { FileViewer } from "./FileViewer";
 
 interface FileEntry {
   name: string;
@@ -15,12 +16,14 @@ interface TreeItemProps {
   entry: FileEntry;
   parentPath: string;
   depth: number;
+  onFileClick?: (filePath: string) => void;
 }
 
 function TreeItem({
   entry,
   parentPath,
   depth,
+  onFileClick,
 }: TreeItemProps): React.JSX.Element {
   const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -46,12 +49,14 @@ function TreeItem({
     setIsLoading(false);
   }, [entry.isDirectory, fullPath, children]);
 
-  const handleToggle = (): void => {
+  const handleClick = (): void => {
     if (entry.isDirectory) {
       if (!isExpanded) {
         void loadChildren();
       }
       setIsExpanded(!isExpanded);
+    } else {
+      onFileClick?.(fullPath);
     }
   };
 
@@ -60,8 +65,8 @@ function TreeItem({
   return (
     <div className="worktree-item">
       <div
-        className="worktree-row"
-        onClick={handleToggle}
+        className={`worktree-row ${!entry.isDirectory ? "worktree-row-file" : ""}`}
+        onClick={handleClick}
         style={{ paddingLeft }}
         title={fullPath}
       >
@@ -107,6 +112,7 @@ function TreeItem({
                 entry={child}
                 parentPath={fullPath}
                 depth={depth + 1}
+                onFileClick={onFileClick}
               />
             ))
           )}
@@ -123,6 +129,7 @@ export const WorktreePanel = memo(function WorktreePanel({
   const [entries, setEntries] = useState<FileEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -179,10 +186,17 @@ export const WorktreePanel = memo(function WorktreePanel({
               entry={entry}
               parentPath={folderPath}
               depth={0}
+              onFileClick={setSelectedFile}
             />
           ))
         )}
       </div>
+      {selectedFile && (
+        <FileViewer
+          filePath={selectedFile}
+          onClose={() => setSelectedFile(null)}
+        />
+      )}
     </div>
   );
 });

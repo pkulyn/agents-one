@@ -887,6 +887,11 @@ const hermesAPI = {
     dirPath: string,
   ): Promise<{ name: string; isDirectory: boolean }[] | null> =>
     ipcRenderer.invoke("read-directory", dirPath),
+  readFile: (
+    filePath: string,
+    maxBytes?: number,
+  ): Promise<{ content: string; truncated: boolean } | null> =>
+    ipcRenderer.invoke("read-file", filePath, maxBytes),
   kanbanAssignTask: (
     taskId: string,
     assignee: string | null,
