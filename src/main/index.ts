@@ -8,7 +8,7 @@ import {
   dialog,
   clipboard,
 } from "electron";
-import { join } from "path";
+import { join, extname } from "path";
 import { readdir, readFile } from "fs/promises";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
@@ -1504,6 +1504,37 @@ function setupIPC(): void {
       return false;
     }
   });
+
+  // Read image file as data URL for preview
+  ipcMain.handle(
+    "read-image-file",
+    async (_event, filePath: string): Promise<string | null> => {
+      try {
+        const buffer = await readFile(filePath);
+        const ext = path.extname(filePath).toLowerCase().slice(1);
+        const mimeType =
+          ext === "png"
+            ? "image/png"
+            : ext === "jpg" || ext === "jpeg"
+              ? "image/jpeg"
+              : ext === "gif"
+                ? "image/gif"
+                : ext === "webp"
+                  ? "image/webp"
+                  : ext === "svg"
+                    ? "image/svg+xml"
+                    : ext === "bmp"
+                      ? "image/bmp"
+                      : ext === "ico"
+                        ? "image/x-icon"
+                        : "application/octet-stream";
+        const base64 = buffer.toString("base64");
+        return `data:${mimeType};base64,${base64}`;
+      } catch {
+        return null;
+      }
+    },
+  );
   ipcMain.handle(
     "kanban-assign-task",
     (_event, taskId: string, assignee: string | null, profile?: string) =>

@@ -90,6 +90,69 @@ function formatFileSize(content: string): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Image and binary file extensions that shouldn't be displayed as text
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "bmp",
+  "webp",
+  "svg",
+  "ico",
+  "heic",
+  "heif",
+  "tiff",
+  "tif",
+  "raw",
+  "psd",
+  "ai",
+  "eps",
+  "pdf",
+  "mp4",
+  "mov",
+  "avi",
+  "mkv",
+  "flv",
+  "wmv",
+  "mp3",
+  "wav",
+  "flac",
+  "aac",
+  "ogg",
+  "wma",
+  "zip",
+  "rar",
+  "7z",
+  "tar",
+  "gz",
+  "bz2",
+  "xz",
+  "exe",
+  "dmg",
+  "pkg",
+  "deb",
+  "rpm",
+  "msi",
+  "dll",
+  "so",
+  "dylib",
+  "bin",
+  "dat",
+  "db",
+  "sqlite",
+  "sqlite3",
+  "woff",
+  "woff2",
+  "ttf",
+  "otf",
+  "eot",
+]);
+
+function isBinaryFile(filename: string): boolean {
+  return IMAGE_EXTENSIONS.has(getFileExtension(filename));
+}
+
 export const FileViewer = memo(function FileViewer({
   filePath,
   onClose,
@@ -173,9 +236,7 @@ export const FileViewer = memo(function FileViewer({
               title={t("worktree.openInEditor")}
             >
               <ExternalLink size={14} />
-              <span className="file-viewer-open-text">
-                {t("worktree.open")}
-              </span>
+              <span className="file-viewer-open-text">Open</span>
             </button>
             <button
               className="btn-ghost file-viewer-close"
@@ -197,6 +258,16 @@ export const FileViewer = memo(function FileViewer({
           ) : content === null ? (
             <div className="file-viewer-error">
               {t("worktree.errorLoading")}
+            </div>
+          ) : isBinaryFile(fileName) ? (
+            <div className="file-viewer-binary">
+              <div className="file-viewer-binary-icon">📄</div>
+              <div className="file-viewer-binary-text">
+                Binary file cannot be previewed
+              </div>
+              <div className="file-viewer-binary-hint">
+                Click Open to view in default application
+              </div>
             </div>
           ) : (
             <>

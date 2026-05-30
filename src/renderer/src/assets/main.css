@@ -1309,6 +1309,33 @@ body {
   border-radius: 4px;
 }
 
+/* Binary file placeholder */
+.file-viewer-binary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: #858585;
+}
+
+.file-viewer-binary-icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.file-viewer-binary-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #cccccc;
+}
+
+.file-viewer-binary-hint {
+  font-size: 12px;
+  color: #858585;
+}
+
 .file-viewer-content {
   flex: 1;
   overflow: auto;
