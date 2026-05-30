@@ -137,6 +137,19 @@ export const FileViewer = memo(function FileViewer({
     }
   }, [content, fileName]);
 
+  // Handle Escape key to close file viewer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
   return (
     <div className="file-viewer-overlay" onClick={onClose}>
       <div className="file-viewer-modal" onClick={(e) => e.stopPropagation()}>
