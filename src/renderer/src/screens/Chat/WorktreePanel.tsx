@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, memo } from "react";
 import { Folder, ChevronRight, ChevronDown } from "lucide-react";
-import { FileIcon, defaultStyles } from "react-file-icon";
+import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { FileViewer } from "./FileViewer";
 
 interface FileEntry {
@@ -19,8 +19,16 @@ interface TreeItemProps {
   onFileClick?: (filePath: string) => void;
 }
 
-function getFileExtension(filename: string): string {
-  return filename.split(".").pop()?.toLowerCase() || "";
+function FileIcon({ filename }: { filename: string }): React.JSX.Element {
+  const iconType = getIconForFile(filename);
+  const svgString = getSVGStringFromFileType(iconType);
+
+  return (
+    <div
+      className="worktree-file-icon-wrapper"
+      dangerouslySetInnerHTML={{ __html: svgString }}
+    />
+  );
 }
 
 function TreeItem({
@@ -87,14 +95,7 @@ function TreeItem({
         ) : (
           <>
             <span className="worktree-chevron-placeholder" />
-            <div className="worktree-file-icon-wrapper">
-              <FileIcon
-                extension={getFileExtension(entry.name)}
-                {...defaultStyles[getFileExtension(entry.name)]}
-                glyphColor="currentColor"
-                labelColor="currentColor"
-              />
-            </div>
+            <FileIcon filename={entry.name} />
           </>
         )}
         <span className="worktree-name">{entry.name}</span>
