@@ -90,8 +90,8 @@ function formatFileSize(content: string): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Image and binary file extensions that shouldn't be displayed as text
-const IMAGE_EXTENSIONS = new Set([
+// Image extensions that can be previewed
+const VIEWABLE_IMAGE_EXTENSIONS = new Set([
   "png",
   "jpg",
   "jpeg",
@@ -100,6 +100,10 @@ const IMAGE_EXTENSIONS = new Set([
   "webp",
   "svg",
   "ico",
+]);
+
+// Binary/non-text file extensions that can't be displayed
+const BINARY_EXTENSIONS = new Set([
   "heic",
   "heif",
   "tiff",
@@ -149,8 +153,12 @@ const IMAGE_EXTENSIONS = new Set([
   "eot",
 ]);
 
+function isImageFile(filename: string): boolean {
+  return VIEWABLE_IMAGE_EXTENSIONS.has(getFileExtension(filename));
+}
+
 function isBinaryFile(filename: string): boolean {
-  return IMAGE_EXTENSIONS.has(getFileExtension(filename));
+  return BINARY_EXTENSIONS.has(getFileExtension(filename));
 }
 
 export const FileViewer = memo(function FileViewer({
@@ -162,6 +170,7 @@ export const FileViewer = memo(function FileViewer({
   const [truncated, setTruncated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const codeRef = useRef<HTMLElement>(null);
 
   const fileName = getFileName(filePath);
@@ -170,8 +179,23 @@ export const FileViewer = memo(function FileViewer({
     let cancelled = false;
     setIsLoading(true);
     setError(null);
+    setImageUrl(null);
 
     const loadFile = async (): Promise<void> => {
+      // If image file, load as data URL
+      if (isImageFile(filePath)) {
+        const imageData = await window.hermesAPI.readImageFile(filePath);
+        if (cancelled) return;
+        if (imageData === null) {
+          setError(t("worktree.errorLoading"));
+        } else {
+          setImageUrl(imageData);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // Otherwise load as text
       const result = await window.hermesAPI.readFile(filePath, 102400);
       if (cancelled) return;
       if (result === null) {
@@ -255,6 +279,14 @@ export const FileViewer = memo(function FileViewer({
             </div>
           ) : error ? (
             <div className="file-viewer-error">{error}</div>
+          ) : imageUrl ? (
+            <div className="file-viewer-image-container">
+              <img
+                src={imageUrl}
+                alt={fileName}
+                className="file-viewer-image"
+              />
+            </div>
           ) : content === null ? (
             <div className="file-viewer-error">
               {t("worktree.errorLoading")}

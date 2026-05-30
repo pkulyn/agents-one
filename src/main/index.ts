@@ -1511,7 +1511,7 @@ function setupIPC(): void {
     async (_event, filePath: string): Promise<string | null> => {
       try {
         const buffer = await readFile(filePath);
-        const ext = path.extname(filePath).toLowerCase().slice(1);
+        const ext = extname(filePath).toLowerCase().slice(1);
         const mimeType =
           ext === "png"
             ? "image/png"

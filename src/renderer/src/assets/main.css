@@ -1336,6 +1336,25 @@ body {
   color: #858585;
 }
 
+/* Image viewer styles */
+.file-viewer-image-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
+  background: #1e1e1e;
+  overflow: auto;
+}
+
+.file-viewer-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
 .file-viewer-content {
   flex: 1;
   overflow: auto;
