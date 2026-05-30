@@ -12,21 +12,24 @@ import { describe, it, expect, vi } from "vitest";
  *      on `isRemoteMode()`.
  */
 
-const { TEST_HOME, connModeRef, spawnSpy } = vi.hoisted(() => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const path = require("path");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const os = require("os");
-  return {
-    TEST_HOME: path.join(os.tmpdir(), `hermes-remote-test-${Date.now()}`),
-    connModeRef: { mode: "local" as "local" | "remote" | "ssh" },
-    spawnSpy: vi.fn(() => ({
-      unref: () => {},
-      pid: 12345,
-      on: () => {},
-    })),
-  };
-});
+const { TEST_HOME, connModeRef, sshTunnelUrlRef, sshLocalPortRef, spawnSpy } =
+  vi.hoisted(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const os = require("os");
+    return {
+      TEST_HOME: path.join(os.tmpdir(), `hermes-remote-test-${Date.now()}`),
+      connModeRef: { mode: "local" as "local" | "remote" | "ssh" },
+      sshTunnelUrlRef: { value: "http://localhost:18642" as string | null },
+      sshLocalPortRef: { value: 18642 as number | undefined },
+      spawnSpy: vi.fn(() => ({
+        unref: () => {},
+        pid: 12345,
+        on: () => {},
+      })),
+    };
+  });
 
 vi.mock("../src/main/installer", () => ({
   HERMES_HOME: TEST_HOME,
@@ -49,13 +52,13 @@ vi.mock("../src/main/config", () => ({
       username: "",
       keyPath: "",
       remotePort: 8642,
-      localPort: 18642,
+      localPort: sshLocalPortRef.value,
     },
   }),
 }));
 
 vi.mock("../src/main/ssh-tunnel", () => ({
-  getSshTunnelUrl: () => "http://localhost:18642",
+  getSshTunnelUrl: () => sshTunnelUrlRef.value,
   isSshTunnelActive: () => true,
   isSshTunnelHealthy: () => Promise.resolve(true),
   startSshTunnel: () => Promise.resolve(),
@@ -89,6 +92,7 @@ vi.mock("child_process", async () => {
 
 import {
   normaliseRemoteUrl,
+  getApiUrl,
   startGateway,
   restartGateway,
   testRemoteConnection,
@@ -154,6 +158,32 @@ describe("normaliseRemoteUrl", () => {
     expect(normaliseRemoteUrl("")).toBe("");
     // @ts-expect-error — defending against the undefined case
     expect(normaliseRemoteUrl(undefined)).toBe("");
+  });
+});
+
+describe("getApiUrl in SSH mode", () => {
+  it("uses the active SSH tunnel URL when tunnel state is available", () => {
+    connModeRef.mode = "ssh";
+    sshTunnelUrlRef.value = "http://localhost:18642";
+    sshLocalPortRef.value = 18642;
+
+    expect(getApiUrl()).toBe("http://localhost:18642");
+  });
+
+  it("falls back to the configured local SSH port when tunnel state is unavailable", () => {
+    connModeRef.mode = "ssh";
+    sshTunnelUrlRef.value = null;
+    sshLocalPortRef.value = 18642;
+
+    expect(getApiUrl()).toBe("http://127.0.0.1:18642");
+  });
+
+  it("preserves the original error when no tunnel state or local port is available", () => {
+    connModeRef.mode = "ssh";
+    sshTunnelUrlRef.value = null;
+    sshLocalPortRef.value = undefined;
+
+    expect(() => getApiUrl()).toThrow("SSH tunnel is not active");
   });
 });
 
