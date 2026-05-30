@@ -1,17 +1,6 @@
 import { useState, useEffect, useCallback, memo } from "react";
-import {
-  Folder,
-  ChevronRight,
-  ChevronDown,
-  FileCode,
-  FileJson,
-  FileText,
-  FileImage,
-  FileType2,
-  FileTerminal,
-  FileCog,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Folder, ChevronRight, ChevronDown } from "lucide-react";
+import { FileIcon, defaultStyles } from "react-file-icon";
 import { FileViewer } from "./FileViewer";
 
 interface FileEntry {
@@ -30,83 +19,8 @@ interface TreeItemProps {
   onFileClick?: (filePath: string) => void;
 }
 
-interface FileIconInfo {
-  icon: LucideIcon;
-  type: string;
-}
-
-function getFileIconInfo(filename: string): FileIconInfo {
-  const ext = filename.split(".").pop()?.toLowerCase() || "";
-
-  // Image files
-  if (
-    ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "ico"].includes(ext)
-  ) {
-    return { icon: FileImage, type: "image" };
-  }
-
-  // JSON files
-  if (["json", "jsonc"].includes(ext)) {
-    return { icon: FileJson, type: "json" };
-  }
-
-  // Config files
-  if (["yml", "yaml", "toml", "ini", "conf", "config", "env"].includes(ext)) {
-    return { icon: FileCog, type: "config" };
-  }
-
-  // Script/terminal files
-  if (["sh", "bash", "zsh", "fish", "ps1", "bat", "cmd"].includes(ext)) {
-    return { icon: FileTerminal, type: "script" };
-  }
-
-  // Documentation files
-  if (["md", "txt", "log", "rst"].includes(ext)) {
-    return { icon: FileText, type: "doc" };
-  }
-
-  // Code files (use FileCode for most programming languages)
-  if (
-    [
-      "js",
-      "ts",
-      "jsx",
-      "tsx",
-      "html",
-      "htm",
-      "css",
-      "scss",
-      "less",
-      "py",
-      "rb",
-      "php",
-      "java",
-      "go",
-      "rs",
-      "c",
-      "cpp",
-      "h",
-      "hpp",
-      "swift",
-      "kt",
-      "dart",
-      "lua",
-      "pl",
-      "pm",
-      "r",
-      "m",
-      "mm",
-      "vue",
-      "svelte",
-      "sql",
-      "xml",
-    ].includes(ext)
-  ) {
-    return { icon: FileCode, type: "code" };
-  }
-
-  // Default
-  return { icon: FileType2, type: "default" };
+function getFileExtension(filename: string): string {
+  return filename.split(".").pop()?.toLowerCase() || "";
 }
 
 function TreeItem({
@@ -173,16 +87,14 @@ function TreeItem({
         ) : (
           <>
             <span className="worktree-chevron-placeholder" />
-            {(() => {
-              const { icon: FileIcon, type } = getFileIconInfo(entry.name);
-              return (
-                <FileIcon
-                  size={14}
-                  className="worktree-icon worktree-file-icon"
-                  data-filetype={type}
-                />
-              );
-            })()}
+            <div className="worktree-file-icon-wrapper">
+              <FileIcon
+                extension={getFileExtension(entry.name)}
+                {...defaultStyles[getFileExtension(entry.name)]}
+                glyphColor="currentColor"
+                labelColor="currentColor"
+              />
+            </div>
           </>
         )}
         <span className="worktree-name">{entry.name}</span>
