@@ -1546,6 +1546,31 @@ body {
   color: var(--accent-text);
 }
 
+/* File type icon colors */
+.worktree-file-icon[data-filetype="image"] {
+  color: #75beff;
+}
+
+.worktree-file-icon[data-filetype="json"] {
+  color: #f7c95c;
+}
+
+.worktree-file-icon[data-filetype="config"] {
+  color: #858585;
+}
+
+.worktree-file-icon[data-filetype="script"] {
+  color: #b5cea8;
+}
+
+.worktree-file-icon[data-filetype="doc"] {
+  color: #cccccc;
+}
+
+.worktree-file-icon[data-filetype="code"] {
+  color: #9cdcfe;
+}
+
 /* Worktree toggle button in header */
 .chat-worktree-toggle {
   opacity: 0.5;
