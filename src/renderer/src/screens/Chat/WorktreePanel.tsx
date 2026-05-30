@@ -21,7 +21,8 @@ interface TreeItemProps {
 
 function FileIcon({ filename }: { filename: string }): React.JSX.Element {
   const iconType = getIconForFile(filename);
-  const svgString = getSVGStringFromFileType(iconType);
+  const svgResult = iconType ? getSVGStringFromFileType(iconType) : null;
+  const svgString = svgResult ?? "";
 
   return (
     <div
