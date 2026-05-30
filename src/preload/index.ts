@@ -892,6 +892,8 @@ const hermesAPI = {
     maxBytes?: number,
   ): Promise<{ content: string; truncated: boolean } | null> =>
     ipcRenderer.invoke("read-file", filePath, maxBytes),
+  openFileInEditor: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke("open-file-in-editor", filePath),
   kanbanAssignTask: (
     taskId: string,
     assignee: string | null,

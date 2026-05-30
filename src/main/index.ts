@@ -1494,6 +1494,16 @@ function setupIPC(): void {
       }
     },
   );
+
+  // Open file in default application
+  ipcMain.handle("open-file-in-editor", async (_event, filePath: string) => {
+    try {
+      await shell.openPath(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  });
   ipcMain.handle(
     "kanban-assign-task",
     (_event, taskId: string, assignee: string | null, profile?: string) =>

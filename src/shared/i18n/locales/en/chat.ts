@@ -89,6 +89,8 @@ export default {
     emptyFolder: "Empty folder",
     errorLoading: "Failed to load folder contents",
     closeFile: "Close",
+    open: "Open",
+    openInEditor: "Open in default editor",
     fileTruncated: "truncated",
     fileTruncatedWarning: "File is too large — showing first 100KB only",
   },

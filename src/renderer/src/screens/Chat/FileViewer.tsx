@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo } from "react";
-import { X, FileCode } from "lucide-react";
+import { X, FileCode, ExternalLink } from "lucide-react";
 import hljs from "highlight.js";
 import "highlight.js/styles/github-dark.css";
 import { useI18n } from "../../components/useI18n";
@@ -166,13 +166,25 @@ export const FileViewer = memo(function FileViewer({
               </span>
             )}
           </div>
-          <button
-            className="btn-ghost file-viewer-close"
-            onClick={onClose}
-            title={t("worktree.closeFile")}
-          >
-            <X size={16} />
-          </button>
+          <div className="file-viewer-actions">
+            <button
+              className="btn-ghost file-viewer-open"
+              onClick={() => window.hermesAPI.openFileInEditor(filePath)}
+              title={t("worktree.openInEditor")}
+            >
+              <ExternalLink size={14} />
+              <span className="file-viewer-open-text">
+                {t("worktree.open")}
+              </span>
+            </button>
+            <button
+              className="btn-ghost file-viewer-close"
+              onClick={onClose}
+              title={t("worktree.closeFile")}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         <div className="file-viewer-content">

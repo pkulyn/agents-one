@@ -1270,9 +1270,36 @@ body {
   font-family: var(--font-mono);
 }
 
+.file-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-viewer-open {
+  opacity: 0.8;
+  padding: 6px 10px;
+  color: #cccccc;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.file-viewer-open:hover {
+  opacity: 1;
+  background: #3c3c3c;
+  border-radius: 4px;
+}
+
+.file-viewer-open-text {
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .file-viewer-close {
   opacity: 0.7;
-  padding: 4px;
+  padding: 6px;
   color: #cccccc;
 }
 

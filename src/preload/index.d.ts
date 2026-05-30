@@ -692,6 +692,7 @@ interface HermesAPI {
     filePath: string,
     maxBytes?: number,
   ) => Promise<{ content: string; truncated: boolean } | null>;
+  openFileInEditor: (filePath: string) => Promise<boolean>;
   kanbanAssignTask: (
     taskId: string,
     assignee: string | null,
