@@ -27,6 +27,27 @@ import memoryEn from "./locales/en/memory";
 import installEn from "./locales/en/install";
 import constantsEn from "./locales/en/constants";
 import kanbanEn from "./locales/en/kanban";
+import commonPl from "./locales/pl/common";
+import navigationPl from "./locales/pl/navigation";
+import welcomePl from "./locales/pl/welcome";
+import setupPl from "./locales/pl/setup";
+import chatPl from "./locales/pl/chat";
+import settingsPl from "./locales/pl/settings";
+import toolsPl from "./locales/pl/tools";
+import sessionsPl from "./locales/pl/sessions";
+import modelsPl from "./locales/pl/models";
+import providersPl from "./locales/pl/providers";
+import officePl from "./locales/pl/office";
+import errorsPl from "./locales/pl/errors";
+import schedulesPl from "./locales/pl/schedules";
+import skillsPl from "./locales/pl/skills";
+import gatewayPl from "./locales/pl/gateway";
+import agentsPl from "./locales/pl/agents";
+import soulPl from "./locales/pl/soul";
+import memoryPl from "./locales/pl/memory";
+import installPl from "./locales/pl/install";
+import constantsPl from "./locales/pl/constants";
+import kanbanPl from "./locales/pl/kanban";
 import commonEs from "./locales/es/common";
 import navigationEs from "./locales/es/navigation";
 import welcomeEs from "./locales/es/welcome";
@@ -195,6 +216,31 @@ export const resources = {
       install: installEn,
       constants: constantsEn,
       kanban: kanbanEn,
+    },
+  },
+  pl: {
+    translation: {
+      common: commonPl,
+      navigation: navigationPl,
+      welcome: welcomePl,
+      setup: setupPl,
+      chat: chatPl,
+      settings: settingsPl,
+      tools: toolsPl,
+      sessions: sessionsPl,
+      models: modelsPl,
+      providers: providersPl,
+      office: officePl,
+      errors: errorsPl,
+      schedules: schedulesPl,
+      skills: skillsPl,
+      gateway: gatewayPl,
+      agents: agentsPl,
+      soul: soulPl,
+      memory: memoryPl,
+      install: installPl,
+      constants: constantsPl,
+      kanban: kanbanPl,
     },
   },
   es: {

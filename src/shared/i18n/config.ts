@@ -8,6 +8,7 @@ export const APP_LOCALES: AppLocale[] = [
   "es",
   "id",
   "ja",
+  "pl",
   "pt-BR",
   "pt-PT",
   "zh-CN",
