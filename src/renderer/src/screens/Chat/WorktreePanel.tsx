@@ -155,7 +155,7 @@ export const WorktreePanel = memo(function WorktreePanel({
     return () => {
       cancelled = true;
     };
-  }, [folderPath, t]);
+  }, [folderPath]);
 
   // Get the folder name from the path
   const folderName =
