@@ -28,7 +28,9 @@ export default {
   removeAttachment: "移除附件",
   dropToAttach: "拖放文件以添加附件",
   attachUnsupported: "{{name}}：不支持的文件类型",
-  attachImageTooLarge: "{{name}}：图片过大（最大 20 MB）",
+  attachImageTooLarge: "{{name}}：图片过大（最大 50 MB）",
+  attachImageUncompressible:
+    "{{name}}：无法将图片压缩到合适大小（动画 GIF 或不支持的格式）。请尝试使用静态截图。",
   attachTextTooLarge: "{{name}}：文件过大（最大 256 KB）",
   attachTooMany: "附件数量过多（每条消息最多 10 个）",
   attachReadFailed: "{{name}}：无法读取",

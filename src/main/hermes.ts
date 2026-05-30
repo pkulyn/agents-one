@@ -401,8 +401,22 @@ function sendMessageViaApi(
     ...(_resumeSessionId ? { session_id: _resumeSessionId } : {}),
   });
 
+  // Encode the body up-front into a Buffer so we can:
+  //  1. Set `Content-Length` accurately based on byte length (NOT char
+  //     count — JSON.stringify of an image data URL is ASCII so they
+  //     match, but multi-byte chars in user text would diverge).
+  //  2. Disable Node's default `Transfer-Encoding: chunked` framing for
+  //     bodies written via `req.write(body); req.end();`. Chunked
+  //     framing skips the gateway's `body_limit_middleware` (which
+  //     inspects Content-Length only), so an oversized payload that
+  //     should produce a clean 413 "body_too_large" gets the
+  //     misleading 400 "Invalid JSON in request body" via aiohttp's
+  //     client_max_size overflow path. See #405.
+  const bodyBuf = Buffer.from(body, "utf-8");
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "Content-Length": String(bodyBuf.length),
     ...getRemoteAuthHeader(),
   };
   // Local API server key (API_SERVER_KEY in the profile's .env /
@@ -479,11 +493,20 @@ function sendMessageViaApi(
       messages: [{ role: "user", content: userContent }],
       stream: false,
     });
+    const probeBodyBuf = Buffer.from(probeBody, "utf-8");
+    // Per-request Content-Length (the outer `headers` object's value
+    // belongs to the streaming request — reusing it here would lie about
+    // this body's size and break the framing the same way the missing
+    // Content-Length did before #405). Spread + override.
+    const probeHeaders = {
+      ...headers,
+      "Content-Length": String(probeBodyBuf.length),
+    };
     const probeUrl = `${getApiUrl()}/v1/chat/completions`;
     const probeMod = probeUrl.startsWith("https") ? https : http;
     const probeReq = probeMod.request(
       probeUrl,
-      { method: "POST", headers },
+      { method: "POST", headers: probeHeaders },
       (res) => {
         let raw = "";
         res.on("data", (d) => {
@@ -512,7 +535,7 @@ function sendMessageViaApi(
         "No response received from the model. Check your model configuration and API key.",
       );
     });
-    probeReq.write(probeBody);
+    probeReq.write(probeBodyBuf);
     probeReq.end();
   }
 
@@ -689,7 +712,7 @@ function sendMessageViaApi(
     );
   });
 
-  req.write(body);
+  req.write(bodyBuf);
   req.end();
 
   return {

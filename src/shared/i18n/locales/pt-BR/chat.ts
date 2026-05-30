@@ -30,7 +30,9 @@ export default {
   removeAttachment: "Remover anexo",
   dropToAttach: "Solte os arquivos para anexar",
   attachUnsupported: "{{name}}: tipo de arquivo não suportado",
-  attachImageTooLarge: "{{name}}: imagem muito grande (máx. 20 MB)",
+  attachImageTooLarge: "{{name}}: imagem muito grande (máx. 50 MB)",
+  attachImageUncompressible:
+    "{{name}}: não foi possível comprimir a imagem para caber (GIF animado ou formato não suportado). Tente uma captura de tela estática.",
   attachTextTooLarge: "{{name}}: arquivo muito grande (máx. 256 KB)",
   attachTooMany: "Anexos demais (máx. 10 por mensagem)",
   attachReadFailed: "{{name}}: não foi possível ler",
