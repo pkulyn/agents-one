@@ -1,7 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Trash, Refresh } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
-import { Check, ExternalLink } from "lucide-react";
+import {
+  Check,
+  ExternalLink,
+  Database,
+  User,
+  Cloud,
+  Sparkles,
+} from "lucide-react";
+import Soul from "../Soul/Soul";
 
 interface MemoryEntry {
   index: number;
@@ -27,45 +35,6 @@ interface MemoryData {
   stats: { totalSessions: number; totalMessages: number };
 }
 
-function timeAgo(ts: number | null): string {
-  if (!ts) return "";
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-
-function CapacityBar({
-  used,
-  limit,
-  label,
-}: {
-  used: number;
-  limit: number;
-  label: string;
-}): React.JSX.Element {
-  const pct = Math.min(100, Math.round((used / limit) * 100));
-  const color =
-    pct > 90 ? "var(--error)" : pct > 70 ? "var(--warning)" : "var(--success)";
-  return (
-    <div className="memory-capacity">
-      <div className="memory-capacity-header">
-        <span className="memory-capacity-label">{label}</span>
-        <span className="memory-capacity-value">
-          {used.toLocaleString()} / {limit.toLocaleString()} chars ({pct}%)
-        </span>
-      </div>
-      <div className="memory-capacity-track">
-        <div
-          className="memory-capacity-fill"
-          style={{ width: `${pct}%`, background: color }}
-        />
-      </div>
-    </div>
-  );
-}
-
 interface MemoryProviderInfo {
   name: string;
   description: string;
@@ -87,7 +56,7 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
   const { t } = useI18n();
   const [data, setData] = useState<MemoryData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"entries" | "profile" | "providers">(
+  const [tab, setTab] = useState<"entries" | "profile" | "providers" | "soul">(
     "entries",
   );
   const [error, setError] = useState("");
@@ -209,70 +178,38 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="memory-stats">
-        <div className="memory-stat">
-          <span className="memory-stat-value">{data.stats.totalSessions}</span>
-          <span className="memory-stat-label">{t("memory.sessions")}</span>
-        </div>
-        <div className="memory-stat">
-          <span className="memory-stat-value">{data.stats.totalMessages}</span>
-          <span className="memory-stat-label">{t("memory.messages")}</span>
-        </div>
-        <div className="memory-stat">
-          <span className="memory-stat-value">
-            {data.memory.entries.length}
-          </span>
-          <span className="memory-stat-label">{t("memory.memories")}</span>
-        </div>
-      </div>
-
-      {/* Capacity */}
-      <div className="memory-capacities">
-        <CapacityBar
-          used={data.memory.charCount}
-          limit={data.memory.charLimit}
-          label={t("memory.agentMemory")}
-        />
-        <CapacityBar
-          used={data.user.charCount}
-          limit={data.user.charLimit}
-          label={t("memory.userProfile")}
-        />
-      </div>
-
       {/* Tabs */}
       <div className="memory-tabs">
         <button
           className={`memory-tab ${tab === "entries" ? "active" : ""}`}
           onClick={() => setTab("entries")}
+          title={`${data.memory.charCount.toLocaleString()} / ${data.memory.charLimit.toLocaleString()} chars`}
         >
+          <Database size={14} />
           {t("memory.agentMemory")}
-          {data.memory.lastModified && (
-            <span className="memory-tab-time">
-              {timeAgo(data.memory.lastModified)}
-            </span>
-          )}
         </button>
         <button
           className={`memory-tab ${tab === "profile" ? "active" : ""}`}
           onClick={() => setTab("profile")}
+          title={`${data.user.charCount.toLocaleString()} / ${data.user.charLimit.toLocaleString()} chars`}
         >
+          <User size={14} />
           {t("memory.userProfile")}
-          {data.user.lastModified && (
-            <span className="memory-tab-time">
-              {timeAgo(data.user.lastModified)}
-            </span>
-          )}
         </button>
         <button
           className={`memory-tab ${tab === "providers" ? "active" : ""}`}
           onClick={() => setTab("providers")}
+          title={memoryProvider || undefined}
         >
+          <Cloud size={14} />
           {t("memory.providersTitle")}
-          {memoryProvider && (
-            <span className="memory-tab-time">{memoryProvider}</span>
-          )}
+        </button>
+        <button
+          className={`memory-tab ${tab === "soul" ? "active" : ""}`}
+          onClick={() => setTab("soul")}
+        >
+          <Sparkles size={14} />
+          {t("soul.title")}
         </button>
       </div>
 
@@ -610,6 +547,13 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Soul / Persona */}
+      {tab === "soul" && (
+        <div className="memory-soul-tab">
+          <Soul profile={profile} />
         </div>
       )}
     </div>

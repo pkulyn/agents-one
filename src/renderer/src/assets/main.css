@@ -5278,6 +5278,17 @@ body {
   gap: 8px;
 }
 
+.memory-soul-tab {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.memory-soul-tab .soul-container {
+  padding: 0;
+  height: 100%;
+}
+
 /* ========================================================================
    TOOLS CONFIGURATION
    ======================================================================== */
