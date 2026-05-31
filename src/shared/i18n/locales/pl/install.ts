@@ -1,5 +1,4 @@
 export default {
-  title: "Instalacja",
   preparing: "Przygotowywanie...",
   startingInstall: "Rozpoczynanie instalacji",
   installationComplete: "Instalacja zakończona",

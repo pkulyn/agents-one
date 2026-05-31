@@ -17,7 +17,6 @@ export default {
     english: "English",
     indonesian: "Bahasa Indonesia",
     japanese: "日本語",
-    polish: "Polski",
     spanish: "Español",
     chinese: "中文",
     portuguese: "Portuguese",
