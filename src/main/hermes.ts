@@ -67,8 +67,8 @@ export function getApiUrl(): string {
   const conn = getConnectionConfig();
   if (conn.mode === "ssh") {
     const sshUrl = getSshTunnelUrl();
-    if (!sshUrl) throw new Error("SSH tunnel is not active");
-    return normaliseRemoteUrl(sshUrl);
+    if (sshUrl) return normaliseRemoteUrl(sshUrl);
+    throw new Error("SSH tunnel is not active");
   }
   if (conn.mode === "remote" && conn.remoteUrl) {
     return normaliseRemoteUrl(conn.remoteUrl);
