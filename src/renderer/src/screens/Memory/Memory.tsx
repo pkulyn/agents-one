@@ -43,6 +43,36 @@ interface MemoryProviderInfo {
   envVars: string[];
 }
 
+function CapacityBar({
+  used,
+  limit,
+  label,
+}: {
+  used: number;
+  limit: number;
+  label: string;
+}): React.JSX.Element {
+  const pct = Math.min(100, Math.round((used / limit) * 100));
+  const color =
+    pct > 90 ? "var(--error)" : pct > 70 ? "var(--warning)" : "var(--success)";
+  return (
+    <div className="memory-capacity">
+      <div className="memory-capacity-header">
+        <span className="memory-capacity-label">{label}</span>
+        <span className="memory-capacity-value">
+          {used.toLocaleString()} / {limit.toLocaleString()} chars ({pct}%)
+        </span>
+      </div>
+      <div className="memory-capacity-track">
+        <div
+          className="memory-capacity-fill"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
 const PROVIDER_URLS: Record<string, string> = {
   honcho: "https://app.honcho.dev",
   hindsight: "https://ui.hindsight.vectorize.io",
@@ -178,12 +208,43 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
         </button>
       </div>
 
+      {/* Capacity Grid */}
+      <div className="memory-capacity-grid">
+        <div className="memory-capacity-card">
+          <div className="memory-capacity-card-header">
+            <Database size={16} />
+            <span>{t("memory.agentMemory")}</span>
+          </div>
+          <CapacityBar
+            used={data.memory.charCount}
+            limit={data.memory.charLimit}
+            label=""
+          />
+          <div className="memory-capacity-card-footer">
+            {data.memory.entries.length} {t("memory.memories")}
+          </div>
+        </div>
+        <div className="memory-capacity-card">
+          <div className="memory-capacity-card-header">
+            <User size={16} />
+            <span>{t("memory.userProfile")}</span>
+          </div>
+          <CapacityBar
+            used={data.user.charCount}
+            limit={data.user.charLimit}
+            label=""
+          />
+          <div className="memory-capacity-card-footer">
+            {data.stats.totalSessions} {t("memory.sessions")}
+          </div>
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="memory-tabs">
         <button
           className={`memory-tab ${tab === "entries" ? "active" : ""}`}
           onClick={() => setTab("entries")}
-          title={`${data.memory.charCount.toLocaleString()} / ${data.memory.charLimit.toLocaleString()} chars`}
         >
           <Database size={14} />
           {t("memory.agentMemory")}
@@ -191,7 +252,6 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
         <button
           className={`memory-tab ${tab === "profile" ? "active" : ""}`}
           onClick={() => setTab("profile")}
-          title={`${data.user.charCount.toLocaleString()} / ${data.user.charLimit.toLocaleString()} chars`}
         >
           <User size={14} />
           {t("memory.userProfile")}
@@ -199,7 +259,6 @@ function Memory({ profile }: { profile?: string }): React.JSX.Element {
         <button
           className={`memory-tab ${tab === "providers" ? "active" : ""}`}
           onClick={() => setTab("providers")}
-          title={memoryProvider || undefined}
         >
           <Cloud size={14} />
           {t("memory.providersTitle")}

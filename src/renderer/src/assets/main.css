@@ -4879,6 +4879,7 @@ body {
 .soul-editor {
   flex: 1;
   width: 100%;
+  min-height: 400px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -4887,7 +4888,7 @@ body {
   font-size: 13px;
   line-height: 1.7;
   color: var(--text-primary);
-  resize: none;
+  resize: vertical;
   outline: none;
   transition: border-color var(--transition);
   overflow-y: auto;
@@ -4924,39 +4925,35 @@ body {
   margin: 0;
 }
 
-.memory-stats {
-  display: flex;
-  gap: 24px;
+/* Capacity Grid Cards */
+.memory-capacity-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.memory-capacity-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 14px 20px;
-  margin-bottom: 16px;
+  padding: 16px;
 }
 
-.memory-stat {
+.memory-capacity-card-header {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.memory-stat-value {
-  font-size: 18px;
-  font-weight: 700;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
+  margin-bottom: 12px;
 }
 
-.memory-stat-label {
+.memory-capacity-card-footer {
   font-size: 12px;
   color: var(--text-muted);
-}
-
-/* Capacity bars */
-.memory-capacities {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 16px;
+  margin-top: 8px;
 }
 
 .memory-capacity {
@@ -5023,12 +5020,6 @@ body {
 .memory-tab.active {
   color: var(--text-primary);
   border-bottom-color: var(--accent);
-}
-
-.memory-tab-time {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-weight: 400;
 }
 
 .memory-error {
@@ -5280,6 +5271,7 @@ body {
 
 .memory-soul-tab {
   flex: 1;
+  min-height: 500px;
   overflow-y: auto;
   padding: 0;
 }
@@ -5287,6 +5279,7 @@ body {
 .memory-soul-tab .soul-container {
   padding: 0;
   height: 100%;
+  min-height: 500px;
 }
 
 /* ========================================================================
