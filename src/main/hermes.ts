@@ -68,14 +68,6 @@ export function getApiUrl(): string {
   if (conn.mode === "ssh") {
     const sshUrl = getSshTunnelUrl();
     if (sshUrl) return normaliseRemoteUrl(sshUrl);
-
-    // The SSH tunnel may still be alive even when the in-process tunnel state
-    // is unavailable. This happens with externally-started tunnels or when the
-    // ssh ControlMaster process outlives the child process that created it.
-    if (conn.ssh?.localPort) {
-      return normaliseRemoteUrl(`http://127.0.0.1:${conn.ssh.localPort}`);
-    }
-
     throw new Error("SSH tunnel is not active");
   }
   if (conn.mode === "remote" && conn.remoteUrl) {
