@@ -169,6 +169,21 @@ export interface SearchResult {
   snippet: string;
 }
 
+export function dedupeSearchRowsBySession<T extends { session_id: string }>(
+  rows: T[],
+  limit: number,
+): T[] {
+  const uniqueRows: T[] = [];
+  const seenSessionIds = new Set<string>();
+  for (const row of rows) {
+    if (seenSessionIds.has(row.session_id)) continue;
+    seenSessionIds.add(row.session_id);
+    uniqueRows.push(row);
+    if (uniqueRows.length >= limit) break;
+  }
+  return uniqueRows;
+}
+
 function getDb(readonly = true): Database.Database | null {
   // Open the active profile's session DB — named profiles keep their
   // sessions under ~/.hermes/profiles/<name>/state.db (issue #311).
@@ -263,7 +278,7 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
         ORDER BY rank
         LIMIT ?`,
       )
-      .all(sanitized, limit) as Array<{
+      .all(sanitized, Math.max(limit * 5, limit)) as Array<{
       session_id: string;
       title: string | null;
       started_at: number;
@@ -273,7 +288,8 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
       snippet: string;
     }>;
 
-    return rows.map((r) => ({
+    const uniqueRows = dedupeSearchRowsBySession(rows, limit);
+    return uniqueRows.map((r) => ({
       sessionId: r.session_id,
       title: r.title,
       startedAt: r.started_at,

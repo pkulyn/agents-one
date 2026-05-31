@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join } from "path";
-import { mkdirSync, rmSync, existsSync } from "fs";
+import { mkdirSync, rmSync, existsSync, writeFileSync } from "fs";
 
 // vi.hoisted runs before module imports, so we can't reference imported
 // helpers here — use the bare Node modules via require.
@@ -294,6 +294,37 @@ describe("syncSessionCache", () => {
     expect(result[0].title).toContain("RAII");
     expect(result[1].title).toContain("Python decorator");
     expect(existsSync(CACHE_FILE)).toBe(true);
+  });
+
+  it("treats an empty cache with a stale lastSync as a cold cache", () => {
+    const oldStart = Math.floor(Date.now() / 1000) - 86400 * 14;
+    seedDb([
+      {
+        id: "old-hidden-session",
+        started_at: oldStart,
+        message_count: 3,
+        firstUserMessage: "Recover this older session",
+      },
+    ]);
+
+    mkdirSync(join(TEST_HOME, "desktop"), { recursive: true });
+    writeFileSync(
+      CACHE_FILE,
+      JSON.stringify({
+        sessions: [],
+        lastSync: Math.floor(Date.now() / 1000),
+      }),
+      "utf-8",
+    );
+
+    const result = syncSessionCache();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: "old-hidden-session",
+      messageCount: 3,
+    });
+    expect(result[0].title).toContain("Recover this older session");
   });
 
   it("updates messageCount on existing sessions without duplicating them (issue #16 regression)", () => {
