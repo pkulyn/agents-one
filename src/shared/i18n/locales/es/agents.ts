@@ -9,6 +9,7 @@ export default {
   createFailed: "No se pudo crear el perfil",
   creating: "Creando...",
   create: "Crear",
+  deleteFailed: "No se pudo eliminar el perfil",
   active: "Activo",
   noModel: "No hay un modelo configurado",
   skillsCount: "{{count}} habilidades",
