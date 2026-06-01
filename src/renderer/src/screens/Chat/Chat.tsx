@@ -13,6 +13,7 @@ import { useFastMode } from "./hooks/useFastMode";
 import { useLocalCommands } from "./hooks/useLocalCommands";
 import { useI18n } from "../../components/useI18n";
 import { buildChatTranscript } from "./transcriptUtils";
+import { ConfigHealthBanner } from "../../components/ConfigHealthBanner";
 import type { Attachment } from "../../../../shared/attachments";
 import type { ChatMessage, UsageState } from "./types";
 
@@ -30,6 +31,9 @@ interface ChatProps {
   profile?: string;
   onSessionStarted?: () => void;
   onNewChat?: () => void;
+  /** Optional callback to navigate to Settings → Diagnose section
+   *  when the user clicks "Show details" in the config-health banner. */
+  onOpenDiagnose?: () => void;
 }
 
 function Chat({
@@ -39,6 +43,7 @@ function Chat({
   profile,
   onSessionStarted,
   onNewChat,
+  onOpenDiagnose,
 }: ChatProps): React.JSX.Element {
   const { t } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
@@ -75,6 +80,39 @@ function Chat({
     toggle: toggleFastMode,
     set: setFastTier,
   } = useFastMode(profile);
+
+  // Pre-send readiness — fail-open check that disables Send + shows
+  // an inline banner when the desktop can predict that the gateway
+  // will reject the request (e.g. provider configured but its API
+  // key is missing from .env). Re-runs on profile/model/baseUrl
+  // change so the banner reflects the current state.
+  const [readiness, setReadiness] = useState<{
+    ok: boolean;
+    code?: string;
+    message?: string;
+    fixLocation?: string;
+    expectedEnvKey?: string;
+  }>({ ok: true });
+  useEffect(() => {
+    let cancelled = false;
+    (async (): Promise<void> => {
+      try {
+        const r = await window.hermesAPI.validateChatReadiness(profile);
+        if (!cancelled) setReadiness(r);
+      } catch {
+        // Fail open on IPC error — never block Send on validation failure
+        if (!cancelled) setReadiness({ ok: true });
+      }
+    })();
+    return (): void => {
+      cancelled = true;
+    };
+  }, [
+    profile,
+    modelConfig.currentModel,
+    modelConfig.currentProvider,
+    modelConfig.currentBaseUrl,
+  ]);
 
   useChatIPC({
     setMessages,
@@ -317,6 +355,8 @@ function Chat({
         onClear={handleClear}
       />
 
+      <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
+
       <div className="chat-body">
         <div className="chat-messages" ref={containerRef}>
           {messages.length === 0 ? (
@@ -350,6 +390,7 @@ function Chat({
           hasSession={!!hermesSessionId}
           sessionId={hermesSessionId}
           remoteMode={remoteMode}
+          readiness={readiness}
           onSubmit={handleSubmitOrQueue}
           onQuickAsk={actions.handleQuickAsk}
           onAbort={actions.handleAbort}
