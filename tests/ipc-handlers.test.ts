@@ -103,6 +103,7 @@ describe("Legacy IPC handlers preserved", () => {
     "abort-chat",
     "start-gateway",
     "stop-gateway",
+    "restart-gateway",
     "gateway-status",
     "get-platform-enabled",
     "set-platform-enabled",

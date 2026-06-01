@@ -1122,6 +1122,18 @@ function setupIPC(): void {
     stopGateway(undefined, true);
     return true;
   });
+  ipcMain.handle("restart-gateway", async (_event, profile?: string) => {
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" && conn.ssh) {
+      await sshStopGateway(conn.ssh);
+      await sshStartGateway(conn.ssh);
+      return sshGatewayStatus(conn.ssh);
+    }
+    if (conn.mode === "remote") {
+      return false;
+    }
+    return restartGateway(profile);
+  });
   ipcMain.handle("gateway-status", () => {
     const conn = getConnectionConfig();
     if (conn.mode === "ssh" && conn.ssh) return sshGatewayStatus(conn.ssh);

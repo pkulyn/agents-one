@@ -139,6 +139,7 @@ describe("Legacy APIs preserved (backward compat)", () => {
     // Gateway
     "startGateway",
     "stopGateway",
+    "restartGateway",
     "gatewayStatus",
     "getPlatformEnabled",
     "setPlatformEnabled",

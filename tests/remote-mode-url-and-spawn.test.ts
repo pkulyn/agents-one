@@ -96,6 +96,7 @@ import {
   startGateway,
   startGatewayDetailed,
   restartGateway,
+  restartGatewayViaCli,
   testRemoteConnection,
   contextFolderSystemMessage,
 } from "../src/main/hermes";
@@ -345,6 +346,20 @@ describe("startGateway / restartGateway in remote mode", () => {
     spawnSpy.mockClear();
     connModeRef.mode = "ssh";
     restartGateway();
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it("restartGatewayViaCli refuses to spawn in remote mode", async () => {
+    spawnSpy.mockClear();
+    connModeRef.mode = "remote";
+    await expect(restartGatewayViaCli()).resolves.toBe(false);
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it("restartGatewayViaCli refuses to spawn in ssh mode", async () => {
+    spawnSpy.mockClear();
+    connModeRef.mode = "ssh";
+    await expect(restartGatewayViaCli()).resolves.toBe(false);
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 });
