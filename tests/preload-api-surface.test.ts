@@ -190,6 +190,7 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "triggerCronJob",
     // Shell
     "openExternal",
+    "openTerminal",
   ];
 
   for (const method of requiredMethods) {

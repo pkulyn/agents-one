@@ -95,5 +95,7 @@ export default {
     empty: "A pasta está vazia",
     emptyFolder: "Pasta vazia",
     errorLoading: "Falha ao carregar conteúdo da pasta",
+    openTerminal: "Abrir terminal aqui",
+    openTerminalFailed: "Não foi possível abrir um terminal para esta pasta.",
   },
 } as const;

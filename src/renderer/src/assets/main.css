@@ -1755,12 +1755,50 @@ body {
 }
 
 .worktree-header-title {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.worktree-header-action {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--accent-text);
+  opacity: 1;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.worktree-header-action:hover {
+  opacity: 1;
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent-text) 10%, transparent);
+}
+
+.worktree-header-action svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.2;
+}
+
+.worktree-terminal-error {
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--error);
+  border-top: 1px solid var(--border);
+  background: var(--error-bg);
 }
 
 .worktree-content {

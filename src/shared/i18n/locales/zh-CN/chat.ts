@@ -80,5 +80,7 @@ export default {
     empty: "文件夹为空",
     emptyFolder: "空文件夹",
     errorLoading: "加载文件夹内容失败",
+    openTerminal: "在此处打开终端",
+    openTerminalFailed: "无法为此文件夹打开终端。",
   },
 } as const;

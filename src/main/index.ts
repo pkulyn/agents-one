@@ -10,7 +10,7 @@ import {
   session,
 } from "electron";
 import { join, extname } from "path";
-import { readdir, readFile } from "fs/promises";
+import { readdir, readFile, stat } from "fs/promises";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
@@ -18,6 +18,7 @@ import type { Attachment } from "../shared/attachments";
 import { stageAttachment, clearStagedAttachments } from "./attachment-staging";
 import { discoverProviderModels } from "./model-discovery";
 import { readMediaAsDataUrl, saveMedia, mediaFileExists } from "./media";
+import { openTerminalInDirectory } from "./terminal-launcher";
 import {
   checkInstallStatus,
   verifyInstall,
@@ -1727,6 +1728,19 @@ function setupIPC(): void {
     try {
       await shell.openPath(filePath);
       return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.handle("open-terminal", async (_event, dirPath: string) => {
+    if (isRemoteOnlyMode()) return false;
+    if (typeof dirPath !== "string" || dirPath.trim().length === 0)
+      return false;
+    try {
+      const info = await stat(dirPath);
+      if (!info.isDirectory()) return false;
+      return await openTerminalInDirectory(dirPath);
     } catch {
       return false;
     }

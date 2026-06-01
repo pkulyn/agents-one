@@ -112,6 +112,8 @@ export default {
     openInEditor: "Abrir en el editor predeterminado",
     fileTruncated: "truncado",
     fileTruncatedWarning: "El archivo es demasiado grande — mostrando solo los primeros 100KB",
+    openTerminal: "Abrir terminal aquí",
+    openTerminalFailed: "No se pudo abrir una terminal para esta carpeta.",
   },
   showWorktree: "Mostrar explorador de archivos",
   hideWorktree: "Ocultar explorador de archivos",
