@@ -79,7 +79,7 @@ export default {
     retry: "Son başarısız işlemi yeniden dene",
     web: "İnternette ara",
     image: "Görsel oluştur",
-    browse: "Bir URL'ye göz at",
+    browse: "Bir URL'ye gözat",
     code: "Kod yaz veya çalıştır",
     file: "Dosya oku veya yaz",
     shell: "Kabuk komutu çalıştır",

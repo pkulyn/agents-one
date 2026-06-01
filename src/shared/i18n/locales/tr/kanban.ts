@@ -56,7 +56,7 @@ export default {
   workspaceWorktree: "Çalışma Ağacı (mevcut repo)",
   workspaceChoose: "Klasör seç…",
   workspaceNoFolder: "Klasör seçilmedi",
-  browse: "Göz at…",
+  browse: "Gözat…",
   triageCheckbox:
     "Triyaja koy (bir belirleyici, yapılacak'a yükseltmeden önce şartnameyi genişletir)",
   create: "Görev oluştur",
