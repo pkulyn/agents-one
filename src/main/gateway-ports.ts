@@ -88,7 +88,8 @@ export function getProfilePort(profile?: string): number {
   const configured = readConfiguredPort(name);
   if (configured !== null) {
     const collides =
-      configured === DEFAULT_API_SERVER_PORT || portsInUse(name).has(configured);
+      configured === DEFAULT_API_SERVER_PORT ||
+      portsInUse(name).has(configured);
     if (!collides) return configured;
     const port = allocateFreePort(name);
     // setConfigValue replaces the existing nested value in place — the common
