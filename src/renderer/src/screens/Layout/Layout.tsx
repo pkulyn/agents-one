@@ -8,7 +8,6 @@ import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
 import Settings from "../Settings/Settings";
 import Skills from "../Skills/Skills";
-import Soul from "../Soul/Soul";
 import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
@@ -26,7 +25,6 @@ import {
   Users,
   Settings as SettingsIcon,
   Puzzle,
-  Sparkles,
   Brain,
   Wrench,
   Signal,
@@ -48,7 +46,6 @@ type View =
   | "models"
   | "providers"
   | "skills"
-  | "soul"
   | "memory"
   | "tools"
   | "schedules"
@@ -65,7 +62,6 @@ const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "models", icon: Layers, labelKey: "navigation.models" },
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   { view: "skills", icon: Puzzle, labelKey: "navigation.skills" },
-  { view: "soul", icon: Sparkles, labelKey: "navigation.soul" },
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
   { view: "tools", icon: Wrench, labelKey: "navigation.tools" },
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
@@ -344,16 +340,6 @@ function Layout({
               <RemoteNotice feature="Skills" />
             ) : (
               <Skills profile={activeProfile} />
-            )}
-          </div>
-        )}
-
-        {visitedViews.has("soul") && (
-          <div style={paneStyle("soul")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Persona" />
-            ) : (
-              <Soul profile={activeProfile} />
             )}
           </div>
         )}

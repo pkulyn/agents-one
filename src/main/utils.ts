@@ -1,6 +1,13 @@
 import { execFileSync } from "child_process";
-import { join, dirname } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { join, dirname, basename } from "path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "fs";
 import { HERMES_HOME } from "./installer";
 
 const PROFILE_NAME_RE = /^[a-z0-9_][a-z0-9_-]{0,63}$/;
@@ -191,5 +198,27 @@ export function escapeRegex(str: string): string {
 export function safeWriteFile(filePath: string, content: string): void {
   const dir = dirname(filePath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(filePath, content, "utf-8");
+
+  const tempPath = join(
+    dir,
+    `.${basename(filePath)}.${process.pid}.${Date.now()}.${Math.random()
+      .toString(16)
+      .slice(2)}.tmp`,
+  );
+
+  let tempWritten = false;
+  try {
+    writeFileSync(tempPath, content, "utf-8");
+    tempWritten = true;
+    renameSync(tempPath, filePath);
+  } catch (err) {
+    if (tempWritten) {
+      try {
+        unlinkSync(tempPath);
+      } catch {
+        // Best-effort cleanup. Preserve the original write/rename error.
+      }
+    }
+    throw err;
+  }
 }

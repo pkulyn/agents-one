@@ -209,6 +209,7 @@ function Sessions({
     null,
   );
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestId = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Quiet re-sync from state.db — refreshes the list WITHOUT flipping the
@@ -318,16 +319,26 @@ function Sessions({
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    if (!searchQuery.trim()) {
+    const query = searchQuery.trim();
+    if (!query) {
+      searchRequestId.current += 1;
       setSearchResults([]);
       setIsSearching(false);
       return;
     }
+    const requestId = searchRequestId.current + 1;
+    searchRequestId.current = requestId;
     setIsSearching(true);
     searchTimer.current = setTimeout(async () => {
-      const results = await window.hermesAPI.searchSessions(searchQuery);
-      setSearchResults(results);
-      setIsSearching(false);
+      try {
+        const results = await window.hermesAPI.searchSessions(query);
+        if (searchRequestId.current !== requestId) return;
+        setSearchResults(results);
+      } finally {
+        if (searchRequestId.current === requestId) {
+          setIsSearching(false);
+        }
+      }
     }, 300);
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -390,9 +401,9 @@ function Sessions({
           </div>
         ) : (
           <div className="sessions-list">
-            {searchResults.map((r) => (
+            {searchResults.map((r, index) => (
               <div
-                key={r.sessionId}
+                key={`${r.sessionId}-${index}`}
                 role="button"
                 tabIndex={0}
                 className={`sessions-card ${currentSessionId === r.sessionId ? "sessions-card--active" : ""}`}
