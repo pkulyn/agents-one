@@ -273,6 +273,7 @@ function Layout({
             sessionId={currentSessionId}
             profile={activeProfile}
             onNewChat={handleNewChat}
+            onOpenDiagnose={() => goTo("settings")}
           />
         </div>
 
