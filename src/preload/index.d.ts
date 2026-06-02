@@ -530,6 +530,9 @@ interface HermesAPI {
   >;
   updateSessionTitle: (sessionId: string, title: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
+  deleteSessions: (
+    sessionIds: string[],
+  ) => Promise<{ requested: number; deleted: number }>;
 
   // Session search
   searchSessions: (
