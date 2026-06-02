@@ -106,6 +106,7 @@ import {
   getSessionMessages,
   searchSessions,
   deleteSession,
+  deleteSessions,
 } from "./sessions";
 import {
   syncSessionCache,
@@ -1099,6 +1100,10 @@ function setupIPC(): void {
 
   ipcMain.handle("delete-session", (_event, sessionId: string) => {
     return deleteSession(sessionId);
+  });
+
+  ipcMain.handle("delete-sessions", (_event, sessionIds: string[]) => {
+    return deleteSessions(Array.isArray(sessionIds) ? sessionIds : []);
   });
 
   // Profiles
