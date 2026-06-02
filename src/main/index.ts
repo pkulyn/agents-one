@@ -34,11 +34,20 @@ import {
   runHermesBackup,
   runHermesImport,
   runHermesDump,
-  listMcpServers,
   discoverMemoryProviders,
   readLogs,
   InstallProgress,
 } from "./installer";
+import {
+  addMcpServer,
+  installMcpCatalogEntry,
+  listMcpCatalog,
+  listMcpServers,
+  removeMcpServer,
+  setMcpServerEnabled,
+  testMcpServer,
+  type McpServerInput,
+} from "./mcp-servers";
 import { updaterLogger } from "./updater-log";
 import {
   runHermesAuthLogin,
@@ -1682,6 +1691,30 @@ function setupIPC(): void {
   // MCP servers
   ipcMain.handle("list-mcp-servers", (_event, profile?: string) =>
     listMcpServers(profile),
+  );
+  ipcMain.handle(
+    "add-mcp-server",
+    (_event, input: McpServerInput, profile?: string) =>
+      addMcpServer(input, profile),
+  );
+  ipcMain.handle("remove-mcp-server", (_event, name: string, profile?: string) =>
+    removeMcpServer(name, profile),
+  );
+  ipcMain.handle(
+    "set-mcp-server-enabled",
+    (_event, name: string, enabled: boolean, profile?: string) =>
+      setMcpServerEnabled(name, enabled, profile),
+  );
+  ipcMain.handle("test-mcp-server", (_event, name: string, profile?: string) =>
+    testMcpServer(name, profile),
+  );
+  ipcMain.handle("list-mcp-catalog", (_event, profile?: string) =>
+    listMcpCatalog(profile),
+  );
+  ipcMain.handle(
+    "install-mcp-catalog-entry",
+    (_event, name: string, env?: Record<string, string>, profile?: string) =>
+      installMcpCatalogEntry(name, env, profile),
   );
 
   // Memory providers

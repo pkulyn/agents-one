@@ -379,11 +379,10 @@ function Layout({
 
         {visitedViews.has("tools") && (
           <div style={paneStyle("tools")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Tools" />
-            ) : (
-              <Tools profile={activeProfile} />
-            )}
+            <Tools
+              profile={activeProfile}
+              showPlatformToolsets={!remoteMode}
+            />
           </div>
         )}
 
