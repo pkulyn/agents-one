@@ -69,6 +69,8 @@ import soulEs from "./locales/es/soul";
 import memoryEs from "./locales/es/memory";
 import installEs from "./locales/es/install";
 import constantsEs from "./locales/es/constants";
+import kanbanEs from "./locales/es/kanban";
+import diagnoseEs from "./locales/es/diagnose";
 import commonId from "./locales/id/common";
 import navigationId from "./locales/id/navigation";
 import welcomeId from "./locales/id/welcome";
@@ -290,6 +292,8 @@ export const resources = {
       memory: memoryEs,
       install: installEs,
       constants: constantsEs,
+      kanban: kanbanEs,
+      diagnose: diagnoseEs,
     },
   },
   id: {
