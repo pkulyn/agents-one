@@ -4,7 +4,7 @@ import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { MediaSegmentView } from "../../components/MediaImage";
 import { useI18n } from "../../components/useI18n";
-import { parseMediaTokens } from "./mediaUtils";
+import { parseMediaTokens, cleanLeakedToolTags } from "./mediaUtils";
 import type { Attachment, ChatBubbleMessage, ChatMessage } from "./types";
 
 export const APPROVAL_RE =
@@ -77,7 +77,9 @@ export const MessageRow = memo(function MessageRow({
   const segments = useMemo(
     () =>
       msg.role === "agent" && bubbleContent
-        ? parseMediaTokens(bubbleContent)
+        ? // Recover any tool/skill call the model leaked as text (e.g. a raw
+          // `<skill_view>{"answer": …}</skill_view>` tag) before tokenizing.
+          parseMediaTokens(cleanLeakedToolTags(bubbleContent))
         : null,
     [msg.role, bubbleContent],
   );
