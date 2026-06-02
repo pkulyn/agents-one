@@ -124,7 +124,7 @@ En modo local, las solicitudes de chat van por `http://127.0.0.1:8642` con strea
 | ----------------- | ---------------------------------------------------------------------------------------------- |
 | **Chat**          | UI de conversación con streaming, comandos slash, progreso de herramientas y seguimiento de tokens |
 | **Sesiones**      | Navega, busca y reanuda conversaciones pasadas                                                  |
-| **Agentes**       | Crea, elimina y cambia entre perfiles de Hermes                                                 |
+| **Perfiles**      | Crea, elimina y cambia entre perfiles de Hermes                                                 |
 | **Habilidades**   | Navega, instala y gestiona habilidades incluidas e instaladas                                   |
 | **Modelos**       | Gestiona configuraciones de modelos guardadas por proveedor                                     |
 | **Memoria**       | Ver/editar entradas de memoria, perfil de usuario y configurar proveedores de memoria           |
@@ -271,12 +271,4 @@ Para el agente central, documentación y flujos de trabajo CLI, consulta el repo
 
 ---
 
-<div align="center">
-
-🌎 **Traducción al español LATAM por [Nanoboy](https://github.com/365diascollaboration-prog)**  
-📺 Dev creator para la comunidad hispana · [YouTube @365collaboration](https://youtube.com/@365collaboration)  
-🛠️ Construyendo herramientas open source para creadores LATAM — gratis, sin límites.
-
-*+500 millones de hispanohablantes merecen documentación en su idioma.*
-
-</div>
+*Traducción al español LATAM por [Nanoboy](https://github.com/365diascollaboration-prog).*
