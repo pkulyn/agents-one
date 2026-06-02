@@ -51,6 +51,15 @@ export default {
   attachReadFailed: "{{name}}: no se pudo leer",
   attachRemoteModeBinary:
     "{{name}}: los adjuntos PDF/binarios requieren el modo local — las imágenes y los archivos de texto siguen funcionando.",
+  validation: {
+    noModel: "No hay un modelo seleccionado. Elige uno en el selector de Chat a continuación.",
+    noProvider: "No hay un proveedor configurado para el modelo activo.",
+    missingKey: "Falta {{key}}, requerida por el proveedor activo.",
+    fixInProviders: "Configúrala en Proveedores →",
+    fixInModels: "Elige un modelo en Modelos →",
+    fixInGateway: "Revisa la pestaña Gateway →",
+    fixInSetup: "Ejecutar configuración →",
+  },
   fastMode: "Modo rápido",
   fastModeOn: "Modo rápido ACTIVADO",
   fastModeActive:
