@@ -21,4 +21,7 @@ export default {
   deleteTitle: "Ajanı sil",
   auto: "Otomatik",
   local: "Yerel",
+  manageProfiles: "Profilleri yönet",
+  switchProfile: "Profili değiştir",
+  defaultTag: "varsayılan",
 } as const;

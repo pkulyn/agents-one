@@ -13,6 +13,17 @@ export default {
   emptyHint: "İlk oturumunuzu oluşturmak için sohbet etmeye başlayın",
   messages: "msj",
   messageSingular: "msj",
+  selectMode: "Seç",
+  cancelSelect: "İptal",
+  selectedCount: "{{count}} seçili",
+  selectVisible: "Görünenleri seç",
+  clearVisible: "Görünenleri temizle",
+  deleteSelected: "Seçilenleri sil",
+  selectSession: "Oturumu seç",
+  deleteSelectedConfirmTitle: "Seçilen oturumları sil",
+  deleteSelectedConfirm:
+    "Seçilen {{count}} oturum silinsin mi? Bu işlem geri alınamaz — mesajlar ve oturum kayıtları kalıcı olarak kaldırılacaktır.",
+  deleteSelectedClose: "Toplu silme onayını kapat",
   delete: "Konuşmayı sil",
   deleteConfirmTitle: "Konuşmayı sil",
   deleteConfirm:
