@@ -44,7 +44,7 @@ import { getProfilePort } from "./gateway-ports";
 import { readModels } from "./models";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { type Attachment, escapeXmlAttr } from "../shared/attachments";
-import { URL_KEY_MAP } from "../shared/url-key-map";
+import { URL_KEY_MAP, OPENAI_COMPAT_PROVIDERS } from "../shared/url-key-map";
 
 /**
  * Resolve which profile a gateway call targets. An explicit profile always
@@ -150,46 +150,6 @@ export async function ensureSshTunnelIfNeeded(): Promise<void> {
     await startSshTunnel(conn.ssh);
   }
 }
-
-/**
- * Providers whose chat path the desktop wires up explicitly with
- * `OPENAI_BASE_URL` + a resolved `OPENAI_API_KEY` — rather than relying
- * on the agent's native provider routing.
- *
- * The original set was just *local* LLM endpoints (lmstudio / ollama /
- * vllm / llamacpp) plus the generic `custom` entry. That meant the
- * built-in remote OpenAI-compatible providers (Groq, DeepSeek,
- * Together, Fireworks, Cerebras, Mistral) — which are defined in
- * `src/renderer/src/constants.ts:LOCAL_PRESETS` with their own
- * `baseUrl` + `envKey` — slipped past this branch and tripped an
- * upstream hermes-agent fallback that misroutes the request to
- * OpenAI's API while still sending the user's provider key, producing
- * a 401 like *"Incorrect API key provided: sk-… You can find your
- * API key at https://platform.openai.com/account/api-keys."*
- *
- * Including them here lets the same `URL_KEY_MAP` lookup that already
- * handles `provider="custom"` with a known commercial host also fire
- * when the user picks the built-in entry — same routing, same key,
- * no upstream-fallback leak.
- */
-const OPENAI_COMPAT_PROVIDERS = new Set([
-  // Generic
-  "custom",
-  // Local LLMs
-  "lmstudio",
-  "ollama",
-  "vllm",
-  "llamacpp",
-  // Built-in remote OpenAI-compatible providers (must stay in sync
-  // with the `id` field of remote-group entries in renderer
-  // `LOCAL_PRESETS`).
-  "groq",
-  "deepseek",
-  "together",
-  "fireworks",
-  "cerebras",
-  "mistral",
-]);
 
 interface ChatHandle {
   abort: () => void;
