@@ -152,7 +152,7 @@ vi.mock("better-sqlite3", () => {
     all(...args: unknown[]): unknown[] {
       if (
         this.sql.includes("FROM sessions s") &&
-        this.sql.includes("LOWER(COALESCE")
+        this.sql.includes("LOWER(COALESCE(s.title")
       ) {
         const titlePattern = String(args[0])
           .replace(/^%/, "")
