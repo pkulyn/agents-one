@@ -6,7 +6,8 @@ import {
   appendFileSync,
   unlinkSync,
   mkdirSync,
-  createWriteStream,
+  openSync,
+  closeSync,
 } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -1244,7 +1245,18 @@ export function startGateway(profile?: string): boolean {
     // ignore
   }
   const logPath = join(logDir, "gateway-stderr.log");
-  const stderrStream = createWriteStream(logPath, { flags: "a" });
+  // Open the log synchronously and hand spawn a real fd. A createWriteStream
+  // opens its fd asynchronously, so passing the stream to stdio races: when
+  // the fd hasn't resolved yet (fd: null) Electron's Node rejects it with
+  // ERR_INVALID_ARG_VALUE. An integer fd sidesteps the race entirely.
+  let stderrFd: number;
+  try {
+    stderrFd = openSync(logPath, "a");
+  } catch {
+    // If the log file can't be opened (e.g. permissions), fall back to
+    // discarding stderr rather than failing the whole gateway start.
+    stderrFd = -1;
+  }
 
   // Target the specific profile via `--profile <name>` (placed before the
   // subcommand, as the CLI requires). The flag makes the CLI repoint
@@ -1254,10 +1266,19 @@ export function startGateway(profile?: string): boolean {
   const proc = spawn(HERMES_PYTHON, hermesCliArgs(cliArgs), {
     cwd: HERMES_REPO,
     env: gatewayEnv,
-    stdio: ["ignore", "ignore", stderrStream],
+    stdio: ["ignore", "ignore", stderrFd >= 0 ? stderrFd : "ignore"],
     detached: true,
     ...HIDDEN_SUBPROCESS_OPTIONS,
   });
+  // The child has inherited (dup'd) the fd; close our copy so we don't leak a
+  // descriptor on every gateway (re)start.
+  if (stderrFd >= 0) {
+    try {
+      closeSync(stderrFd);
+    } catch {
+      // best-effort
+    }
+  }
 
   proc.on("error", (err) => {
     console.error(

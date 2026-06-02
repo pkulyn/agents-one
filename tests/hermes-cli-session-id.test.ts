@@ -225,7 +225,10 @@ describe("CLI fallback session id propagation", () => {
       }).then(() => {
         const proc = spawned[0];
         proc.stdout.emit("data", Buffer.from("Hi there"));
-        proc.stderr.emit("data", Buffer.from(`\nsession_id: ${cliSessionId}\n`));
+        proc.stderr.emit(
+          "data",
+          Buffer.from(`\nsession_id: ${cliSessionId}\n`),
+        );
         proc.emit("close", 0);
       });
     });
