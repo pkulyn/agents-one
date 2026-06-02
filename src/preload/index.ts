@@ -21,6 +21,14 @@ interface CredentialPoolEntry {
   key?: string;
 }
 
+interface GatewayStartResult {
+  success: boolean;
+  running: boolean;
+  alreadyRunning?: boolean;
+  error?: string;
+  logPath?: string;
+}
+
 const electronAPI = {
   process: {
     platform: process.platform,
@@ -436,7 +444,8 @@ const hermesAPI = {
   },
 
   // Gateway
-  startGateway: (): Promise<boolean> => ipcRenderer.invoke("start-gateway"),
+  startGateway: (): Promise<GatewayStartResult> =>
+    ipcRenderer.invoke("start-gateway"),
   stopGateway: (): Promise<boolean> => ipcRenderer.invoke("stop-gateway"),
   gatewayStatus: (): Promise<boolean> => ipcRenderer.invoke("gateway-status"),
 
