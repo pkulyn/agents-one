@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Check, ChevronDown, Settings } from "../../assets/icons";
+import { Bot, Check, ChevronDown, Settings } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 
 interface ProfileInfo {
@@ -104,8 +104,9 @@ export default function ProfileSwitcher({
                   aria-checked={isActive}
                   onClick={() => handleSelect(p.name)}
                 >
-                  <span
-                    className={`profile-status-dot ${
+                  <Bot
+                    size={16}
+                    className={`profile-icon ${
                       p.gatewayRunning ? "running" : ""
                     }`}
                     aria-hidden
@@ -149,8 +150,9 @@ export default function ProfileSwitcher({
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span
-          className={`profile-status-dot ${activeRunning ? "running" : ""}`}
+        <Bot
+          size={16}
+          className={`profile-icon ${activeRunning ? "running" : ""}`}
           aria-hidden
         />
         <span className="profile-switcher-name">{label}</span>

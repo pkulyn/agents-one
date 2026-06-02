@@ -1044,19 +1044,14 @@ body {
   transform: rotate(180deg);
 }
 
-/* Status dot — green when that profile's gateway is running. */
-.profile-status-dot {
+/* Profile icon — green when that profile's gateway is running. */
+.profile-icon {
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  opacity: 0.5;
+  color: var(--text-muted);
 }
 
-.profile-status-dot.running {
-  background: var(--success, #22c55e);
-  opacity: 1;
+.profile-icon.running {
+  color: var(--success, #22c55e);
 }
 
 /* Popover menu, anchored above the trigger. */
