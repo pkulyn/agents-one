@@ -20,6 +20,7 @@ import type {
   RegistryKind,
   RegistryItem,
   RegistryCatalog,
+  RegistryDetail,
 } from "../../../../shared/registry";
 
 interface DiscoverProps {
@@ -93,6 +94,7 @@ export default function Discover({
     item: RegistryItem;
   } | null>(null);
   const [detailContent, setDetailContent] = useState("");
+  const [detailData, setDetailData] = useState<RegistryDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const loadInstalled = useCallback(async () => {
@@ -301,13 +303,13 @@ export default function Discover({
     item: RegistryItem,
   ): Promise<void> {
     setDetailItem({ kind, item });
-    setDetailContent("");
+    setDetailData(null);
     setDetailLoading(true);
     try {
-      const content = await window.hermesAPI.fetchRegistryReadme(kind, item);
-      setDetailContent(content);
+      const detail = await window.hermesAPI.fetchRegistryDetail(kind, item);
+      setDetailData(detail);
     } catch {
-      setDetailContent("");
+      setDetailData({ description: item.description });
     } finally {
       setDetailLoading(false);
     }
@@ -492,10 +494,54 @@ export default function Discover({
                 <div className="discover-modal-content">
                   {detailLoading ? (
                     <div className="loading-spinner" />
-                  ) : detailContent ? (
-                    <AgentMarkdown>{detailContent}</AgentMarkdown>
                   ) : (
-                    <p className="discover-empty-text">{item.description}</p>
+                    <>
+                      {detailData?.rows && detailData.rows.length > 0 ? (
+                        <div className="discover-spec">
+                          {(detailData.description || item.description) && (
+                            <p className="discover-spec-lead">
+                              {detailData.description || item.description}
+                            </p>
+                          )}
+                          {detailData.rows.map((row) => (
+                            <div key={row.label} className="discover-spec-row">
+                              <span className="discover-spec-label">
+                                {row.label}
+                              </span>
+                              {row.chips ? (
+                                <span className="discover-spec-chips">
+                                  {row.chips.map((c) => (
+                                    <span key={c} className="discover-tag">
+                                      {c}
+                                    </span>
+                                  ))}
+                                </span>
+                              ) : row.mono ? (
+                                <code className="discover-spec-mono">
+                                  {row.value}
+                                </code>
+                              ) : (
+                                <span className="discover-spec-value">
+                                  {row.value}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        !detailData?.markdown &&
+                        (detailData?.description || item.description) && (
+                          <p className="discover-spec-lead">
+                            {detailData?.description || item.description}
+                          </p>
+                        )
+                      )}
+                      {detailData?.markdown && (
+                        <div className="discover-modal-doc">
+                          <AgentMarkdown>{detailData.markdown}</AgentMarkdown>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

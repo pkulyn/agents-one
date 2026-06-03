@@ -16,6 +16,7 @@ export interface RegistryItem {
   tags?: string[];
   homepage?: string;
   version?: string;
+  license?: string;
   platforms?: string[];
   /** Folder for this entry within the registry repo (e.g. "skills/apple/apple-notes"). */
   path?: string;
@@ -34,4 +35,24 @@ export interface InstalledRegistry {
   skills: string[];
   mcps: string[];
   workflows: string[];
+}
+
+/** One labeled row in a structured (non-prose) detail view. */
+export interface RegistryDetailRow {
+  label: string;
+  /** Plain or monospace value. */
+  value?: string;
+  mono?: boolean;
+  /** Pill chips (e.g. tags, env keys, permissions). */
+  chips?: string[];
+}
+
+/**
+ * Detail shown in the item modal: either a prose doc (markdown) or a
+ * structured spec (lead paragraph + labeled rows) for manifest-only entries.
+ */
+export interface RegistryDetail {
+  markdown?: string;
+  description?: string;
+  rows?: RegistryDetailRow[];
 }

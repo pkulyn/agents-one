@@ -5561,6 +5561,70 @@ body {
   color: var(--text-primary);
 }
 
+/* Structured spec view (manifest-only entries: mcp / agent / workflow). */
+.discover-spec {
+  display: flex;
+  flex-direction: column;
+}
+
+.discover-spec-lead {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.discover-spec-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.discover-spec-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.discover-spec-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.discover-spec-mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-primary);
+  background: var(--code-bg);
+  padding: 3px 8px;
+  border-radius: 6px;
+  word-break: break-all;
+  justify-self: start;
+}
+
+.discover-spec-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Prose doc (README/AGENT.md) shown below the spec rows. */
+.discover-modal-doc {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.discover-spec + .discover-modal-doc {
+  margin-top: 18px;
+}
+
 .discover-modal-content code {
   background: var(--code-bg);
   padding: 2px 6px;

@@ -141,7 +141,7 @@ import { readSoul, writeSoul, resetSoul } from "./soul";
 import { getToolsets, setToolsetEnabled } from "./tools";
 import {
   fetchRegistry,
-  fetchRegistryReadme,
+  fetchRegistryDetail,
   listInstalledRegistry,
   installRegistryItem,
   type RegistryKind,
@@ -1700,9 +1700,9 @@ function setupIPC(): void {
     listInstalledRegistry(profile),
   );
   ipcMain.handle(
-    "registry-readme",
+    "registry-detail",
     (_event, kind: RegistryKind, item: RegistryItem) =>
-      fetchRegistryReadme(kind, item),
+      fetchRegistryDetail(kind, item),
   );
   ipcMain.handle(
     "registry-install",

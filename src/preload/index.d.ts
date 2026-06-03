@@ -4,6 +4,7 @@ import type {
   RegistryKind,
   RegistryItem,
   RegistryCatalog,
+  RegistryDetail,
 } from "../shared/registry";
 
 interface ElectronAPI {
@@ -848,10 +849,10 @@ interface HermesAPI {
   listInstalledRegistry: (
     profile?: string,
   ) => Promise<{ skills: string[]; mcps: string[]; workflows: string[] }>;
-  fetchRegistryReadme: (
+  fetchRegistryDetail: (
     kind: RegistryKind,
     item: RegistryItem,
-  ) => Promise<string>;
+  ) => Promise<RegistryDetail>;
   installRegistryItem: (
     kind: RegistryKind,
     item: RegistryItem,

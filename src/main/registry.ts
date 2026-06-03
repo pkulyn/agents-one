@@ -9,6 +9,8 @@ import type {
   RegistryItem,
   RegistryCatalog,
   InstalledRegistry,
+  RegistryDetail,
+  RegistryDetailRow,
 } from "../shared/registry";
 
 export type {
@@ -42,19 +44,27 @@ interface IndexEntry {
   description?: string;
   tags?: string[];
   author?: string | { name?: string };
+  license?: string;
   platforms?: string[];
   path?: string;
 }
 
 /** Per-entry manifest.json (mcp / agent / workflow). */
 interface EntryManifest {
+  description?: string;
   transport?: "stdio" | "http";
   command?: string;
   args?: string[];
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  permissions?: string[];
   entry?: string;
+  requires?: string[];
+  model?: string;
+  tools?: string[];
+  license?: string;
+  compatibility?: { hermes?: string; desktop?: string } | null;
 }
 
 const TYPE_TO_KIND: Record<IndexEntry["type"], RegistryKind> = {
@@ -89,6 +99,7 @@ function toItem(e: IndexEntry): RegistryItem {
     category: e.category,
     tags: e.tags,
     version: e.version,
+    license: e.license,
     platforms: e.platforms,
     path: e.path,
     homepage: e.path ? `${REGISTRY_REPO_BASE}/${e.path}` : undefined,
@@ -171,33 +182,95 @@ export interface InstallResult {
   error?: string;
 }
 
-/**
- * Markdown preview for an item's detail modal. Skills/agents have a prose doc;
- * MCPs/workflows show their manifest as a fenced JSON block.
- */
-export async function fetchRegistryReadme(
+async function tryFetchText(path: string): Promise<string> {
+  try {
+    const res = await fetch(`${REGISTRY_RAW_BASE}/${path}`);
+    if (!res.ok) return "";
+    const text = await res.text();
+    return text.trim() ? text : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Build a structured spec (lead + labeled rows) from an entry's manifest. */
+function buildSpec(
   kind: RegistryKind,
   item: RegistryItem,
-): Promise<string> {
-  if (!item.path) return item.description || "";
-  const candidates =
-    kind === "skills"
-      ? ["SKILL.md", "README.md"]
-      : kind === "agents"
-        ? ["AGENT.md", "README.md", "manifest.json"]
-        : ["manifest.json", "README.md"];
-  for (const file of candidates) {
-    try {
-      const res = await fetch(`${REGISTRY_RAW_BASE}/${item.path}/${file}`);
-      if (!res.ok) continue;
-      const text = await res.text();
-      if (!text.trim()) continue;
-      return file.endsWith(".json") ? `\`\`\`json\n${text}\n\`\`\`` : text;
-    } catch {
-      /* try next */
+  m: EntryManifest | null,
+): RegistryDetail {
+  const rows: RegistryDetailRow[] = [];
+
+  if (kind === "mcps" && m) {
+    rows.push({
+      label: "Transport",
+      value: m.transport || (m.url ? "http" : "stdio"),
+    });
+    if (m.url) rows.push({ label: "URL", value: m.url, mono: true });
+    if (m.command) {
+      rows.push({
+        label: "Command",
+        value: [m.command, ...(m.args ?? [])].join(" "),
+        mono: true,
+      });
     }
+    if (m.env && Object.keys(m.env).length) {
+      rows.push({ label: "Environment", chips: Object.keys(m.env) });
+    }
+    if (m.permissions?.length) {
+      rows.push({ label: "Permissions", chips: m.permissions });
+    }
+  } else if (kind === "agents" && m) {
+    if (m.model) rows.push({ label: "Model", value: m.model, mono: true });
+    if (m.tools?.length) rows.push({ label: "Tools", chips: m.tools });
+  } else if (kind === "workflows" && m) {
+    if (m.entry) rows.push({ label: "Entry", value: m.entry, mono: true });
+    if (m.requires?.length) rows.push({ label: "Requires", chips: m.requires });
   }
-  return item.description || "";
+
+  if (item.category) rows.push({ label: "Category", value: item.category });
+  if (item.platforms?.length) {
+    rows.push({ label: "Platforms", chips: item.platforms });
+  }
+  if (item.tags?.length) rows.push({ label: "Tags", chips: item.tags });
+  const license = m?.license || item.license;
+  if (license) rows.push({ label: "License", value: license });
+  if (item.author) rows.push({ label: "Author", value: item.author });
+  if (item.version) rows.push({ label: "Version", value: item.version });
+  const compat = m?.compatibility;
+  if (compat?.hermes) {
+    rows.push({ label: "Requires Hermes", value: compat.hermes, mono: true });
+  }
+
+  return { description: m?.description || item.description || "", rows };
+}
+
+/**
+ * Detail for an item's modal. For skills, the prose doc (SKILL.md/README) is
+ * the content. For mcp/agent/workflow we always build the structured spec from
+ * the manifest and attach a prose doc (AGENT.md/README) as extra context when
+ * present — so the modal is never just a one-line description.
+ */
+export async function fetchRegistryDetail(
+  kind: RegistryKind,
+  item: RegistryItem,
+): Promise<RegistryDetail> {
+  if (!item.path) return { description: item.description || "" };
+
+  if (kind === "skills") {
+    for (const file of ["SKILL.md", "README.md"]) {
+      const text = await tryFetchText(`${item.path}/${file}`);
+      if (text) return { markdown: text };
+    }
+    return { description: item.description || "" };
+  }
+
+  const m = await fetchManifest(item.path);
+  const detail = buildSpec(kind, item, m);
+  const docFile = kind === "agents" ? "AGENT.md" : "README.md";
+  const doc = await tryFetchText(`${item.path}/${docFile}`);
+  if (doc) detail.markdown = doc;
+  return detail;
 }
 
 async function fetchManifest(path: string): Promise<EntryManifest | null> {
