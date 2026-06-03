@@ -19,7 +19,7 @@ import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
-import hermeslogo from "../../assets/hermes.png";
+import hermeslogo from "../../assets/hermes-one.svg";
 import {
   ChatBubble,
   Clock,
@@ -229,7 +229,15 @@ function Layout({
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <img src={hermeslogo} height={30} alt="" />
+          <span
+            className="sidebar-logo"
+            role="img"
+            aria-label="Hermes"
+            style={{
+              maskImage: `url(${hermeslogo})`,
+              WebkitMaskImage: `url(${hermeslogo})`,
+            }}
+          />
         </div>
 
         <nav className="sidebar-nav">
