@@ -15,6 +15,7 @@
   --accent-hover: #0055a4;
   --accent-subtle: rgba(0, 63, 122, 0.15);
   --accent-text: #006acd;
+  --primary-yellow: #f5c518;
   --text-primary: #ececec;
   --text-secondary: #b4b4b4;
   --text-muted: #8e8e8e;
@@ -49,6 +50,7 @@
   --accent-hover: #002d58;
   --accent-subtle: rgba(0, 63, 122, 0.08);
   --accent-text: #003f7a;
+  --primary-yellow: #f5c518;
   --text-primary: #111111;
   --text-secondary: #555555;
   --text-muted: #999999;
@@ -921,6 +923,18 @@ body {
   gap: 10px;
   padding: 20px 10px;
   margin-top: 25px;
+}
+
+.sidebar-logo {
+  height: 30px;
+  width: 150px;
+  background-color: var(--primary-yellow);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
 }
 
 .sidebar-brand-icon {
