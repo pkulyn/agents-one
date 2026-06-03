@@ -1582,6 +1582,7 @@ function setupIPC(): void {
       sshReadRemoteApiKey,
       setSshRemoteApiKey,
       startClaw3dAll,
+      stopClaw3dAll: stopClaw3d,
       waitForClaw3dReady,
     }),
   );

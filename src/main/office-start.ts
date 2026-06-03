@@ -12,6 +12,7 @@ export interface OfficeStartDependencies {
   sshReadRemoteApiKey: (config: SshConnectionConfig) => Promise<string>;
   setSshRemoteApiKey: (key: string) => void;
   startClaw3dAll: () => StartResult;
+  stopClaw3dAll: () => void;
   waitForClaw3dReady: () => Promise<boolean>;
 }
 
@@ -40,6 +41,7 @@ export async function startOfficeStack(
     if (!result.success) return result;
 
     if (conn.mode === "local" && !(await deps.waitForClaw3dReady())) {
+      deps.stopClaw3dAll();
       return {
         success: false,
         error:

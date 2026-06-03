@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildOfficeEnv, buildOfficeSettings } from "../src/main/claw3d";
+import {
+  adapterPortFromWsUrl,
+  buildOfficeEnv,
+  buildOfficeSettings,
+} from "../src/main/claw3d";
 
 // Hermes Desktop writes the hermes-office `.env`. It used to hardcode
 // `HERMES_MODEL=hermes`, so Office ignored the user's configured model
@@ -50,6 +54,17 @@ describe("buildOfficeEnv (issue #256)", () => {
     expect(env).toContain("HERMES_API_KEY=secret-key-123");
   });
 
+  it("derives the adapter port from the configured WebSocket URL", () => {
+    const env = buildOfficeEnv({
+      port: 5179,
+      url: "ws://localhost:19777",
+      apiKey: "",
+      model: "hermes",
+    });
+    expect(env).toContain("HERMES_ADAPTER_PORT=19777");
+    expect(env).not.toContain("HERMES_ADAPTER_PORT=18789");
+  });
+
   it("emits empty token/key fields when the gateway has no API_SERVER_KEY", () => {
     const env = buildOfficeEnv({
       port: 5179,
@@ -60,6 +75,17 @@ describe("buildOfficeEnv (issue #256)", () => {
     expect(env).toContain("CLAW3D_GATEWAY_TOKEN=");
     expect(env).toContain("CLAW3D_GATEWAY_ADAPTER_TYPE=hermes");
     expect(env).toContain("HERMES_API_KEY=");
+  });
+});
+
+describe("adapterPortFromWsUrl", () => {
+  it("uses the URL port when present", () => {
+    expect(adapterPortFromWsUrl("ws://localhost:19777")).toBe(19777);
+  });
+
+  it("falls back to a Windows-safe default when the URL has no usable port", () => {
+    expect(adapterPortFromWsUrl("ws://localhost")).toBe(18989);
+    expect(adapterPortFromWsUrl("not a url")).toBe(18989);
   });
 });
 
@@ -78,6 +104,12 @@ describe("buildOfficeSettings", () => {
         url: "ws://localhost:18789",
         token: "key-123",
         adapterType: "hermes",
+        profiles: {
+          hermes: {
+            url: "ws://localhost:18789",
+            token: "key-123",
+          },
+        },
       },
     });
   });
@@ -90,6 +122,12 @@ describe("buildOfficeSettings", () => {
           lastKnownGood: {
             url: "ws://old",
             adapterType: "openclaw",
+          },
+          profiles: {
+            demo: {
+              url: "ws://demo",
+              token: "",
+            },
           },
           reconnect: true,
         },
@@ -104,6 +142,16 @@ describe("buildOfficeSettings", () => {
         token: "key-123",
         adapterType: "hermes",
         reconnect: true,
+        profiles: {
+          demo: {
+            url: "ws://demo",
+            token: "",
+          },
+          hermes: {
+            url: "ws://localhost:18789",
+            token: "key-123",
+          },
+        },
         lastKnownGood: {
           url: "ws://localhost:18789",
           token: "key-123",
@@ -134,6 +182,12 @@ describe("buildOfficeSettings", () => {
       url: "ws://localhost:18789",
       token: "key-123",
       adapterType: "hermes",
+      profiles: {
+        hermes: {
+          url: "ws://localhost:18789",
+          token: "key-123",
+        },
+      },
       lastKnownGood: {
         url: "ws://localhost:18789",
         token: "key-123",
@@ -155,5 +209,39 @@ describe("buildOfficeSettings", () => {
     expect(settings.adapter).toBe("hermes");
     expect(settings.url).toBe("ws://localhost:18789");
     expect(settings.token).toBe("");
+  });
+
+  it("refreshes a stale Hermes adapter profile so Office does not reconnect to an old port", () => {
+    const settings = buildOfficeSettings(
+      {
+        gateway: {
+          adapterType: "hermes",
+          profiles: {
+            hermes: {
+              url: "ws://localhost:18789",
+              token: "",
+            },
+            openclaw: {
+              url: "ws://openclaw",
+              token: "openclaw-token",
+            },
+          },
+        },
+      },
+      { url: "ws://localhost:18989", apiKey: "key-123" },
+    );
+
+    expect(settings.gateway).toMatchObject({
+      profiles: {
+        hermes: {
+          url: "ws://localhost:18989",
+          token: "key-123",
+        },
+        openclaw: {
+          url: "ws://openclaw",
+          token: "openclaw-token",
+        },
+      },
+    });
   });
 });

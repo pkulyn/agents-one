@@ -64,6 +64,9 @@ function makeDeps(
       calls.push("startClaw3dAll");
       return { success: true };
     },
+    stopClaw3dAll: () => {
+      calls.push("stopClaw3dAll");
+    },
     waitForClaw3dReady: async () => {
       calls.push("waitForClaw3dReady");
       return true;
@@ -131,6 +134,7 @@ describe("startOfficeStack", () => {
       "startGateway:research",
       "startClaw3dAll",
       "waitForClaw3dReady",
+      "stopClaw3dAll",
     ]);
   });
 });
