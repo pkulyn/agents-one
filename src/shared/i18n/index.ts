@@ -8,6 +8,7 @@ import {
 import type { AppLocale } from "./types";
 import commonEn from "./locales/en/common";
 import navigationEn from "./locales/en/navigation";
+import discoverEn from "./locales/en/discover";
 import welcomeEn from "./locales/en/welcome";
 import setupEn from "./locales/en/setup";
 import chatEn from "./locales/en/chat";
@@ -223,6 +224,7 @@ export const resources = {
     translation: {
       common: commonEn,
       navigation: navigationEn,
+      discover: discoverEn,
       welcome: welcomeEn,
       setup: setupEn,
       chat: chatEn,
