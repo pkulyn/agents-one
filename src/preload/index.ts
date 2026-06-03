@@ -1007,6 +1007,8 @@ const hermesAPI = {
     ipcRenderer.invoke("registry-fetch", force),
   listInstalledRegistry: (profile?: string) =>
     ipcRenderer.invoke("registry-list-installed", profile),
+  fetchRegistryReadme: (kind: string, item: unknown): Promise<string> =>
+    ipcRenderer.invoke("registry-readme", kind, item),
   installRegistryItem: (
     kind: string,
     item: unknown,

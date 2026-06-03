@@ -16,23 +16,11 @@ export interface RegistryItem {
   tags?: string[];
   homepage?: string;
   version?: string;
-  /** Skill: install identifier passed to `hermes skills install`. */
+  platforms?: string[];
+  /** Folder for this entry within the registry repo (e.g. "skills/apple/apple-notes"). */
+  path?: string;
+  /** Bundled skills only: install identifier for `hermes skills install`. */
   source?: string;
-  /** MCP: transport + connection config written into config.yaml. */
-  transport?: "http" | "stdio";
-  config?: {
-    url?: string;
-    command?: string;
-    args?: string[];
-    env?: Record<string, string>;
-    headers?: Record<string, string>;
-  };
-  /** Agent: optional model/provider hints shown in the card. */
-  model?: string;
-  provider?: string;
-  /** Workflow: URL (absolute, or relative to the registry repo) of the script. */
-  scriptUrl?: string;
-  scriptPath?: string;
 }
 
 export interface RegistryCatalog {

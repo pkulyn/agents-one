@@ -26,7 +26,6 @@ import {
   Clock,
   Compass,
   Settings as SettingsIcon,
-  Puzzle,
   Brain,
   Wrench,
   Signal,
@@ -66,7 +65,8 @@ const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
   { view: "models", icon: Layers, labelKey: "navigation.models" },
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
-  { view: "skills", icon: Puzzle, labelKey: "navigation.skills" },
+  // "skills" lives under the Discover tab (installed + community), so it's no
+  // longer a top-level nav item.
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
   { view: "tools", icon: Wrench, labelKey: "navigation.tools" },
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },

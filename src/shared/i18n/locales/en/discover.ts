@@ -22,6 +22,11 @@ export default {
   retry: "Retry",
   install_other: "Set up",
   targetProfile: "Installs into the active profile",
+  actions: {
+    install: { setup: "Install", working: "Installing...", done: "Installed" },
+    connect: { setup: "Connect", working: "Connecting...", done: "Connected" },
+    create: { setup: "Create", working: "Creating...", done: "Created" },
+  },
   installedSegment: "Installed",
   communitySegment: "Community",
   uninstall: "Uninstall",

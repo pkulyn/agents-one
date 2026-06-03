@@ -848,6 +848,10 @@ interface HermesAPI {
   listInstalledRegistry: (
     profile?: string,
   ) => Promise<{ skills: string[]; mcps: string[]; workflows: string[] }>;
+  fetchRegistryReadme: (
+    kind: RegistryKind,
+    item: RegistryItem,
+  ) => Promise<string>;
   installRegistryItem: (
     kind: RegistryKind,
     item: RegistryItem,
