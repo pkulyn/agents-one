@@ -97,9 +97,12 @@ function Layout({
   );
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
   const [remoteMode, setRemoteMode] = useState(false);
-  // Bumped when the Capabilities → Skills tab's "Browse" focuses Discover's
-  // Skills (Community) tab; Discover applies it via an effect on the value.
-  const [browseSkillsSignal, setBrowseSkillsSignal] = useState(0);
+  // Set by the Capabilities screen's "Browse" actions to focus a Discover tab
+  // (Skills → Community, or MCPs). The nonce re-fires Discover's effect.
+  const [discoverFocus, setDiscoverFocus] = useState<{
+    kind: "skills" | "mcps";
+    nonce: number;
+  } | null>(null);
 
   const paneStyle = (target: View): React.CSSProperties => ({
     display: view === target ? "flex" : "none",
@@ -112,6 +115,14 @@ function Layout({
     setVisitedViews((prev) => (prev.has(v) ? prev : new Set(prev).add(v)));
     setView(v);
   }, []);
+
+  const focusDiscover = useCallback(
+    (kind: "skills" | "mcps") => {
+      setDiscoverFocus((prev) => ({ kind, nonce: (prev?.nonce ?? 0) + 1 }));
+      goTo("discover");
+    },
+    [goTo],
+  );
 
   // Re-check remote mode on tab switch (picks up Settings changes)
   useEffect(() => {
@@ -338,7 +349,7 @@ function Layout({
               <Discover
                 profile={activeProfile}
                 visible={view === "discover"}
-                focusSkillsSignal={browseSkillsSignal}
+                focusKind={discoverFocus ?? undefined}
               />
             )}
           </div>
@@ -412,10 +423,8 @@ function Layout({
               profile={activeProfile}
               showPlatformToolsets={!remoteMode}
               remoteMode={remoteMode}
-              onBrowseSkills={() => {
-                setBrowseSkillsSignal((n) => n + 1);
-                goTo("discover");
-              }}
+              onBrowseSkills={() => focusDiscover("skills")}
+              onBrowseMcps={() => focusDiscover("mcps")}
             />
           </div>
         )}

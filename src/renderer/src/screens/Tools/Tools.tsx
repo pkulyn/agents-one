@@ -17,6 +17,8 @@ interface ToolsProps {
   remoteMode?: boolean;
   // Navigate to the Discover → Skills tab (used by the embedded Skills tab).
   onBrowseSkills?: () => void;
+  // Navigate to the Discover → MCPs tab (used by the MCP "Browse catalog").
+  onBrowseMcps?: () => void;
 }
 
 type CapabilityTab = "tools" | "mcp" | "skills";
@@ -271,18 +273,6 @@ interface McpServer {
   auth?: string;
 }
 
-interface McpCatalogEntry {
-  name: string;
-  description: string;
-  source: string;
-  transport: "http" | "stdio" | "unknown";
-  authType: string;
-  requiredEnv: Array<{ name: string; prompt: string; required: boolean }>;
-  needsInstall: boolean;
-  installed: boolean;
-  enabled: boolean;
-}
-
 interface AddMcpForm {
   name: string;
   type: "http" | "stdio";
@@ -414,6 +404,7 @@ function Tools({
   showPlatformToolsets = true,
   remoteMode = false,
   onBrowseSkills,
+  onBrowseMcps,
 }: ToolsProps): React.JSX.Element {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<CapabilityTab>(
@@ -571,55 +562,14 @@ function Tools({
     }
   }
 
-  async function openCatalog(): Promise<void> {
-    setShowCatalog(true);
-    setCatalogLoading(true);
-    setCatalogError("");
-    try {
-      const result = await window.hermesAPI.listMcpCatalog(profile);
-      setCatalogEntries(result.entries);
-      setCatalogError(result.error || "");
-    } catch (err) {
-      setCatalogError(
-        (err as Error).message || t("tools.mcpCatalogLoadFailed"),
-      );
-    } finally {
-      setCatalogLoading(false);
-    }
-  }
-
-  async function handleInstallCatalog(entry: McpCatalogEntry): Promise<void> {
-    const env: Record<string, string> = {};
-    for (const item of entry.requiredEnv) {
-      const value = window.prompt(item.prompt || item.name, "");
-      if (!value && item.required) return;
-      if (value) env[item.name] = value;
-    }
-
-    setMcpBusy(`install:${entry.name}`);
-    try {
-      const result = await window.hermesAPI.installMcpCatalogEntry(
-        entry.name,
-        env,
-        profile,
-      );
-      if (!result.success) {
-        setCatalogError(result.error || t("tools.mcpInstallFailed"));
-        return;
-      }
-      setMcpMessage(
-        result.background
-          ? t("tools.mcpInstallStarted")
-          : t("tools.mcpInstalled"),
-      );
-      await reloadMcp();
-      await openCatalog();
-    } catch (err) {
-      setCatalogError((err as Error).message || t("tools.mcpInstallFailed"));
-    } finally {
-      setMcpBusy("");
-    }
-  }
+  const filteredMcpServers = mcpSearch.trim()
+    ? mcpServers.filter((s) => {
+        const q = mcpSearch.toLowerCase();
+        return (
+          s.name.toLowerCase().includes(q) || s.detail.toLowerCase().includes(q)
+        );
+      })
+    : mcpServers;
 
   if (loading) {
     return (
@@ -640,6 +590,7 @@ function Tools({
             className={`tools-tab ${activeTab === "tools" ? "active" : ""}`}
             onClick={() => setActiveTab("tools")}
           >
+            <Wrench size={16} />
             {t("tools.title")}
             <span className="tools-tab-count">{toolsets.length}</span>
           </button>
@@ -649,6 +600,7 @@ function Tools({
           className={`tools-tab ${activeTab === "mcp" ? "active" : ""}`}
           onClick={() => setActiveTab("mcp")}
         >
+          <Plug size={16} />
           {t("tools.mcpServers")}
           <span className="tools-tab-count">{mcpServers.length}</span>
         </button>
@@ -657,6 +609,7 @@ function Tools({
           className={`tools-tab ${activeTab === "skills" ? "active" : ""}`}
           onClick={() => setActiveTab("skills")}
         >
+          <Puzzle size={16} />
           {t("navigation.skills")}
         </button>
       </div>
@@ -707,15 +660,37 @@ function Tools({
           {activeTab === "mcp" && (
             <div className="tools-section">
               <div className="tools-header tools-header-row">
+                <div className="tools-mcp-search">
+                  <Search size={15} />
+                  <input
+                    className="tools-mcp-search-input"
+                    type="text"
+                    placeholder={t("tools.mcpSearch")}
+                    value={mcpSearch}
+                    onChange={(e) => setMcpSearch(e.target.value)}
+                  />
+                  {mcpSearch && (
+                    <button
+                      type="button"
+                      className="tools-icon-btn"
+                      aria-label={t("tools.close")}
+                      onClick={() => setMcpSearch("")}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
                 <div className="tools-header-actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={openCatalog}
-                  >
-                    <TinyIcon kind="install" />
-                    {t("tools.mcpBrowseCatalog")}
-                  </button>
+                  {onBrowseMcps && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={onBrowseMcps}
+                    >
+                      <TinyIcon kind="install" />
+                      {t("tools.mcpBrowseCatalog")}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
@@ -752,9 +727,13 @@ function Tools({
                     </div>
                   </div>
                 </div>
+              ) : filteredMcpServers.length === 0 ? (
+                <div className="tools-card-description tools-mcp-no-results">
+                  {t("tools.mcpNoResults")}
+                </div>
               ) : (
                 <div className="tools-grid">
-                  {mcpServers.map((s) => (
+                  {filteredMcpServers.map((s) => (
                     <div
                       key={s.name}
                       className={`tools-card tools-mcp-card ${s.enabled ? "tools-card-enabled" : "tools-card-disabled"}`}

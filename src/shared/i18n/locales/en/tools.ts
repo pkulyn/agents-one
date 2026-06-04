@@ -72,6 +72,8 @@ export default {
   close: "Close",
   mcpAddServer: "Add server",
   mcpBrowseCatalog: "Browse catalog",
+  mcpSearch: "Filter MCP servers...",
+  mcpNoResults: "No MCP servers match your filter.",
   mcpEmptyTitle: "No MCP servers configured",
   mcpEmptyDescription:
     "Add a custom HTTP or stdio server, or install one from the Hermes MCP catalog.",
