@@ -36,7 +36,6 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
   const [drafts, setDrafts] = useState<DraftValues>({});
   const [clearedKeys, setClearedKeys] = useState<Set<string>>(new Set());
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [query, setQuery] = useState("");
   const [busyPlatform, setBusyPlatform] = useState<string | null>(null);
   const [messages, setMessages] = useState<PlatformMessage>({});
@@ -298,14 +297,6 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
             placeholder="Search platforms or env vars"
           />
         </div>
-        <label className="gateway-advanced-toggle">
-          <input
-            type="checkbox"
-            checked={showAdvanced}
-            onChange={(event) => setShowAdvanced(event.target.checked)}
-          />
-          Show advanced fields
-        </label>
       </div>
 
       <div className="settings-section gateway-platform-section">
@@ -318,7 +309,6 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
               draft={drafts[platform.id] ?? {}}
               isBusy={busyPlatform === platform.id}
               message={messages[platform.id] ?? null}
-              showAdvanced={showAdvanced}
               visibleKeys={visibleKeys}
               clearedKeys={clearedKeys}
               onChange={handleChange}
@@ -361,7 +351,6 @@ interface PlatformCardProps {
   ) => void | Promise<void>;
   onToggleVisibility: (platformId: string, fieldKey: string) => void;
   platform: MessagingPlatformInfo;
-  showAdvanced: boolean;
   visibleKeys: Set<string>;
 }
 
@@ -378,11 +367,17 @@ function PlatformCard({
   onToggleToolset,
   onToggleVisibility,
   platform,
-  showAdvanced,
   visibleKeys,
 }: PlatformCardProps): React.JSX.Element {
   const [modalOpen, setModalOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [pendingRiskKey, setPendingRiskKey] = useState<string | null>(null);
+  // Advanced env vars are hidden by default to keep the form short. The
+  // toggle only matters when there's a hidden one — an advanced field that
+  // is already set always shows so saved values are never lost off-screen.
+  const hasHideableAdvanced = platform.env_vars.some(
+    (field) => field.advanced && !field.is_set,
+  );
   const visibleFields = platform.env_vars.filter(
     (field) => showAdvanced || !field.advanced || field.is_set,
   );
@@ -549,6 +544,103 @@ function PlatformCard({
                 </div>
               )}
 
+              {visibleFields.length > 0 && (
+                <div className="gateway-modal-section">
+                  <div className="gateway-section-heading-row">
+                    <div className="gateway-detail-heading">
+                      Keys &amp; secrets
+                    </div>
+                    {hasHideableAdvanced && (
+                      <label className="gateway-advanced-toggle">
+                        <input
+                          type="checkbox"
+                          checked={showAdvanced}
+                          onChange={(event) =>
+                            setShowAdvanced(event.target.checked)
+                          }
+                        />
+                        Show advanced
+                      </label>
+                    )}
+                  </div>
+                  <div className="settings-platform-fields gateway-platform-fields">
+                    {visibleFields.map((field) => {
+                      const key = `${platform.id}:${field.key}`;
+                      const isVisible = visibleKeys.has(key);
+                      const isCleared = clearedKeys.has(key);
+                      const placeholder = isCleared
+                        ? "Cleared when saved"
+                        : field.redacted_value || field.prompt;
+                      return (
+                        <div
+                          key={field.key}
+                          className="settings-field gateway-field"
+                        >
+                          <label className="settings-field-label gateway-field-label">
+                            <span>
+                              {field.prompt}
+                              {field.required && (
+                                <span className="gateway-required-dot">*</span>
+                              )}
+                            </span>
+                            <code>{field.key}</code>
+                          </label>
+                          <div className="settings-input-row gateway-input-row">
+                            <input
+                              className="input"
+                              type={
+                                field.is_password && !isVisible
+                                  ? "password"
+                                  : "text"
+                              }
+                              value={draft[field.key] ?? ""}
+                              onChange={(event) =>
+                                onChange(platform.id, field, event.target.value)
+                              }
+                              placeholder={placeholder}
+                            />
+                            {field.is_password && (
+                              <button
+                                className="btn-ghost settings-toggle-btn"
+                                onClick={() =>
+                                  onToggleVisibility(platform.id, field.key)
+                                }
+                                title={
+                                  isVisible ? "Hide value" : "Show typed value"
+                                }
+                              >
+                                {isVisible ? (
+                                  <EyeOff size={15} />
+                                ) : (
+                                  <Eye size={15} />
+                                )}
+                              </button>
+                            )}
+                            {field.is_set && (
+                              <button
+                                className="btn-ghost settings-toggle-btn"
+                                onClick={() => onClear(platform.id, field.key)}
+                                title="Clear saved value"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
+                          <div className="settings-field-hint">
+                            {field.description}
+                            {field.advanced && (
+                              <span className="gateway-advanced-badge">
+                                Advanced
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {platform.toolsets?.length > 0 && (
                 <div className="gateway-capabilities">
                   <div className="gateway-detail-heading">Capabilities</div>
@@ -620,84 +712,6 @@ function PlatformCard({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {visibleFields.length > 0 && (
-                <div className="settings-platform-fields gateway-platform-fields">
-                  {visibleFields.map((field) => {
-                    const key = `${platform.id}:${field.key}`;
-                    const isVisible = visibleKeys.has(key);
-                    const isCleared = clearedKeys.has(key);
-                    const placeholder = isCleared
-                      ? "Cleared when saved"
-                      : field.redacted_value || field.prompt;
-                    return (
-                      <div
-                        key={field.key}
-                        className="settings-field gateway-field"
-                      >
-                        <label className="settings-field-label gateway-field-label">
-                          <span>
-                            {field.prompt}
-                            {field.required && (
-                              <span className="gateway-required-dot">*</span>
-                            )}
-                          </span>
-                          <code>{field.key}</code>
-                        </label>
-                        <div className="settings-input-row gateway-input-row">
-                          <input
-                            className="input"
-                            type={
-                              field.is_password && !isVisible
-                                ? "password"
-                                : "text"
-                            }
-                            value={draft[field.key] ?? ""}
-                            onChange={(event) =>
-                              onChange(platform.id, field, event.target.value)
-                            }
-                            placeholder={placeholder}
-                          />
-                          {field.is_password && (
-                            <button
-                              className="btn-ghost settings-toggle-btn"
-                              onClick={() =>
-                                onToggleVisibility(platform.id, field.key)
-                              }
-                              title={
-                                isVisible ? "Hide value" : "Show typed value"
-                              }
-                            >
-                              {isVisible ? (
-                                <EyeOff size={15} />
-                              ) : (
-                                <Eye size={15} />
-                              )}
-                            </button>
-                          )}
-                          {field.is_set && (
-                            <button
-                              className="btn-ghost settings-toggle-btn"
-                              onClick={() => onClear(platform.id, field.key)}
-                              title="Clear saved value"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          )}
-                        </div>
-                        <div className="settings-field-hint">
-                          {field.description}
-                          {field.advanced && (
-                            <span className="gateway-advanced-badge">
-                              Advanced
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               )}
             </div>

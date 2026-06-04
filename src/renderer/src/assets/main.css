@@ -4142,6 +4142,19 @@ body {
   color: var(--text-secondary);
   font-size: 13px;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Section heading with a control (e.g. "Show advanced") on the right. */
+.gateway-section-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gateway-section-heading-row .gateway-advanced-toggle {
+  font-size: 12px;
 }
 
 .gateway-platform-grid {
@@ -4314,7 +4327,7 @@ body {
   background: var(--bg-secondary);
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-lg);
-  width: 560px;
+  width: 840px;
   max-width: 100%;
   max-height: 85vh;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
@@ -4344,11 +4357,22 @@ body {
 .gateway-modal-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 18px;
+  padding: 20px;
+  /* One consistent rhythm between desc / test banner / each section. */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* A titled section (heading + its content) inside the modal. */
+.gateway-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .gateway-modal-desc {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--text-secondary);
@@ -4371,7 +4395,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 12px;
 }
 
 .gateway-detail-heading {
@@ -4384,7 +4407,17 @@ body {
 
 .gateway-capability-list {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 8px;
+  /* stretch (default): every card matches the tallest in its row so a
+   * 1-line description lines up with a 2-line neighbour. */
+  align-items: stretch;
+}
+
+/* When a capability's high-risk confirmation opens, let that card span the
+ * full row so the warning isn't cramped into a single grid cell. */
+.gateway-capability-row:has(.gateway-risk-warning) {
+  grid-column: 1 / -1;
 }
 
 .gateway-capability-row {
@@ -4481,7 +4514,7 @@ body {
 .gateway-platform-fields {
   display: grid;
   gap: 12px;
-  margin-top: 12px;
+  margin-top: 0;
   padding-top: 0;
   border-top: 0;
 }
