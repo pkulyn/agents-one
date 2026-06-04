@@ -183,7 +183,7 @@ body {
   justify-content: center;
   gap: 8px;
   padding: 10px 24px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
   border: none;
@@ -5539,6 +5539,23 @@ body {
   margin-bottom: 16px;
 }
 
+/* Embedded (Capabilities → Skills): search + refresh share one row. */
+.skills-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.skills-search-row .skills-search {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.skills-search-refresh {
+  flex-shrink: 0;
+}
+
 .skills-title {
   font-size: 20px;
   font-weight: 700;
@@ -5611,7 +5628,7 @@ body {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 8px 12px;
+  padding: 11px 12px;
   font-size: 13px;
   font-family: var(--font-sans);
   color: var(--text-primary);
@@ -7245,6 +7262,73 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.tools-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.tools-tabs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 12px 32px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tools-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 32px;
+}
+
+/* Skills mounts its own scrolling container; just give it bounded height. */
+.tools-skills-pane {
+  flex: 1;
+  min-height: 0;
+}
+
+.tools-pane .tools-section {
+  margin-top: 0;
+}
+
+.tools-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.tools-tab:hover {
+  color: var(--text-secondary);
+}
+
+.tools-tab.active {
+  color: var(--accent-text, var(--accent));
+  border-bottom-color: var(--accent);
+}
+
+.tools-tab-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  padding: 1px 7px;
 }
 
 .tools-header {
