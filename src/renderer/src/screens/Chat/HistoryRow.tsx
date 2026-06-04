@@ -154,7 +154,8 @@ const ToolActivityItem = memo(function ToolActivityItem({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const call = isToolCall(msg);
-  const hasAttachments = !call && !!msg.attachments && msg.attachments.length > 0;
+  const hasAttachments =
+    !call && !!msg.attachments && msg.attachments.length > 0;
 
   return (
     <div className="chat-tool-item">
@@ -170,7 +171,9 @@ const ToolActivityItem = memo(function ToolActivityItem({
             open ? " chat-tool-item-chevron--open" : ""
           }`}
         />
-        <span className={`chat-tool-item-dot chat-tool-item-dot--${itemTone(msg)}`} />
+        <span
+          className={`chat-tool-item-dot chat-tool-item-dot--${itemTone(msg)}`}
+        />
         <span className="chat-tool-item-kind">
           {call ? t("chat.toolCall") : t("chat.toolResult")}
         </span>
@@ -194,9 +197,7 @@ const ToolActivityItem = memo(function ToolActivityItem({
                 call ? "chat-history-pre--code" : "chat-history-pre--scroll"
               }`}
             >
-              {call
-                ? msg.args || "(no arguments)"
-                : msg.content || "(empty)"}
+              {call ? msg.args || "(no arguments)" : msg.content || "(empty)"}
             </pre>
           </div>
         </div>
@@ -228,7 +229,9 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
       }`}
     >
       {showAvatar ? <HermesAvatar /> : <AvatarSpacer />}
-      <div className={`chat-tool-group${active ? " chat-tool-group--active" : ""}`}>
+      <div
+        className={`chat-tool-group${active ? " chat-tool-group--active" : ""}`}
+      >
         <button
           type="button"
           className="chat-tool-group-summary"
