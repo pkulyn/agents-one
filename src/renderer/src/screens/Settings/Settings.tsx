@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "../../components/ThemeProvider";
-import { THEME_OPTIONS } from "../../constants";
+import { THEMES } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import { APP_LOCALES, type AppLocale } from "../../../../shared/i18n";
 import {
@@ -64,7 +64,7 @@ function getCachedOpenClaw(): { found: boolean; path: string | null } | null {
 function Settings({ profile }: { profile?: string }): React.JSX.Element {
   const { t, locale, setLocale } = useI18n();
   const [hermesHome, setHermesHome] = useState("");
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, rounded, setRounded } = useTheme();
 
   // Hermes engine info — initialize from localStorage cache for instant display
   const [hermesVersion, setHermesVersion] = useState<string | null>(
@@ -911,23 +911,61 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
           <label className="settings-field-label">
             {t("settings.theme.label")}
           </label>
-          <div className="settings-theme-options">
-            {THEME_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                className={`settings-theme-option ${theme === opt.value ? "active" : ""}`}
-                onClick={() => setTheme(opt.value)}
-              >
-                {opt.value === "system"
-                  ? t("settings.theme.system")
-                  : opt.value === "light"
-                    ? t("settings.theme.light")
-                    : t("settings.theme.dark")}
-              </button>
-            ))}
+          <div className="settings-theme-grid">
+            {THEMES.map((th) => {
+              const active = theme === th.id;
+              return (
+                <button
+                  key={th.id}
+                  type="button"
+                  className={`settings-theme-card ${active ? "active" : ""}`}
+                  onClick={() => setTheme(th.id)}
+                >
+                  <div className="settings-theme-preview" data-theme={th.id}>
+                    <div className="settings-theme-preview-sidebar" />
+                    <div className="settings-theme-preview-main">
+                      <div className="settings-theme-preview-bar accent" />
+                      <div className="settings-theme-preview-bar text" />
+                      <div className="settings-theme-preview-bar" />
+                    </div>
+                  </div>
+                  <div className="settings-theme-card-row">
+                    <span className="settings-theme-card-name">{th.name}</span>
+                    {active && (
+                      <span className="settings-theme-card-check">
+                        <Check size={14} />
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <div className="settings-field-hint">
             {t("settings.appearanceHint")}
+          </div>
+        </div>
+        <div className="settings-field">
+          <div className="settings-theme-system">
+            <div>
+              <div className="settings-theme-system-label">
+                {t("settings.roundedCorners.label")}
+              </div>
+              <div className="settings-theme-system-hint">
+                {t("settings.roundedCorners.hint")}
+              </div>
+            </div>
+            <label
+              className="tools-toggle"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={rounded}
+                onChange={() => setRounded(!rounded)}
+              />
+              <span className="tools-toggle-track" />
+            </label>
           </div>
         </div>
         <div className="settings-field">

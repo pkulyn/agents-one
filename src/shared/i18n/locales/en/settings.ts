@@ -12,6 +12,10 @@ export default {
     light: "Light",
     dark: "Dark",
   },
+  roundedCorners: {
+    label: "Rounded corners",
+    hint: "Turn off for squared-off corners throughout the app",
+  },
   language: {
     label: "Language",
     english: "English",
