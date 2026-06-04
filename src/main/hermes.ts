@@ -45,6 +45,11 @@ import { readModels } from "./models";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { type Attachment, escapeXmlAttr } from "../shared/attachments";
 import { URL_KEY_MAP, OPENAI_COMPAT_PROVIDERS } from "../shared/url-key-map";
+import {
+  chatToolEventFromPayload,
+  chatToolProgressLabel,
+  type ChatToolEvent,
+} from "../shared/chat-stream";
 
 /**
  * Resolve which profile a gateway call targets. An explicit profile always
@@ -149,6 +154,76 @@ export async function ensureSshTunnelIfNeeded(): Promise<void> {
   ) {
     await startSshTunnel(conn.ssh);
   }
+}
+
+/** Pick a Whisper model name appropriate for the provider's base URL. */
+function whisperModelForBaseUrl(baseUrl: string): string {
+  if (/api\.groq\.com/i.test(baseUrl)) return "whisper-large-v3-turbo";
+  // OpenAI and most OpenAI-compatible gateways accept whisper-1.
+  return "whisper-1";
+}
+
+/**
+ * Transcribe a recorded audio clip to text via the active profile's provider.
+ *
+ * The local gateway has no audio endpoint, so this goes straight to the
+ * profile's OpenAI-compatible provider (`{baseUrl}/audio/transcriptions`) — the
+ * same base URL + key the model uses (e.g. Groq Whisper). Used as the desktop's
+ * voice-input fallback when the browser SpeechRecognition API is unavailable.
+ *
+ * Throws with a user-readable message when no transcription-capable endpoint /
+ * key is configured, so the caller can surface it.
+ */
+export async function transcribeAudio(
+  audio: Uint8Array,
+  mimeType: string,
+  profile?: string,
+): Promise<string> {
+  const resolved = resolveProfile(profile);
+  const mc = getModelConfig(resolved);
+  const baseUrl = (mc.baseUrl || "").replace(/\/+$/, "");
+  if (!baseUrl) {
+    throw new Error(
+      "Voice input needs an OpenAI-compatible base URL (e.g. Groq) on the active model. Set one in Models, or type your message.",
+    );
+  }
+
+  // Resolve the provider key the same way the chat path does: URL-specific key
+  // first, then the generic CUSTOM_API_KEY / OPENAI_API_KEY fallbacks.
+  const env = readEnv(resolved);
+  let apiKey = "";
+  for (const { pattern, envKey } of URL_KEY_MAP) {
+    if (pattern.test(baseUrl)) {
+      apiKey = (env[envKey] || "").trim();
+      break;
+    }
+  }
+  if (!apiKey) apiKey = (env.CUSTOM_API_KEY || env.OPENAI_API_KEY || "").trim();
+
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([audio as BlobPart], { type: mimeType || "audio/webm" }),
+    "speech.webm",
+  );
+  form.append("model", whisperModelForBaseUrl(baseUrl));
+
+  const headers: Record<string, string> = {};
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
+  const res = await fetch(`${baseUrl}/audio/transcriptions`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Transcription failed (${res.status}). ${body.slice(0, 200)}`.trim(),
+    );
+  }
+  const data = (await res.json().catch(() => null)) as { text?: string } | null;
+  return (data?.text || "").trim();
 }
 
 interface ChatHandle {
@@ -267,6 +342,7 @@ export interface ChatCallbacks {
   onDone: (sessionId?: string) => void;
   onError: (error: string) => void;
   onToolProgress?: (tool: string) => void;
+  onToolEvent?: (event: ChatToolEvent) => void;
   onUsage?: (usage: {
     promptTokens: number;
     completionTokens: number;
@@ -274,6 +350,8 @@ export interface ChatCallbacks {
     cost?: number;
     rateLimitRemaining?: number;
     rateLimitReset?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
   }) => void;
 }
 
@@ -543,12 +621,16 @@ function sendMessageViaApi(
 
   /** Handle a custom SSE event (non-data lines with `event:` prefix). */
   function processCustomEvent(eventType: string, data: string): void {
-    if (eventType === "hermes.tool.progress" && cb.onToolProgress) {
+    if (eventType === "hermes.tool.progress") {
       try {
-        const payload = JSON.parse(data);
-        const label = payload.label || payload.tool || "";
-        const emoji = payload.emoji || "";
-        cb.onToolProgress(emoji ? `${emoji} ${label}` : label);
+        const payload = JSON.parse(data) as Record<string, unknown>;
+        const toolEvent = chatToolEventFromPayload(payload);
+        if (cb.onToolEvent) {
+          cb.onToolEvent(toolEvent);
+        }
+        if (!cb.onToolEvent && cb.onToolProgress) {
+          cb.onToolProgress(chatToolProgressLabel(toolEvent));
+        }
       } catch {
         /* malformed — skip */
       }
@@ -588,6 +670,13 @@ function sendMessageViaApi(
           cost: parsed.usage.cost,
           rateLimitRemaining: parsed.usage.rate_limit_remaining,
           rateLimitReset: parsed.usage.rate_limit_reset,
+          // Prompt-cache stats for the context gauge. The gateway emits
+          // cache_read_tokens / cache_write_tokens; OpenAI-style providers
+          // expose cached_tokens under prompt_tokens_details.
+          cacheReadTokens:
+            parsed.usage.cache_read_tokens ??
+            parsed.usage.prompt_tokens_details?.cached_tokens,
+          cacheWriteTokens: parsed.usage.cache_write_tokens,
         });
       }
 

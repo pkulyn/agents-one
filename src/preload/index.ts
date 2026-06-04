@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
+import type {
+  MessagingPlatformsResponse,
+  MessagingPlatformTestResponse,
+  MessagingPlatformUpdate,
+} from "../shared/messaging-platforms";
+import type { ChatToolEvent } from "../shared/chat-stream";
 
 /**
  * Mirror of the renderer-side `CredentialPoolEntry` ambient type
@@ -269,6 +275,13 @@ const hermesAPI = {
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
 
+  transcribeAudio: (
+    audio: Uint8Array,
+    mimeType: string,
+    profile?: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke("transcribe-audio", audio, mimeType, profile),
+
   getApiServerKeyStatus: (profile?: string): Promise<{ hasKey: boolean }> =>
     ipcRenderer.invoke("get-api-server-key-status", profile),
 
@@ -392,6 +405,17 @@ const hermesAPI = {
     return () => ipcRenderer.removeListener("chat-tool-progress", handler);
   },
 
+  onChatToolEvent: (
+    callback: (event: ChatToolEvent) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      toolEvent: ChatToolEvent,
+    ): void => callback(toolEvent);
+    ipcRenderer.on("chat-tool-event", handler);
+    return () => ipcRenderer.removeListener("chat-tool-event", handler);
+  },
+
   onChatUsage: (
     callback: (usage: {
       promptTokens: number;
@@ -400,6 +424,8 @@ const hermesAPI = {
       cost?: number;
       rateLimitRemaining?: number;
       rateLimitReset?: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
     }) => void,
   ): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, usage: unknown): void =>
@@ -411,6 +437,8 @@ const hermesAPI = {
           cost?: number;
           rateLimitRemaining?: number;
           rateLimitReset?: number;
+          cacheReadTokens?: number;
+          cacheWriteTokens?: number;
         },
       );
     ipcRenderer.on("chat-usage", handler);
@@ -438,6 +466,21 @@ const hermesAPI = {
     profile?: string,
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-platform-enabled", platform, enabled, profile),
+  getMessagingPlatforms: (
+    profile?: string,
+  ): Promise<MessagingPlatformsResponse> =>
+    ipcRenderer.invoke("get-messaging-platforms", profile),
+  updateMessagingPlatform: (
+    platform: string,
+    update: MessagingPlatformUpdate,
+    profile?: string,
+  ): Promise<{ ok: boolean; platform: string }> =>
+    ipcRenderer.invoke("update-messaging-platform", platform, update, profile),
+  testMessagingPlatform: (
+    platform: string,
+    profile?: string,
+  ): Promise<MessagingPlatformTestResponse> =>
+    ipcRenderer.invoke("test-messaging-platform", platform, profile),
 
   // Sessions
   listSessions: (
@@ -990,6 +1033,20 @@ const hermesAPI = {
   ): Promise<
     Array<{ name: string; type: string; enabled: boolean; detail: string }>
   > => ipcRenderer.invoke("list-mcp-servers", profile),
+
+  // Discover marketplace (community registry)
+  fetchRegistry: (force?: boolean) =>
+    ipcRenderer.invoke("registry-fetch", force),
+  listInstalledRegistry: (profile?: string) =>
+    ipcRenderer.invoke("registry-list-installed", profile),
+  fetchRegistryDetail: (kind: string, item: unknown) =>
+    ipcRenderer.invoke("registry-detail", kind, item),
+  installRegistryItem: (
+    kind: string,
+    item: unknown,
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("registry-install", kind, item, profile),
 
   // Log viewer
   readLogs: (

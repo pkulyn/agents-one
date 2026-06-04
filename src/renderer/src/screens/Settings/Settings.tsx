@@ -17,7 +17,7 @@ import {
 } from "../../utils/analytics";
 import { ConfigHealth } from "./ConfigHealth";
 
-const TELEGRAM_COMMUNITY_URL = "https://t.me/hermes_agent_desktop";
+const DISCORD_COMMUNITY_URL = "https://discord.gg/vMwcnNPHc";
 
 const LANGUAGE_NATIVE_NAMES: Record<AppLocale, string> = {
   en: "English",
@@ -27,6 +27,7 @@ const LANGUAGE_NATIVE_NAMES: Record<AppLocale, string> = {
   pl: "Polski",
   "pt-BR": "Português (BR)",
   "pt-PT": "Português (PT)",
+  tr: "Türkçe",
   "zh-CN": "简体中文",
   "zh-TW": "繁體中文（台灣）",
 };
@@ -592,19 +593,19 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
         <div className="settings-section-title">Community</div>
         <div className="settings-field">
           <div className="settings-field-hint" style={{ marginBottom: 10 }}>
-            Join our Telegram group to ask questions, report issues, and chat
+            Join our Discord channel to ask questions, report issues, and chat
             with other Hermes users.
           </div>
           <div className="settings-hermes-actions">
             <button
               className="btn btn-secondary"
               onClick={() =>
-                window.hermesAPI.openExternal(TELEGRAM_COMMUNITY_URL)
+                window.hermesAPI.openExternal(DISCORD_COMMUNITY_URL)
               }
-              title={TELEGRAM_COMMUNITY_URL}
+              title={DISCORD_COMMUNITY_URL}
             >
               <Send size={14} style={{ marginRight: 6 }} />
-              Join Telegram Community
+              Join Discord Channel
             </button>
           </div>
         </div>
