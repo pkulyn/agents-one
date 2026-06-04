@@ -6,6 +6,7 @@ import {
 } from "../Chat/sessionHistory";
 import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
+import Discover from "../Discover/Discover";
 import ProfileSwitcher from "./ProfileSwitcher";
 import Settings from "../Settings/Settings";
 import Skills from "../Skills/Skills";
@@ -19,12 +20,12 @@ import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
-import hermeslogo from "../../assets/hermes.png";
+import hermeslogo from "../../assets/hermes-one.svg";
 import {
   ChatBubble,
   Clock,
+  Compass,
   Settings as SettingsIcon,
-  Puzzle,
   Brain,
   Wrench,
   Signal,
@@ -41,6 +42,7 @@ import { useI18n } from "../../components/useI18n";
 type View =
   | "chat"
   | "sessions"
+  | "discover"
   | "agents"
   | "office"
   | "models"
@@ -56,13 +58,15 @@ type View =
 const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "chat", icon: ChatBubble, labelKey: "navigation.chat" },
   { view: "sessions", icon: Clock, labelKey: "navigation.sessions" },
+  { view: "discover", icon: Compass, labelKey: "navigation.discover" },
   // "agents" (Profiles) is reached from the sidebar-footer ProfileSwitcher's
   // "Manage profiles" action rather than a top-level nav item.
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
   { view: "models", icon: Layers, labelKey: "navigation.models" },
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
-  { view: "skills", icon: Puzzle, labelKey: "navigation.skills" },
+  // "skills" lives under the Discover tab (installed + community), so it's no
+  // longer a top-level nav item.
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
   { view: "tools", icon: Wrench, labelKey: "navigation.tools" },
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
@@ -229,7 +233,15 @@ function Layout({
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <img src={hermeslogo} height={30} alt="" />
+          <span
+            className="sidebar-logo"
+            role="img"
+            aria-label="Hermes"
+            style={{
+              maskImage: `url(${hermeslogo})`,
+              WebkitMaskImage: `url(${hermeslogo})`,
+            }}
+          />
         </div>
 
         <nav className="sidebar-nav">
@@ -311,6 +323,16 @@ function Layout({
                 currentSessionId={currentSessionId}
                 visible={view === "sessions"}
               />
+            )}
+          </div>
+        )}
+
+        {visitedViews.has("discover") && (
+          <div style={paneStyle("discover")}>
+            {remoteMode ? (
+              <RemoteNotice feature="Discover" />
+            ) : (
+              <Discover profile={activeProfile} visible={view === "discover"} />
             )}
           </div>
         )}
