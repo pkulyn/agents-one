@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "../../components/ThemeProvider";
-import { THEMES } from "../../constants";
+import { useFont } from "../../components/FontProvider";
+import { THEMES, FONT_OPTIONS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import { APP_LOCALES, type AppLocale } from "../../../../shared/i18n";
 import {
@@ -65,6 +66,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   const { t, locale, setLocale } = useI18n();
   const [hermesHome, setHermesHome] = useState("");
   const { theme, setTheme, rounded, setRounded } = useTheme();
+  const { font, setFont } = useFont();
 
   // Hermes engine info — initialize from localStorage cache for instant display
   const [hermesVersion, setHermesVersion] = useState<string | null>(
@@ -967,6 +969,24 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
               <span className="tools-toggle-track" />
             </label>
           </div>
+        </div>
+        <div className="settings-field">
+          <label className="settings-field-label">
+            {t("settings.font.label")}
+          </label>
+          <div className="settings-theme-options">
+            {FONT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                className={`settings-theme-option ${font === opt.value ? "active" : ""}`}
+                style={{ fontFamily: opt.stack }}
+                onClick={() => setFont(opt.value)}
+              >
+                {t(opt.label)}
+              </button>
+            ))}
+          </div>
+          <div className="settings-field-hint">{t("settings.font.hint")}</div>
         </div>
         <div className="settings-field">
           <label className="settings-field-label">
