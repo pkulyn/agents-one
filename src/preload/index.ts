@@ -978,6 +978,8 @@ const hermesAPI = {
     ipcRenderer.invoke("read-file", filePath, maxBytes),
   openFileInEditor: (filePath: string): Promise<boolean> =>
     ipcRenderer.invoke("open-file-in-editor", filePath),
+  openTerminal: (dirPath: string): Promise<boolean> =>
+    ipcRenderer.invoke("open-terminal", dirPath),
   readImageFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke("read-image-file", filePath),
   kanbanAssignTask: (

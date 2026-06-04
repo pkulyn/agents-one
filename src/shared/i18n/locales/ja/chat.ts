@@ -83,5 +83,7 @@ export default {
     empty: "フォルダは空です",
     emptyFolder: "空のフォルダ",
     errorLoading: "フォルダの読み込みに失敗しました",
+    openTerminal: "ここでターミナルを開く",
+    openTerminalFailed: "このフォルダーのターミナルを開けませんでした。",
   },
 } as const;

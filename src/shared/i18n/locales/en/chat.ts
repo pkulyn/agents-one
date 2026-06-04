@@ -109,6 +109,8 @@ export default {
     closeFile: "Close",
     open: "Open",
     openInEditor: "Open in default editor",
+    openTerminal: "Open terminal here",
+    openTerminalFailed: "Could not open a terminal for this folder.",
     fileTruncated: "truncated",
     fileTruncatedWarning: "File is too large — showing first 100KB only",
   },

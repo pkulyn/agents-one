@@ -93,6 +93,8 @@ export default {
     closeFile: "Zamknij",
     open: "Otwórz",
     openInEditor: "Otwórz w domyślnym edytorze",
+    openTerminal: "Otwórz terminal tutaj",
+    openTerminalFailed: "Nie można otworzyć terminala dla tego folderu.",
     fileTruncated: "obcięto",
     fileTruncatedWarning: "Plik jest za duży — pokazuję tylko pierwsze 100 KB",
   },

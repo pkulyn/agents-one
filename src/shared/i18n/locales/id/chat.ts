@@ -84,5 +84,7 @@ export default {
     empty: "Folder kosong",
     emptyFolder: "Folder kosong",
     errorLoading: "Gagal memuat konten folder",
+    openTerminal: "Buka terminal di sini",
+    openTerminalFailed: "Tidak dapat membuka terminal untuk folder ini.",
   },
 } as const;

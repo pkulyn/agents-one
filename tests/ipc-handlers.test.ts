@@ -113,6 +113,7 @@ describe("Legacy IPC handlers preserved", () => {
     "list-cron-jobs",
     "create-cron-job",
     "open-external",
+    "open-terminal",
   ];
 
   for (const ch of legacyChannels) {
