@@ -298,6 +298,11 @@ interface HermesAPI {
     contextFolder?: string,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: () => Promise<void>;
+  transcribeAudio: (
+    audio: Uint8Array,
+    mimeType: string,
+    profile?: string,
+  ) => Promise<string>;
   getApiServerKeyStatus: (profile?: string) => Promise<{ hasKey: boolean }>;
   generateApiServerKey: (profile?: string) => Promise<{ key: string }>;
   copyToClipboard: (text: string) => Promise<void>;
@@ -347,6 +352,8 @@ interface HermesAPI {
       cost?: number;
       rateLimitRemaining?: number;
       rateLimitReset?: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
     }) => void,
   ) => () => void;
   onChatError: (callback: (error: string) => void) => () => void;
@@ -836,6 +843,23 @@ interface HermesAPI {
   ) => Promise<
     Array<{ name: string; type: string; enabled: boolean; detail: string }>
   >;
+
+  // Discover marketplace (community registry)
+  fetchRegistry: (
+    force?: boolean,
+  ) => Promise<RegistryCatalog & { error?: string }>;
+  listInstalledRegistry: (
+    profile?: string,
+  ) => Promise<{ skills: string[]; mcps: string[]; workflows: string[] }>;
+  fetchRegistryDetail: (
+    kind: RegistryKind,
+    item: RegistryItem,
+  ) => Promise<RegistryDetail>;
+  installRegistryItem: (
+    kind: RegistryKind,
+    item: RegistryItem,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
 
   // Log viewer
   readLogs: (

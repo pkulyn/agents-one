@@ -270,6 +270,13 @@ const hermesAPI = {
 
   abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
 
+  transcribeAudio: (
+    audio: Uint8Array,
+    mimeType: string,
+    profile?: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke("transcribe-audio", audio, mimeType, profile),
+
   getApiServerKeyStatus: (profile?: string): Promise<{ hasKey: boolean }> =>
     ipcRenderer.invoke("get-api-server-key-status", profile),
 
@@ -412,6 +419,8 @@ const hermesAPI = {
       cost?: number;
       rateLimitRemaining?: number;
       rateLimitReset?: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
     }) => void,
   ): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, usage: unknown): void =>
@@ -423,6 +432,8 @@ const hermesAPI = {
           cost?: number;
           rateLimitRemaining?: number;
           rateLimitReset?: number;
+          cacheReadTokens?: number;
+          cacheWriteTokens?: number;
         },
       );
     ipcRenderer.on("chat-usage", handler);
@@ -1002,6 +1013,20 @@ const hermesAPI = {
   ): Promise<
     Array<{ name: string; type: string; enabled: boolean; detail: string }>
   > => ipcRenderer.invoke("list-mcp-servers", profile),
+
+  // Discover marketplace (community registry)
+  fetchRegistry: (force?: boolean) =>
+    ipcRenderer.invoke("registry-fetch", force),
+  listInstalledRegistry: (profile?: string) =>
+    ipcRenderer.invoke("registry-list-installed", profile),
+  fetchRegistryDetail: (kind: string, item: unknown) =>
+    ipcRenderer.invoke("registry-detail", kind, item),
+  installRegistryItem: (
+    kind: string,
+    item: unknown,
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("registry-install", kind, item, profile),
 
   // Log viewer
   readLogs: (
