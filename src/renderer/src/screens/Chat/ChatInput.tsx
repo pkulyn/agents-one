@@ -85,6 +85,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const slashMenuRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // Tracks an active IME composition (Korean/Japanese/Chinese). Driven by the
+    // composition events rather than the synthetic event's `isComposing` flag,
+    // which macOS Chromium can report as false on the finalizing Enter.
+    const composingRef = useRef(false);
 
     // Voice input. We snapshot whatever was already typed when recording starts
     // (`voiceBaseRef`), then rebuild the field as `base + livetranscript` on
@@ -302,7 +306,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }
 
     function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
-      if (isImeComposing(e)) return;
+      if (isImeComposing(e) || composingRef.current) return;
 
       // Slash menu keyboard navigation
       if (slashMenuOpen && filteredSlashCommands.length > 0) {
@@ -485,6 +489,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
+            onCompositionStart={() => {
+              composingRef.current = true;
+            }}
+            onCompositionEnd={() => {
+              composingRef.current = false;
+            }}
             onPaste={handlePaste}
             rows={1}
             autoFocus
