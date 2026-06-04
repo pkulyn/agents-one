@@ -97,6 +97,9 @@ function Layout({
   );
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
   const [remoteMode, setRemoteMode] = useState(false);
+  // Bumped when the Capabilities → Skills tab's "Browse" focuses Discover's
+  // Skills (Community) tab; Discover applies it via an effect on the value.
+  const [browseSkillsSignal, setBrowseSkillsSignal] = useState(0);
 
   const paneStyle = (target: View): React.CSSProperties => ({
     display: view === target ? "flex" : "none",
@@ -332,7 +335,11 @@ function Layout({
             {remoteMode ? (
               <RemoteNotice feature="Discover" />
             ) : (
-              <Discover profile={activeProfile} visible={view === "discover"} />
+              <Discover
+                profile={activeProfile}
+                visible={view === "discover"}
+                focusSkillsSignal={browseSkillsSignal}
+              />
             )}
           </div>
         )}
@@ -404,6 +411,11 @@ function Layout({
             <Tools
               profile={activeProfile}
               showPlatformToolsets={!remoteMode}
+              remoteMode={remoteMode}
+              onBrowseSkills={() => {
+                setBrowseSkillsSignal((n) => n + 1);
+                goTo("discover");
+              }}
             />
           </div>
         )}
