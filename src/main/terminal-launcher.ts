@@ -95,7 +95,13 @@ async function defaultWindowsPackageInstallLocationsAsync(
   const cached = windowsPackageLocationCache.get(cacheKey);
   if (cached) return cached;
 
-  const promise = queryWindowsPackageInstallLocations(packageName, systemRoot);
+  const promise = queryWindowsPackageInstallLocations(
+    packageName,
+    systemRoot,
+  ).then((locations) => {
+    if (locations.length === 0) windowsPackageLocationCache.delete(cacheKey);
+    return locations;
+  });
   windowsPackageLocationCache.set(cacheKey, promise);
   return promise;
 }
@@ -312,6 +318,22 @@ function resolveExecutableFromPath(
   return null;
 }
 
+function linuxTerminalArgs(resolvedPath: string, dirPath: string): string[] {
+  const executable = posix.basename(resolvedPath);
+  if (
+    executable === "gnome-terminal" ||
+    executable === "gnome-terminal.wrapper" ||
+    executable === "xfce4-terminal" ||
+    executable === "mate-terminal"
+  ) {
+    return [`--working-directory=${dirPath}`];
+  }
+  if (executable === "konsole") {
+    return ["--workdir", dirPath];
+  }
+  return [];
+}
+
 function resolveWindowsTerminal(
   dirPath: string,
   env: NodeJS.ProcessEnv,
@@ -518,7 +540,13 @@ export function resolveTerminalCommand(
       realpath,
       dirPath,
     );
-    if (resolved) return { command: resolved, args: [], cwd: dirPath };
+    if (resolved) {
+      return {
+        command: resolved,
+        args: linuxTerminalArgs(resolved, dirPath),
+        cwd: dirPath,
+      };
+    }
   }
 
   return null;

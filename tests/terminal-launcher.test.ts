@@ -192,6 +192,53 @@ describe("terminal launcher command resolution", () => {
     });
   });
 
+  it.each([
+    ["gnome-terminal", ["--working-directory=/home/me/repo"]],
+    ["gnome-terminal.wrapper", ["--working-directory=/home/me/repo"]],
+    ["xfce4-terminal", ["--working-directory=/home/me/repo"]],
+    ["mate-terminal", ["--working-directory=/home/me/repo"]],
+    ["konsole", ["--workdir", "/home/me/repo"]],
+  ])(
+    "passes an explicit working directory flag to %s on Linux",
+    (terminal, expectedArgs) => {
+      const command = resolveTerminalCommand("/home/me/repo", {
+        platform: "linux",
+        env: {
+          TERMINAL: terminal,
+          PATH: "/usr/bin",
+        },
+        exists: (filePath) => filePath === `/usr/bin/${terminal}`,
+        realpath: (filePath) => filePath,
+      });
+
+      expect(command).toEqual({
+        command: `/usr/bin/${terminal}`,
+        args: expectedArgs,
+        cwd: "/home/me/repo",
+      });
+    },
+  );
+
+  it("uses the resolved terminal name when a Linux alias points to GNOME Terminal", () => {
+    const command = resolveTerminalCommand("/home/me/repo", {
+      platform: "linux",
+      env: {
+        PATH: "/usr/bin",
+      },
+      exists: (filePath) => filePath === "/usr/bin/x-terminal-emulator",
+      realpath: (filePath) =>
+        filePath === "/usr/bin/x-terminal-emulator"
+          ? "/usr/bin/gnome-terminal.wrapper"
+          : filePath,
+    });
+
+    expect(command).toEqual({
+      command: "/usr/bin/gnome-terminal.wrapper",
+      args: ["--working-directory=/home/me/repo"],
+      cwd: "/home/me/repo",
+    });
+  });
+
   it("does not resolve relative terminal executables from the worktree", () => {
     const command = resolveTerminalCommand("/home/me/repo", {
       platform: "linux",
