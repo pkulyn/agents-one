@@ -16,6 +16,8 @@ export {
   Layers,
   Monitor,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Puzzle,
   Search,
