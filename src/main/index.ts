@@ -7,6 +7,7 @@ import {
   Notification,
   dialog,
   clipboard,
+  session,
 } from "electron";
 import { join, extname } from "path";
 import { readdir, readFile } from "fs/promises";
@@ -48,6 +49,7 @@ import {
   isRemoteMode,
   isRemoteOnlyMode,
   sendMessage,
+  transcribeAudio,
   startGateway,
   stopGateway,
   isGatewayRunning,
@@ -137,6 +139,14 @@ import {
 } from "./memory";
 import { readSoul, writeSoul, resetSoul } from "./soul";
 import { getToolsets, setToolsetEnabled } from "./tools";
+import {
+  fetchRegistry,
+  fetchRegistryDetail,
+  listInstalledRegistry,
+  installRegistryItem,
+  type RegistryKind,
+  type RegistryItem,
+} from "./registry";
 import {
   listInstalledSkills,
   listBundledSkills,
@@ -800,6 +810,16 @@ function setupIPC(): void {
 
   // Chat — lazy-start gateway on first message
   ipcMain.handle(
+    "transcribe-audio",
+    async (
+      _event,
+      audio: Uint8Array,
+      mimeType: string,
+      profile?: string,
+    ): Promise<string> => transcribeAudio(audio, mimeType, profile),
+  );
+
+  ipcMain.handle(
     "send-message",
     async (
       event,
@@ -915,6 +935,9 @@ function setupIPC(): void {
           },
           onToolProgress: (tool) => {
             safeSend("chat-tool-progress", tool);
+          },
+          onToolEvent: (toolEvent) => {
+            safeSend("chat-tool-event", toolEvent);
           },
           onUsage: (usage) => {
             safeSend("chat-usage", usage);
@@ -1672,6 +1695,24 @@ function setupIPC(): void {
     listMcpServers(profile),
   );
 
+  // Discover marketplace (community registry)
+  ipcMain.handle("registry-fetch", (_event, force?: boolean) =>
+    fetchRegistry(!!force),
+  );
+  ipcMain.handle("registry-list-installed", (_event, profile?: string) =>
+    listInstalledRegistry(profile),
+  );
+  ipcMain.handle(
+    "registry-detail",
+    (_event, kind: RegistryKind, item: RegistryItem) =>
+      fetchRegistryDetail(kind, item),
+  );
+  ipcMain.handle(
+    "registry-install",
+    (_event, kind: RegistryKind, item: RegistryItem, profile?: string) =>
+      installRegistryItem(kind, item, profile),
+  );
+
   // Memory providers
   ipcMain.handle("discover-memory-providers", (_event, profile?: string) => {
     const conn = getConnectionConfig();
@@ -1895,6 +1936,18 @@ if (process.env.ENABLE_CDP === "1") {
 app.whenReady().then(() => {
   app.name = "Hermes";
   electronApp.setAppUserModelId("com.nousresearch.hermes");
+
+  // Allow microphone access for the app's own renderer (voice input). Without
+  // a handler Electron denies getUserMedia by default. Scoped to the `media`
+  // permission only; everything else stays denied.
+  session.defaultSession.setPermissionRequestHandler(
+    (_wc, permission, callback) => {
+      callback(permission === "media");
+    },
+  );
+  session.defaultSession.setPermissionCheckHandler(
+    (_wc, permission) => permission === "media",
+  );
 
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
