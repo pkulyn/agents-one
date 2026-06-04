@@ -347,6 +347,16 @@ export const THEMES: ThemeDef[] = [
   { id: "solarized-light", name: "Solarized Light", appearance: "light" },
 ];
 
+/**
+ * Legacy options retained for older callers/tests that only distinguish between
+ * OS-following, light, and dark modes. New theme pickers should use THEMES.
+ */
+export const THEME_OPTIONS = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
 /** Themes used by the "System" setting when following the OS preference. */
 export const DEFAULT_DARK_THEME = "dark";
 export const DEFAULT_LIGHT_THEME = "light";
