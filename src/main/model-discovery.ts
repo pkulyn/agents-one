@@ -248,6 +248,7 @@ const _freeCache = new Map<string, string[]>();
 
 const LOCAL_NO_KEY_PROVIDERS = new Set([
   "lmstudio",
+  "atomicchat",
   "ollama",
   "vllm",
   "llamacpp",

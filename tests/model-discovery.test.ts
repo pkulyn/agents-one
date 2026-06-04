@@ -135,7 +135,7 @@ describe("model-discovery", () => {
 
     const { discoverProviderModels } = await loadDiscovery();
     const result = await discoverProviderModels(
-      "ollama",
+      "atomicchat",
       baseUrl,
       undefined,
       undefined,

@@ -29,6 +29,15 @@ function localPresetForProvider(value: string): {
   );
 }
 
+export function modelConfigBaseUrlForProvider(
+  provider: string,
+  baseUrl: string,
+): string {
+  return provider === "custom" || localPresetForProvider(provider)
+    ? baseUrl.trim()
+    : "";
+}
+
 interface ModelsProps {
   visible?: boolean;
 }
@@ -206,8 +215,10 @@ function Models({ visible }: ModelsProps = {}): React.JSX.Element {
       // setModelConfig itself (substitutes the canonical URL for
       // built-in providers — see `provider-registry.ts`).
       if (editedWasActive) {
-        const effectiveBaseUrl =
-          formProvider === "custom" ? formBaseUrl.trim() : "";
+        const effectiveBaseUrl = modelConfigBaseUrlForProvider(
+          formProvider,
+          formBaseUrl,
+        );
         await window.hermesAPI.setModelConfig(
           formProvider,
           model,

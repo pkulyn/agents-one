@@ -43,6 +43,9 @@ describe("provider-registry", () => {
       expect(canonicalProviderBaseUrl("lmstudio")).toBe(
         "http://localhost:1234/v1",
       );
+      expect(canonicalProviderBaseUrl("atomicchat")).toBe(
+        "http://localhost:1337/v1",
+      );
       expect(canonicalProviderBaseUrl("ollama")).toBe(
         "http://localhost:11434/v1",
       );
