@@ -1,5 +1,17 @@
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
+import type {
+  RegistryKind,
+  RegistryItem,
+  RegistryCatalog,
+  RegistryDetail,
+} from "../shared/registry";
+import type {
+  MessagingPlatformsResponse,
+  MessagingPlatformTestResponse,
+  MessagingPlatformUpdate,
+} from "../shared/messaging-platforms";
+import type { ChatToolEvent } from "../shared/chat-stream";
 
 interface ElectronAPI {
   process: {
@@ -344,6 +356,7 @@ interface HermesAPI {
   onChatReasoningChunk: (callback: (chunk: string) => void) => () => void;
   onChatDone: (callback: (sessionId?: string) => void) => () => void;
   onChatToolProgress: (callback: (tool: string) => void) => () => void;
+  onChatToolEvent: (callback: (event: ChatToolEvent) => void) => () => void;
   onChatUsage: (
     callback: (usage: {
       promptTokens: number;
@@ -370,6 +383,16 @@ interface HermesAPI {
     enabled: boolean,
     profile?: string,
   ) => Promise<boolean>;
+  getMessagingPlatforms: (profile?: string) => Promise<MessagingPlatformsResponse>;
+  updateMessagingPlatform: (
+    platform: string,
+    update: MessagingPlatformUpdate,
+    profile?: string,
+  ) => Promise<{ ok: boolean; platform: string }>;
+  testMessagingPlatform: (
+    platform: string,
+    profile?: string,
+  ) => Promise<MessagingPlatformTestResponse>;
 
   // Sessions
   listSessions: (
@@ -843,6 +866,23 @@ interface HermesAPI {
   ) => Promise<
     Array<{ name: string; type: string; enabled: boolean; detail: string }>
   >;
+
+  // Discover marketplace (community registry)
+  fetchRegistry: (
+    force?: boolean,
+  ) => Promise<RegistryCatalog & { error?: string }>;
+  listInstalledRegistry: (
+    profile?: string,
+  ) => Promise<{ skills: string[]; mcps: string[]; workflows: string[] }>;
+  fetchRegistryDetail: (
+    kind: RegistryKind,
+    item: RegistryItem,
+  ) => Promise<RegistryDetail>;
+  installRegistryItem: (
+    kind: RegistryKind,
+    item: RegistryItem,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
 
   // Log viewer
   readLogs: (
