@@ -316,11 +316,40 @@ export const LOCAL_PRESETS: LocalPreset[] = [
 
 // ── Theme ───────────────────────────────────────────────
 
-export const THEME_OPTIONS = [
-  { value: "system" as const, label: "constants.themeSystem" },
-  { value: "light" as const, label: "constants.themeLight" },
-  { value: "dark" as const, label: "constants.themeDark" },
+export type ThemeAppearance = "dark" | "light";
+
+export interface ThemeDef {
+  /** Value written to localStorage and the `data-theme` attribute. */
+  id: string;
+  /** Display name shown in the picker (proper names are not translated). */
+  name: string;
+  /** Whether the palette is dark or light (drives the "System" fallback). */
+  appearance: ThemeAppearance;
+}
+
+/**
+ * Registry of selectable themes. Each entry must have a matching
+ * `[data-theme="<id>"]` block in `assets/main.css`. To add a theme, append an
+ * entry here and define its CSS variables there — nothing else is required.
+ */
+export const THEMES: ThemeDef[] = [
+  { id: "dark", name: "Dark", appearance: "dark" },
+  { id: "light", name: "Light", appearance: "light" },
+  { id: "dracula", name: "Dracula", appearance: "dark" },
+  { id: "nord", name: "Nord", appearance: "dark" },
+  { id: "one-dark", name: "One Dark", appearance: "dark" },
+  { id: "github-dark", name: "GitHub Dark", appearance: "dark" },
+  { id: "monokai", name: "Monokai", appearance: "dark" },
+  { id: "solarized-dark", name: "Solarized Dark", appearance: "dark" },
+  { id: "gruvbox-dark", name: "Gruvbox Dark", appearance: "dark" },
+  { id: "tokyo-night", name: "Tokyo Night", appearance: "dark" },
+  { id: "github-light", name: "GitHub Light", appearance: "light" },
+  { id: "solarized-light", name: "Solarized Light", appearance: "light" },
 ];
+
+/** Themes used by the "System" setting when following the OS preference. */
+export const DEFAULT_DARK_THEME = "dark";
+export const DEFAULT_LIGHT_THEME = "light";
 
 export const THEME_STORAGE_KEY = "hermes-theme";
 
