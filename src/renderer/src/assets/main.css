@@ -8581,11 +8581,16 @@ body {
   color: var(--text-muted);
 }
 
-[data-theme="dark"] .brand-logo--match-theme {
+/* Match-theme logos are flattened to a single tint (never brand colors),
+   chosen by the theme's background: white icons on dark themes, black on
+   light. Dark is the default; add new light themes to the override below. */
+.brand-logo--match-theme {
   filter: brightness(0) invert(1);
 }
 
-[data-theme="light"] .brand-logo--match-theme {
+[data-theme="light"] .brand-logo--match-theme,
+[data-theme="github-light"] .brand-logo--match-theme,
+[data-theme="solarized-light"] .brand-logo--match-theme {
   filter: brightness(0);
 }
 
