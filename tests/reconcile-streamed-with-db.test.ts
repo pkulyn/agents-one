@@ -494,4 +494,46 @@ describe("reconcileStreamedWithDb", () => {
       ("attachments" in merged[0] && merged[0].attachments) || [],
     ).toHaveLength(1);
   });
+
+  it("drops synthetic live tool rows once matching canonical DB tool rows arrive", () => {
+    const streamed: ChatMessage[] = [
+      STREAMED_USER("make an image", "u-1"),
+      {
+        id: "tool-call-live-tool:run-1:skill_view:1",
+        kind: "tool_call",
+        role: "agent",
+        callId: "live-tool:run-1:skill_view:1",
+        name: "skill_view",
+        args: "ai-playground-image-gen",
+      },
+      {
+        id: "tool-call-live-tool:run-1:execute_code:1",
+        kind: "tool_call",
+        role: "agent",
+        callId: "live-tool:run-1:execute_code:1",
+        name: "execute_code",
+        args: "from hermes_tools import terminal",
+      },
+      STREAMED_AGENT("Done.", "a-1"),
+    ];
+    const db: ChatMessage[] = [
+      DB_USER("make an image", 60),
+      DB_TOOL_CALL("call-skill", "skill_view", "ai-playground-image-gen", 61),
+      DB_TOOL_RESULT("call-skill", "skill_view", "ok", 62),
+      DB_TOOL_CALL("call-code", "execute_code", "from hermes_tools import terminal", 63),
+      DB_TOOL_RESULT("call-code", "execute_code", "ok", 64),
+      DB_AGENT("Done.", 65),
+    ];
+
+    const merged = reconcileStreamedWithDb(streamed, db);
+
+    expect(merged.map((m) => m.id)).toEqual([
+      "u-1",
+      "db-tc-61-call-skill",
+      "db-tr-62",
+      "db-tc-63-call-code",
+      "db-tr-64",
+      "a-1",
+    ]);
+  });
 });

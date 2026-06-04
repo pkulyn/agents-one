@@ -45,7 +45,8 @@
     "remark-gfm": "^4.0.1",
     "three": "^0.183.2",
     "troika-three-text": "^0.52.4",
-    "vscode-material-icons": "^0.1.1"
+    "vscode-material-icons": "^0.1.1",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
