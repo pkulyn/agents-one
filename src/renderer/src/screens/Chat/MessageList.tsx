@@ -1,11 +1,7 @@
 import { memo, useMemo } from "react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
-import type {
-  ChatMessage,
-  ToolCallMessage,
-  ToolResultMessage,
-} from "./types";
+import type { ChatMessage, ToolCallMessage, ToolResultMessage } from "./types";
 
 function isToolRow(m: ChatMessage): m is ToolCallMessage | ToolResultMessage {
   const k = (m as { kind?: string }).kind;
@@ -103,8 +99,10 @@ export const MessageList = memo(function MessageList({
           items={group}
           // Active (spinner) only while streaming and this run is trailing.
           active={isLoading && i === visibleMessages.length - 1}
-          showAvatar={!visibleMessages[start - 1] ||
-            visibleMessages[start - 1].role !== "agent"}
+          showAvatar={
+            !visibleMessages[start - 1] ||
+            visibleMessages[start - 1].role !== "agent"
+          }
         />,
       );
       continue;
