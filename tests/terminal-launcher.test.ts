@@ -4,8 +4,36 @@ import {
   resolveTerminalCommandAsync,
 } from "../src/main/terminal-launcher";
 
+const WIN_CMD = "C:\\Windows\\System32\\cmd.exe";
+const WIN_POWERSHELL =
+  "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+
+function windowsStartCommand(
+  dirPath: string,
+  target: string,
+  args: string[],
+): ReturnType<typeof resolveTerminalCommand> {
+  return {
+    args: [
+      "/d",
+      "/s",
+      "/c",
+      "start",
+      "",
+      "/D",
+      dirPath,
+      target,
+      ...args,
+    ],
+    command: WIN_CMD,
+    cwd: dirPath,
+  };
+}
+
 describe("terminal launcher command resolution", () => {
   it("prefers protected Store PowerShell 7 packages on Windows", () => {
+    const target =
+      "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe\\pwsh.exe";
     const command = resolveTerminalCommand("C:\\work\\repo", {
       platform: "win32",
       env: {
@@ -15,30 +43,18 @@ describe("terminal launcher command resolution", () => {
         "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe",
       ],
       exists: (filePath) =>
-        filePath ===
-          "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe\\pwsh.exe" ||
-        filePath === "C:\\Windows\\System32\\cmd.exe",
+        filePath === target ||
+        filePath === WIN_CMD,
     });
 
-    expect(command).toEqual({
-      command: "C:\\Windows\\System32\\cmd.exe",
-      args: [
-        "/d",
-        "/s",
-        "/c",
-        "start",
-        "",
-        "/D",
-        "C:\\work\\repo",
-        "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe\\pwsh.exe",
-        "-NoExit",
-        "-NoLogo",
-      ],
-      cwd: "C:\\work\\repo",
-    });
+    expect(command).toEqual(
+      windowsStartCommand("C:\\work\\repo", target, ["-NoExit", "-NoLogo"]),
+    );
   });
 
   it("uses the async Windows package resolver for app launches", async () => {
+    const target =
+      "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe\\pwsh.exe";
     const command = await resolveTerminalCommandAsync("C:\\work\\repo", {
       platform: "win32",
       env: {
@@ -48,17 +64,17 @@ describe("terminal launcher command resolution", () => {
         "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe",
       ],
       exists: (filePath) =>
-        filePath ===
-          "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe\\pwsh.exe" ||
-        filePath === "C:\\Windows\\System32\\cmd.exe",
+        filePath === target ||
+        filePath === WIN_CMD,
     });
 
-    expect(command?.args).toContain(
-      "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe\\pwsh.exe",
-    );
+    expect(command?.command).toBe(WIN_CMD);
+    expect(command?.args).toContain(target);
   });
 
   it("uses Windows Terminal when PowerShell 7 is unavailable", () => {
+    const target =
+      "C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_1.24.11321.0_x64__8wekyb3d8bbwe\\WindowsTerminal.exe";
     const command = resolveTerminalCommand("C:\\work\\repo", {
       platform: "win32",
       env: {
@@ -71,27 +87,33 @@ describe("terminal launcher command resolution", () => {
             ]
           : [],
       exists: (filePath) =>
-        filePath ===
-          "C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_1.24.11321.0_x64__8wekyb3d8bbwe\\WindowsTerminal.exe" ||
-        filePath === "C:\\Windows\\System32\\cmd.exe",
+        filePath === target ||
+        filePath === WIN_CMD,
     });
 
-    expect(command).toEqual({
-      command: "C:\\Windows\\System32\\cmd.exe",
-      args: [
-        "/d",
-        "/s",
-        "/c",
-        "start",
-        "",
-        "/D",
-        "C:\\work\\repo",
-        "C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_1.24.11321.0_x64__8wekyb3d8bbwe\\WindowsTerminal.exe",
-        "-d",
-        "C:\\work\\repo",
+    expect(command).toEqual(
+      windowsStartCommand("C:\\work\\repo", target, ["-d", "C:\\work\\repo"]),
+    );
+  });
+
+  it("rejects Windows paths with cmd metacharacters before cmd.exe parses them", () => {
+    const dirPath = "C:\\work\\repo & calc %TEMP% (test)";
+    const target =
+      "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe\\pwsh.exe";
+    const command = resolveTerminalCommand(dirPath, {
+      platform: "win32",
+      env: {
+        SystemDrive: "C:",
+      },
+      getWindowsPackageInstallLocations: () => [
+        "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.6.2.0_x64__8wekyb3d8bbwe",
       ],
-      cwd: "C:\\work\\repo",
+      exists: (filePath) =>
+        filePath === target ||
+        filePath === WIN_CMD,
     });
+
+    expect(command).toBeNull();
   });
 
   it("does not trust user-profile Windows app execution aliases", () => {
@@ -106,10 +128,15 @@ describe("terminal launcher command resolution", () => {
           "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe" ||
         filePath ===
           "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe" ||
-        filePath === "C:\\Windows\\System32\\cmd.exe",
+        filePath === WIN_CMD ||
+        filePath === WIN_POWERSHELL,
     });
 
-    expect(command).toBeNull();
+    expect(command?.command).toBe(WIN_CMD);
+    expect(command?.args).toContain(WIN_POWERSHELL);
+    expect(command?.args.join(" ")).not.toContain(
+      "Microsoft\\WindowsApps",
+    );
   });
 
   it("rejects Windows package locations outside protected Program Files", () => {
@@ -122,7 +149,7 @@ describe("terminal launcher command resolution", () => {
         "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.PowerShell_8wekyb3d8bbwe",
       ],
       exists: (filePath) =>
-        filePath === "C:\\Windows\\System32\\cmd.exe" ||
+        filePath === WIN_CMD ||
         filePath ===
           "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.PowerShell_8wekyb3d8bbwe\\pwsh.exe",
     });
@@ -137,27 +164,16 @@ describe("terminal launcher command resolution", () => {
         SystemDrive: "C:",
       },
       exists: (filePath) =>
-        filePath === "C:\\Windows\\System32\\cmd.exe" ||
-        filePath ===
-          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        filePath === WIN_CMD ||
+        filePath === WIN_POWERSHELL,
     });
 
-    expect(command).toEqual({
-      command: "C:\\Windows\\System32\\cmd.exe",
-      args: [
-        "/d",
-        "/s",
-        "/c",
-        "start",
-        "",
-        "/D",
-        "C:\\work\\repo",
-        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    expect(command).toEqual(
+      windowsStartCommand("C:\\work\\repo", WIN_POWERSHELL, [
         "-NoExit",
         "-NoLogo",
-      ],
-      cwd: "C:\\work\\repo",
-    });
+      ]),
+    );
   });
 
   it("uses the system macOS open command instead of searching PATH", () => {

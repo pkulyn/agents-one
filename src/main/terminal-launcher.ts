@@ -334,6 +334,10 @@ function linuxTerminalArgs(resolvedPath: string, dirPath: string): string[] {
   return [];
 }
 
+function hasCmdControlChars(value: string): boolean {
+  return /["^&|<>()%!]/.test(value);
+}
+
 function resolveWindowsTerminal(
   dirPath: string,
   env: NodeJS.ProcessEnv,
@@ -350,6 +354,7 @@ function resolveWindowsTerminal(
   const programFilesX86 = win32.join(systemDrive, "Program Files (x86)");
   const cmd = win32.join(systemRoot, "System32", "cmd.exe");
   if (!exists(cmd)) return null;
+  if (hasCmdControlChars(dirPath)) return null;
 
   const startCommand = (target: string, args: string[]): TerminalCommand => ({
     command: cmd,
@@ -433,6 +438,7 @@ async function resolveWindowsTerminalAsync(
   const programFilesX86 = win32.join(systemDrive, "Program Files (x86)");
   const cmd = win32.join(systemRoot, "System32", "cmd.exe");
   if (!exists(cmd)) return null;
+  if (hasCmdControlChars(dirPath)) return null;
 
   const startCommand = (target: string, args: string[]): TerminalCommand => ({
     command: cmd,
