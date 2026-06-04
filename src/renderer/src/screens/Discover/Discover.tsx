@@ -26,6 +26,10 @@ import type {
 interface DiscoverProps {
   profile?: string;
   visible?: boolean;
+  // Set by the Capabilities screen's "Browse" actions to focus a specific
+  // Discover tab. The nonce changes per request so the effect re-fires even
+  // when targeting the same kind twice.
+  focusKind?: { kind: RegistryKind; nonce: number };
 }
 
 interface LocalSkill {
@@ -64,12 +68,22 @@ type SkillsView = "installed" | "community";
 export default function Discover({
   profile,
   visible,
+  focusKind,
 }: DiscoverProps): React.JSX.Element {
   const { t } = useI18n();
   const [tab, setTab] = useState<RegistryKind>("skills");
   // Skills get an extra Installed/Community toggle; installed is the default
   // so users land on their local skills.
   const [skillsView, setSkillsView] = useState<SkillsView>("installed");
+
+  // "Browse" from the Capabilities screen focuses the matching Discover tab;
+  // Skills additionally lands on the Community view. Guarded so normal mounts
+  // (no focus request) aren't forced.
+  useEffect(() => {
+    if (!focusKind) return;
+    setTab(focusKind.kind);
+    if (focusKind.kind === "skills") setSkillsView("community");
+  }, [focusKind]);
   const [catalog, setCatalog] = useState<RegistryCatalog>(EMPTY);
   // Skills shipped with the hermes-agent repo, shown in the Community view as
   // a fallback alongside (eventually) registry skills.

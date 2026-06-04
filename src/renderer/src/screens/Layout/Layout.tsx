@@ -97,6 +97,12 @@ function Layout({
   );
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
   const [remoteMode, setRemoteMode] = useState(false);
+  // Set by the Capabilities screen's "Browse" actions to focus a Discover tab
+  // (Skills → Community, or MCPs). The nonce re-fires Discover's effect.
+  const [discoverFocus, setDiscoverFocus] = useState<{
+    kind: "skills" | "mcps";
+    nonce: number;
+  } | null>(null);
 
   const paneStyle = (target: View): React.CSSProperties => ({
     display: view === target ? "flex" : "none",
@@ -109,6 +115,14 @@ function Layout({
     setVisitedViews((prev) => (prev.has(v) ? prev : new Set(prev).add(v)));
     setView(v);
   }, []);
+
+  const focusDiscover = useCallback(
+    (kind: "skills" | "mcps") => {
+      setDiscoverFocus((prev) => ({ kind, nonce: (prev?.nonce ?? 0) + 1 }));
+      goTo("discover");
+    },
+    [goTo],
+  );
 
   // Re-check remote mode on tab switch (picks up Settings changes)
   useEffect(() => {
@@ -332,7 +346,11 @@ function Layout({
             {remoteMode ? (
               <RemoteNotice feature="Discover" />
             ) : (
-              <Discover profile={activeProfile} visible={view === "discover"} />
+              <Discover
+                profile={activeProfile}
+                visible={view === "discover"}
+                focusKind={discoverFocus ?? undefined}
+              />
             )}
           </div>
         )}
@@ -401,11 +419,13 @@ function Layout({
 
         {visitedViews.has("tools") && (
           <div style={paneStyle("tools")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Tools" />
-            ) : (
-              <Tools profile={activeProfile} />
-            )}
+            <Tools
+              profile={activeProfile}
+              showPlatformToolsets={!remoteMode}
+              remoteMode={remoteMode}
+              onBrowseSkills={() => focusDiscover("skills")}
+              onBrowseMcps={() => focusDiscover("mcps")}
+            />
           </div>
         )}
 

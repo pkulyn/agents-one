@@ -9,7 +9,7 @@ export default {
   skills: "Skills",
   soul: "Persona",
   memory: "Memory",
-  tools: "Tools",
+  tools: "Capabilities",
   schedules: "Schedules",
   kanban: "Kanban",
   gateway: "Gateway",
