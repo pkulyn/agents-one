@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronDown,
   CircleDashed,
   ExternalLink,
   Eye,
@@ -10,8 +9,10 @@ import {
   RefreshCw,
   Save,
   Search,
+  Settings2,
   TestTube2,
   Trash2,
+  X,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
@@ -108,7 +109,9 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
     }
   }
 
-  async function togglePlatform(platform: MessagingPlatformInfo): Promise<void> {
+  async function togglePlatform(
+    platform: MessagingPlatformInfo,
+  ): Promise<void> {
     const nextEnabled = !platform.enabled;
     setBusyPlatform(platform.id);
     setMessages((prev) => ({ ...prev, [platform.id]: null }));
@@ -378,7 +381,7 @@ function PlatformCard({
   showAdvanced,
   visibleKeys,
 }: PlatformCardProps): React.JSX.Element {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [pendingRiskKey, setPendingRiskKey] = useState<string | null>(null);
   const visibleFields = platform.env_vars.filter(
     (field) => showAdvanced || !field.advanced || field.is_set,
@@ -391,16 +394,24 @@ function PlatformCard({
   const status = platformStateLabel(platform);
   const detailsLabel = platform.configured ? "Details" : "Configure";
 
+  const closeModal = useCallback(() => {
+    setModalOpen(false);
+    setPendingRiskKey(null);
+  }, []);
+
+  // Close the modal on Escape, matching the rest of the app's modals.
   useEffect(() => {
-    if (hasDraft || message || pendingRiskKey) {
-      setDetailsOpen(true);
-    }
-  }, [hasDraft, message, pendingRiskKey]);
+    if (!modalOpen) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") closeModal();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modalOpen, closeModal]);
 
   function requestToolsetToggle(toolset: MessagingToolsetInfo): void {
     if (!toolset.enabled && toolset.risk === "high") {
       setPendingRiskKey(toolset.key);
-      setDetailsOpen(true);
       return;
     }
     void onToggleToolset(platform, toolset);
@@ -462,173 +473,258 @@ function PlatformCard({
           </button>
           <button
             className={`btn-ghost gateway-icon-action gateway-details-toggle${
-              detailsOpen ? " open" : ""
-            }${message && !message.ok ? " warn" : ""}`}
-            onClick={() => setDetailsOpen((open) => !open)}
-            title={detailsOpen ? "Hide platform details" : "Show platform details"}
+              message && !message.ok ? " warn" : ""
+            }`}
+            onClick={() => setModalOpen(true)}
+            title={`${detailsLabel} ${platform.name}`}
           >
-            <ChevronDown size={15} />
-            {detailsOpen ? "Hide" : detailsLabel}
+            <Settings2 size={15} />
+            {detailsLabel}
           </button>
         </div>
         <div className="gateway-platform-actions-right">
-          <button
-            className="btn btn-primary btn-sm gateway-save-button"
-            disabled={!hasDraft || isBusy}
-            onClick={() => void onSave(platform)}
-          >
-            <Save size={15} />
-            Save
-          </button>
+          {hasDraft && (
+            <span
+              className="gateway-unsaved-hint"
+              title="You have unsaved changes"
+            >
+              Unsaved
+            </span>
+          )}
         </div>
       </div>
 
-      {detailsOpen && (
-        <div className="gateway-platform-details">
-          {message && (
-            <div
-              className={`gateway-test-message ${message.ok ? "ok" : "warn"}`}
-            >
-              {message.message}
-            </div>
-          )}
+      {message && (
+        <div className={`gateway-test-message ${message.ok ? "ok" : "warn"}`}>
+          {message.message}
+        </div>
+      )}
 
-          {platform.toolsets?.length > 0 && (
-            <div className="gateway-capabilities">
-              <div className="gateway-detail-heading">Capabilities</div>
-              <div className="gateway-capability-list">
-                {platform.toolsets.map((toolset) => (
-                  <div
-                    className={`gateway-capability-row${
-                      toolset.risk === "high" ? " high-risk" : ""
-                    }`}
-                    key={toolset.key}
-                  >
-                    <div className="gateway-capability-copy">
-                      <div className="gateway-capability-title">
-                        <span>{toolset.label}</span>
-                        <code>{toolset.key}</code>
-                        {toolset.risk === "high" && (
-                          <span className="gateway-risk-pill">High risk</span>
-                        )}
-                      </div>
-                      <div className="gateway-capability-description">
-                        {toolset.description}
-                      </div>
-                    </div>
-                    <label
-                      className="tools-toggle"
-                      title={`${toolset.enabled ? "Disable" : "Enable"} ${toolset.label}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={toolset.enabled}
-                        disabled={isBusy}
-                        onChange={() => requestToolsetToggle(toolset)}
-                      />
-                      <span className="tools-toggle-track" />
-                    </label>
-                    {pendingRiskKey === toolset.key && (
-                      <div className="gateway-risk-warning">
-                        <AlertTriangle size={16} />
-                        <div>
-                          <strong>Strong warning</strong>
-                          <p>
-                            {toolset.label} lets this messaging platform drive
-                            sensitive local tools. Enable it only for trusted,
-                            private channels and known users.
-                          </p>
-                          <div className="gateway-risk-actions">
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => setPendingRiskKey(null)}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              className="btn btn-danger btn-sm"
-                              disabled={isBusy}
-                              onClick={() => {
-                                setPendingRiskKey(null);
-                                void onToggleToolset(platform, toolset);
-                              }}
-                            >
-                              Enable anyway
-                            </button>
+      {modalOpen && (
+        <div
+          className="gateway-modal-overlay"
+          onClick={closeModal}
+          role="presentation"
+        >
+          <div
+            className="gateway-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Configure ${platform.name}`}
+          >
+            <div className="gateway-modal-header">
+              <div className="gateway-modal-title">
+                <BrandLogo provider={platform.id} size={24} />
+                <span>{platform.name}</span>
+                <span className={`gateway-state-pill ${status.tone}`}>
+                  {status.icon === "ok" ? (
+                    <CheckCircle2 size={13} />
+                  ) : (
+                    <CircleDashed size={13} />
+                  )}
+                  {status.label}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={closeModal}
+                aria-label="Close"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="gateway-modal-body">
+              <p className="gateway-modal-desc">{platform.description}</p>
+              {message && (
+                <div
+                  className={`gateway-test-message ${
+                    message.ok ? "ok" : "warn"
+                  }`}
+                >
+                  {message.message}
+                </div>
+              )}
+
+              {platform.toolsets?.length > 0 && (
+                <div className="gateway-capabilities">
+                  <div className="gateway-detail-heading">Capabilities</div>
+                  <div className="gateway-capability-list">
+                    {platform.toolsets.map((toolset) => (
+                      <div
+                        className={`gateway-capability-row${
+                          toolset.risk === "high" ? " high-risk" : ""
+                        }`}
+                        key={toolset.key}
+                      >
+                        <div className="gateway-capability-copy">
+                          <div className="gateway-capability-title">
+                            <span>{toolset.label}</span>
+                            <code>{toolset.key}</code>
+                            {toolset.risk === "high" && (
+                              <span className="gateway-risk-pill">
+                                High risk
+                              </span>
+                            )}
+                          </div>
+                          <div className="gateway-capability-description">
+                            {toolset.description}
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {visibleFields.length > 0 && (
-            <div className="settings-platform-fields gateway-platform-fields">
-              {visibleFields.map((field) => {
-                const key = `${platform.id}:${field.key}`;
-                const isVisible = visibleKeys.has(key);
-                const isCleared = clearedKeys.has(key);
-                const placeholder = isCleared
-                  ? "Cleared when saved"
-                  : field.redacted_value || field.prompt;
-                return (
-                  <div key={field.key} className="settings-field gateway-field">
-                    <label className="settings-field-label gateway-field-label">
-                      <span>
-                        {field.prompt}
-                        {field.required && (
-                          <span className="gateway-required-dot">*</span>
+                        <label
+                          className="tools-toggle"
+                          title={`${toolset.enabled ? "Disable" : "Enable"} ${toolset.label}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={toolset.enabled}
+                            disabled={isBusy}
+                            onChange={() => requestToolsetToggle(toolset)}
+                          />
+                          <span className="tools-toggle-track" />
+                        </label>
+                        {pendingRiskKey === toolset.key && (
+                          <div className="gateway-risk-warning">
+                            <AlertTriangle size={16} />
+                            <div>
+                              <strong>Strong warning</strong>
+                              <p>
+                                {toolset.label} lets this messaging platform
+                                drive sensitive local tools. Enable it only for
+                                trusted, private channels and known users.
+                              </p>
+                              <div className="gateway-risk-actions">
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => setPendingRiskKey(null)}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  className="btn btn-danger btn-sm"
+                                  disabled={isBusy}
+                                  onClick={() => {
+                                    setPendingRiskKey(null);
+                                    void onToggleToolset(platform, toolset);
+                                  }}
+                                >
+                                  Enable anyway
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         )}
-                      </span>
-                      <code>{field.key}</code>
-                    </label>
-                    <div className="settings-input-row gateway-input-row">
-                      <input
-                        className="input"
-                        type={
-                          field.is_password && !isVisible ? "password" : "text"
-                        }
-                        value={draft[field.key] ?? ""}
-                        onChange={(event) =>
-                          onChange(platform.id, field, event.target.value)
-                        }
-                        placeholder={placeholder}
-                      />
-                      {field.is_password && (
-                        <button
-                          className="btn-ghost settings-toggle-btn"
-                          onClick={() =>
-                            onToggleVisibility(platform.id, field.key)
-                          }
-                          title={isVisible ? "Hide value" : "Show typed value"}
-                        >
-                          {isVisible ? <EyeOff size={15} /> : <Eye size={15} />}
-                        </button>
-                      )}
-                      {field.is_set && (
-                        <button
-                          className="btn-ghost settings-toggle-btn"
-                          onClick={() => onClear(platform.id, field.key)}
-                          title="Clear saved value"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </div>
-                    <div className="settings-field-hint">
-                      {field.description}
-                      {field.advanced && (
-                        <span className="gateway-advanced-badge">Advanced</span>
-                      )}
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              )}
+
+              {visibleFields.length > 0 && (
+                <div className="settings-platform-fields gateway-platform-fields">
+                  {visibleFields.map((field) => {
+                    const key = `${platform.id}:${field.key}`;
+                    const isVisible = visibleKeys.has(key);
+                    const isCleared = clearedKeys.has(key);
+                    const placeholder = isCleared
+                      ? "Cleared when saved"
+                      : field.redacted_value || field.prompt;
+                    return (
+                      <div
+                        key={field.key}
+                        className="settings-field gateway-field"
+                      >
+                        <label className="settings-field-label gateway-field-label">
+                          <span>
+                            {field.prompt}
+                            {field.required && (
+                              <span className="gateway-required-dot">*</span>
+                            )}
+                          </span>
+                          <code>{field.key}</code>
+                        </label>
+                        <div className="settings-input-row gateway-input-row">
+                          <input
+                            className="input"
+                            type={
+                              field.is_password && !isVisible
+                                ? "password"
+                                : "text"
+                            }
+                            value={draft[field.key] ?? ""}
+                            onChange={(event) =>
+                              onChange(platform.id, field, event.target.value)
+                            }
+                            placeholder={placeholder}
+                          />
+                          {field.is_password && (
+                            <button
+                              className="btn-ghost settings-toggle-btn"
+                              onClick={() =>
+                                onToggleVisibility(platform.id, field.key)
+                              }
+                              title={
+                                isVisible ? "Hide value" : "Show typed value"
+                              }
+                            >
+                              {isVisible ? (
+                                <EyeOff size={15} />
+                              ) : (
+                                <Eye size={15} />
+                              )}
+                            </button>
+                          )}
+                          {field.is_set && (
+                            <button
+                              className="btn-ghost settings-toggle-btn"
+                              onClick={() => onClear(platform.id, field.key)}
+                              title="Clear saved value"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+                        <div className="settings-field-hint">
+                          {field.description}
+                          {field.advanced && (
+                            <span className="gateway-advanced-badge">
+                              Advanced
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+
+            <div className="gateway-modal-footer">
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={isBusy}
+                onClick={() => void onTest(platform)}
+              >
+                <TestTube2 size={15} />
+                Test
+              </button>
+              <div className="gateway-modal-footer-spacer" />
+              <button className="btn btn-secondary btn-sm" onClick={closeModal}>
+                Close
+              </button>
+              <button
+                className="btn btn-primary btn-sm gateway-save-button"
+                disabled={!hasDraft || isBusy}
+                onClick={() => void onSave(platform)}
+              >
+                <Save size={15} />
+                Save
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
