@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useI18n } from "../../components/useI18n";
+import { Wrench, Plug, Puzzle, Search, X } from "../../assets/icons";
+import Skills from "../Skills/Skills";
+import RemoteNotice from "../../components/RemoteNotice";
 
 interface ToolsetInfo {
   key: string;
@@ -11,7 +14,12 @@ interface ToolsetInfo {
 interface ToolsProps {
   profile?: string;
   showPlatformToolsets?: boolean;
+  remoteMode?: boolean;
+  // Navigate to the Discover → Skills tab (used by the embedded Skills tab).
+  onBrowseSkills?: () => void;
 }
+
+type CapabilityTab = "tools" | "mcp" | "skills";
 
 // SVG icons per toolset key
 const TOOL_ICONS: Record<string, React.JSX.Element> = {
@@ -344,7 +352,11 @@ function IconButton({
   );
 }
 
-function TinyIcon({ kind }: { kind: "plus" | "refresh" | "trash" | "test" | "server" | "x" | "install" }): React.JSX.Element {
+function TinyIcon({
+  kind,
+}: {
+  kind: "plus" | "refresh" | "trash" | "test" | "server" | "x" | "install";
+}): React.JSX.Element {
   if (kind === "plus") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden>
@@ -400,8 +412,13 @@ function TinyIcon({ kind }: { kind: "plus" | "refresh" | "trash" | "test" | "ser
 function Tools({
   profile,
   showPlatformToolsets = true,
+  remoteMode = false,
+  onBrowseSkills,
 }: ToolsProps): React.JSX.Element {
   const { t } = useI18n();
+  const [activeTab, setActiveTab] = useState<CapabilityTab>(
+    showPlatformToolsets ? "tools" : "mcp",
+  );
   const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
@@ -409,11 +426,8 @@ function Tools({
   const [mcpMessage, setMcpMessage] = useState("");
   const [mcpBusy, setMcpBusy] = useState("");
   const [showAddMcp, setShowAddMcp] = useState(false);
-  const [showCatalog, setShowCatalog] = useState(false);
   const [addForm, setAddForm] = useState<AddMcpForm>(EMPTY_ADD_FORM);
-  const [catalogEntries, setCatalogEntries] = useState<McpCatalogEntry[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogError, setCatalogError] = useState("");
+  const [mcpSearch, setMcpSearch] = useState("");
 
   const loadToolsets = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -566,7 +580,9 @@ function Tools({
       setCatalogEntries(result.entries);
       setCatalogError(result.error || "");
     } catch (err) {
-      setCatalogError((err as Error).message || t("tools.mcpCatalogLoadFailed"));
+      setCatalogError(
+        (err as Error).message || t("tools.mcpCatalogLoadFailed"),
+      );
     } finally {
       setCatalogLoading(false);
     }
@@ -616,166 +632,206 @@ function Tools({
   }
 
   return (
-    <div className="tools-container">
-      {showPlatformToolsets && (
-        <>
-          <div className="tools-header">
-            <h2 className="tools-title">{t("tools.title")}</h2>
-            <p className="tools-subtitle">{t("tools.subtitle")}</p>
-          </div>
+    <div className="tools-screen">
+      <div className="tools-tabs">
+        {showPlatformToolsets && (
+          <button
+            type="button"
+            className={`tools-tab ${activeTab === "tools" ? "active" : ""}`}
+            onClick={() => setActiveTab("tools")}
+          >
+            {t("tools.title")}
+            <span className="tools-tab-count">{toolsets.length}</span>
+          </button>
+        )}
+        <button
+          type="button"
+          className={`tools-tab ${activeTab === "mcp" ? "active" : ""}`}
+          onClick={() => setActiveTab("mcp")}
+        >
+          {t("tools.mcpServers")}
+          <span className="tools-tab-count">{mcpServers.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`tools-tab ${activeTab === "skills" ? "active" : ""}`}
+          onClick={() => setActiveTab("skills")}
+        >
+          {t("navigation.skills")}
+        </button>
+      </div>
 
-          <div className="tools-grid">
-            {toolsets.map((t) => (
-              <div
-                key={t.key}
-                className={`tools-card ${t.enabled ? "tools-card-enabled" : "tools-card-disabled"}`}
-                onClick={() => handleToggle(t.key, t.enabled)}
-              >
-                <div className="tools-card-top">
-                  <ToolIcon toolKey={t.key} />
-                  <label
-                    className="tools-toggle"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={t.enabled}
-                      onChange={() => handleToggle(t.key, t.enabled)}
-                    />
-                    <span className="tools-toggle-track" />
-                  </label>
-                </div>
-                <div className="tools-card-label">{t.label}</div>
-                <div className="tools-card-description">{t.description}</div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      <div className="tools-section">
-        <div className="tools-header tools-header-row">
-          <div>
-            <h2 className="tools-title">{t("tools.mcpServers")}</h2>
-            <p className="tools-subtitle">{t("tools.mcpDescription")}</p>
-          </div>
-          <div className="tools-header-actions">
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={openCatalog}
-            >
-              <TinyIcon kind="install" />
-              {t("tools.mcpBrowseCatalog")}
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => void reloadMcp()}
-            >
-              <TinyIcon kind="refresh" />
-              {t("tools.refresh")}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => setShowAddMcp(true)}
-            >
-              <TinyIcon kind="plus" />
-              {t("tools.mcpAddServer")}
-            </button>
-          </div>
+      {activeTab === "skills" ? (
+        <div className="tools-skills-pane">
+          {remoteMode ? (
+            <RemoteNotice feature="Skills" />
+          ) : (
+            <Skills profile={profile} embedded onBrowse={onBrowseSkills} />
+          )}
         </div>
-
-        {mcpError && <div className="tools-error">{mcpError}</div>}
-        {mcpMessage && <div className="tools-success">{mcpMessage}</div>}
-
-        {mcpServers.length === 0 ? (
-          <div className="tools-empty">
-            <div className="tools-card-icon">
-              <TinyIcon kind="server" />
-            </div>
-            <div>
-              <div className="tools-card-label">{t("tools.mcpEmptyTitle")}</div>
-              <div className="tools-card-description">
-                {t("tools.mcpEmptyDescription")}
+      ) : (
+        <div className="tools-pane">
+          {showPlatformToolsets && activeTab === "tools" && (
+            <>
+              <div className="tools-grid">
+                {toolsets.map((t) => (
+                  <div
+                    key={t.key}
+                    className={`tools-card ${t.enabled ? "tools-card-enabled" : "tools-card-disabled"}`}
+                    onClick={() => handleToggle(t.key, t.enabled)}
+                  >
+                    <div className="tools-card-top">
+                      <ToolIcon toolKey={t.key} />
+                      <label
+                        className="tools-toggle"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={t.enabled}
+                          onChange={() => handleToggle(t.key, t.enabled)}
+                        />
+                        <span className="tools-toggle-track" />
+                      </label>
+                    </div>
+                    <div className="tools-card-label">{t.label}</div>
+                    <div className="tools-card-description">
+                      {t.description}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-          </div>
-        ) : (
-          <div className="tools-grid">
-            {mcpServers.map((s) => (
-              <div
-                key={s.name}
-                className={`tools-card tools-mcp-card ${s.enabled ? "tools-card-enabled" : "tools-card-disabled"}`}
-              >
-                <div className="tools-card-top">
+            </>
+          )}
+
+          {activeTab === "mcp" && (
+            <div className="tools-section">
+              <div className="tools-header tools-header-row">
+                <div className="tools-header-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={openCatalog}
+                  >
+                    <TinyIcon kind="install" />
+                    {t("tools.mcpBrowseCatalog")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => void reloadMcp()}
+                  >
+                    <TinyIcon kind="refresh" />
+                    {t("tools.refresh")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => setShowAddMcp(true)}
+                  >
+                    <TinyIcon kind="plus" />
+                    {t("tools.mcpAddServer")}
+                  </button>
+                </div>
+              </div>
+
+              {mcpError && <div className="tools-error">{mcpError}</div>}
+              {mcpMessage && <div className="tools-success">{mcpMessage}</div>}
+
+              {mcpServers.length === 0 ? (
+                <div className="tools-empty">
                   <div className="tools-card-icon">
                     <TinyIcon kind="server" />
                   </div>
-                  <div className="tools-mcp-actions">
-                    <IconButton
-                      title={t("tools.mcpTest")}
-                      disabled={mcpBusy === `test:${s.name}`}
-                      onClick={() => void handleTestMcp(s.name)}
-                    >
-                      <TinyIcon kind="test" />
-                    </IconButton>
-                    <IconButton
-                      title={t("tools.mcpRemove")}
-                      danger
-                      disabled={mcpBusy === `remove:${s.name}`}
-                      onClick={() => void handleRemoveMcp(s.name)}
-                    >
-                      <TinyIcon kind="trash" />
-                    </IconButton>
-                    <label
-                      className="tools-toggle"
-                      title={
-                        s.enabled
-                          ? t("tools.mcpDisable")
-                          : t("tools.mcpEnable")
-                      }
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={s.enabled}
-                        disabled={mcpBusy === `toggle:${s.name}`}
-                        onChange={() =>
-                          void handleMcpEnabled(s.name, !s.enabled)
-                        }
-                      />
-                      <span className="tools-toggle-track" />
-                    </label>
+                  <div>
+                    <div className="tools-card-label">
+                      {t("tools.mcpEmptyTitle")}
+                    </div>
+                    <div className="tools-card-description">
+                      {t("tools.mcpEmptyDescription")}
+                    </div>
                   </div>
                 </div>
-                <div className="tools-card-label">{s.name}</div>
-                <div className="tools-card-description">
-                  <span className="tools-mcp-pill">
-                    {s.type === "http"
-                      ? t("tools.http")
-                      : s.type === "stdio"
-                        ? t("tools.stdio")
-                        : t("tools.unknown")}
-                  </span>
-                  {!s.enabled && (
-                    <span className="tools-mcp-disabled">
-                      {t("tools.disabled")}
-                    </span>
-                  )}
+              ) : (
+                <div className="tools-grid">
+                  {mcpServers.map((s) => (
+                    <div
+                      key={s.name}
+                      className={`tools-card tools-mcp-card ${s.enabled ? "tools-card-enabled" : "tools-card-disabled"}`}
+                    >
+                      <div className="tools-card-top">
+                        <div className="tools-card-icon">
+                          <TinyIcon kind="server" />
+                        </div>
+                        <div className="tools-mcp-actions">
+                          <IconButton
+                            title={t("tools.mcpTest")}
+                            disabled={mcpBusy === `test:${s.name}`}
+                            onClick={() => void handleTestMcp(s.name)}
+                          >
+                            <TinyIcon kind="test" />
+                          </IconButton>
+                          <IconButton
+                            title={t("tools.mcpRemove")}
+                            danger
+                            disabled={mcpBusy === `remove:${s.name}`}
+                            onClick={() => void handleRemoveMcp(s.name)}
+                          >
+                            <TinyIcon kind="trash" />
+                          </IconButton>
+                          <label
+                            className="tools-toggle"
+                            title={
+                              s.enabled
+                                ? t("tools.mcpDisable")
+                                : t("tools.mcpEnable")
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={s.enabled}
+                              disabled={mcpBusy === `toggle:${s.name}`}
+                              onChange={() =>
+                                void handleMcpEnabled(s.name, !s.enabled)
+                              }
+                            />
+                            <span className="tools-toggle-track" />
+                          </label>
+                        </div>
+                      </div>
+                      <div className="tools-card-label">{s.name}</div>
+                      <div className="tools-card-description">
+                        <span className="tools-mcp-pill">
+                          {s.type === "http"
+                            ? t("tools.http")
+                            : s.type === "stdio"
+                              ? t("tools.stdio")
+                              : t("tools.unknown")}
+                        </span>
+                        {!s.enabled && (
+                          <span className="tools-mcp-disabled">
+                            {t("tools.disabled")}
+                          </span>
+                        )}
+                      </div>
+                      <div className="tools-card-description tools-mcp-detail">
+                        {s.detail || t("tools.mcpNoDetail")}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="tools-card-description tools-mcp-detail">
-                  {s.detail || t("tools.mcpNoDetail")}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {showAddMcp && (
-        <div className="models-modal-overlay" onClick={() => setShowAddMcp(false)}>
+        <div
+          className="models-modal-overlay"
+          onClick={() => setShowAddMcp(false)}
+        >
           <div className="models-modal" onClick={(e) => e.stopPropagation()}>
             <div className="models-modal-header">
               <h2 className="models-modal-title">{t("tools.mcpAddServer")}</h2>
@@ -790,7 +846,9 @@ function Tools({
             </div>
             <div className="models-modal-body">
               <div className="models-modal-field">
-                <label className="models-modal-label">{t("tools.mcpName")}</label>
+                <label className="models-modal-label">
+                  {t("tools.mcpName")}
+                </label>
                 <input
                   className="input"
                   value={addForm.name}
@@ -821,7 +879,9 @@ function Tools({
               {addForm.type === "http" ? (
                 <>
                   <div className="models-modal-field">
-                    <label className="models-modal-label">{t("tools.mcpUrl")}</label>
+                    <label className="models-modal-label">
+                      {t("tools.mcpUrl")}
+                    </label>
                     <input
                       className="input"
                       value={addForm.url}
@@ -889,7 +949,9 @@ function Tools({
                     </span>
                   </div>
                   <div className="models-modal-field">
-                    <label className="models-modal-label">{t("tools.mcpEnv")}</label>
+                    <label className="models-modal-label">
+                      {t("tools.mcpEnv")}
+                    </label>
                     <textarea
                       className="input tools-textarea"
                       value={addForm.envText}
@@ -924,71 +986,6 @@ function Tools({
               >
                 {t("tools.mcpAddServer")}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCatalog && (
-        <div className="models-modal-overlay" onClick={() => setShowCatalog(false)}>
-          <div
-            className="models-modal tools-catalog-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="models-modal-header">
-              <h2 className="models-modal-title">
-                {t("tools.mcpBrowseCatalog")}
-              </h2>
-              <button
-                type="button"
-                className="tools-icon-btn"
-                aria-label={t("tools.close")}
-                onClick={() => setShowCatalog(false)}
-              >
-                <TinyIcon kind="x" />
-              </button>
-            </div>
-            <div className="models-modal-body">
-              {catalogLoading ? (
-                <div className="tools-card-description">
-                  {t("tools.mcpCatalogLoading")}
-                </div>
-              ) : catalogError ? (
-                <div className="tools-error">{catalogError}</div>
-              ) : catalogEntries.length === 0 ? (
-                <div className="tools-card-description">
-                  {t("tools.mcpCatalogEmpty")}
-                </div>
-              ) : (
-                <div className="tools-catalog-list">
-                  {catalogEntries.map((entry) => (
-                    <div key={entry.name} className="tools-catalog-row">
-                      <div>
-                        <div className="tools-card-label">{entry.name}</div>
-                        <div className="tools-card-description">
-                          {entry.description}
-                        </div>
-                        <div className="tools-card-description">
-                          {entry.transport} · {entry.authType}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        disabled={
-                          entry.installed || mcpBusy === `install:${entry.name}`
-                        }
-                        onClick={() => void handleInstallCatalog(entry)}
-                      >
-                        <TinyIcon kind="install" />
-                        {entry.installed
-                          ? t("tools.mcpInstalledStatus")
-                          : t("tools.mcpInstall")}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         </div>
