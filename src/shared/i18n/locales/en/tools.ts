@@ -6,6 +6,10 @@ export default {
     label: "Web Search",
     description: "Search the web and extract content from URLs",
   },
+  x_search: {
+    label: "X Search",
+    description: "Search posts and content on X (Twitter)",
+  },
   browser: {
     label: "Browser",
     description: "Navigate, click, type, and interact with web pages",
@@ -22,10 +26,18 @@ export default {
     label: "Code Execution",
     description: "Execute Python and shell code directly",
   },
+  computer_use: {
+    label: "Computer Use",
+    description: "Control the desktop—move the mouse, click, and type",
+  },
   vision: { label: "Vision", description: "Analyze images and visual content" },
   image_gen: {
     label: "Image Generation",
     description: "Generate images with DALL-E and other models",
+  },
+  video_gen: {
+    label: "Video Generation",
+    description: "Generate videos from text or image prompts",
   },
   tts: { label: "Text-to-Speech", description: "Convert text to spoken audio" },
   skills: {

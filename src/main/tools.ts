@@ -23,6 +23,11 @@ const TOOLSET_DEFS: {
     descriptionKey: "tools.web.description",
   },
   {
+    key: "x_search",
+    labelKey: "tools.x_search.label",
+    descriptionKey: "tools.x_search.description",
+  },
+  {
     key: "browser",
     labelKey: "tools.browser.label",
     descriptionKey: "tools.browser.description",
@@ -43,6 +48,11 @@ const TOOLSET_DEFS: {
     descriptionKey: "tools.code_execution.description",
   },
   {
+    key: "computer_use",
+    labelKey: "tools.computer_use.label",
+    descriptionKey: "tools.computer_use.description",
+  },
+  {
     key: "vision",
     labelKey: "tools.vision.label",
     descriptionKey: "tools.vision.description",
@@ -51,6 +61,11 @@ const TOOLSET_DEFS: {
     key: "image_gen",
     labelKey: "tools.image_gen.label",
     descriptionKey: "tools.image_gen.description",
+  },
+  {
+    key: "video_gen",
+    labelKey: "tools.video_gen.label",
+    descriptionKey: "tools.video_gen.description",
   },
   {
     key: "tts",

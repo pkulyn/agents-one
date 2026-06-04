@@ -38,6 +38,11 @@ const TOOL_ICONS: Record<string, React.JSX.Element> = {
       <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
     </svg>
   ),
+  x_search: (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z" />
+    </svg>
+  ),
   browser: (
     <svg
       viewBox="0 0 24 24"
@@ -91,6 +96,19 @@ const TOOL_ICONS: Record<string, React.JSX.Element> = {
       <line x1="14" y1="4" x2="10" y2="20" />
     </svg>
   ),
+  computer_use: (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </svg>
+  ),
   vision: (
     <svg
       viewBox="0 0 24 24"
@@ -116,6 +134,19 @@ const TOOL_ICONS: Record<string, React.JSX.Element> = {
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <circle cx="8.5" cy="8.5" r="1.5" />
       <path d="m21 15-5-5L5 21" />
+    </svg>
+  ),
+  video_gen: (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m22 8-6 4 6 4V8Z" />
+      <rect x="2" y="6" width="14" height="12" rx="2" />
     </svg>
   ),
   tts: (
