@@ -51,6 +51,7 @@ import {
   sendMessage,
   transcribeAudio,
   startGateway,
+  startGatewayDetailed,
   stopGateway,
   isGatewayRunning,
   testRemoteConnection,
@@ -1070,15 +1071,20 @@ function setupIPC(): void {
     const conn = getConnectionConfig();
     if (conn.mode === "ssh" && conn.ssh) {
       await sshStartGateway(conn.ssh);
-      return true;
+      return { success: true, running: true };
     }
     if (conn.mode === "remote") {
       // The remote server runs its own gateway; nothing to start locally.
       // Without this guard we'd fall through to `startGateway()` and
       // spawn a non-existent local hermes-agent (issue #266).
-      return false;
+      return {
+        success: false,
+        running: false,
+        error:
+          "Remote mode points at an already-running Hermes server. Start or restart the gateway on that remote host.",
+      };
     }
-    return startGateway();
+    return startGatewayDetailed();
   });
   ipcMain.handle("stop-gateway", async () => {
     const conn = getConnectionConfig();

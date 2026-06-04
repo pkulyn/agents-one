@@ -30,6 +30,8 @@ type PlatformMessage = Record<string, MessagingPlatformTestResponse | null>;
 function Gateway({ profile }: { profile?: string }): React.JSX.Element {
   const { t } = useI18n();
   const [gatewayRunning, setGatewayRunning] = useState(false);
+  const [gatewayBusy, setGatewayBusy] = useState(false);
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<MessagingPlatformsResponse | null>(
     null,
   );
@@ -52,6 +54,8 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
         window.hermesAPI.getMessagingPlatforms(profile),
       ]);
       setGatewayRunning(gwStatus);
+      // Clear any stale start-failure banner once the gateway is confirmed up.
+      if (gwStatus) setGatewayError(null);
       setCatalog(platforms);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
@@ -95,16 +99,56 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
       clearTimeout(gatewayStatusTimeoutRef.current);
       gatewayStatusTimeoutRef.current = null;
     }
+    setGatewayBusy(true);
+    setGatewayError(null);
     if (gatewayRunning) {
-      await window.hermesAPI.stopGateway();
-      setGatewayRunning(false);
+      try {
+        await window.hermesAPI.stopGateway();
+        setGatewayRunning(false);
+      } catch (err) {
+        setGatewayError(
+          err instanceof Error ? err.message : t("gateway.stopFailed"),
+        );
+      } finally {
+        setGatewayBusy(false);
+      }
     } else {
-      const started = await window.hermesAPI.startGateway();
-      setGatewayRunning(started);
-      gatewayStatusTimeoutRef.current = setTimeout(() => {
-        void loadConfig();
-        gatewayStatusTimeoutRef.current = null;
-      }, 5000);
+      try {
+        const result = await window.hermesAPI.startGateway();
+        setGatewayRunning(result.running);
+        if (!result.success) {
+          setGatewayError(
+            result.logPath
+              ? `${result.error || t("gateway.startFailed")} ${t("gateway.checkLog")} ${result.logPath}`
+              : result.error || t("gateway.startFailed"),
+          );
+          return;
+        }
+        gatewayStatusTimeoutRef.current = setTimeout(() => {
+          // Refresh status + platform catalog once the adapters have had a
+          // moment to come up; surface an error if it exited immediately.
+          void window.hermesAPI.gatewayStatus().then((status) => {
+            setGatewayRunning(status);
+            if (status) {
+              void loadConfig();
+            } else {
+              setGatewayError(
+                result.logPath
+                  ? `${t("gateway.startExited")} ${t("gateway.checkLog")} ${result.logPath}`
+                  : t("gateway.startExited"),
+              );
+            }
+          });
+          gatewayStatusTimeoutRef.current = null;
+        }, 5000);
+      } catch (err) {
+        setGatewayRunning(false);
+        setGatewayError(
+          err instanceof Error ? err.message : t("gateway.startFailed"),
+        );
+      } finally {
+        setGatewayBusy(false);
+      }
     }
   }
 
@@ -273,10 +317,20 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => void toggleGateway()}
+              disabled={gatewayBusy}
             >
-              {gatewayRunning ? t("common.stop") : t("common.start")}
+              {gatewayBusy
+                ? t("gateway.working")
+                : gatewayRunning
+                  ? t("common.stop")
+                  : t("common.start")}
             </button>
           </div>
+          {gatewayError && (
+            <div className="settings-gateway-error" role="alert">
+              {gatewayError}
+            </div>
+          )}
           <div className="settings-field-hint">
             Configure platforms here. Saving changes restarts the gateway when
             needed so adapters pick up the latest credentials.

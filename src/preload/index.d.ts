@@ -70,6 +70,14 @@ interface ConfigFixLogEntry {
   detail?: string;
 }
 
+interface GatewayStartResult {
+  success: boolean;
+  running: boolean;
+  alreadyRunning?: boolean;
+  error?: string;
+  logPath?: string;
+}
+
 /**
  * Shape of a credential-pool entry as the upstream engine expects
  * (issue #367). Old entries written by the renderer with just
@@ -364,7 +372,7 @@ interface HermesAPI {
   onChatError: (callback: (error: string) => void) => () => void;
 
   // Gateway
-  startGateway: () => Promise<boolean>;
+  startGateway: () => Promise<GatewayStartResult>;
   stopGateway: () => Promise<boolean>;
   gatewayStatus: () => Promise<boolean>;
 

@@ -4196,6 +4196,18 @@ body {
   color: var(--text-muted);
 }
 
+.settings-gateway-error {
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
+  border-radius: var(--radius);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
 /* Platform cards in Gateway */
 .settings-platform-card {
   border: 1px solid var(--border);
