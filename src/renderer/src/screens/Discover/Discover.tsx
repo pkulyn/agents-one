@@ -6,6 +6,7 @@ import {
   Check,
   X,
   Plus,
+  Trash,
   ExternalLink,
   Puzzle,
   Plug,
@@ -39,10 +40,10 @@ const KINDS: { key: RegistryKind; icon: LucideIcon }[] = [
 ];
 
 // Per-kind setup action: distinct icon + i18n group so each card reads clearly
-// (Install a skill/workflow, Connect an MCP, Create an agent profile).
+// (Install a skill/mcp/workflow, Create an agent profile).
 const ACTION: Record<RegistryKind, { icon: LucideIcon; i18n: string }> = {
   skills: { icon: Download, i18n: "install" },
-  mcps: { icon: Plug, i18n: "connect" },
+  mcps: { icon: Download, i18n: "install" },
   agents: { icon: Plus, i18n: "create" },
   workflows: { icon: Download, i18n: "install" },
 };
@@ -92,6 +93,8 @@ export default function Discover({
   } | null>(null);
   const [detailData, setDetailData] = useState<RegistryDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Confirm step before removing an installed item from the detail dialog.
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
 
   const loadInstalled = useCallback(async () => {
     try {
@@ -226,8 +229,22 @@ export default function Discover({
     [communityList, matchesQuery],
   );
 
+  // Total available skills (registry + bundled, deduped) regardless of the
+  // active tab or search query — tab counts always show the full catalog size.
+  const skillsTotal = useMemo(() => {
+    const list = catalog.skills ?? [];
+    const seen = new Set([
+      ...list.map((i) => i.id),
+      ...list.map((i) => i.name),
+    ]);
+    const extra = bundledSkills.filter(
+      (b) => !seen.has(b.id) && !seen.has(b.name),
+    );
+    return list.length + extra.length;
+  }, [catalog, bundledSkills]);
+
   function tabCount(key: RegistryKind): number {
-    if (key === "skills") return items.length;
+    if (key === "skills") return skillsTotal;
     return (catalog[key] ?? []).length;
   }
 
@@ -264,12 +281,46 @@ export default function Discover({
     }
   }
 
+  // Remove an installed item. Only MCP servers support removal today
+  // (delete the server block from the active profile's config.yaml).
+  async function handleUninstall(
+    kind: RegistryKind,
+    item: RegistryItem,
+  ): Promise<void> {
+    if (kind !== "mcps") return;
+    const key = `${kind}:${item.id}`;
+    setActions((a) => ({ ...a, [key]: "working" }));
+    setActionError((e) => {
+      const next = { ...e };
+      delete next[key];
+      return next;
+    });
+    try {
+      const res = await window.hermesAPI.removeMcpServer(item.id, profile);
+      if (res.success) {
+        setActions((a) => ({ ...a, [key]: "idle" }));
+        setConfirmUninstall(false);
+        await loadInstalled();
+      } else {
+        setActions((a) => ({ ...a, [key]: "error" }));
+        if (res.error) setActionError((e) => ({ ...e, [key]: res.error! }));
+      }
+    } catch (err) {
+      setActions((a) => ({ ...a, [key]: "error" }));
+      setActionError((e) => ({
+        ...e,
+        [key]: err instanceof Error ? err.message : "Failed",
+      }));
+    }
+  }
+
   async function openItemDetail(
     kind: RegistryKind,
     item: RegistryItem,
   ): Promise<void> {
     setDetailItem({ kind, item });
     setDetailData(null);
+    setConfirmUninstall(false);
     setDetailLoading(true);
     try {
       const detail = await window.hermesAPI.fetchRegistryDetail(kind, item);
@@ -320,10 +371,45 @@ export default function Discover({
                   </div>
                   <div className="discover-modal-actions">
                     {done ? (
-                      <span className="discover-card-installed">
-                        <Check size={14} />
-                        {t(`discover.actions.${act.i18n}.done`)}
-                      </span>
+                      <>
+                        <span className="discover-card-installed">
+                          <Check size={14} />
+                          {t(`discover.actions.${act.i18n}.done`)}
+                        </span>
+                        {kind === "mcps" &&
+                          (confirmUninstall ? (
+                            <>
+                              <button
+                                className="btn btn-danger btn-sm"
+                                onClick={() => handleUninstall(kind, item)}
+                                disabled={itemState === "working"}
+                              >
+                                <Trash size={14} />
+                                {itemState === "working"
+                                  ? t("discover.uninstalling")
+                                  : t("discover.uninstallConfirm", {
+                                      name: item.name,
+                                    })}
+                              </button>
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setConfirmUninstall(false)}
+                                disabled={itemState === "working"}
+                              >
+                                {t("common.cancel")}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className="btn-ghost discover-uninstall-btn"
+                              onClick={() => setConfirmUninstall(true)}
+                              title={t("discover.uninstall")}
+                            >
+                              <Trash size={14} />
+                              {t("discover.uninstall")}
+                            </button>
+                          ))}
+                      </>
                     ) : (
                       <button
                         className="btn btn-primary btn-sm"
@@ -493,15 +579,24 @@ export default function Discover({
             const state = actions[key] ?? "idle";
             const done = state === "done" || isInstalled(tab, item);
             const action = ACTION[tab];
+            const ActionIcon = action.icon;
             const meta = [
               item.author && t("discover.by", { author: item.author }),
               item.version && `v${item.version}`,
             ].filter(Boolean);
             return (
-              <button
+              <div
                 key={key}
+                role="button"
+                tabIndex={0}
                 className="discover-card discover-card--clickable"
                 onClick={() => openItemDetail(tab, item)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openItemDetail(tab, item);
+                  }
+                }}
               >
                 <div className="discover-card-head">
                   <span className="discover-card-iconwrap">
@@ -525,15 +620,34 @@ export default function Discover({
                     ))}
                   </div>
                 )}
-                {done && (
-                  <div className="discover-card-footer">
+                {state === "error" && actionError[key] && (
+                  <div className="discover-card-error">{actionError[key]}</div>
+                )}
+                <div className="discover-card-footer">
+                  {done ? (
                     <span className="discover-card-installed">
                       <Check size={14} />
                       {t(`discover.actions.${action.i18n}.done`)}
                     </span>
-                  </div>
-                )}
-              </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm discover-install-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleInstall(tab, item);
+                      }}
+                      disabled={state === "working"}
+                      title={t("discover.targetProfile")}
+                    >
+                      <ActionIcon size={14} />
+                      {state === "working"
+                        ? t(`discover.actions.${action.i18n}.working`)
+                        : t(`discover.actions.${action.i18n}.setup`)}
+                    </button>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>

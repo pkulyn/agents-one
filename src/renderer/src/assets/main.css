@@ -6654,6 +6654,8 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   transition: border-color var(--transition);
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .discover-card:hover {
