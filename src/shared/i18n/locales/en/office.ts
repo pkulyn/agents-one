@@ -1,5 +1,11 @@
 export default {
   title: "Office",
+  subtitle: "Your agents at work, live in 3D",
+  loadingAgents: "Loading agents...",
+  refresh: "Refresh",
+  agentCount_one: "{{count}} agent",
+  agentCount_other: "{{count}} agents",
+  selectAgentHint: "Click an agent to focus on them",
   checkingStatus: "Checking Claw3D status...",
   setupTitle: "Set Up Claw3D",
   installTitle: "Setting Up Claw3D",
