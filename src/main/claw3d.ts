@@ -21,7 +21,9 @@ const ADAPTER_PID_FILE = join(HERMES_HOME, "claw3d-adapter.pid");
 const PORT_FILE = join(HERMES_HOME, "claw3d-port");
 const WS_URL_FILE = join(HERMES_HOME, "claw3d-ws-url");
 const DEFAULT_PORT = 3000;
-const DEFAULT_WS_URL = "ws://localhost:18789";
+const OLD_DEFAULT_WS_URL = "ws://localhost:18789";
+const DEFAULT_ADAPTER_PORT = 18989;
+const DEFAULT_WS_URL = `ws://localhost:${DEFAULT_ADAPTER_PORT}`;
 const CLAW3D_SETTINGS_DIR = join(homedir(), ".openclaw", "claw3d");
 
 let devServerProcess: ChildProcess | null = null;
@@ -223,6 +225,7 @@ export function getClaw3dPort(): number {
 function getSavedWsUrl(): string {
   try {
     const url = readFileSync(WS_URL_FILE, "utf-8").trim();
+    if (url === OLD_DEFAULT_WS_URL) return DEFAULT_WS_URL;
     return url || DEFAULT_WS_URL;
   } catch {
     return DEFAULT_WS_URL;
@@ -237,6 +240,19 @@ export function setClaw3dWsUrl(url: string): void {
 
 export function getClaw3dWsUrl(): string {
   return getSavedWsUrl();
+}
+
+export function adapterPortFromWsUrl(url: string): number {
+  try {
+    const parsed = new URL(url);
+    if (parsed.port) {
+      const port = Number(parsed.port);
+      if (Number.isInteger(port) && port > 0 && port <= 65535) return port;
+    }
+  } catch {
+    /* fall through */
+  }
+  return DEFAULT_ADAPTER_PORT;
 }
 
 /**
@@ -265,7 +281,9 @@ export function buildOfficeEnv(opts: {
   url: string;
   apiKey: string;
   model: string;
+  adapterPort?: number;
 }): string {
+  const adapterPort = opts.adapterPort ?? adapterPortFromWsUrl(opts.url);
   return [
     "# Auto-configured by Hermes Desktop",
     `PORT=${opts.port}`,
@@ -273,12 +291,65 @@ export function buildOfficeEnv(opts: {
     `NEXT_PUBLIC_GATEWAY_URL=${opts.url}`,
     `CLAW3D_GATEWAY_URL=${opts.url}`,
     `CLAW3D_GATEWAY_TOKEN=${opts.apiKey}`,
+    `CLAW3D_GATEWAY_ADAPTER_TYPE=hermes`,
     `HERMES_API_KEY=${opts.apiKey}`,
-    `HERMES_ADAPTER_PORT=18789`,
+    `HERMES_ADAPTER_PORT=${adapterPort}`,
     `HERMES_MODEL=${opts.model || "hermes"}`,
     `HERMES_AGENT_NAME=Hermes`,
     "",
   ].join("\n");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+export function buildOfficeSettings(
+  existing: Record<string, unknown>,
+  opts: { url: string; apiKey: string },
+): Record<string, unknown> {
+  const existingGateway = isRecord(existing.gateway) ? existing.gateway : {};
+  const existingProfiles = isRecord(existingGateway.profiles)
+    ? existingGateway.profiles
+    : {};
+  const hermesProfile = {
+    url: opts.url,
+    token: opts.apiKey,
+  };
+  return {
+    ...existing,
+    // Keep the legacy top-level fields for older Office builds and rollback.
+    adapter: "hermes",
+    url: opts.url,
+    token: opts.apiKey,
+    gateway: {
+      ...existingGateway,
+      url: opts.url,
+      token: opts.apiKey,
+      adapterType: "hermes",
+      profiles: {
+        ...existingProfiles,
+        hermes: hermesProfile,
+      },
+      lastKnownGood: {
+        url: opts.url,
+        token: opts.apiKey,
+        adapterType: "hermes",
+      },
+    },
+  };
+}
+
+export function writeOfficeFileIfChanged(filePath: string, content: string): boolean {
+  try {
+    if (existsSync(filePath) && readFileSync(filePath, "utf-8") === content) {
+      return false;
+    }
+  } catch {
+    /* If the existing file cannot be read, try to repair it below. */
+  }
+  safeWriteFile(filePath, content);
+  return true;
 }
 
 /**
@@ -287,6 +358,7 @@ export function buildOfficeEnv(opts: {
  */
 function writeClaw3dSettings(wsUrl?: string): void {
   const url = wsUrl || getSavedWsUrl();
+  const adapterPort = adapterPortFromWsUrl(url);
   // Gateway bearer token — empty string when the gateway has no API_SERVER_KEY.
   const apiKey = getApiServerKey();
 
@@ -303,13 +375,8 @@ function writeClaw3dSettings(wsUrl?: string): void {
       /* fresh */
     }
 
-    const settings = {
-      ...existing,
-      adapter: "hermes",
-      url,
-      token: apiKey,
-    };
-    safeWriteFile(settingsPath, JSON.stringify(settings, null, 2));
+    const settings = buildOfficeSettings(existing, { url, apiKey });
+    writeOfficeFileIfChanged(settingsPath, JSON.stringify(settings, null, 2));
   } catch {
     /* non-fatal */
   }
@@ -318,13 +385,14 @@ function writeClaw3dSettings(wsUrl?: string): void {
   try {
     if (existsSync(HERMES_OFFICE_DIR)) {
       const envPath = join(HERMES_OFFICE_DIR, ".env");
-      safeWriteFile(
+      writeOfficeFileIfChanged(
         envPath,
         buildOfficeEnv({
           port: getSavedPort(),
           url,
           apiKey,
           model: resolveOfficeModel(),
+          adapterPort,
         }),
       );
     }
@@ -333,10 +401,14 @@ function writeClaw3dSettings(wsUrl?: string): void {
   }
 }
 
-function checkPort(port: number): Promise<boolean> {
+function probeTcp(
+  port: number,
+  host = "127.0.0.1",
+  timeoutMs = 300,
+): Promise<boolean> {
   return new Promise((resolve) => {
-    const socket = createConnection({ port, host: "127.0.0.1" });
-    socket.setTimeout(300); // 300ms is plenty for localhost
+    const socket = createConnection({ port, host });
+    socket.setTimeout(timeoutMs);
     socket.on("connect", () => {
       socket.destroy();
       resolve(true); // port is in use
@@ -350,6 +422,10 @@ function checkPort(port: number): Promise<boolean> {
       resolve(false);
     });
   });
+}
+
+function checkPort(port: number): Promise<boolean> {
+  return probeTcp(port);
 }
 
 export interface Claw3dStatus {
@@ -447,9 +523,41 @@ function probeHttp(url: string, timeoutMs = 1500): Promise<boolean> {
   });
 }
 
+export async function waitForClaw3dReady(
+  timeoutMs = 45000,
+  intervalMs = 1000,
+): Promise<boolean> {
+  const port = getSavedPort();
+  const conn = getConnectionConfig();
+  const host = conn.mode === "ssh" && conn.ssh?.host ? conn.ssh.host : "127.0.0.1";
+  const url = `http://${host}:${port}/office`;
+  const adapterPort = adapterPortFromWsUrl(getSavedWsUrl());
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const officeReady = await probeHttp(url, Math.min(intervalMs, 2000));
+    const adapterReady =
+      conn.mode === "local" ||
+      conn.mode === "remote" ||
+      !conn.ssh?.host
+        ? await probeTcp(adapterPort, "127.0.0.1", Math.min(intervalMs, 2000))
+        : true;
+
+    if (officeReady && adapterReady) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  return false;
+}
+
 export async function getClaw3dStatus(): Promise<Claw3dStatus> {
   const cloned = existsSync(join(HERMES_OFFICE_DIR, "package.json"));
   const installed = existsSync(join(HERMES_OFFICE_DIR, "node_modules"));
+  if (installed) {
+    writeClaw3dSettings();
+  }
   const port = getSavedPort();
   const devRunning = isDevServerRunning();
   // Only check port conflict when dev server is NOT running
@@ -819,6 +927,7 @@ export function startAdapter(): boolean {
     HOME: homedir(),
     TERM: "dumb",
     HERMES_API_KEY: getApiServerKey(),
+    HERMES_ADAPTER_PORT: String(adapterPortFromWsUrl(getSavedWsUrl())),
   };
   const node = resolveCommand("node", env.PATH);
   const adapterScript = createClaw3dScriptInvocation(
