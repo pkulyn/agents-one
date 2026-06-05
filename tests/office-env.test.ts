@@ -3,7 +3,11 @@ import {
   adapterPortFromWsUrl,
   buildOfficeEnv,
   buildOfficeSettings,
+  writeOfficeFileIfChanged,
 } from "../src/main/claw3d";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 // Hermes Desktop writes the hermes-office `.env`. It used to hardcode
 // `HERMES_MODEL=hermes`, so Office ignored the user's configured model
@@ -243,5 +247,39 @@ describe("buildOfficeSettings", () => {
         },
       },
     });
+  });
+});
+
+describe("writeOfficeFileIfChanged", () => {
+  it("skips identical writes so Office status polling does not churn mtimes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hermes-office-write-"));
+    try {
+      const file = join(dir, ".env");
+      writeFileSync(file, "PORT=3000\n", "utf-8");
+      const before = statSync(file).mtimeMs;
+
+      const wrote = writeOfficeFileIfChanged(file, "PORT=3000\n");
+
+      expect(wrote).toBe(false);
+      expect(readFileSync(file, "utf-8")).toBe("PORT=3000\n");
+      expect(statSync(file).mtimeMs).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes when Office settings content changes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hermes-office-write-"));
+    try {
+      const file = join(dir, "settings.json");
+      writeFileSync(file, "{\"adapter\":\"openclaw\"}", "utf-8");
+
+      const wrote = writeOfficeFileIfChanged(file, "{\"adapter\":\"hermes\"}");
+
+      expect(wrote).toBe(true);
+      expect(readFileSync(file, "utf-8")).toBe("{\"adapter\":\"hermes\"}");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

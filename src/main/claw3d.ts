@@ -340,6 +340,18 @@ export function buildOfficeSettings(
   };
 }
 
+export function writeOfficeFileIfChanged(filePath: string, content: string): boolean {
+  try {
+    if (existsSync(filePath) && readFileSync(filePath, "utf-8") === content) {
+      return false;
+    }
+  } catch {
+    /* If the existing file cannot be read, try to repair it below. */
+  }
+  safeWriteFile(filePath, content);
+  return true;
+}
+
 /**
  * Write Claw3D settings to ~/.openclaw/claw3d/settings.json
  * and .env in the claw3d directory so onboarding is skipped.
@@ -364,7 +376,7 @@ function writeClaw3dSettings(wsUrl?: string): void {
     }
 
     const settings = buildOfficeSettings(existing, { url, apiKey });
-    safeWriteFile(settingsPath, JSON.stringify(settings, null, 2));
+    writeOfficeFileIfChanged(settingsPath, JSON.stringify(settings, null, 2));
   } catch {
     /* non-fatal */
   }
@@ -373,7 +385,7 @@ function writeClaw3dSettings(wsUrl?: string): void {
   try {
     if (existsSync(HERMES_OFFICE_DIR)) {
       const envPath = join(HERMES_OFFICE_DIR, ".env");
-      safeWriteFile(
+      writeOfficeFileIfChanged(
         envPath,
         buildOfficeEnv({
           port: getSavedPort(),
@@ -389,10 +401,14 @@ function writeClaw3dSettings(wsUrl?: string): void {
   }
 }
 
-function checkPort(port: number): Promise<boolean> {
+function probeTcp(
+  port: number,
+  host = "127.0.0.1",
+  timeoutMs = 300,
+): Promise<boolean> {
   return new Promise((resolve) => {
-    const socket = createConnection({ port, host: "127.0.0.1" });
-    socket.setTimeout(300); // 300ms is plenty for localhost
+    const socket = createConnection({ port, host });
+    socket.setTimeout(timeoutMs);
     socket.on("connect", () => {
       socket.destroy();
       resolve(true); // port is in use
@@ -406,6 +422,10 @@ function checkPort(port: number): Promise<boolean> {
       resolve(false);
     });
   });
+}
+
+function checkPort(port: number): Promise<boolean> {
+  return probeTcp(port);
 }
 
 export interface Claw3dStatus {
@@ -508,11 +528,22 @@ export async function waitForClaw3dReady(
   intervalMs = 1000,
 ): Promise<boolean> {
   const port = getSavedPort();
-  const url = `http://127.0.0.1:${port}/office`;
+  const conn = getConnectionConfig();
+  const host = conn.mode === "ssh" && conn.ssh?.host ? conn.ssh.host : "127.0.0.1";
+  const url = `http://${host}:${port}/office`;
+  const adapterPort = adapterPortFromWsUrl(getSavedWsUrl());
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    if (await probeHttp(url, Math.min(intervalMs, 2000))) {
+    const officeReady = await probeHttp(url, Math.min(intervalMs, 2000));
+    const adapterReady =
+      conn.mode === "local" ||
+      conn.mode === "remote" ||
+      !conn.ssh?.host
+        ? await probeTcp(adapterPort, "127.0.0.1", Math.min(intervalMs, 2000))
+        : true;
+
+    if (officeReady && adapterReady) {
       return true;
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));

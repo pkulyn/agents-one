@@ -9,6 +9,7 @@ export interface OfficeStartDependencies {
   sshGatewayStatus: (config: SshConnectionConfig) => Promise<boolean>;
   sshStartGateway: (config: SshConnectionConfig) => Promise<void>;
   startSshTunnel: (config: SshConnectionConfig) => Promise<void>;
+  stopSshTunnel: () => void;
   sshReadRemoteApiKey: (config: SshConnectionConfig) => Promise<string>;
   setSshRemoteApiKey: (key: string) => void;
   startClaw3dAll: () => StartResult;
@@ -24,6 +25,7 @@ export async function startOfficeStack(
   profile: string | undefined,
   deps: OfficeStartDependencies,
 ): Promise<StartResult> {
+  let sshTunnelStarted = false;
   try {
     const conn = deps.getConnectionConfig();
 
@@ -32,6 +34,7 @@ export async function startOfficeStack(
         await deps.sshStartGateway(conn.ssh);
       }
       await deps.startSshTunnel(conn.ssh);
+      sshTunnelStarted = true;
       deps.setSshRemoteApiKey(await deps.sshReadRemoteApiKey(conn.ssh));
     } else if (conn.mode === "local" && !deps.isGatewayRunning(profile)) {
       deps.startGateway(profile);
@@ -40,8 +43,14 @@ export async function startOfficeStack(
     const result = deps.startClaw3dAll();
     if (!result.success) return result;
 
-    if (conn.mode === "local" && !(await deps.waitForClaw3dReady())) {
+    if (
+      (conn.mode === "local" || conn.mode === "ssh") &&
+      !(await deps.waitForClaw3dReady())
+    ) {
       deps.stopClaw3dAll();
+      if (conn.mode === "ssh" && sshTunnelStarted) {
+        deps.stopSshTunnel();
+      }
       return {
         success: false,
         error:
@@ -51,6 +60,9 @@ export async function startOfficeStack(
 
     return result;
   } catch (error) {
+    if (sshTunnelStarted) {
+      deps.stopSshTunnel();
+    }
     return { success: false, error: errorMessage(error) };
   }
 }

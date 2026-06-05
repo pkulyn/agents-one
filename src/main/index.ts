@@ -1579,6 +1579,7 @@ function setupIPC(): void {
       sshGatewayStatus,
       sshStartGateway,
       startSshTunnel,
+      stopSshTunnel,
       sshReadRemoteApiKey,
       setSshRemoteApiKey,
       startClaw3dAll,
