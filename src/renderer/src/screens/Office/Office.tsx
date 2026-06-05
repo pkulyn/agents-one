@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Refresh, ExternalLink, Settings } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
+import { buildOfficeWebviewUrl } from "./officeUrl";
+
+const DEFAULT_WS_URL = "ws://localhost:18989";
 
 type OfficeState =
   | "checking"
@@ -31,7 +34,7 @@ function Office({
   const [port, setPort] = useState(3000);
   const [portInput, setPortInput] = useState("3000");
   const [portInUse, setPortInUse] = useState(false);
-  const [wsUrlInput, setWsUrlInput] = useState("ws://localhost:18789");
+  const [wsUrlInput, setWsUrlInput] = useState(DEFAULT_WS_URL);
   const [error, setError] = useState("");
   const [showLogs, setShowLogs] = useState(false);
   const [logs, setLogs] = useState("");
@@ -45,6 +48,7 @@ function Office({
   });
   const [webviewReady, setWebviewReady] = useState(false);
   const [webviewError, setWebviewError] = useState("");
+  const [webviewInstanceKey, setWebviewInstanceKey] = useState(0);
   // Set when the main process detects a Claw3D / hermes-office service
   // running on the remote host (SSH tunnel mode). When present the webview
   // points at this URL and the local install/start UX is bypassed.
@@ -68,7 +72,7 @@ function Office({
     setPort(status.port);
     setPortInput(String(status.port));
     setPortInUse(status.portInUse);
-    setWsUrlInput(status.wsUrl || "ws://localhost:18789");
+    setWsUrlInput(status.wsUrl || DEFAULT_WS_URL);
     if (status.error) setError(status.error);
     if (status.installed || status.remoteUrl) {
       setState("ready");
@@ -111,6 +115,11 @@ function Office({
     }
   }, [progress.log, logs]);
 
+  // Remote Claw3D (SSH tunnel mode) takes precedence: the remote
+  // hermes-office.service already runs, so we point the webview at it
+  // rather than asking the user to install Claw3D locally.
+  const claw3dUrl = buildOfficeWebviewUrl(remoteUrl, port);
+
   // Webview load/error handling
   useEffect(() => {
     const wv = webviewRef.current as unknown as {
@@ -141,11 +150,19 @@ function Office({
       injectOnboardingFlag();
     };
 
-    const onDomReady = (): void => {
+    const markWebviewReady = (): void => {
       // Defense-in-depth: re-inject in case the first attempt didn't stick
       injectOnboardingFlag();
       setWebviewReady(true);
       setWebviewError("");
+    };
+
+    const onDomReady = (): void => {
+      markWebviewReady();
+    };
+
+    const onFinishLoad = (): void => {
+      markWebviewReady();
     };
 
     const onFail = (evt: unknown): void => {
@@ -160,14 +177,35 @@ function Office({
 
     wv.addEventListener("did-start-loading", onStartLoad);
     wv.addEventListener("dom-ready", onDomReady);
+    wv.addEventListener("did-finish-load", onFinishLoad);
+    wv.addEventListener("did-stop-loading", onFinishLoad);
     wv.addEventListener("did-fail-load", onFail);
 
+    const fallback = window.setTimeout(() => {
+      const maybeWebview = wv as {
+        getURL?: () => string;
+        isLoading?: () => boolean;
+      };
+      try {
+        const currentUrl = maybeWebview.getURL?.() || "";
+        const stillLoading = maybeWebview.isLoading?.() ?? true;
+        if (currentUrl && currentUrl !== "about:blank" && !stillLoading) {
+          markWebviewReady();
+        }
+      } catch {
+        /* Event handlers above remain the source of truth if this probe fails. */
+      }
+    }, 2500);
+
     return () => {
+      window.clearTimeout(fallback);
       wv.removeEventListener("did-start-loading", onStartLoad);
       wv.removeEventListener("dom-ready", onDomReady);
+      wv.removeEventListener("did-finish-load", onFinishLoad);
+      wv.removeEventListener("did-stop-loading", onFinishLoad);
       wv.removeEventListener("did-fail-load", onFail);
     };
-  }, [running, port]);
+  }, [running, claw3dUrl, webviewInstanceKey]);
 
   async function handleInstall(): Promise<void> {
     setState("installing");
@@ -199,20 +237,21 @@ function Office({
       setRunning(false);
       setWebviewReady(false);
       setWebviewError("");
+      setWebviewInstanceKey((key) => key + 1);
       setError("");
     } else {
       setError("");
       setWebviewError("");
+      setWebviewReady(false);
       setStarting(true);
       const result = await window.hermesAPI.claw3dStartAll(profile);
       if (!result.success) {
         setError(result.error || "Failed to start Claw3D");
         setStarting(false);
       } else {
-        // Give processes a moment to actually start, polling will confirm
-        setTimeout(() => {
-          setRunning(true);
-        }, 2000);
+        setWebviewInstanceKey((key) => key + 1);
+        setRunning(true);
+        setStarting(false);
       }
     }
   }
@@ -248,11 +287,6 @@ function Office({
     progress.totalSteps > 0
       ? Math.round((progress.step / progress.totalSteps) * 100)
       : 0;
-
-  // Remote Claw3D (SSH tunnel mode) takes precedence: the remote
-  // hermes-office.service already runs, so we point the webview at it
-  // rather than asking the user to install Claw3D locally.
-  const claw3dUrl = remoteUrl || `http://localhost:${port}`;
 
   // --- Checking ---
   if (state === "checking") {
@@ -417,7 +451,7 @@ function Office({
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleWsUrlSave();
               }}
-              placeholder="ws://localhost:18789"
+              placeholder={DEFAULT_WS_URL}
             />
           </div>
           <button className="btn btn-secondary btn-sm" onClick={loadLogs}>
@@ -502,6 +536,7 @@ function Office({
               </div>
             )}
             <webview
+              key={`${claw3dUrl}-${webviewInstanceKey}`}
               ref={webviewRef as React.RefObject<HTMLWebViewElement>}
               src={claw3dUrl}
               style={{ width: "100%", height: "100%", border: "none" }}
