@@ -121,7 +121,7 @@ function buildEmployeeWorkstation(agentId: string, index: number): Workstation {
   // Desk at facingDeg=0 has drawers on the North side, and extends from deskY-31 to deskY+1.
   // We place the agent North of the desk, facing South towards the drawers.
   const SEAT_BACK = 16;
-  const seatY = deskY - 31 - SEAT_BACK;
+  const seatY = deskY - 20 - SEAT_BACK;
   const seatFacing = 0; // Faces South towards the desk
 
   return {
