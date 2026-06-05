@@ -239,6 +239,56 @@ function stripYamlQuotes(raw: string): string {
   return trimmed;
 }
 
+function quoteYamlScalar(value: string): string {
+  return JSON.stringify(value);
+}
+
+function appendDirectNestedYamlValue(
+  content: string,
+  segments: string[],
+  value: string,
+): string | null {
+  if (segments.length !== 2) return null;
+  const [parent, child] = segments;
+  if (!parent || !child) return null;
+
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const quotedValue = quoteYamlScalar(value);
+  const parentRe = new RegExp(
+    `^${escapeRegex(parent)}:[ \\t]*(#.*)?(?:\\r?\\n|$)`,
+    "m",
+  );
+  const parentMatch = parentRe.exec(content);
+
+  if (!parentMatch || parentMatch.index === undefined) {
+    const sep = content === "" || content.endsWith("\n") ? "" : newline;
+    return `${content}${sep}${parent}:${newline}  ${child}: ${quotedValue}${newline}`;
+  }
+
+  const blockStart = parentMatch.index + parentMatch[0].length;
+  let blockEnd = blockStart;
+  let cursor = blockStart;
+
+  while (cursor < content.length) {
+    const lineEnd = content.indexOf("\n", cursor);
+    const lineEndExclusive = lineEnd === -1 ? content.length : lineEnd;
+    const line = content.slice(cursor, lineEndExclusive);
+
+    if (line.trim() !== "" && !/^[ \t]/.test(line)) {
+      break;
+    }
+
+    blockEnd =
+      lineEndExclusive === content.length
+        ? content.length
+        : lineEndExclusive + 1;
+    cursor = blockEnd;
+  }
+
+  const insertion = `  ${child}: ${quotedValue}${newline}`;
+  return `${content.slice(0, blockEnd)}${insertion}${content.slice(blockEnd)}`;
+}
+
 /**
  * Locate a dotted YAML path in `content` (e.g. "agent.service_tier" finds
  * the `service_tier` field nested under top-level `agent:`). Returns the
@@ -461,20 +511,26 @@ export function setConfigValue(
   if (hit) {
     content =
       content.slice(0, hit.valueStart) +
-      `"${value}"` +
+      quoteYamlScalar(value) +
       content.slice(hit.valueEnd);
     safeWriteFile(configFile, content);
     return;
   }
 
-  // Key missing. For multi-segment paths we don't know how deep the
-  // user's existing parent block goes (or which segments exist), so
-  // avoid guessing — drop the write rather than corrupting the file.
-  // Top-level single keys are safe to append.
+  // Key missing. Top-level single keys are safe to append. Direct
+  // two-segment scalar paths are also safe to create/append and are used
+  // by Settings fields such as `network.proxy`. Deeper paths remain a
+  // no-op to avoid guessing inside complex user-edited YAML.
   if (segments.length === 1) {
     const sep = content.endsWith("\n") || content === "" ? "" : "\n";
-    content = `${content}${sep}${key}: "${value}"\n`;
+    content = `${content}${sep}${key}: ${quoteYamlScalar(value)}\n`;
     safeWriteFile(configFile, content);
+    return;
+  }
+
+  const nextContent = appendDirectNestedYamlValue(content, segments, value);
+  if (nextContent !== null) {
+    safeWriteFile(configFile, nextContent);
   }
 }
 
@@ -1142,22 +1198,95 @@ const TRUTHY_VALUES = new Set(["true", "1", "yes", "on"]);
 const PLATFORM_RULES: Record<string, PlatformRule> = {
   telegram: { envCheck: (e) => !!e.TELEGRAM_BOT_TOKEN?.trim() },
   discord: { envCheck: (e) => !!e.DISCORD_BOT_TOKEN?.trim() },
-  slack: { envCheck: (e) => !!e.SLACK_BOT_TOKEN?.trim() },
+  slack: {
+    envCheck: (e) =>
+      !!e.SLACK_BOT_TOKEN?.trim() && !!e.SLACK_APP_TOKEN?.trim(),
+  },
   whatsapp: {
     envCheck: (e) =>
-      TRUTHY_VALUES.has((e.WHATSAPP_ENABLED || "").trim().toLowerCase()),
+      TRUTHY_VALUES.has((e.WHATSAPP_ENABLED || "").trim().toLowerCase()) ||
+      (!!e.WHATSAPP_API_URL?.trim() && !!e.WHATSAPP_API_TOKEN?.trim()),
   },
   signal: {
-    envCheck: (e) => !!e.SIGNAL_HTTP_URL?.trim() && !!e.SIGNAL_ACCOUNT?.trim(),
+    envCheck: (e) =>
+      (!!e.SIGNAL_HTTP_URL?.trim() && !!e.SIGNAL_ACCOUNT?.trim()) ||
+      !!e.SIGNAL_PHONE_NUMBER?.trim(),
   },
   matrix: {
     envCheck: (e) =>
-      !!e.MATRIX_ACCESS_TOKEN?.trim() || !!e.MATRIX_PASSWORD?.trim(),
+      (!!e.MATRIX_HOMESERVER?.trim() &&
+        !!e.MATRIX_ACCESS_TOKEN?.trim() &&
+        !!e.MATRIX_USER_ID?.trim()) ||
+      !!e.MATRIX_PASSWORD?.trim(),
   },
-  mattermost: { envCheck: (e) => !!e.MATTERMOST_TOKEN?.trim() },
+  mattermost: {
+    envCheck: (e) => !!e.MATTERMOST_URL?.trim() && !!e.MATTERMOST_TOKEN?.trim(),
+  },
   home_assistant: {
-    envCheck: (e) => !!e.HASS_TOKEN?.trim(),
+    envCheck: (e) => !!e.HASS_URL?.trim() && !!e.HASS_TOKEN?.trim(),
     configKey: "homeassistant",
+  },
+  homeassistant: {
+    envCheck: (e) => !!e.HASS_URL?.trim() && !!e.HASS_TOKEN?.trim(),
+    configKey: "homeassistant",
+  },
+  email: {
+    envCheck: (e) =>
+      !!e.EMAIL_ADDRESS?.trim() &&
+      !!e.EMAIL_PASSWORD?.trim() &&
+      (!!e.EMAIL_IMAP_HOST?.trim() || !!e.EMAIL_IMAP_SERVER?.trim()) &&
+      (!!e.EMAIL_SMTP_HOST?.trim() || !!e.EMAIL_SMTP_SERVER?.trim()),
+  },
+  sms: {
+    envCheck: (e) =>
+      !!e.TWILIO_ACCOUNT_SID?.trim() && !!e.TWILIO_AUTH_TOKEN?.trim(),
+  },
+  bluebubbles: {
+    envCheck: (e) =>
+      (!!e.BLUEBUBBLES_SERVER_URL?.trim() || !!e.BLUEBUBBLES_URL?.trim()) &&
+      !!e.BLUEBUBBLES_PASSWORD?.trim(),
+  },
+  dingtalk: {
+    envCheck: (e) =>
+      (!!e.DINGTALK_CLIENT_ID?.trim() &&
+        !!e.DINGTALK_CLIENT_SECRET?.trim()) ||
+      (!!e.DINGTALK_APP_KEY?.trim() && !!e.DINGTALK_APP_SECRET?.trim()),
+  },
+  feishu: {
+    envCheck: (e) => !!e.FEISHU_APP_ID?.trim() && !!e.FEISHU_APP_SECRET?.trim(),
+  },
+  wecom: {
+    envCheck: (e) =>
+      !!e.WECOM_BOT_ID?.trim() ||
+      (!!e.WECOM_CORP_ID?.trim() &&
+        !!e.WECOM_AGENT_ID?.trim() &&
+        !!e.WECOM_SECRET?.trim()),
+  },
+  wecom_callback: {
+    envCheck: (e) =>
+      !!e.WECOM_CALLBACK_CORP_ID?.trim() &&
+      !!e.WECOM_CALLBACK_CORP_SECRET?.trim() &&
+      !!e.WECOM_CALLBACK_AGENT_ID?.trim(),
+  },
+  weixin: {
+    envCheck: (e) =>
+      (!!e.WEIXIN_ACCOUNT_ID?.trim() && !!e.WEIXIN_TOKEN?.trim()) ||
+      !!e.WEIXIN_BOT_TOKEN?.trim(),
+  },
+  qqbot: {
+    envCheck: (e) => !!e.QQ_APP_ID?.trim() && !!e.QQ_CLIENT_SECRET?.trim(),
+  },
+  yuanbao: { envCheck: () => false },
+  api_server: {
+    envCheck: (e) =>
+      TRUTHY_VALUES.has((e.API_SERVER_ENABLED || "").trim().toLowerCase()) ||
+      !!e.API_SERVER_KEY?.trim(),
+  },
+  webhook: {
+    envCheck: (e) =>
+      TRUTHY_VALUES.has((e.WEBHOOK_ENABLED || "").trim().toLowerCase()) ||
+      !!e.WEBHOOK_SECRET?.trim(),
+    configKey: "webhook",
   },
 };
 

@@ -1,6 +1,7 @@
 export default {
   chat: "Chat",
   sessions: "Sessions",
+  discover: "Discover",
   agents: "Profiles",
   office: "Office",
   models: "Models",
@@ -8,9 +9,11 @@ export default {
   skills: "Skills",
   soul: "Persona",
   memory: "Memory",
-  tools: "Tools",
+  tools: "Capabilities",
   schedules: "Schedules",
   kanban: "Kanban",
   gateway: "Gateway",
   settings: "Settings",
+  collapseSidebar: "Collapse sidebar",
+  expandSidebar: "Expand sidebar",
 } as const;

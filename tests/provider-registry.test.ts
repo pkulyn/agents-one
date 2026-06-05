@@ -16,6 +16,9 @@ describe("provider-registry", () => {
       expect(canonicalProviderBaseUrl("mistral")).toBe(
         "https://api.mistral.ai/v1",
       );
+      expect(canonicalProviderBaseUrl("xiaomi")).toBe(
+        "https://api.xiaomimimo.com/v1",
+      );
       expect(canonicalProviderBaseUrl("together")).toBe(
         "https://api.together.xyz/v1",
       );
@@ -36,6 +39,24 @@ describe("provider-registry", () => {
       );
       expect(canonicalProviderBaseUrl("openrouter")).toBe(
         "https://openrouter.ai/api/v1",
+      );
+    });
+
+    it("returns default URLs for local OpenAI-compatible providers", () => {
+      expect(canonicalProviderBaseUrl("lmstudio")).toBe(
+        "http://localhost:1234/v1",
+      );
+      expect(canonicalProviderBaseUrl("atomicchat")).toBe(
+        "http://localhost:1337/v1",
+      );
+      expect(canonicalProviderBaseUrl("ollama")).toBe(
+        "http://localhost:11434/v1",
+      );
+      expect(canonicalProviderBaseUrl("vllm")).toBe(
+        "http://localhost:8000/v1",
+      );
+      expect(canonicalProviderBaseUrl("llamacpp")).toBe(
+        "http://localhost:8080/v1",
       );
     });
 
@@ -72,6 +93,7 @@ describe("provider-registry", () => {
         "fireworks",
         "cerebras",
         "mistral",
+        "xiaomi",
       ];
       for (const provider of requiredBuiltins) {
         expect(PROVIDER_BASE_URLS[provider]).toBeTruthy();

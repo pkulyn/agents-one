@@ -12,6 +12,16 @@ export default {
     light: "Light",
     dark: "Dark",
   },
+  roundedCorners: {
+    label: "Rounded corners",
+    hint: "Turn off for squared-off corners throughout the app",
+  },
+  font: {
+    label: "Font",
+    manrope: "Manrope",
+    system: "System",
+    hint: "Choose the interface font",
+  },
   language: {
     label: "Language",
     english: "English",
@@ -20,6 +30,7 @@ export default {
     spanish: "Español",
     chinese: "中文",
     portuguese: "Portuguese",
+    turkish: "Türkçe",
     hint: "Choose the interface language",
   },
   analytics: {

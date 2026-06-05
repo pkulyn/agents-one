@@ -52,6 +52,7 @@ export default {
   media: {
     open: "開く",
     saveAs: "名前を付けて保存…",
+    saveImage: "画像を保存",
   },
   commands: {
     new: "新しいチャットを開始",
@@ -83,5 +84,7 @@ export default {
     empty: "フォルダは空です",
     emptyFolder: "空のフォルダ",
     errorLoading: "フォルダの読み込みに失敗しました",
+    openTerminal: "ここでターミナルを開く",
+    openTerminalFailed: "このフォルダーのターミナルを開けませんでした。",
   },
 } as const;

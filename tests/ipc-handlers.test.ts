@@ -64,6 +64,12 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "read-logs",
     "run-hermes-dump",
     "list-mcp-servers",
+    "add-mcp-server",
+    "remove-mcp-server",
+    "set-mcp-server-enabled",
+    "test-mcp-server",
+    "list-mcp-catalog",
+    "install-mcp-catalog-entry",
     "discover-memory-providers",
   ];
 
@@ -107,6 +113,7 @@ describe("Legacy IPC handlers preserved", () => {
     "list-cron-jobs",
     "create-cron-job",
     "open-external",
+    "open-terminal",
   ];
 
   for (const ch of legacyChannels) {

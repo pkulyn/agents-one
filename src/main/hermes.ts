@@ -45,6 +45,15 @@ import { readModels } from "./models";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { type Attachment, escapeXmlAttr } from "../shared/attachments";
 import { URL_KEY_MAP, OPENAI_COMPAT_PROVIDERS } from "../shared/url-key-map";
+import {
+  chatToolEventFromPayload,
+  chatToolProgressLabel,
+  type ChatToolEvent,
+} from "../shared/chat-stream";
+import {
+  hostDerivedEnvKeyForUrl,
+  shouldPruneOpenRouterApiKey,
+} from "./host-derived-env";
 
 /**
  * Resolve which profile a gateway call targets. An explicit profile always
@@ -337,6 +346,7 @@ export interface ChatCallbacks {
   onDone: (sessionId?: string) => void;
   onError: (error: string) => void;
   onToolProgress?: (tool: string) => void;
+  onToolEvent?: (event: ChatToolEvent) => void;
   onUsage?: (usage: {
     promptTokens: number;
     completionTokens: number;
@@ -615,12 +625,16 @@ function sendMessageViaApi(
 
   /** Handle a custom SSE event (non-data lines with `event:` prefix). */
   function processCustomEvent(eventType: string, data: string): void {
-    if (eventType === "hermes.tool.progress" && cb.onToolProgress) {
+    if (eventType === "hermes.tool.progress") {
       try {
-        const payload = JSON.parse(data);
-        const label = payload.label || payload.tool || "";
-        const emoji = payload.emoji || "";
-        cb.onToolProgress(emoji ? `${emoji} ${label}` : label);
+        const payload = JSON.parse(data) as Record<string, unknown>;
+        const toolEvent = chatToolEventFromPayload(payload);
+        if (cb.onToolEvent) {
+          cb.onToolEvent(toolEvent);
+        }
+        if (!cb.onToolEvent && cb.onToolProgress) {
+          cb.onToolProgress(chatToolProgressLabel(toolEvent));
+        }
       } catch {
         /* malformed — skip */
       }
@@ -876,6 +890,7 @@ function sendMessageViaCli(
     "CEREBRAS_API_KEY",
     "MISTRAL_API_KEY",
     "PERPLEXITY_API_KEY",
+    "XIAOMI_API_KEY",
     "GLM_API_KEY",
     "KIMI_API_KEY",
     "MINIMAX_API_KEY",
@@ -920,13 +935,28 @@ function sendMessageViaCli(
       env.OPENAI_BASE_URL = mc.baseUrl.replace(/\/+$/, "");
     }
 
-    // Resolve the right API key: check URL-specific key first, then OPENAI_API_KEY
+    // Find the host-derived env-var name (if any). Used both for resolving
+    // the key here, AND for writing it back into the child env below so
+    // both old and new engines locate the same value:
+    //
+    //  - Old engine (≤ v0.14.0) routes via OPENAI_API_KEY + OPENAI_BASE_URL.
+    //  - Current upstream main refuses to forward OPENAI_API_KEY to a
+    //    non-openai host and instead derives <VENDOR>_API_KEY from the
+    //    URL host (see hermes_cli/runtime_provider.py::_host_derived_api_key).
+    //    Without the host-derived var in the child env, chat against a
+    //    custom provider on api.deepseek.com / api.groq.com / etc. falls
+    //    through to "no-key-required" and 401s.
+    //
+    // Writing both env-var forms is the additive compat strategy — each
+    // engine reads the form it knows; the unused one is dead weight.
+    const hostDerivedEnvKey = hostDerivedEnvKeyForUrl(mc.baseUrl);
+
+    // Resolve the right API key: host-derived first, then custom provider
+    // entry from models.json, then CUSTOM_API_KEY / OPENAI_API_KEY fallback.
     let resolvedKey = "";
-    for (const { pattern, envKey } of URL_KEY_MAP) {
-      if (pattern.test(mc.baseUrl)) {
-        resolvedKey = profileEnv[envKey] || env[envKey] || "";
-        break;
-      }
+    if (hostDerivedEnvKey) {
+      resolvedKey =
+        profileEnv[hostDerivedEnvKey] || env[hostDerivedEnvKey] || "";
     }
     if (!resolvedKey) {
       // Try custom provider auto-generated key from models.json
@@ -962,7 +992,25 @@ function sendMessageViaCli(
       env.OPENAI_API_KEY = resolvedKey || "no-key-required";
     }
 
-    delete env.OPENROUTER_API_KEY;
+    // Forward-compat with upstream main: also write the host-derived
+    // env var so `_host_derived_api_key` finds it. Only when the URL
+    // matches a known vendor (NOT for generic local LLMs), and only
+    // when we have a real key — never propagate "no-key-required" to
+    // a vendor-scoped slot, and never overwrite OPENAI_API_KEY /
+    // ANTHROPIC_API_KEY through this path (they're handled above).
+    if (
+      hostDerivedEnvKey &&
+      hostDerivedEnvKey !== "OPENAI_API_KEY" &&
+      hostDerivedEnvKey !== "ANTHROPIC_API_KEY" &&
+      resolvedKey &&
+      resolvedKey !== "no-key-required"
+    ) {
+      env[hostDerivedEnvKey] = resolvedKey;
+    }
+
+    if (shouldPruneOpenRouterApiKey(hostDerivedEnvKey)) {
+      delete env.OPENROUTER_API_KEY;
+    }
     delete env.ANTHROPIC_TOKEN;
     delete env.OPENROUTER_BASE_URL;
   }
@@ -1164,6 +1212,14 @@ export function stopHealthPolling(): void {
 const gatewayProcesses = new Map<string, ChildProcess>();
 const appStartedProfiles = new Set<string>();
 
+export interface GatewayStartResult {
+  success: boolean;
+  running: boolean;
+  alreadyRunning?: boolean;
+  error?: string;
+  logPath?: string;
+}
+
 /**
  * Clear the cached API-server-ready flag, but only when `profile` is the one
  * the desktop currently addresses (the active profile). A *background*
@@ -1176,7 +1232,7 @@ function invalidateApiCacheFor(profile?: string): void {
   }
 }
 
-export function startGateway(profile?: string): boolean {
+export function startGatewayDetailed(profile?: string): GatewayStartResult {
   // Defensive: the local gateway is never the right thing to spawn in
   // remote/SSH mode — the user is pointing at an off-machine server.
   // Callers should already gate, but several IPC handlers historically
@@ -1184,30 +1240,34 @@ export function startGateway(profile?: string): boolean {
   // there's no local hermes-agent install produces an uncaught ENOENT
   // that pops a generic error dialog.  Refuse cleanly here.
   if (isRemoteMode()) {
+    const error =
+      "The local gateway can only be started in local mode. Switch to local mode, or start the gateway on the remote Hermes host.";
     console.warn(
       "[gateway] startGateway() called in remote/SSH mode — refusing local spawn",
     );
-    return false;
+    return { success: false, running: false, error };
   }
   ensureInitialized();
-  if (isGatewayRunning(profile)) return false;
+  if (isGatewayRunning(profile)) {
+    return { success: true, running: true, alreadyRunning: true };
+  }
 
   // Pre-flight: verify the Python interpreter exists before attempting to
   // spawn. Without this check, spawn() fails with ENOENT and the error is
   // completely silent (stdio:"ignore", no error handler).
   if (!existsSync(HERMES_PYTHON)) {
-    console.error(
-      `[gateway] Cannot start: Python interpreter not found at ${HERMES_PYTHON}. ` +
-        "Is hermes-agent installed?",
-    );
-    return false;
+    const error =
+      `Cannot start the gateway because the Hermes Python interpreter was not found at ${HERMES_PYTHON}. ` +
+      "Install or repair Hermes Agent, then try again.";
+    console.error(`[gateway] ${error}`);
+    return { success: false, running: false, error };
   }
   if (!existsSync(HERMES_REPO)) {
-    console.error(
-      `[gateway] Cannot start: hermes-agent repo not found at ${HERMES_REPO}. ` +
-        "Is hermes-agent installed?",
-    );
-    return false;
+    const error =
+      `Cannot start the gateway because the hermes-agent repository was not found at ${HERMES_REPO}. ` +
+      "Install or repair Hermes Agent, then try again.";
+    console.error(`[gateway] ${error}`);
+    return { success: false, running: false, error };
   }
 
   const resolved = resolveProfile(profile); // undefined => default
@@ -1302,13 +1362,28 @@ export function startGateway(profile?: string): boolean {
   // HERMES_HOME at the profile's dir internally; the shared repo/venv stay
   // put. The default profile takes no flag.
   const cliArgs = resolved ? ["--profile", resolved, "gateway"] : ["gateway"];
-  const proc = spawn(HERMES_PYTHON, hermesCliArgs(cliArgs), {
-    cwd: HERMES_REPO,
-    env: gatewayEnv,
-    stdio: ["ignore", "ignore", stderrFd >= 0 ? stderrFd : "ignore"],
-    detached: true,
-    ...HIDDEN_SUBPROCESS_OPTIONS,
-  });
+  let proc: ChildProcess;
+  try {
+    proc = spawn(HERMES_PYTHON, hermesCliArgs(cliArgs), {
+      cwd: HERMES_REPO,
+      env: gatewayEnv,
+      stdio: ["ignore", "ignore", stderrFd >= 0 ? stderrFd : "ignore"],
+      detached: true,
+      ...HIDDEN_SUBPROCESS_OPTIONS,
+    });
+  } catch (err) {
+    if (stderrFd >= 0) {
+      try {
+        closeSync(stderrFd);
+      } catch {
+        // best-effort
+      }
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    const error = `Failed to start the gateway process: ${message}`;
+    console.error(`[gateway:${key}] ${error}`);
+    return { success: false, running: false, error, logPath };
+  }
   // The child has inherited (dup'd) the fd; close our copy so we don't leak a
   // descriptor on every gateway (re)start.
   if (stderrFd >= 0) {
@@ -1355,7 +1430,12 @@ export function startGateway(profile?: string): boolean {
     }
   }, 3000);
 
-  return true;
+  return { success: true, running: true, logPath };
+}
+
+export function startGateway(profile?: string): boolean {
+  const result = startGatewayDetailed(profile);
+  return result.success && !result.alreadyRunning;
 }
 
 function parsePidFromFile(pidFile: string): number | null {

@@ -37,6 +37,7 @@ export default {
   media: {
     open: "開啟",
     saveAs: "另存新檔…",
+    saveImage: "儲存圖片",
   },
   commands: {
     new: "開始新對話",
@@ -69,5 +70,7 @@ export default {
     empty: "資料夾是空的",
     emptyFolder: "空資料夾",
     errorLoading: "無法載入資料夾內容",
+    openTerminal: "在此處開啟終端機",
+    openTerminalFailed: "無法為此資料夾開啟終端機。",
   },
 } as const;

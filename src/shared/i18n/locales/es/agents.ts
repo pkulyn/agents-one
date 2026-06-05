@@ -22,4 +22,7 @@ export default {
   deleteTitle: "Eliminar agente",
   auto: "Automático",
   local: "Local",
+  manageProfiles: "Gestionar perfiles",
+  switchProfile: "Cambiar perfil",
+  defaultTag: "predeterminado",
 } as const;

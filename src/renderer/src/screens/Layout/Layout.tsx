@@ -6,6 +6,7 @@ import {
 } from "../Chat/sessionHistory";
 import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
+import Discover from "../Discover/Discover";
 import ProfileSwitcher from "./ProfileSwitcher";
 import Settings from "../Settings/Settings";
 import Skills from "../Skills/Skills";
@@ -19,12 +20,12 @@ import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
-import hermeslogo from "../../assets/hermes.png";
+import hermeslogo from "../../assets/hermes-one.svg";
 import {
   ChatBubble,
   Clock,
+  Compass,
   Settings as SettingsIcon,
-  Puzzle,
   Brain,
   Wrench,
   Signal,
@@ -34,6 +35,8 @@ import {
   Timer,
   Kanban as KanbanIcon,
   Download,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
@@ -41,6 +44,7 @@ import { useI18n } from "../../components/useI18n";
 type View =
   | "chat"
   | "sessions"
+  | "discover"
   | "agents"
   | "office"
   | "models"
@@ -56,19 +60,23 @@ type View =
 const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "chat", icon: ChatBubble, labelKey: "navigation.chat" },
   { view: "sessions", icon: Clock, labelKey: "navigation.sessions" },
+  { view: "discover", icon: Compass, labelKey: "navigation.discover" },
   // "agents" (Profiles) is reached from the sidebar-footer ProfileSwitcher's
   // "Manage profiles" action rather than a top-level nav item.
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
   { view: "models", icon: Layers, labelKey: "navigation.models" },
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
-  { view: "skills", icon: Puzzle, labelKey: "navigation.skills" },
+  // "skills" lives under the Discover tab (installed + community), so it's no
+  // longer a top-level nav item.
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
   { view: "tools", icon: Wrench, labelKey: "navigation.tools" },
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
   { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
   { view: "settings", icon: SettingsIcon, labelKey: "navigation.settings" },
 ];
+
+const SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
 
 interface LayoutProps {
   verifyWarning?: boolean;
@@ -86,6 +94,13 @@ function Layout({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [activeProfile, setActiveProfile] = useState("default");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   // Tabs lazy-mount on first visit, then stay mounted (display:none toggle).
   // Keeps IPC refetch / DOM rebuild off the tab-switch hot path.
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
@@ -93,6 +108,12 @@ function Layout({
   );
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
   const [remoteMode, setRemoteMode] = useState(false);
+  // Set by the Capabilities screen's "Browse" actions to focus a Discover tab
+  // (Skills → Community, or MCPs). The nonce re-fires Discover's effect.
+  const [discoverFocus, setDiscoverFocus] = useState<{
+    kind: "skills" | "mcps";
+    nonce: number;
+  } | null>(null);
 
   const paneStyle = (target: View): React.CSSProperties => ({
     display: view === target ? "flex" : "none",
@@ -105,6 +126,14 @@ function Layout({
     setVisitedViews((prev) => (prev.has(v) ? prev : new Set(prev).add(v)));
     setView(v);
   }, []);
+
+  const focusDiscover = useCallback(
+    (kind: "skills" | "mcps") => {
+      setDiscoverFocus((prev) => ({ kind, nonce: (prev?.nonce ?? 0) + 1 }));
+      goTo("discover");
+    },
+    [goTo],
+  );
 
   // Re-check remote mode on tab switch (picks up Settings changes)
   useEffect(() => {
@@ -185,6 +214,18 @@ function Layout({
     }
   }
 
+  const updateButtonTitle =
+    updateError ??
+    (updateState === "available"
+      ? t("common.updateAvailable", { version: updateVersion })
+      : updateState === "downloading"
+        ? t("common.downloading", { percent: downloadPercent })
+        : updateState === "ready"
+          ? t("common.restartToUpdate")
+          : updateState === "error"
+            ? t("common.updateFailed")
+            : undefined);
+
   const handleNewChat = useCallback(() => {
     // Abort any in-flight chat before clearing
     window.hermesAPI.abortChat();
@@ -225,11 +266,49 @@ function Layout({
     [goTo],
   );
 
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch {
+        /* ignore persistence failures */
+      }
+      return next;
+    });
+  }, []);
+
+  const sidebarToggleLabel = sidebarCollapsed
+    ? t("navigation.expandSidebar")
+    : t("navigation.collapseSidebar");
+
   return (
-    <div className="layout">
+    <div className={`layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <img src={hermeslogo} height={30} alt="" />
+          <span
+            className="sidebar-logo"
+            role="img"
+            aria-label="Hermes"
+            style={{
+              maskImage: `url(${hermeslogo})`,
+              WebkitMaskImage: `url(${hermeslogo})`,
+            }}
+          />
+          <button
+            className="sidebar-collapse-toggle"
+            type="button"
+            onClick={toggleSidebar}
+            title={sidebarToggleLabel}
+            aria-label={sidebarToggleLabel}
+            aria-expanded={!sidebarCollapsed}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen size={16} />
+            ) : (
+              <PanelLeftClose size={16} />
+            )}
+          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -238,9 +317,11 @@ function Layout({
               key={v}
               className={`sidebar-nav-item ${view === v ? "active" : ""}`}
               onClick={() => goTo(v)}
+              title={t(labelKey)}
+              aria-label={t(labelKey)}
             >
               <Icon size={16} />
-              {t(labelKey)}
+              <span className="sidebar-nav-label">{t(labelKey)}</span>
             </button>
           ))}
         </nav>
@@ -253,7 +334,8 @@ function Layout({
               }`}
               onClick={handleUpdate}
               disabled={updateState === "downloading"}
-              title={updateError ?? undefined}
+              title={updateButtonTitle}
+              aria-label={updateButtonTitle}
             >
               <Download size={13} />
               {updateState === "available" && (
@@ -278,6 +360,7 @@ function Layout({
             activeProfile={activeProfile}
             onSwitch={handleSelectProfile}
             onManage={() => goTo("agents")}
+            compact={sidebarCollapsed}
           />
         </div>
       </aside>
@@ -310,6 +393,20 @@ function Layout({
                 onNewChat={handleNewChat}
                 currentSessionId={currentSessionId}
                 visible={view === "sessions"}
+              />
+            )}
+          </div>
+        )}
+
+        {visitedViews.has("discover") && (
+          <div style={paneStyle("discover")}>
+            {remoteMode ? (
+              <RemoteNotice feature="Discover" />
+            ) : (
+              <Discover
+                profile={activeProfile}
+                visible={view === "discover"}
+                focusKind={discoverFocus ?? undefined}
               />
             )}
           </div>
@@ -379,11 +476,14 @@ function Layout({
 
         {visitedViews.has("tools") && (
           <div style={paneStyle("tools")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Tools" />
-            ) : (
-              <Tools profile={activeProfile} />
-            )}
+            <Tools
+              profile={activeProfile}
+              showPlatformToolsets={!remoteMode}
+              remoteMode={remoteMode}
+              visible={view === "tools"}
+              onBrowseSkills={() => focusDiscover("skills")}
+              onBrowseMcps={() => focusDiscover("mcps")}
+            />
           </div>
         )}
 
