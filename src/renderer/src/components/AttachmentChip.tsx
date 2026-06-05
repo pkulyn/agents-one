@@ -103,7 +103,7 @@ export function AttachmentChip({
               }
             >
               <Download size={14} />
-              Save image
+              {t("chat.media.saveImage")}
             </button>
             <button
               className="chat-image-preview-btn"

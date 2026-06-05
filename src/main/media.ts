@@ -9,16 +9,22 @@
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
   copyFileSync,
   statSync,
+  rmSync,
 } from "fs";
 import { join, extname } from "path";
 import { tmpdir } from "os";
+import { createHash } from "crypto";
 import { BrowserWindow, dialog } from "electron";
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
+const TEMP_MEDIA_DIR = join(tmpdir(), "hermes-desktop-media");
+const TEMP_MEDIA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const TEMP_MEDIA_MAX_FILES = 100;
 
 const MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png",
@@ -53,6 +59,38 @@ function decodeDataUrl(src: string): { mime: string; buffer: Buffer } | null {
   return { mime, buffer };
 }
 
+export function cleanupTempMediaFiles({
+  maxAgeMs = 0,
+  maxFiles = 0,
+}: {
+  maxAgeMs?: number;
+  maxFiles?: number;
+} = {}): void {
+  try {
+    if (!existsSync(TEMP_MEDIA_DIR)) return;
+    const now = Date.now();
+    const entries = readdirSync(TEMP_MEDIA_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => {
+        const path = join(TEMP_MEDIA_DIR, entry.name);
+        return { path, mtimeMs: statSync(path).mtimeMs };
+      })
+      .sort((a, b) => a.mtimeMs - b.mtimeMs);
+
+    const keepNewestFrom = Math.max(0, entries.length - maxFiles);
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const expired = maxAgeMs <= 0 || now - entry.mtimeMs > maxAgeMs;
+      const overLimit = maxFiles <= 0 || i < keepNewestFrom;
+      if (expired || overLimit) {
+        rmSync(entry.path, { force: true });
+      }
+    }
+  } catch {
+    // Best-effort cleanup only. Failure should never block opening media.
+  }
+}
+
 export function materializeDataUrlToTemp(
   src: string,
   suggestedName: string,
@@ -61,15 +99,21 @@ export function materializeDataUrlToTemp(
     const decoded = decodeDataUrl(src);
     if (!decoded) return null;
 
-    const dir = join(tmpdir(), "hermes-desktop-media");
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(TEMP_MEDIA_DIR, { recursive: true });
+    cleanupTempMediaFiles({
+      maxAgeMs: TEMP_MEDIA_MAX_AGE_MS,
+      maxFiles: TEMP_MEDIA_MAX_FILES,
+    });
 
     let filename = sanitizeFilename(suggestedName);
     if (!extname(filename)) {
       filename += EXT_BY_MIME[decoded.mime] || ".bin";
     }
-    const target = join(dir, `${Date.now()}-${filename}`);
-    writeFileSync(target, decoded.buffer);
+    const hash = createHash("sha256").update(decoded.buffer).digest("hex");
+    const target = join(TEMP_MEDIA_DIR, `${hash.slice(0, 16)}-${filename}`);
+    if (!existsSync(target)) {
+      writeFileSync(target, decoded.buffer);
+    }
     return target;
   } catch {
     return null;

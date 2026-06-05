@@ -19,6 +19,7 @@ import { stageAttachment, clearStagedAttachments } from "./attachment-staging";
 import { persistPromptImageAttachments } from "./session-attachment-store";
 import { discoverProviderModels } from "./model-discovery";
 import {
+  cleanupTempMediaFiles,
   materializeDataUrlToTemp,
   readMediaAsDataUrl,
   saveMedia,
@@ -2126,6 +2127,7 @@ if (process.env.ENABLE_CDP === "1") {
 app.whenReady().then(() => {
   app.name = "Hermes";
   electronApp.setAppUserModelId("com.nousresearch.hermes");
+  cleanupTempMediaFiles();
 
   // Allow microphone access for the app's own renderer (voice input). Without
   // a handler Electron denies getUserMedia by default. Scoped to the `media`
@@ -2187,6 +2189,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  cleanupTempMediaFiles();
   stopHealthPolling();
   if (currentChatAbort) {
     currentChatAbort();
