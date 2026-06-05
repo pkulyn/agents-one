@@ -4,6 +4,9 @@ import type { AgentAvatarProfile } from "../avatars/profile";
 // the structural agent types, so we keep this as an open string identifier.
 export type OfficeInteractionTargetId = string;
 
+/** An agent's org position. Everyone is an employee; exactly one can be CEO. */
+export type AgentPosition = "employee" | "ceo";
+
 export type OfficeAgent = {
   id: string;
   name: string;
@@ -12,6 +15,12 @@ export type OfficeAgent = {
   color: string;
   item: string;
   avatarProfile?: AgentAvatarProfile | null;
+  /** Underlying profile metadata, surfaced in the details sidebar. */
+  model?: string;
+  provider?: string;
+  gatewayRunning?: boolean;
+  /** Org position; defaults to "employee" when unset. The CEO gets a desk. */
+  position?: AgentPosition;
 };
 
 export type JanitorTool = "broom" | "vacuum" | "floor_scrubber";

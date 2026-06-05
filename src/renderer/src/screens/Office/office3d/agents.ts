@@ -49,6 +49,10 @@ export function profileToOfficeAgent(profile: OfficeProfileInput): OfficeAgent {
     color,
     item: "desk",
     avatarProfile: createAgentAvatarProfileFromSeed(seed),
+    model: profile.model,
+    provider: profile.provider,
+    gatewayRunning: profile.gatewayRunning,
+    position: "employee",
   };
 }
 

@@ -39,4 +39,6 @@ export type AgentModelProps = {
   showSpeech?: boolean;
   speechText?: string | null;
   suppressSpeechBubble?: boolean;
+  /** If set, renders a rigged GLB model instead of the procedural avatar. */
+  riggedModelUrl?: string;
 };
