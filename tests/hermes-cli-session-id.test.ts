@@ -1,7 +1,16 @@
 import { EventEmitter } from "events";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { mkdirSync, rmSync } from "fs";
 
-const { spawned, TEST_HOME, TEST_REPO, healthStatuses, apiRequests } =
+const {
+  spawned,
+  TEST_HOME,
+  TEST_REPO,
+  healthStatuses,
+  apiRequests,
+  apiRequestErrors,
+  requestEvents,
+} =
   vi.hoisted(() => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require("path");
@@ -21,12 +30,17 @@ const { spawned, TEST_HOME, TEST_REPO, healthStatuses, apiRequests } =
         os.tmpdir(),
         `hermes-cli-session-test-${Date.now()}`,
       ),
-      TEST_REPO: os.tmpdir(),
+      TEST_REPO: path.join(
+        os.tmpdir(),
+        `hermes-cli-session-repo-${Date.now()}`,
+      ),
       healthStatuses: [] as number[],
       apiRequests: [] as Array<{
         body: string;
         headers: Record<string, string>;
       }>,
+      apiRequestErrors: [] as string[],
+      requestEvents: [] as string[],
     };
   });
 
@@ -50,6 +64,7 @@ vi.mock("http", () => ({
         },
         end: () => {
           if (_url.endsWith("/health")) {
+            requestEvents.push("health");
             cb?.({
               statusCode: healthStatuses.shift() ?? 503,
               resume: () => {},
@@ -58,6 +73,82 @@ vi.mock("http", () => ({
           }
 
           if (_url.endsWith("/v1/chat/completions")) {
+            requestEvents.push("chat");
+            const requestError = apiRequestErrors.shift();
+            if (requestError === "HANG") {
+              return;
+            }
+            if (requestError === "HANG_ACCEPTED") {
+              apiRequests.push({
+                body,
+                headers: (_options.headers as Record<string, string>) || {},
+              });
+              return;
+            }
+            if (requestError === "TIMEOUT_ACCEPTED") {
+              apiRequests.push({
+                body,
+                headers: (_options.headers as Record<string, string>) || {},
+              });
+              queueMicrotask(() => {
+                handlers.get("timeout")?.();
+              });
+              return;
+            }
+            if (requestError?.startsWith("STATUS:")) {
+              const [, status = "500", message = "API error"] =
+                requestError.split(":");
+              apiRequests.push({
+                body,
+                headers: (_options.headers as Record<string, string>) || {},
+              });
+              const res = new EventEmitter() as EventEmitter & {
+                statusCode: number;
+                headers: Record<string, string>;
+              };
+              res.statusCode = Number(status);
+              res.headers = {};
+              cb?.(res);
+              queueMicrotask(() => {
+                res.emit(
+                  "data",
+                  Buffer.from(JSON.stringify({ error: { message } })),
+                );
+                res.emit("end");
+              });
+              return;
+            }
+            if (requestError?.startsWith("STREAM_ERROR:")) {
+              const message = requestError.slice("STREAM_ERROR:".length);
+              apiRequests.push({
+                body,
+                headers: (_options.headers as Record<string, string>) || {},
+              });
+              const res = new EventEmitter() as EventEmitter & {
+                statusCode: number;
+                headers: Record<string, string>;
+              };
+              res.statusCode = 200;
+              res.headers = { "x-hermes-session-id": "desk-cold-gateway" };
+              cb?.(res);
+              queueMicrotask(() => {
+                res.emit(
+                  "data",
+                  Buffer.from(
+                    'data: {"choices":[{"delta":{"content":"Partial"}}]}\n\n',
+                  ),
+                );
+                res.emit("error", new Error(message));
+              });
+              return;
+            }
+            if (requestError) {
+              queueMicrotask(() => {
+                handlers.get("error")?.(new Error(requestError));
+              });
+              return;
+            }
+
             apiRequests.push({
               body,
               headers: (_options.headers as Record<string, string>) || {},
@@ -115,6 +206,7 @@ vi.mock("child_process", () => ({
         kill: vi.fn(),
         unref: vi.fn(),
       });
+      proc.stderr.pipe = vi.fn();
       spawned.push(proc);
       return proc;
     }),
@@ -127,6 +219,7 @@ vi.mock("child_process", () => ({
       kill: vi.fn(),
       unref: vi.fn(),
     });
+    proc.stderr.pipe = vi.fn();
     spawned.push(proc);
     return proc;
   }),
@@ -187,6 +280,9 @@ describe("CLI fallback session id propagation", () => {
   beforeEach(() => {
     healthStatuses.length = 0;
     apiRequests.length = 0;
+    apiRequestErrors.length = 0;
+    requestEvents.length = 0;
+    rmSync(TEST_REPO, { recursive: true, force: true });
   });
 
   afterEach(() => {
@@ -260,8 +356,9 @@ describe("CLI fallback session id propagation", () => {
     });
   });
 
-  it("waits for a cold gateway to become API-ready instead of falling back to CLI", async () => {
-    healthStatuses.push(503, 200);
+  it("uses a healthy running gateway API instead of falling back to CLI", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
+    healthStatuses.push(200);
 
     expect(startGateway()).toBe(true);
     expect(spawned).toHaveLength(1);
@@ -285,7 +382,56 @@ describe("CLI fallback session id propagation", () => {
     });
   });
 
-  it("re-checks health when a previously-ready local gateway is restarted cold", async () => {
+  it("recovers a stopped local gateway before sending via the API", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
+    healthStatuses.push(503, 503, 200);
+
+    const chunks: string[] = [];
+    const done = new Promise<string | undefined>((resolve, reject) => {
+      sendMessage("hi after update", {
+        onChunk: (chunk) => chunks.push(chunk),
+        onDone: resolve,
+        onError: reject,
+      }).catch(reject);
+    });
+
+    await expect(done).resolves.toBe("desk-cold-gateway");
+    expect(chunks.join("")).toBe("Hi from API");
+    expect(spawned).toHaveLength(1);
+    expect(apiRequests).toHaveLength(1);
+    expect(JSON.parse(apiRequests[0].body)).toMatchObject({
+      messages: [{ role: "user", content: "hi after update" }],
+      stream: true,
+    });
+  });
+
+  it("restarts a tracked but unhealthy local gateway before sending via the API", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
+    expect(startGateway()).toBe(true);
+    expect(spawned).toHaveLength(1);
+    healthStatuses.push(503, 503, 503, 200);
+
+    const chunks: string[] = [];
+    const done = new Promise<string | undefined>((resolve, reject) => {
+      sendMessage("hi after stale gateway", {
+        onChunk: (chunk) => chunks.push(chunk),
+        onDone: resolve,
+        onError: reject,
+      }).catch(reject);
+    });
+
+    await expect(done).resolves.toBe("desk-cold-gateway");
+    expect(chunks.join("")).toBe("Hi from API");
+    expect(spawned).toHaveLength(2);
+    expect(apiRequests).toHaveLength(1);
+    expect(JSON.parse(apiRequests[0].body)).toMatchObject({
+      messages: [{ role: "user", content: "hi after stale gateway" }],
+      stream: true,
+    });
+  });
+
+  it("recovers after a stale ready cache without slowing the normal API send path", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
     healthStatuses.push(200);
 
     await expect(
@@ -298,10 +444,11 @@ describe("CLI fallback session id propagation", () => {
       }),
     ).resolves.toBe("desk-cold-gateway");
     expect(apiRequests).toHaveLength(1);
+    expect(requestEvents).toEqual(["health", "chat"]);
 
-    expect(startGateway()).toBe(true);
-    expect(spawned).toHaveLength(1);
+    apiRequestErrors.push("connect ECONNREFUSED 127.0.0.1:8765");
     healthStatuses.push(503, 200);
+    const secondSendStart = requestEvents.length;
 
     const chunks: string[] = [];
     await expect(
@@ -317,8 +464,166 @@ describe("CLI fallback session id propagation", () => {
     expect(chunks.join("")).toBe("Hi from API");
     expect(spawned).toHaveLength(1);
     expect(apiRequests).toHaveLength(2);
+    expect(requestEvents[secondSendStart]).toBe("chat");
+    expect(requestEvents.at(-1)).toBe("chat");
     expect(JSON.parse(apiRequests[1].body)).toMatchObject({
       messages: [{ role: "user", content: "hi after restart" }],
+      stream: true,
+    });
+  });
+
+  it("retries a reset local API socket once after gateway recovery", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
+    healthStatuses.push(200);
+
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("warmup", {
+          onChunk: () => {},
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).resolves.toBe("desk-cold-gateway");
+
+    apiRequestErrors.push("read ECONNRESET");
+    healthStatuses.push(503, 200);
+
+    const chunks: string[] = [];
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("hi after reset", {
+          onChunk: (chunk) => chunks.push(chunk),
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).resolves.toBe("desk-cold-gateway");
+
+    expect(chunks.join("")).toBe("Hi from API");
+    expect(apiRequests).toHaveLength(2);
+    expect(JSON.parse(apiRequests[1].body)).toMatchObject({
+      messages: [{ role: "user", content: "hi after reset" }],
+      stream: true,
+    });
+  });
+
+  it("preserves API response errors when recovery succeeds", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
+    healthStatuses.push(200);
+
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("warmup", {
+          onChunk: () => {},
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).resolves.toBe("desk-cold-gateway");
+
+    apiRequestErrors.push("STATUS:401:Authentication failed");
+    healthStatuses.push(503, 200);
+
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("bad key", {
+          onChunk: () => {},
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).rejects.toThrow("Authentication failed");
+
+    expect(apiRequests).toHaveLength(2);
+    expect(JSON.parse(apiRequests[1].body)).toMatchObject({
+      messages: [{ role: "user", content: "bad key" }],
+      stream: true,
+    });
+  });
+
+  it("reports a mid-stream API disconnect without replaying partial output", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
+    healthStatuses.push(200);
+
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("warmup", {
+          onChunk: () => {},
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).resolves.toBe("desk-cold-gateway");
+
+    apiRequestErrors.push("STREAM_ERROR:read ECONNRESET");
+    healthStatuses.push(503, 200);
+    const secondSendStart = requestEvents.length;
+
+    const chunks: string[] = [];
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("partial stream", {
+          onChunk: (chunk) => chunks.push(chunk),
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).rejects.toThrow("Stream error: read ECONNRESET");
+
+    expect(chunks.join("")).toBe("Partial");
+    expect(apiRequests).toHaveLength(2);
+    expect(requestEvents[secondSendStart]).toBe("chat");
+    await vi.waitFor(() => {
+      expect(spawned).toHaveLength(1);
+      expect(healthStatuses).toHaveLength(0);
+      expect(requestEvents.slice(secondSendStart + 1)).toContain("health");
+    });
+    expect(JSON.parse(apiRequests[1].body)).toMatchObject({
+      messages: [{ role: "user", content: "partial stream" }],
+      stream: true,
+    });
+  });
+
+  it("recovers an accepted timed-out request without replaying the user message", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
+    healthStatuses.push(200);
+
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("warmup", {
+          onChunk: () => {},
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).resolves.toBe("desk-cold-gateway");
+    expect(requestEvents).toEqual(["health", "chat"]);
+
+    apiRequestErrors.push("TIMEOUT_ACCEPTED");
+    healthStatuses.push(503, 503, 200);
+    const secondSendStart = requestEvents.length;
+
+    const chunks: string[] = [];
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("hi after hung gateway", {
+          onChunk: (chunk) => chunks.push(chunk),
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).rejects.toThrow(
+      "API request timed out. Check the SSH tunnel and remote Hermes gateway.",
+    );
+
+    expect(chunks).toEqual([]);
+    expect(spawned).toHaveLength(1);
+    expect(apiRequests).toHaveLength(2);
+    expect(requestEvents[secondSendStart]).toBe("chat");
+    expect(requestEvents.slice(secondSendStart + 1)).toContain("health");
+    expect(JSON.parse(apiRequests[1].body)).toMatchObject({
+      messages: [{ role: "user", content: "hi after hung gateway" }],
       stream: true,
     });
   });

@@ -6,6 +6,8 @@ export default {
   running: "執行中",
   stopped: "已停止",
   working: "處理中…",
+  restart: "重新啟動",
+  restartFailed: "網關重新啟動失敗。請查看 gateway-stderr.log 取得詳細資訊。",
   startFailed: "無法啟動網關。",
   stopFailed: "無法停止網關。",
   startExited: "網關已啟動，但在就緒前又停止了。",

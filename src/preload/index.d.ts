@@ -374,6 +374,7 @@ interface HermesAPI {
   // Gateway
   startGateway: () => Promise<GatewayStartResult>;
   stopGateway: () => Promise<boolean>;
+  restartGateway: (profile?: string) => Promise<boolean>;
   gatewayStatus: () => Promise<boolean>;
 
   // Platform toggles

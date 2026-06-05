@@ -6,6 +6,9 @@ export default {
   running: "Running",
   stopped: "Stopped",
   working: "Working…",
+  restart: "Restart",
+  restartFailed:
+    "Gateway restart failed. Check gateway-stderr.log for details.",
   startFailed: "Gateway could not be started.",
   stopFailed: "Gateway could not be stopped.",
   startExited:

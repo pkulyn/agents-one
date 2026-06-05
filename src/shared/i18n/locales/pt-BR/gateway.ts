@@ -6,6 +6,9 @@ export default {
   running: "Em execução",
   stopped: "Parado",
   working: "Processando…",
+  restart: "Reiniciar",
+  restartFailed:
+    "Falha ao reiniciar o gateway. Verifique gateway-stderr.log para detalhes.",
   startFailed: "Não foi possível iniciar o gateway.",
   stopFailed: "Não foi possível parar o gateway.",
   startExited: "O gateway foi iniciado, mas parou antes de ficar pronto.",

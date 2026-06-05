@@ -6,6 +6,9 @@ export default {
   running: "Działa",
   stopped: "Zatrzymana",
   working: "Przetwarzanie…",
+  restart: "Uruchom ponownie",
+  restartFailed:
+    "Nie udało się ponownie uruchomić bramki. Szczegóły znajdziesz w gateway-stderr.log.",
   startFailed: "Nie udało się uruchomić bramki.",
   stopFailed: "Nie udało się zatrzymać bramki.",
   startExited:

@@ -54,13 +54,19 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
         window.hermesAPI.getMessagingPlatforms(profile),
       ]);
       setGatewayRunning(gwStatus);
-      // Clear any stale start-failure banner once the gateway is confirmed up.
-      if (gwStatus) setGatewayError(null);
+      // Clear stale start-failure banners once the gateway is confirmed up,
+      // but keep an explicit restart failure visible: a failed recovery can
+      // leave the old gateway running while still needing user attention.
+      if (gwStatus) {
+        setGatewayError((current) =>
+          current === t("gateway.restartFailed") ? current : null,
+        );
+      }
       setCatalog(platforms);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
     }
-  }, [profile]);
+  }, [profile, t]);
 
   useEffect(() => {
     void loadConfig();
@@ -149,6 +155,37 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
       } finally {
         setGatewayBusy(false);
       }
+    }
+  }
+
+  async function restartGateway(): Promise<void> {
+    if (gatewayStatusTimeoutRef.current) {
+      clearTimeout(gatewayStatusTimeoutRef.current);
+      gatewayStatusTimeoutRef.current = null;
+    }
+    setGatewayBusy(true);
+    setGatewayError(null);
+    try {
+      const restarted = await window.hermesAPI.restartGateway(profile);
+      setGatewayRunning(restarted);
+      if (!restarted) {
+        await loadConfig();
+        setGatewayError(t("gateway.restartFailed"));
+      } else {
+        gatewayStatusTimeoutRef.current = setTimeout(async () => {
+          const status = await window.hermesAPI.gatewayStatus();
+          setGatewayRunning(status);
+          if (status) {
+            void loadConfig();
+          }
+          gatewayStatusTimeoutRef.current = null;
+        }, 5000);
+      }
+    } catch {
+      await loadConfig();
+      setGatewayError(t("gateway.restartFailed"));
+    } finally {
+      setGatewayBusy(false);
     }
   }
 
@@ -325,6 +362,15 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
                   ? t("common.stop")
                   : t("common.start")}
             </button>
+            {gatewayRunning && (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => void restartGateway()}
+                disabled={gatewayBusy}
+              >
+                {t("gateway.restart")}
+              </button>
+            )}
           </div>
           {gatewayError && (
             <div className="settings-gateway-error" role="alert">
