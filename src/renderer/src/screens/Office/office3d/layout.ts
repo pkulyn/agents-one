@@ -94,7 +94,7 @@ const DESK_W = 100;
 const DESK_H = 55;
 // Agents sit centred on the desk's width and set back (north of the desk's far
 // edge) so their body rests on the chair instead of clipping the desk top.
-const SEAT_BACK = 38;
+const SEAT_BACK = 28;
 const CHAIR_FOOTPRINT = 24;
 
 // ── CEO executive desk ─────────────────────────────────────────────────────
@@ -118,22 +118,22 @@ function buildEmployeeWorkstation(agentId: string, index: number): Workstation {
   const deskY = ORIGIN_Y + row * SPACING_Y;
 
   const seatX = deskX + DESK_W / 2;
-  const seatY = deskY - SEAT_BACK;
-  const deskCenterX = deskX + DESK_W / 2;
-  const deskCenterY = deskY + DESK_H / 2;
-  // Faces straight at the desk (south, toward the camera).
-  const seatFacing = Math.atan2(deskCenterX - seatX, deskCenterY - seatY);
+  // Desk at facingDeg=0 has drawers on the North side, and extends from deskY-31 to deskY+1.
+  // We place the agent North of the desk, facing South towards the drawers.
+  const SEAT_BACK = 16;
+  const seatY = deskY - 31 - SEAT_BACK;
+  const seatFacing = 0; // Faces South towards the desk
 
   return {
     id: `desk-${index}`,
     agentId,
     deskX,
     deskY,
-    deskFacingDeg: 180,
-    // Chair centred under the agent (placement is by footprint top-left).
+    deskFacingDeg: 0, // Desk extends North, drawers are on the North side
+    // Chair footprint is centered under the agent
     chairX: seatX - CHAIR_FOOTPRINT / 2,
     chairY: seatY - CHAIR_FOOTPRINT / 2,
-    chairFacingDeg: (seatFacing * 180) / Math.PI,
+    chairFacingDeg: 0, // Faces South
     seatX,
     seatY,
     seatFacing,
@@ -154,7 +154,7 @@ function buildCeoWorkstation(agentId: string): Workstation {
     agentId,
     deskX: CEO_DESK_X,
     deskY: CEO_DESK_Y,
-    deskFacingDeg: 180,
+    deskFacingDeg: 0,
     chairX: seatX - CHAIR_FOOTPRINT / 2,
     chairY: seatY - CHAIR_FOOTPRINT / 2,
     chairFacingDeg: (seatFacing * 180) / Math.PI,

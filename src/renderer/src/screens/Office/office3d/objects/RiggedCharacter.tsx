@@ -74,11 +74,6 @@ export function RiggedCharacter({
     return { autoScale: scaleValue, bboxMin: min, bboxCenter: center };
   }, [clonedScene]);
 
-  const defaultHipsY = useMemo(() => {
-    const hips = clonedScene.getObjectByName('Hips') || clonedScene.getObjectByName('Pelvis');
-    return hips ? hips.position.y : 0;
-  }, [clonedScene]);
-
   const { mixer, clipMap } = useMemo(() => {
     const m = new THREE.AnimationMixer(clonedScene);
     const names = animations.map((c) => c.name);
@@ -148,41 +143,6 @@ export function RiggedCharacter({
     }
 
     mixer.update(Math.min(delta, 1 / 30));
-
-    // Apply procedural sitting overrides if using the fallback idle animation
-    const hips = clonedScene.getObjectByName('Hips') || clonedScene.getObjectByName('Pelvis');
-    if (agent.state === "sitting" && targetClipIdx === clipMap.idle) {
-      const leftThigh =
-        clonedScene.getObjectByName('UpperLeg.L') ||
-        clonedScene.getObjectByName('UpperLeg_L');
-      const rightThigh =
-        clonedScene.getObjectByName('UpperLeg.R') ||
-        clonedScene.getObjectByName('UpperLeg_R');
-      const leftShin =
-        clonedScene.getObjectByName('LowerLeg.L') ||
-        clonedScene.getObjectByName('LowerLeg_L');
-      const rightShin =
-        clonedScene.getObjectByName('LowerLeg.R') ||
-        clonedScene.getObjectByName('LowerLeg_R');
-      const leftArm =
-        clonedScene.getObjectByName('UpperArm.L') ||
-        clonedScene.getObjectByName('UpperArm_L');
-      const rightArm =
-        clonedScene.getObjectByName('UpperArm.R') ||
-        clonedScene.getObjectByName('UpperArm_R');
-
-      if (hips) hips.position.y = defaultHipsY - 0.22;
-      if (leftThigh) leftThigh.rotation.x = -Math.PI / 2;
-      if (rightThigh) rightThigh.rotation.x = -Math.PI / 2;
-      if (leftShin) leftShin.rotation.x = Math.PI / 2;
-      if (rightShin) rightShin.rotation.x = Math.PI / 2;
-      if (leftArm) leftArm.rotation.x = -Math.PI / 4;
-      if (rightArm) rightArm.rotation.x = -Math.PI / 4;
-    } else {
-      // Reset hips to default when not sitting
-      if (hips) hips.position.y = defaultHipsY;
-    }
-
     invalidate();
   });
 

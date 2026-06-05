@@ -21,6 +21,7 @@ interface FurnitureDef {
   castShadow: boolean;
   /** World-units lifted off the floor (e.g. a monitor resting on a desk). */
   yOffset?: number;
+  origin?: "corner" | "center";
 }
 
 // Per-type GLB + transform metadata, mirroring hermes-office's furniture maps.
@@ -40,6 +41,7 @@ const FURNITURE_DEFS: Record<FurnitureType, FurnitureDef> = {
     tint: null,
     footprint: [120, 65],
     castShadow: true,
+    origin: "center",
   },
   chair: {
     url: chairUrl,
@@ -179,8 +181,9 @@ function GlbItem({
   );
   const [wx, , wz] = toWorld(x, y);
   const rotY = (facingDeg * Math.PI) / 180;
-  const pivotX = def.footprint[0] * SCALE * 0.5;
-  const pivotZ = def.footprint[1] * SCALE * 0.5;
+  const isCenter = def.origin === "center";
+  const pivotX = isCenter ? 0 : def.footprint[0] * SCALE * 0.5;
+  const pivotZ = isCenter ? 0 : def.footprint[1] * SCALE * 0.5;
   const yOffset = def.yOffset ?? 0;
 
   return (
@@ -285,9 +288,9 @@ export function Workstations({
             />
             <GlbItem
               type="computer"
-              x={w.deskX + 35}
-              y={w.deskY + 22}
-              facingDeg={w.deskFacingDeg}
+              x={w.deskX + 20}
+              y={w.deskY - 40}
+              facingDeg={180}
             />
             <GlbItem
               type="chair"
