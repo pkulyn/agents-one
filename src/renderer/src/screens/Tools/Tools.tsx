@@ -15,6 +15,10 @@ interface ToolsProps {
   profile?: string;
   showPlatformToolsets?: boolean;
   remoteMode?: boolean;
+  // Whether this pane is the active view. The Layout keeps tabs mounted and
+  // toggles visibility, so we refetch on each show to pick up changes made
+  // elsewhere (e.g. installing an MCP from Discover).
+  visible?: boolean;
   // Navigate to the Discover → Skills tab (used by the embedded Skills tab).
   onBrowseSkills?: () => void;
   // Navigate to the Discover → MCPs tab (used by the MCP "Browse catalog").
@@ -434,6 +438,7 @@ function Tools({
   profile,
   showPlatformToolsets = true,
   remoteMode = false,
+  visible = true,
   onBrowseSkills,
   onBrowseMcps,
 }: ToolsProps): React.JSX.Element {
@@ -471,8 +476,8 @@ function Tools({
   }, [profile, showPlatformToolsets]);
 
   useEffect(() => {
-    loadToolsets();
-  }, [loadToolsets]);
+    if (visible) loadToolsets();
+  }, [visible, loadToolsets]);
 
   async function handleToggle(
     key: string,

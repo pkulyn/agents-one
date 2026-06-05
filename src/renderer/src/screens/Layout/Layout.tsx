@@ -480,6 +480,7 @@ function Layout({
               profile={activeProfile}
               showPlatformToolsets={!remoteMode}
               remoteMode={remoteMode}
+              visible={view === "tools"}
               onBrowseSkills={() => focusDiscover("skills")}
               onBrowseMcps={() => focusDiscover("mcps")}
             />

@@ -3,10 +3,10 @@ import {
   Search,
   Refresh,
   Download,
-  Trash,
   Check,
   X,
   Plus,
+  Trash,
   ExternalLink,
   Puzzle,
   Plug,
@@ -32,13 +32,6 @@ interface DiscoverProps {
   focusKind?: { kind: RegistryKind; nonce: number };
 }
 
-interface LocalSkill {
-  name: string;
-  category: string;
-  description: string;
-  path: string;
-}
-
 const KINDS: { key: RegistryKind; icon: LucideIcon }[] = [
   { key: "skills", icon: Puzzle },
   { key: "mcps", icon: Plug },
@@ -47,10 +40,10 @@ const KINDS: { key: RegistryKind; icon: LucideIcon }[] = [
 ];
 
 // Per-kind setup action: distinct icon + i18n group so each card reads clearly
-// (Install a skill/workflow, Connect an MCP, Create an agent profile).
+// (Install a skill/mcp/workflow, Create an agent profile).
 const ACTION: Record<RegistryKind, { icon: LucideIcon; i18n: string }> = {
   skills: { icon: Download, i18n: "install" },
-  mcps: { icon: Plug, i18n: "connect" },
+  mcps: { icon: Download, i18n: "install" },
   agents: { icon: Plus, i18n: "create" },
   workflows: { icon: Download, i18n: "install" },
 };
@@ -63,7 +56,6 @@ const EMPTY: RegistryCatalog = {
 };
 
 type ActionState = "idle" | "working" | "done" | "error";
-type SkillsView = "installed" | "community";
 
 export default function Discover({
   profile,
@@ -72,23 +64,17 @@ export default function Discover({
 }: DiscoverProps): React.JSX.Element {
   const { t } = useI18n();
   const [tab, setTab] = useState<RegistryKind>("skills");
-  // Skills get an extra Installed/Community toggle; installed is the default
-  // so users land on their local skills.
-  const [skillsView, setSkillsView] = useState<SkillsView>("installed");
 
-  // "Browse" from the Capabilities screen focuses the matching Discover tab;
-  // Skills additionally lands on the Community view. Guarded so normal mounts
-  // (no focus request) aren't forced.
+  // "Browse" from the Capabilities screen focuses the matching Discover tab.
+  // Guarded so normal mounts (no focus request) aren't forced.
   useEffect(() => {
     if (!focusKind) return;
     setTab(focusKind.kind);
-    if (focusKind.kind === "skills") setSkillsView("community");
   }, [focusKind]);
   const [catalog, setCatalog] = useState<RegistryCatalog>(EMPTY);
-  // Skills shipped with the hermes-agent repo, shown in the Community view as
-  // a fallback alongside (eventually) registry skills.
+  // Skills shipped with the hermes-agent repo, folded into the skills list
+  // alongside registry skills (deduped).
   const [bundledSkills, setBundledSkills] = useState<RegistryItem[]>([]);
-  const [localSkills, setLocalSkills] = useState<LocalSkill[]>([]);
   const [installed, setInstalled] = useState<{
     skills: string[];
     mcps: string[];
@@ -100,16 +86,15 @@ export default function Discover({
   const [query, setQuery] = useState("");
   const [actions, setActions] = useState<Record<string, ActionState>>({});
   const [actionError, setActionError] = useState<Record<string, string>>({});
-  // Detail modal — either an installed local skill (preview + remove) or a
-  // community catalog item (preview + setup). Only one is open at a time.
-  const [detailSkill, setDetailSkill] = useState<LocalSkill | null>(null);
+  // Detail modal for a catalog item (preview + setup).
   const [detailItem, setDetailItem] = useState<{
     kind: RegistryKind;
     item: RegistryItem;
   } | null>(null);
-  const [detailContent, setDetailContent] = useState("");
   const [detailData, setDetailData] = useState<RegistryDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Confirm step before removing an installed item from the detail dialog.
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
 
   const loadInstalled = useCallback(async () => {
     try {
@@ -118,7 +103,6 @@ export default function Discover({
         window.hermesAPI.listProfiles(),
         window.hermesAPI.listInstalledSkills(profile),
       ]);
-      setLocalSkills(skills);
       setInstalled({
         skills: skills.map((s) => s.name),
         mcps: reg.mcps,
@@ -178,20 +162,15 @@ export default function Discover({
     if (visible) loadInstalled();
   }, [visible, loadInstalled]);
 
-  // Close whichever detail modal is open on Escape.
+  // Close the detail modal on Escape.
   useEffect(() => {
-    if (!detailSkill && !detailItem) return;
+    if (!detailItem) return;
     function onKey(e: KeyboardEvent): void {
-      if (e.key === "Escape") {
-        setDetailSkill(null);
-        setDetailItem(null);
-      }
+      if (e.key === "Escape") setDetailItem(null);
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [detailSkill, detailItem]);
-
-  const showLocalSkills = tab === "skills" && skillsView === "installed";
+  }, [detailItem]);
 
   const isInstalled = useCallback(
     (kind: RegistryKind, item: RegistryItem): boolean => {
@@ -250,18 +229,22 @@ export default function Discover({
     [communityList, matchesQuery],
   );
 
-  const localItems = useMemo(
-    () =>
-      localSkills.filter((s) =>
-        matchesQuery(s.name, s.description, s.category),
-      ),
-    [localSkills, matchesQuery],
-  );
+  // Total available skills (registry + bundled, deduped) regardless of the
+  // active tab or search query — tab counts always show the full catalog size.
+  const skillsTotal = useMemo(() => {
+    const list = catalog.skills ?? [];
+    const seen = new Set([
+      ...list.map((i) => i.id),
+      ...list.map((i) => i.name),
+    ]);
+    const extra = bundledSkills.filter(
+      (b) => !seen.has(b.id) && !seen.has(b.name),
+    );
+    return list.length + extra.length;
+  }, [catalog, bundledSkills]);
 
   function tabCount(key: RegistryKind): number {
-    if (key === "skills") {
-      return skillsView === "installed" ? localSkills.length : items.length;
-    }
+    if (key === "skills") return skillsTotal;
     return (catalog[key] ?? []).length;
   }
 
@@ -298,39 +281,14 @@ export default function Discover({
     }
   }
 
-  async function openSkillDetail(skill: LocalSkill): Promise<void> {
-    setDetailSkill(skill);
-    setDetailContent("");
-    setDetailLoading(true);
-    try {
-      const content = await window.hermesAPI.getSkillContent(skill.path);
-      setDetailContent(content);
-    } catch {
-      setDetailContent("");
-    } finally {
-      setDetailLoading(false);
-    }
-  }
-
-  async function openItemDetail(
+  // Remove an installed item. Only MCP servers support removal today
+  // (delete the server block from the active profile's config.yaml).
+  async function handleUninstall(
     kind: RegistryKind,
     item: RegistryItem,
   ): Promise<void> {
-    setDetailItem({ kind, item });
-    setDetailData(null);
-    setDetailLoading(true);
-    try {
-      const detail = await window.hermesAPI.fetchRegistryDetail(kind, item);
-      setDetailData(detail);
-    } catch {
-      setDetailData({ description: item.description });
-    } finally {
-      setDetailLoading(false);
-    }
-  }
-
-  async function handleUninstall(name: string): Promise<void> {
-    const key = `skill-local:${name}`;
+    if (kind !== "mcps") return;
+    const key = `${kind}:${item.id}`;
     setActions((a) => ({ ...a, [key]: "working" }));
     setActionError((e) => {
       const next = { ...e };
@@ -338,14 +296,10 @@ export default function Discover({
       return next;
     });
     try {
-      const res = await window.hermesAPI.uninstallSkill(name, profile);
+      const res = await window.hermesAPI.removeMcpServer(item.id, profile);
       if (res.success) {
-        setActions((a) => {
-          const next = { ...a };
-          delete next[key];
-          return next;
-        });
-        setDetailSkill(null);
+        setActions((a) => ({ ...a, [key]: "idle" }));
+        setConfirmUninstall(false);
         await loadInstalled();
       } else {
         setActions((a) => ({ ...a, [key]: "error" }));
@@ -360,75 +314,29 @@ export default function Discover({
     }
   }
 
-  const ActiveIcon = KINDS.find((k) => k.key === tab)?.icon ?? Puzzle;
-  const hasResults = showLocalSkills ? localItems.length > 0 : items.length > 0;
+  async function openItemDetail(
+    kind: RegistryKind,
+    item: RegistryItem,
+  ): Promise<void> {
+    setDetailItem({ kind, item });
+    setDetailData(null);
+    setConfirmUninstall(false);
+    setDetailLoading(true);
+    try {
+      const detail = await window.hermesAPI.fetchRegistryDetail(kind, item);
+      setDetailData(detail);
+    } catch {
+      setDetailData({ description: item.description });
+    } finally {
+      setDetailLoading(false);
+    }
+  }
 
-  const detailKey = detailSkill ? `skill-local:${detailSkill.name}` : "";
-  const detailState = actions[detailKey] ?? "idle";
+  const ActiveIcon = KINDS.find((k) => k.key === tab)?.icon ?? Puzzle;
+  const hasResults = items.length > 0;
 
   return (
     <div className="discover-container">
-      {detailSkill && (
-        <div
-          className="discover-modal-overlay"
-          onClick={() => setDetailSkill(null)}
-        >
-          <div
-            className="discover-modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="discover-modal-header">
-              <div className="discover-modal-titles">
-                <div className="discover-modal-name">
-                  <Puzzle size={18} className="discover-card-icon" />
-                  {detailSkill.name}
-                </div>
-                {detailSkill.category && (
-                  <span className="discover-card-badge">
-                    {detailSkill.category}
-                  </span>
-                )}
-              </div>
-              <div className="discover-modal-actions">
-                <button
-                  className="btn btn-secondary btn-sm discover-uninstall-btn"
-                  onClick={() => handleUninstall(detailSkill.name)}
-                  disabled={detailState === "working"}
-                >
-                  <Trash size={14} />
-                  {detailState === "working"
-                    ? t("discover.uninstalling")
-                    : t("discover.uninstall")}
-                </button>
-                <button
-                  className="btn-ghost discover-modal-close"
-                  onClick={() => setDetailSkill(null)}
-                  aria-label={t("discover.close")}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-            {detailState === "error" && actionError[detailKey] && (
-              <div className="discover-modal-error">
-                {actionError[detailKey]}
-              </div>
-            )}
-            <div className="discover-modal-content">
-              {detailLoading ? (
-                <div className="loading-spinner" />
-              ) : detailContent ? (
-                <AgentMarkdown>{detailContent}</AgentMarkdown>
-              ) : (
-                <p className="discover-empty-text">{detailSkill.description}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {detailItem &&
         (() => {
           const { kind, item } = detailItem;
@@ -463,10 +371,45 @@ export default function Discover({
                   </div>
                   <div className="discover-modal-actions">
                     {done ? (
-                      <span className="discover-card-installed">
-                        <Check size={14} />
-                        {t(`discover.actions.${act.i18n}.done`)}
-                      </span>
+                      <>
+                        <span className="discover-card-installed">
+                          <Check size={14} />
+                          {t(`discover.actions.${act.i18n}.done`)}
+                        </span>
+                        {kind === "mcps" &&
+                          (confirmUninstall ? (
+                            <>
+                              <button
+                                className="btn btn-danger btn-sm"
+                                onClick={() => handleUninstall(kind, item)}
+                                disabled={itemState === "working"}
+                              >
+                                <Trash size={14} />
+                                {itemState === "working"
+                                  ? t("discover.uninstalling")
+                                  : t("discover.uninstallConfirm", {
+                                      name: item.name,
+                                    })}
+                              </button>
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setConfirmUninstall(false)}
+                                disabled={itemState === "working"}
+                              >
+                                {t("common.cancel")}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className="btn-ghost discover-uninstall-btn"
+                              onClick={() => setConfirmUninstall(true)}
+                              title={t("discover.uninstall")}
+                            >
+                              <Trash size={14} />
+                              {t("discover.uninstall")}
+                            </button>
+                          ))}
+                      </>
                     ) : (
                       <button
                         className="btn btn-primary btn-sm"
@@ -583,26 +526,6 @@ export default function Discover({
       </div>
 
       <div className="discover-toolbar">
-        {tab === "skills" && (
-          <div className="discover-segment">
-            <button
-              className={`discover-segment-btn ${
-                skillsView === "installed" ? "active" : ""
-              }`}
-              onClick={() => setSkillsView("installed")}
-            >
-              {t("discover.installedSegment")}
-            </button>
-            <button
-              className={`discover-segment-btn ${
-                skillsView === "community" ? "active" : ""
-              }`}
-              onClick={() => setSkillsView("community")}
-            >
-              {t("discover.communitySegment")}
-            </button>
-          </div>
-        )}
         <div className="discover-search">
           <Search size={15} />
           <input
@@ -614,59 +537,20 @@ export default function Discover({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        {!showLocalSkills && (
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => load(true)}
-            disabled={loading}
-          >
-            <Refresh size={14} />
-            {t("discover.refresh")}
-          </button>
-        )}
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => load(true)}
+          disabled={loading}
+        >
+          <Refresh size={14} />
+          {t("discover.refresh")}
+        </button>
       </div>
 
-      {loading && !showLocalSkills ? (
+      {loading ? (
         <div className="discover-state">
           <div className="loading-spinner" />
         </div>
-      ) : showLocalSkills ? (
-        localItems.length === 0 ? (
-          <div className="discover-state">
-            <Puzzle size={28} />
-            <p className="discover-empty-title">
-              {t("discover.localEmptyTitle")}
-            </p>
-            <p className="discover-empty-text">
-              {t("discover.localEmptyText")}
-            </p>
-          </div>
-        ) : (
-          <div className="discover-grid">
-            {localItems.map((skill) => (
-              <button
-                key={skill.path}
-                className="discover-card discover-card--clickable"
-                onClick={() => openSkillDetail(skill)}
-              >
-                <div className="discover-card-head">
-                  <span className="discover-card-iconwrap">
-                    <Puzzle size={16} />
-                  </span>
-                  <span className="discover-card-name">{skill.name}</span>
-                  {skill.category && (
-                    <span className="discover-card-badge">
-                      {skill.category}
-                    </span>
-                  )}
-                </div>
-                {skill.description && (
-                  <p className="discover-card-desc">{skill.description}</p>
-                )}
-              </button>
-            ))}
-          </div>
-        )
       ) : error && !hasResults ? (
         <div className="discover-state">
           <p className="discover-empty-title">{t("discover.loadError")}</p>
@@ -695,15 +579,24 @@ export default function Discover({
             const state = actions[key] ?? "idle";
             const done = state === "done" || isInstalled(tab, item);
             const action = ACTION[tab];
+            const ActionIcon = action.icon;
             const meta = [
               item.author && t("discover.by", { author: item.author }),
               item.version && `v${item.version}`,
             ].filter(Boolean);
             return (
-              <button
+              <div
                 key={key}
+                role="button"
+                tabIndex={0}
                 className="discover-card discover-card--clickable"
                 onClick={() => openItemDetail(tab, item)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openItemDetail(tab, item);
+                  }
+                }}
               >
                 <div className="discover-card-head">
                   <span className="discover-card-iconwrap">
@@ -727,15 +620,34 @@ export default function Discover({
                     ))}
                   </div>
                 )}
-                {done && (
-                  <div className="discover-card-footer">
+                {state === "error" && actionError[key] && (
+                  <div className="discover-card-error">{actionError[key]}</div>
+                )}
+                <div className="discover-card-footer">
+                  {done ? (
                     <span className="discover-card-installed">
                       <Check size={14} />
                       {t(`discover.actions.${action.i18n}.done`)}
                     </span>
-                  </div>
-                )}
-              </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm discover-install-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleInstall(tab, item);
+                      }}
+                      disabled={state === "working"}
+                      title={t("discover.targetProfile")}
+                    >
+                      <ActionIcon size={14} />
+                      {state === "working"
+                        ? t(`discover.actions.${action.i18n}.working`)
+                        : t(`discover.actions.${action.i18n}.setup`)}
+                    </button>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>

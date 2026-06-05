@@ -52,7 +52,9 @@ interface IndexEntry {
 /** Per-entry manifest.json (mcp / agent / workflow). */
 interface EntryManifest {
   description?: string;
-  transport?: "stdio" | "http";
+  // Matches the engine's accepted transports. "sse" must be preserved in the
+  // written config — the engine only selects its SSE client when it sees it.
+  transport?: "stdio" | "http" | "sse";
   command?: string;
   args?: string[];
   env?: Record<string, string>;
@@ -332,12 +334,24 @@ function yamlScalar(value: string): string {
     : value;
 }
 
-/** Render one MCP server (from its manifest) as an indented YAML block. */
+/**
+ * Render one MCP server (from its manifest) as an indented YAML block, in the
+ * exact shape the engine's config loader expects (see hermes-agent
+ * `tools/mcp_tool.py`): a remote server is keyed by `url` (+ optional
+ * `transport: sse` and `headers`); a local server by `command` (+ `args`,
+ * `env`). The engine discriminates purely on the presence of `url`.
+ */
 function renderMcpYaml(id: string, m: EntryManifest): string {
   const lines: string[] = [`  ${id}:`];
-  if (m.transport === "http" || m.url) {
+  // Remote when the manifest carries a URL or declares an http/sse transport;
+  // otherwise it's a stdio (subprocess) server.
+  const remote = !!m.url || m.transport === "http" || m.transport === "sse";
+  if (remote) {
     if (m.url) lines.push(`    url: ${yamlScalar(m.url)}`);
-    if (m.headers) {
+    // The engine only uses its SSE client when transport is explicitly "sse";
+    // streamable-HTTP is the default, so we omit transport otherwise.
+    if (m.transport === "sse") lines.push(`    transport: sse`);
+    if (m.headers && Object.keys(m.headers).length) {
       lines.push(`    headers:`);
       for (const [k, v] of Object.entries(m.headers)) {
         lines.push(`      ${k}: ${yamlScalar(String(v))}`);
