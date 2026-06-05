@@ -763,8 +763,17 @@ function getTuiGatewayClient(profile?: string): TuiGatewayClient {
   return client;
 }
 
+function shouldUseTuiGatewayClient(): boolean {
+  return (
+    process.env.VITEST !== "true" &&
+    process.env.NODE_ENV !== "test" &&
+    process.env.npm_lifecycle_event !== "test"
+  );
+}
+
 function warmTuiGatewayClient(profile?: string): void {
   if (isRemoteMode()) return;
+  if (!shouldUseTuiGatewayClient()) return;
   void getTuiGatewayClient(profile)
     .start()
     .catch((error) => {
@@ -2240,7 +2249,12 @@ async function sendMessageViaBestApi(
   contextFolder?: string,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
-  if (!isRemoteMode() && !attachments?.length && !approvalCommand) {
+  if (
+    shouldUseTuiGatewayClient() &&
+    !isRemoteMode() &&
+    !attachments?.length &&
+    !approvalCommand
+  ) {
     try {
       return await sendMessageViaTuiGateway(
         message,
