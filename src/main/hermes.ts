@@ -1146,8 +1146,26 @@ async function sendMessageViaApiWithLocalRecovery(
   let settled = false;
   let activeHandle: ChatHandle | null = null;
 
+  const recoverAfterPartialOutput = (error: string): void => {
+    if (aborted || retrying || settled) return;
+
+    retrying = true;
+    activeHandle?.abort();
+    setApiCacheFor(profile, false);
+    settled = true;
+    cb.onError(error);
+
+    void startGatewayWithRecovery(profile)
+      .then((recovered) => {
+        setApiCacheFor(profile, recovered);
+      })
+      .catch(() => {
+        setApiCacheFor(profile, false);
+      });
+  };
+
   const recoverAndRetry = async (): Promise<void> => {
-    if (aborted || retrying || settled || sawOutput) return;
+    if (aborted || retrying || settled) return;
 
     retrying = true;
     activeHandle?.abort();
@@ -1179,7 +1197,7 @@ async function sendMessageViaApiWithLocalRecovery(
   };
 
   const recoverAndFail = async (error: string): Promise<void> => {
-    if (aborted || retrying || settled || sawOutput) return;
+    if (aborted || retrying || settled) return;
 
     retrying = true;
     activeHandle?.abort();
@@ -1223,6 +1241,11 @@ async function sendMessageViaApiWithLocalRecovery(
       cb.onDone(sessionId);
     },
     onError: (error) => {
+      if (sawOutput) {
+        recoverAfterPartialOutput(error);
+        return;
+      }
+
       if (isLocalApiTransportError(error)) {
         void recoverAndRetry();
         return;

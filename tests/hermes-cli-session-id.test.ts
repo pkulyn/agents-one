@@ -118,6 +118,30 @@ vi.mock("http", () => ({
               });
               return;
             }
+            if (requestError?.startsWith("STREAM_ERROR:")) {
+              const message = requestError.slice("STREAM_ERROR:".length);
+              apiRequests.push({
+                body,
+                headers: (_options.headers as Record<string, string>) || {},
+              });
+              const res = new EventEmitter() as EventEmitter & {
+                statusCode: number;
+                headers: Record<string, string>;
+              };
+              res.statusCode = 200;
+              res.headers = { "x-hermes-session-id": "desk-cold-gateway" };
+              cb?.(res);
+              queueMicrotask(() => {
+                res.emit(
+                  "data",
+                  Buffer.from(
+                    'data: {"choices":[{"delta":{"content":"Partial"}}]}\n\n',
+                  ),
+                );
+                res.emit("error", new Error(message));
+              });
+              return;
+            }
             if (requestError) {
               queueMicrotask(() => {
                 handlers.get("error")?.(new Error(requestError));
@@ -514,6 +538,49 @@ describe("CLI fallback session id propagation", () => {
     expect(apiRequests).toHaveLength(2);
     expect(JSON.parse(apiRequests[1].body)).toMatchObject({
       messages: [{ role: "user", content: "bad key" }],
+      stream: true,
+    });
+  });
+
+  it("reports a mid-stream API disconnect without replaying partial output", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
+    healthStatuses.push(200);
+
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("warmup", {
+          onChunk: () => {},
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).resolves.toBe("desk-cold-gateway");
+
+    apiRequestErrors.push("STREAM_ERROR:read ECONNRESET");
+    healthStatuses.push(503, 200);
+    const secondSendStart = requestEvents.length;
+
+    const chunks: string[] = [];
+    await expect(
+      new Promise<string | undefined>((resolve, reject) => {
+        sendMessage("partial stream", {
+          onChunk: (chunk) => chunks.push(chunk),
+          onDone: resolve,
+          onError: reject,
+        }).catch(reject);
+      }),
+    ).rejects.toThrow("Stream error: read ECONNRESET");
+
+    expect(chunks.join("")).toBe("Partial");
+    expect(apiRequests).toHaveLength(2);
+    expect(requestEvents[secondSendStart]).toBe("chat");
+    await vi.waitFor(() => {
+      expect(spawned).toHaveLength(1);
+      expect(healthStatuses).toHaveLength(0);
+      expect(requestEvents.slice(secondSendStart + 1)).toContain("health");
+    });
+    expect(JSON.parse(apiRequests[1].body)).toMatchObject({
+      messages: [{ role: "user", content: "partial stream" }],
       stream: true,
     });
   });
