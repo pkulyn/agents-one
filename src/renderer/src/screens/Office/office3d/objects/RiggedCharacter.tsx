@@ -189,6 +189,13 @@ export function RiggedCharacter({
         animations[targetClipIdx],
         clonedScene,
       );
+      if (agent.state === "sitting") {
+        nextAction.setLoop(THREE.LoopOnce, 1);
+        nextAction.clampWhenFinished = true;
+      } else {
+        nextAction.setLoop(THREE.LoopRepeat, Number.POSITIVE_INFINITY);
+        nextAction.clampWhenFinished = false;
+      }
       nextAction.reset().setEffectiveWeight(1).fadeIn(0.25).play();
       currentClipIdxRef.current = targetClipIdx;
     }
