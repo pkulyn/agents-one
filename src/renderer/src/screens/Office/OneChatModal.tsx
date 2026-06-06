@@ -156,7 +156,36 @@ export default function OneChatModal({
         }));
       setMessages((prev) => ({ ...prev, [selectedAgentId]: loaded }));
     } catch (err) {
-      // Append error as agent message
+      // The response may have been persisted even though the promise rejected.
+      // Try to reload from the database before showing a raw error.
+      try {
+        const reloadSessionId = `office-${selectedAgentId}`;
+        const items = (await window.hermesAPI.getSessionMessages(
+          reloadSessionId,
+        )) as Array<{
+          kind: "user" | "assistant";
+          id: number;
+          content?: string;
+        }>;
+        const loaded: ChatMessage[] = items
+          .filter((it) => it.kind === "user" || it.kind === "assistant")
+          .map((it) => ({
+            id: `db-${it.id}`,
+            role: it.kind === "user" ? "user" : "agent",
+            text: it.content || "",
+            timestamp: Date.now(),
+          }));
+        if (loaded.length > 0) {
+          setMessages((prev) => ({
+            ...prev,
+            [selectedAgentId]: loaded,
+          }));
+          return;
+        }
+      } catch {
+        // Ignore reload failure
+      }
+      // Fallback: show raw error
       setMessages((prev) => {
         const list = prev[selectedAgentId] ?? [];
         return {
