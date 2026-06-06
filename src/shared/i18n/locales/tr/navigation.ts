@@ -1,6 +1,7 @@
 export default {
   chat: "Sohbet",
   sessions: "Oturumlar",
+  discover: "Keşfet",
   agents: "Profiller",
   office: "Ofis",
   models: "Modeller",
@@ -8,11 +9,11 @@ export default {
   skills: "Yetenekler",
   soul: "Persona",
   memory: "Bellek",
-  tools: "Araçlar",
+  tools: "Kabiliyetler",
   schedules: "Zamanlayıcı",
   kanban: "Kanban",
   gateway: "Gateway",
   settings: "Ayarlar",
-  collapseSidebar: "Collapse sidebar",
-  expandSidebar: "Expand sidebar",
+  collapseSidebar: "Kenar çubuğunu daralt",
+  expandSidebar: "Kenar çubuğunu genişlet",
 } as const;
