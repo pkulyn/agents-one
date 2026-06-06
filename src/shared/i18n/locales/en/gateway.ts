@@ -16,4 +16,13 @@ export default {
   checkLog: "Check the gateway log:",
   gatewayHint:
     "Connects Hermes to Telegram, Discord, Slack, and other platforms",
+  apiServerKey: {
+    title: "API Server Key",
+    configured: "Key is configured",
+    missing: "Key is missing — chat will fail without it.",
+    generate: "Generate key",
+    regenerating: "Generating…",
+    generateHint:
+      "This key is shared between the desktop and the local gateway. Generating a new one restarts the gateway automatically.",
+  },
 } as const;
