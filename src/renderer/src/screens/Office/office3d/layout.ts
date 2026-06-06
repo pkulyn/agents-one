@@ -190,38 +190,25 @@ export const EXECUTIVE_DECOR: FurniturePlacement[] = [
   {
     id: "ceo-couch",
     type: "couch",
-    x: CEO_DESK_X - 10,
-    y: CEO_DESK_Y + 150,
+    x: CEO_DESK_X - 30,
+    y: CEO_DESK_Y + 100,
     facingDeg: 180,
     tint: "#2f3a4a",
   },
-  {
-    id: "ceo-decor-plant-left",
-    type: "plant",
-    x: CEO_DESK_X - 100,
-    y: CEO_DESK_Y + 158,
-    facingDeg: 0,
-  },
-  {
-    id: "ceo-decor-plant-right",
-    type: "plant",
-    x: CEO_DESK_X + 180,
-    y: CEO_DESK_Y + 158,
-    facingDeg: 0,
-  },
+
   // White planters framing the front of the lounge (either side of the couch).
   {
     id: "ceo-whitepot-left",
     type: "whitePot",
     x: CEO_DESK_X - 75,
-    y: CEO_DESK_Y + 245,
+    y: CEO_DESK_Y + 180,
     facingDeg: 0,
   },
   {
     id: "ceo-whitepot-right",
     type: "whitePot",
     x: CEO_DESK_X + 155,
-    y: CEO_DESK_Y + 245,
+    y: CEO_DESK_Y + 180,
     facingDeg: 0,
   },
 ];
@@ -272,6 +259,6 @@ export const REST_FURNITURE: FurniturePlacement[] = [
   })),
   { id: "rest-couch", type: "couch", x: 1320, y: 1520, facingDeg: 0 },
   { id: "rest-pantry", type: "pantry", x: 1660, y: 1760, facingDeg: 30 },
-  { id: "rest-plant-1", type: "plant", x: 1520, y: 180, facingDeg: 0 },
-  { id: "rest-plant-2", type: "plant", x: 1230, y: 180, facingDeg: 0 },
+  { id: "rest-plant-1", type: "whitePot", x: 1520, y: 180, facingDeg: 0 },
+  { id: "rest-plant-2", type: "whitePot", x: 1230, y: 180, facingDeg: 0 },
 ];
