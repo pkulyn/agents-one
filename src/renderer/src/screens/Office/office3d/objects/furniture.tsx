@@ -22,6 +22,8 @@ interface FurnitureDef {
   /** World-units lifted off the floor (e.g. a monitor resting on a desk). */
   yOffset?: number;
   origin?: "corner" | "center";
+  /** Unscaled GLB-local X/Z point that should land on the placement coordinate. */
+  seatAnchor?: [number, number];
 }
 
 // Per-type GLB + transform metadata, mirroring hermes-office's furniture maps.
@@ -63,7 +65,7 @@ const FURNITURE_DEFS: Record<FurnitureType, FurnitureDef> = {
     tint: "#5a4870",
     footprint: [60, 60],
     castShadow: true,
-    origin: "center",
+    seatAnchor: [0.25, 0.05],
   },
   plant: {
     url: plantUrl,
@@ -183,9 +185,24 @@ function GlbItem({
   const [wx, , wz] = toWorld(x, y);
   const rotY = (facingDeg * Math.PI) / 180;
   const isCenter = def.origin === "center";
+  const seatAnchor = def.seatAnchor;
   const pivotX = isCenter ? 0 : def.footprint[0] * SCALE * 0.5;
   const pivotZ = isCenter ? 0 : def.footprint[1] * SCALE * 0.5;
+  const anchorX = seatAnchor ? seatAnchor[0] * scale[0] : 0;
+  const anchorZ = seatAnchor ? seatAnchor[1] * scale[2] : 0;
   const yOffset = def.yOffset ?? 0;
+
+  if (seatAnchor) {
+    return (
+      <group position={[wx, yOffset, wz]} rotation={[0, rotY, 0]}>
+        <primitive
+          object={object}
+          position={[-anchorX, 0, -anchorZ]}
+          scale={scale}
+        />
+      </group>
+    );
+  }
 
   return (
     <group position={[wx, yOffset, wz]}>

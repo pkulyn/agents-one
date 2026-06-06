@@ -18,7 +18,7 @@ export type FurnitureType =
 export interface FurniturePlacement {
   id: string;
   type: FurnitureType;
-  /** Canvas-space top-left of the item footprint. */
+  /** Canvas-space placement point; interpreted by each furniture model's origin. */
   x: number;
   y: number;
   facingDeg: number;

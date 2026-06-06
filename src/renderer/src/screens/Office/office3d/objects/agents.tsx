@@ -13,6 +13,8 @@ import { RiggedCharacter } from "./RiggedCharacter";
 const MAX_NAMEPLATE_TEXT_LENGTH = 22;
 const MAX_SPEECH_BUBBLE_TEXT_LENGTH = 180;
 const MAX_SPEECH_BUBBLE_LINES = 4;
+const DESK_SIT_DROP = -0.03;
+const REST_SIT_DROP = -0.01;
 
 const formatAgentNameplateText = (value: string): string => {
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -170,7 +172,11 @@ export const AgentModel = memo(function AgentModel({
     // Desk chairs need a small drop; rest-room beanbags are lower so agents
     // sink further to avoid levitating above the lounge chair surface.
     const sitDrop =
-      agent.state === "sitting" ? (agent.x > DIVIDER_X ? -0.03 : -0.02) : 0;
+      agent.state === "sitting"
+        ? agent.x > DIVIDER_X
+          ? REST_SIT_DROP
+          : DESK_SIT_DROP
+        : 0;
     groupRef.current.position.y = bounce + breathe + sitDrop;
 
     if (leftArmRef.current) {
