@@ -165,6 +165,7 @@ function GlbItem({
   facingDeg,
   tint,
   scaleMultiplier = 1,
+  yOffset,
 }: {
   type: FurnitureType;
   x: number;
@@ -173,6 +174,8 @@ function GlbItem({
   tint?: string | null;
   /** Uniformly scales the model up (e.g. the larger executive desk). */
   scaleMultiplier?: number;
+  /** Override the default vertical lift off the floor. */
+  yOffset?: number;
 }): React.JSX.Element {
   const def = FURNITURE_DEFS[type];
   // Draco (CDN) and Meshopt (WASM) decoders are disabled — our GLBs are
@@ -200,11 +203,11 @@ function GlbItem({
   const pivotZ = isCenter ? 0 : def.footprint[1] * SCALE * 0.5;
   const anchorX = placementAnchor ? placementAnchor[0] * scale[0] : 0;
   const anchorZ = placementAnchor ? placementAnchor[1] * scale[2] : 0;
-  const yOffset = def.yOffset ?? 0;
+  const resolvedYOffset = yOffset ?? def.yOffset ?? 0;
 
   if (placementAnchor) {
     return (
-      <group position={[wx, yOffset, wz]} rotation={[0, rotY, 0]}>
+      <group position={[wx, resolvedYOffset, wz]} rotation={[0, rotY, 0]}>
         <primitive
           object={object}
           position={[-anchorX, 0, -anchorZ]}
@@ -215,7 +218,7 @@ function GlbItem({
   }
 
   return (
-    <group position={[wx, yOffset, wz]}>
+    <group position={[wx, resolvedYOffset, wz]}>
       <group position={[pivotX, 0, pivotZ]} rotation={[0, rotY, 0]}>
         <group position={[-pivotX, 0, -pivotZ]}>
           <primitive object={object} scale={scale} />
@@ -248,6 +251,13 @@ function ExecutiveWorkstation({
         x={station.deskX}
         y={station.deskY}
         facingDeg={station.deskFacingDeg}
+      />
+      <GlbItem
+        type="computer"
+        x={station.deskX}
+        y={station.deskY - 25}
+        facingDeg={180}
+        yOffset={0.78}
       />
       <GlbItem
         type="chair"
@@ -319,6 +329,7 @@ export function Workstations({
               x={w.deskX + 20}
               y={w.deskY - 40}
               facingDeg={180}
+              yOffset={0.58}
             />
             <GlbItem
               type="chair"

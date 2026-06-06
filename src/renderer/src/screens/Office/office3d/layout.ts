@@ -114,7 +114,7 @@ function buildEmployeeWorkstation(agentId: string, index: number): Workstation {
   const deskX = ORIGIN_X + col * SPACING_X;
   const deskY = ORIGIN_Y + row * SPACING_Y;
 
-  const seatX = deskX + DESK_W / 2;
+  const seatX = deskX + DESK_W / 2 - 10;
   // Desk at facingDeg=0 has drawers on the North side, and extends from deskY-31 to deskY+1.
   // We place the agent North of the desk, facing South towards the drawers.
   const SEAT_BACK = 16;
@@ -151,7 +151,7 @@ function buildCeoWorkstation(agentId: string): Workstation {
     agentId,
     deskX: CEO_DESK_X,
     deskY: CEO_DESK_Y,
-    deskFacingDeg: 0,
+    deskFacingDeg: 180,
     chairX: seatX - CHAIR_FOOTPRINT / 2,
     chairY: seatY - CHAIR_FOOTPRINT / 2,
     chairFacingDeg: (seatFacing * 180) / Math.PI,
