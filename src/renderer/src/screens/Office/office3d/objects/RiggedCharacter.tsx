@@ -62,6 +62,26 @@ export function RiggedCharacter({
     const cloned = SkeletonClone(scene);
     cloned.updateMatrixWorld(true);
     const tintColor = tint ? new THREE.Color(tint) : null;
+
+    // Detect whether the model has a separately-named "Shirt" material.
+    // If so we tint only that material; otherwise fall back to tinting all
+    // meshes so the agent still gets coloured.
+    let hasShirtMaterial = false;
+    if (tintColor) {
+      cloned.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const mats = Array.isArray(child.material)
+            ? child.material
+            : [child.material];
+          if (
+            mats.some((m) => (m as THREE.MeshStandardMaterial).name === "Shirt")
+          ) {
+            hasShirtMaterial = true;
+          }
+        }
+      });
+    }
+
     // Skinned meshes frequently get incorrectly frustum-culled because their
     // bounding sphere stays at the rig origin, making the avatar vanish.
     cloned.traverse((child) => {
@@ -77,12 +97,15 @@ export function RiggedCharacter({
             ? child.material
             : [child.material];
           const tinted = mats.map((material) => {
-            const next = (
-              material as THREE.Material
-            ).clone() as THREE.Material & {
+            const mat = material as THREE.MeshStandardMaterial;
+            const next = mat.clone() as THREE.Material & {
               color?: THREE.Color;
             };
-            if (next.color) next.color.lerp(tintColor, 0.6);
+            // Only tint the "Shirt" material when we found one; otherwise
+            // tint every material as a fallback.
+            if (next.color && (!hasShirtMaterial || mat.name === "Shirt")) {
+              next.color.lerp(tintColor, 0.6);
+            }
             return next;
           });
           child.material = Array.isArray(child.material) ? tinted : tinted[0];
@@ -166,6 +189,13 @@ export function RiggedCharacter({
         animations[targetClipIdx],
         clonedScene,
       );
+      if (agent.state === "sitting") {
+        nextAction.setLoop(THREE.LoopOnce, 1);
+        nextAction.clampWhenFinished = true;
+      } else {
+        nextAction.setLoop(THREE.LoopRepeat, Number.POSITIVE_INFINITY);
+        nextAction.clampWhenFinished = false;
+      }
       nextAction.reset().setEffectiveWeight(1).fadeIn(0.25).play();
       currentClipIdxRef.current = targetClipIdx;
     }

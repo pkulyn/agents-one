@@ -12,6 +12,7 @@ import beanbagUrl from "../assets/loungeDesignChair.glb?url";
 import plantUrl from "../assets/pottedPlant.glb?url";
 import whitePotUrl from "../assets/white_pot.glb?url";
 import computerUrl from "../assets/computerScreen.glb?url";
+import pantryUrl from "../assets/pantry.glb?url";
 
 interface FurnitureDef {
   url: string;
@@ -22,6 +23,8 @@ interface FurnitureDef {
   /** World-units lifted off the floor (e.g. a monitor resting on a desk). */
   yOffset?: number;
   origin?: "corner" | "center";
+  /** Unscaled GLB-local X/Z point that should land on the placement coordinate. */
+  placementAnchor?: [number, number];
 }
 
 // Per-type GLB + transform metadata, mirroring hermes-office's furniture maps.
@@ -59,10 +62,11 @@ const FURNITURE_DEFS: Record<FurnitureType, FurnitureDef> = {
   },
   beanbag: {
     url: beanbagUrl,
-    scale: [1, 1, 1],
+    scale: [1.5, 1.5, 1.5],
     tint: "#5a4870",
-    footprint: [40, 40],
+    footprint: [60, 60],
     castShadow: true,
+    placementAnchor: [0.25, 0.05],
   },
   plant: {
     url: plantUrl,
@@ -90,6 +94,15 @@ const FURNITURE_DEFS: Record<FurnitureType, FurnitureDef> = {
     footprint: [30, 20],
     castShadow: true,
     yOffset: 0.61,
+  },
+  pantry: {
+    url: pantryUrl,
+    scale: [0.00013, 0.00013, 0.00013],
+    tint: null,
+    footprint: [120, 80],
+    castShadow: true,
+    yOffset: 0.007,
+    placementAnchor: [-122984.47, -41638.51],
   },
 };
 
@@ -152,6 +165,7 @@ function GlbItem({
   facingDeg,
   tint,
   scaleMultiplier = 1,
+  yOffset,
 }: {
   type: FurnitureType;
   x: number;
@@ -160,6 +174,8 @@ function GlbItem({
   tint?: string | null;
   /** Uniformly scales the model up (e.g. the larger executive desk). */
   scaleMultiplier?: number;
+  /** Override the default vertical lift off the floor. */
+  yOffset?: number;
 }): React.JSX.Element {
   const def = FURNITURE_DEFS[type];
   // Draco (CDN) and Meshopt (WASM) decoders are disabled — our GLBs are
@@ -182,12 +198,27 @@ function GlbItem({
   const [wx, , wz] = toWorld(x, y);
   const rotY = (facingDeg * Math.PI) / 180;
   const isCenter = def.origin === "center";
+  const placementAnchor = def.placementAnchor;
   const pivotX = isCenter ? 0 : def.footprint[0] * SCALE * 0.5;
   const pivotZ = isCenter ? 0 : def.footprint[1] * SCALE * 0.5;
-  const yOffset = def.yOffset ?? 0;
+  const anchorX = placementAnchor ? placementAnchor[0] * scale[0] : 0;
+  const anchorZ = placementAnchor ? placementAnchor[1] * scale[2] : 0;
+  const resolvedYOffset = yOffset ?? def.yOffset ?? 0;
+
+  if (placementAnchor) {
+    return (
+      <group position={[wx, resolvedYOffset, wz]} rotation={[0, rotY, 0]}>
+        <primitive
+          object={object}
+          position={[-anchorX, 0, -anchorZ]}
+          scale={scale}
+        />
+      </group>
+    );
+  }
 
   return (
-    <group position={[wx, yOffset, wz]}>
+    <group position={[wx, resolvedYOffset, wz]}>
       <group position={[pivotX, 0, pivotZ]} rotation={[0, rotY, 0]}>
         <group position={[-pivotX, 0, -pivotZ]}>
           <primitive object={object} scale={scale} />
@@ -220,6 +251,13 @@ function ExecutiveWorkstation({
         x={station.deskX}
         y={station.deskY}
         facingDeg={station.deskFacingDeg}
+      />
+      <GlbItem
+        type="computer"
+        x={station.deskX}
+        y={station.deskY - 25}
+        facingDeg={180}
+        yOffset={0.78}
       />
       <GlbItem
         type="chair"
@@ -291,6 +329,7 @@ export function Workstations({
               x={w.deskX + 20}
               y={w.deskY - 40}
               facingDeg={180}
+              yOffset={0.58}
             />
             <GlbItem
               type="chair"
@@ -313,3 +352,4 @@ useGLTF.preload(beanbagUrl, false, false);
 useGLTF.preload(plantUrl, false, false);
 useGLTF.preload(whitePotUrl, false, false);
 useGLTF.preload(computerUrl, false, false);
+useGLTF.preload(pantryUrl, false, false);

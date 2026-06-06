@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { createDefaultAgentAvatarProfile } from "../avatars/profile";
 import { AGENT_SCALE, WALK_ANIM_SPEED } from "../core/constants";
 import { toWorld } from "../core/geometry";
+import { DIVIDER_X } from "../layout";
 import type { JanitorActor, RenderAgent } from "../core/types";
 import { AgentModelProps } from "./types";
 import { RiggedCharacter } from "./RiggedCharacter";
@@ -12,6 +13,8 @@ import { RiggedCharacter } from "./RiggedCharacter";
 const MAX_NAMEPLATE_TEXT_LENGTH = 22;
 const MAX_SPEECH_BUBBLE_TEXT_LENGTH = 180;
 const MAX_SPEECH_BUBBLE_LINES = 4;
+const DESK_SIT_DROP = -0.03;
+const REST_SIT_DROP = -0.01;
 
 const formatAgentNameplateText = (value: string): string => {
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -166,7 +169,14 @@ export const AgentModel = memo(function AgentModel({
         ? Math.sin(frameValue * 0.03) * 0.01
         : 0;
     // Sitting lowers the hips onto the chair seat (legs bend forward below).
-    const sitDrop = agent.state === "sitting" ? -0.07 : 0;
+    // Desk chairs need a small drop; rest-room beanbags are lower so agents
+    // sink further to avoid levitating above the lounge chair surface.
+    const sitDrop =
+      agent.state === "sitting"
+        ? agent.x > DIVIDER_X
+          ? REST_SIT_DROP
+          : DESK_SIT_DROP
+        : 0;
     groupRef.current.position.y = bounce + breathe + sitDrop;
 
     if (leftArmRef.current) {

@@ -13,12 +13,13 @@ export type FurnitureType =
   | "beanbag"
   | "plant"
   | "whitePot"
-  | "computer";
+  | "computer"
+  | "pantry";
 
 export interface FurniturePlacement {
   id: string;
   type: FurnitureType;
-  /** Canvas-space top-left of the item footprint. */
+  /** Canvas-space placement point; interpreted by each furniture model's origin. */
   x: number;
   y: number;
   facingDeg: number;
@@ -85,11 +86,11 @@ export const INTERIOR_WALLS: WallSegment[] = [
 ];
 
 // ── Desks (work area, west of the partition) ───────────────────────────────
-const COLS = 3;
-const ORIGIN_X = 230;
-const ORIGIN_Y = 320;
-const SPACING_X = 320;
-const SPACING_Y = 340;
+const COLS = 5;
+const ORIGIN_X = 145;
+const ORIGIN_Y = 300;
+const SPACING_X = 210;
+const SPACING_Y = 240;
 const DESK_W = 100;
 const CHAIR_FOOTPRINT = 24;
 
@@ -113,7 +114,7 @@ function buildEmployeeWorkstation(agentId: string, index: number): Workstation {
   const deskX = ORIGIN_X + col * SPACING_X;
   const deskY = ORIGIN_Y + row * SPACING_Y;
 
-  const seatX = deskX + DESK_W / 2;
+  const seatX = deskX + DESK_W / 2 - 10;
   // Desk at facingDeg=0 has drawers on the North side, and extends from deskY-31 to deskY+1.
   // We place the agent North of the desk, facing South towards the drawers.
   const SEAT_BACK = 16;
@@ -150,7 +151,7 @@ function buildCeoWorkstation(agentId: string): Workstation {
     agentId,
     deskX: CEO_DESK_X,
     deskY: CEO_DESK_Y,
-    deskFacingDeg: 0,
+    deskFacingDeg: 180,
     chairX: seatX - CHAIR_FOOTPRINT / 2,
     chairY: seatY - CHAIR_FOOTPRINT / 2,
     chairFacingDeg: (seatFacing * 180) / Math.PI,
@@ -189,38 +190,25 @@ export const EXECUTIVE_DECOR: FurniturePlacement[] = [
   {
     id: "ceo-couch",
     type: "couch",
-    x: CEO_DESK_X - 10,
-    y: CEO_DESK_Y + 150,
+    x: CEO_DESK_X - 30,
+    y: CEO_DESK_Y + 100,
     facingDeg: 180,
     tint: "#2f3a4a",
   },
-  {
-    id: "ceo-decor-plant-left",
-    type: "plant",
-    x: CEO_DESK_X - 100,
-    y: CEO_DESK_Y + 158,
-    facingDeg: 0,
-  },
-  {
-    id: "ceo-decor-plant-right",
-    type: "plant",
-    x: CEO_DESK_X + 180,
-    y: CEO_DESK_Y + 158,
-    facingDeg: 0,
-  },
+
   // White planters framing the front of the lounge (either side of the couch).
   {
     id: "ceo-whitepot-left",
     type: "whitePot",
     x: CEO_DESK_X - 75,
-    y: CEO_DESK_Y + 245,
+    y: CEO_DESK_Y + 180,
     facingDeg: 0,
   },
   {
     id: "ceo-whitepot-right",
     type: "whitePot",
     x: CEO_DESK_X + 155,
-    y: CEO_DESK_Y + 245,
+    y: CEO_DESK_Y + 180,
     facingDeg: 0,
   },
 ];
@@ -264,12 +252,13 @@ export const REST_FURNITURE: FurniturePlacement[] = [
   ...BEANBAG_CENTERS.map(([x, y], i) => ({
     id: `beanbag-${i}`,
     type: "beanbag" as const,
-    x: x - 20,
-    y: y - 20,
+    x,
+    y,
     facingDeg: (facingToCenter(x, y) * 180) / Math.PI,
     tint: BEANBAG_TINTS[i % BEANBAG_TINTS.length],
   })),
   { id: "rest-couch", type: "couch", x: 1320, y: 1520, facingDeg: 0 },
-  { id: "rest-plant-1", type: "plant", x: 1620, y: 180, facingDeg: 0 },
-  { id: "rest-plant-2", type: "plant", x: 1230, y: 180, facingDeg: 0 },
+  { id: "rest-pantry", type: "pantry", x: 1660, y: 1760, facingDeg: 30 },
+  { id: "rest-plant-1", type: "whitePot", x: 1520, y: 180, facingDeg: 0 },
+  { id: "rest-plant-2", type: "whitePot", x: 1230, y: 180, facingDeg: 0 },
 ];
