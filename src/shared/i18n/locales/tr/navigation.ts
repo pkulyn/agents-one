@@ -9,7 +9,7 @@ export default {
   skills: "Yetenekler",
   soul: "Persona",
   memory: "Bellek",
-  tools: "Kabiliyetler",
+  tools: "Araçlar",
   schedules: "Zamanlayıcı",
   kanban: "Kanban",
   gateway: "Gateway",
