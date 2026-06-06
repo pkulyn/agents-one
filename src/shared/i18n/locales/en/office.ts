@@ -2,6 +2,7 @@ export default {
   title: "Office",
   subtitle: "Your agents at work, live in 3D",
   loadingAgents: "Loading agents...",
+  noAgents: "No agents found.",
   refresh: "Refresh",
   agentCount_one: "{{count}} agent",
   agentCount_other: "{{count}} agents",

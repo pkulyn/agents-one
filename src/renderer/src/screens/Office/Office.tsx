@@ -390,7 +390,7 @@ function Office({ visible }: OfficeProps): React.JSX.Element {
               fontSize: 14,
             }}
           >
-            {t("office.loadingAgents")}
+            {t("office.noAgents")}
           </div>
         )}
       </div>
