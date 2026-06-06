@@ -373,7 +373,7 @@ function Office({ visible }: OfficeProps): React.JSX.Element {
               type="button"
               onClick={() => setCeo(selectedIsCeo ? null : selectedAgent.id)}
               style={{
-                marginTop: "auto",
+                marginTop: 8,
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
