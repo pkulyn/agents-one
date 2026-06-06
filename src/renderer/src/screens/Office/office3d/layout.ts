@@ -271,7 +271,7 @@ export const REST_FURNITURE: FurniturePlacement[] = [
     tint: BEANBAG_TINTS[i % BEANBAG_TINTS.length],
   })),
   { id: "rest-couch", type: "couch", x: 1320, y: 1520, facingDeg: 0 },
-  { id: "rest-pantry", type: "pantry", x: 1720, y: 1520, facingDeg: -35 },
-  { id: "rest-plant-1", type: "plant", x: 1620, y: 180, facingDeg: 0 },
+  { id: "rest-pantry", type: "pantry", x: 1660, y: 1760, facingDeg: 30 },
+  { id: "rest-plant-1", type: "plant", x: 1520, y: 180, facingDeg: 0 },
   { id: "rest-plant-2", type: "plant", x: 1230, y: 180, facingDeg: 0 },
 ];

@@ -97,7 +97,7 @@ const FURNITURE_DEFS: Record<FurnitureType, FurnitureDef> = {
   },
   pantry: {
     url: pantryUrl,
-    scale: [0.000065, 0.000065, 0.000065],
+    scale: [0.00013, 0.00013, 0.00013],
     tint: null,
     footprint: [120, 80],
     castShadow: true,
