@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { createDefaultAgentAvatarProfile } from "../avatars/profile";
 import { AGENT_SCALE, WALK_ANIM_SPEED } from "../core/constants";
 import { toWorld } from "../core/geometry";
+import { DIVIDER_X } from "../layout";
 import type { JanitorActor, RenderAgent } from "../core/types";
 import { AgentModelProps } from "./types";
 import { RiggedCharacter } from "./RiggedCharacter";
@@ -166,7 +167,10 @@ export const AgentModel = memo(function AgentModel({
         ? Math.sin(frameValue * 0.03) * 0.01
         : 0;
     // Sitting lowers the hips onto the chair seat (legs bend forward below).
-    const sitDrop = agent.state === "sitting" ? -0.07 : 0;
+    // Desk chairs need a small drop; rest-room beanbags are lower so agents
+    // sink further to avoid levitating above the lounge chair surface.
+    const sitDrop =
+      agent.state === "sitting" ? (agent.x > DIVIDER_X ? -0.03 : -0.02) : 0;
     groupRef.current.position.y = bounce + breathe + sitDrop;
 
     if (leftArmRef.current) {

@@ -264,8 +264,8 @@ export const REST_FURNITURE: FurniturePlacement[] = [
   ...BEANBAG_CENTERS.map(([x, y], i) => ({
     id: `beanbag-${i}`,
     type: "beanbag" as const,
-    x: x - 20,
-    y: y - 20,
+    x,
+    y,
     facingDeg: (facingToCenter(x, y) * 180) / Math.PI,
     tint: BEANBAG_TINTS[i % BEANBAG_TINTS.length],
   })),

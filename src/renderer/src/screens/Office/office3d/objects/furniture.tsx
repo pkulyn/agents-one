@@ -59,10 +59,11 @@ const FURNITURE_DEFS: Record<FurnitureType, FurnitureDef> = {
   },
   beanbag: {
     url: beanbagUrl,
-    scale: [1, 1, 1],
+    scale: [1.5, 1.5, 1.5],
     tint: "#5a4870",
-    footprint: [40, 40],
+    footprint: [60, 60],
     castShadow: true,
+    origin: "center",
   },
   plant: {
     url: plantUrl,

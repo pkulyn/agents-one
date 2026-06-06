@@ -160,7 +160,9 @@ function AgentsLayer({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
-  const agentsRef = useRef<RenderAgent[]>([]);
+  const agentsRef = useRef<RenderAgent[]>([]) as React.MutableRefObject<
+    RenderAgent[]
+  >;
   const lookupRef = useRef<Map<string, RenderAgent>>(new Map());
   const controllerRef = useRef<Map<string, ControllerState>>(new Map());
 
@@ -192,6 +194,29 @@ function AgentsLayer({
   // useFrame always sees a consistent ref.
   useLayoutEffect(() => {
     const prev = lookupRef.current;
+    // Guard: if every agent already exists with the same status and position,
+    // nothing meaningful changed — keep the current simulation objects so
+    // agents don't teleport or reset their pose on a parent re-render.
+    let unchanged = agents.length === prev.size;
+    if (unchanged) {
+      for (const agent of agents) {
+        const existing = prev.get(agent.id);
+        const existingPos =
+          existing && "position" in existing
+            ? (existing as unknown as OfficeAgent).position
+            : undefined;
+        if (
+          !existing ||
+          existing.status !== agent.status ||
+          existingPos !== agent.position
+        ) {
+          unchanged = false;
+          break;
+        }
+      }
+    }
+    if (unchanged) return;
+
     const next: RenderAgent[] = agents.map((agent) => {
       const existing = prev.get(agent.id);
       if (existing) {
@@ -199,7 +224,7 @@ function AgentsLayer({
       }
       return makeRenderAgent(agent);
     });
-    agentsRef.current = next;
+    (agentsRef as React.MutableRefObject<RenderAgent[]>).current = next;
     const lookup = new Map<string, RenderAgent>();
     for (const a of next) lookup.set(a.id, a);
     lookupRef.current = lookup;
@@ -212,7 +237,10 @@ function AgentsLayer({
 
   useFrame((_, delta) => {
     const step = Math.min(delta, 0.05); // clamp big frame gaps
-    for (const agent of agentsRef.current) {
+    const liveAgents = (agentsRef as React.MutableRefObject<RenderAgent[]>)
+      .current;
+    for (const agent of liveAgents) {
+      // eslint-disable-next-line -- simulation state is intentionally mutated in-place each frame
       agent.frame += step * 60;
 
       // Working agents (gateway up) sit at their desk; everyone else rests in
