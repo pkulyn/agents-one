@@ -13,7 +13,8 @@ export type FurnitureType =
   | "beanbag"
   | "plant"
   | "whitePot"
-  | "computer";
+  | "computer"
+  | "pantry";
 
 export interface FurniturePlacement {
   id: string;
@@ -85,11 +86,11 @@ export const INTERIOR_WALLS: WallSegment[] = [
 ];
 
 // ── Desks (work area, west of the partition) ───────────────────────────────
-const COLS = 3;
-const ORIGIN_X = 230;
-const ORIGIN_Y = 320;
-const SPACING_X = 320;
-const SPACING_Y = 340;
+const COLS = 5;
+const ORIGIN_X = 145;
+const ORIGIN_Y = 300;
+const SPACING_X = 210;
+const SPACING_Y = 240;
 const DESK_W = 100;
 const CHAIR_FOOTPRINT = 24;
 
@@ -270,6 +271,7 @@ export const REST_FURNITURE: FurniturePlacement[] = [
     tint: BEANBAG_TINTS[i % BEANBAG_TINTS.length],
   })),
   { id: "rest-couch", type: "couch", x: 1320, y: 1520, facingDeg: 0 },
+  { id: "rest-pantry", type: "pantry", x: 1720, y: 1520, facingDeg: -35 },
   { id: "rest-plant-1", type: "plant", x: 1620, y: 180, facingDeg: 0 },
   { id: "rest-plant-2", type: "plant", x: 1230, y: 180, facingDeg: 0 },
 ];

@@ -12,6 +12,7 @@ import beanbagUrl from "../assets/loungeDesignChair.glb?url";
 import plantUrl from "../assets/pottedPlant.glb?url";
 import whitePotUrl from "../assets/white_pot.glb?url";
 import computerUrl from "../assets/computerScreen.glb?url";
+import pantryUrl from "../assets/pantry.glb?url";
 
 interface FurnitureDef {
   url: string;
@@ -23,7 +24,7 @@ interface FurnitureDef {
   yOffset?: number;
   origin?: "corner" | "center";
   /** Unscaled GLB-local X/Z point that should land on the placement coordinate. */
-  seatAnchor?: [number, number];
+  placementAnchor?: [number, number];
 }
 
 // Per-type GLB + transform metadata, mirroring hermes-office's furniture maps.
@@ -65,7 +66,7 @@ const FURNITURE_DEFS: Record<FurnitureType, FurnitureDef> = {
     tint: "#5a4870",
     footprint: [60, 60],
     castShadow: true,
-    seatAnchor: [0.25, 0.05],
+    placementAnchor: [0.25, 0.05],
   },
   plant: {
     url: plantUrl,
@@ -93,6 +94,15 @@ const FURNITURE_DEFS: Record<FurnitureType, FurnitureDef> = {
     footprint: [30, 20],
     castShadow: true,
     yOffset: 0.61,
+  },
+  pantry: {
+    url: pantryUrl,
+    scale: [0.000065, 0.000065, 0.000065],
+    tint: null,
+    footprint: [120, 80],
+    castShadow: true,
+    yOffset: 0.007,
+    placementAnchor: [-122984.47, -41638.51],
   },
 };
 
@@ -185,14 +195,14 @@ function GlbItem({
   const [wx, , wz] = toWorld(x, y);
   const rotY = (facingDeg * Math.PI) / 180;
   const isCenter = def.origin === "center";
-  const seatAnchor = def.seatAnchor;
+  const placementAnchor = def.placementAnchor;
   const pivotX = isCenter ? 0 : def.footprint[0] * SCALE * 0.5;
   const pivotZ = isCenter ? 0 : def.footprint[1] * SCALE * 0.5;
-  const anchorX = seatAnchor ? seatAnchor[0] * scale[0] : 0;
-  const anchorZ = seatAnchor ? seatAnchor[1] * scale[2] : 0;
+  const anchorX = placementAnchor ? placementAnchor[0] * scale[0] : 0;
+  const anchorZ = placementAnchor ? placementAnchor[1] * scale[2] : 0;
   const yOffset = def.yOffset ?? 0;
 
-  if (seatAnchor) {
+  if (placementAnchor) {
     return (
       <group position={[wx, yOffset, wz]} rotation={[0, rotY, 0]}>
         <primitive
@@ -331,3 +341,4 @@ useGLTF.preload(beanbagUrl, false, false);
 useGLTF.preload(plantUrl, false, false);
 useGLTF.preload(whitePotUrl, false, false);
 useGLTF.preload(computerUrl, false, false);
+useGLTF.preload(pantryUrl, false, false);
