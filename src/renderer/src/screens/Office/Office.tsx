@@ -101,10 +101,10 @@ function Office({ visible }: OfficeProps): React.JSX.Element {
     return () => window.clearInterval(interval);
   }, [visible, refreshAgentStatuses]);
 
-  // Initial load on mount (the tab lazy-mounts on first visit).
-  useEffect(() => {
-    void loadAgents();
-  }, [loadAgents]);
+  // The initial fetch is driven solely by the visible-guard effect above
+  // (gated on `!loadedOnce.current`). A second unconditional mount effect used
+  // to live here too, but when the tab was visible on first render both fired
+  // in the same commit and raced two concurrent `listProfiles` calls.
 
   // Reset selection / CEO if the underlying profile disappears on refresh.
   useEffect(() => {

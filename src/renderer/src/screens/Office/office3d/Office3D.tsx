@@ -1,4 +1,11 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, Lightformer } from "@react-three/drei";
 import { configureTextBuilder } from "troika-three-text";
@@ -179,7 +186,11 @@ function AgentsLayer({
 
   // Reconcile the simulation list whenever the set of agents changes, keeping
   // existing agents' positions so they don't teleport on a profile refresh.
-  useMemo(() => {
+  // This mutates simulation refs, so it must run as an effect (not in useMemo,
+  // which React may re-run arbitrarily and would reset live walk/controller
+  // state). useLayoutEffect runs synchronously before paint so the next
+  // useFrame always sees a consistent ref.
+  useLayoutEffect(() => {
     const prev = lookupRef.current;
     const next: RenderAgent[] = agents.map((agent) => {
       const existing = prev.get(agent.id);

@@ -91,10 +91,6 @@ const ORIGIN_Y = 320;
 const SPACING_X = 320;
 const SPACING_Y = 340;
 const DESK_W = 100;
-const DESK_H = 55;
-// Agents sit centred on the desk's width and set back (north of the desk's far
-// edge) so their body rests on the chair instead of clipping the desk top.
-const SEAT_BACK = 28;
 const CHAIR_FOOTPRINT = 24;
 
 // ── CEO executive desk ─────────────────────────────────────────────────────

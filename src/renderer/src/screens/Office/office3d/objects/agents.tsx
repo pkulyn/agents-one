@@ -1,6 +1,6 @@
 import { Billboard, Text } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { createDefaultAgentAvatarProfile } from "../avatars/profile";
 import { AGENT_SCALE, WALK_ANIM_SPEED } from "../core/constants";
@@ -633,6 +633,14 @@ export const AgentModel = memo(function AgentModel({
     texture.needsUpdate = true;
     return texture;
   }, [skin]);
+
+  // CanvasTextures hold GPU memory; dispose the previous one when `skin`
+  // changes (and on unmount) so cycling appearances doesn't leak.
+  useEffect(() => {
+    return () => {
+      faceTexture.dispose();
+    };
+  }, [faceTexture]);
 
   const resolvedSpeechText =
     showSpeech && speechText?.trim()

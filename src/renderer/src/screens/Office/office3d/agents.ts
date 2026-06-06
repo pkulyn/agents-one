@@ -7,6 +7,13 @@ import type { OfficeAgent } from "./core/types";
  */
 export interface OfficeProfileInput {
   name: string;
+  /**
+   * Unique, stable identifier for the profile (the on-disk profile path from
+   * `listProfiles`). Used as the agent's React key / lookup id so two profiles
+   * sharing a display name don't collapse into one agent. Falls back to the
+   * name when absent.
+   */
+  path?: string;
   model?: string;
   provider?: string;
   gatewayRunning?: boolean;
@@ -41,8 +48,11 @@ function hashName(name: string): number {
 export function profileToOfficeAgent(profile: OfficeProfileInput): OfficeAgent {
   const seed = profile.name || "agent";
   const color = AGENT_COLORS[hashName(seed) % AGENT_COLORS.length];
+  // Derive the id from the profile's unique path (display names can collide);
+  // colour/avatar still seed off the name so they stay visually stable.
+  const id = profile.path || seed;
   return {
-    id: seed,
+    id,
     name: profile.name,
     subtitle: profile.model || profile.provider || null,
     status: profile.gatewayRunning ? "working" : "idle",
