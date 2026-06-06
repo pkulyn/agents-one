@@ -130,6 +130,12 @@ function isToolCall(msg: ToolItem): msg is ToolCallMessage {
   return msg.kind === "tool_call";
 }
 
+export function toolActivityGroupTitle(items: ToolItem[]): string {
+  const toolCallCount = items.filter(isToolCall).length;
+  if (toolCallCount > 1) return `${toolCallCount} tools called`;
+  return items[items.length - 1]?.name ?? "tool";
+}
+
 function resultMeta(msg: ToolResultMessage): string {
   const lines = countLines(msg.content);
   const base = `${lines} ${lines === 1 ? "line" : "lines"}`;
@@ -221,6 +227,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   const last = items[items.length - 1];
   const count = items.length;
   const detail = itemDetail(last);
+  const title = toolActivityGroupTitle(items);
 
   return (
     <div
@@ -249,7 +256,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
           ) : (
             <Wrench size={13} className="chat-tool-group-icon" />
           )}
-          <span className="chat-tool-group-name">{last.name}</span>
+          <span className="chat-tool-group-name">{title}</span>
           {detail && <span className="chat-tool-group-detail">{detail}</span>}
           <span className="chat-tool-group-count">
             {count} {count === 1 ? "step" : "steps"}
