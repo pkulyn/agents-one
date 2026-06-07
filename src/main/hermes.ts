@@ -1990,6 +1990,7 @@ function sendMessageViaCli(
   const KNOWN_API_KEYS = [
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
+    "OLLAMA_API_KEY",
     "ANTHROPIC_API_KEY",
     "GROQ_API_KEY",
     "DEEPSEEK_API_KEY",
