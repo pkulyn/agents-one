@@ -118,9 +118,9 @@ jobs:
       - name: Verify native module architecture
         run: |
           set -euo pipefail
-          NODE_FILE="dist/mac-${{ matrix.arch }}/Hermes Agent.app/Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+          NODE_FILE="dist/mac-${{ matrix.arch }}/Hermes One.app/Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
           if [ ! -f "$NODE_FILE" ]; then
-            NODE_FILE="dist/mac/Hermes Agent.app/Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+            NODE_FILE="dist/mac/Hermes One.app/Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
           fi
           file "$NODE_FILE"
           case "${{ matrix.arch }}" in
