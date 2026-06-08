@@ -22,7 +22,8 @@ const CONTEXT_WINDOWS: Array<[RegExp, number]> = [
   // Google
   [/gemini-1\.5|gemini-2|gemini-3/i, 1048576],
   // Other OpenAI-compatible providers
-  [/deepseek/i, 65536],
+  [/deepseek/i, 1048576],
+  [/agnes/i, 262144],
   [/qwen/i, 32768],
   [/mistral/i, 32768],
 ];

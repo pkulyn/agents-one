@@ -11,7 +11,7 @@ describe("contextWindowForModel", () => {
   it("maps known commercial families", () => {
     expect(contextWindowForModel("gpt-4o-mini")).toBe(128000);
     expect(contextWindowForModel("claude-sonnet-4-6")).toBe(200000);
-    expect(contextWindowForModel("deepseek-chat")).toBe(65536);
+    expect(contextWindowForModel("deepseek-chat")).toBe(1048576);
   });
 
   it("is case-insensitive", () => {
