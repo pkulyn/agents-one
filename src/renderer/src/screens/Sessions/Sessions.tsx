@@ -321,6 +321,10 @@ function Sessions({
   // Rename state
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const editingSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    editingSessionIdRef.current = editingSessionId;
+  }, [editingSessionId]);
 
   // Quiet re-sync from state.db — refreshes the list WITHOUT flipping the
   // loading state, so it can run on a timer or on focus with no spinner flash.
@@ -381,20 +385,44 @@ function Sessions({
         cancelRename();
         return;
       }
+      // Capture old titles so we can roll back on failure.
+      let oldSessionTitle = "";
+      let oldSearchResultTitle = "";
       // Optimistic update
-      setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, title: trimmed } : s)),
-      );
-      setSearchResults((prev) =>
-        prev.map((r) =>
+      setSessions((prev) => {
+        oldSessionTitle = prev.find((s) => s.id === sessionId)?.title ?? "";
+        return prev.map((s) =>
+          s.id === sessionId ? { ...s, title: trimmed } : s,
+        );
+      });
+      setSearchResults((prev) => {
+        oldSearchResultTitle =
+          prev.find((r) => r.sessionId === sessionId)?.title ?? "";
+        return prev.map((r) =>
           r.sessionId === sessionId ? { ...r, title: trimmed } : r,
-        ),
-      );
+        );
+      });
       try {
         await window.hermesAPI.updateSessionTitle(sessionId, trimmed);
       } catch (err) {
         console.error("Failed to rename session", sessionId, err);
-      } finally {
+        // Rollback optimistic update
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === sessionId ? { ...s, title: oldSessionTitle } : s,
+          ),
+        );
+        setSearchResults((prev) =>
+          prev.map((r) =>
+            r.sessionId === sessionId
+              ? { ...r, title: oldSearchResultTitle }
+              : r,
+          ),
+        );
+      }
+      // Guard: only clear editing state if the user hasn't started editing
+      // a different session while this request was in flight.
+      if (editingSessionIdRef.current === sessionId) {
         setEditingSessionId(null);
         setEditingTitle("");
       }
