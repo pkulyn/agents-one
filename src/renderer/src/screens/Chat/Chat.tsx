@@ -191,6 +191,22 @@ function Chat({
     });
   }, []);
 
+  // Restrict the native context menu to chat bubbles and editable fields
+  // so it doesn't appear on random UI chrome (sessions list, settings, etc.).
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent): void => {
+      const target = e.target as Element | null;
+      const inBubble = target?.closest(".chat-bubble") != null;
+      const inEditable =
+        target?.closest("input, textarea, [contenteditable='true']") != null;
+      if (!inBubble && !inEditable) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("contextmenu", onContextMenu);
+    return () => document.removeEventListener("contextmenu", onContextMenu);
+  }, []);
+
   const addAgentMessage = useCallback(
     (content: string) => {
       setMessages((prev) => [
