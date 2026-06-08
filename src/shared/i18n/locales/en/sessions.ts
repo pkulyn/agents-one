@@ -14,6 +14,7 @@ export default {
   messages: "msg",
   messageSingular: "msg",
   delete: "Delete conversation",
+  rename: "Rename conversation",
   deleteConfirmTitle: "Delete conversation",
   deleteConfirm:
     "Delete this conversation? This cannot be undone — both the messages and the session record will be permanently removed.",

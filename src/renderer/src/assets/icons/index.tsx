@@ -9,6 +9,7 @@ export {
   Compass,
   Copy,
   Download,
+  Pencil,
   Plug,
   Workflow,
   ExternalLink,
