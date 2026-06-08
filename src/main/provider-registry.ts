@@ -20,6 +20,7 @@ export const PROVIDER_BASE_URLS: Record<string, string> = {
   mistral: "https://api.mistral.ai/v1",
   together: "https://api.together.xyz/v1",
   fireworks: "https://api.fireworks.ai/inference/v1",
+  atlascloud: "https://api.atlascloud.ai/v1",
   cerebras: "https://api.cerebras.ai/v1",
   perplexity: "https://api.perplexity.ai",
   huggingface: "https://router.huggingface.co/v1",
