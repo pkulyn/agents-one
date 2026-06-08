@@ -6214,6 +6214,50 @@ body {
   opacity: 1;
 }
 
+/* Rename button — sits next to delete in the tags row */
+.sessions-card-rename {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0.45;
+  transition:
+    opacity var(--transition),
+    background var(--transition),
+    color var(--transition);
+}
+
+.sessions-card:hover .sessions-card-rename {
+  opacity: 1;
+}
+
+.sessions-card-rename:hover,
+.sessions-card-rename:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+/* Inline rename input inside the card */
+.sessions-card-rename-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  border: 1px solid var(--border-focus);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  outline: none;
+  font-family: var(--font-sans);
+}
+
 .sessions-confirm-overlay {
   position: fixed;
   inset: 0;
