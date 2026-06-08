@@ -14,6 +14,14 @@
 </a>
 </p>
 
+<p align="center">
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=hermes-desktop">
+    <img src="src/renderer/src/assets/logos/atlascloud.svg" alt="Atlas Cloud" width="200">
+  </a>
+</p>
+
+> 🎁 **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=hermes-desktop)** is a full-modal, OpenAI-compatible AI inference platform (DeepSeek, Qwen, GLM, Kimi, MiniMax, and more). Use it in Hermes Desktop by selecting **Atlas Cloud** as your provider — the base URL is pre-configured automatically.
+
 > **This project is in active development.** Features may change, and some things might break. If you run into a problem or have an idea, [open an issue](https://github.com/fathah/hermes-desktop/issues). Contributions are welcome!
 
 ## Languages
@@ -151,6 +159,7 @@ In local mode, chat requests go through `http://127.0.0.1:8642` with SSE streami
 | **MiniMax**         | Global and China endpoints               |
 | **Hugging Face**    | 20+ open models via HF Inference         |
 | **Groq**            | Fast inference (voice/STT)               |
+| **Atlas Cloud**     | OpenAI-compatible gateway — DeepSeek, Qwen, GLM, Kimi, MiniMax and more ([atlascloud.ai](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=hermes-desktop)) |
 | **Local/Custom**    | Any OpenAI-compatible endpoint           |
 
 Local presets are included for LM Studio, Atomic Chat, Ollama, vLLM, and llama.cpp.
