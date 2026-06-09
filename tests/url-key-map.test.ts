@@ -32,6 +32,7 @@ describe("URL_KEY_MAP", () => {
       "https://api.cerebras.ai/v1": "CEREBRAS_API_KEY",
       "https://api.mistral.ai/v1": "MISTRAL_API_KEY",
       "https://api.perplexity.ai": "PERPLEXITY_API_KEY",
+      "https://api.atlascloud.ai/v1": "ATLASCLOUD_API_KEY",
     };
     for (const [url, envKey] of Object.entries(expected)) {
       expect(expectedEnvKeyForUrl(url)).toBe(envKey);

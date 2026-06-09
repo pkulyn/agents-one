@@ -347,6 +347,13 @@ export const LOCAL_PRESETS: LocalPreset[] = [
     envKey: "CEREBRAS_API_KEY",
   },
   {
+    id: "atlascloud",
+    name: "constants.atlascloud",
+    baseUrl: "https://api.atlascloud.ai/v1",
+    group: "remote",
+    envKey: "ATLASCLOUD_API_KEY",
+  },
+  {
     id: "mistral",
     name: "constants.mistral",
     baseUrl: "https://api.mistral.ai/v1",
@@ -544,6 +551,12 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
         label: "constants.cerebrasApiKey",
         type: "password",
         hint: "constants.cerebrasHint",
+      },
+      {
+        key: "ATLASCLOUD_API_KEY",
+        label: "constants.atlascloudApiKey",
+        type: "password",
+        hint: "constants.atlascloudHint",
       },
       {
         key: "MISTRAL_API_KEY",
