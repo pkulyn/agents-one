@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { CircleDashed, ChevronRight, ChevronDown } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import type { Attachment } from "../../../../shared/attachments";
@@ -24,6 +24,13 @@ export const QueuedMessages = memo(function QueuedMessages({
 }: QueuedMessagesProps): React.JSX.Element | null {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+
+  // Reset the collapse state once the queue fully drains so a later refill
+  // starts collapsed instead of inheriting a stale expanded state (the
+  // component fibre stays alive across empty renders).
+  useEffect(() => {
+    if (messages.length === 0) setExpanded(false);
+  }, [messages.length]);
 
   if (messages.length === 0) return null;
 
@@ -61,7 +68,7 @@ export const QueuedMessages = memo(function QueuedMessages({
         <ul className="chat-queue-list">
           {messages.map((m, i) => (
             <li
-              key={`${i}-${m.text.slice(0, 24)}`}
+              key={`${i}-${m.text.length}-${m.attachments.length}`}
               className="chat-queue-item"
               title={preview(m)}
             >

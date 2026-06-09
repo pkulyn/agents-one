@@ -578,17 +578,39 @@ export async function discoverProviderModels(
     return { models: [], status: "no-key", cached: false };
   }
 
-  const url = buildUrl(baseUrl);
-  const headers = authHeaders(lowerProvider, apiKey);
-  const result = await fetchModelsHttp(url, headers, 10_000);
+  const result = await fetchAndCacheModels(lowerProvider, baseUrl, apiKey);
   if (!result.reachable) {
     return { models: [], status: "error", cached: false };
   }
-  setCache(lowerProvider, baseUrl, result.models);
-  if (result.contextLengths && Object.keys(result.contextLengths).length > 0) {
-    _ctxCache.set(cacheKey(lowerProvider, baseUrl), result.contextLengths);
-  }
   return { models: result.models, status: "ok", cached: false };
+}
+
+/**
+ * Fetch a provider's `/models` over HTTP and populate BOTH caches together.
+ *
+ * `_ctxCache` is always written when the endpoint is reachable — even when no
+ * model advertises a `context_length` (OpenAI, DeepSeek) — so an empty map
+ * doubles as a "already fetched, none advertised" marker. That lets
+ * `getModelContextWindow` tell a genuine miss (don't re-fetch) from a
+ * never-fetched key, which is what was broken when the model picker had
+ * already populated `_cache` but not `_ctxCache` (issue #597 PR review).
+ */
+async function fetchAndCacheModels(
+  lowerProvider: string,
+  baseUrl: string,
+  apiKey: string,
+): Promise<FetchModelsResult> {
+  const url = buildUrl(baseUrl);
+  const headers = authHeaders(lowerProvider, apiKey);
+  const result = await fetchModelsHttp(url, headers, 10_000);
+  if (result.reachable) {
+    setCache(lowerProvider, baseUrl, result.models);
+    _ctxCache.set(
+      cacheKey(lowerProvider, baseUrl),
+      result.contextLengths ?? {},
+    );
+  }
+  return result;
 }
 
 /**
@@ -608,25 +630,44 @@ export async function getModelContextWindow(
   const modelId = (model || "").trim();
   if (!modelId) return null;
   const lowerProvider = (provider || "").trim().toLowerCase();
+
+  // OAuth/subscription and non-discoverable providers have no static-key
+  // `/models` endpoint to read `context_length` from — the renderer falls
+  // back to the heuristic for these. ("custom" is discoverable.)
+  if (
+    OAUTH_DISCOVERY_PROVIDERS.has(lowerProvider) ||
+    (NON_DISCOVERABLE_PROVIDERS.has(lowerProvider) &&
+      lowerProvider !== "custom")
+  ) {
+    return null;
+  }
+
   const explicitBase = (baseUrlOverride || "").trim().replace(/\/+$/, "");
   const baseUrl = explicitBase || canonicalBaseUrl(lowerProvider) || "";
+  if (!baseUrl) return null;
+  const key = cacheKey(lowerProvider, baseUrl);
 
-  const readCtx = (): number | null => {
-    if (!baseUrl) return null;
-    const meta = _ctxCache.get(cacheKey(lowerProvider, baseUrl));
-    return meta?.[modelId] ?? null;
-  };
+  const readCtx = (): number | null => _ctxCache.get(key)?.[modelId] ?? null;
 
   const cached = readCtx();
   if (cached) return cached;
+  // A present (even empty) ctx map means we've already fetched this
+  // catalogue, so a missing entry is authoritative — don't re-fetch. This
+  // also avoids hammering the endpoint for providers that omit the field.
+  if (_ctxCache.has(key)) return null;
 
-  // Populate `_ctxCache` as a side effect of a normal discovery call.
-  await discoverProviderModels(
-    provider,
-    baseUrlOverride,
-    apiKeyOverride,
-    profile,
-  );
+  // Not fetched yet (e.g. the model picker primed `_cache` but never the ctx
+  // map). Fetch directly here rather than via `discoverProviderModels`, whose
+  // `_cache`-hit early-return would skip the ctx fetch entirely.
+  const apiKey =
+    (apiKeyOverride || "").trim() ||
+    envApiKeyFor(lowerProvider, baseUrl, profile);
+  const canDiscoverWithoutKey =
+    LOCAL_NO_KEY_PROVIDERS.has(lowerProvider) ||
+    (lowerProvider === "custom" && isLoopbackBaseUrl(baseUrl));
+  if (!apiKey && !canDiscoverWithoutKey) return null;
+
+  await fetchAndCacheModels(lowerProvider, baseUrl, apiKey);
   return readCtx();
 }
 
