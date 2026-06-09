@@ -541,6 +541,41 @@ function Models({ visible }: ModelsProps = {}): React.JSX.Element {
             </div>
           )}
 
+          {providerChips.length > 1 && (
+            <div className="models-provider-chips">
+              <button
+                type="button"
+                className={`models-provider-chip ${
+                  providerFilter === null ? "active" : ""
+                }`}
+                onClick={() => setProviderFilter(null)}
+              >
+                {t("models.allProviders")}
+                <span className="models-provider-chip-count">
+                  {models.length}
+                </span>
+              </button>
+              {providerChips.map(([provider, count]) => (
+                <button
+                  key={provider}
+                  type="button"
+                  className={`models-provider-chip ${
+                    providerFilter === provider ? "active" : ""
+                  }`}
+                  onClick={() =>
+                    setProviderFilter((cur) =>
+                      cur === provider ? null : provider,
+                    )
+                  }
+                >
+                  <BrandLogo provider={provider} size={14} />
+                  {t(providerLabelKey(provider))}
+                  <span className="models-provider-chip-count">{count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {filtered.length === 0 ? (
             <div className="models-empty">
               {models.length === 0 ? (

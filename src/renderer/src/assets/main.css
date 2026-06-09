@@ -8854,14 +8854,65 @@ body {
   align-items: center;
 }
 
+.models-provider-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.models-provider-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.models-provider-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.models-provider-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.models-provider-chip-count {
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.models-provider-chip:not(.active) .models-provider-chip-count {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
 .models-registry-modal {
-  max-width: 640px;
-  width: 90vw;
+  width: 70vw;
+  max-width: none;
 }
 
 .models-registry-body {
   max-height: 60vh;
   overflow-y: auto;
+}
+
+.registry-model-list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
 }
 
 .registry-provider {
