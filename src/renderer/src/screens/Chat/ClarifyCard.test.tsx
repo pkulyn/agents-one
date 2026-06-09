@@ -110,4 +110,50 @@ describe("ClarifyCard", () => {
     expect(screen.queryByText("chat.clarify.skip")).toBeNull();
     expect(respondClarify).not.toHaveBeenCalled();
   });
+
+  it("does not resolve the card when delivery fails (respondClarify -> false)", async () => {
+    const respondClarify = vi.fn().mockResolvedValue(false);
+    (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+      respondClarify,
+    };
+    const onResolved = vi.fn();
+    render(
+      <ClarifyCard
+        msg={baseMsg({ choices: ["staging", "production"] })}
+        onResolved={onResolved}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("staging"));
+
+    expect(respondClarify).toHaveBeenCalledWith("r1", "staging");
+    // No pending request matched → card must NOT be marked answered, and an
+    // error must surface so the user can retry.
+    await vi.waitFor(() =>
+      expect(screen.getByText("chat.clarify.error")).toBeTruthy(),
+    );
+    expect(onResolved).not.toHaveBeenCalled();
+    // Controls remain live for a retry.
+    expect(screen.getByText("staging")).toBeTruthy();
+  });
+
+  it("does not resolve the card when the IPC call rejects", async () => {
+    const respondClarify = vi.fn().mockRejectedValue(new Error("ipc down"));
+    (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+      respondClarify,
+    };
+    const onResolved = vi.fn();
+    render(<ClarifyCard msg={baseMsg()} onResolved={onResolved} />);
+
+    const textarea = screen.getByPlaceholderText(
+      "chat.clarify.placeholder",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "use staging" } });
+    fireEvent.click(screen.getByText("chat.clarify.send"));
+
+    await vi.waitFor(() =>
+      expect(screen.getByText("chat.clarify.error")).toBeTruthy(),
+    );
+    expect(onResolved).not.toHaveBeenCalled();
+  });
 });

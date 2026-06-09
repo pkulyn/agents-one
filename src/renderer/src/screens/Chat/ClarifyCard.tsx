@@ -28,16 +28,28 @@ export const ClarifyCard = memo(function ClarifyCard({
   const { t } = useI18n();
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(false);
 
   const resolved = !!msg.resolved;
 
   const submit = async (answer: string): Promise<void> => {
     if (resolved || submitting) return;
     setSubmitting(true);
+    setError(false);
     try {
-      await window.hermesAPI.respondClarify(msg.requestId, answer);
-    } finally {
+      const ok = await window.hermesAPI.respondClarify(msg.requestId, answer);
+      // The IPC handler returns false when no pending request matched (e.g. the
+      // turn already ended). Only flip the card to resolved on a confirmed
+      // delivery; otherwise surface an error and let the user retry.
+      if (ok === false) {
+        setError(true);
+        return;
+      }
       onResolved(msg.requestId, answer);
+    } catch {
+      setError(true);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -107,6 +119,12 @@ export const ClarifyCard = memo(function ClarifyCard({
       >
         {t("chat.clarify.skip")}
       </button>
+
+      {error && (
+        <div className="chat-clarify-error" role="alert">
+          {t("chat.clarify.error")}
+        </div>
+      )}
     </div>
   );
 });

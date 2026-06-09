@@ -44,6 +44,7 @@ export default {
     send: "Send",
     skip: "Skip — let Hermes decide",
     skipped: "Skipped — Hermes decided",
+    error: "Couldn't deliver your answer — the turn may have ended. Try again.",
   },
   thinking: "Thinking…",
   thought: "Thought",
