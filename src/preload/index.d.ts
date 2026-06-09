@@ -370,6 +370,14 @@ interface HermesAPI {
     }) => void,
   ) => () => void;
   onChatError: (callback: (error: string) => void) => () => void;
+  onClarifyRequest: (
+    callback: (req: {
+      requestId: string;
+      question: string;
+      choices: string[];
+    }) => void,
+  ) => () => void;
+  respondClarify: (requestId: string, answer: string) => Promise<boolean>;
 
   // Gateway
   startGateway: () => Promise<GatewayStartResult>;
@@ -384,7 +392,9 @@ interface HermesAPI {
     enabled: boolean,
     profile?: string,
   ) => Promise<boolean>;
-  getMessagingPlatforms: (profile?: string) => Promise<MessagingPlatformsResponse>;
+  getMessagingPlatforms: (
+    profile?: string,
+  ) => Promise<MessagingPlatformsResponse>;
   updateMessagingPlatform: (
     platform: string,
     update: MessagingPlatformUpdate,
@@ -863,9 +873,7 @@ interface HermesAPI {
   >;
 
   // MCP servers
-  listMcpServers: (
-    profile?: string,
-  ) => Promise<
+  listMcpServers: (profile?: string) => Promise<
     Array<{
       name: string;
       type: "http" | "stdio" | "unknown";

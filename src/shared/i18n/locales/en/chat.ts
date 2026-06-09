@@ -38,6 +38,13 @@ export default {
   suggestionAnalyze: "Analyze data",
   approve: "Approve",
   deny: "Deny",
+  clarify: {
+    defaultQuestion: "Hermes needs your input.",
+    placeholder: "Type your answer…  (Ctrl+Enter to send)",
+    send: "Send",
+    skip: "Skip — let Hermes decide",
+    skipped: "Skipped — Hermes decided",
+  },
   thinking: "Thinking…",
   thought: "Thought",
   toolCall: "Tool call",

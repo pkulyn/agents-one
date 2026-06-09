@@ -114,6 +114,34 @@ export function useChatIPC({
       setIsLoading(false);
     });
 
+    const cleanupClarify = window.hermesAPI.onClarifyRequest((req) => {
+      reasoningSegmentClosedRef.current = true;
+      setToolProgress(null);
+      // Keep the turn marked busy: the agent is blocked on the user's answer.
+      setIsLoading(true);
+      setMessages((prev) => {
+        // Idempotent: ignore a duplicate request for an already-shown question.
+        if (
+          prev.some(
+            (m) => m.kind === "clarify" && m.requestId === req.requestId,
+          )
+        ) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: `clarify-${req.requestId}`,
+            kind: "clarify",
+            role: "agent",
+            requestId: req.requestId,
+            question: req.question,
+            choices: Array.isArray(req.choices) ? req.choices : [],
+          },
+        ];
+      });
+    });
+
     const cleanupToolProgress = window.hermesAPI.onChatToolProgress((tool) => {
       setToolProgress(null);
       if (!tool.trim()) return;
@@ -147,6 +175,7 @@ export function useChatIPC({
       cleanupReasoning();
       cleanupDone();
       cleanupError();
+      cleanupClarify();
       cleanupToolProgress();
       cleanupToolEvent();
       cleanupUsage();
