@@ -81,6 +81,7 @@ import {
   ensureSshTunnelIfNeeded,
   setSshRemoteApiKey,
   getRemoteAuthHeader,
+  resolvePendingClarify,
 } from "./hermes";
 import {
   startSshTunnel,
@@ -995,6 +996,9 @@ function setupIPC(): void {
           onUsage: (usage) => {
             safeSend("chat-usage", usage);
           },
+          onClarify: (req) => {
+            safeSend("chat-clarify-request", req);
+          },
         },
         profile,
         resumeSessionId,
@@ -1014,6 +1018,18 @@ function setupIPC(): void {
       currentChatAbort = null;
     }
   });
+
+  // Renderer's answer to an inline clarify card. Resolves the pending gateway
+  // request for this request_id, which forwards the answer to `clarify.respond`.
+  ipcMain.handle(
+    "clarify-respond",
+    (_event, payload: { requestId: string; answer: string }) => {
+      return resolvePendingClarify(
+        payload?.requestId ?? "",
+        payload?.answer ?? "",
+      );
+    },
+  );
 
   // Renderer-driven clipboard write (issue #298 — "Copy entire chat").
   // Routed through the main process so it doesn't depend on the renderer's

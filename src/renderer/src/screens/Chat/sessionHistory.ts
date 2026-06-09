@@ -425,5 +425,79 @@ export function reconcileStreamedWithDb(
     appendIfUnique(suffix, m, seenSuffixBubbleKeys);
   }
 
-  return [...prefix, ...result, ...suffix];
+  const merged = [...prefix, ...result, ...suffix];
+
+  // Reposition inline clarify cards to their original chronological slot.
+  // A clarify card is renderer-only — it's never written to state.db, so it
+  // has no reconciliationKey and would otherwise be flushed to the suffix,
+  // landing *below* any agent content the gateway streamed after the user
+  // answered (the reverse of what the user saw live). Re-anchor each card
+  // immediately after the streamed message that preceded it.
+  return repositionClarifyCards(merged, streamed);
+}
+
+/**
+ * Move `kind === "clarify"` cards from wherever the reconcile placed them back
+ * to their streamed position: directly after the message that immediately
+ * preceded them in `streamed`. Pure, order-preserving for all other rows.
+ */
+function repositionClarifyCards(
+  merged: ChatMessage[],
+  streamed: ReadonlyArray<ChatMessage>,
+): ChatMessage[] {
+  const isClarify = (m: ChatMessage): boolean =>
+    "kind" in m && m.kind === "clarify";
+  if (!streamed.some(isClarify)) return merged;
+
+  // Pull clarify cards out of the merged list; remember each card's streamed
+  // predecessor id so we can re-anchor it.
+  const cards = merged.filter(isClarify);
+  if (cards.length === 0) return merged;
+  const without = merged.filter((m) => !isClarify(m));
+
+  const predecessorIdByCardId = new Map<string, string | null>();
+  for (let i = 0; i < streamed.length; i++) {
+    const m = streamed[i];
+    if (!isClarify(m)) continue;
+    // Nearest preceding non-clarify message in the streamed order.
+    let predId: string | null = null;
+    for (let j = i - 1; j >= 0; j--) {
+      if (!isClarify(streamed[j])) {
+        predId = streamed[j].id;
+        break;
+      }
+    }
+    predecessorIdByCardId.set(m.id, predId);
+  }
+
+  const out: ChatMessage[] = [];
+  const cardsByPredId = new Map<string | null, ChatMessage[]>();
+  for (const card of cards) {
+    const predId = predecessorIdByCardId.get(card.id) ?? null;
+    const bucket = cardsByPredId.get(predId);
+    if (bucket) bucket.push(card);
+    else cardsByPredId.set(predId, [card]);
+  }
+
+  // Cards whose predecessor is absent (or that led the turn) go up front,
+  // preserving their streamed order.
+  const leading = cardsByPredId.get(null) ?? [];
+  for (const card of leading) out.push(card);
+
+  const presentIds = new Set(without.map((m) => m.id));
+  for (const m of without) {
+    out.push(m);
+    const bucket = cardsByPredId.get(m.id);
+    if (bucket) for (const card of bucket) out.push(card);
+  }
+
+  // Safety net: any card whose predecessor id wasn't found in the merged
+  // list (predecessor was deduped away) is appended so it's never dropped.
+  for (const card of cards) {
+    if (out.includes(card)) continue;
+    const predId = predecessorIdByCardId.get(card.id) ?? null;
+    if (predId === null || !presentIds.has(predId)) out.push(card);
+  }
+
+  return out;
 }

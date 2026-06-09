@@ -253,6 +253,22 @@ function Chat({
     [setMessages],
   );
 
+  // Flip an inline clarify card to its resolved (read-only) state once the user
+  // has answered or skipped. The gateway resumes the turn from here, so loading
+  // stays active until the next onChatDone.
+  const handleClarifyResolved = useCallback(
+    (requestId: string, answer: string) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.kind === "clarify" && m.requestId === requestId
+            ? { ...m, answer, resolved: true }
+            : m,
+        ),
+      );
+    },
+    [setMessages],
+  );
+
   const handleClear = useCallback(() => {
     if (isLoading) {
       window.hermesAPI.abortChat();
@@ -431,6 +447,7 @@ function Chat({
               toolProgress={toolProgress}
               onApprove={actions.handleApprove}
               onDeny={actions.handleDeny}
+              onClarifyResolved={handleClarifyResolved}
             />
           )}
           <div ref={bottomRef} />

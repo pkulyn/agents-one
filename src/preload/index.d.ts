@@ -376,6 +376,14 @@ interface HermesAPI {
     }) => void,
   ) => () => void;
   onChatError: (callback: (error: string) => void) => () => void;
+  onClarifyRequest: (
+    callback: (req: {
+      requestId: string;
+      question: string;
+      choices: string[];
+    }) => void,
+  ) => () => void;
+  respondClarify: (requestId: string, answer: string) => Promise<boolean>;
 
   // Gateway
   startGateway: () => Promise<GatewayStartResult>;
