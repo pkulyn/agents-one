@@ -540,10 +540,15 @@ class TuiGatewayClient {
       HERMES_DASHBOARD_SESSION_TOKEN: this.token,
       HERMES_DASHBOARD_TUI: "1",
     };
+    // NB: no `--tui` flag here. It's a *global* hermes option (valid only
+    // before a subcommand), not a `dashboard` subcommand option, so passing
+    // `dashboard --tui` makes argparse exit 2 ("unrecognized arguments:
+    // --tui") and the warmup fails. The JSON-RPC gateway this client talks to
+    // (`/api/ws`) is always served by a plain `hermes dashboard` and is gated
+    // only by HERMES_DASHBOARD_SESSION_TOKEN (set in `dashboardEnv`).
     const args = hermesCliArgs([
       "dashboard",
       "--no-open",
-      "--tui",
       "--host",
       "127.0.0.1",
       "--port",
@@ -910,6 +915,41 @@ export function extractReasoningDelta(delta: unknown): string {
   return "";
 }
 
+/**
+ * Pending clarify requests, keyed by the gateway `request_id`. When the agent
+ * asks a clarifying question the stream handler registers a resolver here (a
+ * closure over the live gateway client) and surfaces the question to the
+ * renderer. The renderer's answer arrives via the `clarify-respond` IPC handler,
+ * which calls `resolvePendingClarify` to fire the resolver and forward the
+ * answer to the gateway. Entries are one-shot and self-clear on use; the stream
+ * handler also clears any leftover on turn end so an abandoned turn can't leak a
+ * stale resolver.
+ */
+const pendingClarify = new Map<string, (answer: string) => void>();
+
+export function registerPendingClarify(
+  requestId: string,
+  resolver: (answer: string) => void,
+): void {
+  pendingClarify.set(requestId, resolver);
+}
+
+/** Fire and remove the resolver for `requestId`. Returns true if one was waiting. */
+export function resolvePendingClarify(
+  requestId: string,
+  answer: string,
+): boolean {
+  const resolver = pendingClarify.get(requestId);
+  if (!resolver) return false;
+  pendingClarify.delete(requestId);
+  resolver(answer);
+  return true;
+}
+
+export function clearPendingClarify(requestId: string): void {
+  pendingClarify.delete(requestId);
+}
+
 export interface ChatCallbacks {
   onChunk: (text: string) => void;
   /** Streaming reasoning / thinking tokens, when the provider emits them
@@ -932,6 +972,15 @@ export interface ChatCallbacks {
     rateLimitReset?: number;
     cacheReadTokens?: number;
     cacheWriteTokens?: number;
+  }) => void;
+  /** The agent asked a clarifying question mid-turn (`clarify.request`). The
+   *  renderer shows an inline card; the user's answer returns via the
+   *  `clarify-respond` IPC handler, which resolves the pending request for this
+   *  `requestId` by calling `clarify.respond` on the live gateway client. */
+  onClarify?: (req: {
+    requestId: string;
+    question: string;
+    choices: string[];
   }) => void;
 }
 
@@ -1713,10 +1762,17 @@ async function sendMessageViaTuiGateway(
   let fallbackStarted = false;
   let promptSubmitted = false;
   let cleanup = (): void => undefined;
+  // request_id of an in-flight clarify question, if the agent is awaiting an
+  // answer. Cleared on turn end so an abandoned turn leaks no stale resolver.
+  let pendingClarifyId: string | null = null;
 
   function finish(error?: string): void {
     if (finished) return;
     finished = true;
+    if (pendingClarifyId) {
+      clearPendingClarify(pendingClarifyId);
+      pendingClarifyId = null;
+    }
     cleanup();
     if (error) {
       cb.onError(error);
@@ -1728,6 +1784,10 @@ async function sendMessageViaTuiGateway(
   function cancel(): void {
     if (finished) return;
     finished = true;
+    if (pendingClarifyId) {
+      clearPendingClarify(pendingClarifyId);
+      pendingClarifyId = null;
+    }
     cleanup();
   }
 
@@ -1840,11 +1900,59 @@ async function sendMessageViaTuiGateway(
       return;
     }
 
-    if (
-      event.type === "clarify.request" ||
-      event.type === "sudo.request" ||
-      event.type === "secret.request"
-    ) {
+    if (event.type === "clarify.request") {
+      const requestId =
+        typeof event.payload?.request_id === "string"
+          ? event.payload.request_id
+          : "";
+      if (!requestId) {
+        // No id to answer — fall back to the legacy interrupt so the turn ends
+        // cleanly rather than hanging on a question we can never resolve.
+        void client
+          .request("session.interrupt", { session_id: activeSessionId }, 5_000)
+          .catch(() => undefined);
+        finish(
+          "Hermes requested clarify input, but the gateway provided no request_id to answer.",
+        );
+        return;
+      }
+      pendingClarifyId = requestId;
+      // The resolver closes over the live gateway client; the renderer's answer
+      // (via the clarify-respond IPC handler) forwards it to clarify.respond.
+      registerPendingClarify(requestId, (answer: string) => {
+        if (pendingClarifyId === requestId) pendingClarifyId = null;
+        void client
+          .request(
+            "clarify.respond",
+            { request_id: requestId, answer },
+            300_000,
+          )
+          .catch((error) => {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            if (!hasGatewayOutput) {
+              startApiFallback(message);
+              return;
+            }
+            finish(message);
+          });
+      });
+      const payload = event.payload as
+        | { question?: string; prompt?: string; choices?: unknown }
+        | undefined;
+      cb.onClarify?.({
+        requestId,
+        question: String(payload?.question ?? payload?.prompt ?? ""),
+        choices: Array.isArray(payload?.choices)
+          ? payload.choices.map((c) => String(c))
+          : [],
+      });
+      return;
+    }
+
+    if (event.type === "sudo.request" || event.type === "secret.request") {
+      // Out of scope for the inline-clarify change: a desktop sudo/secret prompt
+      // carries its own security-review surface and is a deliberate follow-up.
       void client
         .request("session.interrupt", { session_id: activeSessionId }, 5_000)
         .catch(() => undefined);
@@ -1930,6 +2038,9 @@ async function sendMessageViaTuiGateway(
 // ────────────────────────────────────────────────────
 
 const NOISE_PATTERNS = [/^[╭╰│╮╯─┌┐└┘┤├┬┴┼]/, /⚕\s*Hermes/];
+const CLI_COMPAT_PROVIDER_OVERRIDE: Record<string, string> = {
+  aimlapi: "custom",
+};
 
 function sendMessageViaCli(
   message: string,
@@ -1972,6 +2083,11 @@ function sendMessageViaCli(
     args.push("-m", mc.model);
   }
 
+  const cliProvider = CLI_COMPAT_PROVIDER_OVERRIDE[mc.provider];
+  if (cliProvider) {
+    args.push("--provider", cliProvider);
+  }
+
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     PATH: getEnhancedPath(),
@@ -1991,6 +2107,7 @@ function sendMessageViaCli(
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
     "OLLAMA_API_KEY",
+    "AIMLAPI_API_KEY",
     "ANTHROPIC_API_KEY",
     "GROQ_API_KEY",
     "DEEPSEEK_API_KEY",
@@ -2042,6 +2159,9 @@ function sendMessageViaCli(
     } else {
       env.HERMES_INFERENCE_PROVIDER = "custom";
       env.OPENAI_BASE_URL = mc.baseUrl.replace(/\/+$/, "");
+      if (cliProvider === "custom") {
+        env.CUSTOM_BASE_URL = mc.baseUrl.replace(/\/+$/, "");
+      }
     }
 
     // Find the host-derived env-var name (if any). Used both for resolving
@@ -2481,6 +2601,11 @@ export async function sendMessage(
       attachments,
       contextFolder,
     );
+  }
+
+  const mc = getModelConfig(profile);
+  if (CLI_COMPAT_PROVIDER_OVERRIDE[mc.provider]) {
+    return sendMessageViaCli(message, cb, profile, resumeSessionId, attachments);
   }
 
   // Check API server availability when the cache is cold or known-bad. Once

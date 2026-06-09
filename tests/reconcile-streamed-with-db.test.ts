@@ -615,4 +615,59 @@ describe("reconcileStreamedWithDb", () => {
       "tool-call-live-tool:run-1:terminal:2",
     ]);
   });
+
+  it("keeps an inline clarify card at its streamed position after reconcile (regression: PR #604 review)", () => {
+    // The clarify card is renderer-only — it never lands in state.db. During
+    // streaming the user saw: user → clarify card → agent answer. The DB only
+    // has the user + the post-answer agent content. Without repositioning, the
+    // card (no reconciliationKey) gets flushed to the suffix and renders BELOW
+    // the agent answer — the reverse of what the user saw.
+    const CLARIFY = (id: string, requestId: string): ChatMessage => ({
+      id,
+      kind: "clarify",
+      role: "agent",
+      requestId,
+      question: "Which environment?",
+      choices: ["staging", "production"],
+      resolved: true,
+      answer: "production",
+    });
+
+    const streamed: ChatMessage[] = [
+      STREAMED_USER("deploy it", "u-1"),
+      CLARIFY("clarify-r1", "r1"),
+      STREAMED_AGENT("Deploying to production.", "a-1"),
+    ];
+    const db: ChatMessage[] = [
+      DB_USER("deploy it", 1),
+      DB_AGENT("Deploying to production.", 2),
+    ];
+
+    const merged = reconcileStreamedWithDb(streamed, db);
+
+    // Card stays between the user message and the agent answer.
+    expect(merged.map((m) => m.id)).toEqual(["u-1", "clarify-r1", "a-1"]);
+  });
+
+  it("preserves a leading clarify card (no streamed predecessor)", () => {
+    const CLARIFY = (id: string, requestId: string): ChatMessage => ({
+      id,
+      kind: "clarify",
+      role: "agent",
+      requestId,
+      question: "Pick one",
+      choices: ["a", "b"],
+      resolved: true,
+      answer: "a",
+    });
+    const streamed: ChatMessage[] = [
+      CLARIFY("clarify-r1", "r1"),
+      STREAMED_AGENT("done", "a-1"),
+    ];
+    const db: ChatMessage[] = [DB_AGENT("done", 2)];
+
+    const merged = reconcileStreamedWithDb(streamed, db);
+
+    expect(merged.map((m) => m.id)).toEqual(["clarify-r1", "a-1"]);
+  });
 });

@@ -14,18 +14,26 @@
 </a>
 </p>
 
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.ja-JP.md">日本語</a> ·
+  <a href="README.es-LATAM.md">Español (LATAM)</a>
+</p>
+
 > **This project is in active development.** Features may change, and some things might break. If you run into a problem or have an idea, [open an issue](https://github.com/fathah/hermes-desktop/issues). Contributions are welcome!
-
-## Languages
-
-- English: `README.md`
-- 简体中文: `README.zh-CN.md`
-- 日本語: `README.ja-JP.md`
-- 🌎 Español (LATAM): `README.es-LATAM.md`
 
 Hermes Desktop is a native desktop app for installing, configuring, and chatting with [Hermes Agent](https://github.com/NousResearch/hermes-agent) — a self-improving AI assistant with tool use, multi-platform messaging, and a closed learning loop.
 
 Instead of managing the CLI by hand, the app walks through install, provider setup, and day-to-day usage in one place. It uses the official Hermes install script, stores Hermes in `~/.hermes`, and gives you a GUI for chat, sessions, profiles, memory, skills, tools, scheduling, messaging gateways, and more.
+
+## Sponsors
+
+<a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=hermes-desktop" target="_blank" rel="noopener noreferrer">
+    <img src="src/renderer/src/assets/logos/atlascloud.svg" alt="Atlas Cloud" height="100" style="display: block;">
+  </a>
+  
+  > **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=hermes-desktop)** is a full-modal, OpenAI-compatible AI inference platform (DeepSeek, Qwen, GLM, Kimi, MiniMax, and more). Use it in Hermes Desktop by selecting **Atlas Cloud** as your provider — the base URL is pre-configured automatically.
 
 ## Install
 
@@ -136,6 +144,12 @@ In local mode, chat requests go through `http://127.0.0.1:8642` with SSE streami
 | **Settings**  | Provider config, credential pools, backup/import, log viewer, network settings, theme |
 
 ## Supported Providers
+
+### Sponsors
+
+| Provider        | Notes                                                                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Atlas Cloud** | OpenAI-compatible gateway — DeepSeek, Qwen, GLM, Kimi, MiniMax and more ([atlascloud.ai](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=hermes-desktop)) |
 
 ### LLM Providers
 

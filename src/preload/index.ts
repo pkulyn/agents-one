@@ -192,6 +192,23 @@ const hermesAPI = {
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-model-config", provider, model, baseUrl, profile),
 
+  // Auxiliary (side-task) model routing
+  getAuxiliaryConfig: (
+    profile?: string,
+  ): Promise<
+    { task: string; provider: string; model: string; baseUrl: string }[]
+  > => ipcRenderer.invoke("get-auxiliary-config", profile),
+
+  setAuxiliaryTask: (
+    task: string,
+    cfg: { provider: string; model: string; baseUrl: string },
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-auxiliary-task", task, cfg, profile),
+
+  resetAuxiliaryConfig: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("reset-auxiliary-config", profile),
+
   // Connection mode (local / remote / ssh)
   isRemoteMode: (): Promise<boolean> => ipcRenderer.invoke("is-remote-mode"),
   isRemoteOnlyMode: (): Promise<boolean> =>
@@ -357,6 +374,20 @@ const hermesAPI = {
       profile,
     ),
 
+  getModelContextWindow: (
+    provider: string,
+    model: string,
+    baseUrl?: string,
+    profile?: string,
+  ): Promise<number | null> =>
+    ipcRenderer.invoke(
+      "get-model-context-window",
+      provider,
+      model,
+      baseUrl,
+      profile,
+    ),
+
   onChatChunk: (callback: (chunk: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: string): void =>
       callback(chunk);
@@ -413,9 +444,7 @@ const hermesAPI = {
     return () => ipcRenderer.removeListener("chat-tool-progress", handler);
   },
 
-  onChatToolEvent: (
-    callback: (event: ChatToolEvent) => void,
-  ): (() => void) => {
+  onChatToolEvent: (callback: (event: ChatToolEvent) => void): (() => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
       toolEvent: ChatToolEvent,
@@ -459,6 +488,28 @@ const hermesAPI = {
     ipcRenderer.on("chat-error", handler);
     return () => ipcRenderer.removeListener("chat-error", handler);
   },
+
+  /** The agent asked a clarifying question mid-turn. The renderer shows an
+   *  inline card and answers via `respondClarify`. */
+  onClarifyRequest: (
+    callback: (req: {
+      requestId: string;
+      question: string;
+      choices: string[];
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      req: { requestId: string; question: string; choices: string[] },
+    ): void => callback(req);
+    ipcRenderer.on("chat-clarify-request", handler);
+    return () => ipcRenderer.removeListener("chat-clarify-request", handler);
+  },
+
+  /** Answer an inline clarify card. An empty/skip answer lets the agent proceed
+   *  autonomously (the gateway treats it as "you decide"). */
+  respondClarify: (requestId: string, answer: string): Promise<boolean> =>
+    ipcRenderer.invoke("clarify-respond", { requestId, answer }),
 
   // Gateway
   startGateway: (): Promise<GatewayStartResult> =>
@@ -1121,6 +1172,8 @@ const hermesAPI = {
   // Discover marketplace (community registry)
   fetchRegistry: (force?: boolean) =>
     ipcRenderer.invoke("registry-fetch", force),
+  fetchModelRegistry: (force?: boolean) =>
+    ipcRenderer.invoke("registry-fetch-models", force),
   listInstalledRegistry: (profile?: string) =>
     ipcRenderer.invoke("registry-list-installed", profile),
   fetchRegistryDetail: (kind: string, item: unknown) =>
