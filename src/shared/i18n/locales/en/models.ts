@@ -25,4 +25,12 @@ export default {
   apiKeyLabel: "API Key",
   apiKeyHint:
     "Stored as an environment variable. Picks the matching env key based on the URL, or CUSTOM_API_KEY otherwise.",
+  browseRegistry: "Browse Registry",
+  registryTitle: "Model Registry",
+  registrySearchPlaceholder: "Search providers and models...",
+  registryAddButton: "Add",
+  registryAddedLabel: "Added",
+  registryCustomBadge: "via base URL",
+  registryAdded: "{{name}} added to your models",
+  registryLoadError: "Failed to load model registry",
 } as const;
