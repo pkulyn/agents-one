@@ -4,6 +4,7 @@ export default {
   discover: "Keşfet",
   agents: "Profiller",
   office: "Ofis",
+  bank: "Banka",
   models: "Modeller",
   providers: "Sağlayıcılar",
   skills: "Yetenekler",

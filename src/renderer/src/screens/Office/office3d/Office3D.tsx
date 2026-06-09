@@ -1,11 +1,4 @@
-import {
-  Suspense,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Suspense, useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, Lightformer } from "@react-three/drei";
 import { configureTextBuilder } from "troika-three-text";
@@ -28,8 +21,6 @@ import { WORLD_W, WORLD_H, WALK_SPEED, SCALE } from "./core/constants";
 import { toWorld } from "./core/geometry";
 import type { OfficeAgent, RenderAgent } from "./core/types";
 import officeFontUrl from "../../../assets/fonts/Manrope-Medium.ttf";
-import { useTheme } from "../../../components/ThemeProvider";
-import { THEMES } from "../../../constants";
 
 // drei's <Text> (agent nameplates / speech bubbles, via troika) defaults to two
 // behaviours the renderer's strict CSP (`script-src`/`default-src 'self'`)
@@ -77,28 +68,8 @@ const DAY_PALETTE: WorldPalette = {
   keyColor: "#fff4e2",
 };
 
-const NIGHT_PALETTE: WorldPalette = {
-  floor: "#262a31",
-  rug: "#313845",
-  wallNS: "#2f333b",
-  wallEW: "#363b44",
-  hemiSky: "#3a4150",
-  hemiGround: "#101216",
-  hemiIntensity: 0.3,
-  ambient: 0.14,
-  directional: 1.1,
-  envIntensity: 0.32,
-  keyColor: "#cdd6ff",
-};
-
 // Only the canvas background follows the app's light/dark theme.
 const THEME_BACKGROUND = { light: "#f3f1ec", dark: "#16181d" } as const;
-
-// Daytime: 06:00–17:59 local. Drives the day/night world palette.
-function isDaytime(date: Date = new Date()): boolean {
-  const hour = date.getHours();
-  return hour >= 6 && hour < 18;
-}
 
 type ControllerMode = "toSeat" | "seated";
 interface ControllerState {
@@ -332,6 +303,180 @@ function AgentsLayer({
   );
 }
 
+/** Sparse city backdrop — a few buildings north/west/east, trees south. */
+function CityBackdrop(): React.JSX.Element {
+  const { buildings, trees } = useMemo(() => {
+    const buildings: Array<{
+      x: number;
+      z: number;
+      w: number;
+      d: number;
+      h: number;
+      color: string;
+    }> = [];
+    const trees: Array<{ x: number; z: number; h: number }> = [];
+
+    const rng = (seed: number) => {
+      const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+      return x - Math.floor(x);
+    };
+
+    const cell = 4.5;
+    const rows = 10;
+    const cols = 10;
+    const margin = 2.5;
+    const officeW = WORLD_W + margin;
+    const officeH = WORLD_H + margin;
+
+    for (let ix = 0; ix < cols; ix++) {
+      for (let iz = 0; iz < rows; iz++) {
+        const x = (ix - cols / 2 + 0.5) * cell;
+        const z = (iz - rows / 2 + 0.5) * cell;
+
+        // Leave the office lot empty
+        if (
+          x > -officeW / 2 &&
+          x < officeW / 2 &&
+          z > -officeH / 2 &&
+          z < officeH / 2
+        ) {
+          continue;
+        }
+
+        // No buildings on the south (camera-facing) side — use trees instead
+        if (z > officeH / 2) {
+          const seed = ix * 100 + iz;
+          if (rng(seed) < 0.25) {
+            trees.push({
+              x: x + (rng(seed + 1) - 0.5) * cell * 0.6,
+              z: z + (rng(seed + 2) - 0.5) * cell * 0.6,
+              h: 1.2 + rng(seed + 3) * 1.5,
+            });
+          }
+          continue;
+        }
+
+        const seed = ix * 100 + iz;
+        if (rng(seed) < 0.35) {
+          const w = cell * (0.5 + rng(seed + 1) * 0.3);
+          const d = cell * (0.5 + rng(seed + 2) * 0.3);
+          const h = 3 + rng(seed + 3) * 10;
+          const lightness = 55 + rng(seed + 4) * 25;
+          buildings.push({
+            x,
+            z,
+            w,
+            d,
+            h,
+            color: `hsl(210, 8%, ${lightness}%)`,
+          });
+        }
+      }
+    }
+    return { buildings, trees };
+  }, []);
+
+  return (
+    <group>
+      {/* Street / pavement extending beyond the office */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -0.02, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[60, 60]} />
+        <meshStandardMaterial color="#b0b5bd" roughness={0.92} metalness={0} />
+      </mesh>
+      {buildings.map((b, i) => (
+        <mesh
+          key={`b-${i}`}
+          position={[b.x, b.h / 2, b.z]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[b.w, b.h, b.d]} />
+          <meshStandardMaterial
+            color={b.color}
+            roughness={0.88}
+            metalness={0.04}
+          />
+        </mesh>
+      ))}
+      {trees.map((t, i) => (
+        <group key={`t-${i}`} position={[t.x, 0, t.z]}>
+          {/* Trunk */}
+          <mesh position={[0, t.h * 0.25, 0]} castShadow>
+            <cylinderGeometry args={[0.06, 0.09, t.h * 0.5, 6]} />
+            <meshStandardMaterial color="#8b6f47" roughness={0.95} />
+          </mesh>
+          {/* Canopy */}
+          <mesh position={[0, t.h * 0.65, 0]} castShadow>
+            <coneGeometry args={[t.h * 0.35, t.h * 0.7, 7]} />
+            <meshStandardMaterial color="#4a7c59" roughness={0.9} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+/** North wall — 3.6 m tall with three window openings and glass panels. */
+function NorthWall({ palette }: { palette: WorldPalette }): React.JSX.Element {
+  const halfW = WORLD_W / 2;
+  const z = -WORLD_H / 2;
+  const wallT = 0.2;
+  const wallH = 3.6;
+  const windowW = 5.0;
+  const windowH = 1.4;
+  const windowY = 2.2;
+  const numWindows = 3;
+
+  const gap = (WORLD_W - numWindows * windowW) / (numWindows + 1);
+  const winBottom = windowY - windowH / 2;
+  const winTop = windowY + windowH / 2;
+
+  return (
+    <group>
+      {/* Bottom solid strip */}
+      <mesh position={[0, winBottom / 2, z]}>
+        <boxGeometry args={[WORLD_W, winBottom, wallT]} />
+        <meshStandardMaterial color={palette.wallNS} />
+      </mesh>
+      {/* Top solid strip */}
+      <mesh position={[0, winTop + (wallH - winTop) / 2, z]}>
+        <boxGeometry args={[WORLD_W, wallH - winTop, wallT]} />
+        <meshStandardMaterial color={palette.wallNS} />
+      </mesh>
+      {/* Vertical pillars between windows */}
+      {Array.from({ length: numWindows + 1 }).map((_, i) => {
+        const x = -halfW + gap * (i + 0.5) + windowW * i;
+        return (
+          <mesh key={`p-${i}`} position={[x, windowY, z]}>
+            <boxGeometry args={[gap, windowH, wallT]} />
+            <meshStandardMaterial color={palette.wallNS} />
+          </mesh>
+        );
+      })}
+      {/* Window glass */}
+      {Array.from({ length: numWindows }).map((_, i) => {
+        const x = -halfW + gap * (i + 1) + windowW * (i + 0.5);
+        return (
+          <mesh key={`g-${i}`} position={[x, windowY, z + wallT / 2 + 0.02]}>
+            <planeGeometry args={[windowW - 0.2, windowH - 0.2]} />
+            <meshStandardMaterial
+              color="#c8dae8"
+              roughness={0.05}
+              metalness={0.4}
+              envMapIntensity={1.0}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
 /** Floor, rug and perimeter walls — a clean, minimal office shell. */
 function Room({ palette }: { palette: WorldPalette }): React.JSX.Element {
   const halfW = WORLD_W / 2;
@@ -364,11 +509,9 @@ function Room({ palette }: { palette: WorldPalette }): React.JSX.Element {
           envMapIntensity={0.4}
         />
       </mesh>
-      {/* Walls */}
-      <mesh position={[0, wallH / 2, -halfH]}>
-        <boxGeometry args={[WORLD_W, wallH, wallT]} />
-        <meshStandardMaterial color={palette.wallNS} />
-      </mesh>
+      {/* North wall — taller with windows */}
+      <NorthWall palette={palette} />
+      {/* South / east / west walls */}
       <mesh position={[0, wallH / 2, halfH]}>
         <boxGeometry args={[WORLD_W, wallH, wallT]} />
         <meshStandardMaterial color={palette.wallNS} />
@@ -442,23 +585,7 @@ export default function Office3D({
     [agents, ceoId],
   );
 
-  // Only the background follows the app's light/dark theme.
-  const { resolved } = useTheme();
-  const background = useMemo(() => {
-    const def = THEMES.find((th) => th.id === resolved);
-    return def?.appearance === "light"
-      ? THEME_BACKGROUND.light
-      : THEME_BACKGROUND.dark;
-  }, [resolved]);
-
-  // The world's day/night look follows the system clock, re-checked each
-  // minute so the scene flips at dawn/dusk without a manual refresh.
-  const [daytime, setDaytime] = useState(() => isDaytime());
-  useEffect(() => {
-    const id = setInterval(() => setDaytime(isDaytime()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-  const palette = daytime ? DAY_PALETTE : NIGHT_PALETTE;
+  const palette = DAY_PALETTE;
 
   return (
     <Canvas
@@ -473,7 +600,7 @@ export default function Office3D({
       onPointerMissed={() => onSelectAgent(null)}
       style={{ width: "100%", height: "100%" }}
     >
-      <color attach="background" args={[background]} />
+      <color attach="background" args={[THEME_BACKGROUND.light]} />
       {/* Soft image-based lighting baked once from in-scene Lightformers — no
           external HDRI fetch, so it stays within the renderer's strict CSP. */}
       <Environment frames={1} resolution={256} background={false}>
@@ -533,6 +660,7 @@ export default function Office3D({
         shadow-camera-top={20}
         shadow-camera-bottom={-20}
       />
+      <CityBackdrop />
       <Room palette={palette} />
       <InteriorWalls palette={palette} />
       <Suspense fallback={null}>

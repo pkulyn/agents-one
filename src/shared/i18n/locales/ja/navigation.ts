@@ -3,6 +3,7 @@ export default {
   sessions: "セッション",
   agents: "プロファイル",
   office: "オフィス",
+  bank: "銀行",
   models: "モデル",
   providers: "プロバイダ",
   skills: "スキル",
