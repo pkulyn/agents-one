@@ -384,7 +384,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
       if (!file) return;
       setImporting(true);
       setImportResult(null);
-      const filePath = (file as File & { path: string }).path;
+      const filePath = window.hermesAPI.getPathForFile(file);
       const result = await window.hermesAPI.runHermesImport(filePath, profile);
       setImporting(false);
       if (result.success) {
