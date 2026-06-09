@@ -19,6 +19,9 @@ describe("provider-registry", () => {
       expect(canonicalProviderBaseUrl("xiaomi")).toBe(
         "https://api.xiaomimimo.com/v1",
       );
+      expect(canonicalProviderBaseUrl("aimlapi")).toBe(
+        "https://api.aimlapi.com/v1",
+      );
       expect(canonicalProviderBaseUrl("together")).toBe(
         "https://api.together.xyz/v1",
       );
@@ -55,9 +58,7 @@ describe("provider-registry", () => {
       expect(canonicalProviderBaseUrl("ollama")).toBe(
         "http://localhost:11434/v1",
       );
-      expect(canonicalProviderBaseUrl("vllm")).toBe(
-        "http://localhost:8000/v1",
-      );
+      expect(canonicalProviderBaseUrl("vllm")).toBe("http://localhost:8000/v1");
       expect(canonicalProviderBaseUrl("llamacpp")).toBe(
         "http://localhost:8080/v1",
       );
@@ -91,6 +92,7 @@ describe("provider-registry", () => {
       // prevent.
       const requiredBuiltins = [
         "groq",
+        "aimlapi",
         "deepseek",
         "together",
         "fireworks",
