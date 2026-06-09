@@ -37,6 +37,7 @@ export default {
   together: "Together AI",
   fireworks: "Fireworks",
   cerebras: "Cerebras",
+  atlascloud: "AtlasCloud",
   mistral: "Mistral",
   // Theme
   themeSystem: "System",
@@ -66,7 +67,8 @@ export default {
   minimaxApiKey: "MiniMax API Key",
   minimaxHint: "MiniMax models (global)",
   nousApiKey: "Nous Portal API Key",
-  nousHint: "Nous Portal API key — use the OAuth card below if you have a Nous subscription instead",
+  nousHint:
+    "Nous Portal API key — use the OAuth card below if you have a Nous subscription instead",
   minimaxCnApiKey: "MiniMax China API Key",
   minimaxCnHint: "MiniMax models (China endpoint)",
   opencodeZenApiKey: "OpenCode Zen API Key",
@@ -83,6 +85,8 @@ export default {
   fireworksHint: "Fast inference for open models",
   cerebrasApiKey: "Cerebras API Key",
   cerebrasHint: "Ultra-fast inference on Cerebras hardware",
+  atlascloudApiKey: "AtlasCloud API Key",
+  atlascloudHint: "Claude, GPT & open models via AtlasCloud",
   mistralApiKey: "Mistral API Key",
   mistralHint: "Mistral and Codestral models",
   perplexityApiKey: "Perplexity API Key",
