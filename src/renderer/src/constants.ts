@@ -24,7 +24,7 @@ export const PROVIDERS = {
     { value: "auto", label: "constants.autoDetect" },
     // Aggregators
     { value: "openrouter", label: "constants.openrouterName" },
-    { value: "aimlapi", label: "AIML API" },
+    { value: "aimlapi", label: "constants.aimlapiName" },
     // First-party API providers
     { value: "anthropic", label: "constants.anthropicName" },
     { value: "openai", label: "constants.openaiName" },
@@ -68,7 +68,7 @@ export const PROVIDERS = {
 
   labels: {
     openrouter: "constants.openrouterName",
-    aimlapi: "AIML API",
+    aimlapi: "constants.aimlapiName",
     anthropic: "constants.anthropicName",
     openai: "constants.openaiName",
     "openai-codex": "constants.openaiCodexName",
@@ -129,8 +129,8 @@ export const PROVIDERS = {
     },
     {
       id: "aimlapi",
-      name: "AIML API",
-      desc: "OpenAI-compatible multi-model gateway",
+      name: "constants.aimlapiName",
+      desc: "constants.aimlapiDesc",
       tag: "",
       envKey: "AIMLAPI_API_KEY",
       url: "https://aimlapi.com/app/keys",
@@ -334,7 +334,7 @@ export const LOCAL_PRESETS: LocalPreset[] = [
   },
   {
     id: "aimlapi",
-    name: "AIML API",
+    name: "constants.aimlapi",
     baseUrl: "https://api.aimlapi.com/v1",
     group: "remote",
     envKey: "AIMLAPI_API_KEY",
@@ -481,9 +481,9 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
       },
       {
         key: "AIMLAPI_API_KEY",
-        label: "AIML API key",
+        label: "constants.aimlapiApiKey",
         type: "password",
-        hint: "API key for AIML API",
+        hint: "constants.aimlapiHint",
       },
       {
         key: "ANTHROPIC_API_KEY",
