@@ -571,8 +571,8 @@ describe("reconcileStreamedWithDb", () => {
 
     expect(merged.map((m) => m.id)).toEqual([
       "u-1",
-      "db-tc-71-call-terminal-1",
       "tool-call-live-tool:run-1:terminal:2",
+      "db-tc-71-call-terminal-1",
       "a-1",
     ]);
     expect(merged[3]).toMatchObject({
