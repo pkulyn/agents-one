@@ -53,6 +53,13 @@ export default function Office3D({
     onSelectAgent(id === selectedId ? null : id);
   };
 
+  // The building-mover is a dev-only authoring aid. `import.meta.env.DEV` is a
+  // build-time literal (Vite replaces it: `true` in `electron-vite dev`,
+  // `false` in production builds), so every dev-only branch below is
+  // dead-code-eliminated from the production bundle — it can't run or cost
+  // anything for end users, regardless of the `devMode` prop.
+  const devTools = import.meta.env.DEV && devMode;
+
   // ── Developer building-mover ──────────────────────────────────────────────
   // When devMode is on: click a building to "pick it up" (logs it + its current
   // position), then click empty ground to drop it there (logs a paste-ready
@@ -194,7 +201,11 @@ export default function Office3D({
     >
       <SceneEnvironment palette={palette} />
       <DistantSkyline />
-      <CityBackdrop devMode={devMode} moved={devPos} onPick={pickBackdrop} />
+      <CityBackdrop
+        devMode={devTools}
+        moved={devTools ? devPos : undefined}
+        onPick={devTools ? pickBackdrop : undefined}
+      />
       <Suspense fallback={null}>
         <TrafficLayer />
       </Suspense>
@@ -210,7 +221,7 @@ export default function Office3D({
           </Suspense>
         </>
       )}
-      {devMode ? (
+      {devTools ? (
         <>
           <group onClick={pickLandmark(LANDMARKS.bank)}>
             <BankSection position={posOf("bank", LANDMARKS.bank.base)} />

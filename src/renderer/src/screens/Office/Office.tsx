@@ -188,36 +188,38 @@ function Office({ visible }: OfficeProps): React.JSX.Element {
             <Users size={15} />
             {t("office.agentCount", { count: agents.length })}
           </span>
-          <button
-            type="button"
-            onClick={() =>
-              setDevMode((v) => {
-                const next = !v;
-                console.log(
-                  `[office] Move-buildings mode ${next ? "ON" : "OFF"} — click a building, then click the ground.`,
-                );
-                return next;
-              })
-            }
-            title="Developer: click a building then click the ground to move it (logs coordinates to the console)"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: devMode
-                ? "1px solid rgba(245,158,11,0.6)"
-                : "1px solid var(--border, rgba(0,0,0,0.12))",
-              background: devMode ? "rgba(245,158,11,0.16)" : "transparent",
-              color: devMode ? "#fbbf24" : "var(--text-secondary)",
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            <Move size={14} />
-            {devMode ? "Moving buildings" : "Move buildings"}
-          </button>
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={() =>
+                setDevMode((v) => {
+                  const next = !v;
+                  console.log(
+                    `[office] Move-buildings mode ${next ? "ON" : "OFF"} — click a building, then click the ground.`,
+                  );
+                  return next;
+                })
+              }
+              title="Developer: click a building then click the ground to move it (logs coordinates to the console)"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: devMode
+                  ? "1px solid rgba(245,158,11,0.6)"
+                  : "1px solid var(--border, rgba(0,0,0,0.12))",
+                background: devMode ? "rgba(245,158,11,0.16)" : "transparent",
+                color: devMode ? "#fbbf24" : "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              <Move size={14} />
+              {devMode ? "Moving buildings" : "Move buildings"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void loadAgents()}
@@ -260,7 +262,7 @@ function Office({ visible }: OfficeProps): React.JSX.Element {
           onDevLog={setDevLog}
         />
 
-        {devMode && (
+        {import.meta.env.DEV && devMode && (
           <div
             style={{
               position: "absolute",

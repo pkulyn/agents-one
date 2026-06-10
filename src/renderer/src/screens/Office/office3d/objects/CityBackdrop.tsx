@@ -287,6 +287,16 @@ function generateBackdrop(): {
   const bankMaxX = BANK_X + BANK_W / 2 + margin;
   const rW = ROAD_WIDTH / 2 + 1.5; // half-width + building clearance
 
+  // Plant a jittered tree near a cell centre. Used to green the open gap cells
+  // and to backfill cells whose building was relocated by the dev tool.
+  const plantTree = (cx: number, cz: number, s: number): void => {
+    trees.push({
+      x: cx + (seededRandom(s + 11) - 0.5) * cell * 0.5,
+      z: cz + (seededRandom(s + 12) - 0.5) * cell * 0.5,
+      h: 1.2 + seededRandom(s + 13) * 1.6,
+    });
+  };
+
   for (let ix = 0; ix < cols; ix++) {
     for (let iz = 0; iz < rows; iz++) {
       const x = (ix - cols / 2 + 0.5) * cell;
@@ -366,6 +376,10 @@ function generateBackdrop(): {
         if (Math.hypot(x, z) < 55) {
           const id = `gb:${ix},${iz}`;
           const ov = BACKDROP_OVERRIDES[id];
+          // Only sometimes backfill a vacated cell — the relocated buildings
+          // mostly came from one northern strip, so filling every one lined
+          // the trees up along that street.
+          if (ov && seededRandom(seed + 14) < 0.4) plantTree(x, z, seed);
           glbBuildings.push({
             id,
             x: ov ? ov[0] : x,
@@ -379,6 +393,7 @@ function generateBackdrop(): {
         } else {
           const id = `box:${ix},${iz}`;
           const ov = BACKDROP_OVERRIDES[id];
+          if (ov && seededRandom(seed + 14) < 0.4) plantTree(x, z, seed);
           const w = cell * (0.7 + seededRandom(seed + 1) * 0.5);
           const d = cell * (0.7 + seededRandom(seed + 2) * 0.5);
           const h = 5 + seededRandom(seed + 3) * 14;
@@ -393,8 +408,11 @@ function generateBackdrop(): {
             color: `hsl(210, 8%, ${lightness}%)`,
           });
         }
+      } else {
+        // Former gap cell — sprinkle some greenery so open space across the
+        // whole grid gets trees, without packing every empty cell.
+        if (seededRandom(seed + 9) < 0.3) plantTree(x, z, seed);
       }
-      // else: leave cell empty (pavement / gap)
     }
   }
   return { buildings, glbBuildings, trees };
