@@ -5,6 +5,7 @@ import {
   Environment,
   Lightformer,
   Sky,
+  Text,
   useGLTF,
   useTexture,
 } from "@react-three/drei";
@@ -18,6 +19,9 @@ import sofaGlbUrl from "./assets/loungeSofa.glb?url";
 import sofaChairGlbUrl from "./assets/sofa_chair.glb?url";
 import manGlbUrl from "./assets/man.glb?url";
 import treeGlbUrl from "./assets/tree.glb?url";
+import building1GlbUrl from "./assets/building1.glb?url";
+import building2GlbUrl from "./assets/building2.glb?url";
+import woodenTableGlbUrl from "./assets/wooden_table.glb?url";
 import car1GlbUrl from "./assets/car1.glb?url";
 import car2GlbUrl from "./assets/car2.glb?url";
 import truck1GlbUrl from "./assets/truck1.glb?url";
@@ -32,6 +36,9 @@ import {
   REST_FURNITURE,
   EXECUTIVE_DECOR,
   INTERIOR_WALLS,
+  GLASS_WALLS,
+  CEO_OFFICE,
+  CEO_DOOR_Y,
   DIVIDER_X,
   DOOR_Y,
   type Workstation,
@@ -103,13 +110,27 @@ function randomBetween(min: number, max: number): number {
 // the partition instead of clipping the wall (we have no full pathfinder).
 function routeTarget(
   ax: number,
+  ay: number,
   finalX: number,
   finalY: number,
 ): { x: number; y: number } {
   const onEast = ax > DIVIDER_X;
   const targetEast = finalX > DIVIDER_X;
-  if (onEast === targetEast) return { x: finalX, y: finalY };
-  return { x: targetEast ? DIVIDER_X + 60 : DIVIDER_X - 60, y: DOOR_Y };
+  if (onEast !== targetEast) {
+    return { x: targetEast ? DIVIDER_X + 60 : DIVIDER_X - 60, y: DOOR_Y };
+  }
+  // CEO glass corner office: route through the doorway gap in its east glass
+  // wall when crossing the boundary in either direction.
+  const inCeoOffice = ax < CEO_OFFICE.maxX && ay > CEO_OFFICE.minY;
+  const targetInCeoOffice =
+    finalX < CEO_OFFICE.maxX && finalY > CEO_OFFICE.minY;
+  if (inCeoOffice !== targetInCeoOffice) {
+    return {
+      x: targetInCeoOffice ? CEO_OFFICE.maxX - 60 : CEO_OFFICE.maxX + 60,
+      y: CEO_DOOR_Y,
+    };
+  }
+  return { x: finalX, y: finalY };
 }
 
 function makeRenderAgent(agent: OfficeAgent): RenderAgent {
@@ -282,7 +303,7 @@ function AgentsLayer({
       }
 
       // Heading to the seat, routing through the doorway when changing rooms.
-      const wp = routeTarget(agent.x, goal.x, goal.y);
+      const wp = routeTarget(agent.x, agent.y, goal.x, goal.y);
       const reachedFinal = wp.x === goal.x && wp.y === goal.y;
       if (moveToward(wp.x, wp.y) && reachedFinal) {
         agent.facing = goal.facing;
@@ -361,6 +382,15 @@ const ROADS: RoadDef[] = [
   { axis: "z", center: ROAD_EAST_X + ROAD_OUTER_GAP },
   { axis: "z", center: -ROAD_EAST_X - ROAD_OUTER_GAP },
 ];
+
+// ── Car showroom (west of the office, glass front facing the HQ) ──────────
+const SHOWROOM_W = 16; // x extent
+const SHOWROOM_D = 20; // z extent
+// Centred in the block between the west inner and outer roads.
+const SHOWROOM_X = -(ROAD_EAST_X + ROAD_OUTER_GAP / 2);
+const SHOWROOM_Z = 0;
+const SHOWROOM_WALL_H = 3.0;
+const SHOWROOM_WALL_T = 0.25;
 
 const BANK_PALETTE = {
   floor: "#d4c8b8",
@@ -836,6 +866,50 @@ function BankSection(): React.JSX.Element {
   );
 }
 
+/**
+ * Detailed backdrop building (building1/building2 GLB), auto-normalised:
+ * recentred, grounded at y=0 and uniformly scaled so its footprint fits the
+ * city-grid cell, with a random quarter-turn for variety.
+ */
+function CityBuildingGlb({
+  x,
+  z,
+  footprint,
+  rotY,
+  which,
+}: {
+  x: number;
+  z: number;
+  footprint: number;
+  rotY: number;
+  which: 1 | 2;
+}): React.JSX.Element {
+  const { scene } = useGLTF(
+    which === 1 ? building1GlbUrl : building2GlbUrl,
+    false,
+    false,
+  );
+  const object = useMemo(() => {
+    const obj = glbClone(scene, null);
+    const bbox = new THREE.Box3().setFromObject(obj);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    bbox.getSize(size);
+    bbox.getCenter(center);
+    obj.position.set(-center.x, -bbox.min.y, -center.z);
+    const root = new THREE.Group();
+    root.add(obj);
+    const base = Math.max(size.x, size.z);
+    root.scale.setScalar(base > 0 ? footprint / base : 1);
+    return root;
+  }, [scene, footprint]);
+  return (
+    <group position={[x, 0, z]} rotation={[0, rotY, 0]}>
+      <primitive object={object} />
+    </group>
+  );
+}
+
 function TreeGlb({
   x,
   z,
@@ -902,7 +976,7 @@ const VIEW_BLOCKER_SPOTS: Array<[number, number]> = [
 
 /** Sparse city backdrop — a few buildings north/west/east, trees south. */
 function CityBackdrop(): React.JSX.Element {
-  const { buildings, trees } = useMemo(() => {
+  const { buildings, glbBuildings, trees } = useMemo(() => {
     const buildings: Array<{
       x: number;
       z: number;
@@ -910,6 +984,13 @@ function CityBackdrop(): React.JSX.Element {
       d: number;
       h: number;
       color: string;
+    }> = [];
+    const glbBuildings: Array<{
+      x: number;
+      z: number;
+      footprint: number;
+      rotY: number;
+      which: 1 | 2;
     }> = [];
     const trees: Array<{ x: number; z: number; h: number }> = [];
 
@@ -948,6 +1029,20 @@ function CityBackdrop(): React.JSX.Element {
 
         // Leave the bank lot empty
         if (x > bankMinX && x < bankMaxX && z > bankMinZ && z < bankMaxZ) {
+          continue;
+        }
+
+        // Leave the showroom lot empty. Margin is wider than the lots above:
+        // exclusion tests cell CENTRES, and a building footprint can reach
+        // cell * 1.4 / 2 = 3.5 units beyond its centre — with the default
+        // 2.5 margin the ±12.5 rows clipped the showroom corners.
+        const showroomClear = 6;
+        if (
+          x > SHOWROOM_X - SHOWROOM_W / 2 - showroomClear &&
+          x < SHOWROOM_X + SHOWROOM_W / 2 + showroomClear &&
+          z > SHOWROOM_Z - SHOWROOM_D / 2 - showroomClear &&
+          z < SHOWROOM_Z + SHOWROOM_D / 2 + showroomClear
+        ) {
           continue;
         }
 
@@ -990,24 +1085,36 @@ function CityBackdrop(): React.JSX.Element {
             h: 1.2 + rng(seed + 3) * 1.6,
           });
         } else if (roll < 0.6) {
-          // Building
-          const w = cell * (0.7 + rng(seed + 1) * 0.5);
-          const d = cell * (0.7 + rng(seed + 2) * 0.5);
-          const h = 5 + rng(seed + 3) * 14;
-          const lightness = 55 + rng(seed + 4) * 25;
-          buildings.push({
-            x,
-            z,
-            w,
-            d,
-            h,
-            color: `hsl(210, 8%, ${lightness}%)`,
-          });
+          // Building. Near the core, mix in the detailed GLB models; further
+          // out (fog-hazed anyway) stick to cheap procedural boxes.
+          const nearCore = Math.hypot(x, z) < 60;
+          if (nearCore && rng(seed + 5) < 0.45) {
+            glbBuildings.push({
+              x,
+              z,
+              footprint: cell * (0.95 + rng(seed + 6) * 0.45),
+              rotY: Math.floor(rng(seed + 7) * 4) * (Math.PI / 2),
+              which: rng(seed + 8) < 0.5 ? 1 : 2,
+            });
+          } else {
+            const w = cell * (0.7 + rng(seed + 1) * 0.5);
+            const d = cell * (0.7 + rng(seed + 2) * 0.5);
+            const h = 5 + rng(seed + 3) * 14;
+            const lightness = 55 + rng(seed + 4) * 25;
+            buildings.push({
+              x,
+              z,
+              w,
+              d,
+              h,
+              color: `hsl(210, 8%, ${lightness}%)`,
+            });
+          }
         }
         // else: leave cell empty (pavement / gap)
       }
     }
-    return { buildings, trees };
+    return { buildings, glbBuildings, trees };
   }, []);
 
   const roadSouthZ = ROAD_SOUTH_Z;
@@ -1153,6 +1260,16 @@ function CityBackdrop(): React.JSX.Element {
         );
       })}
       <Suspense fallback={null}>
+        {glbBuildings.map((g, i) => (
+          <CityBuildingGlb
+            key={`gb-${i}`}
+            x={g.x}
+            z={g.z}
+            footprint={g.footprint}
+            rotY={g.rotY}
+            which={g.which}
+          />
+        ))}
         {trees.map((t, i) => (
           <TreeGlb key={`t-${i}`} x={t.x} z={t.z} h={t.h} />
         ))}
@@ -1401,6 +1518,210 @@ function TrafficLayer(): React.JSX.Element {
   );
 }
 
+// ── Car showroom ───────────────────────────────────────────────────────────
+
+const SHOWROOM_PALETTE = {
+  floor: "#e9eaee",
+  wall: "#dfe2e6",
+  trim: "#aab2bc",
+  pedestal: "#cfd4da",
+  sign: "#1b2533",
+};
+
+/** Hero car slowly spinning on the display pedestal. */
+function RotatingShowcaseCar({
+  position,
+  url,
+  tint,
+}: {
+  position: [number, number, number];
+  url: string;
+  tint: string;
+}): React.JSX.Element {
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame((_, delta) => {
+    if (groupRef.current) {
+      groupRef.current.rotation.y += Math.min(delta, 0.05) * 0.45;
+    }
+  });
+  return (
+    <group ref={groupRef} position={position}>
+      <VehicleModel url={url} tint={tint} targetLen={2.6} />
+    </group>
+  );
+}
+
+/**
+ * Car showroom on the west block: glass storefront facing the office, display
+ * cars inside (reusing the traffic vehicle models/tints) and a hero car
+ * rotating on a pedestal.
+ */
+function CarShowroom(): React.JSX.Element {
+  const halfW = SHOWROOM_W / 2;
+  const halfD = SHOWROOM_D / 2;
+  const wallH = SHOWROOM_WALL_H;
+  const wallT = SHOWROOM_WALL_T;
+  const plinthH = 0.5;
+  const bandH = 0.7;
+  const glassH = wallH - plinthH - bandH;
+  // Storefront pillars every 4 units; the middle bay is the open entrance.
+  const pillarZs = [-10, -6, -2, 2, 6, 10];
+  const glassBays = [0, 1, 3, 4]; // bay 2 (centre) stays open
+
+  const displayCars: Array<{
+    pos: [number, number, number];
+    rotY: number;
+    url: string;
+    tint: string;
+  }> = [
+    {
+      pos: [-4, 0, -7],
+      rotY: Math.PI / 2 - 0.3,
+      url: car1GlbUrl,
+      tint: "#b03a2e",
+    },
+    {
+      pos: [-4, 0, -2.5],
+      rotY: Math.PI / 2 + 0.25,
+      url: car2GlbUrl,
+      tint: "#1f618d",
+    },
+    {
+      pos: [-4, 0, 2.5],
+      rotY: Math.PI / 2 - 0.25,
+      url: car1GlbUrl,
+      tint: "#e8e8e8",
+    },
+    {
+      pos: [-4, 0, 7],
+      rotY: Math.PI / 2 + 0.3,
+      url: car2GlbUrl,
+      tint: "#39414f",
+    },
+    {
+      pos: [2.5, 0, -6.5],
+      rotY: Math.PI / 2,
+      url: car2GlbUrl,
+      tint: "#ca6f1e",
+    },
+    { pos: [2.5, 0, 6.5], rotY: Math.PI / 2, url: car1GlbUrl, tint: "#239b56" },
+  ];
+
+  return (
+    <group position={[SHOWROOM_X, 0, SHOWROOM_Z]}>
+      {/* Polished display floor */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+        <planeGeometry args={[SHOWROOM_W, SHOWROOM_D]} />
+        <meshStandardMaterial
+          color={SHOWROOM_PALETTE.floor}
+          roughness={0.35}
+          metalness={0.05}
+          envMapIntensity={0.9}
+        />
+      </mesh>
+      {/* Back (west) wall */}
+      <mesh position={[-halfW, wallH / 2, 0]}>
+        <boxGeometry args={[wallT, wallH, SHOWROOM_D]} />
+        <meshStandardMaterial color={SHOWROOM_PALETTE.wall} />
+      </mesh>
+      {/* North / south walls */}
+      <mesh position={[0, wallH / 2, -halfD]}>
+        <boxGeometry args={[SHOWROOM_W, wallH, wallT]} />
+        <meshStandardMaterial color={SHOWROOM_PALETTE.wall} />
+      </mesh>
+      <mesh position={[0, wallH / 2, halfD]}>
+        <boxGeometry args={[SHOWROOM_W, wallH, wallT]} />
+        <meshStandardMaterial color={SHOWROOM_PALETTE.wall} />
+      </mesh>
+      {/* Glass storefront (east, facing the office): plinth + top band +
+          pillars, transparent panes so the cars show through. */}
+      <mesh position={[halfW, plinthH / 2, 0]}>
+        <boxGeometry args={[wallT, plinthH, SHOWROOM_D]} />
+        <meshStandardMaterial color={SHOWROOM_PALETTE.trim} />
+      </mesh>
+      <mesh position={[halfW, wallH - bandH / 2, 0]}>
+        <boxGeometry args={[wallT, bandH, SHOWROOM_D]} />
+        <meshStandardMaterial color={SHOWROOM_PALETTE.trim} />
+      </mesh>
+      {pillarZs.map((pz) => (
+        <mesh key={`pillar-${pz}`} position={[halfW, wallH / 2, pz]}>
+          <boxGeometry args={[wallT, wallH, 0.35]} />
+          <meshStandardMaterial color={SHOWROOM_PALETTE.trim} />
+        </mesh>
+      ))}
+      {glassBays.map((bay) => {
+        const z0 = pillarZs[bay];
+        const z1 = pillarZs[bay + 1];
+        return (
+          <mesh
+            key={`glass-${bay}`}
+            position={[halfW, plinthH + glassH / 2, (z0 + z1) / 2]}
+            rotation={[0, -Math.PI / 2, 0]}
+          >
+            <planeGeometry args={[z1 - z0 - 0.4, glassH]} />
+            <meshStandardMaterial
+              color="#cfe2ee"
+              roughness={0.05}
+              metalness={0.3}
+              transparent
+              opacity={0.32}
+              envMapIntensity={1.2}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        );
+      })}
+      {/* Sign above the entrance, facing the office */}
+      <Text
+        position={[halfW + wallT / 2 + 0.03, wallH - bandH / 2, 0]}
+        rotation={[0, Math.PI / 2, 0]}
+        fontSize={0.52}
+        font={officeFontUrl}
+        color={SHOWROOM_PALETTE.sign}
+        anchorX="center"
+        anchorY="middle"
+        letterSpacing={0.12}
+      >
+        HERMES MOTORS
+      </Text>
+      {/* Display pedestal + rotating hero car near the storefront */}
+      <mesh position={[1.5, 0.08, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[2.0, 2.2, 0.16, 24]} />
+        <meshStandardMaterial
+          color={SHOWROOM_PALETTE.pedestal}
+          roughness={0.3}
+          metalness={0.1}
+        />
+      </mesh>
+      <Suspense fallback={null}>
+        <RotatingShowcaseCar
+          position={[1.5, 0.16, 0]}
+          url={car1GlbUrl}
+          tint="#d4ac0d"
+        />
+        {displayCars.map((c, i) => (
+          <group key={`sc-${i}`} position={c.pos} rotation={[0, c.rotY, 0]}>
+            <VehicleModel url={c.url} tint={c.tint} targetLen={2.3} />
+          </group>
+        ))}
+      </Suspense>
+      {/* Entrance plants */}
+      {([-3.2, 3.2] as number[]).map((pz) => (
+        <group key={`splant-${pz}`} position={[halfW + 0.8, 0, pz]}>
+          <mesh position={[0, 0.35, 0]} castShadow>
+            <cylinderGeometry args={[0.2, 0.25, 0.7, 8]} />
+            <meshStandardMaterial color="#ddd" roughness={0.7} />
+          </mesh>
+          <mesh position={[0, 1.0, 0]} castShadow>
+            <sphereGeometry args={[0.45, 8, 8]} />
+            <meshStandardMaterial color="#3a7c47" roughness={0.9} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
 /** North wall — 3.6 m tall with three window openings and glass panels. */
 function NorthWall({ palette }: { palette: WorldPalette }): React.JSX.Element {
   const halfW = WORLD_W / 2;
@@ -1554,6 +1875,128 @@ function InteriorWalls({
             <boxGeometry args={[wall.w * SCALE, wallH, wall.h * SCALE]} />
             <meshStandardMaterial color={palette.wallEW} />
           </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+/**
+ * Extra set dressing inside the CEO's glass office that isn't part of the
+ * data-driven furniture pipeline: a dark executive rug under the lounge and a
+ * wooden coffee table between the desk and the visitor couch (auto-normalised
+ * — wooden_table.glb ships at an arbitrary export scale).
+ */
+function CeoOfficeExtras(): React.JSX.Element {
+  const { scene } = useGLTF(woodenTableGlbUrl, false, false);
+  const table = useMemo(() => {
+    const obj = glbClone(scene, null);
+    const bbox = new THREE.Box3().setFromObject(obj);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    bbox.getSize(size);
+    bbox.getCenter(center);
+    obj.position.set(-center.x, -bbox.min.y, -center.z);
+    const root = new THREE.Group();
+    root.add(obj);
+    const base = Math.max(size.x, size.z);
+    // Normalise the table's long side to ~1.6 world units (coffee-table size).
+    root.scale.setScalar(base > 0 ? 1.6 / base : 1);
+    return root;
+  }, [scene]);
+
+  const [rugX, , rugZ] = toWorld(
+    (CEO_OFFICE.minX + CEO_OFFICE.maxX) / 2,
+    (CEO_OFFICE.minY + CEO_OFFICE.maxY) / 2,
+  );
+  const rugW = (CEO_OFFICE.maxX - CEO_OFFICE.minX - 90) * SCALE;
+  const rugD = (CEO_OFFICE.maxY - CEO_OFFICE.minY - 110) * SCALE;
+  // Between the desk (south edge) and the couch — the lounge centrepiece.
+  const [tableX, , tableZ] = toWorld(300, 1475);
+  // Wall-mounted LED TV on the west perimeter wall, facing the lounge.
+  // Perimeter wall inner face sits at -WORLD_W/2 + wallT/2 (wallT = 0.2).
+  const tvX = -WORLD_W / 2 + 0.1 + 0.05;
+  const [, , tvZ] = toWorld(0, 1450);
+
+  return (
+    <group>
+      {/* LED TV: dark frame + softly glowing panel */}
+      <group position={[tvX, 1.45, tvZ]} rotation={[0, Math.PI / 2, 0]}>
+        <mesh castShadow>
+          <boxGeometry args={[2.4, 1.35, 0.07]} />
+          <meshStandardMaterial
+            color="#11151c"
+            roughness={0.35}
+            metalness={0.4}
+          />
+        </mesh>
+        <mesh position={[0, 0, 0.045]}>
+          <planeGeometry args={[2.24, 1.2]} />
+          <meshStandardMaterial
+            color="#0c1118"
+            emissive="#3b82c4"
+            emissiveIntensity={0.45}
+            roughness={0.15}
+            metalness={0.1}
+          />
+        </mesh>
+      </group>
+      {/* Executive rug — above the main office rug (0.01) to avoid z-fights */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[rugX, 0.02, rugZ]}
+        receiveShadow
+      >
+        <planeGeometry args={[rugW, rugD]} />
+        <meshStandardMaterial
+          color="#46536b"
+          roughness={0.95}
+          metalness={0}
+          envMapIntensity={0.4}
+        />
+      </mesh>
+      <group position={[tableX, 0.021, tableZ]}>
+        <primitive object={table} />
+      </group>
+    </group>
+  );
+}
+
+/**
+ * Clear glass partitions enclosing the CEO's corner office, with a slim metal
+ * cap rail so the pane edges read from above. No shadows — clear glass
+ * casting a solid shadow looks wrong.
+ */
+function GlassWalls(): React.JSX.Element {
+  const glassH = 2.2;
+  return (
+    <group>
+      {GLASS_WALLS.map((wall) => {
+        const [cx, , cz] = toWorld(wall.x + wall.w / 2, wall.y + wall.h / 2);
+        const w = wall.w * SCALE;
+        const d = wall.h * SCALE;
+        return (
+          <group key={wall.id}>
+            <mesh position={[cx, glassH / 2, cz]}>
+              <boxGeometry args={[w, glassH, d]} />
+              <meshStandardMaterial
+                color="#cfe2ee"
+                roughness={0.05}
+                metalness={0.2}
+                transparent
+                opacity={0.22}
+                envMapIntensity={1.2}
+              />
+            </mesh>
+            <mesh position={[cx, glassH + 0.03, cz]}>
+              <boxGeometry args={[w, 0.06, d]} />
+              <meshStandardMaterial
+                color="#9aa4b0"
+                roughness={0.4}
+                metalness={0.3}
+              />
+            </mesh>
+          </group>
         );
       })}
     </group>
@@ -1750,7 +2193,17 @@ export default function Office3D({
       <ConnectingStreet />
       <Room palette={palette} />
       <InteriorWalls palette={palette} />
+      {/* CEO glass corner office — only exists when there is a CEO. */}
+      {ceoId && (
+        <>
+          <GlassWalls />
+          <Suspense fallback={null}>
+            <CeoOfficeExtras />
+          </Suspense>
+        </>
+      )}
       <BankSection />
+      <CarShowroom />
       <Suspense fallback={null}>
         <Workstations workstations={workstations} />
         <FurniturePieces pieces={REST_FURNITURE} />
@@ -1781,6 +2234,9 @@ useGLTF.preload(sofaGlbUrl, false, false);
 useGLTF.preload(sofaChairGlbUrl, false, false);
 useGLTF.preload(manGlbUrl);
 useGLTF.preload(treeGlbUrl, false, false);
+useGLTF.preload(building1GlbUrl, false, false);
+useGLTF.preload(building2GlbUrl, false, false);
+useGLTF.preload(woodenTableGlbUrl, false, false);
 useGLTF.preload(car1GlbUrl, false, false);
 useGLTF.preload(car2GlbUrl, false, false);
 useGLTF.preload(truck1GlbUrl, false, false);
