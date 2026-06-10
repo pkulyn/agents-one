@@ -357,136 +357,63 @@ export function reconcileStreamedWithDb(
   // key-based match (e.g. trailing-whitespace drift, one-frame delta
   // that didn't round-trip through the DB identically).
   const consumedIds = new Set(result.map((m) => m.id));
-  const consumedStreamIndexes: number[] = [];
-  for (let i = 0; i < streamed.length; i++) {
-    if (consumedIds.has(streamed[i].id)) consumedStreamIndexes.push(i);
-  }
-  const firstConsumedIndex =
-    consumedStreamIndexes.length > 0 ? Math.min(...consumedStreamIndexes) : -1;
 
-  const seedSeenBubbleKeys = (
-    seen: Set<string>,
-    items: ReadonlyArray<ChatMessage>,
-  ): void => {
-    for (const m of items) {
-      if (!("kind" in m)) {
-        const bubble = m as ChatBubbleMessage;
-        seen.add(
-          `${bubble.role}:${normalizeBubbleContentForMatch(bubble.content || "")}`,
-        );
-      }
-    }
-  };
-
-  const appendIfUnique = (
-    target: ChatMessage[],
-    m: ChatMessage,
-    seen: Set<string>,
-    dropDbSplitArtifacts = true,
-  ): boolean => {
-    if (consumedIds.has(m.id)) return false;
-    if (consumeCanonicalToolMatch(canonicalToolMatchCounts, m)) return false;
-    // For bubble messages, check if an equivalent already exists in the
-    // result set.  Non-bubble messages (tool_call, tool_result, reasoning)
-    // always pass through — they're either matched by callId above or are
-    // genuinely new.
-    if (!("kind" in m)) {
-      const bubble = m as ChatBubbleMessage;
-      const contentKey = `${bubble.role}:${normalizeBubbleContentForMatch(bubble.content || "")}`;
-      if (seen.has(contentKey)) return false;
-      if (
-        dropDbSplitArtifacts &&
-        isCoveredByDbBubbleSplit(bubble, dbAssistantSplitSequences)
-      ) {
-        return false;
-      }
-      seen.add(contentKey);
-    }
-    target.push(m);
-    return true;
-  };
-
-  const prefix: ChatMessage[] = [];
-  const seenPrefixBubbleKeys = new Set<string>();
-  for (let i = 0; i < streamed.length; i++) {
-    const m = streamed[i];
-    if (firstConsumedIndex >= 0 && i < firstConsumedIndex) {
-      appendIfUnique(prefix, m, seenPrefixBubbleKeys, false);
-    }
-  }
-
-  const suffix: ChatMessage[] = [];
-  const seenSuffixBubbleKeys = new Set<string>();
-  seedSeenBubbleKeys(seenSuffixBubbleKeys, prefix);
-  seedSeenBubbleKeys(seenSuffixBubbleKeys, result);
-  for (let i = 0; i < streamed.length; i++) {
-    const m = streamed[i];
-    if (firstConsumedIndex >= 0 && i < firstConsumedIndex) continue;
-    appendIfUnique(suffix, m, seenSuffixBubbleKeys);
-  }
-
-  // Build position map: for each consumed streamed message, record its
-  // index in the result array so we can interleave suffix items.
-  const consumedPosInResult = new Map<string, number>();
+  // Build a map from consumed streamed message id to its position in result,
+  // so we can interleave unconsumed messages at the correct chronological spot.
+  const resultPosById = new Map<string, number>();
   for (let ri = 0; ri < result.length; ri++) {
-    consumedPosInResult.set(result[ri].id, ri);
+    resultPosById.set(result[ri].id, ri);
   }
 
-  // Find the consumed message that immediately precedes each suffix item
-  // in the streamed order, then insert the suffix item after it in result.
-  // This fixes the bug where entire middle turns land at the bottom while
-  // preserving the existing behaviour for intra-turn items (tool calls,
-  // renderer-only messages, etc.) that should stay at the end.
-  const suffixByPredecessor = new Map<number, ChatMessage[]>();
-
-  for (const sm of suffix) {
-    // Walk backwards through the streamed messages starting from sm's index
-    // to find the closest preceding consumed message.
-    let smIndex = -1;
-    for (let i = 0; i < streamed.length; i++) {
-      if (streamed[i].id === sm.id) { smIndex = i; break; }
+  // Pre-seed dedup set with bubble keys already in the result array,
+  // so unconsumed streamed messages that are near-duplicates of DB rows
+  // (e.g. content that drifted by a trailing space during streaming)
+  // are correctly identified and skipped.
+  const seenBubbleKeys = new Set<string>();
+  for (const rm of result) {
+    if (!("kind" in rm)) {
+      const key = `${(rm as ChatBubbleMessage).role}:${normalizeBubbleContentForMatch((rm as ChatBubbleMessage).content || "")}`;
+      seenBubbleKeys.add(key);
     }
+  }
 
-    let predPos = -1; // -1 means insert before everything (like prefix)
-    if (smIndex >= 0) {
-      for (let j = smIndex - 1; j >= 0; j--) {
-        const pid = streamed[j].id;
-        const pos = consumedPosInResult.get(pid);
-        if (pos !== undefined) {
-          predPos = pos;
-          break;
+  const isBubbleDup = (m: ChatMessage): boolean => {
+    if ("kind" in m) return false;
+    const key = `${(m as ChatBubbleMessage).role}:${normalizeBubbleContentForMatch((m as ChatBubbleMessage).content || "")}`;
+    if (seenBubbleKeys.has(key)) return true;
+    seenBubbleKeys.add(key);
+    return false;
+  };
+
+  // Walk streamed in order, interleaving unconsumed messages at their
+  // correct chronological positions between consumed ones.
+  const merged: ChatMessage[] = [];
+  let resultIdx = 0;
+
+  for (let si = 0; si < streamed.length; si++) {
+    const sm = streamed[si];
+    if (consumedIds.has(sm.id)) {
+      // Flush result items up to and including this consumed message's
+      // position, then skip the streamed copy (it's already in result).
+      const rpos = resultPosById.get(sm.id);
+      if (rpos !== undefined && rpos >= resultIdx) {
+        while (resultIdx <= rpos) {
+          merged.push(result[resultIdx++]);
         }
       }
+    } else if (!consumeCanonicalToolMatch(canonicalToolMatchCounts, sm)) {
+      // Unconsumed streamed message — insert at current chronological slot.
+      // Deduplicate against DB bubbles and cover splits.
+      if (!isBubbleDup(sm) && !isCoveredByDbBubbleSplit(sm as ChatBubbleMessage, dbAssistantSplitSequences)) {
+        merged.push(sm);
+      }
     }
-
-    const bucket = suffixByPredecessor.get(predPos);
-    if (bucket) bucket.push(sm);
-    else suffixByPredecessor.set(predPos, [sm]);
   }
 
-  // Interleave suffix items into the result.
-  const merged: ChatMessage[] = [...prefix];
-  for (let ri = 0; ri < result.length; ri++) {
-    // Insert any suffix items whose predecessor is before this position
-    // and hasn't been inserted yet (predPos < 0 items go first).
-    if (ri === 0) {
-      const leading = suffixByPredecessor.get(-1);
-      if (leading) for (const m of leading) merged.push(m);
-    }
-
-    merged.push(result[ri]);
-
-    // Insert suffix items that should follow this consumed message.
-    const followers = suffixByPredecessor.get(ri);
-    if (followers) for (const m of followers) merged.push(m);
-  }
-
-  // Append any remaining suffix items whose predecessor wasn't found.
-  for (const [predPos, items] of suffixByPredecessor) {
-    if (predPos < 0) continue; // already inserted
-    if (predPos >= result.length) {
-      for (const m of items) merged.push(m);
-    }
+  // Append any remaining DB-only rows (e.g. reasoning, tool rows that
+  // never streamed, late-written assistant splits).
+  while (resultIdx < result.length) {
+    merged.push(result[resultIdx++]);
   }
 
   // Reposition inline clarify cards to their original chronological slot.
