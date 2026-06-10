@@ -1768,7 +1768,9 @@ export default function Office3D({
         minDistance={8}
         maxDistance={130}
         maxPolarAngle={Math.PI / 2.15}
-        target={new THREE.Vector3(0, 0, BANK_Z / 2)}
+        // Plain tuple, not a Vector3 instance — a fresh instance every render
+        // would reset the controls' target and wipe any user pan.
+        target={[0, 0, BANK_Z / 2]}
       />
     </Canvas>
   );
