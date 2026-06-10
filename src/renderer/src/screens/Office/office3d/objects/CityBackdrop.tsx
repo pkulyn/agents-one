@@ -287,9 +287,17 @@ function generateBackdrop(): {
   const bankMaxX = BANK_X + BANK_W / 2 + margin;
   const rW = ROAD_WIDTH / 2 + 1.5; // half-width + building clearance
 
-  // Plant a jittered tree near a cell centre. Used to green the open gap cells
-  // and to backfill cells whose building was relocated by the dev tool.
+  // Plant a jittered tree near a cell centre, capped per street block so no
+  // single block turns into a thicket. Used for the random scatter, the open
+  // gap cells, and backfilling cells whose building was relocated.
+  const treeBox = cell * 5; // ~25u block — the granularity of the per-box cap
+  const MAX_TREES_PER_BOX = 5;
+  const treesPerBox = new Map<string, number>();
   const plantTree = (cx: number, cz: number, s: number): void => {
+    const box = `${Math.floor(cx / treeBox)},${Math.floor(cz / treeBox)}`;
+    const n = treesPerBox.get(box) ?? 0;
+    if (n >= MAX_TREES_PER_BOX) return;
+    treesPerBox.set(box, n + 1);
     trees.push({
       x: cx + (seededRandom(s + 11) - 0.5) * cell * 0.5,
       z: cz + (seededRandom(s + 12) - 0.5) * cell * 0.5,
@@ -364,11 +372,7 @@ function generateBackdrop(): {
 
       if (roll < 0.15) {
         // Random tree in any open cell
-        trees.push({
-          x: x + (seededRandom(seed + 1) - 0.5) * cell * 0.5,
-          z: z + (seededRandom(seed + 2) - 0.5) * cell * 0.5,
-          h: 1.2 + seededRandom(seed + 3) * 1.6,
-        });
+        plantTree(x, z, seed);
       } else if (roll < 0.6) {
         // Building. Near the office, use a detailed GLB (apartment / building
         // model — cheap and good-looking). Further out, fog hazes the detail,

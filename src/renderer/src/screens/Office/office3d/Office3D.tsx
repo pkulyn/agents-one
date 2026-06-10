@@ -55,10 +55,10 @@ export default function Office3D({
 
   // The building-mover is a dev-only authoring aid. `import.meta.env.DEV` is a
   // build-time literal (Vite replaces it: `true` in `electron-vite dev`,
-  // `false` in production builds), so every dev-only branch below is
-  // dead-code-eliminated from the production bundle — it can't run or cost
-  // anything for end users, regardless of the `devMode` prop.
-  const devTools = import.meta.env.DEV && devMode;
+  // `false` in production builds). Using it *inline* at each JSX site below lets
+  // esbuild constant-fold and dead-code-eliminate every dev-only branch — the
+  // button, handlers, ground-plane catcher and helpers are all dropped from the
+  // production bundle, so they can't run or cost anything for end users.
 
   // ── Developer building-mover ──────────────────────────────────────────────
   // When devMode is on: click a building to "pick it up" (logs it + its current
@@ -202,9 +202,9 @@ export default function Office3D({
       <SceneEnvironment palette={palette} />
       <DistantSkyline />
       <CityBackdrop
-        devMode={devTools}
-        moved={devTools ? devPos : undefined}
-        onPick={devTools ? pickBackdrop : undefined}
+        devMode={import.meta.env.DEV && devMode}
+        moved={import.meta.env.DEV && devMode ? devPos : undefined}
+        onPick={import.meta.env.DEV && devMode ? pickBackdrop : undefined}
       />
       <Suspense fallback={null}>
         <TrafficLayer />
@@ -221,7 +221,7 @@ export default function Office3D({
           </Suspense>
         </>
       )}
-      {devTools ? (
+      {import.meta.env.DEV && devMode ? (
         <>
           <group onClick={pickLandmark(LANDMARKS.bank)}>
             <BankSection position={posOf("bank", LANDMARKS.bank.base)} />
