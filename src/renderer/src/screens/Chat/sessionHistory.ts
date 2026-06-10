@@ -357,75 +357,53 @@ export function reconcileStreamedWithDb(
   // key-based match (e.g. trailing-whitespace drift, one-frame delta
   // that didn't round-trip through the DB identically).
   const consumedIds = new Set(result.map((m) => m.id));
-  const consumedStreamIndexes: number[] = [];
-  for (let i = 0; i < streamed.length; i++) {
-    if (consumedIds.has(streamed[i].id)) consumedStreamIndexes.push(i);
-  }
-  const firstConsumedIndex =
-    consumedStreamIndexes.length > 0 ? Math.min(...consumedStreamIndexes) : -1;
 
-  const seedSeenBubbleKeys = (
-    seen: Set<string>,
-    items: ReadonlyArray<ChatMessage>,
-  ): void => {
-    for (const m of items) {
-      if (!("kind" in m)) {
-        const bubble = m as ChatBubbleMessage;
-        seen.add(
-          `${bubble.role}:${normalizeBubbleContentForMatch(bubble.content || "")}`,
-        );
-      }
-    }
+  // Build a map from consumed streamed message id to its position in result,
+  // so we can interleave unconsumed messages at the correct chronological spot.
+  const resultPosById = new Map<string, number>();
+  for (let ri = 0; ri < result.length; ri++) {
+    resultPosById.set(result[ri].id, ri);
+  }
+
+  const seenBubbleKeys = new Set<string>();
+  const isBubbleDup = (m: ChatMessage): boolean => {
+    if ("kind" in m) return false;
+    const key = `${(m as ChatBubbleMessage).role}:${normalizeBubbleContentForMatch((m as ChatBubbleMessage).content || "")}`;
+    if (seenBubbleKeys.has(key)) return true;
+    seenBubbleKeys.add(key);
+    return false;
   };
 
-  const appendIfUnique = (
-    target: ChatMessage[],
-    m: ChatMessage,
-    seen: Set<string>,
-    dropDbSplitArtifacts = true,
-  ): boolean => {
-    if (consumedIds.has(m.id)) return false;
-    if (consumeCanonicalToolMatch(canonicalToolMatchCounts, m)) return false;
-    // For bubble messages, check if an equivalent already exists in the
-    // result set.  Non-bubble messages (tool_call, tool_result, reasoning)
-    // always pass through — they're either matched by callId above or are
-    // genuinely new.
-    if (!("kind" in m)) {
-      const bubble = m as ChatBubbleMessage;
-      const contentKey = `${bubble.role}:${normalizeBubbleContentForMatch(bubble.content || "")}`;
-      if (seen.has(contentKey)) return false;
-      if (
-        dropDbSplitArtifacts &&
-        isCoveredByDbBubbleSplit(bubble, dbAssistantSplitSequences)
-      ) {
-        return false;
+  // Walk streamed in order, interleaving unconsumed messages at their
+  // correct chronological positions between consumed ones.
+  const merged: ChatMessage[] = [];
+  let resultIdx = 0;
+
+  for (let si = 0; si < streamed.length; si++) {
+    const sm = streamed[si];
+    if (consumedIds.has(sm.id)) {
+      // Flush result items up to and including this consumed message's
+      // position, then skip the streamed copy (it's already in result).
+      const rpos = resultPosById.get(sm.id);
+      if (rpos !== undefined && rpos >= resultIdx) {
+        while (resultIdx <= rpos) {
+          merged.push(result[resultIdx++]);
+        }
       }
-      seen.add(contentKey);
-    }
-    target.push(m);
-    return true;
-  };
-
-  const prefix: ChatMessage[] = [];
-  const seenPrefixBubbleKeys = new Set<string>();
-  for (let i = 0; i < streamed.length; i++) {
-    const m = streamed[i];
-    if (firstConsumedIndex >= 0 && i < firstConsumedIndex) {
-      appendIfUnique(prefix, m, seenPrefixBubbleKeys, false);
+    } else if (!consumeCanonicalToolMatch(canonicalToolMatchCounts, sm)) {
+      // Unconsumed streamed message — insert at current chronological slot.
+      // Deduplicate against DB bubbles and cover splits.
+      if (!isBubbleDup(sm) && !isCoveredByDbBubbleSplit(sm as ChatBubbleMessage, dbAssistantSplitSequences)) {
+        merged.push(sm);
+      }
     }
   }
 
-  const suffix: ChatMessage[] = [];
-  const seenSuffixBubbleKeys = new Set<string>();
-  seedSeenBubbleKeys(seenSuffixBubbleKeys, prefix);
-  seedSeenBubbleKeys(seenSuffixBubbleKeys, result);
-  for (let i = 0; i < streamed.length; i++) {
-    const m = streamed[i];
-    if (firstConsumedIndex >= 0 && i < firstConsumedIndex) continue;
-    appendIfUnique(suffix, m, seenSuffixBubbleKeys);
+  // Append any remaining DB-only rows (e.g. reasoning, tool rows that
+  // never streamed, late-written assistant splits).
+  while (resultIdx < result.length) {
+    merged.push(result[resultIdx++]);
   }
-
-  const merged = [...prefix, ...result, ...suffix];
 
   // Reposition inline clarify cards to their original chronological slot.
   // A clarify card is renderer-only — it's never written to state.db, so it
