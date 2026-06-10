@@ -1199,8 +1199,7 @@ const PLATFORM_RULES: Record<string, PlatformRule> = {
   telegram: { envCheck: (e) => !!e.TELEGRAM_BOT_TOKEN?.trim() },
   discord: { envCheck: (e) => !!e.DISCORD_BOT_TOKEN?.trim() },
   slack: {
-    envCheck: (e) =>
-      !!e.SLACK_BOT_TOKEN?.trim() && !!e.SLACK_APP_TOKEN?.trim(),
+    envCheck: (e) => !!e.SLACK_BOT_TOKEN?.trim() && !!e.SLACK_APP_TOKEN?.trim(),
   },
   whatsapp: {
     envCheck: (e) =>
@@ -1248,8 +1247,7 @@ const PLATFORM_RULES: Record<string, PlatformRule> = {
   },
   dingtalk: {
     envCheck: (e) =>
-      (!!e.DINGTALK_CLIENT_ID?.trim() &&
-        !!e.DINGTALK_CLIENT_SECRET?.trim()) ||
+      (!!e.DINGTALK_CLIENT_ID?.trim() && !!e.DINGTALK_CLIENT_SECRET?.trim()) ||
       (!!e.DINGTALK_APP_KEY?.trim() && !!e.DINGTALK_APP_SECRET?.trim()),
   },
   feishu: {
@@ -1339,10 +1337,6 @@ export function getPlatformEnabled(profile?: string): Record<string, boolean> {
     const envEnabled = rule.envCheck(env);
     const configKey = rule.configKey || platform;
     const override = content ? readPlatformOverride(content, configKey) : null;
-    // Python's rule: env-driven activation, config.yaml `enabled: false`
-    // can force-disable. An explicit `enabled: true` doesn't bypass a
-    // missing token (the Python gateway still requires the credential),
-    // so reflect that here too.
     result[platform] = envEnabled && override !== false;
   }
   return result;

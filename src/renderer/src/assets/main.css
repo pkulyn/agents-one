@@ -5258,6 +5258,67 @@ body {
   flex-shrink: 0;
 }
 
+.gateway-toggle-wrapper {
+  flex-shrink: 0;
+}
+
+.gateway-toggle-needs-setup {
+  cursor: not-allowed;
+  opacity: 0.45;
+  position: relative;
+}
+
+.gateway-toggle-needs-setup .tools-toggle {
+  pointer-events: none;
+}
+
+.gateway-toggle-wrapper[data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: max-content;
+  max-width: 200px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-bright);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.gateway-toggle-wrapper[data-tooltip]::after {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 2px);
+  right: 10px;
+  border: 5px solid transparent;
+  border-top-color: var(--bg-elevated);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease;
+  z-index: 100;
+}
+
+.gateway-toggle-wrapper[data-tooltip]:hover::before,
+.gateway-toggle-wrapper[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
 .gateway-platform-title-row {
   display: flex;
   align-items: center;

@@ -43,6 +43,7 @@ export default {
   disable: "Disable",
   enable: "Enable",
   enablePlatform: "Enable platform",
+  setupFirst: "Set up credentials before enabling this platform",
   strongWarning: "Strong warning",
   riskDesc:
     "{{name}} lets this messaging platform drive sensitive local tools. Enable it only for trusted, private channels and known users.",
