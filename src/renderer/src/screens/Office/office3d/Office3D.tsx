@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useMemo, useRef, useState } from "react";
 import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { configureTextBuilder } from "troika-three-text";
@@ -30,6 +30,13 @@ import officeFontUrl from "../../../assets/fonts/Manrope-Medium.ttf";
 // the app's Content-Security-Policy.
 configureTextBuilder({ useWorker: false, defaultFontURL: officeFontUrl });
 
+// Default camera look-at, hoisted to a stable reference. drei's OrbitControls
+// re-applies `target` whenever the prop identity changes, so a fresh tuple each
+// render would reset the focus point and wipe the user's pan/zoom on every
+// unrelated re-render (e.g. an agent status poll). (Value is the office's north
+// side — was BANK_Z / 2 when the bank sat north, pinned after it moved east.)
+const CAMERA_TARGET: [number, number, number] = [0, 0, -14.6];
+
 /**
  * The native, in-renderer 3D office. Replaces the old webview that pointed at a
  * separately-cloned hermes-office dev server. Each agent corresponds to a
@@ -48,10 +55,21 @@ export default function Office3D({
   devMode?: boolean;
   onDevLog?: (msg: string) => void;
 }): React.JSX.Element {
-  // Clicking the selected agent again clears the selection.
-  const handleSelect = (id: string): void => {
-    onSelectAgent(id === selectedId ? null : id);
-  };
+  // Clicking the selected agent again clears the selection. Memoized so agent
+  // status polling (which re-renders Office3D with a new `agents` array but an
+  // unchanged selection) doesn't hand AgentsLayer/AgentModel a fresh callback
+  // and defeat their React.memo.
+  const handleSelect = useCallback(
+    (id: string): void => {
+      onSelectAgent(id === selectedId ? null : id);
+    },
+    [selectedId, onSelectAgent],
+  );
+
+  const handlePointerMissed = useCallback(
+    (): void => onSelectAgent(null),
+    [onSelectAgent],
+  );
 
   // The building-mover is a dev-only authoring aid. `import.meta.env.DEV` is a
   // build-time literal (Vite replaces it: `true` in `electron-vite dev`,
@@ -202,7 +220,7 @@ export default function Office3D({
         toneMapping: THREE.ACESFilmicToneMapping,
         toneMappingExposure: 1.05,
       }}
-      onPointerMissed={() => onSelectAgent(null)}
+      onPointerMissed={handlePointerMissed}
       style={{ width: "100%", height: "100%" }}
     >
       <SceneEnvironment palette={palette} />
@@ -287,12 +305,9 @@ export default function Office3D({
         minDistance={5}
         maxDistance={130}
         maxPolarAngle={Math.PI / 2.15}
-        // Plain tuple, not a Vector3 instance — a fresh instance every render
-        // would reset the controls' target and wipe any user pan.
-        // Default look-at: the office's north side. (Was BANK_Z / 2 when the
-        // bank sat north; pinned here so relocating the bank east leaves the
-        // opening view unchanged.)
-        target={[0, 0, -14.6]}
+        // Stable module-level reference — see CAMERA_TARGET above. A fresh
+        // array here would reset the controls' target and wipe any user pan.
+        target={CAMERA_TARGET}
         onChange={clampControlsTarget}
       />
     </Canvas>

@@ -1,5 +1,5 @@
 import { useGLTF } from "@react-three/drei";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import * as THREE from "three";
 import { SCALE } from "../core/constants";
 import { toWorld } from "../core/geometry";
@@ -297,7 +297,7 @@ function ExecutiveWorkstation({
 }
 
 /** Render an arbitrary list of furniture placements (e.g. the rest room). */
-export function FurniturePieces({
+export const FurniturePieces = memo(function FurniturePieces({
   pieces,
 }: {
   pieces: FurniturePlacement[];
@@ -316,10 +316,10 @@ export function FurniturePieces({
       ))}
     </>
   );
-}
+});
 
 /** Render every workstation (a desk + its chair) in the work area. */
-export function Workstations({
+export const Workstations = memo(function Workstations({
   workstations,
 }: {
   workstations: Workstation[];
@@ -355,7 +355,7 @@ export function Workstations({
       )}
     </>
   );
-}
+});
 
 useGLTF.preload(deskUrl, false, false);
 useGLTF.preload(executiveDeskUrl, false, false);
