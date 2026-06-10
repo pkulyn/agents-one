@@ -24,11 +24,14 @@ export const ModelPicker = memo(function ModelPicker({
 }: ModelPickerProps): React.JSX.Element {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
   const [customInput, setCustomInput] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
+    searchRef.current?.focus();
     function handleClickOutside(e: MouseEvent): void {
       if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
@@ -38,15 +41,30 @@ export const ModelPicker = memo(function ModelPicker({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
+  const filteredGroups = searchInput.trim()
+    ? modelGroups
+        .map((group) => ({
+          ...group,
+          models: group.models.filter(
+            (m) =>
+              m.label.toLowerCase().includes(searchInput.toLowerCase()) ||
+              m.model.toLowerCase().includes(searchInput.toLowerCase()),
+          ),
+        }))
+        .filter((group) => group.models.length > 0)
+    : modelGroups;
+
   function toggle(): void {
     if (!isOpen) onOpen();
     setIsOpen((v) => !v);
+    setSearchInput("");
   }
 
   function select(provider: string, model: string, baseUrl: string): void {
     onSelectModel(provider, model, baseUrl);
     setIsOpen(false);
     setCustomInput("");
+    setSearchInput("");
   }
 
   function submitCustom(): void {
@@ -68,7 +86,15 @@ export const ModelPicker = memo(function ModelPicker({
 
       {isOpen && (
         <div className="chat-model-dropdown">
-          {modelGroups.map((group) => (
+          <input
+            ref={searchRef}
+            className="chat-model-search-input"
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t("chat.searchModels")}
+          />
+          {filteredGroups.map((group) => (
             <div key={group.provider} className="chat-model-group">
               <div className="chat-model-group-label">
                 {t(group.providerLabel)}

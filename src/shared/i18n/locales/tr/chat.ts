@@ -8,6 +8,7 @@ export default {
   quickAskTitle: "Hızlı Sor (/btw) — sohbet bağlamını etkilemeyen yan soru",
   send: "Gönder",
   custom: "Özel",
+  searchModels: "Model ara...",
   typeModelName: "Model adını yaz...",
   emptyTitle: "Bugün size nasıl yardımcı olabilirim?",
   emptyHint:

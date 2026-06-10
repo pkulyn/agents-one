@@ -8,6 +8,7 @@ export default {
   quickAskTitle:
     "Quick Ask (/btw) — side question that won't affect conversation context",
   send: "Send",
+  searchModels: "Search models...",
   custom: "Custom",
   typeModelName: "Type model name...",
   reasoningEffort: {

@@ -8,6 +8,7 @@ export default {
   quickAskTitle: "快速提問（/btw），不會影響目前對話上下文的旁支問題",
   send: "傳送",
   custom: "自訂",
+  searchModels: "搜尋模型...",
   typeModelName: "輸入模型名稱...",
   emptyTitle: "今天我可以幫你做什麼？",
   emptyHint: "你可以讓我寫程式碼、回答問題、搜尋網頁等",

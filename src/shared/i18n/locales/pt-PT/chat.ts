@@ -9,6 +9,7 @@ export default {
     "Pergunta Rápida (/btw) — pergunta lateral que não afectará o contexto da conversa",
   send: "Enviar",
   custom: "Personalizado",
+  searchModels: "Pesquisar modelos...",
   typeModelName: "Escreva o nome do modelo...",
   emptyTitle: "Como posso ajudá-lo hoje?",
   emptyHint:
