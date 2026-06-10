@@ -70,7 +70,7 @@ function CodeBlock({
   }, [highlighterReady]);
 
   function handleCopy(): void {
-    window.hermesAPI.copyToClipboard(code);
+    void window.hermesAPI.copyToClipboard(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
