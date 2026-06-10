@@ -365,7 +365,18 @@ export function reconcileStreamedWithDb(
     resultPosById.set(result[ri].id, ri);
   }
 
+  // Pre-seed dedup set with bubble keys already in the result array,
+  // so unconsumed streamed messages that are near-duplicates of DB rows
+  // (e.g. content that drifted by a trailing space during streaming)
+  // are correctly identified and skipped.
   const seenBubbleKeys = new Set<string>();
+  for (const rm of result) {
+    if (!("kind" in rm)) {
+      const key = `${(rm as ChatBubbleMessage).role}:${normalizeBubbleContentForMatch((rm as ChatBubbleMessage).content || "")}`;
+      seenBubbleKeys.add(key);
+    }
+  }
+
   const isBubbleDup = (m: ChatMessage): boolean => {
     if ("kind" in m) return false;
     const key = `${(m as ChatBubbleMessage).role}:${normalizeBubbleContentForMatch((m as ChatBubbleMessage).content || "")}`;
