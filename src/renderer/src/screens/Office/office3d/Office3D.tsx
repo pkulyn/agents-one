@@ -2079,6 +2079,19 @@ export default function Office3D({
     onSelectAgent(id === selectedId ? null : id);
   };
 
+  // Keep the camera's focus point inside the city so panning (or
+  // zoom-to-cursor) can never strand the user in empty void off the map.
+  const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
+  const clampControlsTarget = (): void => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const t = controls.target;
+    const x = THREE.MathUtils.clamp(t.x, -90, 90);
+    const y = THREE.MathUtils.clamp(t.y, 0, 12);
+    const z = THREE.MathUtils.clamp(t.z, -90, 90);
+    if (x !== t.x || y !== t.y || z !== t.z) t.set(x, y, z);
+  };
+
   // The CEO (if any) gets a separate executive desk; everyone else grids up.
   const ceoId = useMemo(
     () => agents.find((a) => a.position === "ceo")?.id ?? null,
@@ -2216,14 +2229,31 @@ export default function Office3D({
         onSelect={handleSelect}
       />
       <OrbitControls
+        ref={controlsRef}
         makeDefault
         enablePan
-        minDistance={8}
+        // Inertial damping: motion eases out instead of stopping dead, which
+        // is most of the "controllable" feel.
+        enableDamping
+        dampingFactor={0.08}
+        // Gentler speeds — the raw defaults feel twitchy over a city-sized
+        // scene, especially zoom (multiplicative per wheel tick).
+        rotateSpeed={0.75}
+        panSpeed={0.9}
+        zoomSpeed={0.65}
+        // Map-style panning: dragging slides along the ground plane at
+        // constant height, instead of moving with the screen axes.
+        screenSpacePanning={false}
+        // Scrolling dives toward whatever the cursor points at — point at
+        // the bank or showroom and scroll to fly there.
+        zoomToCursor
+        minDistance={5}
         maxDistance={130}
         maxPolarAngle={Math.PI / 2.15}
         // Plain tuple, not a Vector3 instance — a fresh instance every render
         // would reset the controls' target and wipe any user pan.
         target={[0, 0, BANK_Z / 2]}
+        onChange={clampControlsTarget}
       />
     </Canvas>
   );
