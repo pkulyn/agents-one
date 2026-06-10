@@ -4,6 +4,8 @@ import * as THREE from "three";
 import treeGlbUrl from "../assets/tree.glb?url";
 import building1GlbUrl from "../assets/building1.glb?url";
 import building2GlbUrl from "../assets/building2.glb?url";
+import apartmentGlbUrl from "../assets/apartment.glb?url";
+import apartment2GlbUrl from "../assets/apartment2.glb?url";
 import streetLightGlbUrl from "../assets/street-light.glb?url";
 import trafficLightGlbUrl from "../assets/traffic-light.glb?url";
 import { WORLD_W, WORLD_H } from "../core/constants";
@@ -30,26 +32,29 @@ import {
 } from "../core/cityPlan";
 
 // ── Shared geometry / materials ────────────────────────────────────────────
-// Roads, lane dashes and building windows repeat hundreds of times; sharing
-// one unit geometry (scaled per mesh) and one material per kind collapses
-// what used to be ~1000 separate geometry/material instances. Module-level
-// singletons — meshes using them set dispose={null} so an unmount of the
+// Road surfaces share one unit plane (scaled per mesh) + one material. The
+// module-level singletons are used with dispose={null} so an unmount of the
 // Office tab can't dispose a shared resource out from under a remount.
 const unitPlaneGeo = new THREE.PlaneGeometry(1, 1);
 const roadMat = new THREE.MeshStandardMaterial({
   color: "#4a4e57",
   roughness: 0.95,
 });
-const windowMat = new THREE.MeshStandardMaterial({
-  color: "#a8d8f0",
-  emissive: "#88c8f0",
-  emissiveIntensity: 0.4,
-  roughness: 0.1,
-  metalness: 0.3,
-});
+
+// Detailed near-building models. A GLB (1 mesh, a few material primitives) is
+// ~3-5 draw calls regardless of size — an order of magnitude cheaper than the
+// old procedural boxes, which spawned one plane mesh per window (hundreds of
+// draw calls). Far buildings stay as flat windowless boxes (1 draw call, and
+// fog hides the missing detail anyway).
+const BUILDING_URLS = [
+  apartmentGlbUrl,
+  apartment2GlbUrl,
+  building1GlbUrl,
+  building2GlbUrl,
+];
 
 /**
- * Detailed backdrop building (building1/building2 GLB), auto-normalised:
+ * Detailed backdrop building (apartment / building GLB), auto-normalised:
  * recentred, grounded at y=0 and uniformly scaled so its footprint fits the
  * city-grid cell, with a random quarter-turn for variety.
  */
@@ -58,19 +63,15 @@ function CityBuildingGlb({
   z,
   footprint,
   rotY,
-  which,
+  url,
 }: {
   x: number;
   z: number;
   footprint: number;
   rotY: number;
-  which: 1 | 2;
+  url: string;
 }): React.JSX.Element {
-  const { scene } = useGLTF(
-    which === 1 ? building1GlbUrl : building2GlbUrl,
-    false,
-    false,
-  );
+  const { scene } = useGLTF(url, false, false);
   const object = useMemo(
     () => normalizeFootprint(glbClone(scene, null), footprint),
     [scene, footprint],
@@ -209,7 +210,7 @@ interface GlbBuilding {
   z: number;
   footprint: number;
   rotY: number;
-  which: 1 | 2;
+  url: string;
 }
 
 interface BackdropTree {
@@ -314,16 +315,18 @@ function generateBackdrop(): {
           h: 1.2 + seededRandom(seed + 3) * 1.6,
         });
       } else if (roll < 0.6) {
-        // Building. Near the core, mix in the detailed GLB models; further
-        // out (fog-hazed anyway) stick to cheap procedural boxes.
-        const nearCore = Math.hypot(x, z) < 60;
-        if (nearCore && seededRandom(seed + 5) < 0.45) {
+        // Building. Near the office, use a detailed GLB (apartment / building
+        // model — cheap and good-looking). Further out, fog hazes the detail,
+        // so a flat windowless box at 1 draw call is the efficient choice.
+        if (Math.hypot(x, z) < 55) {
           glbBuildings.push({
             x,
             z,
             footprint: cell * (0.95 + seededRandom(seed + 6) * 0.45),
             rotY: Math.floor(seededRandom(seed + 7) * 4) * (Math.PI / 2),
-            which: seededRandom(seed + 8) < 0.5 ? 1 : 2,
+            url: BUILDING_URLS[
+              Math.floor(seededRandom(seed + 8) * BUILDING_URLS.length)
+            ],
           });
         } else {
           const w = cell * (0.7 + seededRandom(seed + 1) * 0.5);
@@ -455,66 +458,23 @@ export const CityBackdrop = memo(function CityBackdrop(): React.JSX.Element {
       ))}
       {/* Centre dashes — one instanced draw call for all roads */}
       <RoadDashes />
-      {buildings.map((b, i) => {
-        const winCols = Math.max(1, Math.floor(b.w / 1.1));
-        const winRows = Math.max(1, Math.floor(b.h / 1.4));
-        const winW = 0.55;
-        const winH = 0.65;
-        const winSpacingX = b.w / winCols;
-        const winSpacingY = b.h / (winRows + 1);
-        // Individual window planes are only worth their draw calls up close;
-        // far buildings are fog-hazed anyway and the expanded grid would
-        // otherwise add thousands of meshes.
-        const showWindows = Math.hypot(b.x, b.z) < 55;
-        return (
-          <group key={`b-${i}`}>
-            <mesh position={[b.x, b.h / 2, b.z]} castShadow receiveShadow>
-              <boxGeometry args={[b.w, b.h, b.d]} />
-              <meshStandardMaterial
-                color={b.color}
-                roughness={0.88}
-                metalness={0.04}
-              />
-            </mesh>
-            {/* Windows on south + north faces — shared geometry/material */}
-            {showWindows &&
-              Array.from({ length: winCols }, (_, cx) =>
-                Array.from({ length: winRows }, (_, ry) => (
-                  <mesh
-                    key={`w-s-${i}-${cx}-${ry}`}
-                    geometry={unitPlaneGeo}
-                    material={windowMat}
-                    dispose={null}
-                    scale={[winW, winH, 1]}
-                    position={[
-                      b.x - b.w / 2 + (cx + 0.5) * winSpacingX,
-                      (ry + 1) * winSpacingY,
-                      b.z + b.d / 2 + 0.02,
-                    ]}
-                  />
-                )),
-              )}
-            {showWindows &&
-              Array.from({ length: winCols }, (_, cx) =>
-                Array.from({ length: winRows }, (_, ry) => (
-                  <mesh
-                    key={`w-n-${i}-${cx}-${ry}`}
-                    geometry={unitPlaneGeo}
-                    material={windowMat}
-                    dispose={null}
-                    scale={[winW, winH, 1]}
-                    position={[
-                      b.x - b.w / 2 + (cx + 0.5) * winSpacingX,
-                      (ry + 1) * winSpacingY,
-                      b.z - b.d / 2 - 0.02,
-                    ]}
-                    rotation={[0, Math.PI, 0]}
-                  />
-                )),
-              )}
-          </group>
-        );
-      })}
+      {/* Far buildings — flat windowless boxes (1 draw call each); fog hides
+          the missing detail. Near buildings use detailed GLBs below. */}
+      {buildings.map((b, i) => (
+        <mesh
+          key={`b-${i}`}
+          position={[b.x, b.h / 2, b.z]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[b.w, b.h, b.d]} />
+          <meshStandardMaterial
+            color={b.color}
+            roughness={0.88}
+            metalness={0.04}
+          />
+        </mesh>
+      ))}
       <Suspense fallback={null}>
         {glbBuildings.map((g, i) => (
           <CityBuildingGlb
@@ -523,7 +483,7 @@ export const CityBackdrop = memo(function CityBackdrop(): React.JSX.Element {
             z={g.z}
             footprint={g.footprint}
             rotY={g.rotY}
-            which={g.which}
+            url={g.url}
           />
         ))}
         {trees.map((t, i) => (
@@ -593,5 +553,7 @@ export const CityBackdrop = memo(function CityBackdrop(): React.JSX.Element {
 useGLTF.preload(treeGlbUrl, false, false);
 useGLTF.preload(building1GlbUrl, false, false);
 useGLTF.preload(building2GlbUrl, false, false);
+useGLTF.preload(apartmentGlbUrl, false, false);
+useGLTF.preload(apartment2GlbUrl, false, false);
 useGLTF.preload(streetLightGlbUrl, false, false);
 useGLTF.preload(trafficLightGlbUrl, false, false);
