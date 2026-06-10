@@ -17,6 +17,7 @@ import {
   BANK_WALL_H,
   BANK_WALL_T,
   BANK_STREET_GAP,
+  BANK_X,
   BANK_Z,
   ROAD_Y,
   ROAD_MARKING_Y,
@@ -442,9 +443,13 @@ export const ConnectingStreet = memo(
 );
 
 /** The complete bank building placed north of the office. */
-export const BankSection = memo(function BankSection(): React.JSX.Element {
+export const BankSection = memo(function BankSection({
+  position = [BANK_X, 0, BANK_Z],
+}: {
+  position?: [number, number, number];
+} = {}): React.JSX.Element {
   return (
-    <group position={[0, 0, BANK_Z]}>
+    <group position={position}>
       <BankShell />
       <BankCounterRow />
       <Suspense fallback={null}>

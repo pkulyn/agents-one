@@ -1,5 +1,6 @@
 import { Suspense, memo, useLayoutEffect, useMemo, useRef } from "react";
 import { useGLTF } from "@react-three/drei";
+import type { ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import treeGlbUrl from "../assets/tree.glb?url";
 import building1GlbUrl from "../assets/building1.glb?url";
@@ -14,6 +15,7 @@ import { glbClone, normalizeFootprint } from "../core/glb";
 import {
   BANK_W,
   BANK_D,
+  BANK_X,
   BANK_Z,
   BANK_STREET_GAP,
   ROADS,
@@ -53,6 +55,45 @@ const BUILDING_URLS = [
   building2GlbUrl,
 ];
 
+// Manual position overrides for procedural backdrop buildings, keyed by their
+// stable grid id (e.g. "gb:7,12" / "box:3,18"). Populated from the in-app
+// "Move buildings" dev tool, which logs a ready-to-paste line per move. Value
+// is the building's new [x, z]; everything else (size, rotation, model) is
+// still derived from the grid seed, so only the position changes.
+export const BACKDROP_OVERRIDES: Record<string, [number, number]> = {
+  "gb:1,4": [-33.9, -16.35],
+  "gb:2,5": [-56.69, -33.89],
+  "gb:2,17": [-54.29, 32.85],
+  "gb:7,2": [-13.58, -56.21],
+  "gb:7,5": [62.15, -30.75],
+  "gb:7,16": [-12.99, 28.38],
+  "gb:8,4": [-31.75, -86.9],
+  "gb:8,5": [-14.05, -27.15],
+  "gb:8,16": [-6.15, 31.23],
+  "gb:9,3": [-8.65, -49.79],
+  "gb:9,4": [-1.67, -34.39],
+  "gb:9,5": [10.94, -106.04],
+  "gb:10,0": [-3.82, -50.23],
+  "gb:10,3": [13.9, -72.32],
+  "gb:10,5": [-1.58, -85.83],
+  "gb:10,18": [-0.08, 38.6],
+  "gb:11,3": [12.66, -52.18],
+  "gb:11,16": [9.42, 30.38],
+  "gb:11,17": [5.11, 40.42],
+  "gb:12,4": [13.82, -25.09],
+  "gb:15,6": [28.02, -14.12],
+  "gb:15,16": [25.88, 33.47],
+  "gb:16,11": [28.78, 7.25],
+  "gb:16,16": [30.22, 36.4],
+  "gb:17,5": [35.54, -59.8],
+  "gb:17,6": [28.6, -79.52],
+  "gb:17,8": [39.63, -1.71],
+  "gb:18,4": [28.82, -52.79],
+  "box:1,0": [-41.98, -50.6],
+  "box:1,2": [-39.98, -34.49],
+  "box:3,0": [-33.38, -51.31],
+};
+
 /**
  * Detailed backdrop building (apartment / building GLB), auto-normalised:
  * recentred, grounded at y=0 and uniformly scaled so its footprint fits the
@@ -64,12 +105,14 @@ function CityBuildingGlb({
   footprint,
   rotY,
   url,
+  onClick,
 }: {
   x: number;
   z: number;
   footprint: number;
   rotY: number;
   url: string;
+  onClick?: (e: ThreeEvent<MouseEvent>) => void;
 }): React.JSX.Element {
   const { scene } = useGLTF(url, false, false);
   const object = useMemo(
@@ -77,7 +120,7 @@ function CityBuildingGlb({
     [scene, footprint],
   );
   return (
-    <group position={[x, 0, z]} rotation={[0, rotY, 0]}>
+    <group position={[x, 0, z]} rotation={[0, rotY, 0]} onClick={onClick}>
       <primitive object={object} />
     </group>
   );
@@ -197,6 +240,7 @@ export const DistantSkyline = memo(
 );
 
 interface BoxBuilding {
+  id: string;
   x: number;
   z: number;
   w: number;
@@ -206,6 +250,7 @@ interface BoxBuilding {
 }
 
 interface GlbBuilding {
+  id: string;
   x: number;
   z: number;
   footprint: number;
@@ -238,8 +283,8 @@ function generateBackdrop(): {
   // Also clear the bank lot
   const bankMinZ = BANK_Z - BANK_D / 2 - margin;
   const bankMaxZ = BANK_Z + BANK_D / 2 + margin;
-  const bankMinX = -BANK_W / 2 - margin;
-  const bankMaxX = BANK_W / 2 + margin;
+  const bankMinX = BANK_X - BANK_W / 2 - margin;
+  const bankMaxX = BANK_X + BANK_W / 2 + margin;
   const rW = ROAD_WIDTH / 2 + 1.5; // half-width + building clearance
 
   for (let ix = 0; ix < cols; ix++) {
@@ -319,9 +364,12 @@ function generateBackdrop(): {
         // model — cheap and good-looking). Further out, fog hazes the detail,
         // so a flat windowless box at 1 draw call is the efficient choice.
         if (Math.hypot(x, z) < 55) {
+          const id = `gb:${ix},${iz}`;
+          const ov = BACKDROP_OVERRIDES[id];
           glbBuildings.push({
-            x,
-            z,
+            id,
+            x: ov ? ov[0] : x,
+            z: ov ? ov[1] : z,
             footprint: cell * (0.95 + seededRandom(seed + 6) * 0.45),
             rotY: Math.floor(seededRandom(seed + 7) * 4) * (Math.PI / 2),
             url: BUILDING_URLS[
@@ -329,13 +377,16 @@ function generateBackdrop(): {
             ],
           });
         } else {
+          const id = `box:${ix},${iz}`;
+          const ov = BACKDROP_OVERRIDES[id];
           const w = cell * (0.7 + seededRandom(seed + 1) * 0.5);
           const d = cell * (0.7 + seededRandom(seed + 2) * 0.5);
           const h = 5 + seededRandom(seed + 3) * 14;
           const lightness = 55 + seededRandom(seed + 4) * 25;
           buildings.push({
-            x,
-            z,
+            id,
+            x: ov ? ov[0] : x,
+            z: ov ? ov[1] : z,
             w,
             d,
             h,
@@ -399,7 +450,17 @@ const RoadDashes = memo(function RoadDashes(): React.JSX.Element {
 });
 
 /** Sparse city backdrop — buildings, trees, roads and street furniture. */
-export const CityBackdrop = memo(function CityBackdrop(): React.JSX.Element {
+export const CityBackdrop = memo(function CityBackdrop({
+  devMode = false,
+  moved,
+  onPick,
+}: {
+  devMode?: boolean;
+  /** Session-only position overrides keyed by building id ([x, y, z]). */
+  moved?: Record<string, [number, number, number]>;
+  /** Dev: called when a building is clicked while devMode is on. */
+  onPick?: (b: { id: string; label: string; x: number; z: number }) => void;
+} = {}): React.JSX.Element {
   const { buildings, glbBuildings, trees } = useMemo(
     () => generateBackdrop(),
     [],
@@ -460,32 +521,58 @@ export const CityBackdrop = memo(function CityBackdrop(): React.JSX.Element {
       <RoadDashes />
       {/* Far buildings — flat windowless boxes (1 draw call each); fog hides
           the missing detail. Near buildings use detailed GLBs below. */}
-      {buildings.map((b, i) => (
-        <mesh
-          key={`b-${i}`}
-          position={[b.x, b.h / 2, b.z]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[b.w, b.h, b.d]} />
-          <meshStandardMaterial
-            color={b.color}
-            roughness={0.88}
-            metalness={0.04}
-          />
-        </mesh>
-      ))}
+      {buildings.map((b, i) => {
+        const mv = moved?.[b.id];
+        const bx = mv ? mv[0] : b.x;
+        const bz = mv ? mv[2] : b.z;
+        return (
+          <mesh
+            key={`b-${i}`}
+            position={[bx, b.h / 2, bz]}
+            castShadow
+            receiveShadow
+            onClick={
+              devMode && onPick
+                ? (e) => {
+                    e.stopPropagation();
+                    onPick({ id: b.id, label: "Building", x: bx, z: bz });
+                  }
+                : undefined
+            }
+          >
+            <boxGeometry args={[b.w, b.h, b.d]} />
+            <meshStandardMaterial
+              color={b.color}
+              roughness={0.88}
+              metalness={0.04}
+            />
+          </mesh>
+        );
+      })}
       <Suspense fallback={null}>
-        {glbBuildings.map((g, i) => (
-          <CityBuildingGlb
-            key={`gb-${i}`}
-            x={g.x}
-            z={g.z}
-            footprint={g.footprint}
-            rotY={g.rotY}
-            url={g.url}
-          />
-        ))}
+        {glbBuildings.map((g, i) => {
+          const mv = moved?.[g.id];
+          const gx = mv ? mv[0] : g.x;
+          const gz = mv ? mv[2] : g.z;
+          return (
+            <CityBuildingGlb
+              key={`gb-${i}`}
+              x={gx}
+              z={gz}
+              footprint={g.footprint}
+              rotY={g.rotY}
+              url={g.url}
+              onClick={
+                devMode && onPick
+                  ? (e) => {
+                      e.stopPropagation();
+                      onPick({ id: g.id, label: "Building", x: gx, z: gz });
+                    }
+                  : undefined
+              }
+            />
+          );
+        })}
         {trees.map((t, i) => (
           <TreeGlb key={`t-${i}`} x={t.x} z={t.z} h={t.h} />
         ))}

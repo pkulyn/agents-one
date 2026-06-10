@@ -1,5 +1,5 @@
-import { Suspense, useMemo, useRef } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { configureTextBuilder } from "troika-three-text";
 import * as THREE from "three";
@@ -18,7 +18,7 @@ import { Workstations, FurniturePieces } from "./objects/furniture";
 import { AgentsLayer } from "./objects/AgentsLayer";
 import { buildWorkstations, REST_FURNITURE, EXECUTIVE_DECOR } from "./layout";
 import { DAY_PALETTE } from "./core/palette";
-import { BANK_Z } from "./core/cityPlan";
+import { BANK_X, BANK_Z, SHOWROOM_X, SHOWROOM_Z } from "./core/cityPlan";
 import type { OfficeAgent } from "./core/types";
 import officeFontUrl from "../../../assets/fonts/Manrope-Medium.ttf";
 
@@ -39,14 +39,110 @@ export default function Office3D({
   agents,
   selectedId,
   onSelectAgent,
+  devMode = false,
+  onDevLog,
 }: {
   agents: OfficeAgent[];
   selectedId: string | null;
   onSelectAgent: (id: string | null) => void;
+  devMode?: boolean;
+  onDevLog?: (msg: string) => void;
 }): React.JSX.Element {
   // Clicking the selected agent again clears the selection.
   const handleSelect = (id: string): void => {
     onSelectAgent(id === selectedId ? null : id);
+  };
+
+  // ── Developer building-mover ──────────────────────────────────────────────
+  // When devMode is on: click a building to "pick it up" (logs it + its current
+  // position), then click empty ground to drop it there (logs a paste-ready
+  // code line and moves it live so spacing is visible). Landmarks (bank /
+  // showroom) map to constants in cityPlan.ts; backdrop buildings map to an
+  // entry in BACKDROP_OVERRIDES (CityBackdrop.tsx).
+  type DevSel = {
+    id: string;
+    label: string;
+    kind: "landmark" | "backdrop";
+    base: [number, number, number];
+    hint: string;
+  };
+  const LANDMARKS: Record<"bank" | "showroom", DevSel> = {
+    bank: {
+      id: "bank",
+      label: "Bank",
+      kind: "landmark",
+      base: [BANK_X, 0, BANK_Z],
+      hint: "BANK_X / BANK_Z in cityPlan.ts",
+    },
+    showroom: {
+      id: "showroom",
+      label: "CarShowroom",
+      kind: "landmark",
+      base: [SHOWROOM_X, 0, SHOWROOM_Z],
+      hint: "SHOWROOM_X / SHOWROOM_Z in cityPlan.ts",
+    },
+  };
+  const [devSel, setDevSel] = useState<DevSel | null>(null);
+  const [devPos, setDevPos] = useState<
+    Record<string, [number, number, number]>
+  >({});
+
+  const posOf = (
+    id: string,
+    base: [number, number, number],
+  ): [number, number, number] => devPos[id] ?? base;
+
+  const select = (meta: DevSel): void => {
+    const p = posOf(meta.id, meta.base);
+    setDevSel(meta);
+    const msg = `🏢 SELECTED ${meta.label} (${meta.id}) — current position [${p[0].toFixed(2)}, ${p[2].toFixed(2)}]. Now click empty ground to set its new spot.`;
+    console.log(msg);
+    onDevLog?.(msg);
+  };
+
+  // Landmark click handler (bank / showroom groups).
+  const pickLandmark =
+    (meta: DevSel) =>
+    (e: ThreeEvent<MouseEvent>): void => {
+      if (!devMode) return;
+      e.stopPropagation();
+      select(meta);
+    };
+
+  // Backdrop building click handler (passed down into CityBackdrop). Stable so
+  // the memoized CityBackdrop doesn't re-render on unrelated parent updates.
+  const pickBackdrop = useCallback(
+    (b: { id: string; label: string; x: number; z: number }): void => {
+      select({
+        id: b.id,
+        label: b.label,
+        kind: "backdrop",
+        base: [b.x, 0, b.z],
+        hint: "BACKDROP_OVERRIDES in CityBackdrop.tsx",
+      });
+    },
+    // `select` is recreated each render but only reads state setters + onDevLog;
+    // depend on onDevLog so the logged sink stays current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onDevLog],
+  );
+
+  const dropAt = (e: ThreeEvent<MouseEvent>): void => {
+    if (!devMode || !devSel) return;
+    e.stopPropagation();
+    const { x, z } = e.point;
+    const rx = Math.round(x * 100) / 100;
+    const rz = Math.round(z * 100) / 100;
+    setDevPos((prev) => ({ ...prev, [devSel.id]: [rx, 0, rz] }));
+    // One-shot: drop ends this building's selection so the next ground click
+    // doesn't keep dragging it around. Click a building again to move it more.
+    const msg =
+      devSel.kind === "landmark"
+        ? `📍 MOVE ${devSel.label} → position={[${rx}, 0, ${rz}]}  (update ${devSel.hint}). Selection cleared — click another building.`
+        : `📍 MOVE ${devSel.label} → "${devSel.id}": [${rx}, ${rz}],  (paste into ${devSel.hint}). Selection cleared — click another building.`;
+    setDevSel(null);
+    console.log(msg);
+    onDevLog?.(msg);
   };
 
   // Keep the camera's focus point inside the city so panning (or
@@ -98,7 +194,7 @@ export default function Office3D({
     >
       <SceneEnvironment palette={palette} />
       <DistantSkyline />
-      <CityBackdrop />
+      <CityBackdrop devMode={devMode} moved={devPos} onPick={pickBackdrop} />
       <Suspense fallback={null}>
         <TrafficLayer />
       </Suspense>
@@ -114,8 +210,33 @@ export default function Office3D({
           </Suspense>
         </>
       )}
-      <BankSection />
-      <CarShowroom />
+      {devMode ? (
+        <>
+          <group onClick={pickLandmark(LANDMARKS.bank)}>
+            <BankSection position={posOf("bank", LANDMARKS.bank.base)} />
+          </group>
+          <group onClick={pickLandmark(LANDMARKS.showroom)}>
+            <CarShowroom
+              position={posOf("showroom", LANDMARKS.showroom.base)}
+            />
+          </group>
+          {/* Invisible ground catcher: the second click lands here (buildings
+              stopPropagation on the first), giving the pick-then-drop flow. */}
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, -0.05, 0]}
+            onClick={dropAt}
+          >
+            <planeGeometry args={[600, 600]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        </>
+      ) : (
+        <>
+          <BankSection />
+          <CarShowroom />
+        </>
+      )}
       <Suspense fallback={null}>
         <Workstations workstations={workstations} />
         <FurniturePieces pieces={REST_FURNITURE} />
@@ -151,7 +272,10 @@ export default function Office3D({
         maxPolarAngle={Math.PI / 2.15}
         // Plain tuple, not a Vector3 instance — a fresh instance every render
         // would reset the controls' target and wipe any user pan.
-        target={[0, 0, BANK_Z / 2]}
+        // Default look-at: the office's north side. (Was BANK_Z / 2 when the
+        // bank sat north; pinned here so relocating the bank east leaves the
+        // opening view unchanged.)
+        target={[0, 0, -14.6]}
         onChange={clampControlsTarget}
       />
     </Canvas>

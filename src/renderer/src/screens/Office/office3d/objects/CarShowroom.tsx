@@ -89,7 +89,11 @@ const GLASS_BAYS = [0, 1, 3, 4]; // bay 2 (centre) stays open
  * cars inside (reusing the traffic vehicle models/tints) and a hero car
  * rotating on a pedestal.
  */
-export const CarShowroom = memo(function CarShowroom(): React.JSX.Element {
+export const CarShowroom = memo(function CarShowroom({
+  position = [SHOWROOM_X, 0, SHOWROOM_Z],
+}: {
+  position?: [number, number, number];
+} = {}): React.JSX.Element {
   const halfW = SHOWROOM_W / 2;
   const halfD = SHOWROOM_D / 2;
   const wallH = SHOWROOM_WALL_H;
@@ -99,7 +103,7 @@ export const CarShowroom = memo(function CarShowroom(): React.JSX.Element {
   const glassH = wallH - plinthH - bandH;
 
   return (
-    <group position={[SHOWROOM_X, 0, SHOWROOM_Z]}>
+    <group position={position}>
       {/* Polished display floor */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[SHOWROOM_W, SHOWROOM_D]} />

@@ -13,12 +13,14 @@ export const BANK_WALL_H = 3.2;
 export const BANK_WALL_T = 0.25;
 // Gap (street) between the south bank wall and the north office wall
 export const BANK_STREET_GAP = 4.0;
-// Z centre of the bank building (north of the office)
-export const BANK_Z = -(WORLD_H / 2 + BANK_STREET_GAP + BANK_D / 2);
+// Bank centre (world units). Set explicitly so moving the bank doesn't drag
+// the north road, which still keys off the office's original north lot below.
+export const BANK_X = 67.63;
+export const BANK_Z = 3.67;
 
 // ── Backdrop roads (shared by CityBackdrop + TrafficLayer) ────────────────
 export const ROAD_SOUTH_Z = WORLD_H / 2 + 4.5; // E-W road in front of office
-export const ROAD_NORTH_Z = BANK_Z - BANK_D / 2 - 5; // E-W road behind bank
+export const ROAD_NORTH_Z = -(WORLD_H / 2 + BANK_STREET_GAP + BANK_D + 5); // E-W road behind the office's north lot
 export const ROAD_EAST_X = WORLD_W / 2 + 4.5; // N-S roads, east/west (mirrored)
 export const ROAD_WIDTH = 5.5;
 // Road surface + centre-line dashes span this length so the carriageways run
