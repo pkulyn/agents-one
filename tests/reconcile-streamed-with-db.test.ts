@@ -575,7 +575,7 @@ describe("reconcileStreamedWithDb", () => {
       "db-tc-71-call-terminal-1",
       "a-1",
     ]);
-    expect(merged[3]).toMatchObject({
+    expect(merged[1]).toMatchObject({
       kind: "tool_call",
       name: "terminal",
       args: "npm run typecheck",
