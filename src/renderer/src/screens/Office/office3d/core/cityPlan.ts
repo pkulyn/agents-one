@@ -21,7 +21,13 @@ export const ROAD_SOUTH_Z = WORLD_H / 2 + 4.5; // E-W road in front of office
 export const ROAD_NORTH_Z = BANK_Z - BANK_D / 2 - 5; // E-W road behind bank
 export const ROAD_EAST_X = WORLD_W / 2 + 4.5; // N-S roads, east/west (mirrored)
 export const ROAD_WIDTH = 5.5;
-export const ROAD_LEN = 110;
+// Road surface + centre-line dashes span this length so the carriageways run
+// out into the fog (far = 280) instead of ending at a visible hard edge. The
+// dashes are instanced (one draw call) so the long span is essentially free.
+export const ROAD_LEN = 600;
+// Cars loop only over the in-view stretch: looping the full ROAD_LEN would make
+// traffic too sparse to read near the office and cost needless GLB instances.
+export const TRAFFIC_LEN = 320;
 // Outer ring spacing — a second set of roads one city block further out, so
 // the grid reads as a district rather than a single block.
 export const ROAD_OUTER_GAP = 27;

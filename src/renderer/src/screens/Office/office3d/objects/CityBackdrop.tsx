@@ -40,10 +40,6 @@ const roadMat = new THREE.MeshStandardMaterial({
   color: "#4a4e57",
   roughness: 0.95,
 });
-const dashMat = new THREE.MeshStandardMaterial({
-  color: "#f5e642",
-  roughness: 0.9,
-});
 const windowMat = new THREE.MeshStandardMaterial({
   color: "#a8d8f0",
   emissive: "#88c8f0",
@@ -350,6 +346,55 @@ function generateBackdrop(): {
   return { buildings, glbBuildings, trees };
 }
 
+// Centre-line dashes for every road, baked into one InstancedMesh — a single
+// draw call regardless of road length, so the carriageways can run all the way
+// out to the fog without paying for hundreds of separate dash meshes.
+const DASH_LEN = 2.0;
+const DASH_GAP = 1.8;
+const DASH_FLAT = new THREE.Euler(-Math.PI / 2, 0, 0);
+const DASH_PER_ROAD = Math.floor(ROAD_LEN / (DASH_LEN + DASH_GAP));
+
+const RoadDashes = memo(function RoadDashes(): React.JSX.Element {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const count = ROADS.length * DASH_PER_ROAD;
+
+  useLayoutEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const matrix = new THREE.Matrix4();
+    const quat = new THREE.Quaternion().setFromEuler(DASH_FLAT);
+    const pos = new THREE.Vector3();
+    const scl = new THREE.Vector3();
+    let idx = 0;
+    for (const road of ROADS) {
+      for (let j = 0; j < DASH_PER_ROAD; j++) {
+        const o = -ROAD_LEN / 2 + j * (DASH_LEN + DASH_GAP) + DASH_LEN / 2;
+        if (road.axis === "x") {
+          pos.set(o, ROAD_MARKING_Y, road.center);
+          scl.set(DASH_LEN, 0.18, 1);
+        } else {
+          pos.set(road.center, ROAD_MARKING_Y, o);
+          scl.set(0.18, DASH_LEN, 1);
+        }
+        matrix.compose(pos, quat, scl);
+        mesh.setMatrixAt(idx++, matrix);
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [count]);
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[undefined, undefined, count]}
+      frustumCulled={false}
+    >
+      <planeGeometry args={[1, 1]} />
+      <meshStandardMaterial color="#f5e642" roughness={0.9} />
+    </instancedMesh>
+  );
+});
+
 /** Sparse city backdrop — buildings, trees, roads and street furniture. */
 export const CityBackdrop = memo(function CityBackdrop(): React.JSX.Element {
   const { buildings, glbBuildings, trees } = useMemo(
@@ -361,9 +406,6 @@ export const CityBackdrop = memo(function CityBackdrop(): React.JSX.Element {
   const roadNorthZ = ROAD_NORTH_Z;
   const roadEastX = ROAD_EAST_X;
   const roadWidth = ROAD_WIDTH;
-  const dashLen = 2.0;
-  const dashGap = 1.8;
-  const dashCount = Math.floor(ROAD_LEN / (dashLen + dashGap));
 
   // Lamp spots along the inner roads, skipping any that land on a crossing.
   const { lampXs, lampZs } = useMemo(() => {
@@ -411,29 +453,8 @@ export const CityBackdrop = memo(function CityBackdrop(): React.JSX.Element {
           }
         />
       ))}
-      {/* Centre dashes — shared geometry + material across all roads */}
-      {ROADS.map((road, i) =>
-        Array.from({ length: dashCount }, (_, j) => {
-          const o = -ROAD_LEN / 2 + j * (dashLen + dashGap) + dashLen / 2;
-          return (
-            <mesh
-              key={`dash-${i}-${j}`}
-              geometry={unitPlaneGeo}
-              material={dashMat}
-              dispose={null}
-              rotation={[-Math.PI / 2, 0, 0]}
-              position={
-                road.axis === "x"
-                  ? [o, ROAD_MARKING_Y, road.center]
-                  : [road.center, ROAD_MARKING_Y, o]
-              }
-              scale={
-                road.axis === "x" ? [dashLen, 0.18, 1] : [0.18, dashLen, 1]
-              }
-            />
-          );
-        }),
-      )}
+      {/* Centre dashes — one instanced draw call for all roads */}
+      <RoadDashes />
       {buildings.map((b, i) => {
         const winCols = Math.max(1, Math.floor(b.w / 1.1));
         const winRows = Math.max(1, Math.floor(b.h / 1.4));

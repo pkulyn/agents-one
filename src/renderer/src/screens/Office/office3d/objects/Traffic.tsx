@@ -7,7 +7,7 @@ import car2GlbUrl from "../assets/car2.glb?url";
 import truck1GlbUrl from "../assets/truck1.glb?url";
 import { seededRandom } from "../core/rng";
 import { vehicleClone, normalizeFootprint } from "../core/glb";
-import { ROADS, ROAD_WIDTH, ROAD_LEN, ROAD_Y } from "../core/cityPlan";
+import { ROADS, ROAD_WIDTH, ROAD_Y, TRAFFIC_LEN } from "../core/cityPlan";
 
 export { car1GlbUrl, car2GlbUrl, truck1GlbUrl };
 
@@ -33,7 +33,7 @@ interface TrafficVehicle {
   fixed: number;
   dir: 1 | -1;
   speed: number;
-  /** Start position along the road in [-ROAD_LEN/2, ROAD_LEN/2]. */
+  /** Start position along the road in [-TRAFFIC_LEN/2, TRAFFIC_LEN/2]. */
   startS: number;
 }
 
@@ -42,7 +42,7 @@ function makeTraffic(): TrafficVehicle[] {
   const vehicles: TrafficVehicle[] = [];
   let seed = 0;
   for (const road of ROADS) {
-    const perRoad = 3;
+    const perRoad = 7;
     for (let i = 0; i < perRoad; i++) {
       seed += 1;
       const dir: 1 | -1 = i % 2 === 0 ? 1 : -1;
@@ -65,8 +65,8 @@ function makeTraffic(): TrafficVehicle[] {
         dir,
         speed: (isTruck ? 3.2 : 4.5) + seededRandom(seed * 13 + 3) * 2.2,
         startS:
-          -ROAD_LEN / 2 +
-          ((i + seededRandom(seed * 17 + 4) * 0.6) / perRoad) * ROAD_LEN,
+          -TRAFFIC_LEN / 2 +
+          ((i + seededRandom(seed * 17 + 4) * 0.6) / perRoad) * TRAFFIC_LEN,
       });
     }
   }
@@ -108,9 +108,9 @@ function TrafficVehicleInstance({
     if (!g) return;
     const step = Math.min(delta, 0.05);
     let s = sRef.current + vehicle.dir * vehicle.speed * step;
-    const half = ROAD_LEN / 2;
-    if (s > half) s -= ROAD_LEN;
-    else if (s < -half) s += ROAD_LEN;
+    const half = TRAFFIC_LEN / 2;
+    if (s > half) s -= TRAFFIC_LEN;
+    else if (s < -half) s += TRAFFIC_LEN;
     sRef.current = s;
     if (vehicle.axis === "x") {
       g.position.set(s, ROAD_Y, vehicle.fixed);
