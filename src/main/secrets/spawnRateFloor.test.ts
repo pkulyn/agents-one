@@ -29,7 +29,11 @@ vi.mock("./commandProvider", () => ({
 }));
 
 import { getConfigValue } from "../config";
-import { providerListSafe, invalidateProviderListCache } from "./index";
+import {
+  providerListSafe,
+  invalidateProviderListCache,
+  resolvedSecrets,
+} from "./index";
 
 const mockedGetConfigValue = vi.mocked(getConfigValue);
 
@@ -89,5 +93,17 @@ describe("S1: providerListSafe helper-spawn rate floor", () => {
     vi.advanceTimersByTime(5_001); // past LIST_CACHE_TTL_MS
     providerListSafe(); // spawn 2
     expect(listCalls - before).toBe(2);
+  });
+
+  it("resolvedSecrets() is also covered by the spawn floor (Greptile #644)", () => {
+    // Regression: resolvedSecrets() called provider.list() DIRECTLY, bypassing
+    // the TTL cache + spawn floor that protect the main process — so a caller
+    // polling resolvedSecrets() could re-spawn the helper on every call. It now
+    // routes through providerListSafe(), so repeated calls spawn the helper once.
+    const before = listCalls;
+    resolvedSecrets();
+    resolvedSecrets();
+    resolvedSecrets();
+    expect(listCalls - before).toBe(1);
   });
 });

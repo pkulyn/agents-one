@@ -267,4 +267,21 @@ describe("CommandSecretsProvider", () => {
     mockedGetConfigValue.mockReturnValue("printf 'just-a-value'");
     expect(provider.list()).toEqual({});
   });
+
+  it("list() omits quoted whitespace-only entries (agrees with get())", () => {
+    // Greptile review on PR #644: list() stored the unquoted value without the
+    // whitespace-only filter that get()/parseSecretOutput applies, so a
+    // `BLANK="  "` vault placeholder showed up as a configured key in list()
+    // but resolved to null on get() — the two disagreed on "is this key set?".
+    // Now list() must drop BLANK while keeping the real key.
+    mockedGetConfigValue.mockReturnValue(
+      "printf 'REAL=value\\nBLANK=\"   \"\\n'",
+    );
+    const listed = provider.list();
+    expect(listed).toEqual({ REAL: "value" });
+    expect(listed).not.toHaveProperty("BLANK");
+    // The invariant the fix enforces: list() membership matches get() resolving.
+    expect(provider.get("BLANK")).toBeNull();
+    expect(provider.get("REAL")).toBe("value");
+  });
 });

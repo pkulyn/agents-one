@@ -54,7 +54,13 @@ export function getSecret(key: string, profile?: string): string | null {
  * keep using `readEnv()`.
  */
 export function resolvedSecrets(profile?: string): Record<string, string> {
-  const base = getSecretsProvider(profile).list(profile);
+  // Route through providerListSafe (NOT provider.list() directly) so this
+  // path is covered by the S1 spawn-rate floor: a caller polling
+  // resolvedSecrets() must not be able to re-spawn the command helper on
+  // every call, bypassing the TTL cache + 1s hard floor that protect the
+  // Electron main process. providerListSafe is a no-op wrapper for the env
+  // provider, so this is free for the default backend.
+  const base = providerListSafe(profile);
   const merged: Record<string, string> = { ...base };
   for (const [k, v] of Object.entries(process.env)) {
     if (v != null && v !== "") merged[k] = v;

@@ -221,7 +221,14 @@ export class CommandSecretsProvider implements SecretsProvider {
         if (!line || line.startsWith("#")) continue;
         const m = line.match(ENV_LINE);
         if (!m) continue;
-        out[m[1]] = unquoteDotenvValue(m[2]);
+        const value = unquoteDotenvValue(m[2]);
+        // Whitespace-only entries (e.g. a quoted `K="  "` placeholder) are
+        // "no value" — get()/parseSecretOutput already resolves them to null,
+        // so list() must omit them too or the two disagree on whether a key
+        // is configured (a quoted-blank vault entry would otherwise show as a
+        // set key here but resolve empty on read).
+        if (value.trim() === "") continue;
+        out[m[1]] = value;
       }
       return out;
     } catch (err) {
