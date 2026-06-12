@@ -43,7 +43,56 @@ export function getSecretsProvider(profile?: string): SecretsProvider {
 export function getSecret(key: string, profile?: string): string | null {
   const fromEnv = process.env[key];
   if (fromEnv != null && fromEnv !== "") return fromEnv;
-  return getSecretsProvider(profile).get(key, profile);
+  // Route command-provider single-key resolution through the get-path spawn
+  // floor (S1, get() side) so a per-key caller loop cannot spawn the helper
+  // unbounded on the Electron main process. Env provider is a pass-through.
+  return getSecretSafe(key, profile);
+}
+
+/**
+ * SECURITY (S1, get() side): a per-(profile,key) hard spawn floor for the
+ * command provider's single-key get(), mirroring the one `providerListSafe()`
+ * gives list(). `getSecret()` is the resolution entry point the consumer-wiring
+ * layer calls PER KEY at gateway-spawn time; without a floor, a caller resolving
+ * many keys (or a buggy/compromised one looping a single key) would spawn the
+ * helper once PER call — each a SYNCHRONOUS `/bin/sh -c` of up to 3s on the
+ * Electron main process — wedging the UI. providerListSafe already closes this
+ * for the enumeration path; this closes it for the single-key path the wiring
+ * PR introduces.
+ *
+ * DELIBERATELY NOT A VALUE CACHE. Unlike list(), this records only the last
+ * spawn TIMESTAMP per key, never the resolved secret. Caching plaintext secret
+ * values in a long-lived main-process map would be a new at-rest exposure
+ * surface that the provider design explicitly avoids ("resolved values are
+ * never logged or written to disk"). So inside the floor window we DEGRADE to
+ * null rather than spawn OR replay a cached value.
+ *
+ * TRADEOFF (degrade-not-stale): because there is no retained value, a second
+ * get() for the same key inside MIN_SPAWN_INTERVAL_MS returns null instead of
+ * the real secret. This is acceptable and intentional: the wiring PR resolves
+ * each key at most once per gateway spawn, so the floor only bites under an
+ * abnormal/hostile tight loop — exactly the case where degrading beats wedging.
+ * A legitimate caller that needs the value simply calls outside the ~1s window.
+ * (list() can serve stale data because it already holds the map; get() cannot
+ * without retaining secrets, so it chooses null over a new exposure surface.)
+ */
+const getSpawnFloor = new Map<string, number>();
+
+function getSecretSafe(key: string, profile?: string): string | null {
+  const provider = getSecretsProvider(profile);
+  // Env provider reads the .env file (already cached in config.ts) — no spawn,
+  // no floor needed. Pass straight through so the default backend is unchanged.
+  if (provider.id !== "command") return provider.get(key, profile);
+
+  const floorKey = `${profile || "default"}\u0000${key}`;
+  const now = Date.now();
+  const last = getSpawnFloor.get(floorKey);
+  if (last != null && now - last < MIN_SPAWN_INTERVAL_MS) {
+    // Inside the floor: refuse the spawn and degrade. No cached value to serve.
+    return null;
+  }
+  getSpawnFloor.set(floorKey, now);
+  return provider.get(key, profile);
 }
 
 /**
@@ -104,6 +153,12 @@ const listCache = new Map<
  */
 export function invalidateProviderListCache(): void {
   for (const entry of listCache.values()) entry.stale = true;
+  // Also clear the get()-path spawn-floor timestamps so a "Refresh from vault"
+  // lets the very next single-key get() spawn immediately (subject only to a
+  // fresh floor window from that spawn). The get floor holds no secret values —
+  // only timestamps — so clearing it leaks nothing; it just stops a refresh
+  // from being silently swallowed by a still-open floor window.
+  getSpawnFloor.clear();
 }
 
 /**
