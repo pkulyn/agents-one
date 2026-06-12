@@ -80,6 +80,7 @@ export default {
     persona: "Tampilkan persona saat ini",
     version: "Tampilkan versi Hermes",
   },
+  queuedCancel: "Batalkan pesan antrian",
   worktree: {
     loading: "Memuat",
     empty: "Folder kosong",

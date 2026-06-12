@@ -103,6 +103,7 @@ export default {
     version: "Hermes sürümünü göster",
   },
   queued: "{{count}} mesaj sırada — ajan işini bitirince gönderilecek",
+  queuedCancel: "Sıradan kaldır",
   worktree: {
     loading: "Yükleniyor",
     empty: "Klasör boş",

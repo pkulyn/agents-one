@@ -80,6 +80,7 @@ export default {
     persona: "Mostrar a persona atual",
     version: "Mostrar a versão do Hermes",
   },
+  queuedCancel: "Remover da fila",
   worktree: {
     loading: "Carregando",
     empty: "A pasta está vazia",
