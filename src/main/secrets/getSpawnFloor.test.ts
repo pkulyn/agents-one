@@ -144,4 +144,18 @@ describe("S1 (get side): getSecret command-provider spawn-rate floor", () => {
     expect(getCalls - before).toBe(0);
     delete process.env.S1G_KEY_A;
   });
+
+  it("never throws: a throwing getConfigValue degrades to null (Greptile P1)", () => {
+    // getSecret() documents "Never throws". getSecretSafe() reaches config via
+    // getSecretsProvider() -> getConfigValue(), which can throw on a malformed
+    // config.yaml or a first-read I/O error. Without a top-level catch (matching
+    // providerListSafe), that exception would propagate out of getSecret() and —
+    // once the wiring PR calls it per-key during gateway spawn — abort the whole
+    // spawn instead of degrading that one key. Assert it returns null, not throws.
+    mockedGetConfigValue.mockImplementation(() => {
+      throw new Error("malformed config.yaml");
+    });
+    expect(() => getSecret("S1G_KEY_A")).not.toThrow();
+    expect(getSecret("S1G_KEY_A")).toBeNull();
+  });
 });

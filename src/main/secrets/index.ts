@@ -79,20 +79,29 @@ export function getSecret(key: string, profile?: string): string | null {
 const getSpawnFloor = new Map<string, number>();
 
 function getSecretSafe(key: string, profile?: string): string | null {
-  const provider = getSecretsProvider(profile);
-  // Env provider reads the .env file (already cached in config.ts) — no spawn,
-  // no floor needed. Pass straight through so the default backend is unchanged.
-  if (provider.id !== "command") return provider.get(key, profile);
+  try {
+    const provider = getSecretsProvider(profile);
+    // Env provider reads the .env file (already cached in config.ts) — no spawn,
+    // no floor needed. Pass straight through so the default backend is unchanged.
+    if (provider.id !== "command") return provider.get(key, profile);
 
-  const floorKey = `${profile || "default"}\u0000${key}`;
-  const now = Date.now();
-  const last = getSpawnFloor.get(floorKey);
-  if (last != null && now - last < MIN_SPAWN_INTERVAL_MS) {
-    // Inside the floor: refuse the spawn and degrade. No cached value to serve.
+    const floorKey = `${profile || "default"}\u0000${key}`;
+    const now = Date.now();
+    const last = getSpawnFloor.get(floorKey);
+    if (last != null && now - last < MIN_SPAWN_INTERVAL_MS) {
+      // Inside the floor: refuse the spawn and degrade. No cached value to serve.
+      return null;
+    }
+    getSpawnFloor.set(floorKey, now);
+    return provider.get(key, profile);
+  } catch {
+    // Honor getSecret()'s "Never throws" contract. getSecretsProvider() ->
+    // getConfigValue() can throw on a malformed config.yaml or a first-read I/O
+    // error; providerListSafe() guards the same path with a top-level catch.
+    // Without this, an uncaught throw here would abort a per-key gateway-spawn
+    // loop instead of gracefully degrading that key to null.
     return null;
   }
-  getSpawnFloor.set(floorKey, now);
-  return provider.get(key, profile);
 }
 
 /**
