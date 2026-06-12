@@ -101,7 +101,15 @@ export function parseSecretOutput(
   // dotenv entry → resolve null. (A bare secret that itself contains '=' with
   // a non-padding tail, e.g. `user=password`, is rejected by this rule —
   // such helpers must emit a dotenv line for the wanted key instead.)
-  const envShaped = value.match(ENV_LINE);
+  //
+  // Test the EXTRACTED dotenv line, not the full output: `value` is the whole
+  // trimmed stdout, which may begin with a comment (keepassxc-cli / secret-tool
+  // emit a header line). A leading `#` makes `value.match(ENV_LINE)` (anchored
+  // at ^, no multiline flag) return null, silently bypassing this guard and
+  // leaking the comment+wrong-key line as the bare value. When exactly one
+  // dotenv line was extracted (comments already stripped), check that line.
+  const s2Target = dotenvLines.length === 1 ? dotenvLines[0] : value;
+  const envShaped = s2Target.match(ENV_LINE);
   if (
     envShaped &&
     envShaped[1] !== wantedKey &&
