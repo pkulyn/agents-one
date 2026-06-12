@@ -5,8 +5,22 @@ import { getConfigValue } from "../config";
 
 export type { SecretsProvider } from "./provider";
 
-const envProvider = new EnvSecretsProvider();
-const commandProvider = new CommandSecretsProvider();
+// Providers are constructed LAZILY (first use), never at module-init. Reason:
+// ./secrets sits in an import cycle (config -> secrets -> commandProvider ->
+// config). When a consumer of config.ts triggers that cycle, evaluating
+// `new CommandSecretsProvider()` at THIS module's top level can run while
+// commandProvider.ts is still mid-initialization → "CommandSecretsProvider is
+// not a constructor". Deferring construction to call time (by which point all
+// modules in the cycle are fully initialized) breaks the init-order hazard
+// without forcing every consumer to lazy-import the secrets barrel.
+let _envProvider: EnvSecretsProvider | undefined;
+let _commandProvider: CommandSecretsProvider | undefined;
+function envProviderInstance(): EnvSecretsProvider {
+  return (_envProvider ??= new EnvSecretsProvider());
+}
+function commandProviderInstance(): CommandSecretsProvider {
+  return (_commandProvider ??= new CommandSecretsProvider());
+}
 
 /** Unknown `secrets.provider` ids already warned about — one log line per id. */
 const warnedUnknownProviderIds = new Set<string>();
@@ -20,14 +34,14 @@ const warnedUnknownProviderIds = new Set<string>();
  */
 export function getSecretsProvider(profile?: string): SecretsProvider {
   const id = (getConfigValue("secrets.provider", profile) || "").trim();
-  if (id === "command") return commandProvider;
+  if (id === "command") return commandProviderInstance();
   if (id && id !== "env" && !warnedUnknownProviderIds.has(id)) {
     warnedUnknownProviderIds.add(id);
     console.warn(
       `[secrets] unknown secrets.provider "${id}"; falling back to env`,
     );
   }
-  return envProvider;
+  return envProviderInstance();
 }
 
 /**
