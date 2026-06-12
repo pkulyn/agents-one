@@ -131,6 +131,7 @@ export default {
   queued: "{{count}} message(s) queued — will send when the agent finishes",
   queuedCount: "{{count}} queued",
   queuedAttachment: "{{count}} attachment(s)",
+  queuedCancel: "Remove from queue",
   worktree: {
     loading: "Loading",
     empty: "Folder is empty",

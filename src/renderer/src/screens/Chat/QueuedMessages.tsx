@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { CircleDashed, ChevronRight, ChevronDown } from "lucide-react";
+import { CircleDashed, ChevronRight, ChevronDown, X } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import type { Attachment } from "../../../../shared/attachments";
 
@@ -10,24 +10,20 @@ interface QueuedMessage {
 
 interface QueuedMessagesProps {
   messages: QueuedMessage[];
+  onRemove: (index: number) => void;
 }
 
 /**
  * Pending-send queue indicator shown above the input while the agent is busy.
- * Replaces the old single-line "N message(s) queued" banner with a waiting
- * spinner plus a collapsible count: when more than one message is queued the
- * count expands to reveal each queued message; a single queued message is
- * shown inline with no toggle.
+ * Each queued message can be individually cancelled via an X button.
  */
 export const QueuedMessages = memo(function QueuedMessages({
   messages,
+  onRemove,
 }: QueuedMessagesProps): React.JSX.Element | null {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
 
-  // Reset the collapse state once the queue fully drains so a later refill
-  // starts collapsed instead of inheriting a stale expanded state (the
-  // component fibre stays alive across empty renders).
   useEffect(() => {
     if (messages.length === 0) setExpanded(false);
   }, [messages.length]);
@@ -40,7 +36,6 @@ export const QueuedMessages = memo(function QueuedMessages({
     return t("chat.queuedAttachment", { count: m.attachments.length });
   };
 
-  // Single queued message — show it directly, no collapse affordance.
   if (messages.length === 1) {
     return (
       <div className="chat-queue-indicator">
@@ -48,6 +43,15 @@ export const QueuedMessages = memo(function QueuedMessages({
         <span className="chat-queue-single" title={preview(messages[0])}>
           {preview(messages[0])}
         </span>
+        <button
+          type="button"
+          className="chat-queue-remove"
+          onClick={() => onRemove(0)}
+          aria-label={t("chat.queuedCancel")}
+          title={t("chat.queuedCancel")}
+        >
+          <X size={12} />
+        </button>
       </div>
     );
   }
@@ -72,7 +76,15 @@ export const QueuedMessages = memo(function QueuedMessages({
               className="chat-queue-item"
               title={preview(m)}
             >
-              {preview(m)}
+              <span className="chat-queue-item-text">{preview(m)}</span>
+              <button
+                type="button"
+                className="chat-queue-remove"
+                onClick={() => onRemove(i)}
+                aria-label={t("chat.queuedCancel")}
+              >
+                <X size={12} />
+              </button>
             </li>
           ))}
         </ul>
