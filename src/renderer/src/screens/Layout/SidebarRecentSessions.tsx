@@ -81,17 +81,21 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
 
   // Initial load when the section opens: paint from the JSON cache
   // immediately (no DB access), then sync once for anything new.
+  // Sequenced so sync always wins over cache (avoids race where stale
+  // cache overwrites fresh sync if sync resolves first).
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    window.hermesAPI
-      .listCachedSessions(RECENT_SESSIONS_LIMIT)
-      .then((cached) => {
-        if (!cancelled && cached.length > 0) applySessions(cached);
-      })
-      .catch(() => {});
-    lastRefreshRef.current = Date.now();
     void (async () => {
+      try {
+        const cached = await window.hermesAPI.listCachedSessions(
+          RECENT_SESSIONS_LIMIT,
+        );
+        if (!cancelled && cached.length > 0) applySessions(cached);
+      } catch {
+        /* ignore cache read errors */
+      }
+      lastRefreshRef.current = Date.now();
       try {
         const synced = await window.hermesAPI.syncSessionCache();
         if (!cancelled) applySessions(synced);
@@ -120,8 +124,10 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   }, [open, refresh]);
 
   // Resuming/switching sessions reorders recency — refresh (throttled).
+  // Also refreshes when going to "New Chat" (currentSessionId becomes null)
+  // so the just-left session appears in the list immediately.
   useEffect(() => {
-    if (open && currentSessionId) void refresh();
+    if (open) void refresh();
   }, [open, currentSessionId, refresh]);
 
   // Keep the wrapper mounted so the collapse/expand animates (CSS grid-rows
