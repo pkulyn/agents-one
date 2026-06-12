@@ -358,63 +358,98 @@ export function reconcileStreamedWithDb(
   // that didn't round-trip through the DB identically).
   const consumedIds = new Set(result.map((m) => m.id));
 
-  // Build a map from consumed streamed message id to its position in result,
-  // so we can interleave unconsumed messages at the correct chronological spot.
+  // Map each consumed streamed message to its position in the DB-ordered result.
   const resultPosById = new Map<string, number>();
-  for (let ri = 0; ri < result.length; ri++) {
-    resultPosById.set(result[ri].id, ri);
+  for (let i = 0; i < result.length; i++) {
+    resultPosById.set(result[i].id, i);
   }
 
-  // Pre-seed dedup set with bubble keys already in the result array,
-  // so unconsumed streamed messages that are near-duplicates of DB rows
-  // (e.g. content that drifted by a trailing space during streaming)
-  // are correctly identified and skipped.
+  // Seed a dedup set from all result items so unconsumed streamed messages
+  // never duplicate what the DB already provided.
   const seenBubbleKeys = new Set<string>();
-  for (const rm of result) {
-    if (!("kind" in rm)) {
-      const key = `${(rm as ChatBubbleMessage).role}:${normalizeBubbleContentForMatch((rm as ChatBubbleMessage).content || "")}`;
-      seenBubbleKeys.add(key);
+  for (const m of result) {
+    if (!("kind" in m)) {
+      const bubble = m as ChatBubbleMessage;
+      seenBubbleKeys.add(
+        `${bubble.role}:${normalizeBubbleContentForMatch(bubble.content || "")}`,
+      );
     }
   }
 
-  const isBubbleDup = (m: ChatMessage): boolean => {
-    if ("kind" in m) return false;
-    const key = `${(m as ChatBubbleMessage).role}:${normalizeBubbleContentForMatch((m as ChatBubbleMessage).content || "")}`;
-    if (seenBubbleKeys.has(key)) return true;
-    seenBubbleKeys.add(key);
-    return false;
+  // Check whether an unconsumed streamed message should be kept, applying
+  // the same dedup / canonical-tool-match / DB-split-artifact rules as before.
+  const shouldKeepUnconsumed = (m: ChatMessage): boolean => {
+    if (consumedIds.has(m.id)) return false;
+    if (consumeCanonicalToolMatch(canonicalToolMatchCounts, m)) return false;
+    if (!("kind" in m)) {
+      const bubble = m as ChatBubbleMessage;
+      const contentKey = `${bubble.role}:${normalizeBubbleContentForMatch(bubble.content || "")}`;
+      if (seenBubbleKeys.has(contentKey)) return false;
+      if (isCoveredByDbBubbleSplit(bubble, dbAssistantSplitSequences)) {
+        return false;
+      }
+      seenBubbleKeys.add(contentKey);
+    }
+    return true;
   };
 
-  // Walk streamed in order, interleaving unconsumed messages at their
-  // correct chronological positions between consumed ones.
+  // Interleave unconsumed streamed messages at their correct chronological
+  // positions instead of dumping them all into a suffix (which caused messages
+  // from the *middle* of the conversation to jump to the bottom — issue #431).
+  //
+  // Strategy: unconsumed messages that appear BEFORE the last consumed streamed
+  // message are interleaved at their correct position.  Unconsumed messages
+  // AFTER the last consumed message (e.g. error bubbles, renderer-only warnings)
+  // are deferred to a trailing suffix — matching the original behavior.
   const merged: ChatMessage[] = [];
   let resultIdx = 0;
+  const trailingSuffix: ChatMessage[] = [];
+
+  // Find the last streamed index that was consumed (matched a DB row).
+  let lastConsumedStreamIdx = -1;
+  for (let i = 0; i < streamed.length; i++) {
+    if (consumedIds.has(streamed[i].id)) lastConsumedStreamIdx = i;
+  }
 
   for (let si = 0; si < streamed.length; si++) {
     const sm = streamed[si];
     if (consumedIds.has(sm.id)) {
-      // Flush result items up to and including this consumed message's
-      // position, then skip the streamed copy (it's already in result).
+      // Flush result items up to (and including) this consumed message.
       const rpos = resultPosById.get(sm.id);
       if (rpos !== undefined && rpos >= resultIdx) {
         while (resultIdx <= rpos) {
-          merged.push(result[resultIdx++]);
+          merged.push(result[resultIdx]);
+          resultIdx++;
         }
       }
-    } else if (!consumeCanonicalToolMatch(canonicalToolMatchCounts, sm)) {
-      // Unconsumed streamed message — insert at current chronological slot.
-      // Deduplicate against DB bubbles and cover splits.
-      if (!isBubbleDup(sm) && !isCoveredByDbBubbleSplit(sm as ChatBubbleMessage, dbAssistantSplitSequences)) {
+    } else if (shouldKeepUnconsumed(sm)) {
+      // Only interleave bubble messages (user/agent content) at their
+      // correct chronological positions.  Non-bubble rows (synthetic
+      // tool_call / tool_result / reasoning) that survive dedup are
+      // always deferred to the trailing suffix — matching the original
+      // behavior where they land after all DB result rows.
+      const isBubble = !("kind" in sm);
+      if (
+        isBubble &&
+        lastConsumedStreamIdx >= 0 &&
+        si <= lastConsumedStreamIdx
+      ) {
         merged.push(sm);
+      } else {
+        trailingSuffix.push(sm);
       }
     }
   }
 
-  // Append any remaining DB-only rows (e.g. reasoning, tool rows that
-  // never streamed, late-written assistant splits).
+  // Append any remaining result items (DB-only rows past the last consumed
+  // streamed message).
   while (resultIdx < result.length) {
-    merged.push(result[resultIdx++]);
+    merged.push(result[resultIdx]);
+    resultIdx++;
   }
+
+  // Append trailing suffix (renderer-only bubbles past the last consumed msg).
+  for (const m of trailingSuffix) merged.push(m);
 
   // Reposition inline clarify cards to their original chronological slot.
   // A clarify card is renderer-only — it's never written to state.db, so it
