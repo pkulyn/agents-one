@@ -254,7 +254,7 @@ export function resolvedSecretMap(profile?: string): Record<string, string> {
   // over vault values, matching the gateway's own resolution policy. The
   // .env reader is a shared cached object, so copy before mutating.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- intentional lazy require: breaks the config -> secrets -> config import cycle (a static import would re-create it at module-load time).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- readEnv is required at call time, NOT to break a cycle: getConfigValue is already statically imported from "../config" at the top of this file, so the config<->secrets cycle is already established and carried safely (providers construct lazily). The lazy require here just keeps readEnv resolution at call time so a test that resets modules (vi.resetModules) re-binds the current ../config. Collapsing it to the static import would also work; kept lazy for the resetModules test path.
     const { readEnv } = require("../config") as typeof import("../config");
     const env = readEnv(profile);
     for (const [k, v] of Object.entries(env)) {

@@ -42,6 +42,13 @@ vi.mock("fs", async () => {
 // the secrets mock always reads the current value. Initialized to empty;
 // each test sets the keys it needs.
 let FAKE_VAULT: Record<string, string> = {};
+// The `.env` layer for the resolvedSecretMap mock below. Kept as an explicit
+// module-level holder (parallel to FAKE_VAULT) rather than re-reading ./config
+// from inside the mock: a runtime require("./config") inside the vi.mock factory
+// does NOT reliably resolve to the test-controlled readEnv mock under vitest, so
+// the .env overlay was silently skipped — which is exactly what let the
+// vault-wins precedence inversion hide (AIR-008). A precedence test sets this.
+let FAKE_ENV: Record<string, string> = {};
 
 vi.mock("./secrets", async () => {
   const actual = await vi.importActual<typeof import("./secrets")>("./secrets");
@@ -56,23 +63,23 @@ vi.mock("./secrets", async () => {
       get: (key: string) => FAKE_VAULT[key] ?? null,
       list: () => ({ ...FAKE_VAULT }),
     }),
-    // Mirror the real helper's order: provider base, .env overlay,
-    // process.env overlay. FAKE_VAULT is the authoritative store; .env is
-    // empty in the vault tests.
-    resolvedSecretMap: (profile?: string) => {
+    // Mirror the real resolvedSecretMap's merge DIRECTION exactly: provider is
+    // the BASE (lowest priority), then .env OVERWRITES it, then process.env
+    // OVERWRITES that — final precedence process.env > .env > provider. A
+    // `!merged[k]` guard here would invert that (vault wins), diverging from
+    // production and silently passing any future conflict test that asserts the
+    // wrong winner (Greptile #650 / AIR-008). FAKE_VAULT is the base, NOT
+    // authoritative — .env/process.env win on conflict.
+    resolvedSecretMap: () => {
+      // Provider (vault) is the BASE; .env overwrites it; process.env overwrites
+      // that — final precedence process.env > .env > provider, matching the real
+      // resolvedSecretMap exactly. No `!merged[k]` guard (that inverts it).
       const merged: Record<string, string> = { ...FAKE_VAULT };
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports -- mirrors the lazy require in the real resolvedSecretMap (config -> secrets -> config cycle).
-        const { readEnv } = require("./config") as typeof import("./config");
-        const env = readEnv(profile);
-        for (const [k, v] of Object.entries(env)) {
-          if (v != null && v !== "" && !merged[k]) merged[k] = v;
-        }
-      } catch {
-        // config not loadable — provider-only view is fine
+      for (const [k, v] of Object.entries(FAKE_ENV)) {
+        if (v != null && v !== "") merged[k] = v;
       }
       for (const [k, v] of Object.entries(process.env)) {
-        if (v != null && v !== "" && !merged[k]) merged[k] = v;
+        if (v != null && v !== "") merged[k] = v;
       }
       return merged;
     },
@@ -87,6 +94,10 @@ import {
   hasOAuthCredentials,
 } from "./config";
 import { runConfigHealthCheck } from "./config-health";
+// The mocked resolvedSecretMap (defined in the vi.mock("./secrets") factory
+// above) — imported so a precedence test can assert the merge WINNER directly,
+// not just key presence (Greptile #650 / AIR-008).
+import { resolvedSecretMap } from "./secrets";
 
 const mockedReadEnv = vi.mocked(readEnv);
 const mockedGetConfigValue = vi.mocked(getConfigValue);
@@ -99,6 +110,7 @@ const mockedHasOAuthCredentials = vi.mocked(hasOAuthCredentials);
 describe("config-health audit — vault awareness", () => {
   beforeEach(() => {
     FAKE_VAULT = {};
+    FAKE_ENV = {};
     mockedReadEnv.mockReset();
     mockedGetConfigValue.mockReset();
     mockedGetModelConfig.mockReset();
@@ -256,6 +268,33 @@ describe("config-health audit — vault awareness", () => {
       FAKE_VAULT = {};
       report = runConfigHealthCheck("default");
       expect(report.issues.map((i) => i.code)).toContain("MODEL_KEY_MISSING");
+    });
+
+    it("resolves precedence process.env > .env > provider on a key CONFLICT (AIR-008)", () => {
+      // Same key present in all three layers with DIFFERENT values. The mock
+      // must reproduce production's merge DIRECTION (provider base, .env and
+      // process.env overwrite) — not a vault-wins inversion. Presence-only
+      // tests can't catch a flipped direction; this asserts the actual winner.
+      FAKE_VAULT = { API_SERVER_KEY: "from-vault" };
+      FAKE_ENV = { API_SERVER_KEY: "from-dotenv" };
+
+      // .env beats vault when process.env is absent.
+      delete process.env.API_SERVER_KEY;
+      expect(resolvedSecretMap("default").API_SERVER_KEY).toBe("from-dotenv");
+
+      // process.env beats both when present.
+      process.env.API_SERVER_KEY = "from-process-env";
+      try {
+        expect(resolvedSecretMap("default").API_SERVER_KEY).toBe(
+          "from-process-env",
+        );
+      } finally {
+        delete process.env.API_SERVER_KEY;
+      }
+
+      // With only the vault set, the vault value is what surfaces (base layer).
+      FAKE_ENV = {};
+      expect(resolvedSecretMap("default").API_SERVER_KEY).toBe("from-vault");
     });
   });
 });

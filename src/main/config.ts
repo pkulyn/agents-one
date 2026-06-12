@@ -736,10 +736,14 @@ export function customEndpointKeyResolvable(
   // Vault-aware: a `command` provider with any of the fallback keys
   // configured in the vault satisfies the requirement too — don't
   // return false and trigger a cascade of "MODEL_KEY_MISSING" / "set up
-  // provider" warnings for a vault-only user. Lazy-import to avoid a
-  // circular dependency at module-load time (config -> secrets -> config).
+  // provider" warnings for a vault-only user. NOTE: ./secrets is already
+  // statically imported at the top of this file, so this lazy require does
+  // NOT break a cycle (the cycle is already established and safe because
+  // secrets constructs its providers lazily). It is required at call time
+  // only so a test that resets modules re-binds the current ./secrets;
+  // collapsing it to the top-level static import would work equally well.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- intentional lazy require: breaks the config -> secrets -> config import cycle (a static import would re-create it at module-load time).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- call-time require (see note above); not a cycle-break — ./secrets is already statically imported at the top of this file.
     const secretsMod = require("./secrets") as typeof import("./secrets");
     const resolved = secretsMod.resolvedSecretMap(profile);
     for (const k of candidates) {
