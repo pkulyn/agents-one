@@ -254,25 +254,14 @@ function Layout({
   }, []);
 
   // Auto-update state
-  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState<
     "available" | "downloading" | "ready" | "error" | null
   >(null);
-  const [downloadPercent, setDownloadPercent] = useState(0);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
-    const cleanupAvailable = window.hermesAPI.onUpdateAvailable((info) => {
-      setUpdateVersion(info.version);
-      setUpdateState("available");
-      setUpdateError(null);
-      setDownloadPercent(0);
-    });
-    const cleanupProgress = window.hermesAPI.onUpdateDownloadProgress(
-      (info) => {
-        setDownloadPercent(info.percent);
-      },
-    );
+    // Updates download silently in the background (autoDownload); we don't
+    // surface "available" or progress — only the ready/error end states.
     const cleanupDownloaded = window.hermesAPI.onUpdateDownloaded(() => {
       setUpdateState("ready");
       setUpdateError(null);
@@ -280,44 +269,40 @@ function Layout({
     const cleanupError = window.hermesAPI.onUpdateError((message) => {
       setUpdateState("error");
       setUpdateError(message);
-      setDownloadPercent(0);
     });
     return () => {
-      cleanupAvailable();
-      cleanupProgress();
       cleanupDownloaded();
       cleanupError();
     };
   }, []);
 
   async function handleUpdate(): Promise<void> {
-    if (updateState === "available" || updateState === "error") {
-      setUpdateError(null);
-      setDownloadPercent(0);
+    if (updateState === "ready") {
+      // The only user action: restart into the already-downloaded update.
+      await window.hermesAPI.installUpdate();
+    } else if (updateState === "error") {
+      // Retry the auto-download that failed.
+      // Set downloading state immediately to prevent re-entrancy (double-click).
       setUpdateState("downloading");
+      setUpdateError(null);
       try {
         const ok = await window.hermesAPI.downloadUpdate();
         if (!ok) setUpdateState("error");
+        // On success, we wait for the onUpdateDownloaded callback to set "ready"
       } catch (err) {
         setUpdateError(err instanceof Error ? err.message : String(err));
         setUpdateState("error");
       }
-    } else if (updateState === "ready") {
-      await window.hermesAPI.installUpdate();
     }
   }
 
   const updateButtonTitle =
     updateError ??
-    (updateState === "available"
-      ? t("common.updateAvailable", { version: updateVersion })
-      : updateState === "downloading"
-        ? t("common.downloading", { percent: downloadPercent })
-        : updateState === "ready"
-          ? t("common.restartToUpdate")
-          : updateState === "error"
-            ? t("common.updateFailed")
-            : undefined);
+    (updateState === "ready"
+      ? t("common.restartToUpdate")
+      : updateState === "error"
+        ? t("common.updateFailed")
+        : undefined);
 
   const handleNewChat = useCallback(() => {
     // Open a fresh run WITHOUT aborting others — any in-flight session keeps
@@ -582,27 +567,18 @@ function Layout({
         </nav>
 
         <div className="sidebar-footer">
-          {updateState && (
+          {/* Downloads happen silently in the background — only surface the
+              button once the update is ready (or if it failed to download). */}
+          {(updateState === "ready" || updateState === "error") && (
             <button
               className={`sidebar-update-btn ${
                 updateState === "error" ? "error" : ""
               }`}
               onClick={handleUpdate}
-              disabled={updateState === "downloading"}
               title={updateButtonTitle}
               aria-label={updateButtonTitle}
             >
               <Download size={13} />
-              {updateState === "available" && (
-                <span>
-                  {t("common.updateAvailable", { version: updateVersion })}
-                </span>
-              )}
-              {updateState === "downloading" && (
-                <span>
-                  {t("common.downloading", { percent: downloadPercent })}
-                </span>
-              )}
               {updateState === "ready" && (
                 <span>{t("common.restartToUpdate")}</span>
               )}
