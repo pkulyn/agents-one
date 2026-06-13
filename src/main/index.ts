@@ -2196,7 +2196,9 @@ function setupUpdater(): void {
   // Log the updater's own lifecycle to <userData>/logs/updater.log so a
   // failed update (e.g. issue #271) leaves something to diagnose.
   autoUpdater.logger = updaterLogger;
-  autoUpdater.autoDownload = false;
+  // Auto-download as soon as an update is found, then surface a single
+  // "Restart to Update" action once it's ready — no manual download step.
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("update-available", (info) => {
