@@ -19,6 +19,7 @@ export interface SshConfig {
 let tunnelProcess: ChildProcess | null = null;
 let activeConfig: SshConfig | null = null;
 let tunnelRunning = false;
+let tunnelStartPromise: Promise<void> | null = null;
 
 export function getSshTunnelUrl(): string | null {
   if (!activeConfig || !tunnelRunning) return null;
@@ -29,10 +30,14 @@ export function isSshTunnelActive(): boolean {
   return tunnelRunning && activeConfig !== null;
 }
 
-function checkTunnelHealth(port: number, timeoutMs = 3000): Promise<boolean> {
+function checkHttpPath(
+  port: number,
+  path: "/health" | "/api/status",
+  timeoutMs = 3000,
+): Promise<boolean> {
   return new Promise((resolve) => {
     const req = http.request(
-      `http://127.0.0.1:${port}/health`,
+      `http://127.0.0.1:${port}${path}`,
       { method: "GET", timeout: timeoutMs },
       (res) => {
         const healthy = res.statusCode === 200;
@@ -47,6 +52,14 @@ function checkTunnelHealth(port: number, timeoutMs = 3000): Promise<boolean> {
     });
     req.end();
   });
+}
+
+async function checkTunnelHealth(
+  port: number,
+  timeoutMs = 3000,
+): Promise<boolean> {
+  if (await checkHttpPath(port, "/health", timeoutMs)) return true;
+  return checkHttpPath(port, "/api/status", timeoutMs);
 }
 
 async function waitForHealth(port: number, timeoutMs: number): Promise<void> {
@@ -106,7 +119,7 @@ function buildSshArgs(config: SshConfig, localPort: number): string[] {
   ];
 }
 
-export async function startSshTunnel(config: SshConfig): Promise<void> {
+async function startSshTunnelInner(config: SshConfig): Promise<void> {
   stopSshTunnel();
 
   const keyPath = config.keyPath?.trim() || join(homedir(), ".ssh", "id_rsa");
@@ -171,13 +184,6 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
 
       if (portOpen) break;
 
-      // If the process exited and we don't have tunnel running, stop polling
-      if (!tunnelProcess && !spawnError) {
-        throw new Error(
-          "SSH tunnel process exited unexpectedly during startup.",
-        );
-      }
-
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
 
@@ -188,6 +194,16 @@ export async function startSshTunnel(config: SshConfig): Promise<void> {
   } catch (err) {
     stopSshTunnel();
     throw err;
+  }
+}
+
+export async function startSshTunnel(config: SshConfig): Promise<void> {
+  if (tunnelStartPromise) return tunnelStartPromise;
+  tunnelStartPromise = startSshTunnelInner(config);
+  try {
+    await tunnelStartPromise;
+  } finally {
+    tunnelStartPromise = null;
   }
 }
 
@@ -228,7 +244,9 @@ export function testSshConnection(config: SshConfig): Promise<boolean> {
 
           const timeout = setTimeout(() => finish(false), 20000);
 
-          // Poll until tunnel port is reachable, then hit /health
+          // Poll until the tunnel port is reachable, then accept either the
+          // legacy API health endpoint or the dashboard status endpoint used by
+          // dashboard-over-SSH.
           const deadline = Date.now() + 15000;
           async function poll(): Promise<void> {
             if (done) return;
@@ -253,24 +271,17 @@ export function testSshConnection(config: SshConfig): Promise<boolean> {
               return;
             }
 
-            // Port is open — hit hermes /health
-            const req = http.request(
-              `http://127.0.0.1:${localPort}/health`,
-              { method: "GET", timeout: 3000 },
-              (res) => {
-                clearTimeout(timeout);
-                finish(res.statusCode === 200);
-                res.resume();
-              },
-            );
-            req.on("error", () => {
+            const healthy = await checkTunnelHealth(localPort, 3000);
+            clearTimeout(timeout);
+            finish(healthy);
+          }
+
+          setTimeout(() => {
+            poll().catch(() => {
               clearTimeout(timeout);
               finish(false);
             });
-            req.end();
-          }
-
-          setTimeout(poll, 600);
+          }, 600);
         }),
     )
     .catch(() => false);

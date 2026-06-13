@@ -5,10 +5,18 @@ import { clearStagedAttachments } from "./attachment-staging";
 import { removeSessionFromCache } from "./session-cache";
 import { getDbConnection } from "./db";
 import {
+  attachmentFromLocalVisionImagePath,
   deletePromptImageAttachmentsForSession,
+  extractLeadingVisionImageFallback,
   loadPromptImageAttachments,
   stripTrailingImagePlaceholders,
 } from "./session-attachment-store";
+import {
+  deleteSessionContinuationForSession,
+  loadSessionContinuationItems,
+  loadSessionLocalErrors,
+  mergeSessionLocalErrors,
+} from "./session-continuation-store";
 
 // Sentinel prefix used by hermes-agent's hermes_state.py to mark
 // JSON-encoded multimodal content in the messages.content column.
@@ -56,6 +64,7 @@ export type HistoryItem =
       id: number;
       content: string;
       timestamp: number;
+      error?: string;
       attachments?: Attachment[];
     }
   | {
@@ -230,6 +239,21 @@ function highlightSessionMatch(
   return highlightTextMatch(fallbackSessionTitle(sessionId), query);
 }
 
+function decodeSearchSnippet(
+  raw: string | null,
+  messageId: number,
+  query: string,
+): string {
+  const decoded = decodeContent(raw || "", messageId).text;
+  const visible = stripTrailingImagePlaceholders(
+    extractLeadingVisionImageFallback(decoded).content,
+  );
+  return highlightTextMatch(visible || decoded || raw || "", query).slice(
+    0,
+    500,
+  );
+}
+
 function getDb(readonly = true): Database.Database | null {
   return getDbConnection(readonly);
 }
@@ -360,8 +384,49 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
         }>)
       : [];
 
+    const messageRows = db
+      .prepare(
+        `SELECT
+          m.id as message_id,
+          m.content,
+          m.session_id,
+          s.title,
+          s.started_at,
+          s.source,
+          s.message_count,
+          s.model
+        FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE LOWER(COALESCE(m.content, '')) LIKE ? ESCAPE '\\'
+        ORDER BY s.started_at DESC, m.timestamp ASC, m.id ASC
+        LIMIT ?`,
+      )
+      .all(
+        `%${escapeLikePattern(trimmedQuery.toLocaleLowerCase())}%`,
+        Math.max(limit * 8, 50),
+      ) as Array<{
+      message_id: number;
+      content: string | null;
+      session_id: string;
+      title: string | null;
+      started_at: number;
+      source: string;
+      message_count: number;
+      model: string;
+    }>;
+
+    const messageMatches = messageRows.map((r) => ({
+      session_id: r.session_id,
+      title: r.title,
+      started_at: r.started_at,
+      source: r.source,
+      message_count: r.message_count,
+      model: r.model,
+      snippet: decodeSearchSnippet(r.content, r.message_id, trimmedQuery),
+    }));
+
     const uniqueRows = dedupeSearchRowsBySession(
-      [...titleMatches, ...ftsRows],
+      [...titleMatches, ...ftsRows, ...messageMatches],
       limit,
     );
     return uniqueRows.map((r) => ({
@@ -565,19 +630,37 @@ export function mergeStoredPromptImageAttachments(
   items: HistoryItem[],
   attachmentsByMessageId: Map<number, Attachment[]>,
 ): HistoryItem[] {
-  if (attachmentsByMessageId.size === 0) return items;
-
   return items.map((item) => {
     if (item.kind !== "user") return item;
+    const fallback = extractLeadingVisionImageFallback(item.content);
     const stored = attachmentsByMessageId.get(item.id);
-    if (!stored || stored.length === 0) return item;
+    const fallbackAttachment = attachmentFromLocalVisionImagePath(
+      fallback.imagePath,
+      `db-fallback-att-${item.id}-0`,
+    );
+    const nextContent = stripTrailingImagePlaceholders(fallback.content);
+    const nextAttachments =
+      item.attachments && item.attachments.length > 0
+        ? item.attachments
+        : stored && stored.length > 0
+          ? stored
+          : fallbackAttachment
+            ? [fallbackAttachment]
+            : undefined;
+
+    if (
+      nextContent === item.content &&
+      (!nextAttachments || nextAttachments === item.attachments)
+    ) {
+      return item;
+    }
+
     return {
       ...item,
-      content: stripTrailingImagePlaceholders(item.content),
-      attachments:
-        item.attachments && item.attachments.length > 0
-          ? item.attachments
-          : stored,
+      content: nextContent,
+      ...(nextAttachments && nextAttachments.length > 0
+        ? { attachments: nextAttachments }
+        : {}),
     };
   });
 }
@@ -598,10 +681,29 @@ export function getSessionMessages(sessionId: string): HistoryItem[] {
     .all(sessionId) as RawMessageRow[];
 
   const items = expandRowsToHistory(rows);
-  return mergeStoredPromptImageAttachments(
+  const canonical = mergeStoredPromptImageAttachments(
     items,
     loadPromptImageAttachments(db, sessionId),
   );
+  return applySessionLocalOverlays(sessionId, canonical, db);
+}
+
+export function applySessionLocalOverlays(
+  sessionId: string,
+  items: HistoryItem[],
+  existingDb?: Database.Database | null,
+): HistoryItem[] {
+  const db = existingDb ?? getDb();
+  if (!db) return items;
+  const canonical = mergeStoredPromptImageAttachments(
+    items,
+    loadPromptImageAttachments(db, sessionId),
+  );
+  const withLocalErrors = mergeSessionLocalErrors(
+    canonical,
+    loadSessionLocalErrors(db, sessionId),
+  );
+  return [...loadSessionContinuationItems(db, sessionId), ...withLocalErrors];
 }
 
 export interface DeleteSessionsResult {
@@ -624,6 +726,7 @@ function normalizeSessionIds(sessionIds: string[]): string[] {
 
 function deleteSessionRows(db: Database.Database, sessionId: string): number {
   deletePromptImageAttachmentsForSession(db, sessionId);
+  deleteSessionContinuationForSession(db, sessionId);
   db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
   const result = db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
   return result.changes;

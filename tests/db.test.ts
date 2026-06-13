@@ -3,14 +3,21 @@ import { getDbConnection, closeDbConnection } from "../src/main/db";
 import { activeStateDbPath } from "../src/main/utils";
 
 // Define hoisted mocks (Vitest allows variables prefixed with 'mock')
-const mockClose = vi.fn();
-const mockDatabaseConstructor = vi.fn().mockImplementation((dbPath, options) => {
-  return {
-    close: mockClose,
-    open: true,
-  };
-});
-const mockExistsSync = vi.fn();
+const { mockClose, mockDatabaseConstructor, mockExistsSync } = vi.hoisted(
+  () => {
+    const mockClose = vi.fn();
+    const mockDatabaseConstructor = vi
+      .fn()
+      .mockImplementation((_dbPath, _options) => {
+        return {
+          close: mockClose,
+          open: true,
+        };
+      });
+    const mockExistsSync = vi.fn();
+    return { mockClose, mockDatabaseConstructor, mockExistsSync };
+  },
+);
 
 vi.mock("better-sqlite3", () => {
   return {
