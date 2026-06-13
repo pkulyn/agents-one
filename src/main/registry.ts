@@ -3,6 +3,7 @@ import { join } from "path";
 import { profileHome, safeWriteFile } from "./utils";
 import { installSkill, listInstalledSkills } from "./skills";
 import { createProfile } from "./profiles";
+import { writeSoul } from "./soul";
 import { listMcpServers } from "./installer";
 import type {
   RegistryKind,
@@ -479,12 +480,34 @@ async function installWorkflow(
 }
 
 /**
+ * Install a registry agent as a new profile. Cloning alone copies the default
+ * persona, so the imported agent looked identical to default — the bug. We
+ * fetch the agent's entry markdown (AGENT.md per the manifest) from the
+ * registry and write it as the new profile's SOUL.md so the persona reflects
+ * the published agent.
+ */
+async function installAgent(item: RegistryItem): Promise<InstallResult> {
+  const created = createProfile(item.id, true);
+  if (!created.success) return created;
+  if (item.path) {
+    const m = await fetchManifest(item.path);
+    const entry = m?.entry || "AGENT.md";
+    const md = await tryFetchText(`${item.path}/${entry}`);
+    if (md && !writeSoul(md, item.id)) {
+      return { success: false, error: "Failed to write agent persona (SOUL.md)" };
+    }
+  }
+  return { success: true };
+}
+
+/**
  * Install/"set up" a catalog item into the active profile.
  *   - skill    → download the entry folder into <profile>/skills/<category>/<id>/
  *                (bundled skills, which carry `source` and no `path`, install
  *                via `hermes skills install <source>`)
  *   - mcp      → append the manifest's server to config.yaml `mcp_servers:`
- *   - agent    → create a cloned profile named after the agent
+ *   - agent    → clone a profile named after the agent and set its SOUL.md
+ *                from the agent's AGENT.md
  *   - workflow → download the entry folder into <profile>/workflows/<id>/
  */
 export async function installRegistryItem(
@@ -501,7 +524,7 @@ export async function installRegistryItem(
       case "mcps":
         return await installMcp(item, profile);
       case "agents":
-        return createProfile(item.id, true);
+        return await installAgent(item);
       case "workflows":
         return await installWorkflow(item, profile);
       default:
