@@ -226,7 +226,7 @@ function App(): React.JSX.Element {
     <ThemeProvider>
       <FontProvider>
         <ErrorBoundary>
-          <div className="app">
+          <div className={`app${isMac ? " is-mac" : ""}`}>
             {isMac && <div className="drag-region" />}
             <div className="app-content">{renderScreen()}</div>
           </div>
