@@ -1,9 +1,17 @@
-import { useState, useCallback, useEffect } from "react";
-import Chat, { ChatMessage } from "../Chat/Chat";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import Chat from "../Chat/Chat";
 import {
   dbItemsToChatMessages,
   type DbHistoryItem,
 } from "../Chat/sessionHistory";
+import {
+  type ChatRun,
+  mintRun,
+  patchRun,
+  findRunBySession,
+  loadingSessionIds as deriveLoadingSessionIds,
+} from "./chatRuns";
+import { ActiveSessionsBar } from "./ActiveSessionsBar";
 import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
 import Discover from "../Discover/Discover";
@@ -95,9 +103,72 @@ function Layout({
 }: LayoutProps = {}): React.JSX.Element {
   const { t } = useI18n();
   const [view, setView] = useState<View>("chat");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // Multiple conversations coexist (background sessions + multi-agent). Each is
+  // a ChatRun; all are mounted, only the active one is shown. `activeProfile`
+  // tracks the selected profile and always equals the active run's profile.
   const [activeProfile, setActiveProfile] = useState("default");
+  const [runs, setRuns] = useState<ChatRun[]>(() => [mintRun("default")]);
+  const [activeRunId, setActiveRunId] = useState<string>(() => runs[0].runId);
+  // While a resume's history is loading, show its spinner immediately.
+  const [resumingSessionId, setResumingSessionId] = useState<string | null>(
+    null,
+  );
+  // Sessions whose resume is in flight — dedupes rapid double-clicks that would
+  // otherwise mount two tabs for the same session (the live check straddles an
+  // await, so it can't rely on `runs` state alone).
+  const resumingRef = useRef<Set<string>>(new Set());
+
+  const currentSessionId =
+    runs.find((r) => r.runId === activeRunId)?.sessionId ?? null;
+
+  const loadingSessionIds = useMemo(
+    () => deriveLoadingSessionIds(runs),
+    [runs],
+  );
+
+  // Per-profile avatar/colour, so the active-sessions bar (which only knows a
+  // run's profile name) can render real avatars. Refreshed when the selected
+  // profile or the current view changes — e.g. after editing on the Agents page.
+  const [profileAppearance, setProfileAppearance] = useState<
+    Record<string, { color?: string | null; avatar?: string | null }>
+  >({});
+  useEffect(() => {
+    let cancelled = false;
+    window.hermesAPI
+      .listProfiles()
+      .then((list) => {
+        if (cancelled) return;
+        const map: Record<string, { color?: string; avatar?: string | null }> =
+          {};
+        for (const p of list)
+          map[p.name] = { color: p.color, avatar: p.avatar };
+        setProfileAppearance(map);
+      })
+      .catch(() => {
+        /* keep last-known appearance */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProfile, view]);
+  const getAppearance = useCallback(
+    (profile: string) => profileAppearance[profile] ?? {},
+    [profileAppearance],
+  );
+
+  // Per-run reporters wired into each <Chat>.
+  const handleRunLoading = useCallback((runId: string, loading: boolean) => {
+    setRuns((prev) => patchRun(prev, runId, { loading }));
+  }, []);
+  const handleRunSessionId = useCallback(
+    (runId: string, sessionId: string | null) => {
+      setRuns((prev) => patchRun(prev, runId, { sessionId }));
+    },
+    [],
+  );
+  const handleRunTitle = useCallback((runId: string, title: string) => {
+    setRuns((prev) => patchRun(prev, runId, { title }));
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
@@ -163,7 +234,16 @@ function Layout({
       .then((profiles) => {
         if (cancelled) return;
         const active = profiles.find((p) => p.isActive);
-        if (active && active.name !== "default") setActiveProfile(active.name);
+        if (active && active.name !== "default") {
+          setActiveProfile(active.name);
+          // Re-home the initial pristine run onto the restored profile so the
+          // first chat runs under the right agent (no session/turn yet).
+          setRuns((prev) =>
+            prev.length === 1 && !prev[0].sessionId && !prev[0].loading
+              ? [{ ...prev[0], profile: active.name }]
+              : prev,
+          );
+        }
       })
       .catch(() => {
         /* fall back to the default profile */
@@ -240,12 +320,20 @@ function Layout({
             : undefined);
 
   const handleNewChat = useCallback(() => {
-    // Abort any in-flight chat before clearing
-    window.hermesAPI.abortChat();
-    setMessages([]);
-    setCurrentSessionId(null);
+    // Open a fresh run WITHOUT aborting others — any in-flight session keeps
+    // streaming in the background and stays reachable via the active bar. If the
+    // current chat is already a blank scratch, reuse it instead of stacking
+    // another empty tab.
+    const active = runs.find((r) => r.runId === activeRunId);
+    if (active && !active.sessionId && !active.loading && !active.title) {
+      goTo("chat");
+      return;
+    }
+    const run = mintRun(activeProfile);
+    setRuns((prev) => [...prev, run]);
+    setActiveRunId(run.runId);
     goTo("chat");
-  }, [goTo]);
+  }, [runs, activeRunId, activeProfile, goTo]);
 
   // Listen for menu IPC events (Cmd+N, Cmd+K from app menu)
   useEffect(() => {
@@ -261,22 +349,118 @@ function Layout({
     };
   }, [handleNewChat, goTo]);
 
-  const handleSelectProfile = useCallback((name: string) => {
-    setActiveProfile(name);
-    setMessages([]);
-    setCurrentSessionId(null);
-  }, []);
+  // A run with no session, not loading and no title hasn't been used yet — a
+  // blank "scratch" chat we can re-home to another agent without spawning a tab.
+  const isScratchRun = (r: ChatRun): boolean =>
+    !r.sessionId && !r.loading && !r.title;
+
+  const handleSelectProfile = useCallback(
+    (name: string) => {
+      // Selecting an agent is administrative: switch the active profile (the
+      // component already started its gateway via setActiveProfile) WITHOUT
+      // starting a conversation. If the current chat is a blank scratch, re-home
+      // it to the new agent so switching never piles up empty tabs; a chat with
+      // content is left intact (start a new one with Chat / New chat).
+      setActiveProfile(name);
+      setRuns((prev) =>
+        prev.map((r) =>
+          r.runId === activeRunId && isScratchRun(r)
+            ? { ...r, profile: name }
+            : r,
+        ),
+      );
+    },
+    [activeRunId],
+  );
+
+  // The "Chat" affordance: start (or reuse a blank) conversation with an agent
+  // and show it. This is the only path from the profile list that opens a chat.
+  const handleChatWithProfile = useCallback(
+    (name: string) => {
+      setActiveProfile(name);
+      const active = runs.find((r) => r.runId === activeRunId);
+      if (active && isScratchRun(active)) {
+        setRuns((prev) =>
+          prev.map((r) =>
+            r.runId === active.runId ? { ...r, profile: name } : r,
+          ),
+        );
+      } else {
+        const run = mintRun(name);
+        setRuns((prev) => [...prev, run]);
+        setActiveRunId(run.runId);
+      }
+      goTo("chat");
+    },
+    [runs, activeRunId, goTo],
+  );
+
+  // Jump to an already-open run (e.g. from the active-sessions bar), switching
+  // the selected profile so the rest of the app follows the agent.
+  const handleActivateRun = useCallback(
+    (runId: string) => {
+      const run = runs.find((r) => r.runId === runId);
+      if (!run) return;
+      setActiveRunId(runId);
+      setActiveProfile(run.profile);
+      goTo("chat");
+    },
+    [runs, goTo],
+  );
+
+  // Close a conversation tab: stop it if it's running, drop it from the list,
+  // and (if it was active) move to a neighbour. Always keep at least one chat
+  // open so the chat view is never empty.
+  const handleCloseRun = useCallback(
+    (runId: string) => {
+      window.hermesAPI.abortChat(runId);
+      const idx = runs.findIndex((r) => r.runId === runId);
+      const remaining = runs.filter((r) => r.runId !== runId);
+      if (remaining.length === 0) {
+        const fresh = mintRun(activeProfile);
+        setRuns([fresh]);
+        setActiveRunId(fresh.runId);
+        return;
+      }
+      setRuns(remaining);
+      if (runId === activeRunId) {
+        const neighbour = remaining[Math.min(idx, remaining.length - 1)];
+        setActiveRunId(neighbour.runId);
+        setActiveProfile(neighbour.profile);
+      }
+    },
+    [runs, activeRunId, activeProfile],
+  );
 
   const handleResumeSession = useCallback(
     async (sessionId: string) => {
-      const items = (await window.hermesAPI.getSessionMessages(
-        sessionId,
-      )) as DbHistoryItem[];
-      setMessages(dbItemsToChatMessages(items));
-      setCurrentSessionId(sessionId);
-      goTo("chat");
+      // Already open as a live run? Re-attach to it (keeps live streaming).
+      const live = findRunBySession(runs, sessionId);
+      if (live) {
+        handleActivateRun(live.runId);
+        return;
+      }
+      // Guard against a double-click resuming the same session twice: the live
+      // check above and the setRuns below straddle an await, so without this a
+      // second click would pass the stale guard and mount a duplicate tab.
+      if (resumingRef.current.has(sessionId)) return;
+      resumingRef.current.add(sessionId);
+      setResumingSessionId(sessionId);
+      try {
+        const items = (await window.hermesAPI.getSessionMessages(
+          sessionId,
+        )) as DbHistoryItem[];
+        const run = mintRun(activeProfile, dbItemsToChatMessages(items));
+        run.sessionId = sessionId;
+        setRuns((prev) => [...prev, run]);
+        setActiveRunId(run.runId);
+        goTo("chat");
+      } finally {
+        resumingRef.current.delete(sessionId);
+        setResumingSessionId(null);
+      }
     },
-    [goTo],
+    [runs, handleActivateRun, activeProfile, goTo],
   );
 
   const toggleSidebar = useCallback(() => {
@@ -373,7 +557,10 @@ function Layout({
                   </div>
                   <SidebarRecentSessions
                     open={sessionsExpanded && !sidebarCollapsed}
+                    activeProfile={activeProfile}
                     currentSessionId={currentSessionId}
+                    loadingSessionIds={loadingSessionIds}
+                    resumingSessionId={resumingSessionId}
                     onSelect={handleResumeSession}
                   />
                 </div>
@@ -440,15 +627,41 @@ function Layout({
             onDismiss={onDismissVerifyWarning}
           />
         )}
+        <ActiveSessionsBar
+          runs={runs}
+          activeRunId={activeRunId}
+          onSelect={handleActivateRun}
+          onClose={handleCloseRun}
+          getAppearance={getAppearance}
+        />
         <div style={paneStyle("chat")}>
-          <Chat
-            messages={messages}
-            setMessages={setMessages}
-            sessionId={currentSessionId}
-            profile={activeProfile}
-            onNewChat={handleNewChat}
-            onOpenDiagnose={() => goTo("settings")}
-          />
+          {runs.map((run) => (
+            <div
+              key={run.runId}
+              style={{
+                display:
+                  view === "chat" && run.runId === activeRunId
+                    ? "flex"
+                    : "none",
+                flex: 1,
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              <Chat
+                runId={run.runId}
+                initialMessages={run.seed}
+                initialSessionId={run.sessionId}
+                active={run.runId === activeRunId}
+                profile={run.profile}
+                onNewChat={handleNewChat}
+                onOpenDiagnose={() => goTo("settings")}
+                onLoadingChange={handleRunLoading}
+                onSessionIdChange={handleRunSessionId}
+                onTitleChange={handleRunTitle}
+              />
+            </div>
+          ))}
         </div>
 
         {visitedViews.has("sessions") && (
@@ -488,10 +701,7 @@ function Layout({
               <Agents
                 activeProfile={activeProfile}
                 onSelectProfile={handleSelectProfile}
-                onChatWith={(name: string) => {
-                  handleSelectProfile(name);
-                  goTo("chat");
-                }}
+                onChatWith={handleChatWithProfile}
               />
             )}
           </div>

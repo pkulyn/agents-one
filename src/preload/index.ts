@@ -287,6 +287,7 @@ const hermesAPI = {
     history?: Array<{ role: string; content: string }>,
     attachments?: Attachment[],
     contextFolder?: string,
+    runId?: string,
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -296,9 +297,11 @@ const hermesAPI = {
       history,
       attachments,
       contextFolder,
+      runId,
     ),
 
-  abortChat: (): Promise<void> => ipcRenderer.invoke("abort-chat"),
+  abortChat: (runId?: string): Promise<void> =>
+    ipcRenderer.invoke("abort-chat", runId),
 
   transcribeAudio: (
     audio: Uint8Array,
@@ -388,9 +391,14 @@ const hermesAPI = {
       profile,
     ),
 
-  onChatChunk: (callback: (chunk: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, chunk: string): void =>
-      callback(chunk);
+  onChatChunk: (
+    callback: (runId: string, chunk: string) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      runId: string,
+      chunk: string,
+    ): void => callback(runId, chunk);
     ipcRenderer.on("chat-chunk", handler);
     return () => ipcRenderer.removeListener("chat-chunk", handler);
   },
@@ -398,18 +406,26 @@ const hermesAPI = {
   /** Streaming reasoning / thinking tokens — separate from `onChatChunk`
    *  so the renderer can render a "thinking" bubble that grows
    *  independently of the assistant's content (#352). */
-  onChatReasoningChunk: (callback: (chunk: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, chunk: string): void =>
-      callback(chunk);
+  onChatReasoningChunk: (
+    callback: (runId: string, chunk: string) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      runId: string,
+      chunk: string,
+    ): void => callback(runId, chunk);
     ipcRenderer.on("chat-reasoning-chunk", handler);
     return () => ipcRenderer.removeListener("chat-reasoning-chunk", handler);
   },
 
-  onChatDone: (callback: (sessionId?: string) => void): (() => void) => {
+  onChatDone: (
+    callback: (runId: string, sessionId?: string) => void,
+  ): (() => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
+      runId: string,
       sessionId?: string,
-    ): void => callback(sessionId);
+    ): void => callback(runId, sessionId);
     ipcRenderer.on("chat-done", handler);
     return () => ipcRenderer.removeListener("chat-done", handler);
   },
@@ -437,54 +453,62 @@ const hermesAPI = {
       ipcRenderer.removeListener("context-menu-select-bubble", handler);
   },
 
-  onChatToolProgress: (callback: (tool: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, tool: string): void =>
-      callback(tool);
+  onChatToolProgress: (
+    callback: (runId: string, tool: string) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      runId: string,
+      tool: string,
+    ): void => callback(runId, tool);
     ipcRenderer.on("chat-tool-progress", handler);
     return () => ipcRenderer.removeListener("chat-tool-progress", handler);
   },
 
-  onChatToolEvent: (callback: (event: ChatToolEvent) => void): (() => void) => {
+  onChatToolEvent: (
+    callback: (runId: string, event: ChatToolEvent) => void,
+  ): (() => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
+      runId: string,
       toolEvent: ChatToolEvent,
-    ): void => callback(toolEvent);
+    ): void => callback(runId, toolEvent);
     ipcRenderer.on("chat-tool-event", handler);
     return () => ipcRenderer.removeListener("chat-tool-event", handler);
   },
 
   onChatUsage: (
-    callback: (usage: {
-      promptTokens: number;
-      completionTokens: number;
-      totalTokens: number;
-      cost?: number;
-      rateLimitRemaining?: number;
-      rateLimitReset?: number;
-      cacheReadTokens?: number;
-      cacheWriteTokens?: number;
-    }) => void,
+    callback: (
+      runId: string,
+      usage: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        cost?: number;
+        rateLimitRemaining?: number;
+        rateLimitReset?: number;
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+      },
+    ) => void,
   ): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, usage: unknown): void =>
-      callback(
-        usage as {
-          promptTokens: number;
-          completionTokens: number;
-          totalTokens: number;
-          cost?: number;
-          rateLimitRemaining?: number;
-          rateLimitReset?: number;
-          cacheReadTokens?: number;
-          cacheWriteTokens?: number;
-        },
-      );
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      runId: string,
+      usage: unknown,
+    ): void => callback(runId, usage as Parameters<typeof callback>[1]);
     ipcRenderer.on("chat-usage", handler);
     return () => ipcRenderer.removeListener("chat-usage", handler);
   },
 
-  onChatError: (callback: (error: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, error: string): void =>
-      callback(error);
+  onChatError: (
+    callback: (runId: string, error: string) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      runId: string,
+      error: string,
+    ): void => callback(runId, error);
     ipcRenderer.on("chat-error", handler);
     return () => ipcRenderer.removeListener("chat-error", handler);
   },
@@ -492,16 +516,20 @@ const hermesAPI = {
   /** The agent asked a clarifying question mid-turn. The renderer shows an
    *  inline card and answers via `respondClarify`. */
   onClarifyRequest: (
-    callback: (req: {
-      requestId: string;
-      question: string;
-      choices: string[];
-    }) => void,
+    callback: (
+      runId: string,
+      req: {
+        requestId: string;
+        question: string;
+        choices: string[];
+      },
+    ) => void,
   ): (() => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
+      runId: string,
       req: { requestId: string; question: string; choices: string[] },
-    ): void => callback(req);
+    ): void => callback(runId, req);
     ipcRenderer.on("chat-clarify-request", handler);
     return () => ipcRenderer.removeListener("chat-clarify-request", handler);
   },
@@ -586,6 +614,8 @@ const hermesAPI = {
       hasSoul: boolean;
       skillCount: number;
       gatewayRunning: boolean;
+      color?: string;
+      avatar?: string | null;
     }>
   > => ipcRenderer.invoke("list-profiles"),
 
@@ -602,6 +632,23 @@ const hermesAPI = {
 
   setActiveProfile: (name: string): Promise<boolean> =>
     ipcRenderer.invoke("set-active-profile", name),
+
+  setProfileColor: (
+    name: string,
+    color: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("set-profile-color", name, color),
+
+  setProfileAvatar: (
+    name: string,
+    dataUrl: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("set-profile-avatar", name, dataUrl),
+
+  removeProfileAvatar: (
+    name: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("remove-profile-avatar", name),
 
   // Memory
   readMemory: (
