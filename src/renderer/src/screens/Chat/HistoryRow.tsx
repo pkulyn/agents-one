@@ -231,10 +231,11 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
           />
           {active ? (
             <Grid
+              visible={true}
               height={13}
               width={13}
-              radius={0}
-              color="var(--info, #4aa8ff)"
+              radius={15}
+              color="#4aa8ff"
               ariaLabel="tool-loading"
               wrapperClass="chat-tool-group-spinner"
             />

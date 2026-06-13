@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Zap } from "lucide-react";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatHeader } from "./ChatHeader";
 import { ChatEmptyState } from "./ChatEmptyState";
@@ -433,9 +434,7 @@ function Chat({
       <ChatHeader
         sessionId={sessionId}
         usage={usage}
-        fastMode={fastMode}
         hasMessages={messages.length > 0}
-        onToggleFast={toggleFastMode}
         onNewChat={onNewChat}
         onClear={handleClear}
       />
@@ -493,6 +492,25 @@ function Chat({
                 value={reasoningEffort}
                 onChange={setReasoningEffort}
               />
+              <div className="chat-fast-wrapper">
+                <button
+                  type="button"
+                  className={`btn-ghost chat-fast-btn ${fastMode ? "chat-fast-active" : ""}`}
+                  onClick={toggleFastMode}
+                >
+                  <Zap size={14} />
+                </button>
+                <div className="chat-fast-popover">
+                  <strong>
+                    {fastMode ? t("chat.fastModeOn") : t("chat.fastMode")}
+                  </strong>
+                  <span>
+                    {fastMode
+                      ? t("chat.fastModeActive")
+                      : t("chat.fastModeInactive")}
+                  </span>
+                </div>
+              </div>
               <ContextFolderChip
                 contextFolder={contextFolder}
                 show={!remoteMode}

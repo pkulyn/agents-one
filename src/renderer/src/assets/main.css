@@ -2465,7 +2465,7 @@ body {
 .chat-fast-popover {
   display: none;
   position: absolute;
-  top: calc(100% + 8px);
+  bottom: calc(100% + 8px);
   right: 0;
   z-index: 100;
   width: 220px;

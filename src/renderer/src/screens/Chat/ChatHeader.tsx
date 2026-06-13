@@ -1,14 +1,12 @@
 import { memo } from "react";
-import { Trash2 as Trash, Plus, Zap } from "lucide-react";
+import { Trash2 as Trash, Plus } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import type { UsageState } from "./types";
 
 interface ChatHeaderProps {
   sessionId: string | null;
   usage: UsageState | null;
-  fastMode: boolean;
   hasMessages: boolean;
-  onToggleFast: () => void;
   onNewChat?: () => void;
   onClear: () => void;
 }
@@ -32,9 +30,7 @@ function UsageBadge({ usage }: { usage: UsageState }): React.JSX.Element {
 export const ChatHeader = memo(function ChatHeader({
   sessionId,
   usage,
-  fastMode,
   hasMessages,
-  onToggleFast,
   onNewChat,
   onClear,
 }: ChatHeaderProps): React.JSX.Element {
@@ -51,22 +47,6 @@ export const ChatHeader = memo(function ChatHeader({
         {usage && <UsageBadge usage={usage} />}
       </div>
       <div className="chat-header-actions">
-        <div className="chat-fast-wrapper">
-          <button
-            className={`btn-ghost chat-fast-btn ${fastMode ? "chat-fast-active" : ""}`}
-            onClick={onToggleFast}
-          >
-            <Zap size={14} />
-          </button>
-          <div className="chat-fast-popover">
-            <strong>
-              {fastMode ? t("chat.fastModeOn") : t("chat.fastMode")}
-            </strong>
-            <span>
-              {fastMode ? t("chat.fastModeActive") : t("chat.fastModeInactive")}
-            </span>
-          </div>
-        </div>
         {onNewChat && (
           <button
             className="btn-ghost chat-clear-btn"
