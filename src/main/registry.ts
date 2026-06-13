@@ -493,7 +493,9 @@ async function installAgent(item: RegistryItem): Promise<InstallResult> {
     const m = await fetchManifest(item.path);
     const entry = m?.entry || "AGENT.md";
     const md = await tryFetchText(`${item.path}/${entry}`);
-    if (md) writeSoul(md, item.id);
+    if (md && !writeSoul(md, item.id)) {
+      return { success: false, error: "Failed to write agent persona (SOUL.md)" };
+    }
   }
   return { success: true };
 }
