@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, ChevronDown, Settings } from "../../assets/icons";
+import { ChevronDown, Settings } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
+import ProfileAvatar from "../../components/common/ProfileAvatar";
 
 interface ProfileInfo {
   name: string;
@@ -9,6 +10,8 @@ interface ProfileInfo {
   model: string;
   skillCount: number;
   gatewayRunning: boolean;
+  color?: string;
+  avatar?: string | null;
 }
 
 interface ProfileSwitcherProps {
@@ -79,9 +82,7 @@ export default function ProfileSwitcher({
 
   const label =
     activeProfile === "default" ? t("common.appName") : activeProfile;
-  const activeRunning = profiles.find(
-    (p) => p.name === activeProfile,
-  )?.gatewayRunning;
+  const activeInfo = profiles.find((p) => p.name === activeProfile);
 
   async function handleSelect(name: string): Promise<void> {
     setOpen(false);
@@ -109,7 +110,12 @@ export default function ProfileSwitcher({
                 {active && (
                   <div className="profile-menu-active-section">
                     <div className="profile-menu-avatar">
-                      {active.name.charAt(0).toUpperCase()}
+                      <ProfileAvatar
+                        name={active.name}
+                        color={active.color}
+                        avatar={active.avatar}
+                        size={32}
+                      />
                       {active.gatewayRunning && (
                         <span className="profile-menu-avatar-dot" />
                       )}
@@ -144,10 +150,11 @@ export default function ProfileSwitcher({
                           aria-checked={false}
                           onClick={() => handleSelect(p.name)}
                         >
-                          <Bot
-                            size={16}
-                            className={`profile-icon ${p.gatewayRunning ? "running" : ""}`}
-                            aria-hidden
+                          <ProfileAvatar
+                            name={p.name}
+                            color={p.color}
+                            avatar={p.avatar}
+                            size={20}
                           />
                           <span className="profile-menu-info">
                             <span className="profile-menu-name">
@@ -196,10 +203,11 @@ export default function ProfileSwitcher({
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <Bot
-          size={16}
-          className={`profile-icon ${activeRunning ? "running" : ""}`}
-          aria-hidden
+        <ProfileAvatar
+          name={activeProfile}
+          color={activeInfo?.color}
+          avatar={activeInfo?.avatar}
+          size={compact ? 22 : 18}
         />
         {!compact && <span className="profile-switcher-name">{label}</span>}
         {!compact && (

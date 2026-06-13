@@ -24,4 +24,16 @@ export default {
   manageProfiles: "Manage profiles",
   switchProfile: "Switch profile",
   defaultTag: "default",
+  editAppearance: "Edit profile",
+  editAppearanceFor: "Edit {{name}}",
+  color: "Color",
+  dangerZone: "Danger zone",
+  deleteProfile: "Delete profile",
+  deleteProfileInfo:
+    "Deleting this profile permanently removes its config, memory, chat sessions, skills, and API keys. This can't be undone.",
+  deleteProfileConfirm:
+    "Delete this profile permanently? This can't be undone.",
+  edit: "Edit",
+  uploadImage: "Upload image",
+  removeImage: "Remove image",
 } as const;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, memo } from "react";
 import { useI18n } from "../../components/useI18n";
-import { Circle } from "../../assets/icons";
+import { Circle, Spinner } from "../../assets/icons";
 
 interface RecentSession {
   id: string;
@@ -41,11 +41,20 @@ function sameSessions(a: RecentSession[], b: RecentSession[]): boolean {
  */
 const SidebarRecentSessions = memo(function SidebarRecentSessions({
   open,
+  activeProfile,
   currentSessionId,
+  loadingSessionIds,
+  resumingSessionId,
   onSelect,
 }: {
   open: boolean;
+  /** Active profile — the list is per-profile, so switching forces a reload. */
+  activeProfile: string;
   currentSessionId: string | null;
+  /** Session ids of every run currently generating (multiple run at once). */
+  loadingSessionIds: Set<string>;
+  /** A session whose history is being fetched for resume (transient spinner). */
+  resumingSessionId: string | null;
   onSelect: (sessionId: string) => void;
 }): React.JSX.Element | null {
   const { t } = useI18n();
@@ -130,6 +139,15 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     if (open) void refresh();
   }, [open, currentSessionId, refresh]);
 
+  // Switching agent points the list at a different profile's DB. Force a
+  // reload immediately (bypassing the throttle) so the list isn't stale.
+  const prevProfileRef = useRef(activeProfile);
+  useEffect(() => {
+    if (prevProfileRef.current === activeProfile) return;
+    prevProfileRef.current = activeProfile;
+    void refresh(true);
+  }, [activeProfile, refresh]);
+
   // Keep the wrapper mounted so the collapse/expand animates (CSS grid-rows
   // trick). Returning null would make it pop in/out. Effects above are still
   // gated on `open`, so a closed section does no fetching — it just keeps the
@@ -147,18 +165,32 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       <div className="sidebar-recent-sessions">
         {sessions.map((s) => {
           const title = s.title || t("sessions.newConversation");
+          const loading =
+            resumingSessionId === s.id || loadingSessionIds.has(s.id);
+          const active = !loading && currentSessionId === s.id;
           return (
             <button
               key={s.id}
               type="button"
-              className={`sidebar-recent-session ${
-                currentSessionId === s.id ? "active" : ""
-              }`}
+              className={`sidebar-recent-session ${active ? "active" : ""}`}
               onClick={() => onSelect(s.id)}
               title={title}
               tabIndex={expanded ? 0 : -1}
             >
-              <Circle className="sidebar-recent-session-dot" size={7} />
+              {loading ? (
+                <Spinner
+                  className="sidebar-recent-session-dot sidebar-recent-session-dot--loading"
+                  size={11}
+                />
+              ) : (
+                <Circle
+                  className={`sidebar-recent-session-dot ${
+                    active ? "sidebar-recent-session-dot--active" : ""
+                  }`}
+                  size={7}
+                  fill={active ? "currentColor" : "none"}
+                />
+              )}
               <span className="sidebar-recent-session-title">{title}</span>
             </button>
           );
