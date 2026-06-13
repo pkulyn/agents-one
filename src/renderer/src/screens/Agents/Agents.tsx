@@ -59,7 +59,8 @@ function Agents({
     setProfiles((cur) =>
       cur.map((p) => (p.name === name ? { ...p, color } : p)),
     );
-    await window.hermesAPI.setProfileColor(name, color);
+    const result = await window.hermesAPI.setProfileColor(name, color);
+    if (!result.success) setError(result.error || t("agents.appearanceFailed"));
     loadProfiles();
   }
 
@@ -77,15 +78,17 @@ function Agents({
     try {
       const dataUrl = await fileToAvatarDataUrl(file);
       const result = await window.hermesAPI.setProfileAvatar(name, dataUrl);
-      if (!result.success) setError(result.error || t("agents.createFailed"));
+      if (!result.success)
+        setError(result.error || t("agents.uploadImageFailed"));
     } catch {
-      setError(t("agents.createFailed"));
+      setError(t("agents.uploadImageFailed"));
     }
     loadProfiles();
   }
 
   async function handleRemoveAvatar(name: string): Promise<void> {
-    await window.hermesAPI.removeProfileAvatar(name);
+    const result = await window.hermesAPI.removeProfileAvatar(name);
+    if (!result.success) setError(result.error || t("agents.appearanceFailed"));
     loadProfiles();
   }
 

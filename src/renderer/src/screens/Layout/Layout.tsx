@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import Chat from "../Chat/Chat";
 import {
   dbItemsToChatMessages,
@@ -113,6 +113,10 @@ function Layout({
   const [resumingSessionId, setResumingSessionId] = useState<string | null>(
     null,
   );
+  // Sessions whose resume is in flight — dedupes rapid double-clicks that would
+  // otherwise mount two tabs for the same session (the live check straddles an
+  // await, so it can't rely on `runs` state alone).
+  const resumingRef = useRef<Set<string>>(new Set());
 
   const currentSessionId =
     runs.find((r) => r.runId === activeRunId)?.sessionId ?? null;
@@ -436,6 +440,11 @@ function Layout({
         handleActivateRun(live.runId);
         return;
       }
+      // Guard against a double-click resuming the same session twice: the live
+      // check above and the setRuns below straddle an await, so without this a
+      // second click would pass the stale guard and mount a duplicate tab.
+      if (resumingRef.current.has(sessionId)) return;
+      resumingRef.current.add(sessionId);
       setResumingSessionId(sessionId);
       try {
         const items = (await window.hermesAPI.getSessionMessages(
@@ -447,6 +456,7 @@ function Layout({
         setActiveRunId(run.runId);
         goTo("chat");
       } finally {
+        resumingRef.current.delete(sessionId);
         setResumingSessionId(null);
       }
     },

@@ -36,4 +36,6 @@ export default {
   edit: "Edit",
   uploadImage: "Upload image",
   removeImage: "Remove image",
+  uploadImageFailed: "Couldn't set the profile image",
+  appearanceFailed: "Couldn't update the profile appearance",
 } as const;
