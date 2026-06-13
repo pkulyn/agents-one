@@ -788,6 +788,8 @@ const hermesAPI = {
     profile?: string,
   ): Promise<Record<string, Array<CredentialPoolEntry>>> =>
     ipcRenderer.invoke("get-credential-pool", profile),
+  invalidateSecretsCache: (): Promise<void> =>
+    ipcRenderer.invoke("invalidate-secrets-cache"),
   setCredentialPool: (
     provider: string,
     entries: Array<CredentialPoolEntry>,

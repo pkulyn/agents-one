@@ -403,20 +403,8 @@ export function reconcileStreamedWithDb(
   // Interleave unconsumed streamed messages at their correct chronological
   // positions instead of dumping them all into a suffix (which caused messages
   // from the *middle* of the conversation to jump to the bottom — issue #431).
-  //
-  // Strategy: unconsumed messages that appear BEFORE the last consumed streamed
-  // message are interleaved at their correct position.  Unconsumed messages
-  // AFTER the last consumed message (e.g. error bubbles, renderer-only warnings)
-  // are deferred to a trailing suffix — matching the original behavior.
   const merged: ChatMessage[] = [];
   let resultIdx = 0;
-  const trailingSuffix: ChatMessage[] = [];
-
-  // Find the last streamed index that was consumed (matched a DB row).
-  let lastConsumedStreamIdx = -1;
-  for (let i = 0; i < streamed.length; i++) {
-    if (consumedIds.has(streamed[i].id)) lastConsumedStreamIdx = i;
-  }
 
   for (let si = 0; si < streamed.length; si++) {
     const sm = streamed[si];
@@ -430,21 +418,8 @@ export function reconcileStreamedWithDb(
         }
       }
     } else if (shouldKeepUnconsumed(sm)) {
-      // Only interleave bubble messages (user/agent content) at their
-      // correct chronological positions.  Non-bubble rows (synthetic
-      // tool_call / tool_result / reasoning) that survive dedup are
-      // always deferred to the trailing suffix — matching the original
-      // behavior where they land after all DB result rows.
-      const isBubble = !("kind" in sm);
-      if (
-        isBubble &&
-        lastConsumedStreamIdx >= 0 &&
-        si <= lastConsumedStreamIdx
-      ) {
-        merged.push(sm);
-      } else {
-        trailingSuffix.push(sm);
-      }
+      // Unconsumed streamed message — insert at current chronological slot.
+      merged.push(sm);
     }
   }
 
@@ -454,9 +429,6 @@ export function reconcileStreamedWithDb(
     merged.push(result[resultIdx]);
     resultIdx++;
   }
-
-  // Append trailing suffix (renderer-only bubbles past the last consumed msg).
-  for (const m of trailingSuffix) merged.push(m);
 
   // Reposition inline clarify cards to their original chronological slot.
   // A clarify card is renderer-only — it's never written to state.db, so it

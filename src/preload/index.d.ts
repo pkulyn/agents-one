@@ -663,6 +663,7 @@ interface HermesAPI {
     label: string,
     profile?: string,
   ) => Promise<Array<CredentialPoolEntry>>;
+  invalidateSecretsCache: () => Promise<void>;
 
   // Models
   listModels: () => Promise<
