@@ -29,6 +29,7 @@ import {
 import { DEFAULT_MESSAGING_PLATFORM_TOOLSETS } from "../shared/messaging-platforms";
 import type { SavedModel } from "./models";
 import type { MemoryProviderInfo } from "./installer";
+import { parseMemoryLimitsConfig, type MemoryLimits } from "./memory-limits";
 import { t } from "../shared/i18n";
 import { getAppLocale } from "./locale";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
@@ -372,8 +373,6 @@ export async function sshListBundledSkills(
 // ── Memory ───────────────────────────────────────────────────────────────────
 
 const ENTRY_DELIMITER = "\n§\n";
-const MEMORY_CHAR_LIMIT = 2200;
-const USER_CHAR_LIMIT = 1375;
 
 function parseMemoryEntries(
   content: string,
@@ -403,6 +402,14 @@ function remoteUserPath(profile?: string): string {
     return `~/.hermes/profiles/${profile}/memories/USER.md`;
   }
   return "~/.hermes/memories/USER.md";
+}
+
+async function sshReadMemoryLimits(
+  config: SshConfig,
+  profile?: string,
+): Promise<MemoryLimits> {
+  const content = await sshReadFile(config, remoteConfigPath(profile));
+  return parseMemoryLimitsConfig(content);
 }
 
 async function sshGetSessionStats(
@@ -439,9 +446,12 @@ export async function sshReadMemory(
   config: SshConfig,
   profile?: string,
 ): Promise<MemoryInfo> {
-  const memContent = await sshReadFile(config, remoteMemoryPath(profile));
-  const userContent = await sshReadFile(config, remoteUserPath(profile));
-  const stats = await sshGetSessionStats(config, profile);
+  const [memContent, userContent, stats, limits] = await Promise.all([
+    sshReadFile(config, remoteMemoryPath(profile)),
+    sshReadFile(config, remoteUserPath(profile)),
+    sshGetSessionStats(config, profile),
+    sshReadMemoryLimits(config, profile),
+  ]);
 
   return {
     memory: {
@@ -450,14 +460,14 @@ export async function sshReadMemory(
       lastModified: null,
       entries: parseMemoryEntries(memContent),
       charCount: memContent.length,
-      charLimit: MEMORY_CHAR_LIMIT,
+      charLimit: limits.memoryCharLimit,
     },
     user: {
       content: userContent,
       exists: userContent.length > 0,
       lastModified: null,
       charCount: userContent.length,
-      charLimit: USER_CHAR_LIMIT,
+      charLimit: limits.userCharLimit,
     },
     stats,
   };
@@ -468,16 +478,19 @@ export async function sshAddMemoryEntry(
   content: string,
   profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const current = await sshReadFile(config, remoteMemoryPath(profile));
+  const [current, limits] = await Promise.all([
+    sshReadFile(config, remoteMemoryPath(profile)),
+    sshReadMemoryLimits(config, profile),
+  ]);
   const entries = parseMemoryEntries(current);
   const newContent = serializeEntries([
     ...entries,
     { index: entries.length, content: content.trim() },
   ]);
-  if (newContent.length > MEMORY_CHAR_LIMIT) {
+  if (newContent.length > limits.memoryCharLimit) {
     return {
       success: false,
-      error: `Would exceed memory limit (${newContent.length}/${MEMORY_CHAR_LIMIT} chars)`,
+      error: `Would exceed memory limit (${newContent.length}/${limits.memoryCharLimit} chars)`,
     };
   }
   await sshWriteFile(config, remoteMemoryPath(profile), newContent);
@@ -490,16 +503,19 @@ export async function sshUpdateMemoryEntry(
   content: string,
   profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const current = await sshReadFile(config, remoteMemoryPath(profile));
+  const [current, limits] = await Promise.all([
+    sshReadFile(config, remoteMemoryPath(profile)),
+    sshReadMemoryLimits(config, profile),
+  ]);
   const entries = parseMemoryEntries(current);
   if (index < 0 || index >= entries.length)
     return { success: false, error: "Entry not found" };
   entries[index] = { ...entries[index], content: content.trim() };
   const newContent = serializeEntries(entries);
-  if (newContent.length > MEMORY_CHAR_LIMIT) {
+  if (newContent.length > limits.memoryCharLimit) {
     return {
       success: false,
-      error: `Would exceed memory limit (${newContent.length}/${MEMORY_CHAR_LIMIT} chars)`,
+      error: `Would exceed memory limit (${newContent.length}/${limits.memoryCharLimit} chars)`,
     };
   }
   await sshWriteFile(config, remoteMemoryPath(profile), newContent);
@@ -528,10 +544,11 @@ export async function sshWriteUserProfile(
   content: string,
   profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (content.length > USER_CHAR_LIMIT) {
+  const limits = await sshReadMemoryLimits(config, profile);
+  if (content.length > limits.userCharLimit) {
     return {
       success: false,
-      error: `Exceeds limit (${content.length}/${USER_CHAR_LIMIT} chars)`,
+      error: `Exceeds limit (${content.length}/${limits.userCharLimit} chars)`,
     };
   }
   await sshWriteFile(config, remoteUserPath(profile), content);
