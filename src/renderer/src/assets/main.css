@@ -1870,6 +1870,21 @@ body {
   color: var(--text-muted);
 }
 
+.profile-menu-gateway {
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+.profile-menu-gateway.active {
+  background: var(--success);
+  opacity: 1;
+}
+
 .profile-menu-meta {
   font-size: 11px;
   color: var(--text-muted);
