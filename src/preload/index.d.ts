@@ -368,6 +368,7 @@ interface HermesAPI {
     attachments?: Attachment[],
     contextFolder?: string,
     runId?: string,
+    modelOverride?: string,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: (runId?: string) => Promise<void>;
   transcribeAudio: (
@@ -744,16 +745,22 @@ interface HermesAPI {
     provider: string,
     model: string,
     baseUrl: string,
+    contextLength?: number,
   ) => Promise<{
     id: string;
     name: string;
     provider: string;
     model: string;
     baseUrl: string;
+    contextLength?: number;
     createdAt: number;
   }>;
   removeModel: (id: string) => Promise<boolean>;
-  updateModel: (id: string, fields: Record<string, string>) => Promise<boolean>;
+  updateModel: (
+    id: string,
+    fields: Record<string, string>,
+    contextLength?: number | null,
+  ) => Promise<boolean>;
   onModelLibraryChanged: (callback: () => void) => () => void;
 
   // Claw3D

@@ -10,7 +10,7 @@ import { ContextFolderChip } from "./ContextFolderChip";
 import { WorktreePanel } from "./WorktreePanel";
 import { useChatScroll } from "./hooks/useChatScroll";
 import { useChatIPC } from "./hooks/useChatIPC";
-import { useChatActions } from "./hooks/useChatActions";
+import { useChatActions, parseBackgroundCommand } from "./hooks/useChatActions";
 import { useModelConfig } from "./hooks/useModelConfig";
 import { useFastMode } from "./hooks/useFastMode";
 import { useReasoningEffort } from "./hooks/useReasoningEffort";
@@ -118,6 +118,13 @@ function Chat({
   // Whether the worktree panel is visible (only applies when contextFolder is set)
   // Default false so the panel doesn't open automatically and interfere with scrolling
   const [worktreeVisible, setWorktreeVisible] = useState<boolean>(false);
+  // Explicit session-scoped model override — set only when the user picks
+  // from the chat-screen picker (persist:false). Undefined until then so the
+  // TUI gateway bypass in sendMessageViaBestApi is not triggered for normal
+  // chats where the user never changed the model (issue #688).
+  const [sessionModelOverride, setSessionModelOverride] = useState<
+    string | undefined
+  >(undefined);
   const dragCounter = useRef(0);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const queueRef = useRef<QueuedMessage[]>([]);
@@ -142,8 +149,8 @@ function Chat({
             conn.mode === "local"
               ? "auto"
               : conn.mode === "ssh"
-              ? conn.sshChatTransport ?? "auto"
-              : conn.remoteChatTransport ?? "auto",
+                ? (conn.sshChatTransport ?? "auto")
+                : (conn.remoteChatTransport ?? "auto"),
           );
         }
       } catch {
@@ -165,8 +172,8 @@ function Chat({
         conn.mode === "local"
           ? "auto"
           : conn.mode === "ssh"
-          ? conn.sshChatTransport ?? "auto"
-          : conn.remoteChatTransport ?? "auto",
+            ? (conn.sshChatTransport ?? "auto")
+            : (conn.remoteChatTransport ?? "auto"),
       );
     });
     return (): void => {
@@ -252,8 +259,7 @@ function Chat({
     modelConfig.currentBaseUrl,
   ]);
 
-  const visibleSessionScopeId =
-    messages.length === 0 ? null : hermesSessionId;
+  const visibleSessionScopeId = messages.length === 0 ? null : hermesSessionId;
 
   useChatIPC({
     runId,
@@ -418,6 +424,13 @@ function Chat({
     onDashboardUnavailable: handleDashboardUnavailable,
   });
 
+  // Defer a message onto the busy queue (used when a slash command resolves to
+  // an agent prompt while a turn is already in flight).
+  const enqueueMessage = useCallback((text: string) => {
+    queueRef.current.push({ text, attachments: [] });
+    setQueuedMessages([...queueRef.current]);
+  }, []);
+
   const actions = useChatActions({
     runId,
     profile,
@@ -431,9 +444,18 @@ function Chat({
     localCommands,
     activeTurnRef,
     contextFolder,
+    sessionModel: sessionModelOverride,
     sendViaDashboard: dashboardTransport.enabled
       ? dashboardTransport.sendMessage
       : undefined,
+    execSlashViaDashboard: dashboardTransport.enabled
+      ? dashboardTransport.execSlash
+      : undefined,
+    runBackgroundViaDashboard: dashboardTransport.enabled
+      ? dashboardTransport.runBackground
+      : undefined,
+    addAgentMessage,
+    enqueueMessage,
     abortDashboard: dashboardTransport.enabled
       ? dashboardTransport.abort
       : undefined,
@@ -442,8 +464,10 @@ function Chat({
   // Stable ref to handleSend so the drain effect doesn't re-trigger on
   // identity changes (regression #5 from PR #315).
   const handleSendRef = useRef(actions.handleSend);
+  const handleBackgroundRef = useRef(actions.handleBackground);
   useEffect(() => {
     handleSendRef.current = actions.handleSend;
+    handleBackgroundRef.current = actions.handleBackground;
   });
 
   // Drain queued messages one at a time when the agent finishes.
@@ -467,6 +491,29 @@ function Chat({
 
   const handleSubmitOrQueue = useCallback(
     (text: string, attachments: Attachment[]) => {
+      // Side questions (`/btw`) run on a concurrent background agent, so they
+      // must never queue — fire them immediately even while the main turn is in
+      // flight. This is the whole point of "ask without affecting context".
+      const bgQuestion = parseBackgroundCommand(text);
+      if (bgQuestion !== null) {
+        if (bgQuestion)
+          void handleBackgroundRef.current(bgQuestion, attachments);
+        return;
+      }
+      // Other slash commands (`/status`, `/compact`, …) run on the gateway's
+      // slash worker or are renderer-local — all concurrent with any in-flight
+      // turn — so dispatch them immediately instead of queueing. handleSend's
+      // own routing decides what each one does (and defers the rare command
+      // that resolves to an agent prompt while busy). Limited to local commands
+      // and the dashboard transport (which has the worker); the legacy
+      // transport has no concurrent path, so its slash commands still queue.
+      if (
+        text.startsWith("/") &&
+        (localCommands.isLocal(text) || dashboardChatEnabled)
+      ) {
+        void handleSendRef.current(text, attachments, true);
+        return;
+      }
       if (isLoading) {
         queueRef.current.push({ text, attachments });
         setQueuedMessages([...queueRef.current]);
@@ -474,7 +521,7 @@ function Chat({
       }
       void handleSendRef.current(text, attachments);
     },
-    [isLoading],
+    [isLoading, localCommands, dashboardChatEnabled],
   );
 
   const handleSuggestion = useCallback((text: string) => {
@@ -608,7 +655,12 @@ function Chat({
                 modelGroups={modelConfig.modelGroups}
                 displayModel={modelConfig.displayModel}
                 onOpen={modelConfig.reload}
-                onSelectModel={modelConfig.selectModel}
+                onSelectModel={(provider, model, baseUrl) => {
+                  void modelConfig.selectModel(provider, model, baseUrl, {
+                    persist: false,
+                  });
+                  setSessionModelOverride(model || undefined);
+                }}
               />
               <ReasoningEffortPicker
                 value={reasoningEffort}
