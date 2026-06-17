@@ -724,9 +724,39 @@ function normalizeSessionIds(sessionIds: string[]): string[] {
   return normalized;
 }
 
+// sessions has a self-referential FK parent_session_id -> sessions.id (set by
+// the agent for subagent runs / branches). Cached after first lookup.
+let sessionsHasParentColumn: boolean | null = null;
+function hasParentSessionColumn(db: Database.Database): boolean {
+  if (sessionsHasParentColumn !== null) return sessionsHasParentColumn;
+  try {
+    sessionsHasParentColumn =
+      db
+        .prepare(
+          "SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'parent_session_id'",
+        )
+        .get() != null;
+  } catch {
+    sessionsHasParentColumn = false;
+  }
+  return sessionsHasParentColumn;
+}
+
 function deleteSessionRows(db: Database.Database, sessionId: string): number {
   deletePromptImageAttachmentsForSession(db, sessionId);
   deleteSessionContinuationForSession(db, sessionId);
+  // Unlink any child sessions first. better-sqlite3 enables
+  // PRAGMA foreign_keys=ON by default, so deleting a parent while a child
+  // still references it via parent_session_id throws "FOREIGN KEY constraint
+  // failed", which rolls back the whole delete transaction -> 0 rows deleted
+  // with no surfaced error (and a select-all batch deletes nothing, since one
+  // violation aborts the entire transaction). Detach children rather than
+  // cascade-delete so a session the user didn't select is never removed.
+  if (hasParentSessionColumn(db)) {
+    db.prepare(
+      "UPDATE sessions SET parent_session_id = NULL WHERE parent_session_id = ?",
+    ).run(sessionId);
+  }
   db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
   const result = db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
   return result.changes;
