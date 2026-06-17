@@ -367,6 +367,7 @@ const hermesAPI = {
     attachments?: Attachment[],
     contextFolder?: string,
     runId?: string,
+    modelOverride?: string,
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -377,6 +378,7 @@ const hermesAPI = {
       attachments,
       contextFolder,
       runId,
+      modelOverride,
     ),
 
   abortChat: (runId?: string): Promise<void> =>

@@ -1247,6 +1247,7 @@ function setupIPC(): void {
       attachments?: Attachment[],
       contextFolder?: string,
       runId?: string,
+      modelOverride?: string,
     ) => {
       // Each conversation has a stable runId minted by the renderer. Fall back
       // to a generated id for legacy callers so the run is still tracked.
@@ -1391,6 +1392,7 @@ function setupIPC(): void {
         history,
         attachments,
         contextFolder,
+        modelOverride,
       );
 
       activeRuns.set(chatRunId, handle.abort);

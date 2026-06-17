@@ -418,6 +418,7 @@ function Chat({
     localCommands,
     activeTurnRef,
     contextFolder,
+    sessionModel: modelConfig.currentModel || undefined,
     sendViaDashboard: dashboardTransport.enabled
       ? dashboardTransport.sendMessage
       : undefined,
@@ -595,7 +596,11 @@ function Chat({
                 modelGroups={modelConfig.modelGroups}
                 displayModel={modelConfig.displayModel}
                 onOpen={modelConfig.reload}
-                onSelectModel={modelConfig.selectModel}
+                onSelectModel={(provider, model, baseUrl) =>
+                  void modelConfig.selectModel(provider, model, baseUrl, {
+                    persist: false,
+                  })
+                }
               />
               <ReasoningEffortPicker
                 value={reasoningEffort}
