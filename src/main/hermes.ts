@@ -2449,11 +2449,15 @@ async function sendMessageViaBestApi(
   modelOverride?: string,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
+  // Skip the TUI gateway when a session-scoped model override is active — the
+  // TUI gateway reads its model from config.yaml and has no per-request
+  // override mechanism. The API path below already honours modelOverride.
   if (
     shouldUseTuiGatewayClient() &&
     !isRemoteMode() &&
     !attachments?.length &&
-    !approvalCommand
+    !approvalCommand &&
+    !modelOverride
   ) {
     try {
       return await sendMessageViaTuiGateway(

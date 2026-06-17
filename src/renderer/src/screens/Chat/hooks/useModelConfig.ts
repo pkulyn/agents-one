@@ -155,7 +155,13 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       setCurrentBaseUrl(effectiveBaseUrl);
       // Session-only selection: update local state only, do not write to
       // config.yaml so the global default model is preserved (issue #688).
-      if (!persist) return;
+      // Advance the sequence counter so any in-flight reload() triggered by
+      // onConnectionConfigChanged / onModelLibraryChanged cannot clobber the
+      // session-scoped selection with the persisted value.
+      if (!persist) {
+        ++loadSeqRef.current;
+        return;
+      }
       const seq = ++loadSeqRef.current;
       try {
         await window.hermesAPI.setModelConfig(
