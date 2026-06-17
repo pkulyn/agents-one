@@ -2845,6 +2845,7 @@ body {
 }
 
 .chat-bubble {
+  position: relative;
   padding: 10px 16px;
   border-radius: var(--radius-lg);
   font-size: 14px;
@@ -2879,6 +2880,42 @@ body {
 .chat-bubble-error {
   border: 1px solid color-mix(in srgb, var(--error) 35%, transparent);
   background: var(--error-bg);
+}
+
+/* Copy button — hidden by default, shown on bubble hover */
+.chat-bubble-actions {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.chat-bubble:hover .chat-bubble-actions {
+  opacity: 1;
+}
+
+.chat-bubble-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.chat-bubble-copy:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-focus, var(--accent));
 }
 
 .chat-error-message {
