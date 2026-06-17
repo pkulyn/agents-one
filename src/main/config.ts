@@ -812,7 +812,13 @@ export function upsertBlockChild(
   blockName: string,
   key: string,
   value: string,
+  // Whether to wrap the value in double quotes. Default true (every existing
+  // caller writes string scalars). Pass false for numeric/boolean scalars
+  // like `model.context_length`, which must parse as a YAML number — not a
+  // quoted string — for strict consumers.
+  quote = true,
 ): string {
+  const rendered = quote ? `"${value}"` : value;
   const { children, blockBodyStart, childIndent } = readTopLevelBlock(
     content,
     blockName,
@@ -822,13 +828,13 @@ export function upsertBlockChild(
   if (existing) {
     return (
       content.slice(0, existing.valueStart) +
-      `"${value}"` +
+      rendered +
       content.slice(existing.valueEnd)
     );
   }
 
   if (blockBodyStart !== null) {
-    const insertion = `${childIndent}${key}: "${value}"\n`;
+    const insertion = `${childIndent}${key}: ${rendered}\n`;
     return (
       content.slice(0, blockBodyStart) +
       insertion +
@@ -841,7 +847,7 @@ export function upsertBlockChild(
   // bootstrapping a fresh config.yaml) skip the separator so we don't
   // leave a stray leading blank line.
   const sep = content === "" || content.endsWith("\n") ? "" : "\n";
-  return `${content}${sep}${blockName}:\n  ${key}: "${value}"\n`;
+  return `${content}${sep}${blockName}:\n  ${key}: ${rendered}\n`;
 }
 
 /**
@@ -1057,6 +1063,7 @@ export function setModelConfig(
         "model",
         "context_length",
         String(Math.floor(contextLength)),
+        false, // numeric scalar — write unquoted so YAML parses it as a number
       );
     } else {
       content = removeBlockChild(content, "model", "context_length");

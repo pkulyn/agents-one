@@ -338,7 +338,9 @@ describe("setModelConfig — context_length override", () => {
     setModelConfig("qwen", "qwen-max", "", undefined, 65536);
 
     const after = readFileSync(join(TEST_DIR, "config.yaml"), "utf-8");
-    expect(after).toContain('context_length: "65536"');
+    // Written unquoted so YAML parses it as a number, not a string.
+    expect(after).toContain("context_length: 65536");
+    expect(after).not.toContain('context_length: "65536"');
     expect(getModelContextLengthOverride()).toEqual({
       model: "qwen-max",
       contextLength: 65536,
