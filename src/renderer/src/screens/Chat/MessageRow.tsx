@@ -1,4 +1,5 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState, useCallback } from "react";
+import { Copy, Check } from "lucide-react";
 import icon from "../../assets/icon.png";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AttachmentChip } from "../../components/AttachmentChip";
@@ -60,6 +61,7 @@ export const MessageRow = memo(function MessageRow({
   showAvatar = true,
 }: MessageRowProps): React.JSX.Element {
   const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
 
   // MessageRow is wrapped in memo() but still re-renders on any prop change
   // (e.g. isLoading toggling at the end of a stream), and `parseMediaTokens`
@@ -80,6 +82,17 @@ export const MessageRow = memo(function MessageRow({
         : null,
     [msg.role, bubbleContent],
   );
+
+  const handleCopy = useCallback(async () => {
+    if (!bubbleContent) return;
+    try {
+      await window.hermesAPI.copyToClipboard(bubbleContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback: clipboard write may fail in some environments
+    }
+  }, [bubbleContent]);
 
   // Only chat bubble messages have content/attachments
   if (!isChatBubbleMessage(msg)) {
@@ -119,6 +132,19 @@ export const MessageRow = memo(function MessageRow({
           msg.error ? " chat-bubble-error" : ""
         }`}
       >
+        {msg.content && !isLoading && (
+          <div className="chat-bubble-actions">
+            <button
+              type="button"
+              className="chat-bubble-copy"
+              onClick={handleCopy}
+              title={copied ? t("common.copied") : t("chat.copyMessage")}
+              aria-label={copied ? t("common.copied") : t("chat.copyMessage")}
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+          </div>
+        )}
         {hasAttachments && (
           <div className="chat-message-attachments">
             {msg.attachments!.map((att) => (
