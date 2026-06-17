@@ -42,12 +42,33 @@ export function isAllowedAppNavigationUrl(
 }
 
 export function isAllowedWebviewUrl(rawUrl: unknown): rawUrl is string {
-  const url = parseUrl(rawUrl);
-  if (!url || url.protocol !== "http:") return false;
-  if (!LOCAL_WEBVIEW_HOSTS.has(url.hostname)) return false;
+  if (typeof rawUrl === "string" && (rawUrl === "about:blank" || rawUrl.startsWith("about:blank"))) {
+    return true;
+  }
 
-  const port = Number(url.port);
-  return Number.isInteger(port) && port >= 1024 && port <= 65535;
+  const url = parseUrl(rawUrl);
+  if (!url) {
+    console.warn(`[SECURITY] Blocked webview URL (could not parse): ${rawUrl}`);
+    return false;
+  }
+
+  if (url.protocol === "http:") {
+    if (LOCAL_WEBVIEW_HOSTS.has(url.hostname)) {
+      const port = Number(url.port);
+      if (Number.isInteger(port) && port >= 1024 && port <= 65535) {
+        return true;
+      }
+    }
+    console.warn(`[SECURITY] Blocked local/remote HTTP webview URL: ${rawUrl}`);
+    return false;
+  }
+
+  if (url.protocol === "https:") {
+    return true;
+  }
+
+  console.warn(`[SECURITY] Blocked webview URL (unsupported protocol): ${rawUrl}`);
+  return false;
 }
 
 export function hardenWebviewPreferences(

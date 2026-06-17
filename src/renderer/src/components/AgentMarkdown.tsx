@@ -54,6 +54,7 @@ function CodeBlock({
 }): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [highlighterReady, setHighlighterReady] = useState(
     () => _highlighterMod !== null && _oneDark !== null,
   );
@@ -61,6 +62,9 @@ function CodeBlock({
   const match = /language-(\w+)/.exec(className || "");
   const language = match ? match[1] : "";
   const isDiff = language === "diff";
+
+  const linesCount = code.split("\n").length;
+  const isLong = linesCount > 15 || code.length > 800;
 
   // Trigger lazy load when code block mounts
   useEffect(() => {
@@ -91,6 +95,27 @@ function CodeBlock({
     </pre>
   );
 
+  const codeContent = isDiff ? (
+    <DiffView code={code} />
+  ) : highlighterReady && _highlighterMod && _oneDark ? (
+    <_highlighterMod.Prism
+      style={_oneDark}
+      language={language || "text"}
+      PreTag="div"
+      customStyle={{
+        margin: 0,
+        borderRadius: 0,
+        fontSize: "13px",
+        padding: "12px",
+        background: "transparent",
+      }}
+    >
+      {code}
+    </_highlighterMod.Prism>
+  ) : (
+    fallbackPre
+  );
+
   return (
     <div className="chat-code-block">
       <div className="chat-code-header">
@@ -101,25 +126,17 @@ function CodeBlock({
           {copied ? t("common.copied") : <Copy size={13} />}
         </button>
       </div>
-      {isDiff ? (
-        <DiffView code={code} />
-      ) : highlighterReady && _highlighterMod && _oneDark ? (
-        <_highlighterMod.Prism
-          style={_oneDark}
-          language={language || "text"}
-          PreTag="div"
-          customStyle={{
-            margin: 0,
-            borderRadius: 0,
-            fontSize: "13px",
-            padding: "12px",
-            background: "transparent",
-          }}
+      <div className={isLong && isCollapsed ? "chat-code-collapsed" : ""}>
+        {codeContent}
+      </div>
+      {isLong && (
+        <button
+          type="button"
+          className="chat-code-expand-btn"
+          onClick={() => setIsCollapsed((prev) => !prev)}
         >
-          {code}
-        </_highlighterMod.Prism>
-      ) : (
-        fallbackPre
+          {isCollapsed ? t("common.showMore") || "Show more" : t("common.showLess") || "Show less"}
+        </button>
       )}
     </div>
   );
@@ -144,6 +161,13 @@ const AgentMarkdown = memo(function AgentMarkdown({
               try {
                 const url = new URL(href, "https://placeholder.invalid");
                 if (!["http:", "https:", "mailto:"].includes(url.protocol)) {
+                  return;
+                }
+                if (url.protocol === "http:" || url.protocol === "https:") {
+                  const event = new CustomEvent("web-preview:navigate", {
+                    detail: href,
+                  });
+                  document.dispatchEvent(event);
                   return;
                 }
               } catch {

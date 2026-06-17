@@ -129,14 +129,16 @@ describe("Electron app navigation policy", () => {
 });
 
 describe("Electron webview policy", () => {
-  it("allows only loopback HTTP URLs on app-controlled ports", () => {
+  it("allows loopback HTTP URLs on app-controlled ports and remote/local HTTPS URLs", () => {
     expect(isAllowedWebviewUrl("http://localhost:3000")).toBe(true);
     expect(isAllowedWebviewUrl("http://127.0.0.1:65535/path")).toBe(true);
     expect(isAllowedWebviewUrl("http://[::1]:3000")).toBe(true);
+    expect(isAllowedWebviewUrl("https://localhost:3000")).toBe(true);
+    expect(isAllowedWebviewUrl("https://example.com/docs")).toBe(true);
+    expect(isAllowedWebviewUrl("about:blank")).toBe(true);
   });
 
-  it("blocks remote, privileged, and non-HTTP webview URLs", () => {
-    expect(isAllowedWebviewUrl("https://localhost:3000")).toBe(false);
+  it("blocks remote HTTP, invalid ports, and non-HTTP/HTTPS webview URLs", () => {
     expect(isAllowedWebviewUrl("http://example.com:3000")).toBe(false);
     expect(isAllowedWebviewUrl("http://localhost:80")).toBe(false);
     expect(isAllowedWebviewUrl("file:///C:/Users/me/page.html")).toBe(false);
