@@ -41,8 +41,14 @@ export function isAllowedAppNavigationUrl(
   );
 }
 
-export function isAllowedWebviewUrl(rawUrl: unknown): rawUrl is string {
-  if (typeof rawUrl === "string" && (rawUrl === "about:blank" || rawUrl.startsWith("about:blank"))) {
+export function isAllowedWebviewUrl(
+  rawUrl: unknown,
+  allowHttps = false,
+): rawUrl is string {
+  if (
+    typeof rawUrl === "string" &&
+    (rawUrl === "about:blank" || rawUrl.startsWith("about:blank"))
+  ) {
     return true;
   }
 
@@ -64,10 +70,18 @@ export function isAllowedWebviewUrl(rawUrl: unknown): rawUrl is string {
   }
 
   if (url.protocol === "https:") {
-    return true;
+    if (allowHttps) {
+      return true;
+    }
+    console.warn(
+      `[SECURITY] Blocked HTTPS webview URL (not allowed for this webview): ${rawUrl}`,
+    );
+    return false;
   }
 
-  console.warn(`[SECURITY] Blocked webview URL (unsupported protocol): ${rawUrl}`);
+  console.warn(
+    `[SECURITY] Blocked webview URL (unsupported protocol): ${rawUrl}`,
+  );
   return false;
 }
 
@@ -84,14 +98,22 @@ export function hardenWebviewPreferences(
 }
 
 export function hardenAttachedWebContents(webContents: WebContents): void {
+  const prefs = (
+    webContents as unknown as {
+      getLastWebPreferences?: () => { additionalFeatures?: string[] };
+    }
+  ).getLastWebPreferences?.();
+  const isWebPreview =
+    prefs && prefs.additionalFeatures?.includes("is-web-preview");
+
   webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   webContents.on("will-navigate", (event, url) => {
-    if (!isAllowedWebviewUrl(url)) {
+    if (!isAllowedWebviewUrl(url, isWebPreview)) {
       event.preventDefault();
     }
   });
   webContents.on("will-redirect", (event, url) => {
-    if (!isAllowedWebviewUrl(url)) {
+    if (!isAllowedWebviewUrl(url, isWebPreview)) {
       event.preventDefault();
     }
   });

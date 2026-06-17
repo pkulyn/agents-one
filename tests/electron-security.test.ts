@@ -29,7 +29,7 @@ describe("Electron main process hardening", () => {
     expect(mainSrc).toContain('webContents.on("will-navigate"');
     expect(mainSrc).toContain('"will-attach-webview"');
     expect(mainSrc).toContain("isAllowedAppNavigationUrl(");
-    expect(mainSrc).toContain("isAllowedWebviewUrl(params.src)");
+    expect(mainSrc).toContain("isAllowedWebviewUrl(params.src");
     expect(mainSrc).toContain("hardenWebviewPreferences(webPreferences)");
   });
 
@@ -129,13 +129,19 @@ describe("Electron app navigation policy", () => {
 });
 
 describe("Electron webview policy", () => {
-  it("allows loopback HTTP URLs on app-controlled ports and remote/local HTTPS URLs", () => {
+  it("allows loopback HTTP URLs on app-controlled ports and about:blank, and remote/local HTTPS URLs when permitted", () => {
     expect(isAllowedWebviewUrl("http://localhost:3000")).toBe(true);
     expect(isAllowedWebviewUrl("http://127.0.0.1:65535/path")).toBe(true);
     expect(isAllowedWebviewUrl("http://[::1]:3000")).toBe(true);
-    expect(isAllowedWebviewUrl("https://localhost:3000")).toBe(true);
-    expect(isAllowedWebviewUrl("https://example.com/docs")).toBe(true);
     expect(isAllowedWebviewUrl("about:blank")).toBe(true);
+
+    // By default, HTTPS is blocked
+    expect(isAllowedWebviewUrl("https://localhost:3000")).toBe(false);
+    expect(isAllowedWebviewUrl("https://example.com/docs")).toBe(false);
+
+    // HTTPS is allowed when explicitly permitted
+    expect(isAllowedWebviewUrl("https://localhost:3000", true)).toBe(true);
+    expect(isAllowedWebviewUrl("https://example.com/docs", true)).toBe(true);
   });
 
   it("blocks remote HTTP, invalid ports, and non-HTTP/HTTPS webview URLs", () => {
@@ -175,6 +181,7 @@ describe("Electron webview policy", () => {
     const handlers = new Map<string, NavigationHandler>();
     const webContentsMock = {
       setWindowOpenHandler: vi.fn(),
+      getLastWebPreferences: vi.fn(() => ({})),
       on: vi.fn((event: string, handler: NavigationHandler) => {
         handlers.set(event, handler);
       }),
@@ -203,5 +210,32 @@ describe("Electron webview policy", () => {
     const redirectedEvent = { preventDefault: vi.fn() };
     handlers.get("will-redirect")?.(redirectedEvent, "http://example.com:3000");
     expect(redirectedEvent.preventDefault).toHaveBeenCalled();
+  });
+
+  it("allows post-attachment navigation to remote HTTPS URLs for the web preview webview", () => {
+    type NavigationHandler = (
+      event: { preventDefault: () => void },
+      url: string,
+    ) => void;
+    const handlers = new Map<string, NavigationHandler>();
+    const webContentsMock = {
+      setWindowOpenHandler: vi.fn(),
+      getLastWebPreferences: vi.fn(() => ({
+        additionalFeatures: ["is-web-preview"],
+      })),
+      on: vi.fn((event: string, handler: NavigationHandler) => {
+        handlers.set(event, handler);
+      }),
+    };
+
+    hardenAttachedWebContents(
+      webContentsMock as unknown as Parameters<
+        typeof hardenAttachedWebContents
+      >[0],
+    );
+
+    const allowedEvent = { preventDefault: vi.fn() };
+    handlers.get("will-navigate")?.(allowedEvent, "https://example.com/docs");
+    expect(allowedEvent.preventDefault).not.toHaveBeenCalled();
   });
 });

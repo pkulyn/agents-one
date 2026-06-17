@@ -183,11 +183,7 @@ export function useChatIPC({
         stopDbPolling();
         const activeTurn = activeTurnRef.current;
         const acceptedSessionId = acceptedSessionIdRef.current;
-        if (
-          sessionId &&
-          acceptedSessionId &&
-          acceptedSessionId !== sessionId
-        ) {
+        if (sessionId && acceptedSessionId && acceptedSessionId !== sessionId) {
           return;
         }
         if (sessionId && !acceptedSessionId && !activeTurn) {
@@ -278,13 +274,27 @@ export function useChatIPC({
           upsertLiveToolEvent(prev, liveToolEventFromProgress(tool)),
         );
 
-        // Also check progress text for URLs
-        const urlMatch = tool.match(/https?:\/\/[^\s)]+/i);
-        if (urlMatch) {
-          const event = new CustomEvent("web-preview:navigate", {
-            detail: urlMatch[0],
-          });
-          document.dispatchEvent(event);
+        // Also check progress text for URLs, but only if it's a web tool
+        const toolEventName =
+          liveToolEventFromProgress(tool).name.toLowerCase();
+        const isWebTool = [
+          "browser",
+          "web",
+          "browse",
+          "web_search",
+          "search_web",
+          "computer_use",
+          "computer",
+        ].includes(toolEventName);
+
+        if (isWebTool) {
+          const urlMatch = tool.match(/https?:\/\/[^\s)]+/i);
+          if (urlMatch) {
+            const event = new CustomEvent("web-preview:navigate", {
+              detail: urlMatch[0],
+            });
+            document.dispatchEvent(event);
+          }
         }
       },
     );
@@ -299,8 +309,13 @@ export function useChatIPC({
 
         // Auto-open webview if the agent is using a browser/web tool to navigate
         const isWebTool = [
-          "browser", "web", "browse", "web_search", "search_web",
-          "computer_use", "computer", "terminal", "shell", "bash", "run_command"
+          "browser",
+          "web",
+          "browse",
+          "web_search",
+          "search_web",
+          "computer_use",
+          "computer",
         ].includes(toolEvent.name.toLowerCase());
         if (isWebTool) {
           const textToSearch = `${toolEvent.preview || ""} ${toolEvent.result || ""}`;

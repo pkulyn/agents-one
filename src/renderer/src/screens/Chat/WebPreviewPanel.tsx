@@ -1,11 +1,24 @@
 import { useState, useEffect, useRef, memo } from "react";
-import { X, ArrowLeft, ArrowRight, RotateCw, ExternalLink, Globe, MousePointerClick } from "lucide-react";
+import {
+  X,
+  ArrowLeft,
+  ArrowRight,
+  RotateCw,
+  ExternalLink,
+  Globe,
+  MousePointerClick,
+} from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 interface WebPreviewPanelProps {
   initialUrl: string;
   onClose: () => void;
-  onInspectElement?: (payload: { tagName: string; id: string; className: string; outerHTML: string }) => void;
+  onInspectElement?: (payload: {
+    tagName: string;
+    id: string;
+    className: string;
+    outerHTML: string;
+  }) => void;
 }
 
 // Custom interface for Electron Webview element
@@ -171,6 +184,10 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
   const [isDomReady, setIsDomReady] = useState(false);
 
   const webviewRef = useRef<ElectronWebviewElement>(null);
+  const isInspectingRef = useRef(isInspecting);
+  useEffect(() => {
+    isInspectingRef.current = isInspecting;
+  }, [isInspecting]);
 
   // Sync initialUrl prop to internal state when it changes from parent
   useEffect(() => {
@@ -191,7 +208,11 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
         console.error("Failed to inject inspector script:", err);
       });
     } else {
-      webview.executeJavaScript("if (window.__hermesCleanupInspector) window.__hermesCleanupInspector();").catch(() => {});
+      webview
+        .executeJavaScript(
+          "if (window.__hermesCleanupInspector) window.__hermesCleanupInspector();",
+        )
+        .catch(() => {});
     }
   }, [isInspecting, isDomReady]);
 
@@ -242,12 +263,15 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
     };
 
     const handleDidFailLoad = (e: any): void => {
-      console.error(`[WEBVIEW ERROR] Failed to load: ${e.validatedURL}, Code: ${e.errorCode}, Description: ${e.errorDescription}`);
+      console.error(
+        `[WEBVIEW ERROR] Failed to load: ${e.validatedURL}, Code: ${e.errorCode}, Description: ${e.errorDescription}`,
+      );
     };
 
     const handleConsoleMessage = (e: any): void => {
       const message = e.message || "";
       if (message.startsWith("__HERMES_INSPECT_RESULT__:")) {
+        if (!isInspectingRef.current) return;
         const jsonStr = message.slice("__HERMES_INSPECT_RESULT__:".length);
         try {
           const payload = JSON.parse(jsonStr);
@@ -259,6 +283,7 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
         return;
       }
       if (message === "__HERMES_INSPECT_CANCELLED__") {
+        if (!isInspectingRef.current) return;
         setIsInspecting(false);
         return;
       }
@@ -278,7 +303,10 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
       webview.removeEventListener("did-stop-loading", handleDidStopLoading);
       webview.removeEventListener("dom-ready", handleDomReady);
       webview.removeEventListener("did-navigate", handleDidNavigate);
-      webview.removeEventListener("did-navigate-in-page", handleDidNavigateInPage);
+      webview.removeEventListener(
+        "did-navigate-in-page",
+        handleDidNavigateInPage,
+      );
       webview.removeEventListener("did-fail-load", handleDidFailLoad);
       webview.removeEventListener("console-message", handleConsoleMessage);
     };
@@ -367,7 +395,10 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
           <MousePointerClick size={16} />
         </button>
 
-        <form className="web-preview-address-bar" onSubmit={handleAddressSubmit}>
+        <form
+          className="web-preview-address-bar"
+          onSubmit={handleAddressSubmit}
+        >
           <Globe size={13} className="web-preview-globe-icon" />
           <input
             type="text"
@@ -402,7 +433,10 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
         <webview
           ref={webviewRef as React.RefObject<any>}
           src={currentUrl}
-          nodeintegration={false}
+          {...({
+            name: "web-preview-webview",
+            nodeintegration: false,
+          } as Record<string, unknown>)}
           style={{ width: "100%", height: "100%" }}
         />
       </div>
