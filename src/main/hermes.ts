@@ -1569,6 +1569,7 @@ function sendMessageViaRuns(
       history,
       attachments,
       contextFolder,
+      modelOverride,
     );
   }
 
