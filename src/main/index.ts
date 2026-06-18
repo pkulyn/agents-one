@@ -1007,7 +1007,20 @@ function setupIPC(): void {
         );
       }
       const prev = getModelConfig(profile);
-      setModelConfig(provider, model, baseUrl, profile);
+      // Mirror the activated model's context-window override (if any) into
+      // config.yaml so the gauge and the agent's auto-compaction threshold use
+      // it. Passing `null` when the library entry has none clears any stale
+      // value left by a previously-active model.
+      const libContextLength = listModels().find(
+        (m) => m.provider === provider && m.model === model,
+      )?.contextLength;
+      setModelConfig(
+        provider,
+        model,
+        baseUrl,
+        profile,
+        libContextLength ?? null,
+      );
 
       // Restart gateway when provider, model, or endpoint changes so it picks up new config
       if (
@@ -1244,6 +1257,7 @@ function setupIPC(): void {
       attachments?: Attachment[],
       contextFolder?: string,
       runId?: string,
+      modelOverride?: string,
     ) => {
       // Each conversation has a stable runId minted by the renderer. Fall back
       // to a generated id for legacy callers so the run is still tracked.
@@ -1388,6 +1402,7 @@ function setupIPC(): void {
         history,
         attachments,
         contextFolder,
+        modelOverride,
       );
 
       activeRuns.set(chatRunId, handle.abort);
@@ -2098,6 +2113,7 @@ function setupIPC(): void {
       provider: string,
       model: string,
       baseUrl: string,
+      contextLength?: number,
     ) => {
       const conn = getConnectionConfig();
       let addedModel: Awaited<ReturnType<typeof addModel>>;
@@ -2107,6 +2123,8 @@ function setupIPC(): void {
             "Remote model library writes require dashboard transport.",
           );
         }
+        // Remote/SSH library writes don't carry the context-length override
+        // yet (local-mode feature for now); the local branch persists it.
         addedModel = await remoteAddModel(conn, name, provider, model, baseUrl);
       } else if (conn.mode === "ssh" && conn.ssh) {
         addedModel = await withSshDashboardModelLibrary(
@@ -2115,7 +2133,7 @@ function setupIPC(): void {
           () => sshAddModel(conn.ssh!, name, provider, model, baseUrl),
         );
       } else {
-        addedModel = addModel(name, provider, model, baseUrl);
+        addedModel = addModel(name, provider, model, baseUrl, contextLength);
       }
       notifyModelLibraryChanged();
       return addedModel;
@@ -2145,7 +2163,14 @@ function setupIPC(): void {
   });
   ipcMain.handle(
     "update-model",
-    async (_event, id: string, fields: Record<string, string>) => {
+    async (
+      _event,
+      id: string,
+      fields: Record<string, string>,
+      // Context-length override travels as a separate arg (it's numeric, so it
+      // can't ride inside the string-only `fields`). Local-mode only for now.
+      contextLength?: number | null,
+    ) => {
       const conn = getConnectionConfig();
       let updated: boolean;
       if (conn.mode === "remote") {
@@ -2162,7 +2187,10 @@ function setupIPC(): void {
           () => sshUpdateModel(conn.ssh!, id, fields),
         );
       } else {
-        updated = updateModel(id, fields);
+        updated = updateModel(
+          id,
+          contextLength === undefined ? fields : { ...fields, contextLength },
+        );
       }
       if (updated) notifyModelLibraryChanged();
       return updated;
