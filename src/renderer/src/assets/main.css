@@ -2759,15 +2759,25 @@ body {
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: var(--bg-elevated);
+  background: #000;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 4px;
 }
 
-.chat-empty-icon img {
-  border-radius: 50%;
+/* The wordmark SVG ships with a black fill; recolour it to white via masking so
+   it reads on the black circle, regardless of the source artwork's colours. */
+.chat-empty-logo {
+  width: 52px;
+  height: 40px;
+  background-color: #fff;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
 }
 
 .chat-empty-text {
