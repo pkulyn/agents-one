@@ -36,7 +36,7 @@ export const ReasoningRow = memo(function ReasoningRow({
         showAvatar ? "" : " chat-message--grouped"
       }`}
     >
-      {showAvatar ? <HermesAvatar /> : <AvatarSpacer />}
+      {showAvatar ? <HermesAvatar active={active} /> : <AvatarSpacer />}
       <div
         className={`chat-reasoning-group${
           active ? " chat-reasoning-group--active" : ""
@@ -254,7 +254,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
         showAvatar ? "" : " chat-message--grouped"
       }`}
     >
-      {showAvatar ? <HermesAvatar /> : <AvatarSpacer />}
+      {showAvatar ? <HermesAvatar active={active} /> : <AvatarSpacer />}
       <div
         className={`chat-tool-group${active ? " chat-tool-group--active" : ""}`}
       >
