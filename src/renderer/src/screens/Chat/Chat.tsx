@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Zap } from "lucide-react";
+import { Zap, Globe } from "lucide-react";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { MessageList } from "./MessageList";
@@ -8,6 +8,7 @@ import { ModelPicker } from "./ModelPicker";
 import { ReasoningEffortPicker } from "./ReasoningEffortPicker";
 import { ContextFolderChip } from "./ContextFolderChip";
 import { WorktreePanel } from "./WorktreePanel";
+import { WebPreviewPanel } from "./WebPreviewPanel";
 import { useChatScroll } from "./hooks/useChatScroll";
 import { useChatIPC } from "./hooks/useChatIPC";
 import { useChatActions, parseBackgroundCommand } from "./hooks/useChatActions";
@@ -118,6 +119,9 @@ function Chat({
   // Whether the worktree panel is visible (only applies when contextFolder is set)
   // Default false so the panel doesn't open automatically and interfere with scrolling
   const [worktreeVisible, setWorktreeVisible] = useState<boolean>(false);
+  const [webPreviewVisible, setWebPreviewVisible] = useState<boolean>(false);
+  const [webPreviewUrl, setWebPreviewUrl] =
+    useState<string>("https://google.com");
   // Explicit session-scoped model override — set only when the user picks
   // from the chat-screen picker (persist:false). Undefined until then so the
   // TUI gateway bypass in sendMessageViaBestApi is not triggered for normal
@@ -290,6 +294,23 @@ function Chat({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [active, onNewChat]);
+
+  // Listen for in-app link clicks to load in the split-screen Web Preview panel
+  useEffect(() => {
+    if (!active) return;
+    const handleNavigate = (e: Event): void => {
+      const customEvent = e as CustomEvent<string>;
+      const url = customEvent.detail;
+      if (url) {
+        setWebPreviewUrl(url);
+        setWebPreviewVisible(true);
+      }
+    };
+    document.addEventListener("web-preview:navigate", handleNavigate);
+    return () => {
+      document.removeEventListener("web-preview:navigate", handleNavigate);
+    };
+  }, [active]);
 
   // "Copy entire chat" context-menu items (issue #298) — serialise the whole
   // conversation in the requested format and copy it. A ref keeps the latest
@@ -597,6 +618,95 @@ function Chat({
       }
     : null;
 
+  const prettyPrintHTML = (html: string): string => {
+    const formatNode = (node: Node, level: number = 0): string => {
+      const indent = "  ".repeat(level);
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent?.trim();
+        return text ? `${indent}${text}\n` : "";
+      }
+      if (node.nodeType === Node.COMMENT_NODE) {
+        return `${indent}<!--${node.textContent}-->\n`;
+      }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as Element;
+        const tagName = el.tagName.toLowerCase();
+        let attrs = "";
+        for (let i = 0; i < el.attributes.length; i++) {
+          const attr = el.attributes[i];
+          attrs += ` ${attr.name}="${attr.value}"`;
+        }
+        const isVoid = [
+          "area",
+          "base",
+          "br",
+          "col",
+          "embed",
+          "hr",
+          "img",
+          "input",
+          "link",
+          "meta",
+          "param",
+          "source",
+          "track",
+          "wbr",
+        ].includes(tagName);
+        if (isVoid) {
+          return `${indent}<${tagName}${attrs}>\n`;
+        }
+        if (
+          el.childNodes.length === 1 &&
+          el.firstChild?.nodeType === Node.TEXT_NODE
+        ) {
+          const text = el.firstChild.textContent?.trim();
+          return text
+            ? `${indent}<${tagName}${attrs}>${text}</${tagName}>\n`
+            : `${indent}<${tagName}${attrs}></${tagName}>\n`;
+        }
+        if (el.childNodes.length === 0) {
+          return `${indent}<${tagName}${attrs}></${tagName}>\n`;
+        }
+        let childrenHtml = "";
+        for (let i = 0; i < el.childNodes.length; i++) {
+          childrenHtml += formatNode(el.childNodes[i], level + 1);
+        }
+        return `${indent}<${tagName}${attrs}>\n${childrenHtml}${indent}</${tagName}>\n`;
+      }
+      return "";
+    };
+
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      const body = doc.body;
+      if (body.childNodes.length > 0) {
+        let result = "";
+        for (let i = 0; i < body.childNodes.length; i++) {
+          result += formatNode(body.childNodes[i], 0);
+        }
+        return result.trim();
+      }
+    } catch (e) {
+      console.error("Failed to pretty print HTML", e);
+    }
+    return html;
+  };
+
+  const handleInspectElement = useCallback(
+    (payload: {
+      tagName: string;
+      id: string;
+      className: string;
+      outerHTML: string;
+    }) => {
+      const formattedHtml = prettyPrintHTML(payload.outerHTML);
+      const formatted = `Here is the HTML for the \`<${payload.tagName}>\` component to debug:\n\`\`\`html\n${formattedHtml}\n\`\`\``;
+      chatInputRef.current?.appendText(formatted);
+    },
+    [],
+  );
+
   return (
     <div
       className="chat-container"
@@ -626,6 +736,14 @@ function Chat({
 
         {contextFolder && worktreeVisible && (
           <WorktreePanel folderPath={contextFolder} />
+        )}
+
+        {webPreviewVisible && (
+          <WebPreviewPanel
+            initialUrl={webPreviewUrl}
+            onClose={() => setWebPreviewVisible(false)}
+            onInspectElement={handleInspectElement}
+          />
         )}
       </div>
 
@@ -693,6 +811,31 @@ function Chat({
                 onClearFolder={handleClearFolder}
                 onToggleWorktree={() => setWorktreeVisible((v) => !v)}
               />
+              <button
+                type="button"
+                className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}
+                onClick={() => setWebPreviewVisible((v) => !v)}
+                title={
+                  webPreviewVisible ? "Hide web preview" : "Show web preview"
+                }
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 28,
+                  height: 28,
+                  padding: 0,
+                  borderRadius: 6,
+                  color: webPreviewVisible
+                    ? "var(--accent-text)"
+                    : "var(--text-secondary)",
+                  background: webPreviewVisible
+                    ? "color-mix(in srgb, var(--accent-text) 10%, transparent)"
+                    : "transparent",
+                }}
+              >
+                <Globe size={14} />
+              </button>
             </>
           }
         />
