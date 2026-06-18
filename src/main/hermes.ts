@@ -34,7 +34,7 @@ import {
   getSshTunnelUrl,
   isSshTunnelActive,
   isSshTunnelHealthy,
-  startSshTunnel,
+  ensureSshTunnel,
 } from "./ssh-tunnel";
 import {
   pidIsAliveAs,
@@ -276,7 +276,7 @@ export async function ensureSshTunnelIfNeeded(): Promise<void> {
     conn.mode === "ssh" &&
     (!isSshTunnelActive() || !(await isSshTunnelHealthy()))
   ) {
-    await startSshTunnel(conn.ssh);
+    await ensureSshTunnel(conn.ssh);
   }
 }
 
@@ -976,6 +976,7 @@ export interface ChatCallbacks {
    *  (issue #352). */
   onReasoningChunk?: (text: string) => void;
   onDone: (sessionId?: string) => void;
+  onSessionStarted?: (sessionId: string) => void;
   onError: (error: string) => void;
   onToolProgress?: (tool: string) => void;
   onToolEvent?: (event: ChatToolEvent) => void;
@@ -1108,6 +1109,7 @@ function sendMessageViaApi(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): ChatHandle {
   const mc = getModelConfig(profile);
   const controller = new AbortController();
@@ -1137,7 +1139,7 @@ function sendMessageViaApi(
 
   const reasoningEffort = reasoningEffortForProfile(profile);
   const bodyObj: Record<string, unknown> = {
-    model: mc.model || "hermes-agent",
+    model: modelOverride || mc.model || "hermes-agent",
     messages,
     stream: true,
     ...(_resumeSessionId ? { session_id: _resumeSessionId } : {}),
@@ -1190,6 +1192,14 @@ function sendMessageViaApi(
   if (sessionId) {
     headers["X-Hermes-Session-Id"] = sessionId;
   }
+  let announcedSessionId = "";
+  function announceSessionId(id: string): void {
+    if (!id || announcedSessionId === id) return;
+    announcedSessionId = id;
+    cb.onSessionStarted?.(id);
+  }
+  announceSessionId(sessionId);
+
   let hasContent = false;
   let finished = false; // guard against double callbacks
   let lastError = ""; // capture embedded error messages
@@ -1215,7 +1225,7 @@ function sendMessageViaApi(
   function probeRealError(): void {
     // When streaming returns empty, make a non-streaming request to surface the real error
     const probeBodyObj: Record<string, unknown> = {
-      model: mc.model || "hermes-agent",
+      model: modelOverride || mc.model || "hermes-agent",
       messages: [{ role: "user", content: userContent }],
       stream: false,
     };
@@ -1367,7 +1377,10 @@ function sendMessageViaApi(
     },
     (res) => {
       const sid = res.headers["x-hermes-session-id"];
-      if (sid && typeof sid === "string") sessionId = sid;
+      if (sid && typeof sid === "string") {
+        sessionId = sid;
+        announceSessionId(sessionId);
+      }
 
       if (res.statusCode !== 200) {
         let errBody = "";
@@ -1499,19 +1512,20 @@ function sendMessageViaRuns(
   profile?: string,
   resumeSessionId?: string,
   history?: Array<{ role: string; content: string }>,
+  attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): ChatHandle {
   const mc = getModelConfig(profile);
   const controller = new AbortController();
   const apiUrl = getApiUrl(profile);
+  const headersForAuth = getApiAuthHeaders(profile);
   const sessionId =
     resumeSessionId ||
-    (getApiAuthHeaders(profile).Authorization
-      ? `desk-${Date.now()}-${randomUUID()}`
-      : "");
+    (headersForAuth.Authorization ? `desk-${Date.now()}-${randomUUID()}` : "");
   const ctxSystem = contextFolderSystemMessage(contextFolder);
   const bodyObj: Record<string, unknown> = {
-    model: mc.model || "hermes-agent",
+    model: modelOverride || mc.model || "hermes-agent",
     input: message,
     conversation_history: apiHistory(history),
   };
@@ -1523,6 +1537,7 @@ function sendMessageViaRuns(
   const headers = getJsonApiHeaders(profile, bodyBuf);
   if (sessionId) {
     headers["X-Hermes-Session-Id"] = sessionId;
+    cb.onSessionStarted?.(sessionId);
   }
 
   let runId = "";
@@ -1552,8 +1567,9 @@ function sendMessageViaRuns(
       profile,
       resumeSessionId,
       history,
-      undefined,
+      attachments,
       contextFolder,
+      modelOverride,
     );
   }
 
@@ -2064,6 +2080,7 @@ function sendMessageViaCli(
   profile?: string,
   resumeSessionId?: string,
   attachments?: Attachment[],
+  modelOverride?: string,
 ): ChatHandle {
   // CLI fallback can't pipe multimodal content; inline text-file attachments
   // and ignore images.  The gateway is the supported attachment path; this
@@ -2095,8 +2112,8 @@ function sendMessageViaCli(
     args.push("--resume", resumeSessionId);
   }
 
-  if (mc.model) {
-    args.push("-m", mc.model);
+  if (modelOverride || mc.model) {
+    args.push("-m", modelOverride || mc.model);
   }
 
   const cliProvider = CLI_COMPAT_PROVIDER_OVERRIDE[mc.provider];
@@ -2391,6 +2408,7 @@ async function sendMessageViaNonGatewayApi(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
   if (!attachments?.length && !approvalCommand) {
@@ -2402,7 +2420,9 @@ async function sendMessageViaNonGatewayApi(
         profile,
         resumeSessionId,
         history,
+        attachments,
         contextFolder,
+        modelOverride,
       );
     }
   }
@@ -2415,6 +2435,7 @@ async function sendMessageViaNonGatewayApi(
     history,
     attachments,
     contextFolder,
+    modelOverride,
   );
 }
 
@@ -2426,13 +2447,18 @@ async function sendMessageViaBestApi(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
+  // Skip the TUI gateway when a session-scoped model override is active — the
+  // TUI gateway reads its model from config.yaml and has no per-request
+  // override mechanism. The API path below already honours modelOverride.
   if (
     shouldUseTuiGatewayClient() &&
     !isRemoteMode() &&
     !attachments?.length &&
-    !approvalCommand
+    !approvalCommand &&
+    !modelOverride
   ) {
     try {
       return await sendMessageViaTuiGateway(
@@ -2459,6 +2485,7 @@ async function sendMessageViaBestApi(
     history,
     attachments,
     contextFolder,
+    modelOverride,
   );
 }
 
@@ -2470,6 +2497,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): Promise<ChatHandle> {
   let aborted = false;
   let retrying = false;
@@ -2514,6 +2542,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
         history,
         attachments,
         contextFolder,
+        modelOverride,
       );
       return;
     }
@@ -2524,6 +2553,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
       profile,
       resumeSessionId,
       attachments,
+      modelOverride,
     );
   };
 
@@ -2573,6 +2603,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
         }
       : undefined,
     onUsage: cb.onUsage,
+    onSessionStarted: cb.onSessionStarted,
     onDone: (sessionId) => {
       settled = true;
       cb.onDone(sessionId);
@@ -2600,6 +2631,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
     history,
     attachments,
     contextFolder,
+    modelOverride,
   );
 
   return handle;
@@ -2613,6 +2645,7 @@ export async function sendMessage(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): Promise<ChatHandle> {
   ensureInitialized();
 
@@ -2626,6 +2659,7 @@ export async function sendMessage(
       history,
       attachments,
       contextFolder,
+      modelOverride,
     );
   }
 
@@ -2637,6 +2671,7 @@ export async function sendMessage(
       profile,
       resumeSessionId,
       attachments,
+      modelOverride,
     );
   }
 
@@ -2660,11 +2695,19 @@ export async function sendMessage(
       history,
       attachments,
       contextFolder,
+      modelOverride,
     );
   }
 
   // Fallback to CLI
-  return sendMessageViaCli(message, cb, profile, resumeSessionId, attachments);
+  return sendMessageViaCli(
+    message,
+    cb,
+    profile,
+    resumeSessionId,
+    attachments,
+    modelOverride,
+  );
 }
 
 // Lazy init — called on first sendMessage or gateway start

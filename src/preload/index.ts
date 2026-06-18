@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
+import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
+import type { DesktopSessionLocalError } from "../shared/session-continuation";
 import type {
   MessagingPlatformsResponse,
   MessagingPlatformTestResponse,
@@ -31,6 +33,26 @@ interface GatewayStartResult {
   success: boolean;
   running: boolean;
   alreadyRunning?: boolean;
+  error?: string;
+  logPath?: string;
+}
+
+interface DashboardConnection {
+  baseUrl: string;
+  wsUrl: string;
+  token: string;
+  mode: "local" | "remote" | "ssh";
+  profile?: string;
+  pid?: number;
+  port?: number;
+  logPath?: string;
+  alreadyRunning?: boolean;
+}
+
+interface DashboardStatus {
+  supported: boolean;
+  running: boolean;
+  connection?: DashboardConnection;
   error?: string;
   logPath?: string;
 }
@@ -216,7 +238,10 @@ const hermesAPI = {
   getConnectionConfig: (): Promise<{
     mode: "local" | "remote" | "ssh";
     remoteUrl: string;
+    remoteChatTransport: "auto" | "dashboard" | "legacy";
+    sshChatTransport: "auto" | "dashboard" | "legacy";
     hasApiKey: boolean;
+    apiKeyLength: number;
     ssh: {
       host: string;
       port: number;
@@ -233,6 +258,61 @@ const hermesAPI = {
     apiKey?: string,
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-connection-config", mode, remoteUrl, apiKey),
+
+  setConnectionChatTransports: (
+    remoteChatTransport: "auto" | "dashboard" | "legacy",
+    sshChatTransport: "auto" | "dashboard" | "legacy",
+  ): Promise<boolean> =>
+    ipcRenderer.invoke(
+      "set-connection-chat-transports",
+      remoteChatTransport,
+      sshChatTransport,
+    ),
+
+  onConnectionConfigChanged: (
+    callback: (config: {
+      mode: "local" | "remote" | "ssh";
+      remoteUrl: string;
+      remoteChatTransport: "auto" | "dashboard" | "legacy";
+      sshChatTransport: "auto" | "dashboard" | "legacy";
+      hasApiKey: boolean;
+      apiKeyLength: number;
+      ssh: {
+        host: string;
+        port: number;
+        username: string;
+        keyPath: string;
+        remotePort: number;
+        localPort: number;
+      };
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      config: unknown,
+    ): void =>
+      callback(
+        config as {
+          mode: "local" | "remote" | "ssh";
+          remoteUrl: string;
+          remoteChatTransport: "auto" | "dashboard" | "legacy";
+          sshChatTransport: "auto" | "dashboard" | "legacy";
+          hasApiKey: boolean;
+          apiKeyLength: number;
+          ssh: {
+            host: string;
+            port: number;
+            username: string;
+            keyPath: string;
+            remotePort: number;
+            localPort: number;
+          };
+        },
+      );
+    ipcRenderer.on("connection-config-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("connection-config-changed", handler);
+  },
 
   setSshConfig: (
     host: string,
@@ -288,6 +368,7 @@ const hermesAPI = {
     attachments?: Attachment[],
     contextFolder?: string,
     runId?: string,
+    modelOverride?: string,
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -298,6 +379,7 @@ const hermesAPI = {
       attachments,
       contextFolder,
       runId,
+      modelOverride,
     ),
 
   abortChat: (runId?: string): Promise<void> =>
@@ -310,8 +392,13 @@ const hermesAPI = {
   ): Promise<string> =>
     ipcRenderer.invoke("transcribe-audio", audio, mimeType, profile),
 
-  getApiServerKeyStatus: (profile?: string): Promise<{ hasKey: boolean }> =>
+  getApiServerKeyStatus: (
+    profile?: string,
+  ): Promise<{ hasKey: boolean; providerId?: string; checkedAt?: number }> =>
     ipcRenderer.invoke("get-api-server-key-status", profile),
+
+  invalidateSecretsCache: (): Promise<void> =>
+    ipcRenderer.invoke("invalidate-secrets-cache"),
 
   generateApiServerKey: (profile?: string): Promise<{ key: string }> =>
     ipcRenderer.invoke("generate-api-server-key", profile),
@@ -430,6 +517,18 @@ const hermesAPI = {
     return () => ipcRenderer.removeListener("chat-done", handler);
   },
 
+  onChatSessionStarted: (
+    callback: (runId: string, sessionId: string) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      runId: string,
+      sessionId: string,
+    ): void => callback(runId, sessionId);
+    ipcRenderer.on("chat-session-started", handler);
+    return () => ipcRenderer.removeListener("chat-session-started", handler);
+  },
+
   onContextMenuCopyChat: (
     callback: (format: "text" | "markdown") => void,
   ): (() => void) => {
@@ -546,6 +645,12 @@ const hermesAPI = {
   restartGateway: (profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("restart-gateway", profile),
   gatewayStatus: (): Promise<boolean> => ipcRenderer.invoke("gateway-status"),
+  dashboardStatus: (profile?: string): Promise<DashboardStatus> =>
+    ipcRenderer.invoke("dashboard-status", profile),
+  startDashboard: (profile?: string): Promise<DashboardStatus> =>
+    ipcRenderer.invoke("start-dashboard", profile),
+  stopDashboard: (profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("stop-dashboard", profile),
 
   // Platform toggles
   getPlatformEnabled: (profile?: string): Promise<Record<string, boolean>> =>
@@ -600,6 +705,18 @@ const hermesAPI = {
       attachments?: Attachment[];
     }>
   > => ipcRenderer.invoke("get-session-messages", sessionId),
+
+  recordSessionContinuation: (
+    sessionId: string,
+    items: DesktopSessionContinuationItem[],
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("record-session-continuation", sessionId, items),
+
+  recordSessionLocalError: (
+    sessionId: string,
+    error: DesktopSessionLocalError,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("record-session-local-error", sessionId, error),
 
   // Profiles
   listProfiles: (): Promise<
@@ -829,20 +946,40 @@ const hermesAPI = {
     provider: string,
     model: string,
     baseUrl: string,
+    contextLength?: number,
   ): Promise<{
     id: string;
     name: string;
     provider: string;
     model: string;
     baseUrl: string;
+    contextLength?: number;
     createdAt: number;
-  }> => ipcRenderer.invoke("add-model", name, provider, model, baseUrl),
+  }> =>
+    ipcRenderer.invoke(
+      "add-model",
+      name,
+      provider,
+      model,
+      baseUrl,
+      contextLength,
+    ),
 
   removeModel: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("remove-model", id),
 
-  updateModel: (id: string, fields: Record<string, string>): Promise<boolean> =>
-    ipcRenderer.invoke("update-model", id, fields),
+  updateModel: (
+    id: string,
+    fields: Record<string, string>,
+    contextLength?: number | null,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("update-model", id, fields, contextLength),
+
+  onModelLibraryChanged: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("model-library-changed", handler);
+    return () => ipcRenderer.removeListener("model-library-changed", handler);
+  },
 
   // Claw3D
   claw3dStatus: (): Promise<{
