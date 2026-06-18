@@ -524,7 +524,8 @@ function hasEquivalentAssistantError(
     }
     if (!isAssistantError(candidate)) continue;
     if (normalizeMessageText(candidate.error) !== wantedError) continue;
-    if (normalizeMessageText(candidate.content || "") !== wantedContent) continue;
+    if (normalizeMessageText(candidate.content || "") !== wantedContent)
+      continue;
     return true;
   }
   return false;
@@ -555,7 +556,9 @@ export function preserveLocalAssistantErrors(
     if (!isAssistantError(error) || existingIds.has(error.id)) continue;
 
     const localUser = previousUserBefore(currentMessages, i);
-    if (hasEquivalentAssistantError(output, currentMessages, error, localUser)) {
+    if (
+      hasEquivalentAssistantError(output, currentMessages, error, localUser)
+    ) {
       continue;
     }
 
@@ -659,7 +662,8 @@ function dbWithActiveUserAnchor(
   if (currentActiveUserIndex < 0) return [...db];
 
   const activeUser = current[currentActiveUserIndex];
-  if (!isBubbleMessage(activeUser) || activeUser.role !== "user") return [...db];
+  if (!isBubbleMessage(activeUser) || activeUser.role !== "user")
+    return [...db];
 
   if (findMatchingUserIndex(db, current, activeUser) >= 0) return [...db];
 

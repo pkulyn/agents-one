@@ -124,7 +124,10 @@ function singleToolName(items: ToolItem[]): string | null {
 
 export function orderToolActivityItems(items: ToolItem[]): ToolItem[] {
   const callIds = new Set(
-    items.filter(isToolCall).map((item) => item.callId).filter(Boolean),
+    items
+      .filter(isToolCall)
+      .map((item) => item.callId)
+      .filter(Boolean),
   );
   const resultsByCallId = new Map<string, ToolResultMessage[]>();
   for (const item of items) {

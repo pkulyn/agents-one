@@ -2417,14 +2417,14 @@ async function sendMessageViaNonGatewayApi(
       return sendMessageViaRuns(
         message,
         cb,
-          profile,
-          resumeSessionId,
-          history,
-          attachments,
-          contextFolder,
-          modelOverride,
-        );
-      }
+        profile,
+        resumeSessionId,
+        history,
+        attachments,
+        contextFolder,
+        modelOverride,
+      );
+    }
   }
 
   return sendMessageViaApi(
@@ -2700,7 +2700,14 @@ export async function sendMessage(
   }
 
   // Fallback to CLI
-  return sendMessageViaCli(message, cb, profile, resumeSessionId, attachments, modelOverride);
+  return sendMessageViaCli(
+    message,
+    cb,
+    profile,
+    resumeSessionId,
+    attachments,
+    modelOverride,
+  );
 }
 
 // Lazy init — called on first sendMessage or gateway start

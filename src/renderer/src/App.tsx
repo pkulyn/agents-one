@@ -36,7 +36,7 @@ function App(): React.JSX.Element {
   const runInstallCheck = useCallback(async () => {
     const startedAt = Date.now();
     let next: Screen = "welcome";
-    let error: string | null = null;
+    const error: string | null = null;
     let isRemote = false;
 
     try {

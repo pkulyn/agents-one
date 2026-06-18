@@ -37,7 +37,7 @@ interface ElectronWebviewElement extends HTMLElement {
   goForward: () => void;
   reload: () => void;
   stop: () => void;
-  executeJavaScript: (script: string) => Promise<any>;
+  executeJavaScript: (script: string) => Promise<unknown>;
 }
 
 // Injected inspector script template
@@ -268,7 +268,7 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
       try {
         setCanGoBack(webview.canGoBack());
         setCanGoForward(webview.canGoForward());
-      } catch (err) {
+      } catch {
         // webview methods might not be ready yet
       }
     };
@@ -288,8 +288,11 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
       setIsDomReady(true);
     };
 
-    const handleDidNavigate = (e: any): void => {
-      const url = e.url;
+    // Electron's <webview> dispatches DOM events whose Electron-specific fields
+    // (url, errorCode, message…) aren't on the base `Event` type, so read them
+    // through a narrow cast rather than `any`.
+    const handleDidNavigate = (e: Event): void => {
+      const url = (e as unknown as { url: string }).url;
       setCurrentUrl(url);
       setInputUrl(url);
       updateNavigationState();
@@ -297,8 +300,8 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
       setIsDomReady(false);
     };
 
-    const handleDidNavigateInPage = (e: any): void => {
-      const url = e.url;
+    const handleDidNavigateInPage = (e: Event): void => {
+      const url = (e as unknown as { url: string }).url;
       setCurrentUrl(url);
       setInputUrl(url);
       updateNavigationState();
@@ -306,14 +309,24 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
       setIsDomReady(false);
     };
 
-    const handleDidFailLoad = (e: any): void => {
+    const handleDidFailLoad = (e: Event): void => {
+      const { validatedURL, errorCode, errorDescription } = e as unknown as {
+        validatedURL: string;
+        errorCode: number;
+        errorDescription: string;
+      };
       console.error(
-        `[WEBVIEW ERROR] Failed to load: ${e.validatedURL}, Code: ${e.errorCode}, Description: ${e.errorDescription}`,
+        `[WEBVIEW ERROR] Failed to load: ${validatedURL}, Code: ${errorCode}, Description: ${errorDescription}`,
       );
     };
 
-    const handleConsoleMessage = (e: any): void => {
-      const message = e.message || "";
+    const handleConsoleMessage = (e: Event): void => {
+      const ev = e as unknown as {
+        message: string;
+        sourceId: string;
+        line: number;
+      };
+      const message = ev.message || "";
       if (message.startsWith("__HERMES_INSPECT_RESULT__:")) {
         if (!isInspectingRef.current) return;
         const jsonStr = message.slice("__HERMES_INSPECT_RESULT__:".length);
@@ -331,7 +344,7 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
         setIsInspecting(false);
         return;
       }
-      console.log(`[WEBVIEW CONSOLE] ${message} (${e.sourceId}:${e.line})`);
+      console.log(`[WEBVIEW CONSOLE] ${message} (${ev.sourceId}:${ev.line})`);
     };
 
     webview.addEventListener("did-start-loading", handleDidStartLoading);
@@ -485,7 +498,7 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
         style={{ pointerEvents: isResizing ? "none" : "auto" }}
       >
         <webview
-          ref={webviewRef as React.RefObject<any>}
+          ref={webviewRef as React.RefObject<ElectronWebviewElement>}
           src={currentUrl}
           {...({
             // `partition` is a real Electron <webview> attribute (unlike `name`),

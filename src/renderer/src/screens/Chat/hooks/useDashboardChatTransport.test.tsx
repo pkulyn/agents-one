@@ -32,7 +32,9 @@ vi.mock("../dashboardGatewayClient", () => ({
     connected = true;
     request = dashboardMock.request;
 
-    constructor(options: { onEvent?: (event: DashboardRpcEvent) => void } = {}) {
+    constructor(
+      options: { onEvent?: (event: DashboardRpcEvent) => void } = {},
+    ) {
       dashboardMock.onEvent = options.onEvent ?? null;
       dashboardMock.instances.push(this);
     }
@@ -108,13 +110,18 @@ function Harness({
   });
 
   useEffect(() => {
-    api.activeTurnRef = activeTurnRef;
-    api.messages = messages;
-    api.send = transport.sendMessage;
-    api.setConnectionMode = setConnectionMode;
-    api.setMessages = setMessages;
-    api.setModel = setModel;
-    api.setProvider = setProvider;
+    // Bridge the hook's live values out to the test via the shared `api`
+    // object. Object.assign mutates it in place (same reference the test
+    // holds) without per-prop assignment, which the immutability rule rejects.
+    Object.assign(api, {
+      activeTurnRef,
+      messages,
+      send: transport.sendMessage,
+      setConnectionMode,
+      setMessages,
+      setModel,
+      setProvider,
+    });
   }, [
     activeTurnRef,
     api,

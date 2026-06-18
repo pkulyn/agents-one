@@ -46,14 +46,14 @@ describe("completionFailed", () => {
         rendered: "To troubleshoot an invalid API key, check your provider.",
       }),
     ).toBe(false);
-    expect(completionFailed({ status: "failed", text: "Invalid API Key" })).toBe(
-      true,
-    );
+    expect(
+      completionFailed({ status: "failed", text: "Invalid API Key" }),
+    ).toBe(true);
     expect(completionFailed({ error: "Invalid API Key" })).toBe(true);
     expect(completionFailed({ ok: false, text: "Invalid API Key" })).toBe(true);
-    expect(completionFailed({ text: "Error: Error code: 401 - invalid key" })).toBe(
-      true,
-    );
+    expect(
+      completionFailed({ text: "Error: Error code: 401 - invalid key" }),
+    ).toBe(true);
     expect(
       completionFailed({
         text: "API call failed after 3 retries: Connection error.",
@@ -119,12 +119,12 @@ describe("dashboardShouldPersistLocalOverlays", () => {
 
 describe("isDashboardSlashWorkerExitError", () => {
   it("detects the transient upstream slash worker failure", () => {
-    expect(isDashboardSlashWorkerExitError(new Error("slash worker exited"))).toBe(
-      true,
-    );
-    expect(isDashboardSlashWorkerExitError("Slash worker exited unexpectedly")).toBe(
-      true,
-    );
+    expect(
+      isDashboardSlashWorkerExitError(new Error("slash worker exited")),
+    ).toBe(true);
+    expect(
+      isDashboardSlashWorkerExitError("Slash worker exited unexpectedly"),
+    ).toBe(true);
     expect(isDashboardSlashWorkerExitError(new Error("invalid api key"))).toBe(
       false,
     );
@@ -753,7 +753,8 @@ describe("dashboardSeedMessagesFromTranscript", () => {
           {
             id: "u-recovery",
             role: "user",
-            content: "recovery prompt that should be persisted by prompt.submit",
+            content:
+              "recovery prompt that should be persisted by prompt.submit",
           },
         ],
         { excludeUserId: "u-recovery" },

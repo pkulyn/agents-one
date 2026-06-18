@@ -104,7 +104,10 @@ export function MediaImage({
             <button
               className="chat-image-preview-btn"
               onClick={() =>
-                window.hermesAPI.saveMediaFile(resolved ?? token.src, token.name)
+                window.hermesAPI.saveMediaFile(
+                  resolved ?? token.src,
+                  token.name,
+                )
               }
             >
               <Download size={14} />

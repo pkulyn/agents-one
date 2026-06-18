@@ -995,75 +995,75 @@ export function useDashboardChatTransport({
     ],
   );
 
-  const ensureClient = useCallback(async (): Promise<DashboardGatewayClient> => {
-    const existing = clientRef.current;
-    if (existing?.connected) return existing;
-    // Already known unavailable on this remote/SSH connection — fail fast so the
-    // caller falls back to legacy without re-running the slow status+probe.
-    if (dashboardUnavailableRef.current) {
-      throw new Error("Hermes dashboard transport is unavailable");
-    }
-    if (connectingRef.current) return connectingRef.current;
-
-    const generation = clientGenerationRef.current;
-    const pending = (async () => {
-      const status = await window.hermesAPI.startDashboard(profile);
-      if (clientGenerationRef.current !== generation) {
-        throw new Error("Hermes dashboard connection was superseded");
+  const ensureClient =
+    useCallback(async (): Promise<DashboardGatewayClient> => {
+      const existing = clientRef.current;
+      if (existing?.connected) return existing;
+      // Already known unavailable on this remote/SSH connection — fail fast so the
+      // caller falls back to legacy without re-running the slow status+probe.
+      if (dashboardUnavailableRef.current) {
+        throw new Error("Hermes dashboard transport is unavailable");
       }
-      if (!status.running || !status.connection?.wsUrl) {
-        // Sticky-fallback + notify only when we're actually going to fall back
-        // to legacy (auto mode). With an explicit "dashboard" preference
-        // (fallbackOnUnavailable=false) the turn errors instead, so latching or
-        // claiming "using basic chat" would be wrong. Local stays retryable —
-        // its dashboard may still be spawning.
-        if (
-          connectionMode !== "local" &&
-          fallbackOnUnavailable &&
-          !dashboardUnavailableRef.current
-        ) {
-          dashboardUnavailableRef.current = true;
-          onDashboardUnavailable?.(
+      if (connectingRef.current) return connectingRef.current;
+
+      const generation = clientGenerationRef.current;
+      const pending = (async () => {
+        const status = await window.hermesAPI.startDashboard(profile);
+        if (clientGenerationRef.current !== generation) {
+          throw new Error("Hermes dashboard connection was superseded");
+        }
+        if (!status.running || !status.connection?.wsUrl) {
+          // Sticky-fallback + notify only when we're actually going to fall back
+          // to legacy (auto mode). With an explicit "dashboard" preference
+          // (fallbackOnUnavailable=false) the turn errors instead, so latching or
+          // claiming "using basic chat" would be wrong. Local stays retryable —
+          // its dashboard may still be spawning.
+          if (
+            connectionMode !== "local" &&
+            fallbackOnUnavailable &&
+            !dashboardUnavailableRef.current
+          ) {
+            dashboardUnavailableRef.current = true;
+            onDashboardUnavailable?.(
+              status.error || "Hermes dashboard transport is unavailable",
+            );
+          }
+          throw new Error(
             status.error || "Hermes dashboard transport is unavailable",
           );
         }
-        throw new Error(
-          status.error || "Hermes dashboard transport is unavailable",
-        );
-      }
-      let client: DashboardGatewayClient;
-      client = new DashboardGatewayClient({
-        onEvent: handleGatewayEvent,
-        onClose: () => {
-          if (clientRef.current === client) {
-            clientRef.current = null;
-          }
-        },
-      });
-      await client.connect(status.connection.wsUrl);
-      if (clientGenerationRef.current !== generation) {
-        client.close();
-        throw new Error("Hermes dashboard connection was superseded");
-      }
-      clientRef.current = client;
-      return client;
-    })();
-    connectingRef.current = pending;
+        const client: DashboardGatewayClient = new DashboardGatewayClient({
+          onEvent: handleGatewayEvent,
+          onClose: () => {
+            if (clientRef.current === client) {
+              clientRef.current = null;
+            }
+          },
+        });
+        await client.connect(status.connection.wsUrl);
+        if (clientGenerationRef.current !== generation) {
+          client.close();
+          throw new Error("Hermes dashboard connection was superseded");
+        }
+        clientRef.current = client;
+        return client;
+      })();
+      connectingRef.current = pending;
 
-    try {
-      return await pending;
-    } finally {
-      if (connectingRef.current === pending) {
-        connectingRef.current = null;
+      try {
+        return await pending;
+      } finally {
+        if (connectingRef.current === pending) {
+          connectingRef.current = null;
+        }
       }
-    }
-  }, [
-    handleGatewayEvent,
-    profile,
-    connectionMode,
-    fallbackOnUnavailable,
-    onDashboardUnavailable,
-  ]);
+    }, [
+      handleGatewayEvent,
+      profile,
+      connectionMode,
+      fallbackOnUnavailable,
+      onDashboardUnavailable,
+    ]);
 
   const ensureRuntimeSession = useCallback(
     async (

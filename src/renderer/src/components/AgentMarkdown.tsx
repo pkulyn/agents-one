@@ -154,7 +154,9 @@ function CodeBlock({
             })
           }
         >
-          {isCollapsed ? t("common.showMore") || "Show more" : t("common.showLess") || "Show less"}
+          {isCollapsed
+            ? t("common.showMore") || "Show more"
+            : t("common.showLess") || "Show less"}
         </button>
       )}
     </div>

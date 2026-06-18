@@ -5,7 +5,9 @@ import {
 } from "../src/renderer/src/screens/Chat/dashboardEventAdapter";
 import type { ChatMessage } from "../src/renderer/src/screens/Chat/types";
 
-function reduceEvents(events: Parameters<typeof applyDashboardStreamEvent>[1][]) {
+function reduceEvents(
+  events: Parameters<typeof applyDashboardStreamEvent>[1][],
+): ChatMessage[] {
   let state: DashboardEventState = {
     messages: [{ id: "u-1", role: "user", content: "make image" }],
     reasoningSegmentClosed: false,
@@ -255,8 +257,14 @@ describe("applyDashboardStreamEvent", () => {
       "tool-result-call-a-3",
       "tool-result-call-b-4",
     ]);
-    expect(messages[1]).toMatchObject({ callId: "call-a", status: "completed" });
-    expect(messages[2]).toMatchObject({ callId: "call-b", status: "completed" });
+    expect(messages[1]).toMatchObject({
+      callId: "call-a",
+      status: "completed",
+    });
+    expect(messages[2]).toMatchObject({
+      callId: "call-b",
+      status: "completed",
+    });
     expect(messages[3]).toMatchObject({ callId: "call-a" });
     expect(messages[4]).toMatchObject({ callId: "call-b" });
   });

@@ -128,16 +128,12 @@ describe("ssh Hermes command quoting", () => {
     30000,
   );
 
-  it(
-    "preserves existing extraShell redirects",
-    () => {
-      const output = runWithHermesShim(
-        buildRemoteHermesCmd(["doctor"], " 2>&1"),
-      ).toString("utf8");
-      expect(output).toBe("doctor stderr preserved\n");
-    },
-    30000,
-  );
+  it("preserves existing extraShell redirects", () => {
+    const output = runWithHermesShim(
+      buildRemoteHermesCmd(["doctor"], " 2>&1"),
+    ).toString("utf8");
+    expect(output).toBe("doctor stderr preserved\n");
+  }, 30000);
 });
 
 describe("ssh gateway commands (issue #285)", () => {

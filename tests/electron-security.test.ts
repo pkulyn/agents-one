@@ -36,7 +36,9 @@ describe("Electron main process hardening", () => {
   it("keeps attached webviews constrained after initial attachment", () => {
     expect(mainSrc).toContain('app.on("web-contents-created"');
     expect(mainSrc).toContain('contents.getType() === "webview"');
-    expect(mainSrc).toContain("hardenAttachedWebContents(contents, isWebPreview)");
+    expect(mainSrc).toContain(
+      "hardenAttachedWebContents(contents, isWebPreview)",
+    );
   });
 
   it("identifies the web preview webview by its dedicated session, not a spoofable attribute", () => {

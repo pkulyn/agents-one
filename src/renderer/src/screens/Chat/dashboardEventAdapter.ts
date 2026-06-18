@@ -166,9 +166,7 @@ function appendClarifyRequest(
   return [...messages, bubble];
 }
 
-function toolEventFromGatewayEvent(
-  event: DashboardStreamEvent,
-): ChatToolEvent {
+function toolEventFromGatewayEvent(event: DashboardStreamEvent): ChatToolEvent {
   const payload = isRecord(event.payload) ? event.payload : {};
   const name =
     textFromPayload(payload, "name", "tool", "function", "function_name") ||
@@ -307,11 +305,7 @@ function findToolCallIndex(
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     if (msg.role === "user") break;
-    if (
-      "kind" in msg &&
-      msg.kind === "tool_call" &&
-      msg.callId === callId
-    ) {
+    if ("kind" in msg && msg.kind === "tool_call" && msg.callId === callId) {
       return i;
     }
   }
@@ -432,16 +426,26 @@ function removeDuplicateReasoning(
   return messages.filter((msg, index) => {
     if (index <= lastUserIndex) return true;
     if (!("kind" in msg) || msg.kind !== "reasoning") return true;
-    if (activeTurn && "turnId" in msg && msg.turnId && msg.turnId !== activeTurn.turnId) {
+    if (
+      activeTurn &&
+      "turnId" in msg &&
+      msg.turnId &&
+      msg.turnId !== activeTurn.turnId
+    ) {
       return true;
     }
 
     const reasoning = normalizeText(msg.text);
-    return !(reasoning && (final.startsWith(reasoning) || reasoning.startsWith(final)));
+    return !(
+      reasoning &&
+      (final.startsWith(reasoning) || reasoning.startsWith(final))
+    );
   });
 }
 
-function hasReasoningSinceLastUser(messages: ReadonlyArray<ChatMessage>): boolean {
+function hasReasoningSinceLastUser(
+  messages: ReadonlyArray<ChatMessage>,
+): boolean {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     if (msg.role === "user") break;
@@ -584,7 +588,10 @@ export function applyDashboardStreamEvent(
         return { ...state, reasoningSegmentClosed: true };
       }
       return {
-        messages: appendToolEvent(state.messages, toolEventFromGatewayEvent(event)),
+        messages: appendToolEvent(
+          state.messages,
+          toolEventFromGatewayEvent(event),
+        ),
         reasoningSegmentClosed: true,
       };
     case "clarify.request":
@@ -594,7 +601,10 @@ export function applyDashboardStreamEvent(
       };
     case "message.complete": {
       const finalText = textFromPayload(event.payload, "text", "rendered");
-      const finalReasoning = thinkingTextFromPayload(event.payload, "reasoning");
+      const finalReasoning = thinkingTextFromPayload(
+        event.payload,
+        "reasoning",
+      );
       const messagesWithReasoning = addCompletionReasoningFallback(
         state.messages,
         finalText,
