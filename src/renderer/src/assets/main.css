@@ -9867,6 +9867,57 @@ body {
   font-size: 12px;
 }
 
+/* ── Follow-us-on-X modal ── */
+.follow-us-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-lg);
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.follow-us-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.follow-us-icon-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent-text) 10%, transparent);
+}
+
+.follow-us-x-icon {
+  color: var(--accent-text);
+}
+
+.follow-us-description {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.follow-us-footer {
+  justify-content: space-between;
+}
+
+.follow-us-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .models-search {
   display: flex;
   align-items: center;

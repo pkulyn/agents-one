@@ -150,4 +150,11 @@ export default {
   },
   showWorktree: "Show file explorer",
   hideWorktree: "Hide file explorer",
+  followUs: {
+    title: "Follow Us on X",
+    description:
+      "Stay up to date with the latest Hermes One features, tips, and updates. Follow us on X!",
+    follow: "Follow",
+    notNow: "Not Now",
+  },
 } as const;

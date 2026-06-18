@@ -23,3 +23,9 @@ The bar always renders so it is always a drag area, but chips appear only when t
 Chips show when more than one run is open, or any run is loading (`showChips` in [[src/renderer/src/screens/Layout/ActiveSessionsBar.tsx#ActiveSessionsBar]]).
 
 Because the bar doubles as the drag strip, [[src/renderer/src/screens/Layout/Layout.tsx]] renders it as the first child of `.content`; the verify-warning banner (when shown) sits just below it, clear of the drag layer.
+
+## Follow-us modal
+
+A one-time modal prompting the user to follow Hermes on X. Dismissed permanently via localStorage after either button is clicked.
+
+[[src/renderer/src/components/FollowUsModal.tsx]] stores the dismissal flag in `localStorage` under `hermes-follow-x-dismissed`. Both "Follow" (opens `https://x.com/HermesOneApp` via `openExternal`) and "Not Now" write the flag and close the modal. It renders in [[src/renderer/src/screens/Chat/Chat.tsx]] only when `connectionModeLoaded && readiness.ok`, so it appears after setup is complete. The modal reuses the `.models-modal-overlay` / `.models-modal` pattern for consistent styling.
