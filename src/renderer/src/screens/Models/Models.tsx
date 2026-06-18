@@ -538,7 +538,7 @@ function Models({ visible }: ModelsProps = {}): React.JSX.Element {
         {activeTab === "models" && (
           <div className="models-header-actions">
             <a
-              href="https://github.com/fathah/hermes-registry"
+              href="https://github.com/hermesonehq/hermes-registry"
               target="_blank"
               rel="noreferrer"
               className="btn btn-secondary btn-sm"

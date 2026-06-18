@@ -597,12 +597,8 @@ function Layout({
       </aside>
 
       <main className="content">
-        {verifyWarning && onReinstall && onDismissVerifyWarning && (
-          <VerifyWarningBanner
-            onReinstall={onReinstall}
-            onDismiss={onDismissVerifyWarning}
-          />
-        )}
+        {/* Doubles as the window drag strip — keep it first so it owns the top
+            band; the warning banner (if any) sits just below it. */}
         <ActiveSessionsBar
           runs={runs}
           activeRunId={activeRunId}
@@ -610,6 +606,12 @@ function Layout({
           onClose={handleCloseRun}
           getAppearance={getAppearance}
         />
+        {verifyWarning && onReinstall && onDismissVerifyWarning && (
+          <VerifyWarningBanner
+            onReinstall={onReinstall}
+            onDismiss={onDismissVerifyWarning}
+          />
+        )}
         <div style={paneStyle("chat")}>
           {runs.map((run) => (
             <div

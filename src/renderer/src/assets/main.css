@@ -488,7 +488,7 @@ body {
 
 /* ----- App Shell ----- */
 .app {
-  height: 97vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
@@ -1260,7 +1260,9 @@ body {
   transition:
     width var(--transition),
     padding var(--transition);
-  border-radius: 16px;
+  /* Flush full-height panel: square right edge against the content, left
+     corners kept rounded to follow the window's rounded corners. */
+  border-radius: 16px 0 0 16px;
 }
 
 .sidebar-collapsed .sidebar {
@@ -1279,7 +1281,9 @@ body {
 .sidebar-logo {
   height: 30px;
   width: 150px;
-  background-color: var(--primary-yellow);
+  /* Follow the foreground colour (white on dark themes, black on light) rather
+     than a fixed brand yellow, so the wordmark always reads against the bg. */
+  background-color: var(--text-primary);
   mask-repeat: no-repeat;
   mask-position: center;
   mask-size: contain;
@@ -1548,11 +1552,23 @@ body {
 /* ── Active sessions bar (concurrent / multi-agent runs) ── */
 .active-sessions-bar {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  /* Tabs stretch to the full strip height so the active tab's fill reaches the
+     bottom edge and merges seamlessly into the content below. */
+  align-items: stretch;
+  gap: 0;
+  /* This strip IS the window's title-bar drag region (browser-style): empty
+     space drags the window. It sits above the global .drag-region (z 1000) so
+     it owns the top band of the content column; the chips opt back out of
+     dragging (no-drag) so they stay clickable. Always present — with no extra
+     tabs it's simply an empty drag area, costing no dedicated bar height. */
+  position: relative;
+  z-index: 1001;
+  -webkit-app-region: drag;
+  min-height: 34px;
+  padding: 0 8px 0 12px;
   overflow-x: auto;
-  border-bottom: 1px solid var(--border);
+  /* Darker toolbar shade so the lighter active tab (--bg-primary) reads as
+     part of the page below it. */
   background: var(--bg-secondary);
   flex-shrink: 0;
   /* Scrollable but with no visible scrollbar. */
@@ -1564,41 +1580,59 @@ body {
   display: none;
 }
 
-/* On macOS the frameless window's 28px drag strip overlays the top of the
-   content and swallows clicks. Push the content below it so they're fully
-   clickable. The strip only renders on mac (App.tsx), so non-mac keeps the
-   tight padding above. */
-.is-mac .content {
-  padding-top: 28px;
-}
-
+/* Flat tab: no border or fill, just text. Adjacent tabs are separated by a thin
+   vertical divider (::before); the active tab fills with the page colour and
+   rounds its top so it looks docked to the content beneath. */
 .active-session-chip {
   display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 150px;
+  max-width: 160px;
   flex-shrink: 0;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
+  /* Opt out of the strip's drag region so the chip is clickable. */
+  -webkit-app-region: no-drag;
+  position: relative;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-sans);
   font-size: 12px;
   white-space: nowrap;
-  transition: all var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+/* Divider between two adjacent tabs (drawn on the right tab's left edge). */
+.active-session-chip + .active-session-chip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 16px;
+  background: var(--border-bright);
 }
 
 .active-session-chip:hover {
   color: var(--text-primary);
-  border-color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .active-session-chip.active {
-  background: var(--accent-subtle);
-  color: var(--accent-text);
-  border-color: var(--accent-text, var(--accent));
+  /* Same colour as the content area below → the tab merges into the page. */
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Drop the dividers flanking the active tab so it reads as one docked panel. */
+.active-session-chip.active::before,
+.active-session-chip.active + .active-session-chip::before {
+  opacity: 0;
 }
 
 /* Loading state reuses an avatar-sized circle filled with the profile colour
@@ -1627,7 +1661,13 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.8;
+  opacity: 0.7;
+}
+
+/* The focused tab's label reads at full strength. */
+.active-session-chip.active .active-session-chip-title,
+.active-session-chip:hover .active-session-chip-title {
+  opacity: 1;
 }
 
 .active-session-chip-close {
