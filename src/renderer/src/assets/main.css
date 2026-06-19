@@ -1418,15 +1418,38 @@ body {
   gap: 2px;
 }
 
+/* The Chat item and its chevron read as one container: the row owns the
+   hover/active background while the two buttons inside stay transparent and
+   remain separate click targets (Chat navigates, chevron toggles the list). */
 .sidebar-nav-row {
   display: flex;
   align-items: center;
   gap: 2px;
+  border-radius: var(--radius-md);
+  transition: background var(--transition);
 }
 
 .sidebar-nav-row .sidebar-nav-item {
   flex: 1;
   min-width: 0;
+}
+
+/* Inner buttons keep their text-color states but defer the background to the
+   row, so the highlight spans the whole container rather than just one half. */
+.sidebar-nav-row .sidebar-nav-item,
+.sidebar-nav-row .sidebar-nav-item:hover,
+.sidebar-nav-row .sidebar-nav-item.active {
+  background: none;
+}
+
+.sidebar-nav-row:hover {
+  background: var(--bg-tertiary);
+}
+
+/* Active wins over hover (higher specificity via :has), so hovering the active
+   row keeps the accent fill rather than flipping to the neutral hover tint. */
+.sidebar-nav-row:has(.sidebar-nav-item.active) {
+  background: var(--accent-subtle);
 }
 
 .sidebar-nav-chevron {
@@ -1442,12 +1465,31 @@ body {
   border-radius: var(--radius-md);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all var(--transition);
+  transition: color var(--transition);
 }
 
-.sidebar-nav-chevron:hover {
-  background: var(--bg-tertiary);
+.sidebar-nav-row .sidebar-nav-chevron:hover {
+  /* Background comes from the row; just brighten the icon on hover. */
+  background: none;
   color: var(--text-primary);
+}
+
+/* Collapsed sidebar shows only the icon (no chevron), so revert to the
+   per-item background — a full-width row fill would extend past the 40px icon. */
+.sidebar-collapsed .sidebar-nav-row:hover {
+  background: none;
+}
+
+.sidebar-collapsed .sidebar-nav-row:has(.sidebar-nav-item.active) {
+  background: none;
+}
+
+.sidebar-collapsed .sidebar-nav-row .sidebar-nav-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.sidebar-collapsed .sidebar-nav-row .sidebar-nav-item.active {
+  background: var(--accent-subtle);
 }
 
 .sidebar-recent-sessions-wrap {
@@ -1518,7 +1560,8 @@ body {
 }
 
 .sidebar-recent-session.active {
-  background: var(--accent-subtle);
+  /* Active state is shown by the bullet + text color only — no filled
+     background (keeps the list visually quiet). */
   color: var(--accent-text);
 }
 
