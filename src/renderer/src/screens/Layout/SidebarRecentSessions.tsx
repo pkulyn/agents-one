@@ -7,7 +7,7 @@ interface RecentSession {
   title: string;
 }
 
-// ChatGPT-style recent list under the Sessions nav item.
+// ChatGPT-style recent list under the Chat nav item.
 export const RECENT_SESSIONS_LIMIT = 5;
 
 // Re-sync cadence while the list is visible. Deliberately slower than the
@@ -46,6 +46,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   loadingSessionIds,
   resumingSessionId,
   onSelect,
+  onShowMore,
 }: {
   open: boolean;
   /** Active profile — the list is per-profile, so switching forces a reload. */
@@ -56,13 +57,22 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   /** A session whose history is being fetched for resume (transient spinner). */
   resumingSessionId: string | null;
   onSelect: (sessionId: string) => void;
+  /** Open the full-list sessions modal (shown via the "Show more" affordance
+   *  when there are more sessions than the inline list holds). */
+  onShowMore: () => void;
 }): React.JSX.Element | null {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<RecentSession[]>([]);
+  // True when the profile has more sessions than the inline list shows — drives
+  // the "Show more" button that opens the full-list modal.
+  const [hasMore, setHasMore] = useState(false);
   const lastRefreshRef = useRef(0);
 
   const applySessions = useCallback(
     (list: Array<{ id: string; title: string }>): void => {
+      // `list` is fetched one over the display limit so we can tell whether a
+      // "Show more" affordance is needed without a separate count query.
+      setHasMore(list.length > RECENT_SESSIONS_LIMIT);
       const next = list
         .slice(0, RECENT_SESSIONS_LIMIT)
         .map(({ id, title }) => ({ id, title }));
@@ -98,7 +108,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     void (async () => {
       try {
         const cached = await window.hermesAPI.listCachedSessions(
-          RECENT_SESSIONS_LIMIT,
+          // One over the display limit so the cache read alone can decide
+          // whether to paint the "Show more" button.
+          RECENT_SESSIONS_LIMIT + 1,
         );
         if (!cancelled && cached.length > 0) applySessions(cached);
       } catch {
@@ -195,6 +207,16 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             </button>
           );
         })}
+        {hasMore && (
+          <button
+            type="button"
+            className="sidebar-recent-sessions-more"
+            onClick={onShowMore}
+            tabIndex={expanded ? 0 : -1}
+          >
+            {t("navigation.showMore")}
+          </button>
+        )}
       </div>
     </div>
   );

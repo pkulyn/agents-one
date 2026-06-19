@@ -1528,6 +1528,44 @@ body {
   white-space: nowrap;
 }
 
+/* "Show more" affordance under the recent list — opens the full-list modal. */
+.sidebar-recent-sessions-more {
+  display: flex;
+  align-items: center;
+  /* Align with the session titles (dot 7 + gap 9). */
+  padding: 6px 10px;
+  margin-top: 1px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: all var(--transition);
+}
+
+.sidebar-recent-sessions-more:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Full-list sessions modal (sidebar "Show more" / Cmd+K). Reuses
+   .models-modal-overlay for the backdrop; sized to 80% of the viewport. */
+.sessions-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-lg);
+  width: 80vw;
+  height: 80vh;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Profile avatar (shared: nav, active bar, manage page) ── */
 .profile-avatar {
   flex-shrink: 0;
