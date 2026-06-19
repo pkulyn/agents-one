@@ -15,6 +15,7 @@ export interface DashboardEventState {
 interface ApplyDashboardEventOptions {
   activeTurn?: ActiveTurn | null;
   now?: number;
+  renderAssistantDeltas?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -542,6 +543,12 @@ export function applyDashboardStreamEvent(
     case "message.start":
       return { ...state, reasoningSegmentClosed: false };
     case "message.delta":
+      if (options.renderAssistantDeltas === false) {
+        return {
+          ...state,
+          reasoningSegmentClosed: false,
+        };
+      }
       return {
         messages: appendAssistantDelta(
           state.messages,
