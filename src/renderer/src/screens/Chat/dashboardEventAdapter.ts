@@ -508,18 +508,11 @@ function completeAssistantWithFinalText(
     if (!isAssistantBubble(msg) || msg.error) continue;
     if (activeTurn && msg.turnId && msg.turnId !== activeTurn.turnId) continue;
 
-    const current = normalizeText(msg.content);
-    const final = normalizeText(finalText);
-    const content =
-      current && (final === current || final.startsWith(current))
-        ? finalText
-        : msg.content + finalText;
-
     return [
       ...messagesWithoutDuplicateReasoning.slice(0, i),
       {
         ...msg,
-        content,
+        content: finalText,
         pending: false,
         turnId: msg.turnId || activeTurn?.turnId,
       },
