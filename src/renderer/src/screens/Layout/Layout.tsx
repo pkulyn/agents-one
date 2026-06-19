@@ -257,13 +257,29 @@ function Layout({
   const [updateState, setUpdateState] = useState<
     "available" | "downloading" | "ready" | "error" | null
   >(null);
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const [updatePercent, setUpdatePercent] = useState<number | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Updates download silently in the background (autoDownload); we don't
-    // surface "available" or progress — only the ready/error end states.
+    // Surface a startup upgrade button as soon as GitHub reports a newer
+    // release. If auto-upgrade is enabled, electron-updater also downloads in
+    // the background and this state advances to downloading/ready.
+    const cleanupAvailable = window.hermesAPI.onUpdateAvailable((info) => {
+      setUpdateState("available");
+      setUpdateVersion(info.version);
+      setUpdateError(null);
+    });
+    const cleanupProgress = window.hermesAPI.onUpdateDownloadProgress(
+      (info) => {
+        setUpdateState("downloading");
+        setUpdatePercent(info.percent);
+        setUpdateError(null);
+      },
+    );
     const cleanupDownloaded = window.hermesAPI.onUpdateDownloaded(() => {
       setUpdateState("ready");
+      setUpdatePercent(null);
       setUpdateError(null);
     });
     const cleanupError = window.hermesAPI.onUpdateError((message) => {
@@ -271,6 +287,8 @@ function Layout({
       setUpdateError(message);
     });
     return () => {
+      cleanupAvailable();
+      cleanupProgress();
       cleanupDownloaded();
       cleanupError();
     };
@@ -280,10 +298,11 @@ function Layout({
     if (updateState === "ready") {
       // The only user action: restart into the already-downloaded update.
       await window.hermesAPI.installUpdate();
-    } else if (updateState === "error") {
-      // Retry the auto-download that failed.
-      // Set downloading state immediately to prevent re-entrancy (double-click).
+    } else if (updateState === "available" || updateState === "error") {
+      // Download the available update (or retry a failed auto-download).
+      // Set downloading state immediately to prevent re-entrancy.
       setUpdateState("downloading");
+      setUpdatePercent(null);
       setUpdateError(null);
       try {
         const ok = await window.hermesAPI.downloadUpdate();
@@ -298,11 +317,17 @@ function Layout({
 
   const updateButtonTitle =
     updateError ??
-    (updateState === "ready"
-      ? t("common.restartToUpdate")
-      : updateState === "error"
-        ? t("common.updateFailed")
-        : undefined);
+    (updateState === "available" && updateVersion
+      ? t("common.updateAvailable", { version: updateVersion })
+      : updateState === "downloading"
+        ? updatePercent === null
+          ? t("common.downloading", { percent: 0 })
+          : t("common.downloading", { percent: updatePercent })
+        : updateState === "ready"
+          ? t("common.restartToUpdate")
+          : updateState === "error"
+            ? t("common.updateFailed")
+            : undefined);
 
   const handleNewChat = useCallback(() => {
     // Open a fresh run WITHOUT aborting others — any in-flight session keeps
@@ -567,18 +592,31 @@ function Layout({
         </nav>
 
         <div className="sidebar-footer">
-          {/* Downloads happen silently in the background — only surface the
-              button once the update is ready (or if it failed to download). */}
-          {(updateState === "ready" || updateState === "error") && (
+          {/* Show an upgrade affordance at startup when GitHub has a newer
+              release; it becomes a restart action once downloaded. */}
+          {updateState && (
             <button
               className={`sidebar-update-btn ${
                 updateState === "error" ? "error" : ""
               }`}
               onClick={handleUpdate}
+              disabled={updateState === "downloading"}
               title={updateButtonTitle}
               aria-label={updateButtonTitle}
             >
               <Download size={13} />
+              {updateState === "available" && (
+                <span>
+                  {updateVersion
+                    ? t("common.updateAvailable", { version: updateVersion })
+                    : t("common.updateAvailable", { version: "" })}
+                </span>
+              )}
+              {updateState === "downloading" && (
+                <span>
+                  {t("common.downloading", { percent: updatePercent ?? 0 })}
+                </span>
+              )}
               {updateState === "ready" && (
                 <span>{t("common.restartToUpdate")}</span>
               )}

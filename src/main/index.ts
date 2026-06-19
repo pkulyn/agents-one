@@ -9,8 +9,9 @@ import {
   clipboard,
   session,
 } from "electron";
-import { join, extname } from "path";
+import { dirname, join, extname } from "path";
 import { randomUUID } from "crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { readdir, readFile, stat } from "fs/promises";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
@@ -2679,9 +2680,42 @@ function buildMenu(): void {
   Menu.setApplicationMenu(menu);
 }
 
+let autoUpdaterInstance: AppUpdater | null = null;
+
+function updatePreferencesPath(): string {
+  return join(app.getPath("userData"), "update-preferences.json");
+}
+
+function getAutoUpgradeEnabled(): boolean {
+  try {
+    const file = updatePreferencesPath();
+    if (!existsSync(file)) return true;
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as {
+      autoUpgrade?: unknown;
+    };
+    return parsed.autoUpgrade !== false;
+  } catch {
+    return true;
+  }
+}
+
+function setAutoUpgradeEnabled(enabled: boolean): void {
+  const file = updatePreferencesPath();
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify({ autoUpgrade: enabled }, null, 2)}\n`);
+}
+
 function setupUpdater(): void {
   // IPC handlers must always be registered to avoid invoke errors
   ipcMain.handle("get-app-version", () => app.getVersion());
+  ipcMain.handle("get-auto-upgrade-enabled", () => getAutoUpgradeEnabled());
+  ipcMain.handle("set-auto-upgrade-enabled", (_event, enabled: boolean) => {
+    setAutoUpgradeEnabled(enabled);
+    if (autoUpdaterInstance) {
+      autoUpdaterInstance.autoDownload = enabled;
+    }
+    return true;
+  });
 
   // Portable Windows builds set PORTABLE_EXECUTABLE_DIR. They have no
   // install location for electron-updater to replace in place, so an
@@ -2703,13 +2737,14 @@ function setupUpdater(): void {
   const { autoUpdater } = require("electron-updater") as {
     autoUpdater: AppUpdater;
   };
+  autoUpdaterInstance = autoUpdater;
 
   // Log the updater's own lifecycle to <userData>/logs/updater.log so a
   // failed update (e.g. issue #271) leaves something to diagnose.
   autoUpdater.logger = updaterLogger;
   // Auto-download as soon as an update is found, then surface a single
   // "Restart to Update" action once it's ready — no manual download step.
-  autoUpdater.autoDownload = true;
+  autoUpdater.autoDownload = getAutoUpgradeEnabled();
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("update-available", (info) => {
