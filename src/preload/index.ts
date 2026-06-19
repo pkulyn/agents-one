@@ -719,6 +719,15 @@ const hermesAPI = {
   ): Promise<boolean> =>
     ipcRenderer.invoke("record-session-local-error", sessionId, error),
 
+  getSessionContextFolder: (sessionId: string): Promise<string | null> =>
+    ipcRenderer.invoke("get-session-context-folder", sessionId),
+
+  setSessionContextFolder: (
+    sessionId: string,
+    folder: string | null,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-session-context-folder", sessionId, folder),
+
   // Profiles
   listProfiles: (): Promise<
     Array<{

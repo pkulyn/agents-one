@@ -17,6 +17,7 @@ import {
   loadSessionLocalErrors,
   mergeSessionLocalErrors,
 } from "./session-continuation-store";
+import { deleteSessionContextFolderForSession } from "./session-context-folder-store";
 
 // Sentinel prefix used by hermes-agent's hermes_state.py to mark
 // JSON-encoded multimodal content in the messages.content column.
@@ -727,6 +728,7 @@ function normalizeSessionIds(sessionIds: string[]): string[] {
 function deleteSessionRows(db: Database.Database, sessionId: string): number {
   deletePromptImageAttachmentsForSession(db, sessionId);
   deleteSessionContinuationForSession(db, sessionId);
+  deleteSessionContextFolderForSession(db, sessionId);
   db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
   const result = db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
   return result.changes;

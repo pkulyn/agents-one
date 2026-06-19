@@ -118,9 +118,46 @@ function Chat({
     "auto" | "dashboard" | "legacy"
   >("auto");
   const [connectionModeLoaded, setConnectionModeLoaded] = useState(false);
-  // Working folder bound to this conversation (issue #27). Per-conversation,
-  // held in memory; reset on session switch / new chat below.
+  // Working folder bound to this conversation (issue #27). Per-conversation;
+  // persisted per session so a re-opened conversation restores its folder, and
+  // reset on new chat below.
   const [contextFolder, setContextFolder] = useState<string | null>(null);
+  // Gate folder persistence until the stored value for a resumed session has
+  // been loaded — otherwise the initial null would overwrite the saved folder
+  // before the load resolves. A brand-new chat (no initialSessionId) has
+  // nothing to load, so it starts unblocked.
+  const contextFolderLoadedRef = useRef<boolean>(!initialSessionId);
+
+  // Restore the folder linked to a resumed session (once, on mount).
+  useEffect(() => {
+    if (!initialSessionId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const folder =
+          await window.hermesAPI.getSessionContextFolder(initialSessionId);
+        if (!cancelled && folder) setContextFolder(folder);
+      } catch {
+        /* best-effort — a missing folder just leaves the session unlinked */
+      } finally {
+        if (!cancelled) contextFolderLoadedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialSessionId]);
+
+  // Persist the linked folder for this session whenever it changes, once a
+  // gateway session id exists. Gated on the load above so a resumed session's
+  // stored folder is never clobbered by the initial null.
+  useEffect(() => {
+    if (!hermesSessionId || !contextFolderLoadedRef.current) return;
+    void window.hermesAPI.setSessionContextFolder(
+      hermesSessionId,
+      contextFolder,
+    );
+  }, [hermesSessionId, contextFolder]);
   // Whether the worktree panel is visible (only applies when contextFolder is set)
   // Default false so the panel doesn't open automatically and interfere with scrolling
   const [worktreeVisible, setWorktreeVisible] = useState<boolean>(false);

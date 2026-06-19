@@ -27,6 +27,10 @@ import {
   persistSessionContinuation,
   persistSessionLocalError,
 } from "./session-continuation-store";
+import {
+  getSessionContextFolder,
+  setSessionContextFolder,
+} from "./session-context-folder-store";
 import type {
   DesktopSessionContinuationItem,
   DesktopSessionLocalError,
@@ -1794,6 +1798,20 @@ function setupIPC(): void {
     "record-session-local-error",
     (_event, sessionId: string, error: DesktopSessionLocalError) => {
       persistSessionLocalError(sessionId, error?.error, error?.userContent);
+      return true;
+    },
+  );
+
+  // Per-session linked working folder (issue #27): a desktop-only binding
+  // persisted in the local state.db so a re-opened session restores its folder.
+  ipcMain.handle("get-session-context-folder", (_event, sessionId: string) => {
+    return getSessionContextFolder(sessionId);
+  });
+
+  ipcMain.handle(
+    "set-session-context-folder",
+    (_event, sessionId: string, folder: string | null) => {
+      setSessionContextFolder(sessionId, folder);
       return true;
     },
   );

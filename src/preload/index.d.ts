@@ -563,6 +563,11 @@ interface HermesAPI {
     sessionId: string,
     error: DesktopSessionLocalError,
   ) => Promise<boolean>;
+  getSessionContextFolder: (sessionId: string) => Promise<string | null>;
+  setSessionContextFolder: (
+    sessionId: string,
+    folder: string | null,
+  ) => Promise<boolean>;
 
   // Profiles
   listProfiles: () => Promise<
