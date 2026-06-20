@@ -4,7 +4,7 @@ export default {
   noModel: "No model set",
   auto: "Auto",
   commandsTitle: "Commands",
-  typeMessage: "Type a message... (Shift+Enter for new line)",
+  typeMessage: "Ask anything",
   quickAskTitle:
     "Quick Ask (/btw) — side question that won't affect conversation context",
   send: "Send",
