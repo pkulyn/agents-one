@@ -1014,7 +1014,9 @@ body {
   gap: 12px;
   padding: 8px 14px;
   background: var(--warning-bg);
-  border-bottom: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--warning);
+  margin-bottom: 20px;
 }
 
 .verify-warning-text {
