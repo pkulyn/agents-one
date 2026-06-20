@@ -3,7 +3,8 @@ import { join } from "path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(__dirname, "..");
-const mainSrc = readFileSync(join(ROOT, "src/main/index.ts"), "utf-8");
+// The production CSP header is injected from the main-process startup module.
+const mainSrc = readFileSync(join(ROOT, "src/main/app/start.ts"), "utf-8");
 const rendererIndexHtml = readFileSync(
   join(ROOT, "src/renderer/index.html"),
   "utf-8",
