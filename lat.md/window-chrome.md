@@ -20,7 +20,7 @@ Visually the strip is a Safari-style tab bar: the strip uses the darker `--bg-se
 
 The bar always renders so it is always a drag area, but chips appear only when there is something to switch between. With a single idle conversation the strip is an empty toolbar band, costing no extra bar height.
 
-Chips show when more than one run is open, or any run is loading (`showChips` in [[src/renderer/src/screens/Layout/ActiveSessionsBar.tsx#ActiveSessionsBar]]).
+Chips show when more than one run is open, or any run is loading (`showChips` in [[src/renderer/src/screens/Layout/ActiveSessionsBar.tsx#ActiveSessionsBar]]). When chips show, a browser-style new-tab **"+"** button (`.active-session-new`, `no-drag`) trails them and calls `onNew` → `handleNewChat` in [[src/renderer/src/screens/Layout/Layout.tsx]] to open a fresh conversation.
 
 Because the bar doubles as the drag strip, [[src/renderer/src/screens/Layout/Layout.tsx]] renders it as the first child of `.content`; the verify-warning banner (when shown) sits just below it, clear of the drag layer.
 
