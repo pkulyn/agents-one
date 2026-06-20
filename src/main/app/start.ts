@@ -65,11 +65,11 @@ export function startMainProcess(): void {
           ...details.responseHeaders,
           "Content-Security-Policy": [
             "default-src 'self'; " +
-              "script-src 'self' 'unsafe-inline'; " +
+              "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://*.posthog.com https://*.i.posthog.com; " +
               "style-src 'self' 'unsafe-inline'; " +
               "img-src 'self' data: blob: file: https:; " +
               "media-src 'self' data: blob: file: https:; " +
-              "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* https: wss:; " +
+              "connect-src 'self' blob: http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* https: wss:; " +
               "font-src 'self' data:; " +
               "frame-src 'self' https: http://127.0.0.1:* http://localhost:*; " +
               "object-src 'none'; " +
