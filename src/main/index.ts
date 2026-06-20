@@ -16,6 +16,7 @@ import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import type { AppUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
 import type { Attachment } from "../shared/attachments";
+import type { SessionModelOverride } from "../shared/model-override";
 import { stageAttachment, clearStagedAttachments } from "./attachment-staging";
 import { persistPromptImageAttachments } from "./session-attachment-store";
 import {
@@ -26,6 +27,14 @@ import {
   persistSessionContinuation,
   persistSessionLocalError,
 } from "./session-continuation-store";
+import {
+  getSessionContextFolder,
+  setSessionContextFolder,
+} from "./session-context-folder-store";
+import {
+  getSessionModelOverride,
+  setSessionModelOverride,
+} from "./session-model-override-store";
 import type {
   DesktopSessionContinuationItem,
   DesktopSessionLocalError,
@@ -1252,7 +1261,7 @@ function setupIPC(): void {
       attachments?: Attachment[],
       contextFolder?: string,
       runId?: string,
-      modelOverride?: string,
+      modelOverride?: SessionModelOverride,
     ) => {
       // Each conversation has a stable runId minted by the renderer. Fall back
       // to a generated id for legacy callers so the run is still tracked.
@@ -1793,6 +1802,34 @@ function setupIPC(): void {
     "record-session-local-error",
     (_event, sessionId: string, error: DesktopSessionLocalError) => {
       persistSessionLocalError(sessionId, error?.error, error?.userContent);
+      return true;
+    },
+  );
+
+  // Per-session linked working folder (issue #27): a desktop-only binding
+  // persisted in the local state.db so a re-opened session restores its folder.
+  ipcMain.handle("get-session-context-folder", (_event, sessionId: string) => {
+    return getSessionContextFolder(sessionId);
+  });
+
+  ipcMain.handle(
+    "set-session-context-folder",
+    (_event, sessionId: string, folder: string | null) => {
+      setSessionContextFolder(sessionId, folder);
+      return true;
+    },
+  );
+
+  // Per-session model/provider selected from the in-chat picker. This is a
+  // desktop-only routing binding and intentionally stores no API keys.
+  ipcMain.handle("get-session-model-override", (_event, sessionId: string) => {
+    return getSessionModelOverride(sessionId);
+  });
+
+  ipcMain.handle(
+    "set-session-model-override",
+    (_event, sessionId: string, override: SessionModelOverride | null) => {
+      setSessionModelOverride(sessionId, override);
       return true;
     },
   );
