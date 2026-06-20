@@ -20,6 +20,12 @@ The context-folder tree panel uses a compact header and can be resized from its 
 
 [[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] stores its width in `localStorage` under `hermes:worktreePanelWidth`, clamps it between a usable minimum and the available chat width, and updates it through a pointer-drag handle styled by `.worktree-resize-handle`.
 
+## Remote folder picker
+
+Remote and SSH chats use an in-app picker so users do not accidentally select a local macOS folder for a remote session.
+
+[[src/renderer/src/screens/Chat/RemoteFolderPicker.tsx#RemoteFolderPicker]] provides a scrollable folder list, horizontally scrollable breadcrumbs, manual path entry, Escape-to-close, and arrow/Enter keyboard navigation. [[src/main/ipc/register.ts#registerIpcHandlers]] routes `read-directory` to [[src/main/ssh-remote.ts#sshReadDirectory]] for SSH connections and returns no listing for pure Remote Gateway mode until the backend exposes a directory-list endpoint, so the picker still allows typed remote paths.
+
 ## Muted tree icons
 
 The tree keeps file-type icon shapes but normalizes their colors so the explorer reads quietly in the chat sidebar.

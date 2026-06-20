@@ -2699,6 +2699,219 @@ body {
   stroke: currentColor !important;
 }
 
+.folder-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.54);
+}
+
+.folder-picker-modal {
+  display: flex;
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 48px));
+  min-height: 420px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.4);
+}
+
+.folder-picker-header,
+.folder-picker-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.folder-picker-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+}
+
+.folder-picker-title {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.folder-picker-title svg {
+  color: var(--accent-text);
+}
+
+.folder-picker-path-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+
+.folder-picker-input {
+  min-width: 0;
+  flex: 1;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  padding: 0 9px;
+}
+
+.folder-picker-input:focus {
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-text) 20%, transparent);
+}
+
+.folder-picker-icon-btn {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.folder-picker-icon-btn:hover:not(:disabled),
+.folder-picker-icon-btn:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.folder-picker-icon-btn:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.folder-picker-breadcrumbs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 0 12px 10px;
+  scrollbar-width: thin;
+}
+
+.folder-picker-crumb {
+  display: inline-flex;
+  max-width: 180px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.folder-picker-crumb span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker-crumb:hover,
+.folder-picker-crumb:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.folder-picker-list {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+  scrollbar-width: thin;
+}
+
+.folder-picker-list:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-text) 38%, transparent);
+  outline-offset: -2px;
+}
+
+.folder-picker-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 7px 9px;
+  text-align: left;
+}
+
+.folder-picker-row svg {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.folder-picker-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-picker-row:hover,
+.folder-picker-row:focus-visible,
+.folder-picker-row-active {
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.folder-picker-row-active {
+  color: var(--accent-text);
+}
+
+.folder-picker-state {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.folder-picker-loader {
+  animation: spin 0.9s linear infinite;
+}
+
 /* Worktree toggle button in header */
 .chat-worktree-toggle {
   opacity: 0.5;
