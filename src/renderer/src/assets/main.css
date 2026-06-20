@@ -2173,13 +2173,32 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+/* Drag handle on the left edge to free-resize the context folder tree. */
+.worktree-resize-handle {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+  transition: background var(--transition);
+}
+
+.worktree-resize-handle:hover,
+.worktree-resize-handle-active {
+  background: color-mix(in srgb, var(--accent-text) 45%, transparent);
 }
 
 .worktree-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 14px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-tertiary);
   flex-shrink: 0;
@@ -2202,8 +2221,8 @@ body {
 }
 
 .worktree-header-action {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -2223,8 +2242,8 @@ body {
 }
 
 .worktree-header-action svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   stroke-width: 2.2;
 }
 
@@ -2279,7 +2298,7 @@ body {
 }
 
 .worktree-folder-icon {
-  color: var(--accent-text);
+  color: rgba(255, 255, 255, 0.56);
 }
 
 .worktree-file-icon {
@@ -2658,11 +2677,26 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  color: rgba(255, 255, 255, 0.56);
 }
 
 .worktree-file-icon-wrapper svg {
   width: 100%;
   height: 100%;
+}
+
+.worktree-file-icon-wrapper svg * {
+  fill: currentColor !important;
+}
+
+.worktree-file-icon-wrapper svg [fill="none"],
+.worktree-file-icon-wrapper svg [style*="fill:none"] {
+  fill: none !important;
+}
+
+.worktree-file-icon-wrapper svg [stroke]:not([stroke="none"]),
+.worktree-file-icon-wrapper svg [style*="stroke:"] {
+  stroke: currentColor !important;
 }
 
 /* Worktree toggle button in header */
