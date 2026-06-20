@@ -26,6 +26,9 @@ import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
 
 const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Hermes One";
+const OPEN_DEVTOOLS_ON_START =
+  process.env.HERMES_OPEN_DEVTOOLS === "1" ||
+  process.env.HERMES_DESKTOP_OPEN_DEVTOOLS === "1";
 
 let mainWindow: BrowserWindow | null = null;
 const activeRuns = new Map<string, () => void>();
@@ -134,7 +137,7 @@ function openExternalUrl(rawUrl: unknown): void {
 }
 
 function createWindow(): void {
-  const rendererHtmlPath = join(__dirname, "../../renderer/index.html");
+  const rendererHtmlPath = join(__dirname, "../renderer/index.html");
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 850,
@@ -160,6 +163,11 @@ function createWindow(): void {
   });
 
   mainWindow.on("ready-to-show", () => mainWindow?.show());
+  mainWindow.webContents.once("did-finish-load", () => {
+    if (OPEN_DEVTOOLS_ON_START) {
+      mainWindow?.webContents.openDevTools({ mode: "detach" });
+    }
+  });
 
   // Let mid-turn gateway sudo/secret prompts parent their modal to this window.
   setGatewayPromptParent(() => mainWindow);

@@ -17,6 +17,14 @@ const loopbackConnectSources = [
   "ws://localhost:*",
 ];
 
+const packagedAssetSources = [
+  "img-src 'self' data: blob: file: https:",
+  "media-src 'self' data: blob: file: https:",
+  "font-src 'self' data:",
+  "object-src 'none'",
+  "base-uri 'self'",
+];
+
 describe("dashboard Content Security Policy", () => {
   it("allows loopback HTTP and WebSocket connections in the production CSP header", () => {
     for (const source of loopbackConnectSources) {
@@ -26,6 +34,13 @@ describe("dashboard Content Security Policy", () => {
 
   it("keeps the renderer meta CSP aligned with the production loopback sources", () => {
     for (const source of loopbackConnectSources) {
+      expect(rendererIndexHtml).toContain(source);
+    }
+  });
+
+  it("keeps packaged file-backed startup assets allowed in both CSP policies", () => {
+    for (const source of packagedAssetSources) {
+      expect(mainSrc).toContain(source);
       expect(rendererIndexHtml).toContain(source);
     }
   });

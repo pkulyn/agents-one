@@ -74,6 +74,16 @@ export function buildMenu({
     {
       label: "Help",
       submenu: [
+        ...(!is.dev
+          ? [
+              {
+                label: "Toggle Developer Tools",
+                accelerator: "Alt+Command+I",
+                click: () => getMainWindow()?.webContents.toggleDevTools(),
+              },
+              { type: "separator" as const },
+            ]
+          : []),
         {
           label: "Hermes Agent on GitHub",
           click: () =>
