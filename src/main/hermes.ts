@@ -34,7 +34,7 @@ import {
   getSshTunnelUrl,
   isSshTunnelActive,
   isSshTunnelHealthy,
-  startSshTunnel,
+  ensureSshTunnel,
 } from "./ssh-tunnel";
 import {
   pidIsAliveAs,
@@ -46,7 +46,9 @@ import {
 } from "./utils";
 import { getProfilePort } from "./gateway-ports";
 import { promptSudoPassword, promptSecretValue } from "./gatewayPrompt";
+import { getSecret } from "./secrets";
 import { readModels } from "./models";
+import { providerListSafe } from "./secrets";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { type Attachment, escapeXmlAttr } from "../shared/attachments";
 import { URL_KEY_MAP, OPENAI_COMPAT_PROVIDERS } from "../shared/url-key-map";
@@ -276,7 +278,7 @@ export async function ensureSshTunnelIfNeeded(): Promise<void> {
     conn.mode === "ssh" &&
     (!isSshTunnelActive() || !(await isSshTunnelHealthy()))
   ) {
-    await startSshTunnel(conn.ssh);
+    await ensureSshTunnel(conn.ssh);
   }
 }
 
@@ -314,7 +316,16 @@ export async function transcribeAudio(
 
   // Resolve the provider key the same way the chat path does: URL-specific key
   // first, then the generic CUSTOM_API_KEY / OPENAI_API_KEY fallbacks.
-  const env = readEnv(resolved);
+  // The secrets provider's enumerable map is overlaid BENEATH the `.env` file
+  // (.env wins, mirroring the process.env > .env > provider order used
+  // everywhere else): a no-op for the default env provider, and the only way a
+  // `command`-provider user with vault-stored keys gets an Authorization header.
+  const baseEnv = readEnv(resolved);
+  const providerOverlay = providerListSafe(resolved);
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(baseEnv)) if (v) env[k] = v;
+  for (const [k, v] of Object.entries(providerOverlay))
+    if (v && !env[k]) env[k] = v;
   let apiKey = "";
   for (const { pattern, envKey } of URL_KEY_MAP) {
     if (pattern.test(baseUrl)) {
@@ -541,10 +552,15 @@ class TuiGatewayClient {
       HERMES_DASHBOARD_SESSION_TOKEN: this.token,
       HERMES_DASHBOARD_TUI: "1",
     };
+    // NB: no `--tui` flag here. It's a *global* hermes option (valid only
+    // before a subcommand), not a `dashboard` subcommand option, so passing
+    // `dashboard --tui` makes argparse exit 2 ("unrecognized arguments:
+    // --tui") and the warmup fails. The JSON-RPC gateway this client talks to
+    // (`/api/ws`) is always served by a plain `hermes dashboard` and is gated
+    // only by HERMES_DASHBOARD_SESSION_TOKEN (set in `dashboardEnv`).
     const args = hermesCliArgs([
       "dashboard",
       "--no-open",
-      "--tui",
       "--host",
       "127.0.0.1",
       "--port",
@@ -737,7 +753,7 @@ function tuiGatewayPython(): string {
   return HERMES_PYTHON;
 }
 
-function tuiGatewayEnv(profile?: string): Record<string, string> {
+export function tuiGatewayEnv(profile?: string): Record<string, string> {
   const resolved = resolveProfile(profile);
   const envPathDelimiter = process.platform === "win32" ? ";" : ":";
   const env: Record<string, string> = {
@@ -755,6 +771,12 @@ function tuiGatewayEnv(profile?: string): Record<string, string> {
   if (resolved) env.HERMES_PROFILE = resolved;
   for (const [key, value] of Object.entries(readEnv(profile))) {
     if (value) env[key] = value;
+  }
+  // Overlay provider-enumerated secrets BENEATH the values above (fill only
+  // keys still absent), so a `command`-provider user gets the same resolved
+  // key set here as on the CLI fallback path: process.env > .env > provider.
+  for (const [key, value] of Object.entries(providerListSafe(profile))) {
+    if (value && !env[key]) env[key] = value;
   }
   return env;
 }
@@ -956,6 +978,7 @@ export interface ChatCallbacks {
    *  (issue #352). */
   onReasoningChunk?: (text: string) => void;
   onDone: (sessionId?: string) => void;
+  onSessionStarted?: (sessionId: string) => void;
   onError: (error: string) => void;
   onToolProgress?: (tool: string) => void;
   onToolEvent?: (event: ChatToolEvent) => void;
@@ -1088,6 +1111,7 @@ function sendMessageViaApi(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): ChatHandle {
   const mc = getModelConfig(profile);
   const controller = new AbortController();
@@ -1117,7 +1141,7 @@ function sendMessageViaApi(
 
   const reasoningEffort = reasoningEffortForProfile(profile);
   const bodyObj: Record<string, unknown> = {
-    model: mc.model || "hermes-agent",
+    model: modelOverride || mc.model || "hermes-agent",
     messages,
     stream: true,
     ...(_resumeSessionId ? { session_id: _resumeSessionId } : {}),
@@ -1170,6 +1194,14 @@ function sendMessageViaApi(
   if (sessionId) {
     headers["X-Hermes-Session-Id"] = sessionId;
   }
+  let announcedSessionId = "";
+  function announceSessionId(id: string): void {
+    if (!id || announcedSessionId === id) return;
+    announcedSessionId = id;
+    cb.onSessionStarted?.(id);
+  }
+  announceSessionId(sessionId);
+
   let hasContent = false;
   let finished = false; // guard against double callbacks
   let lastError = ""; // capture embedded error messages
@@ -1195,7 +1227,7 @@ function sendMessageViaApi(
   function probeRealError(): void {
     // When streaming returns empty, make a non-streaming request to surface the real error
     const probeBodyObj: Record<string, unknown> = {
-      model: mc.model || "hermes-agent",
+      model: modelOverride || mc.model || "hermes-agent",
       messages: [{ role: "user", content: userContent }],
       stream: false,
     };
@@ -1347,7 +1379,10 @@ function sendMessageViaApi(
     },
     (res) => {
       const sid = res.headers["x-hermes-session-id"];
-      if (sid && typeof sid === "string") sessionId = sid;
+      if (sid && typeof sid === "string") {
+        sessionId = sid;
+        announceSessionId(sessionId);
+      }
 
       if (res.statusCode !== 200) {
         let errBody = "";
@@ -1479,19 +1514,20 @@ function sendMessageViaRuns(
   profile?: string,
   resumeSessionId?: string,
   history?: Array<{ role: string; content: string }>,
+  attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): ChatHandle {
   const mc = getModelConfig(profile);
   const controller = new AbortController();
   const apiUrl = getApiUrl(profile);
+  const headersForAuth = getApiAuthHeaders(profile);
   const sessionId =
     resumeSessionId ||
-    (getApiAuthHeaders(profile).Authorization
-      ? `desk-${Date.now()}-${randomUUID()}`
-      : "");
+    (headersForAuth.Authorization ? `desk-${Date.now()}-${randomUUID()}` : "");
   const ctxSystem = contextFolderSystemMessage(contextFolder);
   const bodyObj: Record<string, unknown> = {
-    model: mc.model || "hermes-agent",
+    model: modelOverride || mc.model || "hermes-agent",
     input: message,
     conversation_history: apiHistory(history),
   };
@@ -1503,6 +1539,7 @@ function sendMessageViaRuns(
   const headers = getJsonApiHeaders(profile, bodyBuf);
   if (sessionId) {
     headers["X-Hermes-Session-Id"] = sessionId;
+    cb.onSessionStarted?.(sessionId);
   }
 
   let runId = "";
@@ -1532,8 +1569,9 @@ function sendMessageViaRuns(
       profile,
       resumeSessionId,
       history,
-      undefined,
+      attachments,
       contextFolder,
+      modelOverride,
     );
   }
 
@@ -1964,17 +2002,30 @@ async function sendMessageViaTuiGateway(
       // A sudo password / secret value is sensitive — collect it in the
       // hardened askpass modal (never the chat transcript) and forward it to
       // the gateway. Cancel maps to "" (a safe skip the gateway handles).
+      //
+      // For secret.request: try the configured security provider first. If the
+      // vault already holds the key, answer silently without prompting the user.
       const payload = event.payload as
         | { prompt?: string; env_var?: string }
         | undefined;
-      const collect = isSudo
-        ? promptSudoPassword()
-        : promptSecretValue(
-            String(payload?.env_var ?? ""),
-            String(payload?.prompt ?? ""),
-          );
+      const envVar = String(payload?.env_var ?? "");
+
+      // Vault-first resolution for secret.request: attempt a provider lookup
+      // before falling back to the interactive modal. sudo.request always needs
+      // an interactive password — no vault lookup applies.
+      const vaultValue =
+        !isSudo && envVar ? getSecret(envVar, profile) : null;
+
+      const collect: Promise<string> =
+        vaultValue != null
+          ? Promise.resolve(vaultValue)
+          : isSudo
+            ? promptSudoPassword()
+            : promptSecretValue(envVar, String(payload?.prompt ?? ""));
+
       void collect
         .then((answer) => {
+          if (finished) return; // turn was cancelled while modal was open
           const method = isSudo ? "sudo.respond" : "secret.respond";
           const params = isSudo
             ? { request_id: requestId, password: answer }
@@ -2070,6 +2121,9 @@ async function sendMessageViaTuiGateway(
 // ────────────────────────────────────────────────────
 
 const NOISE_PATTERNS = [/^[╭╰│╮╯─┌┐└┘┤├┬┴┼]/, /⚕\s*Hermes/];
+const CLI_COMPAT_PROVIDER_OVERRIDE: Record<string, string> = {
+  aimlapi: "custom",
+};
 
 function sendMessageViaCli(
   message: string,
@@ -2077,6 +2131,7 @@ function sendMessageViaCli(
   profile?: string,
   resumeSessionId?: string,
   attachments?: Attachment[],
+  modelOverride?: string,
 ): ChatHandle {
   // CLI fallback can't pipe multimodal content; inline text-file attachments
   // and ignore images.  The gateway is the supported attachment path; this
@@ -2108,8 +2163,13 @@ function sendMessageViaCli(
     args.push("--resume", resumeSessionId);
   }
 
-  if (mc.model) {
-    args.push("-m", mc.model);
+  if (modelOverride || mc.model) {
+    args.push("-m", modelOverride || mc.model);
+  }
+
+  const cliProvider = CLI_COMPAT_PROVIDER_OVERRIDE[mc.provider];
+  if (cliProvider) {
+    args.push("--provider", cliProvider);
   }
 
   const env: Record<string, string> = {
@@ -2131,6 +2191,7 @@ function sendMessageViaCli(
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
     "OLLAMA_API_KEY",
+    "AIMLAPI_API_KEY",
     "ANTHROPIC_API_KEY",
     "GROQ_API_KEY",
     "DEEPSEEK_API_KEY",
@@ -2157,10 +2218,20 @@ function sendMessageViaCli(
     "TINKER_API_KEY",
     "WANDB_API_KEY",
   ];
+  // Resolve the configured secrets provider's enumerable secrets ONCE (not
+  // per-key): a `command` backend would otherwise spawn the helper ~30 times
+  // synchronously here, freezing the main process if the helper blocks on an
+  // unlock prompt. list() runs the helper at most once. A bare-value helper that
+  // can't enumerate returns {} — those users resolve a key via the targeted
+  // getSecret() path elsewhere, never this broadcast loop (which would otherwise
+  // spray one secret across every vendor key name).
+  const providerSecrets = providerListSafe(profile);
   for (const key of KNOWN_API_KEYS) {
-    if (profileEnv[key] && !env[key]) {
-      env[key] = profileEnv[key];
-    }
+    if (env[key]) continue; // already present (e.g. from process.env spread)
+    // Prefer the .env file value, then the provider's enumerated secrets, so a
+    // vault-resolved key reaches the agent without being written to plaintext.
+    const value = profileEnv[key] || providerSecrets[key];
+    if (value) env[key] = value;
   }
 
   const isCustomEndpoint = OPENAI_COMPAT_PROVIDERS.has(mc.provider);
@@ -2182,6 +2253,9 @@ function sendMessageViaCli(
     } else {
       env.HERMES_INFERENCE_PROVIDER = "custom";
       env.OPENAI_BASE_URL = mc.baseUrl.replace(/\/+$/, "");
+      if (cliProvider === "custom") {
+        env.CUSTOM_BASE_URL = mc.baseUrl.replace(/\/+$/, "");
+      }
     }
 
     // Find the host-derived env-var name (if any). Used both for resolving
@@ -2385,6 +2459,7 @@ async function sendMessageViaNonGatewayApi(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
   if (!attachments?.length && !approvalCommand) {
@@ -2396,7 +2471,9 @@ async function sendMessageViaNonGatewayApi(
         profile,
         resumeSessionId,
         history,
+        attachments,
         contextFolder,
+        modelOverride,
       );
     }
   }
@@ -2409,6 +2486,7 @@ async function sendMessageViaNonGatewayApi(
     history,
     attachments,
     contextFolder,
+    modelOverride,
   );
 }
 
@@ -2420,13 +2498,18 @@ async function sendMessageViaBestApi(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
+  // Skip the TUI gateway when a session-scoped model override is active — the
+  // TUI gateway reads its model from config.yaml and has no per-request
+  // override mechanism. The API path below already honours modelOverride.
   if (
     shouldUseTuiGatewayClient() &&
     !isRemoteMode() &&
     !attachments?.length &&
-    !approvalCommand
+    !approvalCommand &&
+    !modelOverride
   ) {
     try {
       return await sendMessageViaTuiGateway(
@@ -2453,6 +2536,7 @@ async function sendMessageViaBestApi(
     history,
     attachments,
     contextFolder,
+    modelOverride,
   );
 }
 
@@ -2464,6 +2548,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): Promise<ChatHandle> {
   let aborted = false;
   let retrying = false;
@@ -2508,6 +2593,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
         history,
         attachments,
         contextFolder,
+        modelOverride,
       );
       return;
     }
@@ -2518,6 +2604,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
       profile,
       resumeSessionId,
       attachments,
+      modelOverride,
     );
   };
 
@@ -2567,6 +2654,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
         }
       : undefined,
     onUsage: cb.onUsage,
+    onSessionStarted: cb.onSessionStarted,
     onDone: (sessionId) => {
       settled = true;
       cb.onDone(sessionId);
@@ -2594,6 +2682,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
     history,
     attachments,
     contextFolder,
+    modelOverride,
   );
 
   return handle;
@@ -2607,6 +2696,7 @@ export async function sendMessage(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
+  modelOverride?: string,
 ): Promise<ChatHandle> {
   ensureInitialized();
 
@@ -2620,6 +2710,19 @@ export async function sendMessage(
       history,
       attachments,
       contextFolder,
+      modelOverride,
+    );
+  }
+
+  const mc = getModelConfig(profile);
+  if (CLI_COMPAT_PROVIDER_OVERRIDE[mc.provider]) {
+    return sendMessageViaCli(
+      message,
+      cb,
+      profile,
+      resumeSessionId,
+      attachments,
+      modelOverride,
     );
   }
 
@@ -2643,11 +2746,19 @@ export async function sendMessage(
       history,
       attachments,
       contextFolder,
+      modelOverride,
     );
   }
 
   // Fallback to CLI
-  return sendMessageViaCli(message, cb, profile, resumeSessionId, attachments);
+  return sendMessageViaCli(
+    message,
+    cb,
+    profile,
+    resumeSessionId,
+    attachments,
+    modelOverride,
+  );
 }
 
 // Lazy init — called on first sendMessage or gateway start
@@ -2750,7 +2861,7 @@ function gatewayLogPath(profile?: string): string {
   return join(logDir, "gateway-stderr.log");
 }
 
-function buildGatewayEnv(profile?: string): Record<string, string> {
+export function buildGatewayEnv(profile?: string): Record<string, string> {
   // Make sure this profile's config.yaml enables the api_server and binds the
   // profile's own port before we spawn.
   ensureApiServerConfig(profile);
@@ -2772,6 +2883,16 @@ function buildGatewayEnv(profile?: string): Record<string, string> {
   const profileEnv = readEnv(profile);
   for (const [k, value] of Object.entries(profileEnv)) {
     if (value) {
+      gatewayEnv[k] = value;
+    }
+  }
+
+  // Overlay provider-enumerated secrets BENEATH the values above (fill only
+  // keys still absent), so a `command`-provider user gets the same resolved
+  // key set on the gateway-spawn path as on the CLI fallback path:
+  // process.env > .env > provider.
+  for (const [k, value] of Object.entries(providerListSafe(profile))) {
+    if (value && !gatewayEnv[k]) {
       gatewayEnv[k] = value;
     }
   }

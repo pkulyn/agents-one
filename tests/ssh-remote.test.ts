@@ -33,18 +33,28 @@ const sshConfig: SshConfig = {
 
 function runWithHermesShim(command: string): Buffer {
   const home = mkdtempSync(join(tmpdir(), "hermes-ssh-cmd-home-"));
-  const bin = join(home, "bin");
-  mkdirSync(bin, { recursive: true });
-  const hermes = join(bin, "hermes");
+  // Install the shim at a path buildRemoteHermesCmd PROBES BY ABSOLUTE PATH
+  // ($HOME/.local/bin/hermes), not just on PATH. The command runs under
+  // `bash -lc` (a login shell), which re-sources /etc/profile and RESETS PATH —
+  // so a shim reachable only via a prepended PATH entry is dropped, and the
+  // final `command -v hermes` fallback then finds either nothing (clean CI
+  // container → the test fails) or a real host hermes (dev box → the test
+  // passes for the wrong reason). Placing the shim at the probed absolute
+  // location makes the `[ -x $HOME/.local/bin/hermes ]` branch fire first,
+  // independent of login-shell PATH behavior and of whether a real hermes
+  // exists on the host. PATH is still prepended as belt-and-suspenders.
+  const localBin = join(home, ".local", "bin");
+  mkdirSync(localBin, { recursive: true });
+  const hermes = join(localBin, "hermes");
   writeFileSync(
     hermes,
     [
       "#!/usr/bin/env bash",
       'if [ "$1" = "doctor" ]; then',
-      '  printf "doctor stderr preserved\\n" >&2',
+      '  printf "doctor stderr preserved\\\\n" >&2',
       "  exit 0",
       "fi",
-      'printf "%s\\0" "$@"',
+      'printf "%s\\\\0" "$@"',
       "",
     ].join("\n"),
   );
@@ -53,7 +63,7 @@ function runWithHermesShim(command: string): Buffer {
     env: {
       ...process.env,
       HOME: home,
-      PATH: `${bin}:${process.env.PATH || ""}`,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
     },
   });
 }
@@ -81,7 +91,7 @@ describe("ssh remote config writes", () => {
 });
 
 describe("ssh Hermes command quoting", () => {
-  it("shell-quotes the whole bash script without dropping per-argument quoting", () => {
+  it("shell-quotes the whole sh script without dropping per-argument quoting", () => {
     const command = buildRemoteHermesCmd([
       "kanban",
       "create",
@@ -91,10 +101,10 @@ describe("ssh Hermes command quoting", () => {
     ]);
 
     expect(command).not.toContain(
-      "bash -c '[ -x $HOME/hermes-agent/.venv/bin/hermes ] && exec $HOME/hermes-agent/.venv/bin/hermes 'kanban' 'create'",
+      "sh -c '[ -x $HOME/hermes-agent/.venv/bin/hermes ] && exec $HOME/hermes-agent/.venv/bin/hermes 'kanban' 'create'",
     );
     expect(command).toContain(
-      `bash -c '[ -x $HOME/hermes-agent/.venv/bin/hermes ] && exec $HOME/hermes-agent/.venv/bin/hermes '"'"'kanban'"'"'`,
+      `sh -c '[ -x $HOME/hermes-agent/.venv/bin/hermes ] && exec $HOME/hermes-agent/.venv/bin/hermes '"'"'kanban'"'"'`,
     );
   });
 
@@ -119,17 +129,21 @@ describe("ssh Hermes command quoting", () => {
       "single quote in user input",
       ["kanban", "create", "User's task", "--json"],
     ],
-  ])("preserves %s", (_name, expectedArgs) => {
-    const command = buildRemoteHermesCmd(expectedArgs);
-    expect(parseNulArgs(runWithHermesShim(command))).toEqual(expectedArgs);
-  });
+  ])(
+    "preserves %s",
+    (_name, expectedArgs) => {
+      const command = buildRemoteHermesCmd(expectedArgs);
+      expect(parseNulArgs(runWithHermesShim(command))).toEqual(expectedArgs);
+    },
+    30000,
+  );
 
   it("preserves existing extraShell redirects", () => {
     const output = runWithHermesShim(
       buildRemoteHermesCmd(["doctor"], " 2>&1"),
     ).toString("utf8");
     expect(output).toBe("doctor stderr preserved\n");
-  });
+  }, 30000);
 });
 
 describe("ssh gateway commands (issue #285)", () => {

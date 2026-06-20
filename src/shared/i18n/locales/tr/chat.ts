@@ -8,6 +8,7 @@ export default {
   quickAskTitle: "Hızlı Sor (/btw) — sohbet bağlamını etkilemeyen yan soru",
   send: "Gönder",
   custom: "Özel",
+  searchModels: "Model ara...",
   typeModelName: "Model adını yaz...",
   emptyTitle: "Bugün size nasıl yardımcı olabilirim?",
   emptyHint:
@@ -103,6 +104,8 @@ export default {
     version: "Hermes sürümünü göster",
   },
   queued: "{{count}} mesaj sırada — ajan işini bitirince gönderilecek",
+  queuedCancel: "Sıradan kaldır",
+  copyMessage: "Mesajı kopyala",
   worktree: {
     loading: "Yükleniyor",
     empty: "Klasör boş",

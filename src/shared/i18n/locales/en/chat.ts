@@ -8,6 +8,7 @@ export default {
   quickAskTitle:
     "Quick Ask (/btw) — side question that won't affect conversation context",
   send: "Send",
+  searchModels: "Search models...",
   custom: "Custom",
   typeModelName: "Type model name...",
   reasoningEffort: {
@@ -67,6 +68,8 @@ export default {
   contextCache: "Cache: {{pct}}% hit ({{read}} read / {{write}} write)",
   removeAttachment: "Remove attachment",
   dropToAttach: "Drop files to attach",
+  dashboardUnavailableFallback:
+    "Dashboard chat isn't available on this connection — using basic chat. Profile switching and session history are limited.",
   attachUnsupported: "{{name}}: file type not supported",
   attachImageTooLarge: "{{name}}: image too large (max 50 MB)",
   attachImageUncompressible:
@@ -128,6 +131,10 @@ export default {
     version: "Show Hermes version",
   },
   queued: "{{count}} message(s) queued — will send when the agent finishes",
+  queuedCount: "{{count}} queued",
+  queuedAttachment: "{{count}} attachment(s)",
+  queuedCancel: "Remove from queue",
+  copyMessage: "Copy message",
   worktree: {
     loading: "Loading",
     empty: "Folder is empty",
@@ -143,4 +150,11 @@ export default {
   },
   showWorktree: "Show file explorer",
   hideWorktree: "Hide file explorer",
+  followUs: {
+    title: "Follow Us on X",
+    description:
+      "Stay up to date with the latest Hermes One features, tips, and updates. Follow us on X!",
+    follow: "Follow",
+    notNow: "Not Now",
+  },
 } as const;

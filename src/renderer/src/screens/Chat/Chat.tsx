@@ -1,26 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
+import { Zap, Globe } from "lucide-react";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
-import { ChatHeader } from "./ChatHeader";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { MessageList } from "./MessageList";
 import { ModelPicker } from "./ModelPicker";
 import { ReasoningEffortPicker } from "./ReasoningEffortPicker";
 import { ContextFolderChip } from "./ContextFolderChip";
 import { WorktreePanel } from "./WorktreePanel";
+import { WebPreviewPanel } from "./WebPreviewPanel";
 import { useChatScroll } from "./hooks/useChatScroll";
 import { useChatIPC } from "./hooks/useChatIPC";
-import { useChatActions } from "./hooks/useChatActions";
+import { useChatActions, parseBackgroundCommand } from "./hooks/useChatActions";
 import { useModelConfig } from "./hooks/useModelConfig";
 import { useFastMode } from "./hooks/useFastMode";
 import { useReasoningEffort } from "./hooks/useReasoningEffort";
 import { useLocalCommands } from "./hooks/useLocalCommands";
+import {
+  dashboardChatEnabledForConnection,
+  useDashboardChatTransport,
+} from "./hooks/useDashboardChatTransport";
 import { useI18n } from "../../components/useI18n";
 import { buildChatTranscript } from "./transcriptUtils";
 import { ConfigHealthBanner } from "../../components/ConfigHealthBanner";
+import FollowUsModal from "../../components/FollowUsModal";
 import type { Attachment } from "../../../../shared/attachments";
-import type { ChatMessage, UsageState } from "./types";
+import type { ActiveTurn, ChatMessage, UsageState } from "./types";
 import type { ContextUsage } from "./ContextGauge";
 import { contextWindowForModel } from "./contextWindows";
+import { QueuedMessages } from "./QueuedMessages";
 
 interface QueuedMessage {
   text: string;
@@ -30,51 +38,152 @@ interface QueuedMessage {
 export type { ChatMessage } from "./types";
 
 interface ChatProps {
-  messages: ChatMessage[];
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  sessionId: string | null;
+  /** Stable id for this conversation/run. One <Chat> is mounted per run; all
+   *  remain mounted (background sessions) and only the active one is shown. */
+  runId: string;
+  /** Seed transcript when re-opening a session from history; empty for new chats. */
+  initialMessages?: ChatMessage[];
+  /** Gateway session id when resuming a known session; null for a new chat. */
+  initialSessionId?: string | null;
+  /** Whether this run is the one currently shown (drives keyboard handlers). */
+  active?: boolean;
   profile?: string;
   onSessionStarted?: () => void;
   onNewChat?: () => void;
   /** Optional callback to navigate to Settings → Diagnose section
    *  when the user clicks "Show details" in the config-health banner. */
   onOpenDiagnose?: () => void;
+  /** Reports the agent generating state so the sidebar / active-sessions bar
+   *  can show a spinner on each running session. */
+  onLoadingChange?: (runId: string, loading: boolean) => void;
+  /** Reports the gateway session id once known, so the parent can map
+   *  runId ↔ sessionId (live re-attach, spinners, titles). */
+  onSessionIdChange?: (runId: string, sessionId: string | null) => void;
+  /** Reports the first user message as a best-effort conversation title. */
+  onTitleChange?: (runId: string, title: string) => void;
 }
 
 function Chat({
-  messages,
-  setMessages,
-  sessionId,
+  runId,
+  initialMessages,
+  initialSessionId,
+  active = true,
   profile,
   onSessionStarted,
   onNewChat,
   onOpenDiagnose,
+  onLoadingChange,
+  onSessionIdChange,
+  onTitleChange,
 }: ChatProps): React.JSX.Element {
   const { t } = useI18n();
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    initialMessages ?? [],
+  );
   const [isLoading, setIsLoading] = useState(false);
-  const [hermesSessionId, setHermesSessionId] = useState<string | null>(null);
+  useEffect(() => {
+    onLoadingChange?.(runId, isLoading);
+  }, [runId, isLoading, onLoadingChange]);
+  const [hermesSessionId, setHermesSessionId] = useState<string | null>(
+    initialSessionId ?? null,
+  );
+  // Surface the gateway session id upward whenever it resolves/changes.
+  useEffect(() => {
+    onSessionIdChange?.(runId, hermesSessionId);
+  }, [runId, hermesSessionId, onSessionIdChange]);
+  // Best-effort title from the first user bubble (for the active-sessions bar).
+  const reportedTitleRef = useRef(false);
+  useEffect(() => {
+    if (reportedTitleRef.current) return;
+    const firstUser = messages.find(
+      (m) => m.role === "user" && "content" in m && m.content.trim(),
+    );
+    if (firstUser && "content" in firstUser) {
+      reportedTitleRef.current = true;
+      onTitleChange?.(runId, firstUser.content.slice(0, 60));
+    }
+  }, [runId, messages, onTitleChange]);
   const [toolProgress, setToolProgress] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [remoteMode, setRemoteMode] = useState(false);
+  const [connectionMode, setConnectionMode] = useState<
+    "local" | "remote" | "ssh"
+  >("local");
+  const [chatTransportPreference, setChatTransportPreference] = useState<
+    "auto" | "dashboard" | "legacy"
+  >("auto");
+  const [connectionModeLoaded, setConnectionModeLoaded] = useState(false);
   // Working folder bound to this conversation (issue #27). Per-conversation,
   // held in memory; reset on session switch / new chat below.
   const [contextFolder, setContextFolder] = useState<string | null>(null);
   // Whether the worktree panel is visible (only applies when contextFolder is set)
-  const [worktreeVisible, setWorktreeVisible] = useState<boolean>(true);
+  // Default false so the panel doesn't open automatically and interfere with scrolling
+  const [worktreeVisible, setWorktreeVisible] = useState<boolean>(false);
+  const [webPreviewVisible, setWebPreviewVisible] = useState<boolean>(false);
+  const [webPreviewUrl, setWebPreviewUrl] =
+    useState<string>("https://google.com");
+  // Explicit session-scoped model override — set only when the user picks
+  // from the chat-screen picker (persist:false). Undefined until then so the
+  // TUI gateway bypass in sendMessageViaBestApi is not triggered for normal
+  // chats where the user never changed the model (issue #688).
+  const [sessionModelOverride, setSessionModelOverride] = useState<
+    string | undefined
+  >(undefined);
   const dragCounter = useRef(0);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const queueRef = useRef<QueuedMessage[]>([]);
-  const [queuedCount, setQueuedCount] = useState(0);
+  const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
+  const activeTurnRef = useRef<ActiveTurn | null>(null);
+  const dashboardChatEnabled = dashboardChatEnabledForConnection(
+    import.meta.env.VITE_HERMES_DESKTOP_DASHBOARD_CHAT,
+    connectionModeLoaded,
+    connectionMode,
+    chatTransportPreference,
+  );
 
   useEffect(() => {
     let cancelled = false;
-    (async (): Promise<void> => {
-      const flag = await window.hermesAPI.isRemoteMode();
-      if (!cancelled) setRemoteMode(flag);
-    })();
+    const loadConnectionConfig = async (): Promise<void> => {
+      try {
+        const conn = await window.hermesAPI.getConnectionConfig();
+        if (!cancelled) {
+          setConnectionMode(conn.mode);
+          setRemoteMode(conn.mode !== "local");
+          setChatTransportPreference(
+            conn.mode === "local"
+              ? "auto"
+              : conn.mode === "ssh"
+                ? (conn.sshChatTransport ?? "auto")
+                : (conn.remoteChatTransport ?? "auto"),
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setConnectionMode("ssh");
+          setRemoteMode(true);
+          setChatTransportPreference("legacy");
+        }
+      } finally {
+        if (!cancelled) setConnectionModeLoaded(true);
+      }
+    };
+    void loadConnectionConfig();
+    const unsubscribe = window.hermesAPI.onConnectionConfigChanged((conn) => {
+      setConnectionModeLoaded(true);
+      setConnectionMode(conn.mode);
+      setRemoteMode(conn.mode !== "local");
+      setChatTransportPreference(
+        conn.mode === "local"
+          ? "auto"
+          : conn.mode === "ssh"
+            ? (conn.sshChatTransport ?? "auto")
+            : (conn.remoteChatTransport ?? "auto"),
+      );
+    });
     return (): void => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 
@@ -120,39 +229,63 @@ function Chat({
     modelConfig.currentBaseUrl,
   ]);
 
+  // Authoritative context-window size for the active model, resolved from the
+  // provider's /models catalogue (issue #597). Null until/unless the provider
+  // advertises it — the gauge then falls back to the static heuristic.
+  const [realContextWindow, setRealContextWindow] = useState<number | null>(
+    null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    setRealContextWindow(null);
+    if (!modelConfig.currentModel) return;
+    window.hermesAPI
+      .getModelContextWindow(
+        modelConfig.currentProvider,
+        modelConfig.currentModel,
+        modelConfig.currentBaseUrl,
+        profile,
+      )
+      .then((w) => {
+        if (!cancelled && typeof w === "number" && w > 0) {
+          setRealContextWindow(w);
+        }
+      })
+      .catch(() => {
+        /* fall back to heuristic */
+      });
+    return (): void => {
+      cancelled = true;
+    };
+  }, [
+    profile,
+    modelConfig.currentModel,
+    modelConfig.currentProvider,
+    modelConfig.currentBaseUrl,
+  ]);
+
+  const visibleSessionScopeId = messages.length === 0 ? null : hermesSessionId;
+
   useChatIPC({
+    runId,
+    sessionScopeId: visibleSessionScopeId,
     setMessages,
     setHermesSessionId,
     setToolProgress,
     setIsLoading,
     setUsage,
+    activeTurnRef,
   });
 
-  // Reset hermes session when the parent clears messages (new chat).
-  // Effect-driven sync because `messages` is owned by the parent; a key-based
-  // remount would discard unrelated local state (model picker, etc.).
-  useEffect(() => {
-    if (messages.length === 0) {
-      setHermesSessionId(null);
-      setContextFolder(null);
-      queueRef.current = [];
-      setQueuedCount(0);
-    }
-  }, [messages]);
+  // No parent-driven reset effects: each run is its own <Chat key={runId}>
+  // instance. A new chat is a fresh mount, and switching sessions just flips
+  // which mounted instance is shown — local state (session id, context folder,
+  // queue) belongs to this run and persists while it streams in the background.
 
-  // When the parent swaps to a different session, sync local state to it:
-  // the gateway session id (a stale one resumes/deletes the WRONG session —
-  // issue #276) and the per-conversation context folder (issue #27). Chat is
-  // not remounted on session switch, so this must be done explicitly.
+  // Cmd/Ctrl+N → new chat. Only the active (visible) run handles it; otherwise
+  // every mounted background Chat would fire onNewChat in parallel.
   useEffect(() => {
-    setHermesSessionId(sessionId);
-    setContextFolder(null);
-    queueRef.current = [];
-    setQueuedCount(0);
-  }, [sessionId]);
-
-  // Cmd/Ctrl+N → new chat
-  useEffect(() => {
+    if (!active) return;
     function onKey(e: KeyboardEvent): void {
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
         e.preventDefault();
@@ -161,7 +294,24 @@ function Chat({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onNewChat]);
+  }, [active, onNewChat]);
+
+  // Listen for in-app link clicks to load in the split-screen Web Preview panel
+  useEffect(() => {
+    if (!active) return;
+    const handleNavigate = (e: Event): void => {
+      const customEvent = e as CustomEvent<string>;
+      const url = customEvent.detail;
+      if (url) {
+        setWebPreviewUrl(url);
+        setWebPreviewVisible(true);
+      }
+    };
+    document.addEventListener("web-preview:navigate", handleNavigate);
+    return () => {
+      document.removeEventListener("web-preview:navigate", handleNavigate);
+    };
+  }, [active]);
 
   // "Copy entire chat" context-menu items (issue #298) — serialise the whole
   // conversation in the requested format and copy it. A ref keeps the latest
@@ -171,17 +321,19 @@ function Chat({
     messagesRef.current = messages;
   });
   useEffect(() => {
+    if (!active) return;
     return window.hermesAPI.onContextMenuCopyChat((format) => {
       const msgs = messagesRef.current;
       if (msgs.length === 0) return;
       void window.hermesAPI.copyToClipboard(buildChatTranscript(msgs, format));
     });
-  }, []);
+  }, [active]);
 
   // "Select All" on a message (issue #298): the native selectAll role would
   // select the entire window, so scope it to the .chat-bubble under the
   // cursor — the user can then Copy that message.
   useEffect(() => {
+    if (!active) return;
     return window.hermesAPI.onContextMenuSelectBubble(({ x, y }) => {
       const bubble = document.elementFromPoint(x, y)?.closest(".chat-bubble");
       if (!bubble) return;
@@ -189,11 +341,12 @@ function Chat({
       selection?.removeAllRanges();
       selection?.selectAllChildren(bubble);
     });
-  }, []);
+  }, [active]);
 
   // Restrict the native context menu to chat bubbles and editable fields
   // so it doesn't appear on random UI chrome (sessions list, settings, etc.).
   useEffect(() => {
+    if (!active) return;
     const onContextMenu = (e: MouseEvent): void => {
       const target = e.target as Element | null;
       const inBubble = target?.closest(".chat-bubble") != null;
@@ -205,7 +358,7 @@ function Chat({
     };
     document.addEventListener("contextmenu", onContextMenu);
     return () => document.removeEventListener("contextmenu", onContextMenu);
-  }, []);
+  }, [active]);
 
   const addAgentMessage = useCallback(
     (content: string) => {
@@ -235,10 +388,10 @@ function Chat({
 
   const handleClear = useCallback(() => {
     if (isLoading) {
-      window.hermesAPI.abortChat();
+      window.hermesAPI.abortChat(runId);
       setIsLoading(false);
     }
-    const idToDelete = hermesSessionId ?? sessionId;
+    const idToDelete = hermesSessionId;
     if (idToDelete) {
       void window.hermesAPI.deleteSession(idToDelete);
       void window.hermesAPI.clearStagedAttachments(idToDelete);
@@ -246,11 +399,12 @@ function Chat({
     setMessages([]);
     setHermesSessionId(null);
     setContextFolder(null);
+    activeTurnRef.current = null;
     setUsage(null);
     setToolProgress(null);
     queueRef.current = [];
-    setQueuedCount(0);
-  }, [isLoading, hermesSessionId, sessionId, setMessages]);
+    setQueuedMessages([]);
+  }, [isLoading, runId, hermesSessionId, setMessages]);
 
   const localCommands = useLocalCommands({
     profile,
@@ -261,7 +415,46 @@ function Chat({
     addAgentMessage,
   });
 
+  // Fired once per connection when the dashboard WebSocket transport can't
+  // connect (e.g. SSH tunnel → `hermes gateway`, which has no `/api/ws`, issue
+  // #667) and we fall back to legacy chat. A fixed toast id dedupes.
+  const handleDashboardUnavailable = useCallback(() => {
+    toast(t("chat.dashboardUnavailableFallback"), {
+      id: "dashboard-unavailable-fallback",
+      icon: "ℹ️",
+      duration: 8000,
+    });
+  }, [t]);
+
+  const dashboardTransport = useDashboardChatTransport({
+    activeTurnRef,
+    contextFolder,
+    connectionMode,
+    enabled: dashboardChatEnabled,
+    fallbackOnUnavailable: chatTransportPreference === "auto",
+    hermesSessionId,
+    messages,
+    model: modelConfig.currentModel,
+    modelBaseUrl: modelConfig.currentBaseUrl,
+    profile,
+    provider: modelConfig.currentProvider,
+    setHermesSessionId,
+    setIsLoading,
+    setMessages,
+    setToolProgress,
+    setUsage,
+    onDashboardUnavailable: handleDashboardUnavailable,
+  });
+
+  // Defer a message onto the busy queue (used when a slash command resolves to
+  // an agent prompt while a turn is already in flight).
+  const enqueueMessage = useCallback((text: string) => {
+    queueRef.current.push({ text, attachments: [] });
+    setQueuedMessages([...queueRef.current]);
+  }, []);
+
   const actions = useChatActions({
+    runId,
     profile,
     hermesSessionId,
     messages,
@@ -271,14 +464,32 @@ function Chat({
     onSessionStarted,
     chatInputRef,
     localCommands,
+    activeTurnRef,
     contextFolder,
+    sessionModel: sessionModelOverride,
+    sendViaDashboard: dashboardTransport.enabled
+      ? dashboardTransport.sendMessage
+      : undefined,
+    execSlashViaDashboard: dashboardTransport.enabled
+      ? dashboardTransport.execSlash
+      : undefined,
+    runBackgroundViaDashboard: dashboardTransport.enabled
+      ? dashboardTransport.runBackground
+      : undefined,
+    addAgentMessage,
+    enqueueMessage,
+    abortDashboard: dashboardTransport.enabled
+      ? dashboardTransport.abort
+      : undefined,
   });
 
   // Stable ref to handleSend so the drain effect doesn't re-trigger on
   // identity changes (regression #5 from PR #315).
   const handleSendRef = useRef(actions.handleSend);
+  const handleBackgroundRef = useRef(actions.handleBackground);
   useEffect(() => {
     handleSendRef.current = actions.handleSend;
+    handleBackgroundRef.current = actions.handleBackground;
   });
 
   // Drain queued messages one at a time when the agent finishes.
@@ -286,25 +497,53 @@ function Chat({
     if (isLoading) return;
     const next = queueRef.current.shift();
     if (!next) return;
-    setQueuedCount(queueRef.current.length);
+    setQueuedMessages([...queueRef.current]);
     handleSendRef.current(next.text, next.attachments, true).catch(() => {
       // Put the message back at the front so it isn't silently lost if
       // the send fails (e.g. IPC error before onChatError fires).
       queueRef.current.unshift(next);
-      setQueuedCount(queueRef.current.length);
+      setQueuedMessages([...queueRef.current]);
     });
   }, [isLoading]);
 
+  const handleRemoveQueued = useCallback((index: number) => {
+    queueRef.current.splice(index, 1);
+    setQueuedMessages([...queueRef.current]);
+  }, []);
+
   const handleSubmitOrQueue = useCallback(
     (text: string, attachments: Attachment[]) => {
+      // Side questions (`/btw`) run on a concurrent background agent, so they
+      // must never queue — fire them immediately even while the main turn is in
+      // flight. This is the whole point of "ask without affecting context".
+      const bgQuestion = parseBackgroundCommand(text);
+      if (bgQuestion !== null) {
+        if (bgQuestion)
+          void handleBackgroundRef.current(bgQuestion, attachments);
+        return;
+      }
+      // Other slash commands (`/status`, `/compact`, …) run on the gateway's
+      // slash worker or are renderer-local — all concurrent with any in-flight
+      // turn — so dispatch them immediately instead of queueing. handleSend's
+      // own routing decides what each one does (and defers the rare command
+      // that resolves to an agent prompt while busy). Limited to local commands
+      // and the dashboard transport (which has the worker); the legacy
+      // transport has no concurrent path, so its slash commands still queue.
+      if (
+        text.startsWith("/") &&
+        (localCommands.isLocal(text) || dashboardChatEnabled)
+      ) {
+        void handleSendRef.current(text, attachments, true);
+        return;
+      }
       if (isLoading) {
         queueRef.current.push({ text, attachments });
-        setQueuedCount(queueRef.current.length);
+        setQueuedMessages([...queueRef.current]);
         return;
       }
       void handleSendRef.current(text, attachments);
     },
-    [isLoading],
+    [isLoading, localCommands, dashboardChatEnabled],
   );
 
   const handleSuggestion = useCallback((text: string) => {
@@ -373,11 +612,101 @@ function Chat({
   const contextUsage: ContextUsage | null = usage?.contextTokens
     ? {
         used: usage.contextTokens,
-        window: contextWindowForModel(modelConfig.currentModel),
+        window:
+          realContextWindow ?? contextWindowForModel(modelConfig.currentModel),
         cacheReadTokens: usage.cacheReadTokens,
         cacheWriteTokens: usage.cacheWriteTokens,
       }
     : null;
+
+  const prettyPrintHTML = (html: string): string => {
+    const formatNode = (node: Node, level: number = 0): string => {
+      const indent = "  ".repeat(level);
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent?.trim();
+        return text ? `${indent}${text}\n` : "";
+      }
+      if (node.nodeType === Node.COMMENT_NODE) {
+        return `${indent}<!--${node.textContent}-->\n`;
+      }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as Element;
+        const tagName = el.tagName.toLowerCase();
+        let attrs = "";
+        for (let i = 0; i < el.attributes.length; i++) {
+          const attr = el.attributes[i];
+          attrs += ` ${attr.name}="${attr.value}"`;
+        }
+        const isVoid = [
+          "area",
+          "base",
+          "br",
+          "col",
+          "embed",
+          "hr",
+          "img",
+          "input",
+          "link",
+          "meta",
+          "param",
+          "source",
+          "track",
+          "wbr",
+        ].includes(tagName);
+        if (isVoid) {
+          return `${indent}<${tagName}${attrs}>\n`;
+        }
+        if (
+          el.childNodes.length === 1 &&
+          el.firstChild?.nodeType === Node.TEXT_NODE
+        ) {
+          const text = el.firstChild.textContent?.trim();
+          return text
+            ? `${indent}<${tagName}${attrs}>${text}</${tagName}>\n`
+            : `${indent}<${tagName}${attrs}></${tagName}>\n`;
+        }
+        if (el.childNodes.length === 0) {
+          return `${indent}<${tagName}${attrs}></${tagName}>\n`;
+        }
+        let childrenHtml = "";
+        for (let i = 0; i < el.childNodes.length; i++) {
+          childrenHtml += formatNode(el.childNodes[i], level + 1);
+        }
+        return `${indent}<${tagName}${attrs}>\n${childrenHtml}${indent}</${tagName}>\n`;
+      }
+      return "";
+    };
+
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      const body = doc.body;
+      if (body.childNodes.length > 0) {
+        let result = "";
+        for (let i = 0; i < body.childNodes.length; i++) {
+          result += formatNode(body.childNodes[i], 0);
+        }
+        return result.trim();
+      }
+    } catch (e) {
+      console.error("Failed to pretty print HTML", e);
+    }
+    return html;
+  };
+
+  const handleInspectElement = useCallback(
+    (payload: {
+      tagName: string;
+      id: string;
+      className: string;
+      outerHTML: string;
+    }) => {
+      const formattedHtml = prettyPrintHTML(payload.outerHTML);
+      const formatted = `Here is the HTML for the \`<${payload.tagName}>\` component to debug:\n\`\`\`html\n${formattedHtml}\n\`\`\``;
+      chatInputRef.current?.appendText(formatted);
+    },
+    [],
+  );
 
   return (
     <div
@@ -387,16 +716,6 @@ function Chat({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <ChatHeader
-        sessionId={sessionId}
-        usage={usage}
-        fastMode={fastMode}
-        hasMessages={messages.length > 0}
-        onToggleFast={toggleFastMode}
-        onNewChat={onNewChat}
-        onClear={handleClear}
-      />
-
       <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
 
       <div className="chat-body">
@@ -419,14 +738,21 @@ function Chat({
         {contextFolder && worktreeVisible && (
           <WorktreePanel folderPath={contextFolder} />
         )}
+
+        {webPreviewVisible && (
+          <WebPreviewPanel
+            initialUrl={webPreviewUrl}
+            onClose={() => setWebPreviewVisible(false)}
+            onInspectElement={handleInspectElement}
+          />
+        )}
       </div>
 
-      {queuedCount > 0 && (
-        <div className="chat-queue-indicator">
-          {t("chat.queued", { count: queuedCount })}
-        </div>
-      )}
       <div className="chat-input-area">
+        <QueuedMessages
+          messages={queuedMessages}
+          onRemove={handleRemoveQueued}
+        />
         <ChatInput
           ref={chatInputRef}
           isLoading={isLoading}
@@ -448,12 +774,36 @@ function Chat({
                 modelGroups={modelConfig.modelGroups}
                 displayModel={modelConfig.displayModel}
                 onOpen={modelConfig.reload}
-                onSelectModel={modelConfig.selectModel}
+                onSelectModel={(provider, model, baseUrl) => {
+                  void modelConfig.selectModel(provider, model, baseUrl, {
+                    persist: false,
+                  });
+                  setSessionModelOverride(model || undefined);
+                }}
               />
               <ReasoningEffortPicker
                 value={reasoningEffort}
                 onChange={setReasoningEffort}
               />
+              <div className="chat-fast-wrapper">
+                <button
+                  type="button"
+                  className={`btn-ghost chat-fast-btn ${fastMode ? "chat-fast-active" : ""}`}
+                  onClick={toggleFastMode}
+                >
+                  <Zap size={14} />
+                </button>
+                <div className="chat-fast-popover">
+                  <strong>
+                    {fastMode ? t("chat.fastModeOn") : t("chat.fastMode")}
+                  </strong>
+                  <span>
+                    {fastMode
+                      ? t("chat.fastModeActive")
+                      : t("chat.fastModeInactive")}
+                  </span>
+                </div>
+              </div>
               <ContextFolderChip
                 contextFolder={contextFolder}
                 show={!remoteMode}
@@ -462,6 +812,31 @@ function Chat({
                 onClearFolder={handleClearFolder}
                 onToggleWorktree={() => setWorktreeVisible((v) => !v)}
               />
+              <button
+                type="button"
+                className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}
+                onClick={() => setWebPreviewVisible((v) => !v)}
+                title={
+                  webPreviewVisible ? "Hide web preview" : "Show web preview"
+                }
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 28,
+                  height: 28,
+                  padding: 0,
+                  borderRadius: 6,
+                  color: webPreviewVisible
+                    ? "var(--accent-text)"
+                    : "var(--text-secondary)",
+                  background: webPreviewVisible
+                    ? "color-mix(in srgb, var(--accent-text) 10%, transparent)"
+                    : "transparent",
+                }}
+              >
+                <Globe size={14} />
+              </button>
             </>
           }
         />
@@ -473,6 +848,8 @@ function Chat({
           </div>
         </div>
       )}
+      {/* Show follow-us modal only after setup is complete */}
+      {active && connectionModeLoaded && readiness.ok && <FollowUsModal />}
     </div>
   );
 }

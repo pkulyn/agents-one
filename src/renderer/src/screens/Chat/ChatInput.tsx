@@ -7,7 +7,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Send, Square as Stop, Slash, Paperclip, Mic } from "lucide-react";
+import { Square as Stop, Slash, Paperclip, Mic, ArrowUp } from "lucide-react";
 import { isImeComposing } from "./keyboard";
 import { useI18n } from "../../components/useI18n";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
@@ -24,6 +24,7 @@ import type { Attachment } from "../../../../shared/attachments";
 
 export interface ChatInputHandle {
   setText(text: string): void;
+  appendText(text: string): void;
   clear(): void;
   focus(): void;
   /** Add files from external sources (drop overlay).  Returns errors. */
@@ -185,6 +186,19 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               inputRef.current.setSelectionRange(text.length, text.length);
               inputRef.current.focus();
             }
+          });
+        },
+        appendText(text: string): void {
+          setInput((prev) => {
+            const next = prev ? `${prev}\n${text}` : text;
+            requestAnimationFrame(() => {
+              autoResize();
+              if (inputRef.current) {
+                inputRef.current.setSelectionRange(next.length, next.length);
+                inputRef.current.focus();
+              }
+            });
+            return next;
           });
         },
         clear(): void {
@@ -574,7 +588,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   disabled={!canSend}
                   title={t("chat.send")}
                 >
-                  <Send size={16} />
+                  <ArrowUp size={20} />
                 </button>
               </>
             )}
