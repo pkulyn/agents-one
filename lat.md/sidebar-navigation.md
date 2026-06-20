@@ -6,9 +6,9 @@ The sidebar has no standalone "Sessions" nav item — the recent-chats list live
 
 ## Inline list and "Show more"
 
-The inline list shows at most `RECENT_SESSIONS_LIMIT` (5) most-recent sessions; a "Show more" button appears only when the profile has more than that.
+The inline list shows at most `RECENT_SESSIONS_LIMIT` (5) most-recent sessions; a plus-icon "Show more" button appears only when the profile has more than that.
 
-[[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] fetches one row over the limit (from the `sessions.json` cache, then a `state.db` sync) so a single query decides whether to render the button — it slices to 5 for display and sets `hasMore` from the raw length. Clicking it calls `onShowMore`, which opens the full-list modal.
+[[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] fetches one row over the limit (from the `sessions.json` cache, then a `state.db` sync) so a single query decides whether to render the button — it slices to 5 for display and sets `hasMore` from the raw length. Loading rows use a rotating lucide Loader icon; clicking "Show more" calls `onShowMore`, which opens the full-list modal.
 
 ## Full-list modal
 

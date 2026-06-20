@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, memo } from "react";
 import { useI18n } from "../../components/useI18n";
-import { Circle, Spinner } from "../../assets/icons";
+import { Circle, Loader, Plus } from "../../assets/icons";
 
 interface RecentSession {
   id: string;
@@ -190,7 +190,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               tabIndex={expanded ? 0 : -1}
             >
               {loading ? (
-                <Spinner
+                <Loader
                   className="sidebar-recent-session-dot sidebar-recent-session-dot--loading"
                   size={11}
                 />
@@ -214,7 +214,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             onClick={onShowMore}
             tabIndex={expanded ? 0 : -1}
           >
-            {t("navigation.showMore")}
+            <Plus className="sidebar-recent-sessions-more-icon" size={12} />
+            <span>{t("navigation.showMore")}</span>
           </button>
         )}
       </div>

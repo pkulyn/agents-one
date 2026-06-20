@@ -1575,7 +1575,7 @@ body {
 .sidebar-recent-sessions-more {
   display: flex;
   align-items: center;
-  /* Align with the session titles (dot 7 + gap 9). */
+  gap: 9px;
   padding: 6px 10px;
   margin-top: 1px;
   border: none;
@@ -1590,8 +1590,17 @@ body {
   transition: all var(--transition);
 }
 
+.sidebar-recent-sessions-more-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
 .sidebar-recent-sessions-more:hover {
   background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.sidebar-recent-sessions-more:hover .sidebar-recent-sessions-more-icon {
   color: var(--text-primary);
 }
 

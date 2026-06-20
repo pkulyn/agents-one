@@ -171,6 +171,7 @@ function Chat({
   const [sessionModelOverride, setSessionModelOverride] = useState<
     SessionModelOverride | undefined
   >(undefined);
+  const sessionModelOverrideLoadedRef = useRef<boolean>(!initialSessionId);
   const dragCounter = useRef(0);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const queueRef = useRef<QueuedMessage[]>([]);
@@ -230,6 +231,57 @@ function Chat({
 
   const { containerRef, bottomRef } = useChatScroll(messages);
   const modelConfig = useModelConfig(profile);
+  const chatCurrentModel =
+    sessionModelOverride?.model ?? modelConfig.currentModel;
+  const chatCurrentProvider =
+    sessionModelOverride?.provider ?? modelConfig.currentProvider;
+  const chatCurrentBaseUrl =
+    sessionModelOverride?.baseUrl ?? modelConfig.currentBaseUrl;
+  const chatDisplayModel = sessionModelOverride?.model
+    ? sessionModelOverride.model.split("/").pop() || sessionModelOverride.model
+    : modelConfig.displayModel;
+
+  // Restore the model/provider linked to a resumed session. The saved value is
+  // applied only to this chat's local picker state (`persist:false`) so it never
+  // rewrites the global config.yaml default.
+  useEffect(() => {
+    if (!initialSessionId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const override =
+          await window.hermesAPI.getSessionModelOverride(initialSessionId);
+        if (!cancelled && override) {
+          setSessionModelOverride(override);
+          await modelConfig.selectModel(
+            override.provider,
+            override.model,
+            override.baseUrl,
+            { persist: false },
+          );
+        }
+      } catch {
+        /* best-effort — sessions without a saved pick use the global default */
+      } finally {
+        if (!cancelled) sessionModelOverrideLoadedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialSessionId, modelConfig.selectModel]);
+
+  // Persist the chat-local model/provider once a session exists. This stores
+  // only routing identity, never API keys, and is gated so a resumed session's
+  // initial undefined state cannot erase its saved model before restore.
+  useEffect(() => {
+    if (!hermesSessionId || !sessionModelOverrideLoadedRef.current) return;
+    void window.hermesAPI.setSessionModelOverride(
+      hermesSessionId,
+      sessionModelOverride ?? null,
+    );
+  }, [hermesSessionId, sessionModelOverride]);
+
   const {
     fastMode,
     toggle: toggleFastMode,
@@ -263,12 +315,7 @@ function Chat({
     return (): void => {
       cancelled = true;
     };
-  }, [
-    profile,
-    modelConfig.currentModel,
-    modelConfig.currentProvider,
-    modelConfig.currentBaseUrl,
-  ]);
+  }, [profile, chatCurrentModel, chatCurrentProvider, chatCurrentBaseUrl]);
 
   // Authoritative context-window size for the active model, resolved from the
   // provider's /models catalogue (issue #597). Null until/unless the provider
@@ -279,12 +326,12 @@ function Chat({
   useEffect(() => {
     let cancelled = false;
     setRealContextWindow(null);
-    if (!modelConfig.currentModel) return;
+    if (!chatCurrentModel) return;
     window.hermesAPI
       .getModelContextWindow(
-        modelConfig.currentProvider,
-        modelConfig.currentModel,
-        modelConfig.currentBaseUrl,
+        chatCurrentProvider,
+        chatCurrentModel,
+        chatCurrentBaseUrl,
         profile,
       )
       .then((w) => {
@@ -298,12 +345,7 @@ function Chat({
     return (): void => {
       cancelled = true;
     };
-  }, [
-    profile,
-    modelConfig.currentModel,
-    modelConfig.currentProvider,
-    modelConfig.currentBaseUrl,
-  ]);
+  }, [profile, chatCurrentModel, chatCurrentProvider, chatCurrentBaseUrl]);
 
   const visibleSessionScopeId = messages.length === 0 ? null : hermesSessionId;
 
@@ -443,12 +485,13 @@ function Chat({
     // Clearing the conversation reverts to the global default model — the
     // session-scoped pick belongs to the conversation being cleared (#688).
     setSessionModelOverride(undefined);
+    void modelConfig.reload();
     activeTurnRef.current = null;
     setUsage(null);
     setToolProgress(null);
     queueRef.current = [];
     setQueuedMessages([]);
-  }, [isLoading, runId, hermesSessionId, setMessages]);
+  }, [isLoading, runId, hermesSessionId, setMessages, modelConfig.reload]);
 
   const localCommands = useLocalCommands({
     profile,
@@ -478,10 +521,10 @@ function Chat({
     fallbackOnUnavailable: chatTransportPreference === "auto",
     hermesSessionId,
     messages,
-    model: modelConfig.currentModel,
-    modelBaseUrl: modelConfig.currentBaseUrl,
+    model: chatCurrentModel,
+    modelBaseUrl: chatCurrentBaseUrl,
     profile,
-    provider: modelConfig.currentProvider,
+    provider: chatCurrentProvider,
     setHermesSessionId,
     setIsLoading,
     setMessages,
@@ -656,8 +699,7 @@ function Chat({
   const contextUsage: ContextUsage | null = usage?.contextTokens
     ? {
         used: usage.contextTokens,
-        window:
-          realContextWindow ?? contextWindowForModel(modelConfig.currentModel),
+        window: realContextWindow ?? contextWindowForModel(chatCurrentModel),
         cacheReadTokens: usage.cacheReadTokens,
         cacheWriteTokens: usage.cacheWriteTokens,
       }
@@ -812,11 +854,11 @@ function Chat({
           toolbarExtras={
             <>
               <ModelPicker
-                currentModel={modelConfig.currentModel}
-                currentProvider={modelConfig.currentProvider}
-                currentBaseUrl={modelConfig.currentBaseUrl}
+                currentModel={chatCurrentModel}
+                currentProvider={chatCurrentProvider}
+                currentBaseUrl={chatCurrentBaseUrl}
                 modelGroups={modelConfig.modelGroups}
-                displayModel={modelConfig.displayModel}
+                displayModel={chatDisplayModel}
                 onOpen={modelConfig.reload}
                 onSelectModel={(provider, model, baseUrl) => {
                   void modelConfig.selectModel(provider, model, baseUrl, {

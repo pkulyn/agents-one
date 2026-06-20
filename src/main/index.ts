@@ -31,6 +31,10 @@ import {
   getSessionContextFolder,
   setSessionContextFolder,
 } from "./session-context-folder-store";
+import {
+  getSessionModelOverride,
+  setSessionModelOverride,
+} from "./session-model-override-store";
 import type {
   DesktopSessionContinuationItem,
   DesktopSessionLocalError,
@@ -1812,6 +1816,20 @@ function setupIPC(): void {
     "set-session-context-folder",
     (_event, sessionId: string, folder: string | null) => {
       setSessionContextFolder(sessionId, folder);
+      return true;
+    },
+  );
+
+  // Per-session model/provider selected from the in-chat picker. This is a
+  // desktop-only routing binding and intentionally stores no API keys.
+  ipcMain.handle("get-session-model-override", (_event, sessionId: string) => {
+    return getSessionModelOverride(sessionId);
+  });
+
+  ipcMain.handle(
+    "set-session-model-override",
+    (_event, sessionId: string, override: SessionModelOverride | null) => {
+      setSessionModelOverride(sessionId, override);
       return true;
     },
   );

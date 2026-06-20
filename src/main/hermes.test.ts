@@ -51,7 +51,12 @@ vi.mock("child_process", () => {
 import { spawn } from "child_process";
 import { getModelConfig, readEnv } from "./config";
 import { providerListSafe } from "./secrets";
-import { sendMessage, stopHealthPolling, transcribeAudio } from "./hermes";
+import {
+  sendMessage,
+  shouldForceCliForSessionOverride,
+  stopHealthPolling,
+  transcribeAudio,
+} from "./hermes";
 import type { ChatCallbacks } from "./hermes";
 
 const mockedGetModelConfig = vi.mocked(getModelConfig);
@@ -162,7 +167,7 @@ describe("sendMessage session model override routing", () => {
     stopHealthPolling();
   });
 
-  // @lat: [[model-selection#Session model override#Cross-provider switch routes via CLI]]
+  // @lat: [[model-selection#Session model override#Text-only legacy fallback routes via CLI]]
   it("routes a cross-provider override through the CLI with its provider + model", async () => {
     await sendMessage(
       "hello",
@@ -180,5 +185,37 @@ describe("sendMessage session model override routing", () => {
     expect(args[args.indexOf("-m") + 1]).toBe("gemini-2.5-pro");
     expect(args).toContain("--provider");
     expect(args[args.indexOf("--provider") + 1]).toBe("gemini");
+  });
+
+  // @lat: [[model-selection#Session model override#Attachment turns stay on session transport]]
+  it("keeps attachment turns off the CLI override fallback", () => {
+    const persisted = {
+      provider: "openai-codex",
+      model: "gpt-5.5",
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+    } as ReturnType<typeof getModelConfig>;
+    const effective = {
+      provider: "gemini",
+      model: "gemini-2.5-pro",
+      baseUrl: "",
+    } as ReturnType<typeof getModelConfig>;
+
+    expect(
+      shouldForceCliForSessionOverride(
+        persisted,
+        effective,
+        { provider: "gemini", model: "gemini-2.5-pro", baseUrl: "" },
+        [
+          {
+            id: "img-1",
+            kind: "image",
+            name: "cat.png",
+            mime: "image/png",
+            size: 12,
+            dataUrl: "data:image/png;base64,AAAA",
+          },
+        ],
+      ),
+    ).toBe(false);
   });
 });

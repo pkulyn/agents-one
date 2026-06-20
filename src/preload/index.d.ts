@@ -568,6 +568,13 @@ interface HermesAPI {
     sessionId: string,
     folder: string | null,
   ) => Promise<boolean>;
+  getSessionModelOverride: (
+    sessionId: string,
+  ) => Promise<SessionModelOverride | null>;
+  setSessionModelOverride: (
+    sessionId: string,
+    override: SessionModelOverride | null,
+  ) => Promise<boolean>;
 
   // Profiles
   listProfiles: () => Promise<

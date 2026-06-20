@@ -2099,6 +2099,34 @@ function effectiveModelConfig(
   };
 }
 
+function hasAttachments(attachments?: Attachment[]): boolean {
+  return (attachments?.length ?? 0) > 0;
+}
+
+/**
+ * Legacy CLI is only a safe session-override escape hatch for text-only turns.
+ * Upstream desktop applies `/model <model> --provider <provider>` on the active
+ * gateway session, then attaches media and submits through that same session.
+ * If we force an attachment turn through the CLI, images/path refs are silently
+ * dropped by `sendMessageViaCli`, so leave attachment turns on the gateway/API
+ * path whenever it is available.
+ */
+export function shouldForceCliForSessionOverride(
+  persisted: ModelConfig,
+  effective: ModelConfig,
+  override: SessionModelOverride | undefined,
+  attachments?: Attachment[],
+): boolean {
+  if (hasAttachments(attachments)) return false;
+  const overrideChangesRouting =
+    !!override &&
+    (effective.provider !== persisted.provider ||
+      effective.baseUrl !== persisted.baseUrl);
+  return (
+    !!CLI_COMPAT_PROVIDER_OVERRIDE[effective.provider] || overrideChangesRouting
+  );
+}
+
 function sendMessageViaCli(
   message: string,
   cb: ChatCallbacks,
@@ -2704,14 +2732,11 @@ export async function sendMessage(
 
   const mc = getModelConfig(profile);
   const eff = effectiveModelConfig(profile, override);
-  // The gateway/API transport resolves the provider server-side from
-  // config.yaml, so a session override that changes the provider or base URL
-  // can only be honoured by the CLI transport (which is parameterized per call
-  // via `--provider`, base_url + key env). Same-provider model swaps stay on
-  // the gateway/API path below (the `model` string is enough).
-  const overrideChangesRouting =
-    !!override && (eff.provider !== mc.provider || eff.baseUrl !== mc.baseUrl);
-  if (CLI_COMPAT_PROVIDER_OVERRIDE[eff.provider] || overrideChangesRouting) {
+  // Official upstream desktop hot-swaps the active gateway session with
+  // `/model ... --provider ...` before attaching media and submitting. Our
+  // renderer dashboard transport follows that path. The legacy CLI fallback is
+  // kept only for text-only turns; it cannot preserve image/path attachments.
+  if (shouldForceCliForSessionOverride(mc, eff, override, attachments)) {
     return sendMessageViaCli(
       message,
       cb,

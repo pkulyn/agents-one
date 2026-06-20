@@ -728,6 +728,17 @@ const hermesAPI = {
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-session-context-folder", sessionId, folder),
 
+  getSessionModelOverride: (
+    sessionId: string,
+  ): Promise<SessionModelOverride | null> =>
+    ipcRenderer.invoke("get-session-model-override", sessionId),
+
+  setSessionModelOverride: (
+    sessionId: string,
+    override: SessionModelOverride | null,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-session-model-override", sessionId, override),
+
   // Profiles
   listProfiles: (): Promise<
     Array<{
