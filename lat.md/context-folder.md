@@ -13,3 +13,15 @@ The folder isn't part of hermes-agent's session schema, so it lives in a desktop
 The chat loads the stored folder when resuming a session and saves it whenever it changes, once the conversation has a gateway session id.
 
 In [[src/renderer/src/screens/Chat/Chat.tsx#Chat]] a load effect fetches the folder for `initialSessionId` on mount; a save effect writes `contextFolder` via `setSessionContextFolder` on every change. The save is gated on a "loaded" ref so the initial null can't overwrite a resumed session's stored folder before the load resolves. A brand-new chat saves once its session id resolves after the first message, binding the pre-selected folder to the new session.
+
+## Resizable tree panel
+
+The context-folder tree panel uses a compact header and can be resized from its left edge, mirroring the in-app browser panel.
+
+[[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] stores its width in `localStorage` under `hermes:worktreePanelWidth`, clamps it between a usable minimum and the available chat width, and updates it through a pointer-drag handle styled by `.worktree-resize-handle`.
+
+## Muted tree icons
+
+The tree keeps file-type icon shapes but normalizes their colors so the explorer reads quietly in the chat sidebar.
+
+The `@wesbos/code-icons` SVGs render inside `.worktree-file-icon-wrapper`; CSS overrides inline fills/strokes to `currentColor` while preserving `fill:none` outlines, and folder icons use the same low-opacity white tone.
