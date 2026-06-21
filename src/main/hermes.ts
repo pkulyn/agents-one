@@ -45,10 +45,13 @@ import {
   getActiveProfileNameSync,
 } from "./utils";
 import { getProfilePort } from "./gateway-ports";
+import { promptSudoPassword, promptSecretValue } from "./gatewayPrompt";
+import { getSecret } from "./secrets";
 import { readModels } from "./models";
 import { providerListSafe } from "./secrets";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { type Attachment, escapeXmlAttr } from "../shared/attachments";
+import { type SessionModelOverride } from "../shared/model-override";
 import { URL_KEY_MAP, OPENAI_COMPAT_PROVIDERS } from "../shared/url-key-map";
 import {
   chatToolEventFromPayload,
@@ -1109,9 +1112,9 @@ function sendMessageViaApi(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
-  modelOverride?: string,
+  override?: SessionModelOverride,
 ): ChatHandle {
-  const mc = getModelConfig(profile);
+  const mc = effectiveModelConfig(profile, override);
   const controller = new AbortController();
 
   // Build full conversation from history + current message (standard OpenAI format).
@@ -1139,7 +1142,7 @@ function sendMessageViaApi(
 
   const reasoningEffort = reasoningEffortForProfile(profile);
   const bodyObj: Record<string, unknown> = {
-    model: modelOverride || mc.model || "hermes-agent",
+    model: mc.model || "hermes-agent",
     messages,
     stream: true,
     ...(_resumeSessionId ? { session_id: _resumeSessionId } : {}),
@@ -1187,6 +1190,7 @@ function sendMessageViaApi(
   // local install degrades to the pre-fix (fingerprint) behaviour
   // rather than 403-looping.
   const hasAuth = "Authorization" in headers;
+  const resumingExistingSession = Boolean(_resumeSessionId);
   let sessionId =
     _resumeSessionId || (hasAuth ? `desk-${Date.now()}-${randomUUID()}` : "");
   if (sessionId) {
@@ -1198,7 +1202,9 @@ function sendMessageViaApi(
     announcedSessionId = id;
     cb.onSessionStarted?.(id);
   }
-  announceSessionId(sessionId);
+  if (resumingExistingSession) {
+    announceSessionId(sessionId);
+  }
 
   let hasContent = false;
   let finished = false; // guard against double callbacks
@@ -1225,7 +1231,7 @@ function sendMessageViaApi(
   function probeRealError(): void {
     // When streaming returns empty, make a non-streaming request to surface the real error
     const probeBodyObj: Record<string, unknown> = {
-      model: modelOverride || mc.model || "hermes-agent",
+      model: mc.model || "hermes-agent",
       messages: [{ role: "user", content: userContent }],
       stream: false,
     };
@@ -1283,6 +1289,7 @@ function sendMessageViaApi(
       try {
         const payload = JSON.parse(data) as Record<string, unknown>;
         const toolEvent = chatToolEventFromPayload(payload);
+        announceSessionId(sessionId);
         if (cb.onToolEvent) {
           cb.onToolEvent(toolEvent);
         }
@@ -1345,6 +1352,7 @@ function sendMessageViaApi(
       // diagnostic probe.
       const reasoningDelta = extractReasoningDelta(delta);
       if (reasoningDelta && cb.onReasoningChunk) {
+        announceSessionId(sessionId);
         cb.onReasoningChunk(reasoningDelta);
       }
 
@@ -1356,6 +1364,7 @@ function sendMessageViaApi(
           cb.onToolProgress(`${match[1]} ${match[2]}`);
         } else {
           hasContent = true;
+          announceSessionId(sessionId);
           cb.onChunk(delta.content);
         }
       }
@@ -1514,9 +1523,9 @@ function sendMessageViaRuns(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
-  modelOverride?: string,
+  override?: SessionModelOverride,
 ): ChatHandle {
-  const mc = getModelConfig(profile);
+  const mc = effectiveModelConfig(profile, override);
   const controller = new AbortController();
   const apiUrl = getApiUrl(profile);
   const headersForAuth = getApiAuthHeaders(profile);
@@ -1525,7 +1534,7 @@ function sendMessageViaRuns(
     (headersForAuth.Authorization ? `desk-${Date.now()}-${randomUUID()}` : "");
   const ctxSystem = contextFolderSystemMessage(contextFolder);
   const bodyObj: Record<string, unknown> = {
-    model: modelOverride || mc.model || "hermes-agent",
+    model: mc.model || "hermes-agent",
     input: message,
     conversation_history: apiHistory(history),
   };
@@ -1537,7 +1546,16 @@ function sendMessageViaRuns(
   const headers = getJsonApiHeaders(profile, bodyBuf);
   if (sessionId) {
     headers["X-Hermes-Session-Id"] = sessionId;
-    cb.onSessionStarted?.(sessionId);
+  }
+  const resumingExistingSession = Boolean(resumeSessionId);
+  let announcedSessionId = "";
+  function announceSessionId(id: string): void {
+    if (!id || announcedSessionId === id) return;
+    announcedSessionId = id;
+    cb.onSessionStarted?.(id);
+  }
+  if (resumingExistingSession) {
+    announceSessionId(sessionId);
   }
 
   let runId = "";
@@ -1569,7 +1587,7 @@ function sendMessageViaRuns(
       history,
       attachments,
       contextFolder,
-      modelOverride,
+      override,
     );
   }
 
@@ -1586,6 +1604,7 @@ function sendMessageViaRuns(
       const delta = typeof raw.delta === "string" ? raw.delta : "";
       if (delta) {
         hasContent = true;
+        announceSessionId(sessionId);
         cb.onChunk(delta);
       }
       return;
@@ -1593,12 +1612,14 @@ function sendMessageViaRuns(
 
     const reasoning = runEventReasoningText(raw);
     if (reasoning && cb.onReasoningChunk) {
+      announceSessionId(sessionId);
       cb.onReasoningChunk(reasoning);
       return;
     }
 
     const toolEvent = chatToolEventFromRunEvent(raw);
     if (toolEvent) {
+      announceSessionId(sessionId);
       if (cb.onToolEvent) {
         cb.onToolEvent(toolEvent);
       } else if (cb.onToolProgress) {
@@ -1611,6 +1632,7 @@ function sendMessageViaRuns(
       const output = typeof raw.output === "string" ? raw.output : "";
       if (output && !hasContent) {
         hasContent = true;
+        announceSessionId(sessionId);
         cb.onChunk(output);
       }
       const usage = runCompletedUsage(raw);
@@ -1983,14 +2005,63 @@ async function sendMessageViaTuiGateway(
     }
 
     if (event.type === "sudo.request" || event.type === "secret.request") {
-      // Out of scope for the inline-clarify change: a desktop sudo/secret prompt
-      // carries its own security-review surface and is a deliberate follow-up.
-      void client
-        .request("session.interrupt", { session_id: activeSessionId }, 5_000)
-        .catch(() => undefined);
-      finish(
-        `Hermes requested ${event.type.replace(".request", "")} input, but Hermes One does not yet expose that gateway dialog.`,
-      );
+      const isSudo = event.type === "sudo.request";
+      const requestId =
+        typeof event.payload?.request_id === "string"
+          ? event.payload.request_id
+          : "";
+      if (!requestId) {
+        void client
+          .request("session.interrupt", { session_id: activeSessionId }, 5_000)
+          .catch(() => undefined);
+        finish(
+          `Hermes requested ${event.type.replace(".request", "")} input, but the gateway provided no request_id to answer.`,
+        );
+        return;
+      }
+      // A sudo password / secret value is sensitive — collect it in the
+      // hardened askpass modal (never the chat transcript) and forward it to
+      // the gateway. Cancel maps to "" (a safe skip the gateway handles).
+      //
+      // For secret.request: try the configured security provider first. If the
+      // vault already holds the key, answer silently without prompting the user.
+      const payload = event.payload as
+        | { prompt?: string; env_var?: string }
+        | undefined;
+      const envVar = String(payload?.env_var ?? "");
+
+      // Vault-first resolution for secret.request: attempt a provider lookup
+      // before falling back to the interactive modal. sudo.request always needs
+      // an interactive password — no vault lookup applies.
+      const vaultValue =
+        !isSudo && envVar ? getSecret(envVar, profile) : null;
+
+      const collect: Promise<string> =
+        vaultValue != null
+          ? Promise.resolve(vaultValue)
+          : isSudo
+            ? promptSudoPassword()
+            : promptSecretValue(envVar, String(payload?.prompt ?? ""));
+
+      void collect
+        .then((answer) => {
+          if (finished) return; // turn was cancelled while modal was open
+          const method = isSudo ? "sudo.respond" : "secret.respond";
+          const params = isSudo
+            ? { request_id: requestId, password: answer }
+            : { request_id: requestId, value: answer };
+          return client.request(method, params, 300_000);
+        })
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          if (!hasGatewayOutput) {
+            startApiFallback(message);
+            return;
+          }
+          finish(message);
+        });
+      return;
     }
   });
 
@@ -2074,13 +2145,65 @@ const CLI_COMPAT_PROVIDER_OVERRIDE: Record<string, string> = {
   aimlapi: "custom",
 };
 
+type ModelConfig = ReturnType<typeof getModelConfig>;
+
+/**
+ * Overlay a session-scoped model override on top of the persisted config.yaml
+ * model config. Non-empty override fields win; empty/absent fields fall back to
+ * the persisted value. The result drives request routing for a single turn
+ * without ever touching config.yaml (the global default is preserved — #688).
+ */
+function effectiveModelConfig(
+  profile: string | undefined,
+  override?: SessionModelOverride,
+): ModelConfig {
+  const mc = getModelConfig(profile);
+  if (!override) return mc;
+  return {
+    provider: override.provider || mc.provider,
+    model: override.model || mc.model,
+    // baseUrl is intentionally taken verbatim from the override (including an
+    // empty string) so a switch to a built-in provider clears a stale custom
+    // URL; only fall back to the persisted value when the override omits it.
+    baseUrl: override.baseUrl !== undefined ? override.baseUrl : mc.baseUrl,
+  };
+}
+
+function hasAttachments(attachments?: Attachment[]): boolean {
+  return (attachments?.length ?? 0) > 0;
+}
+
+/**
+ * Legacy CLI is only a safe session-override escape hatch for text-only turns.
+ * Upstream desktop applies `/model <model> --provider <provider>` on the active
+ * gateway session, then attaches media and submits through that same session.
+ * If we force an attachment turn through the CLI, images/path refs are silently
+ * dropped by `sendMessageViaCli`, so leave attachment turns on the gateway/API
+ * path whenever it is available.
+ */
+export function shouldForceCliForSessionOverride(
+  persisted: ModelConfig,
+  effective: ModelConfig,
+  override: SessionModelOverride | undefined,
+  attachments?: Attachment[],
+): boolean {
+  if (hasAttachments(attachments)) return false;
+  const overrideChangesRouting =
+    !!override &&
+    (effective.provider !== persisted.provider ||
+      effective.baseUrl !== persisted.baseUrl);
+  return (
+    !!CLI_COMPAT_PROVIDER_OVERRIDE[effective.provider] || overrideChangesRouting
+  );
+}
+
 function sendMessageViaCli(
   message: string,
   cb: ChatCallbacks,
   profile?: string,
   resumeSessionId?: string,
   attachments?: Attachment[],
-  modelOverride?: string,
+  override?: SessionModelOverride,
 ): ChatHandle {
   // CLI fallback can't pipe multimodal content; inline text-file attachments
   // and ignore images.  The gateway is the supported attachment path; this
@@ -2099,7 +2222,15 @@ function sendMessageViaCli(
       message = message.trim() ? `${message}\n\n${wrapped}` : wrapped;
     }
   }
-  const mc = getModelConfig(profile);
+  // Effective config = persisted config.yaml overlaid with the session
+  // override. Everything downstream (provider routing, base_url env, key
+  // resolution, apiMode lookup) reads from `mc`, so the override drives the
+  // whole CLI invocation without touching config.yaml.
+  const mc = effectiveModelConfig(profile, override);
+  const baseMc = getModelConfig(profile);
+  const overrideChangesRouting =
+    !!override &&
+    (mc.provider !== baseMc.provider || mc.baseUrl !== baseMc.baseUrl);
   const profileEnv = readEnv(profile);
 
   const args = hermesCliArgs();
@@ -2112,13 +2243,18 @@ function sendMessageViaCli(
     args.push("--resume", resumeSessionId);
   }
 
-  if (modelOverride || mc.model) {
-    args.push("-m", modelOverride || mc.model);
+  if (mc.model) {
+    args.push("-m", mc.model);
   }
 
   const cliProvider = CLI_COMPAT_PROVIDER_OVERRIDE[mc.provider];
   if (cliProvider) {
     args.push("--provider", cliProvider);
+  } else if (overrideChangesRouting && mc.provider && mc.provider !== "auto") {
+    // A session override that switches to a named provider (e.g. gemini) must
+    // select it explicitly — otherwise the CLI would infer the provider from
+    // the now-stale config/env and route to the wrong host.
+    args.push("--provider", mc.provider);
   }
 
   const env: Record<string, string> = {
@@ -2408,7 +2544,7 @@ async function sendMessageViaNonGatewayApi(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
-  modelOverride?: string,
+  override?: SessionModelOverride,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
   if (!attachments?.length && !approvalCommand) {
@@ -2422,7 +2558,7 @@ async function sendMessageViaNonGatewayApi(
         history,
         attachments,
         contextFolder,
-        modelOverride,
+        override,
       );
     }
   }
@@ -2435,7 +2571,7 @@ async function sendMessageViaNonGatewayApi(
     history,
     attachments,
     contextFolder,
-    modelOverride,
+    override,
   );
 }
 
@@ -2447,18 +2583,18 @@ async function sendMessageViaBestApi(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
-  modelOverride?: string,
+  override?: SessionModelOverride,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
   // Skip the TUI gateway when a session-scoped model override is active — the
   // TUI gateway reads its model from config.yaml and has no per-request
-  // override mechanism. The API path below already honours modelOverride.
+  // override mechanism. The API path below already honours the override.
   if (
     shouldUseTuiGatewayClient() &&
     !isRemoteMode() &&
     !attachments?.length &&
     !approvalCommand &&
-    !modelOverride
+    !override
   ) {
     try {
       return await sendMessageViaTuiGateway(
@@ -2485,7 +2621,7 @@ async function sendMessageViaBestApi(
     history,
     attachments,
     contextFolder,
-    modelOverride,
+    override,
   );
 }
 
@@ -2497,7 +2633,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
-  modelOverride?: string,
+  override?: SessionModelOverride,
 ): Promise<ChatHandle> {
   let aborted = false;
   let retrying = false;
@@ -2542,7 +2678,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
         history,
         attachments,
         contextFolder,
-        modelOverride,
+        override,
       );
       return;
     }
@@ -2553,7 +2689,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
       profile,
       resumeSessionId,
       attachments,
-      modelOverride,
+      override,
     );
   };
 
@@ -2631,7 +2767,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
     history,
     attachments,
     contextFolder,
-    modelOverride,
+    override,
   );
 
   return handle;
@@ -2645,11 +2781,12 @@ export async function sendMessage(
   history?: Array<{ role: string; content: string }>,
   attachments?: Attachment[],
   contextFolder?: string,
-  modelOverride?: string,
+  override?: SessionModelOverride,
 ): Promise<ChatHandle> {
   ensureInitialized();
 
-  // Remote mode: always use API, no CLI fallback
+  // Remote mode: always use API, no CLI fallback. Cross-provider session
+  // overrides are limited to the model string here (no CLI transport remotely).
   if (isRemoteMode()) {
     return sendMessageViaBestApi(
       message,
@@ -2659,19 +2796,24 @@ export async function sendMessage(
       history,
       attachments,
       contextFolder,
-      modelOverride,
+      override,
     );
   }
 
   const mc = getModelConfig(profile);
-  if (CLI_COMPAT_PROVIDER_OVERRIDE[mc.provider]) {
+  const eff = effectiveModelConfig(profile, override);
+  // Official upstream desktop hot-swaps the active gateway session with
+  // `/model ... --provider ...` before attaching media and submitting. Our
+  // renderer dashboard transport follows that path. The legacy CLI fallback is
+  // kept only for text-only turns; it cannot preserve image/path attachments.
+  if (shouldForceCliForSessionOverride(mc, eff, override, attachments)) {
     return sendMessageViaCli(
       message,
       cb,
       profile,
       resumeSessionId,
       attachments,
-      modelOverride,
+      override,
     );
   }
 
@@ -2695,7 +2837,7 @@ export async function sendMessage(
       history,
       attachments,
       contextFolder,
-      modelOverride,
+      override,
     );
   }
 
@@ -2706,7 +2848,7 @@ export async function sendMessage(
     profile,
     resumeSessionId,
     attachments,
-    modelOverride,
+    override,
   );
 }
 

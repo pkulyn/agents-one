@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Spinner, X } from "../../assets/icons";
+import { Spinner, X, Plus } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 import { defaultColorForName } from "../../../../shared/profileColors";
@@ -15,14 +15,15 @@ export interface ProfileAppearance {
  * the strip itself is draggable, while the conversation chips on top of it stay
  * clickable. When several sessions are open (background sessions / multi-agent)
  * it shows a chip per session to switch between them and watch each stream live.
- * With a single idle conversation it renders empty — just a drag area — so no
- * vertical space is wasted on a dedicated, always-present tab bar.
+ * With only a blank scratch conversation it renders empty — just a drag area —
+ * so no vertical space is wasted before there is a real session to show.
  */
 export const ActiveSessionsBar = memo(function ActiveSessionsBar({
   runs,
   activeRunId,
   onSelect,
   onClose,
+  onNew,
   getAppearance,
 }: {
   runs: ChatRun[];
@@ -30,14 +31,17 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
   onSelect: (runId: string) => void;
   /** Close (and stop, if running) a conversation tab. */
   onClose: (runId: string) => void;
+  /** Open a fresh conversation tab (browser-style new-tab button). */
+  onNew: () => void;
   /** Resolve a profile's avatar/colour for its chip. */
   getAppearance?: (profile: string) => ProfileAppearance;
 }): React.JSX.Element {
   const { t } = useI18n();
 
   const anyLoading = runs.some((r) => r.loading);
-  // Nothing to switch between → leave the strip empty (pure drag area).
-  const showChips = runs.length > 1 || anyLoading;
+  const hasRealSession = runs.some((r) => r.sessionId || r.title);
+  // Nothing real to switch to yet → leave the strip empty (pure drag area).
+  const showChips = runs.length > 1 || anyLoading || hasRealSession;
 
   return (
     <div className="active-sessions-bar" role="tablist">
@@ -90,6 +94,17 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
             </div>
           );
         })}
+      {showChips && (
+        <button
+          type="button"
+          className="active-session-new"
+          title={t("sessions.newConversation")}
+          aria-label={t("sessions.newConversation")}
+          onClick={onNew}
+        >
+          <Plus size={14} />
+        </button>
+      )}
     </div>
   );
 });

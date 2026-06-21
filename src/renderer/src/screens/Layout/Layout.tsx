@@ -8,6 +8,9 @@ import {
   type ChatRun,
   mintRun,
   patchRun,
+  isScratchRun,
+  openSessionRunTransition,
+  selectProfileRunTransition,
   findRunBySession,
   loadingSessionIds as deriveLoadingSessionIds,
 } from "./chatRuns";
@@ -32,7 +35,6 @@ import VerifyWarningBanner from "../../components/VerifyWarningBanner";
 import hermeslogo from "../../assets/hermes-one.svg";
 import {
   ChatBubble,
-  Clock,
   Compass,
   Settings as SettingsIcon,
   Brain,
@@ -54,7 +56,6 @@ import { useI18n } from "../../components/useI18n";
 
 type View =
   | "chat"
-  | "sessions"
   | "discover"
   | "agents"
   | "office"
@@ -70,7 +71,6 @@ type View =
 
 const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "chat", icon: ChatBubble, labelKey: "navigation.chat" },
-  { view: "sessions", icon: Clock, labelKey: "navigation.sessions" },
   { view: "discover", icon: Compass, labelKey: "navigation.discover" },
   // "agents" (Profiles) is reached from the sidebar-footer ProfileSwitcher's
   // "Manage profiles" action rather than a top-level nav item.
@@ -104,8 +104,9 @@ function Layout({
   const { t } = useI18n();
   const [view, setView] = useState<View>("chat");
   // Multiple conversations coexist (background sessions + multi-agent). Each is
-  // a ChatRun; all are mounted, only the active one is shown. `activeProfile`
-  // tracks the selected profile and always equals the active run's profile.
+  // a ChatRun; all are mounted, only the active one is shown. Profile switches
+  // preserve existing conversations and activate a scratch run for the selected
+  // agent so `activeProfile` stays aligned with the visible chat transport.
   const [activeProfile, setActiveProfile] = useState("default");
   const [runs, setRuns] = useState<ChatRun[]>(() => [mintRun("default")]);
   const [activeRunId, setActiveRunId] = useState<string>(() => runs[0].runId);
@@ -176,8 +177,8 @@ function Layout({
       return false;
     }
   });
-  // Sessions nav section expanded → shows the last few chats inline
-  // (ChatGPT-style). Defaults to expanded; persisted across launches.
+  // Recent-sessions list under the Chat nav item expanded → shows the last few
+  // chats inline (ChatGPT-style). Defaults to expanded; persisted across launches.
   const [sessionsExpanded, setSessionsExpanded] = useState(() => {
     try {
       return localStorage.getItem(SESSIONS_EXPANDED_KEY) !== "false";
@@ -185,6 +186,10 @@ function Layout({
       return true;
     }
   });
+  // Full-list sessions modal (opened from the sidebar "Show more" affordance or
+  // the Cmd/Ctrl+K menu action). Reuses the Sessions screen inside a modal —
+  // there is no longer a top-level Sessions view.
+  const [sessionsModalOpen, setSessionsModalOpen] = useState(false);
   // Tabs lazy-mount on first visit, then stay mounted (display:none toggle).
   // Keeps IPC refetch / DOM rebuild off the tab-switch hot path.
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
@@ -351,36 +356,37 @@ function Layout({
       handleNewChat();
     });
     const cleanupSearch = window.hermesAPI.onMenuSearchSessions(() => {
-      goTo("sessions");
+      setSessionsModalOpen(true);
     });
     return () => {
       cleanupNewChat();
       cleanupSearch();
     };
-  }, [handleNewChat, goTo]);
+  }, [handleNewChat]);
 
-  // A run with no session, not loading and no title hasn't been used yet — a
-  // blank "scratch" chat we can re-home to another agent without spawning a tab.
-  const isScratchRun = (r: ChatRun): boolean =>
-    !r.sessionId && !r.loading && !r.title;
+  // Esc closes the full-list sessions modal.
+  useEffect(() => {
+    if (!sessionsModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setSessionsModalOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sessionsModalOpen]);
 
   const handleSelectProfile = useCallback(
     (name: string) => {
       // Selecting an agent is administrative: switch the active profile (the
-      // component already started its gateway via setActiveProfile) WITHOUT
-      // starting a conversation. If the current chat is a blank scratch, re-home
-      // it to the new agent so switching never piles up empty tabs; a chat with
-      // content is left intact (start a new one with Chat / New chat).
+      // component already started its gateway via setActiveProfile). Existing
+      // chats remain on their original profile, but the visible chat must move
+      // to a scratch run for the selected profile so the footer and transport
+      // never point at different agents.
       setActiveProfile(name);
-      setRuns((prev) =>
-        prev.map((r) =>
-          r.runId === activeRunId && isScratchRun(r)
-            ? { ...r, profile: name }
-            : r,
-        ),
-      );
+      const next = selectProfileRunTransition(runs, activeRunId, name);
+      setRuns(next.runs);
+      setActiveRunId(next.activeRunId);
     },
-    [activeRunId],
+    [runs, activeRunId],
   );
 
   // The "Chat" affordance: start (or reuse a blank) conversation with an agent
@@ -462,7 +468,7 @@ function Layout({
         )) as DbHistoryItem[];
         const run = mintRun(activeProfile, dbItemsToChatMessages(items));
         run.sessionId = sessionId;
-        setRuns((prev) => [...prev, run]);
+        setRuns((prev) => openSessionRunTransition(prev, activeRunId, run).runs);
         setActiveRunId(run.runId);
         goTo("chat");
       } finally {
@@ -470,7 +476,7 @@ function Layout({
         setResumingSessionId(null);
       }
     },
-    [runs, handleActivateRun, activeProfile, goTo],
+    [runs, activeRunId, handleActivateRun, activeProfile, goTo],
   );
 
   const toggleSidebar = useCallback(() => {
@@ -532,7 +538,10 @@ function Layout({
 
         <nav className="sidebar-nav">
           {NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
-            if (v === "sessions") {
+            if (v === "chat") {
+              // The recent-sessions list lives under the Chat item (the
+              // standalone Sessions view was removed — the full list now opens
+              // in a modal via "Show more").
               const recentToggleLabel = sessionsExpanded
                 ? t("navigation.hideRecentSessions")
                 : t("navigation.showRecentSessions");
@@ -572,6 +581,7 @@ function Layout({
                     loadingSessionIds={loadingSessionIds}
                     resumingSessionId={resumingSessionId}
                     onSelect={handleResumeSession}
+                    onShowMore={() => setSessionsModalOpen(true)}
                   />
                 </div>
               );
@@ -642,6 +652,7 @@ function Layout({
           activeRunId={activeRunId}
           onSelect={handleActivateRun}
           onClose={handleCloseRun}
+          onNew={handleNewChat}
           getAppearance={getAppearance}
         />
         {verifyWarning && onReinstall && onDismissVerifyWarning && (
@@ -680,14 +691,28 @@ function Layout({
           ))}
         </div>
 
-        {visitedViews.has("sessions") && (
-          <div style={paneStyle("sessions")}>
-            <Sessions
-              onResumeSession={handleResumeSession}
-              onNewChat={handleNewChat}
-              currentSessionId={currentSessionId}
-              visible={view === "sessions"}
-            />
+        {sessionsModalOpen && (
+          <div
+            className="models-modal-overlay"
+            onClick={() => setSessionsModalOpen(false)}
+          >
+            <div
+              className="sessions-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Sessions
+                onResumeSession={(id) => {
+                  setSessionsModalOpen(false);
+                  void handleResumeSession(id);
+                }}
+                onNewChat={() => {
+                  setSessionsModalOpen(false);
+                  handleNewChat();
+                }}
+                currentSessionId={currentSessionId}
+                visible={sessionsModalOpen}
+              />
+            </div>
           </div>
         )}
 
