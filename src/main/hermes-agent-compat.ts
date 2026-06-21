@@ -41,10 +41,8 @@ export interface DashboardSourcePatchesResult {
   detail: string;
 }
 
-const EMBEDDED_CHAT_FALSE_RE =
-  /(\bembedded_chat\s*:\s*bool\s*=\s*)False\b/;
-const EMBEDDED_CHAT_TRUE_RE =
-  /\bembedded_chat\s*:\s*bool\s*=\s*True\b/;
+const EMBEDDED_CHAT_FALSE_RE = /(\bembedded_chat\s*:\s*bool\s*=\s*)False\b/;
+const EMBEDDED_CHAT_TRUE_RE = /\bembedded_chat\s*:\s*bool\s*=\s*True\b/;
 const DASHBOARD_CHAT_ALWAYS_ON_RE =
   /\b_DASHBOARD_EMBEDDED_CHAT_ENABLED\s*=\s*True\b/;
 const MODEL_LIBRARY_COMPAT_START =
@@ -291,12 +289,13 @@ export function patchDashboardModelLibrarySource(
   source: string,
 ): DashboardSourcePatchResult {
   const withoutExisting = removeModelLibraryCompatBlock(source);
-  if (!withoutExisting.source.includes("@app.post(\"/api/model/set\")")) {
+  if (!withoutExisting.source.includes('@app.post("/api/model/set")')) {
     return {
       compatible: false,
       changed: false,
       source,
-      detail: "Could not find Hermes Agent model REST endpoints in web_server.py.",
+      detail:
+        "Could not find Hermes Agent model REST endpoints in web_server.py.",
     };
   }
 

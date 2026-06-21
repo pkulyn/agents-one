@@ -522,10 +522,7 @@ describe("Sessions tab — bulk delete selection (#490)", () => {
     });
 
     await waitFor(() => {
-      expect(api.deleteSessions).toHaveBeenCalledWith([
-        "sess-one",
-        "sess-two",
-      ]);
+      expect(api.deleteSessions).toHaveBeenCalledWith(["sess-one", "sess-two"]);
     });
     expect(api.deleteSession).not.toHaveBeenCalled();
   });

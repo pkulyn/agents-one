@@ -229,7 +229,9 @@ function requestJson(
         res.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");
           if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`${res.statusCode}: ${text || res.statusMessage}`));
+            reject(
+              new Error(`${res.statusCode}: ${text || res.statusMessage}`),
+            );
             return;
           }
           if (!text) {
@@ -254,7 +256,9 @@ function requestJson(
     req.on("error", reject);
     req.setTimeout(timeoutMs, () => {
       req.destroy(
-        new Error(`Timed out connecting to Hermes dashboard after ${timeoutMs}ms`),
+        new Error(
+          `Timed out connecting to Hermes dashboard after ${timeoutMs}ms`,
+        ),
       );
     });
     req.end();
@@ -334,7 +338,9 @@ async function waitForDashboardReady(
     }
   }
   const message =
-    lastError instanceof Error ? lastError.message : "dashboard did not respond";
+    lastError instanceof Error
+      ? lastError.message
+      : "dashboard did not respond";
   throw new Error(`Timed out waiting for Hermes dashboard: ${message}`);
 }
 
@@ -478,8 +484,10 @@ export async function getDashboardStatus(
   profile?: string,
 ): Promise<DashboardStatus> {
   const config = getConnectionConfig();
-  const mode = config.mode === "remote" || config.mode === "ssh" ? config.mode : "local";
-  if (mode === "remote") return getRemoteDashboardStatusForConfig(config, profile);
+  const mode =
+    config.mode === "remote" || config.mode === "ssh" ? config.mode : "local";
+  if (mode === "remote")
+    return getRemoteDashboardStatusForConfig(config, profile);
   if (mode === "ssh") return getSshDashboardStatusForConfig(config, profile);
 
   const managed = getManagedDashboard(profile);
@@ -504,10 +512,14 @@ export async function getDashboardStatus(
   };
 }
 
-export async function startDashboard(profile?: string): Promise<DashboardStatus> {
+export async function startDashboard(
+  profile?: string,
+): Promise<DashboardStatus> {
   const config = getConnectionConfig();
-  const mode = config.mode === "remote" || config.mode === "ssh" ? config.mode : "local";
-  if (mode === "remote") return getRemoteDashboardStatusForConfig(config, profile);
+  const mode =
+    config.mode === "remote" || config.mode === "ssh" ? config.mode : "local";
+  if (mode === "remote")
+    return getRemoteDashboardStatusForConfig(config, profile);
   if (mode === "ssh") return getSshDashboardStatusForConfig(config, profile);
 
   const existing = getManagedDashboard(profile);

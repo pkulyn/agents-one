@@ -524,7 +524,8 @@ function hasEquivalentAssistantError(
     }
     if (!isAssistantError(candidate)) continue;
     if (normalizeMessageText(candidate.error) !== wantedError) continue;
-    if (normalizeMessageText(candidate.content || "") !== wantedContent) continue;
+    if (normalizeMessageText(candidate.content || "") !== wantedContent)
+      continue;
     return true;
   }
   return false;
@@ -555,7 +556,9 @@ export function preserveLocalAssistantErrors(
     if (!isAssistantError(error) || existingIds.has(error.id)) continue;
 
     const localUser = previousUserBefore(currentMessages, i);
-    if (hasEquivalentAssistantError(output, currentMessages, error, localUser)) {
+    if (
+      hasEquivalentAssistantError(output, currentMessages, error, localUser)
+    ) {
       continue;
     }
 
@@ -659,7 +662,8 @@ function dbWithActiveUserAnchor(
   if (currentActiveUserIndex < 0) return [...db];
 
   const activeUser = current[currentActiveUserIndex];
-  if (!isBubbleMessage(activeUser) || activeUser.role !== "user") return [...db];
+  if (!isBubbleMessage(activeUser) || activeUser.role !== "user")
+    return [...db];
 
   if (findMatchingUserIndex(db, current, activeUser) >= 0) return [...db];
 
@@ -826,19 +830,8 @@ export function reconcileStreamedWithDb(
   // Interleave unconsumed streamed messages at their correct chronological
   // positions instead of dumping them all into a suffix (which caused messages
   // from the *middle* of the conversation to jump to the bottom — issue #431).
-  //
-  // Strategy: once a streamed turn has a consumed DB anchor, surviving
-  // unconsumed messages are interleaved at their streamed position. If no DB
-  // anchor exists at all, they stay in a trailing suffix.
   const merged: ChatMessage[] = [];
   let resultIdx = 0;
-  const trailingSuffix: ChatMessage[] = [];
-
-  // Find the last streamed index that was consumed (matched a DB row).
-  let lastConsumedStreamIdx = -1;
-  for (let i = 0; i < streamed.length; i++) {
-    if (consumedIds.has(streamed[i].id)) lastConsumedStreamIdx = i;
-  }
 
   for (let si = 0; si < streamed.length; si++) {
     const sm = streamed[si];
@@ -852,15 +845,8 @@ export function reconcileStreamedWithDb(
         }
       }
     } else if (shouldKeepUnconsumed(sm)) {
-      // Interleave all surviving streamed rows that occurred before the last
-      // consumed DB match. That includes renderer-only synthetic tool rows:
-      // keeping them in live order prevents grouped tool calls/results from
-      // jumping below later assistant text during session restore.
-      if (lastConsumedStreamIdx >= 0) {
-        merged.push(sm);
-      } else {
-        trailingSuffix.push(sm);
-      }
+      // Unconsumed streamed message — insert at current chronological slot.
+      merged.push(sm);
     }
   }
 
@@ -870,9 +856,6 @@ export function reconcileStreamedWithDb(
     merged.push(result[resultIdx]);
     resultIdx++;
   }
-
-  // Append trailing suffix (renderer-only bubbles past the last consumed msg).
-  for (const m of trailingSuffix) merged.push(m);
 
   // Reposition inline clarify cards to their original chronological slot.
   // A clarify card is renderer-only — it's never written to state.db, so it

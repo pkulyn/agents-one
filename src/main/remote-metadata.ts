@@ -47,7 +47,9 @@ function remoteStatus(config: RemoteSessionConfig): Promise<RemoteRecord> {
         res.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");
           if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`${res.statusCode}: ${text || res.statusMessage}`));
+            reject(
+              new Error(`${res.statusCode}: ${text || res.statusMessage}`),
+            );
             return;
           }
           try {
@@ -85,7 +87,8 @@ export async function remoteGetHermesVersion(
     stringValue(status.project) ||
     stringValue(status.repo_path) ||
     stringValue(status.config_path);
-  const python = stringValue(status.python) || stringValue(status.python_version);
+  const python =
+    stringValue(status.python) || stringValue(status.python_version);
   const sdk =
     stringValue(status.openai_sdk) || stringValue(status.openai_sdk_version);
   const update =

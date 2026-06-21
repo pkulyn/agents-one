@@ -491,8 +491,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     mode: "remote" | "ssh",
     transport: RemoteChatTransport,
   ): Promise<void> {
-    const nextRemote =
-      mode === "remote" ? transport : remoteChatTransport;
+    const nextRemote = mode === "remote" ? transport : remoteChatTransport;
     const nextSsh = mode === "ssh" ? transport : sshChatTransport;
     if (mode === "remote") {
       setRemoteChatTransport(transport);
@@ -521,7 +520,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
         parseInt(sshRemotePort, 10) || 8642,
       );
       setConnTesting(false);
-      setConnStatus(ok ? t("settings.sshSuccess") : t("settings.sshErrorFailedSimple"));
+      setConnStatus(
+        ok ? t("settings.sshSuccess") : t("settings.sshErrorFailedSimple"),
+      );
     } else {
       const url = connRemoteUrl.trim();
       if (!url) {
@@ -535,7 +536,11 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
         getConnectionApiKeyForSave(),
       );
       setConnTesting(false);
-      setConnStatus(ok ? t("settings.remoteSuccess") : t("settings.remoteErrorFailedSimple"));
+      setConnStatus(
+        ok
+          ? t("settings.remoteSuccess")
+          : t("settings.remoteErrorFailedSimple"),
+      );
     }
   }
 
@@ -831,7 +836,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
       </div>
 
       <div className="settings-section">
-        <div className="settings-section-title">{t("settings.communityTitle")}</div>
+        <div className="settings-section-title">
+          {t("settings.communityTitle")}
+        </div>
         <div className="settings-field">
           <div className="settings-field-hint" style={{ marginBottom: 10 }}>
             {t("settings.communityHint")}
@@ -917,7 +924,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
                 setTimeout(() => setConnStatus(null), 4000);
               }}
             >
-              {generatingKey ? t("settings.generating") : t("settings.generateKey")}
+              {generatingKey
+                ? t("settings.generating")
+                : t("settings.generateKey")}
             </button>
           </div>
         ) : (
@@ -991,9 +1000,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
                 ))}
               </div>
               <div className="settings-field-hint">
-                Auto tries the Hermes dashboard WebSocket first, then falls
-                back to the legacy remote API. Dashboard requires the remote
-                Hermes dashboard URL and a valid dashboard session token.
+                Auto tries the Hermes dashboard WebSocket first, then falls back
+                to the legacy remote API. Dashboard requires the remote Hermes
+                dashboard URL and a valid dashboard session token.
               </div>
               {transportProbe && (
                 <div
@@ -1001,7 +1010,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
                 >
                   <span>{transportProbe.label}</span>
                   {transportProbe.loading && <span>Checking…</span>}
-                  {transportProbe.detail && <code>{transportProbe.detail}</code>}
+                  {transportProbe.detail && (
+                    <code>{transportProbe.detail}</code>
+                  )}
                 </div>
               )}
             </div>
@@ -1028,7 +1039,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
         {connMode === "ssh" && (
           <>
             <div className="settings-field">
-              <label className="settings-field-label">{t("settings.sshHost")}</label>
+              <label className="settings-field-label">
+                {t("settings.sshHost")}
+              </label>
               <input
                 className="input"
                 type="text"
@@ -1038,7 +1051,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
               />
             </div>
             <div className="settings-field">
-              <label className="settings-field-label">{t("settings.sshPort")}</label>
+              <label className="settings-field-label">
+                {t("settings.sshPort")}
+              </label>
               <input
                 className="input"
                 type="number"
@@ -1048,7 +1063,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
               />
             </div>
             <div className="settings-field">
-              <label className="settings-field-label">{t("settings.sshUsername")}</label>
+              <label className="settings-field-label">
+                {t("settings.sshUsername")}
+              </label>
               <input
                 className="input"
                 type="text"
@@ -1087,7 +1104,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
                 placeholder="8642"
               />
               <div className="settings-field-hint">
-                {t("settings.sshHint", { cmd: `${sshUser || "user"}@${sshHost || "host"}` })}
+                {t("settings.sshHint", {
+                  cmd: `${sshUser || "user"}@${sshHost || "host"}`,
+                })}
               </div>
             </div>
             <div className="settings-field">
@@ -1100,17 +1119,18 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
                     className={`settings-theme-option ${
                       sshChatTransport === option ? "active" : ""
                     }`}
-                    onClick={() => void handleChatTransportChange("ssh", option)}
+                    onClick={() =>
+                      void handleChatTransportChange("ssh", option)
+                    }
                   >
                     {option[0].toUpperCase() + option.slice(1)}
                   </button>
                 ))}
               </div>
               <div className="settings-field-hint">
-                Auto tries the Hermes dashboard WebSocket through the SSH
-                tunnel first, then falls back to legacy SSH chat. Dashboard
-                forces the upstream dashboard path; Legacy keeps the older SSH
-                transport.
+                Auto tries the Hermes dashboard WebSocket through the SSH tunnel
+                first, then falls back to legacy SSH chat. Dashboard forces the
+                upstream dashboard path; Legacy keeps the older SSH transport.
               </div>
               {transportProbe && (
                 <div
@@ -1118,7 +1138,9 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
                 >
                   <span>{transportProbe.label}</span>
                   {transportProbe.loading && <span>Checking…</span>}
-                  {transportProbe.detail && <code>{transportProbe.detail}</code>}
+                  {transportProbe.detail && (
+                    <code>{transportProbe.detail}</code>
+                  )}
                 </div>
               )}
             </div>

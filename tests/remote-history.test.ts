@@ -34,7 +34,9 @@ function extractLocalRecoveryFunction(): string {
   expect(startMatch).toBeGreaterThan(-1);
 
   const remainingCode = hermesSrc.substring(startMatch);
-  const endMatch = remainingCode.indexOf("\nexport async function sendMessage(");
+  const endMatch = remainingCode.indexOf(
+    "\nexport async function sendMessage(",
+  );
   expect(endMatch).toBeGreaterThan(-1);
 
   return remainingCode.substring(0, endMatch);

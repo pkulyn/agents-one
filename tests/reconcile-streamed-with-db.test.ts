@@ -485,7 +485,10 @@ describe("reconcileStreamedWithDb", () => {
     const streamed: ChatMessage[] = [
       STREAMED_USER("hi", "u-failed"),
       LOCAL_ERROR("OpenRouter 401: invalid API key", "error-failed"),
-      { ...STREAMED_USER("generate a toy duck", "u-duck"), turnId: "turn-duck" },
+      {
+        ...STREAMED_USER("generate a toy duck", "u-duck"),
+        turnId: "turn-duck",
+      },
       LIVE_TOOL_CALL("call-skill", "skill_view", "ai-playground-image-gen"),
       LIVE_TOOL_CALL("call-run", "terminal", "python generate_duck.py"),
       STREAMED_AGENT("Generated it with AI Playground.", "a-duck"),
@@ -518,10 +521,12 @@ describe("reconcileStreamedWithDb", () => {
       "db-tr-5",
       "a-duck",
     ]);
-    expect(merged.filter((m) => "kind" in m && m.kind === "tool_call"))
-      .toHaveLength(2);
-    expect(merged.filter((m) => "kind" in m && m.kind === "tool_result"))
-      .toHaveLength(2);
+    expect(
+      merged.filter((m) => "kind" in m && m.kind === "tool_call"),
+    ).toHaveLength(2);
+    expect(
+      merged.filter((m) => "kind" in m && m.kind === "tool_result"),
+    ).toHaveLength(2);
   });
 
   it("handles an empty streamed array (cold session load)", () => {
@@ -793,7 +798,12 @@ describe("reconcileStreamedWithDb", () => {
       DB_USER("make an image", 60),
       DB_TOOL_CALL("call-skill", "skill_view", "ai-playground-image-gen", 61),
       DB_TOOL_RESULT("call-skill", "skill_view", "ok", 62),
-      DB_TOOL_CALL("call-code", "execute_code", "from hermes_tools import terminal", 63),
+      DB_TOOL_CALL(
+        "call-code",
+        "execute_code",
+        "from hermes_tools import terminal",
+        63,
+      ),
       DB_TOOL_RESULT("call-code", "execute_code", "ok", 64),
       DB_AGENT("Done.", 65),
     ];
@@ -826,11 +836,7 @@ describe("reconcileStreamedWithDb", () => {
 
     const merged = reconcileStreamedWithDb(streamed, db);
 
-    expect(merged.map((m) => m.id)).toEqual([
-      "u-file",
-      "db-r-571",
-      "a-file",
-    ]);
+    expect(merged.map((m) => m.id)).toEqual(["u-file", "db-r-571", "a-file"]);
     expect(
       "attachments" in merged[0] ? merged[0].attachments?.[0].kind : "",
     ).toBe("text-file");
@@ -990,12 +996,7 @@ describe("reconcileStreamedWithDb", () => {
 
     const merged = reconcileAfterDbRefresh(streamed, db);
 
-    expect(merged.map((m) => m.id)).toEqual([
-      "db-1",
-      "db-2",
-      "u-img",
-      "a-img",
-    ]);
+    expect(merged.map((m) => m.id)).toEqual(["db-1", "db-2", "u-img", "a-img"]);
     expect(
       ("attachments" in merged[2] && merged[2].attachments) || [],
     ).toHaveLength(1);
@@ -1045,11 +1046,7 @@ describe("reconcileStreamedWithDb", () => {
 
     const merged = reconcileAfterDbRefresh(streamed, db);
 
-    expect(merged.map((m) => m.id)).toEqual([
-      "db-444",
-      "db-r-445",
-      "db-446",
-    ]);
+    expect(merged.map((m) => m.id)).toEqual(["db-444", "db-r-445", "db-446"]);
   });
 
   it("does not anchor a pasted-image active user when the DB already has the canonical attachment row", () => {

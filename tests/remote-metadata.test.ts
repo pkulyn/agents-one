@@ -7,9 +7,7 @@ import {
 
 let server: http.Server | null = null;
 
-function startServer(
-  handler: http.RequestListener,
-): Promise<{ url: string }> {
+function startServer(handler: http.RequestListener): Promise<{ url: string }> {
   return new Promise((resolve) => {
     server = http.createServer(handler);
     server.listen(0, "127.0.0.1", () => {

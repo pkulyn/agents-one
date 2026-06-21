@@ -1,5 +1,6 @@
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
+import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
 import type {
@@ -368,6 +369,7 @@ interface HermesAPI {
     attachments?: Attachment[],
     contextFolder?: string,
     runId?: string,
+    modelOverride?: SessionModelOverride,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: (runId?: string) => Promise<void>;
   transcribeAudio: (
@@ -561,6 +563,18 @@ interface HermesAPI {
     sessionId: string,
     error: DesktopSessionLocalError,
   ) => Promise<boolean>;
+  getSessionContextFolder: (sessionId: string) => Promise<string | null>;
+  setSessionContextFolder: (
+    sessionId: string,
+    folder: string | null,
+  ) => Promise<boolean>;
+  getSessionModelOverride: (
+    sessionId: string,
+  ) => Promise<SessionModelOverride | null>;
+  setSessionModelOverride: (
+    sessionId: string,
+    override: SessionModelOverride | null,
+  ) => Promise<boolean>;
 
   // Profiles
   listProfiles: () => Promise<
@@ -727,6 +741,7 @@ interface HermesAPI {
     label: string,
     profile?: string,
   ) => Promise<Array<CredentialPoolEntry>>;
+  invalidateSecretsCache: () => Promise<void>;
 
   // Models
   listModels: () => Promise<
@@ -744,16 +759,22 @@ interface HermesAPI {
     provider: string,
     model: string,
     baseUrl: string,
+    contextLength?: number,
   ) => Promise<{
     id: string;
     name: string;
     provider: string;
     model: string;
     baseUrl: string;
+    contextLength?: number;
     createdAt: number;
   }>;
   removeModel: (id: string) => Promise<boolean>;
-  updateModel: (id: string, fields: Record<string, string>) => Promise<boolean>;
+  updateModel: (
+    id: string,
+    fields: Record<string, string>,
+    contextLength?: number | null,
+  ) => Promise<boolean>;
   onModelLibraryChanged: (callback: () => void) => () => void;
 
   // Claw3D

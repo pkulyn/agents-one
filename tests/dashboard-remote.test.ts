@@ -21,8 +21,7 @@ function startServer(
       }
       resolve({
         url: `http://127.0.0.1:${address.port}`,
-        close: () =>
-          new Promise<void>((done) => server!.close(() => done())),
+        close: () => new Promise<void>((done) => server!.close(() => done())),
       });
     });
   });
@@ -35,7 +34,9 @@ afterEach(async () => {
   }
 });
 
-function remoteConnection(overrides: Partial<ConnectionConfig>): ConnectionConfig {
+function remoteConnection(
+  overrides: Partial<ConnectionConfig>,
+): ConnectionConfig {
   return {
     mode: "remote",
     remoteUrl: "https://hermes.example/v1/",
@@ -56,7 +57,9 @@ function remoteConnection(overrides: Partial<ConnectionConfig>): ConnectionConfi
 
 describe("remoteDashboardConnectionFromConfig", () => {
   it("builds an upstream dashboard websocket URL from remote settings", () => {
-    const connection = remoteDashboardConnectionFromConfig(remoteConnection({}));
+    const connection = remoteDashboardConnectionFromConfig(
+      remoteConnection({}),
+    );
 
     expect(connection).toMatchObject({
       baseUrl: "https://hermes.example",
@@ -171,6 +174,8 @@ describe("probeDashboardWebSocket", () => {
         token: "token",
         mode: "remote",
       }),
-    ).rejects.toThrow(/WebSocket is unavailable \(403: embedded chat disabled\)/);
+    ).rejects.toThrow(
+      /WebSocket is unavailable \(403: embedded chat disabled\)/,
+    );
   });
 });

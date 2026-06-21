@@ -24,7 +24,7 @@ interface SavedModel {
   createdAt: number;
 }
 
-function Harness() {
+function Harness(): React.JSX.Element {
   const { modelGroups } = useModelConfig();
   const labels = modelGroups.flatMap((group) =>
     group.models.map((model) => model.label),
@@ -99,9 +99,7 @@ describe("useModelConfig", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("models")).toHaveTextContent(
-        "DeepSeek V4 Pro",
-      );
+      expect(screen.getByTestId("models")).toHaveTextContent("DeepSeek V4 Pro");
     });
   });
 });
