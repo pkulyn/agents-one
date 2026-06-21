@@ -1,7 +1,7 @@
 // In-house analytics client.
 //
 // Events are POSTed to the Hermes analytics service:
-//   POST {VITE_ANALYTICS_BASE_URL}/v1/analytics/events
+//   POST {VITE_ANALYTICS_BASE_URL}/v1/events
 //   header: x-api-key: {VITE_ANALYTICS_API_KEY}
 //   body:   { anonymous_id, event, source: "desktop", properties }
 //
@@ -14,7 +14,7 @@ const ANALYTICS_BASE_URL = (
 ).replace(/\/+$/, "");
 const ANALYTICS_API_KEY = import.meta.env.VITE_ANALYTICS_API_KEY || "";
 
-const EVENTS_PATH = "/v1/analytics/events";
+const EVENTS_PATH = "/v1/events";
 const SOURCE = "desktop";
 
 const ANALYTICS_CONSENT_KEY = "hermes-analytics-enabled";

@@ -2,7 +2,7 @@
 
 Privacy-first, opt-out usage analytics that report anonymous events to the in-house Hermes analytics service. Replaces the former PostHog integration; no third-party analytics SDK is bundled.
 
-Events are sent directly over `fetch` from the renderer — there is no client library. Each event POSTs to `{VITE_ANALYTICS_BASE_URL}/v1/analytics/events` with an `x-api-key: {VITE_ANALYTICS_API_KEY}` header and a JSON body of `{ anonymous_id, event, source: "desktop", properties }`. The base URL and API key are injected at build time from GitHub Actions secrets, so analytics is silently disabled in local and unofficial builds where neither is configured.
+Events are sent directly over `fetch` from the renderer — there is no client library. Each event POSTs to `{VITE_ANALYTICS_BASE_URL}/v1/events` with an `x-api-key: {VITE_ANALYTICS_API_KEY}` header and a JSON body of `{ anonymous_id, event, source: "desktop", properties }`. The base URL and API key are injected at build time from GitHub Actions secrets, so analytics is silently disabled in local and unofficial builds where neither is configured.
 
 ## Per-install identity
 
