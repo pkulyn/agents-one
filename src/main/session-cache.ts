@@ -10,6 +10,7 @@ import Database from "better-sqlite3";
 import { t } from "../shared/i18n";
 import { getAppLocale } from "./locale";
 import { getDbConnection } from "./db";
+import { getSessionContextFolder } from "./session-context-folder-store";
 
 /**
  * The session cache lives alongside its own profile's data so profiles
@@ -32,6 +33,7 @@ export interface CachedSession {
   source: string;
   messageCount: number;
   model: string;
+  contextFolder: string | null;
 }
 
 interface CacheData {
@@ -74,7 +76,17 @@ function readCache(): CacheData {
   const file = cacheFilePath();
   try {
     if (!existsSync(file)) return { sessions: [], lastSync: 0 };
-    return JSON.parse(readFileSync(file, "utf-8"));
+    const parsed = JSON.parse(readFileSync(file, "utf-8")) as CacheData;
+    return {
+      lastSync: typeof parsed.lastSync === "number" ? parsed.lastSync : 0,
+      sessions: Array.isArray(parsed.sessions)
+        ? parsed.sessions.map((s) => ({
+            ...s,
+            contextFolder:
+              typeof s.contextFolder === "string" ? s.contextFolder : null,
+          }))
+        : [],
+    };
   } catch {
     return { sessions: [], lastSync: 0 };
   }
@@ -90,6 +102,13 @@ function writeCache(data: CacheData): void {
 
 function getDb(): Database.Database | null {
   return getDbConnection(true);
+}
+
+function attachContextFolders(sessions: CachedSession[]): CachedSession[] {
+  return sessions.map((session) => ({
+    ...session,
+    contextFolder: getSessionContextFolder(session.id),
+  }));
 }
 
 // Sync from hermes DB to local cache — only fetches new/updated sessions
@@ -162,6 +181,7 @@ export function syncSessionCache(): CachedSession[] {
         source: row.source,
         messageCount: row.message_count,
         model: row.model || "",
+        contextFolder: getSessionContextFolder(row.id),
       });
     }
 
@@ -208,7 +228,7 @@ export function syncSessionCache(): CachedSession[] {
     const merged = new Map<string, CachedSession>();
     for (const s of cache.sessions) merged.set(s.id, s);
     for (const s of newSessions) merged.set(s.id, s);
-    const allSessions = Array.from(merged.values());
+    const allSessions = attachContextFolders(Array.from(merged.values()));
     allSessions.sort((a, b) => b.startedAt - a.startedAt);
 
     const updated: CacheData = {
@@ -225,7 +245,7 @@ export function syncSessionCache(): CachedSession[] {
 // Fast read from cache only (no DB access)
 export function listCachedSessions(limit = 50, offset = 0): CachedSession[] {
   const cache = readCache();
-  return cache.sessions.slice(offset, offset + limit);
+  return attachContextFolders(cache.sessions.slice(offset, offset + limit));
 }
 
 // Update title for a specific session
