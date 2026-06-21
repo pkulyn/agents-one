@@ -1475,7 +1475,7 @@ body {
 }
 
 .sidebar-collapsed .sidebar-chat-section {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-height: auto;
   padding: 8px 10px 0;
   align-items: center;
@@ -2025,7 +2025,6 @@ body {
 /* Sidebar footer with theme switcher */
 .sidebar-footer {
   padding: 12px;
-  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2033,6 +2032,7 @@ body {
 
 .sidebar-collapsed .sidebar-footer {
   align-items: center;
+  margin-top: auto;
   padding: 10px;
 }
 
@@ -2113,20 +2113,20 @@ body {
 }
 
 .sidebar-collapsed .sidebar-footer-actions {
-  grid-template-columns: repeat(2, 18px);
+  grid-template-columns: 40px;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .sidebar-collapsed .sidebar-footer-action {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
 }
 
 .sidebar-collapsed .sidebar-footer-action svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
 }
 
 .sidebar-collapsed .sidebar-footer-action[data-tooltip]::after,

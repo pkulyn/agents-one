@@ -77,10 +77,10 @@ const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
 
 const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
-  { view: "settings", icon: SettingsIcon, labelKey: "navigation.settings" },
   { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
   { view: "tools", icon: Workflow, labelKey: "navigation.tools" },
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
+  { view: "settings", icon: SettingsIcon, labelKey: "navigation.settings" },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
@@ -605,9 +605,7 @@ function Layout({
             aria-label={t("navigation.newChat")}
           >
             <Plus size={16} />
-            <span className="sidebar-nav-label">
-              {t("navigation.newChat")}
-            </span>
+            <span className="sidebar-nav-label">{t("navigation.newChat")}</span>
           </button>
           {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
             return (
