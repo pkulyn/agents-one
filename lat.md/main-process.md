@@ -39,3 +39,9 @@ Release builds keep a Help-menu Developer Tools toggle as a production diagnosti
 Renderer IPC handlers are isolated from app bootstrap so the registry can be split by domain.
 
 [[src/main/ipc/register.ts#registerIpcHandlers]] currently preserves the existing handler behavior behind one registration function. It receives app-level callbacks for the main window, model-library notifications, connection-config notifications, external URL opening, and active chat abort handles.
+
+## Voice transcription IPC
+
+Speech-to-text IPC sends recorded desktop audio through the Hermes API server, not through the active chat model endpoint.
+
+[[src/main/ipc/register.ts#registerIpcHandlers]] exposes `transcribe-audio` for the preload bridge, and [[src/main/hermes.ts#transcribeAudio]] posts a base64 data URL to `/api/audio/transcribe`. If the local gateway lacks that desktop route, it falls back to the Python `tools.transcription_tools.transcribe_audio` dispatcher, so local Whisper, Groq, OpenAI, ElevenLabs, and command/plugin STT providers remain independent from the selected chat model.
