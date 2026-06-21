@@ -11,6 +11,8 @@ let _highlighterMod: typeof import("react-syntax-highlighter") | null = null;
 let _oneDark: Record<string, React.CSSProperties> | null = null;
 let _loadingPromise: Promise<void> | null = null;
 
+const BOX_DRAWING_RE = /[\u2500-\u257F]/;
+
 function loadHighlighter(): Promise<void> {
   if (_highlighterMod && _oneDark) return Promise.resolve();
   if (_loadingPromise) return _loadingPromise;
@@ -44,6 +46,37 @@ function DiffView({ code }: { code: string }): React.JSX.Element {
   );
 }
 
+function PlainCodeView({ code }: { code: string }): React.JSX.Element {
+  return (
+    <pre
+      className="chat-code-plain"
+      style={{
+        margin: 0,
+        borderRadius: 0,
+        fontSize: "13px",
+        lineHeight: 1.5,
+        padding: "12px",
+        background: "transparent",
+        color: "inherit",
+        overflowX: "auto",
+        whiteSpace: "pre",
+        fontVariantLigatures: "none",
+        unicodeBidi: "isolate",
+      }}
+    >
+      <code
+        style={{
+          background: "transparent",
+          padding: 0,
+          whiteSpace: "pre",
+        }}
+      >
+        {code}
+      </code>
+    </pre>
+  );
+}
+
 // Source-position ids of code blocks the user has expanded. Kept at module
 // scope so the choice survives the remounts react-markdown causes while a
 // message is still streaming (index-based keys shift as the AST grows, which
@@ -72,16 +105,19 @@ function CodeBlock({
   const match = /language-(\w+)/.exec(className || "");
   const language = match ? match[1] : "";
   const isDiff = language === "diff";
+  const hasBoxDrawing = BOX_DRAWING_RE.test(code);
 
   const linesCount = code.split("\n").length;
   const isLong = linesCount > 15 || code.length > 800;
 
-  // Trigger lazy load when code block mounts
+  // Trigger lazy load when code block mounts. Blocks containing Unicode
+  // box-drawing characters render as plain text to avoid Electron/Prism span
+  // fragmentation truncating tree diagrams such as ├──, └── and │.
   useEffect(() => {
-    if (!highlighterReady) {
+    if (!hasBoxDrawing && !isDiff && !highlighterReady) {
       loadHighlighter().then(() => setHighlighterReady(true));
     }
-  }, [highlighterReady]);
+  }, [hasBoxDrawing, highlighterReady, isDiff]);
 
   function handleCopy(): void {
     void window.hermesAPI.copyToClipboard(code);
@@ -89,23 +125,11 @@ function CodeBlock({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const fallbackPre = (
-    <pre
-      style={{
-        margin: 0,
-        borderRadius: 0,
-        fontSize: "13px",
-        padding: "12px",
-        background: "transparent",
-        color: "#abb2bf",
-        overflow: "auto",
-      }}
-    >
-      {code}
-    </pre>
-  );
+  const fallbackPre = <PlainCodeView code={code} />;
 
-  const codeContent = isDiff ? (
+  const codeContent = hasBoxDrawing ? (
+    <PlainCodeView code={code} />
+  ) : isDiff ? (
     <DiffView code={code} />
   ) : highlighterReady && _highlighterMod && _oneDark ? (
     <_highlighterMod.Prism
@@ -130,7 +154,7 @@ function CodeBlock({
     <div className="chat-code-block">
       <div className="chat-code-header">
         <span className="chat-code-lang">
-          {isDiff ? "diff" : language || "code"}
+          {hasBoxDrawing ? "text" : isDiff ? "diff" : language || "code"}
         </span>
         <button className="chat-code-copy" onClick={handleCopy}>
           {copied ? t("common.copied") : <Copy size={13} />}
