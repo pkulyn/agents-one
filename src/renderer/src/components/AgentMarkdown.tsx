@@ -12,6 +12,24 @@ let _oneDark: Record<string, React.CSSProperties> | null = null;
 let _loadingPromise: Promise<void> | null = null;
 
 const BOX_DRAWING_RE = /[\u2500-\u257F]/;
+const PLAIN_PRE_STYLE: React.CSSProperties = {
+  margin: 0,
+  borderRadius: 0,
+  fontSize: "13px",
+  lineHeight: 1.5,
+  padding: "12px",
+  background: "transparent",
+  color: "inherit",
+  overflowX: "auto",
+  whiteSpace: "pre",
+  fontVariantLigatures: "none",
+  unicodeBidi: "isolate",
+};
+const PLAIN_CODE_STYLE: React.CSSProperties = {
+  background: "transparent",
+  padding: 0,
+  whiteSpace: "pre",
+};
 
 function loadHighlighter(): Promise<void> {
   if (_highlighterMod && _oneDark) return Promise.resolve();
@@ -48,31 +66,8 @@ function DiffView({ code }: { code: string }): React.JSX.Element {
 
 function PlainCodeView({ code }: { code: string }): React.JSX.Element {
   return (
-    <pre
-      className="chat-code-plain"
-      style={{
-        margin: 0,
-        borderRadius: 0,
-        fontSize: "13px",
-        lineHeight: 1.5,
-        padding: "12px",
-        background: "transparent",
-        color: "inherit",
-        overflowX: "auto",
-        whiteSpace: "pre",
-        fontVariantLigatures: "none",
-        unicodeBidi: "isolate",
-      }}
-    >
-      <code
-        style={{
-          background: "transparent",
-          padding: 0,
-          whiteSpace: "pre",
-        }}
-      >
-        {code}
-      </code>
+    <pre className="chat-code-plain" style={PLAIN_PRE_STYLE}>
+      <code style={PLAIN_CODE_STYLE}>{code}</code>
     </pre>
   );
 }
@@ -125,8 +120,6 @@ function CodeBlock({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const fallbackPre = <PlainCodeView code={code} />;
-
   const codeContent = hasBoxDrawing ? (
     <PlainCodeView code={code} />
   ) : isDiff ? (
@@ -147,7 +140,7 @@ function CodeBlock({
       {code}
     </_highlighterMod.Prism>
   ) : (
-    fallbackPre
+    <PlainCodeView code={code} />
   );
 
   return (
