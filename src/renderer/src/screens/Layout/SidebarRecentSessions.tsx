@@ -392,7 +392,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const expanded = open;
   const { projectGroups, chats } = groupSessionsByWorkspace(sessions);
 
-  const toggleProjects = () => {
+  const toggleProjects = (): void => {
     setProjectsOpen((prev) => {
       const next = !prev;
       try {
@@ -404,7 +404,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     });
   };
 
-  const toggleChats = () => {
+  const toggleChats = (): void => {
     setChatsOpen((prev) => {
       const next = !prev;
       try {
@@ -416,7 +416,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     });
   };
 
-  const toggleProjectFolder = (path: string) => {
+  const toggleProjectFolder = (path: string): void => {
     setClosedProjectFolders((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
@@ -430,7 +430,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     s: RecentSession,
     project = false,
     visible = expanded,
-  ) => {
+  ): React.JSX.Element => {
     const title = s.title || t("sessions.newConversation");
     const loading = resumingSessionId === s.id || loadingSessionIds.has(s.id);
     const active = !loading && currentSessionId === s.id;
