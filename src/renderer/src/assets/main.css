@@ -10125,6 +10125,17 @@ body {
   margin-bottom: 20px;
 }
 
+.models-embedded {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.models-header.embedded {
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 .models-tabs {
   display: flex;
   gap: 8px;
@@ -10156,7 +10167,6 @@ body {
 .models-tab.active {
   color: var(--text-primary);
   border-bottom-color: var(--accent);
-  font-weight: 500;
 }
 
 .aux-task-details {
@@ -10174,6 +10184,14 @@ body {
   color: var(--text-secondary);
   font-weight: 500;
   text-transform: capitalize;
+}
+
+.auxiliary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 10px;
 }
 
 .aux-task-model {
@@ -10491,6 +10509,22 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.models-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.models-toolbar .models-search {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.models-toolbar .models-header-actions {
+  flex-shrink: 0;
 }
 
 .models-search {

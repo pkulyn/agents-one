@@ -26,7 +26,6 @@ import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
 import Office from "../Office/Office";
-import Models from "../Models/Models";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
@@ -41,7 +40,6 @@ import {
   Workflow,
   Signal,
   Building,
-  Layers,
   KeyRound,
   Timer,
   Kanban as KanbanIcon,
@@ -59,7 +57,6 @@ type View =
   | "discover"
   | "agents"
   | "office"
-  | "models"
   | "providers"
   | "skills"
   | "memory"
@@ -76,7 +73,6 @@ const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   // "Manage profiles" action rather than a top-level nav item.
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
-  { view: "models", icon: Layers, labelKey: "navigation.models" },
   // "skills" lives under the Discover tab (installed + community), so it's no
   // longer a top-level nav item.
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
@@ -765,12 +761,6 @@ function Layout({
         {visitedViews.has("office") && (
           <div style={paneStyle("office")}>
             <Office profile={activeProfile} visible={view === "office"} />
-          </div>
-        )}
-
-        {visitedViews.has("models") && (
-          <div style={paneStyle("models")}>
-            <Models visible={view === "models"} />
           </div>
         )}
 

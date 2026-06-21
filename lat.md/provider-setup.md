@@ -20,6 +20,8 @@ Selecting a preset sets the base URL; the API-key env var is resolved by `resolv
 
 The Providers tab ([[src/renderer/src/screens/Providers/Providers.tsx]]) picks the model provider, but the agent only resolves native providers — selecting an unsupported id otherwise makes the gateway raise `Unknown provider`.
 
+The screen is organized as three tabs: Providers, Models, and Auxiliary Tasks. Providers owns the active provider/model credentials, while Models and Auxiliary Tasks embed [[src/renderer/src/screens/Models/Models.tsx]] so the saved model library and per-task model overrides live beside the provider configuration instead of as a separate sidebar destination.
+
 The picker is a flex-wrap **chip grid** (driven by `PROVIDER_CARDS` in [[src/renderer/src/constants.ts]]) rather than a dropdown: every native provider is a chip, and a terminal `local` ("Local / Others") chip reveals the `LOCAL_PRESETS` rows (local servers + remote OpenAI-compatible endpoints). `selectProvider` is the shared click handler for the provider chips and the preset chips.
 
 Once a provider is configured the grid collapses to a read-only summary (logo + provider label + model/base-URL); a **Change** button in the section header (`editingProvider` state) re-opens the full chip grid and the editable model/base-URL fields. An unconfigured (`auto`) selection always shows the grid.
