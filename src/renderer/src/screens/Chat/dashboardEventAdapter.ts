@@ -509,11 +509,32 @@ function completeAssistantWithFinalText(
     if (!isAssistantBubble(msg) || msg.error) continue;
     if (activeTurn && msg.turnId && msg.turnId !== activeTurn.turnId) continue;
 
+    // Merge streamed text with finalText so content before tool calls
+    // is preserved.  final_response may only contain the last turn's text;
+    // streamed deltas already hold earlier text accumulated before tool calls.
+    const streamedContent = msg.content.trim();
+    const normFinal = normalizeText(finalText);
+    const normStreamed = normalizeText(streamedContent);
+
+    let merged: string;
+    if (!streamedContent) {
+      merged = finalText;
+    } else if (normFinal.includes(normStreamed)) {
+      // Final already contains everything streamed — use final.
+      merged = finalText;
+    } else if (normStreamed.includes(normFinal)) {
+      // Streamed contains final plus pre-tool-call text — prefer streamed.
+      merged = streamedContent;
+    } else {
+      // Neither fully contains the other — concatenate.
+      merged = streamedContent + finalText;
+    }
+
     return [
       ...messagesWithoutDuplicateReasoning.slice(0, i),
       {
         ...msg,
-        content: finalText,
+        content: merged,
         pending: false,
         turnId: msg.turnId || activeTurn?.turnId,
       },
