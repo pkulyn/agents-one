@@ -68,11 +68,21 @@ export function initAnalytics(): void {
   getOrCreateAnonymousId();
   initialized = true;
 
-  capture("app_opened", {
-    app_version: window.electron?.process?.versions?.electron || "unknown",
-    platform: window.electron?.process?.platform || "unknown",
-    node_version: window.electron?.process?.versions?.node || "unknown",
-  });
+  // app_version is the Hermes app version (package.json), fetched over IPC.
+  // The Electron/Node runtime versions are reported separately. getAppVersion
+  // is async, so resolve it before emitting app_opened.
+  void Promise.resolve()
+    .then(() => window.hermesAPI?.getAppVersion?.())
+    .catch(() => undefined)
+    .then((appVersion) => {
+      capture("app_opened", {
+        app_version: appVersion || "unknown",
+        electron_version:
+          window.electron?.process?.versions?.electron || "unknown",
+        node_version: window.electron?.process?.versions?.node || "unknown",
+        platform: window.electron?.process?.platform || "unknown",
+      });
+    });
 }
 
 export function capture(

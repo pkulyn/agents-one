@@ -20,7 +20,7 @@ Analytics is opt-out: enabled by default when the endpoint is configured, and th
 
 ## Capture surface
 
-`initAnalytics` runs once at renderer startup from [[src/renderer/src/main.tsx]] and emits an `app_opened` event with platform/version properties.
+`initAnalytics` runs once at renderer startup from [[src/renderer/src/main.tsx]] and emits an `app_opened` event. Its properties are `app_version` (the Hermes version from `package.json`, fetched over the `get-app-version` IPC — not the runtime version), `electron_version`, `node_version`, and `platform`.
 
 Screen navigation is tracked via `captureScreenView` from [[src/renderer/src/App.tsx#App]], and `captureFeatureUsage` records feature-level events. No chat content, prompts, model responses, file paths, or credentials are ever collected.
 
