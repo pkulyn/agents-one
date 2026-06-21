@@ -137,6 +137,8 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
   const [updateResultType, setUpdateResultType] = useState<
     "success" | "error" | null
   >(null);
+  const [autoUpgradeEnabled, setAutoUpgradeEnabled] = useState(true);
+  const [autoUpgradeSaved, setAutoUpgradeSaved] = useState(false);
 
   // OpenClaw migration — initialize from localStorage cache
   const cachedClaw = getCachedOpenClaw();
@@ -219,10 +221,11 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setHermesVersion(null);
 
     // Load fast config first (cached in main process)
-    const [aVersion, conn, keyStatus] = await Promise.all([
+    const [aVersion, conn, keyStatus, autoUpgrade] = await Promise.all([
       window.hermesAPI.getAppVersion(),
       window.hermesAPI.getConnectionConfig(),
       window.hermesAPI.getApiServerKeyStatus(profile),
+      window.hermesAPI.getAutoUpgradeEnabled(),
     ]);
 
     if (requestId !== loadConfigRequestRef.current) return;
@@ -245,6 +248,7 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     setSshRemotePort(conn.ssh?.remotePort ? String(conn.ssh.remotePort) : "");
     setSshLocalPort(conn.ssh?.localPort ? String(conn.ssh.localPort) : "");
     setApiServerKeyMissing(!keyStatus.hasKey);
+    setAutoUpgradeEnabled(autoUpgrade);
     connLoaded.current = true;
 
     const homeResult = await Promise.resolve()
@@ -683,6 +687,13 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
     }
   }
 
+  async function handleAutoUpgradeChange(enabled: boolean): Promise<void> {
+    setAutoUpgradeEnabled(enabled);
+    await window.hermesAPI.setAutoUpgradeEnabled(enabled);
+    setAutoUpgradeSaved(true);
+    setTimeout(() => setAutoUpgradeSaved(false), 2000);
+  }
+
   // Parse "Hermes Agent v0.7.0 (2026.4.3) Project: ... Python: 3.11.15 OpenAI SDK: 2.30.0 Update available: ..."
   const parsedVersion = (() => {
     if (!hermesVersion) return null;
@@ -818,6 +829,32 @@ function Settings({ profile }: { profile?: string }): React.JSX.Element {
             >
               {dumpRunning ? t("settings.running") : t("settings.debugDump")}
             </button>
+          </div>
+          <div className="settings-field" style={{ marginTop: 12 }}>
+            <label className="settings-field-label">
+              {t("settings.autoUpgradeDesktop")}
+              {autoUpgradeSaved && (
+                <span className="settings-saved" style={{ marginLeft: 8 }}>
+                  {t("settings.saved")}
+                </span>
+              )}
+              <label
+                className="tools-toggle"
+                style={{ marginLeft: 12, verticalAlign: "middle" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={autoUpgradeEnabled}
+                  onChange={(e) =>
+                    void handleAutoUpgradeChange(e.target.checked)
+                  }
+                />
+                <span className="tools-toggle-track" />
+              </label>
+            </label>
+            <div className="settings-field-hint">
+              {t("settings.autoUpgradeDesktopHint")}
+            </div>
           </div>
           {updateResult && (
             <div
