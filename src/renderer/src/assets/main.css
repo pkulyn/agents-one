@@ -1366,6 +1366,9 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  /* Nav labels are controls, not content — don't let click/drag select text. */
+  -webkit-user-select: none;
+  user-select: none;
   transition:
     width var(--transition),
     padding var(--transition);
@@ -1419,6 +1422,46 @@ body {
 .sidebar-collapse-toggle:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+/* Collapsed brand: circular mark by default, expand icon on hover. Both are
+   stacked in a fixed 16px box and toggled via opacity only, so the button
+   never reflows (no size jiggle). */
+.sidebar-collapse-swap {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.sidebar-collapse-mark {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  /* White on dark themes, dark on light — follows the foreground colour. */
+  background: var(--text-primary);
+  transition: opacity var(--transition);
+}
+
+.sidebar-collapse-expand-icon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.sidebar-collapse-toggle:hover .sidebar-collapse-mark,
+.sidebar-collapse-toggle:focus-visible .sidebar-collapse-mark {
+  opacity: 0;
+}
+
+.sidebar-collapse-toggle:hover .sidebar-collapse-expand-icon,
+.sidebar-collapse-toggle:focus-visible .sidebar-collapse-expand-icon {
+  opacity: 1;
 }
 
 .sidebar-collapsed .sidebar-brand {
@@ -11457,7 +11500,8 @@ body {
   margin-left: auto;
 }
 .kanban-column[data-tone="scheduled"] .kanban-column-header {
-  box-shadow: inset 0 2px 0 0 color-mix(in srgb, var(--warning) 60%, transparent);
+  box-shadow: inset 0 2px 0 0
+    color-mix(in srgb, var(--warning) 60%, transparent);
 }
 .kanban-column[data-tone="ready"] .kanban-column-header {
   box-shadow: inset 0 2px 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
@@ -11472,7 +11516,8 @@ body {
   box-shadow: inset 0 2px 0 0 color-mix(in srgb, #a855f7 60%, transparent);
 }
 .kanban-column[data-tone="done"] .kanban-column-header {
-  box-shadow: inset 0 2px 0 0 color-mix(in srgb, var(--success) 60%, transparent);
+  box-shadow: inset 0 2px 0 0
+    color-mix(in srgb, var(--success) 60%, transparent);
 }
 
 .kanban-column-body {

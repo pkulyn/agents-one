@@ -4,6 +4,12 @@ The sidebar starts with New Chat, keeps app destinations pinned, then gives conv
 
 [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] renders a New Chat action before Discover, Office, Kanban, and Schedules from `PINNED_NAV_ITEMS`, then renders [[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] inside a flexible `.sidebar-chat-section`. New Chat is active when the visible Chat view has no session id yet. The standalone `sessions` view is still absent from the `View` union; the full list opens from the Cmd/Ctrl+K menu action.
 
+## Collapse toggle brand mark
+
+The sidebar header's collapse control doubles as the brand mark: collapsed it shows a circular dot that swaps to the expand icon on hover; expanded it shows the full wordmark beside the collapse icon.
+
+[[src/renderer/src/screens/Layout/Layout.tsx#Layout]] renders `.sidebar-collapse-toggle`. Collapsed, it holds a fixed-size `.sidebar-collapse-swap` box stacking a `.sidebar-collapse-mark` circle (filled with `--text-primary`, so white on dark themes and dark on light) over the `PanelLeftOpen` icon; only opacity toggles on hover/focus, so the button never reflows. Expanded, the maskable `.sidebar-logo` wordmark shows next to the `PanelLeftClose` icon.
+
 ## Infinite sidebar list
 
 The inline list lazily loads cached sessions in pages as the user scrolls, so the sidebar can expose the full chat history without a fixed inline cap.
