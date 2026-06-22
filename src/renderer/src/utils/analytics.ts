@@ -21,6 +21,12 @@ const ANALYTICS_CONSENT_KEY = "hermes-analytics-enabled";
 const ANONYMOUS_ID_KEY = "hermes-anonymous-id";
 
 function isConfigured(): boolean {
+  // Never emit from the Vite dev server: its origin (http://localhost:5173)
+  // isn't allowlisted by the analytics service's CORS, so every request is
+  // blocked at preflight and only spams the console — and dev sessions
+  // shouldn't pollute production metrics. Packaged builds run `vite build`
+  // (import.meta.env.DEV === false) and are unaffected.
+  if (import.meta.env.DEV) return false;
   return ANALYTICS_BASE_URL.length > 0 && ANALYTICS_API_KEY.length > 0;
 }
 
