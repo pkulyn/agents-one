@@ -36,6 +36,7 @@ import { runConfigHealthCheck, autoFixIssue, readConfigFixLog, type IssueCode } 
 import { listProfiles, createProfile, deleteProfile, setActiveProfile } from "../profiles";
 import { setProfileColor, setProfileAvatar, removeProfileAvatar } from "../profile-meta";
 import { createWallet, deleteWallet, importWallet, listWallets, renameWallet } from "../wallet-store";
+import { getTokenBalances } from "../wallet-balances";
 import type { ImportWalletInput } from "../../shared/wallets";
 import { readMemory, addMemoryEntry, updateMemoryEntry, removeMemoryEntry, writeUserProfile } from "../memory";
 import { readSoul, writeSoul, resetSoul } from "../soul";
@@ -1403,6 +1404,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     "delete-wallet",
     (_event, profile: string | undefined, id: string) =>
       deleteWallet(profile, id),
+  );
+  ipcMain.handle("get-token-balances", (_event, address: string) =>
+    getTokenBalances(address),
   );
 
   // Memory

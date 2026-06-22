@@ -9,6 +9,7 @@ import type {
   ProfileWallet,
   WalletMutationResult,
 } from "../shared/wallets";
+import type { TokenBalancesResponse } from "../shared/tokens";
 import type {
   MessagingPlatformsResponse,
   MessagingPlatformTestResponse,
@@ -817,6 +818,9 @@ const hermesAPI = {
     id: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("delete-wallet", profile, id),
+
+  getTokenBalances: (address: string): Promise<TokenBalancesResponse> =>
+    ipcRenderer.invoke("get-token-balances", address),
 
   // Memory
   readMemory: (

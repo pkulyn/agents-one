@@ -8,6 +8,7 @@ import type {
   ProfileWallet,
   WalletMutationResult,
 } from "../shared/wallets";
+import type { TokenBalancesResponse } from "../shared/tokens";
 import type {
   RegistryKind,
   RegistryItem,
@@ -634,6 +635,7 @@ interface HermesAPI {
     profile: string | undefined,
     id: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  getTokenBalances: (address: string) => Promise<TokenBalancesResponse>;
 
   // Memory
   readMemory: (profile?: string) => Promise<{

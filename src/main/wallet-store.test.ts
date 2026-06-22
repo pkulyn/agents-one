@@ -1,4 +1,5 @@
 // @vitest-environment node
+// @lat: [[wallet-token-balances#Tests]]
 
 import { mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";

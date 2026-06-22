@@ -4,17 +4,27 @@ import {
   Copy,
   KeyRound,
   Plus,
+  Refresh,
   Trash,
   Wallet,
   X,
 } from "../../assets/icons";
+import etheriumIcon from "../../assets/icons/etherium.webp";
+import hdTokenIcon from "../../assets/icons/hdtoken.webp";
 import type {
   ProfileWallet,
   WalletMutationResult,
 } from "../../../../shared/wallets";
 import { BASE_NETWORK_LABEL } from "../../../../shared/wallets";
+import type { TokenBalancesResponse } from "../../../../shared/tokens";
 import { AppModal, AppModalTitle } from "../modal/AppModal";
 import { useI18n } from "../useI18n";
+
+/** Map token IDs to their Vite-resolved icon URLs. */
+const TOKEN_ICONS: Record<string, string> = {
+  eth: etheriumIcon,
+  hd: hdTokenIcon,
+};
 
 interface ProfileWalletPaneProps {
   profile: string;
@@ -40,13 +50,59 @@ export default function ProfileWalletPane({
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<WalletMutationResult | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProfileWallet | null>(null);
+  const [balances, setBalances] = useState<Map<string, TokenBalancesResponse>>(
+    new Map(),
+  );
+  const [balancesLoading, setBalancesLoading] = useState<Set<string>>(
+    new Set(),
+  );
+
+  async function fetchBalances(walletList: ProfileWallet[]): Promise<void> {
+    setBalancesLoading(new Set(walletList.map((w) => w.id)));
+    const results = await Promise.allSettled(
+      walletList.map(async (w) => {
+        const response = await window.hermesAPI.getTokenBalances(w.address);
+        return { walletId: w.id, response };
+      }),
+    );
+    const next = new Map(balances);
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        next.set(result.value.walletId, result.value.response);
+      }
+    }
+    setBalances(next);
+    setBalancesLoading(new Set());
+  }
+
+  async function refreshSingleBalance(wallet: ProfileWallet): Promise<void> {
+    setBalancesLoading((prev) => new Set(prev).add(wallet.id));
+    try {
+      const response = await window.hermesAPI.getTokenBalances(wallet.address);
+      setBalances((prev) => {
+        const next = new Map(prev);
+        next.set(wallet.id, response);
+        return next;
+      });
+    } catch {
+      // Error is reflected as missing balance entry; user can retry.
+    } finally {
+      setBalancesLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(wallet.id);
+        return next;
+      });
+    }
+  }
 
   const loadWallets = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError("");
     try {
-      setWallets(await window.hermesAPI.listWallets(profile));
+      const loaded = await window.hermesAPI.listWallets(profile);
+      setWallets(loaded);
+      fetchBalances(loaded);
     } catch {
       setError(t("agents.walletLoadFailed"));
     } finally {
@@ -105,18 +161,16 @@ export default function ProfileWalletPane({
     }
   }
 
-  async function handleDelete(id: string): Promise<void> {
-    if (deleteConfirmId !== id) {
-      setDeleteConfirmId(id);
-      return;
-    }
+  async function handleDelete(): Promise<void> {
+    if (!deleteTarget) return;
     setError("");
-    const result = await window.hermesAPI.deleteWallet(profile, id);
+    const result = await window.hermesAPI.deleteWallet(profile, deleteTarget.id);
     if (!result.success) {
       setError(result.error || t("agents.walletDeleteFailed"));
+      setDeleteTarget(null);
       return;
     }
-    setDeleteConfirmId(null);
+    setDeleteTarget(null);
     await loadWallets();
   }
 
@@ -171,6 +225,48 @@ export default function ProfileWalletPane({
                   <code className="profile-wallet-address">
                     {formatAddress(wallet.address)}
                   </code>
+                  <div className="profile-wallet-balances">
+                    {balances.get(wallet.id) ? (
+                      <>
+                        {balances.get(wallet.id)!.balances.map((b) => (
+                          <span
+                            key={b.tokenId}
+                            className="profile-wallet-balance"
+                          >
+                            {TOKEN_ICONS[b.tokenId] ? (
+                              <img
+                                className="profile-wallet-balance-icon"
+                                src={TOKEN_ICONS[b.tokenId]}
+                                alt={b.symbol}
+                              />
+                            ) : (
+                              <span className="profile-wallet-balance-symbol">
+                                {b.symbol}
+                              </span>
+                            )}
+                            {b.error ? (
+                              <span className="profile-wallet-balance-error">
+                                {t("agents.walletBalanceUnavailable")}
+                              </span>
+                            ) : (
+                              b.formatted
+                            )}
+                          </span>
+                        ))}
+                        <button
+                          className={`profile-wallet-refresh ${balancesLoading.has(wallet.id) ? "spinning" : ""}`}
+                          onClick={() => refreshSingleBalance(wallet)}
+                        >
+                          <Refresh size={11} />
+                          {t("agents.walletBalanceRefresh")}
+                        </button>
+                      </>
+                    ) : balancesLoading.has(wallet.id) ? (
+                      <span className="profile-wallet-balance profile-wallet-balance-loading">
+                        {t("agents.walletBalanceLoading")}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
               <div className="profile-wallet-actions">
@@ -189,12 +285,9 @@ export default function ProfileWalletPane({
                 </button>
                 <button
                   className="btn btn-danger-ghost btn-sm"
-                  onClick={() => handleDelete(wallet.id)}
+                  onClick={() => setDeleteTarget(wallet)}
                 >
                   <Trash size={14} />
-                  {deleteConfirmId === wallet.id
-                    ? t("agents.walletDeleteConfirm")
-                    : t("agents.walletDelete")}
                 </button>
               </div>
             </div>
@@ -332,6 +425,64 @@ export default function ProfileWalletPane({
             </div>
           </div>
         )}
+      </AppModal>
+
+      <AppModal
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        className="profile-wallet-delete-modal"
+        overlayClassName="profile-wallet-delete-modal-overlay"
+        labelledBy="profile-wallet-delete-title"
+      >
+        <div className="profile-wallet-delete-header">
+          <AppModalTitle
+            id="profile-wallet-delete-title"
+            className="profile-wallet-delete-title"
+          >
+            {t("agents.walletDeleteTitle")}
+          </AppModalTitle>
+          <button
+            className="profile-modal-close"
+            onClick={() => setDeleteTarget(null)}
+            aria-label={t("common.close")}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="profile-wallet-delete-body">
+          {deleteTarget && (
+            <>
+              <div className="profile-wallet-delete-wallet-info">
+                <span className="profile-wallet-delete-wallet-name">
+                  {deleteTarget.name}
+                </span>
+                <code className="profile-wallet-delete-wallet-address">
+                  {formatAddress(deleteTarget.address)}
+                </code>
+              </div>
+              <div className="profile-wallet-delete-warning">
+                {t("agents.walletDeleteWarning")}
+              </div>
+              <div className="profile-wallet-delete-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setDeleteTarget(null)}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  className="btn btn-danger"
+                  onClick={handleDelete}
+                >
+                  <Trash size={14} />
+                  {t("agents.walletDeleteConfirmLabel")}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </AppModal>
     </div>
   );

@@ -70,4 +70,12 @@ export default {
     "Save this phrase now. Hermes will not show it again after this modal closes.",
   walletCopyRecovery: "Copy phrase",
   walletDone: "I've saved it",
+  walletBalanceLoading: "Loading…",
+  walletBalanceUnavailable: "Unavailable",
+  walletBalanceRefresh: "Refresh",
+  walletBalanceFetchFailed: "Couldn't fetch balances",
+  walletDeleteTitle: "Remove wallet",
+  walletDeleteWarning:
+    "This will permanently remove this wallet from Hermes. Make sure you have backed up the recovery phrase — you won't be able to recover the wallet without it.",
+  walletDeleteConfirmLabel: "Remove wallet",
 } as const;

@@ -1,3 +1,4 @@
+// @lat: [[wallet-token-balances#Wallet Store]]
 import { safeStorage } from "electron";
 import { existsSync, readFileSync } from "fs";
 import { randomBytes, randomUUID } from "crypto";
