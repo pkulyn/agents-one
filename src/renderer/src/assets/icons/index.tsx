@@ -9,6 +9,7 @@ export {
   Clock,
   Compass,
   Copy,
+  Database,
   Download,
   Pencil,
   Plug,
@@ -31,7 +32,9 @@ export {
   Sparkles,
   Sun,
   Timer,
+  User,
   Users,
+  Wallet,
   Wrench,
   X,
 } from "lucide-react";

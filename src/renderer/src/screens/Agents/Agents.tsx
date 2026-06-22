@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash, ChatBubble, Pencil, X } from "../../assets/icons";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, ChatBubble, Pencil } from "../../assets/icons";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
-import { PROFILE_COLORS } from "../../../../shared/profileColors";
-import { fileToAvatarDataUrl } from "../../utils/imageResize";
 import { useI18n } from "../../components/useI18n";
+import { useProfileModal } from "../../components/profile/ProfileModalContext";
 
 interface ProfileInfo {
   name: string;
@@ -32,6 +31,7 @@ function Agents({
   onChatWith,
 }: AgentsProps): React.JSX.Element {
   const { t } = useI18n();
+  const { openProfile } = useProfileModal();
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -39,58 +39,12 @@ function Agents({
   const [cloneConfig, setCloneConfig] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  // Name of the profile whose appearance modal is open (null = closed).
-  const [editingName, setEditingName] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Live view of the profile being edited, so the modal reflects updates.
-  const editingProfile = editingName
-    ? (profiles.find((p) => p.name === editingName) ?? null)
-    : null;
 
   const loadProfiles = useCallback(async (): Promise<void> => {
     const list = await window.hermesAPI.listProfiles();
     setProfiles(list);
     setLoading(false);
   }, []);
-
-  async function handlePickColor(name: string, color: string): Promise<void> {
-    setProfiles((cur) =>
-      cur.map((p) => (p.name === name ? { ...p, color } : p)),
-    );
-    const result = await window.hermesAPI.setProfileColor(name, color);
-    if (!result.success) setError(result.error || t("agents.appearanceFailed"));
-    loadProfiles();
-  }
-
-  function triggerUpload(): void {
-    fileInputRef.current?.click();
-  }
-
-  async function handleAvatarFile(
-    e: React.ChangeEvent<HTMLInputElement>,
-  ): Promise<void> {
-    const file = e.target.files?.[0];
-    const name = editingName;
-    e.target.value = ""; // allow re-selecting the same file
-    if (!file || !name) return;
-    try {
-      const dataUrl = await fileToAvatarDataUrl(file);
-      const result = await window.hermesAPI.setProfileAvatar(name, dataUrl);
-      if (!result.success)
-        setError(result.error || t("agents.uploadImageFailed"));
-    } catch {
-      setError(t("agents.uploadImageFailed"));
-    }
-    loadProfiles();
-  }
-
-  async function handleRemoveAvatar(name: string): Promise<void> {
-    const result = await window.hermesAPI.removeProfileAvatar(name);
-    if (!result.success) setError(result.error || t("agents.appearanceFailed"));
-    loadProfiles();
-  }
 
   useEffect(() => {
     loadProfiles();
@@ -110,22 +64,6 @@ function Agents({
       setError(result.error || t("agents.createFailed"));
     }
     loadProfiles();
-  }
-
-  async function handleDelete(name: string): Promise<void> {
-    const previousProfiles = profiles;
-    setConfirmDelete(null);
-    setError("");
-    setProfiles((current) => current.filter((p) => p.name !== name));
-
-    const result = await window.hermesAPI.deleteProfile(name);
-    if (result.success) {
-      if (activeProfile === name) onSelectProfile("default");
-      loadProfiles();
-    } else {
-      setProfiles(previousProfiles);
-      setError(result.error || t("agents.deleteFailed"));
-    }
   }
 
   async function handleSelect(name: string): Promise<void> {
@@ -244,7 +182,12 @@ function Agents({
               onClick={(e) => {
                 e.stopPropagation();
                 setError("");
-                setEditingName(p.name);
+                openProfile(p.name, {
+                  onChanged: loadProfiles,
+                  onDeleted: (n) => {
+                    if (activeProfile === n) onSelectProfile("default");
+                  },
+                });
               }}
             >
               <Pencil size={14} />
@@ -292,141 +235,6 @@ function Agents({
           </div>
         ))}
       </div>
-
-      {editingProfile && (
-        <div
-          className="agents-appearance-overlay"
-          onClick={() => setEditingName(null)}
-        >
-          <div
-            className="agents-appearance-modal"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="agents-appearance-modal-header">
-              <span className="agents-appearance-modal-title">
-                {t("agents.editAppearanceFor", { name: editingProfile.name })}
-              </span>
-              <button
-                className="agents-appearance-modal-close"
-                onClick={() => setEditingName(null)}
-                aria-label={t("common.cancel")}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="agents-appearance-modal-body">
-              <div className="agents-appearance-preview">
-                <ProfileAvatar
-                  name={editingProfile.name}
-                  color={editingProfile.color}
-                  avatar={editingProfile.avatar}
-                  size={64}
-                />
-                <div className="agents-appearance-image-actions">
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={triggerUpload}
-                  >
-                    {t("agents.uploadImage")}
-                  </button>
-                  {editingProfile.avatar && (
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleRemoveAvatar(editingProfile.name)}
-                    >
-                      {t("agents.removeImage")}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="agents-appearance-section">
-                <span className="agents-appearance-label">
-                  {t("agents.color")}
-                </span>
-                <div className="agents-appearance-swatches">
-                  {PROFILE_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className={`agents-appearance-swatch ${
-                        (editingProfile.color || "").toLowerCase() ===
-                        c.toLowerCase()
-                          ? "active"
-                          : ""
-                      }`}
-                      style={{ background: c }}
-                      title={c}
-                      aria-label={c}
-                      onClick={() => handlePickColor(editingProfile.name, c)}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {!editingProfile.isDefault && (
-                <div className="agents-appearance-danger">
-                  <span className="agents-appearance-label agents-appearance-danger-label">
-                    {t("agents.dangerZone")}
-                  </span>
-                  <p className="agents-appearance-danger-info">
-                    {t("agents.deleteProfileInfo")}
-                  </p>
-                  {confirmDelete === editingProfile.name ? (
-                    <div className="agents-appearance-danger-confirm">
-                      <span>{t("agents.deleteProfileConfirm")}</span>
-                      <div className="agents-appearance-image-actions">
-                        <button
-                          className="btn btn-danger btn-sm"
-                          onClick={() => handleDelete(editingProfile.name)}
-                        >
-                          {t("agents.deleteProfile")}
-                        </button>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setConfirmDelete(null)}
-                        >
-                          {t("common.cancel")}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      className="btn btn-danger-ghost btn-sm"
-                      onClick={() => setConfirmDelete(editingProfile.name)}
-                    >
-                      <Trash size={13} />
-                      {t("agents.deleteProfile")}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {error && <div className="agents-create-error">{error}</div>}
-            </div>
-
-            <div className="agents-appearance-modal-footer">
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => setEditingName(null)}
-              >
-                {t("common.done")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={handleAvatarFile}
-      />
     </div>
   );
 }

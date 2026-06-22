@@ -50,6 +50,12 @@ SSH tunnel chat must retarget the tunnel to the selected profile's configured AP
 
 [[src/main/ipc/register.ts]] resolves the selected profile's remote `platforms.api_server.extra.port` and calls [[src/main/ssh-tunnel.ts#ensureSshTunnel]] with that port before legacy/basic SSH chat sends. [[src/main/ssh-remote.ts#sshResolveApiServerPort]] auto-allocates and persists a remote profile port when one is missing, while [[src/main/dashboard.ts]] applies the same profile-aware tunnel resolution before dashboard-over-SSH probes. This prevents a dashboard fallback from reusing a default-profile tunnel and making non-default profile chats answer as default.
 
+## Profile detail modal
+
+A single global modal (80vw × 80vh) with a left-section nav views and edits a profile, opened from anywhere via a context hook so future profile features share one surface.
+
+[[src/renderer/src/components/profile/ProfileModalProvider.tsx#ProfileModalProvider]] mounts [[src/renderer/src/components/profile/ProfileModal.tsx#ProfileModal]] at the app root and exposes `openProfile(name, opts)` through [[src/renderer/src/components/profile/ProfileModalContext.ts#useProfileModal]]. The sidebar popover's active profile (a button in [[src/renderer/src/screens/Layout/ProfileSwitcher.tsx#ProfileSwitcher]]) and each card's edit control in [[src/renderer/src/screens/Agents/Agents.tsx]] both call `openProfile`, passing `onChanged` to refresh their lists and `onDeleted` to fall back to the default profile when the active one is removed. The header shows the profile avatar and name; the icon'd left nav (`PROFILE_SECTIONS`) switches the right pane between **Profile** (avatar upload/remove, colour, and lucide provider/model/skills/gateway chips), **Persona** (a profile-scoped copy of [[src/renderer/src/screens/Soul/Soul.tsx#Soul]]), **Agent Memory** (a profile-scoped copy of [[src/renderer/src/screens/Memory/MemoryEntries.tsx#MemoryEntries]] loaded through `readMemory(profile.name)`), **Wallet** (a "coming soon" placeholder), and **Advanced** (the delete danger zone). Every profile — including default — is editable; only the default profile can't be deleted, so its Advanced pane just says so. The modal self-loads via `listProfiles()` and re-reads after every mutation, replacing the former inline `agents-appearance` modal without new IPC.
+
 ## Footer action row
 
 Administrative destinations sit beside the profile switcher so the conversation nav stays short.
