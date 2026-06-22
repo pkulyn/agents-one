@@ -21,12 +21,16 @@ export function ProfileModalProvider({
   children: React.ReactNode;
 }): React.JSX.Element {
   const [open, setOpen] = useState<OpenState | null>(null);
+  const [visible, setVisible] = useState(false);
 
-  const openProfile = useCallback(
-    (name: string, opts?: OpenProfileOptions) => setOpen({ name, opts }),
-    [],
-  );
-  const closeProfile = useCallback(() => setOpen(null), []);
+  const openProfile = useCallback((name: string, opts?: OpenProfileOptions) => {
+    setOpen({ name, opts });
+    setVisible(true);
+  }, []);
+  const closeProfile = useCallback(() => setVisible(false), []);
+  const clearProfile = useCallback(() => {
+    if (!visible) setOpen(null);
+  }, [visible]);
 
   const value = useMemo(
     () => ({ openProfile, closeProfile }),
@@ -39,7 +43,9 @@ export function ProfileModalProvider({
       {open && (
         <ProfileModal
           name={open.name}
+          open={visible}
           onClose={closeProfile}
+          onExited={clearProfile}
           onChanged={open.opts?.onChanged}
           onDeleted={open.opts?.onDeleted}
         />

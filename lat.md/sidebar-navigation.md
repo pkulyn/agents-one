@@ -56,6 +56,12 @@ A single global modal (80vw × 80vh) with a left-section nav views and edits a p
 
 [[src/renderer/src/components/profile/ProfileModalProvider.tsx#ProfileModalProvider]] mounts [[src/renderer/src/components/profile/ProfileModal.tsx#ProfileModal]] at the app root and exposes `openProfile(name, opts)` through [[src/renderer/src/components/profile/ProfileModalContext.ts#useProfileModal]]. The sidebar popover's active profile (a button in [[src/renderer/src/screens/Layout/ProfileSwitcher.tsx#ProfileSwitcher]]) and each card's edit control in [[src/renderer/src/screens/Agents/Agents.tsx]] both call `openProfile`, passing `onChanged` to refresh their lists and `onDeleted` to fall back to the default profile when the active one is removed. The header shows the profile avatar and name; the icon'd left nav (`PROFILE_SECTIONS`) switches the right pane between **Profile** (avatar upload/remove, colour, and lucide provider/model/skills/gateway chips), **Persona** (a profile-scoped copy of [[src/renderer/src/screens/Soul/Soul.tsx#Soul]]), **Agent Memory** (a profile-scoped copy of [[src/renderer/src/screens/Memory/MemoryEntries.tsx#MemoryEntries]] loaded through `readMemory(profile.name)`), **Wallet** (a "coming soon" placeholder), and **Advanced** (the delete danger zone). Every profile — including default — is editable; only the default profile can't be deleted, so its Advanced pane just says so. The modal self-loads via `listProfiles()` and re-reads after every mutation, replacing the former inline `agents-appearance` modal without new IPC.
 
+### Shared modal shell
+
+Reusable modals use a single animated shell so dialogs open and close consistently.
+
+[[src/renderer/src/components/modal/AppModal.tsx#AppModal]] wraps Radix Dialog with Motion's `AnimatePresence`, keeping focus trapping, escape/outside-close behavior, and exit transitions in one memoized component. The shell keeps its Radix portal present through the exit phase and animates the backdrop plus content with visible fade, scale, slide, and blur. Profile modal is the first consumer: [[src/renderer/src/components/profile/ProfileModalProvider.tsx#ProfileModalProvider]] keeps its target profile mounted until `AppModal` finishes the close animation, then clears the modal state.
+
 ## Footer action row
 
 Administrative destinations sit beside the profile switcher so the conversation nav stays short.

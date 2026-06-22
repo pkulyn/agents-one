@@ -19,6 +19,7 @@ import { useI18n } from "../useI18n";
 import Soul from "../../screens/Soul/Soul";
 import { MemoryEntries } from "../../screens/Memory/MemoryEntries";
 import type { MemoryData } from "../../screens/Memory/types";
+import { AppModal, AppModalTitle } from "../modal/AppModal";
 
 /** Mirrors the entry shape returned by `window.hermesAPI.listProfiles()`. */
 interface ProfileInfo {
@@ -39,7 +40,9 @@ interface ProfileInfo {
 export interface ProfileModalProps {
   /** Profile to view/edit (matches a `name` from `listProfiles`). */
   name: string;
+  open: boolean;
   onClose: () => void;
+  onExited?: () => void;
   /** Fired after any successful mutation so the opener can refresh its list. */
   onChanged?: () => void;
   /** Fired after the profile is deleted, before the modal closes. */
@@ -80,7 +83,9 @@ const PROFILE_SECTIONS: ReadonlyArray<{
  */
 export default function ProfileModal({
   name,
+  open,
   onClose,
+  onExited,
   onChanged,
   onDeleted,
 }: ProfileModalProps): React.JSX.Element {
@@ -131,15 +136,6 @@ export default function ProfileModal({
       void loadMemoryData();
     }
   }, [loadMemoryData, memoryData, memoryLoading, profile, section]);
-
-  // Dismiss on Escape.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const afterMutation = useCallback(async (): Promise<void> => {
     await load();
@@ -231,250 +227,254 @@ export default function ProfileModal({
     : [];
 
   return (
-    <div className="profile-modal-overlay" onClick={onClose}>
-      <div
-        className="profile-modal"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="profile-modal-header">
-          <div className="profile-modal-header-main">
-            {profile && (
-              <ProfileAvatar
-                name={profile.name}
-                color={profile.color}
-                avatar={profile.avatar}
-                size={28}
-              />
-            )}
-            <span className="profile-modal-title">
-              {profile ? profile.name : name}
-            </span>
-          </div>
-          <button
-            className="profile-modal-close"
-            onClick={onClose}
-            aria-label={t("common.cancel")}
+    <AppModal
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
+      }}
+      onExitComplete={onExited}
+      className="profile-modal"
+      overlayClassName="profile-modal-overlay"
+      labelledBy="profile-modal-title"
+    >
+      <div className="profile-modal-header">
+        <div className="profile-modal-header-main">
+          {profile && (
+            <ProfileAvatar
+              name={profile.name}
+              color={profile.color}
+              avatar={profile.avatar}
+              size={28}
+            />
+          )}
+          <AppModalTitle
+            id="profile-modal-title"
+            className="profile-modal-title"
           >
-            <X size={18} />
-          </button>
+            {profile ? profile.name : name}
+          </AppModalTitle>
         </div>
+        <button
+          type="button"
+          className="profile-modal-close"
+          onClick={onClose}
+          aria-label={t("common.cancel")}
+        >
+          <X size={18} />
+        </button>
+      </div>
 
-        {profile ? (
-          <div className="profile-modal-layout">
-            <nav className="profile-modal-nav" aria-label={t("agents.title")}>
-              {PROFILE_SECTIONS.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`profile-modal-nav-item ${
-                    section === s.id ? "active" : ""
-                  }`}
-                  onClick={() => setSection(s.id)}
-                >
-                  <s.Icon size={16} />
-                  {t(s.labelKey)}
-                </button>
-              ))}
-            </nav>
+      {profile ? (
+        <div className="profile-modal-layout">
+          <nav className="profile-modal-nav" aria-label={t("agents.title")}>
+            {PROFILE_SECTIONS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`profile-modal-nav-item ${
+                  section === s.id ? "active" : ""
+                }`}
+                onClick={() => setSection(s.id)}
+              >
+                <s.Icon size={16} />
+                {t(s.labelKey)}
+              </button>
+            ))}
+          </nav>
 
-            <div className="profile-modal-content">
-              {section === "profile" && (
-                <div className="profile-modal-pane">
-                  <div className="profile-modal-identity">
-                    <div className="profile-modal-avatar-wrap">
-                      <ProfileAvatar
-                        name={profile.name}
-                        color={profile.color}
-                        avatar={profile.avatar}
-                        size={96}
-                      />
-                      {profile.gatewayRunning && (
-                        <span className="profile-modal-avatar-dot" />
+          <div className="profile-modal-content">
+            {section === "profile" && (
+              <div className="profile-modal-pane">
+                <div className="profile-modal-identity">
+                  <div className="profile-modal-avatar-wrap">
+                    <ProfileAvatar
+                      name={profile.name}
+                      color={profile.color}
+                      avatar={profile.avatar}
+                      size={96}
+                    />
+                    {profile.gatewayRunning && (
+                      <span className="profile-modal-avatar-dot" />
+                    )}
+                  </div>
+                  <div className="profile-modal-identity-meta">
+                    <div className="profile-modal-name-row">
+                      <span className="profile-modal-name">{profile.name}</span>
+                      {profile.isDefault && (
+                        <span className="profile-modal-tag">
+                          {t("agents.defaultTag")}
+                        </span>
                       )}
                     </div>
-                    <div className="profile-modal-identity-meta">
-                      <div className="profile-modal-name-row">
-                        <span className="profile-modal-name">
-                          {profile.name}
-                        </span>
-                        {profile.isDefault && (
-                          <span className="profile-modal-tag">
-                            {t("agents.defaultTag")}
-                          </span>
-                        )}
-                      </div>
-                      <div className="profile-modal-image-actions">
+                    <div className="profile-modal-image-actions">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {t("agents.uploadImage")}
+                      </button>
+                      {profile.avatar && (
                         <button
                           className="btn btn-secondary btn-sm"
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={handleRemoveAvatar}
                         >
-                          {t("agents.uploadImage")}
-                        </button>
-                        {profile.avatar && (
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={handleRemoveAvatar}
-                          >
-                            {t("agents.removeImage")}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="profile-modal-stats">
-                    {profileChips.map(({ key, value, Icon, state }) => (
-                      <span
-                        className={`profile-modal-stat-value ${
-                          state ? `is-${state}` : ""
-                        }`}
-                        key={key}
-                      >
-                        <Icon size={14} className="profile-modal-stat-icon" />
-                        {value}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="profile-modal-section">
-                    <span className="profile-modal-label">
-                      {t("agents.color")}
-                    </span>
-                    <div className="profile-modal-swatches">
-                      {PROFILE_COLORS.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className={`profile-modal-swatch ${
-                            (profile.color || "").toLowerCase() ===
-                            c.toLowerCase()
-                              ? "active"
-                              : ""
-                          }`}
-                          style={{ background: c }}
-                          title={c}
-                          aria-label={c}
-                          onClick={() => handlePickColor(c)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {error && <div className="agents-create-error">{error}</div>}
-                </div>
-              )}
-
-              {section === "persona" && (
-                <div className="profile-modal-pane profile-modal-memory-pane">
-                  <div className="memory-soul-tab">
-                    <Soul profile={profile.name} />
-                  </div>
-                </div>
-              )}
-
-              {section === "agentMemory" && (
-                <div className="profile-modal-pane profile-modal-memory-pane">
-                  {memoryLoading && !memoryData ? (
-                    <div className="profile-modal-loading">
-                      <div className="loading-spinner" />
-                    </div>
-                  ) : memoryData ? (
-                    <MemoryEntries
-                      entries={memoryData.memory.entries}
-                      profile={profile.name}
-                      onRefresh={loadMemoryData}
-                    />
-                  ) : memoryError ? (
-                    <div className="memory-error">{memoryError}</div>
-                  ) : null}
-                </div>
-              )}
-
-              {section === "wallet" && (
-                <div className="profile-modal-pane">
-                  <div className="profile-modal-coming-soon">
-                    <Wallet size={40} />
-                    <span className="profile-modal-coming-soon-title">
-                      {t("agents.sectionWallet")}
-                    </span>
-                    <span className="profile-modal-coming-soon-text">
-                      {t("agents.comingSoon")}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {section === "advanced" && (
-                <div className="profile-modal-pane">
-                  {profile.isDefault ? (
-                    <p className="profile-modal-danger-info">
-                      {t("agents.defaultNotDeletable")}
-                    </p>
-                  ) : (
-                    <div className="profile-modal-danger">
-                      <span className="profile-modal-label profile-modal-danger-label">
-                        {t("agents.dangerZone")}
-                      </span>
-                      <p className="profile-modal-danger-info">
-                        {t("agents.deleteProfileInfo")}
-                      </p>
-                      {confirmDelete ? (
-                        <div className="profile-modal-danger-confirm">
-                          <span>{t("agents.deleteProfileConfirm")}</span>
-                          <div className="profile-modal-image-actions">
-                            <button
-                              className="btn btn-danger btn-sm"
-                              onClick={handleDelete}
-                            >
-                              {t("agents.deleteProfile")}
-                            </button>
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => setConfirmDelete(false)}
-                            >
-                              {t("common.cancel")}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          className="btn btn-danger-ghost btn-sm"
-                          onClick={() => setConfirmDelete(true)}
-                        >
-                          <Trash size={13} />
-                          {t("agents.deleteProfile")}
+                          {t("agents.removeImage")}
                         </button>
                       )}
                     </div>
-                  )}
-
-                  {error && <div className="agents-create-error">{error}</div>}
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="profile-modal-loading">
-            <div className="loading-spinner" />
-          </div>
-        )}
 
-        <div className="profile-modal-footer">
-          <button className="btn btn-primary btn-sm" onClick={onClose}>
-            {t("common.done")}
-          </button>
+                <div className="profile-modal-stats">
+                  {profileChips.map(({ key, value, Icon, state }) => (
+                    <span
+                      className={`profile-modal-stat-value ${
+                        state ? `is-${state}` : ""
+                      }`}
+                      key={key}
+                    >
+                      <Icon size={14} className="profile-modal-stat-icon" />
+                      {value}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="profile-modal-section">
+                  <span className="profile-modal-label">
+                    {t("agents.color")}
+                  </span>
+                  <div className="profile-modal-swatches">
+                    {PROFILE_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        className={`profile-modal-swatch ${
+                          (profile.color || "").toLowerCase() ===
+                          c.toLowerCase()
+                            ? "active"
+                            : ""
+                        }`}
+                        style={{ background: c }}
+                        title={c}
+                        aria-label={c}
+                        onClick={() => handlePickColor(c)}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {error && <div className="agents-create-error">{error}</div>}
+              </div>
+            )}
+
+            {section === "persona" && (
+              <div className="profile-modal-pane profile-modal-memory-pane">
+                <div className="memory-soul-tab">
+                  <Soul profile={profile.name} />
+                </div>
+              </div>
+            )}
+
+            {section === "agentMemory" && (
+              <div className="profile-modal-pane profile-modal-memory-pane">
+                {memoryLoading && !memoryData ? (
+                  <div className="profile-modal-loading">
+                    <div className="loading-spinner" />
+                  </div>
+                ) : memoryData ? (
+                  <MemoryEntries
+                    entries={memoryData.memory.entries}
+                    profile={profile.name}
+                    onRefresh={loadMemoryData}
+                  />
+                ) : memoryError ? (
+                  <div className="memory-error">{memoryError}</div>
+                ) : null}
+              </div>
+            )}
+
+            {section === "wallet" && (
+              <div className="profile-modal-pane">
+                <div className="profile-modal-coming-soon">
+                  <Wallet size={40} />
+                  <span className="profile-modal-coming-soon-title">
+                    {t("agents.sectionWallet")}
+                  </span>
+                  <span className="profile-modal-coming-soon-text">
+                    {t("agents.comingSoon")}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {section === "advanced" && (
+              <div className="profile-modal-pane">
+                {profile.isDefault ? (
+                  <p className="profile-modal-danger-info">
+                    {t("agents.defaultNotDeletable")}
+                  </p>
+                ) : (
+                  <div className="profile-modal-danger">
+                    <span className="profile-modal-label profile-modal-danger-label">
+                      {t("agents.dangerZone")}
+                    </span>
+                    <p className="profile-modal-danger-info">
+                      {t("agents.deleteProfileInfo")}
+                    </p>
+                    {confirmDelete ? (
+                      <div className="profile-modal-danger-confirm">
+                        <span>{t("agents.deleteProfileConfirm")}</span>
+                        <div className="profile-modal-image-actions">
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={handleDelete}
+                          >
+                            {t("agents.deleteProfile")}
+                          </button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setConfirmDelete(false)}
+                          >
+                            {t("common.cancel")}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn btn-danger-ghost btn-sm"
+                        onClick={() => setConfirmDelete(true)}
+                      >
+                        <Trash size={13} />
+                        {t("agents.deleteProfile")}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {error && <div className="agents-create-error">{error}</div>}
+              </div>
+            )}
+          </div>
         </div>
+      ) : (
+        <div className="profile-modal-loading">
+          <div className="loading-spinner" />
+        </div>
+      )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={handleAvatarFile}
-        />
+      <div className="profile-modal-footer">
+        <button className="btn btn-primary btn-sm" onClick={onClose}>
+          {t("common.done")}
+        </button>
       </div>
-    </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleAvatarFile}
+      />
+    </AppModal>
   );
 }

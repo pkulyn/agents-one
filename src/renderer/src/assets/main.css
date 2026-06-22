@@ -7374,16 +7374,26 @@ body {
   background: var(--bg-tertiary);
 }
 
-/* Appearance modal */
-/* ── Global profile modal (80vw × 80vh) ─────────────────────────────── */
-.profile-modal-overlay {
+/* Shared animated modal primitive. Radix handles portal/focus, Motion handles
+   mount/unmount transitions, and feature modals provide their own layout. */
+.app-modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   z-index: 200;
+}
+
+.app-modal-content {
+  position: fixed;
+  inset: 0;
+  z-index: 201;
+  margin: auto;
+  outline: none;
+}
+
+/* Appearance modal */
+/* ── Global profile modal (80vw × 80vh) ─────────────────────────────── */
+.profile-modal-overlay {
   padding: 24px;
 }
 
