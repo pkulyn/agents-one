@@ -9,6 +9,7 @@ import { JsonRpcProvider, Contract } from "ethers";
 import {
   BASE_TOKENS,
   formatTokenBalance,
+  formatTokenBalanceFull,
   type TokenBalanceResult,
   type TokenBalancesResponse,
 } from "../shared/tokens";
@@ -66,6 +67,7 @@ export async function getTokenBalances(
           symbol: token.symbol,
           raw,
           formatted: formatTokenBalance(raw, token.decimals),
+          formattedFull: formatTokenBalanceFull(raw, token.decimals),
         };
       },
     ),
@@ -81,6 +83,7 @@ export async function getTokenBalances(
       symbol: token.symbol,
       raw: "0",
       formatted: "0",
+      formattedFull: "0",
       error:
         (result.reason instanceof Error
           ? result.reason.message

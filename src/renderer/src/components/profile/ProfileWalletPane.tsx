@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
   Copy,
@@ -26,6 +26,13 @@ const TOKEN_ICONS: Record<string, string> = {
   hd: hdTokenIcon,
 };
 
+/**
+ * Module-level balance cache keyed by wallet address.
+ * Survives component remounts (tab switches) so stale data
+ * displays instantly while fresh balances load in the background.
+ */
+const balanceCache = new Map<string, TokenBalancesResponse>();
+
 interface ProfileWalletPaneProps {
   profile: string;
 }
@@ -52,24 +59,42 @@ export default function ProfileWalletPane({
   const [copied, setCopied] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProfileWallet | null>(null);
   const [balances, setBalances] = useState<Map<string, TokenBalancesResponse>>(
-    new Map(),
+    () => new Map(),
   );
   const [balancesLoading, setBalancesLoading] = useState<Set<string>>(
     new Set(),
   );
+
+  /** Ref that tracks wallet ID → address so fetchBalances can update the cache. */
+  const walletIdToAddress = useRef<Map<string, string>>(new Map());
+
+  /** Hydrate balances from the module-level cache after wallets load. */
+  function hydrateFromCache(walletList: ProfileWallet[]): void {
+    const map = new Map<string, TokenBalancesResponse>();
+    const addrMap = new Map<string, string>();
+    for (const w of walletList) {
+      addrMap.set(w.id, w.address);
+      const cached = balanceCache.get(w.address);
+      if (cached) map.set(w.id, cached);
+    }
+    walletIdToAddress.current = addrMap;
+    setBalances(map);
+  }
 
   async function fetchBalances(walletList: ProfileWallet[]): Promise<void> {
     setBalancesLoading(new Set(walletList.map((w) => w.id)));
     const results = await Promise.allSettled(
       walletList.map(async (w) => {
         const response = await window.hermesAPI.getTokenBalances(w.address);
-        return { walletId: w.id, response };
+        return { walletId: w.id, address: w.address, response };
       }),
     );
     const next = new Map(balances);
     for (const result of results) {
       if (result.status === "fulfilled") {
-        next.set(result.value.walletId, result.value.response);
+        const { walletId, address, response } = result.value;
+        next.set(walletId, response);
+        balanceCache.set(address, response);
       }
     }
     setBalances(next);
@@ -80,6 +105,7 @@ export default function ProfileWalletPane({
     setBalancesLoading((prev) => new Set(prev).add(wallet.id));
     try {
       const response = await window.hermesAPI.getTokenBalances(wallet.address);
+      balanceCache.set(wallet.address, response);
       setBalances((prev) => {
         const next = new Map(prev);
         next.set(wallet.id, response);
@@ -102,6 +128,7 @@ export default function ProfileWalletPane({
     try {
       const loaded = await window.hermesAPI.listWallets(profile);
       setWallets(loaded);
+      hydrateFromCache(loaded);
       fetchBalances(loaded);
     } catch {
       setError(t("agents.walletLoadFailed"));
@@ -232,6 +259,7 @@ export default function ProfileWalletPane({
                           <span
                             key={b.tokenId}
                             className="profile-wallet-balance"
+                            title={b.formattedFull}
                           >
                             {TOKEN_ICONS[b.tokenId] ? (
                               <img
@@ -244,6 +272,9 @@ export default function ProfileWalletPane({
                                 {b.symbol}
                               </span>
                             )}
+                            <span className="profile-wallet-balance-symbol">
+                              {b.symbol}
+                            </span>
                             {b.error ? (
                               <span className="profile-wallet-balance-error">
                                 {t("agents.walletBalanceUnavailable")}

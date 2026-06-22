@@ -2,7 +2,7 @@
 // @lat: [[wallet-token-balances#Tests]]
 
 import { describe, expect, it, vi } from "vitest";
-import { formatTokenBalance } from "../shared/tokens";
+import { formatTokenBalance, formatTokenBalanceFull } from "../shared/tokens";
 
 describe("formatTokenBalance", () => {
   it('returns "0" for zero raw value', () => {
@@ -40,12 +40,32 @@ describe("formatTokenBalance", () => {
     expect(formatTokenBalance("10000000000000", 18)).toBe("< 0.0001");
   });
 
-  it("formats a large balance correctly", () => {
+  it("formats a large balance with M suffix (1M tokens)", () => {
     // 1,000,000 tokens
-    expect(formatTokenBalance("1000000000000000000000000", 18)).toBe("1000000");
+    expect(formatTokenBalance("1000000000000000000000000", 18)).toBe("1M");
   });
 
-  it("formats mixed integer + fractional (123.4567)", () => {
+  it("formats 1.5M tokens", () => {
+    // 1,500,000 tokens
+    expect(formatTokenBalance("1500000000000000000000000", 18)).toBe("1.5M");
+  });
+
+  it("formats 10.5K tokens", () => {
+    // 10,500 tokens
+    expect(formatTokenBalance("10500000000000000000000", 18)).toBe("10.5K");
+  });
+
+  it("formats exactly 1K tokens", () => {
+    // 1,000 tokens
+    expect(formatTokenBalance("1000000000000000000000", 18)).toBe("1K");
+  });
+
+  it("formats 999 tokens without K suffix", () => {
+    // 999 tokens
+    expect(formatTokenBalance("999000000000000000000", 18)).toBe("999");
+  });
+
+  it("formats 123.4567 tokens without suffix", () => {
     const raw = BigInt("123456700000000000000").toString();
     expect(formatTokenBalance(raw, 18)).toBe("123.4567");
   });
@@ -63,6 +83,28 @@ describe("formatTokenBalance", () => {
   it("trims trailing zeros for 6-decimal tokens", () => {
     // 0.12 USDC
     expect(formatTokenBalance("120000", 6)).toBe("0.12");
+  });
+});
+
+describe("formatTokenBalanceFull", () => {
+  it('returns "0" for zero', () => {
+    expect(formatTokenBalanceFull("0", 18)).toBe("0");
+  });
+
+  it("shows full number without K/M suffix", () => {
+    // 10,500 tokens → "10500" not "10.5K"
+    expect(formatTokenBalanceFull("10500000000000000000000", 18)).toBe("10500");
+  });
+
+  it("shows full number without M suffix", () => {
+    // 1,500,000 tokens
+    expect(formatTokenBalanceFull("1500000000000000000000000", 18)).toBe(
+      "1500000",
+    );
+  });
+
+  it("formats fractions with 4 significant digits", () => {
+    expect(formatTokenBalanceFull("123400000000000000", 18)).toBe("0.1234");
   });
 });
 
@@ -98,8 +140,10 @@ describe("getTokenBalances", () => {
     expect(result.balances).toHaveLength(2);
     expect(result.balances[0].tokenId).toBe("eth");
     expect(result.balances[0].formatted).toBe("2");
+    expect(result.balances[0].formattedFull).toBe("2");
     expect(result.balances[1].tokenId).toBe("hd");
     expect(result.balances[1].formatted).toBe("0.1");
+    expect(result.balances[1].formattedFull).toBe("0.1");
     expect(result.fetchedAt).toBeGreaterThan(0);
   });
 

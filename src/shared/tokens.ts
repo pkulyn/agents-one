@@ -21,8 +21,10 @@ export interface TokenBalanceResult {
   symbol: string;
   /** Raw BigInt balance as a decimal string, e.g. "1000000000000000000". */
   raw: string;
-  /** Human-readable formatted balance, e.g. "1.0". */
+  /** Compact formatted balance with K/M suffixes, e.g. "10.5K". */
   formatted: string;
+  /** Full formatted balance without suffixes, e.g. "10500". Used for tooltips. */
+  formattedFull: string;
   /** Present when the RPC call for this token failed. */
   error?: string;
 }
@@ -51,43 +53,58 @@ export const BASE_TOKENS: KnownToken[] = [
   },
 ];
 
-/** Format a raw token balance (BigInt as decimal string) into a
- *  human-readable string with up to 4 significant digits.
+/** Format a raw token balance into a full human-readable string
+ *  (no K/M suffixes), suitable for tooltips.
  *  - Zero → "0"
- *  - Tiny non-zero (< 1e-decimals × 0.0001) → "< 0.0001"
- *  - Otherwise → trimmed to 4 significant digits with trailing zeros removed */
-export function formatTokenBalance(raw: string, decimals: number): string {
+ *  - Otherwise → up to 4 significant digits with trailing zeros removed */
+export function formatTokenBalanceFull(raw: string, decimals: number): string {
   if (!raw || raw === "0") return "0";
 
-  // Pad the raw string to at least (decimals + 1) digits so we can
-  // insert a decimal point at the right position.
   const padded = raw.padStart(decimals + 1, "0");
   const integerPart = padded.slice(0, padded.length - decimals) || "0";
   const fractionalPart = padded.slice(padded.length - decimals);
-
-  // Find the first non-zero digit in the fractional part.
   const firstNonZero = fractionalPart.search(/[1-9]/);
-
-  // Entire fractional part is zeros → pure integer.
   if (firstNonZero === -1) return integerPart;
-
-  // Trim trailing zeros from the fractional part.
   const trimmedFrac = fractionalPart.replace(/0+$/, "");
 
   if (integerPart !== "0") {
-    // Has a non-zero integer portion — show up to 4 fractional digits
-    // (4 significant digits total since integer part already has ≥1).
     const capped = trimmedFrac.slice(0, 4);
     return capped ? `${integerPart}.${capped}` : integerPart;
   }
 
-  // Integer part is zero — first non-zero digit is at position firstNonZero.
-  // If the first non-zero digit is beyond 4 decimal places, it's tiny.
   if (firstNonZero >= 4) return "< 0.0001";
-
-  // Show up to 4 significant digits from the first non-zero position.
-  // leadingZeros: zeros before the first significant digit.
   const significantDigits = trimmedFrac.slice(firstNonZero);
   const visible = significantDigits.slice(0, 4);
   return `0.${"0".repeat(firstNonZero)}${visible}`;
+}
+
+/** Format a raw token balance into a compact string with K/M suffixes.
+ *  - Zero → "0"
+ *  - ≥ 1M → e.g. "1.5M"
+ *  - ≥ 1K → e.g. "10.5K"
+ *  - Tiny non-zero (< 0.0001) → "< 0.0001"
+ *  - Otherwise → up to 4 significant digits */
+export function formatTokenBalance(raw: string, decimals: number): string {
+  if (!raw || raw === "0") return "0";
+
+  // Convert raw to a floating-point number for K/M comparison.
+  const numeric = Number(raw) / Math.pow(10, decimals);
+
+  if (numeric >= 1_000_000) {
+    const millions = numeric / 1_000_000;
+    const rounded = Math.round(millions * 100) / 100;
+    // Remove unnecessary trailing zeros: 1.50 → 1.5
+    const str = rounded.toFixed(2).replace(/\.?0+$/, "");
+    return `${str}M`;
+  }
+
+  if (numeric >= 1_000) {
+    const thousands = numeric / 1_000;
+    const rounded = Math.round(thousands * 100) / 100;
+    const str = rounded.toFixed(2).replace(/\.?0+$/, "");
+    return `${str}K`;
+  }
+
+  // Fall through to full formatting for small values.
+  return formatTokenBalanceFull(raw, decimals);
 }
