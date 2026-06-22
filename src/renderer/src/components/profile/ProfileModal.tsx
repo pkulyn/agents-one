@@ -20,6 +20,7 @@ import Soul from "../../screens/Soul/Soul";
 import { MemoryEntries } from "../../screens/Memory/MemoryEntries";
 import type { MemoryData } from "../../screens/Memory/types";
 import { AppModal, AppModalTitle } from "../modal/AppModal";
+import ProfileWalletPane from "./ProfileWalletPane";
 
 /** Mirrors the entry shape returned by `window.hermesAPI.listProfiles()`. */
 interface ProfileInfo {
@@ -61,7 +62,7 @@ type ProfileChipIcon = React.ComponentType<{
 }>;
 
 /** Left-nav sections. Built to grow; each renders into the right-hand content
- *  pane. Wallet is a placeholder ("coming soon") for now. */
+ *  pane. */
 const PROFILE_SECTIONS: ReadonlyArray<{
   id: ProfileSection;
   labelKey: string;
@@ -394,17 +395,7 @@ export default function ProfileModal({
             )}
 
             {section === "wallet" && (
-              <div className="profile-modal-pane">
-                <div className="profile-modal-coming-soon">
-                  <Wallet size={40} />
-                  <span className="profile-modal-coming-soon-title">
-                    {t("agents.sectionWallet")}
-                  </span>
-                  <span className="profile-modal-coming-soon-text">
-                    {t("agents.comingSoon")}
-                  </span>
-                </div>
-              </div>
+              <ProfileWalletPane profile={profile.name} />
             )}
 
             {section === "advanced" && (

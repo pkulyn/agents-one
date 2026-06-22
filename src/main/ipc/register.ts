@@ -35,6 +35,9 @@ import { validateChatReadiness } from "../validation";
 import { runConfigHealthCheck, autoFixIssue, readConfigFixLog, type IssueCode } from "../config-health";
 import { listProfiles, createProfile, deleteProfile, setActiveProfile } from "../profiles";
 import { setProfileColor, setProfileAvatar, removeProfileAvatar } from "../profile-meta";
+import { createWallet, deleteWallet, importWallet, listWallets, renameWallet } from "../wallet-store";
+import { getTokenBalances } from "../wallet-balances";
+import type { ImportWalletInput } from "../../shared/wallets";
 import { readMemory, addMemoryEntry, updateMemoryEntry, removeMemoryEntry, writeUserProfile } from "../memory";
 import { readSoul, writeSoul, resetSoul } from "../soul";
 import { getPlatformToolsets, getToolsets, setMessagingPlatformToolsetEnabled, setToolsetEnabled } from "../tools";
@@ -1378,6 +1381,32 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle("remove-profile-avatar", (_event, name: string) =>
     removeProfileAvatar(name),
+  );
+
+  // Profile wallets are desktop-local and profile-scoped. The renderer only
+  // receives public wallet metadata, plus a one-time recovery phrase immediately
+  // after create/import.
+  ipcMain.handle("list-wallets", (_event, profile?: string) =>
+    listWallets(profile),
+  );
+  ipcMain.handle("create-wallet", (_event, profile?: string, name?: string) =>
+    createWallet(profile, name),
+  );
+  ipcMain.handle("import-wallet", (_event, input: ImportWalletInput) =>
+    importWallet(input),
+  );
+  ipcMain.handle(
+    "rename-wallet",
+    (_event, profile: string | undefined, id: string, name: string) =>
+      renameWallet(profile, id, name),
+  );
+  ipcMain.handle(
+    "delete-wallet",
+    (_event, profile: string | undefined, id: string) =>
+      deleteWallet(profile, id),
+  );
+  ipcMain.handle("get-token-balances", (_event, address: string) =>
+    getTokenBalances(address),
   );
 
   // Memory
