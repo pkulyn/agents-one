@@ -5139,10 +5139,6 @@ body {
 
 .chat-tool-group {
   width: 100%;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.18));
-  border-radius: 10px;
-  background: transparent;
-  overflow: hidden;
 }
 
 .chat-tool-group-summary {
@@ -5150,32 +5146,50 @@ body {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 7px 12px;
+  padding: 4px 6px;
   border: none;
+  border-radius: 6px;
   background: transparent;
   cursor: pointer;
   text-align: left;
   font: inherit;
-  color: var(--text-secondary);
+  /* Normal state: dim. Brightens on hover (see below). */
+  color: var(--text-muted);
 }
 
-.chat-tool-group-summary:hover {
-  background: var(--hover, rgba(127, 127, 127, 0.06));
+.chat-tool-group-summary:hover,
+.chat-tool-group-summary:focus-visible {
+  color: var(--text-primary);
 }
 
+/* Chevron lives on the right and only appears on hover (or while expanded),
+   matching the Codex-style collapsible row. */
 .chat-tool-group-chevron {
   flex-shrink: 0;
   color: var(--text-muted);
-  transition: transform 0.18s ease;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    transform 0.18s ease;
+}
+
+.chat-tool-group-summary:hover .chat-tool-group-chevron,
+.chat-tool-group-summary:focus-visible .chat-tool-group-chevron {
+  opacity: 1;
 }
 
 .chat-tool-group-chevron--open {
+  opacity: 1;
   transform: rotate(90deg);
 }
 
 .chat-tool-group-icon {
   flex-shrink: 0;
   color: var(--text-muted);
+}
+
+.chat-tool-group-summary:hover .chat-tool-group-icon {
+  color: var(--text-secondary);
 }
 
 .chat-tool-group-spinner {
@@ -5186,7 +5200,7 @@ body {
 .chat-tool-group-name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: inherit;
   flex-shrink: 0;
 }
 
@@ -5196,27 +5210,16 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  /* Size to content (capped) so it doesn't stretch and shove the chevron to
+     the far edge — the chevron stays beside the title cluster. */
+  flex: 0 1 auto;
   min-width: 0;
-}
-
-.chat-tool-group-count {
-  font-size: 11px;
-  color: var(--text-muted);
-  background: var(--bg-tertiary, rgba(127, 127, 127, 0.1));
-  padding: 1px 8px;
-  border-radius: 10px;
-  flex-shrink: 0;
-  margin-left: auto;
+  max-width: 340px;
 }
 
 /* ── Reasoning group (mirrors tool-group styling) ───────────────────── */
 .chat-reasoning-group {
   width: 100%;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.18));
-  border-radius: 10px;
-  background: transparent;
-  overflow: hidden;
 }
 
 .chat-reasoning-group-summary {
@@ -5224,26 +5227,38 @@ body {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 7px 12px;
+  padding: 4px 6px;
   border: none;
+  border-radius: 6px;
   background: transparent;
   cursor: pointer;
   text-align: left;
   font: inherit;
-  color: var(--text-secondary);
+  /* Normal state: dim. Brightens on hover (see below). */
+  color: var(--text-muted);
 }
 
-.chat-reasoning-group-summary:hover {
-  background: var(--hover, rgba(127, 127, 127, 0.06));
+.chat-reasoning-group-summary:hover,
+.chat-reasoning-group-summary:focus-visible {
+  color: var(--text-primary);
 }
 
 .chat-reasoning-group-chevron {
   flex-shrink: 0;
   color: var(--text-muted);
-  transition: transform 0.18s ease;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    transform 0.18s ease;
+}
+
+.chat-reasoning-group-summary:hover .chat-reasoning-group-chevron,
+.chat-reasoning-group-summary:focus-visible .chat-reasoning-group-chevron {
+  opacity: 1;
 }
 
 .chat-reasoning-group-chevron--open {
+  opacity: 1;
   transform: rotate(90deg);
 }
 
@@ -5252,27 +5267,20 @@ body {
   color: var(--text-muted);
 }
 
+.chat-reasoning-group-summary:hover .chat-reasoning-group-icon {
+  color: var(--text-secondary);
+}
+
 .chat-reasoning-group-spinner {
   flex-shrink: 0;
-  color: var(--accent, #8b7cf6);
-  animation: spin 0.8s linear infinite;
+  display: inline-flex;
 }
 
 .chat-reasoning-group-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: inherit;
   flex-shrink: 0;
-}
-
-.chat-reasoning-group-meta {
-  font-size: 11px;
-  color: var(--text-muted);
-  background: var(--bg-tertiary, rgba(127, 127, 127, 0.1));
-  padding: 1px 8px;
-  border-radius: 10px;
-  flex-shrink: 0;
-  margin-left: auto;
 }
 
 /* Smooth height animation without measuring: 0fr → 1fr collapses the row. */

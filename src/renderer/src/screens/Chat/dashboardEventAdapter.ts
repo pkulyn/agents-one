@@ -394,6 +394,65 @@ function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Length of the longest suffix of `a` that is also a prefix of `b`, used to
+ * stitch a re-streamed boundary without duplicating the shared run. The
+ * overlap is rejected when it would splice the middle of a word on either
+ * side (e.g. `"…worl" + "d…"`), so a coincidental shared character isn't
+ * treated as a real seam. Punctuation and whitespace are valid seams.
+ */
+function tailHeadOverlap(a: string, b: string): number {
+  const word = /\w/;
+  const max = Math.min(a.length, b.length);
+  for (let k = max; k > 0; k--) {
+    if (!a.endsWith(b.slice(0, k))) continue;
+    const aStart = a.length - k;
+    const startsMidWord =
+      aStart > 0 && word.test(a[aStart - 1]) && word.test(a[aStart]);
+    const endsMidWord = k < b.length && word.test(b[k - 1]) && word.test(b[k]);
+    if (!startsMidWord && !endsMidWord) return k;
+  }
+  return 0;
+}
+
+/**
+ * Reconcile the text accumulated from streamed `message.delta` chunks with the
+ * `final_response` delivered on `message.complete`.
+ *
+ * The streamed bubble can hold text produced *before* a tool call, while
+ * `final_response` may carry only the last turn's text — so blindly
+ * overwriting with the final text drops the pre-tool-call content (#746).
+ * Other times the final text is the fuller version. Resolve both:
+ *   - empty streamed   → final (the remote path never renders deltas, so the
+ *                        bubble starts empty and final is all we have)
+ *   - final ⊇ streamed → final
+ *   - streamed ⊇ final → streamed (keeps the pre-tool-call text)
+ *   - tail/head overlap → stitch, dropping the duplicated seam
+ *   - otherwise        → concatenate with a blank-line separator so the two
+ *                        segments don't run together ("check.It's" / "4answer")
+ *
+ * Comparison is whitespace-insensitive; every branch returns trimmed text so
+ * the result doesn't depend on which branch ran.
+ */
+export function mergeStreamedWithFinal(
+  streamed: string,
+  final: string,
+): string {
+  const streamedContent = streamed.trim();
+  const finalContent = final.trim();
+  if (!streamedContent) return finalContent;
+  if (!finalContent) return streamedContent;
+
+  const normStreamed = normalizeText(streamedContent);
+  const normFinal = normalizeText(finalContent);
+  if (normFinal.includes(normStreamed)) return finalContent;
+  if (normStreamed.includes(normFinal)) return streamedContent;
+
+  const overlap = tailHeadOverlap(streamedContent, finalContent);
+  if (overlap > 0) return `${streamedContent}${finalContent.slice(overlap)}`;
+  return `${streamedContent}\n\n${finalContent}`;
+}
+
 function findLastUserIndex(messages: ReadonlyArray<ChatMessage>): number {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === "user") return i;
@@ -509,26 +568,10 @@ function completeAssistantWithFinalText(
     if (!isAssistantBubble(msg) || msg.error) continue;
     if (activeTurn && msg.turnId && msg.turnId !== activeTurn.turnId) continue;
 
-    // Merge streamed text with finalText so content before tool calls
-    // is preserved.  final_response may only contain the last turn's text;
-    // streamed deltas already hold earlier text accumulated before tool calls.
-    const streamedContent = msg.content.trim();
-    const normFinal = normalizeText(finalText);
-    const normStreamed = normalizeText(streamedContent);
-
-    let merged: string;
-    if (!streamedContent) {
-      merged = finalText;
-    } else if (normFinal.includes(normStreamed)) {
-      // Final already contains everything streamed — use final.
-      merged = finalText;
-    } else if (normStreamed.includes(normFinal)) {
-      // Streamed contains final plus pre-tool-call text — prefer streamed.
-      merged = streamedContent;
-    } else {
-      // Neither fully contains the other — concatenate.
-      merged = streamedContent + finalText;
-    }
+    // Merge streamed text with finalText so content streamed before tool
+    // calls is preserved rather than clobbered by a last-turn-only
+    // final_response (#746).
+    const merged = mergeStreamedWithFinal(msg.content, finalText);
 
     return [
       ...messagesWithoutDuplicateReasoning.slice(0, i),
