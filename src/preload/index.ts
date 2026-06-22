@@ -5,6 +5,11 @@ import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
 import type {
+  ImportWalletInput,
+  ProfileWallet,
+  WalletMutationResult,
+} from "../shared/wallets";
+import type {
   MessagingPlatformsResponse,
   MessagingPlatformTestResponse,
   MessagingPlatformUpdate,
@@ -787,6 +792,31 @@ const hermesAPI = {
     name: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("remove-profile-avatar", name),
+
+  listWallets: (profile?: string): Promise<ProfileWallet[]> =>
+    ipcRenderer.invoke("list-wallets", profile),
+
+  createWallet: (
+    profile?: string,
+    name?: string,
+  ): Promise<WalletMutationResult> =>
+    ipcRenderer.invoke("create-wallet", profile, name),
+
+  importWallet: (input: ImportWalletInput): Promise<WalletMutationResult> =>
+    ipcRenderer.invoke("import-wallet", input),
+
+  renameWallet: (
+    profile: string | undefined,
+    id: string,
+    name: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("rename-wallet", profile, id, name),
+
+  deleteWallet: (
+    profile: string | undefined,
+    id: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("delete-wallet", profile, id),
 
   // Memory
   readMemory: (
