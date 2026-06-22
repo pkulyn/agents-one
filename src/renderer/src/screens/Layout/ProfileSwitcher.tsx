@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ChevronDown, Settings } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
+import { useProfileModal } from "../../components/profile/ProfileModalContext";
 
 interface ProfileInfo {
   name: string;
@@ -36,6 +37,7 @@ export default function ProfileSwitcher({
   compact = false,
 }: ProfileSwitcherProps): React.JSX.Element {
   const { t } = useI18n();
+  const { openProfile } = useProfileModal();
   const [open, setOpen] = useState(false);
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -108,7 +110,16 @@ export default function ProfileSwitcher({
             return (
               <>
                 {active && (
-                  <div className="profile-menu-active-section">
+                  <button
+                    type="button"
+                    className="profile-menu-active-section"
+                    role="menuitem"
+                    title={t("agents.editAppearanceFor", { name: active.name })}
+                    onClick={() => {
+                      setOpen(false);
+                      openProfile(active.name, { onChanged: load });
+                    }}
+                  >
                     <div className="profile-menu-avatar">
                       <ProfileAvatar
                         name={active.name}
@@ -136,7 +147,7 @@ export default function ProfileSwitcher({
                         ].join(" · ")}
                       </span>
                     </span>
-                  </div>
+                  </button>
                 )}
                 {others.length > 0 && (
                   <>

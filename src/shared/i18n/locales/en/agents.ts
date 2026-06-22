@@ -38,4 +38,11 @@ export default {
   removeImage: "Remove image",
   uploadImageFailed: "Couldn't set the profile image",
   appearanceFailed: "Couldn't update the profile appearance",
+  sectionProfile: "Profile",
+  sectionPersona: "Persona",
+  sectionAgentMemory: "Agent Memory",
+  sectionWallet: "Wallet",
+  sectionAdvanced: "Advanced",
+  defaultNotDeletable: "The default profile can't be deleted.",
+  comingSoon: "Coming soon",
 } as const;
