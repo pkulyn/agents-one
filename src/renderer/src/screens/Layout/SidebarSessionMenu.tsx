@@ -65,6 +65,7 @@ function SidebarSessionMenu({
   target,
   isPinned,
   projects,
+  scrollContainer,
   onClose,
   onTogglePin,
   onRename,
@@ -75,6 +76,13 @@ function SidebarSessionMenu({
   target: SidebarMenuTarget;
   isPinned: boolean;
   projects: SidebarMenuProject[];
+  /**
+   * The sidebar list's scroll container. Scrolling it moves the anchored row
+   * away, so the floating menu dismisses — but ONLY this container. A global
+   * capture listener would also catch the chat's streaming auto-scroll and
+   * close the menu mid-stream (the "blink and gone" bug).
+   */
+  scrollContainer?: HTMLElement | null;
   onClose: () => void;
   onTogglePin: () => void;
   onRename: () => void;
@@ -136,19 +144,21 @@ function SidebarSessionMenu({
       }
     };
     const onScroll = (): void => requestClose();
-    // capture so a scroll inside the sidebar (which doesn't bubble to window)
-    // still dismisses the floating menu.
     window.addEventListener("mousedown", onPointerDown, true);
     window.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("blur", requestClose);
+    // Only the sidebar list's own scroll dismisses the menu — scoped to the
+    // container that actually moves the anchored row. A global capture
+    // listener here also fired on the chat's streaming auto-scroll, which
+    // dismissed the menu the instant a chunk arrived.
+    scrollContainer?.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       window.removeEventListener("mousedown", onPointerDown, true);
       window.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("blur", requestClose);
+      scrollContainer?.removeEventListener("scroll", onScroll);
     };
-  }, []);
+  }, [scrollContainer]);
 
   const currentFolder = target.contextFolder?.trim() || null;
 

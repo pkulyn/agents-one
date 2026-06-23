@@ -914,6 +914,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           target={menuTarget}
           isPinned={pinnedIds.has(menuTarget.id)}
           projects={projectChoices}
+          scrollContainer={scrollRootRef.current}
           onClose={() => setMenuTarget(null)}
           onTogglePin={() => handleTogglePin(menuTarget.id)}
           onRename={() => {

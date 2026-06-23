@@ -3834,6 +3834,7 @@ body {
   gap: 12px;
   max-width: 85%;
   animation: messageIn 0.2s ease;
+  position: relative;
 }
 
 @keyframes messageIn {
@@ -3938,6 +3939,35 @@ body {
 }
 
 .chat-bubble:hover .chat-bubble-actions {
+  opacity: 1;
+}
+
+/* Hover timestamp — sits just below the bubble, revealed on row hover.
+   Anchored to .chat-message (overflow-visible) so .chat-bubble's
+   overflow:auto doesn't clip it. */
+.chat-bubble-time {
+  position: absolute;
+  bottom: -15px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* Agent rows start after the avatar (28px + 12px gap); user rows are
+   right-aligned. Anchor the time to the bubble's outer edge accordingly. */
+.chat-message-agent .chat-bubble-time {
+  left: 40px;
+}
+
+.chat-message-user .chat-bubble-time {
+  right: 0;
+}
+
+.chat-message:hover .chat-bubble-time {
   opacity: 1;
 }
 
