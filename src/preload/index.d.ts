@@ -4,6 +4,12 @@ import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
 import type {
+  ImportWalletInput,
+  ProfileWallet,
+  WalletMutationResult,
+} from "../shared/wallets";
+import type { TokenBalancesResponse } from "../shared/tokens";
+import type {
   RegistryKind,
   RegistryItem,
   RegistryCatalog,
@@ -614,6 +620,22 @@ interface HermesAPI {
   removeProfileAvatar: (
     name: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  listWallets: (profile?: string) => Promise<ProfileWallet[]>;
+  createWallet: (
+    profile?: string,
+    name?: string,
+  ) => Promise<WalletMutationResult>;
+  importWallet: (input: ImportWalletInput) => Promise<WalletMutationResult>;
+  renameWallet: (
+    profile: string | undefined,
+    id: string,
+    name: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteWallet: (
+    profile: string | undefined,
+    id: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  getTokenBalances: (address: string) => Promise<TokenBalancesResponse>;
 
   // Memory
   readMemory: (profile?: string) => Promise<{

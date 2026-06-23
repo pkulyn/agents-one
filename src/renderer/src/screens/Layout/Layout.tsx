@@ -588,7 +588,16 @@ function Layout({
             aria-expanded={!sidebarCollapsed}
           >
             {sidebarCollapsed ? (
-              <PanelLeftOpen size={16} />
+              // Collapsed: show the circular brand mark by default and swap to
+              // the expand icon on hover/focus. Both sit in a fixed-size box so
+              // the swap never changes the button's footprint.
+              <span className="sidebar-collapse-swap">
+                <span className="sidebar-collapse-mark" aria-hidden="true" />
+                <PanelLeftOpen
+                  size={16}
+                  className="sidebar-collapse-expand-icon"
+                />
+              </span>
             ) : (
               <PanelLeftClose size={16} />
             )}
@@ -633,6 +642,11 @@ function Layout({
                 loadingSessionIds={loadingSessionIds}
                 resumingSessionId={resumingSessionId}
                 onSelect={handleResumeSession}
+                onSessionDeleted={(id) => {
+                  // If the open chat was the one deleted, drop to a fresh chat
+                  // so the user isn't left viewing a now-gone conversation.
+                  if (id === currentSessionId) handleNewChat();
+                }}
                 scrollRootRef={sidebarChatScrollRef}
               />
             </div>
