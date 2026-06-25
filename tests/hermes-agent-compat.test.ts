@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
@@ -90,11 +96,15 @@ mount_spa(app)
     expect(result.source).toContain("HERMES_ONE_MODEL_LIBRARY_COMPAT_V1");
     expect(result.source).toContain('@app.get("/api/model/library")');
     expect(result.source).toContain('@app.post("/api/model/library")');
-    expect(result.source).toContain('@app.patch("/api/model/library/{model_id:path}")');
-    expect(result.source).toContain('@app.delete("/api/model/library/{model_id:path}")');
-    expect(result.source.indexOf('@app.get("/api/model/library")')).toBeLessThan(
-      result.source.indexOf("mount_spa(app)"),
+    expect(result.source).toContain(
+      '@app.patch("/api/model/library/{model_id:path}")',
     );
+    expect(result.source).toContain(
+      '@app.delete("/api/model/library/{model_id:path}")',
+    );
+    expect(
+      result.source.indexOf('@app.get("/api/model/library")'),
+    ).toBeLessThan(result.source.indexOf("mount_spa(app)"));
   });
 
   it("does not install the model library endpoint twice", () => {
@@ -133,9 +143,9 @@ def hermes_one_get_model_library():
 
     expect(result.compatible).toBe(true);
     expect(result.changed).toBe(true);
-    expect(result.source.indexOf('@app.get("/api/model/library")')).toBeLessThan(
-      result.source.indexOf("mount_spa(app)"),
-    );
+    expect(
+      result.source.indexOf('@app.get("/api/model/library")'),
+    ).toBeLessThan(result.source.indexOf("mount_spa(app)"));
     expect(result.detail).toContain("Moved");
   });
 
@@ -172,7 +182,9 @@ mount_spa(app)
 
       expect(readFileSync(target, "utf-8")).toBe("patched");
       expect(readFileSync(`${target}.orig`, "utf-8")).toBe("original");
-      expect(readdirSync(dir).filter((name) => name.includes(".hermes-one-"))).toEqual([]);
+      expect(
+        readdirSync(dir).filter((name) => name.includes(".hermes-one-")),
+      ).toEqual([]);
 
       writeCompatFileAtomically(target, "patched-again");
 

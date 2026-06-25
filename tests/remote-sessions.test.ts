@@ -8,6 +8,7 @@ import {
   remoteReadMediaAsDataUrl,
   remoteSearchSessions,
   remoteUpdateSessionTitle,
+  type RemoteSessionConfig,
 } from "../src/main/remote-sessions";
 
 interface RecordedRequest {
@@ -244,10 +245,7 @@ describe("remote session REST bridge", () => {
           return;
         }
 
-        if (
-          req.method === "PATCH" &&
-          req.url === "/api/sessions/sess-title"
-        ) {
+        if (req.method === "PATCH" && req.url === "/api/sessions/sess-title") {
           res.end(JSON.stringify({ ok: true }));
           return;
         }
@@ -282,7 +280,7 @@ describe("remote session REST bridge", () => {
     });
   });
 
-  function config() {
+  function config(): RemoteSessionConfig {
     return { remoteUrl: `${baseUrl}/api`, apiKey: "test-token" };
   }
 
@@ -366,6 +364,8 @@ describe("remote session REST bridge", () => {
         source: "chat",
         messageCount: 2,
         model: "custom/deepseek-v4-pro",
+        // Remote sessions have no local desktop folder binding (issue #27).
+        contextFolder: null,
       },
     ]);
   });
@@ -421,7 +421,10 @@ describe("remote session REST bridge", () => {
   });
 
   it("hides remote pasted-image fallback text when the remote image is gone", async () => {
-    const items = await remoteGetSessionMessages(config(), "sess-image-missing");
+    const items = await remoteGetSessionMessages(
+      config(),
+      "sess-image-missing",
+    );
     const user = items[0];
 
     expect(user).toMatchObject({

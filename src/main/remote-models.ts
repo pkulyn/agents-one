@@ -1,8 +1,5 @@
 import type { SavedModel } from "./models";
-import {
-  remoteRequestJson,
-  type RemoteSessionConfig,
-} from "./remote-sessions";
+import { remoteRequestJson, type RemoteSessionConfig } from "./remote-sessions";
 
 type RemoteRecord = Record<string, unknown>;
 const REMOTE_MODEL_OPTIONS_TIMEOUT_MS = 60_000;
@@ -54,8 +51,7 @@ function normalizeRemoteSavedModel(
   const baseUrl = asString(row.baseUrl, asString(row.base_url)).trim();
   return {
     id:
-      asString(row.id).trim() ||
-      `remote:library:${provider}:${index}:${model}`,
+      asString(row.id).trim() || `remote:library:${provider}:${index}:${model}`,
     name: asString(row.name).trim() || shortModelLabel(model) || provider,
     provider,
     model,
@@ -163,9 +159,10 @@ function modelsFromRemoteOptions(response: unknown): SavedModel[] {
   return dedupeModels(models);
 }
 
-function currentProviderRow(
-  response: unknown,
-): { baseUrl: string; provider: string } {
+function currentProviderRow(response: unknown): {
+  baseUrl: string;
+  provider: string;
+} {
   const record = asRecord(response);
   const currentProvider = asString(record.provider).trim();
   const providers = Array.isArray(record.providers)

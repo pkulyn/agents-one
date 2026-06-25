@@ -66,7 +66,8 @@ export default {
   minimaxApiKey: "מפתח API של MiniMax",
   minimaxHint: "מודלים של MiniMax (גלובלי)",
   nousApiKey: "מפתח API של Nous Portal",
-  nousHint: "מפתח API של Nous Portal - השתמשו בכרטיס ה-OAuth למטה אם יש לכם מנוי Nous במקום זאת",
+  nousHint:
+    "מפתח API של Nous Portal - השתמשו בכרטיס ה-OAuth למטה אם יש לכם מנוי Nous במקום זאת",
   minimaxCnApiKey: "מפתח API של MiniMax China",
   minimaxCnHint: "מודלים של MiniMax (נקודת קצה בסין)",
   opencodeZenApiKey: "מפתח API של OpenCode Zen",

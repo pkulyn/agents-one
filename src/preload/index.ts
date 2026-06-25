@@ -1,8 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
+import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
+import type {
+  ImportWalletInput,
+  ProfileWallet,
+  WalletMutationResult,
+} from "../shared/wallets";
+import type { TokenBalancesResponse } from "../shared/tokens";
 import type {
   MessagingPlatformsResponse,
   MessagingPlatformTestResponse,
@@ -310,7 +317,8 @@ const hermesAPI = {
         },
       );
     ipcRenderer.on("connection-config-changed", handler);
-    return () => ipcRenderer.removeListener("connection-config-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("connection-config-changed", handler);
   },
 
   setSshConfig: (
@@ -367,6 +375,7 @@ const hermesAPI = {
     attachments?: Attachment[],
     contextFolder?: string,
     runId?: string,
+    modelOverride?: SessionModelOverride,
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -377,6 +386,7 @@ const hermesAPI = {
       attachments,
       contextFolder,
       runId,
+      modelOverride,
     ),
 
   abortChat: (runId?: string): Promise<void> =>
@@ -715,6 +725,26 @@ const hermesAPI = {
   ): Promise<boolean> =>
     ipcRenderer.invoke("record-session-local-error", sessionId, error),
 
+  getSessionContextFolder: (sessionId: string): Promise<string | null> =>
+    ipcRenderer.invoke("get-session-context-folder", sessionId),
+
+  setSessionContextFolder: (
+    sessionId: string,
+    folder: string | null,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-session-context-folder", sessionId, folder),
+
+  getSessionModelOverride: (
+    sessionId: string,
+  ): Promise<SessionModelOverride | null> =>
+    ipcRenderer.invoke("get-session-model-override", sessionId),
+
+  setSessionModelOverride: (
+    sessionId: string,
+    override: SessionModelOverride | null,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-session-model-override", sessionId, override),
+
   // Profiles
   listProfiles: (): Promise<
     Array<{
@@ -763,6 +793,34 @@ const hermesAPI = {
     name: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("remove-profile-avatar", name),
+
+  listWallets: (profile?: string): Promise<ProfileWallet[]> =>
+    ipcRenderer.invoke("list-wallets", profile),
+
+  createWallet: (
+    profile?: string,
+    name?: string,
+  ): Promise<WalletMutationResult> =>
+    ipcRenderer.invoke("create-wallet", profile, name),
+
+  importWallet: (input: ImportWalletInput): Promise<WalletMutationResult> =>
+    ipcRenderer.invoke("import-wallet", input),
+
+  renameWallet: (
+    profile: string | undefined,
+    id: string,
+    name: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("rename-wallet", profile, id, name),
+
+  deleteWallet: (
+    profile: string | undefined,
+    id: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("delete-wallet", profile, id),
+
+  getTokenBalances: (address: string): Promise<TokenBalancesResponse> =>
+    ipcRenderer.invoke("get-token-balances", address),
 
   // Memory
   readMemory: (
@@ -853,6 +911,7 @@ const hermesAPI = {
       source: string;
       messageCount: number;
       model: string;
+      contextFolder: string | null;
     }>
   > => ipcRenderer.invoke("list-cached-sessions", limit, offset),
 
@@ -864,6 +923,7 @@ const hermesAPI = {
       source: string;
       messageCount: number;
       model: string;
+      contextFolder: string | null;
     }>
   > => ipcRenderer.invoke("sync-session-cache"),
 
@@ -941,20 +1001,34 @@ const hermesAPI = {
     provider: string,
     model: string,
     baseUrl: string,
+    contextLength?: number,
   ): Promise<{
     id: string;
     name: string;
     provider: string;
     model: string;
     baseUrl: string;
+    contextLength?: number;
     createdAt: number;
-  }> => ipcRenderer.invoke("add-model", name, provider, model, baseUrl),
+  }> =>
+    ipcRenderer.invoke(
+      "add-model",
+      name,
+      provider,
+      model,
+      baseUrl,
+      contextLength,
+    ),
 
   removeModel: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("remove-model", id),
 
-  updateModel: (id: string, fields: Record<string, string>): Promise<boolean> =>
-    ipcRenderer.invoke("update-model", id, fields),
+  updateModel: (
+    id: string,
+    fields: Record<string, string>,
+    contextLength?: number | null,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("update-model", id, fields, contextLength),
 
   onModelLibraryChanged: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
@@ -1035,6 +1109,10 @@ const hermesAPI = {
   downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke("download-update"),
   installUpdate: (): Promise<void> => ipcRenderer.invoke("install-update"),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke("get-app-version"),
+  getAutoUpgradeEnabled: (): Promise<boolean> =>
+    ipcRenderer.invoke("get-auto-upgrade-enabled"),
+  setAutoUpgradeEnabled: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke("set-auto-upgrade-enabled", enabled),
 
   onUpdateAvailable: (
     callback: (info: { version: string; releaseNotes: string }) => void,
@@ -1215,6 +1293,10 @@ const hermesAPI = {
     ipcRenderer.invoke("kanban-unblock-task", taskId, profile),
   kanbanArchiveTask: (taskId: string, profile?: string) =>
     ipcRenderer.invoke("kanban-archive-task", taskId, profile),
+  kanbanPromoteTask: (taskId: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-promote-task", taskId, profile),
+  kanbanScheduleTask: (taskId: string, reason?: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-schedule-task", taskId, reason, profile),
   kanbanSpecifyTask: (taskId: string, profile?: string) =>
     ipcRenderer.invoke("kanban-specify-task", taskId, profile),
   kanbanReclaimTask: (taskId: string, reason?: string, profile?: string) =>

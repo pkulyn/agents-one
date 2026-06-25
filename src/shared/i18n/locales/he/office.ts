@@ -44,7 +44,7 @@ export default {
   status_idle: "בהמתנה",
   status_error: "שגיאה",
   employee: "עובד",
-  ceo: "מנכ\"ל",
-  makeCeo: "מינוי למנכ\"ל",
-  removeCeo: "הסרה מתפקיד מנכ\"ל",
+  ceo: 'מנכ"ל',
+  makeCeo: 'מינוי למנכ"ל',
+  removeCeo: 'הסרה מתפקיד מנכ"ל',
 } as const;

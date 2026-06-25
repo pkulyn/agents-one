@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Toaster } from "react-hot-toast";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { FontProvider } from "./components/FontProvider";
+import { ProfileModalProvider } from "./components/profile/ProfileModalProvider";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Welcome from "./screens/Welcome/Welcome";
 import Install from "./screens/Install/Install";
@@ -36,7 +37,7 @@ function App(): React.JSX.Element {
   const runInstallCheck = useCallback(async () => {
     const startedAt = Date.now();
     let next: Screen = "welcome";
-    let error: string | null = null;
+    const error: string | null = null;
     let isRemote = false;
 
     try {
@@ -224,24 +225,26 @@ function App(): React.JSX.Element {
   return (
     <ThemeProvider>
       <FontProvider>
-        <ErrorBoundary>
-          <div className={`app${isMac ? " is-mac" : ""}`}>
-            {isMac && <div className="drag-region" />}
-            <div className="app-content">{renderScreen()}</div>
-          </div>
-          <Toaster
-            position="bottom-right"
-            reverseOrder={false}
-            toastOptions={{
-              style: {
-                background: "var(--bg-elevated)",
-                color: "var(--text-primary)",
-                border: "1px solid var(--border-bright)",
-                fontSize: 13,
-              },
-            }}
-          />
-        </ErrorBoundary>
+        <ProfileModalProvider>
+          <ErrorBoundary>
+            <div className={`app${isMac ? " is-mac" : ""}`}>
+              {isMac && <div className="drag-region" />}
+              <div className="app-content">{renderScreen()}</div>
+            </div>
+            <Toaster
+              position="bottom-right"
+              reverseOrder={false}
+              toastOptions={{
+                style: {
+                  background: "var(--bg-elevated)",
+                  color: "var(--text-primary)",
+                  border: "1px solid var(--border-bright)",
+                  fontSize: 13,
+                },
+              }}
+            />
+          </ErrorBoundary>
+        </ProfileModalProvider>
       </FontProvider>
     </ThemeProvider>
   );

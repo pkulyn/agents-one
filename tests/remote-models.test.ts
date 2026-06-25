@@ -23,8 +23,7 @@ function startServer(
       }
       resolve({
         url: `http://127.0.0.1:${address.port}`,
-        close: () =>
-          new Promise<void>((done) => server!.close(() => done())),
+        close: () => new Promise<void>((done) => server!.close(() => done())),
       });
     });
   });
@@ -264,7 +263,10 @@ describe("remote dashboard models", () => {
       ),
     ).resolves.toBe(true);
     await expect(
-      remoteRemoveModel({ remoteUrl: url, apiKey: "token" }, "remote:library:1"),
+      remoteRemoveModel(
+        { remoteUrl: url, apiKey: "token" },
+        "remote:library:1",
+      ),
     ).resolves.toBe(true);
 
     expect(seen).toEqual([

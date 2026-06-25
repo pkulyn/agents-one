@@ -9,13 +9,16 @@ export {
   Clock,
   Compass,
   Copy,
+  Database,
   Download,
   Pencil,
   Plug,
   Workflow,
   ExternalLink,
+  Folder,
   KeyRound,
   Layers,
+  Loader,
   Monitor,
   Moon,
   PanelLeftClose,
@@ -29,7 +32,9 @@ export {
   Sparkles,
   Sun,
   Timer,
+  User,
   Users,
+  Wallet,
   Wrench,
   X,
 } from "lucide-react";
@@ -52,3 +57,7 @@ export { Filter as TriageIcon } from "lucide-react";
 export { Shield as ApprovalIcon } from "lucide-react";
 export { Folder as CuratorIcon } from "lucide-react";
 export { User as ProfileIcon } from "lucide-react";
+export { MoreHorizontal } from "lucide-react";
+export { Pin } from "lucide-react";
+export { PinOff } from "lucide-react";
+export { FolderInput } from "lucide-react";

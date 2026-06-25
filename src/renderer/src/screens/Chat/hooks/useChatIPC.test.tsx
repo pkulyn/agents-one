@@ -2,11 +2,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef, useState } from "react";
 import { useChatIPC } from "./useChatIPC";
-import type {
-  ActiveTurn,
-  ChatMessage,
-  UsageState,
-} from "../types";
+import type { ActiveTurn, ChatMessage, UsageState } from "../types";
 
 type Callback<T extends unknown[]> = (...args: T) => void;
 
@@ -77,7 +73,11 @@ function installHermesApi(callbacks: ChatIpcCallbacks): {
   return { getSessionMessages };
 }
 
-function Harness({ sessionScopeId }: { sessionScopeId: string | null }) {
+function Harness({
+  sessionScopeId,
+}: {
+  sessionScopeId: string | null;
+}): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [, setHermesSessionId] = useState<string | null>(sessionScopeId);
   const [, setToolProgress] = useState<string | null>(null);

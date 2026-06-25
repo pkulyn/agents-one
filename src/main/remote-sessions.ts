@@ -54,7 +54,8 @@ export function remoteRequestJson<T>(
   options: RemoteRequestOptions = {},
 ): Promise<T> {
   const token = config.apiKey.trim();
-  if (!token) throw new Error("Remote Hermes dashboard token is not configured.");
+  if (!token)
+    throw new Error("Remote Hermes dashboard token is not configured.");
 
   return new Promise((resolve, reject) => {
     const parsed = new URL(dashboardApiUrl(config, path));
@@ -78,7 +79,9 @@ export function remoteRequestJson<T>(
         res.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");
           if ((res.statusCode ?? 500) >= 400) {
-            reject(new Error(`${res.statusCode}: ${text || res.statusMessage}`));
+            reject(
+              new Error(`${res.statusCode}: ${text || res.statusMessage}`),
+            );
             return;
           }
           if (!text) {
@@ -234,6 +237,7 @@ function normalizeCachedSession(row: RemoteRecord): CachedSession {
     source: summary.source,
     messageCount: summary.messageCount,
     model: summary.model,
+    contextFolder: null,
   };
 }
 
@@ -381,7 +385,9 @@ async function remoteGetSessionSummary(
       { timeoutMs: 8_000 },
     );
     const record = asRecord(response);
-    return record.id || record.session_id ? normalizeSessionSummary(record) : null;
+    return record.id || record.session_id
+      ? normalizeSessionSummary(record)
+      : null;
   } catch {
     return null;
   }
@@ -530,19 +536,27 @@ export async function remoteUpdateSessionTitle(
   sessionId: string,
   title: string,
 ): Promise<void> {
-  await remoteRequestJson(config, `/api/sessions/${encodeURIComponent(sessionId)}`, {
-    method: "PATCH",
-    body: { title },
-  });
+  await remoteRequestJson(
+    config,
+    `/api/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      method: "PATCH",
+      body: { title },
+    },
+  );
 }
 
 export async function remoteDeleteSession(
   config: RemoteSessionConfig,
   sessionId: string,
 ): Promise<void> {
-  await remoteRequestJson(config, `/api/sessions/${encodeURIComponent(sessionId)}`, {
-    method: "DELETE",
-  });
+  await remoteRequestJson(
+    config,
+    `/api/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export interface RemoteDeleteSessionsResult {
