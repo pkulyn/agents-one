@@ -635,8 +635,8 @@ class TuiGatewayClient {
   }
 
   private async startDashboardBackend(): Promise<void> {
-    if (!existsSync(tuiGatewayPython())) {
-      throw new Error(`Python interpreter not found at ${tuiGatewayPython()}`);
+    if (!existsSync(HERMES_PYTHON)) {
+      throw new Error(`Python interpreter not found at ${HERMES_PYTHON}`);
     }
     if (!existsSync(HERMES_REPO)) {
       throw new Error(`hermes-agent repo not found at ${HERMES_REPO}`);
@@ -663,7 +663,7 @@ class TuiGatewayClient {
       "--port",
       String(this.port),
     ]);
-    const proc = spawn(tuiGatewayPython(), args, {
+    const proc = spawn(HERMES_PYTHON, args, {
       cwd: HERMES_REPO,
       env: dashboardEnv,
       stdio: ["ignore", "pipe", "pipe"],
@@ -842,13 +842,6 @@ function wsDataToString(
 }
 
 const tuiGatewayClients = new Map<string, TuiGatewayClient>();
-
-function tuiGatewayPython(): string {
-  if (process.platform === "win32" && /pythonw\.exe$/i.test(HERMES_PYTHON)) {
-    return HERMES_PYTHON.replace(/pythonw\.exe$/i, "python.exe");
-  }
-  return HERMES_PYTHON;
-}
 
 export function tuiGatewayEnv(profile?: string): Record<string, string> {
   const resolved = resolveProfile(profile);
