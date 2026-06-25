@@ -1070,6 +1070,7 @@ function Chat({
                 onPickFolder={handlePickFolder}
                 onClearFolder={handleClearFolder}
                 onToggleWorktree={() => setWorktreeVisible((v) => !v)}
+                onSelectRecentFolder={(path) => setContextFolder(path)}
               />
               <button
                 type="button"

@@ -340,8 +340,13 @@ export function useChatActions({
           if (showPending) replacePending(`error: ${result.message}`);
           else addAgentMessage?.(`error: ${result.message}`);
         } else if (result.type === "handled") {
-          if (showPending) replacePending(buffer || result.output || "(done)");
-          else if (result.output) addAgentMessage?.(result.output);
+          const out = buffer || result.output;
+          if (out) {
+            if (showPending) replacePending(out);
+            else addAgentMessage?.(out);
+          } else {
+            removePending();
+          }
         } else {
           removePending();
           if (buffer) addAgentMessage?.(buffer);

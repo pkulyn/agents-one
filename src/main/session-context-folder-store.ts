@@ -113,3 +113,16 @@ export function deleteSessionContextFolderForSession(
     db.prepare(`DELETE FROM ${TABLE} WHERE session_id = ?`).run(sessionId);
   }
 }
+
+/** Get recent distinct context folder paths ordered by most recently updated. */
+export function getRecentSessionContextFolders(limit = 20): string[] {
+  const db = getDbConnection(true);
+  if (!db || !tableExists(db)) return [];
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT folder_path FROM ${TABLE} WHERE folder_path IS NOT NULL AND folder_path != '' ORDER BY updated_at DESC LIMIT ?`,
+    )
+    .all(limit) as Array<{ folder_path: string }>;
+  return rows.map((r) => r.folder_path);
+}
+

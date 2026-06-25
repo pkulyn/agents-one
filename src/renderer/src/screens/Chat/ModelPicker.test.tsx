@@ -129,6 +129,13 @@ describe("ModelPicker", () => {
     expect(container.querySelector(".chat-model-dropdown")).toBeNull();
   });
 
+  it("closes the dropdown when pressing Escape", () => {
+    const { container } = renderPicker();
+    const dropdown = openPicker(container);
+    fireEvent.keyDown(dropdown, { key: "Escape" });
+    expect(container.querySelector(".chat-model-dropdown")).toBeNull();
+  });
+
   it("opens from a slash-command event only when the chat is active", () => {
     const active = renderPicker({ active: true });
     const inactive = renderPicker({ active: false });

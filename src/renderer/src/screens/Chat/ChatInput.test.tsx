@@ -81,11 +81,11 @@ describe("ChatInput — slash command palette", () => {
     expect(
       screen.getByRole("dialog", { name: "chat.commandsTitle" }),
     ).toBeTruthy();
-    expect(screen.getByText("/agents")).toBeTruthy();
+    expect(screen.getByText("agents")).toBeTruthy();
 
     fireEvent.change(textarea, { target: { value: "/lea" } });
-    expect(screen.getByText("/learn")).toBeTruthy();
-    expect(screen.queryByText("/agents")).toBeNull();
+    expect(screen.getByText("learn")).toBeTruthy();
+    expect(screen.queryByText("agents")).toBeNull();
   });
 
   it("closes with Escape from anywhere in the modal while keeping the draft", () => {
@@ -113,11 +113,11 @@ describe("ChatInput — slash command palette", () => {
 
     expect(screen.getByText("1000 commands")).toBeTruthy();
     expect(screen.getAllByRole("option").length).toBeLessThan(30);
-    expect(screen.getByText("/command-0")).toBeTruthy();
-    expect(screen.queryByText("/command-999")).toBeNull();
+    expect(screen.getByText("command-0")).toBeTruthy();
+    expect(screen.queryByText("command-999")).toBeNull();
 
     fireEvent.keyDown(textarea, { key: "ArrowUp" });
-    expect(screen.getByText("/command-999")).toBeTruthy();
-    expect(screen.queryByText("/command-0")).toBeNull();
+    expect(screen.getByText("command-999")).toBeTruthy();
+    expect(screen.queryByText("command-0")).toBeNull();
   });
 });

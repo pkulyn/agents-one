@@ -132,11 +132,6 @@ export function useLocalCommands({
           const isOn = current === "fast" || current === "priority";
           const next = !isOn;
           await setFastMode(next);
-          addAgentMessage(
-            next
-              ? "**Fast Mode: ON** — Priority processing enabled for lower latency."
-              : "**Fast Mode: OFF** — Standard processing restored.",
-          );
           return true;
         }
 

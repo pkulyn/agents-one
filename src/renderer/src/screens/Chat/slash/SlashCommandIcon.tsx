@@ -33,6 +33,7 @@ import {
   RotateCcw,
   RotateCw,
   Server,
+  Settings,
   Share2,
   Sparkles,
   Target,
@@ -45,6 +46,7 @@ import {
   Wrench,
   XCircle,
   Zap,
+  MessageSquareCode,
 } from "lucide-react";
 
 export const CUSTOM_SLASH_SVGS: Record<string, string | React.ReactNode> = {};
@@ -119,13 +121,24 @@ const ICON_MAP: Record<string, LucideIcon> = {
   yolo: Flame,
   "youtube-content": Video,
   yuanbao: Bot,
+
+  // Desktop
+  settings: Settings,
+  commands: HelpCircle,
+  "explain-selection": MessageSquareCode,
+  learn: Brain,
 };
 
 const CATEGORY_DEFAULTS: Record<string, LucideIcon> = {
   chat: MessageSquarePlus,
   agent: Bot,
+  "hermes agent": Bot,
   tools: Wrench,
+  "tools & skills": Wrench,
   info: Info,
+  "pages & settings": Info,
+  desktop: Settings,
+  navigation: Compass,
 };
 
 export interface SlashCommandIconProps {
