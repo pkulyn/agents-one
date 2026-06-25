@@ -1,4 +1,4 @@
-<img width="100%" alt="HERMES DESKTOP" src="previews/header.webp" />
+<img width="100%" alt="HERMES DESKTOP" src="assets/header.webp" />
 
 <br/>
 <p align="center">
