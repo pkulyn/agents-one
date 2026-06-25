@@ -69,3 +69,29 @@ describe("ChatInput — CJK IME Enter handling", () => {
     expect(onSubmit).toHaveBeenCalledWith("안녕하세요", []);
   });
 });
+
+describe("ChatInput — slash command palette", () => {
+  it("opens on slash and filters commands while typing", () => {
+    const { textarea } = renderInput();
+
+    fireEvent.change(textarea, { target: { value: "/" } });
+    expect(
+      screen.getByRole("dialog", { name: "chat.commandsTitle" }),
+    ).toBeTruthy();
+    expect(screen.getByText("/agents")).toBeTruthy();
+
+    fireEvent.change(textarea, { target: { value: "/lea" } });
+    expect(screen.getByText("/learn")).toBeTruthy();
+    expect(screen.queryByText("/agents")).toBeNull();
+  });
+
+  it("closes with Escape while keeping the draft", () => {
+    const { textarea } = renderInput();
+
+    fireEvent.change(textarea, { target: { value: "/lea" } });
+    fireEvent.keyDown(textarea, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(textarea.value).toBe("/lea");
+  });
+});

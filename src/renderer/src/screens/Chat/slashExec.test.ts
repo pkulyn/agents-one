@@ -88,6 +88,33 @@ describe("executeSlash", () => {
     });
   });
 
+  it("accepts a send directive returned directly by slash.exec", async () => {
+    const request = vi.fn().mockResolvedValue({
+      type: "send",
+      message: "[/learn] create a reusable skill",
+    });
+    const sys = vi.fn();
+
+    const outcome = await executeSlash({
+      command: "/learn this conversation",
+      sessionId: "s",
+      request,
+      sys,
+    });
+
+    expect(outcome).toEqual({
+      kind: "send",
+      message: "[/learn] create a reusable skill",
+      source: "send",
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith("slash.exec", {
+      command: "learn this conversation",
+      session_id: "s",
+    });
+    expect(sys).not.toHaveBeenCalled();
+  });
+
   it("announces a skill load and forwards its message as a send", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "slash.exec") throw new Error("skill command");

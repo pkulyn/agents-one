@@ -8,7 +8,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Square as Stop, Slash, Paperclip, Mic, ArrowUp } from "lucide-react";
+import { Square as Stop, Search, Paperclip, Mic, ArrowUp } from "lucide-react";
 import { isImeComposing } from "./keyboard";
 import { useI18n } from "../../components/useI18n";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
@@ -257,18 +257,53 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const active = slashMenuRef.current?.querySelector(
         ".slash-menu-item-active",
       );
-      active?.scrollIntoView({ block: "nearest" });
+      if (active instanceof HTMLElement && active.scrollIntoView) {
+        active.scrollIntoView({ block: "nearest" });
+      }
     }, [slashSelectedIndex, slashMenuOpen]);
 
-    const filteredSlashCommands = useMemo(
-      () =>
-        slashMenuOpen
-          ? slashCommands.filter((cmd) =>
-              cmd.name.toLowerCase().startsWith(slashFilter.toLowerCase()),
-            )
-          : [],
-      [slashCommands, slashMenuOpen, slashFilter],
-    );
+    const filteredSlashCommands = useMemo(() => {
+      if (!slashMenuOpen) return [];
+      const query = slashFilter.toLowerCase();
+      return slashCommands
+        .filter((cmd) => {
+          const name = cmd.name.toLowerCase();
+          const description = cmd.description.toLowerCase();
+          return name.includes(query) || description.includes(query.slice(1));
+        })
+        .sort((a, b) => {
+          const aStarts = a.name.toLowerCase().startsWith(query);
+          const bStarts = b.name.toLowerCase().startsWith(query);
+          if (aStarts !== bStarts) return aStarts ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+    }, [slashCommands, slashMenuOpen, slashFilter]);
+
+    const groupedSlashCommands = useMemo(() => {
+      const groups = new Map<
+        string,
+        Array<{ command: SlashCommand; index: number }>
+      >();
+      filteredSlashCommands.forEach((command, index) => {
+        const rows = groups.get(command.category) ?? [];
+        rows.push({ command, index });
+        groups.set(command.category, rows);
+      });
+      return Array.from(groups.entries());
+    }, [filteredSlashCommands]);
+
+    function slashCategoryLabel(category: SlashCommand["category"]): string {
+      switch (category) {
+        case "chat":
+          return "Chat";
+        case "info":
+          return "Pages & settings";
+        case "tools":
+          return "Tools & skills";
+        case "agent":
+          return "Hermes Agent";
+      }
+    }
 
     function clearAfterSend(text: string): void {
       history.push(text);
@@ -431,31 +466,70 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     return (
       <>
         {slashMenuOpen && filteredSlashCommands.length > 0 && (
-          <div className="slash-menu" ref={slashMenuRef}>
-            <div className="slash-menu-header">
-              <Slash size={12} />
-              {t("chat.commandsTitle")}
-            </div>
-            <div className="slash-menu-list">
-              {filteredSlashCommands.map((cmd, i) => (
-                <button
-                  key={cmd.name}
-                  className={`slash-menu-item ${i === slashSelectedIndex ? "slash-menu-item-active" : ""}`}
-                  onMouseEnter={() => setSlashSelectedIndex(i)}
-                  onClick={() => handleSlashSelect(cmd)}
-                >
-                  <SlashCommandIcon
-                    name={cmd.name}
-                    category={cmd.category}
-                    className="slash-menu-item-icon"
-                    size={15}
-                  />
-                  <span className="slash-menu-item-name">{cmd.name}</span>
-                  <span className="slash-menu-item-desc">
-                    {cmd.description}
-                  </span>
-                </button>
-              ))}
+          <div
+            className="slash-menu-overlay"
+            onMouseDown={() => setSlashMenuOpen(false)}
+          >
+            <div
+              className="slash-menu"
+              ref={slashMenuRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("chat.commandsTitle")}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="slash-menu-search">
+                <Search size={16} aria-hidden />
+                <span className="slash-menu-search-query">
+                  {slashFilter || "/"}
+                </span>
+                <kbd>esc</kbd>
+              </div>
+              <div className="slash-menu-list">
+                {groupedSlashCommands.map(([category, rows]) => (
+                  <section className="slash-menu-group" key={category}>
+                    <div className="slash-menu-group-label">
+                      {slashCategoryLabel(category as SlashCommand["category"])}
+                    </div>
+                    {rows.map(({ command: cmd, index }) => (
+                      <button
+                        key={cmd.name}
+                        className={`slash-menu-item ${index === slashSelectedIndex ? "slash-menu-item-active" : ""}`}
+                        onMouseEnter={() => setSlashSelectedIndex(index)}
+                        onClick={() => handleSlashSelect(cmd)}
+                      >
+                        <SlashCommandIcon
+                          name={cmd.name}
+                          category={cmd.category}
+                          className="slash-menu-item-icon"
+                          size={10}
+                        />
+                        <span className="slash-menu-item-name">{cmd.name}</span>
+                        <span className="slash-menu-item-desc">
+                          {cmd.description}
+                        </span>
+                        <span className="slash-menu-item-badge">
+                          {slashCategoryLabel(cmd.category)}
+                        </span>
+                      </button>
+                    ))}
+                  </section>
+                ))}
+              </div>
+              <div className="slash-menu-footer">
+                <span>
+                  <kbd>↑↓</kbd> navigate
+                </span>
+                <span>
+                  <kbd>↵</kbd> select
+                </span>
+                <span>
+                  <kbd>tab</kbd> complete
+                </span>
+                <span className="slash-menu-count">
+                  {filteredSlashCommands.length} commands
+                </span>
+              </div>
             </div>
           </div>
         )}

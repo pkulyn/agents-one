@@ -77,10 +77,21 @@ export async function executeSlash(
 
   // Primary dispatcher: the registry-backed slash worker.
   try {
-    const r = (await request("slash.exec", {
+    const raw = await request("slash.exec", {
       command: command.replace(/^\/+/, ""),
       session_id: sessionId,
-    })) as SlashExecResponse | undefined;
+    });
+    const dispatched = parseCommandDispatch(raw);
+    if (dispatched) {
+      return handleCommandDispatch(
+        dispatched,
+        { command, sessionId, request, sys },
+        arg,
+        name,
+        depth,
+      );
+    }
+    const r = raw as SlashExecResponse | undefined;
     const body = r?.output || `/${name}: no output`;
     sys(r?.warning ? `warning: ${r.warning}\n${body}` : body);
     return { kind: "done" };
@@ -108,6 +119,24 @@ export async function executeSlash(
   if (!dispatched) {
     return { kind: "error", message: "invalid response: command.dispatch" };
   }
+
+  return handleCommandDispatch(
+    dispatched,
+    { command, sessionId, request, sys },
+    arg,
+    name,
+    depth,
+  );
+}
+
+function handleCommandDispatch(
+  dispatched: CommandDispatchResponse,
+  options: ExecuteSlashOptions,
+  arg: string,
+  name: string,
+  depth: number,
+): Promise<SlashExecOutcome> | SlashExecOutcome {
+  const { sessionId, request, sys } = options;
 
   switch (dispatched.type) {
     case "exec":

@@ -83,6 +83,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     category: "agent",
   },
   {
+    name: "/learn",
+    description: "Learn a reusable skill from files, URLs, notes, or this chat",
+    category: "agent",
+    takesArgs: true,
+  },
+  {
     name: "/steer",
     description: "Steer the in-flight agent without interrupting it",
     category: "agent",

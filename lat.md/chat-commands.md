@@ -6,9 +6,9 @@ The desktop talks to the hermes-agent gateway over JSON-RPC. A normal message go
 
 ## Routing pipeline
 
-The pure routing logic lives in [[src/renderer/src/screens/Chat/slashExec.ts#executeSlash]]: try `slash.exec`, and on rejection fall back to `command.dispatch`, returning a `SlashExecOutcome` of `done` (output rendered), `send` (resolved to an agent prompt the caller should stream), or `error`.
+The pure routing logic lives in [[src/renderer/src/screens/Chat/slashExec.ts#executeSlash]]: try `slash.exec`, accept either rendered output or a structured dispatch result, and on rejection fall back to `command.dispatch`, returning `done`, `send`, or `error`.
 
-It mirrors hermes-agent's reference client (`web/src/lib/slashExec.ts`) so every front-end implements the same contract. Returning the `send` directive rather than dispatching it keeps the streaming turn lifecycle (loading state, active turn, `prompt.submit`) in the caller.
+It mirrors hermes-agent's reference client (`web/src/lib/slashExec.ts`) so every front-end implements the same contract. Pending-input commands such as `/learn` can return `{type: "send"}` directly from `slash.exec`; that prompt still passes through the central model-submission path.
 
 ## Local vs gateway commands
 
@@ -83,3 +83,5 @@ Model commands and Agent `send`/skill directives pass through [[src/renderer/src
 ### Command icons
 
 Visual presentation in the autocomplete popup is handled by [[src/renderer/src/screens/Chat/slash/SlashCommandIcon.tsx#SlashCommandIcon]], mapping command names to Lucide icons with fallback defaults and a custom SVG registry.
+
+Typing `/` opens a centered command palette in [[src/renderer/src/screens/Chat/ChatInput.tsx#ChatInput]] while the composer retains keyboard focus. Results filter by name or description, stay grouped by category, and support arrows, Enter or Tab, and Escape.
