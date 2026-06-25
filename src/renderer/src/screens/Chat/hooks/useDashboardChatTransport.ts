@@ -835,6 +835,7 @@ export function useDashboardChatTransport({
   const pendingRecoveredContinuationRef = useRef<
     DesktopSessionContinuationItem[]
   >([]);
+  const lastSyncedCwdRef = useRef<string | null>(null);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -849,6 +850,7 @@ export function useDashboardChatTransport({
     recreateRuntimeSessionRef.current = false;
     lastRuntimeSessionWasCreatedRef.current = false;
     pendingClarifyRequestIdRef.current = null;
+    lastSyncedCwdRef.current = null;
   }, [hermesSessionId]);
 
   useEffect(() => {
@@ -868,6 +870,7 @@ export function useDashboardChatTransport({
     lastRuntimeSessionWasCreatedRef.current = false;
     pendingClarifyRequestIdRef.current = null;
     pendingRecoveredContinuationRef.current = [];
+    lastSyncedCwdRef.current = null;
   }, [connectionMode, profile]);
 
   const handleGatewayEvent = useCallback(
@@ -1077,6 +1080,7 @@ export function useDashboardChatTransport({
       } = {},
     ): Promise<string> => {
       let targetSessionId = runtimeSessionIdRef.current;
+      let justCreated = false;
 
       if (!targetSessionId) {
         const stored = storedSessionIdRef.current;
@@ -1102,19 +1106,31 @@ export function useDashboardChatTransport({
         targetSessionId = response.runtimeSessionId;
         runtimeSessionIdRef.current = targetSessionId;
         lastRuntimeSessionWasCreatedRef.current = response.created;
+        justCreated = response.created;
+        if (justCreated && contextFolder) {
+          lastSyncedCwdRef.current = contextFolder;
+        }
         const storedId = response.storedSessionId;
         storedSessionIdRef.current = storedId;
         recreateRuntimeSessionRef.current = false;
         setHermesSessionId(storedId);
       }
 
-      if (contextFolder && targetSessionId) {
+      if (
+        contextFolder &&
+        targetSessionId &&
+        lastSyncedCwdRef.current !== contextFolder
+      ) {
+        lastSyncedCwdRef.current = contextFolder;
         await client
           .request("session.cwd.set", {
             session_id: targetSessionId,
             cwd: contextFolder,
           })
-          .catch((err) => console.warn("Failed to sync dashboard CWD:", err));
+          .catch((err) => {
+            lastSyncedCwdRef.current = null;
+            console.warn("Failed to sync dashboard CWD:", err);
+          });
       }
 
       return targetSessionId;
