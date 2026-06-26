@@ -402,3 +402,92 @@ describe("setModelConfig — context_length override", () => {
     expect(getModelContextLengthOverride()).toBeNull();
   });
 });
+
+// Regression for the cross-provider switch bug: switching between an
+// Anthropic-compatible and an OpenAI-compatible custom endpoint left a stale
+// `model.api_mode` behind, so the new endpoint was hit over the wrong protocol
+// (e.g. /v1/messages against a chat/completions server → 404 / lost
+// connection). setModelConfig must rewrite or clear api_mode on every switch.
+describe("setModelConfig — api_mode override", () => {
+  it("writes model.api_mode when a non-empty mode is passed", async () => {
+    writeFileSync(
+      join(TEST_DIR, "config.yaml"),
+      [
+        "model:",
+        '  default: "claude-sonnet-4"',
+        '  provider: "custom"',
+        '  base_url: "https://example.com/anthropic"',
+        "",
+      ].join("\n"),
+    );
+
+    const { setModelConfig } = await importConfigWithHome(TEST_DIR);
+    setModelConfig(
+      "custom",
+      "claude-sonnet-4",
+      "https://example.com/anthropic",
+      undefined,
+      undefined,
+      "anthropic_messages",
+    );
+
+    const after = readFileSync(join(TEST_DIR, "config.yaml"), "utf-8");
+    expect(after).toContain('api_mode: "anthropic_messages"');
+  });
+
+  it("leaves an existing api_mode untouched when passed undefined", async () => {
+    writeFileSync(
+      join(TEST_DIR, "config.yaml"),
+      [
+        "model:",
+        '  default: "claude-sonnet-4"',
+        '  provider: "custom"',
+        '  api_mode: "anthropic_messages"',
+        "",
+      ].join("\n"),
+    );
+
+    const { setModelConfig } = await importConfigWithHome(TEST_DIR);
+    // No 6th arg — a plain provider/model write must not disturb api_mode.
+    setModelConfig("custom", "claude-sonnet-4", "");
+
+    const after = readFileSync(join(TEST_DIR, "config.yaml"), "utf-8");
+    expect(after).toContain('api_mode: "anthropic_messages"');
+  });
+
+  it("clears a stale api_mode when null is passed (the switch-provider fix)", async () => {
+    // Start on an Anthropic-compatible endpoint with an explicit mode...
+    writeFileSync(
+      join(TEST_DIR, "config.yaml"),
+      [
+        "model:",
+        '  default: "claude-sonnet-4"',
+        '  provider: "custom"',
+        '  base_url: "https://example.com/anthropic"',
+        '  api_mode: "anthropic_messages"',
+        "",
+      ].join("\n"),
+    );
+
+    const { setModelConfig } = await importConfigWithHome(TEST_DIR);
+    // ...then switch to an OpenAI-compatible endpoint that has no explicit
+    // mode (apiMode = null). The stale anthropic_messages must be removed so
+    // the agent re-detects chat_completions from the new base_url.
+    setModelConfig(
+      "custom",
+      "gpt-4o",
+      "https://api.openai-compatible.example/v1",
+      undefined,
+      undefined,
+      null,
+    );
+
+    const after = readFileSync(join(TEST_DIR, "config.yaml"), "utf-8");
+    expect(after).not.toContain("api_mode");
+    // Sibling keys must survive the line removal.
+    expect(after).toContain('default: "gpt-4o"');
+    expect(after).toContain(
+      'base_url: "https://api.openai-compatible.example/v1"',
+    );
+  });
+});

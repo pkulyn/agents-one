@@ -451,7 +451,20 @@ export function registerIpcHandlers(context: IpcContext): void {
           () => remoteSetModelConfig(conn, provider, model, baseUrl),
           () => {
             const prev = getModelConfig(profile);
-            setModelConfig(provider, model, baseUrl, profile);
+            // Same library-mirroring as the pure-local path below: carry the
+            // activated model's context-window and api_mode into config.yaml
+            // so this local fallback write doesn't leave a stale transport.
+            const libEntry = listModels().find(
+              (m) => m.provider === provider && m.model === model,
+            );
+            setModelConfig(
+              provider,
+              model,
+              baseUrl,
+              profile,
+              libEntry?.contextLength ?? null,
+              libEntry?.apiMode ?? null,
+            );
             if (
               isGatewayRunning(profile) &&
               (prev.provider !== provider ||
@@ -491,19 +504,23 @@ export function registerIpcHandlers(context: IpcContext): void {
         );
       }
       const prev = getModelConfig(profile);
-      // Mirror the activated model's context-window override (if any) into
-      // config.yaml so the gauge and the agent's auto-compaction threshold use
-      // it. Passing `null` when the library entry has none clears any stale
-      // value left by a previously-active model.
-      const libContextLength = listModels().find(
+      // Mirror the activated model's context-window override and API-protocol
+      // mode (if any) into config.yaml so the gauge, the agent's
+      // auto-compaction threshold, and the runtime transport all match the
+      // model being activated. Passing `null` when the library entry has none
+      // clears any stale value left by a previously-active model — critical for
+      // `api_mode`, since a leftover `anthropic_messages`/`chat_completions`
+      // would otherwise route the new endpoint over the wrong protocol.
+      const libEntry = listModels().find(
         (m) => m.provider === provider && m.model === model,
-      )?.contextLength;
+      );
       setModelConfig(
         provider,
         model,
         baseUrl,
         profile,
-        libContextLength ?? null,
+        libEntry?.contextLength ?? null,
+        libEntry?.apiMode ?? null,
       );
 
       // Restart gateway when provider, model, or endpoint changes so it picks up new config
