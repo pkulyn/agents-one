@@ -75,7 +75,7 @@ Desktop commands in [[src/renderer/src/screens/Chat/slash/desktopCommands.ts#DES
 
 Pure UI desktop actions are flagged `uiAction: true` (settings, model picker, navigation, `/new`, `/clear`, `/fast`). [[src/renderer/src/screens/Chat/hooks/useChatActions.ts#useChatActions]] reads that flag to suppress the echoed `/command` user bubble for them — their effect is the UI change itself, so a bubble would be a dangling artifact. Output-producing desktop commands (`/help`, `/memory`, `/usage`, …) are not flagged and still echo, so their output reads as a reply.
 
-`/settings <section>` forwards the section name through `openSettings` to [[src/renderer/src/screens/Layout/Layout.tsx]], which opens Settings and scrolls to the matching `#settings-section-<name>` anchor (`appearance`, `privacy`, `hermesagent`); an unknown or omitted name just opens Settings at the top.
+`/settings <section>` forwards the section name through `openSettings` to [[src/renderer/src/screens/Layout/Layout.tsx]], which opens the global settings modal on the matching nav item (see [[sidebar-navigation#Settings modal]]). [[src/renderer/src/components/settings/SettingsModal.tsx#resolveSection]] maps the argument to a nav id (`appearance`, `privacy`, `connection`, …, plus the legacy alias `hermesagent` → About); an unknown or omitted name lands on the first item.
 
 Asynchronous Agent commands render a temporary slash-loader bubble without transcript actions such as Copy; the bubble is replaced by the command output or error when execution finishes.
 

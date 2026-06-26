@@ -84,9 +84,17 @@ Reusable modals use a single animated shell so dialogs open and close consistent
 
 Administrative destinations sit beside the profile switcher so the conversation nav stays short.
 
-[[src/renderer/src/screens/Layout/Layout.tsx#Layout]] keeps Providers, Settings, Gateway, Capabilities, and Memory out of the main sidebar list and renders them as icon-only footer actions immediately above [[src/renderer/src/screens/Layout/ProfileSwitcher.tsx#ProfileSwitcher]]. Each button exposes a styled hover/focus tooltip and accessible label, preserving discoverability while freeing vertical room for recent conversations.
+[[src/renderer/src/screens/Layout/Layout.tsx#Layout]] keeps Providers, Gateway, Tools, and Memory out of the main sidebar list and renders them as icon-only footer actions immediately above [[src/renderer/src/screens/Layout/ProfileSwitcher.tsx#ProfileSwitcher]]. Each button exposes a styled hover/focus tooltip and accessible label, preserving discoverability while freeing vertical room for recent conversations. Settings is no longer a `View`: its footer gear button opens the global settings modal (below) instead of switching panes.
 
 When the sidebar is collapsed, those footer actions stay in a single centered icon rail anchored to the bottom of the 64px sidebar, with the compact profile switcher below them and no divider line above the footer.
+
+## Settings modal
+
+A single global modal (80vw × 80vh) with a grouped left nav presents every app/agent setting, opened from anywhere rather than as a sidebar tab.
+
+[[src/renderer/src/components/settings/SettingsModalProvider.tsx#SettingsModalProvider]] mounts [[src/renderer/src/components/settings/SettingsModal.tsx]] at the app root (inside `ProfileModalProvider`) and exposes `openSettings(section?, { profile })` through [[src/renderer/src/components/settings/SettingsModalContext.ts#useSettingsModal]]. Three entry points call it: the sidebar-footer gear, the `/settings` command's `onOpenDiagnose` path, and a global **Cmd/Ctrl+,** keydown handler in [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] — each passes the active profile so the modal reads/writes the right config. The modal reuses the shared [[src/renderer/src/components/modal/AppModal.tsx#AppModal]] shell (see [[sidebar-navigation#Profile detail modal#Shared modal shell]]).
+
+The left nav is two labelled groups — **General** (Appearance, Language, Privacy, Connection, Network, Data) and **Hermes Agent** (About & Updates, Community, Logs & Diagnostics) — and `SETTINGS_NAV`/`resolveSection` in [[src/renderer/src/components/settings/SettingsModal.tsx]] map ids to panes. All shared state, the config-load effect, and the mutation handlers live in [[src/renderer/src/components/settings/useSettingsData.ts#useSettingsData]] (relocated wholesale from the former `Settings` screen) and reach each pane through [[src/renderer/src/components/settings/SettingsDataContext.ts#useSettings]], so the panes (`AppearancePane`, `ConnectionPane`, `AboutPane`, …) stay purely presentational.
 
 ## Provisional fresh sessions
 

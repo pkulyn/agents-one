@@ -20,7 +20,6 @@ import Agents from "../Agents/Agents";
 import Discover from "../Discover/Discover";
 import ProfileSwitcher from "./ProfileSwitcher";
 import SidebarRecentSessions from "./SidebarRecentSessions";
-import Settings from "../Settings/Settings";
 import Skills from "../Skills/Skills";
 import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
@@ -31,6 +30,7 @@ import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
+import { useSettingsModal } from "../../components/settings/SettingsModalContext";
 import hermeslogo from "../../assets/hermes-one.svg";
 import {
   Compass,
@@ -61,8 +61,7 @@ type View =
   | "tools"
   | "schedules"
   | "kanban"
-  | "gateway"
-  | "settings";
+  | "gateway";
 
 const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "discover", icon: Compass, labelKey: "navigation.discover" },
@@ -80,7 +79,6 @@ const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
   { view: "tools", icon: Workflow, labelKey: "navigation.tools" },
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
-  { view: "settings", icon: SettingsIcon, labelKey: "navigation.settings" },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
@@ -98,6 +96,7 @@ function Layout({
   onDismissVerifyWarning,
 }: LayoutProps = {}): React.JSX.Element {
   const { t } = useI18n();
+  const { openSettings } = useSettingsModal();
   const [view, setView] = useState<View>("chat");
   // Multiple conversations coexist (background sessions + multi-agent). Each is
   // a ChatRun; all are mounted, only the active one is shown. Profile switches
@@ -294,6 +293,19 @@ function Layout({
     return () =>
       window.removeEventListener("navigation:goto", handleNavigation);
   }, [goTo]);
+
+  // Cmd/Ctrl+, opens the settings modal from anywhere (the conventional
+  // "preferences" shortcut).
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        openSettings(undefined, { profile: activeProfile });
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [openSettings, activeProfile]);
 
   const focusDiscover = useCallback(
     (kind: "skills" | "mcps") => {
@@ -725,6 +737,16 @@ function Layout({
                 <Icon size={16} />
               </button>
             ))}
+            <button
+              className="sidebar-footer-action"
+              onClick={() =>
+                openSettings(undefined, { profile: activeProfile })
+              }
+              aria-label={t("navigation.settings")}
+              data-tooltip={t("navigation.settings")}
+            >
+              <SettingsIcon size={16} />
+            </button>
           </div>
           <ProfileSwitcher
             activeProfile={activeProfile}
@@ -773,22 +795,9 @@ function Layout({
                 active={run.runId === activeRunId}
                 profile={run.profile}
                 onNewChat={handleNewChat}
-                onOpenDiagnose={(section?: string) => {
-                  goTo("settings");
-                  // Best-effort: scroll to a named section (e.g.
-                  // `/settings appearance`). The Settings view mounts on
-                  // goTo, so defer the lookup a frame; unknown names just
-                  // leave the page at the top.
-                  if (section) {
-                    const id = `settings-section-${section.trim().toLowerCase()}`;
-                    requestAnimationFrame(() =>
-                      document.getElementById(id)?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      }),
-                    );
-                  }
-                }}
+                onOpenDiagnose={(section?: string) =>
+                  openSettings(section, { profile: run.profile })
+                }
                 onLoadingChange={handleRunLoading}
                 onSessionIdChange={handleRunSessionId}
                 onTitleChange={handleRunTitle}
@@ -925,12 +934,6 @@ function Layout({
             ) : (
               <Gateway profile={activeProfile} />
             )}
-          </div>
-        )}
-
-        {visitedViews.has("settings") && (
-          <div style={paneStyle("settings")}>
-            <Settings profile={activeProfile} />
           </div>
         )}
       </main>

@@ -8240,6 +8240,412 @@ body {
   font-size: 13px;
 }
 
+/* ── Settings modal ─────────────────────────────────────────────────────
+   Global settings modal: grouped left nav + a single active pane on the
+   right. Built on the same AppModal shell as the profile modal. */
+.settings-modal-overlay {
+  padding: 24px;
+}
+
+.settings-modal {
+  display: flex;
+  flex-direction: column;
+  width: 80vw;
+  height: 80vh;
+  max-width: 1000px;
+  max-height: 780px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.settings-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+}
+
+.settings-modal-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.settings-modal-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.settings-modal-nav {
+  flex-shrink: 0;
+  width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 12px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.settings-modal-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-modal-nav-group-label {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.settings-modal-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.settings-modal-nav-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.settings-modal-nav-item.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.settings-modal-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 26px 30px;
+}
+
+.settings-modal-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* The active nav item already labels the section, so panes carry no in-pane
+   title. Transient save/status feedback surfaces as a small flash pill at the
+   top of the pane. */
+.settings-pane-flash {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #4c8dff);
+  background: color-mix(in srgb, var(--accent, #4c8dff) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #4c8dff) 32%, transparent);
+}
+
+/* Inside the modal the section markup no longer needs the standalone-screen
+   section chrome (it lived in the old full-page Settings layout). */
+.settings-modal-pane .settings-field {
+  margin: 0;
+}
+
+/* Cards — visually separate distinct concerns within a pane (e.g. the Hermes
+   Agent vs Hermes Desktop update channels in About). */
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.settings-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.settings-card-headtext {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-card-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.settings-card-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.settings-card-badge {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.settings-card-badge.is-ok {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}
+
+.settings-card-badge.is-update {
+  color: var(--accent, #4c8dff);
+  background: color-mix(in srgb, var(--accent, #4c8dff) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent, #4c8dff) 35%, transparent);
+}
+
+.settings-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+}
+
+/* Labelled metadata grid (version chips). */
+.settings-meta-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px 32px;
+}
+
+.settings-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-meta-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+/* Brand logos used as small meta icons sit at the muted label tone. */
+.settings-meta-label .brand-logo {
+  opacity: 0.85;
+}
+
+.settings-meta-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-meta-path {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-meta-pathvalue {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.settings-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-card-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-card-actions-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Toggle row — a setting with its switch on the trailing edge. */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.settings-toggle-text {
+  min-width: 0;
+}
+
+.settings-toggle-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+@keyframes settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.settings-spin {
+  animation: settings-spin 0.8s linear infinite;
+}
+
+/* Intro line at the top of a pane (replaces the removed pane title). */
+.settings-section-intro {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Community link grid — tappable rows with icon, label, and an external arrow. */
+.settings-link-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    transform var(--transition);
+}
+
+.settings-link:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-bright);
+}
+
+.settings-link.is-primary {
+  border-color: color-mix(in srgb, var(--accent, #4c8dff) 45%, transparent);
+  background: color-mix(in srgb, var(--accent, #4c8dff) 12%, transparent);
+}
+
+.settings-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.settings-link-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-link-arrow {
+  flex-shrink: 0;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+/* Log file selector tabs (Logs & Diagnostics). */
+.settings-log-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.settings-log-tabs .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .profile-wallet-pane {
   gap: 18px;
 }
