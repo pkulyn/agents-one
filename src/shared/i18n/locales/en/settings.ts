@@ -6,6 +6,32 @@ export default {
     privacy: "Privacy",
     credentialPool: "Credential Pool",
   },
+  nav: {
+    groups: {
+      general: "General",
+      hermes: "Hermes One",
+    },
+    appearance: "Appearance",
+    language: "Language",
+    privacy: "Privacy",
+    connection: "Connection",
+    network: "Network",
+    data: "Data",
+    about: "About & Updates",
+    community: "Community",
+    logs: "Logs & Diagnostics",
+  },
+  agentSubtitle: "The local AI engine",
+  desktopTitle: "Hermes One Desktop",
+  desktopSubtitle: "This desktop app",
+  statusUpToDate: "Up to date",
+  statusUpdateAvailable: "Update available",
+  statusUpdateReady: "Update ready",
+  checkForUpdates: "Check for updates",
+  checkingUpdates: "Checking…",
+  downloadUpdate: "Download update",
+  retry: "Retry",
+  onLatestVersion: "You're on the latest version.",
   theme: {
     label: "Theme",
     system: "System",
@@ -35,17 +61,7 @@ export default {
   },
   analytics: {
     label: "Send anonymous usage analytics",
-    hint: "Helps improve Hermes One by sending anonymous, aggregated usage data to the project's analytics service. You can turn this off at any time.",
-    disclosure: {
-      uuid: "A random per-install identifier stored only on this device (no name, email, or account info).",
-      platform: "Your operating system, Electron version, and Node.js version.",
-      navigation:
-        "Which screens you visit inside the app (e.g. Chat, Sessions, Settings). No chat content, prompts, model responses, or file contents are collected.",
-      endpoint:
-        "Data is sent to the Hermes analytics service (analytics.hermesone.org). Session recordings and pageview auto-capture are disabled.",
-      notCollected:
-        "Never collected: chat messages, file paths, API keys, model configuration, account credentials.",
-    },
+    hint: "Collected anonymously and used only to improve Hermes One — never your chats, files, prompts, or any personal data.",
   },
   notDetected: "Not detected",
   updatedSuccessfully: "Updated successfully!",
@@ -130,7 +146,7 @@ export default {
   serverConfigTitle: "Server Configuration",
   serverConfigHint:
     "You&apos;re connected to a remote Hermes server. Model selection, provider API keys, and credentials are managed on the server&apos;s <code>~/.hermes/.env</code> and <code>config.yaml</code>. Edit them on the host (e.g. <code>docker exec -it hermes vi /opt/data/.env</code>) and restart the container.",
-  connectionMode: "Mode",
+  connectionMode: "Connection Mode",
   switchedToLocal: "Switched to local mode",
 
   // Community
@@ -138,6 +154,16 @@ export default {
   communityHint:
     "Join our Discord channel to ask questions, report issues, and chat with other Hermes users.",
   joinDiscord: "Join Discord Channel",
+  communityLinksHint:
+    "Connect with the Hermes One community, get help, and stay up to date.",
+  linkWebsite: "Website",
+  linkDiscord: "Discord",
+  linkX: "X",
+  linkTelegram: "Telegram",
+  supportTitle: "Support the developer",
+  supportHint:
+    "Hermes One is free and open source — if it helps you, consider supporting its development.",
+  supportKofi: "Support on Ko-fi",
 
   // SSH & Server Config
   modeSsh: "SSH Tunnel",
