@@ -840,7 +840,9 @@ export function useDashboardChatTransport({
   const lastSyncedCwdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    messagesRef.current = messages;
+    if (messages.length > messagesRef.current.length) {
+      messagesRef.current = messages;
+    }
   }, [messages]);
 
   useEffect(() => {
