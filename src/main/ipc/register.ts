@@ -10,7 +10,7 @@ import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
 import { persistPromptImageAttachments } from "../session-attachment-store";
 import { discoverProviderModels, getModelContextWindow } from "../model-discovery";
 import { persistSessionContinuation, persistSessionLocalError } from "../session-continuation-store";
-import { getSessionContextFolder, setSessionContextFolder } from "../session-context-folder-store";
+import { getSessionContextFolder, setSessionContextFolder, getRecentSessionContextFolders } from "../session-context-folder-store";
 import { getSessionModelOverride, setSessionModelOverride } from "../session-model-override-store";
 import { materializeDataUrlToTemp, readMediaAsDataUrl, saveMedia, mediaFileExists } from "../media";
 import { openTerminalInDirectory } from "../terminal-launcher";
@@ -30,7 +30,13 @@ import { syncSessionCache, listCachedSessions, updateSessionTitle } from "../ses
 import { remoteDeleteSession, remoteDeleteSessions, remoteGetSessionMessages, remoteListCachedSessions, remoteListSessions, remoteReadMediaAsDataUrl, remoteSearchSessions, remoteUpdateSessionTitle, type RemoteSessionConfig } from "../remote-sessions";
 import { remoteGetHermesHome, remoteGetHermesVersion } from "../remote-metadata";
 import { remoteAddModel, remoteGetModelConfig, remoteListModels, remoteRemoveModel, remoteSetModelConfig, remoteUpdateModel } from "../remote-models";
-import { listModels, addModel, removeModel, updateModel } from "../models";
+import {
+  listModels,
+  addModel,
+  removeModel,
+  updateModel,
+  type SavedModel,
+} from "../models";
 import { validateChatReadiness } from "../validation";
 import { runConfigHealthCheck, autoFixIssue, readConfigFixLog, type IssueCode } from "../config-health";
 import { listProfiles, createProfile, deleteProfile, setActiveProfile } from "../profiles";
@@ -140,6 +146,30 @@ async function mediaFileExistsForCurrentConnection(filePath: string): Promise<bo
 async function resolveMediaForSave(src: string): Promise<string> {
   if (src.startsWith("data:") || /^https?:\/\//i.test(src)) return src;
   return (await readMediaForCurrentConnection(src)) ?? src;
+}
+
+/**
+ * Resolve the saved-model library entry for an activated (provider, model) so
+ * its `apiMode`/`contextLength` can be mirrored into config.yaml. When several
+ * entries share the same provider+model — e.g. two `custom` endpoints exposing
+ * the same model id over different transports/base URLs — a bare provider+model
+ * `find` would return the wrong one and persist its transport, routing requests
+ * over the wrong protocol. Disambiguate by base URL in that case; fall back to
+ * the first match when none align (single-entry activations are unaffected).
+ */
+function resolveLibraryModelEntry(
+  provider: string,
+  model: string,
+  baseUrl: string,
+): SavedModel | undefined {
+  const matches = listModels().filter(
+    (m) => m.provider === provider && m.model === model,
+  );
+  if (matches.length <= 1) return matches[0];
+  const norm = (u: string | undefined): string =>
+    (u || "").trim().replace(/\/+$/, "");
+  const target = norm(baseUrl);
+  return matches.find((m) => norm(m.baseUrl) === target) ?? matches[0];
 }
 
 export function registerIpcHandlers(context: IpcContext): void {
@@ -451,7 +481,18 @@ export function registerIpcHandlers(context: IpcContext): void {
           () => remoteSetModelConfig(conn, provider, model, baseUrl),
           () => {
             const prev = getModelConfig(profile);
-            setModelConfig(provider, model, baseUrl, profile);
+            // Same library-mirroring as the pure-local path below: carry the
+            // activated model's context-window and api_mode into config.yaml
+            // so this local fallback write doesn't leave a stale transport.
+            const libEntry = resolveLibraryModelEntry(provider, model, baseUrl);
+            setModelConfig(
+              provider,
+              model,
+              baseUrl,
+              profile,
+              libEntry?.contextLength ?? null,
+              libEntry?.apiMode ?? null,
+            );
             if (
               isGatewayRunning(profile) &&
               (prev.provider !== provider ||
@@ -491,19 +532,21 @@ export function registerIpcHandlers(context: IpcContext): void {
         );
       }
       const prev = getModelConfig(profile);
-      // Mirror the activated model's context-window override (if any) into
-      // config.yaml so the gauge and the agent's auto-compaction threshold use
-      // it. Passing `null` when the library entry has none clears any stale
-      // value left by a previously-active model.
-      const libContextLength = listModels().find(
-        (m) => m.provider === provider && m.model === model,
-      )?.contextLength;
+      // Mirror the activated model's context-window override and API-protocol
+      // mode (if any) into config.yaml so the gauge, the agent's
+      // auto-compaction threshold, and the runtime transport all match the
+      // model being activated. Passing `null` when the library entry has none
+      // clears any stale value left by a previously-active model — critical for
+      // `api_mode`, since a leftover `anthropic_messages`/`chat_completions`
+      // would otherwise route the new endpoint over the wrong protocol.
+      const libEntry = resolveLibraryModelEntry(provider, model, baseUrl);
       setModelConfig(
         provider,
         model,
         baseUrl,
         profile,
-        libContextLength ?? null,
+        libEntry?.contextLength ?? null,
+        libEntry?.apiMode ?? null,
       );
 
       // Restart gateway when provider, model, or endpoint changes so it picks up new config
@@ -1300,6 +1343,23 @@ export function registerIpcHandlers(context: IpcContext): void {
       return true;
     },
   );
+
+  ipcMain.handle("list-recent-session-context-folders", (_event, limit?: number) => {
+    const lim = typeof limit === "number" && limit > 0 ? limit : 20;
+    const folders = getRecentSessionContextFolders(lim);
+    if (folders.length < lim) {
+      const cached = listCachedSessions(100);
+      const seen = new Set(folders);
+      for (const s of cached) {
+        if (s.contextFolder && !seen.has(s.contextFolder)) {
+          seen.add(s.contextFolder);
+          folders.push(s.contextFolder);
+          if (folders.length >= lim) break;
+        }
+      }
+    }
+    return folders;
+  });
 
   // Per-session model/provider selected from the in-chat picker. This is a
   // desktop-only routing binding and intentionally stores no API keys.
