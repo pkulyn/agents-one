@@ -26,6 +26,9 @@
 </p>
 
 <p align="center">
+  
+  
+  
  <a href="https://www.star-history.com/fathah/hermes-desktop">
   <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=fathah/hermes-desktop&theme=dark" />
@@ -34,6 +37,8 @@
   </picture>
  </a>
 </p>
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/D1D41ZEKFO)
 
 > **This project is in active development.** Features may change, and some things might break. If you run into a problem or have an idea, [open an issue](https://github.com/fathah/hermes-desktop/issues). Contributions are welcome!
 

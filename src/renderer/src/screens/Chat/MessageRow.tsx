@@ -1,5 +1,6 @@
 import { memo, useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
+import { Grid } from "react-loader-spinner";
 import { Copy, Check } from "lucide-react";
 import loadingGif from "../../assets/loadingo.gif";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
@@ -13,34 +14,70 @@ export const APPROVAL_RE =
   /⚠️.*dangerous|requires? (your )?approval|\/approve.*\/deny|do you want (me )?to (proceed|continue|run|execute)/i;
 
 /**
- * Coerce a DB timestamp to epoch milliseconds. The agent's state.db stores
- * message times in seconds, but other paths hand us milliseconds — anything
- * below this threshold (≈ year 2001 in ms) is far too small to be a real ms
- * time, so it's a seconds value and gets scaled up. Without this a seconds
- * value renders as ~Jan 1970.
+ * Coerce any DB, stream, or IPC timestamp value to valid epoch milliseconds.
+ * Handles seconds (< 1e12), ms, us (> 1e14), ns (> 1e17), and ISO strings.
  */
 const MS_THRESHOLD = 1e12;
-function toEpochMs(ts: number): number {
-  return ts < MS_THRESHOLD ? ts * 1000 : ts;
+const US_THRESHOLD = 1e14;
+const NS_THRESHOLD = 1e17;
+
+function coerceToEpochMs(raw: unknown): number {
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw) || raw <= 0) return 0;
+    if (raw < MS_THRESHOLD) return raw * 1000;
+    if (raw < US_THRESHOLD) return raw;
+    if (raw < NS_THRESHOLD) return Math.floor(raw / 1000);
+    return Math.floor(raw / 1_000_000);
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return 0;
+    const num = Number(trimmed);
+    if (Number.isFinite(num) && num > 0) {
+      return coerceToEpochMs(num);
+    }
+    const parsed = new Date(trimmed).getTime();
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
+// Earliest valid chat timestamp: Jan 1 2020 (1577836800000 ms).
+// Anything before 2020 (e.g. 0, 1 => Jan 1970 => "57 years ago") is bogus/dummy.
+const MIN_VALID_EPOCH_MS = 1_577_836_800_000;
+
+function isValidEpochMs(ms: number): boolean {
+  return (
+    Number.isFinite(ms) &&
+    ms >= MIN_VALID_EPOCH_MS &&
+    !isNaN(new Date(ms).getTime())
+  );
 }
 
 /**
- * Relative "time ago" label for the hover-time element — e.g. "5 minutes
- * ago", "2 hours ago", "3 days ago". Uses date-fns rather than hand-rolled
- * thresholds. Times within the last few seconds read "just now".
+ * Relative "time ago" label for the hover-time element.
  */
-function formatBubbleTime(ts: number): string {
-  const ms = toEpochMs(ts);
-  if (Date.now() - ms < 10_000) return "just now";
-  return formatDistanceToNowStrict(ms, { addSuffix: true });
+function formatBubbleTime(ms: number): string | null {
+  try {
+    if (Date.now() - ms < 10_000 && Date.now() >= ms) return "just now";
+    return formatDistanceToNowStrict(ms, { addSuffix: true });
+  } catch {
+    return null;
+  }
 }
 
 /** Absolute timestamp for the tooltip and `<time dateTime>` value. */
-function formatBubbleTimeAbsolute(ts: number): string {
-  return new Date(toEpochMs(ts)).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+function formatBubbleTimeAbsolute(ms: number): string {
+  try {
+    return new Date(ms).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return "";
+  }
 }
 
 function isChatBubbleMessage(msg: ChatMessage): msg is ChatBubbleMessage {
@@ -251,10 +288,9 @@ export const MessageRow = memo(function MessageRow({
     isLast &&
     APPROVAL_RE.test(msg.content);
   const hasAttachments = !!msg.attachments && msg.attachments.length > 0;
-  const bubbleTime =
-    typeof msg.timestamp === "number" && msg.timestamp > 0
-      ? formatBubbleTime(msg.timestamp)
-      : null;
+  const epochMs = coerceToEpochMs(msg.timestamp);
+  const isTimeValid = isValidEpochMs(epochMs);
+  const bubbleTime = isTimeValid ? formatBubbleTime(epochMs) : null;
 
   return (
     <div
@@ -274,7 +310,7 @@ export const MessageRow = memo(function MessageRow({
           msg.error ? " chat-bubble-error" : ""
         }`}
       >
-        {msg.content && !isLoading && (
+        {msg.content && !isLoading && !msg.isSlashLoader && (
           <div className="chat-bubble-actions">
             <button
               type="button"
@@ -294,7 +330,20 @@ export const MessageRow = memo(function MessageRow({
             ))}
           </div>
         )}
-        {msg.content &&
+        {msg.isSlashLoader ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Grid
+              visible={true}
+              height={13}
+              width={13}
+              radius={15}
+              color="#8b7cf6"
+              ariaLabel="running-command"
+            />
+            <span>{msg.content}</span>
+          </div>
+        ) : (
+          msg.content &&
           (msg.role === "agent" && segments
             ? segments.map((segment) =>
                 segment.type === "text" ? (
@@ -317,18 +366,19 @@ export const MessageRow = memo(function MessageRow({
                   />
                 ),
               )
-            : msg.content)}
+            : msg.content)
+        )}
         {msg.error && (
           <div className="chat-error-message" role="alert">
             {msg.error}
           </div>
         )}
       </div>
-      {bubbleTime && (
+      {bubbleTime && isTimeValid && (
         <time
           className="chat-bubble-time"
-          dateTime={new Date(toEpochMs(msg.timestamp!)).toISOString()}
-          title={formatBubbleTimeAbsolute(msg.timestamp!)}
+          dateTime={new Date(epochMs).toISOString()}
+          title={formatBubbleTimeAbsolute(epochMs)}
         >
           {bubbleTime}
         </time>
