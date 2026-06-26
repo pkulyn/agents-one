@@ -55,6 +55,35 @@ interface QueuedMessage {
 
 export type { ChatMessage } from "./types";
 
+// A single shared AudioContext for the "agent finished" chime. Creating a new
+// context per turn leaks them — Chromium caps concurrent contexts (~6) and
+// never reclaims unclosed ones, after which construction throws and the chime
+// silently dies. One lazily-created, reused context avoids the leak entirely.
+let finishChimeCtx: AudioContext | null = null;
+function playFinishChime(): void {
+  try {
+    finishChimeCtx ??= new AudioContext();
+    const ctx = finishChimeCtx;
+    // Autoplay policy may park the context as "suspended"; the user has been
+    // interacting with the composer, so resuming is permitted.
+    if (ctx.state === "suspended") void ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    // Two quick ascending tones.
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.2);
+  } catch {
+    // AudioContext may be unavailable in some environments — ignore.
+  }
+}
+
 interface ChatProps {
   /** Stable id for this conversation/run. One <Chat> is mounted per run; all
    *  remain mounted (background sessions) and only the active one is shown. */
@@ -109,24 +138,8 @@ function Chat({
     const wasLoading = prevLoadingRef.current;
     prevLoadingRef.current = isLoading;
     if (!wasLoading || isLoading) return;
-    // Agent just finished — play a short notification beep
-    try {
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "sine";
-      // Play two quick ascending tones
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
-      gain.gain.setValueAtTime(0.12, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.2);
-    } catch {
-      // AudioContext may fail in some environments — silently ignore
-    }
+    // Agent just finished — play a short notification chime (shared context).
+    playFinishChime();
   }, [isLoading]);
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(
     initialSessionId ?? null,
@@ -806,6 +819,37 @@ function Chat({
     setContextFolder(null);
   }, []);
 
+  // Stable toolbar callbacks so the memoized ModelPicker / ContextFolderChip
+  // don't re-render on every streaming chunk (each chunk re-renders <Chat>).
+  const handleSelectModel = useCallback(
+    (provider: string, model: string, baseUrl: string) => {
+      void modelConfig.selectModel(provider, model, baseUrl, {
+        persist: false,
+      });
+      // Carry the full identity (not just the model name) so a cross-provider
+      // switch reaches the right backend. Mirror the baseUrl rule selectModel
+      // applies so they can't drift.
+      setSessionModelOverride(
+        model
+          ? {
+              provider,
+              model,
+              baseUrl: effectiveOverrideBaseUrl(provider, baseUrl),
+            }
+          : undefined,
+      );
+    },
+    [modelConfig.selectModel],
+  );
+
+  const handleSelectRecentFolder = useCallback((path: string) => {
+    setContextFolder(path);
+  }, []);
+
+  const handleToggleWorktree = useCallback(() => {
+    setWorktreeVisible((v) => !v);
+  }, []);
+
   // Drag-and-drop: filter for dragenter events carrying files (suppresses
   // text-drag noise from the textarea autocomplete and other in-app drags).
   const eventHasFiles = useCallback((e: React.DragEvent): boolean => {
@@ -1022,23 +1066,7 @@ function Chat({
                 modelGroups={modelConfig.modelGroups}
                 displayModel={chatDisplayModel}
                 onOpen={modelConfig.reload}
-                onSelectModel={(provider, model, baseUrl) => {
-                  void modelConfig.selectModel(provider, model, baseUrl, {
-                    persist: false,
-                  });
-                  // Carry the full identity (not just the model name) so a
-                  // cross-provider switch reaches the right backend. Mirror the
-                  // baseUrl rule selectModel applies so they can't drift.
-                  setSessionModelOverride(
-                    model
-                      ? {
-                          provider,
-                          model,
-                          baseUrl: effectiveOverrideBaseUrl(provider, baseUrl),
-                        }
-                      : undefined,
-                  );
-                }}
+                onSelectModel={handleSelectModel}
               />
               <ReasoningEffortPicker
                 value={reasoningEffort}
@@ -1069,8 +1097,8 @@ function Chat({
                 worktreeVisible={worktreeVisible}
                 onPickFolder={handlePickFolder}
                 onClearFolder={handleClearFolder}
-                onToggleWorktree={() => setWorktreeVisible((v) => !v)}
-                onSelectRecentFolder={(path) => setContextFolder(path)}
+                onToggleWorktree={handleToggleWorktree}
+                onSelectRecentFolder={handleSelectRecentFolder}
               />
               <button
                 type="button"

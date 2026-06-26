@@ -395,9 +395,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       // Height is handled by the useLayoutEffect on `input` above.
 
       if (value.startsWith("/") && !value.includes(" ")) {
-        const query = value.split(" ")[0];
+        // No space yet, so the whole value is the command query.
         setSlashMenuOpen(true);
-        setSlashFilter(query);
+        setSlashFilter(value);
         setSlashSelectedIndex(0);
         setSlashMenuScrollTop(0);
         if (slashMenuListRef.current) slashMenuListRef.current.scrollTop = 0;

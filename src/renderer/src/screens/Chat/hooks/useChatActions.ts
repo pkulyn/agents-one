@@ -253,9 +253,13 @@ export function useChatActions({
         const definition = parsed.ok
           ? slashCatalog.resolve(parsed.command.normalizedName)
           : undefined;
-        const shouldShowUser =
-          definition?.target !== "desktop" ||
-          !["new", "clear"].includes(definition.name);
+        // Pure UI desktop actions (open a page/picker, toggle a mode, reset
+        // the chat) leave no transcript output, so echoing a `/command` user
+        // bubble would just be a dangling artifact. Output-producing desktop
+        // commands (/help, /memory, …) still show it.
+        const shouldShowUser = !(
+          definition?.target === "desktop" && definition.uiAction === true
+        );
         const turn = shouldShowUser ? pushUser(text) : createTurn("slash");
         const startIndex = messagesRef.current.length;
         const pendingId = `slash-${createTurn("slash").turnId}`;

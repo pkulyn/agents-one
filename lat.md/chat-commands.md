@@ -71,6 +71,8 @@ The command palette and executor share a catalog built by [[src/renderer/src/scr
 
 Desktop commands in [[src/renderer/src/screens/Chat/slash/desktopCommands.ts#DESKTOP_SLASH_COMMANDS]] handle local Electron/renderer UI operations such as opening settings, triggering the active chat's model picker, and switching navigation views without sending prompts.
 
+Pure UI desktop actions are flagged `uiAction: true` (settings, model picker, navigation, `/new`, `/clear`, `/fast`). [[src/renderer/src/screens/Chat/hooks/useChatActions.ts#useChatActions]] reads that flag to suppress the echoed `/command` user bubble for them — their effect is the UI change itself, so a bubble would be a dangling artifact. Output-producing desktop commands (`/help`, `/memory`, `/usage`, …) are not flagged and still echo, so their output reads as a reply.
+
 Asynchronous Agent commands render a temporary slash-loader bubble without transcript actions such as Copy; the bubble is replaced by the command output or error when execution finishes.
 
 ### Agent commands

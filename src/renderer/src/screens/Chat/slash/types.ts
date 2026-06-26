@@ -12,6 +12,11 @@ export interface SlashCommandMetadata {
   source: "desktop" | "agent" | "skill" | "plugin" | "quick-command";
   allowWhileBusy?: boolean;
   supportsAttachments?: boolean;
+  /** Pure desktop UI action (open a page/picker, toggle a mode, reset the
+   *  chat) that produces no transcript output. When true, the router does not
+   *  echo a `/command` user bubble — it would just be a dangling artifact for
+   *  an action whose effect is the UI change itself. */
+  uiAction?: boolean;
 }
 
 export interface ParsedSlashCommand {
