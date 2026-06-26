@@ -30,7 +30,13 @@ import { syncSessionCache, listCachedSessions, updateSessionTitle } from "../ses
 import { remoteDeleteSession, remoteDeleteSessions, remoteGetSessionMessages, remoteListCachedSessions, remoteListSessions, remoteReadMediaAsDataUrl, remoteSearchSessions, remoteUpdateSessionTitle, type RemoteSessionConfig } from "../remote-sessions";
 import { remoteGetHermesHome, remoteGetHermesVersion } from "../remote-metadata";
 import { remoteAddModel, remoteGetModelConfig, remoteListModels, remoteRemoveModel, remoteSetModelConfig, remoteUpdateModel } from "../remote-models";
-import { listModels, addModel, removeModel, updateModel } from "../models";
+import {
+  listModels,
+  addModel,
+  removeModel,
+  updateModel,
+  type SavedModel,
+} from "../models";
 import { validateChatReadiness } from "../validation";
 import { runConfigHealthCheck, autoFixIssue, readConfigFixLog, type IssueCode } from "../config-health";
 import { listProfiles, createProfile, deleteProfile, setActiveProfile } from "../profiles";
@@ -140,6 +146,30 @@ async function mediaFileExistsForCurrentConnection(filePath: string): Promise<bo
 async function resolveMediaForSave(src: string): Promise<string> {
   if (src.startsWith("data:") || /^https?:\/\//i.test(src)) return src;
   return (await readMediaForCurrentConnection(src)) ?? src;
+}
+
+/**
+ * Resolve the saved-model library entry for an activated (provider, model) so
+ * its `apiMode`/`contextLength` can be mirrored into config.yaml. When several
+ * entries share the same provider+model — e.g. two `custom` endpoints exposing
+ * the same model id over different transports/base URLs — a bare provider+model
+ * `find` would return the wrong one and persist its transport, routing requests
+ * over the wrong protocol. Disambiguate by base URL in that case; fall back to
+ * the first match when none align (single-entry activations are unaffected).
+ */
+function resolveLibraryModelEntry(
+  provider: string,
+  model: string,
+  baseUrl: string,
+): SavedModel | undefined {
+  const matches = listModels().filter(
+    (m) => m.provider === provider && m.model === model,
+  );
+  if (matches.length <= 1) return matches[0];
+  const norm = (u: string | undefined): string =>
+    (u || "").trim().replace(/\/+$/, "");
+  const target = norm(baseUrl);
+  return matches.find((m) => norm(m.baseUrl) === target) ?? matches[0];
 }
 
 export function registerIpcHandlers(context: IpcContext): void {
@@ -454,9 +484,7 @@ export function registerIpcHandlers(context: IpcContext): void {
             // Same library-mirroring as the pure-local path below: carry the
             // activated model's context-window and api_mode into config.yaml
             // so this local fallback write doesn't leave a stale transport.
-            const libEntry = listModels().find(
-              (m) => m.provider === provider && m.model === model,
-            );
+            const libEntry = resolveLibraryModelEntry(provider, model, baseUrl);
             setModelConfig(
               provider,
               model,
@@ -511,9 +539,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       // clears any stale value left by a previously-active model — critical for
       // `api_mode`, since a leftover `anthropic_messages`/`chat_completions`
       // would otherwise route the new endpoint over the wrong protocol.
-      const libEntry = listModels().find(
-        (m) => m.provider === provider && m.model === model,
-      );
+      const libEntry = resolveLibraryModelEntry(provider, model, baseUrl);
       setModelConfig(
         provider,
         model,
