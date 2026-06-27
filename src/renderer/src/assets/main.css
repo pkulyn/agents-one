@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
 
 /* ========================================================================
    Hermes One Desktop — Clean Design System
@@ -451,6 +450,36 @@
 @font-face {
   font-family: "Manrope";
   src: url("./fonts/Manrope-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ----- Cairo ----- */
+@font-face {
+  font-family: "Cairo";
+  src: url("./fonts/Cairo-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cairo";
+  src: url("./fonts/Cairo-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cairo";
+  src: url("./fonts/Cairo-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cairo";
+  src: url("./fonts/Cairo-Bold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
