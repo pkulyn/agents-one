@@ -1856,28 +1856,36 @@ export async function sshCreateProfile(
   config: SshConfig,
   name: string,
   cloneFrom: string | null,
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string }> {
+  const safe = name.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!safe) return { success: false, error: "Invalid profile name" };
+  const quoted = shellQuote(safe);
   try {
-    const safe = name.replace(/[^a-zA-Z0-9_-]/g, "");
-    if (!safe) return false;
-    const quoted = shellQuote(safe);
     if (cloneFrom) {
       const safeSource = cloneFrom.replace(/[^a-zA-Z0-9_-]/g, "") || "default";
+      // No `|| mkdir` fallback here: a failed clone must surface as an error
+      // rather than silently leaving an empty profile that copied no config,
+      // keys, or skills. sshExec rejects on a non-zero exit, caught below.
       await sshExec(
         config,
         `hermes profiles create ${quoted} --clone-from ${shellQuote(
           safeSource,
-        )} 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`,
+        )}`,
       );
     } else {
+      // A fresh profile is just a directory, so falling back to mkdir when the
+      // remote CLI lacks the subcommand is an acceptable, lossless result.
       await sshExec(
         config,
         `hermes profiles create ${quoted} 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`,
       );
     }
-    return true;
-  } catch {
-    return false;
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create profile",
+    };
   }
 }
 

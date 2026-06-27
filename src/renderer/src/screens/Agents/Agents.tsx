@@ -70,15 +70,23 @@ function Agents({
       stopGatewayPoll();
       // ~15 attempts × 700ms ≈ 10s, enough for a cold gateway to come up.
       let attemptsLeft = 15;
+      const settle = (): void =>
+        setStartingProfile((current) => (current === name ? null : current));
       const tick = async (): Promise<void> => {
-        const list = await window.hermesAPI.listProfiles();
-        setProfiles(list);
-        const target = list.find((p) => p.name === name);
         attemptsLeft -= 1;
-        if (target?.gatewayRunning || attemptsLeft <= 0) {
-          // Either it's up, or we gave up — drop the "Starting…" state so the
-          // row settles on its real Running/Off status.
-          setStartingProfile((current) => (current === name ? null : current));
+        try {
+          const list = await window.hermesAPI.listProfiles();
+          setProfiles(list);
+          if (list.find((p) => p.name === name)?.gatewayRunning) {
+            settle();
+            return;
+          }
+        } catch {
+          // A transient listing failure (e.g. SSH) shouldn't strand the
+          // spinner — fall through to retry or give up like any other miss.
+        }
+        if (attemptsLeft <= 0) {
+          settle();
           return;
         }
         gatewayPollRef.current = setTimeout(tick, 700);
@@ -278,7 +286,11 @@ function Agents({
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleSelect(p.name);
+              // Only the row itself — not Enter bubbling up from the edit/chat
+              // buttons — should switch the profile.
+              if (e.key === "Enter" && e.target === e.currentTarget) {
+                handleSelect(p.name);
+              }
             }}
           >
             <div className="agents-cell-profile">
