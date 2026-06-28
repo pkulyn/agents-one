@@ -335,6 +335,7 @@ import {
   sshEnsureDashboard,
   sshEnsureApiServerKey,
   sshWaitGatewayApiReady,
+  resetSshDashboardAvailability,
   sshReadRemoteApiKey,
   sshResolveApiServerPort,
   sshReadDirectory,
@@ -371,13 +372,14 @@ async function getSshDashboardSessionConfig(
 ): Promise<RemoteSessionBridgeConfig> {
   if (conn.mode !== "ssh" || !conn.ssh)
     throw new Error("SSH connection is not configured.");
-  // Start `hermes dashboard` on the remote and tunnel to it (full parity with
-  // local mode). The dashboard is a superset of the gateway api_server — it
-  // serves /v1 + /health + the full /api/* set + the chat WS — so this single
-  // tunnel covers every transport. Its /api/* routes are gated by the dashboard
-  // session token (the api_server key is rejected there), so that token is the
-  // SSH credential. Returns null when the remote can't run the dashboard (no
-  // Node / no web dist); we throw so callers fall back to legacy.
+  // Start the UNIFIED machine `hermes dashboard` on the remote and tunnel to it.
+  // It serves /api/* + the /api/ws chat WS for EVERY profile (scoped via
+  // ?profile=, see RemoteSessionConfig.profile), NOT /v1 — chat over /v1 is the
+  // gateway api_server (prepareSshTunnel gateway branch). All profiles share one
+  // dashboard port + token so the single global SSH tunnel never thrashes. The
+  // /api/* routes are gated by the dashboard session token (the api_server key is
+  // rejected there). Returns null when the remote can't run the dashboard (no
+  // web dist); we throw so callers fall back to legacy.
   const dash = await sshEnsureDashboard(conn.ssh, profile);
   if (!dash)
     throw new Error(
@@ -387,7 +389,9 @@ async function getSshDashboardSessionConfig(
   const remoteUrl = getSshTunnelUrl();
   if (!remoteUrl) throw new Error("SSH tunnel is not active.");
   setSshRemoteApiKey(dash.token);
-  return { remoteUrl, apiKey: dash.token };
+  // The tunnel + token are the shared machine dashboard's; scope data to the
+  // requested profile via `?profile=` (handled in dashboardApiUrl).
+  return { remoteUrl, apiKey: dash.token, profile };
 }
 
 /**
@@ -1076,6 +1080,7 @@ export function registerIpcHandlers(context: IpcContext): void {
           apiKey,
         ),
       });
+      resetSshDashboardAvailability();
       notifyConnectionConfigChanged();
       return true;
     },
@@ -1090,6 +1095,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         remoteChatTransport: normalizeRemoteChatTransport(remoteChatTransport),
         sshChatTransport: normalizeRemoteChatTransport(sshChatTransport),
       });
+      resetSshDashboardAvailability();
       notifyConnectionConfigChanged();
       return true;
     },
@@ -1112,6 +1118,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         mode: "ssh",
         ssh: { host, port, username, keyPath, remotePort, localPort },
       });
+      resetSshDashboardAvailability();
       notifyConnectionConfigChanged();
       return true;
     },
@@ -1787,7 +1794,15 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Profiles
   ipcMain.handle("list-profiles", async () => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshListProfiles(conn.ssh);
+    if (conn.mode === "ssh" && conn.ssh) {
+      // The desktop's active profile is the LOCAL selection (persisted in
+      // ~/.hermes/active_profile by set-active-profile), not whatever the remote
+      // CLI last marked active. Override isActive so the UI highlights the
+      // profile the user actually selected — and it survives relaunches.
+      const active = getActiveProfileNameSync();
+      const list = await sshListProfiles(conn.ssh);
+      return list.map((p) => ({ ...p, isActive: p.name === active }));
+    }
     return listProfiles();
   });
   ipcMain.handle(
@@ -1805,18 +1820,26 @@ export function registerIpcHandlers(context: IpcContext): void {
       return sshDeleteProfile(conn.ssh, name);
     return deleteProfile(name);
   });
-  ipcMain.handle("set-active-profile", (_event, name: string) => {
-    if (getConnectionConfig().mode !== "ssh") {
-      setActiveProfile(name);
-      // The desktop now follows this profile: chat/health resolve their URL
-      // from the active profile's own port. Drop the cached health flag so the
-      // next check probes the new gateway rather than the previous profile's.
-      notifyProfileSwitched();
-      // Bring the activated profile's own gateway up if it isn't already —
-      // without stopping any other profile's gateway (their bots stay online).
-      if (!isRemoteMode() && !isGatewayRunning(name)) {
-        startGateway(name);
+  ipcMain.handle("set-active-profile", async (_event, name: string) => {
+    // Persist the selection LOCALLY in every mode (incl. SSH) — the desktop
+    // tracks "which profile is active" via the local ~/.hermes/active_profile,
+    // so without this an SSH session forgot the choice and reset to `default`
+    // on every relaunch. Then drop the cached health flag so the next check
+    // probes the newly-active profile's gateway, not the previous one's.
+    setActiveProfile(name);
+    notifyProfileSwitched();
+    // Bring the activated profile's own gateway up if it isn't already —
+    // without stopping any other profile's gateway (their bots stay online).
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" && conn.ssh) {
+      // Per-profile gateway lives on the remote; start it over SSH. (Previously
+      // SSH was skipped entirely, so selecting/Chatting a profile in the Agents
+      // page never started its gateway and the status spun on "Starting…".)
+      if (!(await sshGatewayStatus(conn.ssh, name))) {
+        await sshStartGateway(conn.ssh, name);
       }
+    } else if (!isRemoteMode() && !isGatewayRunning(name)) {
+      startGateway(name);
     }
     return true;
   });

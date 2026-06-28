@@ -1794,7 +1794,14 @@ def gw_running(path):
     pid_file = os.path.join(path, "gateway.pid")
     if not os.path.exists(pid_file): return False
     try:
-        pid = int(open(pid_file).read().strip())
+        raw = open(pid_file).read().strip()
+        # \`hermes gateway run\` writes a JSON pidfile ({"pid": N, ...}); older
+        # builds wrote a bare integer. Handle both.
+        try:
+            d = json.loads(raw)
+            pid = int(d.get("pid") if isinstance(d, dict) else d)
+        except Exception:
+            pid = int(raw)
         os.kill(pid, 0)
         return True
     except:
@@ -2078,14 +2085,34 @@ export async function sshGatewayStatus(
   }
 }
 
+// In-flight dedup so a connect storm (model-library + chat + sessions firing at
+// once, each finding "no gateway" before any start writes the pidfile) can't
+// launch several `gateway run` processes — observed as 4+ concurrent gateways
+// piling up and OOM-killing a small remote. Re-checks status inside the guard so
+// a gateway that came up between the caller's check and here isn't duplicated.
+const gatewayStartPromises = new Map<string, Promise<void>>();
+
 export async function sshStartGateway(
   config: SshConfig,
   profile?: string,
 ): Promise<void> {
+  const key = `${config.host}:${config.port || 22}:${config.username}:${profile || "default"}`;
+  const inflight = gatewayStartPromises.get(key);
+  if (inflight) return inflight;
+
+  const run = (async (): Promise<void> => {
+    if (await sshGatewayStatus(config, profile)) return; // already up — don't duplicate
+    try {
+      await sshExec(config, buildGatewayStartCommand(profile));
+    } catch {
+      // best effort
+    }
+  })();
+  gatewayStartPromises.set(key, run);
   try {
-    await sshExec(config, buildGatewayStartCommand(profile));
-  } catch {
-    // best effort
+    await run;
+  } finally {
+    gatewayStartPromises.delete(key);
   }
 }
 
@@ -2481,12 +2508,18 @@ async function sshPersistDashboardPort(
   port: number,
 ): Promise<void> {
   const envPath = remoteEnvPath(profile);
+  // Write exactly ONE canonical line (strip any prior entries, then append) so
+  // repeated port reallocations don't accumulate duplicate
+  // HERMES_DESKTOP_DASHBOARD_PORT lines — sshReadEnv is last-wins, so dupes
+  // "worked" by luck but drifted and grew. cat-in-place preserves perms.
   await sshExec(
     config,
     `mkdir -p "$(dirname ${envPath})" 2>/dev/null; ` +
-      `printf '\\n${REMOTE_DASHBOARD_PORT_ENV}=%s\\n' ${shellQuote(
-        String(port),
-      )} >> ${envPath}`,
+      `touch ${envPath}; ` +
+      `tmp=${envPath}.tmp.$$; ` +
+      `grep -v '^${REMOTE_DASHBOARD_PORT_ENV}=' ${envPath} > $tmp 2>/dev/null || true; ` +
+      `printf '${REMOTE_DASHBOARD_PORT_ENV}=%s\\n' ${shellQuote(String(port))} >> $tmp; ` +
+      `cat $tmp > ${envPath}; rm -f $tmp`,
   );
 }
 
@@ -2566,10 +2599,13 @@ export async function sshStartDashboard(
   port: number,
   token: string,
 ): Promise<void> {
-  const profileArgs =
-    profile && profile !== "default" ? ["--profile", profile] : [];
+  // Always the unified machine dashboard (no --profile / --isolated): one server
+  // serves every profile's data via `?profile=`, so the single global SSH tunnel
+  // has exactly one target. Per-profile isolated dashboards on distinct ports
+  // thrash that tunnel when the app queries multiple profiles at once. `profile`
+  // is accepted for signature compatibility but intentionally unused.
+  void profile;
   const cmd = buildRemoteHermesCmd([
-    ...profileArgs,
     "dashboard",
     "--host",
     "127.0.0.1",
@@ -2701,21 +2737,91 @@ export async function sshEnsureDashboardDist(
   }
 }
 
+// Negative cache: the dashboard is "ensured" on every chat / model-library /
+// session op. Only cache a *permanent* failure — the remote has no web dist and
+// can't build one (a gateway-only install) — so we don't re-run the heavy build
+// probe every call. A TRANSIENT failure (the dashboard is still starting, a
+// readiness/auth blip) must NOT be cached: caching it would force chat's
+// `prepareSshTunnel` onto the gateway /v1 tunnel (8642) while model-library still
+// targets the dashboard port, and the single global SSH tunnel would thrash
+// between them ("SSH tunnel is not active" / 405). In-flight dedup collapses a
+// connect storm into one probe regardless.
+const DASHBOARD_UNAVAILABLE_TTL_MS = 60_000;
+const dashboardUnavailableUntil = new Map<string, number>();
+const dashboardEnsurePromises = new Map<string, Promise<SshDashboardTarget | null>>();
+
+function dashboardCacheKey(config: SshConfig, _profile?: string): string {
+  // Machine-scoped (NOT per-profile): the unified dashboard is one server for
+  // all profiles, so all profiles share one cache/in-flight entry and one tunnel
+  // target. Keying per-profile would let concurrent profiles each ensure/​tunnel
+  // separately and thrash the single global tunnel.
+  return `${config.host}:${config.port || 22}:${config.username}`;
+}
+
+// Clear the dashboard negative cache — call when the connection config changes
+// so a freshly (re)configured remote is probed immediately, not after the TTL.
+export function resetSshDashboardAvailability(): void {
+  dashboardUnavailableUntil.clear();
+}
+
 // Ensure the remote has a running dashboard for SSH transport. Starts the
 // gateway too (messaging/cron stays up, and chat keeps a working /v1 endpoint),
 // builds the web dist if missing, then starts the dashboard and waits for
 // readiness. Returns the port + token to tunnel to, or null when the remote
-// can't run the dashboard (no Node / no web dist) — callers then fall back to
-// the gateway-only /v1 path (see prepareSshTunnel).
+// can't run the dashboard (no web dist, or it won't become ready) — callers then
+// fall back to the gateway-only /v1 path (see prepareSshTunnel).
 export async function sshEnsureDashboard(
   config: SshConfig,
   profile?: string,
 ): Promise<SshDashboardTarget | null> {
-  if (!(await sshGatewayStatus(config, profile))) {
-    await sshStartGateway(config, profile);
+  const cacheKey = dashboardCacheKey(config, profile);
+  const until = dashboardUnavailableUntil.get(cacheKey);
+  if (until && until > Date.now()) return null; // remote can't run a dashboard — skip the probe
+  const inflight = dashboardEnsurePromises.get(cacheKey);
+  if (inflight) return inflight;
+
+  const run = (async (): Promise<SshDashboardTarget | null> => {
+    const target = await ensureDashboardInner(config, profile);
+    if (target) {
+      dashboardUnavailableUntil.delete(cacheKey);
+      return target;
+    }
+    // Only latch the negative cache for the PERMANENT case (no buildable web
+    // dist). Transient failures stay uncached so the next op retries and the
+    // tunnel target stays consistent (dashboard, not gateway) — avoiding thrash.
+    const distOk = await sshEnsureDashboardDist(config).catch(() => false);
+    if (!distOk) {
+      dashboardUnavailableUntil.set(cacheKey, Date.now() + DASHBOARD_UNAVAILABLE_TTL_MS);
+    }
+    return null;
+  })();
+  dashboardEnsurePromises.set(cacheKey, run);
+  try {
+    return await run;
+  } finally {
+    dashboardEnsurePromises.delete(cacheKey);
   }
-  const token = await sshEnsureDashboardToken(config, profile);
-  let port = await sshResolveDashboardPort(config, profile);
+}
+
+async function ensureDashboardInner(
+  config: SshConfig,
+  profile?: string,
+): Promise<SshDashboardTarget | null> {
+  // The dashboard is the UNIFIED machine dashboard (default profile, one port +
+  // one token) for EVERY profile — NOT a per-profile isolated server. `hermes
+  // dashboard` serves any profile's data via `?profile=`, and the desktop has a
+  // single global SSH tunnel that can only point at one remote port. Per-profile
+  // dashboard ports (the old `--isolated` approach) made concurrent profile
+  // queries (e.g. `default` + `accessibility-auditor`) resolve different ports
+  // and thrash that one tunnel ("SSH tunnel is not active"). So all dashboard
+  // resolution here uses the machine scope (profile=undefined); callers pass the
+  // requested profile to the dashboard OPS as `?profile=` for per-profile data.
+  void profile; // intentionally machine-scoped
+  if (!(await sshGatewayStatus(config))) {
+    await sshStartGateway(config);
+  }
+  const token = await sshEnsureDashboardToken(config);
+  let port = await sshResolveDashboardPort(config);
   if (await sshDashboardRunning(config, port)) {
     if (await sshDashboardAuthenticated(config, port, token)) {
       return { port, token };
@@ -2725,14 +2831,14 @@ export async function sshEnsureDashboard(
     // process. Move this desktop-managed dashboard to a free remote port and
     // persist it so every later IPC call and app restart reuses the same target.
     port = await sshAllocateDashboardPort(config);
-    await sshPersistDashboardPort(config, profile, port);
+    await sshPersistDashboardPort(config, undefined, port);
   }
   // Build the web dist if it isn't there yet (first connect to a fresh install
   // that ran the installer but never built the dashboard UI). Without a dist,
   // `dashboard --skip-build` can't serve, so treat an unbuildable remote as
   // dashboard-unavailable → legacy fallback.
   if (!(await sshEnsureDashboardDist(config))) return null;
-  await sshStartDashboard(config, profile, port, token);
+  await sshStartDashboard(config, undefined, port, token);
   if (
     (await sshWaitDashboardReady(config, port)) &&
     (await sshDashboardAuthenticated(config, port, token))
