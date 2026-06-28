@@ -462,6 +462,9 @@
   font-weight: 400;
   font-style: normal;
   font-display: swap;
+  /* Scope Cairo to Arabic glyphs only; Latin etc. falls through to Manrope */
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-089F, U+08A0-08FF,
+    U+FB50-FDFF, U+FE70-FEFF;
 }
 @font-face {
   font-family: "Cairo";
@@ -469,6 +472,8 @@
   font-weight: 500;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-089F, U+08A0-08FF,
+    U+FB50-FDFF, U+FE70-FEFF;
 }
 @font-face {
   font-family: "Cairo";
@@ -476,6 +481,8 @@
   font-weight: 600;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-089F, U+08A0-08FF,
+    U+FB50-FDFF, U+FE70-FEFF;
 }
 @font-face {
   font-family: "Cairo";
@@ -483,6 +490,8 @@
   font-weight: 700;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-089F, U+08A0-08FF,
+    U+FB50-FDFF, U+FE70-FEFF;
 }
 
 /* ----- Shared Tokens ----- */
