@@ -634,6 +634,19 @@ function usageFromPayload(payload: unknown): Partial<UsageState> | null {
   };
 }
 
+/**
+ * Rough token estimate from conversation character count.
+ * Used as a last resort when the provider doesn't return usage data.
+ * Assumes ~4 characters per token (conservative for English/multilingual).
+ */
+function estimateTokensFromMessages(messages: { content?: string }[]): number {
+  const totalChars = messages.reduce(
+    (sum, m) => sum + (m.content?.length ?? 0),
+    0,
+  );
+  return Math.round(totalChars / 4);
+}
+
 export function completionFailed(payload: unknown): boolean {
   const row = asRecord(payload);
   const status = String(row.status || "").toLowerCase();
@@ -965,16 +978,25 @@ export function useDashboardChatTransport({
         setIsLoading(false);
         const usage = usageFromPayload(event.payload);
         if (usage) {
-          setUsage((prev) => ({
-            promptTokens: (prev?.promptTokens || 0) + (usage.promptTokens || 0),
-            completionTokens:
-              (prev?.completionTokens || 0) + (usage.completionTokens || 0),
-            totalTokens: (prev?.totalTokens || 0) + (usage.totalTokens || 0),
-            cost: prev?.cost,
-            contextTokens: usage.contextTokens || prev?.contextTokens,
-            cacheReadTokens: prev?.cacheReadTokens,
-            cacheWriteTokens: prev?.cacheWriteTokens,
-          }));
+          setUsage((prev) => {
+            const ctx =
+              usage.contextTokens ||
+              prev?.contextTokens ||
+              estimateTokensFromMessages(messagesRef.current);
+            return {
+              promptTokens:
+                (prev?.promptTokens || 0) + (usage.promptTokens || 0),
+              completionTokens:
+                (prev?.completionTokens || 0) +
+                (usage.completionTokens || 0),
+              totalTokens:
+                (prev?.totalTokens || 0) + (usage.totalTokens || 0),
+              cost: prev?.cost,
+              contextTokens: ctx,
+              cacheReadTokens: prev?.cacheReadTokens,
+              cacheWriteTokens: prev?.cacheWriteTokens,
+            };
+          });
         }
       }
 
