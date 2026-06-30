@@ -639,9 +639,10 @@ function usageFromPayload(payload: unknown): Partial<UsageState> | null {
  * Used as a last resort when the provider doesn't return usage data.
  * Assumes ~4 characters per token (conservative for English/multilingual).
  */
-function estimateTokensFromMessages(messages: { content?: string }[]): number {
+function estimateTokensFromMessages(messages: ChatMessage[]): number {
   const totalChars = messages.reduce(
-    (sum, m) => sum + (m.content?.length ?? 0),
+    (sum, m) =>
+      sum + ("content" in m ? (m.content?.length ?? 0) : 0),
     0,
   );
   return Math.round(totalChars / 4);
@@ -984,8 +985,12 @@ export function useDashboardChatTransport({
             const lastAssistant = [...messagesRef.current]
               .reverse()
               .find((m) => m.role === "agent");
+            const lastAssistantLen =
+              lastAssistant && "content" in lastAssistant
+                ? (lastAssistant as { content?: string }).content?.length ?? 0
+                : 0;
             const estimate = estimateTokensFromMessages(messagesRef.current) -
-              Math.round((lastAssistant?.content?.length ?? 0) / 4);
+              Math.round(lastAssistantLen / 4);
             const ctx =
               usage.contextTokens ||
               Math.max(estimate, 0);
