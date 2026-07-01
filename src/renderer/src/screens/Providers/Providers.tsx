@@ -11,8 +11,10 @@ import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 import OAuthLoginModal from "../../components/OAuthLoginModal";
+import HermesAccountModal from "../../components/HermesAccountModal";
 import Models, { type ModelsTab } from "../Models/Models";
-import { KeyRound, Layers, Workflow } from "../../assets/icons";
+import { KeyRound, Layers, Workflow, User } from "../../assets/icons";
+import type { HermesAccount } from "../../../../shared/account";
 import { expectedEnvKeyForUrl } from "../../../../shared/url-key-map";
 
 // Local mirror of the ambient `CredentialPoolEntry` from
@@ -94,6 +96,19 @@ function Providers({
   const [oauthModal, setOauthModal] = useState<
     (typeof OAUTH_PROVIDERS)[number] | null
   >(null);
+
+  // Hermes account (device login). `account` is the signed-in profile or null.
+  const [account, setAccount] = useState<HermesAccount | null>(null);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void window.hermesAPI.getAccount(profile).then((a) => {
+      if (!cancelled) setAccount(a);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile]);
 
   // Per-key debounce timers for env auto-save on change. Previously env
   // values were persisted only on input blur, so users who clicked the
@@ -375,6 +390,49 @@ function Providers({
 
       {activeTab === "providers" && (
         <>
+          <div className="settings-section">
+            <div className="settings-section-title">
+              {t("providers.hermesAccount.sectionTitle")}
+            </div>
+            <p className="settings-section-hint">
+              {t("providers.hermesAccount.sectionHint")}
+            </p>
+            {account ? (
+              <div className="hermes-account-summary">
+                <span className="hermes-account-identity">
+                  <User size={16} />
+                  <span>
+                    {t("providers.hermesAccount.signedInAs")}{" "}
+                    <strong>
+                      {account.user.email ||
+                        account.user.name ||
+                        account.user.id}
+                    </strong>
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={async () => {
+                    await window.hermesAPI.accountLogout(profile);
+                    setAccount(null);
+                  }}
+                >
+                  {t("providers.hermesAccount.signOut")}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowAccountModal(true)}
+              >
+                <User size={14} />
+                {t("providers.hermesAccount.signIn")}
+              </button>
+            )}
+          </div>
+
           <div className="settings-section">
             <div className="settings-section-title settings-section-title-row">
               <span>
@@ -833,6 +891,17 @@ function Providers({
               providerLabel={oauthModal.name}
               profile={profile}
               onClose={() => setOauthModal(null)}
+            />
+          )}
+
+          {showAccountModal && (
+            <HermesAccountModal
+              profile={profile}
+              onClose={() => setShowAccountModal(false)}
+              onSignedIn={() => {
+                // Refetch to get the full stored account (apiUrl + user).
+                void window.hermesAPI.getAccount(profile).then(setAccount);
+              }}
             />
           )}
         </>

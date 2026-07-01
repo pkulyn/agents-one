@@ -16,6 +16,11 @@ import type {
   MessagingPlatformUpdate,
 } from "../shared/messaging-platforms";
 import type { ChatToolEvent } from "../shared/chat-stream";
+import type {
+  DeviceCodeInfo,
+  HermesAccount,
+  HermesAccountUser,
+} from "../shared/account";
 
 /**
  * Mirror of the renderer-side `CredentialPoolEntry` ambient type
@@ -159,6 +164,31 @@ const hermesAPI = {
     ipcRenderer.on("oauth-login-progress", handler);
     return () => ipcRenderer.removeListener("oauth-login-progress", handler);
   },
+
+  // Hermes account sign-in (device authorization grant)
+  accountLogin: (
+    profile?: string,
+  ): Promise<{ success: boolean; user?: HermesAccountUser; error?: string }> =>
+    ipcRenderer.invoke("hermes-account-login", profile),
+  cancelAccountLogin: (): Promise<boolean> =>
+    ipcRenderer.invoke("hermes-account-login-cancel"),
+  onAccountLoginCode: (callback: (info: DeviceCodeInfo) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: unknown): void =>
+      callback(info as DeviceCodeInfo);
+    ipcRenderer.on("hermes-account-login-code", handler);
+    return () => ipcRenderer.removeListener("hermes-account-login-code", handler);
+  },
+  onAccountLoginProgress: (callback: (chunk: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, chunk: unknown): void =>
+      callback(String(chunk));
+    ipcRenderer.on("hermes-account-login-progress", handler);
+    return () =>
+      ipcRenderer.removeListener("hermes-account-login-progress", handler);
+  },
+  getAccount: (profile?: string): Promise<HermesAccount | null> =>
+    ipcRenderer.invoke("hermes-account-get", profile),
+  accountLogout: (profile?: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke("hermes-account-logout", profile),
 
   getLocale: (): Promise<AppLocale> => ipcRenderer.invoke("get-locale"),
   setLocale: (locale: AppLocale): Promise<AppLocale> =>

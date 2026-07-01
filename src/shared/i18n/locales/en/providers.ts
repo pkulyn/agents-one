@@ -16,4 +16,21 @@ export default {
     minimaxDesc: "Use your MiniMax subscription",
     nousDesc: "Sign in with your Nous Portal subscription",
   },
+  hermesAccount: {
+    sectionTitle: "Hermes One account",
+    sectionHint:
+      "Sign in to your Hermes One account to sync agents, workspaces, and wallets across devices.",
+    signIn: "Sign in to Hermes One",
+    signOut: "Sign out",
+    signedInAs: "Signed in as",
+    modalTitle: "Sign in to Hermes One",
+    codeHint: "Approve in your browser. Make sure it shows the same code:",
+    waitingHint: "Waiting for approval…",
+    signedIn: "Signed in",
+    openBrowser: "Open browser again",
+    copyCode: "Copy code",
+    copied: "Copied",
+    successHint: "You're signed in. You can close this window.",
+    failed: "Sign-in failed.",
+  },
 } as const;

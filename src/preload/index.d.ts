@@ -10,6 +10,11 @@ import type {
 } from "../shared/wallets";
 import type { TokenBalancesResponse } from "../shared/tokens";
 import type {
+  DeviceCodeInfo,
+  HermesAccount,
+  HermesAccountUser,
+} from "../shared/account";
+import type {
   RegistryKind,
   RegistryItem,
   RegistryCatalog,
@@ -247,6 +252,16 @@ interface HermesAPI {
   ) => Promise<{ success: boolean; error?: string }>;
   cancelOAuthLogin: () => Promise<boolean>;
   onOAuthLoginProgress: (callback: (chunk: string) => void) => () => void;
+
+  // Hermes account sign-in (device authorization grant)
+  accountLogin: (
+    profile?: string,
+  ) => Promise<{ success: boolean; user?: HermesAccountUser; error?: string }>;
+  cancelAccountLogin: () => Promise<boolean>;
+  onAccountLoginCode: (callback: (info: DeviceCodeInfo) => void) => () => void;
+  onAccountLoginProgress: (callback: (chunk: string) => void) => () => void;
+  getAccount: (profile?: string) => Promise<HermesAccount | null>;
+  accountLogout: (profile?: string) => Promise<{ success: boolean }>;
 
   getLocale: () => Promise<AppLocale>;
   setLocale: (locale: AppLocale) => Promise<AppLocale>;
