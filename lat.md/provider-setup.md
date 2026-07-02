@@ -4,6 +4,12 @@ The first-run screen where the user picks an AI provider and enters credentials 
 
 The provider list is data-driven from `PROVIDERS.setup` in [[src/renderer/src/constants.ts]]. Each entry carries an `envKey`, `configProvider`, `baseUrl`, and `needsKey`; selecting a card drives which form fields show (API key, or the Local server/base-URL flow).
 
+## Hermes One is the first-priority provider
+
+**Hermes One Inference** (`https://inference.hermesone.org/v1`) is Hermes One's own OpenAI-compatible gateway, listed **first** in `PROVIDERS.setup`, `PROVIDER_CARDS`, and the `SETTINGS_SECTIONS` "LLM Providers" items — so it leads the Add-provider picker.
+
+It is not a canonical agent provider, so it routes through `custom` + `base_url` exactly like the `openai` card, with its key stored/host-derived as `HERMESONE_API_KEY` (`inference.hermesone.org` → `HERMESONE_API_KEY` in [[src/shared/url-key-map.ts]], and `hermesone` in `OPENAI_COMPAT_PROVIDERS`). It appears in `OPENAI_COMPATIBLE_BASE_URLS` so `displayProviderFromConfig` reverse-maps it back to the Hermes One card on reload, and its logo (`detectBrand` → `hermesone`, the `hermes-icon.svg` mark) shows in the grids. Users get a key from the console's Credits → API keys.
+
 ## Top grid mirrors the agent's native providers
 
 The top provider grid shows only providers the upstream agent supports natively; generic OpenAI-compatible endpoints live in the Local presets instead.
@@ -16,17 +22,51 @@ Endpoints the agent does not natively support (Groq, DeepSeek, Together, Firewor
 
 Selecting a preset sets the base URL; the API-key env var is resolved by `resolveCustomEnvKey` — first an exact `LOCAL_PRESETS.envKey` match, then [[src/shared/url-key-map.ts]] by host. So a compatible provider configures correctly without a dedicated card (e.g. `api.aimlapi.com` → `AIMLAPI_API_KEY`).
 
-## Providers tab routes OpenAI-compatible ids through `custom`
+## Active model is picked from configured providers
 
-The Providers tab ([[src/renderer/src/screens/Providers/Providers.tsx]]) picks the model provider, but the agent only resolves native providers — selecting an unsupported id otherwise makes the gateway raise `Unknown provider`.
+The Providers tab ([[src/renderer/src/screens/Providers/Providers.tsx]]) sets the default (active) model by choosing from what's already configured, not by free-form entry — there's no more provider chip grid, manual model/base-URL fields, or inline API-key input.
 
 The screen is organized as three tabs: Providers, Models, and Auxiliary Tasks. Providers owns the active provider/model credentials, while Models and Auxiliary Tasks embed [[src/renderer/src/screens/Models/Models.tsx]] so the saved model library and per-task model overrides live beside the provider configuration instead of as a separate sidebar destination.
 
-The picker is a flex-wrap **chip grid** (driven by `PROVIDER_CARDS` in [[src/renderer/src/constants.ts]]) rather than a dropdown: every native provider is a chip, and a terminal `local` ("Local / Others") chip reveals the `LOCAL_PRESETS` rows (local servers + remote OpenAI-compatible endpoints). `selectProvider` is the shared click handler for the provider chips and the preset chips.
+The **MODEL** section shows a read-only summary (logo + provider label + model). A **Change** button opens a picker modal with a **provider** picker (a custom `LogoSelect` — the brand logo renders inside the control and each option, which a native `<select>` can't do) and a native **model** dropdown. Confirming sets `modelProvider`/`modelName`/`modelBaseUrl`, which the existing debounced auto-save persists to `config.yaml` via `setModelConfig` (compat providers as `custom` + base_url). The **API key is resolved automatically** at runtime — the picker never asks for it.
 
-Once a provider is configured the grid collapses to a read-only summary (logo + provider label + model/base-URL); a **Change** button in the section header (`editingProvider` state) re-opens the full chip grid and the editable model/base-URL fields. An unconfigured (`auto`) selection always shows the grid.
+The provider list (`pickerProviders`) is sourced from the **configured providers** — the same set shown as LLM cards — NOT from which providers happen to have saved models: keyed FieldDef providers (`env[f.key]` set, in FieldDef order so Hermes One leads) plus named custom providers whose `customProviderEnvKey(label)` is set. So a freshly-keyed provider with no models yet still appears.
 
-For compatible/custom endpoints, an inline **API Key** field appears under Base URL, stored under the host-derived env var (`resolveCompatEnvKey`: preset `envKey` else `expectedEnvKeyForUrl`, e.g. AtlasCloud → `ATLASCLOUD_API_KEY`). It shares the `env` state with the lower LLM-provider key cards, so either entry point stays in sync.
+The **model** dropdown merges that provider's saved models with live discovery ([[src/renderer/src/hooks/useDiscoveredModels.ts#useDiscoveredModels]]) so a just-configured provider is immediately usable. On confirm, a discovered-only model is persisted via `addModel` first (so its key resolves and it reappears), and compat providers store `custom` + their `OPENAI_COMPATIBLE_BASE_URLS` base URL.
+
+## LLM-provider keys are configured-only, via modals
+
+The `SETTINGS_SECTIONS` "LLM Providers" section no longer renders a static key card for every known provider (an overwhelming wall of empty inputs). It shows only providers with a key set, plus an **Add provider** action.
+
+[[src/renderer/src/components/ProviderKeysSection.tsx#ProviderKeysSection]] renders the configured cards + an Add tile; Add opens a searchable picker modal (logo per provider) → a per-provider config modal (key input with show/hide, **Remove provider**). It's a presentation layer over the same `env` state + `handleChange`/`handleBlur`/`handleRemove` handlers in [[src/renderer/src/screens/Providers/Providers.tsx]], so persistence is unchanged (`setEnv`); removing clears the env var.
+
+The section is rendered **standalone, above the credential pool** rather than in the `SETTINGS_SECTIONS.map` position — it's the primary surface for configuring providers and the models the top active-model selector picks from, so it sits before the advanced multi-key pool. The map skips the `constants.sectionLlmProviders` entry (`isLlmProviders → return null`); other `SETTINGS_SECTIONS` (non-LLM) still render inline in place, after the pool.
+
+### Named custom providers
+
+The picker offers a **Custom provider** tile (last) for any OpenAI-compatible endpoint not covered by a built-in card. You can add **multiple**, each with a distinct name, base URL, and its own key.
+
+There is no separate store — a custom provider *is* its name + base URL + the models routed to it in `models.json`.
+
+The config modal collects **Name**, **Base URL**, and an API key. The key is stored under the provider's dedicated env var, [[src/shared/url-key-map.ts#customProviderEnvKey]]`(name)` → `CUSTOM_PROVIDER_<SANITISED_NAME>_KEY` — so two custom providers never share a key. Models are added through the same [[src/renderer/src/components/ProviderKeysSection.tsx#ProviderModelsManager]] with an explicit `{ provider: "custom", baseUrl }` route plus `providerLabel = name`; that label is persisted on each [[src/main/models.ts#SavedModel]] (`providerLabel`) via [[src/main/models.ts#addModel]] (whose dedup now includes base URL, so the same model id can exist under two endpoints).
+
+Configured custom providers are re-derived from `models.json` on load: `provider: "custom"` models whose host resolves to `CUSTOM_API_KEY` (known compat hosts like groq/hermesone are excluded — they own dedicated key cards), grouped by `providerLabel` (falling back to host for legacy unlabeled models). Each shows as a card titled by its name; **Remove provider** deletes its models and clears its `CUSTOM_PROVIDER_*` key. The runtime resolves the same key: [[src/main/hermes.ts]] looks up the base-URL-matched model and derives `customProviderEnvKey(providerLabel ?? name)`, so every model under a provider shares that provider's key.
+
+### Adding a curated partner provider
+
+Sponsor/partner providers (and Hermes One itself) are OpenAI-compatible custom endpoints under the hood but are presented **first-class** — curated in-app, exactly like `hermesone`, with their own host-derived key and branding.
+
+To add one, mirror the Hermes One entries: a card in `PROVIDERS.setup` + `PROVIDER_CARDS` + a base URL in `OPENAI_COMPATIBLE_BASE_URLS` ([[src/renderer/src/constants.ts]]), a `URL_KEY_MAP` entry giving it a dedicated `<PARTNER>_API_KEY` in [[src/shared/url-key-map.ts]], and a `detectBrand` rule + logo in [[src/renderer/src/components/common/BrandLogo.tsx]].
+
+## Models live under each provider (OpenCode-style)
+
+A provider's config modal also manages the models it serves, so the provider→models hierarchy lives in one place instead of a separate flat list.
+
+[[src/renderer/src/components/ProviderKeysSection.tsx#ProviderModelsManager]] renders below the key field in the config modal: a key-status line, the model pills, and an add-input. It reads/writes the same `models.json` library the Models screen uses (`listModels`/`addModel`/`removeModel`, and re-syncs on `onModelLibraryChanged`), so added models immediately appear in the chat model picker. Models show as removable chips; the add-input autocompletes off live discovery and strips whitespace as typed/pasted (model IDs never contain spaces, so `"hello there"` can't be saved).
+
+The single [[src/renderer/src/hooks/useDiscoveredModels.ts#useDiscoveredModels]] call does double duty: it feeds the add-input's `<datalist>` **and** drives the "Connected · key verified" status line — a `status: "ok"` means the endpoint accepted the key and returned a model list, so the "verified" claim is truthful. `unsupported`/`unknown-host` degrade to a plain "Connected" (key set, list not exposed), `error` to "Couldn't verify key", and an empty key to "Add a key to connect".
+
+The env key is the only anchor the modal has, so persistence routing is derived from it by [[src/renderer/src/constants.ts#providerRouteForEnvKey]]: it scans `PROVIDERS.setup` (returning `{provider: configProvider ?? id, baseUrl}`) then `LOCAL_PRESETS` (always `custom` + `baseUrl`), falling back to a bare `custom` route. Native providers keep their agent slug (the gateway hardcodes the base URL); OpenAI-compatible providers save as `provider: "custom"` + explicit `baseUrl` — the same routing the Models screen / Providers tab apply, so entries stay consistent regardless of where they were added.
 
 Ids the agent can't resolve by id are listed in `OPENAI_COMPATIBLE_BASE_URLS` ([[src/renderer/src/constants.ts]]) — openai, perplexity, and every `LOCAL_PRESETS` chip (local servers + remote endpoints like groq, deepseek, atlascloud, mistral, …). This map MUST contain every preset id, or selecting that chip mis-routes; a test in `tests/constants.test.ts` enforces it. Selecting one autofills its base URL and shows the base-URL field; on save it is persisted as `provider: custom` + `base_url`, which the gateway accepts and uses to host-derive the API key (`runtime_provider._host_derived_api_key`, e.g. `api.groq.com` → `GROQ_API_KEY`). `displayProviderFromConfig` reverse-maps a stored `custom` + known base URL back to the brand id so the dropdown re-selects it on load. Native providers (the gateway hardcodes their base URL) clear the field instead.
 

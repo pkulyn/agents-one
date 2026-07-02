@@ -791,6 +791,7 @@ interface HermesAPI {
       provider: string;
       model: string;
       baseUrl: string;
+      providerLabel?: string;
       createdAt: number;
     }>
   >;
@@ -800,6 +801,7 @@ interface HermesAPI {
     model: string,
     baseUrl: string,
     contextLength?: number,
+    providerLabel?: string,
   ) => Promise<{
     id: string;
     name: string;
@@ -807,6 +809,7 @@ interface HermesAPI {
     model: string;
     baseUrl: string;
     contextLength?: number;
+    providerLabel?: string;
     createdAt: number;
   }>;
   removeModel: (id: string) => Promise<boolean>;

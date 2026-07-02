@@ -2087,6 +2087,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       model: string,
       baseUrl: string,
       contextLength?: number,
+      providerLabel?: string,
     ) => {
       const conn = getConnectionConfig();
       let addedModel: Awaited<ReturnType<typeof addModel>>;
@@ -2106,7 +2107,14 @@ export function registerIpcHandlers(context: IpcContext): void {
           () => sshAddModel(conn.ssh!, name, provider, model, baseUrl),
         );
       } else {
-        addedModel = addModel(name, provider, model, baseUrl, contextLength);
+        addedModel = addModel(
+          name,
+          provider,
+          model,
+          baseUrl,
+          contextLength,
+          providerLabel,
+        );
       }
       notifyModelLibraryChanged();
       return addedModel;

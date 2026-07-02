@@ -1,28 +1,26 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   SETTINGS_SECTIONS,
   PROVIDERS,
   OAUTH_PROVIDERS,
   OPENAI_COMPATIBLE_BASE_URLS,
-  PROVIDER_CARDS,
-  LOCAL_PRESETS,
+  providerRouteForEnvKey,
 } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
-import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 import OAuthLoginModal from "../../components/OAuthLoginModal";
 import HermesAccountModal from "../../components/HermesAccountModal";
+import ProviderKeysSection from "../../components/ProviderKeysSection";
 import Models, { type ModelsTab } from "../Models/Models";
+import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 import { KeyRound, Layers, Workflow, User } from "../../assets/icons";
+import { ChevronDown, X } from "lucide-react";
+import { customProviderEnvKey } from "../../../../shared/url-key-map";
 import type { HermesAccount } from "../../../../shared/account";
-import { expectedEnvKeyForUrl } from "../../../../shared/url-key-map";
 
-// Local mirror of the ambient `CredentialPoolEntry` from
-// src/preload/index.d.ts — the renderer's tsconfig sometimes doesn't
-// pick up the d.ts depending on where the file lives.
 // config.yaml stores OpenAI-compatible providers as `custom` + base_url (the
 // agent can't resolve their brand id). Map a loaded (provider, baseUrl) back to
-// the brand id so the dropdown re-selects it instead of showing "Custom".
+// the brand id so the summary/logo shows the brand instead of "Custom".
 function displayProviderFromConfig(provider: string, baseUrl: string): string {
   if (provider !== "custom" || !baseUrl) return provider;
   const match = Object.entries(OPENAI_COMPATIBLE_BASE_URLS).find(
@@ -31,13 +29,83 @@ function displayProviderFromConfig(provider: string, baseUrl: string): string {
   return match ? match[0] : provider;
 }
 
-// The env var an OpenAI-compatible endpoint's key is stored under — an exact
-// preset match wins (e.g. AtlasCloud -> ATLASCLOUD_API_KEY), else derived from
-// the URL host, matching the agent's runtime_provider host derivation.
-function resolveCompatEnvKey(baseUrl: string): string {
-  const preset = LOCAL_PRESETS.find((p) => p.baseUrl === baseUrl);
-  if (preset?.envKey) return preset.envKey;
-  return expectedEnvKeyForUrl(baseUrl);
+// A library model as returned by `listModels()`.
+interface LibModel {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  providerLabel?: string;
+}
+
+// A configured provider offered in the active-model picker: the same set the
+// user sees as LLM-provider cards (keyed FieldDef providers + named custom
+// providers), each carrying its saved models (may be empty — discovery fills in).
+interface PickerProvider {
+  key: string; // stable dropdown id ("brand:<id>" or "label:<name>")
+  brand: string; // logo/brand id
+  label: string; // display name
+  provider: string; // route provider ("custom" or native slug)
+  baseUrl: string; // route base URL
+  keyEnv: string; // env var holding the API key
+  providerLabel?: string; // set for named custom providers
+  models: LibModel[]; // saved models under this provider
+}
+
+// A dropdown that shows a brand logo inside the control and in each option
+// (a native <select> can't render logos).
+function LogoSelect<T extends { key: string }>({
+  options,
+  value,
+  onChange,
+  brandOf,
+  labelOf,
+}: {
+  options: T[];
+  value: string;
+  onChange: (key: string) => void;
+  brandOf: (o: T) => string;
+  labelOf: (o: T) => string;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const active = options.find((o) => o.key === value) ?? null;
+  return (
+    <div className={`logo-select ${open ? "open" : ""}`}>
+      <button
+        type="button"
+        className="input logo-select-trigger"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {active && (
+          <BrandLogo provider={brandOf(active)} size={18} matchTheme={true} />
+        )}
+        <span className="logo-select-value">{active ? labelOf(active) : ""}</span>
+        <ChevronDown size={16} className="logo-select-chevron" aria-hidden />
+      </button>
+      {open && (
+        <>
+          <div className="logo-select-backdrop" onClick={() => setOpen(false)} />
+          <div className="logo-select-menu">
+            {options.map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                className={`logo-select-option ${o.key === value ? "active" : ""}`}
+                onClick={() => {
+                  onChange(o.key);
+                  setOpen(false);
+                }}
+              >
+                <BrandLogo provider={brandOf(o)} size={18} matchTheme={true} />
+                <span>{labelOf(o)}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 interface CredentialPoolEntry {
@@ -76,9 +144,12 @@ function Providers({
   const [modelName, setModelName] = useState("");
   const [modelBaseUrl, setModelBaseUrl] = useState("");
   const [modelSaved, setModelSaved] = useState(false);
-  // Collapse the provider grid to a read-only summary once configured; the
-  // Change button re-opens it. Unconfigured (auto) always shows the grid.
-  const [editingProvider, setEditingProvider] = useState(false);
+  // Active-model picker modal: pick a configured provider, then one of its
+  // configured models. Sourced from the model library (models.json).
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [libModels, setLibModels] = useState<LibModel[]>([]);
+  const [pickGroupKey, setPickGroupKey] = useState("");
+  const [pickModel, setPickModel] = useState("");
   const modelLoaded = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -250,6 +321,17 @@ function Providers({
     envSaveTimers.current.set(key, timer);
   }
 
+  // Clear a provider's key entirely (removes it from the configured list).
+  async function handleRemove(key: string): Promise<void> {
+    const pending = envSaveTimers.current.get(key);
+    if (pending) {
+      clearTimeout(pending);
+      envSaveTimers.current.delete(key);
+    }
+    setEnv((prev) => ({ ...prev, [key]: "" }));
+    await window.hermesAPI.setEnv(key, "", profile);
+  }
+
   // Keep envRef in sync with the latest env state so the unmount
   // cleanup below can read it without stale-closure issues.
   useEffect(() => {
@@ -309,58 +391,158 @@ function Providers({
     });
   }
 
-  // Select a provider from the card grid / preset chips / (legacy) dropdown.
-  // Native ids clear base_url (the gateway hardcodes it); OpenAI-compatible ids
-  // autofill their endpoint and persist as `custom` (see saveModelConfig); the
-  // `local`/`custom` sentinel seeds a localhost placeholder.
-  function selectProvider(id: string): void {
-    if (id === "custom" || id === "local") {
-      // The "local" card has no provider id of its own — it routes as custom.
-      setModelProvider("custom");
-      if (!modelBaseUrl) setModelBaseUrl("http://localhost:1234/v1");
-    } else if (id in OPENAI_COMPATIBLE_BASE_URLS) {
-      setModelProvider(id);
-      setModelBaseUrl(OPENAI_COMPATIBLE_BASE_URLS[id]);
-    } else {
-      setModelProvider(id);
-      setModelBaseUrl("");
+  const isConfigured = modelProvider !== "auto" && !!modelName;
+  const summaryMeta = [modelName, modelBaseUrl].filter(Boolean).join("  ·  ");
+
+  // The providers offered in the picker = the ones the user has configured
+  // (the same set shown as LLM cards): keyed FieldDef providers + named custom
+  // providers. Sourced from `env` + the model library, NOT from which providers
+  // happen to already have saved models — so a freshly-keyed provider appears.
+  const pickerProviders = useMemo<PickerProvider[]>(() => {
+    // Bucket saved models by brand / custom label.
+    const byBrand = new Map<string, LibModel[]>();
+    const byLabel = new Map<string, LibModel[]>();
+    for (const m of libModels) {
+      if (m.provider === "custom" && m.providerLabel) {
+        const a = byLabel.get(m.providerLabel) ?? [];
+        a.push(m);
+        byLabel.set(m.providerLabel, a);
+      } else {
+        const b = displayProviderFromConfig(m.provider, m.baseUrl);
+        const a = byBrand.get(b) ?? [];
+        a.push(m);
+        byBrand.set(b, a);
+      }
     }
+    const isSet = (k: string) => !!(env[k] && env[k].trim());
+    const out: PickerProvider[] = [];
+    const seen = new Set<string>();
+    // 1) Keyed FieldDef providers, in FieldDef order (Hermes One first).
+    const llm = SETTINGS_SECTIONS.find(
+      (s) => s.title === "constants.sectionLlmProviders",
+    );
+    for (const f of llm?.items ?? []) {
+      if (f.key === "CUSTOM_API_KEY" || !isSet(f.key)) continue;
+      const r = providerRouteForEnvKey(f.key);
+      const brand =
+        r.provider === "custom" && r.baseUrl
+          ? displayProviderFromConfig("custom", r.baseUrl)
+          : r.provider;
+      if (!brand || brand === "custom" || seen.has(brand)) continue;
+      seen.add(brand);
+      const compat = brand in OPENAI_COMPATIBLE_BASE_URLS;
+      out.push({
+        key: `brand:${brand}`,
+        brand,
+        label: t(PROVIDERS.labels[brand] ?? brand),
+        provider: compat ? "custom" : brand,
+        baseUrl: compat ? OPENAI_COMPATIBLE_BASE_URLS[brand] : "",
+        keyEnv: f.key,
+        models: byBrand.get(brand) ?? [],
+      });
+    }
+    // 2) Named custom providers whose dedicated key is set.
+    for (const [label, models] of byLabel) {
+      const keyEnv = customProviderEnvKey(label);
+      if (!isSet(keyEnv)) continue;
+      out.push({
+        key: `label:${label}`,
+        brand: "custom",
+        label,
+        provider: "custom",
+        baseUrl: models[0]?.baseUrl ?? "",
+        keyEnv,
+        providerLabel: label,
+        models,
+      });
+    }
+    return out;
+  }, [libModels, env, t]);
+
+  const activeProvider =
+    pickerProviders.find((p) => p.key === pickGroupKey) ?? null;
+
+  // Live discovery for the selected provider — surfaces its models even when
+  // none are saved yet (a just-configured key).
+  const pickDiscovery = useDiscoveredModels({
+    provider: activeProvider?.provider ?? "auto",
+    baseUrl: activeProvider?.baseUrl || undefined,
+    apiKey: activeProvider ? env[activeProvider.keyEnv] || undefined : undefined,
+    profile,
+    enabled: modelPickerOpen && !!activeProvider,
+  });
+
+  // Model options: saved ids first, then discovered-only ids.
+  const pickModelOptions = useMemo<string[]>(() => {
+    const saved = (activeProvider?.models ?? []).map((m) => m.model);
+    const set = new Set(saved);
+    return [...saved, ...pickDiscovery.models.filter((id) => !set.has(id))];
+  }, [activeProvider, pickDiscovery.models]);
+
+  // Initialise / validate the selected provider whenever the picker opens.
+  useEffect(() => {
+    if (!modelPickerOpen) return;
+    setPickGroupKey((prev) => {
+      if (pickerProviders.some((p) => p.key === prev)) return prev;
+      const cur = libModels.find(
+        (m) =>
+          m.model === modelName &&
+          displayProviderFromConfig(m.provider, m.baseUrl) === modelProvider,
+      );
+      const curKey =
+        cur?.providerLabel
+          ? `label:${cur.providerLabel}`
+          : cur
+            ? `brand:${displayProviderFromConfig(cur.provider, cur.baseUrl)}`
+            : "";
+      if (pickerProviders.some((p) => p.key === curKey)) return curKey;
+      return pickerProviders[0]?.key ?? "";
+    });
+  }, [modelPickerOpen, pickerProviders, libModels, modelName, modelProvider]);
+
+  // Keep the selected model valid for the current provider + options.
+  useEffect(() => {
+    if (!modelPickerOpen) return;
+    setPickModel((prev) => {
+      if (pickModelOptions.includes(prev)) return prev;
+      if (pickModelOptions.includes(modelName)) return modelName;
+      return pickModelOptions[0] ?? "";
+    });
+  }, [modelPickerOpen, pickModelOptions, modelName]);
+
+  async function openModelPicker(): Promise<void> {
+    const all = (await window.hermesAPI.listModels()) as LibModel[];
+    setLibModels(all);
+    setModelPickerOpen(true);
   }
 
-  const isCustomProvider = modelProvider === "custom";
-  // OpenAI-compatible providers are routed as `custom` but keep their brand
-  // selected; they show the (autofilled) base_url field like custom does.
-  const isCompatibleProvider = modelProvider in OPENAI_COMPATIBLE_BASE_URLS;
-  const showBaseUrl = isCustomProvider || isCompatibleProvider;
-  // The terminal "Local" card is active whenever the current selection isn't
-  // one of the other grid cards — i.e. a custom URL or a local/remote preset
-  // reached through it. It owns the preset-chip sub-section.
-  const isLocalCard =
-    showBaseUrl &&
-    !PROVIDER_CARDS.some((c) => c.id !== "local" && c.id === modelProvider);
-  // "auto" means nothing specific is set yet — keep the grid open in that case.
-  const isConfigured = modelProvider !== "auto";
-  const showEditor = !isConfigured || editingProvider;
-  const summaryMeta = [modelName, showBaseUrl ? modelBaseUrl : ""]
-    .filter(Boolean)
-    .join("  ·  ");
-  // For compatible/custom endpoints, the API key is entered inline (right under
-  // Base URL) and stored under the host-derived env var the gateway reads.
-  const compatEnvKey = showBaseUrl ? resolveCompatEnvKey(modelBaseUrl) : "";
+  function selectPickGroup(key: string): void {
+    setPickGroupKey(key);
+  }
 
-  // Live model discovery: fetch the provider's /v1/models list and feed
-  // it into a datalist that powers the Model field's autocomplete.  Only
-  // runs once the Providers tab is visible so we don't fire on every
-  // background remount.
-  const [discoveryRefresh, setDiscoveryRefresh] = useState(0);
-  const discovery = useDiscoveredModels({
-    provider: modelProvider,
-    baseUrl: showBaseUrl ? modelBaseUrl : undefined,
-    profile,
-    enabled: !!visible && activeTab === "providers" && modelProvider !== "auto",
-    refreshToken: discoveryRefresh,
-  });
-  const discoveryListId = "provider-model-discovery";
+  // Apply the chosen model as the active/default config. Discovered-only models
+  // are persisted to the library first (so the key resolves + they reappear).
+  // The debounced auto-save then writes config.yaml; the API key is resolved
+  // automatically at runtime.
+  async function confirmModelPick(): Promise<void> {
+    const p = activeProvider;
+    if (!p || !pickModel) return;
+    let saved = p.models.find((m) => m.model === pickModel);
+    if (!saved) {
+      saved = (await window.hermesAPI.addModel(
+        pickModel,
+        p.provider,
+        pickModel,
+        p.baseUrl,
+        undefined,
+        p.providerLabel,
+      )) as LibModel;
+    }
+    setModelProvider(displayProviderFromConfig(saved.provider, saved.baseUrl));
+    setModelName(saved.model);
+    setModelBaseUrl(saved.baseUrl || p.baseUrl || "");
+    setModelPickerOpen(false);
+  }
 
   return (
     <div className="settings-container">
@@ -443,223 +625,18 @@ function Providers({
                   </span>
                 )}
               </span>
-              {isConfigured && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setEditingProvider((v) => !v)}
-                >
-                  {showEditor ? t("common.done") : t("common.change")}
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => void openModelPicker()}
+              >
+                {isConfigured
+                  ? t("common.change")
+                  : t("providers.model.select")}
+              </button>
             </div>
 
-            {showEditor ? (
-              <>
-                <div className="settings-field">
-                  <label className="settings-field-label">
-                    {t("common.provider")}
-                  </label>
-                  <div className="setup-local-presets providers-provider-chips">
-                    {PROVIDER_CARDS.map((card) => {
-                      const active =
-                        card.id === "local"
-                          ? isLocalCard
-                          : modelProvider === card.id;
-                      return (
-                        <button
-                          key={card.id}
-                          type="button"
-                          aria-pressed={active}
-                          className={`setup-local-preset ${active ? "active" : ""}`}
-                          onClick={() => selectProvider(card.id)}
-                        >
-                          <BrandLogo
-                            provider={card.id}
-                            size={16}
-                            matchTheme={true}
-                          />
-                          <span>{t(card.name)}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="settings-field-hint">
-                    {isCustomProvider || isCompatibleProvider
-                      ? t("settings.customProviderHint")
-                      : t("settings.providerHint")}
-                  </div>
-                </div>
-
-                {isLocalCard && (
-                  <div className="settings-field">
-                    <label className="settings-field-label">
-                      {t("setup.localGroupLabel")}
-                    </label>
-                    <div className="setup-local-presets">
-                      {LOCAL_PRESETS.filter((p) => p.group === "local").map(
-                        (preset) => (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            className={`setup-local-preset ${modelBaseUrl === preset.baseUrl ? "active" : ""}`}
-                            onClick={() => selectProvider(preset.id)}
-                          >
-                            <BrandLogo
-                              provider={preset.id}
-                              size={16}
-                              matchTheme={true}
-                            />
-                            <span>{t(`setup.localPresets.${preset.id}`)}</span>
-                          </button>
-                        ),
-                      )}
-                    </div>
-                    <label
-                      className="settings-field-label"
-                      style={{ marginTop: 12 }}
-                    >
-                      {t("setup.remoteGroupLabel")}
-                    </label>
-                    <div className="setup-local-presets">
-                      {LOCAL_PRESETS.filter((p) => p.group === "remote").map(
-                        (preset) => (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            className={`setup-local-preset ${modelBaseUrl === preset.baseUrl ? "active" : ""}`}
-                            onClick={() => selectProvider(preset.id)}
-                          >
-                            <BrandLogo
-                              provider={preset.id}
-                              size={16}
-                              matchTheme={true}
-                            />
-                            <span>{t(`setup.localPresets.${preset.id}`)}</span>
-                          </button>
-                        ),
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="settings-field">
-                  <label className="settings-field-label">
-                    {t("common.model")}
-                  </label>
-                  <div className="settings-model-row">
-                    <input
-                      className="input"
-                      type="text"
-                      value={modelName}
-                      onChange={(e) => setModelName(e.target.value)}
-                      placeholder={t("settings.modelNamePlaceholder")}
-                      list={
-                        discovery.models.length > 0
-                          ? discoveryListId
-                          : undefined
-                      }
-                      autoComplete="off"
-                    />
-                    {discovery.status !== "unsupported" &&
-                      discovery.status !== "idle" && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setDiscoveryRefresh((n) => n + 1)}
-                          disabled={discovery.status === "loading"}
-                          title={t("settings.refreshModels")}
-                        >
-                          ↻
-                        </button>
-                      )}
-                  </div>
-                  {discovery.models.length > 0 && (
-                    <datalist id={discoveryListId}>
-                      {discovery.models.map((m) => {
-                        const isFree = discovery.freeModels?.includes(m);
-                        return (
-                          <option
-                            key={m}
-                            value={m}
-                            label={isFree ? t("models.freeBadge") : undefined}
-                          />
-                        );
-                      })}
-                    </datalist>
-                  )}
-                  <div className="settings-field-hint">
-                    {discovery.status === "loading"
-                      ? t("settings.discoveringModels")
-                      : discovery.status === "ok"
-                        ? t("settings.discoveredCount", {
-                            count: discovery.models.length,
-                          })
-                        : discovery.status === "no-key"
-                          ? t("settings.discoveryNoKey")
-                          : discovery.status === "error"
-                            ? t("settings.discoveryError")
-                            : t("settings.modelHint")}
-                  </div>
-                </div>
-
-                {showBaseUrl && (
-                  <div className="settings-field">
-                    <label className="settings-field-label">
-                      {t("common.baseUrl")}
-                    </label>
-                    <input
-                      className="input"
-                      type="text"
-                      value={modelBaseUrl}
-                      onChange={(e) => setModelBaseUrl(e.target.value)}
-                      placeholder={t("settings.modelBaseUrlPlaceholder")}
-                    />
-                    <div className="settings-field-hint">
-                      {t("settings.customBaseUrlHint")}
-                    </div>
-                  </div>
-                )}
-
-                {showBaseUrl && compatEnvKey && (
-                  <div className="settings-field">
-                    <label className="settings-field-label">
-                      {t("settings.apiKeyPlaceholder")}
-                      {savedKey === compatEnvKey && (
-                        <span className="settings-saved">
-                          {t("common.saved")}
-                        </span>
-                      )}
-                    </label>
-                    <div className="settings-input-row">
-                      <input
-                        className="input"
-                        type={
-                          visibleKeys.has(compatEnvKey) ? "text" : "password"
-                        }
-                        value={env[compatEnvKey] || ""}
-                        onChange={(e) =>
-                          handleChange(compatEnvKey, e.target.value)
-                        }
-                        onBlur={() => handleBlur(compatEnvKey)}
-                        placeholder="sk-..."
-                      />
-                      <button
-                        className="btn-ghost settings-toggle-btn"
-                        onClick={() => toggleVisibility(compatEnvKey)}
-                      >
-                        {visibleKeys.has(compatEnvKey)
-                          ? t("common.hide")
-                          : t("common.show")}
-                      </button>
-                    </div>
-                    <div className="settings-field-hint">
-                      {t("settings.compatApiKeyHint", { envVar: compatEnvKey })}
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
+            {isConfigured ? (
               <div className="provider-summary">
                 <BrandLogo
                   provider={modelProvider}
@@ -676,8 +653,38 @@ function Providers({
                   )}
                 </div>
               </div>
+            ) : (
+              <p className="settings-section-hint">
+                {t("providers.model.emptyHint")}
+              </p>
             )}
           </div>
+
+
+          {/* Provider configuration (keys + models). Placed above the
+              credential pool: it's the primary, user-friendly surface for
+              configuring providers and the models the top selector picks from;
+              the credential pool is the advanced multi-key feature below it. */}
+          {(() => {
+            const llm = SETTINGS_SECTIONS.find(
+              (s) => s.title === "constants.sectionLlmProviders",
+            );
+            return llm ? (
+              <div className="settings-section">
+                <div className="settings-section-title">{t(llm.title)}</div>
+                <ProviderKeysSection
+                  items={llm.items}
+                  env={env}
+                  savedKey={savedKey}
+                  visibleKeys={visibleKeys}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  onToggleVisibility={toggleVisibility}
+                  onRemove={handleRemove}
+                />
+              </div>
+            ) : null;
+          })()}
 
           <div className="settings-section">
             <div className="settings-section-title">
@@ -786,12 +793,24 @@ function Providers({
           {SETTINGS_SECTIONS.map((section) => {
             const isLlmProviders =
               section.title === "constants.sectionLlmProviders";
+            // Rendered as a standalone section above the credential pool.
+            if (isLlmProviders) return null;
             return (
               <div key={section.title} className="settings-section">
                 <div className="settings-section-title">{t(section.title)}</div>
-                <div
-                  className={isLlmProviders ? "provider-keys-grid" : undefined}
-                >
+                {isLlmProviders ? (
+                  <ProviderKeysSection
+                    items={section.items}
+                    env={env}
+                    savedKey={savedKey}
+                    visibleKeys={visibleKeys}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    onToggleVisibility={toggleVisibility}
+                    onRemove={handleRemove}
+                  />
+                ) : (
+                  <div>
                   {section.items.map((field) => (
                     <div
                       key={field.key}
@@ -852,7 +871,8 @@ function Providers({
                       <div className="settings-field-hint">{t(field.hint)}</div>
                     </div>
                   ))}
-                </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -903,6 +923,88 @@ function Providers({
                 void window.hermesAPI.getAccount(profile).then(setAccount);
               }}
             />
+          )}
+
+          {/* Active-model picker: choose a configured provider → one of its
+              configured models. The key is resolved automatically at runtime. */}
+          {modelPickerOpen && (
+            <div className="models-modal-overlay" onClick={() => setModelPickerOpen(false)}>
+              <div className="models-modal provider-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="models-modal-header">
+                  <h2 className="models-modal-title provider-modal-title">
+                    {t("providers.model.pickerTitle")}
+                  </h2>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setModelPickerOpen(false)}
+                    aria-label={t("common.close")}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="models-modal-body">
+                  {pickerProviders.length === 0 ? (
+                    <p className="settings-field-hint">
+                      {t("providers.model.noModels")}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="settings-field">
+                        <label className="settings-field-label">
+                          {t("common.provider")}
+                        </label>
+                        <LogoSelect
+                          options={pickerProviders}
+                          value={pickGroupKey}
+                          onChange={selectPickGroup}
+                          brandOf={(p) => p.brand}
+                          labelOf={(p) => p.label}
+                        />
+                      </div>
+
+                      <div className="settings-field">
+                        <label className="settings-field-label">
+                          {t("common.model")}
+                        </label>
+                        <select
+                          className="input"
+                          value={pickModel}
+                          onChange={(e) => setPickModel(e.target.value)}
+                        >
+                          {pickModelOptions.map((id) => (
+                            <option key={id} value={id}>
+                              {id}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="settings-field-hint">
+                          {pickDiscovery.status === "loading"
+                            ? t("settings.discoveringModels")
+                            : pickModelOptions.length === 0
+                              ? t("providers.model.noProviderModels")
+                              : ""}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="models-modal-footer">
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setModelPickerOpen(false)}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    disabled={!pickModel}
+                    onClick={() => void confirmModelPick()}
+                  >
+                    {t("providers.model.use")}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </>
       )}

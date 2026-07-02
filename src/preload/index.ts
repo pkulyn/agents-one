@@ -1025,6 +1025,7 @@ const hermesAPI = {
       provider: string;
       model: string;
       baseUrl: string;
+      providerLabel?: string;
       createdAt: number;
     }>
   > => ipcRenderer.invoke("list-models"),
@@ -1035,6 +1036,7 @@ const hermesAPI = {
     model: string,
     baseUrl: string,
     contextLength?: number,
+    providerLabel?: string,
   ): Promise<{
     id: string;
     name: string;
@@ -1042,6 +1044,7 @@ const hermesAPI = {
     model: string;
     baseUrl: string;
     contextLength?: number;
+    providerLabel?: string;
     createdAt: number;
   }> =>
     ipcRenderer.invoke(
@@ -1051,6 +1054,7 @@ const hermesAPI = {
       model,
       baseUrl,
       contextLength,
+      providerLabel,
     ),
 
   removeModel: (id: string): Promise<boolean> =>

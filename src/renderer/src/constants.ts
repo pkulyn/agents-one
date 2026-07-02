@@ -104,6 +104,21 @@ export const PROVIDERS = {
 
   setup: [
     {
+      // Hermes One's own inference gateway — shown first. OpenAI-compatible, so
+      // it routes through `custom` + base_url (like the `openai` card); the key
+      // is stored/host-derived as HERMESONE_API_KEY (see url-key-map.ts).
+      id: "hermesone",
+      name: "Hermes One",
+      desc: "Hermes One Inference — pay-per-token with AI Credits",
+      tag: "Recommended",
+      envKey: "HERMESONE_API_KEY",
+      url: "https://console.hermesone.org/credits",
+      placeholder: "hs-live-...",
+      configProvider: "custom",
+      baseUrl: "https://inference.hermesone.org/v1",
+      needsKey: true,
+    },
+    {
       id: "openrouter",
       name: "constants.openrouterName",
       desc: "constants.openrouterDesc",
@@ -289,6 +304,7 @@ export interface LocalPreset {
 // OPENAI_COMPATIBLE_BASE_URLS). Distinct from PROVIDERS.setup, which stays the
 // curated first-run set.
 export const PROVIDER_CARDS: { id: string; name: string }[] = [
+  { id: "hermesone", name: "Hermes One" },
   { id: "openrouter", name: "constants.openrouterName" },
   { id: "anthropic", name: "constants.anthropicName" },
   { id: "openai", name: "constants.openaiName" },
@@ -323,6 +339,7 @@ export const PROVIDER_CARDS: { id: string; name: string }[] = [
 // picker routes it consistently (autofill base_url + persist as `custom`).
 // Keep this in sync with LOCAL_PRESETS below.
 export const OPENAI_COMPATIBLE_BASE_URLS: Record<string, string> = {
+  hermesone: "https://inference.hermesone.org/v1",
   openai: "https://api.openai.com/v1",
   aimlapi: "https://api.aimlapi.com/v1",
   mistral: "https://api.mistral.ai/v1",
@@ -430,6 +447,42 @@ export const LOCAL_PRESETS: LocalPreset[] = [
   },
 ];
 
+// How to persist a model saved "under" a given LLM-provider key. The env key
+// (a "LLM Providers" FieldDef `key`, e.g. HERMESONE_API_KEY) is the anchor the
+// UI has; a saved model needs a routing pair instead: native providers keep
+// their agent slug (the gateway hardcodes the base URL), while OpenAI-compatible
+// providers route as `provider: "custom"` + explicit `baseUrl` (host-derives the
+// key). We DERIVE the pair from the existing registries rather than re-listing
+// slugs: `PROVIDERS.setup` already carries `{envKey, configProvider, baseUrl}`
+// and `LOCAL_PRESETS` carries `{envKey, baseUrl}` (always custom-routed). This
+// keeps the per-provider Models manager saving entries exactly the way the
+// Models screen / Providers tab would. Unknown keys fall back to a bare `custom`
+// route so any provider can still hold models.
+export function providerRouteForEnvKey(
+  envKey: string,
+): { provider: string; baseUrl: string } {
+  // The setup array is a heterogeneous literal (not every entry carries
+  // configProvider/baseUrl), so read it through a partial shape.
+  type SetupRoute = {
+    id: string;
+    envKey?: string;
+    configProvider?: string;
+    baseUrl?: string;
+  };
+  const setup = (PROVIDERS.setup as ReadonlyArray<SetupRoute>).find(
+    (p) => p.envKey === envKey,
+  );
+  if (setup) {
+    return {
+      provider: setup.configProvider ?? setup.id,
+      baseUrl: setup.baseUrl ?? "",
+    };
+  }
+  const preset = LOCAL_PRESETS.find((p) => p.envKey === envKey);
+  if (preset) return { provider: "custom", baseUrl: preset.baseUrl ?? "" };
+  return { provider: "custom", baseUrl: "" };
+}
+
 // ── Theme ───────────────────────────────────────────────
 
 export type ThemeAppearance = "dark" | "light";
@@ -515,6 +568,15 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
   {
     title: "constants.sectionLlmProviders",
     items: [
+      // Hermes One's own inference gateway — first-class + first in the list.
+      // Custom under the hood (routes as `custom` + inference.hermesone.org),
+      // keyed by HERMESONE_API_KEY via URL_KEY_MAP.
+      {
+        key: "HERMESONE_API_KEY",
+        label: "constants.hermesoneApiKey",
+        type: "password",
+        hint: "constants.hermesoneHint",
+      },
       {
         key: "OPENROUTER_API_KEY",
         label: "constants.openrouterApiKey",
