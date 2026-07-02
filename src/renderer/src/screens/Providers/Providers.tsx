@@ -791,56 +791,23 @@ function Providers({
           </div>
 
           {SETTINGS_SECTIONS.map((section) => {
-            const isLlmProviders =
-              section.title === "constants.sectionLlmProviders";
-            // Rendered as a standalone section above the credential pool.
-            if (isLlmProviders) return null;
+            // The LLM-providers section is rendered as a standalone section
+            // above the credential pool.
+            if (section.title === "constants.sectionLlmProviders") return null;
             return (
               <div key={section.title} className="settings-section">
                 <div className="settings-section-title">{t(section.title)}</div>
-                {isLlmProviders ? (
-                  <ProviderKeysSection
-                    items={section.items}
-                    env={env}
-                    savedKey={savedKey}
-                    visibleKeys={visibleKeys}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    onToggleVisibility={toggleVisibility}
-                    onRemove={handleRemove}
-                  />
-                ) : (
-                  <div>
+                <div>
                   {section.items.map((field) => (
-                    <div
-                      key={field.key}
-                      className={
-                        isLlmProviders ? "provider-key-card" : "settings-field"
-                      }
-                    >
-                      {isLlmProviders && (
-                        <div className="provider-key-card-head">
-                          <BrandLogo provider={field.key} size={22} />
-                          <span className="provider-key-card-title">
-                            {t(field.label)}
+                    <div key={field.key} className="settings-field">
+                      <label className="settings-field-label">
+                        {t(field.label)}
+                        {savedKey === field.key && (
+                          <span className="settings-saved">
+                            {t("common.saved")}
                           </span>
-                          {savedKey === field.key && (
-                            <span className="settings-saved">
-                              {t("common.saved")}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {!isLlmProviders && (
-                        <label className="settings-field-label">
-                          {t(field.label)}
-                          {savedKey === field.key && (
-                            <span className="settings-saved">
-                              {t("common.saved")}
-                            </span>
-                          )}
-                        </label>
-                      )}
+                        )}
+                      </label>
                       <div className="settings-input-row">
                         <input
                           className="input"
@@ -871,8 +838,7 @@ function Providers({
                       <div className="settings-field-hint">{t(field.hint)}</div>
                     </div>
                   ))}
-                  </div>
-                )}
+                </div>
               </div>
             );
           })}

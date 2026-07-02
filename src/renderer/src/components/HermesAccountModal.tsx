@@ -67,9 +67,15 @@ function HermesAccountModal({
 
   function copyCode(): void {
     if (!code) return;
-    void navigator.clipboard.writeText(code.userCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    navigator.clipboard
+      .writeText(code.userCode)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {
+        // Clipboard unavailable (e.g. permission denied) — don't claim "Copied".
+      });
   }
 
   const subtitle =

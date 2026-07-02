@@ -267,6 +267,7 @@ function ProviderModelsManager({
 export function ProviderKeysSection({
   items,
   env,
+  savedKey,
   visibleKeys,
   onChange,
   onBlur,
@@ -482,6 +483,9 @@ export function ProviderKeysSection({
                   <BrandLogo provider={editing.key} size={22} />
                 </span>
                 {t(editing.label)}
+                {savedKey === editing.key && (
+                  <span className="settings-saved">{t("common.saved")}</span>
+                )}
               </h2>
               <button className="btn-ghost" onClick={() => setEditing(null)} aria-label={t("common.close")}>
                 <X size={18} />
@@ -552,6 +556,9 @@ export function ProviderKeysSection({
                       <Globe size={22} aria-hidden />
                     </span>
                     {t("providers.keys.custom.title")}
+                    {savedKey === keyEnv && (
+                      <span className="settings-saved">{t("common.saved")}</span>
+                    )}
                   </h2>
                   <button className="btn-ghost" onClick={close} aria-label={t("common.close")}>
                     <X size={18} />
