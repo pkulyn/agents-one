@@ -2,6 +2,7 @@ import { Download, FileText, X } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { Attachment } from "../../../shared/attachments";
+import { useLightboxClose } from "../hooks/useLightboxClose";
 import { useI18n } from "./useI18n";
 
 interface AttachmentChipProps {
@@ -19,6 +20,7 @@ export function AttachmentChip({
 }: AttachmentChipProps): React.JSX.Element {
   const { t } = useI18n();
   const [zoomed, setZoomed] = useState(false);
+  useLightboxClose(zoomed, () => setZoomed(false));
   const isImage = attachment.kind === "image";
   const showImageMenu = (event: React.MouseEvent): void => {
     if (!isImage || !attachment.dataUrl) return;

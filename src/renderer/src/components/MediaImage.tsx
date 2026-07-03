@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Download, X } from "lucide-react";
+import { useLightboxClose } from "../hooks/useLightboxClose";
 import type { MediaToken } from "../screens/Chat/mediaUtils";
 import { useI18n } from "./useI18n";
 
@@ -43,6 +44,7 @@ export function MediaImage({
   );
   const [failed, setFailed] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  useLightboxClose(zoomed, () => setZoomed(false));
   const resolvedToken = { ...token, src: resolved ?? token.src };
   const onContextMenu = useMediaContextMenu(resolvedToken);
 
