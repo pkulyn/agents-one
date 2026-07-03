@@ -121,6 +121,12 @@ export function agentCommandsFromCatalog(
     const alias = normalizeName(rawAlias);
     const target = normalizeName(rawTarget);
     if (!alias || !target || alias === target || !seen.has(target)) continue;
+    // A name that is already a first-class command (from `pairs`) can't also be
+    // an alias — the backend can expose both (e.g. `/compact` as a standalone
+    // TUI command and as an alias of `/compress`). Dropping the redundant alias
+    // keeps the reconciled catalog self-consistent so createSlashCatalog does
+    // not throw on the collision and crash the app. See #802 / #804.
+    if (seen.has(alias)) continue;
     aliases[alias] = target;
   }
 
