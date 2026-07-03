@@ -69,6 +69,8 @@ The router's attachment guard rejects a command run with staged attachments unle
 
 The command palette and executor share a catalog built by [[src/renderer/src/screens/Chat/slash/commandCatalog.ts#createSlashCatalog]]. Hermes Agent metadata comes from `commands.catalog`; Desktop commands are merged after collision validation, and upstream names/aliases are normalized from `/name` to the router's canonical `name`.
 
+[[src/renderer/src/screens/Chat/slash/commandCatalog.ts#agentCommandsFromCatalog]] reconciles the gateway's two-part catalog — the flat `pairs` command list and the `canon` alias map — into a self-consistent shape before it reaches `createSlashCatalog`. Because `createSlashCatalog` deliberately throws on a name registered twice (to catch genuine desktop-authoring conflicts), the reconciler drops any `canon` alias whose name is already a first-class `pairs` command: the backend can legitimately expose the same name as both (e.g. `/compact` is a standalone TUI command _and_ an alias of `/compress`), and without this guard the merge would throw and crash the app on agent connect.
+
 ### Desktop commands
 
 Desktop commands in [[src/renderer/src/screens/Chat/slash/desktopCommands.ts#DESKTOP_SLASH_COMMANDS]] handle local Electron/renderer UI operations such as opening settings, triggering the active chat's model picker, and switching navigation views without sending prompts.

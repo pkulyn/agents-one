@@ -53,4 +53,37 @@ describe("slash command catalog", () => {
       }),
     ).toThrow("Duplicate slash command: /inspect");
   });
+
+  it("drops a canon alias whose name is already a standalone command", () => {
+    // Regression for #802 / #804: the backend can expose the same name both as
+    // a first-class command (via `pairs`) and as an alias of another command
+    // (via `canon`) — e.g. `/compact` is a standalone TUI command *and* an
+    // alias of `/compress`. The reconciled catalog must not list the name in
+    // both `commands` and `aliases`, or createSlashCatalog throws and the app
+    // crashes on agent connect.
+    const discovered = agentCommandsFromCatalog({
+      pairs: [
+        ["/compress", "Compress conversation context"],
+        ["/compact", "Toggle compact display mode"],
+      ],
+      canon: { "/compact": "/compress" },
+    });
+
+    expect(discovered.aliases).not.toHaveProperty("compact");
+    expect(discovered.commands.map((c) => c.name)).toContain("compact");
+
+    expect(() =>
+      createSlashCatalog({
+        agentCommands: discovered.commands,
+        aliases: discovered.aliases,
+      }),
+    ).not.toThrow();
+
+    const catalog = createSlashCatalog({
+      agentCommands: discovered.commands,
+      aliases: discovered.aliases,
+    });
+    // The standalone command wins deterministically.
+    expect(catalog.resolve("/compact")?.name).toBe("compact");
+  });
 });
