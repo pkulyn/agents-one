@@ -11,7 +11,24 @@ let _highlighterMod: typeof import("react-syntax-highlighter") | null = null;
 let _oneDark: Record<string, React.CSSProperties> | null = null;
 let _loadingPromise: Promise<void> | null = null;
 
-const BOX_DRAWING_RE = /[\u2500-\u257F]/;
+// Box Drawing (U+2500\u2013U+257F) plus Block Elements (U+2580\u2013U+259F): tree
+// connectors like \u251C\u2500\u2500 \u2514\u2500\u2500 \u2502 and the shading/progress-bar glyphs \u2588 \u2591 \u2592 \u2593.
+const BOX_DRAWING_RE = /[\u2500-\u259F]/;
+
+// A block is a "box diagram" (tree output, table borders, progress bars) only
+// when box-drawing characters dominate it \u2014 at least half of its non-empty
+// lines contain one. A single \u2502 in a string literal or comment must NOT
+// demote a whole source file to plain text, but a tree diagram (box chars on
+// nearly every line) should never go through Prism: it fragments each glyph
+// into nested token spans, which Electron renderers with imperfect Unicode
+// metrics can visually truncate or misalign.
+function isBoxDiagram(code: string): boolean {
+  const lines = code.split("\n").filter((line) => line.trim() !== "");
+  if (lines.length === 0) return false;
+  const boxLines = lines.filter((line) => BOX_DRAWING_RE.test(line)).length;
+  return boxLines * 2 >= lines.length;
+}
+
 const PLAIN_PRE_STYLE: React.CSSProperties = {
   margin: 0,
   borderRadius: 0,
@@ -100,19 +117,21 @@ function CodeBlock({
   const match = /language-(\w+)/.exec(className || "");
   const language = match ? match[1] : "";
   const isDiff = language === "diff";
-  const hasBoxDrawing = BOX_DRAWING_RE.test(code);
+  // Diffs win over the box-diagram check: DiffView is already a plain per-line
+  // renderer (no Prism), so it has no fragmentation risk, and a patch touching
+  // a tree diagram must keep its colored +/- view.
+  const boxDiagram = !isDiff && isBoxDiagram(code);
 
   const linesCount = code.split("\n").length;
   const isLong = linesCount > 15 || code.length > 800;
 
-  // Trigger lazy load when code block mounts. Blocks containing Unicode
-  // box-drawing characters render as plain text to avoid Electron/Prism span
-  // fragmentation truncating tree diagrams such as ├──, └── and │.
+  // Trigger lazy load when code block mounts. Box diagrams and diffs never
+  // use Prism, so don't pull in the highlighter for them (see isBoxDiagram).
   useEffect(() => {
-    if (!hasBoxDrawing && !isDiff && !highlighterReady) {
+    if (!boxDiagram && !isDiff && !highlighterReady) {
       loadHighlighter().then(() => setHighlighterReady(true));
     }
-  }, [hasBoxDrawing, highlighterReady, isDiff]);
+  }, [boxDiagram, highlighterReady, isDiff]);
 
   function handleCopy(): void {
     void window.hermesAPI.copyToClipboard(code);
@@ -120,10 +139,10 @@ function CodeBlock({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const codeContent = hasBoxDrawing ? (
-    <PlainCodeView code={code} />
-  ) : isDiff ? (
+  const codeContent = isDiff ? (
     <DiffView code={code} />
+  ) : boxDiagram ? (
+    <PlainCodeView code={code} />
   ) : highlighterReady && _highlighterMod && _oneDark ? (
     <_highlighterMod.Prism
       style={_oneDark}
@@ -147,7 +166,10 @@ function CodeBlock({
     <div className="chat-code-block">
       <div className="chat-code-header">
         <span className="chat-code-lang">
-          {hasBoxDrawing ? "text" : isDiff ? "diff" : language || "code"}
+          {/* Keep the fence's declared language even when a box diagram
+              renders plain — the header describes the fence, not the
+              renderer. Only default to "text" when none was declared. */}
+          {isDiff ? "diff" : language || (boxDiagram ? "text" : "code")}
         </span>
         <button className="chat-code-copy" onClick={handleCopy}>
           {copied ? t("common.copied") : <Copy size={13} />}
