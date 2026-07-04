@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGatewayStartCommand,
+  upsertEnvLine,
   buildGatewayStatusCommand,
   buildGatewayStopCommand,
   isUsableApiServerKey,
@@ -90,5 +91,54 @@ describe("SSH dashboard transport", () => {
     await expect(sshResolveDashboardPort(dummySsh, "default")).resolves.toBe(
       9119,
     );
+  });
+});
+
+describe("remote .env upsert", () => {
+  it("replaces an existing key in place", () => {
+    const out = upsertEnvLine(
+      "A=1\nAPI_SERVER_KEY=old\nB=2",
+      "API_SERVER_KEY",
+      "new",
+    );
+    expect(out).toBe("A=1\nAPI_SERVER_KEY=new\nB=2");
+  });
+
+  it("drops stale duplicate lines so the last-wins reader sees the new value", () => {
+    // Pre-dedup desktops appended a fresh API_SERVER_KEY on every connect race.
+    // dotenv (and sshReadEnv) are last-wins, so rewriting only the FIRST line
+    // left a stale later duplicate winning in the gateway — the desktop cached
+    // the new key, the gateway kept the old one, and /v1 401'd forever.
+    const out = upsertEnvLine(
+      "API_SERVER_KEY=one\nX=y\nAPI_SERVER_KEY=two\nAPI_SERVER_KEY=three",
+      "API_SERVER_KEY",
+      "new",
+    );
+    expect(out).toBe("API_SERVER_KEY=new\nX=y");
+  });
+
+  it("revives a commented-out line instead of appending a second entry", () => {
+    const out = upsertEnvLine(
+      "# API_SERVER_KEY=old\nB=2",
+      "API_SERVER_KEY",
+      "new",
+    );
+    expect(out).toBe("API_SERVER_KEY=new\nB=2");
+  });
+
+  it("appends when the key is absent and seeds an empty file", () => {
+    expect(upsertEnvLine("A=1", "API_SERVER_KEY", "k")).toBe(
+      "A=1\nAPI_SERVER_KEY=k",
+    );
+    expect(upsertEnvLine("", "API_SERVER_KEY", "k")).toBe("API_SERVER_KEY=k\n");
+  });
+
+  it("does not touch keys that merely share a prefix", () => {
+    const out = upsertEnvLine(
+      "API_SERVER_KEY_BACKUP=keep\nAPI_SERVER_KEY=old",
+      "API_SERVER_KEY",
+      "new",
+    );
+    expect(out).toBe("API_SERVER_KEY_BACKUP=keep\nAPI_SERVER_KEY=new");
   });
 });

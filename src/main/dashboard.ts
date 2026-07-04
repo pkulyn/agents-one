@@ -127,11 +127,12 @@ async function sshDashboardConnectionFromConfig(
   if (config.mode !== "ssh" || !config.ssh) return null;
 
   // Start `hermes dashboard` on the remote and tunnel to it (full parity with
-  // local mode). The dashboard is a superset of the gateway api_server, so this
-  // one tunnel serves /v1, /health, the full /api/* set, and the chat WS. Its
-  // /api/* routes are gated by the dashboard session token, which is the SSH
-  // credential here. Returns null when the remote can't run the dashboard
-  // (no Node / no web dist) — the caller then falls back to legacy.
+  // local mode). NB: the dashboard is NOT a /v1 superset — web_server.py has no
+  // /v1 chat routes (those live only on the gateway api_server, port 8642).
+  // This tunnel serves the /api/* set and the /api/ws chat WebSocket, gated by
+  // the dashboard session token, which is the SSH credential here. Returns
+  // null when the remote can't run the dashboard (no Node / no web dist) —
+  // the caller then falls back to legacy over the gateway /v1 tunnel.
   const dash = await sshEnsureDashboard(config.ssh, profile);
   if (!dash) return null;
 

@@ -974,6 +974,36 @@ export async function sshReadEnv(
   return result;
 }
 
+// Pure line-rewrite for sshSetEnvValue, exported for tests. Rewrites the
+// FIRST matching line (commented-out counts — it becomes live) and DROPS any
+// later duplicates. Both sshReadEnv and the remote gateway's dotenv are
+// last-wins, and pre-dedup desktops left .env files with several
+// API_SERVER_KEY / HERMES_DASHBOARD_SESSION_TOKEN lines — replacing only the
+// first while a stale later line survives means the gateway keeps using the
+// OLD value while this desktop caches the new one (a permanent 401). One
+// canonical line, matching the grep-v writers for the dashboard token/port.
+export function upsertEnvLine(
+  content: string,
+  key: string,
+  value: string,
+): string {
+  if (!content.trim()) return `${key}=${value}\n`;
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matcher = new RegExp(`^#?\\s*${escaped}\\s*=`);
+  let found = false;
+  const lines: string[] = [];
+  for (const line of content.split("\n")) {
+    if (!line.trim().match(matcher)) {
+      lines.push(line);
+      continue;
+    }
+    if (!found) lines.push(`${key}=${value}`);
+    found = true;
+  }
+  if (!found) lines.push(`${key}=${value}`);
+  return lines.join("\n");
+}
+
 export async function sshSetEnvValue(
   config: SshConfig,
   key: string,
@@ -982,24 +1012,7 @@ export async function sshSetEnvValue(
 ): Promise<void> {
   const envPath = remoteEnvPath(profile);
   const content = await sshReadFile(config, envPath);
-
-  if (!content.trim()) {
-    await sshWriteFile(config, envPath, `${key}=${value}\n`);
-    return;
-  }
-
-  const lines = content.split("\n");
-  let found = false;
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim().match(new RegExp(`^#?\\s*${escaped}\\s*=`))) {
-      lines[i] = `${key}=${value}`;
-      found = true;
-      break;
-    }
-  }
-  if (!found) lines.push(`${key}=${value}`);
-  await sshWriteFile(config, envPath, lines.join("\n"));
+  await sshWriteFile(config, envPath, upsertEnvLine(content, key, value));
 }
 
 // ─── Dotted-path YAML helpers (mirror of the local-mode fix) ───────────────
@@ -2291,7 +2304,9 @@ const PLACEHOLDER_API_SERVER_KEY =
 
 export function isUsableApiServerKey(key: string): boolean {
   const k = (key || "").trim();
-  return k.length >= MIN_API_SERVER_KEY_LENGTH && !PLACEHOLDER_API_SERVER_KEY.test(k);
+  return (
+    k.length >= MIN_API_SERVER_KEY_LENGTH && !PLACEHOLDER_API_SERVER_KEY.test(k)
+  );
 }
 
 export interface SshApiServerKeyResult {
@@ -2643,7 +2658,7 @@ export interface SshDashboardTarget {
   token: string;
 }
 
-let dashboardDistBuildPromise: Promise<boolean> | null = null;
+const dashboardDistBuildPromises = new Map<string, Promise<boolean>>();
 
 // Candidate hermes-agent install roots, most specific first. A system-wide
 // install (the Linux package / install.sh default) lives at
@@ -2712,8 +2727,12 @@ export async function sshEnsureDashboardDist(
     }
   };
   if (await exists()) return true;
-  if (dashboardDistBuildPromise) return dashboardDistBuildPromise;
-  dashboardDistBuildPromise = (async () => {
+  // Keyed by host (like the other in-flight maps): a stale in-flight build for
+  // a PREVIOUS remote must not be handed to a caller targeting a new one.
+  const buildKey = `${config.host}:${config.port || 22}:${config.username}`;
+  const inflight = dashboardDistBuildPromises.get(buildKey);
+  if (inflight) return inflight;
+  const run = (async () => {
     try {
       // tsc -b && vite build. Prefer the vendored Node, fall back to system
       // Node/npm on PATH. Generous timeout: a first build on a small VPS can
@@ -2730,10 +2749,11 @@ export async function sshEnsureDashboardDist(
     }
     return exists();
   })();
+  dashboardDistBuildPromises.set(buildKey, run);
   try {
-    return await dashboardDistBuildPromise;
+    return await run;
   } finally {
-    dashboardDistBuildPromise = null;
+    dashboardDistBuildPromises.delete(buildKey);
   }
 }
 
@@ -2748,7 +2768,10 @@ export async function sshEnsureDashboardDist(
 // connect storm into one probe regardless.
 const DASHBOARD_UNAVAILABLE_TTL_MS = 60_000;
 const dashboardUnavailableUntil = new Map<string, number>();
-const dashboardEnsurePromises = new Map<string, Promise<SshDashboardTarget | null>>();
+const dashboardEnsurePromises = new Map<
+  string,
+  Promise<SshDashboardTarget | null>
+>();
 
 function dashboardCacheKey(config: SshConfig, _profile?: string): string {
   // Machine-scoped (NOT per-profile): the unified dashboard is one server for
@@ -2791,7 +2814,10 @@ export async function sshEnsureDashboard(
     // tunnel target stays consistent (dashboard, not gateway) — avoiding thrash.
     const distOk = await sshEnsureDashboardDist(config).catch(() => false);
     if (!distOk) {
-      dashboardUnavailableUntil.set(cacheKey, Date.now() + DASHBOARD_UNAVAILABLE_TTL_MS);
+      dashboardUnavailableUntil.set(
+        cacheKey,
+        Date.now() + DASHBOARD_UNAVAILABLE_TTL_MS,
+      );
     }
     return null;
   })();

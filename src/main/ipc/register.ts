@@ -413,8 +413,9 @@ function activeSshProfile(profile?: string): string {
 
 /**
  * Establish the SSH tunnel to the correct endpoint and cache the matching
- * credential — the remote dashboard (superset; dashboard-token auth) when
- * available, else the gateway api_server (api_server-key auth). EVERY SSH
+ * credential — the remote dashboard (/api/* + chat WS; dashboard-token auth)
+ * when available, else the gateway api_server (/v1; api_server-key auth) —
+ * the dashboard is NOT a /v1 superset, the two are disjoint. EVERY SSH
  * tunnel entry point routes through this so they never target different ports
  * on the single global tunnel and thrash it (each `startSshTunnel` first calls
  * `stopSshTunnel`, so a 9119↔8642 flip-flop yields "SSH tunnel is not active").
@@ -1241,9 +1242,9 @@ export function registerIpcHandlers(context: IpcContext): void {
 
       const conn = getConnectionConfig();
       if (conn.mode === "ssh" && conn.ssh) {
-        // Tunnel to the dashboard (superset: /v1 + /api/* + chat WS) and cache
-        // its token, else the gateway api_server — via the shared preparer so
-        // all SSH paths agree on one tunnel target.
+        // Tunnel to the dashboard (/api/* + chat WS; NOT /v1) and cache its
+        // token, else the gateway api_server (/v1) — via the shared preparer
+        // so all SSH paths agree on one tunnel target.
         await prepareSshTunnel(conn, profile);
       }
 
