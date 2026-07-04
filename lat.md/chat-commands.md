@@ -8,6 +8,8 @@ The desktop talks to the hermes-agent gateway over JSON-RPC. A normal message go
 
 The pure routing logic lives in [[src/renderer/src/screens/Chat/slashExec.ts#executeSlash]]: try `slash.exec`, accept either rendered output or a structured dispatch result, and on rejection fall back to `command.dispatch`, returning `done`, `send`, or `error`.
 
+The name/argument split is done by [[src/renderer/src/screens/Chat/slashExec.ts#parseSlash]], which matches with the dotAll flag so a command's argument may span multiple lines (e.g. a multi-line `/remember` note) — an empty name is what `executeSlash` rejects as an empty command, so a multi-line body must not collapse the match.
+
 It mirrors hermes-agent's reference client (`web/src/lib/slashExec.ts`) so every front-end implements the same contract. Pending-input commands such as `/learn` can return `{type: "send"}` directly from `slash.exec`; that prompt still passes through the central model-submission path.
 
 ## Local vs gateway commands
@@ -68,6 +70,8 @@ The central slash command architecture in [[src/renderer/src/screens/Chat/slash/
 The router's attachment guard rejects a command run with staged attachments unless it declares `supportsAttachments`, but `target: "desktop"` commands are exempt — they are local UI actions / info displays that never consume attachments (the files stay in the composer for the next message), matching the pre-router behavior where local commands ran unconditionally. Only `agent`/`model` commands, which route content upstream, are gated.
 
 The command palette and executor share a catalog built by [[src/renderer/src/screens/Chat/slash/commandCatalog.ts#createSlashCatalog]]. Hermes Agent metadata comes from `commands.catalog`; Desktop commands are merged after collision validation, and upstream names/aliases are normalized from `/name` to the router's canonical `name`.
+
+[[src/renderer/src/screens/Chat/slash/commandCatalog.ts#agentCommandsFromCatalog]] reconciles the gateway's two-part catalog — the flat `pairs` command list and the `canon` alias map — into a self-consistent shape before it reaches `createSlashCatalog`. Because `createSlashCatalog` deliberately throws on a name registered twice (to catch genuine desktop-authoring conflicts), the reconciler drops any `canon` alias whose name is already a first-class `pairs` command: the backend can legitimately expose the same name as both (e.g. `/compact` is a standalone TUI command _and_ an alias of `/compress`), and without this guard the merge would throw and crash the app on agent connect.
 
 ### Desktop commands
 
