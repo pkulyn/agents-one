@@ -39,6 +39,12 @@ On `message.complete` the desktop reconciles the text streamed via `message.delt
 
 [[src/renderer/src/screens/Chat/dashboardEventAdapter.ts#completeAssistantWithFinalText]] rewrites the last assistant bubble through [[src/renderer/src/screens/Chat/dashboardEventAdapter.ts#mergeStreamedWithFinal]], which compares whitespace-insensitively and: uses the final text when it already contains the streamed text; keeps the streamed text when it contains the final (preserving pre-tool-call content); stitches a re-streamed boundary by dropping the duplicated word-aligned seam (rejecting coincidental mid-word overlaps); replaces a garbled re-stream with the final text when the two converge on a substantial common suffix (a corrupted-prefix delta — e.g. a mangled CJK stream — that ends the same sentence as the clean final, rather than the disjoint pre-tool-call + answer pair); and otherwise concatenates the two with a blank-line separator so segments never run together. On the remote/SSH path deltas are not rendered (`renderAssistantDeltas: false`), so the bubble starts empty and the final text is used verbatim.
 
+## Streaming source-of-truth ref
+
+`handleGatewayEvent` in [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] applies stream events against a synchronous `messagesRef`, not React state, because state lags a render behind and each successive delta must build on the previous one.
+
+The handler reads the ref, applies a delta, writes the ref back, then calls `setMessages`. An effect mirrors `messages` back into `messagesRef`, and its guard is a correctness invariant. Every `setMessages` in the hook stores the exact same array in the ref, so when React commits the hook's own push, `messages === messagesRef.current` and the effect must skip: re-adopting that snapshot let a second `message.delta` land on a pre-delta array and silently drop a chunk (#757). The effect therefore syncs only when the identity differs (`messages !== messagesRef.current`), which happens only when Chat state changes underneath the hook — a new user turn, `handleClear` emptying the list, or a clarify card resolving in place. A length comparison is wrong here: it misses the shrink and the same-length replacement.
+
 ## Reasoning & tool activity rows
 
 Streamed reasoning and tool calls are folded into compact, collapsible transcript rows rather than stacked bubbles, so a turn with heavy thinking or many tool calls stays scannable.
