@@ -70,11 +70,13 @@ function Harness({
   fallbackOnUnavailable = false,
   initialConnectionMode = "local",
   onDashboardUnavailable,
+  setUsage = vi.fn(),
 }: {
   api: HarnessApi;
   fallbackOnUnavailable?: boolean;
   initialConnectionMode?: "local" | "remote" | "ssh";
   onDashboardUnavailable?: (reason: string) => void;
+  setUsage?: ReturnType<typeof vi.fn>;
 }): null {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -105,7 +107,7 @@ function Harness({
     setIsLoading: vi.fn(),
     setMessages,
     setToolProgress: vi.fn(),
-    setUsage: vi.fn(),
+    setUsage,
     onDashboardUnavailable,
   });
 
