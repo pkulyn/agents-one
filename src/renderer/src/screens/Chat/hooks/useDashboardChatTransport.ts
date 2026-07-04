@@ -663,6 +663,50 @@ export function usageFromPayload(payload: unknown): Partial<UsageState> | null {
   };
 }
 
+function messageChars(message: ChatMessage): number {
+  if ("content" in message) return message.content?.length ?? 0;
+  switch (message.kind) {
+    case "reasoning":
+      return message.text.length;
+    case "tool_call":
+      return message.name.length + message.args.length;
+    case "clarify":
+      return message.question.length;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Rough context-occupancy estimate (~4 chars/token) from the transcript, used
+ * as a last resort when the provider omits usage counts so the context gauge
+ * still renders (it only shows when `contextTokens` is set — see Chat.tsx).
+ *
+ * `contextTokens` means the turn's PROMPT-side occupancy, and by the time
+ * `message.complete` is handled the just-finished assistant reply has already
+ * been reconciled into `messagesRef.current` — so the last assistant bubble
+ * (specifically the bubble, not trailing tool/reasoning sub-rows, which were
+ * part of the prompt loop) is subtracted back out.
+ *
+ * Inherently a floor: system prompt, tool schemas, and attachments aren't
+ * visible to the renderer.
+ */
+export function estimateContextTokens(
+  messages: ReadonlyArray<ChatMessage>,
+): number {
+  let totalChars = 0;
+  let lastAssistantBubbleChars = 0;
+  for (const message of messages) {
+    const chars = messageChars(message);
+    totalChars += chars;
+    const isBubble = message.kind === undefined || message.kind === "assistant";
+    if (message.role === "agent" && isBubble) {
+      lastAssistantBubbleChars = chars;
+    }
+  }
+  return Math.max(Math.round((totalChars - lastAssistantBubbleChars) / 4), 0);
+}
+
 export function completionFailed(payload: unknown): boolean {
   const row = asRecord(payload);
   const status = String(row.status || "").toLowerCase();
@@ -1006,16 +1050,29 @@ export function useDashboardChatTransport({
         setToolProgress(null);
         setIsLoading(false);
         const usage = usageFromPayload(event.payload);
-        if (usage) {
+        if (usage || !failed) {
+          // The gauge only renders when `contextTokens` is set, so it must be
+          // populated even when the provider omits usage — entirely
+          // (usageFromPayload → null) or just the prompt-side counts. Exact
+          // payload values win; otherwise fall back to the chars/4 transcript
+          // estimate, then to the previous turn's value. A failed turn with no
+          // usage doesn't fabricate one — nothing new entered the context.
+          const estimatedContextTokens = estimateContextTokens(
+            messagesRef.current,
+          );
           setUsage((prev) => ({
-            promptTokens: (prev?.promptTokens || 0) + (usage.promptTokens || 0),
+            promptTokens:
+              (prev?.promptTokens || 0) + (usage?.promptTokens || 0),
             completionTokens:
-              (prev?.completionTokens || 0) + (usage.completionTokens || 0),
-            totalTokens: (prev?.totalTokens || 0) + (usage.totalTokens || 0),
+              (prev?.completionTokens || 0) + (usage?.completionTokens || 0),
+            totalTokens: (prev?.totalTokens || 0) + (usage?.totalTokens || 0),
             cost: prev?.cost,
-            contextTokens: usage.contextTokens || prev?.contextTokens,
+            contextTokens:
+              usage?.contextTokens ||
+              estimatedContextTokens ||
+              prev?.contextTokens,
             contextWindowTokens:
-              usage.contextWindowTokens || prev?.contextWindowTokens,
+              usage?.contextWindowTokens || prev?.contextWindowTokens,
             cacheReadTokens: prev?.cacheReadTokens,
             cacheWriteTokens: prev?.cacheWriteTokens,
           }));
