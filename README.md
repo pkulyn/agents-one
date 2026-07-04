@@ -1,4 +1,4 @@
-<img width="100%" alt="HERMES DESKTOP" src="previews/header.webp" />
+<img width="100%" alt="HERMES DESKTOP" src="assets/header.webp" />
 
 <br/>
 <p align="center">
@@ -26,6 +26,9 @@
 </p>
 
 <p align="center">
+  
+  
+  
  <a href="https://www.star-history.com/fathah/hermes-desktop">
   <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=fathah/hermes-desktop&theme=dark" />
@@ -35,11 +38,14 @@
  </a>
 </p>
 
+
 > **This project is in active development.** Features may change, and some things might break. If you run into a problem or have an idea, [open an issue](https://github.com/fathah/hermes-desktop/issues). Contributions are welcome!
 
 Hermes One is a community maintained native desktop app for installing, configuring, and chatting with [Hermes Agent](https://github.com/NousResearch/hermes-agent) — a self-improving AI assistant with tool use, multi-platform messaging, and a closed learning loop.
 
 Instead of managing the CLI by hand, the app walks through install, provider setup, and day-to-day usage in one place. It uses the official Hermes install script, stores Hermes in `~/.hermes`, and gives you a GUI for chat, sessions, profiles, memory, skills, tools, scheduling, messaging gateways, and more.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/D1D41ZEKFO)
 
 ## Sponsors
 
@@ -49,10 +55,17 @@ Instead of managing the CLI by hand, the app walks through install, provider set
 <summary>Click to collapse</summary>
 <br/>
 <table>
+
 <tr>
 <td width="180"><a href="ttps://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=hermes-desktop"><img src="assets/partners/atlascloud.webp" alt="Atlas Cloud" width=""></a></td>
-<td> <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=hermes-desktop">Atlas Cloud</a> is a full-modal, OpenAI-compatible AI inference platform (DeepSeek, Qwen, GLM, Kimi, MiniMax, and more). Use it in Hermes One by selecting <b>Atlas Cloud</b> as your provider. The base URL is pre-configured automatically. </td>
+<td> <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=hermes-desktop">Atlas Cloud</a> is a full-modal, OpenAI-compatible AI inference platform. Use it in Hermes One by selecting <b>Atlas Cloud</b> as your provider. The base URL is pre-configured automatically. </td>
 </tr>
+
+<tr>
+<td width="180"><a href="https://www.greptile.com/?utm_source=hermes-desktop"><img src="assets/partners/greptile.webp" alt="Greptile" width=""></a></td>
+<td> <a href="https://www.greptile.com/?utm_source=hermes-desktop">Greptile</a> is an AI code reviewer. It reviews and tests pull requests with full context of the codebase. It catches bugs, flags regressions, and leaves inline review comments on every PR automatically. </td>
+</tr>
+
 </table>
 
 </details>

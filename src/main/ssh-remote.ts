@@ -1641,6 +1641,118 @@ export interface SshProfileInfo {
   gatewayRunning: boolean;
 }
 
+export function parseHermesProfileListOutput(output: string): SshProfileInfo[] {
+  const profiles: SshProfileInfo[] = [];
+
+  for (const rawLine of output.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+    if (/^profile\s+model\s+gateway\b/i.test(trimmed)) continue;
+    if (/^[─\-\s]+$/.test(trimmed)) continue;
+
+    const active = /^[◆*]/.test(trimmed);
+    const line = trimmed.replace(/^[◆*]\s*/, "");
+    const parts = line.split(/\s+/);
+    if (parts.length < 3) continue;
+
+    const [name, model, gateway] = parts;
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) continue;
+    const gatewayState = gateway.toLowerCase();
+    if (gatewayState !== "running" && gatewayState !== "stopped") continue;
+
+    profiles.push({
+      name,
+      path: name === "default" ? "~/.hermes" : `~/.hermes/profiles/${name}`,
+      isDefault: name === "default",
+      isActive: active,
+      model: model === "—" ? "" : model,
+      provider: "auto",
+      hasEnv: false,
+      hasSoul: false,
+      skillCount: 0,
+      gatewayRunning: gatewayState === "running",
+    });
+  }
+
+  if (profiles.length > 0 && !profiles.some((p) => p.isActive)) {
+    const defaultProfile = profiles.find((p) => p.isDefault) ?? profiles[0];
+    defaultProfile.isActive = true;
+  }
+
+  return profiles;
+}
+
+// Per-user launcher hooks a managed deployment can drop in to wrap the real
+// Hermes CLI (custom HERMES_HOME, service user, unusual filesystem layout).
+// Kept in sync with the launcher probe order in buildRemoteHermesCmd.
+const REMOTE_HERMES_LAUNCHER_CANDIDATES = [
+  "$HOME/.config/hermes-desktop/remote-hermes",
+  "$HOME/.hermes/desktop-remote-hermes",
+];
+
+const LAUNCHER_PRESENT_SENTINEL = "__HERMES_REMOTE_LAUNCHER__";
+
+export interface LauncherProfileResult {
+  // Whether an executable launcher hook actually exists on the remote. This is
+  // distinct from "the CLI returned profiles": the regular hermes binary on
+  // PATH can answer `profile list` even with no launcher configured, so count
+  // heuristics cannot tell the two apart — only this flag can.
+  present: boolean;
+  profiles: SshProfileInfo[];
+}
+
+// Detect whether a remote launcher hook exists and, if so, list its profiles in
+// a single round trip. When no launcher is configured the loop exits without
+// invoking the Hermes CLI, so ordinary installs stay cheap and fall through to
+// the richer filesystem scan in sshListProfiles.
+async function sshDetectLauncherProfiles(
+  config: SshConfig,
+): Promise<LauncherProfileResult> {
+  const list = REMOTE_HERMES_LAUNCHER_CANDIDATES.map((p) => `"${p}"`).join(" ");
+  // Echo the sentinel BEFORE exec so it is flushed even though exec replaces
+  // the shell; `exec` then streams the launcher's `profile list` to the same
+  // stdout. No launcher → no sentinel, empty output.
+  const script =
+    `for p in ${list}; do ` +
+    `[ -x "$p" ] && { echo ${LAUNCHER_PRESENT_SENTINEL}; exec "$p" profile list 2>/dev/null; }; ` +
+    `done`;
+  try {
+    const out = await sshExec(
+      config,
+      `sh -c ${shellQuote(script)}`,
+      undefined,
+      20000,
+    );
+    if (!out.includes(LAUNCHER_PRESENT_SENTINEL)) {
+      return { present: false, profiles: [] };
+    }
+    const cleaned = out
+      .split(/\r?\n/)
+      .filter((line) => line.trim() !== LAUNCHER_PRESENT_SENTINEL)
+      .join("\n");
+    return { present: true, profiles: parseHermesProfileListOutput(cleaned) };
+  } catch {
+    return { present: false, profiles: [] };
+  }
+}
+
+// Decide which profile list represents the actual remote runtime. A configured
+// launcher runs against the deployment's real HERMES_HOME and is authoritative;
+// the filesystem scan always assumes ~/.hermes. Prefer the launcher whenever it
+// is present and returned profiles — even when it reports the SAME number of
+// profiles as the scan — so Office/Agents reflect the live runtime instead of
+// stale home-directory state. Exported for unit testing the decision in
+// isolation from any live SSH host.
+export function selectSshProfiles(
+  launcher: LauncherProfileResult,
+  scannedProfiles: SshProfileInfo[],
+): SshProfileInfo[] {
+  if (launcher.present && launcher.profiles.length > 0)
+    return launcher.profiles;
+  if (scannedProfiles.length > 0) return scannedProfiles;
+  return launcher.profiles;
+}
+
 export async function sshListProfiles(
   config: SshConfig,
 ): Promise<SshProfileInfo[]> {
@@ -1711,10 +1823,18 @@ if os.path.isdir(profiles_dir):
 
 print(json.dumps(profiles))
 `;
+  const launcher = await sshDetectLauncherProfiles(config);
+
   try {
     const out = await sshPython(config, script);
-    return JSON.parse(out.trim() || "[]");
+    const scannedProfiles = JSON.parse(out.trim() || "[]") as SshProfileInfo[];
+    return selectSshProfiles(launcher, scannedProfiles);
   } catch {
+    // The filesystem scan failed (e.g. no python on the remote). A configured
+    // launcher is still authoritative; otherwise fall back to a minimal default.
+    if (launcher.present && launcher.profiles.length > 0) {
+      return launcher.profiles;
+    }
     return [
       {
         name: "default",
@@ -1735,26 +1855,37 @@ print(json.dumps(profiles))
 export async function sshCreateProfile(
   config: SshConfig,
   name: string,
-  clone: boolean,
-): Promise<boolean> {
+  cloneFrom: string | null,
+): Promise<{ success: boolean; error?: string }> {
+  const safe = name.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!safe) return { success: false, error: "Invalid profile name" };
+  const quoted = shellQuote(safe);
   try {
-    const safe = name.replace(/[^a-zA-Z0-9_-]/g, "");
-    if (!safe) return false;
-    const quoted = shellQuote(safe);
-    if (clone) {
+    if (cloneFrom) {
+      const safeSource = cloneFrom.replace(/[^a-zA-Z0-9_-]/g, "") || "default";
+      // No `|| mkdir` fallback here: a failed clone must surface as an error
+      // rather than silently leaving an empty profile that copied no config,
+      // keys, or skills. sshExec rejects on a non-zero exit, caught below.
       await sshExec(
         config,
-        `hermes profiles create ${quoted} --clone-from default 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`,
+        `hermes profiles create ${quoted} --clone-from ${shellQuote(
+          safeSource,
+        )}`,
       );
     } else {
+      // A fresh profile is just a directory, so falling back to mkdir when the
+      // remote CLI lacks the subcommand is an acceptable, lossless result.
       await sshExec(
         config,
         `hermes profiles create ${quoted} 2>&1 || mkdir -p ~/.hermes/profiles/${quoted}`,
       );
     }
-    return true;
-  } catch {
-    return false;
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create profile",
+    };
   }
 }
 
@@ -1807,7 +1938,28 @@ const SYSTEMD_HERMES_UNIT_TEST =
  * start (the status check will then report it as down). The detached
  * `nohup` start is used only when there is no unit to collide with.
  */
-export function buildGatewayStartCommand(): string {
+function remoteGatewayPidPath(profile?: string): string {
+  return profile && profile !== "default"
+    ? `$HOME/.hermes/profiles/${profile}/gateway.pid`
+    : "$HOME/.hermes/gateway.pid";
+}
+
+function remoteGatewayLogPath(profile?: string): string {
+  return profile && profile !== "default"
+    ? `$HOME/.hermes/profiles/${profile}/gateway.log`
+    : "$HOME/.hermes/gateway.log";
+}
+
+export function buildGatewayStartCommand(profile?: string): string {
+  if (profile && profile !== "default") {
+    return (
+      `mkdir -p $HOME/.hermes/profiles/${profile}; ` +
+      `(nohup ${buildRemoteHermesCmd(
+        ["--profile", profile, "gateway", "start"],
+        ` > ${remoteGatewayLogPath(profile)} 2>&1`,
+      )} &);`
+    );
+  }
   return (
     `if ${SYSTEMD_HERMES_UNIT_TEST}; then ` +
     `sudo -n systemctl start hermes.service 2>/dev/null || ` +
@@ -1825,7 +1977,16 @@ export function buildGatewayStartCommand(): string {
  * otherwise it falls back to `hermes gateway stop` and, last resort, the
  * recorded pid.
  */
-export function buildGatewayStopCommand(): string {
+export function buildGatewayStopCommand(profile?: string): string {
+  if (profile && profile !== "default") {
+    const pidPath = remoteGatewayPidPath(profile);
+    return (
+      `${buildRemoteHermesCmd(["--profile", profile, "gateway", "stop"], " 2>/dev/null")} || ` +
+      `(if [ -f ${pidPath} ]; then ` +
+      `pid=$(python3 -c "import json; d=json.load(open('${pidPath}')); print(d['pid'] if isinstance(d,dict) else d)" 2>/dev/null); ` +
+      `[ -n "$pid" ] && kill $pid 2>/dev/null; fi); true`
+    );
+  }
   return (
     `if ${SYSTEMD_HERMES_UNIT_TEST}; then ` +
     `sudo -n systemctl stop hermes.service 2>/dev/null || ` +
@@ -1845,7 +2006,16 @@ export function buildGatewayStopCommand(): string {
  * it is a liveness check on the recorded pid. Prints `active` or `running`
  * when up, anything else when not.
  */
-export function buildGatewayStatusCommand(): string {
+export function buildGatewayStatusCommand(profile?: string): string {
+  if (profile && profile !== "default") {
+    const pidPath = remoteGatewayPidPath(profile);
+    return (
+      `if [ -f ${pidPath} ]; then ` +
+      `pid=$(python3 -c "import json,sys; d=json.load(open('${pidPath}')); print(d.get('pid',d) if isinstance(d,dict) else d)" 2>/dev/null || cat ${pidPath}); ` +
+      `kill -0 $pid 2>/dev/null && echo "running" || echo "stopped"; ` +
+      `else echo "stopped"; fi`
+    );
+  }
   return (
     `if ${SYSTEMD_HERMES_UNIT_TEST}; then ` +
     `systemctl is-active hermes.service 2>/dev/null || true; ` +
@@ -1858,9 +2028,12 @@ export function buildGatewayStatusCommand(): string {
   );
 }
 
-export async function sshGatewayStatus(config: SshConfig): Promise<boolean> {
+export async function sshGatewayStatus(
+  config: SshConfig,
+  profile?: string,
+): Promise<boolean> {
   try {
-    const out = await sshExec(config, buildGatewayStatusCommand());
+    const out = await sshExec(config, buildGatewayStatusCommand(profile));
     const state = out.trim();
     return state === "running" || state === "active";
   } catch {
@@ -1868,20 +2041,170 @@ export async function sshGatewayStatus(config: SshConfig): Promise<boolean> {
   }
 }
 
-export async function sshStartGateway(config: SshConfig): Promise<void> {
+export async function sshStartGateway(
+  config: SshConfig,
+  profile?: string,
+): Promise<void> {
   try {
-    await sshExec(config, buildGatewayStartCommand());
+    await sshExec(config, buildGatewayStartCommand(profile));
   } catch {
     // best effort
   }
 }
 
-export async function sshStopGateway(config: SshConfig): Promise<void> {
+export async function sshStopGateway(
+  config: SshConfig,
+  profile?: string,
+): Promise<void> {
   try {
-    await sshExec(config, buildGatewayStopCommand());
+    await sshExec(config, buildGatewayStopCommand(profile));
   } catch {
     // best effort
   }
+}
+
+export async function sshResolveApiServerPort(
+  config: SshConfig,
+  profile?: string,
+): Promise<number> {
+  if (!profile || profile === "default") return config.remotePort || 8642;
+  const fallbackPort = config.remotePort || 8642;
+  const script = `
+import json, os, re, sys
+
+payload = json.loads(sys.stdin.read() or "{}")
+profile = payload.get("profile")
+fallback_port = int(payload.get("fallbackPort") or 8642)
+home = os.path.expanduser("~/.hermes")
+profiles_dir = os.path.join(home, "profiles")
+
+def config_path(name):
+    if name and name != "default":
+        return os.path.join(profiles_dir, name, "config.yaml")
+    return os.path.join(home, "config.yaml")
+
+def read(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
+
+def line_indent(line):
+    return len(line) - len(line.lstrip(" "))
+
+def api_server_bounds(lines):
+    for i, line in enumerate(lines):
+        if re.match(r"^\\s*api_server\\s*:\\s*(?:#.*)?$", line):
+            indent = line_indent(line)
+            end = len(lines)
+            for j in range(i + 1, len(lines)):
+                if lines[j].strip() and line_indent(lines[j]) <= indent:
+                    end = j
+                    break
+            return i, end, indent
+    return None
+
+def configured_port(text):
+    lines = text.splitlines()
+    bounds = api_server_bounds(lines)
+    if not bounds:
+        return None
+    start, end, _ = bounds
+    for line in lines[start + 1:end]:
+        m = re.match(r"^\\s*port\\s*:\\s*[\\"']?(\\d+)[\\"']?\\s*(?:#.*)?$", line)
+        if m:
+            port = int(m.group(1))
+            if 0 < port < 65536:
+                return port
+    return None
+
+def existing_ports():
+    ports = {fallback_port}
+    paths = [config_path(None)]
+    if os.path.isdir(profiles_dir):
+        for name in os.listdir(profiles_dir):
+            p = os.path.join(profiles_dir, name)
+            if os.path.isdir(p):
+                paths.append(os.path.join(p, "config.yaml"))
+    for path in paths:
+        port = configured_port(read(path))
+        if port:
+            ports.add(port)
+    return ports
+
+def allocate_port():
+    used = existing_ports()
+    for port in range(fallback_port + 1, min(65535, fallback_port + 100) + 1):
+        if port not in used:
+            return port
+    return fallback_port
+
+def ensure_profile_port(path, port):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    text = read(path)
+    lines = text.splitlines()
+    bounds = api_server_bounds(lines)
+    if bounds:
+        start, end, indent = bounds
+        for i in range(start + 1, end):
+            if re.match(r"^\\s*port\\s*:", lines[i]):
+                lines[i] = " " * line_indent(lines[i]) + f"port: {port}"
+                break
+        else:
+            extra_index = None
+            extra_indent = indent + 2
+            for i in range(start + 1, end):
+                if re.match(r"^\\s*extra\\s*:\\s*(?:#.*)?$", lines[i]):
+                    extra_index = i
+                    extra_indent = line_indent(lines[i])
+                    break
+            if extra_index is not None:
+                lines.insert(extra_index + 1, " " * (extra_indent + 2) + f"port: {port}")
+            else:
+                lines.insert(start + 1, " " * (indent + 2) + "enabled: true")
+                lines.insert(start + 2, " " * (indent + 2) + "extra:")
+                lines.insert(start + 3, " " * (indent + 4) + f"port: {port}")
+    else:
+        platforms_index = None
+        for i, line in enumerate(lines):
+            if re.match(r"^\\s*platforms\\s*:\\s*(?:#.*)?$", line):
+                platforms_index = i
+                break
+        block = ["  api_server:", "    enabled: true", "    extra:", f"      port: {port}"]
+        if platforms_index is not None:
+            lines[platforms_index + 1:platforms_index + 1] = block
+        else:
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.extend(["platforms:", *block])
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\\n".join(lines) + "\\n")
+
+path = config_path(profile)
+current = configured_port(read(path))
+if current:
+    print(current)
+else:
+    port = allocate_port()
+    ensure_profile_port(path, port)
+    print(port)
+`;
+  try {
+    const out = await sshPython(
+      config,
+      script,
+      pythonJsonInput({ profile, fallbackPort }),
+    );
+    const port = parseInt(out.trim(), 10);
+    if (port > 0 && port < 65536) return port;
+  } catch (err) {
+    console.warn(
+      "[ssh] Failed to allocate remote profile API port:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+  return fallbackPort;
 }
 
 // ── Remote API key (for chat auth through SSH tunnel) ─────────────────────────
@@ -1957,6 +2280,38 @@ export async function sshRunKanban<T = unknown>(
     return {
       success: false,
       error: (err as Error).message || "Remote kanban command failed",
+    };
+  }
+}
+
+export interface SshCronResult {
+  success: boolean;
+  error?: string;
+  stdout?: string;
+}
+
+export async function sshRunCron(
+  config: SshConfig,
+  args: string[],
+  opts: { profile?: string; timeoutMs?: number } = {},
+): Promise<SshCronResult> {
+  const cliArgs: string[] = [];
+  if (opts.profile && opts.profile !== "default") {
+    cliArgs.push("-p", opts.profile);
+  }
+  cliArgs.push("cron", ...args);
+  try {
+    const stdout = await sshExec(
+      config,
+      buildRemoteHermesCmd(cliArgs),
+      undefined,
+      opts.timeoutMs ?? 15000,
+    );
+    return { success: true, stdout };
+  } catch (err) {
+    return {
+      success: false,
+      error: (err as Error).message || "Remote cron command failed",
     };
   }
 }
@@ -2222,6 +2577,7 @@ export async function sshListCachedSessions(
     source: s.source,
     messageCount: s.messageCount,
     model: s.model,
+    contextFolder: null,
   }));
 }
 
@@ -2244,12 +2600,18 @@ export async function sshListCachedSessions(
 // directory name is not fixed, and an install that uses the un-dotted
 // `venv` was otherwise invisible even when fully working (issue #284).
 // `~/.local/bin/hermes` is also probed, where `pip install --user` flows
-// place a wrapper. `command -v hermes` alone is not enough: the desktop's
-// non-interactive SSH does not source `~/.profile`/`~/.bashrc`, so any
-// PATH additions made there are not visible.
+// place a wrapper. Before those default install paths, probe explicit
+// per-user launcher hooks. They let managed deployments provide their own
+// executable wrapper for unusual filesystem layouts, service users, or
+// HERMES_HOME requirements without baking deployment-specific paths into the
+// desktop.
+// `command -v hermes` alone is not enough: the desktop's non-interactive SSH
+// does not source `~/.profile`/`~/.bashrc`, so any PATH additions made there
+// are not visible.
 //
 // Exported for unit testing the probe list without a live remote host.
 export function buildRemoteHermesCmd(args: string[], extraShell = ""): string {
+  const launcherCandidates = REMOTE_HERMES_LAUNCHER_CANDIDATES;
   const candidates = [
     "$HOME/hermes-agent/.venv/bin/hermes",
     "$HOME/hermes-agent/venv/bin/hermes",
@@ -2260,10 +2622,13 @@ export function buildRemoteHermesCmd(args: string[], extraShell = ""): string {
     "$HOME/.local/bin/hermes",
   ];
   const quotedArgs = args.map((a) => shellQuote(a)).join(" ");
+  const launcherProbe = launcherCandidates
+    .map((p) => `[ -x ${p} ] && exec ${p} ${quotedArgs}${extraShell}`)
+    .join("; ");
   const probe = candidates
     .map((p) => `[ -x ${p} ] && exec ${p} ${quotedArgs}${extraShell}`)
     .join("; ");
-  const script = `${probe}; command -v hermes >/dev/null && exec hermes ${quotedArgs}${extraShell}; echo "ERR: hermes CLI not found on remote PATH or in any known venv location" >&2; exit 1`;
+  const script = `${launcherProbe}; ${probe}; command -v hermes >/dev/null && exec hermes ${quotedArgs}${extraShell}; echo "ERR: hermes CLI not found on remote PATH, configured launcher, or in any known venv location" >&2; exit 1`;
   return `sh -c ${shellQuote(script)}`;
 }
 

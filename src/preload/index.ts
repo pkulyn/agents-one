@@ -5,11 +5,18 @@ import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
 import type {
+  ImportWalletInput,
+  ProfileWallet,
+  WalletMutationResult,
+} from "../shared/wallets";
+import type { TokenBalancesResponse } from "../shared/tokens";
+import type {
   MessagingPlatformsResponse,
   MessagingPlatformTestResponse,
   MessagingPlatformUpdate,
 } from "../shared/messaging-platforms";
 import type { ChatToolEvent } from "../shared/chat-stream";
+import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
 
 /**
  * Mirror of the renderer-side `CredentialPoolEntry` ambient type
@@ -96,6 +103,15 @@ const hermesAPI = {
     ipcRenderer.invoke("adopt-hermes-home", dir),
 
   quitApp: (): Promise<void> => ipcRenderer.invoke("quit-app"),
+
+  getGpuStatus: (): Promise<GpuStatus> => ipcRenderer.invoke("get-gpu-status"),
+
+  reenableGpu: (): Promise<boolean> => ipcRenderer.invoke("reenable-gpu"),
+
+  setGpuPreference: (mode: GpuPreferenceMode): Promise<boolean> =>
+    ipcRenderer.invoke("set-gpu-preference", mode),
+
+  relaunchApp: (): Promise<void> => ipcRenderer.invoke("relaunch-app"),
 
   onInstallProgress: (
     callback: (progress: {
@@ -728,6 +744,9 @@ const hermesAPI = {
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-session-context-folder", sessionId, folder),
 
+  listRecentSessionContextFolders: (limit?: number): Promise<string[]> =>
+    ipcRenderer.invoke("list-recent-session-context-folders", limit),
+
   getSessionModelOverride: (
     sessionId: string,
   ): Promise<SessionModelOverride | null> =>
@@ -759,9 +778,9 @@ const hermesAPI = {
 
   createProfile: (
     name: string,
-    clone: boolean,
+    cloneFrom: string | null,
   ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("create-profile", name, clone),
+    ipcRenderer.invoke("create-profile", name, cloneFrom),
 
   deleteProfile: (
     name: string,
@@ -787,6 +806,34 @@ const hermesAPI = {
     name: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("remove-profile-avatar", name),
+
+  listWallets: (profile?: string): Promise<ProfileWallet[]> =>
+    ipcRenderer.invoke("list-wallets", profile),
+
+  createWallet: (
+    profile?: string,
+    name?: string,
+  ): Promise<WalletMutationResult> =>
+    ipcRenderer.invoke("create-wallet", profile, name),
+
+  importWallet: (input: ImportWalletInput): Promise<WalletMutationResult> =>
+    ipcRenderer.invoke("import-wallet", input),
+
+  renameWallet: (
+    profile: string | undefined,
+    id: string,
+    name: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("rename-wallet", profile, id, name),
+
+  deleteWallet: (
+    profile: string | undefined,
+    id: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("delete-wallet", profile, id),
+
+  getTokenBalances: (address: string): Promise<TokenBalancesResponse> =>
+    ipcRenderer.invoke("get-token-balances", address),
 
   // Memory
   readMemory: (
@@ -877,6 +924,7 @@ const hermesAPI = {
       source: string;
       messageCount: number;
       model: string;
+      contextFolder: string | null;
     }>
   > => ipcRenderer.invoke("list-cached-sessions", limit, offset),
 
@@ -888,6 +936,7 @@ const hermesAPI = {
       source: string;
       messageCount: number;
       model: string;
+      contextFolder: string | null;
     }>
   > => ipcRenderer.invoke("sync-session-cache"),
 
@@ -1073,6 +1122,10 @@ const hermesAPI = {
   downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke("download-update"),
   installUpdate: (): Promise<void> => ipcRenderer.invoke("install-update"),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke("get-app-version"),
+  getAutoUpgradeEnabled: (): Promise<boolean> =>
+    ipcRenderer.invoke("get-auto-upgrade-enabled"),
+  setAutoUpgradeEnabled: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke("set-auto-upgrade-enabled", enabled),
 
   onUpdateAvailable: (
     callback: (info: { version: string; releaseNotes: string }) => void,
@@ -1253,6 +1306,10 @@ const hermesAPI = {
     ipcRenderer.invoke("kanban-unblock-task", taskId, profile),
   kanbanArchiveTask: (taskId: string, profile?: string) =>
     ipcRenderer.invoke("kanban-archive-task", taskId, profile),
+  kanbanPromoteTask: (taskId: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-promote-task", taskId, profile),
+  kanbanScheduleTask: (taskId: string, reason?: string, profile?: string) =>
+    ipcRenderer.invoke("kanban-schedule-task", taskId, reason, profile),
   kanbanSpecifyTask: (taskId: string, profile?: string) =>
     ipcRenderer.invoke("kanban-specify-task", taskId, profile),
   kanbanReclaimTask: (taskId: string, reason?: string, profile?: string) =>

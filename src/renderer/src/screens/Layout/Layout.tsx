@@ -8,6 +8,9 @@ import {
   type ChatRun,
   mintRun,
   patchRun,
+  isScratchRun,
+  openSessionRunTransition,
+  selectProfileRunTransition,
   findRunBySession,
   loadingSessionIds as deriveLoadingSessionIds,
 } from "./chatRuns";
@@ -17,36 +20,32 @@ import Agents from "../Agents/Agents";
 import Discover from "../Discover/Discover";
 import ProfileSwitcher from "./ProfileSwitcher";
 import SidebarRecentSessions from "./SidebarRecentSessions";
-import Settings from "../Settings/Settings";
 import Skills from "../Skills/Skills";
 import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
 import Office from "../Office/Office";
-import Models from "../Models/Models";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
+import { useSettingsModal } from "../../components/settings/SettingsModalContext";
 import hermeslogo from "../../assets/hermes-one.svg";
 import {
-  ChatBubble,
   Compass,
   Settings as SettingsIcon,
   Brain,
-  Wrench,
+  Workflow,
   Signal,
   Building,
-  Layers,
   KeyRound,
   Timer,
   Kanban as KanbanIcon,
   Download,
   PanelLeftClose,
   PanelLeftOpen,
-  ChevronDown,
-  ChevronRight,
+  Plus,
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
@@ -56,36 +55,34 @@ type View =
   | "discover"
   | "agents"
   | "office"
-  | "models"
   | "providers"
   | "skills"
   | "memory"
   | "tools"
   | "schedules"
   | "kanban"
-  | "gateway"
-  | "settings";
+  | "gateway";
 
-const NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
-  { view: "chat", icon: ChatBubble, labelKey: "navigation.chat" },
+const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "discover", icon: Compass, labelKey: "navigation.discover" },
   // "agents" (Profiles) is reached from the sidebar-footer ProfileSwitcher's
   // "Manage profiles" action rather than a top-level nav item.
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
-  { view: "models", icon: Layers, labelKey: "navigation.models" },
-  { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   // "skills" lives under the Discover tab (installed + community), so it's no
   // longer a top-level nav item.
-  { view: "memory", icon: Brain, labelKey: "navigation.memory" },
-  { view: "tools", icon: Wrench, labelKey: "navigation.tools" },
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
+];
+
+const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
+  { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
-  { view: "settings", icon: SettingsIcon, labelKey: "navigation.settings" },
+  { view: "tools", icon: Workflow, labelKey: "navigation.tools" },
+  { view: "memory", icon: Brain, labelKey: "navigation.memory" },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
-const SESSIONS_EXPANDED_KEY = "hermes.sidebar.sessionsExpanded";
+const SIDEBAR_SCROLLBAR_HIDE_MS = 700;
 
 interface LayoutProps {
   verifyWarning?: boolean;
@@ -99,10 +96,12 @@ function Layout({
   onDismissVerifyWarning,
 }: LayoutProps = {}): React.JSX.Element {
   const { t } = useI18n();
+  const { openSettings } = useSettingsModal();
   const [view, setView] = useState<View>("chat");
   // Multiple conversations coexist (background sessions + multi-agent). Each is
-  // a ChatRun; all are mounted, only the active one is shown. `activeProfile`
-  // tracks the selected profile and always equals the active run's profile.
+  // a ChatRun; all are mounted, only the active one is shown. Profile switches
+  // preserve existing conversations and activate a scratch run for the selected
+  // agent so `activeProfile` stays aligned with the visible chat transport.
   const [activeProfile, setActiveProfile] = useState("default");
   const [runs, setRuns] = useState<ChatRun[]>(() => [mintRun("default")]);
   const [activeRunId, setActiveRunId] = useState<string>(() => runs[0].runId);
@@ -114,6 +113,16 @@ function Layout({
   // otherwise mount two tabs for the same session (the live check straddles an
   // await, so it can't rely on `runs` state alone).
   const resumingRef = useRef<Set<string>>(new Set());
+  const sidebarChatScrollRef = useRef<HTMLDivElement | null>(null);
+  const sidebarScrollbarHideRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [sidebarScrollbar, setSidebarScrollbar] = useState({
+    visible: false,
+    scrollable: false,
+    top: 0,
+    height: 0,
+  });
 
   const currentSessionId =
     runs.find((r) => r.runId === activeRunId)?.sessionId ?? null;
@@ -122,6 +131,78 @@ function Layout({
     () => deriveLoadingSessionIds(runs),
     [runs],
   );
+
+  const updateSidebarScrollbar = useCallback((visible: boolean) => {
+    const root = sidebarChatScrollRef.current;
+    if (!root) {
+      setSidebarScrollbar((prev) =>
+        prev.scrollable || prev.visible
+          ? { visible: false, scrollable: false, top: 0, height: 0 }
+          : prev,
+      );
+      return;
+    }
+
+    const scrollable = root.scrollHeight > root.clientHeight + 1;
+    if (!scrollable) {
+      setSidebarScrollbar((prev) =>
+        prev.scrollable || prev.visible
+          ? { visible: false, scrollable: false, top: 0, height: 0 }
+          : prev,
+      );
+      return;
+    }
+
+    const trackHeight = root.clientHeight;
+    const thumbHeight = Math.max(
+      32,
+      Math.round((root.clientHeight / root.scrollHeight) * trackHeight),
+    );
+    const maxTop = Math.max(0, trackHeight - thumbHeight);
+    const maxScroll = Math.max(1, root.scrollHeight - root.clientHeight);
+    const top = Math.round((root.scrollTop / maxScroll) * maxTop);
+
+    setSidebarScrollbar((prev) => {
+      const next = { visible, scrollable, top, height: thumbHeight };
+      return prev.visible === next.visible &&
+        prev.scrollable === next.scrollable &&
+        prev.top === next.top &&
+        prev.height === next.height
+        ? prev
+        : next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const root = sidebarChatScrollRef.current;
+    if (!root) return;
+
+    const showThenHide = (): void => {
+      updateSidebarScrollbar(true);
+      if (sidebarScrollbarHideRef.current) {
+        clearTimeout(sidebarScrollbarHideRef.current);
+      }
+      sidebarScrollbarHideRef.current = setTimeout(() => {
+        updateSidebarScrollbar(false);
+      }, SIDEBAR_SCROLLBAR_HIDE_MS);
+    };
+
+    const updateHidden = (): void => updateSidebarScrollbar(false);
+    root.addEventListener("scroll", showThenHide, { passive: true });
+    window.addEventListener("resize", updateHidden);
+    const observer = new ResizeObserver(updateHidden);
+    observer.observe(root);
+
+    updateHidden();
+    return () => {
+      root.removeEventListener("scroll", showThenHide);
+      window.removeEventListener("resize", updateHidden);
+      observer.disconnect();
+      if (sidebarScrollbarHideRef.current) {
+        clearTimeout(sidebarScrollbarHideRef.current);
+      }
+    };
+  }, [updateSidebarScrollbar]);
 
   // Per-profile avatar/colour, so the active-sessions bar (which only knows a
   // run's profile name) can render real avatars. Refreshed when the selected
@@ -173,15 +254,6 @@ function Layout({
       return false;
     }
   });
-  // Recent-sessions list under the Chat nav item expanded → shows the last few
-  // chats inline (ChatGPT-style). Defaults to expanded; persisted across launches.
-  const [sessionsExpanded, setSessionsExpanded] = useState(() => {
-    try {
-      return localStorage.getItem(SESSIONS_EXPANDED_KEY) !== "false";
-    } catch {
-      return true;
-    }
-  });
   // Full-list sessions modal (opened from the sidebar "Show more" affordance or
   // the Cmd/Ctrl+K menu action). Reuses the Sessions screen inside a modal —
   // there is no longer a top-level Sessions view.
@@ -211,6 +283,29 @@ function Layout({
     setVisitedViews((prev) => (prev.has(v) ? prev : new Set(prev).add(v)));
     setView(v);
   }, []);
+
+  useEffect(() => {
+    const handleNavigation = (e: Event): void => {
+      const targetView = (e as CustomEvent<View>).detail;
+      if (targetView) goTo(targetView);
+    };
+    window.addEventListener("navigation:goto", handleNavigation);
+    return () =>
+      window.removeEventListener("navigation:goto", handleNavigation);
+  }, [goTo]);
+
+  // Cmd/Ctrl+, opens the settings modal from anywhere (the conventional
+  // "preferences" shortcut).
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        openSettings(undefined, { profile: activeProfile });
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [openSettings, activeProfile]);
 
   const focusDiscover = useCallback(
     (kind: "skills" | "mcps") => {
@@ -258,13 +353,29 @@ function Layout({
   const [updateState, setUpdateState] = useState<
     "available" | "downloading" | "ready" | "error" | null
   >(null);
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const [updatePercent, setUpdatePercent] = useState<number | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Updates download silently in the background (autoDownload); we don't
-    // surface "available" or progress — only the ready/error end states.
+    // Surface a startup upgrade button as soon as GitHub reports a newer
+    // release. If auto-upgrade is enabled, electron-updater also downloads in
+    // the background and this state advances to downloading/ready.
+    const cleanupAvailable = window.hermesAPI.onUpdateAvailable((info) => {
+      setUpdateState("available");
+      setUpdateVersion(info.version);
+      setUpdateError(null);
+    });
+    const cleanupProgress = window.hermesAPI.onUpdateDownloadProgress(
+      (info) => {
+        setUpdateState("downloading");
+        setUpdatePercent(info.percent);
+        setUpdateError(null);
+      },
+    );
     const cleanupDownloaded = window.hermesAPI.onUpdateDownloaded(() => {
       setUpdateState("ready");
+      setUpdatePercent(null);
       setUpdateError(null);
     });
     const cleanupError = window.hermesAPI.onUpdateError((message) => {
@@ -272,6 +383,8 @@ function Layout({
       setUpdateError(message);
     });
     return () => {
+      cleanupAvailable();
+      cleanupProgress();
       cleanupDownloaded();
       cleanupError();
     };
@@ -281,10 +394,11 @@ function Layout({
     if (updateState === "ready") {
       // The only user action: restart into the already-downloaded update.
       await window.hermesAPI.installUpdate();
-    } else if (updateState === "error") {
-      // Retry the auto-download that failed.
-      // Set downloading state immediately to prevent re-entrancy (double-click).
+    } else if (updateState === "available" || updateState === "error") {
+      // Download the available update (or retry a failed auto-download).
+      // Set downloading state immediately to prevent re-entrancy.
       setUpdateState("downloading");
+      setUpdatePercent(null);
       setUpdateError(null);
       try {
         const ok = await window.hermesAPI.downloadUpdate();
@@ -299,11 +413,17 @@ function Layout({
 
   const updateButtonTitle =
     updateError ??
-    (updateState === "ready"
-      ? t("common.restartToUpdate")
-      : updateState === "error"
-        ? t("common.updateFailed")
-        : undefined);
+    (updateState === "available" && updateVersion
+      ? t("common.updateAvailable", { version: updateVersion })
+      : updateState === "downloading"
+        ? updatePercent === null
+          ? t("common.downloading", { percent: 0 })
+          : t("common.downloading", { percent: updatePercent })
+        : updateState === "ready"
+          ? t("common.restartToUpdate")
+          : updateState === "error"
+            ? t("common.updateFailed")
+            : undefined);
 
   const handleNewChat = useCallback(() => {
     // Open a fresh run WITHOUT aborting others — any in-flight session keeps
@@ -345,28 +465,19 @@ function Layout({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [sessionsModalOpen]);
 
-  // A run with no session, not loading and no title hasn't been used yet — a
-  // blank "scratch" chat we can re-home to another agent without spawning a tab.
-  const isScratchRun = (r: ChatRun): boolean =>
-    !r.sessionId && !r.loading && !r.title;
-
   const handleSelectProfile = useCallback(
     (name: string) => {
       // Selecting an agent is administrative: switch the active profile (the
-      // component already started its gateway via setActiveProfile) WITHOUT
-      // starting a conversation. If the current chat is a blank scratch, re-home
-      // it to the new agent so switching never piles up empty tabs; a chat with
-      // content is left intact (start a new one with Chat / New chat).
+      // component already started its gateway via setActiveProfile). Existing
+      // chats remain on their original profile, but the visible chat must move
+      // to a scratch run for the selected profile so the footer and transport
+      // never point at different agents.
       setActiveProfile(name);
-      setRuns((prev) =>
-        prev.map((r) =>
-          r.runId === activeRunId && isScratchRun(r)
-            ? { ...r, profile: name }
-            : r,
-        ),
-      );
+      const next = selectProfileRunTransition(runs, activeRunId, name);
+      setRuns(next.runs);
+      setActiveRunId(next.activeRunId);
     },
-    [activeRunId],
+    [runs, activeRunId],
   );
 
   // The "Chat" affordance: start (or reuse a blank) conversation with an agent
@@ -448,7 +559,9 @@ function Layout({
         )) as DbHistoryItem[];
         const run = mintRun(activeProfile, dbItemsToChatMessages(items));
         run.sessionId = sessionId;
-        setRuns((prev) => [...prev, run]);
+        setRuns(
+          (prev) => openSessionRunTransition(prev, activeRunId, run).runs,
+        );
         setActiveRunId(run.runId);
         goTo("chat");
       } finally {
@@ -456,7 +569,7 @@ function Layout({
         setResumingSessionId(null);
       }
     },
-    [runs, handleActivateRun, activeProfile, goTo],
+    [runs, activeRunId, handleActivateRun, activeProfile, goTo],
   );
 
   const toggleSidebar = useCallback(() => {
@@ -464,18 +577,6 @@ function Layout({
       const next = !collapsed;
       try {
         localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-      } catch {
-        /* ignore persistence failures */
-      }
-      return next;
-    });
-  }, []);
-
-  const toggleSessionsExpanded = useCallback(() => {
-    setSessionsExpanded((expanded) => {
-      const next = !expanded;
-      try {
-        localStorage.setItem(SESSIONS_EXPANDED_KEY, String(next));
       } catch {
         /* ignore persistence failures */
       }
@@ -509,63 +610,35 @@ function Layout({
             aria-expanded={!sidebarCollapsed}
           >
             {sidebarCollapsed ? (
-              <PanelLeftOpen size={16} />
+              // Collapsed: show the circular brand mark by default and swap to
+              // the expand icon on hover/focus. Both sit in a fixed-size box so
+              // the swap never changes the button's footprint.
+              <span className="sidebar-collapse-swap">
+                <span className="sidebar-collapse-mark" aria-hidden="true" />
+                <PanelLeftOpen
+                  size={16}
+                  className="sidebar-collapse-expand-icon"
+                />
+              </span>
             ) : (
               <PanelLeftClose size={16} />
             )}
           </button>
         </div>
 
-        <nav className="sidebar-nav">
-          {NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
-            if (v === "chat") {
-              // The recent-sessions list lives under the Chat item (the
-              // standalone Sessions view was removed — the full list now opens
-              // in a modal via "Show more").
-              const recentToggleLabel = sessionsExpanded
-                ? t("navigation.hideRecentSessions")
-                : t("navigation.showRecentSessions");
-              return (
-                <div key={v} className="sidebar-nav-sessions">
-                  <div className="sidebar-nav-row">
-                    <button
-                      className={`sidebar-nav-item ${view === v ? "active" : ""}`}
-                      onClick={() => goTo(v)}
-                      title={t(labelKey)}
-                      aria-label={t(labelKey)}
-                    >
-                      <Icon size={16} />
-                      <span className="sidebar-nav-label">{t(labelKey)}</span>
-                    </button>
-                    {!sidebarCollapsed && (
-                      <button
-                        className="sidebar-nav-chevron"
-                        type="button"
-                        onClick={toggleSessionsExpanded}
-                        title={recentToggleLabel}
-                        aria-label={recentToggleLabel}
-                        aria-expanded={sessionsExpanded}
-                      >
-                        {sessionsExpanded ? (
-                          <ChevronDown size={14} />
-                        ) : (
-                          <ChevronRight size={14} />
-                        )}
-                      </button>
-                    )}
-                  </div>
-                  <SidebarRecentSessions
-                    open={sessionsExpanded && !sidebarCollapsed}
-                    activeProfile={activeProfile}
-                    currentSessionId={currentSessionId}
-                    loadingSessionIds={loadingSessionIds}
-                    resumingSessionId={resumingSessionId}
-                    onSelect={handleResumeSession}
-                    onShowMore={() => setSessionsModalOpen(true)}
-                  />
-                </div>
-              );
-            }
+        <nav className="sidebar-nav sidebar-nav-pinned">
+          <button
+            className={`sidebar-nav-item sidebar-new-chat ${
+              view === "chat" && currentSessionId === null ? "active" : ""
+            }`}
+            onClick={handleNewChat}
+            title={t("navigation.newChat")}
+            aria-label={t("navigation.newChat")}
+          >
+            <Plus size={16} />
+            <span className="sidebar-nav-label">{t("navigation.newChat")}</span>
+          </button>
+          {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
             return (
               <button
                 key={v}
@@ -581,19 +654,69 @@ function Layout({
           })}
         </nav>
 
+        <div className="sidebar-chat-section">
+          <div className="sidebar-nav-sessions">
+            <div className="sidebar-chat-scroll" ref={sidebarChatScrollRef}>
+              <SidebarRecentSessions
+                open={!sidebarCollapsed}
+                activeProfile={activeProfile}
+                currentSessionId={currentSessionId}
+                loadingSessionIds={loadingSessionIds}
+                resumingSessionId={resumingSessionId}
+                onSelect={handleResumeSession}
+                onSessionDeleted={(id) => {
+                  // If the open chat was the one deleted, drop to a fresh chat
+                  // so the user isn't left viewing a now-gone conversation.
+                  if (id === currentSessionId) handleNewChat();
+                }}
+                scrollRootRef={sidebarChatScrollRef}
+              />
+            </div>
+            {sidebarScrollbar.scrollable && (
+              <div
+                className={`sidebar-chat-scrollbar ${
+                  sidebarScrollbar.visible ? "visible" : ""
+                }`}
+                aria-hidden="true"
+              >
+                <div
+                  className="sidebar-chat-scrollbar-thumb"
+                  style={{
+                    height: sidebarScrollbar.height,
+                    transform: `translateY(${sidebarScrollbar.top}px)`,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="sidebar-footer">
-          {/* Downloads happen silently in the background — only surface the
-              button once the update is ready (or if it failed to download). */}
-          {(updateState === "ready" || updateState === "error") && (
+          {/* Show an upgrade affordance at startup when GitHub has a newer
+              release; it becomes a restart action once downloaded. */}
+          {updateState && (
             <button
               className={`sidebar-update-btn ${
                 updateState === "error" ? "error" : ""
               }`}
               onClick={handleUpdate}
+              disabled={updateState === "downloading"}
               title={updateButtonTitle}
               aria-label={updateButtonTitle}
             >
               <Download size={13} />
+              {updateState === "available" && (
+                <span>
+                  {updateVersion
+                    ? t("common.updateAvailable", { version: updateVersion })
+                    : t("common.updateAvailable", { version: "" })}
+                </span>
+              )}
+              {updateState === "downloading" && (
+                <span>
+                  {t("common.downloading", { percent: updatePercent ?? 0 })}
+                </span>
+              )}
               {updateState === "ready" && (
                 <span>{t("common.restartToUpdate")}</span>
               )}
@@ -602,6 +725,29 @@ function Layout({
               )}
             </button>
           )}
+          <div className="sidebar-footer-actions" aria-label="Workspace tools">
+            {FOOTER_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
+              <button
+                key={v}
+                className={`sidebar-footer-action ${view === v ? "active" : ""}`}
+                onClick={() => goTo(v)}
+                aria-label={t(labelKey)}
+                data-tooltip={t(labelKey)}
+              >
+                <Icon size={16} />
+              </button>
+            ))}
+            <button
+              className="sidebar-footer-action"
+              onClick={() =>
+                openSettings(undefined, { profile: activeProfile })
+              }
+              aria-label={t("navigation.settings")}
+              data-tooltip={t("navigation.settings")}
+            >
+              <SettingsIcon size={16} />
+            </button>
+          </div>
           <ProfileSwitcher
             activeProfile={activeProfile}
             onSwitch={handleSelectProfile}
@@ -649,7 +795,9 @@ function Layout({
                 active={run.runId === activeRunId}
                 profile={run.profile}
                 onNewChat={handleNewChat}
-                onOpenDiagnose={() => goTo("settings")}
+                onOpenDiagnose={(section?: string) =>
+                  openSettings(section, { profile: run.profile })
+                }
                 onLoadingChange={handleRunLoading}
                 onSessionIdChange={handleRunSessionId}
                 onTitleChange={handleRunTitle}
@@ -714,12 +862,6 @@ function Layout({
         {visitedViews.has("office") && (
           <div style={paneStyle("office")}>
             <Office profile={activeProfile} visible={view === "office"} />
-          </div>
-        )}
-
-        {visitedViews.has("models") && (
-          <div style={paneStyle("models")}>
-            <Models visible={view === "models"} />
           </div>
         )}
 
@@ -792,12 +934,6 @@ function Layout({
             ) : (
               <Gateway profile={activeProfile} />
             )}
-          </div>
-        )}
-
-        {visitedViews.has("settings") && (
-          <div style={paneStyle("settings")}>
-            <Settings profile={activeProfile} />
           </div>
         )}
       </main>

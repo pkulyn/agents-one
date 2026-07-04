@@ -6,6 +6,21 @@ export default {
     privacy: "Gizlilik",
     credentialPool: "Kimlik Bilgisi Havuzu",
   },
+  nav: {
+    groups: {
+      general: "Genel",
+      hermes: "Hermes One",
+    },
+    appearance: "Görünüm",
+    language: "Dil",
+    privacy: "Gizlilik",
+    connection: "Bağlantı",
+    network: "Ağ",
+    data: "Veri",
+    about: "Hakkında ve Güncellemeler",
+    community: "Topluluk",
+    logs: "Günlükler ve Tanılama",
+  },
   theme: {
     label: "Tema",
     system: "Sistem",
@@ -35,14 +50,14 @@ export default {
   },
   analytics: {
     label: "Anonim kullanım istatistikleri gönder",
-    hint: "Hermes One'ı iyileştirmeye yardımcı olmak için anonim, toplulaştırılmış kullanım verilerini projenin PostHog örneğine gönderir. İstediğiniz zaman kapatabilirsiniz.",
+    hint: "Hermes One'ı iyileştirmeye yardımcı olmak için anonim, toplulaştırılmış kullanım verilerini projenin analiz hizmetine gönderir. İstediğiniz zaman kapatabilirsiniz.",
     disclosure: {
       uuid: "Yalnızca bu cihazda saklanan rastgele bir kurulum tanımlayıcısı (ad, e-posta veya hesap bilgisi yok).",
       platform: "İşletim sisteminiz, Electron sürümü ve Node.js sürümü.",
       navigation:
         "Uygulama içinde hangi ekranları ziyaret ettiğiniz (örn. Sohbet, Oturumlar, Ayarlar). Sohbet içeriği, komutlar, model yanıtları veya dosya içerikleri toplanmaz.",
       endpoint:
-        "Veriler us.i.posthog.com adresine gönderilir (PostHog ABD bulutu). Oturum kayıtları ve sayfa görüntüleme otomatik yakalaması devre dışıdır.",
+        "Veriler Hermes analiz hizmetine gönderilir (analytics.hermesone.org). Oturum kayıtları ve sayfa görüntüleme otomatik yakalaması devre dışıdır.",
       notCollected:
         "Asla toplanmaz: sohbet mesajları, dosya yolları, API anahtarları, model yapılandırması, hesap bilgileri.",
     },

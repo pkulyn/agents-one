@@ -6,6 +6,32 @@ export default {
     privacy: "Privacy",
     credentialPool: "Credential Pool",
   },
+  nav: {
+    groups: {
+      general: "General",
+      hermes: "Hermes One",
+    },
+    appearance: "Appearance",
+    language: "Language",
+    privacy: "Privacy",
+    connection: "Connection",
+    network: "Network",
+    data: "Data",
+    about: "About & Updates",
+    community: "Community",
+    logs: "Logs & Diagnostics",
+  },
+  agentSubtitle: "The local AI engine",
+  desktopTitle: "Hermes One Desktop",
+  desktopSubtitle: "This desktop app",
+  statusUpToDate: "Up to date",
+  statusUpdateAvailable: "Update available",
+  statusUpdateReady: "Update ready",
+  checkForUpdates: "Check for updates",
+  checkingUpdates: "Checking…",
+  downloadUpdate: "Download update",
+  retry: "Retry",
+  onLatestVersion: "You're on the latest version.",
   theme: {
     label: "Theme",
     system: "System",
@@ -22,6 +48,18 @@ export default {
     system: "System",
     hint: "Choose the interface font",
   },
+  hardwareAcceleration: {
+    label: "Hardware acceleration",
+    auto: "Auto",
+    on: "Always on",
+    off: "Always off",
+    hint: "Auto uses the GPU and falls back to software rendering for 24 hours after a GPU crash. Always on retries the GPU every launch; Always off keeps software rendering (the 3D office will be slow).",
+    envOverride:
+      "Overridden by the HERMES_DISABLE_GPU environment variable — this setting will have no effect until it is removed.",
+    restartToApply: "Takes effect after a restart.",
+    restartNow: "Restart now",
+    saveFailed: "Could not save the preference.",
+  },
   language: {
     label: "Language",
     english: "English",
@@ -35,17 +73,7 @@ export default {
   },
   analytics: {
     label: "Send anonymous usage analytics",
-    hint: "Helps improve Hermes One by sending anonymous, aggregated usage data to the project's PostHog instance. You can turn this off at any time.",
-    disclosure: {
-      uuid: "A random per-install identifier stored only on this device (no name, email, or account info).",
-      platform: "Your operating system, Electron version, and Node.js version.",
-      navigation:
-        "Which screens you visit inside the app (e.g. Chat, Sessions, Settings). No chat content, prompts, model responses, or file contents are collected.",
-      endpoint:
-        "Data is sent to us.i.posthog.com (PostHog US cloud). Session recordings and pageview auto-capture are disabled.",
-      notCollected:
-        "Never collected: chat messages, file paths, API keys, model configuration, account credentials.",
-    },
+    hint: "Collected anonymously and used only to improve Hermes One — never your chats, files, prompts, or any personal data.",
   },
   notDetected: "Not detected",
   updatedSuccessfully: "Updated successfully!",
@@ -96,6 +124,9 @@ export default {
   updating: "Updating...",
   updateEngine: "Update Engine",
   latestVersion: "Already up to date",
+  autoUpgradeDesktop: "Auto-upgrade desktop app",
+  autoUpgradeDesktopHint:
+    "Automatically download new Hermes One releases from GitHub when the app starts. Turn this off to show the startup upgrade button without downloading until you click it.",
   runningDiagnosis: "Running diagnosis...",
   runDiagnosis: "Run Diagnosis",
   running: "Running...",
@@ -127,7 +158,7 @@ export default {
   serverConfigTitle: "Server Configuration",
   serverConfigHint:
     "You&apos;re connected to a remote Hermes server. Model selection, provider API keys, and credentials are managed on the server&apos;s <code>~/.hermes/.env</code> and <code>config.yaml</code>. Edit them on the host (e.g. <code>docker exec -it hermes vi /opt/data/.env</code>) and restart the container.",
-  connectionMode: "Mode",
+  connectionMode: "Connection Mode",
   switchedToLocal: "Switched to local mode",
 
   // Community
@@ -135,6 +166,16 @@ export default {
   communityHint:
     "Join our Discord channel to ask questions, report issues, and chat with other Hermes users.",
   joinDiscord: "Join Discord Channel",
+  communityLinksHint:
+    "Connect with the Hermes One community, get help, and stay up to date.",
+  linkWebsite: "Website",
+  linkDiscord: "Discord",
+  linkX: "X",
+  linkTelegram: "Telegram",
+  supportTitle: "Support the developer",
+  supportHint:
+    "Hermes One is free and open source — if it helps you, consider supporting its development.",
+  supportKofi: "Support on Ko-fi",
 
   // SSH & Server Config
   modeSsh: "SSH Tunnel",

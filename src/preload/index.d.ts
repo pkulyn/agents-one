@@ -4,6 +4,12 @@ import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
 import type {
+  ImportWalletInput,
+  ProfileWallet,
+  WalletMutationResult,
+} from "../shared/wallets";
+import type { TokenBalancesResponse } from "../shared/tokens";
+import type {
   RegistryKind,
   RegistryItem,
   RegistryCatalog,
@@ -16,6 +22,7 @@ import type {
   MessagingPlatformUpdate,
 } from "../shared/messaging-platforms";
 import type { ChatToolEvent } from "../shared/chat-stream";
+import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
 
 interface ElectronAPI {
   process: {
@@ -220,6 +227,10 @@ interface HermesAPI {
   validateHermesHome: (dir: string) => Promise<boolean>;
   adoptHermesHome: (dir: string) => Promise<boolean>;
   quitApp: () => Promise<void>;
+  getGpuStatus: () => Promise<GpuStatus>;
+  reenableGpu: () => Promise<boolean>;
+  setGpuPreference: (mode: GpuPreferenceMode) => Promise<boolean>;
+  relaunchApp: () => Promise<void>;
   onInstallProgress: (
     callback: (progress: InstallProgress) => void,
   ) => () => void;
@@ -568,6 +579,7 @@ interface HermesAPI {
     sessionId: string,
     folder: string | null,
   ) => Promise<boolean>;
+  listRecentSessionContextFolders: (limit?: number) => Promise<string[]>;
   getSessionModelOverride: (
     sessionId: string,
   ) => Promise<SessionModelOverride | null>;
@@ -597,7 +609,7 @@ interface HermesAPI {
   >;
   createProfile: (
     name: string,
-    clone: boolean,
+    cloneFrom: string | null,
   ) => Promise<{ success: boolean; error?: string }>;
   deleteProfile: (
     name: string,
@@ -614,6 +626,22 @@ interface HermesAPI {
   removeProfileAvatar: (
     name: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  listWallets: (profile?: string) => Promise<ProfileWallet[]>;
+  createWallet: (
+    profile?: string,
+    name?: string,
+  ) => Promise<WalletMutationResult>;
+  importWallet: (input: ImportWalletInput) => Promise<WalletMutationResult>;
+  renameWallet: (
+    profile: string | undefined,
+    id: string,
+    name: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteWallet: (
+    profile: string | undefined,
+    id: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  getTokenBalances: (address: string) => Promise<TokenBalancesResponse>;
 
   // Memory
   readMemory: (profile?: string) => Promise<{
@@ -691,6 +719,7 @@ interface HermesAPI {
       source: string;
       messageCount: number;
       model: string;
+      contextFolder: string | null;
     }>
   >;
   syncSessionCache: () => Promise<
@@ -701,6 +730,7 @@ interface HermesAPI {
       source: string;
       messageCount: number;
       model: string;
+      contextFolder: string | null;
     }>
   >;
   updateSessionTitle: (sessionId: string, title: string) => Promise<void>;
@@ -820,6 +850,8 @@ interface HermesAPI {
   downloadUpdate: () => Promise<boolean>;
   installUpdate: () => Promise<void>;
   getAppVersion: () => Promise<string>;
+  getAutoUpgradeEnabled: () => Promise<boolean>;
+  setAutoUpgradeEnabled: (enabled: boolean) => Promise<boolean>;
   onUpdateAvailable: (
     callback: (info: { version: string; releaseNotes: string }) => void,
   ) => () => void;
@@ -954,6 +986,15 @@ interface HermesAPI {
   ) => Promise<{ success: boolean; error?: string }>;
   kanbanArchiveTask: (
     taskId: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanPromoteTask: (
+    taskId: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  kanbanScheduleTask: (
+    taskId: string,
+    reason?: string,
     profile?: string,
   ) => Promise<{ success: boolean; error?: string }>;
   kanbanSpecifyTask: (

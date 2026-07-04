@@ -79,7 +79,7 @@ export function startMainProcess(): void {
           ...details.responseHeaders,
           "Content-Security-Policy": [
             "default-src 'self'; " +
-              "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://*.posthog.com https://*.i.posthog.com; " +
+              "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
               "style-src 'self' 'unsafe-inline'; " +
               "img-src 'self' data: blob: file: https:; " +
               "media-src 'self' data: blob: file: https:; " +
@@ -175,8 +175,15 @@ function createWindow(): void {
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     console.error("[CRASH] Renderer process gone:", details.reason, details.exitCode);
   });
-  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
-    if (level >= 2) console.error(`[RENDERER ERROR] ${message} (${sourceId}:${line})`);
+  mainWindow.webContents.on("console-message", (details) => {
+    // Electron ≥35 passes a single event object (level is now a string);
+    // the old positional `(event, level, message, line, sourceId)` signature
+    // is deprecated.
+    if (details.level === "error") {
+      console.error(
+        `[RENDERER ERROR] ${details.message} (${details.sourceId}:${details.lineNumber})`,
+      );
+    }
   });
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
     console.error("[LOAD FAIL]", errorCode, errorDescription);

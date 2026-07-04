@@ -44,7 +44,7 @@ type CommandDispatchResponse =
  */
 export type SlashExecOutcome =
   | { kind: "done" }
-  | { kind: "send"; message: string }
+  | { kind: "send"; message: string; source: "send" | "skill" }
   | { kind: "error"; message: string };
 
 export interface ExecuteSlashOptions {
@@ -77,10 +77,21 @@ export async function executeSlash(
 
   // Primary dispatcher: the registry-backed slash worker.
   try {
-    const r = (await request("slash.exec", {
+    const raw = await request("slash.exec", {
       command: command.replace(/^\/+/, ""),
       session_id: sessionId,
-    })) as SlashExecResponse | undefined;
+    });
+    const dispatched = parseCommandDispatch(raw);
+    if (dispatched) {
+      return handleCommandDispatch(
+        dispatched,
+        { command, sessionId, request, sys },
+        arg,
+        name,
+        depth,
+      );
+    }
+    const r = raw as SlashExecResponse | undefined;
     const body = r?.output || `/${name}: no output`;
     sys(r?.warning ? `warning: ${r.warning}\n${body}` : body);
     return { kind: "done" };
@@ -108,6 +119,24 @@ export async function executeSlash(
   if (!dispatched) {
     return { kind: "error", message: "invalid response: command.dispatch" };
   }
+
+  return handleCommandDispatch(
+    dispatched,
+    { command, sessionId, request, sys },
+    arg,
+    name,
+    depth,
+  );
+}
+
+function handleCommandDispatch(
+  dispatched: CommandDispatchResponse,
+  options: ExecuteSlashOptions,
+  arg: string,
+  name: string,
+  depth: number,
+): Promise<SlashExecOutcome> | SlashExecOutcome {
+  const { sessionId, request, sys } = options;
 
   switch (dispatched.type) {
     case "exec":
@@ -140,14 +169,19 @@ export async function executeSlash(
       }
       if (dispatched.type === "skill")
         sys(`⚡ loading skill: ${dispatched.name}`);
-      return { kind: "send", message: msg };
+      return { kind: "send", message: msg, source: dispatched.type };
     }
   }
 }
 
 /** Split "/name rest of args" into its name and trimmed argument string. */
 export function parseSlash(command: string): { name: string; arg: string } {
-  const m = command.replace(/^\/+/, "").match(/^(\S+)\s*(.*)$/);
+  // `s` (dotAll) flag so a multi-line argument is captured: without it `.`
+  // stops at the first newline and the whole match fails, so a valid command
+  // with a multi-line body (e.g. `/remember` a multi-line note) would parse to
+  // an empty name and be rejected as "empty slash command". Mirrors the sibling
+  // parser in slash/parseSlashCommand.ts, which already uses the flag.
+  const m = command.replace(/^\/+/, "").match(/^(\S+)\s*(.*)$/s);
   return m ? { name: m[1], arg: m[2].trim() } : { name: "", arg: "" };
 }
 

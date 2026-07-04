@@ -20,6 +20,8 @@ Selecting a preset sets the base URL; the API-key env var is resolved by `resolv
 
 The Providers tab ([[src/renderer/src/screens/Providers/Providers.tsx]]) picks the model provider, but the agent only resolves native providers — selecting an unsupported id otherwise makes the gateway raise `Unknown provider`.
 
+The screen is organized as three tabs: Providers, Models, and Auxiliary Tasks. Providers owns the active provider/model credentials, while Models and Auxiliary Tasks embed [[src/renderer/src/screens/Models/Models.tsx]] so the saved model library and per-task model overrides live beside the provider configuration instead of as a separate sidebar destination.
+
 The picker is a flex-wrap **chip grid** (driven by `PROVIDER_CARDS` in [[src/renderer/src/constants.ts]]) rather than a dropdown: every native provider is a chip, and a terminal `local` ("Local / Others") chip reveals the `LOCAL_PRESETS` rows (local servers + remote OpenAI-compatible endpoints). `selectProvider` is the shared click handler for the provider chips and the preset chips.
 
 Once a provider is configured the grid collapses to a read-only summary (logo + provider label + model/base-URL); a **Change** button in the section header (`editingProvider` state) re-opens the full chip grid and the editable model/base-URL fields. An unconfigured (`auto`) selection always shows the grid.
@@ -27,6 +29,16 @@ Once a provider is configured the grid collapses to a read-only summary (logo + 
 For compatible/custom endpoints, an inline **API Key** field appears under Base URL, stored under the host-derived env var (`resolveCompatEnvKey`: preset `envKey` else `expectedEnvKeyForUrl`, e.g. AtlasCloud → `ATLASCLOUD_API_KEY`). It shares the `env` state with the lower LLM-provider key cards, so either entry point stays in sync.
 
 Ids the agent can't resolve by id are listed in `OPENAI_COMPATIBLE_BASE_URLS` ([[src/renderer/src/constants.ts]]) — openai, perplexity, and every `LOCAL_PRESETS` chip (local servers + remote endpoints like groq, deepseek, atlascloud, mistral, …). This map MUST contain every preset id, or selecting that chip mis-routes; a test in `tests/constants.test.ts` enforces it. Selecting one autofills its base URL and shows the base-URL field; on save it is persisted as `provider: custom` + `base_url`, which the gateway accepts and uses to host-derive the API key (`runtime_provider._host_derived_api_key`, e.g. `api.groq.com` → `GROQ_API_KEY`). `displayProviderFromConfig` reverse-maps a stored `custom` + known base URL back to the brand id so the dropdown re-selects it on load. Native providers (the gateway hardcodes their base URL) clear the field instead.
+
+## Switching providers rewrites the transport (`api_mode`)
+
+Activating a model must rewrite or clear `model.api_mode`, or a stale protocol from the previous model routes the new endpoint over the wrong transport — dropping connections when switching OpenAI- and Anthropic-compatible custom endpoints.
+
+The gateway's runtime-provider resolver honors a persisted `model.api_mode` (`anthropic_messages` vs `chat_completions`, …) for `custom`/compatible providers, and only auto-detects from the base URL (`/anthropic` suffix, `api.openai.com`, …) when the key is absent. So a leftover `anthropic_messages` would keep an OpenAI-compatible endpoint pointed at `/v1/messages` (404 / lost connection).
+
+[[src/main/config.ts#setModelConfig]] takes an optional `apiMode` argument, handled exactly like `context_length`: a non-empty string sets `model.api_mode`, `null`/empty removes it (so auto-detection resumes), `undefined` leaves it untouched. The `set-model-config` IPC handler ([[src/main/ipc/register.ts]]) resolves it from the activated model's `apiMode` library field ([[src/main/models.ts#SavedModel]]) — `null` when the entry has none — alongside the `contextLength` mirror, on both the pure-local and remote-fallback local writes. Custom-provider library entries carry `apiMode` because `loadCustomProviders` reads `api_mode` from each `custom_providers:` block.
+
+The library lookup runs through [[src/main/ipc/register.ts#resolveLibraryModelEntry]], which disambiguates by base URL when several entries share the same provider+model — e.g. two `custom` endpoints exposing the same model id over different transports. A bare provider+model match would return the first entry and persist its `api_mode` for the other endpoint, routing it over the wrong protocol; matching the base URL too keeps each endpoint's transport correct. Single-entry activations are unaffected.
 
 ## Provider icons
 

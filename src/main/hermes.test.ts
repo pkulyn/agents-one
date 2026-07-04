@@ -49,7 +49,13 @@ vi.mock("child_process", () => {
 });
 
 import { spawn } from "child_process";
-import { getModelConfig, readEnv } from "./config";
+import {
+  getApiServerKey,
+  getConnectionConfig,
+  getModelConfig,
+  readEnv,
+} from "./config";
+import type { ConnectionConfig } from "./config";
 import { providerListSafe } from "./secrets";
 import {
   sendMessage,
@@ -60,14 +66,47 @@ import {
 import type { ChatCallbacks } from "./hermes";
 
 const mockedGetModelConfig = vi.mocked(getModelConfig);
+const mockedGetApiServerKey = vi.mocked(getApiServerKey);
+const mockedGetConnectionConfig = vi.mocked(getConnectionConfig);
 const mockedReadEnv = vi.mocked(readEnv);
 const mockedProviderListSafe = vi.mocked(providerListSafe);
 const mockedSpawn = vi.mocked(spawn);
 
-describe("transcribeAudio API-key resolution", () => {
+function testConnection(
+  fields: Partial<ConnectionConfig> = {},
+): ConnectionConfig {
+  return {
+    mode: "local",
+    remoteUrl: "",
+    apiKey: "",
+    remoteChatTransport: "auto",
+    sshChatTransport: "auto",
+    ssh: {
+      host: "",
+      port: 22,
+      username: "",
+      keyPath: "",
+      remotePort: 8642,
+      localPort: 8642,
+    },
+    ...fields,
+  };
+}
+
+describe("transcribeAudio API route", () => {
   const fetchMock = vi.fn();
 
   beforeEach(() => {
+    mockedGetApiServerKey.mockReset();
+    mockedGetApiServerKey.mockReturnValue("");
+    mockedGetConnectionConfig.mockReset();
+    mockedGetConnectionConfig.mockReturnValue(
+      testConnection({
+        mode: "remote",
+        remoteUrl: "http://remote.test:8642",
+        apiKey: "remote-key",
+      }),
+    );
     mockedGetModelConfig.mockReset();
     mockedReadEnv.mockReset();
     mockedProviderListSafe.mockReset();
@@ -77,7 +116,7 @@ describe("transcribeAudio API-key resolution", () => {
     fetchMock.mockReset();
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ text: "transcribed" }),
+      json: async () => ({ ok: true, transcript: "transcribed" }),
     });
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -86,42 +125,62 @@ describe("transcribeAudio API-key resolution", () => {
     vi.unstubAllGlobals();
   });
 
-  function sentAuthHeader(): string | undefined {
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    return (init.headers as Record<string, string>).Authorization;
+  function sentRequest(): [string, RequestInit] {
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    return fetchMock.mock.calls[0] as [string, RequestInit];
   }
 
-  it("falls back to the secrets provider when .env lacks the key (vault user)", async () => {
-    mockedReadEnv.mockReturnValue({});
-    mockedProviderListSafe.mockReturnValue({ GROQ_API_KEY: "from-vault" });
+  function sentJsonBody(): { data_url: string; mime_type: string } {
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    return JSON.parse(init.body as string) as {
+      data_url: string;
+      mime_type: string;
+    };
+  }
 
+  it("posts desktop recordings to the Hermes audio endpoint", async () => {
     await expect(
       transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default"),
     ).resolves.toBe("transcribed");
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(sentAuthHeader()).toBe("Bearer from-vault");
+    const [url, init] = sentRequest();
+    expect(url).toBe("http://remote.test:8642/api/audio/transcribe");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({
+      "Content-Type": "application/json",
+      Authorization: "Bearer remote-key",
+    });
+    expect(sentJsonBody()).toEqual({
+      data_url: "data:audio/webm;base64,AQID",
+      mime_type: "audio/webm",
+    });
   });
 
-  it(".env wins over the secrets provider (env-provider precedence unchanged)", async () => {
-    mockedReadEnv.mockReturnValue({ GROQ_API_KEY: "from-dotenv" });
-    mockedProviderListSafe.mockReturnValue({ GROQ_API_KEY: "from-vault" });
+  it("strips a remote /v1 suffix before calling the desktop audio route", async () => {
+    mockedGetConnectionConfig.mockReturnValue(
+      testConnection({
+        mode: "remote",
+        remoteUrl: "http://remote.test:8642/v1",
+        apiKey: "",
+      }),
+    );
 
     await transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default");
 
-    expect(sentAuthHeader()).toBe("Bearer from-dotenv");
+    const [url] = sentRequest();
+    expect(url).toBe("http://remote.test:8642/api/audio/transcribe");
   });
 
-  it("generic CUSTOM_API_KEY/OPENAI_API_KEY fallbacks also see the provider overlay", async () => {
-    mockedGetModelConfig.mockReturnValue({
-      baseUrl: "https://llm.example.com/v1",
-    } as ReturnType<typeof getModelConfig>);
-    mockedReadEnv.mockReturnValue({});
-    mockedProviderListSafe.mockReturnValue({ CUSTOM_API_KEY: "from-vault" });
+  it("surfaces backend transcription errors", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => "404 page not found",
+    });
 
-    await transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default");
-
-    expect(sentAuthHeader()).toBe("Bearer from-vault");
+    await expect(
+      transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default"),
+    ).rejects.toThrow("Transcription failed (404). 404 page not found");
   });
 });
 
@@ -148,6 +207,16 @@ describe("sendMessage session model override routing", () => {
   }
 
   beforeEach(() => {
+    mockedGetApiServerKey.mockReset();
+    mockedGetApiServerKey.mockReturnValue("");
+    mockedGetConnectionConfig.mockReset();
+    mockedGetConnectionConfig.mockReturnValue(
+      testConnection({
+        mode: "local",
+        remoteUrl: "",
+        apiKey: "",
+      }),
+    );
     mockedGetModelConfig.mockReset();
     mockedReadEnv.mockReset();
     mockedReadEnv.mockReturnValue({});

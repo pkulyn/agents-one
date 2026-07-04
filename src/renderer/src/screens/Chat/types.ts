@@ -23,6 +23,10 @@ export interface ChatBubbleMessage {
   localOnly?: boolean;
   /** Renderer-local turn identity used to anchor local failures. */
   turnId?: string;
+  /** Epoch-ms the message was recorded; surfaced as a hover timestamp. */
+  timestamp?: number;
+  /** Renderer-only progress row while a slash command is executing. */
+  isSlashLoader?: boolean;
 }
 
 /**
@@ -109,6 +113,10 @@ export interface UsageState {
   /** Latest turn's prompt tokens = current context-window occupancy (NOT
    *  summed across turns, unlike promptTokens). Drives the context gauge. */
   contextTokens?: number;
+  /** Model's total context window as reported by the backend gateway
+   *  (`context_max` from the compressor) — the authoritative denominator for
+   *  the gauge. Falls back to the static heuristic table when absent. */
+  contextWindowTokens?: number;
   /** Latest turn's prompt-cache read/write tokens, if the provider reports them. */
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
