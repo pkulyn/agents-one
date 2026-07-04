@@ -704,10 +704,7 @@ export function estimateContextTokens(
       lastAssistantBubbleChars = chars;
     }
   }
-  return Math.max(
-    Math.round((totalChars - lastAssistantBubbleChars) / 4),
-    0,
-  );
+  return Math.max(Math.round((totalChars - lastAssistantBubbleChars) / 4), 0);
 }
 
 export function completionFailed(payload: unknown): boolean {
