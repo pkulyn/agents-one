@@ -869,7 +869,20 @@ export function useDashboardChatTransport({
   const lastSyncedCwdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    messagesRef.current = messages;
+    // `messagesRef` is the synchronous source of truth for `handleGatewayEvent`:
+    // it reads the ref, applies a stream delta, writes the ref back, then calls
+    // `setMessages`. Every `setMessages` in this hook stores that exact array in
+    // the ref, so when React finally commits our own push, `messages` is the
+    // very same reference and there is nothing to do. Re-syncing on that commit
+    // is what dropped streaming chunks (#757): a second delta could land on an
+    // older `messages` snapshot and reset the ref behind the deltas already
+    // applied. Skip when the identity matches (our push); adopt any other array,
+    // which can only come from Chat state changing underneath us — a new user
+    // turn (grows), `handleClear` (`setMessages([])`, shrinks), or a clarify
+    // card resolving in place (same length). A length check misses the last two.
+    if (messages !== messagesRef.current) {
+      messagesRef.current = messages;
+    }
   }, [messages]);
 
   useEffect(() => {
