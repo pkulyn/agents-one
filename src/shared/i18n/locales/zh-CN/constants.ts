@@ -68,6 +68,8 @@ export default {
   glmHint: "智谱 AI GLM 模型",
   kimiApiKey: "Kimi / Moonshot API Key",
   kimiHint: "月之暗面 AI 编程模型",
+  dashscopeApiKey: "阿里云百炼 DashScope API Key",
+  dashscopeHint: "用于阿里云百炼 / DashScope 千问模型",
   minimaxApiKey: "MiniMax API Key",
   minimaxHint: "MiniMax 模型（全球）",
   minimaxCnApiKey: "MiniMax 中国 API Key",

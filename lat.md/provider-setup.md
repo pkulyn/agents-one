@@ -10,6 +10,8 @@ The top provider grid shows only providers the upstream agent supports natively;
 
 The source of truth is `CANONICAL_PROVIDERS` in the bundled agent (`hermes-agent/hermes_cli/models.py`) — the registry of providers with first-class auth/base-URL handling (nous, openrouter, anthropic, openai-codex, openai-api, gemini, xai, xiaomi, ollama-cloud, deepseek, …). A card belongs in the top grid only if it maps to a canonical slug. `aimlapi` was removed from the grid because it has no canonical entry; it remains reachable as a **Local → Remote OpenAI-Compatible APIs** preset.
 
+DashScope API-key traffic uses the agent's native `alibaba` provider, not `qwen`. The `qwen` slug is an alias for the Qwen Portal OAuth provider upstream, so DashScope hosts must resolve to `alibaba` and `DASHSCOPE_API_KEY`.
+
 ## OpenAI-compatible endpoints route through Local
 
 Endpoints the agent does not natively support (Groq, DeepSeek, Together, Fireworks, Cerebras, AtlasCloud, Mistral, AIML, …) are offered as `LOCAL_PRESETS` chips under the `local` card, not as top-level cards.

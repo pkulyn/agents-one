@@ -29,7 +29,8 @@ describe("expectedEnvKeyForModel — provider-name lookup", () => {
     ["cerebras", "CEREBRAS_API_KEY"],
     ["perplexity", "PERPLEXITY_API_KEY"],
     ["huggingface", "HF_TOKEN"], // exception to the *_API_KEY convention
-    ["qwen", "QWEN_API_KEY"],
+    ["alibaba", "DASHSCOPE_API_KEY"],
+    ["qwen-oauth", "QWEN_API_KEY"],
     ["minimax", "MINIMAX_API_KEY"],
     ["glm", "GLM_API_KEY"],
     ["kimi", "KIMI_API_KEY"],

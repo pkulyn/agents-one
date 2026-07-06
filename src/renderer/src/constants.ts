@@ -43,7 +43,7 @@ export const PROVIDERS = {
     { value: "huggingface", label: "Hugging Face" },
     { value: "nvidia", label: "NVIDIA NIM" },
     { value: "zai", label: "Z.ai / GLM" },
-    { value: "qwen", label: "Qwen" },
+    { value: "alibaba", label: "Alibaba DashScope" },
     { value: "minimax", label: "MiniMax" },
     { value: "nous", label: "constants.nousName" },
     // Local OpenAI-compatible servers. Keep these explicit so users
@@ -86,7 +86,7 @@ export const PROVIDERS = {
     huggingface: "Hugging Face",
     nvidia: "NVIDIA NIM",
     zai: "Z.ai / GLM",
-    qwen: "Qwen",
+    alibaba: "Alibaba DashScope",
     minimax: "MiniMax",
     nous: "constants.nousName",
     lmstudio: "constants.lmstudio",
@@ -302,7 +302,7 @@ export const PROVIDER_CARDS: { id: string; name: string }[] = [
   { id: "zai", name: "Z.ai / GLM" },
   { id: "minimax", name: "MiniMax" },
   { id: "huggingface", name: "Hugging Face" },
-  { id: "qwen", name: "Qwen" },
+  { id: "alibaba", name: "Alibaba DashScope" },
   { id: "nous", name: "constants.nousName" },
   // "Local / Others" — this chip covers both local servers and any remote
   // OpenAI-compatible endpoint, so it isn't labelled just "Local".
@@ -562,6 +562,12 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
         label: "constants.kimiApiKey",
         type: "password",
         hint: "constants.kimiHint",
+      },
+      {
+        key: "DASHSCOPE_API_KEY",
+        label: "constants.dashscopeApiKey",
+        type: "password",
+        hint: "constants.dashscopeHint",
       },
       {
         key: "MINIMAX_API_KEY",

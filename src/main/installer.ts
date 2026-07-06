@@ -316,7 +316,10 @@ const PROVIDER_ENV_KEYS: Record<string, string> = {
   perplexity: "PERPLEXITY_API_KEY",
   huggingface: "HF_TOKEN",
   hf: "HF_TOKEN",
-  qwen: "QWEN_API_KEY",
+  alibaba: "DASHSCOPE_API_KEY",
+  dashscope: "DASHSCOPE_API_KEY",
+  "qwen-dashscope": "DASHSCOPE_API_KEY",
+  "qwen-oauth": "QWEN_API_KEY",
   minimax: "MINIMAX_API_KEY",
   glm: "GLM_API_KEY",
   kimi: "KIMI_API_KEY",
@@ -351,6 +354,7 @@ const URL_TO_ENV_KEY: Array<[RegExp, string]> = [
   [/api\.mistral\.ai/i, "MISTRAL_API_KEY"],
   [/api\.perplexity\.ai/i, "PERPLEXITY_API_KEY"],
   [/api\.xiaomimimo\.com/i, "XIAOMI_API_KEY"],
+  [/dashscope(-intl)?\.aliyuncs\.com/i, "DASHSCOPE_API_KEY"],
 ];
 
 /**

@@ -26,6 +26,7 @@ export const PROVIDER_BASE_URLS: Record<string, string> = {
   cerebras: "https://api.cerebras.ai/v1",
   perplexity: "https://api.perplexity.ai",
   huggingface: "https://router.huggingface.co/v1",
+  alibaba: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
   xiaomi: "https://api.xiaomimimo.com/v1",
   zai: "https://api.z.ai/api/paas/v4",
   anthropic: "https://api.anthropic.com/v1",

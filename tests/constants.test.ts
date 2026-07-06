@@ -30,7 +30,8 @@ describe("PROVIDERS", () => {
     expect(values).toContain("xai");
     expect(values).toContain("xiaomi");
     expect(values).toContain("nous");
-    expect(values).toContain("qwen");
+    expect(values).toContain("alibaba");
+    expect(values).toContain("qwen-oauth");
     expect(values).toContain("minimax");
     expect(values).toContain("lmstudio");
     expect(values).toContain("ollama");

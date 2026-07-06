@@ -69,6 +69,8 @@ export default {
   glmHint: "ZhipuAI GLM models",
   kimiApiKey: "Kimi / Moonshot API Key",
   kimiHint: "Moonshot AI coding models",
+  dashscopeApiKey: "Alibaba DashScope API Key",
+  dashscopeHint: "DashScope / Model Studio Qwen models",
   minimaxApiKey: "MiniMax API Key",
   minimaxHint: "MiniMax models (global)",
   nousApiKey: "Nous Portal API Key",
