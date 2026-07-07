@@ -6,6 +6,7 @@ import { useI18n } from "../../components/useI18n";
 import { useProfileModal } from "../../components/profile/ProfileModalContext";
 
 interface ProfileInfo {
+  id: string;
   name: string;
   path: string;
   isDefault: boolean;
@@ -77,7 +78,7 @@ function Agents({
         try {
           const list = await window.hermesAPI.listProfiles();
           setProfiles(list);
-          if (list.find((p) => p.name === name)?.gatewayRunning) {
+          if (list.find((p) => p.id === name)?.gatewayRunning) {
             settle();
             return;
           }
@@ -118,7 +119,7 @@ function Agents({
   }
 
   async function handleCreate(): Promise<void> {
-    const name = newName.trim().toLowerCase();
+    const name = newName.trim();
     if (!name) return;
     setCreating(true);
     setError("");
@@ -139,9 +140,7 @@ function Agents({
   async function handleSelect(name: string): Promise<void> {
     // Show "Starting…" only when this profile's gateway isn't already up, so
     // switching to an already-running profile doesn't flash a fake spinner.
-    const alreadyRunning = profiles.find(
-      (p) => p.name === name,
-    )?.gatewayRunning;
+    const alreadyRunning = profiles.find((p) => p.id === name)?.gatewayRunning;
     setStartingProfile(alreadyRunning ? null : name);
     await window.hermesAPI.setActiveProfile(name);
     onSelectProfile(name);
@@ -221,10 +220,7 @@ function Agents({
               placeholder={t("agents.namePlaceholder")}
               value={newName}
               onChange={(e) => {
-                const v = e.target.value
-                  .toLowerCase()
-                  .replace(/[^a-z0-9_-]/g, "");
-                setNewName(v);
+                setNewName(e.target.value);
                 setError("");
               }}
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
@@ -248,7 +244,7 @@ function Agents({
                 onChange={(e) => setCloneSource(e.target.value)}
               >
                 {profiles.map((p) => (
-                  <option key={p.name} value={p.name}>
+                  <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
@@ -280,22 +276,22 @@ function Agents({
         </div>
         {profiles.map((p) => (
           <div
-            key={p.name}
-            className={`agents-row ${activeProfile === p.name ? "active" : ""}`}
-            onClick={() => handleSelect(p.name)}
+            key={p.id}
+            className={`agents-row ${activeProfile === p.id ? "active" : ""}`}
+            onClick={() => handleSelect(p.id)}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
               // Only the row itself — not Enter bubbling up from the edit/chat
               // buttons — should switch the profile.
               if (e.key === "Enter" && e.target === e.currentTarget) {
-                handleSelect(p.name);
+                handleSelect(p.id);
               }
             }}
           >
             <div className="agents-cell-profile">
               <ProfileAvatar
-                name={p.name}
+                name={p.id}
                 color={p.color}
                 avatar={p.avatar}
                 size={36}
@@ -303,6 +299,7 @@ function Agents({
               <div className="agents-row-info">
                 <div className="agents-row-name">{p.name}</div>
                 <div className="agents-row-sub">
+                  {p.id !== p.name ? `${p.id} · ` : ""}
                   {providerLabel(p.provider)} ·{" "}
                   {t("agents.skillsCount", { count: p.skillCount })}
                 </div>
@@ -320,7 +317,7 @@ function Agents({
               )}
             </div>
             <div className="agents-cell-status">
-              {startingProfile === p.name && !p.gatewayRunning ? (
+              {startingProfile === p.id && !p.gatewayRunning ? (
                 <span className="agents-status-pill starting">
                   <span className="agents-status-spinner" />
                   {t("agents.starting")}
@@ -345,12 +342,16 @@ function Agents({
               <button
                 type="button"
                 className="agents-row-edit"
-                title={t("agents.editAppearance")}
-                aria-label={t("agents.editAppearance")}
+                title={t("agents.editAppearanceFor", {
+                  name: p.name,
+                })}
+                aria-label={t("agents.editAppearanceFor", {
+                  name: p.name,
+                })}
                 onClick={(e) => {
                   e.stopPropagation();
                   setError("");
-                  openProfile(p.name, {
+                  openProfile(p.id, {
                     onChanged: loadProfiles,
                     onDeleted: (n) => {
                       if (activeProfile === n) onSelectProfile("default");
@@ -364,7 +365,7 @@ function Agents({
                 className="btn btn-primary btn-sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleChatWith(p.name);
+                  handleChatWith(p.id);
                 }}
               >
                 <ChatBubble size={13} />

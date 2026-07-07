@@ -230,6 +230,7 @@ import {
   setProfileColor,
   setProfileAvatar,
   removeProfileAvatar,
+  setProfileName,
 } from "../profile-meta";
 import {
   createWallet,
@@ -1859,7 +1860,11 @@ export function registerIpcHandlers(context: IpcContext): void {
       // profile the user actually selected — and it survives relaunches.
       const active = getActiveProfileNameSync();
       const list = await sshListProfiles(conn.ssh);
-      return list.map((p) => ({ ...p, isActive: p.name === active }));
+      return list.map((p) => ({
+        ...p,
+        id: p.name,
+        isActive: p.name === active,
+      }));
     }
     return listProfiles();
   });
@@ -1907,6 +1912,16 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("set-profile-color", (_event, name: string, color: string) =>
     setProfileColor(name, color),
   );
+  ipcMain.handle("set-profile-name", (_event, id: string, name: string) => {
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" || conn.mode === "remote") {
+      return {
+        success: false,
+        error: "Agent renaming is only supported for local profiles",
+      };
+    }
+    return setProfileName(id, name);
+  });
   ipcMain.handle(
     "set-profile-avatar",
     (_event, name: string, dataUrl: string) => setProfileAvatar(name, dataUrl),

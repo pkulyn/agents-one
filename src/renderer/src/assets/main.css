@@ -8078,12 +8078,65 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
+  flex-wrap: wrap;
 }
 
 .profile-modal-name {
   font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.profile-modal-name-edit {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  padding: 3px 6px;
+  margin-left: -6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: text;
+}
+
+.profile-modal-name-edit svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0;
+}
+
+.profile-modal-name-edit:hover,
+.profile-modal-name-edit:focus-visible {
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+  outline: none;
+}
+
+.profile-modal-name-edit:hover svg,
+.profile-modal-name-edit:focus-visible svg {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+.profile-modal-name-input {
+  width: min(360px, 52vw);
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 700;
+}
+
+.profile-modal-name-input:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .profile-modal-tag {

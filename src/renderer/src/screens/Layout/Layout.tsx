@@ -218,8 +218,7 @@ function Layout({
         if (cancelled) return;
         const map: Record<string, { color?: string; avatar?: string | null }> =
           {};
-        for (const p of list)
-          map[p.name] = { color: p.color, avatar: p.avatar };
+        for (const p of list) map[p.id] = { color: p.color, avatar: p.avatar };
         setProfileAppearance(map);
       })
       .catch(() => {
@@ -330,13 +329,13 @@ function Layout({
       .then((profiles) => {
         if (cancelled) return;
         const active = profiles.find((p) => p.isActive);
-        if (active && active.name !== "default") {
-          setActiveProfile(active.name);
+        if (active && active.id !== "default") {
+          setActiveProfile(active.id);
           // Re-home the initial pristine run onto the restored profile so the
           // first chat runs under the right agent (no session/turn yet).
           setRuns((prev) =>
             prev.length === 1 && !prev[0].sessionId && !prev[0].loading
-              ? [{ ...prev[0], profile: active.name }]
+              ? [{ ...prev[0], profile: active.id }]
               : prev,
           );
         }
