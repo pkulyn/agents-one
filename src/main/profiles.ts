@@ -2,7 +2,7 @@ import { execFileSync } from "child_process";
 import { join } from "path";
 import { homedir } from "os";
 import { promises as fs } from "fs";
-import { existsSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 import {
   HERMES_HOME,
   HERMES_PYTHON,
@@ -313,6 +313,26 @@ export function setActiveProfile(name: string): void {
       ...HIDDEN_SUBPROCESS_OPTIONS,
     });
   } catch {
-    // ignore
+    // ignore — verified and repaired below
+  }
+
+  // The CLI validates against LOCAL profiles and raises when the name exists
+  // only on the SSH/remote host (or when there is no local install at all).
+  // That failure is swallowed above, so before this fallback the selection
+  // silently never persisted: ~/.hermes/active_profile kept its old value,
+  // every relaunch reset the UI to `default`, and activeSshProfile() scoped
+  // the unified SSH dashboard's data to the wrong profile. The desktop's
+  // source of truth is the local active_profile file (getActiveProfileNameSync),
+  // so when the CLI didn't move it, write it directly — `name` is already
+  // validated, and "default" is a plain value here (readers treat a missing
+  // file and the literal "default" identically).
+  if (getActiveProfileNameSync() !== name) {
+    try {
+      mkdirSync(HERMES_HOME, { recursive: true });
+      writeFileSync(join(HERMES_HOME, "active_profile"), `${name}\n`);
+    } catch {
+      // Filesystem write failed — nothing else to fall back to; the CLI
+      // attempt above already didn't persist it either.
+    }
   }
 }
