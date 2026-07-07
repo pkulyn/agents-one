@@ -91,6 +91,8 @@ import {
   cancelHermesAuthLogin,
   detectDeviceCode,
 } from "../hermes-auth";
+import { startDeviceLogin, cancelDeviceLogin } from "../hermes-account";
+import { getAccount, clearAccount } from "../account-store";
 import {
   isRemoteMode,
   isRemoteOnlyMode,
@@ -791,6 +793,32 @@ export function registerIpcHandlers(context: IpcContext): void {
     );
   });
   ipcMain.handle("oauth-login-cancel", () => cancelHermesAuthLogin());
+
+  // Hermes account sign-in — OAuth 2.0 Device Authorization Grant against the
+  // Hermes backend. Streams progress to the renderer's modal, opens the browser
+  // approval page once the code is issued, and stores the encrypted session.
+  ipcMain.handle("hermes-account-login", (event, profile?: string) =>
+    startDeviceLogin(profile, {
+      onCode: (info) => {
+        if (event.sender.isDestroyed()) return;
+        // Show the code in the modal, then open the browser to approve it.
+        event.sender.send("hermes-account-login-code", info);
+        openExternalUrl(info.verificationUriComplete);
+      },
+      emit: (chunk) => {
+        if (event.sender.isDestroyed()) return;
+        event.sender.send("hermes-account-login-progress", chunk);
+      },
+    }),
+  );
+  ipcMain.handle("hermes-account-login-cancel", () => cancelDeviceLogin());
+  ipcMain.handle("hermes-account-get", (_event, profile?: string) =>
+    getAccount(profile),
+  );
+  ipcMain.handle("hermes-account-logout", (_event, profile?: string) => {
+    clearAccount(profile);
+    return { success: true };
+  });
 
   // Configuration (profile-aware)
   ipcMain.handle("get-locale", () => getAppLocale());
@@ -2204,6 +2232,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       model: string,
       baseUrl: string,
       contextLength?: number,
+      providerLabel?: string,
     ) => {
       const conn = getConnectionConfig();
       let addedModel: Awaited<ReturnType<typeof addModel>>;
@@ -2224,7 +2253,14 @@ export function registerIpcHandlers(context: IpcContext): void {
           getActiveProfileNameSync(),
         );
       } else {
-        addedModel = addModel(name, provider, model, baseUrl, contextLength);
+        addedModel = addModel(
+          name,
+          provider,
+          model,
+          baseUrl,
+          contextLength,
+          providerLabel,
+        );
       }
       notifyModelLibraryChanged();
       return addedModel;
