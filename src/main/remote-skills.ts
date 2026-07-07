@@ -10,17 +10,32 @@ import type { InstalledSkill, SkillCliResult } from "./skills";
 // SSH mode has its own path (sshListInstalledSkills et al.) and is unaffected.
 
 // Marker prefix for skill "paths" that live on the remote dashboard. The
-// desktop keys skill content lookups by path; remote skills are keyed by NAME
-// on the API, so the path we hand the renderer is this prefix + name and
-// remoteGetSkillContent unwraps it. Mirrors ssh-remote's `ssh:` REMOTE_PREFIX.
+// desktop keys skill content lookups by path; remote skills are keyed by
+// NAME + PROFILE on the API, so the path we hand the renderer is
+// `remote-skill:<profile>:<name>` and remoteGetSkillContent unwraps both.
+// The profile must ride in the path (mirroring how local/SSH paths carry the
+// full location): the content lookup has no other channel for it, and using
+// the globally active profile instead would query the wrong profile whenever
+// the Skills screen is scoped to a named one.
 export const REMOTE_SKILL_PREFIX = "remote-skill:";
+
+export function remoteSkillPath(name: string, profile?: string): string {
+  return `${REMOTE_SKILL_PREFIX}${profile?.trim() || "default"}:${name}`;
+}
 
 async function skillsApi<T>(
   path: string,
   init: RequestInit = {},
   profile?: string,
+  query?: Record<string, string>,
 ): Promise<T> {
   const url = new URL(`${getApiUrl()}${path}`);
+  // All query params go through searchParams so encoding stays consistent —
+  // mixing pre-encoded params in `path` with searchParams.set() would
+  // re-serialize the former (%20 → +) only when a named profile is present.
+  for (const [key, value] of Object.entries(query ?? {})) {
+    url.searchParams.set(key, value);
+  }
   // Scope to the requested profile on the unified dashboard; "default" needs
   // no param (matches dashboardApiUrl's convention in remote-sessions.ts).
   if (profile && profile !== "default") {
@@ -61,7 +76,7 @@ export async function remoteListInstalledSkills(
         name: s.name as string,
         category: s.category || "",
         description: s.description || "",
-        path: `${REMOTE_SKILL_PREFIX}${s.name}`,
+        path: remoteSkillPath(s.name as string, profile),
       }));
   } catch {
     // Unreachable remote — an empty list beats a renderer error toast here,
@@ -72,15 +87,25 @@ export async function remoteListInstalledSkills(
 
 export async function remoteGetSkillContent(
   skillPath: string,
-  profile?: string,
+  fallbackProfile?: string,
 ): Promise<string> {
-  const name = skillPath.startsWith(REMOTE_SKILL_PREFIX)
+  // Paths from remoteListInstalledSkills embed the profile they were listed
+  // under (`remote-skill:<profile>:<name>`). A path without the separator is
+  // treated as a bare name and scoped to fallbackProfile.
+  let name = skillPath.startsWith(REMOTE_SKILL_PREFIX)
     ? skillPath.slice(REMOTE_SKILL_PREFIX.length)
     : skillPath;
+  let profile = fallbackProfile;
+  const sep = name.indexOf(":");
+  if (sep !== -1) {
+    profile = name.slice(0, sep);
+    name = name.slice(sep + 1);
+  }
   const result = await skillsApi<{ content?: string }>(
-    `/api/skills/content?name=${encodeURIComponent(name)}`,
+    "/api/skills/content",
     {},
     profile,
+    { name },
   );
   return result.content ?? "";
 }
