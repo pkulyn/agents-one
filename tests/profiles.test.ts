@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join } from "path";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 
 const execFileSyncMock = vi.hoisted(() => vi.fn());
 
@@ -141,8 +141,8 @@ describe("listProfiles", () => {
   });
 
   it("rejects invalid profile names before invoking the Hermes CLI", () => {
-    expect(createProfile("../outside", true).success).toBe(false);
-    expect(createProfile("-flag", true).success).toBe(false);
+    expect(createProfile("../outside", null).success).toBe(false);
+    expect(createProfile("-flag", null).success).toBe(false);
     expect(deleteProfile("../outside").success).toBe(false);
     expect(() => setActiveProfile("../outside")).toThrow(
       "Profile names may contain lowercase letters",
@@ -162,7 +162,7 @@ describe("listProfiles", () => {
       throw err;
     });
 
-    const result = createProfile("test", "default");
+    const result = createProfile("test", null);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("reserved");
@@ -181,7 +181,7 @@ describe("listProfiles", () => {
       throw err;
     });
 
-    const result = createProfile("test2", false);
+    const result = createProfile("test2", null);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe(
@@ -218,5 +218,71 @@ describe("listProfiles", () => {
       ["/dev/null", "profile", "delete", "slow-delete", "--yes"],
       expect.objectContaining({ timeout: 30000 }),
     );
+  });
+});
+
+describe("setActiveProfile persistence", () => {
+  const activeFile = join(TEST_HOME, "active_profile");
+
+  it("persists a remote-only profile even when the local CLI rejects it", () => {
+    // In SSH mode the selected profile lives on the REMOTE. The local
+    // `hermes profile use` validates against local profiles and raises
+    // FileNotFoundError for it; before the direct-write fallback that error
+    // was swallowed and ~/.hermes/active_profile never changed — so the
+    // selection reset to `default` on relaunch and activeSshProfile() scoped
+    // the unified SSH dashboard to the wrong profile.
+    execFileSyncMock.mockImplementation(() => {
+      throw new Error("Profile 'vps-agent' does not exist.");
+    });
+
+    setActiveProfile("vps-agent");
+
+    expect(readFileSync(activeFile, "utf-8").trim()).toBe("vps-agent");
+  });
+
+  it("persists even when there is no local hermes install at all", () => {
+    execFileSyncMock.mockImplementation(() => {
+      const err = new Error("spawn ENOENT") as Error & { code?: string };
+      err.code = "ENOENT";
+      throw err;
+    });
+
+    setActiveProfile("work");
+
+    expect(readFileSync(activeFile, "utf-8").trim()).toBe("work");
+  });
+
+  it("leaves the file alone when the CLI already persisted the selection", () => {
+    // Local mode: the CLI writes active_profile itself. The fallback must
+    // detect that via read-back and not double-write.
+    execFileSyncMock.mockImplementation(() => {
+      writeFileSync(activeFile, "work\n");
+      return Buffer.from("");
+    });
+
+    setActiveProfile("work");
+
+    expect(readFileSync(activeFile, "utf-8")).toBe("work\n");
+    expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists switching back to default when the CLI fails", () => {
+    writeFileSync(activeFile, "work\n");
+    execFileSyncMock.mockImplementation(() => {
+      throw new Error("no local install");
+    });
+
+    setActiveProfile("default");
+
+    // Readers treat the literal "default" and a missing file identically.
+    expect(readFileSync(activeFile, "utf-8").trim()).toBe("default");
+  });
+
+  it("still rejects invalid names before touching CLI or file", () => {
+    expect(() => setActiveProfile("../outside")).toThrow(
+      "Profile names may contain lowercase letters",
+    );
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(existsSync(activeFile)).toBe(false);
   });
 });

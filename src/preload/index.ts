@@ -21,6 +21,7 @@ import type {
   HermesAccount,
   HermesAccountUser,
 } from "../shared/account";
+import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
 
 /**
  * Mirror of the renderer-side `CredentialPoolEntry` ambient type
@@ -107,6 +108,15 @@ const hermesAPI = {
     ipcRenderer.invoke("adopt-hermes-home", dir),
 
   quitApp: (): Promise<void> => ipcRenderer.invoke("quit-app"),
+
+  getGpuStatus: (): Promise<GpuStatus> => ipcRenderer.invoke("get-gpu-status"),
+
+  reenableGpu: (): Promise<boolean> => ipcRenderer.invoke("reenable-gpu"),
+
+  setGpuPreference: (mode: GpuPreferenceMode): Promise<boolean> =>
+    ipcRenderer.invoke("set-gpu-preference", mode),
+
+  relaunchApp: (): Promise<void> => ipcRenderer.invoke("relaunch-app"),
 
   onInstallProgress: (
     callback: (progress: {
