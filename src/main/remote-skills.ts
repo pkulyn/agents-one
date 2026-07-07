@@ -92,14 +92,15 @@ export async function remoteGetSkillContent(
   // Paths from remoteListInstalledSkills embed the profile they were listed
   // under (`remote-skill:<profile>:<name>`). A path without the separator is
   // treated as a bare name and scoped to fallbackProfile.
-  let name = skillPath.startsWith(REMOTE_SKILL_PREFIX)
-    ? skillPath.slice(REMOTE_SKILL_PREFIX.length)
-    : skillPath;
+  let name = skillPath;
   let profile = fallbackProfile;
-  const sep = name.indexOf(":");
-  if (sep !== -1) {
-    profile = name.slice(0, sep);
-    name = name.slice(sep + 1);
+  if (skillPath.startsWith(REMOTE_SKILL_PREFIX)) {
+    name = skillPath.slice(REMOTE_SKILL_PREFIX.length);
+    const sep = name.indexOf(":");
+    if (sep !== -1) {
+      profile = name.slice(0, sep);
+      name = name.slice(sep + 1);
+    }
   }
   const result = await skillsApi<{ content?: string }>(
     "/api/skills/content",

@@ -10,6 +10,7 @@ import {
   remoteGetSkillContent,
   remoteInstallSkill,
   remoteListInstalledSkills,
+  remoteSkillPath,
   remoteUninstallSkill,
 } from "./remote-skills";
 
@@ -47,18 +48,21 @@ describe("remote skills routing", () => {
 
     const skills = await remoteListInstalledSkills("research");
 
+    // The path embeds the profile the skill was listed under — the content
+    // lookup has no other channel for it, and resolving to the globally
+    // active profile there would query the wrong profile's API.
     expect(skills).toEqual([
       {
         name: "pdf",
         category: "docs",
         description: "PDF tools",
-        path: `${REMOTE_SKILL_PREFIX}pdf`,
+        path: `${REMOTE_SKILL_PREFIX}research:pdf`,
       },
       {
         name: "web",
         category: "",
         description: "",
-        path: `${REMOTE_SKILL_PREFIX}web`,
+        path: `${REMOTE_SKILL_PREFIX}research:web`,
       },
     ]);
     const url = String(fetchMock.mock.calls[0][0]);
@@ -79,17 +83,47 @@ describe("remote skills routing", () => {
     await expect(remoteListInstalledSkills()).resolves.toEqual([]);
   });
 
-  it("fetches content by unwrapping the marker path to the skill name", async () => {
+  it("fetches content by unwrapping the marker path to profile + name", async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({ name: "pdf", content: "# PDF skill" }),
     );
 
-    const content = await remoteGetSkillContent(`${REMOTE_SKILL_PREFIX}pdf`);
+    const content = await remoteGetSkillContent(
+      remoteSkillPath("pdf", "research"),
+    );
 
     expect(content).toBe("# PDF skill");
-    expect(String(fetchMock.mock.calls[0][0])).toContain(
-      "/api/skills/content?name=pdf",
-    );
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain("/api/skills/content?name=pdf");
+    // The profile comes from the path, NOT the globally active profile —
+    // it must match the profile the skill was listed under.
+    expect(url).toContain("profile=research");
+  });
+
+  it("scopes a default-profile path with no ?profile= param", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ content: "x" }));
+    await remoteGetSkillContent(remoteSkillPath("pdf"));
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("profile=");
+  });
+
+  it("falls back to the given profile for a bare (unprefixed) path", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ content: "x" }));
+    await remoteGetSkillContent("pdf", "research");
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain("name=pdf");
+    expect(url).toContain("profile=research");
+  });
+
+  it("percent-encodes query params consistently via searchParams", async () => {
+    // Embedding a pre-encoded name in the path then calling
+    // searchParams.set("profile", ...) would re-serialize it (%20 → +) only
+    // when a named profile is present — everything goes through searchParams.
+    fetchMock.mockResolvedValue(jsonResponse({ content: "x" }));
+    await remoteGetSkillContent(remoteSkillPath("my skill", "research"));
+    expect(String(fetchMock.mock.calls[0][0])).toContain("name=my+skill");
+    fetchMock.mockClear();
+    await remoteGetSkillContent(remoteSkillPath("my skill"));
+    expect(String(fetchMock.mock.calls[0][0])).toContain("name=my+skill");
   });
 
   it("maps hub install/uninstall spawn results to SkillCliResult", async () => {
