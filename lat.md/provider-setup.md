@@ -10,9 +10,9 @@ The top provider grid shows only providers the upstream agent supports natively;
 
 The source of truth is `CANONICAL_PROVIDERS` in the bundled agent (`hermes-agent/hermes_cli/models.py`) — the registry of providers with first-class auth/base-URL handling (nous, openrouter, anthropic, openai-codex, openai-api, gemini, xai, xiaomi, ollama-cloud, deepseek, …). A card belongs in the top grid only if it maps to a canonical slug. `aimlapi` was removed from the grid because it has no canonical entry; it remains reachable as a **Local → Remote OpenAI-Compatible APIs** preset.
 
-DashScope API-key traffic uses the agent's native `alibaba` provider, not `qwen`. The `qwen` slug is an alias for the Qwen Portal OAuth provider upstream, so DashScope hosts must resolve to `alibaba` and `DASHSCOPE_API_KEY`.
+DashScope API-key traffic uses the agent's native `alibaba` provider. The agent itself aliases `qwen` (and `dashscope`, `aliyun`, `alibaba-cloud`) to `alibaba`; only `qwen-oauth` is the Qwen Portal OAuth provider. DashScope hosts resolve to `alibaba` and `DASHSCOPE_API_KEY`, and legacy configs that still say `provider: qwen` keep working: the install-gate env map covers every alias, and `displayProviderFromConfig` lands them on the DashScope card.
 
-DashScope users can choose between the mainland China and international endpoints during first-run setup and later in the Providers tab. Both choices keep `provider: alibaba`; only `base_url` changes.
+DashScope users can choose between the mainland China and international endpoints during first-run setup and later in the Providers tab. Both choices keep `provider: alibaba`; only `base_url` changes. The **UI picker** defaults to mainland China (`DEFAULT_DASHSCOPE_BASE_URL`) and always writes `base_url` explicitly, but the **canonical registry** ([[src/main/provider-registry.ts]] `PROVIDER_BASE_URLS`) stays on the international endpoint because it mirrors the agent's own default and is what `setModelConfig` fills into an empty `base_url` — a CN value there would silently repoint existing international users. The Providers-tab endpoint select never lets the browser mask an unmatched value: an empty `base_url` displays as International (the effective agent default) and a hand-typed custom URL gets its own option.
 
 ## OpenAI-compatible endpoints route through Local
 

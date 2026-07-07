@@ -24,6 +24,10 @@ import { expectedEnvKeyForUrl } from "../../../../shared/url-key-map";
 // agent can't resolve their brand id). Map a loaded (provider, baseUrl) back to
 // the brand id so the dropdown re-selects it instead of showing "Custom".
 function displayProviderFromConfig(provider: string, baseUrl: string): string {
+  // Legacy configs store `qwen` (the pre-#825 grid id); the agent aliases
+  // qwen → alibaba, so land those on the DashScope card instead of leaving
+  // an id no card or label knows about.
+  if (provider === "qwen") return "alibaba";
   if (provider !== "custom" || !baseUrl) return provider;
   const match = Object.entries(OPENAI_COMPATIBLE_BASE_URLS).find(
     ([, url]) => url === baseUrl,
@@ -362,6 +366,17 @@ function Providers({
   // selected; they show the (autofilled) base_url field like custom does.
   const isCompatibleProvider = modelProvider in OPENAI_COMPATIBLE_BASE_URLS;
   const isDashScopeProvider = modelProvider === "alibaba";
+  // The endpoint <select> must not misrepresent state: for a value matching
+  // no option the browser renders the first one ("Mainland China") anyway.
+  // An empty base_url means the agent's own default — the intl endpoint —
+  // so display that; a custom URL gets its own option in the list.
+  const dashScopeKnownEndpoint = DASHSCOPE_ENDPOINTS.some(
+    (e) => e.baseUrl === modelBaseUrl,
+  );
+  const dashScopeSelectValue =
+    dashScopeKnownEndpoint || modelBaseUrl
+      ? modelBaseUrl
+      : DASHSCOPE_ENDPOINTS.find((e) => e.id === "intl")!.baseUrl;
   const showBaseUrl =
     isCustomProvider || isCompatibleProvider || isDashScopeProvider;
   // The terminal "Local" card is active whenever the current selection isn't
@@ -605,7 +620,7 @@ function Providers({
                         </label>
                         <select
                           className="input"
-                          value={modelBaseUrl}
+                          value={dashScopeSelectValue}
                           onChange={(e) => setModelBaseUrl(e.target.value)}
                         >
                           {DASHSCOPE_ENDPOINTS.map((endpoint) => (
@@ -613,6 +628,9 @@ function Providers({
                               {t(endpoint.name)}
                             </option>
                           ))}
+                          {!dashScopeKnownEndpoint && modelBaseUrl && (
+                            <option value={modelBaseUrl}>{modelBaseUrl}</option>
+                          )}
                         </select>
                       </>
                     )}

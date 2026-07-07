@@ -25,6 +25,11 @@ export const DASHSCOPE_ENDPOINTS = [
   },
 ] as const;
 
+// UI-picker default only (mainland-first for the DashScope user base).
+// Deliberately NOT the agent's canonical default, which is the intl
+// endpoint — mirrored in main's PROVIDER_BASE_URLS (provider-registry.ts)
+// and used to fill an empty base_url on save. The picker writes base_url
+// explicitly, so this default never overrides a config silently.
 export const DEFAULT_DASHSCOPE_BASE_URL = DASHSCOPE_ENDPOINTS[0].baseUrl;
 
 // ── Providers ───────────────────────────────────────────

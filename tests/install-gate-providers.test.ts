@@ -30,6 +30,12 @@ describe("expectedEnvKeyForModel — provider-name lookup", () => {
     ["perplexity", "PERPLEXITY_API_KEY"],
     ["huggingface", "HF_TOKEN"], // exception to the *_API_KEY convention
     ["alibaba", "DASHSCOPE_API_KEY"],
+    // The agent's DashScope aliases — `qwen` is what pre-#825 desktop
+    // configs stored, so it must keep resolving to a real key check.
+    ["dashscope", "DASHSCOPE_API_KEY"],
+    ["qwen", "DASHSCOPE_API_KEY"],
+    ["aliyun", "DASHSCOPE_API_KEY"],
+    ["alibaba-cloud", "DASHSCOPE_API_KEY"],
     ["qwen-oauth", "QWEN_API_KEY"],
     ["minimax", "MINIMAX_API_KEY"],
     ["glm", "GLM_API_KEY"],
