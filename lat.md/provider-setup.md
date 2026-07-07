@@ -12,6 +12,8 @@ The source of truth is `CANONICAL_PROVIDERS` in the bundled agent (`hermes-agent
 
 DashScope API-key traffic uses the agent's native `alibaba` provider, not `qwen`. The `qwen` slug is an alias for the Qwen Portal OAuth provider upstream, so DashScope hosts must resolve to `alibaba` and `DASHSCOPE_API_KEY`.
 
+DashScope users can choose between the mainland China and international endpoints during first-run setup and later in the Providers tab. Both choices keep `provider: alibaba`; only `base_url` changes.
+
 ## OpenAI-compatible endpoints route through Local
 
 Endpoints the agent does not natively support (Groq, DeepSeek, Together, Fireworks, Cerebras, AtlasCloud, Mistral, AIML, …) are offered as `LOCAL_PRESETS` chips under the `local` card, not as top-level cards.
@@ -33,6 +35,8 @@ Once a provider is configured the grid collapses to a read-only summary (logo + 
 `showEditor = !isConfigured || editingProvider`, so picking a provider from the grid would otherwise collapse the form the instant `isConfigured` flips true (selecting from the `auto` grid, where `editingProvider` is still false) — closing it before a custom base URL / API key could be entered. To prevent that, `selectProvider` sets `editingProvider` true on every selection: the editor stays open after a pick until the user explicitly clicks **Done**.
 
 For compatible/custom endpoints, an inline **API Key** field appears under Base URL, stored under the host-derived env var (`resolveCompatEnvKey`: preset `envKey` else `expectedEnvKeyForUrl`, e.g. AtlasCloud → `ATLASCLOUD_API_KEY`). It shares the `env` state with the lower LLM-provider key cards, so either entry point stays in sync.
+
+DashScope is a native provider rather than a compatible/custom endpoint, but it follows the same inline editing pattern: the endpoint selector writes either `dashscope.aliyuncs.com` or `dashscope-intl.aliyuncs.com` to `base_url`, and the key field writes `DASHSCOPE_API_KEY`.
 
 Ids the agent can't resolve by id are listed in `OPENAI_COMPATIBLE_BASE_URLS` ([[src/renderer/src/constants.ts]]) — openai, perplexity, and every `LOCAL_PRESETS` chip (local servers + remote endpoints like groq, deepseek, atlascloud, mistral, …). This map MUST contain every preset id, or selecting that chip mis-routes; a test in `tests/constants.test.ts` enforces it. Selecting one autofills its base URL and shows the base-URL field; on save it is persisted as `provider: custom` + `base_url`, which the gateway accepts and uses to host-derive the API key (`runtime_provider._host_derived_api_key`, e.g. `api.groq.com` → `GROQ_API_KEY`). `displayProviderFromConfig` reverse-maps a stored `custom` + known base URL back to the brand id so the dropdown re-selects it on load. Native providers (the gateway hardcodes their base URL) clear the field instead.
 

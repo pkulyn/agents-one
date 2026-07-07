@@ -12,6 +12,21 @@ export interface SectionDef {
   items: FieldDef[];
 }
 
+export const DASHSCOPE_ENDPOINTS = [
+  {
+    id: "cn",
+    name: "constants.dashscopeChinaEndpoint",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  },
+  {
+    id: "intl",
+    name: "constants.dashscopeIntlEndpoint",
+    baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  },
+] as const;
+
+export const DEFAULT_DASHSCOPE_BASE_URL = DASHSCOPE_ENDPOINTS[0].baseUrl;
+
 // ── Providers ───────────────────────────────────────────
 
 export const PROVIDERS = {
@@ -178,6 +193,18 @@ export const PROVIDERS = {
       placeholder: "AIza...",
       configProvider: "google",
       baseUrl: "",
+      needsKey: true,
+    },
+    {
+      id: "alibaba",
+      name: "Alibaba DashScope",
+      desc: "constants.dashscopeDesc",
+      tag: "",
+      envKey: "DASHSCOPE_API_KEY",
+      url: "https://bailian.console.aliyun.com/?apiKey=1",
+      placeholder: "sk-...",
+      configProvider: "alibaba",
+      baseUrl: DEFAULT_DASHSCOPE_BASE_URL,
       needsKey: true,
     },
     {

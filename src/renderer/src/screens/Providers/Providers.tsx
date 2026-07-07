@@ -6,6 +6,8 @@ import {
   OPENAI_COMPATIBLE_BASE_URLS,
   PROVIDER_CARDS,
   LOCAL_PRESETS,
+  DASHSCOPE_ENDPOINTS,
+  DEFAULT_DASHSCOPE_BASE_URL,
 } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
@@ -342,6 +344,13 @@ function Providers({
     } else if (id in OPENAI_COMPATIBLE_BASE_URLS) {
       setModelProvider(id);
       setModelBaseUrl(OPENAI_COMPATIBLE_BASE_URLS[id]);
+    } else if (id === "alibaba") {
+      setModelProvider(id);
+      setModelBaseUrl(
+        modelProvider === "alibaba" && modelBaseUrl
+          ? modelBaseUrl
+          : DEFAULT_DASHSCOPE_BASE_URL,
+      );
     } else {
       setModelProvider(id);
       setModelBaseUrl("");
@@ -352,7 +361,9 @@ function Providers({
   // OpenAI-compatible providers are routed as `custom` but keep their brand
   // selected; they show the (autofilled) base_url field like custom does.
   const isCompatibleProvider = modelProvider in OPENAI_COMPATIBLE_BASE_URLS;
-  const showBaseUrl = isCustomProvider || isCompatibleProvider;
+  const isDashScopeProvider = modelProvider === "alibaba";
+  const showBaseUrl =
+    isCustomProvider || isCompatibleProvider || isDashScopeProvider;
   // The terminal "Local" card is active whenever the current selection isn't
   // one of the other grid cards — i.e. a custom URL or a local/remote preset
   // reached through it. It owns the preset-chip sub-section.
@@ -367,7 +378,11 @@ function Providers({
     .join("  ·  ");
   // For compatible/custom endpoints, the API key is entered inline (right under
   // Base URL) and stored under the host-derived env var the gateway reads.
-  const compatEnvKey = showBaseUrl ? resolveCompatEnvKey(modelBaseUrl) : "";
+  const compatEnvKey = isDashScopeProvider
+    ? "DASHSCOPE_API_KEY"
+    : showBaseUrl
+      ? resolveCompatEnvKey(modelBaseUrl)
+      : "";
 
   // Live model discovery: fetch the provider's /v1/models list and feed
   // it into a datalist that powers the Model field's autocomplete.  Only
@@ -583,7 +598,30 @@ function Providers({
 
                 {showBaseUrl && (
                   <div className="settings-field">
-                    <label className="settings-field-label">
+                    {isDashScopeProvider && (
+                      <>
+                        <label className="settings-field-label">
+                          {t("constants.dashscopeEndpoint")}
+                        </label>
+                        <select
+                          className="input"
+                          value={modelBaseUrl}
+                          onChange={(e) => setModelBaseUrl(e.target.value)}
+                        >
+                          {DASHSCOPE_ENDPOINTS.map((endpoint) => (
+                            <option key={endpoint.id} value={endpoint.baseUrl}>
+                              {t(endpoint.name)}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
+                    <label
+                      className="settings-field-label"
+                      style={
+                        isDashScopeProvider ? { marginTop: 12 } : undefined
+                      }
+                    >
                       {t("common.baseUrl")}
                     </label>
                     <input

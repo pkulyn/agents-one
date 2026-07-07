@@ -31,6 +31,9 @@ describe("provider-registry", () => {
       expect(canonicalProviderBaseUrl("cerebras")).toBe(
         "https://api.cerebras.ai/v1",
       );
+      expect(canonicalProviderBaseUrl("alibaba")).toBe(
+        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      );
     });
 
     it("returns the canonical URL for the Big3 (openai / anthropic / openrouter)", () => {
