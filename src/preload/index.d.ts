@@ -7,8 +7,15 @@ import type {
   ImportWalletInput,
   ProfileWallet,
   WalletMutationResult,
+  WalletSyncResult,
 } from "../shared/wallets";
 import type { TokenBalancesResponse } from "../shared/tokens";
+import type {
+  DeviceCodeInfo,
+  HermesAccount,
+  HermesAccountUser,
+} from "../shared/account";
+import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
 import type {
   RegistryKind,
   RegistryItem,
@@ -252,6 +259,23 @@ interface HermesAPI {
   ) => Promise<{ success: boolean; error?: string }>;
   cancelOAuthLogin: () => Promise<boolean>;
   onOAuthLoginProgress: (callback: (chunk: string) => void) => () => void;
+
+  // Hermes account sign-in (device authorization grant)
+  accountLogin: (
+    profile?: string,
+  ) => Promise<{ success: boolean; user?: HermesAccountUser; error?: string }>;
+  cancelAccountLogin: () => Promise<boolean>;
+  onAccountLoginCode: (callback: (info: DeviceCodeInfo) => void) => () => void;
+  onAccountLoginProgress: (callback: (chunk: string) => void) => () => void;
+  getAccount: (profile?: string) => Promise<HermesAccount | null>;
+  accountLogout: (profile?: string) => Promise<{ success: boolean }>;
+
+  // Cloud agent sync (profiles ↔ signed-in Hermes One account)
+  syncAgents: () => Promise<AgentSyncResult>;
+  getAgentSyncStatus: () => Promise<AgentSyncStatus>;
+  onAgentSyncUpdated: (
+    callback: (result: AgentSyncResult) => void,
+  ) => () => void;
 
   getLocale: () => Promise<AppLocale>;
   setLocale: (locale: AppLocale) => Promise<AppLocale>;
@@ -634,6 +658,7 @@ interface HermesAPI {
     name: string,
   ) => Promise<{ success: boolean; error?: string }>;
   listWallets: (profile?: string) => Promise<ProfileWallet[]>;
+  syncWallets: (profile?: string) => Promise<WalletSyncResult>;
   createWallet: (
     profile?: string,
     name?: string,
@@ -788,6 +813,7 @@ interface HermesAPI {
       provider: string;
       model: string;
       baseUrl: string;
+      providerLabel?: string;
       createdAt: number;
     }>
   >;
@@ -797,6 +823,7 @@ interface HermesAPI {
     model: string,
     baseUrl: string,
     contextLength?: number,
+    providerLabel?: string,
   ) => Promise<{
     id: string;
     name: string;
@@ -804,6 +831,7 @@ interface HermesAPI {
     model: string;
     baseUrl: string;
     contextLength?: number;
+    providerLabel?: string;
     createdAt: number;
   }>;
   removeModel: (id: string) => Promise<boolean>;
