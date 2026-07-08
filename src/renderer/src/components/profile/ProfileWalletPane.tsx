@@ -56,6 +56,14 @@ export default function ProfileWalletPane({
   /** Ref that tracks wallet ID → address so fetchBalances can update the cache. */
   const walletIdToAddress = useRef<Map<string, string>>(new Map());
 
+  /**
+   * Generation counter for loadWallets. Each call bumps it and captures its
+   * value; after an await, a run whose id no longer matches has been
+   * superseded (profile change, refresh, or post-delete reload) and must not
+   * apply its now-stale results over the newer run's.
+   */
+  const loadRunRef = useRef(0);
+
   /** Hydrate balances from the module-level cache after wallets load. */
   function hydrateFromCache(walletList: WalletView[]): void {
     const map = new Map<string, TokenBalancesResponse>();
@@ -71,7 +79,10 @@ export default function ProfileWalletPane({
 
   async function fetchBalances(walletList: WalletView[]): Promise<void> {
     if (walletList.length === 0) return;
-    setBalancesLoading(new Set(walletList.map((w) => w.id)));
+    // Functional updates only touch this call's ids, so the two concurrent
+    // fetches (local + cloud) can't clobber each other's loading spinners.
+    const ids = new Set(walletList.map((w) => w.id));
+    setBalancesLoading((prev) => new Set([...prev, ...ids]));
     const results = await Promise.allSettled(
       walletList.map(async (w) => {
         const response = await window.hermesAPI.getTokenBalances(w.address);
@@ -89,7 +100,11 @@ export default function ProfileWalletPane({
       }
       return next;
     });
-    setBalancesLoading(new Set());
+    setBalancesLoading((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
   }
 
   async function refreshSingleBalance(wallet: WalletView): Promise<void> {
@@ -114,6 +129,8 @@ export default function ProfileWalletPane({
   }
 
   const loadWallets = useCallback(async (): Promise<void> => {
+    const runId = ++loadRunRef.current;
+    const isStale = (): boolean => loadRunRef.current !== runId;
     setLoading(true);
     setError("");
     setCloudNote("");
@@ -123,8 +140,11 @@ export default function ProfileWalletPane({
     try {
       local = (await window.hermesAPI.listWallets(profile)).map(localToView);
     } catch {
-      setError(t("agents.walletLoadFailed"));
+      if (!isStale()) setError(t("agents.walletLoadFailed"));
     }
+    // A newer load (profile switch / refresh) has superseded this one; don't
+    // overwrite its state with this profile's data.
+    if (isStale()) return;
     setWallets(local);
     hydrateFromCache(local);
     void fetchBalances(local);
@@ -133,6 +153,7 @@ export default function ProfileWalletPane({
     setSyncing(true);
     try {
       const result = await window.hermesAPI.syncWallets(profile);
+      if (isStale()) return;
       if (result.status === "signed-out") {
         setCloudNote(t("agents.walletSignInHint"));
       } else if (result.status === "unlinked") {
@@ -147,9 +168,9 @@ export default function ProfileWalletPane({
         void fetchBalances(result.wallets);
       }
     } catch {
-      setCloudNote(t("agents.walletLoadFailed"));
+      if (!isStale()) setCloudNote(t("agents.walletLoadFailed"));
     } finally {
-      setSyncing(false);
+      if (!isStale()) setSyncing(false);
     }
   }, [profile, t]);
 
@@ -166,7 +187,9 @@ export default function ProfileWalletPane({
   }
 
   async function handleDelete(): Promise<void> {
-    if (!deleteTarget) return;
+    // Cloud wallets are backend-managed; only local ones have a deletable
+    // on-disk record (their delete button is the only way to open this modal).
+    if (!deleteTarget || deleteTarget.source !== "local") return;
     setError("");
     const result = await window.hermesAPI.deleteWallet(
       profile,
