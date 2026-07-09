@@ -56,9 +56,15 @@ vi.mock("./account-store", () => ({
 
 vi.mock("./profiles", () => ({
   listProfiles: async () => mockState.profiles,
+  // Mirror the real createProfile: derive a slug id from the display name and
+  // return it; on-disk sync keys off that id, not the name.
   createProfile: (name: string) => {
-    mockState.createdProfiles.push(name);
-    return { success: true };
+    const id = name
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    mockState.createdProfiles.push(id);
+    return { success: true, id };
   },
 }));
 
@@ -104,14 +110,14 @@ vi.mock("./config", () => ({
   },
 }));
 
-function fakeProfile(name: string, color = "#123456"): ProfileInfo {
+function fakeProfile(name: string, color = "#123456", id = name): ProfileInfo {
   return {
+    id,
     name,
+    // The on-disk directory is keyed by the stable id, not the display name.
     path:
-      name === "default"
-        ? mockState.home
-        : join(mockState.home, "profiles", name),
-    isDefault: name === "default",
+      id === "default" ? mockState.home : join(mockState.home, "profiles", id),
+    isDefault: id === "default",
     isActive: false,
     model: "",
     provider: "auto",
@@ -262,20 +268,6 @@ describe("buildPushBody", () => {
   });
 });
 
-describe("sanitizeProfileName", () => {
-  // @lat: [[agent-sync#Tests#Cloud names become valid profile names]]
-  it("slugifies free-form cloud names and avoids collisions", async () => {
-    const { sanitizeProfileName } = await engine();
-    expect(sanitizeProfileName("My Agent!", new Set())).toBe("my-agent");
-    expect(sanitizeProfileName("My Agent!", new Set(["my-agent"]))).toBe(
-      "my-agent-2",
-    );
-    expect(sanitizeProfileName("###", new Set())).toBe("agent");
-    expect(sanitizeProfileName("default", new Set())).toBe("default-agent");
-    expect(sanitizeProfileName("-dash", new Set())).toBe("dash");
-  });
-});
-
 describe("syncAgents", () => {
   it("reports signed-out without touching the network", async () => {
     mockState.account = null;
@@ -325,6 +317,42 @@ describe("syncAgents", () => {
       ),
     );
     expect(state.agentId).toBe("new-id");
+  });
+
+  // @lat: [[agent-sync#Tests#Keys on-disk work off the stable id]]
+  it("uses the profile id (not the display name) for all on-disk sync work", async () => {
+    // A renamed profile: stable id "hello-agent", display name "Hello Agent".
+    mockState.profiles = [fakeProfile("Hello Agent", "#123456", "hello-agent")];
+    mockState.souls.set("hello-agent", "soul-h");
+    mockState.models.set("hello-agent", {
+      model: "m1",
+      provider: "auto",
+      baseUrl: "",
+    });
+    const calls = stubFetch([]);
+
+    const { syncAgents } = await engine();
+    const result = await syncAgents();
+
+    expect(result.status).toBe("ok");
+    // On-disk identity is the id …
+    expect(result.outcomes[0]).toMatchObject({
+      profile: "hello-agent",
+      action: "created-remote",
+    });
+    const state = JSON.parse(
+      readFileSync(
+        join(mockState.home, "profiles", "hello-agent", "cloud-sync.json"),
+        "utf-8",
+      ),
+    );
+    expect(state.agentId).toBe("new-id");
+    // … but the cloud agent's human label is the display name.
+    const post = calls.find((c) => c.method === "POST");
+    expect(post?.body).toMatchObject({
+      name: "Hello Agent",
+      systemPrompt: "soul-h",
+    });
   });
 
   // @lat: [[agent-sync#Tests#Links by name and pulls the newer side]]

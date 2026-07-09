@@ -103,30 +103,6 @@ export function decidePartAction(
 }
 
 /**
- * Derive a valid, unused local profile name from a cloud agent's free-form
- * name (pull-create). Lowercases, maps invalid runs to "-", and suffixes
- * "-2", "-3", … on collision. Never yields the reserved "default".
- */
-export function sanitizeProfileName(
-  remoteName: string,
-  taken: Set<string>,
-): string {
-  let slug = remoteName
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^[-]+/, "")
-    .replace(/-+$/, "")
-    .slice(0, 56); // leave room for a collision suffix within the 64-char cap
-  if (!slug || !/^[a-z0-9_]/.test(slug))
-    slug = `agent${slug ? `-${slug}` : ""}`;
-  if (slug === "default") slug = "default-agent";
-
-  let candidate = slug;
-  for (let n = 2; taken.has(candidate); n++) candidate = `${slug}-${n}`;
-  return candidate;
-}
-
-/**
  * Build the JSON body for a create/patch from the parts being pushed.
  * Enforces backend limits by omitting oversize parts (returned in `skipped`)
  * and never includes anything beyond the four synced parts — in particular no
@@ -238,11 +214,13 @@ function mtimeMs(path: string): number {
 }
 
 function localPartValues(profile: ProfileInfo): PartValues {
-  const cfg = getModelConfig(profile.name);
+  // On-disk lookups key off the stable id (the directory slug), not the
+  // editable display name — a renamed profile keeps the same id/directory.
+  const cfg = getModelConfig(profile.id);
   return {
     color: profile.color,
-    soul: readSoul(profile.name),
-    memory: readMemoryRaw(profile.name),
+    soul: readSoul(profile.id),
+    memory: readMemoryRaw(profile.id),
     config: { model: cfg.model, provider: cfg.provider || "auto" },
   };
 }
@@ -421,7 +399,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
   const unlinkedLocals: ProfileInfo[] = [];
 
   for (const profile of profiles) {
-    const state = readSyncState(profile.name);
+    const state = readSyncState(profile.id);
     if (state) {
       const agent = remoteById.get(state.agentId);
       if (agent) {
@@ -429,9 +407,9 @@ async function runSyncPass(): Promise<AgentSyncResult> {
         linked.push({ profile, state, agent });
       } else {
         // Deleted in the console: unlink, keep the local profile untouched.
-        clearSyncState(profile.name);
+        clearSyncState(profile.id);
         outcomes.push({
-          profile: profile.name,
+          profile: profile.id,
           agentId: state.agentId,
           action: "unlinked",
           warnings: [
@@ -514,7 +492,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
           }
         }
       }
-      for (const part of toPull) applyPull(profile.name, part, remote);
+      for (const part of toPull) applyPull(profile.id, part, remote);
 
       // New base per part: whichever side won is now common ground. Parts
       // that failed to push (or were skipped as oversize) keep their old base
@@ -527,7 +505,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
             base[part] = localHash[part];
         } else base[part] = localHash[part];
       }
-      writeSyncState(profile.name, {
+      writeSyncState(profile.id, {
         version: 1,
         agentId: agent.id,
         remoteName: agent.name,
@@ -535,7 +513,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
       });
 
       outcomes.push({
-        profile: profile.name,
+        profile: profile.id,
         agentId: agent.id,
         action:
           toPush.length > 0
@@ -547,7 +525,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
       });
     } catch (err) {
       outcomes.push({
-        profile: profile.name,
+        profile: profile.id,
         agentId: agent.id,
         action: "error",
         warnings: [...warnings, (err as Error).message],
@@ -560,6 +538,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
     const warnings: string[] = [];
     try {
       const local = localPartValues(profile);
+      // The cloud agent's human label is the profile's display name.
       const name = profile.name.slice(0, MAX_NAME_CHARS);
       const { body, skipped } = buildPushBody(PARTS, local);
       warnings.push(...skipped);
@@ -570,7 +549,7 @@ async function runSyncPass(): Promise<AgentSyncResult> {
       const created = res.data.agent as RemoteAgent | undefined;
       if (!res.ok || !created) {
         outcomes.push({
-          profile: profile.name,
+          profile: profile.id,
           action: "error",
           warnings: [...warnings, `Create failed (HTTP ${res.status}).`],
         });
@@ -581,59 +560,54 @@ async function runSyncPass(): Promise<AgentSyncResult> {
       for (const part of PARTS) {
         if (!isPartSkipped(part, local)) base[part] = localHash[part];
       }
-      writeSyncState(profile.name, {
+      writeSyncState(profile.id, {
         version: 1,
         agentId: created.id,
         remoteName: created.name,
         base,
       });
       outcomes.push({
-        profile: profile.name,
+        profile: profile.id,
         agentId: created.id,
         action: "created-remote",
         warnings,
       });
     } catch (err) {
       outcomes.push({
-        profile: profile.name,
+        profile: profile.id,
         action: "error",
         warnings: [...warnings, (err as Error).message],
       });
     }
   }
 
-  // Pull-create local profiles for cloud-only agents.
-  const takenNames = new Set(profiles.map((p) => p.name));
+  // Pull-create local profiles for cloud-only agents. createProfile derives a
+  // valid, collision-free id from the agent's display name and returns it; all
+  // on-disk writes below key off that id.
   for (const agent of remotes) {
     if (claimed.has(agent.id)) continue;
     const warnings: string[] = [];
-    const name = sanitizeProfileName(agent.name, takenNames);
-    takenNames.add(name);
-    if (name !== agent.name) {
-      warnings.push(
-        `Created as "${name}" (cloud name "${agent.name}" isn't a valid profile name).`,
-      );
-    }
-    const createRes = createProfile(name, null);
-    if (!createRes.success) {
+    const createRes = createProfile(agent.name, null);
+    if (!createRes.success || !createRes.id) {
       outcomes.push({
-        profile: name,
+        profile: agent.name,
         agentId: agent.id,
         action: "error",
         warnings: [...warnings, createRes.error ?? "Profile creation failed."],
       });
       continue;
     }
+    const id = createRes.id;
     const remote = remotePartValues(agent);
-    for (const part of PARTS) applyPull(name, part, remote);
-    writeSyncState(name, {
+    for (const part of PARTS) applyPull(id, part, remote);
+    writeSyncState(id, {
       version: 1,
       agentId: agent.id,
       remoteName: agent.name,
       base: partHashes(remote),
     });
     outcomes.push({
-      profile: name,
+      profile: id,
       agentId: agent.id,
       action: "created-local",
       warnings,

@@ -615,6 +615,9 @@ interface HermesAPI {
   // Profiles
   listProfiles: () => Promise<
     Array<{
+      /** Stable internal profile id used for CLI, paths, and routing. */
+      id: string;
+      /** User-facing agent/profile name. */
       name: string;
       path: string;
       isDefault: boolean;
@@ -634,7 +637,7 @@ interface HermesAPI {
   createProfile: (
     name: string,
     cloneFrom: string | null,
-  ) => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<{ success: boolean; error?: string; id?: string }>;
   deleteProfile: (
     name: string,
   ) => Promise<{ success: boolean; error?: string }>;
@@ -642,6 +645,10 @@ interface HermesAPI {
   setProfileColor: (
     name: string,
     color: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  setProfileName: (
+    id: string,
+    name: string,
   ) => Promise<{ success: boolean; error?: string }>;
   setProfileAvatar: (
     name: string,

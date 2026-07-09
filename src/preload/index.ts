@@ -812,6 +812,7 @@ const hermesAPI = {
   // Profiles
   listProfiles: (): Promise<
     Array<{
+      id: string;
       name: string;
       path: string;
       isDefault: boolean;
@@ -830,7 +831,7 @@ const hermesAPI = {
   createProfile: (
     name: string,
     cloneFrom: string | null,
-  ): Promise<{ success: boolean; error?: string }> =>
+  ): Promise<{ success: boolean; error?: string; id?: string }> =>
     ipcRenderer.invoke("create-profile", name, cloneFrom),
 
   deleteProfile: (
@@ -846,6 +847,12 @@ const hermesAPI = {
     color: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("set-profile-color", name, color),
+
+  setProfileName: (
+    id: string,
+    name: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("set-profile-name", id, name),
 
   setProfileAvatar: (
     name: string,
