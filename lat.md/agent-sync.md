@@ -16,7 +16,9 @@ Per part, the pure [[src/main/agent-sync.ts#decidePartAction]] compares the last
 
 Pushes are built by [[src/main/agent-sync.ts#buildPushBody]], which enforces the backend's field limits by *skipping* oversize parts with a warning — truncating and later pulling back would destroy local content. An unset local model is also skipped so a PATCH can't clobber the cloud value with an empty string. Pulls write through the existing per-part helpers: [[src/main/soul.ts#writeSoul]], [[src/main/memory.ts#writeMemoryRaw]], [[src/main/profile-meta.ts#setProfileColor]], and [[src/main/config.ts#setModelConfig]] (preserving the local base URL).
 
-Cloud-only agents are materialized locally: [[src/main/agent-sync.ts#sanitizeProfileName]] derives a valid, unused profile name from the free-form cloud name, [[src/main/profiles.ts#createProfile]] creates the profile, then all four parts are pulled in.
+A profile's stable **id** (its directory slug), not its editable display **name**, keys every on-disk operation — `getModelConfig`/`readSoul`/`readMemoryRaw`, the `cloud-sync.json` state file, and all pull writes — so a renamed profile keeps syncing against the same directory. The display `name` is used only as the cloud agent's human label (create/name-match/warnings).
+
+Cloud-only agents are materialized locally by [[src/main/profiles.ts#createProfile]], which derives a valid, collision-free id from the cloud agent's display name and returns it; the pulled parts are then written under that id.
 
 ## State file
 
@@ -48,9 +50,9 @@ The preload bridge surfaces these as `syncAgents`, `getAgentSyncStatus`, and `on
 
 `buildPushBody` maps parts to exactly the backend's fields and nothing else, and skips oversize persona/memory and unset models instead of truncating or sending empty strings.
 
-### Cloud names become valid profile names
+### Keys on-disk work off the stable id
 
-`sanitizeProfileName` slugifies free-form cloud names into valid profile names, suffixes collisions, and never yields the reserved `default`.
+A renamed profile (id `hello-agent`, display name `Hello Agent`) drives all on-disk sync — state file, part reads — off the id, while the cloud agent it creates carries the display name as its label.
 
 ### Backs up new local profiles
 
@@ -62,7 +64,7 @@ An unmapped profile links to its cloud namesake without creating a duplicate, an
 
 ### Pull-creates cloud-only agents
 
-A cloud agent with no local counterpart becomes a local profile with the sanitized name, and its persona/color/memory/config are written locally.
+A cloud agent with no local counterpart becomes a local profile (via `createProfile`, which derives the id from the agent's display name), and its persona/color/memory/config are written locally under that id.
 
 ### Unlinks deleted cloud agents
 
