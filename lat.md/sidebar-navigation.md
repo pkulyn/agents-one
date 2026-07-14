@@ -80,6 +80,14 @@ In remote (HTTP) mode the Skills surface must read and mutate the REMOTE machine
 
 Two deliberate asymmetries: bundled skills stay local in remote mode (that list is the shipped catalog, not per-machine state), and the hub install/uninstall endpoints SPAWN the CLI on the remote and return `{ok, pid}` immediately — success means "started", not "completed", unlike the local/SSH paths which await and classify the CLI output.
 
+The Discover top-level view is no longer hidden by the generic remote-mode notice. Its registry catalog is local and its installed-skill state already routes through the remote dashboard when configured, so [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] mounts [[src/renderer/src/screens/Discover/Discover.tsx]] in remote mode instead of showing [[src/renderer/src/components/RemoteNotice.tsx]].
+
+### Kanban remote notice ownership
+
+The Kanban tab owns its connection-mode messaging.
+
+Plain remote HTTP still cannot run the desktop Kanban CLI bridge, but the page needs to display its Kanban-specific unsupported message rather than the generic remote notice. [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] therefore always mounts [[src/renderer/src/screens/Kanban/Kanban.tsx]], and [[src/main/kanban.ts#unsupportedInRemote]] marks the board response with `unsupportedMode` so the renderer can show the existing `kanban.remoteUnsupportedTitle` and `kanban.remoteUnsupportedHint` copy.
+
 ## Profiles page
 
 The Profiles page lists every workspace as table-style rows and creates new ones from a modal that can clone a chosen source profile.

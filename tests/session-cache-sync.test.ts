@@ -148,7 +148,9 @@ vi.mock("better-sqlite3", () => {
 
     all(
       ...args: unknown[]
-    ): SessionRow[] | Array<{ id: string; message_count: number }> {
+    ):
+      | SessionRow[]
+      | Array<{ id: string; message_count: number; title: string | null }> {
       if (this.sql.includes("FROM sessions s")) {
         const threshold = Number(args[0] ?? 0);
         return Array.from(this.store.sessions.values())
@@ -159,14 +161,18 @@ vi.mock("better-sqlite3", () => {
       // Phase-2 refresh query introduced for issue #226:
       //   SELECT id, message_count FROM sessions WHERE id IN (?, ?, …)
       if (
-        this.sql.includes("SELECT id, message_count FROM sessions") &&
+        this.sql.includes("SELECT id, message_count") &&
         this.sql.includes("WHERE id IN")
       ) {
         const ids = args.map(String);
         return ids
           .map((id) => this.store.sessions.get(id))
           .filter((s): s is SessionRow => !!s)
-          .map((s) => ({ id: s.id, message_count: s.message_count }));
+          .map((s) => ({
+            id: s.id,
+            message_count: s.message_count,
+            title: s.title,
+          }));
       }
 
       // Context-folder batch read (issue #27). These tests never seed linked
@@ -421,6 +427,69 @@ describe("syncSessionCache", () => {
     const result = syncSessionCache();
 
     expect(result.map((r) => r.id)).toEqual(["s2", "s1"]);
+  });
+
+  it("keeps scheduled automation sessions out of the normal chat cache", () => {
+    const now = Math.floor(Date.now() / 1000);
+    seedDb([
+      {
+        id: "chat-session",
+        source: "chat",
+        started_at: now,
+        message_count: 2,
+        firstUserMessage: "Normal user conversation",
+      },
+      {
+        id: "cron-session",
+        source: "cronjob",
+        started_at: now + 1,
+        message_count: 2,
+        firstUserMessage: "Nightly scheduled script",
+      },
+    ]);
+
+    const result = syncSessionCache();
+
+    expect(result.map((session) => session.id)).toEqual(["chat-session"]);
+  });
+
+  it("regenerates placeholder cached titles from the first user message", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const oldStart = now - 86400 * 7;
+    seedDb([
+      {
+        id: "71310e",
+        source: "chat",
+        started_at: oldStart,
+        message_count: 3,
+        firstUserMessage: "Design the OpenClaw gateway handshake",
+      },
+    ]);
+
+    mkdirSync(join(TEST_HOME, "desktop"), { recursive: true });
+    writeFileSync(
+      CACHE_FILE,
+      JSON.stringify({
+        sessions: [
+          {
+            id: "71310e",
+            title: "Session 71310e",
+            startedAt: oldStart,
+            source: "chat",
+            messageCount: 1,
+            model: "gpt-5.5",
+          },
+        ],
+        lastSync: now,
+      }),
+      "utf-8",
+    );
+
+    const result = syncSessionCache();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].title).toContain("OpenClaw gateway handshake");
+    expect(result[0].title).not.toMatch(/^Session\s/i);
   });
 
   it("refreshes messageCount for old sessions outside the lastSync window (issue #226)", () => {

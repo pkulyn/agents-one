@@ -167,3 +167,43 @@ describe("applyDashboardStreamEvent — message.complete text reconciliation", (
     expect((bubble as { content: string }).content).toBe("Remote answer");
   });
 });
+
+describe("applyDashboardStreamEvent operational notices", () => {
+  it("keeps tool iteration limits out of the assistant transcript", () => {
+    const next = applyDashboardStreamEvent(
+      { messages: [], reasoningSegmentClosed: false },
+      {
+        type: "runtime.limit",
+        payload: {
+          message:
+            "You've reached the maximum number of tool-calling iterations allowed. token=should-not-leak",
+        },
+      },
+      { now: 42 },
+    );
+
+    expect(next.messages[0]).toMatchObject({
+      kind: "system",
+      title: "Tool-call limit reached",
+    });
+    expect((next.messages[0] as { detail: string }).detail).not.toContain(
+      "should-not-leak",
+    );
+  });
+
+  it("classifies stopped background processes as system events", () => {
+    const next = applyDashboardStreamEvent(
+      { messages: [], reasoningSegmentClosed: false },
+      {
+        type: "process.exit",
+        payload: { text: "Background process proc_1 completed (exit code 143)." },
+      },
+      { now: 43 },
+    );
+
+    expect(next.messages[0]).toMatchObject({
+      kind: "system",
+      title: "Background process stopped",
+    });
+  });
+});

@@ -391,10 +391,17 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     const onContextFolderChanged = (): void => {
       void refresh(true);
     };
+    const onTranscriptChanged = (): void => {
+      void refresh(true);
+    };
     window.addEventListener("focus", onFocus);
     window.addEventListener(
       "hermes-session-context-folder-changed",
       onContextFolderChanged,
+    );
+    window.addEventListener(
+      "hermes-session-transcript-changed",
+      onTranscriptChanged,
     );
     return () => {
       clearInterval(timer);
@@ -402,6 +409,10 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       window.removeEventListener(
         "hermes-session-context-folder-changed",
         onContextFolderChanged,
+      );
+      window.removeEventListener(
+        "hermes-session-transcript-changed",
+        onTranscriptChanged,
       );
     };
   }, [open, refresh]);

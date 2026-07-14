@@ -1,4 +1,5 @@
-import Database from "better-sqlite3";
+import Database from "./sqlite";
+import type BetterDatabase from "better-sqlite3";
 import { basename, extname } from "path";
 import { existsSync, readFileSync, statSync } from "fs";
 import { activeStateDbPath } from "./utils";
@@ -16,7 +17,7 @@ interface StoredAttachmentRow {
   data: Buffer;
 }
 
-function ensureTable(db: Database.Database): void {
+function ensureTable(db: BetterDatabase.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS ${TABLE} (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +39,7 @@ function ensureTable(db: Database.Database): void {
   `);
 }
 
-function tableExists(db: Database.Database): boolean {
+function tableExists(db: BetterDatabase.Database): boolean {
   const row = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?")
     .get(TABLE) as { name: string } | undefined;
@@ -164,7 +165,7 @@ function imageAttachments(attachments?: Attachment[]): Attachment[] {
 }
 
 function findMatchingUserMessageId(
-  db: Database.Database,
+  db: BetterDatabase.Database,
   sessionId: string,
   promptText: string,
 ): number | null {
@@ -242,7 +243,7 @@ export function persistPromptImageAttachments(
 }
 
 export function loadPromptImageAttachments(
-  db: Database.Database,
+  db: BetterDatabase.Database,
   sessionId: string,
 ): Map<number, Attachment[]> {
   const byMessageId = new Map<number, Attachment[]>();
@@ -275,7 +276,7 @@ export function loadPromptImageAttachments(
 }
 
 export function deletePromptImageAttachmentsForSession(
-  db: Database.Database,
+  db: BetterDatabase.Database,
   sessionId: string,
 ): void {
   if (!tableExists(db)) return;

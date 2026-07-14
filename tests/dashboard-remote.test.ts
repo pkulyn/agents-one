@@ -69,6 +69,22 @@ describe("remoteDashboardConnectionFromConfig", () => {
     });
   });
 
+  it("preserves a remote dashboard path prefix in the websocket URL", () => {
+    const connection = remoteDashboardConnectionFromConfig(
+      remoteConnection({
+        remoteDashboardUrl: "https://hermes.example/hermes-dashboard/",
+      }),
+    );
+
+    expect(connection).toMatchObject({
+      baseUrl: "https://hermes.example/hermes-dashboard",
+      mode: "remote",
+      token: "dashboard-token",
+      wsUrl:
+        "wss://hermes.example/hermes-dashboard/api/ws?token=dashboard-token",
+    });
+  });
+
   it("returns null when remote dashboard settings are incomplete", () => {
     expect(
       remoteDashboardConnectionFromConfig(
@@ -177,5 +193,38 @@ describe("probeDashboardWebSocket", () => {
     ).rejects.toThrow(
       /WebSocket is unavailable \(403: embedded chat disabled\)/,
     );
+  });
+
+  it("keeps the successful fallback credential for the renderer websocket", async () => {
+    const { url } = await startServer((_req, res) => {
+      res.statusCode = 404;
+      res.end();
+    });
+    server!.on("upgrade", (req, socket) => {
+      if (req.headers.authorization !== "Bearer gateway-key") {
+        socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      socket.write(
+        "HTTP/1.1 101 Switching Protocols\r\n" +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          "\r\n",
+      );
+      socket.destroy();
+    });
+
+    const connection = {
+      baseUrl: url,
+      wsUrl: url.replace("http:", "ws:") + "/api/ws?token=stale-token",
+      token: "stale-token",
+      fallbackToken: "gateway-key",
+      mode: "remote" as const,
+    };
+
+    await expect(probeDashboardWebSocket(connection)).resolves.toBeUndefined();
+    expect(connection.token).toBe("gateway-key");
+    expect(connection.wsUrl).toContain("token=gateway-key");
   });
 });

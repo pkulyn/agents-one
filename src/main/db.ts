@@ -1,8 +1,10 @@
-import Database from "better-sqlite3";
-import { existsSync } from "fs";
+import Database from "./sqlite";
+import type BetterDatabase from "better-sqlite3";
+import { dirname } from "path";
+import { existsSync, mkdirSync } from "fs";
 import { activeStateDbPath } from "./utils";
 
-let cachedDb: Database.Database | null = null;
+let cachedDb: BetterDatabase.Database | null = null;
 let cachedDbPath: string | null = null;
 let cachedDbReadonly: boolean | null = null;
 
@@ -11,11 +13,20 @@ let cachedDbReadonly: boolean | null = null;
  * If the active profile database path or readonly status changes,
  * the old database connection is cleanly closed and a new one is established.
  */
-export function getDbConnection(readonly = true): Database.Database | null {
+export function getDbConnection(readonly = true): BetterDatabase.Database | null {
   const dbPath = activeStateDbPath();
   if (!existsSync(dbPath)) {
-    closeDbConnection();
-    return null;
+    if (readonly) {
+      closeDbConnection();
+      return null;
+    }
+    try {
+      mkdirSync(dirname(dbPath), { recursive: true });
+    } catch (err) {
+      console.error(`[db] Failed to create database directory for ${dbPath}:`, err);
+      closeDbConnection();
+      return null;
+    }
   }
 
   // Reuse the existing cached connection if the path and mode match

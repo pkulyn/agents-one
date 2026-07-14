@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
-import Database from "better-sqlite3";
+import Database from "./sqlite";
 import { profileHome, safeWriteFile } from "./utils";
 import { parseMemoryLimitsConfig, type MemoryLimits } from "./memory-limits";
 

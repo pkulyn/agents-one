@@ -10,6 +10,8 @@ const {
   apiRequests,
   apiRequestErrors,
   requestEvents,
+  runEventScenarios,
+  runsCapabilities,
   modelConfig,
   profileEnv,
 } = vi.hoisted(() => {
@@ -38,6 +40,8 @@ const {
     }>,
     apiRequestErrors: [] as string[],
     requestEvents: [] as string[],
+    runEventScenarios: [] as string[],
+    runsCapabilities: { enabled: false },
     modelConfig: {
       model: "test-model",
       provider: "openrouter",
@@ -71,6 +75,96 @@ vi.mock("http", () => ({
             cb?.({
               statusCode: healthStatuses.shift() ?? 503,
               resume: () => {},
+            });
+            return;
+          }
+
+          if (_url.endsWith("/v1/capabilities")) {
+            const res = new EventEmitter() as EventEmitter & {
+              statusCode: number;
+              headers: Record<string, string>;
+            };
+            res.statusCode = runsCapabilities.enabled ? 200 : 404;
+            res.headers = {};
+            cb?.(res);
+            queueMicrotask(() => {
+              if (runsCapabilities.enabled) {
+                res.emit(
+                  "data",
+                  Buffer.from(
+                    JSON.stringify({
+                      features: {
+                        run_submission: true,
+                        run_events_sse: true,
+                        run_stop: true,
+                        run_approval_response: true,
+                        tool_progress_events: true,
+                      },
+                      endpoints: {
+                        runs: { path: "/v1/runs" },
+                        run_events: {
+                          path: "/v1/runs/{run_id}/events",
+                        },
+                        run_approval: {
+                          path: "/v1/runs/{run_id}/approval",
+                        },
+                        run_stop: { path: "/v1/runs/{run_id}/stop" },
+                      },
+                    }),
+                  ),
+                );
+              }
+              res.emit("end");
+            });
+            return;
+          }
+
+          if (_url.endsWith("/v1/runs")) {
+            requestEvents.push("run-start");
+            apiRequests.push({
+              body,
+              headers: (_options.headers as Record<string, string>) || {},
+            });
+            const res = new EventEmitter() as EventEmitter & {
+              statusCode: number;
+              headers: Record<string, string>;
+            };
+            res.statusCode = 202;
+            res.headers = {};
+            cb?.(res);
+            queueMicrotask(() => {
+              res.emit("data", Buffer.from(JSON.stringify({ run_id: "run-1" })));
+              res.emit("end");
+            });
+            return;
+          }
+
+          if (_url.endsWith("/v1/runs/run-1/events")) {
+            requestEvents.push("run-events");
+            const scenario = runEventScenarios.shift();
+            const res = new EventEmitter() as EventEmitter & {
+              statusCode: number;
+              headers: Record<string, string>;
+            };
+            res.statusCode = 200;
+            res.headers = {};
+            cb?.(res);
+            queueMicrotask(() => {
+              res.emit(
+                "data",
+                Buffer.from(
+                  'data: {"event":"message.delta","delta":"Hi from run"}\n\n',
+                ),
+              );
+              if (scenario === "TIMEOUT_AFTER_DELTA") {
+                handlers.get("timeout")?.();
+                return;
+              }
+              res.emit(
+                "data",
+                Buffer.from('data: {"event":"run.completed"}\n\n'),
+              );
+              res.emit("end");
             });
             return;
           }
@@ -290,6 +384,8 @@ describe("CLI fallback session id propagation", () => {
     apiRequests.length = 0;
     apiRequestErrors.length = 0;
     requestEvents.length = 0;
+    runEventScenarios.length = 0;
+    runsCapabilities.enabled = false;
     modelConfig.model = "test-model";
     modelConfig.provider = "openrouter";
     modelConfig.baseUrl = "";
@@ -426,6 +522,36 @@ describe("CLI fallback session id propagation", () => {
     expect(JSON.parse(apiRequests[0].body)).toMatchObject({
       messages: [{ role: "user", content: "hi" }],
       stream: true,
+    });
+  });
+
+  it("treats a run event stream timeout after content as a completed turn", async () => {
+    mkdirSync(TEST_REPO, { recursive: true });
+    healthStatuses.push(200);
+    runsCapabilities.enabled = true;
+    runEventScenarios.push("TIMEOUT_AFTER_DELTA");
+
+    const chunks: string[] = [];
+    const done = new Promise<string | undefined>((resolve, reject) => {
+      sendMessage(
+        "hi through runs",
+        {
+          onChunk: (chunk) => chunks.push(chunk),
+          onDone: resolve,
+          onError: reject,
+        },
+        "runs-timeout",
+      ).catch(reject);
+    });
+
+    await expect(done).resolves.toBeUndefined();
+    expect(chunks.join("")).toBe("Hi from run");
+    expect(requestEvents).toContain("run-start");
+    expect(requestEvents).toContain("run-events");
+    expect(requestEvents).not.toContain("chat");
+    expect(apiRequests).toHaveLength(1);
+    expect(JSON.parse(apiRequests[0].body)).toMatchObject({
+      input: "hi through runs",
     });
   });
 

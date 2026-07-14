@@ -54,6 +54,7 @@ function looksLikeHermesHome(dir: string): boolean {
   return (
     existsSync(join(dir, "hermes-agent")) ||
     existsSync(join(dir, "gateway.pid")) ||
+    existsSync(join(dir, "desktop.json")) ||
     existsSync(join(dir, "config.yaml")) ||
     existsSync(join(dir, "active_profile")) ||
     existsSync(join(dir, ".env"))

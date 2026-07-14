@@ -2,8 +2,13 @@ import { execFile } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { profilePaths, safeWriteFile } from "./utils";
 import { getApiUrl, getRemoteAuthHeader, isRemoteMode } from "./hermes";
-import { getApiServerKey } from "./config";
+import {
+  getApiServerKey,
+  getConnectionConfig,
+  getRemoteDashboardSessionConfig,
+} from "./config";
 import { getEnhancedPath, HERMES_PYTHON, hermesCliArgs } from "./installer";
+import { remoteRequestJson } from "./remote-sessions";
 
 export type McpTransport = "http" | "stdio" | "unknown";
 
@@ -609,6 +614,19 @@ async function mcpApi<T>(
   init: RequestInit = {},
   profile?: string,
 ): Promise<T> {
+  const conn = getConnectionConfig();
+  if (conn.mode === "remote") {
+    return remoteRequestJson<T>(
+      getRemoteDashboardSessionConfig(conn, profile),
+      path,
+      {
+        method:
+          (init.method as "GET" | "POST" | "PATCH" | "PUT" | "DELETE") ?? "GET",
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
+      },
+    );
+  }
+
   const headers: Record<string, string> = {
     ...getRemoteAuthHeader(),
     ...((init.headers as Record<string, string>) || {}),

@@ -6,8 +6,13 @@ import {
   getActiveProfileNameSync,
   safeWriteFile,
 } from "./utils";
-import Database from "better-sqlite3";
+import Database from "./sqlite";
+import type BetterDatabase from "better-sqlite3";
 import { t } from "../shared/i18n";
+import {
+  isAutomationSessionSource,
+  isPlaceholderSessionTitle,
+} from "../shared/session-list";
 import { getAppLocale } from "./locale";
 import { getDbConnection } from "./db";
 import { getSessionContextFolders } from "./session-context-folder-store";
@@ -72,6 +77,39 @@ function generateTitle(message: string): string {
   return title || text.slice(0, 45) + "...";
 }
 
+function newConversationTitle(): string {
+  return t("sessions.newConversation", getAppLocale());
+}
+
+function titleFromFirstUserMessage(
+  db: BetterDatabase.Database,
+  sessionId: string,
+): string {
+  try {
+    const msg = db
+      .prepare(
+        `SELECT content FROM messages
+         WHERE session_id = ? AND role = 'user' AND content IS NOT NULL
+         ORDER BY timestamp, id LIMIT 1`,
+      )
+      .get(sessionId) as { content: string } | undefined;
+    return msg ? generateTitle(msg.content) : newConversationTitle();
+  } catch {
+    return newConversationTitle();
+  }
+}
+
+function preferredTitle(
+  db: BetterDatabase.Database,
+  sessionId: string,
+  dbTitle: string | null,
+  cachedTitle?: string | null,
+): string {
+  if (!isPlaceholderSessionTitle(dbTitle)) return String(dbTitle).trim();
+  if (!isPlaceholderSessionTitle(cachedTitle)) return String(cachedTitle).trim();
+  return titleFromFirstUserMessage(db, sessionId);
+}
+
 function readCache(): CacheData {
   const file = cacheFilePath();
   try {
@@ -100,7 +138,7 @@ function writeCache(data: CacheData): void {
   }
 }
 
-function getDb(): Database.Database | null {
+function getDb(): BetterDatabase.Database | null {
   return getDbConnection(true);
 }
 
@@ -120,6 +158,9 @@ function attachContextFolders(sessions: CachedSession[]): CachedSession[] {
 export function syncSessionCache(): CachedSession[] {
   const cache = readCache();
   const db = getDb();
+  cache.sessions = cache.sessions.filter(
+    (session) => !isAutomationSessionSource(session.source),
+  );
   if (!db) return cache.sessions;
 
   try {
@@ -152,32 +193,22 @@ export function syncSessionCache(): CachedSession[] {
 
     const refreshedIds = new Set<string>();
     for (const row of rows) {
+      if (isAutomationSessionSource(row.source)) continue;
       refreshedIds.add(row.id);
       const existing = existingById.get(row.id);
       if (existing) {
         existing.messageCount = row.message_count;
         if (row.model) existing.model = row.model;
-        if (row.title) existing.title = row.title;
+        existing.title = preferredTitle(
+          db,
+          row.id,
+          row.title,
+          existing.title,
+        );
         continue;
       }
 
-      let title = row.title || "";
-      if (!title) {
-        try {
-          const msg = db
-            .prepare(
-              `SELECT content FROM messages
-               WHERE session_id = ? AND role = 'user' AND content IS NOT NULL
-               ORDER BY timestamp, id LIMIT 1`,
-            )
-            .get(row.id) as { content: string } | undefined;
-          title = msg
-            ? generateTitle(msg.content)
-            : t("sessions.newConversation", getAppLocale());
-        } catch {
-          title = t("sessions.newConversation", getAppLocale());
-        }
-      }
+      const title = preferredTitle(db, row.id, row.title);
 
       newSessions.push({
         id: row.id,
@@ -208,24 +239,39 @@ export function syncSessionCache(): CachedSession[] {
       // SQLITE_MAX_VARIABLE_NUMBER (default 999 on older builds) for
       // portability across the better-sqlite3 versions hermes ships.
       const CHUNK = 500;
-      const countsById = new Map<string, number>();
+      const freshById = new Map<
+        string,
+        { message_count: number; title: string | null }
+      >();
       for (let i = 0; i < staleIds.length; i += CHUNK) {
         const chunk = staleIds.slice(i, i + CHUNK);
         const placeholders = chunk.map(() => "?").join(", ");
         const refreshed = db
           .prepare(
-            `SELECT id, message_count FROM sessions WHERE id IN (${placeholders})`,
+            `SELECT id, message_count, title FROM sessions WHERE id IN (${placeholders})`,
           )
-          .all(...chunk) as Array<{ id: string; message_count: number }>;
-        for (const r of refreshed) countsById.set(r.id, r.message_count);
+          .all(...chunk) as Array<{
+          id: string;
+          message_count: number;
+          title: string | null;
+        }>;
+        for (const r of refreshed) freshById.set(r.id, r);
       }
       cache.sessions = cache.sessions.filter(
-        (s) => refreshedIds.has(s.id) || countsById.has(s.id),
+        (s) => refreshedIds.has(s.id) || freshById.has(s.id),
       );
       for (const s of cache.sessions) {
-        const fresh = countsById.get(s.id);
-        if (fresh !== undefined && fresh !== s.messageCount) {
-          s.messageCount = fresh;
+        const fresh = freshById.get(s.id);
+        if (fresh) {
+          if (fresh.message_count !== s.messageCount) {
+            s.messageCount = fresh.message_count;
+          }
+          if (
+            !refreshedIds.has(s.id) &&
+            (fresh.title || isPlaceholderSessionTitle(s.title))
+          ) {
+            s.title = preferredTitle(db, s.id, fresh.title, s.title);
+          }
         }
       }
     }
@@ -255,7 +301,9 @@ export function syncSessionCache(): CachedSession[] {
 // stays current without this path touching the DB.
 export function listCachedSessions(limit = 50, offset = 0): CachedSession[] {
   const cache = readCache();
-  return cache.sessions.slice(offset, offset + limit);
+  return cache.sessions
+    .filter((session) => !isAutomationSessionSource(session.source))
+    .slice(offset, offset + limit);
 }
 
 // Update title for a specific session

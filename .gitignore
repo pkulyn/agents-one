@@ -27,6 +27,7 @@ pnpm-debug.log*
 
 # Local isolated Hermes homes for development/tests
 .sandbox/
+.cache/
 
 # Electron packaging artifacts
 release/

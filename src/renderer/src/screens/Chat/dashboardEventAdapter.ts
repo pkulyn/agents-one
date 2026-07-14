@@ -1,5 +1,5 @@
 import type { ChatToolEvent } from "../../../../shared/chat-stream";
-import type { ActiveTurn, ChatBubbleMessage, ChatMessage } from "./types";
+import type { ActiveTurn, ChatBubbleMessage, ChatMessage, SystemMessage } from "./types";
 
 export interface DashboardStreamEvent<T = unknown> {
   payload?: T;
@@ -125,6 +125,47 @@ function payloadToolName(payload: unknown): string {
 
 function isClarifyToolEvent(event: DashboardStreamEvent): boolean {
   return payloadToolName(event.payload).toLowerCase() === "clarify";
+}
+
+const SYSTEM_EVENT_TYPES = new Set([
+  "system.notice",
+  "system.notification",
+  "runtime.notification",
+  "runtime.limit",
+  "process.exit",
+  "run.warning",
+]);
+const SECRET_TEXT_RE = /((?:authorization|api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;]+)/gi;
+
+function systemDetailFromPayload(payload: unknown): string {
+  const detail = isRecord(payload)
+    ? textFromPayload(payload, "message", "text", "detail", "output", "error")
+    : coerceGatewayText(payload);
+  return detail.replace(SECRET_TEXT_RE, "$1[redacted]").trim();
+}
+
+function systemTitle(event: DashboardStreamEvent, detail: string): string {
+  if (/maximum number of tool-calling iterations/i.test(detail)) return "Tool-call limit reached";
+  if (/background process .* exit code 143|exit code 143/i.test(detail)) return "Background process stopped";
+  if (/websocket/i.test(detail)) return "Dashboard connection notice";
+  return event.type.replace(/[._]/g, " ");
+}
+
+function appendSystemEvent(
+  messages: ReadonlyArray<ChatMessage>,
+  event: DashboardStreamEvent,
+  now: number,
+): ChatMessage[] {
+  const detail = systemDetailFromPayload(event.payload);
+  if (!detail) return [...messages];
+  const message: SystemMessage = {
+    id: `system-${event.type}-${now}-${messages.length}`,
+    kind: "system",
+    role: "agent",
+    title: systemTitle(event, detail),
+    detail,
+  };
+  return [...messages, message];
 }
 
 function appendClarifyRequest(
@@ -630,6 +671,9 @@ export function applyDashboardStreamEvent(
   options: ApplyDashboardEventOptions = {},
 ): DashboardEventState {
   const now = options.now ?? Date.now();
+  if (SYSTEM_EVENT_TYPES.has(event.type)) {
+    return { ...state, messages: appendSystemEvent(state.messages, event, now) };
+  }
   switch (event.type) {
     case "message.start":
       return { ...state, reasoningSegmentClosed: false };

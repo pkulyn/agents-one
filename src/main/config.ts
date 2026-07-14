@@ -46,6 +46,8 @@ export interface ConnectionConfig {
   mode: "local" | "remote" | "ssh";
   remoteUrl: string;
   apiKey: string;
+  remoteDashboardUrl: string;
+  remoteDashboardToken: string;
   remoteChatTransport: RemoteChatTransport;
   sshChatTransport: RemoteChatTransport;
   ssh: SshConnectionConfig;
@@ -54,13 +56,16 @@ export interface ConnectionConfig {
 export interface PublicConnectionConfig {
   mode: "local" | "remote" | "ssh";
   remoteUrl: string;
+  remoteDashboardUrl: string;
   remoteChatTransport: RemoteChatTransport;
   sshChatTransport: RemoteChatTransport;
   hasApiKey: boolean;
+  hasRemoteDashboardToken: boolean;
   // Length of the stored API key, exposed so the renderer can show a
   // mask that matches the real value's width. The secret itself never
   // leaves the main process. 0 when no key is set.
   apiKeyLength: number;
+  remoteDashboardTokenLength: number;
   ssh: SshConnectionConfig;
 }
 
@@ -100,6 +105,8 @@ export function getConnectionConfig(): ConnectionConfig {
     mode: (data.connectionMode as "local" | "remote" | "ssh") || "local",
     remoteUrl: (data.remoteUrl as string) || "",
     apiKey: (data.remoteApiKey as string) || "",
+    remoteDashboardUrl: (data.remoteDashboardUrl as string) || "",
+    remoteDashboardToken: (data.remoteDashboardToken as string) || "",
     remoteChatTransport: normalizeRemoteChatTransport(data.remoteChatTransport),
     sshChatTransport: normalizeRemoteChatTransport(data.sshChatTransport),
     ssh: {
@@ -118,10 +125,13 @@ export function getPublicConnectionConfig(): PublicConnectionConfig {
   return {
     mode: config.mode,
     remoteUrl: config.remoteUrl,
+    remoteDashboardUrl: config.remoteDashboardUrl,
     remoteChatTransport: config.remoteChatTransport,
     sshChatTransport: config.sshChatTransport,
     hasApiKey: config.apiKey.length > 0,
+    hasRemoteDashboardToken: config.remoteDashboardToken.length > 0,
     apiKeyLength: config.apiKey.length,
+    remoteDashboardTokenLength: config.remoteDashboardToken.length,
     ssh: config.ssh,
   };
 }
@@ -134,6 +144,14 @@ export function setConnectionConfig(config: ConnectionConfig): void {
   }
   if (config.mode === "remote" || config.apiKey.trim()) {
     data.remoteApiKey = config.apiKey;
+  }
+  const remoteDashboardUrl = config.remoteDashboardUrl || "";
+  const remoteDashboardToken = config.remoteDashboardToken || "";
+  if (config.mode === "remote" || remoteDashboardUrl.trim()) {
+    data.remoteDashboardUrl = remoteDashboardUrl;
+  }
+  if (config.mode === "remote" || remoteDashboardToken.trim()) {
+    data.remoteDashboardToken = remoteDashboardToken;
   }
   data.remoteChatTransport = normalizeRemoteChatTransport(
     config.remoteChatTransport,
@@ -156,6 +174,77 @@ export function resolveConnectionApiKeyUpdate(
     return existing.apiKey;
   }
   return "";
+}
+
+function deriveRemoteDashboardUrl(remoteUrl: string): string {
+  const raw = remoteUrl.trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    const pathname = url.pathname.replace(/\/+$/, "");
+    if (/\/hermes-api$/i.test(pathname)) {
+      url.pathname = pathname.replace(/\/hermes-api$/i, "/hermes-dashboard");
+      url.search = "";
+      url.hash = "";
+      return url.toString().replace(/\/+$/, "");
+    }
+  } catch {
+    // Fall back below.
+  }
+  return raw;
+}
+
+export function getRemoteDashboardUrl(config: ConnectionConfig): string {
+  const remoteDashboardUrl = config.remoteDashboardUrl || "";
+  const remoteUrl = config.remoteUrl || "";
+  return (
+    remoteDashboardUrl.trim() ||
+    deriveRemoteDashboardUrl(remoteUrl) ||
+    remoteUrl.trim()
+  );
+}
+
+export function getRemoteDashboardToken(config: ConnectionConfig): string {
+  return (
+    (config.remoteDashboardToken || "").trim() || (config.apiKey || "").trim()
+  );
+}
+
+function sameOrigin(left: string, right: string): boolean {
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
+export function getRemoteDashboardSessionConfig(
+  config: ConnectionConfig,
+  profile?: string,
+): {
+  remoteUrl: string;
+  apiKey: string;
+  fallbackApiKey?: string;
+  profile?: string;
+} {
+  const remoteUrl = getRemoteDashboardUrl(config);
+  const apiKey = getRemoteDashboardToken(config);
+  const gatewayApiKey = (config.apiKey || "").trim();
+  return {
+    remoteUrl,
+    apiKey,
+    // Some reverse-proxied Hermes deployments accept API_SERVER_KEY on the
+    // dashboard management API but use a separate/stale dashboard token. A
+    // fallback is safe only for the exact same origin, and remoteRequestJson
+    // retries it only after an authentication failure.
+    fallbackApiKey:
+      gatewayApiKey &&
+      gatewayApiKey !== apiKey &&
+      sameOrigin(remoteUrl, config.remoteUrl)
+        ? gatewayApiKey
+        : undefined,
+    profile,
+  };
 }
 
 // ── In-memory cache with TTL ─────────────────────────────

@@ -80,12 +80,22 @@ export interface ClarifyMessage {
   resolved?: boolean;
 }
 
+/** Remote runtime notices are operational metadata, not assistant prose. */
+export interface SystemMessage {
+  id: string;
+  kind: "system";
+  role: "agent";
+  title: string;
+  detail: string;
+}
+
 export type ChatMessage =
   | ChatBubbleMessage
   | ReasoningMessage
   | ToolCallMessage
   | ToolResultMessage
-  | ClarifyMessage;
+  | ClarifyMessage
+  | SystemMessage;
 
 export interface ActiveTurn {
   turnId: string;

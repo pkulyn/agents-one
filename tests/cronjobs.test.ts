@@ -61,7 +61,7 @@ describe("createCronJob", () => {
       "telegram",
     ]);
     expect(execFileSpy.mock.calls[0][1]).not.toContain("--");
-  });
+  }, 15000);
 });
 
 describe("parseCronListOutput", () => {

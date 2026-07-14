@@ -12,6 +12,11 @@ import {
   validateMessagingPlatformUpdate,
 } from "../shared/messaging-platforms";
 import { getApiUrl, getRemoteAuthHeader } from "./hermes";
+import { getConnectionConfig, getRemoteDashboardSessionConfig } from "./config";
+import { remoteRequestJson } from "./remote-sessions";
+
+const REMOTE_MESSAGING_UNAVAILABLE_MESSAGE =
+  "Remote Hermes dashboard does not expose the messaging platform management API. Configure gateway modules on the remote server, or update the remote Hermes dashboard API.";
 
 export function buildDesktopMessagingPlatforms(
   env: Record<string, string>,
@@ -147,39 +152,59 @@ export function testDesktopMessagingPlatform(
 }
 
 export async function fetchRemoteMessagingPlatforms(): Promise<MessagingPlatformsResponse> {
-  const res = await remoteMessagingFetch("/api/messaging/platforms");
-  const data = (await res.json()) as MessagingPlatformsResponse;
-  return { ...data, editable: true, source: "remote-api" };
+  try {
+    const data = await remoteMessagingFetch<MessagingPlatformsResponse>(
+      "/api/messaging/platforms",
+    );
+    return { ...data, editable: true, source: "remote-api" };
+  } catch (err) {
+    if (isRemoteMessagingUnavailable(err)) {
+      return {
+        ...buildMessagingPlatforms({}, {}, false),
+        editable: false,
+        message: REMOTE_MESSAGING_UNAVAILABLE_MESSAGE,
+        source: "remote-api",
+      };
+    }
+    throw err;
+  }
 }
 
 export async function updateRemoteMessagingPlatform(
   platformId: string,
   update: MessagingPlatformUpdate,
 ): Promise<{ ok: boolean; platform: string }> {
-  const res = await remoteMessagingFetch(
+  return remoteMessagingFetch<{ ok: boolean; platform: string }>(
     `/api/messaging/platforms/${encodeURIComponent(platformId)}`,
     {
       method: "PUT",
       body: JSON.stringify(update),
     },
   );
-  return (await res.json()) as { ok: boolean; platform: string };
 }
 
 export async function testRemoteMessagingPlatform(
   platformId: string,
 ): Promise<MessagingPlatformTestResponse> {
-  const res = await remoteMessagingFetch(
+  return remoteMessagingFetch<MessagingPlatformTestResponse>(
     `/api/messaging/platforms/${encodeURIComponent(platformId)}/test`,
     { method: "POST" },
   );
-  return (await res.json()) as MessagingPlatformTestResponse;
 }
 
-async function remoteMessagingFetch(
+async function remoteMessagingFetch<T>(
   path: string,
   init: RequestInit = {},
-): Promise<Response> {
+): Promise<T> {
+  const conn = getConnectionConfig();
+  if (conn.mode === "remote") {
+    return remoteRequestJson<T>(getRemoteDashboardSessionConfig(conn), path, {
+      method:
+        (init.method as "GET" | "POST" | "PATCH" | "PUT" | "DELETE") ?? "GET",
+      body: init.body ? JSON.parse(String(init.body)) : undefined,
+    });
+  }
+
   const headers: Record<string, string> = {
     ...getRemoteAuthHeader(),
     ...((init.headers as Record<string, string>) || {}),
@@ -194,5 +219,15 @@ async function remoteMessagingFetch(
       text || `Messaging platform API failed with HTTP ${res.status}`,
     );
   }
-  return res;
+  return (await res.json()) as T;
+}
+
+function isRemoteMessagingUnavailable(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const message = err.message.toLowerCase();
+  return (
+    message.startsWith("404:") ||
+    (message.startsWith("invalid json from ") &&
+      (message.includes("<!doctype html") || message.includes("<html")))
+  );
 }

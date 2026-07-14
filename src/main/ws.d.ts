@@ -6,7 +6,13 @@ declare module "ws" {
 
     readonly readyState: number;
 
-    constructor(address: string);
+    constructor(
+      address: string,
+      options?: {
+        headers?: Record<string, string>;
+        rejectUnauthorized?: boolean;
+      },
+    );
 
     close(code?: number, data?: string): void;
     on(event: "close", listener: (code: number, reason: Buffer) => void): this;

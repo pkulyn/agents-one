@@ -1,4 +1,5 @@
-import { getApiUrl, getRemoteAuthHeader } from "./hermes";
+import { getConnectionConfig, getRemoteDashboardSessionConfig } from "./config";
+import { remoteRequestJson } from "./remote-sessions";
 import type { InstalledSkill, SkillCliResult } from "./skills";
 
 // Remote (HTTP) mode routing for the Skills screen. The skills IPC handlers
@@ -29,37 +30,25 @@ async function skillsApi<T>(
   profile?: string,
   query?: Record<string, string>,
 ): Promise<T> {
-  const url = new URL(`${getApiUrl()}${path}`);
-  // All query params go through searchParams so encoding stays consistent —
-  // mixing pre-encoded params in `path` with searchParams.set() would
-  // re-serialize the former (%20 → +) only when a named profile is present.
+  const config = getRemoteDashboardSessionConfig(
+    getConnectionConfig(),
+    profile,
+  );
+  const pathUrl = new URL(path, "http://hermes.local");
   for (const [key, value] of Object.entries(query ?? {})) {
-    url.searchParams.set(key, value);
+    pathUrl.searchParams.set(key, value);
   }
-  // Scope to the requested profile on the unified dashboard; "default" needs
-  // no param (matches dashboardApiUrl's convention in remote-sessions.ts).
-  if (profile && profile !== "default") {
-    url.searchParams.set("profile", profile);
-  }
-  const headers: Record<string, string> = {
-    ...getRemoteAuthHeader(),
-    ...((init.headers as Record<string, string>) || {}),
-  };
-  if (init.body && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
-  const response = await fetch(url.toString(), { ...init, headers });
-  if (!response.ok) {
-    let detail = response.statusText;
-    try {
-      const body = (await response.json()) as { detail?: string };
-      if (body?.detail) detail = body.detail;
-    } catch {
-      // non-JSON error body — keep statusText
-    }
-    throw new Error(`Remote skills API ${response.status}: ${detail}`);
-  }
-  return (await response.json()) as T;
+  const scopedPath = `${pathUrl.pathname}${pathUrl.search}`;
+  // Reuse the shared dashboard client: it scopes named profiles, sends both
+  // supported auth headers, applies the narrowly configured TLS exception,
+  // and gives remote Skills the same timeout/error behavior as every other
+  // remote management surface.
+  return remoteRequestJson<T>(config, scopedPath, {
+    method:
+      (init.method as "GET" | "POST" | "PATCH" | "PUT" | "DELETE") ??
+      "GET",
+    body: init.body ? JSON.parse(String(init.body)) : undefined,
+  });
 }
 
 export async function remoteListInstalledSkills(

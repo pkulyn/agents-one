@@ -1,6 +1,7 @@
 import http from "http";
 import https from "https";
 import { dashboardApiUrl, type RemoteSessionConfig } from "./remote-sessions";
+import { configuredRemoteTlsOptions } from "./remote-tls";
 
 type RemoteRecord = Record<string, unknown>;
 
@@ -25,9 +26,15 @@ function remoteStatus(config: RemoteSessionConfig): Promise<RemoteRecord> {
       parsed,
       {
         method: "GET",
+        ...configuredRemoteTlsOptions(parsed.toString()),
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { "X-Hermes-Session-Token": token } : {}),
+          ...(token
+            ? {
+                Authorization: `Bearer ${token}`,
+                "X-Hermes-Session-Token": token,
+              }
+            : {}),
         },
       },
       (res) => {

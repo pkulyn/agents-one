@@ -23,6 +23,11 @@ export default function ConnectionPane(): React.JSX.Element {
     connApiKey,
     setConnApiKey,
     connApiKeyMask,
+    connDashboardUrl,
+    setConnDashboardUrl,
+    connDashboardToken,
+    setConnDashboardToken,
+    connDashboardTokenMask,
     connTesting,
     apiServerKeyMissing,
     setApiServerKeyMissing,
@@ -181,6 +186,43 @@ export default function ConnectionPane(): React.JSX.Element {
             />
             <div className="settings-field-hint">
               {t("settings.remoteApiKeyHint")}
+            </div>
+          </div>
+          <div className="settings-field">
+            <label className="settings-field-label">Remote Dashboard URL</label>
+            <input
+              className="input"
+              type="url"
+              value={connDashboardUrl}
+              onChange={(e) => setConnDashboardUrl(e.target.value)}
+              placeholder="http://192.168.1.100:9119"
+              onBlur={handleSaveConnection}
+            />
+            <div className="settings-field-hint">
+              Optional. Leave blank to auto-derive it from the remote URL, for
+              example /hermes-api to /hermes-dashboard.
+            </div>
+          </div>
+          <div className="settings-field">
+            <label className="settings-field-label">
+              Remote Dashboard Token
+            </label>
+            <input
+              className="input"
+              type="password"
+              value={connDashboardToken}
+              onChange={(e) => setConnDashboardToken(e.target.value)}
+              onFocus={(e) => {
+                if (connDashboardToken === connDashboardTokenMask) {
+                  e.currentTarget.select();
+                }
+              }}
+              placeholder="HERMES_DASHBOARD_SESSION_TOKEN"
+              onBlur={handleSaveConnection}
+            />
+            <div className="settings-field-hint">
+              Optional. Leave blank to reuse the API key; set this when the
+              dashboard uses a separate session token.
             </div>
           </div>
           <div className="settings-field">

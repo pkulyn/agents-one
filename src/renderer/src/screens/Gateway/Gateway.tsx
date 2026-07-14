@@ -481,6 +481,7 @@ function Gateway({ profile }: { profile?: string }): React.JSX.Element {
             <PlatformCard
               key={platform.id}
               platform={platform}
+              readOnly={catalog?.editable === false}
               draft={drafts[platform.id] ?? {}}
               isBusy={busyPlatform === platform.id}
               message={messages[platform.id] ?? null}
@@ -524,6 +525,7 @@ interface PlatformCardProps {
   ) => void | Promise<void>;
   onToggleVisibility: (platformId: string, fieldKey: string) => void;
   platform: MessagingPlatformInfo;
+  readOnly: boolean;
   visibleKeys: Set<string>;
 }
 
@@ -540,6 +542,7 @@ function PlatformCard({
   onToggleToolset,
   onToggleVisibility,
   platform,
+  readOnly,
   visibleKeys,
 }: PlatformCardProps): React.JSX.Element {
   const { t } = useI18n();
@@ -581,6 +584,7 @@ function PlatformCard({
   }, [modalOpen, closeModal]);
 
   function requestToolsetToggle(toolset: MessagingToolsetInfo): void {
+    if (readOnly) return;
     if (!toolset.enabled && toolset.risk === "high") {
       setPendingRiskKey(toolset.key);
       return;
@@ -627,7 +631,11 @@ function PlatformCard({
             <input
               type="checkbox"
               checked={platform.enabled}
-              disabled={isBusy || (!platform.configured && !platform.enabled)}
+              disabled={
+                readOnly ||
+                isBusy ||
+                (!platform.configured && !platform.enabled)
+              }
               onChange={() => void onToggle(platform)}
             />
             <span className="tools-toggle-track" />
@@ -649,7 +657,7 @@ function PlatformCard({
           )}
           <button
             className="btn-ghost gateway-icon-action"
-            disabled={isBusy}
+            disabled={readOnly || isBusy}
             onClick={() => void onTest(platform)}
             title={t("gateway.testTooltip")}
           >
@@ -787,6 +795,7 @@ function PlatformCard({
                               onChange={(event) =>
                                 onChange(platform.id, field, event.target.value)
                               }
+                              disabled={readOnly}
                               placeholder={placeholder}
                             />
                             {field.is_password && (
@@ -795,6 +804,7 @@ function PlatformCard({
                                 onClick={() =>
                                   onToggleVisibility(platform.id, field.key)
                                 }
+                                disabled={readOnly}
                                 title={
                                   isVisible
                                     ? t("gateway.hideValue")
@@ -812,6 +822,7 @@ function PlatformCard({
                               <button
                                 className="btn-ghost settings-toggle-btn"
                                 onClick={() => onClear(platform.id, field.key)}
+                                disabled={readOnly}
                                 title={t("gateway.clearSaved")}
                               >
                                 <Trash2 size={15} />
@@ -867,7 +878,7 @@ function PlatformCard({
                           <input
                             type="checkbox"
                             checked={toolset.enabled}
-                            disabled={isBusy}
+                            disabled={readOnly || isBusy}
                             onChange={() => requestToolsetToggle(toolset)}
                           />
                           <span className="tools-toggle-track" />
@@ -889,7 +900,7 @@ function PlatformCard({
                                 </button>
                                 <button
                                   className="btn btn-danger btn-sm"
-                                  disabled={isBusy}
+                                  disabled={readOnly || isBusy}
                                   onClick={() => {
                                     setPendingRiskKey(null);
                                     void onToggleToolset(platform, toolset);
@@ -911,7 +922,7 @@ function PlatformCard({
             <div className="gateway-modal-footer">
               <button
                 className="btn btn-secondary btn-sm"
-                disabled={isBusy}
+                disabled={readOnly || isBusy}
                 onClick={() => void onTest(platform)}
               >
                 <TestTube2 size={15} />
@@ -923,7 +934,7 @@ function PlatformCard({
               </button>
               <button
                 className="btn btn-primary btn-sm gateway-save-button"
-                disabled={!hasDraft || isBusy}
+                disabled={readOnly || !hasDraft || isBusy}
                 onClick={() => void onSave(platform)}
               >
                 <Save size={15} />
