@@ -10,6 +10,8 @@ const probeRemoteCoordinatorBridgeMock = vi.hoisted(() => vi.fn());
 const startRemoteCoordinatorPlanMock = vi.hoisted(() => vi.fn());
 const getRemoteCoordinatorPlanMock = vi.hoisted(() => vi.fn());
 const cancelRemoteCoordinatorPlanMock = vi.hoisted(() => vi.fn());
+const probeClaudeCodeRuntimeMock = vi.hoisted(() => vi.fn());
+const startClaudeCodeProcessMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../src/main/hermes", () => ({
   sendMessage: sendMessageMock,
@@ -21,6 +23,11 @@ vi.mock("../src/main/remote-coordinator-bridge", () => ({
   startRemoteCoordinatorPlan: startRemoteCoordinatorPlanMock,
   getRemoteCoordinatorPlan: getRemoteCoordinatorPlanMock,
   cancelRemoteCoordinatorPlan: cancelRemoteCoordinatorPlanMock,
+}));
+
+vi.mock("../src/main/claude-code-runtime", () => ({
+  probeClaudeCodeRuntime: probeClaudeCodeRuntimeMock,
+  startClaudeCodeProcess: startClaudeCodeProcessMock,
 }));
 
 let testHome: string;
@@ -46,6 +53,8 @@ describe("agent runtime registry", () => {
     startRemoteCoordinatorPlanMock.mockReset();
     getRemoteCoordinatorPlanMock.mockReset();
     cancelRemoteCoordinatorPlanMock.mockReset();
+    probeClaudeCodeRuntimeMock.mockReset();
+    startClaudeCodeProcessMock.mockReset();
     probeRemoteCoordinatorBridgeMock.mockResolvedValue({
       state: "not_found",
       capabilities: {},
@@ -298,6 +307,156 @@ describe("agent runtime registry", () => {
       "plan-2",
       { bearerToken: "protected-api-key" },
     );
+  });
+
+  it("probes, runs, archives artifacts, and cancels a local Claude Code runtime", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "claude-local",
+      name: "Claude Code local",
+      kind: "claude-code",
+      location: "local",
+      enabled: true,
+      config: {
+        executablePath: "D:\\efunds\\nodejs\\claude.cmd",
+        transport: "cli",
+        workspace: testHome,
+        timeoutMs: 10_000,
+      },
+    });
+    probeClaudeCodeRuntimeMock.mockResolvedValue({
+      healthy: true,
+      workspaceAccess: true,
+      message: "2.1.185 (Claude Code)",
+    });
+    await expect(runtimes.probeAgentRuntime("claude-local")).resolves.toMatchObject({
+      state: "healthy",
+      capabilities: expect.objectContaining({
+        taskDispatch: true,
+        cancellation: true,
+        artifacts: true,
+        workspaceAccess: true,
+      }),
+      message: "2.1.185 (Claude Code)",
+    });
+
+    let resolveCompletion!: (value: {
+      output: string;
+      worktreePath?: string;
+      diffSummary?: string;
+      artifacts: Array<{ kind: "worktree" | "diff" | "final"; label: string; path?: string; content?: string }>;
+    }) => void;
+    const cancel = vi.fn();
+    startClaudeCodeProcessMock.mockImplementationOnce((_config, _task, onOutput) => {
+      onOutput("Claude is working.\n");
+      return Promise.resolve({
+        worktreePath: join(testHome, "desktop", "worktrees", "claude-code", "task-1"),
+        cancel,
+        completion: new Promise((resolve) => {
+          resolveCompletion = resolve;
+        }),
+      });
+    });
+
+    const run = await runtimes.startAgentRuntimeTask("claude-local", {
+      prompt: "Implement safely.",
+      mode: "implementation",
+      workspace: testHome,
+    });
+    expect(run).toMatchObject({
+      status: "running",
+      output: "Claude is working.\n",
+      worktreePath: expect.stringContaining("claude-code"),
+    });
+    expect(startClaudeCodeProcessMock).toHaveBeenCalledWith(
+      expect.objectContaining({ executablePath: "D:\\efunds\\nodejs\\claude.cmd" }),
+      expect.objectContaining({ mode: "implementation", workspace: testHome }),
+      expect.any(Function),
+    );
+
+    resolveCompletion({
+      output: "Claude task complete.",
+      worktreePath: join(testHome, "desktop", "worktrees", "claude-code", "task-1"),
+      diffSummary: " docs/example.md | 1 +",
+      artifacts: [
+        { kind: "worktree", label: "Isolated worktree", path: join(testHome, "desktop", "worktrees", "claude-code", "task-1") },
+        { kind: "diff", label: "Git diff", content: "diff --git a/docs/example.md b/docs/example.md" },
+      ],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(runtimes.getAgentRuntimeRun(run.id)).resolves.toMatchObject({
+      status: "succeeded",
+      output: "Claude task complete.",
+      diffSummary: " docs/example.md | 1 +",
+      artifacts: expect.arrayContaining([
+        expect.objectContaining({ kind: "worktree", label: "Isolated worktree" }),
+        expect.objectContaining({ kind: "diff", label: "Git diff" }),
+      ]),
+    });
+
+    const cancelSecond = vi.fn();
+    startClaudeCodeProcessMock.mockImplementationOnce(() => Promise.resolve({
+      cancel: cancelSecond,
+      completion: new Promise(() => undefined),
+    }));
+    const cancellable = await runtimes.startAgentRuntimeTask("claude-local", {
+      prompt: "Long analysis.",
+      mode: "analysis",
+      workspace: testHome,
+    });
+    await expect(runtimes.cancelAgentRuntimeTask(cancellable.id)).resolves.toBe(true);
+    expect(cancelSecond).toHaveBeenCalledTimes(1);
+    await expect(runtimes.getAgentRuntimeRun(cancellable.id)).resolves.toMatchObject({
+      status: "cancelled",
+      error: "Runtime task was cancelled.",
+    });
+  });
+
+  it("times out a local Claude Code runtime and preserves captured output", async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtimes } = await loadModules();
+      runtimes.saveAgentRuntime({
+        id: "claude-timeout",
+        name: "Claude Code timeout",
+        kind: "claude-code",
+        location: "local",
+        enabled: true,
+        config: {
+          executablePath: "D:\\efunds\\nodejs\\claude.cmd",
+          transport: "cli",
+          workspace: testHome,
+          timeoutMs: 1_000,
+        },
+      });
+      const cancel = vi.fn();
+      startClaudeCodeProcessMock.mockImplementationOnce((_config, _task, onOutput) => {
+        onOutput("partial output\n");
+        return Promise.resolve({
+          worktreePath: join(testHome, "desktop", "worktrees", "claude-code", "task-timeout"),
+          cancel,
+          completion: new Promise(() => undefined),
+        });
+      });
+
+      const run = await runtimes.startAgentRuntimeTask("claude-timeout", {
+        prompt: "Slow implementation.",
+        mode: "implementation",
+        workspace: testHome,
+        timeoutMs: 1_000,
+      });
+      vi.advanceTimersByTime(1_000);
+
+      expect(cancel).toHaveBeenCalledTimes(1);
+      await expect(runtimes.getAgentRuntimeRun(run.id)).resolves.toMatchObject({
+        status: "timed_out",
+        output: "partial output\n",
+        worktreePath: expect.stringContaining("claude-code"),
+        error: "Runtime task exceeded 1000ms.",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("probes, starts, refreshes, and cancels a remote OpenClaw runtime", async () => {

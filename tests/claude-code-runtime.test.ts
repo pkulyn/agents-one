@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   claudeCodeExecArgs,
   claudeCodeInvocation,
+  claudeCodeLoggedIn,
   filterClaudeCodeStreamLine,
 } from "../src/main/claude-code-runtime";
 
@@ -34,7 +35,14 @@ describe("Claude Code runtime invocation", () => {
 
   it("removes startup metadata while retaining final output and errors", () => {
     expect(filterClaudeCodeStreamLine('{"type":"system","subtype":"init"}')).toBe("");
+    expect(filterClaudeCodeStreamLine('{"type":"system","subtype":"hook_response","output":"large hook payload"}')).toBe("");
     expect(filterClaudeCodeStreamLine('{"type":"assistant","message":{"content":[]}}')).not.toBe("");
     expect(filterClaudeCodeStreamLine('{"type":"result","result":"done"}')).not.toBe("");
+  });
+
+  it("recognizes authenticated Claude Code status without storing credentials", () => {
+    expect(claudeCodeLoggedIn('{"loggedIn":true,"authMethod":"oauth_token"}')).toBe(true);
+    expect(claudeCodeLoggedIn('{"loggedIn":false}')).toBe(false);
+    expect(claudeCodeLoggedIn("not logged in")).toBe(false);
   });
 });

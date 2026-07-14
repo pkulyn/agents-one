@@ -33,10 +33,12 @@ import type {
 } from "../shared/agent-runtimes";
 import type {
   AssignProjectTaskInput,
+  CreateProjectTasksFromPlanInput,
   CreateProjectInput,
   CreateProjectTaskInput,
   ProjectContextPackage,
   ProjectControlProject,
+  ProjectPlanDraft,
   ProjectControlTask,
   ProjectTaskEvent,
   ProjectTaskStatus,
@@ -44,6 +46,7 @@ import type {
 import type {
   CreateTaskCenterTaskInput,
   TaskCenterTask,
+  TaskCenterWorktree,
 } from "../shared/task-center";
 
 /**
@@ -365,6 +368,10 @@ const hermesAPI = {
     ipcRenderer.invoke("set-task-center-acceptance", id, acceptance),
   openTaskCenterWorktree: (worktree: string): Promise<boolean> =>
     ipcRenderer.invoke("open-task-center-worktree", worktree),
+  listTaskCenterWorktrees: (): Promise<TaskCenterWorktree[]> =>
+    ipcRenderer.invoke("list-task-center-worktrees"),
+  removeTaskCenterWorktree: (worktree: string): Promise<boolean> =>
+    ipcRenderer.invoke("remove-task-center-worktree", worktree),
   listProjectControlProjects: (): Promise<ProjectControlProject[]> =>
     ipcRenderer.invoke("list-project-control-projects"),
   createProjectControlProject: (input: CreateProjectInput): Promise<ProjectControlProject> =>
@@ -389,6 +396,10 @@ const hermesAPI = {
     ipcRenderer.invoke("dispatch-project-control-task", taskId),
   startProjectCoordinatorPlan: (projectId: string): Promise<ProjectControlTask> =>
     ipcRenderer.invoke("start-project-coordinator-plan", projectId),
+  previewProjectPlanTasks: (projectId: string, sourceTaskId: string): Promise<ProjectPlanDraft> =>
+    ipcRenderer.invoke("preview-project-plan-tasks", projectId, sourceTaskId),
+  createProjectTasksFromPlan: (input: CreateProjectTasksFromPlanInput): Promise<ProjectControlTask[]> =>
+    ipcRenderer.invoke("create-project-tasks-from-plan", input),
   reviewProjectControlTask: (
     taskId: string,
     acceptance: "accepted" | "rejected",

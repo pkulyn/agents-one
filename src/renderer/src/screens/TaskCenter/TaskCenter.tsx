@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, FolderOpen, Play, RefreshCw, Square } from "lucide-react";
+import { Check, Copy, FileText, FolderOpen, Play, RefreshCw, Square, Trash2, X } from "lucide-react";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
-import type { TaskCenterTask } from "../../../../shared/task-center";
+import type { TaskCenterTask, TaskCenterWorktree } from "../../../../shared/task-center";
 import { summarizeTaskOutput } from "./taskOutput";
 
 const STATUS_LABEL: Record<TaskCenterTask["status"], string> = {
@@ -18,9 +18,14 @@ function formatDate(value?: number): string {
   return value ? new Date(value).toLocaleString() : "-";
 }
 
+function artifactKey(task: TaskCenterTask, index: number): string {
+  return `${task.id}-artifact-${index}`;
+}
+
 export default function TaskCenter(): React.JSX.Element {
   const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
   const [tasks, setTasks] = useState<TaskCenterTask[]>([]);
+  const [worktrees, setWorktrees] = useState<TaskCenterWorktree[]>([]);
   const [runtimeId, setRuntimeId] = useState("");
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -42,6 +47,7 @@ export default function TaskCenter(): React.JSX.Element {
       ]);
       setRuntimes(nextRuntimes);
       setTasks(nextTasks);
+      setWorktrees(await window.hermesAPI.listTaskCenterWorktrees());
       setRuntimeId((current) => current || nextRuntimes.find((runtime) => runtime.enabled && runtime.kind === "hermes")?.id || nextRuntimes.find((runtime) => runtime.enabled)?.id || "");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load Task Center.");
@@ -105,6 +111,62 @@ export default function TaskCenter(): React.JSX.Element {
     await refresh();
   }
 
+  async function copyText(value: string): Promise<void> {
+    await navigator.clipboard?.writeText(value);
+  }
+
+  async function removeWorktree(worktree: TaskCenterWorktree): Promise<void> {
+    if (worktree.active) return;
+    const confirmed = window.confirm(`Remove this isolated worktree?\n\n${worktree.path}`);
+    if (!confirmed) return;
+    await window.hermesAPI.removeTaskCenterWorktree(worktree.path);
+    await refresh();
+  }
+
+  function renderArtifacts(task: TaskCenterTask): React.JSX.Element | null {
+    if (!task.artifacts?.length && !task.worktreePath && !task.diffSummary) return null;
+    const diffArtifacts = task.artifacts?.filter((artifact) => artifact.kind === "diff" && artifact.content) || [];
+    const finalArtifacts = task.artifacts?.filter((artifact) => artifact.kind === "final" && artifact.content) || [];
+    return (
+      <section className="task-review-panel" aria-label={`${task.title} review artifacts`}>
+        <div className="task-review-heading">
+          <FileText size={15} />
+          <span>Review artifacts</span>
+          {task.acceptance && <small>{task.acceptance}</small>}
+        </div>
+        {task.worktreePath && (
+          <div className="task-artifact-row">
+            <div>
+              <strong>Isolated worktree</strong>
+              <code>{task.worktreePath}</code>
+            </div>
+            <button className="icon-btn" type="button" title="Open isolated worktree" aria-label="Open isolated worktree" onClick={() => void window.hermesAPI.openTaskCenterWorktree(task.worktreePath!)}>
+              <FolderOpen size={16} />
+            </button>
+          </div>
+        )}
+        {task.diffSummary && <pre className="task-result">{task.diffSummary}</pre>}
+        {diffArtifacts.map((artifact, index) => (
+          <details className="task-artifact-diff" key={artifactKey(task, index)} open>
+            <summary>
+              <span>{artifact.label || "Git diff"}</span>
+              <button className="icon-btn" type="button" title="Copy diff" aria-label="Copy diff" onClick={(event) => { event.preventDefault(); void copyText(artifact.content || ""); }}>
+                <Copy size={14} />
+              </button>
+            </summary>
+            <pre>{artifact.content}</pre>
+          </details>
+        ))}
+        {finalArtifacts.map((artifact, index) => (
+          <details className="task-output" key={`${artifactKey(task, index)}-final`}>
+            <summary>{artifact.label || "Final artifact"}</summary>
+            <pre>{artifact.content}</pre>
+          </details>
+        ))}
+      </section>
+    );
+  }
+
   return (
     <section className="task-center" aria-label="Task Center">
       <header className="task-center-header">
@@ -166,18 +228,38 @@ export default function TaskCenter(): React.JSX.Element {
               <div className="task-row-meta">
                 <span>{task.runtimeId}</span><span>{task.mode}</span><span>{formatDate(task.startedAt || task.createdAt)}</span>
               </div>
-              {(task.error || task.diffSummary) && <pre className="task-result">{task.error || task.diffSummary}</pre>}
+              {task.recovery && <p className="task-recovery">{task.recovery.message}</p>}
+              {task.error && <pre className="task-result">{task.error}</pre>}
+              {renderArtifacts(task)}
               {renderTaskOutput(task)}
             </div>
             <div className="task-row-actions">
               {task.status === "running" && <button className="icon-btn" type="button" title="Cancel task" aria-label="Cancel task" onClick={() => void cancel(task)}><Square size={15} /></button>}
-              {task.worktreePath && <button className="icon-btn" type="button" title="Open isolated worktree" aria-label="Open isolated worktree" onClick={() => void window.hermesAPI.openTaskCenterWorktree(task.worktreePath!)}><FolderOpen size={16} /></button>}
               {task.status === "review_required" && <button className="icon-btn" type="button" title="Accept reviewed result" aria-label="Accept reviewed result" onClick={() => void accept(task, "accepted")}><Check size={16} /></button>}
+              {task.status === "review_required" && <button className="icon-btn" type="button" title="Reject reviewed result" aria-label="Reject reviewed result" onClick={() => void accept(task, "rejected")}><X size={16} /></button>}
             </div>
           </article>
         ))}
         {tasks.length === 0 && <div className="task-empty">No tasks have been dispatched.</div>}
       </div>
+      <section className="task-worktrees" aria-label="Managed worktrees">
+        <div className="task-worktrees-heading">
+          <h2>Managed worktrees</h2>
+          <button className="icon-btn" type="button" onClick={() => void refresh()} title="Refresh worktrees" aria-label="Refresh worktrees"><RefreshCw size={15} /></button>
+        </div>
+        {worktrees.map((worktree) => (
+          <div className="task-worktree-row" key={worktree.path}>
+            <div>
+              <strong>{worktree.runtimeKind}</strong>
+              <code>{worktree.path}</code>
+              <small>{worktree.taskTitle || "Unlinked worktree"}{worktree.taskStatus ? ` | ${worktree.taskStatus}` : ""}</small>
+            </div>
+            <button className="icon-btn" type="button" title="Open worktree" aria-label={`Open worktree ${worktree.path}`} onClick={() => void window.hermesAPI.openTaskCenterWorktree(worktree.path)}><FolderOpen size={15} /></button>
+            <button className="icon-btn" type="button" title={worktree.active ? "Worktree is still active" : "Remove worktree"} aria-label={`Remove worktree ${worktree.path}`} disabled={worktree.active} onClick={() => void removeWorktree(worktree)}><Trash2 size={15} /></button>
+          </div>
+        ))}
+        {worktrees.length === 0 && <div className="task-empty">No managed worktrees found.</div>}
+      </section>
     </section>
   );
 }

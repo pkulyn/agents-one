@@ -39,10 +39,12 @@ import type {
 } from "../shared/agent-runtimes";
 import type {
   AssignProjectTaskInput,
+  CreateProjectTasksFromPlanInput,
   CreateProjectInput,
   CreateProjectTaskInput,
   ProjectContextPackage,
   ProjectControlProject,
+  ProjectPlanDraft,
   ProjectControlTask,
   ProjectTaskEvent,
   ProjectTaskStatus,
@@ -50,6 +52,7 @@ import type {
 import type {
   CreateTaskCenterTaskInput,
   TaskCenterTask,
+  TaskCenterWorktree,
 } from "../shared/task-center";
 
 interface ElectronAPI {
@@ -380,6 +383,8 @@ interface HermesAPI {
     acceptance: "accepted" | "rejected",
   ) => Promise<TaskCenterTask | null>;
   openTaskCenterWorktree: (worktree: string) => Promise<boolean>;
+  listTaskCenterWorktrees: () => Promise<TaskCenterWorktree[]>;
+  removeTaskCenterWorktree: (worktree: string) => Promise<boolean>;
   listProjectControlProjects: () => Promise<ProjectControlProject[]>;
   createProjectControlProject: (input: CreateProjectInput) => Promise<ProjectControlProject>;
   setProjectControlStatus: (
@@ -394,6 +399,8 @@ interface HermesAPI {
   assignProjectControlTask: (input: AssignProjectTaskInput) => Promise<ProjectControlTask>;
   dispatchProjectControlTask: (taskId: string) => Promise<ProjectControlTask>;
   startProjectCoordinatorPlan: (projectId: string) => Promise<ProjectControlTask>;
+  previewProjectPlanTasks: (projectId: string, sourceTaskId: string) => Promise<ProjectPlanDraft>;
+  createProjectTasksFromPlan: (input: CreateProjectTasksFromPlanInput) => Promise<ProjectControlTask[]>;
   reviewProjectControlTask: (
     taskId: string,
     acceptance: "accepted" | "rejected",

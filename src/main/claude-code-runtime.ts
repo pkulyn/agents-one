@@ -120,6 +120,15 @@ function createClaudeOutputFilter(): (chunk: string, flush?: boolean) => string 
   };
 }
 
+export function claudeCodeLoggedIn(authStatusOutput: string): boolean {
+  try {
+    const parsed = JSON.parse(authStatusOutput) as { loggedIn?: unknown };
+    return parsed.loggedIn === true;
+  } catch {
+    return /\blogged\s*in\b/i.test(authStatusOutput) && !/\bnot\s+logged\s*in\b/i.test(authStatusOutput);
+  }
+}
+
 async function command(invocation: ClaudeInvocation, args: string[], cwd?: string): Promise<string> {
   const result = await execFile(invocation.command, [...invocation.prefix, ...args], {
     cwd,
@@ -195,9 +204,13 @@ export async function probeClaudeCodeRuntime(config: ClaudeCodeRuntimeConfig): P
   try {
     const invocation = claudeCodeInvocation(configuredExecutable(config));
     const version = await command(invocation, ["--version"]);
+    const authStatus = await command(invocation, ["auth", "status"]);
+    if (!claudeCodeLoggedIn(authStatus)) {
+      throw new Error("Claude Code is not logged in. Run `claude auth login`.");
+    }
     const workspace = requestedWorkspace(config);
     if (workspace) await gitRoot(workspace);
-    return { healthy: true, workspaceAccess: Boolean(workspace), message: version || "Claude Code CLI is available." };
+    return { healthy: true, workspaceAccess: Boolean(workspace), message: version || "Claude Code CLI is available and authenticated." };
   } catch (error) {
     return {
       healthy: false,

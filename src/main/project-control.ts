@@ -10,15 +10,20 @@ import {
   setTaskCenterAcceptance,
 } from "./task-center";
 import type { TaskCenterTask } from "../shared/task-center";
+import type { AgentRuntimeKind } from "../shared/agent-runtimes";
 import type {
   AssignProjectTaskInput,
+  CreateProjectTasksFromPlanInput,
   CreateProjectInput,
   CreateProjectTaskInput,
   ProjectArtifactReference,
   ProjectContextPackage,
   ProjectControlProject,
   ProjectControlTask,
+  ProjectPlanDraft,
+  ProjectPlanDraftTask,
   ProjectTaskEvent,
+  ProjectRole,
   ProjectStatus,
   ProjectTaskStatus,
 } from "../shared/project-control";
@@ -29,6 +34,8 @@ const MAX_TASKS = 1_000;
 const MAX_EVENTS = 5_000;
 const MAX_ARTIFACTS = 2_000;
 const MAX_CONTEXT_PACKAGES = 2_000;
+const RUNTIME_KINDS = new Set<AgentRuntimeKind>(["hermes", "openclaw", "codex", "claude-code"]);
+const PROJECT_ROLES = new Set<ProjectRole>(["manager", "implementer", "tester", "reviewer", "acceptor"]);
 
 interface ProjectControlState {
   version: number;
@@ -85,6 +92,154 @@ function requiredText(value: unknown, label: string, maxLength: number): string 
     throw new Error(`${label} must be between 1 and ${maxLength} characters.`);
   }
   return value.trim();
+}
+
+function optionalText(value: unknown, maxLength: number): string | undefined {
+  if (typeof value === "string" && value.trim()) return value.trim().slice(0, maxLength);
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => typeof item === "string" ? item.trim() : "")
+      .filter(Boolean);
+    if (parts.length) return parts.join("\n").slice(0, maxLength);
+  }
+  return undefined;
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function runtimeKind(value: unknown): AgentRuntimeKind | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  const kind = normalized === "claude" ? "claude-code" : normalized;
+  return RUNTIME_KINDS.has(kind as AgentRuntimeKind) ? kind as AgentRuntimeKind : undefined;
+}
+
+function planRole(value: unknown, kind?: AgentRuntimeKind): ProjectRole {
+  if (typeof value === "string" && PROJECT_ROLES.has(value as ProjectRole)) return value as ProjectRole;
+  if (kind === "codex" || kind === "claude-code") return "implementer";
+  if (kind === "hermes" || kind === "openclaw") return "manager";
+  return "implementer";
+}
+
+function planMode(value: unknown, role: ProjectRole, kind?: AgentRuntimeKind): "analysis" | "implementation" {
+  if (value === "analysis" || value === "implementation") return value;
+  return role === "implementer" && (kind === "codex" || kind === "claude-code") ? "implementation" : "analysis";
+}
+
+function parseJsonObjectFromText(source: string): unknown | null {
+  for (let start = source.indexOf("{"); start >= 0; start = source.indexOf("{", start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < source.length; index += 1) {
+      const char = source[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === "\"") inString = false;
+        continue;
+      }
+      if (char === "\"") {
+        inString = true;
+      } else if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            return JSON.parse(source.slice(start, index + 1));
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function extractTaskObjects(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  const record = objectRecord(value);
+  if (!record) return [];
+  if (Array.isArray(record.tasks)) return record.tasks;
+  const plan = objectRecord(record.plan);
+  if (Array.isArray(plan?.tasks)) return plan.tasks;
+  if (Array.isArray(record.phases)) {
+    return record.phases.flatMap((phase) => {
+      const phaseRecord = objectRecord(phase);
+      return Array.isArray(phaseRecord?.tasks) ? phaseRecord.tasks : [];
+    });
+  }
+  return [];
+}
+
+function draftTaskFromObject(value: unknown): ProjectPlanDraftTask | null {
+  const record = objectRecord(value);
+  if (!record) return null;
+  const kind = runtimeKind(record.suggestedRuntimeKind ?? record.runtimeKind ?? record.runtime);
+  const role = planRole(record.role, kind);
+  const title = optionalText(record.title ?? record.name, 160);
+  const requirement = optionalText(record.requirement ?? record.description ?? record.details ?? record.prompt, 50_000);
+  const acceptanceCriteria = optionalText(
+    record.acceptanceCriteria ?? record.acceptance ?? record.definitionOfDone ?? record.done,
+    20_000,
+  );
+  if (!title || !requirement) return null;
+  return {
+    title,
+    requirement,
+    acceptanceCriteria: acceptanceCriteria || "Human review confirms the task meets the project objective.",
+    ...(kind ? { suggestedRuntimeKind: kind } : {}),
+    role,
+    mode: planMode(record.mode, role, kind),
+  };
+}
+
+function sourceTextFromTask(direct: TaskCenterTask): string {
+  const artifactText = (direct.artifacts || [])
+    .map((artifact) => artifact.content)
+    .filter((content): content is string => Boolean(content?.trim()))
+    .join("\n\n");
+  return [artifactText, direct.output].filter((item): item is string => Boolean(item?.trim())).join("\n\n").trim();
+}
+
+function parsePlanDraft(projectId: string, sourceTask: ProjectControlTask, direct: TaskCenterTask): ProjectPlanDraft {
+  const warnings: string[] = [];
+  const source = sourceTextFromTask(direct);
+  if (!source) {
+    return {
+      projectId,
+      sourceTaskId: sourceTask.id,
+      sourceTaskCenterTaskId: direct.id,
+      tasks: [],
+      warnings: ["The coordinator run has no plan text or final artifact yet."],
+    };
+  }
+  const parsed = parseJsonObjectFromText(source);
+  const tasks = extractTaskObjects(parsed)
+    .map(draftTaskFromObject)
+    .filter((task): task is ProjectPlanDraftTask => Boolean(task))
+    .slice(0, 20);
+  if (tasks.length) {
+    return { projectId, sourceTaskId: sourceTask.id, sourceTaskCenterTaskId: direct.id, tasks, warnings };
+  }
+  warnings.push("Structured task JSON was not found. A single manual review task was created from the plan text.");
+  return {
+    projectId,
+    sourceTaskId: sourceTask.id,
+    sourceTaskCenterTaskId: direct.id,
+    tasks: [{
+      title: "Review coordinator plan",
+      requirement: source.slice(0, 50_000),
+      acceptanceCriteria: "Human review converts this coordinator plan into concrete project tasks.",
+      role: "manager",
+      mode: "analysis",
+    }],
+    warnings,
+  };
 }
 
 function event(
@@ -429,6 +584,72 @@ export async function startCoordinatorPlanningTask(projectId: string): Promise<P
   });
   writeState(nextState);
   return plannedTask;
+}
+
+export async function previewProjectPlanTasks(projectId: string, sourceTaskId: string): Promise<ProjectPlanDraft> {
+  const state = readState();
+  const project = getProject(state, requiredText(projectId, "Project ID", 80));
+  const sourceTask = getTask(state, requiredText(sourceTaskId, "Source task ID", 80));
+  if (sourceTask.projectId !== project.id) throw new Error("Source task must belong to the selected project.");
+  if (!sourceTask.directTaskCenterTaskId) throw new Error("Source task has no Task Center run to parse.");
+  const direct = (await listTaskCenterTasks()).find((item) => item.id === sourceTask.directTaskCenterTaskId);
+  if (!direct) throw new Error("Coordinator Task Center run was not found.");
+  return parsePlanDraft(project.id, sourceTask, direct);
+}
+
+export async function createProjectTasksFromPlan(input: CreateProjectTasksFromPlanInput): Promise<ProjectControlTask[]> {
+  const projectId = requiredText(input?.projectId, "Project ID", 80);
+  const sourceTaskId = requiredText(input?.sourceTaskId, "Source task ID", 80);
+  const state = readState();
+  const project = getProject(state, projectId);
+  if (project.status !== "active") throw new Error("Plan tasks can be created only in an active project.");
+  const sourceTask = getTask(state, sourceTaskId);
+  if (sourceTask.projectId !== project.id) throw new Error("Source task must belong to the selected project.");
+  if (state.tasks.some((task) => task.projectId === project.id && task.parentTaskId === sourceTask.id)) {
+    throw new Error("Project tasks have already been created from this coordinator plan.");
+  }
+  const draft = input.tasks?.length
+    ? { tasks: input.tasks.slice(0, 20), warnings: [] }
+    : await previewProjectPlanTasks(projectId, sourceTaskId);
+  if (!draft.tasks.length) throw new Error("Coordinator plan does not contain any task drafts.");
+
+  const now = Date.now();
+  const created = draft.tasks.map((draftTask) => {
+    const task: ProjectControlTask = {
+      id: `project-task-${randomUUID()}`,
+      projectId: project.id,
+      parentTaskId: sourceTask.id,
+      title: requiredText(draftTask.title, "Task title", 160),
+      requirement: requiredText(draftTask.requirement, "Task requirement", 50_000),
+      acceptanceCriteria: requiredText(draftTask.acceptanceCriteria, "Acceptance criteria", 20_000),
+      dependencies: [],
+      status: "ready",
+      ...(draftTask.suggestedRuntimeKind ? { suggestedRuntimeKind: draftTask.suggestedRuntimeKind } : {}),
+      suggestedRole: draftTask.role,
+      suggestedMode: draftTask.mode,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.tasks.push(task);
+    event(state, {
+      projectId: project.id,
+      taskId: task.id,
+      type: "task_created",
+      actor: { kind: "control_plane" },
+      summary: `Task created from coordinator plan: ${task.title}.`,
+    });
+    return task;
+  });
+  project.updatedAt = now;
+  event(state, {
+    projectId: project.id,
+    taskId: sourceTask.id,
+    type: "progress",
+    actor: { kind: "control_plane" },
+    summary: `Created ${created.length} task(s) from coordinator plan.`,
+  });
+  writeState(state);
+  return created;
 }
 
 export async function reviewProjectTask(

@@ -28,6 +28,22 @@ export interface TaskCenterTask {
   diffSummary?: string;
   artifacts?: AgentRuntimeArtifact[];
   acceptance?: "pending" | "accepted" | "rejected";
+  recovery?: {
+    reason: "desktop_restarted";
+    message: string;
+    at: number;
+  };
+}
+
+export interface TaskCenterWorktree {
+  path: string;
+  runtimeKind: "codex" | "claude-code" | "unknown";
+  exists: boolean;
+  updatedAt: number;
+  taskId?: string;
+  taskTitle?: string;
+  taskStatus?: TaskCenterStatus;
+  active: boolean;
 }
 
 export interface CreateTaskCenterTaskInput {

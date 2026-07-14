@@ -1,4 +1,4 @@
-import type { AgentRuntimeArtifact } from "./agent-runtimes";
+import type { AgentRuntimeArtifact, AgentRuntimeKind } from "./agent-runtimes";
 
 export type ProjectCoordinatorKind = "runtime" | "human";
 export type ProjectRole = "manager" | "implementer" | "tester" | "reviewer" | "acceptor";
@@ -51,6 +51,9 @@ export interface ProjectControlTask {
   acceptanceCriteria: string;
   status: ProjectTaskStatus;
   dependencies: string[];
+  suggestedRuntimeKind?: AgentRuntimeKind;
+  suggestedRole?: ProjectRole;
+  suggestedMode?: "analysis" | "implementation";
   assignment?: ProjectTaskAssignment;
   contextPackageId?: string;
   directTaskCenterTaskId?: string;
@@ -130,4 +133,27 @@ export interface AssignProjectTaskInput {
   role: ProjectRole;
   mode: "analysis" | "implementation";
   workspace?: string;
+}
+
+export interface ProjectPlanDraftTask {
+  title: string;
+  requirement: string;
+  acceptanceCriteria: string;
+  suggestedRuntimeKind?: AgentRuntimeKind;
+  role: ProjectRole;
+  mode: "analysis" | "implementation";
+}
+
+export interface ProjectPlanDraft {
+  projectId: string;
+  sourceTaskId: string;
+  sourceTaskCenterTaskId?: string;
+  tasks: ProjectPlanDraftTask[];
+  warnings: string[];
+}
+
+export interface CreateProjectTasksFromPlanInput {
+  projectId: string;
+  sourceTaskId: string;
+  tasks?: ProjectPlanDraftTask[];
 }

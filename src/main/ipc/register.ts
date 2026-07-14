@@ -8,10 +8,10 @@ import {
   dialog,
   clipboard,
 } from "electron";
-import { extname, relative, resolve } from "path";
+import { extname } from "path";
 import { randomUUID } from "crypto";
 import { open as openFile, readdir, readFile, stat } from "fs/promises";
-import { getActiveProfileNameSync, profileHome } from "../utils";
+import { getActiveProfileNameSync } from "../utils";
 import type { Attachment } from "../../shared/attachments";
 import type { SessionModelOverride } from "../../shared/model-override";
 import type { AppLocale } from "../../shared/i18n/types";
@@ -242,6 +242,7 @@ import type {
 import type { CreateTaskCenterTaskInput } from "../../shared/task-center";
 import type {
   AssignProjectTaskInput,
+  CreateProjectTasksFromPlanInput,
   CreateProjectInput,
   CreateProjectTaskInput,
   ProjectTaskStatus,
@@ -249,7 +250,10 @@ import type {
 import {
   cancelTaskCenterTask,
   createTaskCenterTask,
+  listTaskCenterWorktrees,
   listTaskCenterTasks,
+  removeTaskCenterWorktree,
+  resolveManagedWorktreePath,
   setTaskCenterAcceptance,
 } from "../task-center";
 import {
@@ -259,10 +263,12 @@ import {
   createProjectTask,
   cancelProjectTask,
   dispatchProjectTask,
+  createProjectTasksFromPlan,
   listProjectEvents,
   listProjectArtifacts,
   listProjectTasks,
   listProjects,
+  previewProjectPlanTasks,
   setProjectTaskStatus,
   setProjectStatus,
   reviewProjectTask,
@@ -1277,23 +1283,15 @@ export function registerIpcHandlers(context: IpcContext): void {
       setTaskCenterAcceptance(id, acceptance),
   );
   ipcMain.handle("open-task-center-worktree", async (_event, worktree: string) => {
-    if (typeof worktree !== "string" || !worktree.trim()) {
-      throw new Error("Worktree path is required.");
-    }
-    const root = resolve(
-      profileHome(getActiveProfileNameSync()),
-      "desktop",
-      "worktrees",
-    );
-    const target = resolve(worktree);
-    const outside = relative(root, target);
-    if (!outside || outside.startsWith("..") || /^[\\/]/.test(outside)) {
-      throw new Error("Task worktree path is outside the managed worktree directory.");
-    }
+    const target = resolveManagedWorktreePath(worktree);
     const result = await shell.openPath(target);
     if (result) throw new Error("Could not open the task worktree.");
     return true;
   });
+  ipcMain.handle("list-task-center-worktrees", () => listTaskCenterWorktrees());
+  ipcMain.handle("remove-task-center-worktree", (_event, worktree: string) =>
+    removeTaskCenterWorktree(worktree),
+  );
   ipcMain.handle("list-project-control-projects", () => listProjects());
   ipcMain.handle("create-project-control-project", (_event, input: CreateProjectInput) =>
     createProject(input),
@@ -1323,6 +1321,12 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle("start-project-coordinator-plan", (_event, projectId: string) =>
     startCoordinatorPlanningTask(projectId),
+  );
+  ipcMain.handle("preview-project-plan-tasks", (_event, projectId: string, sourceTaskId: string) =>
+    previewProjectPlanTasks(projectId, sourceTaskId),
+  );
+  ipcMain.handle("create-project-tasks-from-plan", (_event, input: CreateProjectTasksFromPlanInput) =>
+    createProjectTasksFromPlan(input),
   );
   ipcMain.handle(
     "review-project-control-task",
