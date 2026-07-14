@@ -2,6 +2,36 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
+// Node 22 can expose a partial localStorage object when NODE_OPTIONS carries an
+// invalid --localstorage-file path. JSDOM then does not replace it, leaving
+// renderer tests without clear()/removeItem(). Keep the test browser contract
+// complete without changing production renderer behavior.
+if (
+  typeof globalThis.localStorage === "undefined" ||
+  typeof globalThis.localStorage.clear !== "function"
+) {
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      get length(): number {
+        return values.size;
+      },
+      clear: (): void => {
+        values.clear();
+      },
+      getItem: (key: string): string | null => values.get(key) ?? null,
+      key: (index: number): string | null => Array.from(values.keys())[index] ?? null,
+      removeItem: (key: string): void => {
+        values.delete(key);
+      },
+      setItem: (key: string, value: string): void => {
+        values.set(key, String(value));
+      },
+    },
+  });
+}
+
 // Mock react-loader-spinner which fails to load in test environment
 vi.mock("react-loader-spinner", () => ({
   Grid: () => null,

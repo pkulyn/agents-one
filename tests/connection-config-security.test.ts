@@ -107,6 +107,67 @@ describe("connection config secret exposure", () => {
     });
   });
 
+  it("uses the gateway API key as a dashboard fallback only for the same origin", async () => {
+    const { getConnectionConfig, getRemoteDashboardSessionConfig, setConnectionConfig } =
+      await loadConnectionConfigModule();
+    const ssh = getConnectionConfig().ssh;
+
+    setConnectionConfig({
+      mode: "remote",
+      remoteUrl: "https://hermes.example/hermes-api",
+      apiKey: "gateway-secret",
+      remoteDashboardUrl: "https://hermes.example/hermes-dashboard",
+      remoteDashboardToken: "dashboard-secret",
+      remoteChatTransport: "auto",
+      sshChatTransport: "auto",
+      ssh,
+    });
+
+    expect(getRemoteDashboardSessionConfig(getConnectionConfig())).toMatchObject({
+      apiKey: "dashboard-secret",
+      fallbackApiKey: "gateway-secret",
+    });
+
+    setConnectionConfig({
+      ...getConnectionConfig(),
+      remoteDashboardUrl: "https://other.example/hermes-dashboard",
+    });
+
+    expect(
+      getRemoteDashboardSessionConfig(getConnectionConfig()).fallbackApiKey,
+    ).toBeUndefined();
+  });
+
+  it("allows self-signed certificates only for configured remote Hermes origins", async () => {
+    const { getConnectionConfig, setConnectionConfig } =
+      await loadConnectionConfigModule();
+    const { configuredRemoteTlsOptions } = await import("../src/main/remote-tls");
+    const ssh = getConnectionConfig().ssh;
+
+    setConnectionConfig({
+      mode: "remote",
+      remoteUrl: "https://hermes.example/hermes-api",
+      apiKey: "remote-secret",
+      remoteDashboardUrl: "https://hermes.example/hermes-dashboard",
+      remoteDashboardToken: "dashboard-secret",
+      remoteChatTransport: "auto",
+      sshChatTransport: "auto",
+      ssh,
+    });
+
+    expect(
+      configuredRemoteTlsOptions(
+        "https://hermes.example/hermes-api/v1/chat/completions",
+      ),
+    ).toEqual({ rejectUnauthorized: false });
+    expect(
+      configuredRemoteTlsOptions("https://hermes.example/hermes-dashboard/api/status"),
+    ).toEqual({ rejectUnauthorized: false });
+    expect(
+      configuredRemoteTlsOptions("https://attacker.example/hermes-api/health"),
+    ).toEqual({});
+  });
+
   it("uses the stored remote API key for main-process connection tests", async () => {
     const { setConnectionConfig } = await loadConnectionConfigModule();
     const { testRemoteConnection } = await import("../src/main/hermes");

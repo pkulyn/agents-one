@@ -18,6 +18,20 @@ vi.mock("./MediaImage", () => ({
   DownloadChip: () => <div data-testid="download-chip" />,
 }));
 
+vi.mock("react-syntax-highlighter", () => ({
+  Prism: ({ children }: { children: string }) => (
+    <pre>
+      <code>
+        <span className="token">{children}</span>
+      </code>
+    </pre>
+  ),
+}));
+
+vi.mock("react-syntax-highlighter/dist/esm/styles/prism/one-dark", () => ({
+  default: {},
+}));
+
 // Wait until the lazily-imported Prism highlighter has produced token spans,
 // so a later "no .token" assertion is meaningful rather than just observing
 // the not-yet-loaded fallback.
@@ -37,7 +51,7 @@ describe("AgentMarkdown", () => {
     // the highlighter module loaded so the tree block below would use Prism
     // synchronously if it were ever routed there.
     await renderHighlighted(
-      ["```ts", "const answer: number = 42;", "```"].join("\n"),
+      ["```python", "def answer():", "    return 42", "```"].join("\n"),
     );
 
     const markdown = [

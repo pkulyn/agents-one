@@ -17,6 +17,8 @@ const loopbackConnectSources = [
   "ws://localhost:*",
 ];
 
+const remoteConnectSources = ["https:", "wss:"];
+
 const packagedAssetSources = [
   "img-src 'self' data: blob: file: https:",
   "media-src 'self' data: blob: file: https:",
@@ -34,6 +36,13 @@ describe("dashboard Content Security Policy", () => {
 
   it("keeps the renderer meta CSP aligned with the production loopback sources", () => {
     for (const source of loopbackConnectSources) {
+      expect(rendererIndexHtml).toContain(source);
+    }
+  });
+
+  it("allows configured remote dashboard HTTP and WebSocket connections in both CSP policies", () => {
+    for (const source of remoteConnectSources) {
+      expect(mainSrc).toContain(source);
       expect(rendererIndexHtml).toContain(source);
     }
   });

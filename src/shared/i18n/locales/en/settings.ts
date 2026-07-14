@@ -18,6 +18,7 @@ export default {
     network: "Network",
     data: "Data",
     about: "About & Updates",
+    runtimes: "Runtimes",
     community: "Community",
     logs: "Logs & Diagnostics",
   },

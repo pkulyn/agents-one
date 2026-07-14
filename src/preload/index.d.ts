@@ -30,6 +30,27 @@ import type {
 } from "../shared/messaging-platforms";
 import type { ChatToolEvent } from "../shared/chat-stream";
 import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
+import type {
+  AgentRuntimeDefinition,
+  AgentRuntimeDraft,
+  AgentRuntimeProbe,
+  AgentRuntimeRun,
+  AgentRuntimeTaskInput,
+} from "../shared/agent-runtimes";
+import type {
+  AssignProjectTaskInput,
+  CreateProjectInput,
+  CreateProjectTaskInput,
+  ProjectContextPackage,
+  ProjectControlProject,
+  ProjectControlTask,
+  ProjectTaskEvent,
+  ProjectTaskStatus,
+} from "../shared/project-control";
+import type {
+  CreateTaskCenterTaskInput,
+  TaskCenterTask,
+} from "../shared/task-center";
 
 interface ElectronAPI {
   process: {
@@ -332,13 +353,69 @@ interface HermesAPI {
   // Connection mode (local / remote / ssh)
   isRemoteMode: () => Promise<boolean>;
   isRemoteOnlyMode: () => Promise<boolean>;
+  listAgentRuntimes: () => Promise<AgentRuntimeDefinition[]>;
+  saveAgentRuntime: (
+    draft: AgentRuntimeDraft,
+  ) => Promise<AgentRuntimeDefinition>;
+  removeAgentRuntime: (id: string) => Promise<boolean>;
+  getAgentRuntimeCredentialStatus: (
+    id: string,
+  ) => Promise<{ required: boolean; configured: boolean }>;
+  setAgentRuntimeBearerToken: (
+    id: string,
+    bearerToken: string,
+  ) => Promise<{ configured: true }>;
+  probeAgentRuntime: (id: string) => Promise<AgentRuntimeProbe>;
+  startAgentRuntimeTask: (
+    runtimeId: string,
+    input: AgentRuntimeTaskInput,
+  ) => Promise<AgentRuntimeRun>;
+  getAgentRuntimeRun: (runId: string) => Promise<AgentRuntimeRun | null>;
+  cancelAgentRuntimeTask: (runId: string) => Promise<boolean>;
+  listTaskCenterTasks: () => Promise<TaskCenterTask[]>;
+  createTaskCenterTask: (input: CreateTaskCenterTaskInput) => Promise<TaskCenterTask>;
+  cancelTaskCenterTask: (id: string) => Promise<TaskCenterTask | null>;
+  setTaskCenterAcceptance: (
+    id: string,
+    acceptance: "accepted" | "rejected",
+  ) => Promise<TaskCenterTask | null>;
+  openTaskCenterWorktree: (worktree: string) => Promise<boolean>;
+  listProjectControlProjects: () => Promise<ProjectControlProject[]>;
+  createProjectControlProject: (input: CreateProjectInput) => Promise<ProjectControlProject>;
+  setProjectControlStatus: (
+    projectId: string,
+    status: "active" | "paused" | "completed" | "cancelled",
+    summary: string,
+  ) => Promise<ProjectControlProject>;
+  listProjectControlTasks: (projectId: string) => Promise<ProjectControlTask[]>;
+  listProjectControlEvents: (projectId: string) => Promise<ProjectTaskEvent[]>;
+  listProjectControlArtifacts: (projectId: string) => Promise<import("../shared/project-control").ProjectArtifactReference[]>;
+  createProjectControlTask: (input: CreateProjectTaskInput) => Promise<ProjectControlTask>;
+  assignProjectControlTask: (input: AssignProjectTaskInput) => Promise<ProjectControlTask>;
+  dispatchProjectControlTask: (taskId: string) => Promise<ProjectControlTask>;
+  startProjectCoordinatorPlan: (projectId: string) => Promise<ProjectControlTask>;
+  reviewProjectControlTask: (
+    taskId: string,
+    acceptance: "accepted" | "rejected",
+    summary: string,
+  ) => Promise<ProjectControlTask>;
+  cancelProjectControlTask: (taskId: string) => Promise<ProjectControlTask>;
+  setProjectControlTaskStatus: (
+    taskId: string,
+    status: ProjectTaskStatus,
+    summary: string,
+  ) => Promise<ProjectControlTask>;
+  createProjectControlContext: (taskId: string) => Promise<ProjectContextPackage>;
   getConnectionConfig: () => Promise<{
     mode: "local" | "remote" | "ssh";
     remoteUrl: string;
+    remoteDashboardUrl: string;
     remoteChatTransport: "auto" | "dashboard" | "legacy";
     sshChatTransport: "auto" | "dashboard" | "legacy";
     hasApiKey: boolean;
+    hasRemoteDashboardToken: boolean;
     apiKeyLength: number;
+    remoteDashboardTokenLength: number;
     ssh: {
       host: string;
       port: number;
@@ -352,6 +429,8 @@ interface HermesAPI {
     mode: "local" | "remote" | "ssh",
     remoteUrl: string,
     apiKey?: string,
+    remoteDashboardUrl?: string,
+    remoteDashboardToken?: string,
   ) => Promise<boolean>;
   setConnectionChatTransports: (
     remoteChatTransport: "auto" | "dashboard" | "legacy",
@@ -361,10 +440,13 @@ interface HermesAPI {
     callback: (config: {
       mode: "local" | "remote" | "ssh";
       remoteUrl: string;
+      remoteDashboardUrl: string;
       remoteChatTransport: "auto" | "dashboard" | "legacy";
       sshChatTransport: "auto" | "dashboard" | "legacy";
       hasApiKey: boolean;
+      hasRemoteDashboardToken: boolean;
       apiKeyLength: number;
+      remoteDashboardTokenLength: number;
       ssh: {
         host: string;
         port: number;

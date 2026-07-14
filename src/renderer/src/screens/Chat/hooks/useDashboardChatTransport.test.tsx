@@ -368,7 +368,41 @@ describe("useDashboardChatTransport recovery", () => {
 });
 
 describe("useDashboardChatTransport unavailable fallback (issue #667)", () => {
+  beforeEach(() => {
+    dashboardMock.close.mockClear();
+    dashboardMock.connect.mockReset();
+    dashboardMock.connect.mockResolvedValue(undefined);
+    dashboardMock.instances.length = 0;
+    dashboardMock.onEvent = null;
+    dashboardMock.request.mockReset();
+  });
+
+  it("persists the user transcript immediately after prompt submission", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") {
+        return { session_id: "live-now", stored_session_id: "stored-now" };
+      }
+      if (method === "model.options") {
+        return { model: "bad-model", provider: "bad-provider", providers: [] };
+      }
+      return {};
+    });
+
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+
+    await act(async () => {
+      await api.send?.("bad provider turn");
+    });
+
+    expect(window.hermesAPI.recordSessionContinuation).toHaveBeenCalledWith(
+      "stored-now",
+      [{ kind: "user", content: "bad provider turn" }],
+    );
+  });
+
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -457,6 +491,56 @@ describe("useDashboardChatTransport unavailable fallback (issue #667)", () => {
     });
     // Local dashboard may still be spawning, so each send re-checks.
     expect(startDashboard).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back on remote Auto when the renderer WebSocket cannot connect", async () => {
+    vi.useFakeTimers();
+    dashboardMock.connect.mockRejectedValue(
+      new Error("Could not connect to Hermes dashboard WebSocket"),
+    );
+    const startDashboard = vi.fn(async () => ({
+      connection: { wsUrl: "ws://remote-dashboard" },
+      running: true,
+    }));
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        recordSessionContinuation: vi.fn(async () => true),
+        recordSessionLocalError: vi.fn(async () => true),
+        startDashboard,
+      },
+    });
+    const onUnavailable = vi.fn();
+    const api: HarnessApi = {};
+    render(
+      <Harness
+        api={api}
+        initialConnectionMode="remote"
+        fallbackOnUnavailable
+        onDashboardUnavailable={onUnavailable}
+      />,
+    );
+
+    let first: Promise<boolean> | undefined;
+    await act(async () => {
+      first = api.send?.("hello");
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    await expect(first).resolves.toBe(false);
+    expect(startDashboard).toHaveBeenCalledTimes(3);
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
+
+    let second: Promise<boolean> | undefined;
+    await act(async () => {
+      second = api.send?.("again");
+    });
+    await expect(second).resolves.toBe(false);
+    expect(startDashboard).toHaveBeenCalledTimes(3);
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
   });
 });
 

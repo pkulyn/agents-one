@@ -6,6 +6,7 @@ export {
   ChevronDown,
   ChevronRight,
   Circle,
+  ClipboardList,
   Clock,
   Compass,
   Copy,

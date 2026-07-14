@@ -163,6 +163,14 @@ export function dashboardShouldPersistLocalOverlays(
   return true;
 }
 
+function notifySessionTranscriptChanged(sessionId: string): void {
+  window.dispatchEvent(
+    new CustomEvent("hermes-session-transcript-changed", {
+      detail: { sessionId },
+    }),
+  );
+}
+
 export function isDashboardSessionNotFoundError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /session not found/i.test(message);
@@ -973,6 +981,20 @@ export function useDashboardChatTransport({
     lastSyncedCwdRef.current = null;
   }, [connectionMode, profile]);
 
+  const markDashboardUnavailableForFallback = useCallback(
+    (reason: string): void => {
+      if (
+        connectionMode !== "local" &&
+        fallbackOnUnavailable &&
+        !dashboardUnavailableRef.current
+      ) {
+        dashboardUnavailableRef.current = true;
+        onDashboardUnavailable?.(reason);
+      }
+    },
+    [connectionMode, fallbackOnUnavailable, onDashboardUnavailable],
+  );
+
   const handleGatewayEvent = useCallback(
     (event: DashboardStreamEvent): void => {
       const runtimeSessionId = runtimeSessionIdRef.current;
@@ -1061,6 +1083,22 @@ export function useDashboardChatTransport({
         activeTurnRef.current = null;
         setToolProgress(null);
         setIsLoading(false);
+        if (!failed && dashboardShouldPersistLocalOverlays(connectionMode)) {
+          const storedSessionId = storedSessionIdRef.current;
+          const recordContinuation = window.hermesAPI.recordSessionContinuation;
+          const transcript = dashboardContinuationItemsFromTranscript(
+            messagesRef.current,
+          );
+          if (
+            storedSessionId &&
+            transcript.length > 0 &&
+            typeof recordContinuation === "function"
+          ) {
+            void recordContinuation(storedSessionId, transcript)
+              .then(() => notifySessionTranscriptChanged(storedSessionId))
+              .catch(() => undefined);
+          }
+        }
         const usage = usageFromPayload(event.payload);
         if (usage || !failed) {
           // The gauge only renders when `contextTokens` is set, so it must be
@@ -1146,16 +1184,9 @@ export function useDashboardChatTransport({
           if (!status.running || !status.connection?.wsUrl) {
             // No dashboard on this remote (gateway-only install). Latch + notify
             // only in auto mode where we actually fall back to legacy.
-            if (
-              connectionMode !== "local" &&
-              fallbackOnUnavailable &&
-              !dashboardUnavailableRef.current
-            ) {
-              dashboardUnavailableRef.current = true;
-              onDashboardUnavailable?.(
-                status.error || "Hermes dashboard transport is unavailable",
-              );
-            }
+            markDashboardUnavailableForFallback(
+              status.error || "Hermes dashboard transport is unavailable",
+            );
             throw new Error(
               status.error || "Hermes dashboard transport is unavailable",
             );
@@ -1188,13 +1219,20 @@ export function useDashboardChatTransport({
           clientRef.current = client;
           return client;
         }
-        // Dashboard was up but the WS wouldn't stay connected. Tag the error so
-        // the caller fails the turn (and lets the user retry) instead of POSTing
-        // /v1 to the dashboard tunnel (which 405s).
-        const err = new Error(
+        // Dashboard was up but the WS wouldn't stay connected. Forced-dashboard
+        // and local callers should see the failure. Remote/SSH Auto can still
+        // use the legacy chat API, so latch unavailable and let the caller
+        // route this same turn through that path.
+        const reason =
           lastConnectErr instanceof Error
             ? `Hermes dashboard chat connection failed: ${lastConnectErr.message}`
-            : "Hermes dashboard chat connection failed",
+            : "Hermes dashboard chat connection failed";
+        if (connectionMode !== "local" && fallbackOnUnavailable) {
+          markDashboardUnavailableForFallback(reason);
+          throw new Error(reason);
+        }
+        const err = new Error(
+          reason,
         ) as Error & { dashboardWasReachable?: boolean };
         err.dashboardWasReachable = true;
         throw err;
@@ -1213,7 +1251,7 @@ export function useDashboardChatTransport({
       profile,
       connectionMode,
       fallbackOnUnavailable,
-      onDashboardUnavailable,
+      markDashboardUnavailableForFallback,
     ]);
 
   const ensureRuntimeSession = useCallback(
@@ -1478,9 +1516,10 @@ export function useDashboardChatTransport({
           items.length > 0 &&
           typeof recordContinuation === "function"
         ) {
-          await recordContinuation(storedSessionId, items).catch(
-            () => undefined,
-          );
+          const saved = await recordContinuation(storedSessionId, items)
+            .then(() => true)
+            .catch(() => false);
+          if (saved) notifySessionTranscriptChanged(storedSessionId);
         }
       };
       const failActiveTurn = (message: string): true => {
@@ -1602,6 +1641,13 @@ export function useDashboardChatTransport({
             runtimeSessionIdRef.current = recoveredSessionId;
           },
         });
+        // Remote Hermes deployments may persist only assistant/tool rows for
+        // dashboard sessions. Save the user bubble as soon as prompt.submit
+        // succeeds so the sidebar can distinguish a real conversation from a
+        // recovery/model-switch orphan even if message.complete never arrives.
+        await recordContinuationItems(
+          dashboardContinuationItemsFromTranscript(messagesRef.current),
+        );
         return true;
       } catch (err) {
         appliedModelRef.current = null;

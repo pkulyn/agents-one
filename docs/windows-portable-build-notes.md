@@ -1,0 +1,88 @@
+# Windows portable build notes
+
+Date: 2026-07-09
+
+This fork is developed on a locked-down corporate Windows machine without administrator rights. Prefer portable tools and user-level environment variables.
+
+## Baseline
+
+- Project: `D:\Agent Console\hermes-desktop-plus`
+- Upstream base: `fathah/hermes-desktop` 0.7.3
+- Node: `D:\efunds\nodejs22\node.exe` v22.23.1
+- npm: `D:\efunds\nodejs22\npm.cmd` 11.11.1
+- Electron: 39.8.5
+- Native dependency: `better-sqlite3` 12.8.0
+
+Use Node 22 explicitly in each PowerShell session:
+
+```powershell
+$env:PATH = "D:\efunds\nodejs22;$env:PATH"
+$env:NODE_OPTIONS = "--use-system-ca"
+$env:ELECTRON_CACHE = "D:\Agent Console\hermes-desktop-plus\.cache\electron"
+$env:npm_config_cache = "D:\Agent Console\hermes-desktop-plus\.cache\npm"
+```
+
+## Dependency install notes
+
+`better-sqlite3` and Electron both need prebuilt binaries. This environment should not fall back to `node-gyp` because Visual Studio C++ Build Tools are not available.
+
+Observed issue:
+
+- Default GitHub release downloads may return a small HTML page titled `URL过滤`.
+- Electron GitHub downloads may fail checksum verification in this network.
+- A verified Electron 39.8.5 ZIP from `npmmirror.com` matched the expected SHA256 in `node_modules\electron\checksums.json`.
+
+Current local workaround:
+
+- Keep all binary/cache artifacts under `.cache/`.
+- Verify Electron ZIP SHA256 before extracting.
+- Manually seed the npm `_prebuilds` cache for `better-sqlite3` if `prebuild-install` receives filtered HTML.
+- Do not commit `.cache/`.
+
+## Verified commands
+
+Run from `D:\Agent Console\hermes-desktop-plus`:
+
+```powershell
+$env:PATH = "D:\efunds\nodejs22;$env:PATH"
+$env:NODE_OPTIONS = "--use-system-ca"
+$env:ELECTRON_CACHE = "D:\Agent Console\hermes-desktop-plus\.cache\electron"
+$env:npm_config_cache = "D:\Agent Console\hermes-desktop-plus\.cache\npm"
+
+npm.cmd test
+npm.cmd run typecheck
+npm.cmd run build
+npm.cmd run start
+```
+
+Latest verification:
+
+- `npm.cmd test`: 154 test files passed, 1657 tests passed, 13 skipped.
+- `npm.cmd run typecheck`: passed.
+- `npm.cmd run build`: passed.
+- `npm.cmd run start`: production build completed and Electron startup reached `starting electron app...`.
+- Runtime smoke: Electron process starts from `node_modules\electron\dist\electron.exe`; current warning is GPU/cache creation permission noise, not a startup crash.
+
+## Local test adaptations
+
+Two test-only adaptations were added for this Windows environment:
+
+- `tests/ssh-remote.test.ts` now skips POSIX shell execution tests when `bash` is unavailable, and uses `path.delimiter` when prepending a temporary shim path.
+- `src/renderer/src/components/AgentMarkdown.test.tsx` mocks the syntax highlighter so Markdown rendering tests are deterministic under Vitest/JSDOM instead of depending on slow dynamic imports.
+- `tests/cronjobs.test.ts` gives the cron create test an explicit 15s timeout because full-suite parallelism can exceed Vitest's 5s default.
+
+No production runtime behavior was changed by these test adaptations.
+
+## Security fixes landed locally
+
+- `read-file` IPC now reads only the requested byte range with a 1 MB hard cap instead of reading the whole file before truncating.
+
+See `docs/security-audit-2026-07-09.md` for the current audit notes.
+
+## Next integration work
+
+1. Start `hermes-desktop-plus` visibly and complete a manual smoke pass.
+2. Configure remote Hermes NAS through the existing remote connection mode.
+3. Verify `/health`, chat, sessions, memory, skills, and tools against the NAS.
+4. Inspect OpenClaw's actual API shape and decide whether it enters as a Hermes tool, remote runtime adapter, or existing Claw3D/Hermes Office path.
+5. Start the IPC/security audit before adding new agent dispatch capabilities.

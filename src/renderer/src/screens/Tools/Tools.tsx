@@ -3,7 +3,6 @@ import { useI18n } from "../../components/useI18n";
 import { Wrench, Plug, Puzzle, Search, X } from "../../assets/icons";
 import { TOOL_ICONS, FALLBACK_TOOL_ICON } from "../../components/toolMeta";
 import Skills from "../Skills/Skills";
-import RemoteNotice from "../../components/RemoteNotice";
 
 interface ToolsetInfo {
   key: string;
@@ -178,7 +177,6 @@ function TinyIcon({
 function Tools({
   profile,
   showPlatformToolsets = true,
-  remoteMode = false,
   visible = true,
   onBrowseSkills,
   onBrowseMcps,
@@ -393,11 +391,7 @@ function Tools({
 
       {activeTab === "skills" ? (
         <div className="tools-skills-pane">
-          {remoteMode ? (
-            <RemoteNotice feature="Skills" />
-          ) : (
-            <Skills profile={profile} embedded onBrowse={onBrowseSkills} />
-          )}
+          <Skills profile={profile} embedded onBrowse={onBrowseSkills} />
         </div>
       ) : (
         <div className="tools-pane">

@@ -3,8 +3,8 @@ import { getDbConnection, closeDbConnection } from "../src/main/db";
 import { activeStateDbPath } from "../src/main/utils";
 
 // Define hoisted mocks (Vitest allows variables prefixed with 'mock')
-const { mockClose, mockDatabaseConstructor, mockExistsSync } = vi.hoisted(
-  () => {
+const { mockClose, mockDatabaseConstructor, mockExistsSync, mockMkdirSync } =
+  vi.hoisted(() => {
     const mockClose = vi.fn();
     const mockDatabaseConstructor = vi.fn().mockImplementation(() => {
       return {
@@ -13,9 +13,9 @@ const { mockClose, mockDatabaseConstructor, mockExistsSync } = vi.hoisted(
       };
     });
     const mockExistsSync = vi.fn();
-    return { mockClose, mockDatabaseConstructor, mockExistsSync };
-  },
-);
+    const mockMkdirSync = vi.fn();
+    return { mockClose, mockDatabaseConstructor, mockExistsSync, mockMkdirSync };
+  });
 
 vi.mock("better-sqlite3", () => {
   return {
@@ -43,9 +43,11 @@ vi.mock("fs", async (importOriginal) => {
   return {
     ...original,
     existsSync: (path: string) => mockExistsSync(path),
+    mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
     default: {
       ...original,
       existsSync: (path: string) => mockExistsSync(path),
+      mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
     },
   };
 });
@@ -58,6 +60,7 @@ describe("Database connection caching", () => {
     mockClose.mockReset();
     mockDatabaseConstructor.mockClear();
     mockExistsSync.mockReset();
+    mockMkdirSync.mockReset();
     vi.mocked(activeStateDbPath).mockReset();
     mockExistsSync.mockReturnValue(true); // default to true
   });
@@ -73,6 +76,19 @@ describe("Database connection caching", () => {
     const db = getDbConnection();
     expect(db).toBeNull();
     expect(mockDatabaseConstructor).not.toHaveBeenCalled();
+  });
+
+  it("creates the profile database on writable access when it does not exist", () => {
+    vi.mocked(activeStateDbPath).mockReturnValue(dbPath1);
+    mockExistsSync.mockReturnValue(false);
+
+    const db = getDbConnection(false);
+
+    expect(db).not.toBeNull();
+    expect(mockMkdirSync).toHaveBeenCalledWith("/fake/path", {
+      recursive: true,
+    });
+    expect(mockDatabaseConstructor).toHaveBeenCalledWith(dbPath1, {});
   });
 
   it("caches database connection for same path and readonly status", () => {

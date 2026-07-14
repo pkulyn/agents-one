@@ -1,10 +1,13 @@
 import type Database from "better-sqlite3";
+import { existsSync, readFileSync } from "fs";
+import { dirname, join } from "path";
 import type { Attachment } from "../shared/attachments";
 import type {
   DesktopSessionContinuationItem,
   DesktopSessionLocalError,
 } from "../shared/session-continuation";
 import { getDbConnection } from "./db";
+import { activeStateDbPath, safeWriteFile } from "./utils";
 import type { HistoryItem } from "./sessions";
 
 const TABLE = "desktop_session_continuations";
@@ -20,6 +23,44 @@ interface StoredLocalErrorRow {
   id: number;
   user_content: string;
   error_text: string;
+}
+
+interface FallbackContinuationData {
+  sessions: Record<string, unknown>;
+}
+
+export interface LocalContinuationEntry {
+  sessionId: string;
+  items: HistoryItem[];
+}
+
+function fallbackFilePath(): string {
+  return join(dirname(activeStateDbPath()), "desktop", "session-overlays.json");
+}
+
+function readFallbackContinuations(): FallbackContinuationData {
+  try {
+    const file = fallbackFilePath();
+    if (!existsSync(file)) return { sessions: {} };
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<FallbackContinuationData>;
+    return {
+      sessions:
+        parsed.sessions && typeof parsed.sessions === "object"
+          ? parsed.sessions
+          : {},
+    };
+  } catch {
+    return { sessions: {} };
+  }
+}
+
+function persistFallbackContinuation(
+  sessionId: string,
+  items: DesktopSessionContinuationItem[],
+): void {
+  const data = readFallbackContinuations();
+  data.sessions[sessionId] = items;
+  safeWriteFile(fallbackFilePath(), JSON.stringify(data));
 }
 
 function ensureTable(db: Database.Database): void {
@@ -138,16 +179,23 @@ export function persistSessionContinuation(
   if (!sessionId || normalized.length === 0) return;
 
   const db = getDbConnection(false);
-  if (!db) return;
+  if (!db) {
+    persistFallbackContinuation(sessionId, normalized);
+    return;
+  }
 
-  ensureTable(db);
-  db.prepare(
-    `INSERT INTO ${TABLE} (session_id, prefix_json, updated_at)
-     VALUES (?, ?, strftime('%s', 'now'))
-     ON CONFLICT(session_id) DO UPDATE SET
-       prefix_json = excluded.prefix_json,
-       updated_at = excluded.updated_at`,
-  ).run(sessionId, JSON.stringify(normalized));
+  try {
+    ensureTable(db);
+    db.prepare(
+      `INSERT INTO ${TABLE} (session_id, prefix_json, updated_at)
+       VALUES (?, ?, strftime('%s', 'now'))
+       ON CONFLICT(session_id) DO UPDATE SET
+         prefix_json = excluded.prefix_json,
+         updated_at = excluded.updated_at`,
+    ).run(sessionId, JSON.stringify(normalized));
+  } catch {
+    persistFallbackContinuation(sessionId, normalized);
+  }
 }
 
 export function persistSessionLocalError(
@@ -196,6 +244,57 @@ export function loadSessionContinuationItems(
   }
 
   return continuationItemsToHistory(normalizeContinuationItems(parsed));
+}
+
+export function loadSessionContinuationItemsForSession(
+  sessionId: string,
+  db: Database.Database | null = getDbConnection(true),
+): HistoryItem[] {
+  if (db) {
+    try {
+      const stored = loadSessionContinuationItems(db, sessionId);
+      if (stored.length > 0) return stored;
+    } catch {
+      // Fall through to the remote-only JSON overlay.
+    }
+  }
+  const fallback = readFallbackContinuations().sessions[sessionId];
+  return continuationItemsToHistory(normalizeContinuationItems(fallback));
+}
+
+export function listLocalSessionContinuationEntries(): LocalContinuationEntry[] {
+  const collected = new Map<string, HistoryItem[]>();
+  const db = getDbConnection(true);
+  if (db && tableExists(db)) {
+    try {
+      const rows = db
+        .prepare(`SELECT session_id, prefix_json FROM ${TABLE}`)
+        .all() as Array<{ session_id: string; prefix_json: string }>;
+      for (const row of rows) {
+        try {
+          const items = continuationItemsToHistory(
+            normalizeContinuationItems(JSON.parse(row.prefix_json)),
+          );
+          if (items.length > 0) collected.set(row.session_id, items);
+        } catch {
+          // Ignore one malformed local row and retain the rest.
+        }
+      }
+    } catch {
+      // JSON fallback below remains available.
+    }
+  }
+
+  for (const [sessionId, raw] of Object.entries(
+    readFallbackContinuations().sessions,
+  )) {
+    const items = continuationItemsToHistory(normalizeContinuationItems(raw));
+    if (items.length > 0 && !collected.has(sessionId)) {
+      collected.set(sessionId, items);
+    }
+  }
+
+  return Array.from(collected, ([sessionId, items]) => ({ sessionId, items }));
 }
 
 function normalizeText(value: string): string {

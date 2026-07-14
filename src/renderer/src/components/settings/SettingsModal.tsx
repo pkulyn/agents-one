@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Bot,
   Database,
   FileText,
   Info,
@@ -22,6 +23,7 @@ import DataPane from "./DataPane";
 import AboutPane from "./AboutPane";
 import CommunityPane from "./CommunityPane";
 import LogsPane from "./LogsPane";
+import AgentRuntimesPane from "./AgentRuntimesPane";
 
 export type SettingsSection =
   | "appearance"
@@ -29,6 +31,7 @@ export type SettingsSection =
   | "privacy"
   | "connection"
   | "data"
+  | "runtimes"
   | "about"
   | "community"
   | "logs";
@@ -73,6 +76,12 @@ const SETTINGS_NAV: ReadonlyArray<{
     Icon: Database,
   },
   { group: "hermes", id: "about", labelKey: "settings.nav.about", Icon: Info },
+  {
+    group: "hermes",
+    id: "runtimes",
+    labelKey: "settings.nav.runtimes",
+    Icon: Bot,
+  },
   {
     group: "hermes",
     id: "community",
@@ -194,6 +203,7 @@ export default function SettingsModal({
             {section === "connection" && <ConnectionPane />}
             {section === "data" && <DataPane />}
             {section === "about" && <AboutPane />}
+            {section === "runtimes" && <AgentRuntimesPane />}
             {section === "community" && <CommunityPane />}
             {section === "logs" && <LogsPane />}
           </SettingsDataContext.Provider>

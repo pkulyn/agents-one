@@ -67,6 +67,10 @@ export function useSettingsData(profile?: string) {
   const [connApiKey, setConnApiKey] = useState("");
   const [connApiKeyMask, setConnApiKeyMask] = useState("");
   const [connHasApiKey, setConnHasApiKey] = useState(false);
+  const [connDashboardUrl, setConnDashboardUrl] = useState("");
+  const [connDashboardToken, setConnDashboardToken] = useState("");
+  const [connDashboardTokenMask, setConnDashboardTokenMask] = useState("");
+  const [connHasDashboardToken, setConnHasDashboardToken] = useState(false);
   const [remoteChatTransport, setRemoteChatTransport] =
     useState<RemoteChatTransport>("auto");
   const [sshChatTransport, setSshChatTransport] =
@@ -161,12 +165,19 @@ export function useSettingsData(profile?: string) {
     setAppVersion(aVersion);
     setConnMode(conn.mode);
     setConnRemoteUrl(conn.remoteUrl);
+    setConnDashboardUrl(conn.remoteDashboardUrl || "");
     setConnHasApiKey(conn.hasApiKey);
+    setConnHasDashboardToken(conn.hasRemoteDashboardToken || false);
     setRemoteChatTransport(conn.remoteChatTransport ?? "auto");
     setSshChatTransport(conn.sshChatTransport ?? "auto");
     const mask = conn.hasApiKey ? makeApiKeyMask(conn.apiKeyLength) : "";
     setConnApiKeyMask(mask);
     setConnApiKey(mask);
+    const dashboardMask = conn.hasRemoteDashboardToken
+      ? makeApiKeyMask(conn.remoteDashboardTokenLength)
+      : "";
+    setConnDashboardTokenMask(dashboardMask);
+    setConnDashboardToken(dashboardMask);
     setSshHost(conn.ssh?.host || "");
     setSshPort(conn.ssh?.port ? String(conn.ssh.port) : "");
     setSshUser(conn.ssh?.username || "");
@@ -375,6 +386,16 @@ export function useSettingsData(profile?: string) {
     return connApiKey.trim();
   }
 
+  function getConnectionDashboardTokenForSave(): string | undefined {
+    if (
+      connHasDashboardToken &&
+      connDashboardToken === connDashboardTokenMask
+    ) {
+      return undefined;
+    }
+    return connDashboardToken.trim();
+  }
+
   async function saveSshConnectionMode(): Promise<void> {
     await window.hermesAPI.setSshConfig(
       sshHost.trim(),
@@ -427,6 +448,17 @@ export function useSettingsData(profile?: string) {
         });
         return;
       }
+      const managementReachable =
+        status.error?.includes("management API is reachable") ?? false;
+      if (managementReachable && preference === "auto") {
+        setTransportProbe({
+          label: "Auto active: Legacy chat",
+          detail: status.error || "Dashboard management API is available.",
+          kind: "ok",
+          loading: false,
+        });
+        return;
+      }
       setTransportProbe({
         label:
           preference === "dashboard"
@@ -458,10 +490,13 @@ export function useSettingsData(profile?: string) {
       await saveSshConnectionMode();
     } else {
       const apiKey = getConnectionApiKeyForSave();
+      const dashboardToken = getConnectionDashboardTokenForSave();
       await window.hermesAPI.setConnectionConfig(
         connMode,
         connRemoteUrl,
         apiKey,
+        connDashboardUrl,
+        dashboardToken,
       );
       if (apiKey !== undefined) {
         const hasApiKey = apiKey.length > 0;
@@ -472,6 +507,17 @@ export function useSettingsData(profile?: string) {
           setConnApiKey(mask);
         } else {
           setConnApiKeyMask("");
+        }
+      }
+      if (dashboardToken !== undefined) {
+        const hasToken = dashboardToken.length > 0;
+        setConnHasDashboardToken(hasToken);
+        if (hasToken) {
+          const mask = makeApiKeyMask(dashboardToken.length);
+          setConnDashboardTokenMask(mask);
+          setConnDashboardToken(mask);
+        } else {
+          setConnDashboardTokenMask("");
         }
       }
     }
@@ -559,10 +605,13 @@ export function useSettingsData(profile?: string) {
     if (!connLoaded.current) return;
 
     const apiKey = getConnectionApiKeyForSave();
+    const dashboardToken = getConnectionDashboardTokenForSave();
     await window.hermesAPI.setConnectionConfig(
       "remote",
       connRemoteUrl.trim(),
       apiKey,
+      connDashboardUrl.trim(),
+      dashboardToken,
     );
     await window.hermesAPI.setConnectionChatTransports(
       remoteChatTransport,
@@ -748,6 +797,11 @@ export function useSettingsData(profile?: string) {
     connApiKey,
     setConnApiKey,
     connApiKeyMask,
+    connDashboardUrl,
+    setConnDashboardUrl,
+    connDashboardToken,
+    setConnDashboardToken,
+    connDashboardTokenMask,
     connTesting,
     connStatus,
     connLoaded,

@@ -1,8 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const remoteRequestJsonMock = vi.hoisted(() => vi.fn());
+
 vi.mock("./hermes", () => ({
   getApiUrl: () => "http://remote.example:9119",
   getRemoteAuthHeader: () => ({ Authorization: "Bearer tok" }),
+}));
+
+vi.mock("./config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./config")>();
+  return {
+    ...actual,
+    getConnectionConfig: () => ({
+      mode: "remote",
+      remoteUrl: "http://remote.example:9119",
+      apiKey: "tok",
+      remoteDashboardUrl: "",
+      remoteDashboardToken: "",
+      remoteChatTransport: "auto",
+      sshChatTransport: "auto",
+      ssh: {},
+    }),
+    getRemoteDashboardSessionConfig: (
+      config: { remoteUrl: string; apiKey: string },
+      profile?: string,
+    ) => ({
+      remoteUrl: config.remoteUrl,
+      apiKey: config.apiKey,
+      profile,
+    }),
+  };
+});
+
+vi.mock("./remote-sessions", () => ({
+  remoteRequestJson: remoteRequestJsonMock,
 }));
 
 import {
@@ -14,37 +45,23 @@ import {
   remoteUninstallSkill,
 } from "./remote-skills";
 
-const fetchMock = vi.fn();
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    statusText: status === 200 ? "OK" : "Error",
-    json: async () => body,
-  } as unknown as Response;
-}
-
 beforeEach(() => {
-  fetchMock.mockReset();
-  vi.stubGlobal("fetch", fetchMock);
+  remoteRequestJsonMock.mockReset();
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("remote skills routing", () => {
   it("lists installed skills from the remote dashboard, keyed by marker path", async () => {
     // Remote mode used to fall through to the local CLI, showing the LOCAL
     // machine's skills while connected to a remote dashboard (#578).
-    fetchMock.mockResolvedValue(
-      jsonResponse([
-        { name: "pdf", category: "docs", description: "PDF tools" },
-        { name: "web", description: "" },
-        { notAName: true },
-      ]),
-    );
+    remoteRequestJsonMock.mockResolvedValue([
+      { name: "pdf", category: "docs", description: "PDF tools" },
+      { name: "web", description: "" },
+      { notAName: true },
+    ]);
 
     const skills = await remoteListInstalledSkills("research");
 
@@ -65,69 +82,85 @@ describe("remote skills routing", () => {
         path: `${REMOTE_SKILL_PREFIX}research:web`,
       },
     ]);
-    const url = String(fetchMock.mock.calls[0][0]);
-    expect(url).toContain("/api/skills");
-    // Unified-dashboard scoping: named profile rides as ?profile=.
-    expect(url).toContain("profile=research");
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer tok");
+    const [, path] = remoteRequestJsonMock.mock.calls[0];
+    expect(path).toContain("/api/skills");
+    // Unified-dashboard scoping is delegated to remoteRequestJson so every
+    // dashboard surface uses one profile URL builder.
+    expect(remoteRequestJsonMock.mock.calls[0][0]).toMatchObject({
+      remoteUrl: "http://remote.example:9119",
+      apiKey: "tok",
+      profile: "research",
+    });
   });
 
   it("does not append ?profile= for the default profile", async () => {
-    fetchMock.mockResolvedValue(jsonResponse([]));
+    remoteRequestJsonMock.mockResolvedValue([]);
     await remoteListInstalledSkills("default");
-    expect(String(fetchMock.mock.calls[0][0])).not.toContain("profile=");
+    expect(String(remoteRequestJsonMock.mock.calls[0][1])).not.toContain(
+      "profile=",
+    );
   });
 
   it("returns [] instead of throwing when the remote is unreachable", async () => {
-    fetchMock.mockRejectedValue(new Error("ECONNREFUSED"));
+    remoteRequestJsonMock.mockRejectedValue(new Error("ECONNREFUSED"));
     await expect(remoteListInstalledSkills()).resolves.toEqual([]);
   });
 
   it("fetches content by unwrapping the marker path to profile + name", async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({ name: "pdf", content: "# PDF skill" }),
-    );
+    remoteRequestJsonMock.mockResolvedValue({
+      name: "pdf",
+      content: "# PDF skill",
+    });
 
     const content = await remoteGetSkillContent(
       remoteSkillPath("pdf", "research"),
     );
 
     expect(content).toBe("# PDF skill");
-    const url = String(fetchMock.mock.calls[0][0]);
-    expect(url).toContain("/api/skills/content?name=pdf");
-    // The profile comes from the path, NOT the globally active profile —
-    // it must match the profile the skill was listed under.
-    expect(url).toContain("profile=research");
+    const [, path] = remoteRequestJsonMock.mock.calls[0];
+    expect(path).toContain("/api/skills/content?name=pdf");
+    // The profile comes from the marker path, NOT the globally active profile.
+    expect(remoteRequestJsonMock.mock.calls[0][0]).toMatchObject({
+      profile: "research",
+    });
   });
 
   it("scopes a default-profile path with no ?profile= param", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ content: "x" }));
+    remoteRequestJsonMock.mockResolvedValue({ content: "x" });
     await remoteGetSkillContent(remoteSkillPath("pdf"));
-    expect(String(fetchMock.mock.calls[0][0])).not.toContain("profile=");
+    expect(String(remoteRequestJsonMock.mock.calls[0][1])).not.toContain(
+      "profile=",
+    );
   });
 
   it("falls back to the given profile for a bare (unprefixed) path", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ content: "x" }));
+    remoteRequestJsonMock.mockResolvedValue({ content: "x" });
     await remoteGetSkillContent("pdf", "research");
-    const url = String(fetchMock.mock.calls[0][0]);
-    expect(url).toContain("name=pdf");
-    expect(url).toContain("profile=research");
+    const [, path] = remoteRequestJsonMock.mock.calls[0];
+    expect(path).toContain("name=pdf");
+    expect(remoteRequestJsonMock.mock.calls[0][0]).toMatchObject({
+      profile: "research",
+    });
   });
 
   it("percent-encodes query params consistently via searchParams", async () => {
     // Embedding a pre-encoded name in the path then calling
     // searchParams.set("profile", ...) would re-serialize it (%20 → +) only
     // when a named profile is present — everything goes through searchParams.
-    fetchMock.mockResolvedValue(jsonResponse({ content: "x" }));
+    remoteRequestJsonMock.mockResolvedValue({ content: "x" });
     await remoteGetSkillContent(remoteSkillPath("my skill", "research"));
-    expect(String(fetchMock.mock.calls[0][0])).toContain("name=my+skill");
-    fetchMock.mockClear();
+    expect(String(remoteRequestJsonMock.mock.calls[0][1])).toContain(
+      "name=my+skill",
+    );
+    remoteRequestJsonMock.mockClear();
     await remoteGetSkillContent(remoteSkillPath("my skill"));
-    expect(String(fetchMock.mock.calls[0][0])).toContain("name=my+skill");
+    expect(String(remoteRequestJsonMock.mock.calls[0][1])).toContain(
+      "name=my+skill",
+    );
   });
 
   it("maps hub install/uninstall spawn results to SkillCliResult", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ ok: true, pid: 42 }));
+    remoteRequestJsonMock.mockResolvedValue({ ok: true, pid: 42 });
     await expect(remoteInstallSkill("hub/pdf")).resolves.toEqual({
       success: true,
     });
@@ -137,8 +170,8 @@ describe("remote skills routing", () => {
   });
 
   it("surfaces API error detail on a failed install", async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({ detail: "identifier is required" }, 400),
+    remoteRequestJsonMock.mockRejectedValue(
+      new Error("400: identifier is required"),
     );
     const result = await remoteInstallSkill("");
     expect(result.success).toBe(false);

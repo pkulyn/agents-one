@@ -8,10 +8,10 @@ import {
   dialog,
   clipboard,
 } from "electron";
-import { extname } from "path";
+import { extname, relative, resolve } from "path";
 import { randomUUID } from "crypto";
-import { readdir, readFile, stat } from "fs/promises";
-import { getActiveProfileNameSync } from "../utils";
+import { open as openFile, readdir, readFile, stat } from "fs/promises";
+import { getActiveProfileNameSync, profileHome } from "../utils";
 import type { Attachment } from "../../shared/attachments";
 import type { SessionModelOverride } from "../../shared/model-override";
 import type { AppLocale } from "../../shared/i18n/types";
@@ -152,6 +152,7 @@ import {
   setCredentialPool,
   addCredentialPoolEntry,
   getConnectionConfig,
+  getRemoteDashboardSessionConfig,
   getPublicConnectionConfig,
   normalizeRemoteChatTransport,
   resolveConnectionApiKeyUpdate,
@@ -209,6 +210,64 @@ import {
   remoteSetModelConfig,
   remoteUpdateModel,
 } from "../remote-models";
+import {
+  remoteGetConfigValue,
+  remoteReadEnv,
+  remoteSetConfigValue,
+  remoteSetEnvValue,
+} from "../remote-config";
+import {
+  remoteAddMemoryEntry,
+  remoteDiscoverMemoryProviders,
+  remoteReadMemory,
+  remoteRemoveMemoryEntry,
+  remoteUpdateMemoryEntry,
+  remoteWriteUserProfile,
+} from "../remote-memory";
+import {
+  cancelAgentRuntimeTask,
+  getAgentRuntimeCredentialStatus,
+  getAgentRuntimeRun,
+  listAgentRuntimes,
+  probeAgentRuntime,
+  removeAgentRuntime,
+  saveAgentRuntime,
+  setAgentRuntimeBearerToken,
+  startAgentRuntimeTask,
+} from "../agent-runtimes";
+import type {
+  AgentRuntimeDraft,
+  AgentRuntimeTaskInput,
+} from "../../shared/agent-runtimes";
+import type { CreateTaskCenterTaskInput } from "../../shared/task-center";
+import type {
+  AssignProjectTaskInput,
+  CreateProjectInput,
+  CreateProjectTaskInput,
+  ProjectTaskStatus,
+} from "../../shared/project-control";
+import {
+  cancelTaskCenterTask,
+  createTaskCenterTask,
+  listTaskCenterTasks,
+  setTaskCenterAcceptance,
+} from "../task-center";
+import {
+  assignProjectTask,
+  createProject,
+  createProjectContextPackage,
+  createProjectTask,
+  cancelProjectTask,
+  dispatchProjectTask,
+  listProjectEvents,
+  listProjectArtifacts,
+  listProjectTasks,
+  listProjects,
+  setProjectTaskStatus,
+  setProjectStatus,
+  reviewProjectTask,
+  startCoordinatorPlanningTask,
+} from "../project-control";
 import {
   listModels,
   addModel,
@@ -670,7 +729,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Hermes engine info
   ipcMain.handle("get-hermes-version", async () => {
     const conn = getConnectionConfig();
-    if (conn.mode === "remote") return remoteGetHermesVersion(conn);
+    if (conn.mode === "remote")
+      return remoteGetHermesVersion(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
         conn,
@@ -682,7 +744,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
   ipcMain.handle("refresh-hermes-version", async () => {
     const conn = getConnectionConfig();
-    if (conn.mode === "remote") return remoteGetHermesVersion(conn);
+    if (conn.mode === "remote")
+      return remoteGetHermesVersion(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
         conn,
@@ -843,6 +908,8 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle("get-env", (_event, profile?: string) => {
     const conn = getConnectionConfig();
+    if (conn.mode === "remote")
+      return remoteReadEnv(getRemoteDashboardSessionConfig(conn, profile));
     if (conn.mode === "ssh" && conn.ssh) return sshReadEnv(conn.ssh, profile);
     return readEnv(profile);
   });
@@ -886,6 +953,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     "set-env",
     async (_event, key: string, value: string, profile?: string) => {
       const conn = getConnectionConfig();
+      if (conn.mode === "remote") {
+        return remoteSetEnvValue(
+          getRemoteDashboardSessionConfig(conn, profile),
+          key,
+          value,
+        );
+      }
       if (conn.mode === "ssh" && conn.ssh) {
         await sshSetEnvValue(conn.ssh, key, value, profile);
         return true;
@@ -912,6 +986,11 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle("get-config", (_event, key: string, profile?: string) => {
     const conn = getConnectionConfig();
+    if (conn.mode === "remote")
+      return remoteGetConfigValue(
+        getRemoteDashboardSessionConfig(conn, profile),
+        key,
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return sshGetConfigValue(conn.ssh, key, profile);
     return getConfigValue(key, profile);
@@ -921,6 +1000,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     "set-config",
     async (_event, key: string, value: string, profile?: string) => {
       const conn = getConnectionConfig();
+      if (conn.mode === "remote") {
+        return remoteSetConfigValue(
+          getRemoteDashboardSessionConfig(conn, profile),
+          key,
+          value,
+        );
+      }
       if (conn.mode === "ssh" && conn.ssh) {
         await sshSetConfigValue(conn.ssh, key, value, profile);
         return true;
@@ -932,7 +1018,10 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle("get-hermes-home", (_event, profile?: string) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "remote") return remoteGetHermesHome(conn);
+    if (conn.mode === "remote")
+      return remoteGetHermesHome(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
         conn,
@@ -948,8 +1037,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     if (conn.mode === "remote")
       return withRemoteDashboard(
         conn,
-        () => remoteGetModelConfig(conn),
-        () => getModelConfig(profile),
+        () =>
+          remoteGetModelConfig(
+            getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+          ),
+        () => {
+          throw new Error("Remote dashboard model config is unavailable.");
+        },
       );
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
@@ -974,30 +1068,15 @@ export function registerIpcHandlers(context: IpcContext): void {
       if (conn.mode === "remote") {
         return withRemoteDashboard(
           conn,
-          () => remoteSetModelConfig(conn, provider, model, baseUrl),
-          () => {
-            const prev = getModelConfig(profile);
-            // Same library-mirroring as the pure-local path below: carry the
-            // activated model's context-window and api_mode into config.yaml
-            // so this local fallback write doesn't leave a stale transport.
-            const libEntry = resolveLibraryModelEntry(provider, model, baseUrl);
-            setModelConfig(
+          () =>
+            remoteSetModelConfig(
+              getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
               provider,
               model,
               baseUrl,
-              profile,
-              libEntry?.contextLength ?? null,
-              libEntry?.apiMode ?? null,
-            );
-            if (
-              isGatewayRunning(profile) &&
-              (prev.provider !== provider ||
-                prev.model !== model ||
-                prev.baseUrl !== baseUrl)
-            ) {
-              restartGateway(profile);
-            }
-            return true;
+            ),
+          () => {
+            throw new Error("Remote dashboard model config is unavailable.");
           },
         );
       }
@@ -1153,6 +1232,115 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("get-connection-config", () => getPublicConnectionConfig());
   ipcMain.handle("is-ssh-tunnel-active", () => isSshTunnelActive());
 
+  // Agent runtimes deliberately expose only non-secret definitions. Hermes
+  // credentials stay in the existing protected connection configuration.
+  ipcMain.handle("list-agent-runtimes", () => listAgentRuntimes());
+  ipcMain.handle("save-agent-runtime", (_event, draft: AgentRuntimeDraft) =>
+    saveAgentRuntime(draft),
+  );
+  ipcMain.handle("remove-agent-runtime", (_event, id: string) =>
+    removeAgentRuntime(id),
+  );
+  ipcMain.handle("get-agent-runtime-credential-status", (_event, id: string) =>
+    getAgentRuntimeCredentialStatus(id),
+  );
+  ipcMain.handle(
+    "set-agent-runtime-bearer-token",
+    (_event, id: string, bearerToken: string) =>
+      setAgentRuntimeBearerToken(id, bearerToken),
+  );
+  ipcMain.handle("probe-agent-runtime", (_event, id: string) =>
+    probeAgentRuntime(id),
+  );
+  ipcMain.handle(
+    "start-agent-runtime-task",
+    (_event, runtimeId: string, input: AgentRuntimeTaskInput) =>
+      startAgentRuntimeTask(runtimeId, input),
+  );
+  ipcMain.handle("get-agent-runtime-run", (_event, runId: string) =>
+    getAgentRuntimeRun(runId),
+  );
+  ipcMain.handle("cancel-agent-runtime-task", (_event, runId: string) =>
+    cancelAgentRuntimeTask(runId),
+  );
+  ipcMain.handle("list-task-center-tasks", () => listTaskCenterTasks());
+  ipcMain.handle(
+    "create-task-center-task",
+    (_event, input: CreateTaskCenterTaskInput) => createTaskCenterTask(input),
+  );
+  ipcMain.handle("cancel-task-center-task", (_event, id: string) =>
+    cancelTaskCenterTask(id),
+  );
+  ipcMain.handle(
+    "set-task-center-acceptance",
+    (_event, id: string, acceptance: "accepted" | "rejected") =>
+      setTaskCenterAcceptance(id, acceptance),
+  );
+  ipcMain.handle("open-task-center-worktree", async (_event, worktree: string) => {
+    if (typeof worktree !== "string" || !worktree.trim()) {
+      throw new Error("Worktree path is required.");
+    }
+    const root = resolve(
+      profileHome(getActiveProfileNameSync()),
+      "desktop",
+      "worktrees",
+    );
+    const target = resolve(worktree);
+    const outside = relative(root, target);
+    if (!outside || outside.startsWith("..") || /^[\\/]/.test(outside)) {
+      throw new Error("Task worktree path is outside the managed worktree directory.");
+    }
+    const result = await shell.openPath(target);
+    if (result) throw new Error("Could not open the task worktree.");
+    return true;
+  });
+  ipcMain.handle("list-project-control-projects", () => listProjects());
+  ipcMain.handle("create-project-control-project", (_event, input: CreateProjectInput) =>
+    createProject(input),
+  );
+  ipcMain.handle(
+    "set-project-control-status",
+    (_event, projectId: string, status: "active" | "paused" | "completed" | "cancelled", summary: string) =>
+      setProjectStatus(projectId, status, summary),
+  );
+  ipcMain.handle("list-project-control-tasks", (_event, projectId: string) =>
+    listProjectTasks(projectId),
+  );
+  ipcMain.handle("list-project-control-events", (_event, projectId: string) =>
+    listProjectEvents(projectId),
+  );
+  ipcMain.handle("list-project-control-artifacts", (_event, projectId: string) =>
+    listProjectArtifacts(projectId),
+  );
+  ipcMain.handle("create-project-control-task", (_event, input: CreateProjectTaskInput) =>
+    createProjectTask(input),
+  );
+  ipcMain.handle("assign-project-control-task", (_event, input: AssignProjectTaskInput) =>
+    assignProjectTask(input),
+  );
+  ipcMain.handle("dispatch-project-control-task", (_event, taskId: string) =>
+    dispatchProjectTask(taskId),
+  );
+  ipcMain.handle("start-project-coordinator-plan", (_event, projectId: string) =>
+    startCoordinatorPlanningTask(projectId),
+  );
+  ipcMain.handle(
+    "review-project-control-task",
+    (_event, taskId: string, acceptance: "accepted" | "rejected", summary: string) =>
+      reviewProjectTask(taskId, acceptance, summary),
+  );
+  ipcMain.handle("cancel-project-control-task", (_event, taskId: string) =>
+    cancelProjectTask(taskId),
+  );
+  ipcMain.handle(
+    "set-project-control-task-status",
+    (_event, taskId: string, status: ProjectTaskStatus, summary: string) =>
+      setProjectTaskStatus(taskId, status, summary),
+  );
+  ipcMain.handle("create-project-control-context", (_event, taskId: string) =>
+    createProjectContextPackage(taskId),
+  );
+
   ipcMain.handle(
     "set-connection-config",
     (
@@ -1160,6 +1348,8 @@ export function registerIpcHandlers(context: IpcContext): void {
       mode: "local" | "remote" | "ssh",
       remoteUrl: string,
       apiKey?: string,
+      remoteDashboardUrl?: string,
+      remoteDashboardToken?: string,
     ) => {
       const existing = getConnectionConfig();
       setConnectionConfig({
@@ -1172,6 +1362,14 @@ export function registerIpcHandlers(context: IpcContext): void {
           remoteUrl,
           apiKey,
         ),
+        remoteDashboardUrl:
+          remoteDashboardUrl !== undefined
+            ? remoteDashboardUrl
+            : existing.remoteDashboardUrl,
+        remoteDashboardToken:
+          remoteDashboardToken !== undefined
+            ? remoteDashboardToken
+            : existing.remoteDashboardToken,
       });
       resetSshDashboardAvailability();
       notifyConnectionConfigChanged();
@@ -1768,7 +1966,12 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Sessions
   ipcMain.handle("list-sessions", (_event, limit?: number, offset?: number) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "remote") return remoteListSessions(conn, limit, offset);
+    if (conn.mode === "remote")
+      return remoteListSessions(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        limit,
+        offset,
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
         conn,
@@ -1782,9 +1985,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("get-session-messages", (_event, sessionId: string) => {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
-      return remoteGetSessionMessages(conn, sessionId).then((items) =>
-        applySessionLocalOverlays(sessionId, items),
-      );
+      return remoteGetSessionMessages(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        sessionId,
+      ).then((items) => applySessionLocalOverlays(sessionId, items));
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
         conn,
@@ -1867,7 +2071,11 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle("delete-session", (_event, sessionId: string) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "remote") return remoteDeleteSession(conn, sessionId);
+    if (conn.mode === "remote")
+      return remoteDeleteSession(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        sessionId,
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
         conn,
@@ -1881,7 +2089,11 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("delete-sessions", (_event, sessionIds: string[]) => {
     const ids = Array.isArray(sessionIds) ? sessionIds : [];
     const conn = getConnectionConfig();
-    if (conn.mode === "remote") return remoteDeleteSessions(conn, ids);
+    if (conn.mode === "remote")
+      return remoteDeleteSessions(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        ids,
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
         conn,
@@ -2006,6 +2218,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Memory
   ipcMain.handle("read-memory", (_event, profile?: string) => {
     const conn = getConnectionConfig();
+    if (conn.mode === "remote")
+      return remoteReadMemory(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return sshReadMemory(conn.ssh, profile);
     return readMemory(profile);
@@ -2014,6 +2230,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     "add-memory-entry",
     (_event, content: string, profile?: string) => {
       const conn = getConnectionConfig();
+      if (conn.mode === "remote")
+        return remoteAddMemoryEntry(
+          getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+          content,
+        );
       if (conn.mode === "ssh" && conn.ssh)
         return sshAddMemoryEntry(conn.ssh, content, profile);
       return addMemoryEntry(content, profile);
@@ -2023,6 +2244,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     "update-memory-entry",
     (_event, index: number, content: string, profile?: string) => {
       const conn = getConnectionConfig();
+      if (conn.mode === "remote")
+        return remoteUpdateMemoryEntry(
+          getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+          index,
+          content,
+        );
       if (conn.mode === "ssh" && conn.ssh)
         return sshUpdateMemoryEntry(conn.ssh, index, content, profile);
       return updateMemoryEntry(index, content, profile);
@@ -2032,6 +2259,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     "remove-memory-entry",
     (_event, index: number, profile?: string) => {
       const conn = getConnectionConfig();
+      if (conn.mode === "remote")
+        return remoteRemoveMemoryEntry(
+          getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+          index,
+        );
       if (conn.mode === "ssh" && conn.ssh)
         return sshRemoveMemoryEntry(conn.ssh, index, profile);
       return removeMemoryEntry(index, profile);
@@ -2041,6 +2273,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     "write-user-profile",
     (_event, content: string, profile?: string) => {
       const conn = getConnectionConfig();
+      if (conn.mode === "remote")
+        return remoteWriteUserProfile(
+          getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+          content,
+        );
       if (conn.mode === "ssh" && conn.ssh)
         return sshWriteUserProfile(conn.ssh, content, profile);
       return writeUserProfile(content, profile);
@@ -2137,7 +2374,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     (_event, limit?: number, offset?: number) => {
       const conn = getConnectionConfig();
       if (conn.mode === "remote")
-        return remoteListCachedSessions(conn, limit, offset);
+        return remoteListCachedSessions(
+          getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+          limit,
+          offset,
+        );
       if (conn.mode === "ssh" && conn.ssh)
         return withSshDashboardSessions(
           conn,
@@ -2150,7 +2391,11 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle("sync-session-cache", () => {
     const conn = getConnectionConfig();
-    if (conn.mode === "remote") return remoteListCachedSessions(conn, 50);
+    if (conn.mode === "remote")
+      return remoteListCachedSessions(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        50,
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
         conn,
@@ -2170,7 +2415,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     (_event, sessionId: string, title: string) => {
       const conn = getConnectionConfig();
       if (conn.mode === "remote")
-        return remoteUpdateSessionTitle(conn, sessionId, title);
+        return remoteUpdateSessionTitle(
+          getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+          sessionId,
+          title,
+        );
       if (conn.mode === "ssh" && conn.ssh)
         return withSshDashboardSessions(
           conn,
@@ -2185,7 +2434,12 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Session search
   ipcMain.handle("search-sessions", (_event, query: string, limit?: number) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "remote") return remoteSearchSessions(conn, query, limit);
+    if (conn.mode === "remote")
+      return remoteSearchSessions(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        query,
+        limit,
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return withSshDashboardSessions(
         conn,
@@ -2242,7 +2496,9 @@ export function registerIpcHandlers(context: IpcContext): void {
           "Remote model library reads require dashboard transport.",
         );
       }
-      return remoteListModels(conn);
+      return remoteListModels(
+        getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
+      );
     }
     if (conn.mode === "ssh" && conn.ssh) {
       if (conn.sshChatTransport === "legacy") {
@@ -2278,7 +2534,13 @@ export function registerIpcHandlers(context: IpcContext): void {
         }
         // Remote/SSH library writes don't carry the context-length override
         // yet (local-mode feature for now); the local branch persists it.
-        addedModel = await remoteAddModel(conn, name, provider, model, baseUrl);
+        addedModel = await remoteAddModel(
+          getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
+          name,
+          provider,
+          model,
+          baseUrl,
+        );
       } else if (conn.mode === "ssh" && conn.ssh) {
         addedModel = await withSshDashboardModelLibrary(
           conn,
@@ -2309,7 +2571,10 @@ export function registerIpcHandlers(context: IpcContext): void {
           "Remote model library writes require dashboard transport.",
         );
       }
-      removed = await remoteRemoveModel(conn, id);
+      removed = await remoteRemoveModel(
+        getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
+        id,
+      );
     } else if (conn.mode === "ssh" && conn.ssh) {
       removed = await withSshDashboardModelLibrary(
         conn,
@@ -2341,7 +2606,11 @@ export function registerIpcHandlers(context: IpcContext): void {
             "Remote model library writes require dashboard transport.",
           );
         }
-        updated = await remoteUpdateModel(conn, id, fields);
+        updated = await remoteUpdateModel(
+          getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
+          id,
+          fields,
+        );
       } else if (conn.mode === "ssh" && conn.ssh) {
         updated = await withSshDashboardModelLibrary(
           conn,
@@ -2551,13 +2820,26 @@ export function registerIpcHandlers(context: IpcContext): void {
       maxBytes?: number,
     ): Promise<{ content: string; truncated: boolean } | null> => {
       try {
-        const limit = maxBytes ?? 102400; // Default 100KB
-        const buffer = await readFile(filePath);
-        const truncated = buffer.byteLength > limit;
-        const content = truncated
-          ? buffer.subarray(0, limit).toString("utf-8")
-          : buffer.toString("utf-8");
-        return { content, truncated };
+        const limit =
+          typeof maxBytes === "number" &&
+          Number.isFinite(maxBytes) &&
+          maxBytes > 0
+            ? Math.min(Math.floor(maxBytes), 1024 * 1024)
+            : 102400; // Default 100KB, hard cap 1MB
+        const handle = await openFile(filePath, "r");
+        try {
+          const info = await handle.stat();
+          if (!info.isFile()) return null;
+          const bytesToRead = Math.min(info.size, limit);
+          const buffer = Buffer.alloc(bytesToRead);
+          const { bytesRead } = await handle.read(buffer, 0, bytesToRead, 0);
+          return {
+            content: buffer.subarray(0, bytesRead).toString("utf-8"),
+            truncated: info.size > bytesRead,
+          };
+        } finally {
+          await handle.close();
+        }
       } catch {
         return null;
       }
@@ -2752,6 +3034,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Memory providers
   ipcMain.handle("discover-memory-providers", (_event, profile?: string) => {
     const conn = getConnectionConfig();
+    if (conn.mode === "remote")
+      return remoteDiscoverMemoryProviders(
+        getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+      );
     if (conn.mode === "ssh" && conn.ssh)
       return sshDiscoverMemoryProviders(conn.ssh, profile);
     return discoverMemoryProviders(profile);

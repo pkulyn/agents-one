@@ -24,6 +24,27 @@ import type {
 } from "../shared/account";
 import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
 import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
+import type {
+  AgentRuntimeDefinition,
+  AgentRuntimeDraft,
+  AgentRuntimeProbe,
+  AgentRuntimeRun,
+  AgentRuntimeTaskInput,
+} from "../shared/agent-runtimes";
+import type {
+  AssignProjectTaskInput,
+  CreateProjectInput,
+  CreateProjectTaskInput,
+  ProjectContextPackage,
+  ProjectControlProject,
+  ProjectControlTask,
+  ProjectTaskEvent,
+  ProjectTaskStatus,
+} from "../shared/project-control";
+import type {
+  CreateTaskCenterTaskInput,
+  TaskCenterTask,
+} from "../shared/task-center";
 
 /**
  * Mirror of the renderer-side `CredentialPoolEntry` ambient type
@@ -303,13 +324,97 @@ const hermesAPI = {
   isRemoteMode: (): Promise<boolean> => ipcRenderer.invoke("is-remote-mode"),
   isRemoteOnlyMode: (): Promise<boolean> =>
     ipcRenderer.invoke("is-remote-only-mode"),
+  listAgentRuntimes: (): Promise<AgentRuntimeDefinition[]> =>
+    ipcRenderer.invoke("list-agent-runtimes"),
+  saveAgentRuntime: (
+    draft: AgentRuntimeDraft,
+  ): Promise<AgentRuntimeDefinition> =>
+    ipcRenderer.invoke("save-agent-runtime", draft),
+  removeAgentRuntime: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke("remove-agent-runtime", id),
+  getAgentRuntimeCredentialStatus: (
+    id: string,
+  ): Promise<{ required: boolean; configured: boolean }> =>
+    ipcRenderer.invoke("get-agent-runtime-credential-status", id),
+  setAgentRuntimeBearerToken: (
+    id: string,
+    bearerToken: string,
+  ): Promise<{ configured: true }> =>
+    ipcRenderer.invoke("set-agent-runtime-bearer-token", id, bearerToken),
+  probeAgentRuntime: (id: string): Promise<AgentRuntimeProbe> =>
+    ipcRenderer.invoke("probe-agent-runtime", id),
+  startAgentRuntimeTask: (
+    runtimeId: string,
+    input: AgentRuntimeTaskInput,
+  ): Promise<AgentRuntimeRun> =>
+    ipcRenderer.invoke("start-agent-runtime-task", runtimeId, input),
+  getAgentRuntimeRun: (runId: string): Promise<AgentRuntimeRun | null> =>
+    ipcRenderer.invoke("get-agent-runtime-run", runId),
+  cancelAgentRuntimeTask: (runId: string): Promise<boolean> =>
+    ipcRenderer.invoke("cancel-agent-runtime-task", runId),
+  listTaskCenterTasks: (): Promise<TaskCenterTask[]> =>
+    ipcRenderer.invoke("list-task-center-tasks"),
+  createTaskCenterTask: (input: CreateTaskCenterTaskInput): Promise<TaskCenterTask> =>
+    ipcRenderer.invoke("create-task-center-task", input),
+  cancelTaskCenterTask: (id: string): Promise<TaskCenterTask | null> =>
+    ipcRenderer.invoke("cancel-task-center-task", id),
+  setTaskCenterAcceptance: (
+    id: string,
+    acceptance: "accepted" | "rejected",
+  ): Promise<TaskCenterTask | null> =>
+    ipcRenderer.invoke("set-task-center-acceptance", id, acceptance),
+  openTaskCenterWorktree: (worktree: string): Promise<boolean> =>
+    ipcRenderer.invoke("open-task-center-worktree", worktree),
+  listProjectControlProjects: (): Promise<ProjectControlProject[]> =>
+    ipcRenderer.invoke("list-project-control-projects"),
+  createProjectControlProject: (input: CreateProjectInput): Promise<ProjectControlProject> =>
+    ipcRenderer.invoke("create-project-control-project", input),
+  setProjectControlStatus: (
+    projectId: string,
+    status: "active" | "paused" | "completed" | "cancelled",
+    summary: string,
+  ): Promise<ProjectControlProject> =>
+    ipcRenderer.invoke("set-project-control-status", projectId, status, summary),
+  listProjectControlTasks: (projectId: string): Promise<ProjectControlTask[]> =>
+    ipcRenderer.invoke("list-project-control-tasks", projectId),
+  listProjectControlEvents: (projectId: string): Promise<ProjectTaskEvent[]> =>
+    ipcRenderer.invoke("list-project-control-events", projectId),
+  listProjectControlArtifacts: (projectId: string): Promise<import("../shared/project-control").ProjectArtifactReference[]> =>
+    ipcRenderer.invoke("list-project-control-artifacts", projectId),
+  createProjectControlTask: (input: CreateProjectTaskInput): Promise<ProjectControlTask> =>
+    ipcRenderer.invoke("create-project-control-task", input),
+  assignProjectControlTask: (input: AssignProjectTaskInput): Promise<ProjectControlTask> =>
+    ipcRenderer.invoke("assign-project-control-task", input),
+  dispatchProjectControlTask: (taskId: string): Promise<ProjectControlTask> =>
+    ipcRenderer.invoke("dispatch-project-control-task", taskId),
+  startProjectCoordinatorPlan: (projectId: string): Promise<ProjectControlTask> =>
+    ipcRenderer.invoke("start-project-coordinator-plan", projectId),
+  reviewProjectControlTask: (
+    taskId: string,
+    acceptance: "accepted" | "rejected",
+    summary: string,
+  ): Promise<ProjectControlTask> =>
+    ipcRenderer.invoke("review-project-control-task", taskId, acceptance, summary),
+  cancelProjectControlTask: (taskId: string): Promise<ProjectControlTask> =>
+    ipcRenderer.invoke("cancel-project-control-task", taskId),
+  setProjectControlTaskStatus: (
+    taskId: string,
+    status: ProjectTaskStatus,
+    summary: string,
+  ): Promise<ProjectControlTask> =>
+    ipcRenderer.invoke("set-project-control-task-status", taskId, status, summary),
+  createProjectControlContext: (taskId: string): Promise<ProjectContextPackage> =>
+    ipcRenderer.invoke("create-project-control-context", taskId),
   getConnectionConfig: (): Promise<{
     mode: "local" | "remote" | "ssh";
     remoteUrl: string;
+    remoteDashboardUrl: string;
     remoteChatTransport: "auto" | "dashboard" | "legacy";
     sshChatTransport: "auto" | "dashboard" | "legacy";
     hasApiKey: boolean;
+    hasRemoteDashboardToken: boolean;
     apiKeyLength: number;
+    remoteDashboardTokenLength: number;
     ssh: {
       host: string;
       port: number;
@@ -324,8 +429,17 @@ const hermesAPI = {
     mode: "local" | "remote" | "ssh",
     remoteUrl: string,
     apiKey?: string,
+    remoteDashboardUrl?: string,
+    remoteDashboardToken?: string,
   ): Promise<boolean> =>
-    ipcRenderer.invoke("set-connection-config", mode, remoteUrl, apiKey),
+    ipcRenderer.invoke(
+      "set-connection-config",
+      mode,
+      remoteUrl,
+      apiKey,
+      remoteDashboardUrl,
+      remoteDashboardToken,
+    ),
 
   setConnectionChatTransports: (
     remoteChatTransport: "auto" | "dashboard" | "legacy",
@@ -341,10 +455,13 @@ const hermesAPI = {
     callback: (config: {
       mode: "local" | "remote" | "ssh";
       remoteUrl: string;
+      remoteDashboardUrl: string;
       remoteChatTransport: "auto" | "dashboard" | "legacy";
       sshChatTransport: "auto" | "dashboard" | "legacy";
       hasApiKey: boolean;
+      hasRemoteDashboardToken: boolean;
       apiKeyLength: number;
+      remoteDashboardTokenLength: number;
       ssh: {
         host: string;
         port: number;
@@ -363,10 +480,13 @@ const hermesAPI = {
         config as {
           mode: "local" | "remote" | "ssh";
           remoteUrl: string;
+          remoteDashboardUrl: string;
           remoteChatTransport: "auto" | "dashboard" | "legacy";
           sshChatTransport: "auto" | "dashboard" | "legacy";
           hasApiKey: boolean;
+          hasRemoteDashboardToken: boolean;
           apiKeyLength: number;
+          remoteDashboardTokenLength: number;
           ssh: {
             host: string;
             port: number;

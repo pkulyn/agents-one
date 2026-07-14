@@ -1,11 +1,13 @@
 import http from "http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  dashboardApiUrl,
   remoteDeleteSession,
   remoteGetSessionMessages,
   remoteListCachedSessions,
   remoteListSessions,
   remoteReadMediaAsDataUrl,
+  remoteRequestJson,
   remoteSearchSessions,
   remoteUpdateSessionTitle,
   type RemoteSessionConfig,
@@ -22,6 +24,18 @@ describe("remote session REST bridge", () => {
   let server: http.Server;
   let baseUrl = "";
   const requests: RecordedRequest[] = [];
+
+  it("preserves a reverse-proxied dashboard path prefix when building API URLs", () => {
+    expect(
+      dashboardApiUrl(
+        {
+          remoteUrl: "https://example.test/hermes-dashboard/",
+          apiKey: "token",
+        },
+        "/api/sessions?limit=1",
+      ),
+    ).toBe("https://example.test/hermes-dashboard/api/sessions?limit=1");
+  });
 
   beforeEach(async () => {
     requests.length = 0;
@@ -109,6 +123,14 @@ describe("remote session REST bridge", () => {
                   title: null,
                   preview: "Remote preview",
                 },
+                {
+                  id: "sess-cron",
+                  source: "cronjob",
+                  started_at: 1700000001,
+                  message_count: 1,
+                  title: "Nightly script",
+                  preview: "Scheduled maintenance",
+                },
               ],
             }),
           );
@@ -128,7 +150,78 @@ describe("remote session REST bridge", () => {
                   started_at: 1700000002,
                   message_count: 2,
                   model: "custom/deepseek-v4-pro",
+                  title: "Session ss-cache",
                   preview: "Cached remote preview",
+                },
+                {
+                  id: "sess-title-from-message",
+                  source: "chat",
+                  started_at: 1700000004,
+                  message_count: 2,
+                  model: "custom/deepseek-v4-pro",
+                  title: "Session 4af90b",
+                  preview: "",
+                },
+                {
+                  id: "sess-cache-cron",
+                  source: "scheduled",
+                  started_at: 1700000003,
+                  message_count: 1,
+                  preview: "Scheduled remote preview",
+                },
+                {
+                  id: "sess-dashboard-orphan",
+                  source: "api_server",
+                  started_at: 1700000005,
+                  message_count: 3,
+                  title: "Session orphan",
+                  preview: "",
+                },
+              ],
+            }),
+          );
+          return;
+        }
+
+        if (req.url === "/api/sessions/sess-title-from-message/messages") {
+          res.end(
+            JSON.stringify({
+              session_id: "sess-title-from-message",
+              messages: [
+                {
+                  id: 21,
+                  role: "human",
+                  content: "Plan the OpenClaw adapter handshake",
+                  timestamp: 20,
+                },
+                {
+                  id: 22,
+                  role: "agent",
+                  content: "Here is the plan.",
+                  timestamp: 21,
+                },
+              ],
+            }),
+          );
+          return;
+        }
+
+        if (req.url === "/api/sessions/sess-dashboard-orphan/messages") {
+          res.end(
+            JSON.stringify({
+              session_id: "sess-dashboard-orphan",
+              messages: [
+                {
+                  id: 23,
+                  role: "assistant",
+                  content: "Let me inspect the connection.",
+                  timestamp: 22,
+                },
+                {
+                  id: 24,
+                  role: "tool",
+                  content: "ok",
+                  timestamp: 23,
                 },
               ],
             }),
@@ -202,6 +295,46 @@ describe("remote session REST bridge", () => {
           return;
         }
 
+        if (req.url === "/api/sessions/sess-alias/messages") {
+          res.end(
+            JSON.stringify({
+              session_id: "sess-alias",
+              messages: [
+                {
+                  id: "30",
+                  role: "human",
+                  text: "我的提问在哪里？",
+                  timestamp: 30,
+                },
+                {
+                  id: "31",
+                  role: "agent",
+                  reasoning: "用户问历史里缺少提问。",
+                  timestamp: 31,
+                },
+              ],
+            }),
+          );
+          return;
+        }
+
+        if (req.url === "/api/sessions/sess-pair/messages") {
+          res.end(
+            JSON.stringify({
+              session_id: "sess-pair",
+              messages: [
+                {
+                  id: 4,
+                  prompt: "连接正常吗？",
+                  response: "连接正常，Hermes 通信畅通。",
+                  timestamp: 40,
+                },
+              ],
+            }),
+          );
+          return;
+        }
+
         if (req.url === "/api/sessions/sess-image/messages") {
           res.end(
             JSON.stringify({
@@ -255,6 +388,16 @@ describe("remote session REST bridge", () => {
           req.url === "/api/sessions/sess-delete"
         ) {
           res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+
+        if (req.url === "/api/auth-fallback") {
+          if (req.headers["x-hermes-session-token"] === "fallback-token") {
+            res.end(JSON.stringify({ ok: true }));
+            return;
+          }
+          res.statusCode = 401;
+          res.end(JSON.stringify({ detail: "invalid dashboard token" }));
           return;
         }
 
@@ -366,6 +509,53 @@ describe("remote session REST bridge", () => {
         model: "custom/deepseek-v4-pro",
         // Remote sessions have no local desktop folder binding (issue #27).
         contextFolder: null,
+      },
+      {
+        id: "sess-title-from-message",
+        title: "Plan the OpenClaw adapter handshake",
+        startedAt: 1700000004,
+        source: "chat",
+        messageCount: 2,
+        model: "custom/deepseek-v4-pro",
+        contextFolder: null,
+      },
+    ]);
+  });
+
+  it("normalizes remote role aliases and assistant text stored as reasoning", async () => {
+    const items = await remoteGetSessionMessages(config(), "sess-alias");
+
+    expect(items).toEqual([
+      {
+        kind: "user",
+        id: 30,
+        content: "我的提问在哪里？",
+        timestamp: 30,
+      },
+      {
+        kind: "assistant",
+        id: 31,
+        content: "用户问历史里缺少提问。",
+        timestamp: 31,
+      },
+    ]);
+  });
+
+  it("splits prompt/response records into user and assistant history rows", async () => {
+    const items = await remoteGetSessionMessages(config(), "sess-pair");
+
+    expect(items).toEqual([
+      {
+        kind: "user",
+        id: 40,
+        content: "连接正常吗？",
+        timestamp: 40,
+      },
+      {
+        kind: "assistant",
+        id: 41,
+        content: "连接正常，Hermes 通信畅通。",
+        timestamp: 40.000001,
       },
     ]);
   });
@@ -511,5 +701,23 @@ describe("remote session REST bridge", () => {
       url: "/api/sessions/sess-delete",
       token: "test-token",
     });
+  });
+
+  it("retries a rejected dashboard token with the configured fallback key", async () => {
+    await expect(
+      remoteRequestJson(
+        {
+          remoteUrl: `${baseUrl}/api`,
+          apiKey: "dashboard-token",
+          fallbackApiKey: "fallback-token",
+        },
+        "/api/auth-fallback",
+      ),
+    ).resolves.toEqual({ ok: true });
+
+    expect(requests.slice(-2).map((request) => request.token)).toEqual([
+      "dashboard-token",
+      "fallback-token",
+    ]);
   });
 });

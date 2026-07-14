@@ -44,6 +44,44 @@ The packaged renderer keeps its meta CSP aligned with the production response CS
 
 Because electron-vite emits a bundled main file at `out/main/index.js`, packaged renderer loading resolves `../renderer/index.html` from `__dirname` to reach `out/renderer/index.html`.
 
+## Remote dashboard URL prefixes
+
+Remote dashboards may sit under a path prefix.
+
+Remote mode can point `RemoteDashboardUrl` at a reverse-proxied base such as `https://host/hermes-dashboard` while the gateway API uses a separate path. [[src/main/dashboard.ts#dashboardWsUrl]] therefore appends `/api/ws` to the normalized dashboard base path instead of replacing the path with root `/api/ws`, so chat probes and dashboard transport use `/hermes-dashboard/api/ws`. [[tests/dashboard-remote.test.ts]] covers this proxied-base regression.
+
+## Multi-agent runtime direction
+
+Hermes Desktop Plus will add a capability-driven runtime registry without changing Hermes Dashboard or legacy-chat fallback semantics.
+
+The planned contract, task ownership, and acceptance gates are recorded in `docs/HERMES_ONE_FIVE_PHASE_PLAN.md`; historical task decomposition remains in `docs/MULTI_AGENT_EXECUTION_PLAN.md` and `docs/MULTI_AGENT_TODOLIST.md`. Hermes One owns the durable control plane, while the user selects a project coordinator Runtime rather than hard-coding Hermes as the only manager. Implementation must add explicit adapters rather than treating Claw3D's read-only OpenClaw board as a task-dispatch API.
+
+The current remote Hermes acceptance matrix is documented in `docs/REMOTE_HERMES_SMOKE_MATRIX.md`; it records the supported management APIs and the same-origin credential fallback used when a stale dashboard token is rejected by a NAS reverse proxy.
+
+All remote dashboard management requests must preserve a reverse-proxy path prefix such as `/hermes-dashboard`. [[src/main/remote-sessions.ts#dashboardApiUrl]] strips leading slashes from the requested API path before resolving it against the configured base; otherwise `new URL("/api/...", base)` silently drops the prefix and sends management calls to the site root, producing 404s even though the dashboard itself is healthy.
+
+The first runtime-registry backend lives in [[src/shared/agent-runtimes.ts]] and [[src/main/agent-runtimes.ts]]. It exposes a protected built-in Hermes runtime plus user-defined non-secret runtimes, rejects secret-looking config fields, and surfaces Electron IPC for listing, saving, removing, probing, starting, querying, and cancelling runtime tasks through [[src/main/ipc/register.ts#registerIpcHandlers]] and the preload bridge.
+
+Runtime capability declarations include `orchestration` and `mailbox` in addition to chat, dispatch, streaming, cancellation, tools, memory, artifacts, and workspace access. They remain explicitly `false` until the controlled Project/TaskEvent APIs exist; task dispatch alone must never be presented as multi-agent coordination capability.
+
+The OpenClaw bridge client lives in [[src/main/openclaw-runtime.ts]] and is integrated by the runtime registry for remote `openclaw` runtimes. It accepts only non-secret endpoint config, validates http/https URLs and timeouts, probes `/health`, starts `/tasks`, refreshes `/tasks/:id`, and cancels with `POST /tasks/:id/cancel` so cancelled task records remain queryable.
+
+The minimal runtime-management UI lives in [[src/renderer/src/components/settings/AgentRuntimesPane.tsx]] and is mounted under Settings -> Runtimes. It lists built-in and user runtimes, saves only non-secret config fields, supports enable/disable, probes health/capabilities, and removes user runtimes. [[src/renderer/src/components/settings/AgentRuntimesPane.test.tsx]] covers load/probe/save behavior alongside the backend registry tests.
+
+### Codex worktree runtime and Task Center
+
+The first local coding runtime runs Codex only through an isolated Git worktree, while the Task Center records manual dispatch, lifecycle, output, review, and artifacts independently from chat, Cron, and Kanban.
+
+[[src/main/codex-runtime.ts]] probes the local Codex CLI and starts `codex exec` with an argument array, `shell: false`, a bounded environment, JSON output, and an explicit read-only or workspace-write sandbox. An implementation task first creates a detached worktree under the active profile's `desktop/worktrees/codex` directory; the original repository is never used as the process working directory. The resulting worktree path, diff summary, capped/redacted output, and diff artifact are surfaced through [[src/main/agent-runtimes.ts]] without auto-committing or auto-merging changes. [[tests/codex-runtime.test.ts]] fixes the noninteractive invocation contract.
+
+[[src/main/task-center.ts]] persists Task Center records under the profile desktop data directory and reconciles running tasks via the existing runtime `get`/`cancel` operations. A process-local run that disappears after desktop restart becomes an explicit failed record instead of remaining indefinitely in `running`. [[src/main/ipc/register.ts#registerIpcHandlers]] and the preload bridge expose list/create/cancel/review/open-worktree commands, while [[src/renderer/src/screens/TaskCenter/TaskCenter.tsx]] provides the manual runtime selector and review surface.
+
+Codex emits JSONL lifecycle events, which are valuable diagnostics but poor review text. [[src/renderer/src/screens/TaskCenter/taskOutput.ts#summarizeTaskOutput]] extracts the final agent message, WebSocket-to-HTTPS fallback state, and token summary for the task row; the complete JSONL stream remains in a collapsed Runtime log. [[src/renderer/src/screens/TaskCenter/taskOutput.test.ts]] covers this presentation boundary.
+
+### Claude Code runtime
+
+[[src/main/claude-code-runtime.ts]] gives Claude Code the same isolated-task boundary as Codex. Analysis starts noninteractively with `plan`; implementation uses `acceptEdits` only after an isolated detached worktree has been created under the active profile. On Windows, user-level `claude.cmd` and `claude.ps1` wrappers are resolved to the installed native `claude.exe` so the main process can keep `shell: false`. The Adapter caps and redacts output, limits inherited environment variables, cancels the whole process tree, records worktree/diff artifacts, and filters Claude SessionStart bootstrap events before task output is persisted. [[tests/claude-code-runtime.test.ts]] fixes the invocation and filtering contracts.
+
 ## App Chrome Helpers
 
 Menu, updater, and context-menu behavior live in focused modules.

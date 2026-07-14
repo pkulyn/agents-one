@@ -6,7 +6,12 @@ import https from "https";
 import net from "net";
 import { homedir } from "os";
 import { join } from "path";
-import { getConnectionConfig, type ConnectionConfig } from "./config";
+import {
+  getConnectionConfig,
+  getRemoteDashboardSessionConfig,
+  getRemoteDashboardUrl,
+  type ConnectionConfig,
+} from "./config";
 import {
   getEnhancedPath,
   hermesCliArgs,
@@ -20,6 +25,10 @@ import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { ensureSshTunnel, getSshTunnelUrl } from "./ssh-tunnel";
 import { sshEnsureDashboard } from "./ssh-remote";
 import {
+  configuredRemoteTlsOptions,
+  shouldAllowConfiguredRemoteCertificateError,
+} from "./remote-tls";
+import {
   getActiveProfileNameSync,
   normalizeProfileName,
   profileHome,
@@ -29,6 +38,7 @@ export interface DashboardConnection {
   baseUrl: string;
   wsUrl: string;
   token: string;
+  fallbackToken?: string;
   mode: "local" | "remote" | "ssh";
   profile?: string;
   pid?: number;
@@ -61,8 +71,10 @@ function profileKey(profile?: string): string {
 }
 
 function dashboardWsUrl(baseUrl: string, token: string): string {
-  const url = new URL("/api/ws", baseUrl);
+  const url = new URL(baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const basePath = url.pathname.replace(/\/+$/, "");
+  url.pathname = `${basePath}/api/ws`;
   url.searchParams.set("token", token);
   return url.toString();
 }
@@ -89,13 +101,17 @@ export function remoteDashboardConnectionFromConfig(
   profile?: string,
 ): DashboardConnection | null {
   if (config.mode !== "remote") return null;
-  const baseUrl = normalizeRemoteDashboardBaseUrl(config.remoteUrl);
-  const token = config.apiKey.trim();
+  const baseUrl = normalizeRemoteDashboardBaseUrl(
+    getRemoteDashboardUrl(config),
+  );
+  const session = getRemoteDashboardSessionConfig(config, profile);
+  const token = session.apiKey;
   if (!baseUrl || !token) return null;
   return {
     baseUrl,
     wsUrl: dashboardWsUrl(baseUrl, token),
     token,
+    fallbackToken: session.fallbackApiKey,
     mode: "remote",
     profile: resolveProfile(profile),
   };
@@ -214,8 +230,10 @@ function requestJson(
       parsed,
       {
         method: "GET",
+        ...configuredRemoteTlsOptions(parsed.toString()),
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
           "X-Hermes-Session-Token": token,
         },
       },
@@ -262,19 +280,69 @@ function requestJson(
   });
 }
 
+function isAuthenticationFailure(error: unknown): boolean {
+  return (
+    error instanceof Error && /\b(401|403)(?::|\)|\s)/.test(error.message)
+  );
+}
+
+async function requestDashboardJson(
+  connection: DashboardConnection,
+  path: string,
+  timeoutMs = 2_000,
+): Promise<unknown> {
+  const url = `${connection.baseUrl}${path}`;
+  try {
+    return await requestJson(url, connection.token, timeoutMs);
+  } catch (error) {
+    const fallback = connection.fallbackToken;
+    if (fallback && fallback !== connection.token && isAuthenticationFailure(error)) {
+      return requestJson(url, fallback, timeoutMs);
+    }
+    throw error;
+  }
+}
+
 export function probeDashboardWebSocket(
   connection: DashboardConnection,
   timeoutMs = 2_000,
 ): Promise<void> {
+  return probeDashboardWebSocketWithToken(connection, connection.token, timeoutMs).catch(
+    (error) => {
+      const fallback = connection.fallbackToken;
+      if (fallback && fallback !== connection.token && isAuthenticationFailure(error)) {
+        return probeDashboardWebSocketWithToken(connection, fallback, timeoutMs).then(
+          () => {
+            // The renderer opens its own WebSocket from this connection object.
+            // Keep the successful fallback in memory so a passed main-process
+            // probe cannot be followed by a renderer connection with the stale
+            // dashboard token. Do not persist or expose the fallback separately.
+            connection.token = fallback;
+            connection.wsUrl = dashboardWsUrl(connection.baseUrl, fallback);
+          },
+        );
+      }
+      throw error;
+    },
+  );
+}
+
+function probeDashboardWebSocketWithToken(
+  connection: DashboardConnection,
+  token: string,
+  timeoutMs: number,
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    const parsed = new URL(connection.wsUrl);
+    const parsed = new URL(dashboardWsUrl(connection.baseUrl, token));
     const client = parsed.protocol === "wss:" ? https : http;
     parsed.protocol = parsed.protocol === "wss:" ? "https:" : "http:";
     const req = client.request(parsed, {
       method: "GET",
+      ...configuredRemoteTlsOptions(parsed.toString()),
       headers: {
         Connection: "Upgrade",
         Upgrade: "websocket",
+        Authorization: `Bearer ${token}`,
         "Sec-WebSocket-Key": randomBytes(16).toString("base64"),
         "Sec-WebSocket-Version": "13",
       },
@@ -327,7 +395,7 @@ async function waitForDashboardReady(
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {
-      await requestJson(`${connection.baseUrl}/api/status`, connection.token);
+      await requestDashboardJson(connection, "/api/status");
       return;
     } catch (err) {
       lastError = err;
@@ -372,27 +440,38 @@ async function getRemoteDashboardStatusForConfig(
   }
 
   try {
-    const status = await requestJson(
-      `${connection.baseUrl}/api/status`,
-      connection.token,
-    );
-    if (dashboardStatusRequiresOAuth(status)) {
+    let managementError: unknown = null;
+    try {
+      const status = await requestDashboardJson(connection, "/api/status");
+      if (dashboardStatusRequiresOAuth(status)) {
+        return {
+          supported: true,
+          running: false,
+          error:
+            "Remote dashboard requires OAuth browser authentication. Token-based remote dashboard is supported now; OAuth ticket flow is not wired in Hermes One yet.",
+        };
+      }
+      // Touch an authenticated endpoint when the reverse proxy exposes the
+      // REST management API. Some deployments intentionally expose only the
+      // static dashboard and /api/ws; session RPC remains fully functional.
+      await requestDashboardJson(connection, "/api/sessions?limit=1");
+    } catch (error) {
+      managementError = error;
+    }
+
+    try {
+      await probeDashboardWebSocket(connection);
+    } catch (error) {
+      const wsDetail = error instanceof Error ? error.message : String(error);
+      const managementDetail =
+        managementError instanceof Error ? managementError.message : "";
       return {
         supported: true,
         running: false,
-        error:
-          "Remote dashboard requires OAuth browser authentication. Token-based remote dashboard is supported now; OAuth ticket flow is not wired in Hermes One yet.",
+        connection,
+        error: [managementDetail, wsDetail].filter(Boolean).join("; "),
       };
     }
-
-    // /api/status is intentionally public upstream. Touch an authenticated
-    // endpoint as well so a legacy API key or stale token fails before the
-    // renderer opens the WebSocket.
-    await requestJson(
-      `${connection.baseUrl}/api/sessions?limit=1`,
-      connection.token,
-    );
-    await probeDashboardWebSocket(connection);
 
     return { supported: true, running: true, connection };
   } catch (err) {
@@ -446,10 +525,7 @@ async function getSshDashboardStatusForConfig(
   }
 
   try {
-    const status = await requestJson(
-      `${connection.baseUrl}/api/status`,
-      connection.token,
-    );
+    const status = await requestDashboardJson(connection, "/api/status");
     if (dashboardStatusRequiresOAuth(status)) {
       return {
         supported: true,
@@ -460,11 +536,20 @@ async function getSshDashboardStatusForConfig(
       };
     }
 
-    await requestJson(
-      `${connection.baseUrl}/api/sessions?limit=1`,
-      connection.token,
-    );
-    await probeDashboardWebSocket(connection);
+    await requestDashboardJson(connection, "/api/sessions?limit=1");
+    try {
+      await probeDashboardWebSocket(connection);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return {
+        supported: true,
+        running: false,
+        connection,
+        error:
+          "SSH dashboard management API is reachable, but the chat WebSocket is unavailable. " +
+          `Auto chat transport can still use the legacy API fallback. ${detail}`,
+      };
+    }
 
     return { supported: true, running: true, connection };
   } catch (err) {
@@ -646,3 +731,5 @@ export function stopAllDashboards(): void {
     stopDashboard(key === "default" ? undefined : key);
   }
 }
+
+export { shouldAllowConfiguredRemoteCertificateError };

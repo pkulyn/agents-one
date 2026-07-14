@@ -21,6 +21,7 @@ import { useFastMode } from "./hooks/useFastMode";
 import { useReasoningEffort } from "./hooks/useReasoningEffort";
 import { useLocalCommands } from "./hooks/useLocalCommands";
 import {
+  dashboardContinuationItemsFromTranscript,
   dashboardChatEnabledForConnection,
   useDashboardChatTransport,
 } from "./hooks/useDashboardChatTransport";
@@ -288,6 +289,39 @@ function Chat({
       unsubscribe();
     };
   }, []);
+
+  // Persist one transport-agnostic transcript for remote/SSH chats. Dashboard
+  // and Legacy transports surface session ids through different event paths;
+  // keeping this at Chat level guarantees both paths preserve the user prompt.
+  const persistedTranscriptRef = useRef("");
+  useEffect(() => {
+    if (
+      !connectionModeLoaded ||
+      connectionMode === "local" ||
+      !hermesSessionId
+    ) {
+      return;
+    }
+    const transcript = dashboardContinuationItemsFromTranscript(messages);
+    if (!transcript.some((item) => item.kind === "user")) return;
+    const signature = `${hermesSessionId}\n${JSON.stringify(transcript)}`;
+    if (persistedTranscriptRef.current === signature) return;
+
+    const timer = window.setTimeout(() => {
+      void window.hermesAPI
+        .recordSessionContinuation(hermesSessionId, transcript)
+        .then(() => {
+          persistedTranscriptRef.current = signature;
+          window.dispatchEvent(
+            new CustomEvent("hermes-session-transcript-changed", {
+              detail: { sessionId: hermesSessionId },
+            }),
+          );
+        })
+        .catch(() => undefined);
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [connectionMode, connectionModeLoaded, hermesSessionId, messages]);
 
   const { containerRef, bottomRef } = useChatScroll(messages);
   const modelConfig = useModelConfig(profile);

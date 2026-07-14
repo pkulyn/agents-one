@@ -1,7 +1,7 @@
 import { execFileSync } from "child_process";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { delimiter, join } from "path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/main/locale", () => ({
@@ -53,6 +53,16 @@ const sshConfig: SshConfig = {
   localPort: 18642,
 };
 
+const hasBash = (() => {
+  try {
+    execFileSync("bash", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const itIfBash = hasBash ? it : it.skip;
+
 function runWithHermesShim(command: string): Buffer {
   const home = mkdtempSync(join(tmpdir(), "hermes-ssh-cmd-home-"));
   // Install the shim at a path buildRemoteHermesCmd PROBES BY ABSOLUTE PATH
@@ -85,7 +95,7 @@ function runWithHermesShim(command: string): Buffer {
     env: {
       ...process.env,
       HOME: home,
-      PATH: `${localBin}:${process.env.PATH || ""}`,
+      PATH: [localBin, process.env.PATH || ""].join(delimiter),
     },
   });
 }
@@ -130,7 +140,7 @@ describe("ssh Hermes command quoting", () => {
     );
   });
 
-  it.each([
+  itIfBash.each([
     [
       "multi-word title",
       ["kanban", "create", "My task title", "--triage", "--json"],
@@ -160,7 +170,7 @@ describe("ssh Hermes command quoting", () => {
     30000,
   );
 
-  it("preserves existing extraShell redirects", () => {
+  itIfBash("preserves existing extraShell redirects", () => {
     const output = runWithHermesShim(
       buildRemoteHermesCmd(["doctor"], " 2>&1"),
     ).toString("utf8");

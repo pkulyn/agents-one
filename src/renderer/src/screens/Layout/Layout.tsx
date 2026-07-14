@@ -30,6 +30,8 @@ import Office from "../Office/Office";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
+import TaskCenter from "../TaskCenter/TaskCenter";
+import ProjectCenter from "../ProjectCenter/ProjectCenter";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
@@ -44,6 +46,7 @@ import {
   KeyRound,
   Timer,
   Kanban as KanbanIcon,
+  ClipboardList,
   Download,
   PanelLeftClose,
   PanelLeftOpen,
@@ -63,6 +66,8 @@ type View =
   | "tools"
   | "schedules"
   | "kanban"
+  | "tasks"
+  | "projects"
   | "gateway";
 
 const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
@@ -71,6 +76,8 @@ const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   // "Manage profiles" action rather than a top-level nav item.
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
+  { view: "projects", icon: Workflow, labelKey: "Projects" },
+  { view: "tasks", icon: ClipboardList, labelKey: "Task Center" },
   // "skills" lives under the Discover tab (installed + community), so it's no
   // longer a top-level nav item.
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
@@ -904,15 +911,11 @@ function Layout({
 
         {visitedViews.has("discover") && (
           <div style={paneStyle("discover")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Discover" />
-            ) : (
-              <Discover
-                profile={activeProfile}
-                visible={view === "discover"}
-                focusKind={discoverFocus ?? undefined}
-              />
-            )}
+            <Discover
+              profile={activeProfile}
+              visible={view === "discover"}
+              focusKind={discoverFocus ?? undefined}
+            />
           </div>
         )}
 
@@ -938,34 +941,19 @@ function Layout({
 
         {visitedViews.has("providers") && (
           <div style={paneStyle("providers")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Providers" />
-            ) : (
-              <Providers
-                profile={activeProfile}
-                visible={view === "providers"}
-              />
-            )}
+            <Providers profile={activeProfile} visible={view === "providers"} />
           </div>
         )}
 
         {visitedViews.has("skills") && (
           <div style={paneStyle("skills")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Skills" />
-            ) : (
-              <Skills profile={activeProfile} />
-            )}
+            <Skills profile={activeProfile} />
           </div>
         )}
 
         {visitedViews.has("memory") && (
           <div style={paneStyle("memory")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Memory" />
-            ) : (
-              <Memory profile={activeProfile} />
-            )}
+            <Memory profile={activeProfile} />
           </div>
         )}
 
@@ -973,7 +961,7 @@ function Layout({
           <div style={paneStyle("tools")}>
             <Tools
               profile={activeProfile}
-              showPlatformToolsets={!remoteMode}
+              showPlatformToolsets
               remoteMode={remoteMode}
               visible={view === "tools"}
               onBrowseSkills={() => focusDiscover("skills")}
@@ -990,21 +978,25 @@ function Layout({
 
         {visitedViews.has("kanban") && (
           <div style={paneStyle("kanban")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Kanban" />
-            ) : (
-              <Kanban profile={activeProfile} visible={view === "kanban"} />
-            )}
+            <Kanban profile={activeProfile} visible={view === "kanban"} />
+          </div>
+        )}
+
+        {visitedViews.has("tasks") && (
+          <div style={paneStyle("tasks")}>
+            <TaskCenter />
+          </div>
+        )}
+
+        {visitedViews.has("projects") && (
+          <div style={paneStyle("projects")}>
+            <ProjectCenter />
           </div>
         )}
 
         {visitedViews.has("gateway") && (
           <div style={paneStyle("gateway")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Gateway" />
-            ) : (
-              <Gateway profile={activeProfile} />
-            )}
+            <Gateway profile={activeProfile} />
           </div>
         )}
       </main>

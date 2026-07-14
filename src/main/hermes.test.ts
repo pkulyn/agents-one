@@ -79,6 +79,8 @@ function testConnection(
     mode: "local",
     remoteUrl: "",
     apiKey: "",
+    remoteDashboardUrl: "",
+    remoteDashboardToken: "",
     remoteChatTransport: "auto",
     sshChatTransport: "auto",
     ssh: {

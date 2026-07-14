@@ -7,11 +7,21 @@ import type {
   ClarifyMessage,
   ToolCallMessage,
   ToolResultMessage,
+  SystemMessage,
 } from "./types";
 
 function isToolRow(m: ChatMessage): m is ToolCallMessage | ToolResultMessage {
   const k = (m as { kind?: string }).kind;
   return k === "tool_call" || k === "tool_result";
+}
+
+function SystemEventRow({ message }: { message: SystemMessage }): React.JSX.Element {
+  return (
+    <details className="chat-system-event">
+      <summary>{message.title}</summary>
+      <pre>{message.detail}</pre>
+    </details>
+  );
 }
 
 interface MessageListProps {
@@ -118,6 +128,10 @@ export const MessageList = memo(function MessageList({
     }
 
     const k = (msg as { kind?: string }).kind;
+    if (k === "system") {
+      rows.push(<SystemEventRow key={msg.id} message={msg as SystemMessage} />);
+      continue;
+    }
     if (k === "reasoning") {
       rows.push(
         <ReasoningRow

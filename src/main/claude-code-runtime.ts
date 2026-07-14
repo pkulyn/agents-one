@@ -1,0 +1,279 @@
+import { spawn, execFile as execFileCallback, type ChildProcess } from "child_process";
+import { existsSync, mkdirSync } from "fs";
+import { promisify } from "util";
+import { delimiter, dirname, extname, join, relative, resolve } from "path";
+import { randomUUID } from "crypto";
+import { profileHome } from "./utils";
+import type { AgentRuntimeArtifact, AgentRuntimeTaskInput } from "../shared/agent-runtimes";
+
+const execFile = promisify(execFileCallback);
+const MAX_OUTPUT = 512 * 1024;
+const SECRET_VALUE = /((?:authorization|api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;]+)/gi;
+
+export interface ClaudeCodeRuntimeConfig {
+  executablePath?: string;
+  workspace?: string;
+  timeoutMs?: number;
+}
+
+export interface ClaudeCodeProbeResult {
+  healthy: boolean;
+  message?: string;
+  workspaceAccess: boolean;
+}
+
+export interface ClaudeCodeProcessResult {
+  output: string;
+  error?: string;
+  worktreePath?: string;
+  diffSummary?: string;
+  artifacts: AgentRuntimeArtifact[];
+}
+
+export interface StartedClaudeCodeProcess {
+  worktreePath?: string;
+  cancel: () => void;
+  completion: Promise<ClaudeCodeProcessResult>;
+}
+
+interface ClaudeInvocation {
+  command: string;
+  prefix: string[];
+}
+
+function configuredExecutable(config: ClaudeCodeRuntimeConfig): string {
+  const configured = config.executablePath?.trim();
+  if (configured) return configured;
+  if (process.platform !== "win32") return "claude";
+
+  const path = process.env.PATH || process.env.Path || "";
+  for (const directory of path.split(delimiter)) {
+    const candidate = join(directory, "claude.cmd");
+    if (existsSync(candidate)) return candidate;
+  }
+  return "claude";
+}
+
+/**
+ * The user-level Claude installer exposes claude.cmd/claude.ps1 shims. Main
+ * process child_process APIs cannot safely launch those scripts with shell:false,
+ * so Windows uses the installed native executable directly.
+ */
+export function claudeCodeInvocation(
+  executablePath: string,
+  platform = process.platform,
+  fileExists: (path: string) => boolean = existsSync,
+): ClaudeInvocation {
+  if (platform !== "win32") return { command: executablePath, prefix: [] };
+  const extension = extname(executablePath).toLowerCase();
+  if (extension !== ".cmd" && extension !== ".ps1") {
+    return { command: executablePath, prefix: [] };
+  }
+  const entry = join(
+    dirname(executablePath),
+    "node_modules",
+    "@anthropic-ai",
+    "claude-code",
+    "bin",
+    "claude.exe",
+  );
+  if (!fileExists(entry)) {
+    throw new Error(
+      "The Claude Code script wrapper is incomplete. Select claude.exe or reinstall the user-level Claude Code CLI.",
+    );
+  }
+  return { command: entry, prefix: [] };
+}
+
+function redact(value: string): string {
+  return value.replace(SECRET_VALUE, "$1[redacted]");
+}
+
+function appendCapped(current: string, next: string): string {
+  const merged = `${current}${redact(next)}`;
+  return merged.length <= MAX_OUTPUT ? merged : merged.slice(-MAX_OUTPUT);
+}
+
+/** Drop Claude session bootstrap metadata before it reaches persisted task logs. */
+export function filterClaudeCodeStreamLine(line: string): string {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{")) return line;
+  try {
+    const event = JSON.parse(trimmed) as { type?: unknown };
+    if (event.type === "assistant" || event.type === "result" || event.type === "tool" || event.type === "error") {
+      return line;
+    }
+    return "";
+  } catch {
+    return line;
+  }
+}
+
+function createClaudeOutputFilter(): (chunk: string, flush?: boolean) => string {
+  let pending = "";
+  return (chunk: string, flush = false): string => {
+    pending += chunk;
+    const lines = pending.split(/\r?\n/);
+    pending = flush ? "" : lines.pop() || "";
+    const visible = lines.map(filterClaudeCodeStreamLine).filter(Boolean);
+    return visible.length ? `${visible.join("\n")}\n` : "";
+  };
+}
+
+async function command(invocation: ClaudeInvocation, args: string[], cwd?: string): Promise<string> {
+  const result = await execFile(invocation.command, [...invocation.prefix, ...args], {
+    cwd,
+    windowsHide: true,
+    timeout: 15_000,
+    maxBuffer: MAX_OUTPUT,
+    shell: false,
+  });
+  return String(result.stdout || "").trim();
+}
+
+async function gitRoot(workspace: string): Promise<string> {
+  const root = await command({ command: "git", prefix: [] }, ["-C", workspace, "rev-parse", "--show-toplevel"]);
+  if (!root) throw new Error("The selected workspace is not a Git repository.");
+  return resolve(root);
+}
+
+function requestedWorkspace(config: ClaudeCodeRuntimeConfig, input?: AgentRuntimeTaskInput): string | undefined {
+  const raw = input?.workspace?.trim() || config.workspace?.trim();
+  if (!raw) return undefined;
+  const workspace = resolve(raw);
+  if (!existsSync(workspace)) throw new Error("The selected workspace does not exist.");
+  return workspace;
+}
+
+function safeWorktreePath(profile: string | undefined, id: string): string {
+  const root = resolve(profileHome(profile), "desktop", "worktrees", "claude-code");
+  const target = resolve(root, id);
+  if (relative(root, target).startsWith("..")) throw new Error("Invalid worktree path.");
+  mkdirSync(root, { recursive: true });
+  return target;
+}
+
+function childEnvironment(): NodeJS.ProcessEnv {
+  const keys = [
+    "APPDATA", "CLAUDE_CONFIG_DIR", "COMSPEC", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA",
+    "PATH", "PATHEXT", "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "WINDIR",
+  ];
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of keys) if (process.env[key]) env[key] = process.env[key];
+  return env;
+}
+
+function terminateTree(child: ChildProcess): void {
+  if (child.pid && process.platform === "win32") {
+    void execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      windowsHide: true,
+      shell: false,
+    }).catch(() => child.kill());
+    return;
+  }
+  child.kill("SIGTERM");
+}
+
+/** This argument contract is intentionally kept pure and regression-tested. */
+export function claudeCodeExecArgs(
+  mode: "analysis" | "implementation",
+  prompt: string,
+): string[] {
+  return [
+    "--print",
+    "--verbose",
+    "--output-format",
+    "stream-json",
+    "--no-session-persistence",
+    "--permission-mode",
+    mode === "implementation" ? "acceptEdits" : "plan",
+    prompt,
+  ];
+}
+
+export async function probeClaudeCodeRuntime(config: ClaudeCodeRuntimeConfig): Promise<ClaudeCodeProbeResult> {
+  try {
+    const invocation = claudeCodeInvocation(configuredExecutable(config));
+    const version = await command(invocation, ["--version"]);
+    const workspace = requestedWorkspace(config);
+    if (workspace) await gitRoot(workspace);
+    return { healthy: true, workspaceAccess: Boolean(workspace), message: version || "Claude Code CLI is available." };
+  } catch (error) {
+    return {
+      healthy: false,
+      workspaceAccess: false,
+      message: error instanceof Error ? redact(error.message) : "Claude Code CLI is unavailable.",
+    };
+  }
+}
+
+export async function startClaudeCodeProcess(
+  config: ClaudeCodeRuntimeConfig,
+  input: AgentRuntimeTaskInput,
+  onOutput: (chunk: string) => void,
+): Promise<StartedClaudeCodeProcess> {
+  const mode = input.mode || "analysis";
+  const invocation = claudeCodeInvocation(configuredExecutable(config));
+  const workspace = requestedWorkspace(config, input);
+  if (!workspace) throw new Error("Claude Code tasks require a configured workspace.");
+
+  let cwd = workspace;
+  let worktreePath: string | undefined;
+  if (mode === "implementation") {
+    const root = await gitRoot(workspace);
+    worktreePath = safeWorktreePath(input.profile, `task-${randomUUID()}`);
+    await command({ command: "git", prefix: [] }, ["-C", root, "worktree", "add", "--detach", worktreePath, "HEAD"]);
+    cwd = worktreePath;
+  }
+
+  const child = spawn(invocation.command, [...invocation.prefix, ...claudeCodeExecArgs(mode, input.prompt)], {
+    cwd,
+    env: childEnvironment(),
+    shell: false,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  const filterStdout = createClaudeOutputFilter();
+  const recordOutput = (chunk: string): void => {
+    if (!chunk) return;
+    const redacted = redact(chunk);
+    output = appendCapped(output, redacted);
+    onOutput(redacted);
+  };
+  child.stdout?.on("data", (data: Buffer) => {
+    recordOutput(filterStdout(data.toString()));
+  });
+  child.stderr?.on("data", (data: Buffer) => {
+    recordOutput(data.toString());
+  });
+
+  const completion = new Promise<ClaudeCodeProcessResult>((resolveResult) => {
+    child.once("error", (error) => resolveResult({ output, error: redact(error.message), worktreePath, artifacts: worktreePath ? [{ kind: "worktree", label: "Isolated worktree", path: worktreePath }] : [] }));
+    child.once("close", async (code) => {
+      recordOutput(filterStdout("", true));
+      let diffSummary: string | undefined;
+      let diff: string | undefined;
+      if (worktreePath) {
+        try {
+          diffSummary = await command({ command: "git", prefix: [] }, ["-C", worktreePath, "diff", "--stat"]);
+          diff = await command({ command: "git", prefix: [] }, ["-C", worktreePath, "diff", "--no-ext-diff"]);
+        } catch {
+          // Preserve runtime output even when the diff inspection fails.
+        }
+      }
+      const artifacts: AgentRuntimeArtifact[] = [];
+      if (worktreePath) artifacts.push({ kind: "worktree", label: "Isolated worktree", path: worktreePath });
+      if (diff) artifacts.push({ kind: "diff", label: "Git diff", content: diff.slice(0, MAX_OUTPUT) });
+      resolveResult({
+        output,
+        ...(code === 0 ? {} : { error: `Claude Code exited with code ${code ?? "unknown"}.` }),
+        ...(worktreePath ? { worktreePath } : {}),
+        ...(diffSummary ? { diffSummary } : {}),
+        artifacts,
+      });
+    });
+  });
+
+  return { worktreePath, cancel: () => terminateTree(child), completion };
+}

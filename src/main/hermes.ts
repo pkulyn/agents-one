@@ -84,6 +84,7 @@ import {
   hostDerivedEnvKeyForUrl,
   shouldPruneOpenRouterApiKey,
 } from "./host-derived-env";
+import { configuredRemoteTlsOptions } from "./remote-tls";
 
 /**
  * Resolve which profile a gateway call targets. An explicit profile always
@@ -228,6 +229,7 @@ async function getApiCapabilities(
       url,
       {
         method: "GET",
+        ...configuredRemoteTlsOptions(url),
         headers: getApiAuthHeaders(profile),
         timeout: CAPABILITIES_TIMEOUT_MS,
       },
@@ -932,7 +934,12 @@ function isApiServerReady(profile?: string): Promise<boolean> {
       const mod = url.startsWith("https") ? https : http;
       const req = mod.request(
         url,
-        { method: "GET", timeout: 1500, headers: getRemoteAuthHeader() },
+        {
+          method: "GET",
+          ...configuredRemoteTlsOptions(url),
+          timeout: 1500,
+          headers: getRemoteAuthHeader(),
+        },
         (res) => {
           resolve(res.statusCode === 200);
           res.resume();
@@ -1472,6 +1479,7 @@ function sendMessageViaApi(
     chatUrl,
     {
       method: "POST",
+      ...configuredRemoteTlsOptions(chatUrl),
       headers,
       signal: controller.signal,
       timeout: 120000,
@@ -1599,6 +1607,7 @@ function postRunStop(
   const requester = url.startsWith("https") ? https : http;
   const req = requester.request(url, {
     method: "POST",
+    ...configuredRemoteTlsOptions(url),
     headers: getApiAuthHeaders(profile),
     timeout: 3000,
   });
@@ -1767,6 +1776,7 @@ function sendMessageViaRuns(
       eventsUrl,
       {
         method: "GET",
+        ...configuredRemoteTlsOptions(eventsUrl),
         headers: getApiAuthHeaders(profile),
         signal: controller.signal,
         timeout: 120000,
@@ -1818,7 +1828,7 @@ function sendMessageViaRuns(
         stopRunAndFallback();
         return;
       }
-      finish(`Run event stream failed: ${err.message}`);
+      finish();
     });
     eventsReq.on("timeout", () => {
       eventsReq?.destroy();
@@ -1826,7 +1836,7 @@ function sendMessageViaRuns(
         stopRunAndFallback();
         return;
       }
-      finish("Run event stream timed out.");
+      finish();
     });
     eventsReq.end();
   }
@@ -1837,6 +1847,7 @@ function sendMessageViaRuns(
     startUrl,
     {
       method: "POST",
+      ...configuredRemoteTlsOptions(startUrl),
       headers,
       signal: controller.signal,
       timeout: 30000,
@@ -3385,7 +3396,12 @@ export function testRemoteConnection(
     if (resolvedApiKey) headers.Authorization = `Bearer ${resolvedApiKey}`;
     const req = mod.request(
       target,
-      { method: "GET", timeout: 5000, headers },
+      {
+        method: "GET",
+        ...configuredRemoteTlsOptions(target),
+        timeout: 5000,
+        headers,
+      },
       (res) => {
         resolve(res.statusCode === 200);
         res.resume();

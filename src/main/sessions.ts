@@ -1,6 +1,7 @@
-import Database from "better-sqlite3";
+import type BetterDatabase from "better-sqlite3";
 import type { Attachment } from "../shared/attachments";
 import { isImageMime } from "../shared/attachments";
+import { isAutomationSessionSource } from "../shared/session-list";
 import { clearStagedAttachments } from "./attachment-staging";
 import { removeSessionFromCache } from "./session-cache";
 import { getDbConnection } from "./db";
@@ -13,7 +14,7 @@ import {
 } from "./session-attachment-store";
 import {
   deleteSessionContinuationForSession,
-  loadSessionContinuationItems,
+  loadSessionContinuationItemsForSession,
   loadSessionLocalErrors,
   mergeSessionLocalErrors,
 } from "./session-continuation-store";
@@ -256,7 +257,7 @@ function decodeSearchSnippet(
   );
 }
 
-function getDb(readonly = true): Database.Database | null {
+function getDb(readonly = true): BetterDatabase.Database | null {
   return getDbConnection(readonly);
 }
 
@@ -279,7 +280,7 @@ export function listSessions(limit = 30, offset = 0): SessionSummary[] {
       ORDER BY s.started_at DESC
       LIMIT ? OFFSET ?`,
     )
-    .all(limit, offset) as Array<{
+    .all(Math.max(limit * 3, limit + 20), offset) as Array<{
     id: string;
     source: string;
     started_at: number;
@@ -289,16 +290,19 @@ export function listSessions(limit = 30, offset = 0): SessionSummary[] {
     title: string | null;
   }>;
 
-  return rows.map((r) => ({
-    id: r.id,
-    source: r.source,
-    startedAt: r.started_at,
-    endedAt: r.ended_at,
-    messageCount: r.message_count,
-    model: r.model || "",
-    title: r.title,
-    preview: "",
-  }));
+  return rows
+    .filter((r) => !isAutomationSessionSource(r.source))
+    .slice(0, limit)
+    .map((r) => ({
+      id: r.id,
+      source: r.source,
+      startedAt: r.started_at,
+      endedAt: r.ended_at,
+      messageCount: r.message_count,
+      model: r.model || "",
+      title: r.title,
+      preview: "",
+    }));
 }
 
 export function searchSessions(query: string, limit = 20): SearchResult[] {
@@ -337,10 +341,12 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
       model: string;
     }>;
 
-    const titleMatches = titleRows.map((r) => ({
-      ...r,
-      snippet: highlightSessionMatch(r.title, r.session_id, trimmedQuery),
-    }));
+    const titleMatches = titleRows
+      .filter((r) => !isAutomationSessionSource(r.source))
+      .map((r) => ({
+        ...r,
+        snippet: highlightSessionMatch(r.title, r.session_id, trimmedQuery),
+      }));
 
     // Check if FTS table exists
     const tableCheck = db
@@ -417,18 +423,22 @@ export function searchSessions(query: string, limit = 20): SearchResult[] {
       model: string;
     }>;
 
-    const messageMatches = messageRows.map((r) => ({
-      session_id: r.session_id,
-      title: r.title,
-      started_at: r.started_at,
-      source: r.source,
-      message_count: r.message_count,
-      model: r.model,
-      snippet: decodeSearchSnippet(r.content, r.message_id, trimmedQuery),
-    }));
+    const messageMatches = messageRows
+      .filter((r) => !isAutomationSessionSource(r.source))
+      .map((r) => ({
+        session_id: r.session_id,
+        title: r.title,
+        started_at: r.started_at,
+        source: r.source,
+        message_count: r.message_count,
+        model: r.model,
+        snippet: decodeSearchSnippet(r.content, r.message_id, trimmedQuery),
+      }));
 
     const uniqueRows = dedupeSearchRowsBySession(
-      [...titleMatches, ...ftsRows, ...messageMatches],
+      [...titleMatches, ...ftsRows, ...messageMatches].filter(
+        (r) => !isAutomationSessionSource(r.source),
+      ),
       limit,
     );
     return uniqueRows.map((r) => ({
@@ -693,19 +703,24 @@ export function getSessionMessages(sessionId: string): HistoryItem[] {
 export function applySessionLocalOverlays(
   sessionId: string,
   items: HistoryItem[],
-  existingDb?: Database.Database | null,
+  existingDb?: BetterDatabase.Database | null,
 ): HistoryItem[] {
   const db = existingDb ?? getDb();
-  if (!db) return items;
-  const canonical = mergeStoredPromptImageAttachments(
-    items,
-    loadPromptImageAttachments(db, sessionId),
-  );
-  const withLocalErrors = mergeSessionLocalErrors(
-    canonical,
-    loadSessionLocalErrors(db, sessionId),
-  );
-  return [...loadSessionContinuationItems(db, sessionId), ...withLocalErrors];
+  const canonical = db
+    ? mergeStoredPromptImageAttachments(
+        items,
+        loadPromptImageAttachments(db, sessionId),
+      )
+    : items;
+  const continuation = loadSessionContinuationItemsForSession(sessionId, db);
+  const base =
+    continuation.some((item) => item.kind === "user") &&
+    !canonical.some((item) => item.kind === "user")
+      ? continuation
+      : [...continuation, ...canonical];
+  return db
+    ? mergeSessionLocalErrors(base, loadSessionLocalErrors(db, sessionId))
+    : base;
 }
 
 export interface DeleteSessionsResult {
@@ -729,7 +744,7 @@ function normalizeSessionIds(sessionIds: string[]): string[] {
 // sessions has a self-referential FK parent_session_id -> sessions.id (set by
 // the agent for subagent runs / branches). Cached after first lookup.
 let sessionsHasParentColumn: boolean | null = null;
-function hasParentSessionColumn(db: Database.Database): boolean {
+function hasParentSessionColumn(db: BetterDatabase.Database): boolean {
   if (sessionsHasParentColumn !== null) return sessionsHasParentColumn;
   try {
     sessionsHasParentColumn =
@@ -744,7 +759,10 @@ function hasParentSessionColumn(db: Database.Database): boolean {
   return sessionsHasParentColumn;
 }
 
-function deleteSessionRows(db: Database.Database, sessionId: string): number {
+function deleteSessionRows(
+  db: BetterDatabase.Database,
+  sessionId: string,
+): number {
   deletePromptImageAttachmentsForSession(db, sessionId);
   deleteSessionContinuationForSession(db, sessionId);
   // Unlink any child sessions first. better-sqlite3 enables
