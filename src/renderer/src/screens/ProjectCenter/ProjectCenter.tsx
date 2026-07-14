@@ -6,6 +6,7 @@ import type {
   ProjectContextPackage,
   ProjectControlProject,
   ProjectControlTask,
+  ProjectPlanDraft,
   ProjectRole,
 } from "../../../../shared/project-control";
 
@@ -42,11 +43,25 @@ export default function ProjectCenter(): React.JSX.Element {
   const [mode, setMode] = useState<"analysis" | "implementation">("analysis");
   const [reviewSummary, setReviewSummary] = useState("");
   const [context, setContext] = useState<ProjectContextPackage | null>(null);
+  const [planDraft, setPlanDraft] = useState<ProjectPlanDraft | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
   const selected = projects.find((project) => project.id === selectedId) || null;
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) || null;
   const enabledRuntimes = useMemo(() => runtimes.filter((runtime) => runtime.enabled), [runtimes]);
+  const suggestedRuntimes = useMemo(
+    () => selectedTask?.suggestedRuntimeKind
+      ? enabledRuntimes.filter((runtime) => runtime.kind === selectedTask.suggestedRuntimeKind)
+      : [],
+    [enabledRuntimes, selectedTask?.suggestedRuntimeKind],
+  );
+  const alternateRuntimes = useMemo(
+    () => selectedTask?.suggestedRuntimeKind
+      ? enabledRuntimes.filter((runtime) => runtime.kind !== selectedTask.suggestedRuntimeKind)
+      : enabledRuntimes,
+    [enabledRuntimes, selectedTask?.suggestedRuntimeKind],
+  );
   const coordinatorRuntime = selected?.coordinator.runtimeId
     ? runtimes.find((runtime) => runtime.id === selected.coordinator.runtimeId)
     : undefined;
@@ -113,13 +128,22 @@ export default function ProjectCenter(): React.JSX.Element {
 
   useEffect(() => {
     setContext(null);
+    setPlanDraft(null);
     setReviewSummary("");
     if (selectedTask?.assignment) {
       setAssigneeId(selectedTask.assignment.runtimeId);
       setRole(selectedTask.assignment.role);
       setMode(selectedTask.assignment.mode);
+    } else if (selectedTask) {
+      setAssigneeId(suggestedRuntimes[0]?.id || "");
+      setRole(selectedTask.suggestedRole || "implementer");
+      setMode(selectedTask.suggestedMode || "analysis");
+    } else {
+      setAssigneeId("");
+      setRole("implementer");
+      setMode("analysis");
     }
-  }, [selectedTaskId]);
+  }, [selectedTaskId, suggestedRuntimes]);
 
   async function createProject(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -257,6 +281,40 @@ export default function ProjectCenter(): React.JSX.Element {
     }
   }
 
+  async function previewPlanTasks(): Promise<void> {
+    if (!selected || !selectedTask) return;
+    setPlanBusy(true);
+    try {
+      const draft = await window.hermesAPI.previewProjectPlanTasks(selected.id, selectedTask.id);
+      setPlanDraft(draft);
+      setFlash(draft.tasks.length ? `Previewed ${draft.tasks.length} task draft(s).` : "No task drafts were found.");
+    } catch (error) {
+      setFlash(error instanceof Error ? error.message : "Could not preview coordinator plan.");
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  async function createPlanTasks(): Promise<void> {
+    if (!selected || !selectedTask || !planDraft?.tasks.length) return;
+    setPlanBusy(true);
+    try {
+      const created = await window.hermesAPI.createProjectTasksFromPlan({
+        projectId: selected.id,
+        sourceTaskId: selectedTask.id,
+        tasks: planDraft.tasks,
+      });
+      setPlanDraft(null);
+      setSelectedTaskId(created[0]?.id || selectedTask.id);
+      setFlash(`Created ${created.length} project task(s) from the coordinator plan.`);
+      await refresh(selected.id);
+    } catch (error) {
+      setFlash(error instanceof Error ? error.message : "Could not create project tasks from plan.");
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
   return (
     <section className="task-center" aria-label="Projects">
       <header className="task-center-header">
@@ -301,22 +359,38 @@ export default function ProjectCenter(): React.JSX.Element {
           </form>
         </section>
         <section className="task-list project-list" aria-label="Project tasks">
-          {tasks.map((task) => <button key={task.id} type="button" className={`project-row ${task.id === selectedTaskId ? "is-active" : ""}`} onClick={() => setSelectedTaskId(task.id)}><span>{task.title}</span><small>{task.status}{task.assignment ? ` | ${task.assignment.runtimeId}` : ""}</small></button>)}
+          {tasks.map((task) => <button key={task.id} type="button" className={`project-row ${task.id === selectedTaskId ? "is-active" : ""}`} onClick={() => setSelectedTaskId(task.id)}><span>{task.title}</span><small>{task.status}{task.assignment ? ` | ${task.assignment.runtimeId}` : task.suggestedRuntimeKind ? ` | suggested ${task.suggestedRuntimeKind}` : ""}</small></button>)}
           {tasks.length === 0 && <div className="task-empty">No project tasks yet.</div>}
         </section>
         <section className="task-compose">
           <h2>Task control</h2>
           {selectedTask ? <>
             <p>{selectedTask.requirement}</p>
-            <div className="task-compose-grid"><label><span>Runtime</span><select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}><option value="">Select Runtime</option>{enabledRuntimes.map((runtime) => <option key={runtime.id} value={runtime.id}>{runtime.name}</option>)}</select></label><label><span>Role</span><select value={role} onChange={(event) => setRole(event.target.value as ProjectRole)}>{ROLES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><label><span>Mode</span><select value={mode} onChange={(event) => setMode(event.target.value as "analysis" | "implementation")}><option value="analysis">Analysis</option><option value="implementation">Implementation</option></select></label></div>
+            <div className="task-compose-grid"><label><span>Runtime</span><select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}><option value="">Select Runtime</option>{selectedTask.suggestedRuntimeKind ? <><optgroup label={`Suggested ${selectedTask.suggestedRuntimeKind}`}>{suggestedRuntimes.map((runtime) => <option key={runtime.id} value={runtime.id}>{runtime.name}</option>)}</optgroup>{alternateRuntimes.length > 0 && <optgroup label="Other runtimes">{alternateRuntimes.map((runtime) => <option key={runtime.id} value={runtime.id}>{runtime.name}</option>)}</optgroup>}</> : enabledRuntimes.map((runtime) => <option key={runtime.id} value={runtime.id}>{runtime.name}</option>)}</select></label><label><span>Role</span><select value={role} onChange={(event) => setRole(event.target.value as ProjectRole)}>{ROLES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><label><span>Mode</span><select value={mode} onChange={(event) => setMode(event.target.value as "analysis" | "implementation")}><option value="analysis">Analysis</option><option value="implementation">Implementation</option></select></label></div>
             <div className="task-compose-actions project-actions">
               <button className="primary-btn" type="button" disabled={!assigneeId || (selectedTask.status !== "ready" && selectedTask.status !== "blocked")} onClick={() => void assignTask()}><Send size={16} />Assign</button>
               {selectedTask.status === "queued" && <button className="primary-btn" type="button" onClick={() => void dispatchTask()}><Send size={16} />Dispatch</button>}
               {(["queued", "running", "review_required"] as string[]).includes(selectedTask.status) && <button className="btn btn-secondary" type="button" onClick={() => void cancelTask()}><Square size={15} />Cancel</button>}
               {(["rejected", "failed", "timed_out"] as string[]).includes(selectedTask.status) && <button className="btn btn-secondary" type="button" onClick={() => void retryTask()}><RefreshCw size={15} />Retry</button>}
               <button className="btn btn-secondary" type="button" onClick={() => void createContext()}><FileText size={15} />Context</button>
+              {selectedTask.assignment?.role === "manager" && selectedTask.directTaskCenterTaskId && (["review_required", "accepted"] as string[]).includes(selectedTask.status) && <button className="btn btn-secondary" type="button" disabled={planBusy} onClick={() => void previewPlanTasks()}><FileText size={15} />Preview tasks</button>}
             </div>
+            {(selectedTask.suggestedRuntimeKind || selectedTask.suggestedRole || selectedTask.suggestedMode) && <p className="project-task-suggestion">Suggested: {selectedTask.suggestedRuntimeKind || "any Runtime"} / {selectedTask.suggestedRole || "reviewer"} / {selectedTask.suggestedMode || "analysis"}{selectedTask.suggestedRuntimeKind && suggestedRuntimes.length === 0 ? " | no matching enabled Runtime" : ""}</p>}
             {selectedTask.status === "review_required" && <div className="project-review"><label><span>Review record</span><input value={reviewSummary} onChange={(event) => setReviewSummary(event.target.value)} maxLength={2000} placeholder="Acceptance decision and reason" /></label><div><button className="primary-btn" type="button" disabled={!reviewSummary.trim()} onClick={() => void reviewTask("accepted")}><Check size={15} />Accept</button><button className="btn btn-secondary" type="button" disabled={!reviewSummary.trim()} onClick={() => void reviewTask("rejected")}><X size={15} />Reject</button></div></div>}
+            {planDraft && <div className="project-plan-preview" aria-label="Coordinator plan task preview">
+              <div className="project-plan-preview-head"><strong>Task drafts</strong><span>{planDraft.tasks.length}</span></div>
+              {planDraft.warnings.map((warning) => <p className="task-error" key={warning}>{warning}</p>)}
+              {planDraft.tasks.map((draft, index) => <article key={`${draft.title}-${index}`} className="project-plan-draft">
+                <strong>{draft.title}</strong>
+                <small>{draft.suggestedRuntimeKind || "any Runtime"} | {draft.role} | {draft.mode}</small>
+                <p>{draft.requirement}</p>
+                <em>{draft.acceptanceCriteria}</em>
+              </article>)}
+              <div className="task-compose-actions">
+                <button className="primary-btn" type="button" disabled={planBusy || planDraft.tasks.length === 0} onClick={() => void createPlanTasks()}><Plus size={15} />Create tasks</button>
+                <button className="btn btn-secondary" type="button" disabled={planBusy} onClick={() => setPlanDraft(null)}><X size={15} />Close</button>
+              </div>
+            </div>}
           </> : <div className="task-empty">Select a project task.</div>}
         </section>
       </div>}

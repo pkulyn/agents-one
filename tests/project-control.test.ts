@@ -252,6 +252,148 @@ describe("project control plane", () => {
     }));
   });
 
+  it("previews coordinator plan artifacts and creates child project tasks after confirmation", async () => {
+    const { runtimes, projects } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "codex-manager",
+      name: "Codex manager",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", workspace: testHome },
+    });
+    const project = projects.createProject({
+      title: "Generate tasks",
+      objective: "Turn a coordinator plan into project tasks.",
+      coordinator: { kind: "runtime", runtimeId: "codex-manager" },
+    });
+    const planArtifact = JSON.stringify({
+      tasks: [{
+        title: "Implement adapter",
+        description: "Build the Runtime Adapter behind the existing Task Center boundary.",
+        acceptanceCriteria: ["Adapter can be probed.", "No original workspace files are modified."],
+        suggestedRuntimeKind: "codex",
+        role: "implementer",
+      }],
+    });
+    createTaskCenterTaskMock.mockResolvedValue({
+      id: "plan-run",
+      runtimeId: "codex-manager",
+      status: "review_required",
+      artifacts: [{ kind: "final", label: "Coordinator plan", content: planArtifact }],
+    });
+    const planTask = await projects.startCoordinatorPlanningTask(project.id);
+    listTaskCenterTasksMock.mockResolvedValue([{
+      id: "plan-run",
+      runtimeId: "codex-manager",
+      status: "review_required",
+      artifacts: [{ kind: "final", label: "Coordinator plan", content: planArtifact }],
+    }]);
+
+    const draft = await projects.previewProjectPlanTasks(project.id, planTask.id);
+    expect(draft.tasks).toEqual([expect.objectContaining({
+      title: "Implement adapter",
+      suggestedRuntimeKind: "codex",
+      role: "implementer",
+      mode: "implementation",
+    })]);
+
+    const created = await projects.createProjectTasksFromPlan({
+      projectId: project.id,
+      sourceTaskId: planTask.id,
+      tasks: draft.tasks,
+    });
+    expect(created).toEqual([expect.objectContaining({
+      parentTaskId: planTask.id,
+      status: "ready",
+      suggestedRuntimeKind: "codex",
+      suggestedRole: "implementer",
+      suggestedMode: "implementation",
+    })]);
+    expect(await projects.listProjectTasks(project.id)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: "Implement adapter", parentTaskId: planTask.id }),
+    ]));
+    expect(projects.listProjectEvents(project.id)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "progress", summary: "Created 1 task(s) from coordinator plan." }),
+    ]));
+    await expect(projects.createProjectTasksFromPlan({
+      projectId: project.id,
+      sourceTaskId: planTask.id,
+      tasks: draft.tasks,
+    })).rejects.toThrow(/already been created/i);
+  });
+
+  it("handles unstructured and empty coordinator plans without silent task creation", async () => {
+    const { runtimes, projects } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "hermes-manager",
+      name: "Hermes manager",
+      kind: "hermes",
+      location: "remote",
+      enabled: true,
+      config: { endpoint: "https://hermes.example", transport: "http" },
+    });
+    const project = projects.createProject({
+      title: "Fallback plans",
+      objective: "Require safe handling of imperfect coordinator output.",
+      coordinator: { kind: "runtime", runtimeId: "hermes-manager" },
+    });
+
+    createTaskCenterTaskMock.mockResolvedValueOnce({
+      id: "text-plan-run",
+      runtimeId: "hermes-manager",
+      status: "review_required",
+      output: "First inspect the bridge contract, then ask Codex to implement the adapter.",
+      artifacts: [],
+    });
+    const textPlan = await projects.startCoordinatorPlanningTask(project.id);
+    listTaskCenterTasksMock.mockResolvedValueOnce([{
+      id: "text-plan-run",
+      runtimeId: "hermes-manager",
+      status: "review_required",
+      output: "First inspect the bridge contract, then ask Codex to implement the adapter.",
+      artifacts: [],
+    }]);
+    const fallback = await projects.previewProjectPlanTasks(project.id, textPlan.id);
+    expect(fallback.warnings).toEqual([expect.stringContaining("Structured task JSON was not found")]);
+    expect(fallback.tasks).toEqual([expect.objectContaining({
+      title: "Review coordinator plan",
+      role: "manager",
+      mode: "analysis",
+    })]);
+    await expect(projects.createProjectTasksFromPlan({
+      projectId: project.id,
+      sourceTaskId: textPlan.id,
+      tasks: fallback.tasks,
+    })).resolves.toEqual([expect.objectContaining({ title: "Review coordinator plan" })]);
+
+    createTaskCenterTaskMock.mockResolvedValueOnce({
+      id: "empty-plan-run",
+      runtimeId: "hermes-manager",
+      status: "review_required",
+      artifacts: [],
+    });
+    const emptyPlan = await projects.startCoordinatorPlanningTask(project.id);
+    listTaskCenterTasksMock.mockResolvedValueOnce([{
+      id: "empty-plan-run",
+      runtimeId: "hermes-manager",
+      status: "review_required",
+      artifacts: [],
+    }]);
+    const empty = await projects.previewProjectPlanTasks(project.id, emptyPlan.id);
+    expect(empty).toMatchObject({ tasks: [], warnings: [expect.stringContaining("no plan text")] });
+    listTaskCenterTasksMock.mockResolvedValueOnce([{
+      id: "empty-plan-run",
+      runtimeId: "hermes-manager",
+      status: "review_required",
+      artifacts: [],
+    }]);
+    await expect(projects.createProjectTasksFromPlan({
+      projectId: project.id,
+      sourceTaskId: emptyPlan.id,
+    })).rejects.toThrow(/does not contain any task drafts/i);
+  });
+
   it("writes review and cancellation decisions through the Task Center boundary", async () => {
     const { runtimes, projects } = await loadModules();
     runtimes.saveAgentRuntime({
