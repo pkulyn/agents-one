@@ -50,7 +50,6 @@ export { Check } from "lucide-react";
 export { Ban } from "lucide-react";
 export { RotateCcw } from "lucide-react";
 export { Loader2 as Spinner } from "lucide-react";
-export { Columns3 as Kanban } from "lucide-react";
 export { Eye as VisionIcon } from "lucide-react";
 export { Minimize2 as CompressionIcon } from "lucide-react";
 export { FileText as TitleIcon } from "lucide-react";

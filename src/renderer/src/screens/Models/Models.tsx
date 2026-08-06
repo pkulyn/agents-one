@@ -15,7 +15,6 @@ import {
   Globe,
   Layers,
   Puzzle,
-  Kanban,
   Bot,
   Wrench,
   Pencil,
@@ -474,11 +473,6 @@ function Models({
       name: "constants.auxiliaryTriageSpecifier",
       hint: "constants.auxiliaryTriageSpecifierHint",
       icon: TriageIcon,
-    },
-    kanban_decomposer: {
-      name: "constants.auxiliaryKanbanDecomposer",
-      hint: "constants.auxiliaryKanbanDecomposerHint",
-      icon: Kanban,
     },
     profile_describer: {
       name: "constants.auxiliaryProfileDescriber",

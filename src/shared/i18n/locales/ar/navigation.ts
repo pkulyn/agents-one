@@ -16,7 +16,6 @@ export default {
   memory: "الذاكرة",
   tools: "الإمكانيات",
   schedules: "الجدولة",
-  kanban: "كانبان",
   gateway: "البوابة",
   settings: "الإعدادات",
   collapseSidebar: "طي الشريط الجانبي",

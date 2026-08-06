@@ -68,15 +68,15 @@ The OpenClaw bridge client lives in [[src/main/openclaw-runtime.ts]] and is inte
 
 The minimal runtime-management UI lives in [[src/renderer/src/components/settings/AgentRuntimesPane.tsx]] and is mounted under Settings -> Runtimes. It lists built-in and user runtimes, saves only non-secret config fields, supports enable/disable, probes health/capabilities, and removes user runtimes. [[src/renderer/src/components/settings/AgentRuntimesPane.test.tsx]] covers load/probe/save behavior alongside the backend registry tests.
 
-### Codex worktree runtime and Task Center
+### Codex worktree runtime and scheduled-task engine
 
-The first local coding runtime runs Codex only through an isolated Git worktree, while the Task Center records manual dispatch, lifecycle, output, review, and artifacts independently from chat, Cron, and Kanban.
+The first local coding runtime runs Codex only through an isolated Git worktree. The internal task runner remains available to scheduled tasks, while interactive multi-agent work is owned by task conversations.
 
 [[src/main/codex-runtime.ts]] probes the local Codex CLI and starts `codex exec` with an argument array, `shell: false`, a bounded environment, JSON output, and an explicit read-only or workspace-write sandbox. An implementation task first creates a detached worktree under the active profile's `desktop/worktrees/codex` directory; the original repository is never used as the process working directory. The resulting worktree path, diff summary, capped/redacted output, and diff artifact are surfaced through [[src/main/agent-runtimes.ts]] without auto-committing or auto-merging changes. [[tests/codex-runtime.test.ts]] fixes the noninteractive invocation contract.
 
-[[src/main/task-center.ts]] persists Task Center records under the profile desktop data directory and reconciles running tasks via the existing runtime `get`/`cancel` operations. A process-local run that disappears after desktop restart becomes an explicit failed record instead of remaining indefinitely in `running`. [[src/main/ipc/register.ts#registerIpcHandlers]] and the preload bridge expose list/create/cancel/review/open-worktree commands, while [[src/renderer/src/screens/TaskCenter/TaskCenter.tsx]] provides the manual runtime selector and review surface.
+[[src/main/task-center.ts]] is retained as an internal scheduled-task execution and recovery engine. It persists run records under the profile desktop data directory and reconciles running tasks via the existing runtime `get`/`cancel` operations. A process-local run that disappears after desktop restart becomes an explicit failed record instead of remaining indefinitely in `running`; it is no longer exposed as a standalone renderer surface or preload API.
 
-Codex emits JSONL lifecycle events, which are valuable diagnostics but poor review text. [[src/renderer/src/screens/TaskCenter/taskOutput.ts#summarizeTaskOutput]] extracts the final agent message, WebSocket-to-HTTPS fallback state, and token summary for the task row; the complete JSONL stream remains in a collapsed Runtime log. [[src/renderer/src/screens/TaskCenter/taskOutput.test.ts]] covers this presentation boundary.
+Codex emits JSONL lifecycle events, which are valuable diagnostics but poor review text. [[src/renderer/src/screens/Chat/runtimeOutput.ts#summarizeTaskOutput]] extracts the final agent message, WebSocket-to-HTTPS fallback state, and token summary for native task conversations. [[src/renderer/src/screens/Chat/runtimeOutput.test.ts]] covers this presentation boundary.
 
 ### Claude Code runtime
 

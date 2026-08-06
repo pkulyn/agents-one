@@ -15,6 +15,17 @@ describe("Agents One feature-slimming boundaries", () => {
     expect(layout).not.toMatch(/\|\s*"(?:tasks|projects)"/);
   });
 
+  it("removes the Hermes Kanban surface and desktop command", () => {
+    const layout = source("src/renderer/src/screens/Layout/Layout.tsx");
+    const commands = source("src/renderer/src/screens/Chat/slash/desktopCommands.ts");
+    const ipc = source("src/main/ipc/register.ts");
+
+    expect(layout).not.toContain("../Kanban/Kanban");
+    expect(layout).not.toMatch(/\|\s*"kanban"/);
+    expect(commands).not.toContain('["kanban"');
+    expect(ipc).not.toContain('"kanban-list-boards"');
+  });
+
   it("keeps task-dialog collaboration wired through renderer and main process", () => {
     const layout = source("src/renderer/src/screens/Layout/Layout.tsx");
     const runtimeChat = source("src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx");

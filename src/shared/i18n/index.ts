@@ -30,7 +30,6 @@ import soulEn from "./locales/en/soul";
 import memoryEn from "./locales/en/memory";
 import installEn from "./locales/en/install";
 import constantsEn from "./locales/en/constants";
-import kanbanEn from "./locales/en/kanban";
 import diagnoseEn from "./locales/en/diagnose";
 import commonHe from "./locales/he/common";
 import navigationHe from "./locales/he/navigation";
@@ -53,7 +52,6 @@ import soulHe from "./locales/he/soul";
 import memoryHe from "./locales/he/memory";
 import installHe from "./locales/he/install";
 import constantsHe from "./locales/he/constants";
-import kanbanHe from "./locales/he/kanban";
 import diagnoseHe from "./locales/he/diagnose";
 import commonPl from "./locales/pl/common";
 import navigationPl from "./locales/pl/navigation";
@@ -75,7 +73,6 @@ import soulPl from "./locales/pl/soul";
 import memoryPl from "./locales/pl/memory";
 import installPl from "./locales/pl/install";
 import constantsPl from "./locales/pl/constants";
-import kanbanPl from "./locales/pl/kanban";
 import commonEs from "./locales/es/common";
 import navigationEs from "./locales/es/navigation";
 import welcomeEs from "./locales/es/welcome";
@@ -96,7 +93,6 @@ import soulEs from "./locales/es/soul";
 import memoryEs from "./locales/es/memory";
 import installEs from "./locales/es/install";
 import constantsEs from "./locales/es/constants";
-import kanbanEs from "./locales/es/kanban";
 import diagnoseEs from "./locales/es/diagnose";
 import commonId from "./locales/id/common";
 import navigationId from "./locales/id/navigation";
@@ -138,7 +134,6 @@ import soulZh from "./locales/zh-CN/soul";
 import memoryZh from "./locales/zh-CN/memory";
 import installZh from "./locales/zh-CN/install";
 import constantsZh from "./locales/zh-CN/constants";
-import kanbanZh from "./locales/zh-CN/kanban";
 import commonZhTw from "./locales/zh-TW/common";
 import navigationZhTw from "./locales/zh-TW/navigation";
 import welcomeZhTw from "./locales/zh-TW/welcome";
@@ -159,7 +154,6 @@ import soulZhTw from "./locales/zh-TW/soul";
 import memoryZhTw from "./locales/zh-TW/memory";
 import installZhTw from "./locales/zh-TW/install";
 import constantsZhTw from "./locales/zh-TW/constants";
-import kanbanZhTw from "./locales/zh-TW/kanban";
 import commonJa from "./locales/ja/common";
 import navigationJa from "./locales/ja/navigation";
 import welcomeJa from "./locales/ja/welcome";
@@ -220,7 +214,6 @@ import soulPtPt from "./locales/pt-PT/soul";
 import memoryPtPt from "./locales/pt-PT/memory";
 import installPtPt from "./locales/pt-PT/install";
 import constantsPtPt from "./locales/pt-PT/constants";
-import kanbanPtPt from "./locales/pt-PT/kanban";
 import diagnosePtPt from "./locales/pt-PT/diagnose";
 import commonTr from "./locales/tr/common";
 import navigationTr from "./locales/tr/navigation";
@@ -243,7 +236,6 @@ import soulTr from "./locales/tr/soul";
 import memoryTr from "./locales/tr/memory";
 import installTr from "./locales/tr/install";
 import constantsTr from "./locales/tr/constants";
-import kanbanTr from "./locales/tr/kanban";
 import diagnoseTr from "./locales/tr/diagnose";
 import commonAr from "./locales/ar/common";
 import navigationAr from "./locales/ar/navigation";
@@ -266,7 +258,6 @@ import soulAr from "./locales/ar/soul";
 import memoryAr from "./locales/ar/memory";
 import installAr from "./locales/ar/install";
 import constantsAr from "./locales/ar/constants";
-import kanbanAr from "./locales/ar/kanban";
 import diagnoseAr from "./locales/ar/diagnose";
 
 export const resources = {
@@ -293,7 +284,6 @@ export const resources = {
       memory: memoryEn,
       install: installEn,
       constants: constantsEn,
-      kanban: kanbanEn,
       diagnose: diagnoseEn,
     },
   },
@@ -320,7 +310,6 @@ export const resources = {
       memory: memoryHe,
       install: installHe,
       constants: constantsHe,
-      kanban: kanbanHe,
       diagnose: diagnoseHe,
     },
   },
@@ -346,7 +335,6 @@ export const resources = {
       memory: memoryPl,
       install: installPl,
       constants: constantsPl,
-      kanban: kanbanPl,
     },
   },
   es: {
@@ -371,7 +359,6 @@ export const resources = {
       memory: memoryEs,
       install: installEs,
       constants: constantsEs,
-      kanban: kanbanEs,
       diagnose: diagnoseEs,
     },
   },
@@ -421,7 +408,6 @@ export const resources = {
       memory: memoryZh,
       install: installZh,
       constants: constantsZh,
-      kanban: kanbanZh,
     },
   },
   "zh-TW": {
@@ -446,7 +432,6 @@ export const resources = {
       memory: memoryZhTw,
       install: installZhTw,
       constants: constantsZhTw,
-      kanban: kanbanZhTw,
     },
   },
   "pt-BR": {
@@ -495,7 +480,6 @@ export const resources = {
       memory: memoryPtPt,
       install: installPtPt,
       constants: constantsPtPt,
-      kanban: kanbanPtPt,
       diagnose: diagnosePtPt,
     },
   },
@@ -546,7 +530,6 @@ export const resources = {
       memory: memoryTr,
       install: installTr,
       constants: constantsTr,
-      kanban: kanbanTr,
       diagnose: diagnoseTr,
     },
   },
@@ -573,7 +556,6 @@ export const resources = {
       memory: memoryAr,
       install: installAr,
       constants: constantsAr,
-      kanban: kanbanAr,
       diagnose: diagnoseAr,
     },
   },

@@ -16,7 +16,6 @@ export default {
   memory: "Bellek",
   tools: "Araçlar",
   schedules: "Zamanlayıcı",
-  kanban: "Kanban",
   gateway: "Gateway",
   settings: "Ayarlar",
   collapseSidebar: "Kenar çubuğunu daralt",

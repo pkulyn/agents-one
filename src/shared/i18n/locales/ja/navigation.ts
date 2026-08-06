@@ -16,7 +16,6 @@ export default {
   memory: "メモリ",
   tools: "ツール",
   schedules: "スケジュール",
-  kanban: "カンバン",
   gateway: "ゲートウェイ",
   settings: "設定",
   collapseSidebar: "サイドバーを折りたたむ",

@@ -77,10 +77,9 @@ async function main() {
     const navButtonCount = await navButton.count();
     if (navButtonCount === 1) {
       await navButton.click();
-    } else if (["projects", "tasks", "chat", "schedules", "agents"].includes(view)) {
-      // Project Center and Task Center are persistent internal panes in the
-      // current shell, not pinned nav buttons. Use their public navigation
-      // event so this acceptance suite stays valid across shell layouts.
+    } else if (["chat", "schedules", "agents"].includes(view)) {
+      // Some retained views can be opened through the shell's public
+      // navigation event even when their button label differs.
       await page.evaluate((targetView) => {
         window.dispatchEvent(new CustomEvent("navigation:goto", { detail: targetView }));
       }, view);
@@ -106,88 +105,6 @@ async function main() {
     assert(await page.locator(".chat-input-area").count(), "聊天: composer is missing");
     await capture("01-conversation-1024");
 
-    step("project overview");
-    const project = await openNav("项目", "projects");
-    await page.waitForTimeout(350);
-    const projectTabs = page.getByRole("tablist", { name: "项目视图" });
-    if (await projectTabs.count()) {
-      await page.getByRole("tab", { name: /^概览/ }).click();
-      assert(await page.locator(".project-overview-metrics").count(), "项目: compact overview is missing");
-      await capture("02-project-overview-1024");
-
-      step("project create form");
-      await page.getByRole("region", { name: "项目", exact: true }).getByRole("button", { name: "新建项目", exact: true }).click();
-      const projectCreateForm = page.locator(".project-create-form");
-      await projectCreateForm.waitFor();
-      assert(await projectCreateForm.getByText("项目名称", { exact: true }).count(), "项目: name field is missing");
-      assert(await projectCreateForm.getByText("项目目标", { exact: true }).count(), "项目: objective field is missing");
-      await assertLayout(page, "项目新建表单");
-      await capture("02b-project-create-1024");
-      await projectCreateForm.getByRole("button", { name: "取消新建项目" }).click();
-
-      step("project tasks");
-      await page.getByRole("tab", { name: /^任务/ }).click();
-      assert(await page.locator(".project-center-grid--details").count(), "项目: task workspace is missing");
-      await capture("03-project-tasks-1024");
-
-      step("project artifacts");
-      await page.getByRole("tab", { name: /^产物/ }).click();
-      assert(await page.locator(".project-artifacts").count(), "项目: artifact view is missing");
-
-      step("project activity");
-      await page.getByRole("tab", { name: /^活动/ }).click();
-      assert(await page.locator(".project-events").count(), "项目: activity view is missing");
-      const rawEventLabels = await page.locator(".project-event > span").allTextContents();
-      assert(rawEventLabels.every((label) => !label.includes("_")), "项目: raw event type is visible");
-      await capture("04-project-activity-1024");
-    }
-
-    step("task list and detail 1024");
-    const tasks = await openNav("任务中心", "tasks");
-    await page.waitForTimeout(500);
-    const taskRegion = page.getByRole("region", { name: "任务", exact: true });
-    await taskRegion.waitFor();
-    await page.getByRole("button", { name: "列表视图" }).click();
-    const newTask = taskRegion.getByRole("button", { name: "新建任务", exact: true });
-    if (await newTask.count()) {
-      step("task create form");
-      await newTask.click();
-      const taskCreateForm = taskRegion.locator("form.task-compose");
-      await taskCreateForm.waitFor();
-      assert(await taskCreateForm.getByText("执行智能体", { exact: true }).count(), "任务中心: runtime field is missing");
-      assert(await taskCreateForm.getByText("任务说明", { exact: true }).count(), "任务中心: prompt field is missing");
-      await assertLayout(page, "任务新建表单");
-      await capture("05a-task-create-1024");
-      await taskCreateForm.getByRole("button", { name: "取消", exact: true }).click();
-    }
-    const existingClose = page.getByRole("button", { name: "关闭任务详情" });
-    if (await existingClose.count()) await existingClose.click();
-    assert(!(await page.locator(".task-detail-panel").count()), "任务中心: detail opens without an explicit selection");
-    const firstTask = page.locator(".task-row-main--selectable").first();
-    assert(await firstTask.count(), "任务中心: no task is available for detail acceptance");
-    await firstTask.click();
-    await page.locator(".task-detail-panel").waitFor();
-    const taskDetail1024 = await page.locator(".task-detail-panel").evaluate((element) => ({
-      position: getComputedStyle(element).position,
-      right: Math.round(window.innerWidth - element.getBoundingClientRect().right),
-      width: Math.round(element.getBoundingClientRect().width),
-    }));
-    assert(taskDetail1024.position === "fixed", "任务中心: detail is not a drawer at 1024px");
-    assert(taskDetail1024.width >= 320, "任务中心: detail drawer is too narrow");
-    await capture("05-task-list-detail-1024");
-    await page.getByRole("button", { name: "关闭任务详情" }).click();
-
-    step("task board 1024");
-    await page.getByRole("button", { name: "看板视图" }).click();
-    const board1024 = await page.locator(".task-board").evaluate((element) => ({
-      width: element.clientWidth,
-      scrollWidth: element.scrollWidth,
-      columns: getComputedStyle(element).gridTemplateColumns.split(" ").length,
-    }));
-    assert(board1024.scrollWidth <= board1024.width + 1, "任务中心: board overflows at 1024px");
-    assert(board1024.columns === 2, "任务中心: expected two board columns at 1024px");
-    await capture("05-task-board-1024");
-
     step("schedules");
     await openNav("定时任务", "schedules");
     await page.getByLabel("本地智能体定时任务").waitFor({ timeout: 15_000 });
@@ -197,8 +114,8 @@ async function main() {
     await page.locator(".schedules-container").getByRole("button", { name: "新建定时任务", exact: true }).click();
     const scheduleModal = page.locator(".schedules-modal");
     await scheduleModal.waitFor();
-    assert(await scheduleModal.getByRole("heading", { name: "新建定时任务" }).count(), "任务中心: schedule form title is ambiguous");
-    assert(await scheduleModal.getByText("执行智能体", { exact: true }).count(), "任务中心: schedule runtime field is missing");
+    assert(await scheduleModal.getByRole("heading", { name: "新建定时任务" }).count(), "定时任务: form title is ambiguous");
+    assert(await scheduleModal.getByText("执行智能体", { exact: true }).count(), "定时任务: runtime field is missing");
     await assertLayout(page, "定时任务新建表单");
     await capture("06b-schedule-create-1024");
     await scheduleModal.getByRole("button", { name: "取消", exact: true }).click();
@@ -247,24 +164,11 @@ async function main() {
     assert(composer768.width >= 400, "聊天: composer is too narrow at 768px");
     await capture("10-conversation-768");
 
-    step("task board 768");
-    await openNav("任务中心", "tasks");
-    await page.getByRole("region", { name: "任务", exact: true }).waitFor();
-    await page.getByRole("button", { name: "看板视图" }).click();
-    const board768 = await page.locator(".task-board").evaluate((element) => ({
-      width: element.clientWidth,
-      scrollWidth: element.scrollWidth,
-      columns: getComputedStyle(element).gridTemplateColumns.split(" ").length,
-    }));
-    assert(board768.scrollWidth <= board768.width + 1, "任务中心: board overflows at 768px");
-    assert(board768.columns === 1, "任务中心: expected one board column at 768px");
-    await capture("11-task-board-768");
-
     console.log(JSON.stringify({
       verdict: "passed",
-      views: ["对话", "项目概览", "项目新建", "项目任务", "项目产物", "项目活动", "任务新建", "任务列表与详情", "任务看板", "定时任务", "定时任务新建", "智能体", "智能体编辑", "设置"],
+      views: ["对话", "定时任务", "定时任务新建", "智能体", "智能体编辑", "设置"],
       viewports: ["1024x768", "768x800"],
-      metrics: { chat, project, tasks, agents, chat768, composer768, taskDetail1024, board1024, board768 },
+      metrics: { chat, agents, chat768, composer768 },
       outputDir,
     }));
   } finally {

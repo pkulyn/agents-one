@@ -68,8 +68,7 @@ export const DESKTOP_SLASH_COMMANDS: SlashCommandDefinition[] = [
       ["office", "Open Office 3D page"],
       ["discover", "Open Discover page"],
       ["providers", "Open Providers page"],
-      ["schedules", "Open scheduled tasks in Task Center"],
-      ["kanban", "Open Kanban board"],
+      ["schedules", "Open scheduled tasks"],
       ["gateway", "Open Gateway status page"],
     ] as const
   ).map(

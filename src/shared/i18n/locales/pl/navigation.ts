@@ -16,7 +16,6 @@ export default {
   memory: "Pamięć",
   tools: "Narzędzia",
   schedules: "Harmonogramy",
-  kanban: "Kanban",
   gateway: "Bramka",
   settings: "Ustawienia",
   collapseSidebar: "Zwin pasek boczny",

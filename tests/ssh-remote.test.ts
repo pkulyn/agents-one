@@ -125,7 +125,7 @@ describe("ssh remote config writes", () => {
 describe("ssh Hermes command quoting", () => {
   it("shell-quotes the whole sh script without dropping per-argument quoting", () => {
     const command = buildRemoteHermesCmd([
-      "kanban",
+      "chat",
       "create",
       "My task title",
       "--triage",
@@ -133,22 +133,22 @@ describe("ssh Hermes command quoting", () => {
     ]);
 
     expect(command).not.toContain(
-      "sh -c '[ -x $HOME/hermes-agent/.venv/bin/hermes ] && exec $HOME/hermes-agent/.venv/bin/hermes 'kanban' 'create'",
+      "sh -c '[ -x $HOME/hermes-agent/.venv/bin/hermes ] && exec $HOME/hermes-agent/.venv/bin/hermes 'chat' 'create'",
     );
     expect(command).toContain(
-      `$HOME/hermes-agent/.venv/bin/hermes '"'"'kanban'"'"'`,
+      `$HOME/hermes-agent/.venv/bin/hermes '"'"'chat'"'"'`,
     );
   });
 
   itIfBash.each([
     [
       "multi-word title",
-      ["kanban", "create", "My task title", "--triage", "--json"],
+      ["chat", "create", "My task title", "--triage", "--json"],
     ],
     [
       "multiline markdown body",
       [
-        "kanban",
+        "chat",
         "create",
         "My task title",
         "--body",
@@ -159,7 +159,7 @@ describe("ssh Hermes command quoting", () => {
     ],
     [
       "single quote in user input",
-      ["kanban", "create", "User's task", "--json"],
+      ["chat", "create", "User's task", "--json"],
     ],
   ])(
     "preserves %s",
