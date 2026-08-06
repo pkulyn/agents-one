@@ -86,6 +86,8 @@ export interface TaskCollaborationRoleRun {
   error?: string;
   /** The coordinator's terminal review is a separate platform-owned phase. */
   phase?: "work" | "final_review";
+  /** Current execution attempt, including automatic review-driven retries. */
+  attempt?: number;
 }
 
 /**
@@ -113,7 +115,14 @@ export interface TaskCollaborationArtifact {
 
 export interface TaskCollaborationTimelineEvent {
   id: string;
-  type: "preflight" | "started" | "handoff" | "artifact" | "acceptance" | "blocked" | "recovery";
+  type:
+    | "preflight"
+    | "started"
+    | "handoff"
+    | "artifact"
+    | "acceptance"
+    | "blocked"
+    | "recovery";
   label: string;
   detail?: string;
   assignmentId?: string;
@@ -154,7 +163,7 @@ export interface TaskCollaborationRecord {
   projectFolder?: string;
   sourceRuntimeId?: string;
   assignments: TaskCollaborationAssignment[];
-  /** Explicitly started by the user; never inferred from an agent response. */
+  /** Started from a user request after a proposal passes the Runtime allow-list. */
   status: TaskCollaborationStatus;
   createdAt: number;
   updatedAt: number;

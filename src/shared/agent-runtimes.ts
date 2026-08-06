@@ -173,13 +173,17 @@ export interface AgentRuntimeTaskInput {
 }
 
 export interface AgentRuntimeArtifact {
-  kind: "worktree" | "diff" | "final";
+  kind: "worktree" | "diff" | "file" | "final";
   label: string;
   /** Remote artifact id, when the provider exposes a downloadable object. */
   id?: string;
   mime?: string;
   size?: number;
   sha256?: string;
+  /** Adapter-owned execution environment after independent verification. */
+  sourceMachine?: string;
+  /** Adapter-owned summary attached to a verified file delivery. */
+  changeSummary?: string;
   path?: string;
   content?: string;
 }
