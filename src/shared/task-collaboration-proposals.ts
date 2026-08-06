@@ -42,8 +42,8 @@ export function parseTaskCollaborationProposal(
       assignments?: unknown;
     };
     if (!Array.isArray(raw.assignments)) return { displayContent };
-    const assignments = raw.assignments
-      .slice(0, 6)
+    const candidateAssignments = raw.assignments.slice(0, 6);
+    const assignments = candidateAssignments
       .map((item): TaskCollaborationAssignment | null => {
         if (!item || typeof item !== "object") return null;
         const candidate = item as Record<string, unknown>;
@@ -60,7 +60,12 @@ export function parseTaskCollaborationProposal(
         };
       })
       .filter((item): item is TaskCollaborationAssignment => item !== null);
-    if (!assignments.length) return { displayContent };
+    if (
+      !assignments.length ||
+      assignments.length !== candidateAssignments.length
+    ) {
+      return { displayContent };
+    }
 
     return {
       displayContent,
@@ -76,6 +81,16 @@ export function parseTaskCollaborationProposal(
   }
 }
 
+/** A proposal is a valid platform control outcome only after runtime allow-list validation. */
+export function hasValidTaskCollaborationProposal(
+  content: string,
+  availableRuntimeIds: Iterable<string>,
+): boolean {
+  return Boolean(
+    parseTaskCollaborationProposal(content, availableRuntimeIds).proposal,
+  );
+}
+
 export function taskCollaborationProposalProtocol(
   runtimes: Array<{ id: string; name: string; kind: string }>,
 ): string {
@@ -86,7 +101,9 @@ export function taskCollaborationProposalProtocol(
     "Agents One 平台协作规则：",
     "- 你不能通过终端、Shell、CLI、脚本或工具自行启动 claude、codex、pi、openclaw、hermes 等其他智能体，也不能把这种本地子进程当作平台协作。",
     "- 只有 Agents One 在用户确认后，才会真实派发已接入的智能体；它们的运行过程和答复会自动写入当前任务对话。",
-    "- 如果确实需要多智能体协作，请说明原因，并在答复末尾只输出一个以下格式的 JSON 块；随后停止并等待用户在界面中确认。不要自行代替其他角色执行。",
+    "- 用户明确要求多个智能体、指定多个智能体或角色分工时，无论任务是否简单，本轮都必须先提交协作提案；不得先调用工具、检查或修改工作区，也不得先执行任务。",
+    "- 用户询问为何没有出现协作确认界面或要求重试编排时，直接重新提交协作提案，不要只解释协议。",
+    "- 提交时先用简短文字说明分工原因，再在答复末尾只输出一个以下格式的 JSON 块；随后立即停止并等待用户在界面中确认。不要自行代替其他角色执行。",
     OPEN,
     '{"title":"协作任务标题","reason":"为何需要协作","brief":"可直接执行的任务说明","assignments":[{"role":"项目负责人","runtimeId":"已接入智能体 ID","responsibility":"职责","context":"共享上下文范围"}]}',
     CLOSE,

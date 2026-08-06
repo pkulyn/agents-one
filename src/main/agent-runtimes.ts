@@ -77,6 +77,7 @@ import {
   type AgentEventStreamEvent,
 } from "../shared/agent-event-stream";
 import { materializeBytesToTemp } from "./media";
+import { hasValidTaskCollaborationProposal } from "../shared/task-collaboration-proposals";
 
 const RUNTIME_CONFIG_KEY = "agentRuntimes";
 const RUNTIME_APPEARANCE_KEY = "agentRuntimeAppearances";
@@ -235,6 +236,23 @@ export function hasRemoteDeliveredContent(
     artifacts?.length ||
     events?.some((event) => event.type === "artifact.created") ||
     REMOTE_MEDIA_DELIVERY_RE.test(output || ""),
+  );
+}
+
+/**
+ * A collaboration proposal is a platform control result, not a completed file
+ * operation. It may therefore finish before any Workspace Gateway audit entry
+ * exists, but only when every assignment targets a registered runtime.
+ */
+export function hasRemoteWorkspaceOutcome(
+  output: string | undefined,
+  events: AgentEventStreamEvent[] | undefined,
+  artifacts: AgentRuntimeArtifact[] | undefined,
+  availableRuntimeIds: Iterable<string>,
+): boolean {
+  return (
+    hasRemoteDeliveredContent(output, events, artifacts) ||
+    hasValidTaskCollaborationProposal(output || "", availableRuntimeIds)
   );
 }
 
@@ -2035,10 +2053,13 @@ function applyAgentsOneRemoteGatewayRun(
       remoteRun.status === "succeeded" &&
       record.workspaceGateway &&
       record.workspaceGateway.gateway.audit.length === 0 &&
-      !hasRemoteDeliveredContent(
+      !hasRemoteWorkspaceOutcome(
         remoteRun.output ?? finalOutput,
         remoteRun.events,
         remoteRun.artifacts,
+        listAgentRuntimes()
+          .filter((runtime) => runtime.enabled)
+          .map((runtime) => runtime.id),
       )
     ) {
       return finishRuntimeRun(record, "failed", {
@@ -2507,11 +2528,6 @@ export async function startAgentRuntimeTask(
         grant.id,
         grant.permission,
       )}`;
-      appendRuntimeEvent(
-        record,
-        "progress",
-        "已建立不会自动到期的受控本机工作区授权；任务结束或取消时撤销。",
-      );
     } catch (error) {
       return finishRuntimeRun(record, "failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -2524,11 +2540,6 @@ export async function startAgentRuntimeTask(
   if (task.workspace && unifiedGatewayRuntime && !dispatchWorkspaceRef) {
     gatewayPermission = "read";
     dispatchPrompt = `${task.prompt}\n\n[Agents One 工作区状态]\n当前任务已在桌面端关联本地项目，但本轮尚未建立 Workspace Grant。本地项目路径与文件内容未发送给你。你可以继续处理普通对话；如果请求依赖本地文件，请明确说明需要用户启用受控工作区授权。`;
-    appendRuntimeEvent(
-      record,
-      "progress",
-      "本轮未授予远程工作区权限，已按普通只读对话执行。",
-    );
   }
 
   if (task.coordinatorPlan) {

@@ -350,6 +350,34 @@ describe("agent runtime registry", () => {
     expect(runtimes.hasRemoteDeliveredContent("普通文本回复")).toBe(false);
   });
 
+  it("accepts a valid collaboration proposal as a control outcome without workspace evidence", async () => {
+    const { runtimes } = await loadModules();
+    const proposal = [
+      "需要由 Pi 执行、Claude Code 复核。",
+      "<agents-one-collaboration-proposal>",
+      '{"title":"冒烟测试","brief":"生成并复核测试文档","assignments":[{"role":"执行","runtimeId":"pi-local"},{"role":"复核","runtimeId":"claude-local"}]}',
+      "</agents-one-collaboration-proposal>",
+    ].join("\n");
+
+    expect(
+      runtimes.hasRemoteWorkspaceOutcome(proposal, undefined, undefined, [
+        "pi-local",
+        "claude-local",
+      ]),
+    ).toBe(true);
+    expect(
+      runtimes.hasRemoteWorkspaceOutcome(proposal, undefined, undefined, [
+        "pi-local",
+      ]),
+    ).toBe(false);
+    expect(
+      runtimes.hasRemoteWorkspaceOutcome("普通文本回复", undefined, undefined, [
+        "pi-local",
+        "claude-local",
+      ]),
+    ).toBe(false);
+  });
+
   it("preserves structured OpenClaw Gateway events and metadata", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
