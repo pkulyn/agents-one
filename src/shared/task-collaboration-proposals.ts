@@ -15,6 +15,12 @@ export interface TaskCollaborationProposal {
 const OPEN = "<agents-one-collaboration-proposal>";
 const CLOSE = "</agents-one-collaboration-proposal>";
 
+interface TaskCollaborationProposalRuntime {
+  id: string;
+  name: string;
+  kind: string;
+}
+
 function cleanText(value: unknown, maxLength: number): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.replace(/\s+/g, " ").trim().slice(0, maxLength);
@@ -89,6 +95,121 @@ export function hasValidTaskCollaborationProposal(
   return Boolean(
     parseTaskCollaborationProposal(content, availableRuntimeIds).proposal,
   );
+}
+
+function escapedRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function runtimeAliases(runtime: TaskCollaborationProposalRuntime): string[] {
+  const values = new Set<string>([
+    runtime.id,
+    runtime.name,
+    runtime.kind,
+    runtime.id.split("-")[0],
+    runtime.name.split(/[\s-]/)[0],
+    runtime.kind.split("-")[0],
+  ]);
+  if (runtime.kind === "claude-code") values.add("claude");
+  if (runtime.kind === "hermes") values.add("hers");
+  return [...values]
+    .map((value) => value.trim())
+    .filter((value) => value.length >= 2)
+    .sort((left, right) => right.length - left.length);
+}
+
+function responsibilityAfter(
+  prompt: string,
+  assignees: string[],
+): string | undefined {
+  for (const assignee of assignees) {
+    const escaped = escapedRegExp(assignee);
+    const boundary = /^[a-z0-9]/i.test(assignee)
+      ? `(?:^|[^a-z0-9])${escaped}`
+      : escaped;
+    const match = prompt.match(
+      new RegExp(
+        `${boundary}\\s*(?:负责|承担)\\s*([^，,。；;\\n]+)`,
+        "i",
+      ),
+    );
+    const responsibility = cleanText(match?.[1], 320);
+    if (responsibility) return responsibility;
+  }
+  return undefined;
+}
+
+function collaborationRole(
+  responsibility: string,
+  coordinator: boolean,
+): string {
+  if (coordinator) return "项目负责人";
+  if (/复核|审核|审查|review|qa/i.test(responsibility)) return "复核";
+  if (/验收|accept/i.test(responsibility)) return "验收";
+  if (/执行|实施|生成|创建|编写|开发|implement|execute|write|create/i.test(responsibility)) {
+    return "实施";
+  }
+  return "协作角色";
+}
+
+/**
+ * Turn an explicit "A 负责…，B 负责…" request into a local proposal. This
+ * keeps the confirmation boundary deterministic without guessing unnamed
+ * agents or trusting runtime ids supplied by model/user output.
+ */
+export function createExplicitTaskCollaborationProposal(
+  prompt: string,
+  coordinator: TaskCollaborationProposalRuntime,
+  runtimes: TaskCollaborationProposalRuntime[],
+): TaskCollaborationProposal | undefined {
+  if (!/(?:多智能(?:体)?|协作|编排)/i.test(prompt)) return undefined;
+
+  const assignments: TaskCollaborationAssignment[] = [];
+  const coordinatorResponsibility = responsibilityAfter(prompt, ["你"]);
+  if (coordinatorResponsibility) {
+    assignments.push({
+      role: collaborationRole(coordinatorResponsibility, true),
+      runtimeId: coordinator.id,
+      responsibility: coordinatorResponsibility,
+      context: "用户原始任务与已确认分工",
+    });
+  }
+
+  for (const runtime of runtimes) {
+    if (runtime.id === coordinator.id && coordinatorResponsibility) continue;
+    const responsibility = responsibilityAfter(prompt, runtimeAliases(runtime));
+    if (!responsibility) continue;
+    assignments.push({
+      role: collaborationRole(
+        responsibility,
+        runtime.id === coordinator.id,
+      ),
+      runtimeId: runtime.id,
+      responsibility,
+      context: "用户原始任务与已确认分工",
+    });
+  }
+
+  if (new Set(assignments.map((assignment) => assignment.runtimeId)).size < 2) {
+    return undefined;
+  }
+  return {
+    title: "多智能体协作",
+    reason: "你已明确指定多个已接入智能体及其职责，确认后由 Agents One 按分工派发。",
+    brief: cleanText(prompt, 4_000),
+    assignments,
+  };
+}
+
+export function formatTaskCollaborationProposal(
+  proposal: TaskCollaborationProposal,
+): string {
+  return [
+    "已根据你指定的角色生成协作方案，请确认后再启动。",
+    OPEN,
+    JSON.stringify(proposal),
+    CLOSE,
+  ].join("\n");
 }
 
 export function taskCollaborationProposalProtocol(

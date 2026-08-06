@@ -10,9 +10,11 @@ The renderer adapts durable runtime events without changing their stored records
 
 ## Collaboration proposal control turn
 
-An explicit multi-agent request must produce a user-confirmable platform proposal before any agent performs workspace work.
+An explicit multi-agent request must produce a user-confirmable platform proposal before any agent performs workspace work, without making the confirmation UI depend on a model completing hidden control syntax.
 
-[[src/shared/task-collaboration-proposals.ts#taskCollaborationProposalProtocol]] is placed before the current user request by [[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]]. It requires an explicit multi-agent request, named role split, or confirmation-UI retry to emit one proposal and then stop; the assistant must not inspect or modify the workspace first.
+[[src/shared/task-collaboration-proposals.ts#createExplicitTaskCollaborationProposal]] recognizes an explicit collaboration/coordination request only when at least two registered runtimes have `负责`/`承担` responsibilities, resolves names and aliases against the enabled Runtime catalog, and creates the proposal locally. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]] persists that normal agent control message and renders the existing confirmation card without starting a remote run. The current coordinator is always included in the trusted catalog even if the caller's catalog map omitted it.
+
+Requests that do not provide a complete named split still use [[src/shared/task-collaboration-proposals.ts#taskCollaborationProposalProtocol]] before the current user request. This keeps open-ended planning available while the deterministic path protects the common “你负责编排、Pi 负责执行、Claude 负责复核” flow from reasoning-event truncation or missing final output.
 
 [[src/shared/task-collaboration-proposals.ts#hasValidTaskCollaborationProposal]] validates every assignment against the enabled runtime allow-list. A valid proposal counts as a control-plane outcome in [[src/main/agent-runtimes.ts#hasRemoteWorkspaceOutcome]], so the Gateway may finish that planning turn without a Workspace audit entry or artifact; invalid and partial proposals do not bypass the existing evidence guard.
 

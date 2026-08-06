@@ -35,6 +35,8 @@ import type {
   TaskCollaborationTimelineEvent,
 } from "../../../../shared/task-collaboration";
 import {
+  createExplicitTaskCollaborationProposal,
+  formatTaskCollaborationProposal,
   parseTaskCollaborationProposal,
   taskCollaborationProposalProtocol,
   type TaskCollaborationProposal,
@@ -750,7 +752,7 @@ function RuntimeCollaborationProposalCards({
     if (message.role !== "agent") return [];
     const result = parseTaskCollaborationProposal(
       message.content,
-      Object.keys(runtimeCatalog),
+      [runtime.id, ...Object.keys(runtimeCatalog)],
     );
     return result?.proposal
       ? [{ id: message.id, proposal: result.proposal }]
@@ -905,11 +907,11 @@ export default function RuntimeChat({
       return (
         parseTaskCollaborationProposal(
           message.content,
-          Object.keys(runtimeCatalog),
+          [runtime.id, ...Object.keys(runtimeCatalog)],
         )?.displayContent || message.content
       );
     },
-    [runtimeCatalog],
+    [runtime.id, runtimeCatalog],
   );
 
   const nativeMessages = useMemo(() => {
@@ -1995,17 +1997,46 @@ export default function RuntimeChat({
         setLoading(false);
         return;
       }
-      const resumableSessionId =
-        runtime.kind !== "openclaw"
-          ? runtimeSessionIdRef.current || undefined
-          : undefined;
-      const collaborationCandidates = Object.values(runtimeCatalog)
+      const collaborationCandidates = [
+        ...new Map(
+          [runtime, ...Object.values(runtimeCatalog)].map((candidate) => [
+            candidate.id,
+            candidate,
+          ]),
+        ).values(),
+      ]
         .filter((candidate) => candidate.enabled)
         .map((candidate) => ({
           id: candidate.id,
           name: candidate.name,
           kind: candidate.kind,
         }));
+      const explicitProposal = onRequestCollaboration
+        ? createExplicitTaskCollaborationProposal(
+            prompt,
+            { id: runtime.id, name: runtime.name, kind: runtime.kind },
+            collaborationCandidates,
+          )
+        : undefined;
+      if (explicitProposal) {
+        const proposalMessages = [
+          ...nextMessages,
+          newMessage(
+            "agent",
+            formatTaskCollaborationProposal(explicitProposal),
+          ),
+        ];
+        messagesRef.current = proposalMessages;
+        setMessages(proposalMessages);
+        await persistConversation(proposalMessages);
+        setLoading(false);
+        setCurrentRunId(null);
+        return;
+      }
+      const resumableSessionId =
+        runtime.kind !== "openclaw"
+          ? runtimeSessionIdRef.current || undefined
+          : undefined;
       const basePrompt = resumableSessionId
         ? prompt
         : promptWithTranscript(messages, prompt);
