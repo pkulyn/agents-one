@@ -115,21 +115,26 @@ function Layout(): React.JSX.Element {
   const [quickChatRuntimeId, setQuickChatRuntimeId] = useState<string | null>(
     null,
   );
-  const [collaborationDraft, setCollaborationDraft] = useState<CollaborationTaskDraft | null>(null);
+  const [collaborationDraft, setCollaborationDraft] =
+    useState<CollaborationTaskDraft | null>(null);
   const [collaborationWorkspace, setCollaborationWorkspace] =
     useState<CollaborationWorkspaceState | null>(null);
-  const [defaultRuntimeId, setDefaultRuntimeId] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(DEFAULT_AGENT_RUNTIME_KEY);
-    } catch {
-      return null;
-    }
-  });
+  const [defaultRuntimeId, setDefaultRuntimeId] = useState<string | null>(
+    () => {
+      try {
+        return localStorage.getItem(DEFAULT_AGENT_RUNTIME_KEY);
+      } catch {
+        return null;
+      }
+    },
+  );
   const [runtimeCatalog, setRuntimeCatalog] = useState<
     Record<string, AgentRuntimeDefinition>
   >({});
   // While a resume's history is loading, show its spinner immediately.
-  const [resumingSessionId, setResumingSessionId] = useState<string | null>(null);
+  const [resumingSessionId, setResumingSessionId] = useState<string | null>(
+    null,
+  );
   // Sessions whose resume is in flight — dedupes rapid double-clicks that would
   // otherwise mount two tabs for the same session (the live check straddles an
   // await, so it can't rely on `runs` state alone).
@@ -144,7 +149,9 @@ function Layout(): React.JSX.Element {
   const defaultRuntime = useMemo(
     () =>
       runtimeList.find((runtime) => runtime.id === defaultRuntimeId) ??
-      runtimeList.find((runtime) => runtime.kind === "hermes" && runtime.enabled) ??
+      runtimeList.find(
+        (runtime) => runtime.kind === "hermes" && runtime.enabled,
+      ) ??
       runtimeList.find((runtime) => runtime.enabled) ??
       runtimeList[0],
     [defaultRuntimeId, runtimeList],
@@ -171,7 +178,6 @@ function Layout(): React.JSX.Element {
     () => deriveLoadingSessionIds(runs),
     [runs],
   );
-
 
   // Profile appearance remains the source for Hermes conversations. Runtime
   // conversations resolve their own user-configured name/avatar/colour from
@@ -273,13 +279,20 @@ function Layout(): React.JSX.Element {
   }, [runs]);
 
   const linkRunCollaboration = useCallback(
-    (runId: string, link: { conversationId?: string; sourceSessionId?: string }): void => {
+    (
+      runId: string,
+      link: { conversationId?: string; sourceSessionId?: string },
+    ): void => {
       const run = runsRef.current.find((item) => item.runId === runId);
       const taskId = run?.collaboration?.persistedTaskId;
       if (!taskId) return;
       void window.hermesAPI
         .linkTaskCollaboration({ taskId, ...link }, activeProfile)
-        .then(() => window.dispatchEvent(new Event("agents-one:task-collaboration-changed")))
+        .then(() =>
+          window.dispatchEvent(
+            new Event("agents-one:task-collaboration-changed"),
+          ),
+        )
         .catch(() => {
           // A transcript may still be saved even when the optional link write
           // fails. Never create a second collaboration record as a fallback.
@@ -295,7 +308,8 @@ function Layout(): React.JSX.Element {
   const handleRunSessionId = useCallback(
     (runId: string, sessionId: string | null) => {
       setRuns((prev) => patchRun(prev, runId, { sessionId }));
-      if (sessionId) linkRunCollaboration(runId, { sourceSessionId: sessionId });
+      if (sessionId)
+        linkRunCollaboration(runId, { sourceSessionId: sessionId });
     },
     [linkRunCollaboration],
   );
@@ -348,9 +362,8 @@ function Layout(): React.JSX.Element {
 
   useEffect(() => {
     const handleNavigation = (e: Event): void => {
-      const detail = (e as CustomEvent<
-        View | { view: View; taskId?: string }
-      >).detail;
+      const detail = (e as CustomEvent<View | { view: View; taskId?: string }>)
+        .detail;
       const targetView = typeof detail === "string" ? detail : detail?.view;
       if (targetView === "schedules") {
         goTo("schedules");
@@ -596,7 +609,9 @@ function Layout(): React.JSX.Element {
       }
       if (!folder) return;
       await window.hermesAPI.registerProjectFolder(folder);
-      window.dispatchEvent(new CustomEvent("agents-one:project-folders-changed"));
+      window.dispatchEvent(
+        new CustomEvent("agents-one:project-folders-changed"),
+      );
 
       const active = runs.find((run) => run.runId === activeRunId);
       if (active && isScratchRun(active)) {
@@ -662,6 +677,81 @@ function Layout(): React.JSX.Element {
     [],
   );
 
+  const handleAutoStartTaskCollaboration = useCallback(
+    async (
+      task: ChatRun,
+      proposal: TaskCollaborationProposal,
+      selectedProjectFolder?: string,
+    ) => {
+      const taskId = task.runtimeConversationId || task.sessionId || task.runId;
+      const proposedAssignments = proposal.assignments.some(
+        (assignment) => assignment.runtimeId === task.runtimeId,
+      )
+        ? proposal.assignments
+        : [
+            {
+              role: "项目负责人",
+              runtimeId: task.runtimeId,
+              responsibility: "在当前对话中完成编排、协调与最终验收",
+              context: "用户原始任务、全部角色交接与验收证据",
+            },
+            ...proposal.assignments,
+          ];
+      const assignments = proposedAssignments.map((assignment, index) => {
+        const assignedRuntime = assignment.runtimeId
+          ? runtimeCatalog[assignment.runtimeId]
+          : undefined;
+        return {
+          ...assignment,
+          role:
+            assignment.runtimeId === task.runtimeId
+              ? "项目负责人"
+              : assignment.role,
+          id: assignment.id || `role-${Date.now()}-${index}`,
+          workspaceAccess:
+            assignment.workspaceAccess ||
+            (assignedRuntime?.location === "local"
+              ? ("local_direct" as const)
+              : ("evidence_bundle" as const)),
+        };
+      });
+      const record = await window.hermesAPI.saveTaskCollaboration(
+        {
+          taskId,
+          title: proposal.title || task.title || "当前任务的协作方案",
+          projectFolder:
+            selectedProjectFolder ||
+            task.runtimeWorkspace ||
+            task.contextFolder ||
+            undefined,
+          sourceRuntimeId: task.runtimeId,
+          assignments,
+          status: "active",
+        },
+        activeProfile,
+      );
+      setRuns((previous) =>
+        patchRun(previous, task.runId, {
+          collaboration: {
+            assignments: record.assignments,
+            ...(record.projectFolder
+              ? { projectFolder: record.projectFolder }
+              : {}),
+            persistedTaskId: record.taskId,
+            status: record.status,
+          },
+        }),
+      );
+      window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+      return {
+        taskId: record.taskId,
+        assignments: record.assignments,
+        projectFolder: record.projectFolder,
+      };
+    },
+    [activeProfile, runtimeCatalog],
+  );
+
   const handleStartTaskCollaboration = useCallback(
     (assignments: TaskCollaborationAssignment[], message: string): void => {
       const draft = collaborationDraft;
@@ -680,7 +770,9 @@ function Layout(): React.JSX.Element {
             activeProfile,
           )
           .then((record) => {
-            window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+            window.dispatchEvent(
+              new Event("agents-one:task-collaboration-changed"),
+            );
             setCollaborationDraft(null);
             const live = findRunBySession(runs, record.taskId);
             if (!live) {
@@ -718,7 +810,9 @@ function Layout(): React.JSX.Element {
             });
           })
           .catch((error) =>
-            toast.error(error instanceof Error ? error.message : "无法保存协作设置。"),
+            toast.error(
+              error instanceof Error ? error.message : "无法保存协作设置。",
+            ),
           );
       } else if (draft.runId) {
         // A newly created task has no transport session yet. Persist against
@@ -742,13 +836,17 @@ function Layout(): React.JSX.Element {
               patchRun(previous, parentTaskId, {
                 collaboration: {
                   assignments: record.assignments,
-                  ...(record.projectFolder ? { projectFolder: record.projectFolder } : {}),
+                  ...(record.projectFolder
+                    ? { projectFolder: record.projectFolder }
+                    : {}),
                   persistedTaskId: record.taskId,
                   status: record.status,
                 },
               }),
             );
-            window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+            window.dispatchEvent(
+              new Event("agents-one:task-collaboration-changed"),
+            );
             setCollaborationDraft(null);
             setActiveRunId(parentTaskId);
             goTo("chat");
@@ -769,7 +867,9 @@ function Layout(): React.JSX.Element {
             });
           })
           .catch((error) =>
-            toast.error(error instanceof Error ? error.message : "无法保存协作设置。"),
+            toast.error(
+              error instanceof Error ? error.message : "无法保存协作设置。",
+            ),
           );
       }
     },
@@ -796,7 +896,9 @@ function Layout(): React.JSX.Element {
       )
       .then((record) => {
         setCollaborationWorkspace(collaborationWorkspaceFromRecord(record));
-        window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+        window.dispatchEvent(
+          new Event("agents-one:task-collaboration-changed"),
+        );
       })
       .catch((error) =>
         toast.error(error instanceof Error ? error.message : "无法启动协作。"),
@@ -810,15 +912,22 @@ function Layout(): React.JSX.Element {
       void window.hermesAPI
         .getTaskCollaboration(taskId, activeProfile)
         .then((record) => {
-          if (record) setCollaborationWorkspace(collaborationWorkspaceFromRecord(record));
+          if (record)
+            setCollaborationWorkspace(collaborationWorkspaceFromRecord(record));
         })
         .catch(() => {
           toast.error("无法读取协作任务配置。 ");
         });
     };
-    window.addEventListener("agents-one:open-task-collaboration", openWorkspace);
+    window.addEventListener(
+      "agents-one:open-task-collaboration",
+      openWorkspace,
+    );
     return () =>
-      window.removeEventListener("agents-one:open-task-collaboration", openWorkspace);
+      window.removeEventListener(
+        "agents-one:open-task-collaboration",
+        openWorkspace,
+      );
   }, [activeProfile]);
 
   // Listen for menu IPC events (Cmd+N, Cmd+K from app menu)
@@ -863,16 +972,15 @@ function Layout(): React.JSX.Element {
   const handleChatWithRuntime = useCallback(
     (runtime: AgentRuntimeDefinition) => {
       setRuntimeCatalog((current) => ({ ...current, [runtime.id]: runtime }));
-      const run =
-        usesLegacyHermesChat(runtime)
-          ? mintRun(activeProfile)
-          : mintRuntimeRun({
-              profile: activeProfile,
-              runtimeId: runtime.id,
-              runtimeName: runtime.name,
-              runtimeKind: runtime.kind,
-              runtimeWorkspace: runtime.config.workspace,
-            });
+      const run = usesLegacyHermesChat(runtime)
+        ? mintRun(activeProfile)
+        : mintRuntimeRun({
+            profile: activeProfile,
+            runtimeId: runtime.id,
+            runtimeName: runtime.name,
+            runtimeKind: runtime.kind,
+            runtimeWorkspace: runtime.config.workspace,
+          });
       setRuns((current) => [...current, run]);
       setActiveRunId(run.runId);
       goTo("chat");
@@ -1070,10 +1178,11 @@ function Layout(): React.JSX.Element {
       "agents-one:open-runtime-conversation",
       handleOpenRuntimeConversation,
     );
-    return () => window.removeEventListener(
-      "agents-one:open-runtime-conversation",
-      handleOpenRuntimeConversation,
-    );
+    return () =>
+      window.removeEventListener(
+        "agents-one:open-runtime-conversation",
+        handleOpenRuntimeConversation,
+      );
   }, [handleResumeSession]);
 
   const toggleSidebar = useCallback(() => {
@@ -1284,7 +1393,16 @@ function Layout(): React.JSX.Element {
                       : undefined
                   }
                   runtimeCatalog={runtimeCatalog}
-                  onRequestCollaboration={(proposal) => handleOpenTaskCollaboration(run, proposal)}
+                  onRequestCollaboration={(proposal) =>
+                    handleOpenTaskCollaboration(run, proposal)
+                  }
+                  onStartCollaboration={(proposal, projectFolder) =>
+                    handleAutoStartTaskCollaboration(
+                      run,
+                      proposal,
+                      projectFolder,
+                    )
+                  }
                   onLoadingChange={handleRunLoading}
                   onSessionIdChange={handleRunSessionId}
                   onConversationIdChange={handleRuntimeConversationId}
@@ -1309,7 +1427,9 @@ function Layout(): React.JSX.Element {
                   collaboration={run.collaboration}
                   runtimeCatalog={runtimeCatalog}
                   agentAppearance={getAppearance(run)}
-                  onRequestCollaboration={() => handleOpenTaskCollaboration(run)}
+                  onRequestCollaboration={() =>
+                    handleOpenTaskCollaboration(run)
+                  }
                 />
               )}
             </div>
@@ -1353,9 +1473,7 @@ function Layout(): React.JSX.Element {
 
         {visitedViews.has("agents") && (
           <div style={paneStyle("agents")}>
-            <Agents
-              onChatWithRuntime={handleChatWithRuntime}
-            />
+            <Agents onChatWithRuntime={handleChatWithRuntime} />
           </div>
         )}
 

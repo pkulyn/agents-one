@@ -632,7 +632,7 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
-  it("turns a runtime proposal into an explicit, user-confirmed collaboration entry", () => {
+  it("keeps a persisted runtime proposal available for optional manual adjustment", () => {
     const onRequestCollaboration = vi.fn();
     render(
       <RuntimeChat
@@ -664,7 +664,7 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(
       screen.queryByText("agents-one-collaboration-proposal"),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "配置并启动协作" }));
+    fireEvent.click(screen.getByRole("button", { name: "调整协作安排" }));
     expect(onRequestCollaboration).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "文档协作",
@@ -675,8 +675,74 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
-  it("creates the confirmation proposal locally for explicitly assigned runtimes", async () => {
-    const onRequestCollaboration = vi.fn();
+  it("automatically starts explicit collaboration without duplicating the user brief", async () => {
+    const onStartCollaboration = vi.fn().mockResolvedValue({
+      taskId: "chat-explicit-collaboration",
+      projectFolder: "D:\\default",
+      assignments: [
+        {
+          id: "lead",
+          role: "项目负责人",
+          runtimeId: "hermes-home2",
+          responsibility: "编排、验收",
+          workspaceAccess: "evidence_bundle",
+        },
+        {
+          id: "implement",
+          role: "实施",
+          runtimeId: "pi-local",
+          responsibility: "执行",
+          workspaceAccess: "local_direct",
+        },
+        {
+          id: "review",
+          role: "复核",
+          runtimeId: "claude-local",
+          responsibility: "复核",
+          workspaceAccess: "local_direct",
+        },
+      ],
+    });
+    let call = 0;
+    startAgentRuntimeTask.mockImplementation(async (runtimeId: string) => ({
+      id: `explicit-run-${++call}`,
+      runtimeId,
+      status: "running",
+      output: "",
+      startedAt: Date.now(),
+    }));
+    getAgentRuntimeRun.mockImplementation(async (id: string) => ({
+      id,
+      runtimeId:
+        id === "explicit-run-2"
+          ? "pi-local"
+          : id === "explicit-run-3"
+            ? "claude-local"
+            : "hermes-home2",
+      status: "succeeded",
+      output:
+        id === "explicit-run-2"
+          ? "已完成实施。"
+          : id === "explicit-run-3" || id === "explicit-run-4"
+            ? "[验收结论]\n状态：通过\n依据：#1\n结论：文件已核验。"
+            : "已完成编排，下一步由 Pi 执行。",
+      startedAt: Date.now(),
+      completedAt: Date.now(),
+      ...(id === "explicit-run-2"
+        ? {
+            artifacts: [
+              {
+                kind: "file",
+                label: "multi-agent-smoke-test.txt",
+                path: "D:\\default\\multi-agent-smoke-test.txt",
+                sha256: "b".repeat(64),
+                sourceMachine: "本机工作区",
+                changeSummary: "创建冒烟测试文件。",
+              },
+            ],
+          }
+        : {}),
+    }));
     render(
       <RuntimeChat
         runId="chat-explicit-collaboration"
@@ -686,33 +752,14 @@ describe("RuntimeChat inputs and persistence", () => {
           "pi-local": piRuntime,
           "claude-local": claudeRuntime,
         }}
-        onRequestCollaboration={onRequestCollaboration}
+        onStartCollaboration={onStartCollaboration}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "发送明确协作输入" }));
 
-    expect(
-      await screen.findByText("建议启用多智能体协作"),
-    ).toBeInTheDocument();
-    expect(startAgentRuntimeTask).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(saveRuntimeConversation).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          messages: expect.arrayContaining([
-            expect.objectContaining({
-              role: "agent",
-              content: expect.stringContaining(
-                "<agents-one-collaboration-proposal>",
-              ),
-            }),
-          ]),
-        }),
-      ),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "配置并启动协作" }));
-    expect(onRequestCollaboration).toHaveBeenCalledWith(
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(4));
+    expect(onStartCollaboration).toHaveBeenCalledWith(
       expect.objectContaining({
         assignments: expect.arrayContaining([
           expect.objectContaining({
@@ -726,7 +773,260 @@ describe("RuntimeChat inputs and persistence", () => {
           }),
         ]),
       }),
+      undefined,
     );
+    expect(
+      startAgentRuntimeTask.mock.calls.map(([runtimeId]) => runtimeId),
+    ).toEqual(["hermes-home2", "pi-local", "claude-local", "hermes-home2"]);
+    expect(startAgentRuntimeTask.mock.calls[3][1].attachments).toEqual([
+      expect.objectContaining({ id: "project-context" }),
+    ]);
+    const saved = saveRuntimeConversation.mock.calls.at(-1)?.[0];
+    expect(
+      saved.messages.filter(
+        (message: { role: string; content: string }) =>
+          message.role === "user" &&
+          message.content.includes("Agents One 冒烟测试"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: "调整协作安排" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("routes a failed review back to implementation and closes only after re-review and lead acceptance", async () => {
+    const assignments = [
+      {
+        id: "lead",
+        role: "项目负责人",
+        runtimeId: "hermes-home2",
+        workspaceAccess: "evidence_bundle" as const,
+      },
+      {
+        id: "implement",
+        role: "实施",
+        runtimeId: "pi-local",
+        workspaceAccess: "local_direct" as const,
+      },
+      {
+        id: "review",
+        role: "复核",
+        runtimeId: "claude-local",
+        workspaceAccess: "local_direct" as const,
+      },
+    ];
+    const runtimeOrder = [
+      "hermes-home2",
+      "pi-local",
+      "claude-local",
+      "pi-local",
+      "claude-local",
+      "hermes-home2",
+    ];
+    let startIndex = 0;
+    startAgentRuntimeTask.mockImplementation(async (runtimeId: string) => ({
+      id: `closed-loop-${++startIndex}`,
+      runtimeId,
+      status: "running",
+      output: "",
+      startedAt: Date.now(),
+    }));
+    getAgentRuntimeRun.mockImplementation(async (id: string) => {
+      const attempt = Number(id.split("-").at(-1));
+      const runtimeId = runtimeOrder[attempt - 1];
+      const implementation = attempt === 2 || attempt === 4;
+      const failedReview = attempt === 3;
+      return {
+        id,
+        runtimeId,
+        status: "succeeded",
+        output: implementation
+          ? `第 ${attempt === 2 ? 1 : 2} 次实施完成。`
+          : failedReview
+            ? "[验收结论]\n状态：不通过\n依据：#1\n结论：文件内容不符合要求，请 Pi 修正。"
+            : attempt === 5 || attempt === 6
+              ? "[验收结论]\n状态：通过\n依据：#1\n结论：修正后的文件符合要求。"
+              : "已完成编排。",
+        startedAt: Date.now(),
+        completedAt: Date.now(),
+        ...(implementation
+          ? {
+              artifacts: [
+                {
+                  kind: "file",
+                  label: "multi-agent-smoke-test.txt",
+                  path: "D:\\default\\multi-agent-smoke-test.txt",
+                  sha256: (attempt === 2 ? "a" : "b").repeat(64),
+                  sourceMachine: "本机工作区",
+                  changeSummary:
+                    attempt === 2 ? "首次创建。" : "按复核意见修正。",
+                },
+              ],
+            }
+          : {}),
+      };
+    });
+
+    render(
+      <RuntimeChat
+        runId="collaboration-closed-loop"
+        runtime={hers2Runtime}
+        profile="default"
+        initialWorkspace="D:\\default"
+        collaboration={{ assignments }}
+        runtimeCatalog={{
+          "hermes-home2": hers2Runtime,
+          "pi-local": piRuntime,
+          "claude-local": claudeRuntime,
+        }}
+      />,
+    );
+    window.dispatchEvent(
+      new CustomEvent("agents-one:submit-task-message", {
+        detail: {
+          runId: "collaboration-closed-loop",
+          content: "闭环测试",
+          collaboration: {
+            taskId: "collaboration-closed-loop-task",
+            assignments,
+          },
+        },
+      }),
+    );
+
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(6));
+    expect(
+      startAgentRuntimeTask.mock.calls.map(([runtimeId]) => runtimeId),
+    ).toEqual(runtimeOrder);
+    expect(startAgentRuntimeTask.mock.calls[3][1].prompt).toContain(
+      "文件内容不符合要求",
+    );
+    expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        taskId: "collaboration-closed-loop-task",
+        execution: expect.objectContaining({
+          status: "succeeded",
+          roleRuns: expect.arrayContaining([
+            expect.objectContaining({
+              assignmentId: "implement",
+              attempt: 2,
+              status: "succeeded",
+            }),
+          ]),
+          acceptance: expect.objectContaining({ status: "passed" }),
+        }),
+      }),
+      "default",
+    );
+  });
+
+  it("automatically dispatches a validated coordinator proposal and reuses its visible planning turn", async () => {
+    const assignments = [
+      {
+        id: "lead",
+        role: "项目负责人",
+        runtimeId: "hermes-home2",
+        workspaceAccess: "evidence_bundle" as const,
+      },
+      {
+        id: "implement",
+        role: "实施",
+        runtimeId: "pi-local",
+        workspaceAccess: "local_direct" as const,
+      },
+      {
+        id: "review",
+        role: "复核",
+        runtimeId: "claude-local",
+        workspaceAccess: "local_direct" as const,
+      },
+    ];
+    const onStartCollaboration = vi.fn().mockResolvedValue({
+      taskId: "auto-proposal-task",
+      projectFolder: "D:\\default",
+      assignments,
+    });
+    let call = 0;
+    startAgentRuntimeTask.mockImplementation(async (runtimeId: string) => ({
+      id: `auto-proposal-run-${++call}`,
+      runtimeId,
+      status: "running",
+      output: "",
+      startedAt: Date.now(),
+    }));
+    getAgentRuntimeRun.mockImplementation(async (id: string) => ({
+      id,
+      runtimeId:
+        id === "auto-proposal-run-2"
+          ? "pi-local"
+          : id === "auto-proposal-run-3"
+            ? "claude-local"
+            : "hermes-home2",
+      status: "succeeded",
+      output:
+        id === "auto-proposal-run-1"
+          ? [
+              "我来负责安排并终验。",
+              "<agents-one-collaboration-proposal>",
+              JSON.stringify({
+                title: "自动协作",
+                brief: "生成并复核测试文件",
+                assignments: [
+                  { role: "协调", runtimeId: "hermes-home2" },
+                  { role: "实施", runtimeId: "pi-local" },
+                  { role: "复核", runtimeId: "claude-local" },
+                ],
+              }),
+              "</agents-one-collaboration-proposal>",
+            ].join("\n")
+          : id === "auto-proposal-run-2"
+            ? "文件已生成。"
+            : "[验收结论]\n状态：通过\n依据：#1\n结论：文件符合要求。",
+      startedAt: Date.now(),
+      completedAt: Date.now(),
+      ...(id === "auto-proposal-run-2"
+        ? {
+            artifacts: [
+              {
+                kind: "file",
+                label: "smoke.txt",
+                path: "D:\\default\\smoke.txt",
+                sha256: "c".repeat(64),
+                sourceMachine: "本机工作区",
+                changeSummary: "创建 smoke.txt。",
+              },
+            ],
+          }
+        : {}),
+    }));
+    render(
+      <RuntimeChat
+        runId="auto-proposal-chat"
+        runtime={hers2Runtime}
+        profile="default"
+        runtimeCatalog={{
+          "pi-local": piRuntime,
+          "claude-local": claudeRuntime,
+        }}
+        onStartCollaboration={onStartCollaboration}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(4));
+    expect(
+      startAgentRuntimeTask.mock.calls.map(([runtimeId]) => runtimeId),
+    ).toEqual(["hermes-home2", "pi-local", "claude-local", "hermes-home2"]);
+    expect(onStartCollaboration).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("我来负责安排并终验。")).toBeInTheDocument();
+    const saved = saveRuntimeConversation.mock.calls.at(-1)?.[0];
+    expect(
+      saved.messages.filter(
+        (message: { role: string; content: string }) =>
+          message.role === "user" && message.content === "检查输入",
+      ),
+    ).toHaveLength(1);
   });
 
   it("passes controlled attachments and the selected project to Claude Code", async () => {
@@ -1345,6 +1645,14 @@ describe("RuntimeChat inputs and persistence", () => {
             diffSummary: " src/feature.ts | 2 ++",
             artifacts: [
               {
+                kind: "file",
+                label: "feature.ts",
+                path: "D:\\worktrees\\feature\\src\\feature.ts",
+                sha256: "a".repeat(64),
+                sourceMachine: "本机工作区",
+                changeSummary: "新增 feature 实现。",
+              },
+              {
                 kind: "worktree",
                 label: "隔离工作目录",
                 path: "D:\\worktrees\\feature",
@@ -1507,9 +1815,12 @@ describe("RuntimeChat inputs and persistence", () => {
         ? {
             artifacts: [
               {
-                kind: "worktree",
+                kind: "file",
                 label: "交付文件",
                 path: "D:\\project\\output.txt",
+                sha256: "b".repeat(64),
+                sourceMachine: "本机工作区",
+                changeSummary: "创建 output.txt。",
               },
             ],
           }

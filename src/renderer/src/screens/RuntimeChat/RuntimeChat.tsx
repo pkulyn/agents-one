@@ -43,6 +43,14 @@ import {
 } from "../../../../shared/task-collaboration-proposals";
 import { summarizeTaskOutput } from "../Chat/runtimeOutput";
 
+interface CollaborationLaunch {
+  taskId?: string;
+  assignments: TaskCollaborationAssignment[];
+  projectFolder?: string;
+  /** The coordinator already produced the visible proposal/plan turn. */
+  initialCoordinatorHandoff?: string;
+}
+
 interface RuntimeChatProps {
   runId: string;
   runtime: AgentRuntimeDefinition;
@@ -65,12 +73,11 @@ interface RuntimeChatProps {
   onTitleChange?: (runId: string, title: string) => void;
   /** Opens the explicit collaboration proposal for this existing task. */
   onRequestCollaboration?: (proposal?: TaskCollaborationProposal) => void;
-}
-
-interface CollaborationLaunch {
-  taskId?: string;
-  assignments: TaskCollaborationAssignment[];
-  projectFolder?: string;
+  /** Persists a validated proposal and returns the launch owned by this task. */
+  onStartCollaboration?: (
+    proposal: TaskCollaborationProposal,
+    projectFolder?: string,
+  ) => Promise<CollaborationLaunch | null>;
 }
 
 interface CollaborationResume {
@@ -329,52 +336,12 @@ function hasConcreteDelivery(
   return artifacts.some(
     (artifact) =>
       artifact.assignmentId === assignmentId &&
-      (artifact.kind === "code_diff" ||
+      ((artifact.kind === "code_diff" && Boolean(artifact.summary)) ||
         (artifact.kind === "file" &&
-          !/isolated worktree|项目工作目录/i.test(artifact.label))),
-  );
-}
-
-function deliveryContractFromOutput(output: string): {
-  path?: string;
-  sha256?: string;
-  sourceMachine?: string;
-  changeSummary?: string;
-} {
-  const marker = output.match(/\[交付契约\]([\s\S]{0,2500})/i)?.[1] || "";
-  const value = (label: string): string | undefined =>
-    marker
-      .match(new RegExp(`${label}\\s*[：:]\\s*([^\\n]+)`, "i"))?.[1]
-      ?.trim();
-  const sha256 = value("SHA-?256")?.match(/[a-f0-9]{64}/i)?.[0];
-  return {
-    path: value("路径"),
-    ...(sha256 ? { sha256 } : {}),
-    sourceMachine: value("来源机器"),
-    changeSummary: value("变更摘要"),
-  };
-}
-
-function applyDeliveryContract(
-  artifacts: TaskCollaborationArtifact[],
-  output: string,
-): TaskCollaborationArtifact[] {
-  const contract = deliveryContractFromOutput(output);
-  if (
-    !contract.path ||
-    !contract.sha256 ||
-    !contract.sourceMachine ||
-    !contract.changeSummary
-  )
-    return artifacts;
-  return artifacts.map((artifact) =>
-    artifact.kind !== "test_result"
-      ? {
-          ...artifact,
-          ...contract,
-          summary: artifact.summary || contract.changeSummary,
-        }
-      : artifact,
+          Boolean(artifact.path && artifact.sha256) &&
+          !/isolated worktree|项目工作目录|隔离工作目录/i.test(
+            artifact.label,
+          ))),
   );
 }
 
@@ -385,13 +352,19 @@ function hasDeliveryContract(
   return artifacts.some(
     (artifact) =>
       artifact.assignmentId === assignmentId &&
-      artifact.kind !== "test_result" &&
-      Boolean(
-        artifact.path &&
-        artifact.sha256 &&
-        artifact.sourceMachine &&
-        artifact.changeSummary,
-      ),
+      ((artifact.kind === "file" &&
+        Boolean(
+          artifact.path &&
+          artifact.sha256 &&
+          artifact.sourceMachine &&
+          artifact.changeSummary,
+        )) ||
+        (artifact.kind === "code_diff" &&
+          Boolean(
+            artifact.summary &&
+            artifact.sourceMachine &&
+            artifact.changeSummary,
+          ))),
   );
 }
 
@@ -404,9 +377,9 @@ function collectRuntimeArtifacts(
   const createdAt = run.completedAt || Date.now();
   const artifacts: TaskCollaborationArtifact[] = [];
   for (const [index, artifact] of (run.artifacts || []).entries()) {
-    // `final` is a model response/plan, not proof that a file or code change
-    // exists. Only concrete Runtime-published paths and diffs are collected.
-    if (artifact.kind !== "worktree" && artifact.kind !== "diff") continue;
+    // A workspace root and a final model response are not deliveries. Only a
+    // Runtime-verified file or an adapter-produced diff can cross this gate.
+    if (artifact.kind !== "diff" && artifact.kind !== "file") continue;
     artifacts.push({
       id: `${assignmentId}:${run.id}:artifact:${index}`,
       assignmentId,
@@ -417,15 +390,23 @@ function collectRuntimeArtifacts(
         artifact.label ||
         (artifact.kind === "diff" ? "Git diff" : "项目工作目录"),
       ...(artifact.path ? { path: artifact.path } : {}),
+      ...(artifact.sha256 ? { sha256: artifact.sha256 } : {}),
+      ...(artifact.sourceMachine
+        ? { sourceMachine: artifact.sourceMachine }
+        : {}),
+      ...(artifact.changeSummary
+        ? { changeSummary: artifact.changeSummary }
+        : {}),
       ...(artifact.content
         ? { summary: artifact.content.slice(0, 8_000) }
         : {}),
       source: "runtime_artifact",
       sourceRunId: run.id,
       sourceMachine:
-        runtime.location === "local"
+        artifact.sourceMachine ||
+        (runtime.location === "local"
           ? "本机工作区"
-          : `${runtime.name} 远程运行环境`,
+          : `${runtime.name} 远程运行环境`),
       ...(artifact.kind === "diff"
         ? { changeSummary: artifact.content?.slice(0, 8_000) || artifact.label }
         : {}),
@@ -606,12 +587,15 @@ function acceptanceFromOutput(
   }
   const incompleteContract = artifacts
     .filter((artifact) => reviewedDeliveries.includes(artifact.id))
-    .some(
-      (artifact) =>
-        !artifact.path ||
-        !artifact.sha256 ||
-        !artifact.sourceMachine ||
-        !artifact.changeSummary,
+    .some((artifact) =>
+      artifact.kind === "file"
+        ? !artifact.path ||
+          !artifact.sha256 ||
+          !artifact.sourceMachine ||
+          !artifact.changeSummary
+        : !artifact.summary ||
+          !artifact.sourceMachine ||
+          !artifact.changeSummary,
     );
   if (status === "passed" && incompleteContract) {
     return {
@@ -642,6 +626,7 @@ function collaborationRolePrompt(
   completedHandoffs: TaskCollaborationRoleRun[],
   interventions: TaskCollaborationIntervention[],
   artifacts: TaskCollaborationArtifact[],
+  reviewFeedback?: string,
 ): string {
   const roleLabel = recipient.role || "未命名角色";
   const responsibility = recipient.responsibility || "按任务说明完成本角色工作";
@@ -707,6 +692,9 @@ function collaborationRolePrompt(
       ? `\n待验收的真实产物（只可据此验收）：\n${artifactEvidence(artifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}\n\n完成验收时必须用以下格式：\n[验收结论]\n状态：通过 / 不通过 / 需人工复核\n依据：#1、#2（只能引用上述真实产物编号）\n结论：简明说明。`
       : "",
     humanGuidance ? `\n用户人工指令：\n${humanGuidance}` : "",
+    reviewFeedback
+      ? `\n上一轮复核未通过，必须先修正以下问题再重新交付：\n${reviewFeedback.slice(0, 4_000)}`
+      : "",
     `\n任务说明：\n${brief}`,
   ].join("\n");
 }
@@ -750,10 +738,10 @@ function RuntimeCollaborationProposalCards({
   if (collaboration) return null;
   const proposals = messages.flatMap((message) => {
     if (message.role !== "agent") return [];
-    const result = parseTaskCollaborationProposal(
-      message.content,
-      [runtime.id, ...Object.keys(runtimeCatalog)],
-    );
+    const result = parseTaskCollaborationProposal(message.content, [
+      runtime.id,
+      ...Object.keys(runtimeCatalog),
+    ]);
     return result?.proposal
       ? [{ id: message.id, proposal: result.proposal }]
       : [];
@@ -794,7 +782,7 @@ function RuntimeCollaborationProposalCards({
             className="btn btn-secondary btn-sm"
             onClick={() => onRequestCollaboration?.(proposal)}
           >
-            配置并启动协作
+            调整协作安排
           </button>
         </section>
       ))}
@@ -812,13 +800,18 @@ export default function RuntimeChat({
   initialMessages = [],
   initialWorkspace,
   collaboration,
-  runtimeCatalog = {},
+  runtimeCatalog: providedRuntimeCatalog = {},
   onLoadingChange,
   onSessionIdChange,
   onConversationIdChange,
   onTitleChange,
   onRequestCollaboration,
+  onStartCollaboration,
 }: RuntimeChatProps): React.JSX.Element {
+  const runtimeCatalog = useMemo(
+    () => ({ [runtime.id]: runtime, ...providedRuntimeCatalog }),
+    [providedRuntimeCatalog, runtime],
+  );
   const unifiedRemoteGatewayRuntime =
     runtime.location === "remote" &&
     runtime.config.remoteGateway?.protocol === "agents-one-v1";
@@ -837,6 +830,8 @@ export default function RuntimeChat({
   );
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [taskRun, setTaskRun] = useState<AgentRuntimeRun | null>(null);
+  const [activeCollaborationRuntimeId, setActiveCollaborationRuntimeId] =
+    useState<string | null>(null);
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [remoteArtifactsSupported, setRemoteArtifactsSupported] =
     useState(false);
@@ -866,6 +861,10 @@ export default function RuntimeChat({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const appearanceRuntime = runtimeCatalog[runtime.id] ?? runtime;
+  const liveAppearanceRuntime =
+    loading && activeCollaborationRuntimeId
+      ? runtimeCatalog[activeCollaborationRuntimeId] || appearanceRuntime
+      : appearanceRuntime;
 
   useEffect(() => {
     if (
@@ -899,16 +898,16 @@ export default function RuntimeChat({
     profile,
   ]);
 
-  const agentAvatar = appearanceRuntime.avatar ?? profileAvatar;
+  const agentAvatar = liveAppearanceRuntime.avatar ?? profileAvatar;
 
   const getAgentContent = useCallback(
     (message: RuntimeConversationMessage): string => {
       if (message.role !== "agent") return message.content;
       return (
-        parseTaskCollaborationProposal(
-          message.content,
-          [runtime.id, ...Object.keys(runtimeCatalog)],
-        )?.displayContent || message.content
+        parseTaskCollaborationProposal(message.content, [
+          runtime.id,
+          ...Object.keys(runtimeCatalog),
+        ])?.displayContent || message.content
       );
     },
     [runtime.id, runtimeCatalog],
@@ -1098,20 +1097,88 @@ export default function RuntimeChat({
         // prevents the durable event timeline from being rendered.
         const terminalRole =
           execution || current.status === "succeeded" ? "agent" : "system";
+        const summarizedTerminalText = responseText(current);
+        const availableRuntimeIds = [
+          runtime.id,
+          ...Object.keys(runtimeCatalog),
+        ];
+        const summarizedProposal =
+          current.status === "succeeded"
+            ? parseTaskCollaborationProposal(
+                summarizedTerminalText,
+                availableRuntimeIds,
+              ).proposal
+            : undefined;
+        const rawProposal =
+          current.status === "succeeded" && current.output
+            ? parseTaskCollaborationProposal(
+                current.output,
+                availableRuntimeIds,
+              ).proposal
+            : undefined;
+        const parsedProposal = summarizedProposal || rawProposal;
+        const terminalText =
+          rawProposal && !summarizedProposal && current.output
+            ? current.output
+            : summarizedTerminalText;
         const nextMessages = [
           ...messagesRef.current,
-          newMessage(terminalRole, responseText(current), execution),
+          newMessage(terminalRole, terminalText, execution),
         ];
+        messagesRef.current = nextMessages;
         setMessages(nextMessages);
-        void persistConversation(nextMessages, {
+        await persistConversation(nextMessages, {
           runtimeSessionId: observed.sessionId || runtimeSessionIdRef.current,
         });
         setLoading(false);
         setCurrentRunId(null);
+        if (parsedProposal && onStartCollaboration) {
+          try {
+            const launch = await onStartCollaboration(
+              parsedProposal,
+              workspace || runtime.config.workspace || undefined,
+            );
+            if (launch) {
+              setCollaborationAssignments(launch.assignments);
+              const brief =
+                parsedProposal.brief ||
+                [...nextMessages]
+                  .reverse()
+                  .find((message) => message.role === "user")?.content ||
+                "按协作安排完成任务。";
+              requestAnimationFrame(() => {
+                window.dispatchEvent(
+                  new CustomEvent("agents-one:submit-task-message", {
+                    detail: {
+                      runId,
+                      content: brief,
+                      reuseExistingUserMessage: true,
+                      collaboration: {
+                        ...launch,
+                        initialCoordinatorHandoff: terminalText,
+                      },
+                    },
+                  }),
+                );
+              });
+            }
+          } catch {
+            // The validated proposal stays visible and can still be adjusted
+            // manually if persistence is temporarily unavailable.
+          }
+        }
         return;
       }
     },
-    [onSessionIdChange, persistConversation, runId, runtime],
+    [
+      onSessionIdChange,
+      onStartCollaboration,
+      persistConversation,
+      runId,
+      runtime,
+      runtimeCatalog,
+      workspace,
+    ],
   );
 
   const appendCollaborationMessage = useCallback(
@@ -1166,7 +1233,6 @@ export default function RuntimeChat({
               responsibility:
                 "基于平台已登记的交付契约与验收证据进行终验汇总；不得自行补做其他角色的工作。",
               context: "全部交接、交付契约、验收证据",
-              workspaceAccess: "local_direct",
             }
           : undefined;
       const configured = finalReview
@@ -1195,17 +1261,34 @@ export default function RuntimeChat({
                   ? { runtimeId: assignment.runtimeId }
                   : {}),
                 status: "pending",
+                attempt: 0,
                 ...(isFinalReview(assignment)
                   ? { phase: "final_review" as const }
                   : {}),
               };
         },
       );
+      const plannedCoordinatorIndex =
+        !resume && launch.initialCoordinatorHandoff
+          ? configured.findIndex(isCoordinator)
+          : -1;
+      if (plannedCoordinatorIndex === 0) {
+        roleRuns[0] = {
+          ...roleRuns[0],
+          status: "succeeded",
+          attempt: Math.max(1, roleRuns[0].attempt || 0),
+          startedAt: Date.now(),
+          completedAt: Date.now(),
+          handoff: launch.initialCoordinatorHandoff!.slice(0, 6_000),
+        };
+      }
       const startIndex = resume
         ? roleRuns.findIndex(
             (item) => item.assignmentId === resume.assignmentId,
           )
-        : 0;
+        : plannedCoordinatorIndex === 0
+          ? 1
+          : 0;
       if (resume && startIndex < 0) {
         throw new Error("要继续的协作角色已不存在，请重新配置协作分工。");
       }
@@ -1213,6 +1296,7 @@ export default function RuntimeChat({
       let artifacts = [...(resume?.execution.artifacts ?? [])];
       let acceptance = resume?.execution.acceptance;
       const timeline = [...(resume?.execution.timeline ?? [])];
+      const retryFeedback = new Map<string, string>();
       const recordTimeline = (
         type: TaskCollaborationTimelineEvent["type"],
         label: string,
@@ -1395,7 +1479,8 @@ export default function RuntimeChat({
           .join("；"),
       });
       await persistExecution("running");
-      for (let index = startIndex; index < configured.length; index += 1) {
+      let index = startIndex;
+      while (index < configured.length) {
         if (cancelledRef.current) {
           roleRuns[index] = {
             ...roleRuns[index],
@@ -1433,10 +1518,18 @@ export default function RuntimeChat({
         }
 
         pauseAssignmentRef.current = null;
+        setActiveCollaborationRuntimeId(assignedRuntime.id);
+        const attempt = (roleRun.attempt || 0) + 1;
         roleRuns[index] = {
           ...roleRun,
-          status: resume && index === startIndex ? "retrying" : "running",
+          status:
+            attempt > 1 || (resume && index === startIndex)
+              ? "retrying"
+              : "running",
+          attempt,
           startedAt: Date.now(),
+          completedAt: undefined,
+          error: undefined,
         };
         recordTimeline("started", `${assignment.role} 已启动`, {
           assignmentId: roleRun.assignmentId,
@@ -1465,6 +1558,7 @@ export default function RuntimeChat({
                 roleRuns.slice(0, index),
                 interventions,
                 artifacts,
+                retryFeedback.get(roleRun.assignmentId),
               ),
               mode: roleMode,
               fullAccessConfirmed: roleMode === "full_access",
@@ -1552,18 +1646,12 @@ export default function RuntimeChat({
             return;
           }
 
-          let producedArtifacts = collectRuntimeArtifacts(
+          const producedArtifacts = collectRuntimeArtifacts(
             assignment,
             roleRun.assignmentId,
             completed,
             assignedRuntime,
           );
-          if (roleCanModify(assignment)) {
-            producedArtifacts = applyDeliveryContract(
-              producedArtifacts,
-              output,
-            );
-          }
           artifacts = appendArtifacts(artifacts, producedArtifacts);
           for (const artifact of producedArtifacts) {
             recordTimeline(
@@ -1654,7 +1742,68 @@ export default function RuntimeChat({
             assignmentId: roleRun.assignmentId,
             detail: output.slice(0, 500),
           });
+          if (acceptance?.status === "failed") {
+            let implementationIndex = index - 1;
+            while (
+              implementationIndex >= 0 &&
+              !roleCanModify(configured[implementationIndex])
+            ) {
+              implementationIndex -= 1;
+            }
+            const implementationRun = roleRuns[implementationIndex];
+            if (
+              implementationIndex >= 0 &&
+              (implementationRun.attempt || 0) < 3
+            ) {
+              const implementationId = implementationRun.assignmentId;
+              retryFeedback.set(implementationId, acceptance.conclusion);
+              artifacts = artifacts.filter((artifact) => {
+                const ownerIndex = roleRuns.findIndex(
+                  (item) => item.assignmentId === artifact.assignmentId,
+                );
+                return ownerIndex < implementationIndex || ownerIndex > index;
+              });
+              for (
+                let retryIndex = implementationIndex;
+                retryIndex <= index;
+                retryIndex += 1
+              ) {
+                roleRuns[retryIndex] = {
+                  ...roleRuns[retryIndex],
+                  status:
+                    retryIndex === implementationIndex ? "retrying" : "pending",
+                  completedAt: undefined,
+                  error: undefined,
+                  handoff: undefined,
+                };
+              }
+              recordTimeline(
+                "recovery",
+                `${assignment.role} 未通过，已自动回派 ${configured[implementationIndex].role}`,
+                {
+                  assignmentId: implementationId,
+                  detail: acceptance.conclusion.slice(0, 500),
+                },
+              );
+              acceptance = undefined;
+              await persistExecution("running", {
+                activeAssignmentId: implementationId,
+              });
+              index = implementationIndex;
+              continue;
+            }
+            roleRuns[index] = {
+              ...roleRuns[index],
+              status: "waiting_for_user",
+              error: "自动修正已达到上限，等待人工介入。",
+            };
+            await persistExecution("waiting_for_user", {
+              activeAssignmentId: implementationRun?.assignmentId,
+            });
+            return;
+          }
           await persistExecution("running");
+          index += 1;
         } catch (error) {
           const reason =
             error instanceof Error ? error.message : "任务请求失败。";
@@ -1681,6 +1830,7 @@ export default function RuntimeChat({
         }
       }
       setCurrentRunId(null);
+      setActiveCollaborationRuntimeId(null);
       if (!acceptance) {
         acceptance = {
           status: "needs_review",
@@ -1977,6 +2127,7 @@ export default function RuntimeChat({
     messagesRef.current = nextMessages;
     setMessages(nextMessages);
     setTaskRun(null);
+    setActiveCollaborationRuntimeId(null);
     taskRunRef.current = null;
     onTitleChange?.(runId, prompt.slice(0, 48));
     void persistConversation(nextMessages);
@@ -2011,14 +2162,27 @@ export default function RuntimeChat({
           name: candidate.name,
           kind: candidate.kind,
         }));
-      const explicitProposal = onRequestCollaboration
-        ? createExplicitTaskCollaborationProposal(
-            prompt,
-            { id: runtime.id, name: runtime.name, kind: runtime.kind },
-            collaborationCandidates,
-          )
-        : undefined;
+      const explicitProposal =
+        onStartCollaboration || onRequestCollaboration
+          ? createExplicitTaskCollaborationProposal(
+              prompt,
+              { id: runtime.id, name: runtime.name, kind: runtime.kind },
+              collaborationCandidates,
+            )
+          : undefined;
       if (explicitProposal) {
+        if (onStartCollaboration) {
+          const launch = await onStartCollaboration(
+            explicitProposal,
+            selectedWorkspace,
+          );
+          if (!launch) throw new Error("无法保存协作安排，请稍后重试。");
+          setCollaborationAssignments(launch.assignments);
+          await runCollaboration(prompt, launch, selectedWorkspace);
+          setLoading(false);
+          setCurrentRunId(null);
+          return;
+        }
         const proposalMessages = [
           ...nextMessages,
           newMessage(
@@ -2183,11 +2347,26 @@ export default function RuntimeChat({
         runId?: unknown;
         content?: unknown;
         collaboration?: CollaborationLaunch;
+        reuseExistingUserMessage?: unknown;
       };
       if (payload.runId !== runId || typeof payload.content !== "string")
         return;
       const text = payload.content.trim();
-      if (text) void send(text, [], payload.collaboration);
+      if (!text || !payload.collaboration) return;
+      if (payload.reuseExistingUserMessage === true) {
+        cancelledRef.current = false;
+        setLoading(true);
+        void runCollaboration(
+          text,
+          payload.collaboration,
+          workspace || runtime.config.workspace || undefined,
+        ).finally(() => {
+          setLoading(false);
+          setCurrentRunId(null);
+        });
+        return;
+      }
+      void send(text, [], payload.collaboration);
     };
     window.addEventListener(
       "agents-one:submit-task-message",
@@ -2198,7 +2377,7 @@ export default function RuntimeChat({
         "agents-one:submit-task-message",
         handleCollaborationSubmit,
       );
-  }, [runId, send]);
+  }, [runId, runCollaboration, runtime.config.workspace, send, workspace]);
 
   return (
     <div className="runtime-chat chat-container" aria-hidden={!active}>
@@ -2589,9 +2768,9 @@ export default function RuntimeChat({
                   // Runtime events already provide the native thinking/tool
                   // rows. Do not add a second generic progress bubble.
                   toolProgress={null}
-                  agentName={appearanceRuntime.name}
+                  agentName={liveAppearanceRuntime.name}
                   agentAvatar={agentAvatar}
-                  agentColor={appearanceRuntime.color}
+                  agentColor={liveAppearanceRuntime.color}
                   onApprove={handleNativeApprove}
                   onDeny={handleNativeDeny}
                   onClarifyResolved={handleNativeClarifyResolved}

@@ -78,6 +78,7 @@ import {
 } from "../shared/agent-event-stream";
 import { materializeBytesToTemp } from "./media";
 import { hasValidTaskCollaborationProposal } from "../shared/task-collaboration-proposals";
+import { verifyLocalDeliveryArtifacts } from "./runtime-delivery";
 
 const RUNTIME_CONFIG_KEY = "agentRuntimes";
 const RUNTIME_APPEARANCE_KEY = "agentRuntimeAppearances";
@@ -643,8 +644,7 @@ function appendLocalRuntimeMetadata(
       }))
       .sort(
         (left, right) =>
-          (right.usage?.totalTokens ?? 0) -
-          (left.usage?.totalTokens ?? 0),
+          (right.usage?.totalTokens ?? 0) - (left.usage?.totalTokens ?? 0),
       )[0];
     if (!model) {
       model = normalizeAgentEventStreamModel({
@@ -656,17 +656,17 @@ function appendLocalRuntimeMetadata(
   }
 
   if (!model && !usage) return;
-  if (model && model.contextWindowTokens === undefined && usage?.contextWindowTokens !== undefined) {
+  if (
+    model &&
+    model.contextWindowTokens === undefined &&
+    usage?.contextWindowTokens !== undefined
+  ) {
     model = { ...model, contextWindowTokens: usage.contextWindowTokens };
   }
   record.run = {
     ...record.run,
-    ...(model
-      ? { model: { ...(record.run.model ?? {}), ...model } }
-      : {}),
-    ...(usage
-      ? { usage: { ...(record.run.usage ?? {}), ...usage } }
-      : {}),
+    ...(model ? { model: { ...(record.run.model ?? {}), ...model } } : {}),
+    ...(usage ? { usage: { ...(record.run.usage ?? {}), ...usage } } : {}),
   };
 }
 
@@ -846,10 +846,7 @@ function appendOutputEvent(
         const itemInput =
           item?.arguments ?? item?.input ?? item?.command ?? item;
         const itemOutput =
-          item?.output ??
-          item?.result ??
-          item?.aggregated_output ??
-          item?.text;
+          item?.output ?? item?.result ?? item?.aggregated_output ?? item?.text;
         switch (frame.type) {
           case "thread.started":
             appendRuntimeEvent(record, "progress", "Codex 已创建执行会话。");
@@ -2697,7 +2694,11 @@ export async function startAgentRuntimeTask(
           error: `Gateway 运行超出 ${task.timeoutMs}ms。`,
         });
       }, task.timeoutMs);
-      return await applyHydratedAgentsOneRemoteGatewayRun(record, remoteRun, auth);
+      return await applyHydratedAgentsOneRemoteGatewayRun(
+        record,
+        remoteRun,
+        auth,
+      );
     } catch (error) {
       return finishRuntimeRun(record, "failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -2739,8 +2740,17 @@ export async function startAgentRuntimeTask(
           error: `Runtime task exceeded ${task.timeoutMs}ms.`,
         });
       }, task.timeoutMs);
-      void codex.completion.then((result) => {
+      void codex.completion.then(async (result) => {
         if (record.run.status !== "running") return;
+        const verifiedFiles =
+          !result.error && task.mode === "full_access"
+            ? await verifyLocalDeliveryArtifacts(
+                result.output,
+                task.workspace || runtime.config.workspace || "",
+              )
+            : [];
+        if (record.run.status !== "running") return;
+        const artifacts = [...result.artifacts, ...verifiedFiles];
         finishRuntimeRun(record, result.error ? "failed" : "succeeded", {
           output: result.output,
           ...(result.error ? { error: result.error } : {}),
@@ -2749,7 +2759,7 @@ export async function startAgentRuntimeTask(
           ...(result.inputArtifacts.length
             ? { inputArtifacts: result.inputArtifacts }
             : {}),
-          ...(result.artifacts.length ? { artifacts: result.artifacts } : {}),
+          ...(artifacts.length ? { artifacts } : {}),
         });
       });
       return { ...record.run };
@@ -2799,8 +2809,17 @@ export async function startAgentRuntimeTask(
           error: `Runtime task exceeded ${task.timeoutMs}ms.`,
         });
       }, task.timeoutMs);
-      void claudeCode.completion.then((result) => {
+      void claudeCode.completion.then(async (result) => {
         if (record.run.status !== "running") return;
+        const verifiedFiles =
+          !result.error && task.mode === "full_access"
+            ? await verifyLocalDeliveryArtifacts(
+                result.output,
+                task.workspace || runtime.config.workspace || "",
+              )
+            : [];
+        if (record.run.status !== "running") return;
+        const artifacts = [...result.artifacts, ...verifiedFiles];
         finishRuntimeRun(record, result.error ? "failed" : "succeeded", {
           output: result.output,
           sessionId: result.sessionId,
@@ -2810,7 +2829,7 @@ export async function startAgentRuntimeTask(
           ...((result.inputArtifacts || []).length
             ? { inputArtifacts: result.inputArtifacts }
             : {}),
-          ...(result.artifacts.length ? { artifacts: result.artifacts } : {}),
+          ...(artifacts.length ? { artifacts } : {}),
         });
       });
       return { ...record.run };
@@ -2856,8 +2875,17 @@ export async function startAgentRuntimeTask(
           error: `Runtime task exceeded ${task.timeoutMs}ms.`,
         });
       }, task.timeoutMs);
-      void pi.completion.then((result) => {
+      void pi.completion.then(async (result) => {
         if (record.run.status !== "running") return;
+        const verifiedFiles =
+          !result.error && task.mode === "full_access"
+            ? await verifyLocalDeliveryArtifacts(
+                result.output,
+                task.workspace || runtime.config.workspace || "",
+              )
+            : [];
+        if (record.run.status !== "running") return;
+        const artifacts = [...result.artifacts, ...verifiedFiles];
         finishRuntimeRun(record, result.error ? "failed" : "succeeded", {
           output: result.output,
           sessionId: result.sessionId,
@@ -2867,7 +2895,7 @@ export async function startAgentRuntimeTask(
           ...(result.inputArtifacts.length
             ? { inputArtifacts: result.inputArtifacts }
             : {}),
-          ...(result.artifacts.length ? { artifacts: result.artifacts } : {}),
+          ...(artifacts.length ? { artifacts } : {}),
         });
       });
       return { ...record.run };
