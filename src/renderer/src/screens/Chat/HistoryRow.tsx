@@ -18,6 +18,9 @@ export const ReasoningRow = memo(function ReasoningRow({
   msg,
   active = false,
   showAvatar = true,
+  agentName = "Hermes",
+  agentAvatar,
+  agentColor,
 }: {
   msg: ReasoningMessage;
   /** True only while this turn's reasoning is still streaming. Controls the
@@ -26,6 +29,9 @@ export const ReasoningRow = memo(function ReasoningRow({
   /** False on continuation rows of a turn — render a spacer instead of an
    *  avatar so one turn shows a single avatar. */
   showAvatar?: boolean;
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
 }): React.JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -35,7 +41,16 @@ export const ReasoningRow = memo(function ReasoningRow({
         showAvatar ? "" : " chat-message--grouped"
       }`}
     >
-      {showAvatar ? <HermesAvatar active={active} /> : <AvatarSpacer />}
+      {showAvatar ? (
+        <HermesAvatar
+          active={active}
+          name={agentName}
+          avatar={agentAvatar}
+          color={agentColor}
+        />
+      ) : (
+        <AvatarSpacer />
+      )}
       <div
         className={`chat-reasoning-group${
           active ? " chat-reasoning-group--active" : ""
@@ -246,6 +261,9 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
    *  drives the spinner on the collapsed summary. */
   active?: boolean;
   showAvatar?: boolean;
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const last = items[items.length - 1];
@@ -260,7 +278,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
         showAvatar ? "" : " chat-message--grouped"
       }`}
     >
-      {showAvatar ? <HermesAvatar active={active} /> : <AvatarSpacer />}
+      <AvatarSpacer />
       <div
         className={`chat-tool-group${active ? " chat-tool-group--active" : ""}`}
       >

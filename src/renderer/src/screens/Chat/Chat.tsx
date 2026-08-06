@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Zap, Globe } from "lucide-react";
+import { ChevronDown, Globe, ShieldCheck } from "lucide-react";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import { ConversationWorkspace } from "./ConversationWorkspace";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { MessageList } from "./MessageList";
 import { ModelPicker } from "./ModelPicker";
-import { ReasoningEffortPicker } from "./ReasoningEffortPicker";
 import { ContextFolderChip } from "./ContextFolderChip";
 import { WorktreePanel } from "./WorktreePanel";
-import { RemoteFolderPicker } from "./RemoteFolderPicker";
 import { WebPreviewPanel } from "./WebPreviewPanel";
+import { TaskCollaborationRolePanel } from "../../components/TaskCollaborationRolePanel";
 import { useChatScroll } from "./hooks/useChatScroll";
 import { useChatIPC } from "./hooks/useChatIPC";
 import { useChatActions, parseBackgroundCommand } from "./hooks/useChatActions";
@@ -18,7 +18,6 @@ import {
   effectiveOverrideBaseUrl,
 } from "./hooks/useModelConfig";
 import { useFastMode } from "./hooks/useFastMode";
-import { useReasoningEffort } from "./hooks/useReasoningEffort";
 import { useLocalCommands } from "./hooks/useLocalCommands";
 import {
   dashboardContinuationItemsFromTranscript,
@@ -29,7 +28,12 @@ import { useI18n } from "../../components/useI18n";
 import { buildChatTranscript } from "./transcriptUtils";
 import { ConfigHealthBanner } from "../../components/ConfigHealthBanner";
 import FollowUsModal from "../../components/FollowUsModal";
-import type { Attachment } from "../../../../shared/attachments";
+import {
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  type Attachment,
+} from "../../../../shared/attachments";
+import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
+import type { TaskCollaborationAssignment } from "../../../../shared/task-collaboration";
 import type { SessionModelOverride } from "../../../../shared/model-override";
 import type { ActiveTurn, ChatMessage, UsageState } from "./types";
 import type { ContextUsage } from "./ContextGauge";
@@ -45,6 +49,8 @@ import type {
   AgentCommandsCatalogResponse,
   AgentSlashCommand,
 } from "./slash/types";
+
+const DASHBOARD_FALLBACK_TOAST_ID = "dashboard-unavailable-fallback";
 
 interface QueuedMessage {
   text: string;
@@ -90,6 +96,8 @@ interface ChatProps {
   initialMessages?: ChatMessage[];
   /** Gateway session id when resuming a known session; null for a new chat. */
   initialSessionId?: string | null;
+  /** Folder selected while creating a project-backed task conversation. */
+  initialContextFolder?: string | null;
   /** Whether this run is the one currently shown (drives keyboard handlers). */
   active?: boolean;
   profile?: string;
@@ -107,12 +115,22 @@ interface ChatProps {
   onSessionIdChange?: (runId: string, sessionId: string | null) => void;
   /** Reports the first user message as a best-effort conversation title. */
   onTitleChange?: (runId: string, title: string) => void;
+  collaboration?: { assignments: TaskCollaborationAssignment[] };
+  runtimeCatalog?: Record<string, AgentRuntimeDefinition>;
+  agentAppearance?: {
+    name?: string | null;
+    color?: string | null;
+    avatar?: string | null;
+  };
+  /** Opens the explicit collaboration proposal for this existing task. */
+  onRequestCollaboration?: () => void;
 }
 
 function Chat({
   runId,
   initialMessages,
   initialSessionId,
+  initialContextFolder = null,
   active = true,
   profile,
   onSessionStarted,
@@ -121,6 +139,9 @@ function Chat({
   onLoadingChange,
   onSessionIdChange,
   onTitleChange,
+  collaboration,
+  runtimeCatalog = {},
+  agentAppearance,
 }: ChatProps): React.JSX.Element {
   const { t } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>(
@@ -173,7 +194,15 @@ function Chat({
   // Working folder bound to this conversation (issue #27). Per-conversation;
   // persisted per session so a re-opened conversation restores its folder, and
   // reset on new chat below.
-  const [contextFolder, setContextFolder] = useState<string | null>(null);
+  const [contextFolder, setContextFolder] = useState<string | null>(
+    initialContextFolder,
+  );
+  // A blank run can be turned into a project task from the sidebar while this
+  // component is already mounted. Reflect that parent-level assignment right
+  // away so the composer shows the selected folder before the first message.
+  useEffect(() => {
+    if (!initialSessionId) setContextFolder(initialContextFolder);
+  }, [initialContextFolder, initialSessionId]);
   // Gate folder persistence until the stored value for a resumed session has
   // been loaded — otherwise the initial null would overwrite the saved folder
   // before the load resolves. A brand-new chat (no initialSessionId) has
@@ -221,8 +250,42 @@ function Chat({
   // Whether the worktree panel is visible (only applies when contextFolder is set)
   // Default false so the panel doesn't open automatically and interfere with scrolling
   const [worktreeVisible, setWorktreeVisible] = useState<boolean>(false);
-  const [folderPickerOpen, setFolderPickerOpen] = useState<boolean>(false);
+  const [projectContextAttachment, setProjectContextAttachment] =
+    useState<Attachment | null>(null);
+  const sharedProjectContextRef = useRef<string | null>(null);
+  // Rebuild the bounded remote snapshot when a persisted local project is
+  // restored after restarting the app. Old server paths are ignored; only
+  // paths produced by the Windows directory picker qualify.
+  useEffect(() => {
+    if (
+      !connectionModeLoaded ||
+      !remoteMode ||
+      !contextFolder ||
+      projectContextAttachment ||
+      !(/^[a-zA-Z]:[\\/]/.test(contextFolder) || /^\\\\/.test(contextFolder))
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void window.hermesAPI
+      .prepareProjectContext(contextFolder)
+      .then((attachment) => {
+        if (!cancelled && attachment) setProjectContextAttachment(attachment);
+      })
+      .catch(() => {
+        // The folder may have moved since the conversation was last opened.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    connectionModeLoaded,
+    contextFolder,
+    projectContextAttachment,
+    remoteMode,
+  ]);
   const [webPreviewVisible, setWebPreviewVisible] = useState<boolean>(false);
+  const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [webPreviewUrl, setWebPreviewUrl] =
     useState<string>("https://google.com");
   // Explicit session-scoped model override — set only when the user picks
@@ -298,7 +361,8 @@ function Chat({
     if (
       !connectionModeLoaded ||
       connectionMode === "local" ||
-      !hermesSessionId
+      !hermesSessionId ||
+      isLoading
     ) {
       return;
     }
@@ -321,7 +385,13 @@ function Chat({
         .catch(() => undefined);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [connectionMode, connectionModeLoaded, hermesSessionId, messages]);
+  }, [
+    connectionMode,
+    connectionModeLoaded,
+    hermesSessionId,
+    isLoading,
+    messages,
+  ]);
 
   const { containerRef, bottomRef } = useChatScroll(messages);
   const modelConfig = useModelConfig(profile);
@@ -376,12 +446,7 @@ function Chat({
     );
   }, [hermesSessionId, sessionModelOverride]);
 
-  const {
-    fastMode,
-    toggle: toggleFastMode,
-    set: setFastTier,
-  } = useFastMode(profile);
-  const { reasoningEffort, setReasoningEffort } = useReasoningEffort(profile);
+  const { set: setFastTier } = useFastMode(profile);
 
   // Pre-send readiness — fail-open check that disables Send + shows
   // an inline banner when the desktop can predict that the gateway
@@ -446,6 +511,7 @@ function Chat({
   useChatIPC({
     runId,
     sessionScopeId: visibleSessionScopeId,
+    messages,
     setMessages,
     setHermesSessionId,
     setToolProgress,
@@ -596,20 +662,33 @@ function Chat({
     addAgentMessage,
   });
 
+  const dashboardFallbackToastEnabledRef = useRef(active);
+
+  useEffect(() => {
+    dashboardFallbackToastEnabledRef.current = active;
+    if (!active) toast.dismiss(DASHBOARD_FALLBACK_TOAST_ID);
+    return () => {
+      dashboardFallbackToastEnabledRef.current = false;
+    };
+  }, [active]);
+
   // Fired once per connection when the dashboard WebSocket transport can't
   // connect (e.g. SSH tunnel → `hermes gateway`, which has no `/api/ws`, issue
   // #667) and we fall back to legacy chat. A fixed toast id dedupes.
   const handleDashboardUnavailable = useCallback(() => {
+    if (!dashboardFallbackToastEnabledRef.current) return;
     toast(t("chat.dashboardUnavailableFallback"), {
-      id: "dashboard-unavailable-fallback",
-      icon: "ℹ️",
-      duration: 8000,
+      id: DASHBOARD_FALLBACK_TOAST_ID,
+      duration: 4500,
+      position: "top-center",
     });
   }, [t]);
 
+  const agentContextFolder =
+    connectionModeLoaded && connectionMode === "local" ? contextFolder : null;
   const dashboardTransport = useDashboardChatTransport({
     activeTurnRef,
-    contextFolder,
+    contextFolder: agentContextFolder,
     connectionMode,
     enabled: dashboardChatEnabled,
     fallbackOnUnavailable: chatTransportPreference === "auto",
@@ -722,7 +801,7 @@ function Chat({
     slashCatalog,
     onOpenSettings: onOpenDiagnose,
     activeTurnRef,
-    contextFolder,
+    contextFolder: agentContextFolder,
     sessionModel: sessionModelOverride,
     sendViaDashboard: dashboardTransport.enabled
       ? dashboardTransport.sendMessage
@@ -770,13 +849,27 @@ function Chat({
 
   const handleSubmitOrQueue = useCallback(
     (text: string, attachments: Attachment[]) => {
+      let outgoingAttachments = attachments;
+      if (
+        remoteMode &&
+        contextFolder &&
+        projectContextAttachment &&
+        sharedProjectContextRef.current !== contextFolder
+      ) {
+        if (attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
+          toast.error("本次附件已达上限，请移除一个文件后再共享项目文件夹。");
+          return;
+        }
+        outgoingAttachments = [...attachments, projectContextAttachment];
+        sharedProjectContextRef.current = contextFolder;
+      }
       // Side questions (`/btw`) run on a concurrent background agent, so they
       // must never queue — fire them immediately even while the main turn is in
       // flight. This is the whole point of "ask without affecting context".
       const bgQuestion = parseBackgroundCommand(text);
       if (bgQuestion !== null) {
         if (bgQuestion)
-          void handleBackgroundRef.current(bgQuestion, attachments);
+          void handleBackgroundRef.current(bgQuestion, outgoingAttachments);
         return;
       }
       // The central slash router owns queueing policy. Dispatch every slash
@@ -784,34 +877,100 @@ function Chat({
       // the concurrent worker, and model-bound commands can format once before
       // they are queued.
       if (text.startsWith("/")) {
-        void handleSendRef.current(text, attachments, true);
+        void handleSendRef.current(text, outgoingAttachments, true);
         return;
       }
       if (isLoading) {
-        queueRef.current.push({ text, attachments });
+        queueRef.current.push({ text, attachments: outgoingAttachments });
         setQueuedMessages([...queueRef.current]);
         return;
       }
-      void handleSendRef.current(text, attachments);
+      void handleSendRef.current(text, outgoingAttachments);
     },
-    [isLoading],
+    [contextFolder, isLoading, projectContextAttachment, remoteMode],
   );
 
   const handleSuggestion = useCallback((text: string) => {
     chatInputRef.current?.setText(text);
   }, []);
 
+  useEffect(() => {
+    const handleAddChatToTask = (event: Event): void => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (
+        !detail ||
+        typeof detail !== "object" ||
+        !("runId" in detail) ||
+        !("content" in detail)
+      ) {
+        return;
+      }
+      const payload = detail as { runId?: unknown; content?: unknown };
+      if (payload.runId !== runId || typeof payload.content !== "string") {
+        return;
+      }
+      chatInputRef.current?.setText(payload.content);
+    };
+    window.addEventListener("agents-one:add-chat-to-task", handleAddChatToTask);
+    return () =>
+      window.removeEventListener(
+        "agents-one:add-chat-to-task",
+        handleAddChatToTask,
+      );
+  }, [runId]);
+
+  // Collaboration setup sends its user-confirmed brief through the same
+  // conversation path as the regular composer. This keeps attachments,
+  // queueing, history and session creation owned by the established chat code.
+  useEffect(() => {
+    const handleCollaborationSubmit = (event: Event): void => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (!detail || typeof detail !== "object") return;
+      const payload = detail as { runId?: unknown; content?: unknown };
+      if (payload.runId !== runId || typeof payload.content !== "string") return;
+      const text = payload.content.trim();
+      if (text) handleSubmitOrQueue(text, []);
+    };
+    window.addEventListener("agents-one:submit-task-message", handleCollaborationSubmit);
+    return () =>
+      window.removeEventListener(
+        "agents-one:submit-task-message",
+        handleCollaborationSubmit,
+      );
+  }, [handleSubmitOrQueue, runId]);
+
+  const applyContextFolder = useCallback(
+    async (path: string) => {
+      if (remoteMode) {
+        try {
+          const attachment = await window.hermesAPI.prepareProjectContext(path);
+          if (!attachment) throw new Error("无法读取所选文件夹");
+          setProjectContextAttachment(attachment);
+          sharedProjectContextRef.current = null;
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "无法读取所选项目文件夹。",
+          );
+          return;
+        }
+      } else {
+        setProjectContextAttachment(null);
+        sharedProjectContextRef.current = null;
+      }
+      setContextFolder(path);
+    },
+    [remoteMode],
+  );
+
   const handlePickFolder = useCallback(async () => {
-    if (remoteMode) {
-      setFolderPickerOpen(true);
-      return;
-    }
     const path = await window.hermesAPI.selectFolder();
-    if (path) setContextFolder(path);
-  }, [remoteMode]);
+    if (path) await applyContextFolder(path);
+  }, [applyContextFolder]);
 
   const handleClearFolder = useCallback(() => {
     setContextFolder(null);
+    setProjectContextAttachment(null);
+    sharedProjectContextRef.current = null;
   }, []);
 
   // Stable toolbar callbacks so the memoized ModelPicker / ContextFolderChip
@@ -837,9 +996,12 @@ function Chat({
     [modelConfig.selectModel],
   );
 
-  const handleSelectRecentFolder = useCallback((path: string) => {
-    setContextFolder(path);
-  }, []);
+  const handleSelectRecentFolder = useCallback(
+    (path: string) => {
+      void applyContextFolder(path);
+    },
+    [applyContextFolder],
+  );
 
   const handleToggleWorktree = useCallback(() => {
     setWorktreeVisible((v) => !v);
@@ -1006,129 +1168,144 @@ function Chat({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
-
-      <div className="chat-body">
-        <div className="chat-messages" ref={containerRef}>
-          {messages.length === 0 ? (
-            <ChatEmptyState onSelectSuggestion={handleSuggestion} />
-          ) : (
-            <MessageList
-              messages={messages}
+      <ConversationWorkspace
+        panelOpen={false}
+        panel={null}
+        composer={
+          <div className="chat-input-area">
+            <QueuedMessages
+              messages={queuedMessages}
+              onRemove={handleRemoveQueued}
+            />
+            <ChatInput
+              ref={chatInputRef}
               isLoading={isLoading}
-              toolProgress={toolProgress}
-              onApprove={actions.handleApprove}
-              onDeny={actions.handleDeny}
-              onClarifyResolved={handleClarifyResolved}
+              hasSession={!!hermesSessionId}
+              sessionId={hermesSessionId}
+              remoteMode={remoteMode}
+              profile={profile}
+              contextUsage={contextUsage}
+              readiness={readiness}
+              slashCommands={slashMenuCommands}
+              onSubmit={handleSubmitOrQueue}
+              onQuickAsk={actions.handleQuickAsk}
+              onAbort={actions.handleAbort}
+              toolbarExtras={
+                <>
+                  <ContextFolderChip
+                    contextFolder={contextFolder}
+                    show
+                    worktreeVisible={worktreeVisible}
+                    onPickFolder={handlePickFolder}
+                    onClearFolder={handleClearFolder}
+                    onToggleWorktree={handleToggleWorktree}
+                    onSelectRecentFolder={handleSelectRecentFolder}
+                  />
+                  <span className="runtime-permission-control">
+                    <button
+                      type="button"
+                      className="runtime-permission-trigger"
+                      aria-haspopup="menu"
+                      aria-expanded={permissionMenuOpen}
+                      aria-label="管理本轮任务权限"
+                      title="原生 Hermes 当前使用只读项目上下文"
+                      onClick={() => setPermissionMenuOpen((open) => !open)}
+                    >
+                      <ShieldCheck size={14} />
+                      <span className="runtime-permission-label">只读</span>
+                      <ChevronDown size={13} />
+                    </button>
+                    {permissionMenuOpen ? (
+                      <span className="runtime-permission-menu" role="menu">
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked
+                          onClick={() => setPermissionMenuOpen(false)}
+                        >
+                          <strong>只读</strong>
+                          <small>可读取上传内容和项目快照</small>
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={false}
+                          disabled
+                          title="原生 Hermes 迁移到 Gateway v1 后开放"
+                        >
+                          <strong>完全访问</strong>
+                          <small>迁移到 Gateway v1 后开放</small>
+                        </button>
+                      </span>
+                    ) : null}
+                  </span>
+                  <ModelPicker
+                    active={active}
+                    currentModel={chatCurrentModel}
+                    currentProvider={chatCurrentProvider}
+                    currentBaseUrl={chatCurrentBaseUrl}
+                    modelGroups={modelConfig.modelGroups}
+                    displayModel={chatDisplayModel}
+                    onOpen={modelConfig.reload}
+                    onSelectModel={handleSelectModel}
+                  />
+                  <button
+                    type="button"
+                    className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}
+                    onClick={() => setWebPreviewVisible((visible) => !visible)}
+                    title={webPreviewVisible ? "隐藏网页预览" : "显示网页预览"}
+                  >
+                    <Globe size={14} />
+                  </button>
+                </>
+              }
+            />
+          </div>
+        }
+      >
+        <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
+        <div className="chat-body">
+          <div className="chat-messages" ref={containerRef}>
+            {collaboration ? (
+              <TaskCollaborationRolePanel
+                assignments={collaboration.assignments}
+                runtimes={runtimeCatalog}
+              />
+            ) : null}
+            {messages.length === 0 ? (
+              <ChatEmptyState onSelectSuggestion={handleSuggestion} />
+            ) : (
+              <MessageList
+                messages={messages}
+                isLoading={isLoading}
+                toolProgress={toolProgress}
+                agentName={
+                  agentAppearance?.name ||
+                  (profile === "default" ? "Hermes" : profile || "Hermes")
+                }
+                agentAvatar={agentAppearance?.avatar}
+                agentColor={agentAppearance?.color}
+                onApprove={actions.handleApprove}
+                onDeny={actions.handleDeny}
+                onClarifyResolved={handleClarifyResolved}
+              />
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {contextFolder && worktreeVisible && (
+            <WorktreePanel folderPath={contextFolder} />
+          )}
+
+          {webPreviewVisible && (
+            <WebPreviewPanel
+              initialUrl={webPreviewUrl}
+              onClose={() => setWebPreviewVisible(false)}
+              onInspectElement={handleInspectElement}
             />
           )}
-          <div ref={bottomRef} />
         </div>
-
-        {contextFolder && worktreeVisible && (
-          <WorktreePanel folderPath={contextFolder} />
-        )}
-
-        {webPreviewVisible && (
-          <WebPreviewPanel
-            initialUrl={webPreviewUrl}
-            onClose={() => setWebPreviewVisible(false)}
-            onInspectElement={handleInspectElement}
-          />
-        )}
-      </div>
-
-      <div className="chat-input-area">
-        <QueuedMessages
-          messages={queuedMessages}
-          onRemove={handleRemoveQueued}
-        />
-        <ChatInput
-          ref={chatInputRef}
-          isLoading={isLoading}
-          hasSession={!!hermesSessionId}
-          sessionId={hermesSessionId}
-          remoteMode={remoteMode}
-          profile={profile}
-          contextUsage={contextUsage}
-          readiness={readiness}
-          slashCommands={slashMenuCommands}
-          onSubmit={handleSubmitOrQueue}
-          onQuickAsk={actions.handleQuickAsk}
-          onAbort={actions.handleAbort}
-          toolbarExtras={
-            <>
-              <ModelPicker
-                active={active}
-                currentModel={chatCurrentModel}
-                currentProvider={chatCurrentProvider}
-                currentBaseUrl={chatCurrentBaseUrl}
-                modelGroups={modelConfig.modelGroups}
-                displayModel={chatDisplayModel}
-                onOpen={modelConfig.reload}
-                onSelectModel={handleSelectModel}
-              />
-              <ReasoningEffortPicker
-                value={reasoningEffort}
-                onChange={setReasoningEffort}
-              />
-              <div className="chat-fast-wrapper">
-                <button
-                  type="button"
-                  className={`btn-ghost chat-fast-btn ${fastMode ? "chat-fast-active" : ""}`}
-                  onClick={toggleFastMode}
-                >
-                  <Zap size={14} />
-                </button>
-                <div className="chat-fast-popover">
-                  <strong>
-                    {fastMode ? t("chat.fastModeOn") : t("chat.fastMode")}
-                  </strong>
-                  <span>
-                    {fastMode
-                      ? t("chat.fastModeActive")
-                      : t("chat.fastModeInactive")}
-                  </span>
-                </div>
-              </div>
-              <ContextFolderChip
-                contextFolder={contextFolder}
-                show
-                worktreeVisible={worktreeVisible}
-                onPickFolder={handlePickFolder}
-                onClearFolder={handleClearFolder}
-                onToggleWorktree={handleToggleWorktree}
-                onSelectRecentFolder={handleSelectRecentFolder}
-              />
-              <button
-                type="button"
-                className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}
-                onClick={() => setWebPreviewVisible((v) => !v)}
-                title={
-                  webPreviewVisible ? "Hide web preview" : "Show web preview"
-                }
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 28,
-                  height: 28,
-                  padding: 0,
-                  borderRadius: 6,
-                  color: webPreviewVisible
-                    ? "var(--accent-text)"
-                    : "var(--text-secondary)",
-                  background: webPreviewVisible
-                    ? "color-mix(in srgb, var(--accent-text) 10%, transparent)"
-                    : "transparent",
-                }}
-              >
-                <Globe size={14} />
-              </button>
-            </>
-          }
-        />
-      </div>
+      </ConversationWorkspace>
       {dragActive && (
         <div className="chat-drop-overlay" aria-hidden>
           <div className="chat-drop-overlay-inner">
@@ -1136,15 +1313,6 @@ function Chat({
           </div>
         </div>
       )}
-      <RemoteFolderPicker
-        initialPath={contextFolder}
-        open={folderPickerOpen}
-        onCancel={() => setFolderPickerOpen(false)}
-        onSelect={(path) => {
-          setContextFolder(path);
-          setFolderPickerOpen(false);
-        }}
-      />
       {/* Show follow-us modal only after setup is complete */}
       {active && connectionModeLoaded && readiness.ok && <FollowUsModal />}
     </div>

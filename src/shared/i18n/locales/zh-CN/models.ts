@@ -9,10 +9,10 @@ export default {
   namePlaceholder: "例如：Claude Sonnet 4",
   modelIdPlaceholder: "例如：anthropic/claude-sonnet-4-20250514",
   baseUrlPlaceholder: "http://localhost:1234/v1",
-  subtitle: "管理你的模型库。这些模型会出现在聊天页面的模型选择器中。",
+  subtitle: "管理你的模型库。这些模型会出现在对话页面的模型选择器中。",
   addModel: "添加模型",
   emptyHint:
-    "在这里添加模型后,就能在聊天页面的模型选择器中使用。你在设置页配置的模型也会自动加入这里。",
+    "在这里添加模型后，就能在对话页面的模型选择器中使用。你在设置页配置的模型也会自动加入这里。",
   editModel: "编辑模型",
   update: "更新",
   deleteModelTitle: "删除模型",

@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, rmSync } from "fs";
-import { extname } from "path";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { extname, join } from "path";
+import { tmpdir } from "os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
@@ -12,6 +13,10 @@ vi.mock("electron", () => ({
 import {
   cleanupTempMediaFiles,
   materializeDataUrlToTemp,
+  materializeBytesToTemp,
+  mediaFileExists,
+  normalizeMediaPath,
+  readMediaAsDataUrl,
 } from "../src/main/media";
 
 describe("materializeDataUrlToTemp", () => {
@@ -59,5 +64,38 @@ describe("materializeDataUrlToTemp", () => {
     cleanupTempMediaFiles();
 
     expect(existsSync(path || "")).toBe(false);
+  });
+
+  it("normalizes connector-escaped Windows paths before reading local media", () => {
+    const source = join(tmpdir(), `agents-one-media-${Date.now()}.png`);
+    writeFileSync(source, Buffer.from("PNG test"));
+    const escaped = source.replace(/\\/g, "\\\\");
+
+    expect(normalizeMediaPath(`"${escaped}"`)).toBe(source);
+    expect(mediaFileExists(escaped)).toBe(true);
+    expect(readMediaAsDataUrl(escaped)).toBe(
+      `data:image/png;base64,${Buffer.from("PNG test").toString("base64")}`,
+    );
+
+    rmSync(source, { force: true });
+  });
+});
+
+describe("materializeBytesToTemp", () => {
+  afterEach(() => {
+    cleanupTempMediaFiles();
+  });
+
+  it("stages authenticated remote bytes using the MIME-derived extension", () => {
+    const path = materializeBytesToTemp(
+      Buffer.from("remote chart"),
+      "test-chart",
+      "image/png",
+    );
+
+    expect(path).toBeTruthy();
+    expect(extname(path || "")).toBe(".png");
+    expect(readFileSync(path || "", "utf-8")).toBe("remote chart");
+    if (path) rmSync(path, { force: true });
   });
 });

@@ -78,4 +78,35 @@ describe("ActiveSessionsBar", () => {
       "sessions.newConversation",
     );
   });
+
+  it("uses the configured runtime name and avatar for a runtime task tab", () => {
+    const getAppearance = vi.fn(() => ({
+      name: "Pi 助手",
+      color: "#7C3AED",
+      avatar: "data:image/png;base64,avatar",
+    }));
+    render(
+      <ActiveSessionsBar
+        runs={[
+          run({
+            runtimeId: "pi",
+            runtimeName: "Pi",
+            runtimeKind: "pi",
+            title: "读取项目文档",
+          }),
+        ]}
+        activeRunId="run-1"
+        onSelect={() => {}}
+        onClose={() => {}}
+        onNew={() => {}}
+        getAppearance={getAppearance}
+      />,
+    );
+
+    expect(screen.getByRole("tab")).toHaveTextContent("读取项目文档");
+    expect(screen.getByTestId("profile-avatar")).toHaveTextContent("Pi 助手");
+    expect(getAppearance).toHaveBeenCalledWith(
+      expect.objectContaining({ runtimeId: "pi" }),
+    );
+  });
 });

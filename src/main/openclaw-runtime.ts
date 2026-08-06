@@ -33,6 +33,24 @@ export interface OpenClawTaskInput {
   prompt: string;
   profile?: string;
   sessionId?: string;
+  artifactIds?: string[];
+  workspaceRef?: string;
+}
+
+export interface OpenClawArtifactUploadInput {
+  name: string;
+  mime: string;
+  bytes: Buffer;
+  sha256: string;
+}
+
+export interface OpenClawBridgeArtifact {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  sha256?: string;
+  contentBase64?: string;
 }
 
 export interface OpenClawBridgeTask {
@@ -46,8 +64,10 @@ export interface OpenClawBridgeTask {
 const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 10 * 60 * 1_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_ARTIFACT_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-const SECRET_KEY_PATTERN = /(api[_-]?key|token|secret|password|credential|auth)/i;
+const SECRET_KEY_PATTERN =
+  /(api[_-]?key|token|secret|password|credential|auth)/i;
 
 export const DEFAULT_OPENCLAW_CAPABILITIES: OpenClawBridgeCapabilities = {
   chat: true,
@@ -187,7 +207,10 @@ function safeErrorMessage(error: unknown): string {
   return "OpenClaw runtime request failed.";
 }
 
-function headersFrom(init: RequestInit, bearerToken?: string): Record<string, string> {
+function headersFrom(
+  init: RequestInit,
+  bearerToken?: string,
+): Record<string, string> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body) headers.set("Content-Type", "application/json");
@@ -196,10 +219,14 @@ function headersFrom(init: RequestInit, bearerToken?: string): Record<string, st
 }
 
 export function isSelfSignedCertificateError(error: unknown): boolean {
-  const code = error && typeof error === "object" && "code" in error
-    ? String((error as { code?: unknown }).code || "")
-    : "";
-  return code === "DEPTH_ZERO_SELF_SIGNED_CERT" || code === "SELF_SIGNED_CERT_IN_CHAIN";
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code || "")
+      : "";
+  return (
+    code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+    code === "SELF_SIGNED_CERT_IN_CHAIN"
+  );
 }
 
 async function requestJsonOnce<T>(
@@ -243,7 +270,9 @@ async function requestJsonOnce<T>(
       },
     );
     request.once("error", reject);
-    request.setTimeout(timeoutMs, () => request.destroy(new OpenClawRuntimeTimeoutError()));
+    request.setTimeout(timeoutMs, () =>
+      request.destroy(new OpenClawRuntimeTimeoutError()),
+    );
     if (body) request.write(body);
     request.end();
   });
@@ -259,18 +288,32 @@ async function requestJson<T>(
   const timeoutMs = timeoutMsFromConfig(config);
   const bearerToken = auth?.bearerToken?.trim();
   if (bearerToken && /[\r\n]/.test(bearerToken)) {
-    throw new OpenClawRuntimeValidationError("OpenClaw runtime credential is invalid.");
+    throw new OpenClawRuntimeValidationError(
+      "OpenClaw runtime credential is invalid.",
+    );
   }
 
   try {
     try {
-      return await requestJsonOnce<T>(url, timeoutMs, init, bearerToken, undefined);
+      return await requestJsonOnce<T>(
+        url,
+        timeoutMs,
+        init,
+        bearerToken,
+        undefined,
+      );
     } catch (error) {
       // A self-signed NAS certificate can be trusted only after the user has
       // explicitly configured this exact OpenClaw Bridge endpoint. Retry this
       // one request without CA verification; all other TLS errors stay strict.
       if (url.protocol === "https:" && isSelfSignedCertificateError(error)) {
-        return await requestJsonOnce<T>(url, timeoutMs, init, bearerToken, false);
+        return await requestJsonOnce<T>(
+          url,
+          timeoutMs,
+          init,
+          bearerToken,
+          false,
+        );
       }
       throw error;
     }
@@ -290,6 +333,17 @@ async function requestJson<T>(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function optionalStringFromKeys(
+  value: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const field = value[key];
+    if (typeof field === "string" && field.trim()) return field;
+  }
+  return undefined;
 }
 
 function capabilitiesFromResponse(
@@ -343,10 +397,29 @@ function normalizeTaskResponse(value: unknown): OpenClawBridgeTask {
   return {
     id,
     status,
-    output: typeof value.output === "string" ? value.output : undefined,
-    sessionId:
-      typeof value.sessionId === "string" ? value.sessionId : undefined,
-    error: typeof value.error === "string" ? value.error : undefined,
+    output: optionalStringFromKeys(value, ["output", "result", "text"]),
+    sessionId: optionalStringFromKeys(value, ["sessionId", "session_id"]),
+    error: optionalStringFromKeys(value, ["error", "error_message"]),
+  };
+}
+
+function normalizeArtifactResponse(value: unknown): OpenClawBridgeArtifact {
+  if (!isRecord(value) || typeof value.id !== "string" || !value.id.trim()) {
+    throw new Error("OpenClaw runtime returned an invalid artifact response.");
+  }
+  const name = optionalStringFromKeys(value, ["name", "filename"]) || "artifact";
+  const mime = optionalStringFromKeys(value, ["mime", "contentType", "content_type"])
+    || "application/octet-stream";
+  const size = typeof value.size === "number" && Number.isFinite(value.size)
+    ? Math.max(0, Math.floor(value.size))
+    : 0;
+  return {
+    id: value.id.trim(),
+    name,
+    mime,
+    size,
+    sha256: optionalStringFromKeys(value, ["sha256", "sha_256"]),
+    contentBase64: optionalStringFromKeys(value, ["contentBase64", "content_base64"]),
   };
 }
 
@@ -358,11 +431,97 @@ function taskBodyFromInput(input: OpenClawTaskInput): string {
     );
   }
 
-  return JSON.stringify({
+  const body: Record<string, unknown> = {
     prompt: input.prompt,
     profile: input.profile,
-    sessionId: input.sessionId,
-  });
+  };
+  if (input.sessionId) {
+    body.sessionId = input.sessionId;
+    body.session_id = input.sessionId;
+  }
+  if (input.artifactIds !== undefined) {
+    if (
+      !Array.isArray(input.artifactIds) ||
+      input.artifactIds.length > 10 ||
+      input.artifactIds.some(
+        (id) => typeof id !== "string" || !id.trim() || id.length > 256,
+      )
+    ) {
+      throw new OpenClawRuntimeValidationError("OpenClaw artifact ids are invalid.");
+    }
+    const artifactIds = input.artifactIds.map((id) => id.trim());
+    body.artifactIds = artifactIds;
+    body.artifact_ids = artifactIds;
+  }
+  if (input.workspaceRef !== undefined) {
+    if (
+      typeof input.workspaceRef !== "string" ||
+      !/^(?:artifact|git):/i.test(input.workspaceRef.trim()) ||
+      input.workspaceRef.length > 4096
+    ) {
+      throw new OpenClawRuntimeValidationError(
+        "OpenClaw workspaceRef must be an artifact: or git: reference.",
+      );
+    }
+    const workspaceRef = input.workspaceRef.trim();
+    body.workspaceRef = workspaceRef;
+    body.workspace_ref = workspaceRef;
+  }
+  return JSON.stringify(body);
+}
+
+export async function uploadOpenClawArtifact(
+  config: OpenClawRuntimeConfig,
+  input: OpenClawArtifactUploadInput,
+  auth?: OpenClawRuntimeAuth,
+): Promise<OpenClawBridgeArtifact> {
+  if (
+    typeof input.name !== "string" ||
+    !input.name.trim() ||
+    input.name.length > 160 ||
+    /[\x00-\x1F<>:"/\\|?*]/.test(input.name)
+  ) {
+    throw new OpenClawRuntimeValidationError("OpenClaw artifact name is invalid.");
+  }
+  if (typeof input.mime !== "string" || !input.mime || input.mime.length > 160) {
+    throw new OpenClawRuntimeValidationError("OpenClaw artifact MIME type is invalid.");
+  }
+  if (!Buffer.isBuffer(input.bytes) || !input.bytes.length || input.bytes.length > MAX_ARTIFACT_UPLOAD_BYTES) {
+    throw new OpenClawRuntimeValidationError("OpenClaw artifact size is invalid.");
+  }
+  if (typeof input.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(input.sha256)) {
+    throw new OpenClawRuntimeValidationError("OpenClaw artifact checksum is invalid.");
+  }
+  const artifact = await requestJson<unknown>(
+    config,
+    ["artifacts"],
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: input.name.trim(),
+        mime: input.mime,
+        size: input.bytes.length,
+        sha256: input.sha256.toLowerCase(),
+        contentBase64: input.bytes.toString("base64"),
+        content_base64: input.bytes.toString("base64"),
+      }),
+    },
+    auth,
+  );
+  return normalizeArtifactResponse(artifact);
+}
+
+export async function getOpenClawArtifact(
+  config: OpenClawRuntimeConfig,
+  artifactId: string,
+  auth?: OpenClawRuntimeAuth,
+): Promise<OpenClawBridgeArtifact> {
+  if (!artifactId || typeof artifactId !== "string" || artifactId.length > 256) {
+    throw new OpenClawRuntimeValidationError("OpenClaw artifact id is required.");
+  }
+  return normalizeArtifactResponse(
+    await requestJson<unknown>(config, ["artifacts", artifactId], {}, auth),
+  );
 }
 
 export async function probeOpenClawRuntime(
@@ -385,11 +544,15 @@ export async function probeOpenClawRuntime(
         return {
           state: "healthy",
           capabilities: normalized,
-          message: typeof capabilities?.message === "string" ? capabilities.message : undefined,
+          message:
+            typeof capabilities?.message === "string"
+              ? capabilities.message
+              : undefined,
         };
       }
     } catch (error) {
-      if (!(error instanceof OpenClawRuntimeHttpError && error.status === 404)) throw error;
+      if (!(error instanceof OpenClawRuntimeHttpError && error.status === 404))
+        throw error;
     }
     const health = await requestJson<{
       capabilities?: unknown;
@@ -419,10 +582,15 @@ export async function startOpenClawTask(
   input: OpenClawTaskInput,
   auth?: OpenClawRuntimeAuth,
 ): Promise<OpenClawBridgeTask> {
-  const task = await requestJson<unknown>(config, ["tasks"], {
-    method: "POST",
-    body: taskBodyFromInput(input),
-  }, auth);
+  const task = await requestJson<unknown>(
+    config,
+    ["tasks"],
+    {
+      method: "POST",
+      body: taskBodyFromInput(input),
+    },
+    auth,
+  );
   return normalizeTaskResponse(task);
 }
 
@@ -448,9 +616,14 @@ export async function cancelOpenClawTask(
   }
   // Cancellation is a state transition, so POST preserves the task resource for
   // later inspection instead of treating cancellation as record deletion.
-  const task = await requestJson<unknown>(config, ["tasks", taskId, "cancel"], {
-    method: "POST",
-  }, auth);
+  const task = await requestJson<unknown>(
+    config,
+    ["tasks", taskId, "cancel"],
+    {
+      method: "POST",
+    },
+    auth,
+  );
   return normalizeTaskResponse(task);
 }
 import { request as httpRequest } from "http";

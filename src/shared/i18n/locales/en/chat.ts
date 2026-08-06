@@ -1,5 +1,5 @@
 export default {
-  title: "New Chat",
+  title: "New Conversation",
   sessionTitle: "Session {{id}}",
   noModel: "No model set",
   auto: "Auto",
@@ -35,7 +35,7 @@ export default {
   suggestionReminder: "Set a reminder",
   suggestionEmail: "Summarize emails",
   suggestionScript: "Write a script",
-  suggestionSchedule: "Schedule a cron job",
+  suggestionSchedule: "Create a scheduled task",
   suggestionAnalyze: "Analyze data",
   approve: "Approve",
   deny: "Deny",
@@ -51,8 +51,8 @@ export default {
   thought: "Thought",
   toolCall: "Tool call",
   toolResult: "Tool result",
-  newChat: "New chat (Cmd+N)",
-  clearChat: "Clear chat",
+  newChat: "New conversation (Cmd+N)",
+  clearChat: "Clear conversation",
   clearChatConfirm: "Clear this conversation? This cannot be undone.",
   setContextFolder: "Set context folder",
   contextFolderChip: "Choose Folder",
@@ -67,6 +67,7 @@ export default {
   contextTokens: "{{used}} / {{total}} tokens used",
   contextCache: "Cache: {{pct}}% hit ({{read}} read / {{write}} write)",
   removeAttachment: "Remove attachment",
+  attachmentCompressed: "compressed",
   dropToAttach: "Drop files to attach",
   dashboardUnavailableFallback:
     "Dashboard chat isn't available on this connection — using basic chat. Profile switching and session history are limited.",
@@ -80,7 +81,7 @@ export default {
   attachRemoteModeBinary:
     "{{name}}: PDF/binary attachments require local mode — images and text files still work.",
   validation: {
-    noModel: "No model selected. Pick one in the Chat picker below.",
+    noModel: "No model selected. Pick one in the conversation picker below.",
     noProvider: "No provider set for the active model.",
     missingKey: "Missing {{key}} — required by the active provider.",
     fixInProviders: "Set it in Providers →",
@@ -95,7 +96,7 @@ export default {
   fastModeInactive:
     "Enable priority processing for lower latency on OpenAI and Anthropic models.",
   availableCommands: "Available Commands",
-  categoryChat: "Chat",
+  categoryChat: "Conversation",
   categoryAgent: "Agent",
   categoryTools: "Tools",
   categoryInfo: "Info",
@@ -104,9 +105,10 @@ export default {
     open: "Open",
     saveAs: "Save as…",
     saveImage: "Save image",
+    close: "Close",
   },
   commands: {
-    new: "Start a new chat",
+    new: "Start a new conversation",
     clear: "Clear conversation history",
     btw: "Ask a side question without affecting context",
     approve: "Approve a pending action",
@@ -150,6 +152,8 @@ export default {
   },
   folderPicker: {
     title: "Choose working directory",
+    path: "Working directory path",
+    breadcrumbs: "Current path",
     parent: "Go to parent folder",
     open: "Open",
     select: "Select folder",
@@ -162,7 +166,7 @@ export default {
   followUs: {
     title: "Follow Us on X",
     description:
-      "Stay up to date with the latest Hermes One features, tips, and updates. Follow us on X!",
+      "Stay up to date with the latest Agents One features, tips, and updates. Follow us on X!",
     follow: "Follow",
     notNow: "Not Now",
   },

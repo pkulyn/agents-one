@@ -42,7 +42,7 @@ export function AttachmentChip({
   // version appearing in the chat transcript.
   const tooltip =
     attachment.originalSize && attachment.originalSize > attachment.size
-      ? `${attachment.name} (${formatSize(attachment.originalSize)} -> ${formatSize(attachment.size)}, compressed)`
+      ? `${attachment.name} (${formatSize(attachment.originalSize)} -> ${formatSize(attachment.size)}, ${t("chat.attachmentCompressed")})`
       : `${attachment.name} (${formatSize(attachment.size)})`;
 
   return (
@@ -72,7 +72,7 @@ export function AttachmentChip({
             type="button"
             className="attachment-chip-remove"
             onClick={onRemove}
-            aria-label={`Remove ${attachment.name}`}
+            aria-label={`${t("chat.removeAttachment")}：${attachment.name}`}
           >
             <X size={12} />
           </button>
@@ -116,7 +116,7 @@ export function AttachmentChip({
               <button
                 className="chat-image-preview-btn"
                 onClick={() => setZoomed(false)}
-                aria-label="Close"
+                aria-label={t("chat.media.close")}
               >
                 <X size={14} />
               </button>

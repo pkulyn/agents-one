@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title description">
+  <title id="title">Agents One</title>
+  <desc id="description">The Agents One dawn ring mark.</desc>
+  <defs>
+    <linearGradient id="dawn" x1="42" y1="44" x2="214" y2="212" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2C92F5"/>
+      <stop offset=".32" stop-color="#7064E8"/>
+      <stop offset=".58" stop-color="#D976AA"/>
+      <stop offset=".82" stop-color="#FFC46A"/>
+      <stop offset="1" stop-color="#2C92F5"/>
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="128" r="66" fill="none" stroke="url(#dawn)" stroke-width="30"/>
+</svg>

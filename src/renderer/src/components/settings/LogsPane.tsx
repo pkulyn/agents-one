@@ -9,9 +9,9 @@ const LOG_FILES: {
   label: string;
   Icon: React.ComponentType<{ size?: number }>;
 }[] = [
-  { file: "gateway.log", label: "gateway", Icon: Signal },
-  { file: "agent.log", label: "agent", Icon: Bot },
-  { file: "errors.log", label: "errors", Icon: CircleAlert },
+  { file: "gateway.log", label: "网关", Icon: Signal },
+  { file: "agent.log", label: "智能体", Icon: Bot },
+  { file: "errors.log", label: "错误", Icon: CircleAlert },
 ];
 
 /** Gateway / agent / error log viewer. */

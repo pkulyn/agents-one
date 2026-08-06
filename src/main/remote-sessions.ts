@@ -26,7 +26,9 @@ import { remoteDashboardRpc } from "./remote-dashboard-rpc";
 import {
   listLocalSessionContinuationEntries,
   loadSessionContinuationItemsForSession,
+  mergeSessionContinuationWithCanonical,
 } from "./session-continuation-store";
+import { getSessionContextFolders } from "./session-context-folder-store";
 import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
 
 export interface RemoteSessionConfig {
@@ -88,9 +90,13 @@ function writeRemoteSessionCache(
 ): void {
   try {
     const previous = readRemoteSessionCache(config);
+    const patchedSessions =
+      patch.sessions && patch.sessions.length === 0 && previous.sessions.length > 0
+        ? previous.sessions
+        : patch.sessions;
     const next: RemoteSessionCacheData = {
       histories: patch.histories ?? previous.histories,
-      sessions: patch.sessions ?? previous.sessions,
+      sessions: patchedSessions ?? previous.sessions,
       updatedAt: Date.now(),
     };
     safeWriteFile(remoteSessionCachePath(config), JSON.stringify(next));
@@ -128,9 +134,71 @@ function mergeCachedSessions(
   for (const session of cached) merged.set(session.id, session);
   for (const session of overlays) {
     const existing = merged.get(session.id);
-    merged.set(session.id, existing ? { ...existing, ...session } : session);
+    merged.set(
+      session.id,
+      existing
+        ? {
+            ...existing,
+            ...session,
+            startedAt: Math.max(existing.startedAt || 0, session.startedAt || 0),
+            messageCount: Math.max(
+              existing.messageCount || 0,
+              session.messageCount || 0,
+            ),
+            model: existing.model || session.model,
+            source:
+              session.source === "desktop-overlay" &&
+              existing.source !== "desktop-overlay"
+                ? existing.source
+                : session.source,
+            contextFolder: session.contextFolder ?? existing.contextFolder,
+          }
+        : session,
+    );
   }
   return Array.from(merged.values()).sort((a, b) => b.startedAt - a.startedAt);
+}
+
+function historyTimestamp(items: HistoryItem[]): number {
+  return Math.max(
+    0,
+    ...items
+      .map((item) => (typeof item.timestamp === "number" ? item.timestamp : 0))
+      .filter((timestamp) => Number.isFinite(timestamp)),
+  );
+}
+
+function sessionsFromCachedHistories(
+  histories: Record<string, HistoryItem[]>,
+): CachedSession[] {
+  return Object.entries(histories)
+    .map((entry): CachedSession | null => {
+      const [id, items] = entry;
+      if (!Array.isArray(items) || items.length === 0) return null;
+      const title = titleFromHistoryItems(items) || `Session ${id.slice(-6)}`;
+      return {
+        id,
+        title,
+        startedAt: historyTimestamp(items),
+        source: "remote-cache",
+        messageCount: items.length,
+        model: "",
+        contextFolder: null,
+      };
+    })
+    .filter((session): session is CachedSession => Boolean(session))
+    .sort((a, b) => b.startedAt - a.startedAt);
+}
+
+// A remote Dashboard does not own desktop-selected Windows folders. Overlay
+// that local-only relationship after each fetch so remote sessions stay under
+// the right project in the sidebar instead of falling back to the task list.
+function attachLocalContextFolders(sessions: CachedSession[]): CachedSession[] {
+  const folders = getSessionContextFolders(sessions.map((session) => session.id));
+  return sessions.map((session) => ({
+    ...session,
+    contextFolder: folders.get(session.id) ?? session.contextFolder ?? null,
+  }));
 }
 
 function normalizeRemoteDashboardBaseUrl(value: string): string {
@@ -450,6 +518,14 @@ function localContinuationItems(sessionId: string): HistoryItem[] {
   }
 }
 
+function mergeRemoteHistoryWithLocalContinuation(
+  sessionId: string,
+  canonical: HistoryItem[],
+): HistoryItem[] {
+  const continuation = localContinuationItems(sessionId);
+  return mergeSessionContinuationWithCanonical(continuation, canonical);
+}
+
 function isUserlessDashboardOrphan(
   session: CachedSession,
   items: HistoryItem[],
@@ -478,11 +554,10 @@ async function fillPlaceholderCachedSessionTitles(
             config,
             session.id,
           );
-          const localItems = localContinuationItems(session.id);
-          const items =
-            localItems.length > 0
-              ? [...localItems, ...remoteItems]
-              : remoteItems;
+          const items = mergeRemoteHistoryWithLocalContinuation(
+            session.id,
+            remoteItems,
+          );
           // Dashboard recovery/model-switch attempts can leave a persisted
           // api_server row containing only assistant/tool output. It is not a
           // user conversation and otherwise appears as a second sidebar chat
@@ -555,16 +630,49 @@ export async function remoteListCachedSessions(
   limit = 50,
   offset = 0,
 ): Promise<CachedSession[]> {
+  const cachedBeforeFetch = readRemoteSessionCache(config);
+  const recoveredFromHistories = sessionsFromCachedHistories(
+    cachedBeforeFetch.histories,
+  );
+  const cachedWithRecovered = mergeCachedSessions(
+    cachedBeforeFetch.sessions,
+    recoveredFromHistories,
+  );
   try {
     const response = await remoteSessionListPage(config, limit, offset);
     const sessions = sessionsFromResponse(response)
       .map(normalizeCachedSession)
       .filter((session) => !isAutomationSessionSource(session.source));
     const resolved = await fillPlaceholderCachedSessionTitles(config, sessions);
-    writeRemoteSessionCache(config, { sessions: resolved });
-    return resolved;
+    const enriched = attachLocalContextFolders(resolved);
+    if (offset <= 0 && enriched.length > 0) {
+      writeRemoteSessionCache(config, {
+        sessions: mergeCachedSessions(recoveredFromHistories, enriched),
+      });
+    }
+    if (enriched.length > 0) return enriched;
+    if (
+      offset <= 0 &&
+      cachedBeforeFetch.sessions.length === 0 &&
+      recoveredFromHistories.length > 0
+    ) {
+      writeRemoteSessionCache(config, { sessions: recoveredFromHistories });
+    }
+    return mergeCachedSessions(
+      attachLocalContextFolders(cachedWithRecovered),
+      overlaySessions(),
+    ).slice(offset, offset + limit);
   } catch {
-    const cached = readRemoteSessionCache(config).sessions;
+    if (
+      offset <= 0 &&
+      cachedBeforeFetch.sessions.length === 0 &&
+      recoveredFromHistories.length > 0
+    ) {
+      writeRemoteSessionCache(config, { sessions: recoveredFromHistories });
+    }
+    const cached = attachLocalContextFolders(
+      cachedWithRecovered,
+    );
     return mergeCachedSessions(cached, overlaySessions()).slice(
       offset,
       offset + limit,
@@ -860,7 +968,7 @@ function normalizeMessageRows(
   const role = normalizeRemoteRole(row);
   let content = remoteMessageContent(row, role);
   let reasoning = nullableString(row.reasoning);
-  let reasoningContent = nullableString(row.reasoning_content);
+  const reasoningContent = nullableString(row.reasoning_content);
   let reasoningDetails =
     typeof row.reasoning_details === "string"
       ? row.reasoning_details
@@ -924,17 +1032,20 @@ export async function remoteGetSessionMessages(
       }
     } catch {
       const cached = readRemoteSessionCache(config).histories[sessionId];
-      if (cached?.length) return cached;
+      if (cached?.length) {
+        return mergeRemoteHistoryWithLocalContinuation(sessionId, cached);
+      }
       return localContinuationItems(sessionId);
     }
   }
   const rows = asArray(asRecord(response).messages).flatMap(
     normalizeMessageRows,
   );
-  const items = await hydrateRemotePromptImageAttachments(
+  const canonical = await hydrateRemotePromptImageAttachments(
     config,
     expandRowsToHistory(rows),
   );
+  const items = mergeRemoteHistoryWithLocalContinuation(sessionId, canonical);
   const cache = readRemoteSessionCache(config);
   writeRemoteSessionCache(config, {
     histories: { ...cache.histories, [sessionId]: items },

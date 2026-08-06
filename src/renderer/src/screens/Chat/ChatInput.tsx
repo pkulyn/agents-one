@@ -8,7 +8,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Square as Stop, Search, Paperclip, Mic, ArrowUp } from "lucide-react";
+import { Square as Stop, Search, Paperclip, ArrowUp } from "lucide-react";
 import { isImeComposing } from "./keyboard";
 import { useI18n } from "../../components/useI18n";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
@@ -20,7 +20,6 @@ import {
   SLASH_COMMAND_VIEWPORT_HEIGHT,
 } from "./slash/virtualSlashCommands";
 import { useInputHistory } from "./hooks/useInputHistory";
-import { useVoiceInput } from "./hooks/useVoiceInput";
 import {
   processFiles,
   filesFromClipboard,
@@ -50,9 +49,11 @@ export interface ChatInputReadiness {
 interface ChatInputProps {
   isLoading: boolean;
   hasSession: boolean;
+  /** Runtime adapters can opt out until their transport supports file inputs. */
+  attachmentsEnabled?: boolean;
+  placeholder?: string;
   sessionId?: string | null;
   remoteMode?: boolean;
-  /** Active profile — used to resolve the provider for voice transcription. */
   profile?: string;
   /** Context-window occupancy for the gauge; null until the first response. */
   contextUsage?: ContextUsage | null;
@@ -73,9 +74,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     {
       isLoading,
       hasSession,
+      attachmentsEnabled = true,
+      placeholder,
       sessionId,
       remoteMode,
-      profile,
       contextUsage,
       readiness,
       toolbarExtras,
@@ -105,20 +107,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // composition events rather than the synthetic event's `isComposing` flag,
     // which macOS Chromium can report as false on the finalizing Enter.
     const composingRef = useRef(false);
-
-    // Voice input. We snapshot whatever was already typed when recording starts
-    // (`voiceBaseRef`), then rebuild the field as `base + livetranscript` on
-    // every result so the SpeechRecognition path streams in live. The recorder
-    // fallback delivers one final result on stop.
-    const voiceBaseRef = useRef("");
-    const handleVoiceResult = useCallback((text: string, isFinal: boolean) => {
-      const base = voiceBaseRef.current;
-      setInput(
-        base.trim() ? (text ? `${base.trimEnd()} ${text}` : base) : text,
-      );
-      if (isFinal) inputRef.current?.focus();
-    }, []);
-    const voice = useVoiceInput(handleVoiceResult, profile);
 
     const autoResize = useCallback((): void => {
       const el = inputRef.current;
@@ -179,6 +167,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     const ingestFiles = useCallback(
       async (files: File[] | FileList): Promise<AttachmentError[]> => {
+        if (!attachmentsEnabled) return [];
         const { attachments: added, errors } = await processFiles(
           files,
           attachments.length,
@@ -197,7 +186,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         }
         return errors;
       },
-      [attachments.length, formatError, sessionId, remoteMode],
+      [attachments.length, attachmentsEnabled, formatError, sessionId, remoteMode],
     );
 
     useImperativeHandle(
@@ -644,11 +633,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             )}
           </div>
         )}
-        {voice.error && (
-          <div className="chat-attachment-error chat-voice-error" role="alert">
-            {voice.error}
-          </div>
-        )}
         <div className="chat-input-wrapper">
           <input
             ref={fileInputRef}
@@ -660,7 +644,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <textarea
             ref={inputRef}
             className="chat-input"
-            placeholder={t("chat.typeMessage")}
+            placeholder={placeholder || t("chat.typeMessage")}
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
@@ -678,50 +662,18 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             <button
               className="chat-attach-btn"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isLoading}
-              title={t("chat.attach")}
-              aria-label={t("chat.attach")}
+              disabled={isLoading || !attachmentsEnabled}
+              title={attachmentsEnabled ? t("chat.attach") : "该智能体暂不支持文件输入"}
+              aria-label={attachmentsEnabled ? t("chat.attach") : "该智能体暂不支持文件输入"}
               type="button"
             >
               <Paperclip size={16} />
             </button>
-            {voice.supported && (
-              <button
-                className={`chat-mic-btn${
-                  voice.recording ? " chat-mic-btn--recording" : ""
-                }`}
-                onClick={() => {
-                  // Snapshot the current text so live results append to it.
-                  if (!voice.recording && !voice.transcribing) {
-                    voiceBaseRef.current = input;
-                  }
-                  voice.toggle();
-                }}
-                disabled={voice.transcribing}
-                title={
-                  voice.transcribing
-                    ? t("chat.voiceTranscribing")
-                    : voice.recording
-                      ? t("chat.voiceStop")
-                      : t("chat.voiceInput")
-                }
-                aria-label={
-                  voice.recording ? t("chat.voiceStop") : t("chat.voiceInput")
-                }
-                aria-pressed={voice.recording}
-                type="button"
-              >
-                <Mic size={16} />
-              </button>
-            )}
             {toolbarExtras && (
-              <>
-                <span className="chat-input-toolbar-divider" aria-hidden />
-                {toolbarExtras}
-              </>
+              <>{toolbarExtras}</>
             )}
             <div className="chat-input-toolbar-spacer" />
-            {contextUsage && contextUsage.used > 0 && (
+            {contextUsage && (
               <ContextGauge {...contextUsage} />
             )}
             {isLoading ? (

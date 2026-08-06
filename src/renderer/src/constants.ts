@@ -124,12 +124,12 @@ export const PROVIDERS = {
 
   setup: [
     {
-      // Hermes One's own inference gateway — shown first. OpenAI-compatible, so
+      // Agents One's own inference gateway — shown first. OpenAI-compatible, so
       // it routes through `custom` + base_url (like the `openai` card); the key
       // is stored/host-derived as HERMESONE_API_KEY (see url-key-map.ts).
       id: "hermesone",
-      name: "Hermes One",
-      desc: "Hermes One Inference — pay-per-token with AI Credits",
+      name: "Agents One",
+      desc: "Agents One Inference — pay-per-token with AI Credits",
       tag: "Recommended",
       envKey: "HERMESONE_API_KEY",
       url: "https://console.hermesone.org/credits",
@@ -336,7 +336,7 @@ export interface LocalPreset {
 // OPENAI_COMPATIBLE_BASE_URLS). Distinct from PROVIDERS.setup, which stays the
 // curated first-run set.
 export const PROVIDER_CARDS: { id: string; name: string }[] = [
-  { id: "hermesone", name: "Hermes One" },
+  { id: "hermesone", name: "Agents One" },
   { id: "openrouter", name: "constants.openrouterName" },
   { id: "anthropic", name: "constants.anthropicName" },
   { id: "openai", name: "constants.openaiName" },
@@ -600,7 +600,7 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
   {
     title: "constants.sectionLlmProviders",
     items: [
-      // Hermes One's own inference gateway — first-class + first in the list.
+      // Agents One's own inference gateway — first-class + first in the list.
       // Custom under the hood (routes as `custom` + inference.hermesone.org),
       // keyed by HERMESONE_API_KEY via URL_KEY_MAP.
       {

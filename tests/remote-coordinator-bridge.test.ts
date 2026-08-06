@@ -19,9 +19,20 @@ describe("remote coordinator Bridge client", () => {
   let server: http.Server;
   let baseUrl = "";
   const requests: RecordedRequest[] = [];
+  let planStartResponse: Record<string, unknown>;
 
   beforeEach(async () => {
     requests.length = 0;
+    planStartResponse = {
+      id: "plan-1",
+      status: "running",
+      enforced: {
+        toolPolicy: "disabled",
+        filesystem: "disabled",
+        network: "disabled",
+        timeoutSeconds: 120,
+      },
+    };
     server = http.createServer((req, res) => {
       const chunks: Buffer[] = [];
       req.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -61,7 +72,7 @@ describe("remote coordinator Bridge client", () => {
             network: "disabled",
             timeoutSeconds: 120,
           });
-          res.end(JSON.stringify({ id: "plan-1", status: "running" }));
+          res.end(JSON.stringify(planStartResponse));
           return;
         }
 
@@ -191,5 +202,21 @@ describe("remote coordinator Bridge client", () => {
         token: "do-not-send",
       } as never),
     ).rejects.toThrow(/secret or credential/i);
+  });
+
+  it("rejects a coordinator that does not confirm the read-only policy", async () => {
+    planStartResponse = { id: "plan-1", status: "running" };
+
+    await expect(
+      startRemoteCoordinatorPlan(
+        config(),
+        {
+          projectId: "project-1",
+          request: "Plan this safely.",
+          context: { title: "Project", requirements: "Need a plan." },
+        },
+        { bearerToken: "bridge-token" },
+      ),
+    ).rejects.toThrow(/did not confirm enforced read-only planning/i);
   });
 });

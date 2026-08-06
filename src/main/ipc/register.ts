@@ -7,10 +7,11 @@ import {
   Notification,
   dialog,
   clipboard,
+  type SaveDialogOptions,
 } from "electron";
-import { extname } from "path";
+import { extname, join } from "path";
 import { randomUUID } from "crypto";
-import { open as openFile, readdir, readFile, stat } from "fs/promises";
+import { mkdir, open as openFile, readdir, readFile, stat } from "fs/promises";
 import { getActiveProfileNameSync } from "../utils";
 import type { Attachment } from "../../shared/attachments";
 import type { SessionModelOverride } from "../../shared/model-override";
@@ -20,6 +21,7 @@ import type {
   DesktopSessionLocalError,
 } from "../../shared/session-continuation";
 import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
+import { prepareProjectContextAttachment } from "../project-context";
 import { persistPromptImageAttachments } from "../session-attachment-store";
 import {
   discoverProviderModels,
@@ -43,6 +45,7 @@ import {
   readMediaAsDataUrl,
   saveMedia,
   mediaFileExists,
+  normalizeMediaPath,
 } from "../media";
 import { openTerminalInDirectory } from "../terminal-launcher";
 import {
@@ -182,6 +185,13 @@ import {
   updateSessionTitle,
 } from "../session-cache";
 import {
+  deleteRuntimeConversation,
+  getRuntimeConversation,
+  listRuntimeConversations,
+  saveRuntimeConversation,
+  updateRuntimeConversationTitle,
+} from "../runtime-conversation-store";
+import {
   remoteDeleteSession,
   remoteDeleteSessions,
   remoteGetSessionMessages,
@@ -230,22 +240,31 @@ import {
   getAgentRuntimeRun,
   listAgentRuntimes,
   probeAgentRuntime,
+  probeAgentRuntimeDraft,
   removeAgentRuntime,
   saveAgentRuntime,
+  saveAgentRuntimeAppearance,
   setAgentRuntimeBearerToken,
+  setAgentRuntimeDashboardToken,
+  setAgentRuntimeWorkspaceGatewayToken,
   startAgentRuntimeTask,
 } from "../agent-runtimes";
 import type {
   AgentRuntimeDraft,
+  AgentRuntimeAppearance,
   AgentRuntimeTaskInput,
 } from "../../shared/agent-runtimes";
+import type { SaveRuntimeConversationInput } from "../../shared/runtime-conversations";
 import type { CreateTaskCenterTaskInput } from "../../shared/task-center";
+import type { CreateTaskScheduleInput } from "../../shared/task-schedules";
 import type {
   AssignProjectTaskInput,
   CreateProjectTasksFromPlanInput,
   CreateProjectInput,
   CreateProjectTaskInput,
   ProjectTaskStatus,
+  UpdateProjectCollaboratorsInput,
+  UpdateProjectScopeInput,
 } from "../../shared/project-control";
 import {
   cancelTaskCenterTask,
@@ -253,9 +272,22 @@ import {
   listTaskCenterWorktrees,
   listTaskCenterTasks,
   removeTaskCenterWorktree,
+  retryTaskCenterTask,
   resolveManagedWorktreePath,
   setTaskCenterAcceptance,
 } from "../task-center";
+import {
+  linkConversationTask,
+  listConversationTasks,
+  unlinkConversationTask,
+} from "../conversation-tasks";
+import {
+  createTaskSchedule,
+  deleteTaskSchedule,
+  listTaskSchedules,
+  setTaskScheduleEnabled,
+  triggerTaskSchedule,
+} from "../task-schedules";
 import {
   assignProjectTask,
   createProject,
@@ -273,7 +305,22 @@ import {
   setProjectStatus,
   reviewProjectTask,
   startCoordinatorPlanningTask,
+  updateProjectCollaborators,
+  updateProjectScope,
 } from "../project-control";
+import { listProjectFolders, registerProjectFolder } from "../project-folders";
+import {
+  getTaskCollaboration,
+  linkTaskCollaboration,
+  listTaskCollaborations,
+  saveTaskCollaboration,
+  updateTaskCollaborationExecution,
+} from "../task-collaboration-store";
+import type {
+  LinkTaskCollaborationInput,
+  SaveTaskCollaborationInput,
+  UpdateTaskCollaborationExecutionInput,
+} from "../../shared/task-collaboration";
 import {
   listModels,
   addModel,
@@ -445,7 +492,7 @@ export interface IpcContext {
   openExternalUrl: (rawUrl: unknown) => void;
 }
 
-const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Hermes One";
+const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Agents One";
 
 type RemoteSessionBridgeConfig = RemoteSessionConfig;
 
@@ -633,19 +680,21 @@ async function getActiveDashboardMediaConfig(): Promise<RemoteSessionBridgeConfi
 async function readMediaForCurrentConnection(
   filePath: string,
 ): Promise<string | null> {
-  const local = readMediaAsDataUrl(filePath);
+  const normalizedPath = normalizeMediaPath(filePath);
+  const local = readMediaAsDataUrl(normalizedPath);
   if (local) return local;
   const remote = await getActiveDashboardMediaConfig();
-  return remote ? remoteReadMediaAsDataUrl(remote, filePath) : null;
+  return remote ? remoteReadMediaAsDataUrl(remote, normalizedPath) : null;
 }
 
 async function mediaFileExistsForCurrentConnection(
   filePath: string,
 ): Promise<boolean> {
-  if (mediaFileExists(filePath)) return true;
+  const normalizedPath = normalizeMediaPath(filePath);
+  if (mediaFileExists(normalizedPath)) return true;
   const remote = await getActiveDashboardMediaConfig();
   if (!remote) return false;
-  return (await remoteReadMediaAsDataUrl(remote, filePath)) !== null;
+  return (await remoteReadMediaAsDataUrl(remote, normalizedPath)) !== null;
 }
 
 async function resolveMediaForSave(src: string): Promise<string> {
@@ -894,7 +943,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     return { success: true };
   });
 
-  // Cloud agent sync — reconciles local profiles with the signed-in Hermes One
+  // Cloud agent sync — reconciles local profiles with the signed-in Agents One
   // account's cloud agents. `agent-sync-updated` tells the renderer to reload
   // its profile list (pull-created profiles appear without a manual refresh).
   ipcMain.handle("agent-sync-run", async (event) => {
@@ -1244,6 +1293,11 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("save-agent-runtime", (_event, draft: AgentRuntimeDraft) =>
     saveAgentRuntime(draft),
   );
+  ipcMain.handle(
+    "save-agent-runtime-appearance",
+    (_event, id: string, appearance: AgentRuntimeAppearance) =>
+      saveAgentRuntimeAppearance(id, appearance),
+  );
   ipcMain.handle("remove-agent-runtime", (_event, id: string) =>
     removeAgentRuntime(id),
   );
@@ -1255,8 +1309,23 @@ export function registerIpcHandlers(context: IpcContext): void {
     (_event, id: string, bearerToken: string) =>
       setAgentRuntimeBearerToken(id, bearerToken),
   );
+  ipcMain.handle(
+    "set-agent-runtime-dashboard-token",
+    (_event, id: string, dashboardToken: string) =>
+      setAgentRuntimeDashboardToken(id, dashboardToken),
+  );
+  ipcMain.handle(
+    "set-agent-runtime-workspace-gateway-token",
+    (_event, id: string, bearerToken: string) =>
+      setAgentRuntimeWorkspaceGatewayToken(id, bearerToken),
+  );
   ipcMain.handle("probe-agent-runtime", (_event, id: string) =>
     probeAgentRuntime(id),
+  );
+  ipcMain.handle(
+    "probe-agent-runtime-draft",
+    (_event, draft: AgentRuntimeDraft, bearerToken?: string) =>
+      probeAgentRuntimeDraft(draft, bearerToken),
   );
   ipcMain.handle(
     "start-agent-runtime-task",
@@ -1270,6 +1339,19 @@ export function registerIpcHandlers(context: IpcContext): void {
     cancelAgentRuntimeTask(runId),
   );
   ipcMain.handle("list-task-center-tasks", () => listTaskCenterTasks());
+  ipcMain.handle("list-conversation-tasks", (_event, conversationId: string) =>
+    listConversationTasks(conversationId),
+  );
+  ipcMain.handle(
+    "link-conversation-task",
+    (_event, conversationId: string, taskId: string) =>
+      linkConversationTask(conversationId, taskId),
+  );
+  ipcMain.handle(
+    "unlink-conversation-task",
+    (_event, conversationId: string, taskId: string) =>
+      unlinkConversationTask(conversationId, taskId),
+  );
   ipcMain.handle(
     "create-task-center-task",
     (_event, input: CreateTaskCenterTaskInput) => createTaskCenterTask(input),
@@ -1277,29 +1359,70 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("cancel-task-center-task", (_event, id: string) =>
     cancelTaskCenterTask(id),
   );
+  ipcMain.handle("retry-task-center-task", (_event, id: string) =>
+    retryTaskCenterTask(id),
+  );
   ipcMain.handle(
     "set-task-center-acceptance",
     (_event, id: string, acceptance: "accepted" | "rejected") =>
       setTaskCenterAcceptance(id, acceptance),
   );
-  ipcMain.handle("open-task-center-worktree", async (_event, worktree: string) => {
-    const target = resolveManagedWorktreePath(worktree);
-    const result = await shell.openPath(target);
-    if (result) throw new Error("Could not open the task worktree.");
-    return true;
-  });
+  ipcMain.handle(
+    "open-task-center-worktree",
+    async (_event, worktree: string) => {
+      const target = resolveManagedWorktreePath(worktree);
+      const result = await shell.openPath(target);
+      if (result) throw new Error("Could not open the task worktree.");
+      return true;
+    },
+  );
   ipcMain.handle("list-task-center-worktrees", () => listTaskCenterWorktrees());
   ipcMain.handle("remove-task-center-worktree", (_event, worktree: string) =>
     removeTaskCenterWorktree(worktree),
   );
+  ipcMain.handle("list-task-schedules", (_event, profile?: string) =>
+    listTaskSchedules(profile),
+  );
+  ipcMain.handle(
+    "create-task-schedule",
+    (_event, input: CreateTaskScheduleInput, profile?: string) =>
+      createTaskSchedule(input, profile),
+  );
+  ipcMain.handle(
+    "set-task-schedule-enabled",
+    (_event, id: string, enabled: boolean, profile?: string) =>
+      setTaskScheduleEnabled(id, enabled, profile),
+  );
+  ipcMain.handle(
+    "trigger-task-schedule",
+    (_event, id: string, profile?: string) => triggerTaskSchedule(id, profile),
+  );
+  ipcMain.handle(
+    "delete-task-schedule",
+    (_event, id: string, profile?: string) => deleteTaskSchedule(id, profile),
+  );
   ipcMain.handle("list-project-control-projects", () => listProjects());
-  ipcMain.handle("create-project-control-project", (_event, input: CreateProjectInput) =>
-    createProject(input),
+  ipcMain.handle(
+    "create-project-control-project",
+    (_event, input: CreateProjectInput) => createProject(input),
   );
   ipcMain.handle(
     "set-project-control-status",
-    (_event, projectId: string, status: "active" | "paused" | "completed" | "cancelled", summary: string) =>
-      setProjectStatus(projectId, status, summary),
+    (
+      _event,
+      projectId: string,
+      status: "active" | "paused" | "completed" | "cancelled",
+      summary: string,
+    ) => setProjectStatus(projectId, status, summary),
+  );
+  ipcMain.handle(
+    "update-project-control-scope",
+    (_event, input: UpdateProjectScopeInput) => updateProjectScope(input),
+  );
+  ipcMain.handle(
+    "update-project-control-collaborators",
+    (_event, input: UpdateProjectCollaboratorsInput) =>
+      updateProjectCollaborators(input),
   );
   ipcMain.handle("list-project-control-tasks", (_event, projectId: string) =>
     listProjectTasks(projectId),
@@ -1307,31 +1430,43 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("list-project-control-events", (_event, projectId: string) =>
     listProjectEvents(projectId),
   );
-  ipcMain.handle("list-project-control-artifacts", (_event, projectId: string) =>
-    listProjectArtifacts(projectId),
+  ipcMain.handle(
+    "list-project-control-artifacts",
+    (_event, projectId: string) => listProjectArtifacts(projectId),
   );
-  ipcMain.handle("create-project-control-task", (_event, input: CreateProjectTaskInput) =>
-    createProjectTask(input),
+  ipcMain.handle(
+    "create-project-control-task",
+    (_event, input: CreateProjectTaskInput) => createProjectTask(input),
   );
-  ipcMain.handle("assign-project-control-task", (_event, input: AssignProjectTaskInput) =>
-    assignProjectTask(input),
+  ipcMain.handle(
+    "assign-project-control-task",
+    (_event, input: AssignProjectTaskInput) => assignProjectTask(input),
   );
   ipcMain.handle("dispatch-project-control-task", (_event, taskId: string) =>
     dispatchProjectTask(taskId),
   );
-  ipcMain.handle("start-project-coordinator-plan", (_event, projectId: string) =>
-    startCoordinatorPlanningTask(projectId),
+  ipcMain.handle(
+    "start-project-coordinator-plan",
+    (_event, projectId: string) => startCoordinatorPlanningTask(projectId),
   );
-  ipcMain.handle("preview-project-plan-tasks", (_event, projectId: string, sourceTaskId: string) =>
-    previewProjectPlanTasks(projectId, sourceTaskId),
+  ipcMain.handle(
+    "preview-project-plan-tasks",
+    (_event, projectId: string, sourceTaskId: string) =>
+      previewProjectPlanTasks(projectId, sourceTaskId),
   );
-  ipcMain.handle("create-project-tasks-from-plan", (_event, input: CreateProjectTasksFromPlanInput) =>
-    createProjectTasksFromPlan(input),
+  ipcMain.handle(
+    "create-project-tasks-from-plan",
+    (_event, input: CreateProjectTasksFromPlanInput) =>
+      createProjectTasksFromPlan(input),
   );
   ipcMain.handle(
     "review-project-control-task",
-    (_event, taskId: string, acceptance: "accepted" | "rejected", summary: string) =>
-      reviewProjectTask(taskId, acceptance, summary),
+    (
+      _event,
+      taskId: string,
+      acceptance: "accepted" | "rejected",
+      summary: string,
+    ) => reviewProjectTask(taskId, acceptance, summary),
   );
   ipcMain.handle("cancel-project-control-task", (_event, taskId: string) =>
     cancelProjectTask(taskId),
@@ -2040,6 +2175,34 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
 
   ipcMain.handle(
+    "save-task-collaboration",
+    (_event, input: SaveTaskCollaborationInput, profile?: string) =>
+      saveTaskCollaboration(input, profile),
+  );
+
+  ipcMain.handle(
+    "get-task-collaboration",
+    (_event, taskId: string, profile?: string) =>
+      getTaskCollaboration(taskId, profile),
+  );
+
+  ipcMain.handle(
+    "link-task-collaboration",
+    (_event, input: LinkTaskCollaborationInput, profile?: string) =>
+      linkTaskCollaboration(input, profile),
+  );
+
+  ipcMain.handle(
+    "update-task-collaboration-execution",
+    (_event, input: UpdateTaskCollaborationExecutionInput, profile?: string) =>
+      updateTaskCollaborationExecution(input, profile),
+  );
+
+  ipcMain.handle("list-task-collaborations", (_event, profile?: string) =>
+    listTaskCollaborations(profile),
+  );
+
+  ipcMain.handle(
     "list-recent-session-context-folders",
     (_event, limit?: number) => {
       const lim = typeof limit === "number" && limit > 0 ? limit : 20;
@@ -2435,6 +2598,40 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
+  ipcMain.handle(
+    "list-runtime-conversations",
+    (_event, profile?: string, limit?: number, offset?: number) =>
+      listRuntimeConversations(profile, limit, offset),
+  );
+
+  ipcMain.handle(
+    "get-runtime-conversation",
+    (_event, id: string, profile?: string) =>
+      getRuntimeConversation(id, profile),
+  );
+
+  ipcMain.handle(
+    "save-runtime-conversation",
+    (_event, input: SaveRuntimeConversationInput) =>
+      saveRuntimeConversation(input),
+  );
+
+  ipcMain.handle(
+    "update-runtime-conversation-title",
+    (_event, id: string, title: string, profile?: string) => {
+      updateRuntimeConversationTitle(id, title, profile);
+      return true;
+    },
+  );
+
+  ipcMain.handle(
+    "delete-runtime-conversation",
+    (_event, id: string, profile?: string) => {
+      deleteRuntimeConversation(id, profile);
+      return true;
+    },
+  );
+
   // Session search
   ipcMain.handle("search-sessions", (_event, query: string, limit?: number) => {
     const conn = getConnectionConfig();
@@ -2774,14 +2971,68 @@ export function registerIpcHandlers(context: IpcContext): void {
     (_event, input: CreateTaskInput, profile?: string) =>
       kanbanCreateTask(input, profile),
   );
-  ipcMain.handle("select-folder", async (event) => {
+  ipcMain.handle(
+    "select-folder",
+    async (event, options?: { title?: unknown; buttonLabel?: unknown }) => {
+      const title =
+        typeof options?.title === "string" && options.title.trim()
+          ? options.title.trim().slice(0, 100)
+          : "选择项目文件夹";
+      const buttonLabel =
+        typeof options?.buttonLabel === "string" && options.buttonLabel.trim()
+          ? options.buttonLabel.trim().slice(0, 60)
+          : "选择文件夹";
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const result = win
+        ? await dialog.showOpenDialog(win, {
+            title,
+            buttonLabel,
+            properties: ["openDirectory", "createDirectory"],
+          })
+        : await dialog.showOpenDialog({
+            title,
+            buttonLabel,
+            properties: ["openDirectory", "createDirectory"],
+          });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      return result.filePaths[0];
+    },
+  );
+
+  ipcMain.handle("create-project-folder", async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
+    const dialogOptions: SaveDialogOptions = {
+      title: "新建空白项目文件夹",
+      buttonLabel: "创建文件夹",
+      defaultPath: join(app.getPath("documents"), "新项目"),
+      properties: ["createDirectory", "showOverwriteConfirmation"],
+    };
     const result = win
-      ? await dialog.showOpenDialog(win, { properties: ["openDirectory"] })
-      : await dialog.showOpenDialog({ properties: ["openDirectory"] });
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0];
+      ? await dialog.showSaveDialog(win, dialogOptions)
+      : await dialog.showSaveDialog(dialogOptions);
+    if (result.canceled || !result.filePath) return null;
+
+    try {
+      await mkdir(result.filePath);
+      return result.filePath;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`无法创建项目文件夹：${detail}`);
+    }
   });
+
+  ipcMain.handle("list-project-folders", () => listProjectFolders());
+  ipcMain.handle("register-project-folder", (_event, folderPath: string) =>
+    registerProjectFolder(folderPath),
+  );
+
+  ipcMain.handle(
+    "prepare-project-context",
+    async (_event, folderPath: string) => {
+      if (typeof folderPath !== "string" || !folderPath.trim()) return null;
+      return prepareProjectContextAttachment(folderPath);
+    },
+  );
 
   // Read directory contents for worktree panel
   ipcMain.handle(
@@ -2791,10 +3042,12 @@ export function registerIpcHandlers(context: IpcContext): void {
       dirPath: string,
     ): Promise<{ name: string; isDirectory: boolean }[] | null> => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh) {
+      const isLocalWindowsPath =
+        /^[a-zA-Z]:[\\/]/.test(dirPath) || /^\\\\/.test(dirPath);
+      if (conn.mode === "ssh" && conn.ssh && !isLocalWindowsPath) {
         return sshReadDirectory(conn.ssh, dirPath);
       }
-      if (conn.mode === "remote") {
+      if (conn.mode === "remote" && !isLocalWindowsPath) {
         return null;
       }
       try {

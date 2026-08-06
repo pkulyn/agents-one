@@ -33,10 +33,12 @@ import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
 import type {
   AgentRuntimeDefinition,
   AgentRuntimeDraft,
+  AgentRuntimeAppearance,
   AgentRuntimeProbe,
   AgentRuntimeRun,
   AgentRuntimeTaskInput,
 } from "../shared/agent-runtimes";
+import type { ProjectFolderRecord } from "../shared/project-folders";
 import type {
   AssignProjectTaskInput,
   CreateProjectTasksFromPlanInput,
@@ -48,12 +50,25 @@ import type {
   ProjectControlTask,
   ProjectTaskEvent,
   ProjectTaskStatus,
+  UpdateProjectCollaboratorsInput,
+  UpdateProjectScopeInput,
 } from "../shared/project-control";
 import type {
   CreateTaskCenterTaskInput,
   TaskCenterTask,
   TaskCenterWorktree,
 } from "../shared/task-center";
+import type { ConversationTaskLink } from "../shared/conversation-tasks";
+import type {
+  CreateTaskScheduleInput,
+  TaskSchedule,
+  TaskScheduleTriggerResult,
+} from "../shared/task-schedules";
+import type {
+  RuntimeConversation,
+  RuntimeConversationSummary,
+  SaveRuntimeConversationInput,
+} from "../shared/runtime-conversations";
 
 interface ElectronAPI {
   process: {
@@ -294,7 +309,7 @@ interface HermesAPI {
   getAccount: (profile?: string) => Promise<HermesAccount | null>;
   accountLogout: (profile?: string) => Promise<{ success: boolean }>;
 
-  // Cloud agent sync (profiles ↔ signed-in Hermes One account)
+  // Cloud agent sync (profiles ↔ signed-in Agents One account)
   syncAgents: () => Promise<AgentSyncResult>;
   getAgentSyncStatus: () => Promise<AgentSyncStatus>;
   onAgentSyncUpdated: (
@@ -360,6 +375,10 @@ interface HermesAPI {
   saveAgentRuntime: (
     draft: AgentRuntimeDraft,
   ) => Promise<AgentRuntimeDefinition>;
+  saveAgentRuntimeAppearance: (
+    id: string,
+    appearance: AgentRuntimeAppearance,
+  ) => Promise<AgentRuntimeDefinition>;
   removeAgentRuntime: (id: string) => Promise<boolean>;
   getAgentRuntimeCredentialStatus: (
     id: string,
@@ -368,7 +387,19 @@ interface HermesAPI {
     id: string,
     bearerToken: string,
   ) => Promise<{ configured: true }>;
+  setAgentRuntimeDashboardToken: (
+    id: string,
+    dashboardToken: string,
+  ) => Promise<{ configured: true }>;
+  setAgentRuntimeWorkspaceGatewayToken: (
+    id: string,
+    bearerToken: string,
+  ) => Promise<{ configured: true }>;
   probeAgentRuntime: (id: string) => Promise<AgentRuntimeProbe>;
+  probeAgentRuntimeDraft: (
+    draft: AgentRuntimeDraft,
+    bearerToken?: string,
+  ) => Promise<AgentRuntimeProbe>;
   startAgentRuntimeTask: (
     runtimeId: string,
     input: AgentRuntimeTaskInput,
@@ -376,8 +407,20 @@ interface HermesAPI {
   getAgentRuntimeRun: (runId: string) => Promise<AgentRuntimeRun | null>;
   cancelAgentRuntimeTask: (runId: string) => Promise<boolean>;
   listTaskCenterTasks: () => Promise<TaskCenterTask[]>;
-  createTaskCenterTask: (input: CreateTaskCenterTaskInput) => Promise<TaskCenterTask>;
+  listConversationTasks: (conversationId: string) => Promise<TaskCenterTask[]>;
+  linkConversationTask: (
+    conversationId: string,
+    taskId: string,
+  ) => Promise<ConversationTaskLink>;
+  unlinkConversationTask: (
+    conversationId: string,
+    taskId: string,
+  ) => Promise<boolean>;
+  createTaskCenterTask: (
+    input: CreateTaskCenterTaskInput,
+  ) => Promise<TaskCenterTask>;
   cancelTaskCenterTask: (id: string) => Promise<TaskCenterTask | null>;
+  retryTaskCenterTask: (id: string) => Promise<TaskCenterTask | null>;
   setTaskCenterAcceptance: (
     id: string,
     acceptance: "accepted" | "rejected",
@@ -385,22 +428,58 @@ interface HermesAPI {
   openTaskCenterWorktree: (worktree: string) => Promise<boolean>;
   listTaskCenterWorktrees: () => Promise<TaskCenterWorktree[]>;
   removeTaskCenterWorktree: (worktree: string) => Promise<boolean>;
+  listTaskSchedules: (profile?: string) => Promise<TaskSchedule[]>;
+  createTaskSchedule: (
+    input: CreateTaskScheduleInput,
+    profile?: string,
+  ) => Promise<TaskSchedule>;
+  setTaskScheduleEnabled: (
+    id: string,
+    enabled: boolean,
+    profile?: string,
+  ) => Promise<TaskSchedule>;
+  triggerTaskSchedule: (
+    id: string,
+    profile?: string,
+  ) => Promise<TaskScheduleTriggerResult>;
+  deleteTaskSchedule: (id: string, profile?: string) => Promise<boolean>;
   listProjectControlProjects: () => Promise<ProjectControlProject[]>;
-  createProjectControlProject: (input: CreateProjectInput) => Promise<ProjectControlProject>;
+  createProjectControlProject: (
+    input: CreateProjectInput,
+  ) => Promise<ProjectControlProject>;
   setProjectControlStatus: (
     projectId: string,
     status: "active" | "paused" | "completed" | "cancelled",
     summary: string,
   ) => Promise<ProjectControlProject>;
+  updateProjectControlScope: (
+    input: UpdateProjectScopeInput,
+  ) => Promise<ProjectControlProject>;
+  updateProjectControlCollaborators: (
+    input: UpdateProjectCollaboratorsInput,
+  ) => Promise<ProjectControlProject>;
   listProjectControlTasks: (projectId: string) => Promise<ProjectControlTask[]>;
   listProjectControlEvents: (projectId: string) => Promise<ProjectTaskEvent[]>;
-  listProjectControlArtifacts: (projectId: string) => Promise<import("../shared/project-control").ProjectArtifactReference[]>;
-  createProjectControlTask: (input: CreateProjectTaskInput) => Promise<ProjectControlTask>;
-  assignProjectControlTask: (input: AssignProjectTaskInput) => Promise<ProjectControlTask>;
+  listProjectControlArtifacts: (
+    projectId: string,
+  ) => Promise<import("../shared/project-control").ProjectArtifactReference[]>;
+  createProjectControlTask: (
+    input: CreateProjectTaskInput,
+  ) => Promise<ProjectControlTask>;
+  assignProjectControlTask: (
+    input: AssignProjectTaskInput,
+  ) => Promise<ProjectControlTask>;
   dispatchProjectControlTask: (taskId: string) => Promise<ProjectControlTask>;
-  startProjectCoordinatorPlan: (projectId: string) => Promise<ProjectControlTask>;
-  previewProjectPlanTasks: (projectId: string, sourceTaskId: string) => Promise<ProjectPlanDraft>;
-  createProjectTasksFromPlan: (input: CreateProjectTasksFromPlanInput) => Promise<ProjectControlTask[]>;
+  startProjectCoordinatorPlan: (
+    projectId: string,
+  ) => Promise<ProjectControlTask>;
+  previewProjectPlanTasks: (
+    projectId: string,
+    sourceTaskId: string,
+  ) => Promise<ProjectPlanDraft>;
+  createProjectTasksFromPlan: (
+    input: CreateProjectTasksFromPlanInput,
+  ) => Promise<ProjectControlTask[]>;
   reviewProjectControlTask: (
     taskId: string,
     acceptance: "accepted" | "rejected",
@@ -412,7 +491,9 @@ interface HermesAPI {
     status: ProjectTaskStatus,
     summary: string,
   ) => Promise<ProjectControlTask>;
-  createProjectControlContext: (taskId: string) => Promise<ProjectContextPackage>;
+  createProjectControlContext: (
+    taskId: string,
+  ) => Promise<ProjectContextPackage>;
   getConnectionConfig: () => Promise<{
     mode: "local" | "remote" | "ssh";
     remoteUrl: string;
@@ -859,6 +940,43 @@ interface HermesAPI {
   deleteSessions: (
     sessionIds: string[],
   ) => Promise<{ requested: number; deleted: number }>;
+  saveTaskCollaboration: (
+    input: import("../shared/task-collaboration").SaveTaskCollaborationInput,
+    profile?: string,
+  ) => Promise<import("../shared/task-collaboration").TaskCollaborationRecord>;
+  getTaskCollaboration: (
+    taskId: string,
+    profile?: string,
+  ) => Promise<import("../shared/task-collaboration").TaskCollaborationRecord | null>;
+  linkTaskCollaboration: (
+    input: import("../shared/task-collaboration").LinkTaskCollaborationInput,
+    profile?: string,
+  ) => Promise<import("../shared/task-collaboration").TaskCollaborationRecord>;
+  updateTaskCollaborationExecution: (
+    input: import("../shared/task-collaboration").UpdateTaskCollaborationExecutionInput,
+    profile?: string,
+  ) => Promise<import("../shared/task-collaboration").TaskCollaborationRecord>;
+  listTaskCollaborations: (
+    profile?: string,
+  ) => Promise<import("../shared/task-collaboration").TaskCollaborationRecord[]>;
+  listRuntimeConversations: (
+    profile?: string,
+    limit?: number,
+    offset?: number,
+  ) => Promise<RuntimeConversationSummary[]>;
+  getRuntimeConversation: (
+    id: string,
+    profile?: string,
+  ) => Promise<RuntimeConversation | null>;
+  saveRuntimeConversation: (
+    input: SaveRuntimeConversationInput,
+  ) => Promise<RuntimeConversation>;
+  updateRuntimeConversationTitle: (
+    id: string,
+    title: string,
+    profile?: string,
+  ) => Promise<boolean>;
+  deleteRuntimeConversation: (id: string, profile?: string) => Promise<boolean>;
 
   // Session search
   searchSessions: (
@@ -1078,7 +1196,16 @@ interface HermesAPI {
     input: KanbanCreateTaskInput,
     profile?: string,
   ) => Promise<{ success: boolean; data?: { id: string }; error?: string }>;
-  selectFolder: () => Promise<string | null>;
+  selectFolder: (options?: {
+    title?: string;
+    buttonLabel?: string;
+  }) => Promise<string | null>;
+  createProjectFolder: () => Promise<string | null>;
+  listProjectFolders: () => Promise<ProjectFolderRecord[]>;
+  registerProjectFolder: (
+    folderPath: string,
+  ) => Promise<ProjectFolderRecord | null>;
+  prepareProjectContext: (folderPath: string) => Promise<Attachment | null>;
   readDirectory: (
     dirPath: string,
   ) => Promise<{ name: string; isDirectory: boolean }[] | null>;

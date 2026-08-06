@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import { isBubbleMessage, markActiveTurnFailed } from "../chatMessages";
-import type { ActiveTurn, ChatMessage, UsageState } from "../types";
+import type {
+  ActiveTurn,
+  ChatBubbleMessage,
+  ChatMessage,
+  UsageState,
+} from "../types";
 import {
   dbItemsToChatMessages,
   reconcileAfterDbRefresh,
@@ -18,12 +23,94 @@ interface UseChatIPCArgs {
   runId: string;
   /** The session currently visible in this Chat, if already known. */
   sessionScopeId: string | null;
+  messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setHermesSessionId: (id: string) => void;
   setToolProgress: (tool: string | null) => void;
   setIsLoading: (loading: boolean) => void;
   setUsage: React.Dispatch<React.SetStateAction<UsageState | null>>;
   activeTurnRef: React.MutableRefObject<ActiveTurn | null>;
+}
+
+function normalizedPersistedTurnText(text: string): string {
+  return text
+    .replace(/<file\b[^>]*>[\s\S]*?<\/file>/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLocaleLowerCase();
+}
+
+/**
+ * Return a stable signature only when the persisted transcript contains the
+ * active user occurrence followed by a final assistant bubble. Tool rows after
+ * that bubble keep the turn active, preventing an intermediate tool preamble
+ * from being mistaken for completion.
+ */
+export function persistedTurnCompletionSignature(
+  current: ReadonlyArray<ChatMessage>,
+  persisted: ReadonlyArray<ChatMessage>,
+  activeTurn: ActiveTurn | null | undefined,
+): string | null {
+  if (!activeTurn || activeTurn.status !== "running") return null;
+  const activeUserIndex = current.findIndex(
+    (message) =>
+      isBubbleMessage(message) &&
+      message.role === "user" &&
+      (message.id === activeTurn.userId || message.turnId === activeTurn.turnId),
+  );
+  if (activeUserIndex < 0) return null;
+
+  const activeUser = current[activeUserIndex];
+  if (!isBubbleMessage(activeUser)) return null;
+  const userKey = normalizedPersistedTurnText(activeUser.content);
+  if (!userKey) return null;
+
+  const expectedOccurrence = current
+    .slice(0, activeUserIndex + 1)
+    .filter(
+      (message) =>
+        isBubbleMessage(message) &&
+        message.role === "user" &&
+        normalizedPersistedTurnText(message.content) === userKey,
+    ).length;
+  const persistedUserIndexes = persisted
+    .map((message, index) => ({ message, index }))
+    .filter(
+      ({ message }) =>
+        isBubbleMessage(message) &&
+        message.role === "user" &&
+        normalizedPersistedTurnText(message.content) === userKey,
+    )
+    .map(({ index }) => index);
+  if (persistedUserIndexes.length < expectedOccurrence) return null;
+
+  const persistedUserIndex = persistedUserIndexes[expectedOccurrence - 1];
+  let finalAssistant: ChatBubbleMessage | null = null;
+  let finalAssistantIndex = -1;
+  for (let index = persistedUserIndex + 1; index < persisted.length; index++) {
+    const message = persisted[index];
+    if (isBubbleMessage(message) && message.role === "user") return null;
+    if (
+      isBubbleMessage(message) &&
+      message.role === "agent" &&
+      !message.error &&
+      normalizedPersistedTurnText(message.content)
+    ) {
+      finalAssistant = message;
+      finalAssistantIndex = index;
+    }
+  }
+  if (!finalAssistant) return null;
+
+  const hasTrailingToolActivity = persisted
+    .slice(finalAssistantIndex + 1)
+    .some(
+      (message) =>
+        message.kind === "tool_call" || message.kind === "tool_result",
+    );
+  if (hasTrailingToolActivity) return null;
+
+  return `${finalAssistant.id}:${normalizedPersistedTurnText(finalAssistant.content)}`;
 }
 
 /**
@@ -45,6 +132,7 @@ export function eventMatchesRun(eventRunId: string, ownRunId: string): boolean {
 export function useChatIPC({
   runId,
   sessionScopeId,
+  messages,
   setMessages,
   setHermesSessionId,
   setToolProgress,
@@ -56,6 +144,13 @@ export function useChatIPC({
   const dbPollRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
   const dbPollInFlightRef = useRef(false);
   const acceptedSessionIdRef = useRef<string | null>(sessionScopeId);
+  const messagesRef = useRef(messages);
+  const persistedCompletionRef = useRef<{
+    turnId: string;
+    signature: string;
+    confirmations: number;
+  } | null>(null);
+  messagesRef.current = messages;
 
   const stopDbPolling = useCallback((): void => {
     if (dbPollRef.current !== null) {
@@ -69,6 +164,7 @@ export function useChatIPC({
     if (sessionScopeId === acceptedSessionIdRef.current) return;
     acceptedSessionIdRef.current = sessionScopeId;
     reasoningSegmentClosedRef.current = false;
+    persistedCompletionRef.current = null;
     stopDbPolling();
   }, [sessionScopeId, stopDbPolling]);
 
@@ -99,9 +195,44 @@ export function useChatIPC({
         }
         const dbMessages = dbItemsToChatMessages(items);
         if (dbMessages.length === 0) return;
-        setMessages((prev) =>
-          reconcileAfterDbRefresh(prev, dbMessages, { activeTurn }),
+        const completionSignature = persistedTurnCompletionSignature(
+          messagesRef.current,
+          dbMessages,
+          activeTurn,
         );
+        setMessages((prev) => {
+          const next = reconcileAfterDbRefresh(prev, dbMessages, { activeTurn });
+          messagesRef.current = next;
+          return next;
+        });
+
+        if (
+          completionSignature &&
+          activeTurn &&
+          activeTurnRef.current === activeTurn
+        ) {
+          const previous = persistedCompletionRef.current;
+          const nextConfirmation =
+            previous?.turnId === activeTurn.turnId &&
+            previous.signature === completionSignature
+              ? previous.confirmations + 1
+              : 1;
+          persistedCompletionRef.current = {
+            turnId: activeTurn.turnId,
+            signature: completionSignature,
+            confirmations: nextConfirmation,
+          };
+          if (nextConfirmation >= 2) {
+            activeTurn.status = "completed";
+            activeTurnRef.current = null;
+            persistedCompletionRef.current = null;
+            stopDbPolling();
+            setToolProgress(null);
+            setIsLoading(false);
+          }
+        } else {
+          persistedCompletionRef.current = null;
+        }
       } catch {
         // Mid-stream DB refresh is opportunistic; final refresh still runs.
       } finally {
@@ -121,6 +252,7 @@ export function useChatIPC({
       (eventRunId, sessionId) => {
         if (!eventMatchesRun(eventRunId, runId) || !sessionId) return;
         acceptedSessionIdRef.current = sessionId;
+        persistedCompletionRef.current = null;
         setHermesSessionId(sessionId);
         startDbPolling(sessionId);
       },
@@ -129,6 +261,7 @@ export function useChatIPC({
     const cleanupChunk = window.hermesAPI.onChatChunk((eventRunId, chunk) => {
       if (!eventMatchesRun(eventRunId, runId)) return;
       if (!activeTurnRef.current) return;
+      persistedCompletionRef.current = null;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (
@@ -137,11 +270,15 @@ export function useChatIPC({
           isBubbleMessage(last) &&
           !last.error
         ) {
+          if (chunk === last.content) return prev;
+          const nextContent = chunk.startsWith(last.content)
+            ? chunk
+            : last.content + chunk;
           return [
             ...prev.slice(0, -1),
             {
               ...last,
-              content: last.content + chunk,
+              content: nextContent,
               pending: true,
               turnId: last.turnId || activeTurnRef.current?.turnId,
             },
@@ -168,8 +305,10 @@ export function useChatIPC({
         if (!eventMatchesRun(eventRunId, runId)) return;
         if (!activeTurnRef.current) return;
         if (!chunk) return;
+        persistedCompletionRef.current = null;
         const forceNewSegment = reasoningSegmentClosedRef.current;
         reasoningSegmentClosedRef.current = false;
+        persistedCompletionRef.current = null;
         setMessages((prev) =>
           upsertLiveReasoningChunk(prev, chunk, Date.now(), forceNewSegment),
         );
@@ -225,6 +364,7 @@ export function useChatIPC({
     const cleanupError = window.hermesAPI.onChatError((eventRunId, error) => {
       if (!eventMatchesRun(eventRunId, runId)) return;
       reasoningSegmentClosedRef.current = false;
+      persistedCompletionRef.current = null;
       stopDbPolling();
       const activeTurn = activeTurnRef.current;
       if (!activeTurn) return;
@@ -267,6 +407,7 @@ export function useChatIPC({
       (eventRunId, tool) => {
         if (!eventMatchesRun(eventRunId, runId)) return;
         if (!activeTurnRef.current) return;
+        persistedCompletionRef.current = null;
         setToolProgress(null);
         if (!tool.trim()) return;
         reasoningSegmentClosedRef.current = true;
@@ -303,6 +444,7 @@ export function useChatIPC({
       (eventRunId, toolEvent) => {
         if (!eventMatchesRun(eventRunId, runId)) return;
         if (!activeTurnRef.current) return;
+        persistedCompletionRef.current = null;
         setToolProgress(null);
         reasoningSegmentClosedRef.current = true;
         setMessages((prev) => upsertLiveToolEvent(prev, toolEvent));

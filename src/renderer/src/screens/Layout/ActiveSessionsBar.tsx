@@ -1,11 +1,12 @@
 import { memo } from "react";
-import { Spinner, X, Plus } from "../../assets/icons";
+import { Bot, Spinner, X, Plus } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 import { defaultColorForName } from "../../../../shared/profileColors";
 import type { ChatRun } from "./chatRuns";
 
 export interface ProfileAppearance {
+  name?: string | null;
   color?: string | null;
   avatar?: string | null;
 }
@@ -33,13 +34,18 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
   onClose: (runId: string) => void;
   /** Open a fresh conversation tab (browser-style new-tab button). */
   onNew: () => void;
-  /** Resolve a profile's avatar/colour for its chip. */
-  getAppearance?: (profile: string) => ProfileAppearance;
+  /** Resolve the current agent's display metadata for one conversation chip. */
+  getAppearance?: (run: ChatRun) => ProfileAppearance;
 }): React.JSX.Element {
   const { t } = useI18n();
 
   const anyLoading = runs.some((r) => r.loading);
-  const hasRealSession = runs.some((r) => r.sessionId || r.title);
+  // A blank runtime selector is not a conversation yet. Keeping it out of the
+  // tab strip prevents a new Codex/OpenClaw draft from looking like a duplicate
+  // of the persisted conversation that appears in the sidebar after send.
+  const hasRealSession = runs.some(
+    (r) => r.sessionId || r.runtimeConversationId || r.title,
+  );
   // Nothing real to switch to yet → leave the strip empty (pure drag area).
   const showChips = runs.length > 1 || anyLoading || hasRealSession;
 
@@ -49,8 +55,11 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
         runs.map((run) => {
           const active = run.runId === activeRunId;
           const label = run.title || t("sessions.newConversation");
-          const appearance = getAppearance?.(run.profile);
-          const color = appearance?.color || defaultColorForName(run.profile);
+          const appearance = getAppearance?.(run);
+          const agentLabel = appearance?.name || run.runtimeName || run.profile;
+          const color =
+            appearance?.color ||
+            defaultColorForName(run.runtimeId || run.profile);
           return (
             <div
               key={run.runId}
@@ -60,24 +69,37 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
                 run.loading ? "loading" : ""
               }`}
               onClick={() => onSelect(run.runId)}
-              title={`${run.profile} — ${label}`}
+              title={`${agentLabel} — ${label}`}
             >
-              {run.loading ? (
-                <span
-                  className="active-session-chip-avatar"
-                  style={{ background: color }}
-                  aria-label={run.profile}
-                >
-                  <Spinner className="active-session-chip-spinner" size={12} />
-                </span>
-              ) : (
-                <ProfileAvatar
-                  name={run.profile}
-                  color={appearance?.color}
-                  avatar={appearance?.avatar}
-                  size={18}
-                />
-              )}
+              <span className="active-session-chip-identity">
+                {run.runtimeId && !appearance?.avatar ? (
+                  <span
+                    className={`active-session-chip-runtime ${run.runtimeKind || ""}`}
+                    style={{ background: color }}
+                    aria-label={agentLabel}
+                  >
+                    <Bot size={13} />
+                  </span>
+                ) : (
+                  <ProfileAvatar
+                    name={agentLabel}
+                    color={appearance?.color}
+                    avatar={appearance?.avatar}
+                    size={18}
+                  />
+                )}
+                {run.loading ? (
+                  <span
+                    className="active-session-chip-activity"
+                    aria-label={`${agentLabel} 正在处理`}
+                  >
+                    <Spinner
+                      className="active-session-chip-spinner"
+                      size={8}
+                    />
+                  </span>
+                ) : null}
+              </span>
               <span className="active-session-chip-title">{label}</span>
               <button
                 type="button"

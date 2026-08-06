@@ -1,16 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Brain,
-  Database,
   Plug,
   Pencil,
   Puzzle,
-  Settings,
   Signal,
-  Sparkles,
   Trash,
   User,
-  Wallet,
   X,
 } from "../../assets/icons";
 import ProfileAvatar from "../common/ProfileAvatar";
@@ -63,19 +59,32 @@ type ProfileChipIcon = React.ComponentType<{
   className?: string;
 }>;
 
-/** Left-nav sections. Built to grow; each renders into the right-hand content
- *  pane. */
+/** Remote Hermes does not expose persona, memory, wallet, or destructive
+ * profile APIs through this desktop. Keep this surface to the local appearance
+ * controls that actually work. */
 const PROFILE_SECTIONS: ReadonlyArray<{
   id: ProfileSection;
   labelKey: string;
   Icon: React.ComponentType<{ size?: number }>;
 }> = [
   { id: "profile", labelKey: "agents.sectionProfile", Icon: User },
-  { id: "persona", labelKey: "agents.sectionPersona", Icon: Sparkles },
-  { id: "agentMemory", labelKey: "agents.sectionAgentMemory", Icon: Database },
-  { id: "wallet", labelKey: "agents.sectionWallet", Icon: Wallet },
-  { id: "advanced", labelKey: "agents.sectionAdvanced", Icon: Settings },
 ];
+
+const MEMORY_LOAD_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
 
 /**
  * Global profile detail/appearance modal (80vw × 80vh). Opened from anywhere
@@ -138,7 +147,11 @@ export default function ProfileModal({
     setMemoryLoading(true);
     setMemoryError("");
     try {
-      const data = await window.hermesAPI.readMemory(profile.id);
+      const data = await withTimeout(
+        window.hermesAPI.readMemory(profile.id),
+        MEMORY_LOAD_TIMEOUT_MS,
+        t("memory.loadFailed"),
+      );
       setMemoryData(data as MemoryData);
     } catch {
       setMemoryError(t("memory.loadFailed"));
@@ -500,7 +513,16 @@ export default function ProfileModal({
                     onRefresh={loadMemoryData}
                   />
                 ) : memoryError ? (
-                  <div className="memory-error">{memoryError}</div>
+                  <div className="memory-error profile-modal-memory-error">
+                    <span>{memoryError}</span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => void loadMemoryData()}
+                    >
+                      {t("agents.retry")}
+                    </button>
+                  </div>
                 ) : null}
               </div>
             )}

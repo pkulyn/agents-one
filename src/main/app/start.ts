@@ -21,8 +21,9 @@ import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
+import { startTaskScheduleRunner, stopTaskScheduleRunner } from "../task-schedules";
 
-const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Hermes One";
+const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Agents One";
 const OPEN_DEVTOOLS_ON_START =
   process.env.HERMES_OPEN_DEVTOOLS === "1" ||
   process.env.HERMES_DESKTOP_OPEN_DEVTOOLS === "1";
@@ -50,7 +51,10 @@ export function startMainProcess(): void {
   setupUpdater({ getMainWindow: () => mainWindow });
 
   app.whenReady().then(() => {
+    // Stable Windows identity for an in-place upgrade from Hermes One. The
+    // visible product name is configured independently as Agents One.
     electronApp.setAppUserModelId("com.hermes.desktop");
+    startTaskScheduleRunner();
 
     app.on("browser-window-created", (_, window) => {
       optimizer.watchWindowShortcuts(window);
@@ -116,6 +120,7 @@ export function startMainProcess(): void {
 
   app.on("before-quit", () => {
     stopHealthPolling();
+    stopTaskScheduleRunner();
     for (const abort of activeRuns.values()) abort();
     activeRuns.clear();
     cleanupTempMediaFiles();
@@ -163,7 +168,7 @@ function createWindow(): void {
     ...(process.platform === "darwin"
       ? { trafficLightPosition: { x: 16, y: 16 } }
       : {}),
-    ...(process.platform === "linux" ? { icon } : {}),
+    icon,
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       nodeIntegration: false,

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 144" role="img" aria-labelledby="title">
+  <title id="title">Agents One</title>
+  <defs>
+    <linearGradient id="dawn" x1="18" y1="18" x2="126" y2="126" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2C92F5"/>
+      <stop offset=".32" stop-color="#7064E8"/>
+      <stop offset=".58" stop-color="#D976AA"/>
+      <stop offset=".82" stop-color="#FFC46A"/>
+      <stop offset="1" stop-color="#2C92F5"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="128" height="128" rx="31" fill="#fff" stroke="#E3E8F1" stroke-width="3"/>
+  <circle cx="72" cy="72" r="35" fill="none" stroke="#EDF1F6" stroke-width="17"/>
+  <circle cx="72" cy="72" r="35" fill="none" stroke="url(#dawn)" stroke-width="17"/>
+  <text x="164" y="88" fill="#171A21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="54" font-weight="800">AGENTS ONE</text>
+</svg>

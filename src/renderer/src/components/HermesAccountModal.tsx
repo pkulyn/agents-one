@@ -16,7 +16,7 @@ interface HermesAccountModalProps {
 type Status = "running" | "success" | "error";
 
 /**
- * Drives the Hermes One account device-login (RFC 8628). The main process
+ * Drives the Agents One account device-login (RFC 8628). The main process
  * requests a code, opens the browser to the approval page, and polls for the
  * token; this modal shows the user_code to confirm — with a loader spinning
  * around the brand mark while it waits — and reports the result.

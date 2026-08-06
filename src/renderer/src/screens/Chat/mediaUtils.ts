@@ -25,7 +25,9 @@ const BARE_PATH_EXT =
   "odt|rtf|zip|tar|gz|mp4|mov|webm|mkv|avi|mp3|wav|ogg|opus|m4a|flac";
 
 // MEDIA: + optional whitespace + (quoted) | (bare non-whitespace run).
-const MEDIA_RE = /MEDIA:[ \t]*(?:`([^`\n]+)`|"([^"\n]+)"|'([^'\n]+)'|(\S+))/g;
+// The full-width colon is accepted because some remote agents localize the
+// protocol marker while composing Chinese output.
+const MEDIA_RE = /MEDIA[：:][ \t]*(?:`([^`\n]+)`|"([^"\n]+)"|'([^'\n]+)'|(\S+))/g;
 
 // Markdown image syntax with a raw local/remote filesystem or direct image
 // destination.
@@ -263,7 +265,8 @@ export function parseMediaTokens(content: string): MediaSegment[] {
   // 1) Explicit MEDIA: tokens.
   MEDIA_RE.lastIndex = 0;
   while ((m = MEDIA_RE.exec(content)) !== null) {
-    if (inCode(m.index, code)) continue;
+    // MEDIA is an explicit delivery protocol, not prose. It must win even
+    // when the provider wraps the final answer in a Markdown code block.
     const quoted = m[1] ?? m[2] ?? m[3];
     const token = toToken(quoted ?? m[4] ?? "", quoted !== undefined);
     if (!token) continue;

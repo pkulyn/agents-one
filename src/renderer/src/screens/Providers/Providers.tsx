@@ -451,7 +451,7 @@ function Providers({
     const isSet = (k: string): boolean => !!(env[k] && env[k].trim());
     const out: PickerProvider[] = [];
     const seen = new Set<string>();
-    // 1) Keyed FieldDef providers, in FieldDef order (Hermes One first).
+    // 1) Keyed FieldDef providers, in FieldDef order (Agents One first).
     const llm = SETTINGS_SECTIONS.find(
       (s) => s.title === "constants.sectionLlmProviders",
     );

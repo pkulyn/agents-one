@@ -82,14 +82,20 @@ export const RemoteFolderPicker = memo(function RemoteFolderPicker({
     setLoading(true);
     setError(null);
 
-    const result = await window.hermesAPI.readDirectory(nextPath);
-    if (result === null) {
+    try {
+      const result = await window.hermesAPI.readDirectory(nextPath);
+      if (result === null) {
+        setEntries([]);
+        setError(t("chat.folderPicker.unavailable"));
+      } else {
+        setEntries(result);
+      }
+    } catch {
       setEntries([]);
       setError(t("chat.folderPicker.unavailable"));
-    } else {
-      setEntries(result);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [t]);
 
   useEffect(() => {
@@ -185,6 +191,7 @@ export const RemoteFolderPicker = memo(function RemoteFolderPicker({
           </button>
           <input
             ref={inputRef}
+            aria-label={t("chat.folderPicker.path")}
             className="folder-picker-input"
             onChange={(event) => setPathInput(event.target.value)}
             value={pathInput}
@@ -194,7 +201,10 @@ export const RemoteFolderPicker = memo(function RemoteFolderPicker({
           </button>
         </form>
 
-        <div className="folder-picker-breadcrumbs" aria-label="Breadcrumb">
+        <div
+          className="folder-picker-breadcrumbs"
+          aria-label={t("chat.folderPicker.breadcrumbs")}
+        >
           {pathParts(currentPath).map((part, index) => (
             <button
               className="folder-picker-crumb"

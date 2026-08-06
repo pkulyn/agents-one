@@ -1,5 +1,5 @@
 export default {
-  appName: "Hermes One",
+  appName: "Agents One",
   continue: "继续",
   cancel: "取消",
   retry: "重试",
@@ -17,6 +17,7 @@ export default {
   create: "创建",
   close: "关闭",
   confirm: "确认",
+  done: "完成",
   reset: "重置",
   back: "返回",
   open: "打开",

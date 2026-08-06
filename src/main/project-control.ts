@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { randomUUID } from "crypto";
+import { redactSensitiveText } from "../shared/redaction";
 import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
 import { listAgentRuntimes } from "./agent-runtimes";
+import { listRuntimeConversations } from "./runtime-conversation-store";
 import {
   cancelTaskCenterTask,
   createTaskCenterTask,
@@ -10,7 +12,7 @@ import {
   setTaskCenterAcceptance,
 } from "./task-center";
 import type { TaskCenterTask } from "../shared/task-center";
-import type { AgentRuntimeKind } from "../shared/agent-runtimes";
+import type { AgentRuntimeEvent, AgentRuntimeKind } from "../shared/agent-runtimes";
 import type {
   AssignProjectTaskInput,
   CreateProjectTasksFromPlanInput,
@@ -18,7 +20,9 @@ import type {
   CreateProjectTaskInput,
   ProjectArtifactReference,
   ProjectContextPackage,
+  ProjectCollaboratorAssignment,
   ProjectControlProject,
+  ProjectConversationReference,
   ProjectControlTask,
   ProjectPlanDraft,
   ProjectPlanDraftTask,
@@ -26,7 +30,26 @@ import type {
   ProjectRole,
   ProjectStatus,
   ProjectTaskStatus,
+  UpdateProjectScopeInput,
+  UpdateProjectCollaboratorsInput,
 } from "../shared/project-control";
+
+const PROJECT_TASK_STATUS_LABELS: Record<string, string> = {
+  ready: "待分配",
+  blocked: "已阻塞",
+  queued: "排队中",
+  running: "执行中",
+  review_required: "待验收",
+  accepted: "已验收",
+  rejected: "已退回",
+  failed: "失败",
+  timed_out: "已超时",
+  cancelled: "已取消",
+};
+
+function projectTaskStatusLabel(status: string): string {
+  return PROJECT_TASK_STATUS_LABELS[status] || status;
+}
 
 const VERSION = 1;
 const MAX_PROJECTS = 100;
@@ -34,6 +57,9 @@ const MAX_TASKS = 1_000;
 const MAX_EVENTS = 5_000;
 const MAX_ARTIFACTS = 2_000;
 const MAX_CONTEXT_PACKAGES = 2_000;
+const MAX_PROJECT_CONVERSATIONS = 50;
+const MAX_PROJECT_COLLABORATORS = 5;
+const MAX_WORKSPACE_REFERENCE_LENGTH = 4_096;
 const RUNTIME_KINDS = new Set<AgentRuntimeKind>(["hermes", "openclaw", "codex", "claude-code"]);
 const PROJECT_ROLES = new Set<ProjectRole>(["manager", "implementer", "tester", "reviewer", "acceptor"]);
 
@@ -103,6 +129,65 @@ function optionalText(value: unknown, maxLength: number): string | undefined {
     if (parts.length) return parts.join("\n").slice(0, maxLength);
   }
   return undefined;
+}
+
+function workspaceReference(value: unknown): string | undefined {
+  return optionalText(value, MAX_WORKSPACE_REFERENCE_LENGTH);
+}
+
+function conversationReferences(ids: unknown): ProjectConversationReference[] {
+  if (!Array.isArray(ids)) return [];
+  const requestedIds = [...new Set(
+    ids
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  )].slice(0, MAX_PROJECT_CONVERSATIONS);
+  if (!requestedIds.length) return [];
+  const available = new Map(
+    listRuntimeConversations(undefined, 500, 0).map((conversation) => [conversation.id, conversation]),
+  );
+  return requestedIds.flatMap((id) => {
+    const conversation = available.get(id);
+    if (!conversation) return [];
+    return [{
+      id: conversation.id,
+      title: conversation.title,
+      runtimeId: conversation.runtimeId,
+      runtimeName: conversation.runtimeName,
+      linkedAt: Date.now(),
+    }];
+  });
+}
+
+function collaboratorAssignments(
+  input: UpdateProjectCollaboratorsInput["collaborators"],
+  fallbackCoordinator: ProjectControlProject["coordinator"],
+): ProjectCollaboratorAssignment[] {
+  if (!Array.isArray(input)) throw new Error("Project collaborators are invalid.");
+  const seen = new Set<ProjectRole>();
+  const assignments: ProjectCollaboratorAssignment[] = [];
+  for (const item of input.slice(0, MAX_PROJECT_COLLABORATORS)) {
+    if (!item || !PROJECT_ROLES.has(item.role) || seen.has(item.role)) {
+      throw new Error("Project collaborator roles must be unique and valid.");
+    }
+    if (item.kind !== "human" && item.kind !== "runtime") {
+      throw new Error("Project collaborator type is invalid.");
+    }
+    const runtimeId = item.kind === "runtime" ? requiredText(item.runtimeId, "Collaborator Runtime ID", 64) : undefined;
+    if (runtimeId) runtime(runtimeId);
+    assignments.push({ role: item.role, kind: item.kind, ...(runtimeId ? { runtimeId } : {}), assignedAt: Date.now() });
+    seen.add(item.role);
+  }
+  if (!seen.has("manager")) {
+    assignments.unshift({
+      role: "manager",
+      kind: fallbackCoordinator.kind,
+      ...(fallbackCoordinator.runtimeId ? { runtimeId: fallbackCoordinator.runtimeId } : {}),
+      assignedAt: Date.now(),
+    });
+  }
+  return assignments;
 }
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
@@ -246,7 +331,28 @@ function event(
   state: ProjectControlState,
   entry: Omit<ProjectTaskEvent, "id" | "createdAt">,
 ): void {
-  state.events.push({ id: `event-${randomUUID()}`, createdAt: Date.now(), ...entry });
+  state.events.push({
+    id: `event-${randomUUID()}`,
+    createdAt: Date.now(),
+    ...entry,
+    summary: redactSensitiveText(entry.summary).slice(0, 2_000),
+  });
+}
+
+function projectEventTypeFromRuntime(
+  type: AgentRuntimeEvent["type"],
+): Extract<
+  ProjectTaskEvent["type"],
+  "progress" | "tool_call" | "tool_result" | "message" | "error" | "artifact_published"
+> {
+  if (type === "tool_call") return "tool_call";
+  if (type === "tool_result") return "tool_result";
+  if (type === "message") return "message";
+  if (type === "error" || type === "cancelled" || type === "timed_out") {
+    return "error";
+  }
+  if (type === "artifact_published") return "artifact_published";
+  return "progress";
 }
 
 function getProject(state: ProjectControlState, id: string): ProjectControlProject {
@@ -261,7 +367,7 @@ function getTask(state: ProjectControlState, id: string): ProjectControlTask {
   return task;
 }
 
-function runtime(runtimeId: string) {
+function runtime(runtimeId: string): ReturnType<typeof listAgentRuntimes>[number] {
   const value = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!value || !value.enabled) throw new Error("Assigned Runtime is unavailable.");
   return value;
@@ -269,6 +375,51 @@ function runtime(runtimeId: string) {
 
 function dependenciesAccepted(state: ProjectControlState, task: ProjectControlTask): boolean {
   return task.dependencies.every((id) => getTask(state, id).status === "accepted");
+}
+
+/** Make dependency release visible without implicitly assigning or dispatching work. */
+function releaseReadyTasks(
+  state: ProjectControlState,
+  projectId: string,
+): boolean {
+  let changed = false;
+  for (const task of state.tasks) {
+    if (task.projectId !== projectId || task.status !== "blocked" || !dependenciesAccepted(state, task)) continue;
+    transition(state, task, "ready", "All prerequisite tasks were accepted; ready for assignment.");
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Context packages intentionally carry summaries and references, not artifact bodies.
+ * The bounded text is attached only to the dispatched task, so a project link never
+ * becomes an ambient permission grant to a Runtime.
+ */
+function contextPrompt(state: ProjectControlState, task: ProjectControlTask): string {
+  if (!task.contextPackageId) return "";
+  const pack = state.contextPackages.find((item) => item.id === task.contextPackageId);
+  if (!pack) return "";
+  const lines = [
+    "Project context package (references and summaries only):",
+    `Project objective: ${redactSensitiveText(pack.projectSummary || "").slice(0, 4_000)}`,
+    `Task requirement: ${redactSensitiveText(pack.requirement).slice(0, 8_000)}`,
+  ];
+  if (pack.workspace?.reference) lines.push(`Approved workspace reference: ${redactSensitiveText(pack.workspace.reference).slice(0, MAX_WORKSPACE_REFERENCE_LENGTH)}`);
+  if (pack.upstreamSummaries.length) {
+    lines.push("Upstream summaries:");
+    for (const item of pack.upstreamSummaries.slice(-20)) {
+      lines.push(`- ${redactSensitiveText(item.summary).slice(0, 1_000)}`);
+    }
+  }
+  if (pack.artifacts.length) {
+    lines.push("Published artifact references:");
+    for (const artifact of pack.artifacts.slice(-50)) {
+      const reference = artifact.path ? ` (${redactSensitiveText(artifact.path).slice(0, MAX_WORKSPACE_REFERENCE_LENGTH)})` : "";
+      lines.push(`- ${redactSensitiveText(artifact.label).slice(0, 240)} [${artifact.kind}]${reference}`);
+    }
+  }
+  return lines.join("\n").slice(0, 20_000);
 }
 
 function transition(
@@ -316,16 +467,36 @@ function applyDirectTaskStatus(
   const desired: ProjectTaskStatus =
     direct.status === "review_required"
       ? direct.acceptance === "accepted" ? "accepted" : direct.acceptance === "rejected" ? "rejected" : "review_required"
-      : direct.status === "succeeded" ? "accepted"
+      : direct.status === "succeeded" ? "review_required"
       : direct.status;
   let changed = false;
   if (task.status === "queued" && desired !== "queued" && desired !== "cancelled") {
-    transition(state, task, "running", "Runtime task started.");
+    transition(state, task, "running", "智能体任务已开始执行。");
     changed = true;
   }
   if (task.status !== desired) {
-    transition(state, task, desired, `Task Center status: ${direct.status}.`);
+    transition(state, task, desired, `任务中心状态已更新：${projectTaskStatusLabel(direct.status)}。`);
     changed = true;
+  }
+  const knownRuntimeEvents = new Set(
+    state.events
+      .map((item) => item.sourceEventId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  for (const run of direct.runs || []) {
+    for (const runtimeEvent of run.events || []) {
+      if (knownRuntimeEvents.has(runtimeEvent.id)) continue;
+      event(state, {
+        projectId: task.projectId,
+        taskId: task.id,
+        type: projectEventTypeFromRuntime(runtimeEvent.type),
+        actor: { kind: "runtime", runtimeId: direct.runtimeId },
+        summary: runtimeEvent.summary,
+        sourceEventId: runtimeEvent.id,
+      });
+      knownRuntimeEvents.add(runtimeEvent.id);
+      changed = true;
+    }
   }
   for (const artifact of direct.artifacts || []) {
     const id = `artifact-${direct.id}-${artifact.kind}-${artifact.label}`;
@@ -345,7 +516,7 @@ function applyDirectTaskStatus(
       taskId: task.id,
       type: "artifact_published",
       actor: { kind: "control_plane" },
-      summary: `Artifact published: ${artifact.label}.`,
+        summary: `已发布产物：${artifact.label}。`,
     });
     changed = true;
   }
@@ -361,6 +532,7 @@ export async function listProjectTasks(projectId: string): Promise<ProjectContro
     const direct = directTasks.find((item) => item.id === task.directTaskCenterTaskId);
     if (direct) changed = applyDirectTaskStatus(state, task, direct) || changed;
   }
+  changed = releaseReadyTasks(state, projectId) || changed;
   if (changed) writeState(state);
   return state.tasks.filter((task) => task.projectId === projectId);
 }
@@ -388,11 +560,64 @@ export function createProject(input: CreateProjectInput): ProjectControlProject 
     objective,
     status: "active",
     coordinator: { kind, ...(runtimeId ? { runtimeId } : {}), assignedBy: "user", assignedAt: now },
+    collaborators: [{ role: "manager", kind, ...(runtimeId ? { runtimeId } : {}), assignedAt: now }],
+    ...(workspaceReference(input.workspace) ? { workspace: workspaceReference(input.workspace) } : {}),
+    ...(input.conversationIds ? { conversations: conversationReferences(input.conversationIds) } : {}),
     createdAt: now,
     updatedAt: now,
   };
   state.projects.unshift(project);
-  event(state, { projectId: project.id, type: "project_created", actor: { kind: "user" }, summary: `Project created with ${kind} coordinator.` });
+  event(state, { projectId: project.id, type: "project_created", actor: { kind: "user" }, summary: `项目已创建，协调者为${kind === "human" ? "人工" : "智能体"}。` });
+  writeState(state);
+  return project;
+}
+
+/**
+ * Project scope is intentionally explicit. Updating it stores references only;
+ * a Runtime still receives a workspace or a context package only at dispatch.
+ */
+export function updateProjectScope(input: UpdateProjectScopeInput): ProjectControlProject {
+  const state = readState();
+  const project = getProject(state, requiredText(input?.projectId, "Project ID", 80));
+  const nextWorkspace = workspaceReference(input.workspace);
+  if (nextWorkspace) project.workspace = nextWorkspace;
+  else delete project.workspace;
+  project.conversations = conversationReferences(input.conversationIds);
+  project.updatedAt = Date.now();
+  event(state, {
+    projectId: project.id,
+    type: "project_scope_changed",
+    actor: { kind: "user" },
+    summary: `项目资源已更新：${project.workspace ? "已选择项目目录" : "未选择项目目录"}，关联 ${project.conversations.length} 个对话。`,
+  });
+  writeState(state);
+  return project;
+}
+
+/**
+ * Role defaults make the selected collaboration team visible and reusable. They
+ * never dispatch work: a task still needs an explicit assignment and user action.
+ */
+export function updateProjectCollaborators(input: UpdateProjectCollaboratorsInput): ProjectControlProject {
+  const state = readState();
+  const project = getProject(state, requiredText(input?.projectId, "Project ID", 80));
+  const collaborators = collaboratorAssignments(input?.collaborators, project.coordinator);
+  const manager = collaborators.find((item) => item.role === "manager");
+  if (!manager) throw new Error("A project manager is required.");
+  project.collaborators = collaborators;
+  project.coordinator = {
+    kind: manager.kind,
+    ...(manager.runtimeId ? { runtimeId: manager.runtimeId } : {}),
+    assignedBy: "user",
+    assignedAt: Date.now(),
+  };
+  project.updatedAt = Date.now();
+  event(state, {
+    projectId: project.id,
+    type: "collaborators_changed",
+    actor: { kind: "user" },
+    summary: `项目协作组已更新，共设置 ${collaborators.length} 个角色。`,
+  });
   writeState(state);
   return project;
 }
@@ -452,7 +677,7 @@ export function createProjectTask(input: CreateProjectTaskInput): ProjectControl
   };
   state.tasks.push(task);
   project.updatedAt = now;
-  event(state, { projectId: project.id, taskId: task.id, type: "task_created", actor: { kind: "user" }, summary: `Task created as ${task.status}.` });
+  event(state, { projectId: project.id, taskId: task.id, type: "task_created", actor: { kind: "user" }, summary: "项目任务已创建。" });
   writeState(state);
   return task;
 }
@@ -460,23 +685,25 @@ export function createProjectTask(input: CreateProjectTaskInput): ProjectControl
 export function assignProjectTask(input: AssignProjectTaskInput): ProjectControlTask {
   const state = readState();
   const task = getTask(state, requiredText(input?.taskId, "Project task ID", 80));
+  const project = getProject(state, task.projectId);
   if (task.status === "blocked" && dependenciesAccepted(state, task)) transition(state, task, "ready", "Dependencies accepted.");
   if (task.status !== "ready") throw new Error("Only ready project tasks may be assigned.");
   const assigned = runtime(requiredText(input.runtimeId, "Runtime ID", 64));
-  if (input.mode === "implementation" && assigned.kind !== "codex" && assigned.kind !== "claude-code") {
-    throw new Error("Implementation tasks require Codex or Claude Code.");
+  if (input.mode === "implementation" && assigned.kind !== "codex" && assigned.kind !== "claude-code" && assigned.kind !== "pi") {
+    throw new Error("Implementation tasks require Codex, Claude Code, or Pi Agent CLI.");
   }
+  const selectedWorkspace = workspaceReference(input.workspace) || project.workspace;
   task.assignment = {
     runtimeId: assigned.id,
     role: input.role,
     requestedBy: "user",
     assignedAt: Date.now(),
-    ...(input.workspace?.trim() ? { workspace: input.workspace.trim() } : {}),
+    ...(selectedWorkspace ? { workspace: selectedWorkspace } : {}),
     mode: input.mode,
   };
   task.updatedAt = Date.now();
-  transition(state, task, "queued", `Assigned to ${assigned.name}.`);
-  event(state, { projectId: task.projectId, taskId: task.id, type: "task_assigned", actor: { kind: "user" }, summary: `Assigned ${input.role} Runtime.` });
+  transition(state, task, "queued", `任务已分配给 ${assigned.name}。`);
+  event(state, { projectId: task.projectId, taskId: task.id, type: "task_assigned", actor: { kind: "user" }, summary: `任务已分配给 ${input.runtimeId}。` });
   writeState(state);
   return task;
 }
@@ -487,12 +714,18 @@ export async function dispatchProjectTask(taskId: string): Promise<ProjectContro
   if (task.status !== "queued" || !task.assignment) {
     throw new Error("Only a queued, assigned project task may be dispatched.");
   }
+  const sharedContext = contextPrompt(state, task);
   const direct = await createTaskCenterTask({
     title: task.title,
-    prompt: `${task.requirement}\n\nAcceptance criteria:\n${task.acceptanceCriteria}`,
+    prompt: [
+      task.requirement,
+      `Acceptance criteria:\n${task.acceptanceCriteria}`,
+      sharedContext,
+    ].filter(Boolean).join("\n\n"),
     runtimeId: task.assignment.runtimeId,
     mode: task.assignment.mode,
     workspace: task.assignment.workspace,
+    requireReview: true,
   });
   task.directTaskCenterTaskId = direct.id;
   task.updatedAt = Date.now();
@@ -502,7 +735,7 @@ export async function dispatchProjectTask(taskId: string): Promise<ProjectContro
     taskId: task.id,
     type: "handoff",
     actor: { kind: "control_plane" },
-    summary: `Dispatched through Task Center to ${task.assignment.runtimeId}.`,
+    summary: `任务已通过任务中心派发给 ${task.assignment.runtimeId}。`,
   });
   writeState(state);
   return task;
@@ -580,7 +813,7 @@ export async function startCoordinatorPlanningTask(projectId: string): Promise<P
     taskId: plannedTask.id,
     type: "handoff",
     actor: { kind: "control_plane" },
-    summary: `Constrained coordinator plan requested from ${coordinator.id}.`,
+    summary: `已向协调智能体 ${coordinator.id} 请求受控规划。`,
   });
   writeState(nextState);
   return plannedTask;
@@ -636,7 +869,7 @@ export async function createProjectTasksFromPlan(input: CreateProjectTasksFromPl
       taskId: task.id,
       type: "task_created",
       actor: { kind: "control_plane" },
-      summary: `Task created from coordinator plan: ${task.title}.`,
+      summary: `已根据协调者计划创建任务：${task.title}。`,
     });
     return task;
   });
@@ -646,7 +879,7 @@ export async function createProjectTasksFromPlan(input: CreateProjectTasksFromPl
     taskId: sourceTask.id,
     type: "progress",
     actor: { kind: "control_plane" },
-    summary: `Created ${created.length} task(s) from coordinator plan.`,
+    summary: `已根据协调者计划创建 ${created.length} 个任务。`,
   });
   writeState(state);
   return created;
@@ -677,6 +910,7 @@ export async function reviewProjectTask(
     actor: { kind: "user" },
     summary: cleanSummary,
   });
+  if (acceptance === "accepted") releaseReadyTasks(state, task.projectId);
   writeState(state);
   return task;
 }
@@ -702,6 +936,7 @@ export function setProjectTaskStatus(taskId: string, status: ProjectTaskStatus, 
   const state = readState();
   const task = getTask(state, requiredText(taskId, "Project task ID", 80));
   const next = transition(state, task, status, requiredText(summary, "Status summary", 2_000));
+  if (status === "accepted") releaseReadyTasks(state, task.projectId);
   writeState(state);
   return next;
 }
@@ -724,7 +959,9 @@ export function createProjectContextPackage(taskId: string): ProjectContextPacka
     requirement: task.requirement,
     acceptanceCriteria: task.acceptanceCriteria,
     projectSummary: project.objective,
-    ...(task.assignment?.workspace ? { workspace: { reference: task.assignment.workspace, kind: "repository" as const } } : {}),
+    ...(task.assignment?.workspace || project.workspace
+      ? { workspace: { reference: task.assignment?.workspace || project.workspace!, kind: "repository" as const } }
+      : {}),
     artifacts,
     upstreamSummaries,
     createdAt: Date.now(),
@@ -732,7 +969,7 @@ export function createProjectContextPackage(taskId: string): ProjectContextPacka
   state.contextPackages.push(pack);
   task.contextPackageId = pack.id;
   task.updatedAt = Date.now();
-  event(state, { projectId: task.projectId, taskId: task.id, type: "context_requested", actor: { kind: "control_plane" }, summary: `Context package v${pack.version} created.` });
+  event(state, { projectId: task.projectId, taskId: task.id, type: "context_requested", actor: { kind: "control_plane" }, summary: `已生成上下文包 v${pack.version}。` });
   writeState(state);
   return pack;
 }

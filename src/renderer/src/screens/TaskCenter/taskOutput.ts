@@ -13,6 +13,45 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/**
+ * Some Pi-compatible providers leak private reasoning/tool markup into the
+ * assistant text stream. Those blocks are not a user-facing answer and must
+ * never be rendered as one. A malformed unfinished tool call yields an empty
+ * result so callers can show a clear completion error instead of fake output.
+ */
+export function cleanPiAssistantText(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "";
+
+  const hasUnclosedToolCall = /<tool_call\b/i.test(raw) && !/<\/tool_call>/i.test(raw);
+  let cleaned = raw
+    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+    .replace(/<tool_call\b[^>]*>[\s\S]*?<\/tool_call>/gi, "")
+    .replace(/<tool_call\b[^>]*>[\s\S]*?<\/think>/gi, "")
+    .replace(/<\/?(?:think|tool_call|tool_result|analysis|final)\b[^>]*>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (hasUnclosedToolCall) return "";
+  return cleaned;
+}
+
+/** Pi Agent CLI JSON mode emits AgentSession events such as message_end and
+ * agent_end. Keep this structural so the renderer never depends on Pi's full
+ * protocol payload or persists provider metadata. */
+function assistantText(value: unknown): string {
+  if (!isRecord(value) || value.role !== "assistant" || !Array.isArray(value.content)) {
+    return "";
+  }
+  return value.content
+    .filter(isRecord)
+    .filter((item) => item.type === "text")
+    .map((item) => cleanPiAssistantText(text(item.text)))
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
 /** Convert local runtime JSONL into the small amount of information a reviewer needs. */
 export function summarizeTaskOutput(output: string): TaskOutputSummary {
   let finalText = "";
@@ -51,6 +90,14 @@ export function summarizeTaskOutput(output: string): TaskOutputSummary {
           const next = text(content.text);
           if (next) finalText = next;
         }
+      }
+    }
+    const piMessage = assistantText(event.message);
+    if (piMessage) finalText = piMessage;
+    if (event.type === "agent_end" && Array.isArray(event.messages)) {
+      for (const message of event.messages) {
+        const next = assistantText(message);
+        if (next) finalText = next;
       }
     }
     if (event.type === "result") {

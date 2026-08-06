@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,6 +42,14 @@ describe("Task Center", () => {
       status: "succeeded",
       startedAt: Date.now(),
       output: "Plan summary",
+      events: [
+        {
+          id: "event-plan",
+          type: "completed",
+          summary: "Plan completed",
+          createdAt: Date.now(),
+        },
+      ],
       artifacts: [{ kind: "final", label: "Coordinator plan", content: "Plan summary" }],
     });
 
@@ -69,7 +77,137 @@ describe("Task Center", () => {
       status: "review_required",
       acceptance: "pending",
       output: "Plan summary",
+      runs: [
+        expect.objectContaining({
+          runtimeRunId: "run-1",
+          status: "review_required",
+          events: [expect.objectContaining({ type: "completed" })],
+        }),
+      ],
     });
+    const persisted = JSON.parse(
+      readFileSync(join(testHome, "desktop", "task-center.json"), "utf8"),
+    ) as { version?: number; tasks?: unknown[] };
+    expect(persisted.version).toBe(2);
+    expect(persisted.tasks).toHaveLength(1);
+  });
+
+  it("keeps a successful project-controlled task in the review queue", async () => {
+    const taskCenter = await loadTaskCenter();
+    startAgentRuntimeTaskMock.mockResolvedValue({
+      id: "run-project-review",
+      runtimeId: "codex-local",
+      status: "succeeded",
+      startedAt: 100,
+      completedAt: 120,
+      output: "Implementation complete",
+    });
+
+    const task = await taskCenter.createTaskCenterTask({
+      title: "Project review",
+      prompt: "Complete the assigned project task.",
+      runtimeId: "codex-local",
+      mode: "analysis",
+      requireReview: true,
+    });
+
+    expect(task).toMatchObject({
+      status: "review_required",
+      acceptance: "pending",
+      requireReview: true,
+      runs: [expect.objectContaining({ status: "review_required" })],
+    });
+  });
+
+  it("upgrades a legacy flat task store into a task-run history without losing output", async () => {
+    mkdirSync(join(testHome, "desktop"), { recursive: true });
+    writeFileSync(
+      join(testHome, "desktop", "task-center.json"),
+      JSON.stringify([
+        {
+          id: "legacy-task",
+          title: "Legacy task",
+          prompt: "Inspect safely",
+          runtimeId: "codex-local",
+          mode: "analysis",
+          timeoutMs: 10000,
+          status: "succeeded",
+          createdAt: 100,
+          startedAt: 110,
+          completedAt: 120,
+          runtimeRunId: "legacy-run",
+          output: "Legacy output",
+        },
+      ]),
+    );
+    const taskCenter = await loadTaskCenter();
+    await expect(taskCenter.listTaskCenterTasks()).resolves.toEqual([
+      expect.objectContaining({
+        id: "legacy-task",
+        runs: [
+          expect.objectContaining({
+            runtimeRunId: "legacy-run",
+            output: "Legacy output",
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  it("retries a failed task as a new TaskRun while retaining the previous execution", async () => {
+    const taskCenter = await loadTaskCenter();
+    startAgentRuntimeTaskMock
+      .mockResolvedValueOnce({
+        id: "run-first",
+        runtimeId: "codex-local",
+        status: "failed",
+        startedAt: 100,
+        completedAt: 120,
+        error: "first attempt failed",
+        events: [
+          {
+            id: "event-first",
+            type: "error",
+            summary: "first attempt failed",
+            createdAt: 120,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "run-second",
+        runtimeId: "codex-local",
+        status: "succeeded",
+        startedAt: 200,
+        completedAt: 220,
+        output: "second attempt completed",
+        events: [
+          {
+            id: "event-second",
+            type: "completed",
+            summary: "task completed",
+            createdAt: 220,
+          },
+        ],
+      });
+
+    const failed = await taskCenter.createTaskCenterTask({
+      title: "Retry me",
+      prompt: "Try again safely",
+      runtimeId: "codex-local",
+      mode: "analysis",
+    });
+    expect(failed.status).toBe("failed");
+
+    const retried = await taskCenter.retryTaskCenterTask(failed.id);
+    expect(retried).toMatchObject({
+      status: "succeeded",
+      runtimeRunId: "run-second",
+      runs: [
+        expect.objectContaining({ runtimeRunId: "run-first", status: "failed" }),
+        expect.objectContaining({ runtimeRunId: "run-second", status: "succeeded" }),
+      ],
+    });
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledTimes(2);
   });
 
   it("redacts sensitive output and marks interrupted tasks as recoverable after restart", async () => {

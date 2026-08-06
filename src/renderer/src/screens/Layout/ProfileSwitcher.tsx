@@ -1,30 +1,38 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ChevronDown, Settings } from "../../assets/icons";
+import { Bot, Check, ChevronDown, Settings } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
-import ProfileAvatar from "../../components/common/ProfileAvatar";
-import { useProfileModal } from "../../components/profile/ProfileModalContext";
-
-interface ProfileInfo {
-  id: string;
-  name: string;
-  isDefault: boolean;
-  isActive: boolean;
-  model: string;
-  skillCount: number;
-  gatewayRunning: boolean;
-  color?: string;
-  avatar?: string | null;
-}
+import type {
+  AgentRuntimeDefinition,
+  AgentRuntimeKind,
+} from "../../../../shared/agent-runtimes";
 
 interface ProfileSwitcherProps {
   /** Id of the currently active profile ("default" for the base workspace). */
   activeProfile: string;
   /** Called after a successful switch so the shell can reset chat state. */
   onSwitch: (name: string) => void;
-  /** Open the full Profiles management screen. */
+  /** Open the global settings modal. */
   onManage: () => void;
+  /** Start a lightweight chat with a runtime adapter. */
+  onRuntimeChat?: (runtime: AgentRuntimeDefinition) => void;
+  /** Runtime used by default when creating a new task. */
+  defaultRuntimeId?: string | null;
+  /** Persist a new default runtime choice. */
+  onDefaultRuntimeChange?: (runtimeId: string) => void;
   /** Render as an icon-only sidebar footer affordance. */
   compact?: boolean;
+}
+
+const RUNTIME_LABELS: Record<AgentRuntimeKind, string> = {
+  hermes: "Hermes",
+  openclaw: "OpenClaw",
+  codex: "Codex",
+  "claude-code": "Claude Code",
+  pi: "Pi Agent CLI",
+};
+
+function locationLabel(location: "local" | "remote"): string {
+  return location === "local" ? "本地" : "远程";
 }
 
 /**
@@ -32,23 +40,22 @@ interface ProfileSwitcherProps {
  * popover to switch between profiles or jump to the management screen.
  */
 export default function ProfileSwitcher({
-  activeProfile,
-  onSwitch,
   onManage,
+  defaultRuntimeId,
+  onDefaultRuntimeChange,
   compact = false,
 }: ProfileSwitcherProps): React.JSX.Element {
   const { t } = useI18n();
-  const { openProfile } = useProfileModal();
   const [open, setOpen] = useState(false);
-  const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
+  const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
     window.hermesAPI
-      .listProfiles()
-      .then(setProfiles)
+      .listAgentRuntimes()
+      .then(setRuntimes)
       .catch(() => {
-        /* keep last-known list */
+        /* keep last-known runtime list */
       });
   }, []);
 
@@ -63,6 +70,15 @@ export default function ProfileSwitcher({
   useEffect(() => {
     if (open) load();
   }, [open, load]);
+
+  useEffect(() => {
+    window.addEventListener("agents-one:runtime-appearance-changed", load);
+    window.addEventListener("hermes-agent-runtime-changed", load);
+    return () => {
+      window.removeEventListener("agents-one:runtime-appearance-changed", load);
+      window.removeEventListener("hermes-agent-runtime-changed", load);
+    };
+  }, [load]);
 
   // Dismiss on outside click or Escape.
   useEffect(() => {
@@ -83,25 +99,34 @@ export default function ProfileSwitcher({
     };
   }, [open]);
 
-  const activeInfo = profiles.find((p) => p.id === activeProfile);
-  const hasDefaultFallbackName =
-    activeInfo?.isDefault && activeInfo.name === activeInfo.id;
-  const label =
-    activeInfo && !hasDefaultFallbackName
-      ? activeInfo.name
-      : activeProfile === "default"
-        ? t("common.appName")
-        : activeProfile;
+  const defaultRuntime =
+    runtimes.find((runtime) => runtime.id === defaultRuntimeId) ??
+    runtimes.find((runtime) => runtime.kind === "hermes" && runtime.enabled) ??
+    runtimes.find((runtime) => runtime.enabled) ??
+    runtimes[0];
+  const label = defaultRuntime?.name || t("common.appName");
 
-  async function handleSelect(name: string): Promise<void> {
+  function handleDefaultRuntime(runtime: AgentRuntimeDefinition): void {
     setOpen(false);
-    if (name === activeProfile) return;
-    try {
-      await window.hermesAPI.setActiveProfile(name);
-    } catch {
-      /* still reflect the choice optimistically */
-    }
-    onSwitch(name);
+    onDefaultRuntimeChange?.(runtime.id);
+  }
+
+  function renderRuntimeAvatar(
+    runtime: AgentRuntimeDefinition | undefined,
+    size: number,
+  ): React.JSX.Element {
+    return (
+      <span
+        className={`profile-menu-runtime ${runtime?.kind ?? "hermes"}`}
+        style={
+          runtime?.color
+            ? { background: runtime.color, color: "#fff", width: size, height: size }
+            : { width: size, height: size }
+        }
+      >
+        {runtime?.avatar ? <img src={runtime.avatar} alt="" /> : <Bot size={Math.max(13, size - 7)} />}
+      </span>
+    );
   }
 
   return (
@@ -111,108 +136,57 @@ export default function ProfileSwitcher({
     >
       {open && (
         <div className="profile-menu" role="menu">
-          {(() => {
-            const active = profiles.find((p) => p.id === activeProfile);
-            const others = profiles.filter((p) => p.id !== activeProfile);
-            return (
-              <>
-                {active && (
-                  <button
-                    type="button"
-                    className="profile-menu-active-section"
-                    role="menuitem"
-                    title={t("agents.editAppearanceFor", {
-                      name: active.name,
-                    })}
-                    onClick={() => {
-                      setOpen(false);
-                      openProfile(active.id, { onChanged: load });
-                    }}
-                  >
-                    <div className="profile-menu-avatar">
-                      <ProfileAvatar
-                        name={active.id}
-                        color={active.color}
-                        avatar={active.avatar}
-                        size={32}
-                      />
-                      {active.gatewayRunning && (
-                        <span className="profile-menu-avatar-dot" />
-                      )}
-                    </div>
-                    <span className="profile-menu-info">
-                      <span className="profile-menu-name">
-                        {active.name}
-                        {active.isDefault && (
-                          <span className="profile-menu-tag">
-                            {t("agents.defaultTag")}
-                          </span>
-                        )}
-                        {active.id !== active.name && (
-                          <span className="profile-menu-tag">{active.id}</span>
-                        )}
+          <div className="profile-menu-active-section profile-menu-default-agent">
+            <div className="profile-menu-avatar">
+              {renderRuntimeAvatar(defaultRuntime, 34)}
+            </div>
+            <span className="profile-menu-info">
+              <span className="profile-menu-name">
+                {label}
+                <span className="profile-menu-tag">默认智能体</span>
+              </span>
+              <span className="profile-menu-meta">
+                {defaultRuntime
+                  ? `${RUNTIME_LABELS[defaultRuntime.kind]} / ${locationLabel(defaultRuntime.location)}`
+                  : "请先接入智能体"}
+              </span>
+            </span>
+          </div>
+          {runtimes.length > 0 && (
+            <>
+              <div className="profile-menu-divider" />
+              <div className="profile-menu-section-label">选择默认智能体</div>
+              <div className="profile-menu-list">
+                {runtimes.map((runtime) => {
+                  const selected = runtime.id === defaultRuntime?.id;
+                  return (
+                    <button
+                      key={runtime.id}
+                      className={`profile-menu-item ${selected ? "active" : ""}`}
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      disabled={!runtime.enabled}
+                      onClick={() => handleDefaultRuntime(runtime)}
+                    >
+                      {renderRuntimeAvatar(runtime, 20)}
+                      <span className="profile-menu-info">
+                        <span className="profile-menu-name">
+                          {runtime.name}
+                          {selected && (
+                            <span className="profile-menu-tag">默认</span>
+                          )}
+                        </span>
+                        <span className="profile-menu-meta">
+                          {RUNTIME_LABELS[runtime.kind]} / {locationLabel(runtime.location)}
+                        </span>
                       </span>
-                      <span className="profile-menu-meta">
-                        {[
-                          active.model || t("agents.noModel"),
-                          t("agents.skillsCount", { count: active.skillCount }),
-                        ].join(" · ")}
-                      </span>
-                    </span>
-                  </button>
-                )}
-                {others.length > 0 && (
-                  <>
-                    <div className="profile-menu-divider" />
-                    <div className="profile-menu-list">
-                      {others.map((p) => (
-                        <button
-                          key={p.id}
-                          className="profile-menu-item"
-                          role="menuitemradio"
-                          aria-checked={false}
-                          onClick={() => handleSelect(p.id)}
-                        >
-                          <ProfileAvatar
-                            name={p.id}
-                            color={p.color}
-                            avatar={p.avatar}
-                            size={20}
-                          />
-                          <span className="profile-menu-info">
-                            <span className="profile-menu-name">
-                              {p.name}
-                              {p.isDefault && (
-                                <span className="profile-menu-tag">
-                                  {t("agents.defaultTag")}
-                                </span>
-                              )}
-                              {p.id !== p.name && (
-                                <span className="profile-menu-tag">{p.id}</span>
-                              )}
-                              <span
-                                className={`profile-menu-gateway ${
-                                  p.gatewayRunning ? "active" : ""
-                                }`}
-                              />
-                            </span>
-                            <span className="profile-menu-meta">
-                              {[
-                                p.model || t("agents.noModel"),
-                                t("agents.skillsCount", {
-                                  count: p.skillCount,
-                                }),
-                              ].join(" · ")}
-                            </span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            );
-          })()}
+                      {selected && <Check className="profile-menu-check" size={14} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
           <button
             className="profile-menu-manage"
             role="menuitem"
@@ -222,7 +196,7 @@ export default function ProfileSwitcher({
             }}
           >
             <Settings size={14} />
-            {t("agents.manageProfiles")}
+            {t("navigation.settings")}
           </button>
         </div>
       )}
@@ -230,16 +204,11 @@ export default function ProfileSwitcher({
       <button
         className={`profile-switcher-trigger ${open ? "open" : ""}`}
         onClick={() => setOpen((o) => !o)}
-        title={`${t("agents.switchProfile")}: ${label}`}
+        title={`默认智能体：${label}`}
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <ProfileAvatar
-          name={activeProfile}
-          color={activeInfo?.color}
-          avatar={activeInfo?.avatar}
-          size={compact ? 22 : 18}
-        />
+        {renderRuntimeAvatar(defaultRuntime, compact ? 22 : 18)}
         {!compact && <span className="profile-switcher-name">{label}</span>}
         {!compact && (
           <ChevronDown size={14} className="profile-switcher-chevron" />

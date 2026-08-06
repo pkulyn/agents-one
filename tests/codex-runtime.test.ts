@@ -15,8 +15,53 @@ describe("Codex runtime invocation", () => {
   });
 
   it("permits writes only inside the already-isolated worktree", () => {
-    expect(codexExecArgs("D:\\worktree", "implementation", "change this")).toContain(
-      "workspace-write",
+    expect(
+      codexExecArgs("D:\\worktree", "implementation", "change this"),
+    ).toContain("workspace-write");
+  });
+
+  it("uses workspace-write for a confirmed direct full-access task", () => {
+    expect(
+      codexExecArgs("D:\\project", "full_access", "update the project"),
+    ).toContain("workspace-write");
+  });
+
+  it("allows only the staged input directory and declared images alongside the workspace", () => {
+    expect(
+      codexExecArgs(
+        "D:\\repo",
+        "analysis",
+        "inspect the supplied files",
+        "D:\\inputs\\task-1",
+        ["D:\\inputs\\task-1\\diagram.png"],
+      ),
+    ).toEqual([
+      "exec",
+      "--json",
+      "--sandbox",
+      "read-only",
+      "--cd",
+      "D:\\repo",
+      "--add-dir",
+      "D:\\inputs\\task-1",
+      "--image",
+      "D:\\inputs\\task-1\\diagram.png",
+      "inspect the supplied files",
+    ]);
+  });
+
+  it("uses an explicit model only when the runtime has a model override", () => {
+    expect(
+      codexExecArgs(
+        "D:\\repo",
+        "analysis",
+        "inspect this",
+        undefined,
+        [],
+        "gpt-5.3-codex",
+      ),
+    ).toEqual(
+      expect.arrayContaining(["--model", "gpt-5.3-codex", "inspect this"]),
     );
   });
 

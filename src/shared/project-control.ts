@@ -22,12 +22,35 @@ export interface ProjectCoordinatorAssignment {
   assignedAt: number;
 }
 
+/** A project role is an explicit user choice, never an automatic routing rule. */
+export interface ProjectCollaboratorAssignment {
+  role: ProjectRole;
+  kind: ProjectCoordinatorKind;
+  runtimeId?: string;
+  assignedAt: number;
+}
+
+/** A local summary of a conversation explicitly linked by the user. */
+export interface ProjectConversationReference {
+  id: string;
+  title: string;
+  runtimeId: string;
+  runtimeName: string;
+  linkedAt: number;
+}
+
 export interface ProjectControlProject {
   id: string;
   title: string;
   objective: string;
   status: ProjectStatus;
   coordinator: ProjectCoordinatorAssignment;
+  /** Project-level defaults for roles; each task still requires explicit assignment. */
+  collaborators?: ProjectCollaboratorAssignment[];
+  /** User-selected project directory. It is a reference, never an automatic grant. */
+  workspace?: string;
+  /** Explicit conversation references; messages are not copied into the project. */
+  conversations?: ProjectConversationReference[];
   createdAt: number;
   updatedAt: number;
   completedAt?: number;
@@ -82,11 +105,17 @@ export interface ProjectTaskEvent {
   type:
     | "project_created"
     | "project_status_changed"
+    | "project_scope_changed"
+    | "collaborators_changed"
     | "coordinator_changed"
     | "task_created"
     | "task_assigned"
     | "task_status_changed"
     | "progress"
+    | "tool_call"
+    | "tool_result"
+    | "message"
+    | "error"
     | "question"
     | "handoff"
     | "review"
@@ -95,6 +124,8 @@ export interface ProjectTaskEvent {
     | "context_requested";
   actor: { kind: "user" | "runtime" | "control_plane"; runtimeId?: string };
   summary: string;
+  /** Source Runtime event used to make periodic reconciliation idempotent. */
+  sourceEventId?: string;
   createdAt: number;
 }
 
@@ -116,6 +147,23 @@ export interface CreateProjectInput {
   title: string;
   objective: string;
   coordinator: { kind: ProjectCoordinatorKind; runtimeId?: string };
+  workspace?: string;
+  conversationIds?: string[];
+}
+
+export interface UpdateProjectScopeInput {
+  projectId: string;
+  workspace?: string;
+  conversationIds?: string[];
+}
+
+export interface UpdateProjectCollaboratorsInput {
+  projectId: string;
+  collaborators: Array<{
+    role: ProjectRole;
+    kind: ProjectCoordinatorKind;
+    runtimeId?: string;
+  }>;
 }
 
 export interface CreateProjectTaskInput {

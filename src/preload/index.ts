@@ -27,6 +27,7 @@ import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
 import type {
   AgentRuntimeDefinition,
   AgentRuntimeDraft,
+  AgentRuntimeAppearance,
   AgentRuntimeProbe,
   AgentRuntimeRun,
   AgentRuntimeTaskInput,
@@ -42,12 +43,25 @@ import type {
   ProjectControlTask,
   ProjectTaskEvent,
   ProjectTaskStatus,
+  UpdateProjectCollaboratorsInput,
+  UpdateProjectScopeInput,
 } from "../shared/project-control";
 import type {
   CreateTaskCenterTaskInput,
   TaskCenterTask,
   TaskCenterWorktree,
 } from "../shared/task-center";
+import type { ConversationTaskLink } from "../shared/conversation-tasks";
+import type {
+  CreateTaskScheduleInput,
+  TaskSchedule,
+  TaskScheduleTriggerResult,
+} from "../shared/task-schedules";
+import type {
+  RuntimeConversation,
+  RuntimeConversationSummary,
+  SaveRuntimeConversationInput,
+} from "../shared/runtime-conversations";
 
 /**
  * Mirror of the renderer-side `CredentialPoolEntry` ambient type
@@ -229,7 +243,7 @@ const hermesAPI = {
   accountLogout: (profile?: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke("hermes-account-logout", profile),
 
-  // Cloud agent sync (profiles ↔ signed-in Hermes One account)
+  // Cloud agent sync (profiles ↔ signed-in Agents One account)
   syncAgents: (): Promise<AgentSyncResult> =>
     ipcRenderer.invoke("agent-sync-run"),
   getAgentSyncStatus: (): Promise<AgentSyncStatus> =>
@@ -333,6 +347,11 @@ const hermesAPI = {
     draft: AgentRuntimeDraft,
   ): Promise<AgentRuntimeDefinition> =>
     ipcRenderer.invoke("save-agent-runtime", draft),
+  saveAgentRuntimeAppearance: (
+    id: string,
+    appearance: AgentRuntimeAppearance,
+  ): Promise<AgentRuntimeDefinition> =>
+    ipcRenderer.invoke("save-agent-runtime-appearance", id, appearance),
   removeAgentRuntime: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("remove-agent-runtime", id),
   getAgentRuntimeCredentialStatus: (
@@ -344,8 +363,27 @@ const hermesAPI = {
     bearerToken: string,
   ): Promise<{ configured: true }> =>
     ipcRenderer.invoke("set-agent-runtime-bearer-token", id, bearerToken),
+  setAgentRuntimeDashboardToken: (
+    id: string,
+    dashboardToken: string,
+  ): Promise<{ configured: true }> =>
+    ipcRenderer.invoke("set-agent-runtime-dashboard-token", id, dashboardToken),
+  setAgentRuntimeWorkspaceGatewayToken: (
+    id: string,
+    bearerToken: string,
+  ): Promise<{ configured: true }> =>
+    ipcRenderer.invoke(
+      "set-agent-runtime-workspace-gateway-token",
+      id,
+      bearerToken,
+    ),
   probeAgentRuntime: (id: string): Promise<AgentRuntimeProbe> =>
     ipcRenderer.invoke("probe-agent-runtime", id),
+  probeAgentRuntimeDraft: (
+    draft: AgentRuntimeDraft,
+    bearerToken?: string,
+  ): Promise<AgentRuntimeProbe> =>
+    ipcRenderer.invoke("probe-agent-runtime-draft", draft, bearerToken),
   startAgentRuntimeTask: (
     runtimeId: string,
     input: AgentRuntimeTaskInput,
@@ -357,10 +395,26 @@ const hermesAPI = {
     ipcRenderer.invoke("cancel-agent-runtime-task", runId),
   listTaskCenterTasks: (): Promise<TaskCenterTask[]> =>
     ipcRenderer.invoke("list-task-center-tasks"),
-  createTaskCenterTask: (input: CreateTaskCenterTaskInput): Promise<TaskCenterTask> =>
+  listConversationTasks: (conversationId: string): Promise<TaskCenterTask[]> =>
+    ipcRenderer.invoke("list-conversation-tasks", conversationId),
+  linkConversationTask: (
+    conversationId: string,
+    taskId: string,
+  ): Promise<ConversationTaskLink> =>
+    ipcRenderer.invoke("link-conversation-task", conversationId, taskId),
+  unlinkConversationTask: (
+    conversationId: string,
+    taskId: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("unlink-conversation-task", conversationId, taskId),
+  createTaskCenterTask: (
+    input: CreateTaskCenterTaskInput,
+  ): Promise<TaskCenterTask> =>
     ipcRenderer.invoke("create-task-center-task", input),
   cancelTaskCenterTask: (id: string): Promise<TaskCenterTask | null> =>
     ipcRenderer.invoke("cancel-task-center-task", id),
+  retryTaskCenterTask: (id: string): Promise<TaskCenterTask | null> =>
+    ipcRenderer.invoke("retry-task-center-task", id),
   setTaskCenterAcceptance: (
     id: string,
     acceptance: "accepted" | "rejected",
@@ -372,40 +426,93 @@ const hermesAPI = {
     ipcRenderer.invoke("list-task-center-worktrees"),
   removeTaskCenterWorktree: (worktree: string): Promise<boolean> =>
     ipcRenderer.invoke("remove-task-center-worktree", worktree),
+  listTaskSchedules: (profile?: string): Promise<TaskSchedule[]> =>
+    ipcRenderer.invoke("list-task-schedules", profile),
+  createTaskSchedule: (
+    input: CreateTaskScheduleInput,
+    profile?: string,
+  ): Promise<TaskSchedule> =>
+    ipcRenderer.invoke("create-task-schedule", input, profile),
+  setTaskScheduleEnabled: (
+    id: string,
+    enabled: boolean,
+    profile?: string,
+  ): Promise<TaskSchedule> =>
+    ipcRenderer.invoke("set-task-schedule-enabled", id, enabled, profile),
+  triggerTaskSchedule: (
+    id: string,
+    profile?: string,
+  ): Promise<TaskScheduleTriggerResult> =>
+    ipcRenderer.invoke("trigger-task-schedule", id, profile),
+  deleteTaskSchedule: (id: string, profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("delete-task-schedule", id, profile),
   listProjectControlProjects: (): Promise<ProjectControlProject[]> =>
     ipcRenderer.invoke("list-project-control-projects"),
-  createProjectControlProject: (input: CreateProjectInput): Promise<ProjectControlProject> =>
+  createProjectControlProject: (
+    input: CreateProjectInput,
+  ): Promise<ProjectControlProject> =>
     ipcRenderer.invoke("create-project-control-project", input),
   setProjectControlStatus: (
     projectId: string,
     status: "active" | "paused" | "completed" | "cancelled",
     summary: string,
   ): Promise<ProjectControlProject> =>
-    ipcRenderer.invoke("set-project-control-status", projectId, status, summary),
+    ipcRenderer.invoke(
+      "set-project-control-status",
+      projectId,
+      status,
+      summary,
+    ),
+  updateProjectControlScope: (
+    input: UpdateProjectScopeInput,
+  ): Promise<ProjectControlProject> =>
+    ipcRenderer.invoke("update-project-control-scope", input),
+  updateProjectControlCollaborators: (
+    input: UpdateProjectCollaboratorsInput,
+  ): Promise<ProjectControlProject> =>
+    ipcRenderer.invoke("update-project-control-collaborators", input),
   listProjectControlTasks: (projectId: string): Promise<ProjectControlTask[]> =>
     ipcRenderer.invoke("list-project-control-tasks", projectId),
   listProjectControlEvents: (projectId: string): Promise<ProjectTaskEvent[]> =>
     ipcRenderer.invoke("list-project-control-events", projectId),
-  listProjectControlArtifacts: (projectId: string): Promise<import("../shared/project-control").ProjectArtifactReference[]> =>
+  listProjectControlArtifacts: (
+    projectId: string,
+  ): Promise<import("../shared/project-control").ProjectArtifactReference[]> =>
     ipcRenderer.invoke("list-project-control-artifacts", projectId),
-  createProjectControlTask: (input: CreateProjectTaskInput): Promise<ProjectControlTask> =>
+  createProjectControlTask: (
+    input: CreateProjectTaskInput,
+  ): Promise<ProjectControlTask> =>
     ipcRenderer.invoke("create-project-control-task", input),
-  assignProjectControlTask: (input: AssignProjectTaskInput): Promise<ProjectControlTask> =>
+  assignProjectControlTask: (
+    input: AssignProjectTaskInput,
+  ): Promise<ProjectControlTask> =>
     ipcRenderer.invoke("assign-project-control-task", input),
   dispatchProjectControlTask: (taskId: string): Promise<ProjectControlTask> =>
     ipcRenderer.invoke("dispatch-project-control-task", taskId),
-  startProjectCoordinatorPlan: (projectId: string): Promise<ProjectControlTask> =>
+  startProjectCoordinatorPlan: (
+    projectId: string,
+  ): Promise<ProjectControlTask> =>
     ipcRenderer.invoke("start-project-coordinator-plan", projectId),
-  previewProjectPlanTasks: (projectId: string, sourceTaskId: string): Promise<ProjectPlanDraft> =>
+  previewProjectPlanTasks: (
+    projectId: string,
+    sourceTaskId: string,
+  ): Promise<ProjectPlanDraft> =>
     ipcRenderer.invoke("preview-project-plan-tasks", projectId, sourceTaskId),
-  createProjectTasksFromPlan: (input: CreateProjectTasksFromPlanInput): Promise<ProjectControlTask[]> =>
+  createProjectTasksFromPlan: (
+    input: CreateProjectTasksFromPlanInput,
+  ): Promise<ProjectControlTask[]> =>
     ipcRenderer.invoke("create-project-tasks-from-plan", input),
   reviewProjectControlTask: (
     taskId: string,
     acceptance: "accepted" | "rejected",
     summary: string,
   ): Promise<ProjectControlTask> =>
-    ipcRenderer.invoke("review-project-control-task", taskId, acceptance, summary),
+    ipcRenderer.invoke(
+      "review-project-control-task",
+      taskId,
+      acceptance,
+      summary,
+    ),
   cancelProjectControlTask: (taskId: string): Promise<ProjectControlTask> =>
     ipcRenderer.invoke("cancel-project-control-task", taskId),
   setProjectControlTaskStatus: (
@@ -413,8 +520,15 @@ const hermesAPI = {
     status: ProjectTaskStatus,
     summary: string,
   ): Promise<ProjectControlTask> =>
-    ipcRenderer.invoke("set-project-control-task-status", taskId, status, summary),
-  createProjectControlContext: (taskId: string): Promise<ProjectContextPackage> =>
+    ipcRenderer.invoke(
+      "set-project-control-task-status",
+      taskId,
+      status,
+      summary,
+    ),
+  createProjectControlContext: (
+    taskId: string,
+  ): Promise<ProjectContextPackage> =>
     ipcRenderer.invoke("create-project-control-context", taskId),
   getConnectionConfig: (): Promise<{
     mode: "local" | "remote" | "ssh";
@@ -1142,6 +1256,55 @@ const hermesAPI = {
   ): Promise<{ requested: number; deleted: number }> =>
     ipcRenderer.invoke("delete-sessions", sessionIds),
 
+  saveTaskCollaboration: (
+    input: import("../shared/task-collaboration").SaveTaskCollaborationInput,
+    profile?: string,
+  ): Promise<import("../shared/task-collaboration").TaskCollaborationRecord> =>
+    ipcRenderer.invoke("save-task-collaboration", input, profile),
+  getTaskCollaboration: (
+    taskId: string,
+    profile?: string,
+  ): Promise<import("../shared/task-collaboration").TaskCollaborationRecord | null> =>
+    ipcRenderer.invoke("get-task-collaboration", taskId, profile),
+  linkTaskCollaboration: (
+    input: import("../shared/task-collaboration").LinkTaskCollaborationInput,
+    profile?: string,
+  ): Promise<import("../shared/task-collaboration").TaskCollaborationRecord> =>
+    ipcRenderer.invoke("link-task-collaboration", input, profile),
+  updateTaskCollaborationExecution: (
+    input: import("../shared/task-collaboration").UpdateTaskCollaborationExecutionInput,
+    profile?: string,
+  ): Promise<import("../shared/task-collaboration").TaskCollaborationRecord> =>
+    ipcRenderer.invoke("update-task-collaboration-execution", input, profile),
+  listTaskCollaborations: (
+    profile?: string,
+  ): Promise<import("../shared/task-collaboration").TaskCollaborationRecord[]> =>
+    ipcRenderer.invoke("list-task-collaborations", profile),
+
+  listRuntimeConversations: (
+    profile?: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<RuntimeConversationSummary[]> =>
+    ipcRenderer.invoke("list-runtime-conversations", profile, limit, offset),
+  getRuntimeConversation: (
+    id: string,
+    profile?: string,
+  ): Promise<RuntimeConversation | null> =>
+    ipcRenderer.invoke("get-runtime-conversation", id, profile),
+  saveRuntimeConversation: (
+    input: SaveRuntimeConversationInput,
+  ): Promise<RuntimeConversation> =>
+    ipcRenderer.invoke("save-runtime-conversation", input),
+  updateRuntimeConversationTitle: (
+    id: string,
+    title: string,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("update-runtime-conversation-title", id, title, profile),
+  deleteRuntimeConversation: (id: string, profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("delete-runtime-conversation", id, profile),
+
   // Session search
   searchSessions: (
     query: string,
@@ -1473,8 +1636,17 @@ const hermesAPI = {
     },
     profile?: string,
   ) => ipcRenderer.invoke("kanban-create-task", input, profile),
-  selectFolder: (): Promise<string | null> =>
-    ipcRenderer.invoke("select-folder"),
+  selectFolder: (options?: {
+    title?: string;
+    buttonLabel?: string;
+  }): Promise<string | null> => ipcRenderer.invoke("select-folder", options),
+  createProjectFolder: (): Promise<string | null> =>
+    ipcRenderer.invoke("create-project-folder"),
+  listProjectFolders: () => ipcRenderer.invoke("list-project-folders"),
+  registerProjectFolder: (folderPath: string) =>
+    ipcRenderer.invoke("register-project-folder", folderPath),
+  prepareProjectContext: (folderPath: string): Promise<Attachment | null> =>
+    ipcRenderer.invoke("prepare-project-context", folderPath),
   readDirectory: (
     dirPath: string,
   ): Promise<{ name: string; isDirectory: boolean }[] | null> =>

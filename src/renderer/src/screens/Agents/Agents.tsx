@@ -1,494 +1,225 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, ChatBubble, Pencil, X } from "../../assets/icons";
-import ProfileAvatar from "../../components/common/ProfileAvatar";
+import { useState, useEffect, useCallback } from "react";
+import { Bot, Plus, ChatBubble } from "../../assets/icons";
+import { RefreshCw, X } from "lucide-react";
 import { AppModal, AppModalTitle } from "../../components/modal/AppModal";
-import { useI18n } from "../../components/useI18n";
-import { useProfileModal } from "../../components/profile/ProfileModalContext";
+import AgentRuntimesPane from "../../components/settings/AgentRuntimesPane";
 import type {
-  AgentSyncResult,
-  AgentSyncStatus,
-} from "../../../../shared/agent-sync";
-
-interface ProfileInfo {
-  id: string;
-  name: string;
-  path: string;
-  isDefault: boolean;
-  isActive: boolean;
-  model: string;
-  provider: string;
-  hasEnv: boolean;
-  hasSoul: boolean;
-  skillCount: number;
-  gatewayRunning: boolean;
-  color?: string;
-  avatar?: string | null;
-}
+  AgentRuntimeDefinition,
+  AgentRuntimeKind,
+  AgentRuntimeProbe,
+} from "../../../../shared/agent-runtimes";
 
 interface AgentsProps {
-  activeProfile: string;
-  onSelectProfile: (name: string) => void;
-  onChatWith: (name: string) => void;
+  onChatWithRuntime?: (runtime: AgentRuntimeDefinition) => void;
 }
 
-function Agents({
-  activeProfile,
-  onSelectProfile,
-  onChatWith,
-}: AgentsProps): React.JSX.Element {
-  const { t } = useI18n();
-  const { openProfile } = useProfileModal();
-  const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [cloneConfig, setCloneConfig] = useState(true);
-  // Source profile to clone config/keys/skills from when `cloneConfig` is on.
-  const [cloneSource, setCloneSource] = useState("default");
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState("");
-  // Profile whose gateway we're waiting on after a switch — drives the
-  // "Starting…" status while it spins up.
-  const [startingProfile, setStartingProfile] = useState<string | null>(null);
+const RUNTIME_LABELS: Record<AgentRuntimeKind, string> = {
+  hermes: "Hermes",
+  openclaw: "OpenClaw",
+  codex: "Codex",
+  "claude-code": "Claude Code",
+  pi: "Pi Agent CLI",
+};
 
-  const loadProfiles = useCallback(async (): Promise<void> => {
-    const list = await window.hermesAPI.listProfiles();
-    setProfiles(list);
-    setLoading(false);
-  }, []);
+const RUNTIME_LOCATION_LABEL: Record<AgentRuntimeDefinition["location"], string> = {
+  local: "本地",
+  remote: "远程",
+};
 
-  // A switched profile starts its gateway asynchronously, so the pid file the
-  // status reads from isn't written yet when the switch returns. Poll the list
-  // until that profile reports running (or we give up) so the row flips to
-  // "Running" on its own instead of only after a manual refresh/revisit.
-  const gatewayPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const HEALTH_LABEL: Record<AgentRuntimeProbe["state"], string> = {
+  healthy: "正常",
+  degraded: "受限",
+  unreachable: "不可达",
+  unsupported: "不支持",
+  unknown: "未检测",
+};
 
-  const stopGatewayPoll = useCallback((): void => {
-    if (gatewayPollRef.current) {
-      clearTimeout(gatewayPollRef.current);
-      gatewayPollRef.current = null;
+function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
+  const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
+  const [runtimeProbes, setRuntimeProbes] = useState<
+    Record<string, AgentRuntimeProbe>
+  >({});
+  const [runtimeProbeLoading, setRuntimeProbeLoading] = useState(false);
+  const [managerTarget, setManagerTarget] = useState<{
+    mode: "new" | "manage";
+    runtimeId?: string;
+  } | null>(null);
+  const loadRuntimes = useCallback(async (): Promise<void> => {
+    if (!window.hermesAPI.listAgentRuntimes) return;
+    setRuntimeProbeLoading(true);
+    try {
+      setRuntimes(await window.hermesAPI.listAgentRuntimes());
+    } catch {
+      setRuntimes([]);
+      setRuntimeProbeLoading(false);
     }
   }, []);
 
-  const pollGatewayReady = useCallback(
-    (name: string): void => {
-      stopGatewayPoll();
-      // ~15 attempts × 700ms ≈ 10s, enough for a cold gateway to come up.
-      let attemptsLeft = 15;
-      const settle = (): void =>
-        setStartingProfile((current) => (current === name ? null : current));
-      const tick = async (): Promise<void> => {
-        attemptsLeft -= 1;
-        try {
-          const list = await window.hermesAPI.listProfiles();
-          setProfiles(list);
-          if (list.find((p) => p.id === name)?.gatewayRunning) {
-            settle();
-            return;
+  useEffect(() => {
+    void loadRuntimes();
+  }, [loadRuntimes]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const enabledRuntimes = runtimes.filter((runtime) => runtime.enabled);
+    if (enabledRuntimes.length === 0) {
+      setRuntimeProbeLoading(false);
+      return;
+    }
+    setRuntimeProbeLoading(true);
+    void Promise.all(
+      enabledRuntimes
+        .map(async (runtime) => {
+          try {
+            return [runtime.id, await window.hermesAPI.probeAgentRuntime(runtime.id)] as const;
+          } catch {
+            return null;
           }
-        } catch {
-          // A transient listing failure (e.g. SSH) shouldn't strand the
-          // spinner — fall through to retry or give up like any other miss.
-        }
-        if (attemptsLeft <= 0) {
-          settle();
-          return;
-        }
-        gatewayPollRef.current = setTimeout(tick, 700);
-      };
-      gatewayPollRef.current = setTimeout(tick, 700);
-    },
-    [stopGatewayPoll],
-  );
-
-  useEffect(() => {
-    loadProfiles();
-  }, [loadProfiles]);
-
-  // Cancel any in-flight gateway poll when the page unmounts.
-  useEffect(() => stopGatewayPoll, [stopGatewayPoll]);
-
-  // Cloud sync: null while the signed-in state is still loading.
-  const [syncStatus, setSyncStatus] = useState<AgentSyncStatus | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const autoSyncedRef = useRef(false);
-
-  const refreshSyncStatus = useCallback(async (): Promise<void> => {
-    try {
-      setSyncStatus(await window.hermesAPI.getAgentSyncStatus());
-    } catch {
-      // Bridge unavailable (tests/old preload): leave the affordance hidden.
-    }
-  }, []);
-
-  const runSync = useCallback(async (): Promise<void> => {
-    setSyncing(true);
-    try {
-      const result = await window.hermesAPI.syncAgents();
-      setSyncStatus((s) => (s ? { ...s, lastResult: result } : s));
-      if (result.outcomes.some((o) => o.action === "created-local")) {
-        await loadProfiles();
-      }
-    } catch {
-      // Surfaced through lastResult on the next status refresh.
-    } finally {
-      setSyncing(false);
-      void refreshSyncStatus();
-    }
-  }, [loadProfiles, refreshSyncStatus]);
-
-  // Load the signed-in state once, then run one automatic pass per visit so
-  // console-side edits appear without a manual click.
-  useEffect(() => {
-    void (async () => {
-      try {
-        const status = await window.hermesAPI.getAgentSyncStatus();
-        setSyncStatus(status);
-        if (status.signedIn && !status.running && !autoSyncedRef.current) {
-          autoSyncedRef.current = true;
-          void runSync();
-        }
-      } catch {
-        // Bridge unavailable: leave the affordance hidden.
-      }
-    })();
-  }, [runSync]);
-
-  // Syncs triggered elsewhere (e.g. right after sign-in) refresh the list too.
-  useEffect(() => {
-    if (!window.hermesAPI.onAgentSyncUpdated) return undefined;
-    return window.hermesAPI.onAgentSyncUpdated((result: AgentSyncResult) => {
-      setSyncStatus((s) => (s ? { ...s, lastResult: result } : s));
-      if (result.outcomes.some((o) => o.action === "created-local")) {
-        void loadProfiles();
-      }
+        }),
+    ).then((results) => {
+      if (cancelled) return;
+      setRuntimeProbes(
+        Object.fromEntries(
+          results.filter(
+            (result): result is readonly [string, AgentRuntimeProbe] => result !== null,
+          ),
+        ),
+      );
+    }).finally(() => {
+      if (!cancelled) setRuntimeProbeLoading(false);
     });
-  }, [loadProfiles]);
-
-  function syncSummary(result: AgentSyncResult): string {
-    if (result.status === "unauthorized") return t("agents.syncUnauthorized");
-    if (result.status === "error")
-      return result.error || t("agents.syncFailed");
-    const counts = { pushed: 0, pulled: 0, created: 0, errors: 0 };
-    for (const o of result.outcomes) {
-      if (o.action === "pushed" || o.action === "created-remote")
-        counts.pushed++;
-      else if (o.action === "pulled") counts.pulled++;
-      if (o.action === "created-local") counts.created++;
-      if (o.action === "error") counts.errors++;
-    }
-    if (counts.errors > 0)
-      return t("agents.syncErrors", { count: counts.errors });
-    if (counts.pushed + counts.pulled + counts.created === 0)
-      return t("agents.syncUpToDate");
-    return t("agents.syncSummary", counts);
-  }
-
-  // Open the create modal, defaulting the clone source to the active profile.
-  function openCreate(): void {
-    setNewName("");
-    setError("");
-    setCloneConfig(true);
-    setCloneSource(activeProfile || "default");
-    setShowCreate(true);
-  }
-
-  function closeCreate(): void {
-    setShowCreate(false);
-    setError("");
-  }
-
-  async function handleCreate(): Promise<void> {
-    const name = newName.trim();
-    if (!name) return;
-    setCreating(true);
-    setError("");
-    const result = await window.hermesAPI.createProfile(
-      name,
-      cloneConfig ? cloneSource : null,
-    );
-    setCreating(false);
-    if (result.success) {
-      setShowCreate(false);
-      setNewName("");
-    } else {
-      setError(result.error || t("agents.createFailed"));
-    }
-    loadProfiles();
-  }
-
-  async function handleSelect(name: string): Promise<void> {
-    // Show "Starting…" only when this profile's gateway isn't already up, so
-    // switching to an already-running profile doesn't flash a fake spinner.
-    const alreadyRunning = profiles.find((p) => p.id === name)?.gatewayRunning;
-    setStartingProfile(alreadyRunning ? null : name);
-    await window.hermesAPI.setActiveProfile(name);
-    onSelectProfile(name);
-    loadProfiles();
-    pollGatewayReady(name);
-  }
-
-  // "Chat" button — make the agent active (starts its gateway) then open a
-  // conversation with it. The only path here that starts a chat.
-  async function handleChatWith(name: string): Promise<void> {
-    await window.hermesAPI.setActiveProfile(name);
-    onChatWith(name);
-    loadProfiles();
-  }
-
-  function providerLabel(provider: string): string {
-    if (!provider || provider === "auto") return t("agents.auto");
-    if (provider === "custom") return t("agents.local");
-    return provider.charAt(0).toUpperCase() + provider.slice(1);
-  }
-
-  if (loading) {
-    return (
-      <div className="agents-container">
-        <div className="agents-loading">
-          <div className="loading-spinner" />
-        </div>
-      </div>
-    );
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [runtimes]);
 
   return (
     <div className="agents-container">
       <div className="agents-header">
         <div>
-          <h2 className="agents-title">{t("agents.title")}</h2>
-          <p className="agents-subtitle">{t("agents.subtitle")}</p>
+          <h2 className="agents-title">智能体</h2>
         </div>
         <div className="agents-header-actions">
-          {syncStatus && !syncStatus.signedIn && (
-            <span
-              className="agents-sync-hint"
-              title={t("agents.syncSignedOutHint")}
-            >
-              {t("agents.syncSignedOut")}
-            </span>
-          )}
-          {syncStatus?.signedIn && (
-            <span
-              className="agents-sync-hint"
-              title={
-                syncStatus.lastResult?.outcomes
-                  .flatMap((o) => o.warnings.map((w) => `${o.profile}: ${w}`))
-                  .join("\n") ||
-                (syncStatus.accountLabel ?? "")
-              }
-            >
-              {syncStatus.lastResult
-                ? syncSummary(syncStatus.lastResult)
-                : (syncStatus.accountLabel ?? "")}
-            </span>
-          )}
-          {syncStatus?.signedIn && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => void runSync()}
-              disabled={syncing}
-            >
-              {syncing ? t("agents.syncing") : t("agents.sync")}
-            </button>
-          )}
-          <button className="btn btn-primary btn-sm" onClick={openCreate}>
+          <button
+            className="btn btn-secondary btn-sm"
+            type="button"
+            onClick={() => void loadRuntimes()}
+            disabled={runtimeProbeLoading}
+          >
+            <RefreshCw
+              size={14}
+              className={runtimeProbeLoading ? "settings-spin" : undefined}
+            />
+            {runtimeProbeLoading ? "检测中" : "刷新"}
+          </button>
+          <button
+            className="btn btn-primary btn-sm"
+            type="button"
+            onClick={() => setManagerTarget({ mode: "new" })}
+          >
             <Plus size={14} />
-            {t("agents.newAgent")}
+            新增智能体
           </button>
         </div>
       </div>
 
-      {!showCreate && error && (
-        <div className="agents-create-error">{error}</div>
-      )}
+      {(["local", "remote"] as const).map((location) => {
+        const group = runtimes.filter((runtime) => runtime.location === location);
+        if (group.length === 0) return null;
+        return (
+          <section className="agents-section" key={location}>
+            <h3 className="agents-group-title">
+              {location === "local" ? "本地智能体" : "远程智能体"}
+            </h3>
+            <div className="agents-runtime-grid">
+              {group.map((runtime) => (
+                <div className="agents-runtime-card" key={runtime.id}>
+                  <div className="agents-runtime-main">
+                    <span className={`agents-runtime-icon ${runtime.kind}`}>
+                      {runtime.avatar ? <img src={runtime.avatar} alt="" /> : <Bot size={18} />}
+                    </span>
+                    <span className="agents-runtime-info">
+                      <strong>{runtime.name}</strong>
+                      <small>
+                        {RUNTIME_LABELS[runtime.kind]} / {RUNTIME_LOCATION_LABEL[runtime.location]}
+                      </small>
+                    </span>
+                  </div>
+                  <div className="agents-runtime-meta">
+                    <span className={`agents-runtime-health ${runtimeProbes[runtime.id]?.state || "unknown"}`}>
+                      {runtimeProbeLoading
+                        ? "检测中"
+                        : HEALTH_LABEL[runtimeProbes[runtime.id]?.state || "unknown"]}
+                    </span>
+                    <span>{runtime.enabled ? "可用" : "已停用"}</span>
+                  </div>
+                  <div className="agents-runtime-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() =>
+                        setManagerTarget({ mode: "manage", runtimeId: runtime.id })
+                      }
+                    >
+                      管理
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={!runtime.enabled || !onChatWithRuntime}
+                      title={runtime.enabled ? "发起对话" : "该智能体已停用"}
+                      onClick={() => onChatWithRuntime?.(runtime)}
+                    >
+                      <ChatBubble size={13} />对话
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       <AppModal
-        open={showCreate}
+        open={Boolean(managerTarget)}
         onOpenChange={(open) => {
-          if (!open) closeCreate();
+          if (!open) setManagerTarget(null);
         }}
-        className="agents-create-modal"
-        labelledBy="agents-create-title"
+        className="agents-runtime-manager-modal"
+        labelledBy="runtime-manager-title"
       >
         <div className="agents-create-modal-header">
           <AppModalTitle
-            id="agents-create-title"
+            id="runtime-manager-title"
             className="agents-create-modal-title"
           >
-            {t("agents.createTitle")}
+            {managerTarget?.mode === "new" ? "新增智能体" : "管理智能体"}
           </AppModalTitle>
           <button
             className="profile-modal-close"
-            onClick={closeCreate}
-            aria-label={t("common.close")}
+            type="button"
+            onClick={() => setManagerTarget(null)}
+            aria-label="关闭"
           >
             <X size={18} />
           </button>
         </div>
-        <div className="agents-create-modal-body">
-          <label className="agents-create-field">
-            <span>{t("agents.nameLabel")}</span>
-            <input
-              className="input"
-              placeholder={t("agents.namePlaceholder")}
-              value={newName}
-              onChange={(e) => {
-                setNewName(e.target.value);
-                setError("");
+        {managerTarget && (
+          <div className="agents-runtime-manager-body">
+            <AgentRuntimesPane
+              key={`${managerTarget.mode}:${managerTarget.runtimeId || "new"}`}
+              embedded
+              startNew={managerTarget.mode === "new"}
+              initialRuntimeId={managerTarget.runtimeId}
+              onChanged={() => {
+                void loadRuntimes();
+                window.dispatchEvent(new CustomEvent("agents-one:runtime-appearance-changed"));
               }}
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-              autoFocus
             />
-          </label>
-          <label className="agents-create-clone">
-            <input
-              type="checkbox"
-              checked={cloneConfig}
-              onChange={(e) => setCloneConfig(e.target.checked)}
-            />
-            <span>{t("agents.cloneConfig")}</span>
-          </label>
-          {cloneConfig && (
-            <label className="agents-create-field">
-              <span>{t("agents.cloneFromLabel")}</span>
-              <select
-                className="input"
-                value={cloneSource}
-                onChange={(e) => setCloneSource(e.target.value)}
-              >
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {error && <div className="agents-create-error">{error}</div>}
-          <div className="agents-create-modal-actions">
-            <button className="btn btn-secondary" onClick={closeCreate}>
-              {t("common.cancel")}
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleCreate}
-              disabled={creating || !newName.trim()}
-            >
-              {creating ? t("agents.creating") : t("agents.create")}
-            </button>
           </div>
-        </div>
+        )}
       </AppModal>
 
-      <div className="agents-table">
-        <div className="agents-table-head">
-          <span className="agents-cell-profile">{t("agents.colProfile")}</span>
-          <span className="agents-cell-model">{t("agents.colModel")}</span>
-          <span className="agents-cell-status">{t("agents.colStatus")}</span>
-          <span className="agents-cell-actions">{t("agents.colActions")}</span>
-        </div>
-        {profiles.map((p) => (
-          <div
-            key={p.id}
-            className={`agents-row ${activeProfile === p.id ? "active" : ""}`}
-            onClick={() => handleSelect(p.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              // Only the row itself — not Enter bubbling up from the edit/chat
-              // buttons — should switch the profile.
-              if (e.key === "Enter" && e.target === e.currentTarget) {
-                handleSelect(p.id);
-              }
-            }}
-          >
-            <div className="agents-cell-profile">
-              <ProfileAvatar
-                name={p.id}
-                color={p.color}
-                avatar={p.avatar}
-                size={36}
-              />
-              <div className="agents-row-info">
-                <div className="agents-row-name">{p.name}</div>
-                <div className="agents-row-sub">
-                  {p.id !== p.name ? `${p.id} · ` : ""}
-                  {providerLabel(p.provider)} ·{" "}
-                  {t("agents.skillsCount", { count: p.skillCount })}
-                </div>
-              </div>
-            </div>
-            <div className="agents-cell-model">
-              {p.model ? (
-                <code className="agents-model-chip">
-                  {p.model.split("/").pop()}
-                </code>
-              ) : (
-                <span className="agents-model-empty">
-                  {t("agents.noModel")}
-                </span>
-              )}
-            </div>
-            <div className="agents-cell-status">
-              {startingProfile === p.id && !p.gatewayRunning ? (
-                <span className="agents-status-pill starting">
-                  <span className="agents-status-spinner" />
-                  {t("agents.starting")}
-                </span>
-              ) : (
-                <span
-                  className={`agents-status-pill ${
-                    p.gatewayRunning ? "on" : "off"
-                  }`}
-                  title={
-                    p.gatewayRunning
-                      ? t("agents.gatewayRunning")
-                      : t("agents.gatewayOff")
-                  }
-                >
-                  <span className="agents-status-dot" />
-                  {p.gatewayRunning ? t("agents.running") : t("agents.off")}
-                </span>
-              )}
-            </div>
-            <div className="agents-cell-actions">
-              <button
-                type="button"
-                className="agents-row-edit"
-                title={t("agents.editAppearanceFor", {
-                  name: p.name,
-                })}
-                aria-label={t("agents.editAppearanceFor", {
-                  name: p.name,
-                })}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setError("");
-                  openProfile(p.id, {
-                    onChanged: loadProfiles,
-                    onDeleted: (n) => {
-                      if (activeProfile === n) onSelectProfile("default");
-                    },
-                  });
-                }}
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleChatWith(p.id);
-                }}
-              >
-                <ChatBubble size={13} />
-                {t("agents.chat")}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

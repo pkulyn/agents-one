@@ -7,6 +7,8 @@ import {
   isSelfSignedCertificateError,
   probeOpenClawRuntime,
   startOpenClawTask,
+  getOpenClawArtifact,
+  uploadOpenClawArtifact,
   type OpenClawRuntimeConfig,
 } from "../src/main/openclaw-runtime";
 
@@ -18,10 +20,18 @@ interface RecordedRequest {
 
 describe("OpenClaw runtime bridge client", () => {
   it("retries TLS only for recognized self-signed certificate errors", () => {
-    expect(isSelfSignedCertificateError({ code: "DEPTH_ZERO_SELF_SIGNED_CERT" })).toBe(true);
-    expect(isSelfSignedCertificateError({ code: "SELF_SIGNED_CERT_IN_CHAIN" })).toBe(true);
-    expect(isSelfSignedCertificateError({ code: "CERT_HAS_EXPIRED" })).toBe(false);
-    expect(isSelfSignedCertificateError(new Error("network reset"))).toBe(false);
+    expect(
+      isSelfSignedCertificateError({ code: "DEPTH_ZERO_SELF_SIGNED_CERT" }),
+    ).toBe(true);
+    expect(
+      isSelfSignedCertificateError({ code: "SELF_SIGNED_CERT_IN_CHAIN" }),
+    ).toBe(true);
+    expect(isSelfSignedCertificateError({ code: "CERT_HAS_EXPIRED" })).toBe(
+      false,
+    );
+    expect(isSelfSignedCertificateError(new Error("network reset"))).toBe(
+      false,
+    );
   });
 
   let server: http.Server;
@@ -90,6 +100,53 @@ describe("OpenClaw runtime bridge client", () => {
           return;
         }
 
+        if (req.method === "POST" && req.url === "/artifacts") {
+          const parsed = JSON.parse(body) as {
+            name?: string;
+            mime?: string;
+            size?: number;
+            sha256?: string;
+          };
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              id: "artifact-1",
+              name: parsed.name,
+              mime: parsed.mime,
+              size: parsed.size,
+              sha256: parsed.sha256,
+            }),
+          );
+          return;
+        }
+
+        if (req.method === "GET" && req.url === "/artifacts/artifact-1") {
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              id: "artifact-1",
+              name: "brief.txt",
+              mime: "text/plain",
+              size: 5,
+              sha256: "a".repeat(64),
+              content_base64: "aGVsbG8=",
+            }),
+          );
+          return;
+        }
+
+        if (req.method === "POST" && req.url === "/snake/tasks") {
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              id: "task-1",
+              status: "running",
+              session_id: "session-1",
+            }),
+          );
+          return;
+        }
+
         if (req.method === "GET" && req.url === "/tasks/task-1") {
           res.setHeader("Content-Type", "application/json");
           res.end(
@@ -98,6 +155,19 @@ describe("OpenClaw runtime bridge client", () => {
               status: "succeeded",
               output: "done",
               sessionId: "session-1",
+            }),
+          );
+          return;
+        }
+
+        if (req.method === "GET" && req.url === "/snake/tasks/task-1") {
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              id: "task-1",
+              status: "succeeded",
+              result: "done",
+              session_id: "session-1",
             }),
           );
           return;
@@ -210,9 +280,9 @@ describe("OpenClaw runtime bridge client", () => {
       state: "unhealthy",
       message: "OpenClaw runtime returned HTTP 500.",
     });
-    expect(requests.map((request) => `${request.method} ${request.url}`)).toEqual([
-      "GET /broken/capabilities",
-    ]);
+    expect(
+      requests.map((request) => `${request.method} ${request.url}`),
+    ).toEqual(["GET /broken/capabilities"]);
   });
 
   it("starts, reads, and cancels tasks through the bridge endpoints", async () => {
@@ -235,6 +305,7 @@ describe("OpenClaw runtime bridge client", () => {
       prompt: "build a thing",
       profile: "research",
       sessionId: "session-1",
+      session_id: "session-1",
     });
     expect(loaded).toMatchObject({
       id: "task-1",
@@ -245,18 +316,84 @@ describe("OpenClaw runtime bridge client", () => {
       id: "task/with slash",
       status: "cancelled",
     });
-    expect(requests.map((request) => `${request.method} ${request.url}`)).toEqual(
-      [
-        "POST /tasks",
-        "GET /tasks/task-1",
-        "POST /tasks/task%2Fwith%20slash/cancel",
-      ],
-    );
+    expect(
+      requests.map((request) => `${request.method} ${request.url}`),
+    ).toEqual([
+      "POST /tasks",
+      "GET /tasks/task-1",
+      "POST /tasks/task%2Fwith%20slash/cancel",
+    ]);
+  });
+
+  it("accepts snake_case session ids from OpenClaw bridges", async () => {
+    const started = await startOpenClawTask(config("/snake"), {
+      prompt: "continue chat",
+      sessionId: "session-1",
+    });
+    const loaded = await getOpenClawTask(config("/snake"), "task-1");
+
+    expect(started).toMatchObject({
+      id: "task-1",
+      status: "running",
+      sessionId: "session-1",
+    });
+    expect(JSON.parse(requests[0].body)).toMatchObject({
+      prompt: "continue chat",
+      sessionId: "session-1",
+      session_id: "session-1",
+    });
+    expect(loaded).toMatchObject({
+      id: "task-1",
+      status: "succeeded",
+      output: "done",
+      sessionId: "session-1",
+    });
+  });
+
+  it("uploads controlled artifacts and passes artifact and remote workspace references to a task", async () => {
+    const uploaded = await uploadOpenClawArtifact(config(), {
+      name: "brief.txt",
+      mime: "text/plain",
+      bytes: Buffer.from("hello"),
+      sha256: "a".repeat(64),
+    });
+    const loaded = await getOpenClawArtifact(config(), uploaded.id);
+    await startOpenClawTask(config(), {
+      prompt: "review the brief",
+      artifactIds: [uploaded.id],
+      workspaceRef: "git:https://example.test/project.git#main",
+    });
+
+    expect(uploaded).toMatchObject({
+      id: "artifact-1",
+      name: "brief.txt",
+      size: 5,
+    });
+    expect(loaded).toMatchObject({
+      id: "artifact-1",
+      contentBase64: "aGVsbG8=",
+    });
+    expect(JSON.parse(requests[0].body)).toMatchObject({
+      name: "brief.txt",
+      mime: "text/plain",
+      size: 5,
+      sha256: "a".repeat(64),
+      contentBase64: "aGVsbG8=",
+    });
+    expect(JSON.parse(requests[2].body)).toMatchObject({
+      artifactIds: ["artifact-1"],
+      artifact_ids: ["artifact-1"],
+      workspaceRef: "git:https://example.test/project.git#main",
+      workspace_ref: "git:https://example.test/project.git#main",
+    });
   });
 
   it("rejects invalid endpoints, credentials, secret fields, and bad timeouts", async () => {
     await expect(
-      probeOpenClawRuntime({ endpoint: "file:///tmp/openclaw", timeoutMs: 1000 }),
+      probeOpenClawRuntime({
+        endpoint: "file:///tmp/openclaw",
+        timeoutMs: 1000,
+      }),
     ).rejects.toThrow(/http or https/i);
     await expect(
       probeOpenClawRuntime({

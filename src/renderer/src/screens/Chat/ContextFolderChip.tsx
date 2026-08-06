@@ -41,6 +41,10 @@ export const ContextFolderChip = memo(function ContextFolderChip({
 
   useEffect(() => {
     if (!isOpen) return;
+    if (!window.hermesAPI.listRecentSessionContextFolders) {
+      setRecentFolders([]);
+      return;
+    }
     let cancelled = false;
     void window.hermesAPI
       .listRecentSessionContextFolders(20)
@@ -80,10 +84,10 @@ export const ContextFolderChip = memo(function ContextFolderChip({
 
   const renderDropdown = (): React.JSX.Element => (
     <div className="chat-ctxfolder-dropdown">
-      <div className="chat-ctxfolder-dropdown-header">Recent</div>
+      <div className="chat-ctxfolder-dropdown-header">最近使用</div>
       <div className="chat-ctxfolder-dropdown-list">
         {recentFolders.length === 0 ? (
-          <div className="chat-ctxfolder-dropdown-empty">No recent folders</div>
+          <div className="chat-ctxfolder-dropdown-empty">暂无最近文件夹</div>
         ) : (
           recentFolders.map((path) => {
             const isSelected = path === contextFolder;
@@ -118,7 +122,7 @@ export const ContextFolderChip = memo(function ContextFolderChip({
           onPickFolder();
         }}
       >
-        <span>Open folder...</span>
+        <span>选择文件夹…</span>
       </button>
     </div>
   );
@@ -127,13 +131,13 @@ export const ContextFolderChip = memo(function ContextFolderChip({
     return (
       <div className="chat-ctxfolder-picker" ref={containerRef}>
         <button
-          className="chat-meta-chip"
+          className="chat-meta-chip chat-meta-chip--icon-only"
           onClick={() => setIsOpen((v) => !v)}
           title={t("chat.setContextFolder")}
+          aria-label={t("chat.setContextFolder")}
           type="button"
         >
           <FolderOpen size={13} />
-          <span>{t("chat.contextFolderChip")}</span>
         </button>
         {isOpen && renderDropdown()}
       </div>

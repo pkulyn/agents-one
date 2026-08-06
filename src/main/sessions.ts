@@ -16,6 +16,7 @@ import {
   deleteSessionContinuationForSession,
   loadSessionContinuationItemsForSession,
   loadSessionLocalErrors,
+  mergeSessionContinuationWithCanonical,
   mergeSessionLocalErrors,
 } from "./session-continuation-store";
 import { deleteSessionContextFolderForSession } from "./session-context-folder-store";
@@ -305,6 +306,56 @@ export function listSessions(limit = 30, offset = 0): SessionSummary[] {
     }));
 }
 
+function decodeXmlAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function decodeLegacyTextFileWrappers(
+  decoded: DecodedContent,
+  messageId: number,
+): DecodedContent {
+  const attachments = [...decoded.attachments];
+  let ordinal = attachments.length;
+  let matched = false;
+  const text = decoded.text.replace(
+    /<file\b([^>]*)>([\s\S]*?)<\/file>/gi,
+    (_match, rawAttributes: string, rawText: string) => {
+      matched = true;
+      const attributes = new Map<string, string>();
+      for (const match of rawAttributes.matchAll(/\b(name|mime)="([^"]*)"/gi)) {
+        attributes.set(match[1].toLowerCase(), decodeXmlAttribute(match[2]));
+      }
+      const name = (
+        attributes.get("name") || `attachment-${ordinal + 1}.txt`
+      ).slice(0, 255);
+      const mime = (attributes.get("mime") || "text/plain").slice(0, 128);
+      const fileText = rawText.replace(/^\r?\n/, "").replace(/\r?\n$/, "");
+      attachments.push({
+        id: `db-file-${messageId}-${ordinal++}`,
+        kind: "text-file",
+        name,
+        mime,
+        size: Buffer.byteLength(fileText, "utf8"),
+        text: fileText,
+      });
+      return " ";
+    },
+  );
+  if (!matched) return decoded;
+  return {
+    text: text
+      .replace(/<\/?file\b[^>]*>/gi, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+    attachments,
+  };
+}
+
 export function searchSessions(query: string, limit = 20): SearchResult[] {
   const db = getDb();
   if (!db) return [];
@@ -565,7 +616,11 @@ export interface RawMessageRow {
 export function expandRowsToHistory(rows: RawMessageRow[]): HistoryItem[] {
   const items: HistoryItem[] = [];
   for (const r of rows) {
-    const decoded = decodeContent(r.content || "", r.id);
+    const baseDecoded = decodeContent(r.content || "", r.id);
+    const decoded =
+      r.role === "user"
+        ? decodeLegacyTextFileWrappers(baseDecoded, r.id)
+        : baseDecoded;
 
     if (r.role === "user") {
       if (!decoded.text && decoded.attachments.length === 0) continue;
@@ -713,11 +768,7 @@ export function applySessionLocalOverlays(
       )
     : items;
   const continuation = loadSessionContinuationItemsForSession(sessionId, db);
-  const base =
-    continuation.some((item) => item.kind === "user") &&
-    !canonical.some((item) => item.kind === "user")
-      ? continuation
-      : [...continuation, ...canonical];
+  const base = mergeSessionContinuationWithCanonical(continuation, canonical);
   return db
     ? mergeSessionLocalErrors(base, loadSessionLocalErrors(db, sessionId))
     : base;

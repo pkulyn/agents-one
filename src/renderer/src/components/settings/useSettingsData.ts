@@ -416,11 +416,11 @@ export function useSettingsData(profile?: string) {
       connMode === "ssh" ? sshChatTransport : remoteChatTransport;
     if (preference === "legacy") {
       setTransportProbe({
-        label: "Active: Legacy",
+        label: t("settings.chatTransport.activeLegacy"),
         detail:
           connMode === "ssh"
-            ? "Dashboard over SSH is disabled."
-            : "Dashboard WebSocket is disabled.",
+            ? t("settings.chatTransport.legacySshDisabled")
+            : t("settings.chatTransport.legacyRemoteDisabled"),
         kind: "muted",
         loading: false,
       });
@@ -428,7 +428,7 @@ export function useSettingsData(profile?: string) {
     }
 
     setTransportProbe((prev) => ({
-      label: prev?.label || "Checking transport…",
+      label: prev?.label || t("settings.chatTransport.checkingTransport"),
       detail: prev?.detail || "",
       kind: prev?.kind || "muted",
       loading: true,
@@ -440,8 +440,8 @@ export function useSettingsData(profile?: string) {
         setTransportProbe({
           label:
             preference === "dashboard"
-              ? "Active: Dashboard"
-              : "Auto active: Dashboard",
+              ? t("settings.chatTransport.activeDashboard")
+              : t("settings.chatTransport.autoDashboard"),
           detail: status.connection.baseUrl,
           kind: "ok",
           loading: false,
@@ -452,8 +452,8 @@ export function useSettingsData(profile?: string) {
         status.error?.includes("management API is reachable") ?? false;
       if (managementReachable && preference === "auto") {
         setTransportProbe({
-          label: "Auto active: Legacy chat",
-          detail: status.error || "Dashboard management API is available.",
+          label: t("settings.chatTransport.autoLegacy"),
+          detail: status.error || t("settings.chatTransport.managementAvailable"),
           kind: "ok",
           loading: false,
         });
@@ -462,9 +462,9 @@ export function useSettingsData(profile?: string) {
       setTransportProbe({
         label:
           preference === "dashboard"
-            ? "Dashboard unavailable"
-            : "Auto active: Legacy fallback",
-        detail: status.error || "Dashboard transport is not available.",
+            ? t("settings.chatTransport.dashboardUnavailable")
+            : t("settings.chatTransport.autoLegacyFallback"),
+        detail: status.error || t("settings.chatTransport.transportUnavailable"),
         kind: "warn",
         loading: false,
       });
@@ -472,14 +472,14 @@ export function useSettingsData(profile?: string) {
       setTransportProbe({
         label:
           preference === "dashboard"
-            ? "Dashboard unavailable"
-            : "Auto active: Legacy fallback",
+            ? t("settings.chatTransport.dashboardUnavailable")
+            : t("settings.chatTransport.autoLegacyFallback"),
         detail: err instanceof Error ? err.message : String(err),
         kind: "warn",
         loading: false,
       });
     }
-  }, [connMode, profile, remoteChatTransport, sshChatTransport]);
+  }, [connMode, profile, remoteChatTransport, sshChatTransport, t]);
 
   useEffect(() => {
     void refreshTransportProbe();

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "agents-one-plugin-sdk",
+  "version": "0.1.1",
+  "displayName": "Agents One Plugin SDK",
+  "protocols": {
+    "remoteGateway": ["agents-one-remote-gateway-v1"],
+    "eventStream": ["agents-one-event-stream-v1"]
+  },
+  "hosts": ["remote-gateway", "local-cli-adapter"],
+  "security": {
+    "requiresBearerTokenForRemoteGateway": true,
+    "forbidsRawChainOfThought": true,
+    "redactsCredentialsAndAbsolutePaths": true,
+    "workspaceWritesRequireWorkspaceGrant": true
+  }
+}

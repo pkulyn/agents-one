@@ -1,44 +1,39 @@
 import { memo } from "react";
-import { Search, Clock, Mail, Code, ChartLine, Bell } from "lucide-react";
-import titleLine from "../../assets/title-line.svg";
+import {
+  FolderSearch,
+  ListChecks,
+  PackageCheck,
+  Workflow,
+} from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import welcomeMark from "../../assets/agents-one-welcome.svg";
 
 interface Suggestion {
-  i18nKey: string;
+  label: string;
   text: string;
-  Icon: typeof Search;
+  Icon: typeof FolderSearch;
 }
 
 const SUGGESTIONS: Suggestion[] = [
   {
-    i18nKey: "chat.suggestionSearch",
-    text: "Search the web for today's top tech news",
-    Icon: Search,
+    label: "分析项目",
+    text: "请分析当前项目的结构、关键模块和主要风险。",
+    Icon: FolderSearch,
   },
   {
-    i18nKey: "chat.suggestionReminder",
-    text: "Set a reminder to check emails every day at 9 AM",
-    Icon: Bell,
+    label: "拆解任务",
+    text: "请将这个需求拆解为可执行任务，并给出验收标准。",
+    Icon: ListChecks,
   },
   {
-    i18nKey: "chat.suggestionEmail",
-    text: "Read my latest emails and summarize them",
-    Icon: Mail,
+    label: "协作规划",
+    text: "请为这个项目制定多智能体协作计划，明确分工和交接产物。",
+    Icon: Workflow,
   },
   {
-    i18nKey: "chat.suggestionScript",
-    text: "Write a Python script to rename all files in a folder",
-    Icon: Code,
-  },
-  {
-    i18nKey: "chat.suggestionSchedule",
-    text: "Schedule a cron job to back up my database every night",
-    Icon: Clock,
-  },
-  {
-    i18nKey: "chat.suggestionAnalyze",
-    text: "Analyze this CSV file and show key insights",
-    Icon: ChartLine,
+    label: "验收产物",
+    text: "请检查当前任务产物是否满足要求，并列出未完成项。",
+    Icon: PackageCheck,
   },
 ];
 
@@ -54,27 +49,19 @@ export const ChatEmptyState = memo(function ChatEmptyState({
   return (
     <div className="chat-empty">
       <div className="chat-empty-icon">
-        <span
-          className="chat-empty-logo"
-          role="img"
-          aria-label="Hermes"
-          style={{
-            maskImage: `url(${titleLine})`,
-            WebkitMaskImage: `url(${titleLine})`,
-          }}
-        />
+        <img src={welcomeMark} alt="Agents One" />
       </div>
       <div className="chat-empty-text">{t("chat.emptyTitle")}</div>
       <div className="chat-empty-hint">{t("chat.emptyHint")}</div>
       <div className="chat-empty-suggestions">
-        {SUGGESTIONS.map(({ i18nKey, text, Icon }) => (
+        {SUGGESTIONS.map(({ label, text, Icon }) => (
           <button
-            key={i18nKey}
+            key={label}
             className="chat-suggestion"
             onClick={() => onSelectSuggestion(text)}
           >
             <Icon size={16} />
-            {t(i18nKey)}
+            {label}
           </button>
         ))}
       </div>

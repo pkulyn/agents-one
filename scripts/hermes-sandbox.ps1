@@ -227,13 +227,13 @@ function Use-SandboxEnv {
   Ensure-SandboxHome
   $env:HERMES_HOME = $HermesHome
   $env:HERMES_DESKTOP_SANDBOX = "1"
-  $env:HERMES_DESKTOP_APP_NAME = "Hermes One"
+  $env:HERMES_DESKTOP_APP_NAME = "Agents One"
   $env:HERMES_DESKTOP_USER_DATA_DIR = $ElectronUserData
-  $env:VITE_HERMES_DESKTOP_APP_NAME = "Hermes One"
+  $env:VITE_HERMES_DESKTOP_APP_NAME = "Agents One"
   Set-SandboxPorts
   Write-Host "[hermes-sandbox] HERMES_HOME=$HermesHome"
   Write-Host "[hermes-sandbox] userData=$ElectronUserData"
-  Write-Host "[hermes-sandbox] app name=Hermes One"
+  Write-Host "[hermes-sandbox] app name=Agents One"
   Write-Host "[hermes-sandbox] dashboard chat=default-on"
 }
 

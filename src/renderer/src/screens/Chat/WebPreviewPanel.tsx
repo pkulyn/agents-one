@@ -189,6 +189,7 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
   const [canGoForward, setCanGoForward] = useState(false);
   const [isInspecting, setIsInspecting] = useState(false);
   const [isDomReady, setIsDomReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Draggable panel width (px). Persisted so it survives reopen/restart.
   const [width, setWidth] = useState<number>(() => {
@@ -277,10 +278,12 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
       setIsLoading(true);
       setIsInspecting(false);
       setIsDomReady(false);
+      setLoadError(null);
     };
 
     const handleDidStopLoading = (): void => {
       setIsLoading(false);
+      setLoadError(null);
       updateNavigationState();
     };
 
@@ -318,6 +321,12 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
       console.error(
         `[WEBVIEW ERROR] Failed to load: ${validatedURL}, Code: ${errorCode}, Description: ${errorDescription}`,
       );
+      if (errorCode !== -3) {
+        setIsLoading(false);
+        setLoadError(
+          errorDescription || `页面加载失败（错误码 ${errorCode}）。`,
+        );
+      }
     };
 
     const handleConsoleMessage = (e: Event): void => {
@@ -509,6 +518,15 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
           } as Record<string, unknown>)}
           style={{ width: "100%", height: "100%" }}
         />
+        {loadError && (
+          <div className="web-preview-error" role="alert">
+            <strong>网页预览加载失败</strong>
+            <span>{loadError}</span>
+            <button type="button" onClick={handleReload}>
+              重试
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

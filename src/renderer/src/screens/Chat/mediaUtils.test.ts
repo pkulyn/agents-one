@@ -40,6 +40,16 @@ describe("parseMediaTokens (issue #299)", () => {
     });
   });
 
+  it("keeps explicit MEDIA protocol tokens renderable inside code blocks", () => {
+    const segs = parseMediaTokens(
+      "```text\nMEDIA：C:\\Users\\pmos6\\chart.png\n```",
+    );
+    expect(media(segs)).toMatchObject({
+      source: "media-token",
+      token: { src: "C:\\Users\\pmos6\\chart.png", isImage: true },
+    });
+  });
+
   it("extracts a MEDIA: https token as a URL", () => {
     const segs = parseMediaTokens("MEDIA:https://x.test/p.jpg");
     expect(segs[0]).toMatchObject({

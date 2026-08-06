@@ -165,6 +165,53 @@ describe("expandRowsToHistory", () => {
     expect(items[1]).toMatchObject({ kind: "assistant", content: "hello!" });
   });
 
+  it("restores a text attachment from the legacy file wrapper", () => {
+    const items = expandRowsToHistory([
+      row({
+        id: 7,
+        role: "user",
+        content:
+          'Read marker\n<file name="fixture.txt" mime="text/plain">\nMarker: AO-U5\n</file>',
+        timestamp: 7,
+      }),
+    ]);
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        kind: "user",
+        content: "Read marker",
+        attachments: [
+          expect.objectContaining({
+            kind: "text-file",
+            name: "fixture.txt",
+            mime: "text/plain",
+            text: "Marker: AO-U5",
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  it("removes an orphan file close tag left by a legacy nested wrapper", () => {
+    const items = expandRowsToHistory([
+      row({
+        id: 8,
+        role: "user",
+        content:
+          'Read project\n<file name="project.txt">\nSnapshot\n<file path="a.txt">A</file>\n</file>',
+        timestamp: 8,
+      }),
+    ]);
+
+    expect(items[0]).toMatchObject({
+      kind: "user",
+      content: "Read project",
+    });
+    expect(items[0].kind === "user" ? items[0].content : "").not.toContain(
+      "</file>",
+    );
+  });
+
   it("emits reasoning *before* the assistant bubble", () => {
     const items = expandRowsToHistory([
       row({ id: 1, role: "user", content: "?", timestamp: 1 }),
