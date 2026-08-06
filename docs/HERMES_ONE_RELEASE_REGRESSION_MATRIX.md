@@ -1,8 +1,19 @@
 # Agents One 发布前回归矩阵
 
-日期：2026-07-16
+日期：2026-08-06
 
-本矩阵用于 Phase 5 发布前验收。当前处于产品 UI 优化期，安装包、便携版和发布候选版本制作暂停；涉及 Runtime、Task Center、Project Center、安全或存储层改动时，先执行开发版对应分组，待 UI 人工验收通过后再恢复 Windows 发布分组。
+本矩阵用于发布前验收。2026-08-06 起独立 Task Center、Project Center 与 Hermes Kanban 已退役；任务对话内多智能体协作是唯一交互式协作入口。下方 2026-07 历史验收记录仅用于追溯，不再作为当前界面入口说明。
+
+## 当前瘦身边界
+
+| 编号 | 场景 | 验收方式 | 通过标准 |
+| --- | --- | --- | --- |
+| N1 | 任务对话 | 自动 + 手工 | 可发送、恢复，错误/产物发布事件不混入正文，图片与文件产物正常显示。 |
+| N2 | 对话内多智能体协作 | 自动 + 手工 | 协作建议、角色配置、顺序执行、工作区预检、人工介入、产物和历史恢复可用。 |
+| N3 | 项目文件夹 | 自动 + 手工 | 左侧仍可按目录归集任务对话；不会出现旧 Project Center 控制面。 |
+| N4 | 定时任务 | 自动 + 手工 | Agents One 计划任务仍能通过内部任务执行器创建、取消和对账运行；Hermes Cron 不受影响。 |
+| N5 | 退役入口 | 自动 | Layout、桌面命令、Preload/IPC 中不存在 Task Center、Project Center、Hermes Kanban 入口。 |
+| N6 | 恢复性 | 代码审查 | 基线标签、拆分提交、用户数据备份、SHA-256 和恢复命令完整可用。 |
 
 ## Runtime 与任务执行
 
@@ -43,7 +54,7 @@
 | W1 | 开发构建 | 自动 | `npm.cmd run build` 通过。 |
 | W2 | 单元/组件回归 | 自动 | Phase 4/H3/H4 相关测试全部通过。 |
 | W3 | 普通用户权限运行 | 手工 | 无需管理员权限、无需 Visual Studio，即可启动和配置 Runtime。 |
-| W4 | Worktree 运维 | 手工 | Task Center 可列出、打开、清理非活跃 worktree；清理前有确认。 |
+| W4 | Worktree 运维 | 自动 + 手工 | 后台只允许识别和清理 Agents One 数据目录下的非活跃受管 worktree；运行中或待验收记录不可清理。 |
 | W5 | 发布阻断条件 | 人工评审 | 无 P0/P1 安全问题、数据丢失问题或原工作区直接写入问题。 |
 
 ## 已执行的开发版验证（2026-07-16）
@@ -99,7 +110,7 @@
 ## 当前自动化命令
 
 ```powershell
-npm.cmd test -- tests/task-center.test.ts tests/project-control.test.ts tests/agent-runtimes.test.ts tests/remote-coordinator-bridge.test.ts tests/claude-code-runtime.test.ts src/renderer/src/screens/TaskCenter/TaskCenter.test.tsx src/renderer/src/screens/TaskCenter/taskOutput.test.ts src/renderer/src/screens/ProjectCenter/ProjectCenter.test.tsx
+npx.cmd vitest run tests/feature-slimming-boundaries.test.ts tests/task-center.test.ts tests/task-schedules.test.ts tests/task-collaboration-store.test.ts src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx src/renderer/src/screens/Layout/TaskCollaborationDialog.test.tsx src/renderer/src/screens/Layout/TaskCollaborationWorkspace.test.tsx
 npm.cmd run typecheck
 npm.cmd run test:u5-ui
 ```

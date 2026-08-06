@@ -1,5 +1,14 @@
 # Agents One 项目进展日志
 
+## 2026-08-06：旧管理功能瘦身完成
+
+- 已在分支 `agents-one-slim-task-dialog` 完成两步可回退删除：`2a69749` 退役独立 Task Center、Project Center、旧对话任务侧栏和控制面 IPC；`200686b` 退役 Hermes Kanban 页面、命令、IPC、本地/SSH 桥接、样式与翻译。
+- 任务对话内多智能体协作完整保留，包括协作建议、角色配置、顺序编排、工作区访问、人工介入、产物和历史恢复；项目文件夹分组、Runtime、Gateway v1、Workspace Grant、媒体产物和定时任务均保留。
+- 定时任务继续复用 `src/main/task-center.ts` 作为内部执行/恢复引擎，但 Renderer 和 Preload 不再暴露旧任务中心；旧 `project-control.json`、`task-center.json` 和 `task-collaborations.json` 未删除、未迁移。
+- 自动验证：生产构建通过；全量 Vitest 189 个文件、1885 项通过、13 项跳过；核心边界定向回归 67 项通过、4 项跳过；`lat check` 通过。全量测试完成汇总后仅外层进程退出超时，无失败用例。
+- 删除后用户数据复核：六个文件 SHA-256 与备份一致；`remote-session-cache.json` 仅顶层 `updatedAt` 因运行中应用刷新而变化，histories 和 38 条 sessions 内容一致。恢复提交、标签、哈希与命令见 [功能瘦身备份与恢复记录](./AGENTS_ONE_FEATURE_SLIMMING_RECOVERY.md)。
+- 已将“退役旧管理面、保留任务对话协作、基线标签与拆分提交”同步写入 PowerMem；当前会话未加载 MCP 注册，按项目兜底规范通过本地 stdio server 完成，未输出或持久化 API Key。
+
 ## 2026-08-06：旧管理功能瘦身前恢复基线
 
 - 产品边界确认：保留项目文件夹分组、任务对话和任务对话内多智能体协作；计划退役独立 Task Center、Project Center 项目/协作管理控制面与 Hermes 原生 Kanban。
