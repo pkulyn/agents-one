@@ -41,6 +41,40 @@ const EXT_BY_MIME: Record<string, string> = Object.fromEntries(
   Object.entries(MIME_BY_EXT).map(([ext, mime]) => [mime, ext]),
 );
 
+/**
+ * Normalize paths copied through JSON/Markdown before asking Windows to open
+ * them. Some connectors return a JSON-escaped local path such as
+ * `C:\\Users\\...`, while others return a `file:///C:/...` URL. Both refer to
+ * the user's local workstation and should resolve through the same IPC path.
+ */
+export function normalizeMediaPath(value: string): string {
+  let path = (value || "").trim();
+  if (!path) return "";
+  if (
+    (path.startsWith('"') && path.endsWith('"')) ||
+    (path.startsWith("'") && path.endsWith("'")) ||
+    (path.startsWith("`") && path.endsWith("`"))
+  ) {
+    path = path.slice(1, -1).trim();
+  }
+  if (/^file:\/\//i.test(path)) {
+    path = path.replace(/^file:\/\//i, "");
+    if (/^\/[A-Za-z]:\//.test(path)) path = path.slice(1);
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      // Keep the original URL-derived path if a connector encoded malformed
+      // percent escapes; the subsequent existence check will fail safely.
+    }
+  }
+  // Only collapse doubled separators after a drive letter. A leading `\\`
+  // may be a valid UNC path and must remain intact.
+  if (/^[A-Za-z]:\\\\/.test(path)) {
+    path = path.replace(/\\\\/g, "\\");
+  }
+  return path;
+}
+
 function sanitizeFilename(name: string): string {
   const cleaned = (name || "image")
     // eslint-disable-next-line no-control-regex -- intentionally strip control chars from filenames
@@ -100,6 +134,27 @@ export function materializeDataUrlToTemp(
     const decoded = decodeDataUrl(src);
     if (!decoded) return null;
 
+    return materializeBytesToTemp(decoded.buffer, suggestedName, decoded.mime);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stage authenticated remote bytes in the same bounded, short-lived media
+ * directory used by native chat images. The renderer receives only this local
+ * path; it never receives a Gateway bearer token or a remote filesystem path.
+ */
+export function materializeBytesToTemp(
+  bytes: Buffer,
+  suggestedName: string,
+  mime = "application/octet-stream",
+): string | null {
+  try {
+    if (!Buffer.isBuffer(bytes) || bytes.length <= 0 || bytes.length > MAX_MEDIA_BYTES) {
+      return null;
+    }
+
     mkdirSync(TEMP_MEDIA_DIR, { recursive: true });
     cleanupTempMediaFiles({
       maxAgeMs: TEMP_MEDIA_MAX_AGE_MS,
@@ -108,12 +163,12 @@ export function materializeDataUrlToTemp(
 
     let filename = sanitizeFilename(suggestedName);
     if (!extname(filename)) {
-      filename += EXT_BY_MIME[decoded.mime] || ".bin";
+      filename += EXT_BY_MIME[mime.toLowerCase()] || ".bin";
     }
-    const hash = createHash("sha256").update(decoded.buffer).digest("hex");
+    const hash = createHash("sha256").update(bytes).digest("hex");
     const target = join(TEMP_MEDIA_DIR, `${hash.slice(0, 16)}-${filename}`);
     if (!existsSync(target)) {
-      writeFileSync(target, decoded.buffer);
+      writeFileSync(target, bytes);
     }
     return target;
   } catch {
@@ -127,6 +182,7 @@ export function materializeDataUrlToTemp(
  */
 export function readMediaAsDataUrl(filePath: string): string | null {
   try {
+    filePath = normalizeMediaPath(filePath);
     if (!filePath || !existsSync(filePath)) return null;
     const ext = extname(filePath).toLowerCase();
     const mime = MIME_BY_EXT[ext];
@@ -146,6 +202,7 @@ export function readMediaAsDataUrl(filePath: string): string | null {
  */
 export function mediaFileExists(filePath: string): boolean {
   try {
+    filePath = normalizeMediaPath(filePath);
     return !!filePath && existsSync(filePath) && statSync(filePath).isFile();
   } catch {
     return false;

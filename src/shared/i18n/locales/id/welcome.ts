@@ -1,5 +1,5 @@
 export default {
-  title: "Selamat datang di Hermes",
+  title: "Selamat datang di Agents One",
   subtitle:
     "Asisten AI yang terus berkembang dan berjalan lokal di mesin Anda. Privat, kuat, dan selalu belajar.",
   installIssueTitle: "Masalah Instalasi",

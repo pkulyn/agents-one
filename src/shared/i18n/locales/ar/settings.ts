@@ -9,7 +9,7 @@ export default {
   nav: {
     groups: {
       general: "عام",
-      hermes: "Hermes One",
+      hermes: "Agents One",
     },
     appearance: "المظهر",
     language: "اللغة",
@@ -22,7 +22,7 @@ export default {
     logs: "السجلات والتشخيص",
   },
   agentSubtitle: "محرك الذكاء الاصطناعي المحلي",
-  desktopTitle: "Hermes One Desktop",
+  desktopTitle: "Agents One Desktop",
   desktopSubtitle: "تطبيق سطح المكتب هذا",
   statusUpToDate: "محدث",
   statusUpdateAvailable: "تحديث متاح",
@@ -61,7 +61,7 @@ export default {
   },
   analytics: {
     label: "إرسال إحصائيات استخدام مجهولة",
-    hint: "تُجمع بشكل مجهول وتُستخدم فقط لتحسين Hermes One — أبداً محادثاتك أو ملفاتك أو أوامرك أو أي بيانات شخصية.",
+    hint: "تُجمع بشكل مجهول وتُستخدم فقط لتحسين Agents One — أبداً محادثاتك أو ملفاتك أو أوامرك أو أي بيانات شخصية.",
   },
   notDetected: "لم يتم الكشف",
   updatedSuccessfully: "تم التحديث بنجاح!",
@@ -114,7 +114,7 @@ export default {
   latestVersion: "محدث بالفعل",
   autoUpgradeDesktop: "الترقية التلقائية لتطبيق سطح المكتب",
   autoUpgradeDesktopHint:
-    "تنزيل إصدارات Hermes One الجديدة من GitHub تلقائياً عند بدء التطبيق. أوقف هذا لإظهار زر الترقية عند بدء التشغيل دون تنزيل حتى تنقر عليه.",
+    "تنزيل إصدارات Agents One الجديدة من GitHub تلقائياً عند بدء التطبيق. أوقف هذا لإظهار زر الترقية عند بدء التشغيل دون تنزيل حتى تنقر عليه.",
   runningDiagnosis: "جارٍ تشغيل التشخيص...",
   runDiagnosis: "تشغيل التشخيص",
   running: "جارٍ التشغيل...",
@@ -155,14 +155,14 @@ export default {
     "انضم إلى قناة Discord لدينا لطرح الأسئلة والإبلاغ عن المشكلات والتحدث مع مستخدمي Hermes الآخرين.",
   joinDiscord: "الانضمام إلى قناة Discord",
   communityLinksHint:
-    "تواصل مع مجتمع Hermes One، واحصل على المساعدة، وابق على اطلاع.",
+    "تواصل مع مجتمع Agents One، واحصل على المساعدة، وابق على اطلاع.",
   linkWebsite: "الموقع",
   linkDiscord: "Discord",
   linkX: "X",
   linkTelegram: "Telegram",
   supportTitle: "دعم المطور",
   supportHint:
-    "Hermes One مجاني ومفتوح المصدر — إذا كان مفيداً لك، فكر في دعم تطويره.",
+    "Agents One مجاني ومفتوح المصدر — إذا كان مفيداً لك، فكر في دعم تطويره.",
   supportKofi: "الدعم على Ko-fi",
 
   // SSH & Server Config

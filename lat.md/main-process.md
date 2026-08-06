@@ -80,7 +80,9 @@ Codex emits JSONL lifecycle events, which are valuable diagnostics but poor revi
 
 ### Claude Code runtime
 
-[[src/main/claude-code-runtime.ts]] gives Claude Code the same isolated-task boundary as Codex. Analysis starts noninteractively with `plan`; implementation uses `acceptEdits` only after an isolated detached worktree has been created under the active profile. On Windows, user-level `claude.cmd` and `claude.ps1` wrappers are resolved to the installed native `claude.exe` so the main process can keep `shell: false`. The Adapter caps and redacts output, limits inherited environment variables, cancels the whole process tree, records worktree/diff artifacts, and filters Claude SessionStart bootstrap events before task output is persisted. [[tests/claude-code-runtime.test.ts]] fixes the invocation and filtering contracts.
+Claude Code follows the same isolated-task boundary as Codex while keeping process execution and persisted output constrained.
+
+[[src/main/claude-code-runtime.ts]] starts analysis noninteractively with `plan`; implementation uses `acceptEdits` only after an isolated detached worktree has been created under the active profile. On Windows, user-level `claude.cmd` and `claude.ps1` wrappers are resolved to the installed native `claude.exe` so the main process can keep `shell: false`. The Adapter caps and redacts output, limits inherited environment variables, cancels the whole process tree, records worktree/diff artifacts, and filters Claude SessionStart bootstrap events before task output is persisted. [[tests/claude-code-runtime.test.ts]] fixes the invocation and filtering contracts.
 
 ## App Chrome Helpers
 

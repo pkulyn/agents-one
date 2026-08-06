@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   continuationItemsToHistory,
+  mergeSessionContinuationWithCanonical,
   mergeSessionLocalErrors,
   normalizeContinuationItems,
 } from "../src/main/session-continuation-store";
@@ -113,6 +114,133 @@ describe("desktop session continuations", () => {
       "assistant",
       "user",
       "assistant",
+    ]);
+  });
+
+  it("drops recovery overlay rows after Hermes persists the same attachment turn", () => {
+    const attachment = {
+      id: "attachment-1",
+      kind: "text-file" as const,
+      name: "fixture.txt",
+      mime: "text/plain",
+      size: 20,
+      text: "Marker: AO-U5",
+    };
+    const continuation = continuationItemsToHistory([
+      {
+        kind: "user",
+        content: "Read the marker",
+        attachments: [attachment],
+      },
+      { kind: "assistant", content: "AO-U5" },
+      {
+        kind: "user",
+        content: "Read the marker",
+        attachments: [attachment],
+      },
+    ]);
+    const canonical = [
+      {
+        kind: "user" as const,
+        id: 10,
+        content:
+          'Read the marker\n<file name="fixture.txt">Marker: AO-U5</file>',
+        timestamp: 10,
+      },
+      {
+        kind: "assistant" as const,
+        id: 11,
+        content: "AO-U5",
+        timestamp: 11,
+      },
+    ];
+
+    const merged = mergeSessionContinuationWithCanonical(
+      continuation,
+      canonical,
+    );
+
+    expect(merged).toEqual([
+      { ...canonical[0], attachments: [attachment] },
+      canonical[1],
+    ]);
+  });
+
+  it("matches a canonical attachment prompt with an orphan close tag", () => {
+    const continuation = continuationItemsToHistory([
+      { kind: "user", content: "Read project" },
+      { kind: "assistant", content: "partial" },
+    ]);
+    const canonical = [
+      {
+        kind: "user" as const,
+        id: 20,
+        content: "Read project\n\n</file>",
+        timestamp: 20,
+      },
+      {
+        kind: "assistant" as const,
+        id: 21,
+        content: "final",
+        timestamp: 21,
+      },
+    ];
+
+    expect(
+      mergeSessionContinuationWithCanonical(continuation, canonical).map(
+        (item) => item.id,
+      ),
+    ).toEqual([20, 21]);
+  });
+
+  it("inserts a missing remote user before its canonical assistant turn", () => {
+    const continuation = continuationItemsToHistory([
+      { kind: "user", content: "first prompt" },
+      { kind: "assistant", content: "first answer" },
+      { kind: "user", content: "follow-up prompt" },
+      { kind: "assistant", content: "follow-up answerfollow-up answer" },
+    ]);
+    const canonical = [
+      {
+        kind: "user" as const,
+        id: 1,
+        content: "first prompt",
+        timestamp: 1,
+      },
+      {
+        kind: "assistant" as const,
+        id: 2,
+        content: "first answer",
+        timestamp: 2,
+      },
+      {
+        kind: "reasoning" as const,
+        id: 3,
+        assistantId: 4,
+        text: "recall context",
+        timestamp: 3,
+      },
+      {
+        kind: "assistant" as const,
+        id: 4,
+        content: "follow-up answer",
+        timestamp: 4,
+      },
+    ];
+
+    expect(
+      mergeSessionContinuationWithCanonical(continuation, canonical).map(
+        (item) =>
+          item.kind === "user" || item.kind === "assistant"
+            ? `${item.kind}:${item.content}`
+            : item.kind,
+      ),
+    ).toEqual([
+      "user:first prompt",
+      "assistant:first answer",
+      "user:follow-up prompt",
+      "reasoning",
+      "assistant:follow-up answer",
     ]);
   });
 });

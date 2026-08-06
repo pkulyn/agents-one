@@ -9,7 +9,7 @@ export default {
   nav: {
     groups: {
       general: "Umum",
-      hermes: "Hermes One",
+      hermes: "Agents One",
     },
     appearance: "Tampilan",
     language: "Bahasa",

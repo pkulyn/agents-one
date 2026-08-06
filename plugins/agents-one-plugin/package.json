@@ -1,0 +1,23 @@
+{
+  "name": "@agents-one/plugin-sdk",
+  "version": "0.1.1",
+  "description": "Agents One Remote Gateway and local CLI adapter plugin SDK",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./event-stream": "./src/event-stream.mjs",
+    "./gateway": "./src/remote-gateway-plugin.mjs",
+    "./cli": "./src/cli-adapter-plugin.mjs",
+    "./hermes": "./examples/hermes-or-hers-adapter.mjs"
+  },
+  "bin": {
+    "agents-one-plugin-verify": "./bin/verify.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "verify": "node ./bin/verify.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

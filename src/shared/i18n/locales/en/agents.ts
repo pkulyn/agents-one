@@ -2,6 +2,17 @@ export default {
   title: "Profiles",
   subtitle:
     "Each profile is an isolated Hermes workspace with its own config, memory, and skills",
+  remoteLocalNoticeTitle: "Managing local desktop profiles",
+  remoteLocalNoticeDesc:
+    "Agents One is connected to a remote Hermes service, but these profiles live on this desktop and control local agent configuration, switching, and chat entry points.",
+  retry: "Retry",
+  hermesProfiles: "Hermes profiles",
+  connectedRuntimes: "Connected runtimes",
+  runtimeChat: "Conversation",
+  runtimeConfigure: "Configure",
+  runtimeUnavailable: "Disabled",
+  runtimeManagedHint:
+    "Names are edited in Runtime settings. Custom runtime avatars will be stored locally in a later pass.",
   newAgent: "New Agent",
   namePlaceholder: "Agent name (e.g. coder)",
   createTitle: "New profile",
@@ -24,7 +35,7 @@ export default {
   colModel: "Model",
   colStatus: "Status",
   colActions: "Actions",
-  chat: "Chat",
+  chat: "Conversation",
   deleteConfirm: "Delete?",
   yes: "Yes",
   no: "No",
@@ -89,8 +100,8 @@ export default {
   syncing: "Syncing…",
   syncSignedOut: "Not synced",
   syncSignedOutHint:
-    "Sign in to your Hermes One account on the Providers page to back agents up to the cloud.",
-  syncUpToDate: "Synced with your Hermes One account",
+    "Sign in to your Agents One account on the Providers page to back agents up to the cloud.",
+  syncUpToDate: "Synced with your Agents One account",
   syncSummary: "Synced — {{pushed}} pushed, {{pulled}} pulled, {{created}} new",
   syncErrors: "Sync finished with {{count}} error(s)",
   syncUnauthorized: "Session expired — sign in again on the Providers page",
@@ -101,7 +112,7 @@ export default {
   walletSourceCloud: "Cloud",
   walletManagedEmpty: "No wallets yet",
   walletSyncedHint:
-    "Wallets are managed in your Hermes One account and appear here once this agent syncs.",
+    "Wallets are managed in your Agents One account and appear here once this agent syncs.",
   walletSignInHint:
-    "Sign in to your Hermes One account on the Providers page to see this agent's wallets.",
+    "Sign in to your Agents One account on the Providers page to see this agent's wallets.",
 } as const;

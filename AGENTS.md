@@ -3,6 +3,16 @@
 - Run `lat search` to find sections relevant to your task. Read them to understand the design intent before writing code.
 - Run `lat expand` on user prompts to expand any `[[refs]]` — this resolves section names to file locations and provides context.
 
+## Agents One change-safety gate (REQUIRED)
+
+Agents One is a user-facing multi-agent workspace. A small visual adjustment must never silently alter runtime registration, persisted configuration, history data, or agent appearance. Before editing, classify the requested change and follow [the change-safety protocol](./docs/AGENTS_ONE_CHANGE_SAFETY_PROTOCOL.md).
+
+- Prefer the smallest local patch. Reuse existing components and data contracts; do not refactor adjacent layers merely for consistency.
+- For UI-only work, do not edit `src/main/agent-runtimes.ts`, persisted config writers, migrations, IPC contracts, or history reconciliation code unless the request genuinely requires it.
+- If a protected boundary must change, first document its affected data, consumers, regression risks, rollback path, and focused automated/manual checks.
+- Read existing configuration before writing it. Preserve unknown keys and user-managed runtime data; never replace a whole configuration document for a narrow UI change.
+- Keep functional changes and presentation changes in separate, reviewable patches whenever practical. Verify each patch before proceeding to the next.
+
 # Post-task checklist (REQUIRED — do not skip)
 
 After EVERY task, before responding to the user:

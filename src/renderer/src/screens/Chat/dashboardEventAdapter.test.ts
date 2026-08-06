@@ -166,6 +166,15 @@ describe("applyDashboardStreamEvent — message.complete text reconciliation", (
     expect(bubble).toBeDefined();
     expect((bubble as { content: string }).content).toBe("Remote answer");
   });
+
+  it("keeps one response when completion replays a long streamed prefix", () => {
+    const streamed =
+      "老大好！连接正常，Agents One 在线。当前状态：模型 gl m-5.2，运行环境 NAS，时间 2026年7月14日。";
+    const replayed =
+      "老大好！连接正常，Agents One 在线。当前状态：模型 gl m-5.2，运行环境 NAS，有什么需要帮忙的随时说。";
+
+    expect(mergeStreamedWithFinal(streamed, replayed)).toBe(streamed);
+  });
 });
 
 describe("applyDashboardStreamEvent operational notices", () => {

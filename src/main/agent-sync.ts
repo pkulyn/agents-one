@@ -20,7 +20,7 @@ import type {
   AgentSyncStatus,
 } from "../shared/agent-sync";
 
-// Syncs desktop profiles (the app's "agents") with the signed-in Hermes One
+// Syncs desktop profiles (the app's "agents") with the signed-in Agents One
 // account's cloud agents (backend /api/agents CRUD, bearer-authenticated with
 // the device-login token). Phase 1 scope — the free parts from the backend's
 // docs/agent-sync.md: color, persona (SOUL.md ↔ systemPrompt), memory

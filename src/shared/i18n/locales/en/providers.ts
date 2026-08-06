@@ -52,14 +52,14 @@ export default {
     nousDesc: "Sign in with your Nous Portal subscription",
   },
   hermesAccount: {
-    sectionTitle: "Hermes One account",
+    sectionTitle: "Agents One account",
     sectionHint:
-      "Sign in to your Hermes One account to sync agents, workspaces, and wallets across devices.",
-    signIn: "Sign in to Hermes One",
+      "Sign in to your Agents One account to sync agents, workspaces, and wallets across devices.",
+    signIn: "Sign in to Agents One",
     signOut: "Sign out",
     signedInAs: "Signed in as",
     connected: "Connected · agents sync automatically",
-    modalTitle: "Sign in to Hermes One",
+    modalTitle: "Sign in to Agents One",
     codeHint: "Approve in your browser. Make sure it shows the same code:",
     waitingHint: "Waiting for approval…",
     signedIn: "Signed in",

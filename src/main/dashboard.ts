@@ -448,7 +448,7 @@ async function getRemoteDashboardStatusForConfig(
           supported: true,
           running: false,
           error:
-            "Remote dashboard requires OAuth browser authentication. Token-based remote dashboard is supported now; OAuth ticket flow is not wired in Hermes One yet.",
+            "Remote dashboard requires OAuth browser authentication. Token-based remote dashboard is supported now; OAuth ticket flow is not wired in Agents One yet.",
         };
       }
       // Touch an authenticated endpoint when the reverse proxy exposes the
@@ -532,7 +532,7 @@ async function getSshDashboardStatusForConfig(
         running: false,
         connection,
         error:
-          "SSH dashboard requires OAuth browser authentication. Token-based dashboard over SSH is supported now; OAuth ticket flow is not wired in Hermes One yet.",
+          "SSH dashboard requires OAuth browser authentication. Token-based dashboard over SSH is supported now; OAuth ticket flow is not wired in Agents One yet.",
       };
     }
 

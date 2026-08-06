@@ -161,7 +161,7 @@ export default {
   followUs: {
     title: "تابعنا على X",
     description:
-      "ابق على اطلاع بآخر ميزات ونصائح وتحديثات Hermes One. تابعنا على X!",
+      "ابق على اطلاع بآخر ميزات ونصائح وتحديثات Agents One. تابعنا على X!",
     follow: "متابعة",
     notNow: "ليس الآن",
   },

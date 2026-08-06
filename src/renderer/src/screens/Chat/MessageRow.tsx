@@ -1,11 +1,12 @@
-import { memo, useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { memo, useMemo, useState, useCallback } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Grid } from "react-loader-spinner";
 import { Copy, Check } from "lucide-react";
-import loadingGif from "../../assets/loadingo.gif";
+import agentsOneMark from "../../assets/agents-one-mark.svg";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { MediaSegmentView } from "../../components/MediaImage";
+import ProfileAvatar from "../../components/common/ProfileAvatar";
 import { useI18n } from "../../components/useI18n";
 import { parseMediaTokens, cleanLeakedToolTags } from "./mediaUtils";
 import type { ChatBubbleMessage, ChatMessage } from "./types";
@@ -88,116 +89,49 @@ function isChatBubbleMessage(msg: ChatMessage): msg is ChatBubbleMessage {
   );
 }
 
-/**
- * One full loop of `loadingo.gif`, in ms (119 frames × 40ms). Used to let the
- * animation finish its current loop after generation stops instead of freezing
- * mid-frame.
- */
-const GIF_LOOP_MS = 4760;
-
-/**
- * Captures the gif's first frame as a static PNG data URL, once, shared across
- * every avatar instance. Idle avatars (past turns) render this frozen frame so
- * the chat isn't full of perpetually-spinning gifs — only the in-flight turn's
- * avatar runs the live animation.
- */
-let frozenFramePromise: Promise<string> | null = null;
-function getFrozenFrame(): Promise<string> {
-  if (!frozenFramePromise) {
-    frozenFramePromise = new Promise<string>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return reject(new Error("no 2d context"));
-          // drawImage right after load captures frame 0 (not yet advanced).
-          ctx.drawImage(img, 0, 0);
-          resolve(canvas.toDataURL("image/png"));
-        } catch (err) {
-          reject(err as Error);
-        }
-      };
-      img.onerror = () => reject(new Error("failed to load loadingo.gif"));
-      img.src = loadingGif;
-    });
-  }
-  return frozenFramePromise;
-}
-
-/**
- * Agent avatar. While `active` (the turn is generating) it plays the looping
- * `loadingo.gif`. When `active` goes false it doesn't freeze instantly — it
- * keeps animating until the end of the current loop, then swaps to a static
- * frozen frame so the stop lands on a clean loop boundary.
- */
+/** Agent identity avatar. Activity is represented by the separate platform mark. */
 export const HermesAvatar = memo(function HermesAvatar({
   size = 30,
   active = false,
+  name = "Hermes",
+  color,
+  avatar,
 }: {
   size?: number;
   /** True only for the avatar of the turn currently being generated. */
   active?: boolean;
+  name?: string;
+  color?: string | null;
+  avatar?: string | null;
 }): React.JSX.Element {
-  const [frozenSrc, setFrozenSrc] = useState<string | null>(null);
-  const [playing, setPlaying] = useState(active);
-  // Re-keying the <img> on each play session restarts the gif from frame 0 so
-  // the loop clock below is accurate.
-  const [playKey, setPlayKey] = useState(0);
-  // Timestamp (performance.now) of the current play session's frame 0; set in
-  // the effect, never during render. 0 = not yet started.
-  const playStartRef = useRef(0);
-  const stopTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    getFrozenFrame()
-      .then((src) => {
-        if (!cancelled) setFrozenSrc(src);
-      })
-      .catch(() => {
-        /* fall back to the live gif if the snapshot can't be built */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (active) {
-      // (Re)start the animation immediately when generation begins.
-      if (stopTimer.current) clearTimeout(stopTimer.current);
-      if (!playing) {
-        setPlayKey((k) => k + 1);
-        playStartRef.current = performance.now();
-        setPlaying(true);
-      } else if (playStartRef.current === 0) {
-        // Mounted already playing (active on first render): anchor the loop clock.
-        playStartRef.current = performance.now();
-      }
-    } else if (playing) {
-      // Generation stopped: run out the rest of the current loop, then freeze.
-      const elapsed = (performance.now() - playStartRef.current) % GIF_LOOP_MS;
-      const remaining = GIF_LOOP_MS - elapsed;
-      if (stopTimer.current) clearTimeout(stopTimer.current);
-      stopTimer.current = setTimeout(() => setPlaying(false), remaining);
-    }
-    return () => {
-      if (stopTimer.current) clearTimeout(stopTimer.current);
-    };
-  }, [active, playing]);
-
   return (
-    <div className="chat-avatar chat-avatar-agent">
-      {playing ? (
-        <img key={playKey} src={loadingGif} width={size} height={size} alt="" />
-      ) : (
-        <img src={frozenSrc ?? loadingGif} width={size} height={size} alt="" />
-      )}
+    <div
+      className="chat-avatar chat-avatar-agent chat-avatar-agent--identity"
+      style={{ width: size, height: size }}
+      data-active={active || undefined}
+    >
+      <ProfileAvatar name={name} color={color} avatar={avatar} size={size} />
+    </div>
+  );
+});
+
+/** Agents One activity mark used only for the live response indicator. */
+export const AgentsOneActivityAvatar = memo(function AgentsOneActivityAvatar({
+  size = 30,
+  active = false,
+}: {
+  size?: number;
+  active?: boolean;
+}): React.JSX.Element {
+  return (
+    <div
+      className={`chat-avatar chat-avatar-agents-one${
+        active ? " chat-avatar-agents-one--active" : ""
+      }`}
+      style={{ width: size, height: size }}
+      aria-label="Agents One"
+    >
+      <img src={agentsOneMark} alt="" />
     </div>
   );
 });
@@ -221,6 +155,10 @@ interface MessageRowProps {
   /** False on continuation rows of a turn — render a spacer instead of the
    *  avatar so the turn reads as one grouped block. Defaults to true. */
   showAvatar?: boolean;
+  /** Human-readable agent identity shown with the first reply in a turn. */
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
 }
 
 export const MessageRow = memo(function MessageRow({
@@ -230,6 +168,9 @@ export const MessageRow = memo(function MessageRow({
   onApprove,
   onDeny,
   showAvatar = true,
+  agentName = "Hermes",
+  agentAvatar,
+  agentColor,
 }: MessageRowProps): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -244,6 +185,19 @@ export const MessageRow = memo(function MessageRow({
   const bubbleContent = isChatBubbleMessage(msg)
     ? (msg as ChatBubbleMessage).content
     : null;
+  const displayBubbleContent = useMemo(() => {
+    if (
+      msg.role !== "user" ||
+      !isChatBubbleMessage(msg) ||
+      (!msg.attachments?.length && !/<file\b/i.test(bubbleContent || ""))
+    ) {
+      return bubbleContent;
+    }
+    return (bubbleContent || "")
+      .replace(/<file\b[^>]*>[\s\S]*?<\/file>/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }, [bubbleContent, msg]);
   const segments = useMemo(
     () =>
       msg.role === "agent" && bubbleContent
@@ -255,22 +209,27 @@ export const MessageRow = memo(function MessageRow({
   );
 
   const handleCopy = useCallback(async () => {
-    if (!bubbleContent) return;
+    if (!displayBubbleContent) return;
     try {
-      await window.hermesAPI.copyToClipboard(bubbleContent);
+      await window.hermesAPI.copyToClipboard(displayBubbleContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Fallback: clipboard write may fail in some environments
     }
-  }, [bubbleContent]);
+  }, [displayBubbleContent]);
 
   // Only chat bubble messages have content/attachments
   if (!isChatBubbleMessage(msg)) {
     return (
       <div className={`chat-message chat-message-${msg.role}`}>
         {showAvatar ? (
-          <HermesAvatar active={isLoading && isLast} />
+          <HermesAvatar
+            active={isLoading && isLast}
+            name={agentName}
+            avatar={agentAvatar}
+            color={agentColor}
+          />
         ) : (
           <AvatarSpacer />
         )}
@@ -292,6 +251,73 @@ export const MessageRow = memo(function MessageRow({
   const isTimeValid = isValidEpochMs(epochMs);
   const bubbleTime = isTimeValid ? formatBubbleTime(epochMs) : null;
 
+  const bubble = (
+    <div
+      className={`chat-bubble chat-bubble-${msg.role}${
+        msg.error ? " chat-bubble-error" : ""
+      }`}
+    >
+      {displayBubbleContent && !isLoading && !msg.isSlashLoader && (
+        <div className="chat-bubble-actions">
+          <button
+            type="button"
+            className="chat-bubble-copy"
+            onClick={handleCopy}
+            title={copied ? t("common.copied") : t("chat.copyMessage")}
+            aria-label={copied ? t("common.copied") : t("chat.copyMessage")}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+        </div>
+      )}
+      {hasAttachments && (
+        <div className="chat-message-attachments">
+          {msg.attachments!.map((att) => (
+            <AttachmentChip key={att.id} attachment={att} />
+          ))}
+        </div>
+      )}
+      {msg.isSlashLoader ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Grid
+            visible={true}
+            height={13}
+            width={13}
+            radius={15}
+            color="#8b7cf6"
+            ariaLabel="running-command"
+          />
+          <span>{msg.content}</span>
+        </div>
+      ) : (
+        displayBubbleContent &&
+        (msg.role === "agent" && segments
+          ? segments.map((segment) =>
+              segment.type === "text" ? (
+                segment.value.trim() ? (
+                  <AgentMarkdown key={`t-${segment.start}`}>
+                    {segment.value}
+                  </AgentMarkdown>
+                ) : null
+              ) : (
+                <MediaSegmentView
+                  key={`m-${segment.start}`}
+                  token={segment.token}
+                  raw={segment.raw}
+                  source={segment.source}
+                />
+              ),
+            )
+          : displayBubbleContent)
+      )}
+      {msg.error && (
+        <div className="chat-error-message" role="alert">
+          {msg.error}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
       className={`chat-message chat-message-${msg.role}${
@@ -303,77 +329,21 @@ export const MessageRow = memo(function MessageRow({
       {msg.role === "user" ? null : !showAvatar ? (
         <AvatarSpacer />
       ) : (
-        <HermesAvatar active={isLoading && isLast} />
+        <HermesAvatar
+          active={isLoading && isLast}
+          name={agentName}
+          avatar={agentAvatar}
+          color={agentColor}
+        />
       )}
-      <div
-        className={`chat-bubble chat-bubble-${msg.role}${
-          msg.error ? " chat-bubble-error" : ""
-        }`}
-      >
-        {msg.content && !isLoading && !msg.isSlashLoader && (
-          <div className="chat-bubble-actions">
-            <button
-              type="button"
-              className="chat-bubble-copy"
-              onClick={handleCopy}
-              title={copied ? t("common.copied") : t("chat.copyMessage")}
-              aria-label={copied ? t("common.copied") : t("chat.copyMessage")}
-            >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-            </button>
-          </div>
-        )}
-        {hasAttachments && (
-          <div className="chat-message-attachments">
-            {msg.attachments!.map((att) => (
-              <AttachmentChip key={att.id} attachment={att} />
-            ))}
-          </div>
-        )}
-        {msg.isSlashLoader ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Grid
-              visible={true}
-              height={13}
-              width={13}
-              radius={15}
-              color="#8b7cf6"
-              ariaLabel="running-command"
-            />
-            <span>{msg.content}</span>
-          </div>
-        ) : (
-          msg.content &&
-          (msg.role === "agent" && segments
-            ? segments.map((segment) =>
-                segment.type === "text" ? (
-                  segment.value.trim() ? (
-                    // Keyed on the segment's character offset rather than its
-                    // array index — a MEDIA: token appearing mid-stream shifts
-                    // every subsequent index, which would otherwise re-mount
-                    // each downstream MediaSegmentView and re-fire its
-                    // `mediaFileExists` probe.
-                    <AgentMarkdown key={`t-${segment.start}`}>
-                      {segment.value}
-                    </AgentMarkdown>
-                  ) : null
-                ) : (
-                  <MediaSegmentView
-                    key={`m-${segment.start}`}
-                    token={segment.token}
-                    raw={segment.raw}
-                    source={segment.source}
-                  />
-                ),
-              )
-            : msg.content)
-        )}
-        {msg.error && (
-          <div className="chat-error-message" role="alert">
-            {msg.error}
-          </div>
-        )}
-      </div>
+      {msg.role === "agent" ? (
+        <div className="chat-agent-message-content">
+          {showAvatar && <span className="chat-agent-name">{agentName}</span>}
+          {bubble}
+        </div>
+      ) : (
+        bubble
+      )}
       {bubbleTime && isTimeValid && (
         <time
           className="chat-bubble-time"

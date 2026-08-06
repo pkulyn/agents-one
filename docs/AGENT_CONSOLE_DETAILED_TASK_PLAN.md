@@ -4,7 +4,7 @@ Date: 2026-07-11
 
 This plan turns the Hermes Desktop Plus multi-agent direction into executable task packages. The current strategy is to keep Hermes Desktop Plus as the product base, stabilize the remote Hermes baseline, then add OpenClaw, Codex, and Claude Code through explicit runtime adapters.
 
-> Current canonical roadmap: [Hermes One Five-Phase Implementation Plan](./HERMES_ONE_FIVE_PHASE_PLAN.md). It supersedes the fixed-Hermes coordinator assumption: Hermes One is the durable control plane, while the user may select Hermes, Codex, Claude Code, OpenClaw, or manual coordination as the project coordinator. The frozen Phase 3/4 schema and state-machine contract is [Project Coordination Contract](./PROJECT_COORDINATION_CONTRACT.md).
+> Current canonical roadmap: [Agents One Five-Phase Implementation Plan](./HERMES_ONE_FIVE_PHASE_PLAN.md). The execution backlog for projects and tasks is [Agents One Project and Task Execution Plan](./AGENTS_ONE_PROJECT_TASK_EXECUTION_PLAN.md). It supersedes the fixed-Hermes coordinator assumption: Agents One is the durable control plane, while the user may select Hermes, Codex, Claude Code, OpenClaw, or manual coordination as the project coordinator. The frozen Phase 3/4 schema and state-machine contract is [Project Coordination Contract](./PROJECT_COORDINATION_CONTRACT.md).
 
 ## Current Baseline
 

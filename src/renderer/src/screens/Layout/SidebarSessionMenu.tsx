@@ -21,6 +21,7 @@ export interface SidebarMenuTarget {
   id: string;
   title: string;
   contextFolder: string | null;
+  runtimeId?: string;
   /** Viewport coordinates the menu should anchor to (trigger / cursor). */
   x: number;
   y: number;

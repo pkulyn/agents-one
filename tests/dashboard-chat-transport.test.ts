@@ -231,7 +231,7 @@ describe("dashboardModelMatches", () => {
     ).toBe(true);
   });
 
-  it("accepts Hermes Agent custom provider slugs for Hermes One custom rows", () => {
+  it("accepts Hermes Agent custom provider slugs for Agents One custom rows", () => {
     expect(
       dashboardModelMatches("custom", "deepseek-v4-pro", {
         provider: "custom:deepseek-v4-pro",
@@ -606,7 +606,7 @@ describe("ensureDashboardRuntimeSession", () => {
 });
 
 describe("resolveDashboardProviderForModel", () => {
-  it("maps Hermes One custom rows on known built-in endpoints to dashboard built-in providers", () => {
+  it("maps Agents One custom rows on known built-in endpoints to dashboard built-in providers", () => {
     expect(
       resolveDashboardProviderForModel(
         "custom",
@@ -646,7 +646,7 @@ describe("resolveDashboardProviderForModel", () => {
     ).toBe("custom");
   });
 
-  it("resolves Hermes One custom rows to dashboard custom provider slugs by base URL", () => {
+  it("resolves Agents One custom rows to dashboard custom provider slugs by base URL", () => {
     expect(
       resolveDashboardProviderForModel(
         "custom",

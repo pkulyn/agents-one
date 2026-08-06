@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  Bot,
   Database,
   FileText,
   Info,
   Languages,
   Palette,
-  Plug,
   ShieldCheck,
-  Users,
   X,
 } from "lucide-react";
 import { useI18n } from "../useI18n";
@@ -18,22 +15,16 @@ import { SettingsDataContext } from "./SettingsDataContext";
 import AppearancePane from "./AppearancePane";
 import LanguagePane from "./LanguagePane";
 import PrivacyPane from "./PrivacyPane";
-import ConnectionPane from "./ConnectionPane";
 import DataPane from "./DataPane";
 import AboutPane from "./AboutPane";
-import CommunityPane from "./CommunityPane";
 import LogsPane from "./LogsPane";
-import AgentRuntimesPane from "./AgentRuntimesPane";
 
 export type SettingsSection =
   | "appearance"
   | "language"
   | "privacy"
-  | "connection"
   | "data"
-  | "runtimes"
   | "about"
-  | "community"
   | "logs";
 
 type NavGroup = "general" | "hermes";
@@ -65,29 +56,11 @@ const SETTINGS_NAV: ReadonlyArray<{
   },
   {
     group: "general",
-    id: "connection",
-    labelKey: "settings.nav.connection",
-    Icon: Plug,
-  },
-  {
-    group: "general",
     id: "data",
     labelKey: "settings.nav.data",
     Icon: Database,
   },
   { group: "hermes", id: "about", labelKey: "settings.nav.about", Icon: Info },
-  {
-    group: "hermes",
-    id: "runtimes",
-    labelKey: "settings.nav.runtimes",
-    Icon: Bot,
-  },
-  {
-    group: "hermes",
-    id: "community",
-    labelKey: "settings.nav.community",
-    Icon: Users,
-  },
   {
     group: "hermes",
     id: "logs",
@@ -105,8 +78,6 @@ const NAV_GROUP_ORDER: { id: NavGroup; labelKey: string }[] = [
 function resolveSection(name?: string): SettingsSection {
   const key = (name || "").trim().toLowerCase();
   if (key === "hermesagent") return "about";
-  // Network merged into Connection — keep the old `/settings network` working.
-  if (key === "network") return "connection";
   const match = SETTINGS_NAV.find((s) => s.id === key);
   return match ? match.id : "appearance";
 }
@@ -200,11 +171,8 @@ export default function SettingsModal({
             {section === "appearance" && <AppearancePane />}
             {section === "language" && <LanguagePane />}
             {section === "privacy" && <PrivacyPane />}
-            {section === "connection" && <ConnectionPane />}
             {section === "data" && <DataPane />}
             {section === "about" && <AboutPane />}
-            {section === "runtimes" && <AgentRuntimesPane />}
-            {section === "community" && <CommunityPane />}
             {section === "logs" && <LogsPane />}
           </SettingsDataContext.Provider>
         </div>

@@ -1,5 +1,7 @@
+# Keep the original identifier so an existing Hermes One installation upgrades
+# in place instead of leaving two desktop applications behind after the rename.
 appId: com.nousresearch.hermes
-productName: Hermes One
+productName: Agents One
 directories:
   buildResources: build
 files:
@@ -13,7 +15,12 @@ asarUnpack:
   - resources/**
   - node_modules/better-sqlite3/build/Release/*.node
 win:
-  executableName: hermes-agent
+  executableName: agents-one
+  icon: build/icon.ico
+  # Corporate Windows users often lack the symlink privilege needed to unpack
+  # electron-builder's resource-edit/sign helper. Keep local packaging portable;
+  # production signing can be enabled in a dedicated CI signing environment.
+  signAndEditExecutable: false
   target:
     - nsis
     - portable
@@ -52,9 +59,8 @@ linux:
   category: Utility
   synopsis: Self-improving AI assistant desktop app
   description: >-
-    Hermes One is a native desktop app for installing, configuring, and chatting
-    with Hermes Agent — a self-improving AI assistant with tool use, multi-platform
-    messaging, and a closed learning loop.
+    Agents One is a native desktop workspace for coordinating conversations,
+    tasks, projects, and artifacts across multiple AI agents.
 appImage:
   artifactName: ${name}-${version}.${ext}
 deb:

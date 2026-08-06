@@ -9,7 +9,7 @@ export default {
   nav: {
     groups: {
       general: "Ogólne",
-      hermes: "Hermes One",
+      hermes: "Agents One",
     },
     appearance: "Wygląd",
     language: "Język",
@@ -39,7 +39,7 @@ export default {
   },
   analytics: {
     label: "Wysyłaj anonimową analitykę użycia",
-    hint: "Pomaga ulepszać Hermes One przez wysyłanie anonimowych, zagregowanych danych użycia do usługi analitycznej projektu. Możesz to wyłączyć w dowolnym momencie.",
+    hint: "Pomaga ulepszać Agents One przez wysyłanie anonimowych, zagregowanych danych użycia do usługi analitycznej projektu. Możesz to wyłączyć w dowolnym momencie.",
     disclosure: {
       uuid: "Losowy identyfikator instalacji przechowywany tylko na tym urządzeniu (bez imienia, e-maila ani danych konta).",
       platform: "Twój system operacyjny, wersja Electron i wersja Node.js.",

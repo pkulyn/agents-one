@@ -12,6 +12,8 @@ describe("contextWindowForModel", () => {
   });
 
   it("maps known commercial families", () => {
+    expect(contextWindowForModel("glm-5.2")).toBe(1000000);
+    expect(contextWindowForModel("zai/glm_5.2")).toBe(1000000);
     expect(contextWindowForModel("gpt-4o-mini")).toBe(128000);
     expect(contextWindowForModel("claude-sonnet-4-6")).toBe(200000);
     // DeepSeek V3.x is 128K, not 64K ("65.5k") or 1M — issue #597.

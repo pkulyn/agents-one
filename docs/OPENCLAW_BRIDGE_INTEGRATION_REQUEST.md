@@ -1,6 +1,6 @@
 # OpenClaw Bridge 联调说明
 
-本说明用于向远程 OpenClaw 管理员索取**不含密钥**的联调信息。Hermes One 当前采用 HTTP Bridge Adapter；Runtime 设置页只保存基础地址、超时和启用状态，禁止把 Token、API Key、密码或带凭据 URL 写入配置与日志。
+本说明用于向远程 OpenClaw 管理员索取**不含密钥**的联调信息。Agents One 当前采用 HTTP Bridge Adapter；Runtime 设置页只保存基础地址、超时和启用状态，禁止把 Token、API Key、密码或带凭据 URL 写入配置与日志。
 
 ## 需要提供的信息
 
@@ -16,7 +16,7 @@ Bearer Token 已受支持：先保存远程 OpenClaw Runtime 的基础地址，�
 - 所有响应均为 `application/json`。
 - 路径相对于配置的基础地址追加。例如基础地址是 `https://host/bridge`，健康检查为 `GET https://host/bridge/health`。
 - 成功状态使用 HTTP `2xx`；权限、限流、参数错误和服务端错误使用恰当的非 `2xx` 状态码。
-- 任务 ID 必须是字符串；Hermes One 会对任务 ID 进行 URL 编码。
+- 任务 ID 必须是字符串；Agents One 会对任务 ID 进行 URL 编码。
 
 ## 1. 健康检查与能力
 

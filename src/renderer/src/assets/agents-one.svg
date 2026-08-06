@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 132" role="img" aria-labelledby="title">
+  <title id="title">Agents One</title>
+  <g fill="#fff">
+    <rect x="10" y="16" width="100" height="100" rx="22" />
+    <path fill="#121212" d="M36 80 60 42h18l24 38-12 7-8-13v25H66V74l-8 13z" />
+    <text x="134" y="88" font-family="Arial Black, Arial, sans-serif" font-size="66" font-weight="900" letter-spacing="1">AGENTS ONE</text>
+  </g>
+</svg>

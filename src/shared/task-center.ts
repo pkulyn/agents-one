@@ -1,4 +1,9 @@
-import type { AgentRuntimeArtifact } from "./agent-runtimes";
+import type {
+  AgentRuntimeArtifact,
+  AgentRuntimeEvent,
+  RuntimeInputArtifact,
+} from "./agent-runtimes";
+import type { Attachment } from "./attachments";
 
 export type TaskCenterStatus =
   | "queued"
@@ -9,6 +14,22 @@ export type TaskCenterStatus =
   | "timed_out"
   | "review_required";
 
+/** Immutable snapshot of one actual Runtime execution under a business task. */
+export interface TaskCenterRun {
+  id: string;
+  runtimeRunId?: string;
+  status: TaskCenterStatus;
+  startedAt: number;
+  completedAt?: number;
+  output?: string;
+  error?: string;
+  worktreePath?: string;
+  diffSummary?: string;
+  inputArtifacts?: RuntimeInputArtifact[];
+  artifacts?: AgentRuntimeArtifact[];
+  events?: AgentRuntimeEvent[];
+}
+
 export interface TaskCenterTask {
   id: string;
   title: string;
@@ -16,6 +37,10 @@ export interface TaskCenterTask {
   runtimeId: string;
   mode: "analysis" | "implementation";
   workspace?: string;
+  workspaceRef?: string;
+  coordinatorPlan?: CreateTaskCenterTaskInput["coordinatorPlan"];
+  /** Project-controlled work always requires an explicit human acceptance. */
+  requireReview?: boolean;
   timeoutMs: number;
   status: TaskCenterStatus;
   createdAt: number;
@@ -26,7 +51,10 @@ export interface TaskCenterTask {
   error?: string;
   worktreePath?: string;
   diffSummary?: string;
+  inputArtifacts?: RuntimeInputArtifact[];
   artifacts?: AgentRuntimeArtifact[];
+  /** Historical executions. Legacy task fields mirror the newest entry. */
+  runs?: TaskCenterRun[];
   acceptance?: "pending" | "accepted" | "rejected";
   recovery?: {
     reason: "desktop_restarted";
@@ -37,7 +65,7 @@ export interface TaskCenterTask {
 
 export interface TaskCenterWorktree {
   path: string;
-  runtimeKind: "codex" | "claude-code" | "unknown";
+  runtimeKind: "codex" | "claude-code" | "pi" | "unknown";
   exists: boolean;
   updatedAt: number;
   taskId?: string;
@@ -52,6 +80,10 @@ export interface CreateTaskCenterTaskInput {
   runtimeId: string;
   mode: "analysis" | "implementation";
   workspace?: string;
+  workspaceRef?: string;
+  attachments?: Attachment[];
+  /** Keep successful work in the review queue instead of auto-completing it. */
+  requireReview?: boolean;
   timeoutMs?: number;
   coordinatorPlan?: {
     projectId: string;

@@ -1,7 +1,10 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef, useState } from "react";
-import { useChatIPC } from "./useChatIPC";
+import {
+  persistedTurnCompletionSignature,
+  useChatIPC,
+} from "./useChatIPC";
 import type { ActiveTurn, ChatMessage, UsageState } from "../types";
 
 type Callback<T extends unknown[]> = (...args: T) => void;
@@ -75,19 +78,24 @@ function installHermesApi(callbacks: ChatIpcCallbacks): {
 
 function Harness({
   sessionScopeId,
+  initialMessages = [],
+  initialActiveTurn = null,
 }: {
   sessionScopeId: string | null;
+  initialMessages?: ChatMessage[];
+  initialActiveTurn?: ActiveTurn | null;
 }): React.JSX.Element {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [, setHermesSessionId] = useState<string | null>(sessionScopeId);
   const [, setToolProgress] = useState<string | null>(null);
   const [, setIsLoading] = useState(false);
   const [, setUsage] = useState<UsageState | null>(null);
-  const activeTurnRef = useRef<ActiveTurn | null>(null);
+  const activeTurnRef = useRef<ActiveTurn | null>(initialActiveTurn);
 
   useChatIPC({
     runId: "run-1",
     sessionScopeId,
+    messages,
     setMessages,
     setHermesSessionId,
     setToolProgress,
@@ -99,6 +107,13 @@ function Harness({
   return (
     <output data-testid="ids">
       {JSON.stringify(messages.map((message) => message.id))}
+      <span data-testid="contents">
+        {JSON.stringify(
+          messages.map((message) =>
+            "content" in message ? message.content : "",
+          ),
+        )}
+      </span>
     </output>
   );
 }
@@ -109,6 +124,39 @@ afterEach(() => {
 });
 
 describe("useChatIPC session scoping", () => {
+  it("does not append the same complete Hermes chunk twice", async () => {
+    const callbacks: ChatIpcCallbacks = {};
+    installHermesApi(callbacks);
+    render(
+      <Harness
+        sessionScopeId="active-session"
+        initialMessages={[
+          {
+            id: "user-1",
+            role: "user",
+            content: "Recall marker",
+            turnId: "turn-1",
+          },
+        ]}
+        initialActiveTurn={{
+          turnId: "turn-1",
+          userId: "user-1",
+          startIndex: 0,
+          status: "running",
+        }}
+      />,
+    );
+
+    await act(async () => {
+      callbacks.chunk?.("run-1", "AO-U5-20260717");
+      callbacks.chunk?.("run-1", "AO-U5-20260717");
+    });
+
+    expect(screen.getByTestId("contents")).toHaveTextContent(
+      JSON.stringify(["Recall marker", "AO-U5-20260717"]),
+    );
+  });
+
   it("ignores late DB refreshes from an old session after the visible chat is cleared", async () => {
     const callbacks: ChatIpcCallbacks = {};
     const api = installHermesApi(callbacks);
@@ -137,5 +185,70 @@ describe("useChatIPC session scoping", () => {
     expect(screen.getByTestId("ids")).toHaveTextContent(
       JSON.stringify(["db-1", "db-2"]),
     );
+  });
+});
+
+describe("persistedTurnCompletionSignature", () => {
+  const activeTurn: ActiveTurn = {
+    turnId: "turn-2",
+    userId: "user-2",
+    startIndex: 2,
+    status: "running",
+  };
+
+  it("recognizes an attachment turn persisted with a file wrapper", () => {
+    const current: ChatMessage[] = [
+      { id: "user-2", role: "user", content: "读取附件", turnId: "turn-2" },
+    ];
+    const persisted: ChatMessage[] = [
+      {
+        id: "db-1",
+        role: "user",
+        content: '读取附件\n<file name="fixture.txt">AO-U5-20260717</file>',
+      },
+      { id: "db-2", role: "agent", content: "AO-U5-20260717" },
+    ];
+
+    expect(
+      persistedTurnCompletionSignature(current, persisted, activeTurn),
+    ).toContain("AO-U5-20260717".toLocaleLowerCase());
+  });
+
+  it("does not complete from an older identical prompt occurrence", () => {
+    const current: ChatMessage[] = [
+      { id: "db-old-u", role: "user", content: "继续" },
+      { id: "db-old-a", role: "agent", content: "旧答复" },
+      { id: "user-2", role: "user", content: "继续", turnId: "turn-2" },
+    ];
+    const persisted: ChatMessage[] = [
+      { id: "db-1", role: "user", content: "继续" },
+      { id: "db-2", role: "agent", content: "旧答复" },
+    ];
+
+    expect(
+      persistedTurnCompletionSignature(current, persisted, activeTurn),
+    ).toBeNull();
+  });
+
+  it("does not complete while tool activity trails the assistant bubble", () => {
+    const current: ChatMessage[] = [
+      { id: "user-2", role: "user", content: "检查项目", turnId: "turn-2" },
+    ];
+    const persisted: ChatMessage[] = [
+      { id: "db-1", role: "user", content: "检查项目" },
+      { id: "db-2", role: "agent", content: "我先检查。" },
+      {
+        id: "db-tc-3-call",
+        kind: "tool_call",
+        role: "agent",
+        callId: "call",
+        name: "terminal",
+        args: "pwd",
+      },
+    ];
+
+    expect(
+      persistedTurnCompletionSignature(current, persisted, activeTurn),
+    ).toBeNull();
   });
 });

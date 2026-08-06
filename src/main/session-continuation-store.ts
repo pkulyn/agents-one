@@ -42,7 +42,9 @@ function readFallbackContinuations(): FallbackContinuationData {
   try {
     const file = fallbackFilePath();
     if (!existsSync(file)) return { sessions: {} };
-    const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<FallbackContinuationData>;
+    const parsed = JSON.parse(
+      readFileSync(file, "utf8"),
+    ) as Partial<FallbackContinuationData>;
     return {
       sessions:
         parsed.sessions && typeof parsed.sessions === "object"
@@ -299,6 +301,104 @@ export function listLocalSessionContinuationEntries(): LocalContinuationEntry[] 
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function historyItemMatchKey(item: HistoryItem): string {
+  switch (item.kind) {
+    case "user":
+      return `user:${normalizeText(
+        item.content
+          .replace(/<file\b[^>]*>[\s\S]*?<\/file>/gi, " ")
+          .replace(/<\/?file\b[^>]*>/gi, " "),
+      )}`;
+    case "assistant":
+      return `assistant:${normalizeText(item.content)}:${normalizeText(
+        item.error || "",
+      )}`;
+    case "reasoning":
+      return `reasoning:${normalizeText(item.text)}`;
+    case "tool_call":
+      return `tool_call:${item.callId || `${item.name}:${normalizeText(item.args)}`}`;
+    case "tool_result":
+      return `tool_result:${item.callId || item.name}:${normalizeText(item.content)}`;
+  }
+}
+
+/**
+ * The local continuation is a recovery overlay, while persisted Hermes rows
+ * are authoritative. Once Hermes has written an equivalent row, retaining the
+ * overlay copy causes every polling refresh to duplicate and re-save the turn.
+ */
+export function mergeSessionContinuationWithCanonical(
+  continuation: ReadonlyArray<HistoryItem>,
+  canonical: ReadonlyArray<HistoryItem>,
+): HistoryItem[] {
+  if (canonical.length === 0) return [...continuation];
+  const enrichedCanonical = canonical.map((item): HistoryItem => {
+    if (
+      (item.kind !== "user" && item.kind !== "assistant") ||
+      item.attachments?.length
+    ) {
+      return item;
+    }
+    const itemKey = historyItemMatchKey(item);
+    const overlay = continuation.find(
+      (candidate) =>
+        candidate.kind === item.kind &&
+        historyItemMatchKey(candidate) === itemKey &&
+        (candidate.kind === "user" || candidate.kind === "assistant") &&
+        Boolean(candidate.attachments?.length),
+    );
+    return overlay && (overlay.kind === "user" || overlay.kind === "assistant")
+      ? { ...item, attachments: overlay.attachments }
+      : item;
+  });
+  const canonicalKeys = new Set(enrichedCanonical.map(historyItemMatchKey));
+  const missingUsers = continuation.filter(
+    (item): item is Extract<HistoryItem, { kind: "user" }> =>
+      item.kind === "user" && !canonicalKeys.has(historyItemMatchKey(item)),
+  );
+  if (missingUsers.length === 0) return [...enrichedCanonical];
+
+  // A remote Dashboard session can persist assistant rows but omit their user
+  // rows. Locate each assistant turn that has no canonical user and insert the
+  // recovery users there in chronological order. Temporary assistant/tool
+  // overlay rows are discarded once canonical assistant history exists.
+  const missingUserAnchors: number[] = [];
+  let turnStart = 0;
+  let turnHasUser = false;
+  for (let index = 0; index < enrichedCanonical.length; index++) {
+    const item = enrichedCanonical[index];
+    if (item.kind === "user") {
+      turnHasUser = true;
+      continue;
+    }
+    if (item.kind !== "assistant") continue;
+    if (!turnHasUser) missingUserAnchors.push(turnStart);
+    turnStart = index + 1;
+    turnHasUser = false;
+  }
+
+  const pairedCount = Math.min(missingUsers.length, missingUserAnchors.length);
+  const pairedUsers = missingUsers.slice(-pairedCount);
+  const pairedAnchors = missingUserAnchors.slice(-pairedCount);
+  const leadingUsers = missingUsers.slice(0, missingUsers.length - pairedCount);
+  const usersByAnchor = new Map<number, HistoryItem[]>();
+  pairedAnchors.forEach((anchor, index) => {
+    const bucket = usersByAnchor.get(anchor) || [];
+    bucket.push(pairedUsers[index]);
+    usersByAnchor.set(anchor, bucket);
+  });
+
+  const merged: HistoryItem[] = [...leadingUsers];
+  enrichedCanonical.forEach((item, index) => {
+    const users = usersByAnchor.get(index);
+    if (users) merged.push(...users);
+    merged.push(item);
+  });
+  const trailingUsers = usersByAnchor.get(enrichedCanonical.length);
+  if (trailingUsers) merged.push(...trailingUsers);
+  return merged;
 }
 
 export function mergeSessionLocalErrors(

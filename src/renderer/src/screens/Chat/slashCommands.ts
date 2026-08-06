@@ -8,10 +8,10 @@ export interface SlashCommand {
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
-  // Chat control
+  // Conversation control
   {
     name: "/new",
-    description: "Start a new chat",
+    description: "Start a new conversation",
     category: "chat",
     local: true,
   },
@@ -160,7 +160,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "/schedules",
-    description: "Open Schedules page",
+    description: "Open scheduled tasks in Task Center",
     category: "info",
   },
   {

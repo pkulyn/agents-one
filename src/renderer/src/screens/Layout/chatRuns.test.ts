@@ -6,6 +6,7 @@ import {
   openSessionRunTransition,
   runIdAtOrdinal,
   selectProfileRunTransition,
+  usesLegacyHermesChat,
   type ChatRun,
 } from "./chatRuns";
 
@@ -24,6 +25,31 @@ function run(
 }
 
 describe("chat run profile transitions", () => {
+  it("keeps a custom remote Hermes on its own Runtime conversation", () => {
+    expect(
+      usesLegacyHermesChat({
+        id: "hers-family",
+        name: "Hers",
+        kind: "hermes",
+        location: "remote",
+        enabled: true,
+        managed: "user",
+        config: { endpoint: "https://relay.example/agents-one/v1" },
+      }),
+    ).toBe(false);
+    expect(
+      usesLegacyHermesChat({
+        id: "hermes-remote",
+        name: "Hermes",
+        kind: "hermes",
+        location: "remote",
+        enabled: true,
+        managed: "builtin",
+        config: {},
+      }),
+    ).toBe(true);
+  });
+
   it("re-homes a scratch run when switching profiles", () => {
     const runs = [run("run-a", "kitt")];
 

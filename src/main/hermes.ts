@@ -2032,7 +2032,7 @@ async function sendMessageViaTuiGateway(
     }
 
     if (event.type === "approval.request") {
-      // Match the existing local chat posture: Hermes One does not expose a
+      // Match the existing local chat posture: Agents One does not expose a
       // mid-stream approval dialog, so answer the dashboard protocol once and
       // keep the transcript focused on the resulting tool call/result events.
       void client
@@ -3780,14 +3780,20 @@ async function restartGatewayViaCliOnce(
       void (async () => {
         const deadline = Date.now() + healthTimeoutMs;
         let sawUnhealthy = !wasHealthyBeforeRestart;
+        let healthAttempts = 0;
 
-        while (!settled && Date.now() < deadline) {
+        // Always make two probes after spawning. A restart must observe the
+        // unhealthy-to-healthy transition, and on Windows a child-process
+        // spawn can consume a very small caller timeout before the first poll.
+        while (!settled && (healthAttempts < 2 || Date.now() < deadline)) {
           const ready = await isApiServerReady(profile);
+          healthAttempts += 1;
           if (!ready) sawUnhealthy = true;
           if (ready && (sawUnhealthy || exitedSuccessfully)) {
             finish(true);
             return;
           }
+          if (healthAttempts >= 2 && Date.now() >= deadline) break;
           await delay(healthPollMs);
         }
 

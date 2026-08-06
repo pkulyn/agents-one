@@ -5,7 +5,7 @@
 
 ## 目的
 
-验证 Hermes One 面对远端 Dashboard 重启、短暂 Dashboard WebSocket 中断、以及 502/403 恢复时能够：
+验证 Agents One 面对远端 Dashboard 重启、短暂 Dashboard WebSocket 中断、以及 502/403 恢复时能够：
 
 1. 保留已缓存的会话与消息，不清空历史；
 2. 显示可诊断的状态，但不显示 Token、API Key 或认证头；
@@ -14,7 +14,7 @@
 
 ## 前置条件
 
-- Hermes One 开发版或打包版已启动，且已连接目标 NAS。
+- Agents One 开发版或打包版已启动，且已连接目标 NAS。
 - 先完成一次正常聊天，并确认侧栏存在可读标题的会话。
 - 远端管理员具备启动/停止 Dashboard 与反向代理测试路径的权限。
 - 不要把远端 URL、Token、API Key、请求头或原始响应复制进截图、Git 或本文件。
@@ -23,7 +23,7 @@
 
 ## 场景 A：Dashboard 重启
 
-| 步骤 | 远端管理员操作 | Hermes One 预期 |
+| 步骤 | 远端管理员操作 | Agents One 预期 |
 | --- | --- | --- |
 | A1 | 保持 Gateway/API Server 正常，仅停止 Dashboard。 | Dashboard 管理页面出现可诊断不可用状态；缓存的会话、标题和历史仍可浏览。 |
 | A2 | 在 Dashboard 未恢复时刷新聊天与会话列表。 | 不清空侧栏；不产生重复会话；聊天可按配置走 legacy 回退或显示明确的 Dashboard 降级说明。 |
@@ -34,7 +34,7 @@
 
 ## 场景 B：短暂 WebSocket 中断
 
-| 步骤 | 远端管理员操作 | Hermes One 预期 |
+| 步骤 | 远端管理员操作 | Agents One 预期 |
 | --- | --- | --- |
 | B1 | 保持 Dashboard HTTP `/api/status` 正常，暂时阻断 `/api/ws` 升级或重启反向代理 WebSocket 转发。 | Dashboard 管理 API 仍可用；聊天 transport 显示 WebSocket 不可用并转向 legacy/HTTPS 路径。 |
 | B2 | 发送短消息。 | 不出现永久 spinning；若 fallback 成功，消息完成；若失败，错误定位为 WebSocket/网络而不是泛化“远端已连接”。 |
@@ -46,7 +46,7 @@
 
 建议分两次执行，不要在同一次变更中同时制造网关错误和认证错误。
 
-| 故障 | 远端管理员操作 | Hermes One 预期恢复行为 |
+| 故障 | 远端管理员操作 | Agents One 预期恢复行为 |
 | --- | --- | --- |
 | 502 | 暂停上游 Dashboard/Gateway 或临时使反向代理返回 502，然后恢复。 | UI 显示服务不可用/网络诊断；缓存仍可读；恢复后重试成功，不需要重新录入连接信息。 |
 | 403 | 使用受控测试策略让 Dashboard 凭据被拒绝，但保留同源 Gateway API Key 回退条件；随后恢复正常认证。 | 仅针对 401/403 尝试同源安全回退；不把认证值展示到 UI；恢复后不覆盖保存的连接配置。 |

@@ -1,13 +1,13 @@
 # 远程协调者 Bridge 能力要求（v1）
 
 日期：2026-07-13
-适用对象：远程 Hermes、OpenClaw 或任何希望作为 Hermes One 项目协调者的 Bridge。
+适用对象：远程 Hermes、OpenClaw 或任何希望作为 Agents One 项目协调者的 Bridge。
 
 ## 背景与安全底线
 
-Hermes One 可以把任一 Runtime 设为项目协调者，但自动“Plan”必须在技术上保证只读，不能只依赖提示词。一次真实联调中，远程 Hermes 收到规划请求后自行调用了工具并尝试在远端工作区写入计划；任务已取消，未修改本地项目文件。
+Agents One 可以把任一 Runtime 设为项目协调者，但自动“Plan”必须在技术上保证只读，不能只依赖提示词。一次真实联调中，远程 Hermes 收到规划请求后自行调用了工具并尝试在远端工作区写入计划；任务已取消，未修改本地项目文件。
 
-因此，在远程 Bridge 提供并**服务端强制执行**本规范前，Hermes One 只允许远程 Hermes/OpenClaw 承担人工对话式协调或由用户显式派发的任务，不开放自动 Plan。Bridge 不得在能力缺失时把只读规划静默降级为普通 Agent 任务。
+因此，在远程 Bridge 提供并**服务端强制执行**本规范前，Agents One 只允许远程 Hermes/OpenClaw 承担人工对话式协调或由用户显式派发的任务，不开放自动 Plan。Bridge 不得在能力缺失时把只读规划静默降级为普通 Agent 任务。
 
 ## 术语与枚举
 
@@ -20,7 +20,7 @@ Hermes One 可以把任一 Runtime 设为项目协调者，但自动“Plan”�
 
 ## 能力发现
 
-首选端点为 `GET /capabilities`。若 Bridge 为兼容既有部署将能力嵌入健康检查，`GET /health` 的响应体也可包含同一 `capabilities` 字段；Hermes One 会优先读取专用端点，只有专用端点不存在时才回退健康端点。
+首选端点为 `GET /capabilities`。若 Bridge 为兼容既有部署将能力嵌入健康检查，`GET /health` 的响应体也可包含同一 `capabilities` 字段；Agents One 会优先读取专用端点，只有专用端点不存在时才回退健康端点。
 
 ```json
 {
@@ -170,7 +170,7 @@ Hermes One 可以把任一 Runtime 设为项目协调者，但自动“Plan”�
 }
 ```
 
-artifact 必须不可变、带项目隔离、由认证主体授权访问，并在 capabilities 声明的 TTL 后清理。Hermes One 只将上述 JSON 作为**待用户审阅的提案**，不会自动创建任务、自动派发、自动合并代码或自动执行高风险操作。
+artifact 必须不可变、带项目隔离、由认证主体授权访问，并在 capabilities 声明的 TTL 后清理。Agents One 只将上述 JSON 作为**待用户审阅的提案**，不会自动创建任务、自动派发、自动合并代码或自动执行高风险操作。
 
 ## 错误语义
 
@@ -190,4 +190,4 @@ artifact 必须不可变、带项目隔离、由认证主体授权访问，并�
 3. 同项目并发第二个 plan 返回 `429`；幂等重试同一 `Idempotency-Key` 不创建第二个 run。
 4. 同步取消立即返回 `cancelled`；异步取消经过 `cancelling` 后可轮询到终态，并正确报告清理结果。
 5. artifact 不能跨项目读取，具有不可变标识和 TTL；日志、事件和 artifact 不包含认证或环境变量秘密。
-6. Hermes One 仅在 capabilities 同时声明 `orchestration`、`readOnlyPlanning`、`cancellation`、`artifacts`、`securityEvents` 时启用远程自动 Plan。
+6. Agents One 仅在 capabilities 同时声明 `orchestration`、`readOnlyPlanning`、`cancellation`、`artifacts`、`securityEvents` 时启用远程自动 Plan。

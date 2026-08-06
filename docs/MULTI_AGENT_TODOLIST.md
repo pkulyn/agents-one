@@ -1,4 +1,4 @@
-# Hermes One Phase 4 后半段 Todolist
+# Agents One Phase 4 后半段 Todolist
 
 日期：2026-07-14
 
@@ -6,7 +6,7 @@
 
 ## 当前基线
 
-- [x] Phase 3/4 集成基线已提交：`c776a63 Integrate Hermes One phase 3 and 4 baseline`。
+- [x] Phase 3/4 集成基线已提交：`c776a63 Integrate Agents One phase 3 and 4 baseline`。
 - [x] 远程 Hermes Bridge 已完成 `orchestration/readOnlyPlanning/cancellation/artifacts/securityEvents` 能力探测与真实只读规划 smoke test。
 - [x] 远程 OpenClaw Bridge 已完成同等能力探测与真实只读规划 smoke test。
 - [x] Hermes -> Codex analysis 端到端测试已通过。
@@ -52,6 +52,6 @@
 
 1. 远程 Hermes/OpenClaw 只能通过 Bridge 的强制只读规划接口担任 coordinator。
 2. Codex/Claude Code 的 implementation 任务只能写隔离 Git worktree。
-3. Hermes One 不自动提交、不自动合并、不自动应用 diff。
+3. Agents One 不自动提交、不自动合并、不自动应用 diff。
 4. `review_required` 必须由用户或显式验收动作转为 accepted/rejected。
 5. 每个开发包完成后必须运行定向测试；影响面较大时运行完整相关回归和构建。

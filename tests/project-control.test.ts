@@ -20,12 +20,14 @@ let testHome: string;
 async function loadModules(): Promise<{
   runtimes: typeof import("../src/main/agent-runtimes");
   projects: typeof import("../src/main/project-control");
+  conversations: typeof import("../src/main/runtime-conversation-store");
 }> {
   vi.resetModules();
   vi.stubEnv("HERMES_HOME", testHome);
   return {
     runtimes: await import("../src/main/agent-runtimes"),
     projects: await import("../src/main/project-control"),
+    conversations: await import("../src/main/runtime-conversation-store"),
   };
 }
 
@@ -69,6 +71,91 @@ describe("project control plane", () => {
     expect(resumed.status).toBe("active");
   });
 
+  it("stores only explicit project workspace and conversation references", async () => {
+    const { projects, conversations } = await loadModules();
+    conversations.saveRuntimeConversation({
+      id: "conversation-1",
+      runtimeId: "codex-test",
+      runtimeName: "Codex test",
+      runtimeKind: "codex",
+      runtimeLocation: "local",
+      title: "Project discussion",
+      messages: [{ id: "message-1", role: "user", content: "Keep this scoped.", createdAt: 1 }],
+    });
+    const project = projects.createProject({
+      title: "Scoped project",
+      objective: "Keep shared context explicit.",
+      coordinator: { kind: "human" },
+      workspace: "D:\\project",
+      conversationIds: ["conversation-1", "unknown-conversation"],
+    });
+
+    expect(project).toMatchObject({ workspace: "D:\\project" });
+    expect(project.conversations).toEqual([
+      expect.objectContaining({ id: "conversation-1", title: "Project discussion" }),
+    ]);
+    const updated = projects.updateProjectScope({
+      projectId: project.id,
+      conversationIds: [],
+    });
+    expect(updated.workspace).toBeUndefined();
+    expect(updated.conversations).toEqual([]);
+    expect(projects.listProjectEvents(project.id)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "project_scope_changed" }),
+    ]));
+  });
+
+  it("stores a user-selected collaboration group and lets its manager become coordinator", async () => {
+    const { runtimes, projects } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "openclaw-manager",
+      name: "OpenClaw manager",
+      kind: "openclaw",
+      location: "remote",
+      enabled: true,
+      config: { endpoint: "https://openclaw.example/bridge", transport: "http" },
+    });
+    runtimes.saveAgentRuntime({
+      id: "codex-implementer",
+      name: "Codex implementer",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", workspace: testHome },
+    });
+    const project = projects.createProject({
+      title: "Collaboration group",
+      objective: "Users select every role explicitly.",
+      coordinator: { kind: "human" },
+    });
+
+    const updated = projects.updateProjectCollaborators({
+      projectId: project.id,
+      collaborators: [
+        { role: "manager", kind: "runtime", runtimeId: "openclaw-manager" },
+        { role: "implementer", kind: "runtime", runtimeId: "codex-implementer" },
+        { role: "tester", kind: "human" },
+        { role: "reviewer", kind: "human" },
+        { role: "acceptor", kind: "human" },
+      ],
+    });
+
+    expect(updated.coordinator).toMatchObject({ kind: "runtime", runtimeId: "openclaw-manager" });
+    expect(updated.collaborators).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: "implementer", runtimeId: "codex-implementer" }),
+    ]));
+    expect(projects.listProjectEvents(project.id)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "collaborators_changed" }),
+    ]));
+    expect(() => projects.updateProjectCollaborators({
+      projectId: project.id,
+      collaborators: [
+        { role: "manager", kind: "human" },
+        { role: "manager", kind: "human" },
+      ],
+    })).toThrow(/unique/i);
+  });
+
   it("unblocks dependencies, validates assignments, and creates a minimal context package", async () => {
     const { runtimes, projects } = await loadModules();
     runtimes.saveAgentRuntime({
@@ -83,6 +170,7 @@ describe("project control plane", () => {
       title: "Dependency project",
       objective: "Validate controlled handoff.",
       coordinator: { kind: "runtime", runtimeId: "codex-test" },
+      workspace: testHome,
     });
     const first = projects.createProjectTask({
       projectId: project.id,
@@ -109,14 +197,21 @@ describe("project control plane", () => {
     projects.setProjectTaskStatus(first.id, "running", "Runtime started.");
     projects.setProjectTaskStatus(first.id, "accepted", "Review accepted.");
 
+    const released = await projects.listProjectTasks(project.id);
+    expect(released).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: dependent.id, status: "ready" }),
+    ]));
+
     const assigned = projects.assignProjectTask({
       taskId: dependent.id,
       runtimeId: "codex-test",
       role: "implementer",
       mode: "implementation",
-      workspace: testHome,
     });
-    expect(assigned).toMatchObject({ status: "queued", assignment: { runtimeId: "codex-test", mode: "implementation" } });
+    expect(assigned).toMatchObject({
+      status: "queued",
+      assignment: { runtimeId: "codex-test", mode: "implementation", workspace: testHome },
+    });
 
     const context = projects.createProjectContextPackage(dependent.id);
     expect(context).toMatchObject({ taskId: dependent.id, version: 1, upstreamSummaries: expect.any(Array) });
@@ -151,7 +246,7 @@ describe("project control plane", () => {
       runtimeId: "openclaw-test",
       role: "implementer",
       mode: "implementation",
-    })).toThrow(/Codex or Claude Code/i);
+    })).toThrow(/Codex, Claude Code, or Pi Agent CLI/i);
   });
 
   it("dispatches through Task Center and archives only artifact references", async () => {
@@ -172,17 +267,88 @@ describe("project control plane", () => {
       runtimeId: "codex-dispatch",
       status: "review_required",
       artifacts: [{ kind: "diff", label: "Git diff", content: "must-not-be-copied" }],
+      runs: [{
+        id: "task-run-direct-1",
+        runtimeRunId: "direct-1",
+        status: "review_required",
+        startedAt: Date.now(),
+        events: [
+          {
+            id: "runtime-event-tool-1",
+            type: "tool_call",
+            summary: "Codex 正在调用工具。",
+            createdAt: Date.now(),
+          },
+        ],
+      }],
     });
 
     const dispatched = await projects.dispatchProjectTask(task.id);
-    expect(createTaskCenterTaskMock).toHaveBeenCalledWith(expect.objectContaining({ runtimeId: "codex-dispatch", prompt: expect.stringContaining("Acceptance criteria") }));
+    expect(createTaskCenterTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      runtimeId: "codex-dispatch",
+      prompt: expect.stringContaining("Acceptance criteria"),
+      requireReview: true,
+    }));
     expect(dispatched).toMatchObject({ status: "review_required", directTaskCenterTaskId: "direct-1" });
     expect(projects.listProjectArtifacts(project.id)).toEqual([
       expect.objectContaining({ label: "Git diff" }),
     ]);
+    expect(projects.listProjectEvents(project.id)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "tool_call",
+        sourceEventId: "runtime-event-tool-1",
+      }),
+    ]));
     const context = projects.createProjectContextPackage(task.id);
     expect(context.artifacts).toEqual([]);
     expect(JSON.stringify(projects.listProjectArtifacts(project.id))).not.toContain("must-not-be-copied");
+  });
+
+  it("forwards a bounded, redacted project context only after the user creates it", async () => {
+    const { runtimes, projects } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "codex-context",
+      name: "Codex context",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", workspace: testHome },
+    });
+    const project = projects.createProject({
+      title: "Context handoff",
+      objective: "Pass only reviewed project context.",
+      coordinator: { kind: "human" },
+      workspace: testHome,
+    });
+    const upstream = projects.createProjectTask({
+      projectId: project.id,
+      title: "Upstream review",
+      requirement: "Review the module.",
+      acceptanceCriteria: "Publish a safe summary.",
+    });
+    const dependent = projects.createProjectTask({
+      projectId: project.id,
+      title: "Dependent implementation",
+      requirement: "Implement the reviewed change.",
+      acceptanceCriteria: "Provide a diff for review.",
+      dependencies: [upstream.id],
+    });
+    projects.assignProjectTask({ taskId: upstream.id, runtimeId: "codex-context", role: "reviewer", mode: "analysis" });
+    projects.setProjectTaskStatus(upstream.id, "running", "Review started.");
+    projects.setProjectTaskStatus(upstream.id, "accepted", "Use endpoint https://example.invalid?token=secret-token only as a reference.");
+    projects.assignProjectTask({ taskId: dependent.id, runtimeId: "codex-context", role: "implementer", mode: "implementation" });
+    projects.createProjectContextPackage(dependent.id);
+    createTaskCenterTaskMock.mockResolvedValue({ id: "context-run", runtimeId: "codex-context", status: "queued", artifacts: [] });
+
+    await projects.dispatchProjectTask(dependent.id);
+
+    expect(createTaskCenterTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      workspace: testHome,
+      prompt: expect.stringContaining("Project context package"),
+    }));
+    const prompt = createTaskCenterTaskMock.mock.calls.at(-1)?.[0]?.prompt as string;
+    expect(prompt).toContain("Upstream summaries:");
+    expect(prompt).not.toContain("secret-token");
   });
 
   it("runs only a constrained local Runtime coordinator as an auditable planning task", async () => {
@@ -314,7 +480,7 @@ describe("project control plane", () => {
       expect.objectContaining({ title: "Implement adapter", parentTaskId: planTask.id }),
     ]));
     expect(projects.listProjectEvents(project.id)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "progress", summary: "Created 1 task(s) from coordinator plan." }),
+      expect.objectContaining({ type: "progress", summary: "已根据协调者计划创建 1 个任务。" }),
     ]));
     await expect(projects.createProjectTasksFromPlan({
       projectId: project.id,

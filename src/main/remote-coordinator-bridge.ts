@@ -54,6 +54,12 @@ export interface RemoteCoordinatorPlan {
   cleanedUp?: boolean;
   plan?: unknown;
   artifacts?: AgentRuntimeArtifact[];
+  enforced?: {
+    toolPolicy?: string;
+    filesystem?: string;
+    network?: string;
+    timeoutSeconds?: number;
+  };
 }
 
 const MIN_TIMEOUT_MS = 1_000;
@@ -384,6 +390,26 @@ function normalizePlanResponse(value: unknown): RemoteCoordinatorPlan {
     throw new Error("Remote coordinator Bridge returned an invalid plan response.");
   }
   const normalizedStatus = status.toLowerCase() as RemoteCoordinatorPlan["status"];
+  const enforced = isRecord(value.enforced)
+    ? {
+        toolPolicy:
+          typeof value.enforced.toolPolicy === "string"
+            ? value.enforced.toolPolicy
+            : undefined,
+        filesystem:
+          typeof value.enforced.filesystem === "string"
+            ? value.enforced.filesystem
+            : undefined,
+        network:
+          typeof value.enforced.network === "string"
+            ? value.enforced.network
+            : undefined,
+        timeoutSeconds:
+          typeof value.enforced.timeoutSeconds === "number"
+            ? value.enforced.timeoutSeconds
+            : undefined,
+      }
+    : undefined;
   const output = typeof value.output === "string"
     ? value.output
     : typeof value.summary === "string"
@@ -399,7 +425,22 @@ function normalizePlanResponse(value: unknown): RemoteCoordinatorPlan {
     cleanedUp: typeof value.cleanedUp === "boolean" ? value.cleanedUp : undefined,
     plan: value.plan,
     artifacts: normalizeArtifacts(value.artifacts),
+    ...(enforced ? { enforced } : {}),
   };
+}
+
+function assertReadOnlyEnforcement(plan: RemoteCoordinatorPlan): void {
+  const enforced = plan.enforced;
+  if (
+    !enforced ||
+    enforced.toolPolicy !== "disabled" ||
+    enforced.filesystem !== "disabled" ||
+    enforced.network !== "disabled"
+  ) {
+    throw new RemoteCoordinatorValidationError(
+      "Remote coordinator Bridge did not confirm enforced read-only planning.",
+    );
+  }
 }
 
 export async function startRemoteCoordinatorPlan(
@@ -417,7 +458,9 @@ export async function startRemoteCoordinatorPlan(
     },
     auth,
   );
-  return normalizePlanResponse(response);
+  const plan = normalizePlanResponse(response);
+  assertReadOnlyEnforcement(plan);
+  return plan;
 }
 
 export async function getRemoteCoordinatorPlan(

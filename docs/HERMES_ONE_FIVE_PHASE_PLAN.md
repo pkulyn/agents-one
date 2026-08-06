@@ -1,30 +1,32 @@
-# Hermes One 五阶段实施计划
+# Agents One 五阶段实施计划
+
+> 兼容说明：本文件保留原有路径，避免既有链接失效。项目与任务中心的最新可执行拆分见 [Agents One 项目与任务中心实施计划](./AGENTS_ONE_PROJECT_TASK_EXECUTION_PLAN.md)。
 
 日期：2026-07-12
 
 ## 与前一版计划的关系
 
-本计划**继承并扩展**此前的《Hermes One 五阶段实施计划》，不是推翻重来。
+本计划**继承并扩展**此前的《Agents One 五阶段实施计划》，不是推翻重来。
 
 - 前一版解决基础问题：远程 Hermes 稳定性、本地数据层、统一 Runtime、Codex worktree、Task Center 和 Windows 验收。
-- 本版保留上述严格顺序，并把已经明确的产品方向写入后续阶段：**Hermes One 是稳定的协作控制面；项目经理智能体由用户按项目指定，而不是写死为 Hermes。**
+- 本版保留上述严格顺序，并把已经明确的产品方向写入后续阶段：**Agents One 是稳定的协作控制面；项目经理智能体由用户按项目指定，而不是写死为 Hermes。**
 - 前一版的首个里程碑仍有效：**Hermes + 本地 Codex + Task Center**。当前已完成其大部分实现和真实 Codex 冒烟验证。
 - 本版新增的重点是 Phase 3、4：项目经理可选、任务图、智能体邮箱、按需上下文包、角色协作和跨 Runtime 项目验收。
 
 ## 总体产品方向
 
-Hermes One 是多智能体工作台，而不是固定由 Hermes 指挥其他智能体的单向命令链。
+Agents One 是多智能体工作台，而不是固定由 Hermes 指挥其他智能体的单向命令链。
 
-- **Hermes One 控制面**负责持久化项目状态、权限、队列、任务生命周期、事件历史、产物、重试、取消和人工审批。任何模型均不能绕过这些控制。
+- **Agents One 控制面**负责持久化项目状态、权限、队列、任务生命周期、事件历史、产物、重试、取消和人工审批。任何模型均不能绕过这些控制。
 - **项目经理智能体**由用户按项目或父任务选择。Hermes 是默认值，但 Codex、Claude Code、OpenClaw 或用户本人均可承担该角色。
-- **执行智能体**仅接收完成当前任务所需的上下文包，并通过 Hermes One 回传进度、摘要、产物、diff、测试报告和安全诊断信息。
+- **执行智能体**仅接收完成当前任务所需的上下文包，并通过 Agents One 回传进度、摘要、产物、diff、测试报告和安全诊断信息。
 - 日常工作保持在对话或项目视图；Task Center 是复杂多智能体任务的编排台，不是所有请求的默认入口。
 
 ```text
 用户 -> 项目（指定 coordinatorRuntimeId）
                |
                v
-Hermes One 控制面 -> 任务图 / 智能体邮箱 / 上下文包 / 产物
+Agents One 控制面 -> 任务图 / 智能体邮箱 / 上下文包 / 产物
                |                    |                    |
                v                    v                    v
          Hermes 智能体          Codex 智能体        Claude/OpenClaw 智能体
@@ -32,7 +34,7 @@ Hermes One 控制面 -> 任务图 / 智能体邮箱 / 上下文包 / 产物
 
 ## 核心协作约定
 
-每个项目增加 `coordinatorRuntimeId`；每个任务具有父子关系、执行分配、依赖、生命周期和不可变交接记录。项目经理可以提出计划并请求受控操作，但每一项状态变更均由 Hermes One 校验后才会提交。
+每个项目增加 `coordinatorRuntimeId`；每个任务具有父子关系、执行分配、依赖、生命周期和不可变交接记录。项目经理可以提出计划并请求受控操作，但每一项状态变更均由 Agents One 校验后才会提交。
 
 | 概念 | 实施要求 |
 | --- | --- |
@@ -70,11 +72,11 @@ Hermes One 控制面 -> 任务图 / 智能体邮箱 / 上下文包 / 产物
 
 ## Phase 3：可指定的项目经理
 
-**目标：** 将 Hermes One 的持久化控制面与用户指定的项目经理智能体分离。
+**目标：** 将 Agents One 的持久化控制面与用户指定的项目经理智能体分离。
 
 - 新增 `Project`、`CoordinatorAssignment`、`Task`、`TaskAssignment`、`TaskEvent` 与 `ArtifactReference` 数据模型。
 - 创建项目时由用户选择项目经理：默认 Hermes，也可为 Codex、Claude Code、OpenClaw 或人工管理。
-- 提供受控的项目经理操作：创建/修改任务、分配具备资格的 Runtime、请求上下文包、请求审查、提出交接；Hermes One 校验权限、工作区范围和生命周期转换。
+- 提供受控的项目经理操作：创建/修改任务、分配具备资格的 Runtime、请求上下文包、请求审查、提出交接；Agents One 校验权限、工作区范围和生命周期转换。
 - 对 CLI 智能体先采用“计划 - 执行 - 回传摘要 - 再决策”的编排模式；Hermes 可额外支持持续对话式项目管理。
 - 保持现有聊天、Kanban、计划任务和直接 Runtime 执行；项目只与它们关联，不替代它们。
 
@@ -113,7 +115,7 @@ Hermes One 控制面 -> 任务图 / 智能体邮箱 / 上下文包 / 产物
 
 - Claude Code `2.1.185` 已以本机用户级安装验证。Adapter 使用参数数组和 `shell: false`；Windows 的 `claude.cmd` / `claude.ps1` 包装会解析为安装目录内的 `claude.exe`。
 - Codex `0.144.1` 已以用户级安装验证。Windows 的 `codex.cmd` 包装会解析为同目录 `node.exe` 与 Codex JavaScript 入口，避免 `spawn EINVAL`；真实 `workspace-write` 冒烟仅在临时 detached worktree 内创建了指定文件，原项目目录未被写入，随后已清理测试 worktree。
-- 分析任务固定使用 `--permission-mode plan`；实现任务仅在 Hermes One 创建的 detached Git worktree 内使用 `acceptEdits`，不使用绕过权限模式。
+- 分析任务固定使用 `--permission-mode plan`；实现任务仅在 Agents One 创建的 detached Git worktree 内使用 `acceptEdits`，不使用绕过权限模式。
 - 已完成真实实现型冒烟：Claude Code 在临时 detached worktree 中创建了一个指定测试文件，原项目工作区无该文件或其他改动；临时 worktree 随即移除。
 - Claude 的 SessionStart 钩子会输出大量本地启动元数据；Adapter 在持久化和展示前过滤系统启动事件，仅保留助手、工具、错误和最终结果事件。
 - Runtime 能力模型现在显式包含 `orchestration` 与 `mailbox`；在项目协作功能实装前，Hermes、Codex、Claude Code 与 OpenClaw 均报告为 `false`，避免将普通任务派发误判为可协调或可接收交接事件。
@@ -129,4 +131,4 @@ Hermes One 控制面 -> 任务图 / 智能体邮箱 / 上下文包 / 产物
 - 已通过项目控制面单元测试、Projects Renderer 测试、类型检查和生产构建。下一项验收是用用户选定的远程 Hermes 或 OpenClaw 作为协调者，联合 Codex/Claude Code 执行一次真实的“规划 -> 实现/分析 -> 审核”项目闭环。
 - 真实 Hermes 协调者规划联调已启动并安全取消：远端 Runtime 试图在自己的工作区写入计划，说明当前 API 不提供可强制的只读规划边界。该结果已转化为安全门槛：自动“Plan”仅允许本地 Codex/Claude Code 的受控分析模式；Hermes/OpenClaw 在远端 Bridge 增加 no-tools/read-only 语义前只允许人工协调与手工派发。
 - 已吸收 Hermes/OpenClaw 的协议评审意见，补齐默认/最大超时、能力发现端点、并发与幂等、异步取消、清理确认、安全事件查询、artifact 隔离与 TTL，以及 Runtime 枚举。远端 Bridge 所需的 capabilities、接口和验收条件见 [远程协调者 Bridge 能力要求（v1）](./REMOTE_COORDINATOR_BRIDGE_REQUIREMENTS.md)。
-- Hermes One 的统一 Runtime 能力模型现已预留 `readOnlyPlanning` 与 `securityEvents`；OpenClaw Adapter 优先探测 `GET /capabilities`，仅在该端点返回 `404` 时回退至兼容的 `GET /health`。专用能力端点的其他失败不会静默回退或误报安全可用。
+- Agents One 的统一 Runtime 能力模型现已预留 `readOnlyPlanning` 与 `securityEvents`；OpenClaw Adapter 优先探测 `GET /capabilities`，仅在该端点返回 `404` 时回退至兼容的 `GET /health`。专用能力端点的其他失败不会静默回退或误报安全可用。

@@ -454,6 +454,13 @@ function commonSuffixLength(a: string, b: string): number {
   return n;
 }
 
+function commonPrefixLength(a: string, b: string): number {
+  const max = Math.min(a.length, b.length);
+  let index = 0;
+  while (index < max && a[index] === b[index]) index++;
+  return index;
+}
+
 function tailHeadOverlap(a: string, b: string): number {
   const word = /\w/;
   const max = Math.min(a.length, b.length);
@@ -500,6 +507,20 @@ export function mergeStreamedWithFinal(
   const normFinal = normalizeText(finalContent);
   if (normFinal.includes(normStreamed)) return finalContent;
   if (normStreamed.includes(normFinal)) return streamedContent;
+
+  // Some remote Dashboard versions replay the completed response after
+  // streaming it, but mutate or truncate only the tail. Treat a long shared
+  // prefix as the same response and keep the fuller copy. Previously these
+  // were concatenated, which rendered two near-identical Hermes answers.
+  const prefix = commonPrefixLength(streamedContent, finalContent);
+  const sharedPrefix = streamedContent.slice(0, prefix);
+  const meaningfulPrefix = sharedPrefix.replace(/[\s\p{P}]/gu, "").length;
+  const shorter = Math.min(streamedContent.length, finalContent.length);
+  if (meaningfulPrefix >= 16 && prefix / shorter >= 0.45) {
+    return streamedContent.length >= finalContent.length
+      ? streamedContent
+      : finalContent;
+  }
 
   const overlap = tailHeadOverlap(streamedContent, finalContent);
   if (overlap > 0) return `${streamedContent}${finalContent.slice(overlap)}`;

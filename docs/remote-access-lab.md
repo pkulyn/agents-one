@@ -1,7 +1,7 @@
 # Remote Access Lab
 
-This lab creates a disposable remote Hermes target for the sandboxed Hermes One instance without
-touching the normal Hermes One worktree, config, or database.
+This lab creates a disposable remote Hermes target for the sandboxed Agents One instance without
+touching the normal Agents One worktree, config, or database.
 
 ## Shape
 
@@ -78,9 +78,9 @@ Then reopen Docker Desktop and retry `scripts\remote-lab.ps1 up`.
 The first `up` may take several minutes because Docker builds the local Hermes
 Agent image. Later starts reuse the image cache.
 
-## Hermes One Sandbox Settings
+## Agents One Sandbox Settings
 
-After `configure-desktop`, the sandboxed Hermes One instance is set to:
+After `configure-desktop`, the sandboxed Agents One instance is set to:
 
 - Connection mode: Remote
 - Remote URL: `http://127.0.0.1:19080`

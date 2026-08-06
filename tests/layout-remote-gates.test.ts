@@ -15,7 +15,7 @@ describe("Layout remote-mode feature gates", () => {
     expect(layoutSource).toContain("<Kanban");
   });
 
-  it("keeps the Profiles remote notice in place", () => {
-    expect(layoutSource).toContain('RemoteNotice feature="Profiles"');
+  it("does not block agent management behind the removed Profiles remote notice", () => {
+    expect(layoutSource).not.toContain('RemoteNotice feature="Profiles"');
   });
 });

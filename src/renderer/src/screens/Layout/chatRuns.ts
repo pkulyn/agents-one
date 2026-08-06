@@ -1,4 +1,13 @@
 import type { ChatMessage } from "../Chat/Chat";
+import type {
+  AgentRuntimeDefinition,
+  AgentRuntimeKind,
+} from "../../../../shared/agent-runtimes";
+import type { RuntimeConversationMessage } from "../../../../shared/runtime-conversations";
+import type {
+  TaskCollaborationAssignment,
+  TaskCollaborationStatus,
+} from "../../../../shared/task-collaboration";
 
 /**
  * One concurrently-running (or open) conversation. Several runs coexist so the
@@ -10,6 +19,13 @@ export interface ChatRun {
   runId: string;
   /** Immutable: the profile/agent this run was started under. */
   profile: string;
+  /** Runtime conversations use the Runtime Adapter instead of Hermes profile chat. */
+  runtimeId?: string;
+  runtimeName?: string;
+  runtimeKind?: AgentRuntimeKind;
+  runtimeConversationId?: string;
+  runtimeSeed?: RuntimeConversationMessage[];
+  runtimeWorkspace?: string;
   /** Gateway session id, known once the first turn reports it. */
   sessionId: string | null;
   /** True while the agent is generating for this run. */
@@ -18,15 +34,37 @@ export interface ChatRun {
   title?: string;
   /** Seed transcript when the run was opened from history. */
   seed?: ChatMessage[];
+  /** Chosen project folder for a new task conversation. */
+  contextFolder?: string;
+  /** Saved once the first message gives this draft a durable conversation id. */
+  collaboration?: {
+    assignments: TaskCollaborationAssignment[];
+    projectFolder?: string;
+    persistedTaskId?: string;
+    status?: TaskCollaborationStatus;
+  };
+}
+
+/**
+ * Only the legacy built-in Hermes shell uses the old profile chat. Every
+ * configured runtime, including a custom remote Hermes, must retain its own
+ * runtime id so dispatch and persistence cannot fall back to another agent.
+ */
+export function usesLegacyHermesChat(runtime: AgentRuntimeDefinition): boolean {
+  return runtime.kind === "hermes" && runtime.managed === "builtin";
 }
 
 /** A blank chat that can be reassigned to another profile without losing work. */
 export function isScratchRun(r: ChatRun): boolean {
-  return !r.sessionId && !r.loading && !r.title;
+  return !r.runtimeId && !r.sessionId && !r.loading && !r.title;
 }
 
 /** Mint a fresh, empty run under the given profile. */
-export function mintRun(profile: string, seed?: ChatMessage[]): ChatRun {
+export function mintRun(
+  profile: string,
+  seed?: ChatMessage[],
+  contextFolder?: string,
+): ChatRun {
   return {
     runId:
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -36,6 +74,37 @@ export function mintRun(profile: string, seed?: ChatMessage[]): ChatRun {
     sessionId: null,
     loading: false,
     seed,
+    contextFolder,
+  };
+}
+
+export function mintRuntimeRun(input: {
+  profile: string;
+  runtimeId: string;
+  runtimeName: string;
+  runtimeKind: AgentRuntimeKind;
+  /** Persisted first-user-message title when resuming a Runtime conversation. */
+  title?: string;
+  runtimeConversationId?: string;
+  runtimeSeed?: RuntimeConversationMessage[];
+  runtimeWorkspace?: string;
+  sessionId?: string | null;
+}): ChatRun {
+  return {
+    runId:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? `run-${crypto.randomUUID()}`
+        : `run-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    profile: input.profile,
+    runtimeId: input.runtimeId,
+    runtimeName: input.runtimeName,
+    runtimeKind: input.runtimeKind,
+    title: input.title,
+    runtimeConversationId: input.runtimeConversationId,
+    runtimeSeed: input.runtimeSeed,
+    runtimeWorkspace: input.runtimeWorkspace,
+    sessionId: input.sessionId ?? null,
+    loading: false,
   };
 }
 
@@ -68,9 +137,7 @@ export function selectProfileRunTransition(
   if (isScratchRun(active)) {
     return {
       activeRunId,
-      runs: runs.map((r) =>
-        r.runId === activeRunId ? { ...r, profile } : r,
-      ),
+      runs: runs.map((r) => (r.runId === activeRunId ? { ...r, profile } : r)),
     };
   }
 
@@ -140,7 +207,9 @@ export function findRunBySession(
   runs: ChatRun[],
   sessionId: string,
 ): ChatRun | undefined {
-  return runs.find((r) => r.sessionId === sessionId);
+  return runs.find(
+    (r) => r.sessionId === sessionId || r.runtimeConversationId === sessionId,
+  );
 }
 
 /** Session ids of every currently-loading run (for sidebar spinners). */
@@ -148,6 +217,7 @@ export function loadingSessionIds(runs: ChatRun[]): Set<string> {
   const ids = new Set<string>();
   for (const r of runs) {
     if (r.loading && r.sessionId) ids.add(r.sessionId);
+    if (r.loading && r.runtimeConversationId) ids.add(r.runtimeConversationId);
   }
   return ids;
 }

@@ -1,12 +1,12 @@
 # Chat Reconciliation Regression Playbook
 
-This playbook is the repeatable gate for the sandboxed Hermes One reconciliation work.
-Run it after Hermes One changes, Hermes Agent engine updates, compatibility
+This playbook is the repeatable gate for the sandboxed Agents One reconciliation work.
+Run it after Agents One changes, Hermes Agent engine updates, compatibility
 addon changes, or remote/SSH lab changes.
 
 ## Scope
 
-The goal is to verify that Hermes One uses the dashboard event stream as the
+The goal is to verify that Agents One uses the dashboard event stream as the
 active-turn source of truth without losing behavior that existed in the legacy
 desktop app:
 
@@ -56,7 +56,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ssh-lab.ps1 up
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ssh-lab.ps1 status
 ```
 
-Start the sandboxed Hermes One instance:
+Start the sandboxed Agents One instance:
 
 ```powershell
 npm run dev:sandbox
@@ -67,7 +67,7 @@ Pass criteria:
 - Remote status shows dashboard status, dashboard session auth, and legacy
   OpenAI models auth as OK.
 - SSH status reaches the remote dashboard through the tunnel.
-- Hermes One title bar says `Hermes One`.
+- Agents One title bar says `Agents One`.
 - Settings shows the active connection mode and active chat transport.
 
 ## Connection Matrix
@@ -250,8 +250,8 @@ Pass criteria:
 ## Known Upstream Limitations
 
 - Gemini failures in the current lab have been traced to Hermes Agent upstream
-  behavior, not Hermes One dashboard reconciliation.
-- Plain Remote HTTP cannot be patched by Hermes One unless the target exposes a
+  behavior, not Agents One dashboard reconciliation.
+- Plain Remote HTTP cannot be patched by Agents One unless the target exposes a
   future deploy endpoint or is also reachable over SSH.
 - The remote lab intentionally bridges to this Windows host's AI Playground
   ComfyUI for testing. That is not normal remote deployment behavior.
@@ -266,5 +266,5 @@ Before asking for review or preparing a PR:
   SSH.
 - Legacy fallback is checked at least once after any change that touches legacy
   IPC or `/v1` paths.
-- Any known failure is classified as Hermes One, Hermes Agent upstream, lab
+- Any known failure is classified as Agents One, Hermes Agent upstream, lab
   setup, or provider/service behavior.

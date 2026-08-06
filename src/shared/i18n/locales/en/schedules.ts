@@ -1,5 +1,5 @@
 export default {
-  title: "Schedules",
+  title: "Scheduled Tasks",
   subtitle: "Automate tasks with scheduled agent runs",
   newTask: "New Task",
   name: "Name",

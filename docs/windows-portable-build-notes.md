@@ -6,7 +6,7 @@ This fork is developed on a locked-down corporate Windows machine without admini
 
 ## Baseline
 
-- Project: `D:\Agent Console\hermes-desktop-plus`
+- Project: `D:\Agent Console\Agents-One`
 - Upstream base: `fathah/hermes-desktop` 0.7.3
 - Node: `D:\efunds\nodejs22\node.exe` v22.23.1
 - npm: `D:\efunds\nodejs22\npm.cmd` 11.11.1
@@ -18,8 +18,8 @@ Use Node 22 explicitly in each PowerShell session:
 ```powershell
 $env:PATH = "D:\efunds\nodejs22;$env:PATH"
 $env:NODE_OPTIONS = "--use-system-ca"
-$env:ELECTRON_CACHE = "D:\Agent Console\hermes-desktop-plus\.cache\electron"
-$env:npm_config_cache = "D:\Agent Console\hermes-desktop-plus\.cache\npm"
+$env:ELECTRON_CACHE = "D:\Agent Console\Agents-One\.cache\electron"
+$env:npm_config_cache = "D:\Agent Console\Agents-One\.cache\npm"
 ```
 
 ## Dependency install notes
@@ -41,13 +41,13 @@ Current local workaround:
 
 ## Verified commands
 
-Run from `D:\Agent Console\hermes-desktop-plus`:
+Run from `D:\Agent Console\Agents-One`:
 
 ```powershell
 $env:PATH = "D:\efunds\nodejs22;$env:PATH"
 $env:NODE_OPTIONS = "--use-system-ca"
-$env:ELECTRON_CACHE = "D:\Agent Console\hermes-desktop-plus\.cache\electron"
-$env:npm_config_cache = "D:\Agent Console\hermes-desktop-plus\.cache\npm"
+$env:ELECTRON_CACHE = "D:\Agent Console\Agents-One\.cache\electron"
+$env:npm_config_cache = "D:\Agent Console\Agents-One\.cache\npm"
 
 npm.cmd test
 npm.cmd run typecheck
@@ -81,7 +81,7 @@ See `docs/security-audit-2026-07-09.md` for the current audit notes.
 
 ## Next integration work
 
-1. Start `hermes-desktop-plus` visibly and complete a manual smoke pass.
+1. Start `Agents-One` visibly and complete a manual smoke pass.
 2. Configure remote Hermes NAS through the existing remote connection mode.
 3. Verify `/health`, chat, sessions, memory, skills, and tools against the NAS.
 4. Inspect OpenClaw's actual API shape and decide whether it enters as a Hermes tool, remote runtime adapter, or existing Claw3D/Hermes Office path.

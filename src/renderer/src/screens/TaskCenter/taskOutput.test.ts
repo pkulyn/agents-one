@@ -28,4 +28,23 @@ describe("summarizeTaskOutput", () => {
       hasStructuredEvents: true,
     });
   });
+
+  it("removes leaked Pi reasoning and malformed tool-call markup", () => {
+    const summary = summarizeTaskOutput(
+      '{"type":"agent_end","messages":[{"role":"assistant","content":[{"type":"text","text":"我来检查一下。 <tool_call>dir</think>"}]}]}',
+    );
+
+    expect(summary).toEqual({ hasStructuredEvents: true });
+  });
+
+  it("keeps Pi final text after a completed internal block", () => {
+    const summary = summarizeTaskOutput(
+      '{"type":"agent_end","messages":[{"role":"assistant","content":[{"type":"text","text":"<think>inspect</think><tool_call>ls</tool_call>项目已检查完成。"}]}]}',
+    );
+
+    expect(summary).toEqual({
+      finalText: "项目已检查完成。",
+      hasStructuredEvents: true,
+    });
+  });
 });

@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import toast from "react-hot-toast";
 import Chat from "../Chat/Chat";
+import RuntimeChat from "../RuntimeChat/RuntimeChat";
 import {
   dbItemsToChatMessages,
   type DbHistoryItem,
@@ -7,6 +9,7 @@ import {
 import {
   type ChatRun,
   mintRun,
+  mintRuntimeRun,
   patchRun,
   isScratchRun,
   openSessionRunTransition,
@@ -14,6 +17,7 @@ import {
   findRunBySession,
   cycleRunId,
   runIdAtOrdinal,
+  usesLegacyHermesChat,
   loadingSessionIds as deriveLoadingSessionIds,
 } from "./chatRuns";
 import { ActiveSessionsBar } from "./ActiveSessionsBar";
@@ -22,31 +26,30 @@ import Agents from "../Agents/Agents";
 import Discover from "../Discover/Discover";
 import ProfileSwitcher from "./ProfileSwitcher";
 import SidebarRecentSessions from "./SidebarRecentSessions";
+import QuickChatPanel from "./QuickChatPanel";
+import TaskCollaborationDialog, {
+  type CollaborationTaskDraft,
+} from "./TaskCollaborationDialog";
+import type { TaskCollaborationProposal } from "../../../../shared/task-collaboration-proposals";
+import TaskCollaborationWorkspace, {
+  type CollaborationWorkspaceState,
+} from "./TaskCollaborationWorkspace";
 import Skills from "../Skills/Skills";
 import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
 import Office from "../Office/Office";
 import Providers from "../Providers/Providers";
-import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import TaskCenter from "../TaskCenter/TaskCenter";
 import ProjectCenter from "../ProjectCenter/ProjectCenter";
-import RemoteNotice from "../../components/RemoteNotice";
-import VerifyWarningBanner from "../../components/VerifyWarningBanner";
+import Schedules from "../Schedules/Schedules";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
-import hermeslogo from "../../assets/hermes-one.svg";
+import agentsOneLogo from "../../assets/agents-one-wordmark.svg";
 import {
-  Compass,
-  Settings as SettingsIcon,
-  Brain,
-  Workflow,
-  Signal,
-  Building,
-  KeyRound,
-  Timer,
-  Kanban as KanbanIcon,
-  ClipboardList,
+  ChatBubble,
+  Clock,
+  Users,
   Download,
   PanelLeftClose,
   PanelLeftOpen,
@@ -54,6 +57,11 @@ import {
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
+import type {
+  TaskCollaborationAssignment,
+  TaskCollaborationRecord,
+} from "../../../../shared/task-collaboration";
 
 type View =
   | "chat"
@@ -70,40 +78,34 @@ type View =
   | "projects"
   | "gateway";
 
-const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
-  { view: "discover", icon: Compass, labelKey: "navigation.discover" },
-  // "agents" (Profiles) is reached from the sidebar-footer ProfileSwitcher's
-  // "Manage profiles" action rather than a top-level nav item.
-  { view: "office", icon: Building, labelKey: "navigation.office" },
-  { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
-  { view: "projects", icon: Workflow, labelKey: "Projects" },
-  { view: "tasks", icon: ClipboardList, labelKey: "Task Center" },
-  // "skills" lives under the Discover tab (installed + community), so it's no
-  // longer a top-level nav item.
-  { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
-];
-
-const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
-  { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
-  { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
-  { view: "tools", icon: Workflow, labelKey: "navigation.tools" },
-  { view: "memory", icon: Brain, labelKey: "navigation.memory" },
+const PINNED_NAV_ITEMS: {
+  view: View;
+  icon: LucideIcon;
+  label: string;
+  quickChat?: boolean;
+}[] = [
+  { view: "schedules", icon: Clock, label: "定时任务" },
+  { view: "chat", icon: ChatBubble, label: "聊天", quickChat: true },
+  { view: "agents", icon: Users, label: "智能体" },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
-const SIDEBAR_SCROLLBAR_HIDE_MS = 700;
+const DEFAULT_AGENT_RUNTIME_KEY = "agents-one.default-runtime-id.v1";
 
-interface LayoutProps {
-  verifyWarning?: boolean;
-  onReinstall?: () => void;
-  onDismissVerifyWarning?: () => void;
+function collaborationWorkspaceFromRecord(
+  record: TaskCollaborationRecord,
+): CollaborationWorkspaceState {
+  return {
+    taskId: record.taskId,
+    title: record.title,
+    projectFolder: record.projectFolder,
+    sourceRuntimeId: record.sourceRuntimeId,
+    assignments: record.assignments,
+    status: record.status,
+  };
 }
 
-function Layout({
-  verifyWarning,
-  onReinstall,
-  onDismissVerifyWarning,
-}: LayoutProps = {}): React.JSX.Element {
+function Layout(): React.JSX.Element {
   const { t } = useI18n();
   const { openSettings } = useSettingsModal();
   const [view, setView] = useState<View>("chat");
@@ -113,109 +115,73 @@ function Layout({
   // agent so `activeProfile` stays aligned with the visible chat transport.
   const [activeProfile, setActiveProfile] = useState("default");
   const [runs, setRuns] = useState<ChatRun[]>(() => [mintRun("default")]);
+  const runsRef = useRef<ChatRun[]>(runs);
   const [activeRunId, setActiveRunId] = useState<string>(() => runs[0].runId);
-  // While a resume's history is loading, show its spinner immediately.
-  const [resumingSessionId, setResumingSessionId] = useState<string | null>(
+  const [quickChatOpen, setQuickChatOpen] = useState(false);
+  const [quickChatRuntimeId, setQuickChatRuntimeId] = useState<string | null>(
     null,
   );
+  const [collaborationDraft, setCollaborationDraft] = useState<CollaborationTaskDraft | null>(null);
+  const [collaborationWorkspace, setCollaborationWorkspace] =
+    useState<CollaborationWorkspaceState | null>(null);
+  const [defaultRuntimeId, setDefaultRuntimeId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(DEFAULT_AGENT_RUNTIME_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const [runtimeCatalog, setRuntimeCatalog] = useState<
+    Record<string, AgentRuntimeDefinition>
+  >({});
+  // While a resume's history is loading, show its spinner immediately.
+  const [resumingSessionId, setResumingSessionId] = useState<string | null>(null);
   // Sessions whose resume is in flight — dedupes rapid double-clicks that would
   // otherwise mount two tabs for the same session (the live check straddles an
   // await, so it can't rely on `runs` state alone).
   const resumingRef = useRef<Set<string>>(new Set());
-  const sidebarChatScrollRef = useRef<HTMLDivElement | null>(null);
-  const sidebarScrollbarHideRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
+  const sidebarTaskScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const activeRun = runs.find((r) => r.runId === activeRunId);
+  const runtimeList = useMemo(
+    () => Object.values(runtimeCatalog),
+    [runtimeCatalog],
   );
-  const [sidebarScrollbar, setSidebarScrollbar] = useState({
-    visible: false,
-    scrollable: false,
-    top: 0,
-    height: 0,
-  });
-
+  const defaultRuntime = useMemo(
+    () =>
+      runtimeList.find((runtime) => runtime.id === defaultRuntimeId) ??
+      runtimeList.find((runtime) => runtime.kind === "hermes" && runtime.enabled) ??
+      runtimeList.find((runtime) => runtime.enabled) ??
+      runtimeList[0],
+    [defaultRuntimeId, runtimeList],
+  );
+  const builtinHermesRuntime = useMemo(
+    () =>
+      runtimeList.find(
+        (runtime) =>
+          runtime.id === "hermes-remote" &&
+          runtime.enabled &&
+          runtime.managed === "builtin",
+      ) ??
+      runtimeList.find(
+        (runtime) =>
+          runtime.kind === "hermes" &&
+          runtime.enabled &&
+          runtime.managed === "builtin",
+      ),
+    [runtimeList],
+  );
   const currentSessionId =
-    runs.find((r) => r.runId === activeRunId)?.sessionId ?? null;
-
+    activeRun?.runtimeConversationId ?? activeRun?.sessionId ?? null;
   const loadingSessionIds = useMemo(
     () => deriveLoadingSessionIds(runs),
     [runs],
   );
 
-  const updateSidebarScrollbar = useCallback((visible: boolean) => {
-    const root = sidebarChatScrollRef.current;
-    if (!root) {
-      setSidebarScrollbar((prev) =>
-        prev.scrollable || prev.visible
-          ? { visible: false, scrollable: false, top: 0, height: 0 }
-          : prev,
-      );
-      return;
-    }
 
-    const scrollable = root.scrollHeight > root.clientHeight + 1;
-    if (!scrollable) {
-      setSidebarScrollbar((prev) =>
-        prev.scrollable || prev.visible
-          ? { visible: false, scrollable: false, top: 0, height: 0 }
-          : prev,
-      );
-      return;
-    }
-
-    const trackHeight = root.clientHeight;
-    const thumbHeight = Math.max(
-      32,
-      Math.round((root.clientHeight / root.scrollHeight) * trackHeight),
-    );
-    const maxTop = Math.max(0, trackHeight - thumbHeight);
-    const maxScroll = Math.max(1, root.scrollHeight - root.clientHeight);
-    const top = Math.round((root.scrollTop / maxScroll) * maxTop);
-
-    setSidebarScrollbar((prev) => {
-      const next = { visible, scrollable, top, height: thumbHeight };
-      return prev.visible === next.visible &&
-        prev.scrollable === next.scrollable &&
-        prev.top === next.top &&
-        prev.height === next.height
-        ? prev
-        : next;
-    });
-  }, []);
-
-  useEffect(() => {
-    const root = sidebarChatScrollRef.current;
-    if (!root) return;
-
-    const showThenHide = (): void => {
-      updateSidebarScrollbar(true);
-      if (sidebarScrollbarHideRef.current) {
-        clearTimeout(sidebarScrollbarHideRef.current);
-      }
-      sidebarScrollbarHideRef.current = setTimeout(() => {
-        updateSidebarScrollbar(false);
-      }, SIDEBAR_SCROLLBAR_HIDE_MS);
-    };
-
-    const updateHidden = (): void => updateSidebarScrollbar(false);
-    root.addEventListener("scroll", showThenHide, { passive: true });
-    window.addEventListener("resize", updateHidden);
-    const observer = new ResizeObserver(updateHidden);
-    observer.observe(root);
-
-    updateHidden();
-    return () => {
-      root.removeEventListener("scroll", showThenHide);
-      window.removeEventListener("resize", updateHidden);
-      observer.disconnect();
-      if (sidebarScrollbarHideRef.current) {
-        clearTimeout(sidebarScrollbarHideRef.current);
-      }
-    };
-  }, [updateSidebarScrollbar]);
-
-  // Per-profile avatar/colour, so the active-sessions bar (which only knows a
-  // run's profile name) can render real avatars. Refreshed when the selected
-  // profile or the current view changes — e.g. after editing on the Agents page.
+  // Profile appearance remains the source for Hermes conversations. Runtime
+  // conversations resolve their own user-configured name/avatar/colour from
+  // the runtime catalog, so top tabs match the project/task sidebar.
   const [profileAppearance, setProfileAppearance] = useState<
     Record<string, { color?: string | null; avatar?: string | null }>
   >({});
@@ -238,8 +204,94 @@ function Layout({
     };
   }, [activeProfile, view]);
   const getAppearance = useCallback(
-    (profile: string) => profileAppearance[profile] ?? {},
-    [profileAppearance],
+    (run: ChatRun) => {
+      const runtime = run.runtimeId ? runtimeCatalog[run.runtimeId] : null;
+      if (runtime) {
+        return {
+          name: runtime.name,
+          color: runtime.color,
+          avatar: runtime.avatar,
+        };
+      }
+      const profile = profileAppearance[run.profile] ?? {};
+      if (builtinHermesRuntime) {
+        return {
+          name:
+            builtinHermesRuntime.name ||
+            (run.profile === "default" ? "Hermes" : run.profile),
+          color: builtinHermesRuntime.color ?? profile.color,
+          avatar: builtinHermesRuntime.avatar ?? profile.avatar,
+        };
+      }
+      return {
+        name: run.profile === "default" ? "Hermes" : run.profile,
+        ...profile,
+      };
+    },
+    [builtinHermesRuntime, profileAppearance, runtimeCatalog],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRuntimeCatalog = (): void => {
+      window.hermesAPI
+        .listAgentRuntimes()
+        .then((list) => {
+          if (cancelled) return;
+          setRuntimeCatalog(
+            Object.fromEntries(list.map((runtime) => [runtime.id, runtime])),
+          );
+        })
+        .catch(() => {
+          /* keep last-known runtime catalog */
+        });
+    };
+    loadRuntimeCatalog();
+    window.addEventListener("hermes-agent-runtime-changed", loadRuntimeCatalog);
+    window.addEventListener(
+      "agents-one:runtime-appearance-changed",
+      loadRuntimeCatalog,
+    );
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        "hermes-agent-runtime-changed",
+        loadRuntimeCatalog,
+      );
+      window.removeEventListener(
+        "agents-one:runtime-appearance-changed",
+        loadRuntimeCatalog,
+      );
+    };
+  }, [view]);
+
+  const handleDefaultRuntimeChange = useCallback((runtimeId: string): void => {
+    setDefaultRuntimeId(runtimeId);
+    try {
+      localStorage.setItem(DEFAULT_AGENT_RUNTIME_KEY, runtimeId);
+    } catch {
+      /* keep the in-memory choice */
+    }
+  }, []);
+
+  useEffect(() => {
+    runsRef.current = runs;
+  }, [runs]);
+
+  const linkRunCollaboration = useCallback(
+    (runId: string, link: { conversationId?: string; sourceSessionId?: string }): void => {
+      const run = runsRef.current.find((item) => item.runId === runId);
+      const taskId = run?.collaboration?.persistedTaskId;
+      if (!taskId) return;
+      void window.hermesAPI
+        .linkTaskCollaboration({ taskId, ...link }, activeProfile)
+        .then(() => window.dispatchEvent(new Event("agents-one:task-collaboration-changed")))
+        .catch(() => {
+          // A transcript may still be saved even when the optional link write
+          // fails. Never create a second collaboration record as a fallback.
+        });
+    },
+    [activeProfile],
   );
 
   // Per-run reporters wired into each <Chat>.
@@ -249,8 +301,16 @@ function Layout({
   const handleRunSessionId = useCallback(
     (runId: string, sessionId: string | null) => {
       setRuns((prev) => patchRun(prev, runId, { sessionId }));
+      if (sessionId) linkRunCollaboration(runId, { sourceSessionId: sessionId });
     },
-    [],
+    [linkRunCollaboration],
+  );
+  const handleRuntimeConversationId = useCallback(
+    (runId: string, runtimeConversationId: string) => {
+      setRuns((prev) => patchRun(prev, runId, { runtimeConversationId }));
+      linkRunCollaboration(runId, { conversationId: runtimeConversationId });
+    },
+    [linkRunCollaboration],
   );
   const handleRunTitle = useCallback((runId: string, title: string) => {
     setRuns((prev) => patchRun(prev, runId, { title }));
@@ -271,6 +331,10 @@ function Layout({
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
     () => new Set<View>(["chat"]),
   );
+  const [taskCenterSelection, setTaskCenterSelection] = useState<{
+    taskId: string | null;
+    nonce: number;
+  }>({ taskId: null, nonce: 0 });
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
   const [remoteMode, setRemoteMode] = useState(false);
   // Set by the Capabilities screen's "Browse" actions to focus a Discover tab
@@ -294,7 +358,22 @@ function Layout({
 
   useEffect(() => {
     const handleNavigation = (e: Event): void => {
-      const targetView = (e as CustomEvent<View>).detail;
+      const detail = (e as CustomEvent<
+        View | { view: View; taskId?: string }
+      >).detail;
+      const targetView = typeof detail === "string" ? detail : detail?.view;
+      if (targetView === "tasks" && typeof detail === "object" && detail.taskId) {
+        setTaskCenterSelection((current) => ({
+          taskId: detail.taskId || null,
+          nonce: current.nonce + 1,
+        }));
+        goTo("tasks");
+        return;
+      }
+      if (targetView === "schedules") {
+        goTo("schedules");
+        return;
+      }
       if (targetView) goTo(targetView);
     };
     window.addEventListener("navigation:goto", handleNavigation);
@@ -433,26 +512,337 @@ function Layout({
             ? t("common.updateFailed")
             : undefined);
 
+  const handleOpenQuickChat = useCallback((runtimeId?: string | null) => {
+    if (runtimeId) setQuickChatRuntimeId(runtimeId);
+    setQuickChatOpen(true);
+  }, []);
+
   const handleNewChat = useCallback(() => {
-    // Open a fresh run WITHOUT aborting others — any in-flight session keeps
-    // streaming in the background and stays reachable via the active bar. If the
-    // current chat is already a blank scratch, reuse it instead of stacking
-    // another empty tab.
+    handleOpenQuickChat(activeRun?.runtimeId ?? quickChatRuntimeId);
+  }, [activeRun?.runtimeId, handleOpenQuickChat, quickChatRuntimeId]);
+
+  const handleAddQuickChatToTask = useCallback(
+    (content: string) => {
+      if (!activeRunId) {
+        toast.error("请先打开一个任务。");
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent("agents-one:add-chat-to-task", {
+          detail: { runId: activeRunId, content },
+        }),
+      );
+      setQuickChatOpen(false);
+      goTo("chat");
+      toast.success("已放入当前任务输入框。");
+    },
+    [activeRunId, goTo],
+  );
+
+  const isBlankTaskRun = useCallback(
+    (run: ChatRun): boolean =>
+      !run.sessionId &&
+      !run.runtimeConversationId &&
+      !run.loading &&
+      !run.title &&
+      !run.seed &&
+      !run.runtimeSeed,
+    [],
+  );
+
+  const mintDefaultTaskRun = useCallback(
+    (folder?: string | null): ChatRun => {
+      if (!defaultRuntime || defaultRuntime.kind === "hermes") {
+        return mintRun(activeProfile, undefined, folder ?? undefined);
+      }
+      return mintRuntimeRun({
+        profile: activeProfile,
+        runtimeId: defaultRuntime.id,
+        runtimeName: defaultRuntime.name,
+        runtimeKind: defaultRuntime.kind,
+        runtimeWorkspace: folder ?? defaultRuntime.config.workspace,
+      });
+    },
+    [activeProfile, defaultRuntime],
+  );
+
+  const handleNewTask = useCallback(() => {
     const active = runs.find((r) => r.runId === activeRunId);
-    if (active && !active.sessionId && !active.loading && !active.title) {
+    const defaultRuntimeTask =
+      defaultRuntime && defaultRuntime.kind !== "hermes"
+        ? defaultRuntime.id
+        : null;
+    if (
+      active &&
+      isBlankTaskRun(active) &&
+      (defaultRuntimeTask
+        ? active.runtimeId === defaultRuntimeTask
+        : !active.runtimeId)
+    ) {
       goTo("chat");
       return;
     }
-    const run = mintRun(activeProfile);
+    const run = mintDefaultTaskRun();
     setRuns((prev) => [...prev, run]);
     setActiveRunId(run.runId);
     goTo("chat");
-  }, [runs, activeRunId, activeProfile, goTo]);
+  }, [
+    runs,
+    activeRunId,
+    defaultRuntime,
+    goTo,
+    isBlankTaskRun,
+    mintDefaultTaskRun,
+  ]);
+
+  const handleProjectFolderChoice = useCallback(
+    async (mode: "new" | "existing") => {
+      let folder: string | null = null;
+      try {
+        folder =
+          mode === "new"
+            ? await window.hermesAPI.createProjectFolder()
+            : await window.hermesAPI.selectFolder({
+                title: "选择现有项目文件夹",
+                buttonLabel: "使用此文件夹",
+              });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "无法创建项目文件夹",
+        );
+        return;
+      }
+      if (!folder) return;
+      await window.hermesAPI.registerProjectFolder(folder);
+      window.dispatchEvent(new CustomEvent("agents-one:project-folders-changed"));
+
+      const active = runs.find((run) => run.runId === activeRunId);
+      if (active && isScratchRun(active)) {
+        setRuns((previous) =>
+          previous.map((run) =>
+            run.runId === active.runId
+              ? { ...run, contextFolder: folder }
+              : run,
+          ),
+        );
+      } else if (
+        active &&
+        isBlankTaskRun(active) &&
+        active.runtimeId &&
+        active.runtimeId === defaultRuntime?.id
+      ) {
+        setRuns((previous) =>
+          previous.map((run) =>
+            run.runId === active.runId
+              ? { ...run, runtimeWorkspace: folder }
+              : run,
+          ),
+        );
+      } else {
+        const run = mintDefaultTaskRun(folder);
+        setRuns((previous) => [...previous, run]);
+        setActiveRunId(run.runId);
+      }
+      goTo("chat");
+    },
+    [
+      runs,
+      activeRunId,
+      defaultRuntime?.id,
+      goTo,
+      isBlankTaskRun,
+      mintDefaultTaskRun,
+    ],
+  );
+
+  const handleCreateProjectTask = useCallback(
+    (folder: string): void => {
+      const run = mintDefaultTaskRun(folder);
+      setRuns((previous) => [...previous, run]);
+      setActiveRunId(run.runId);
+      goTo("chat");
+    },
+    [goTo, mintDefaultTaskRun],
+  );
+
+  const handleOpenTaskCollaboration = useCallback(
+    (task: ChatRun, proposal?: TaskCollaborationProposal): void => {
+      setCollaborationDraft({
+        runId: task.runId,
+        taskId: task.runtimeConversationId || task.sessionId || undefined,
+        title: proposal?.title || task.title || "当前任务的协作方案",
+        projectFolder: task.runtimeWorkspace || task.contextFolder || null,
+        sourceRuntimeId: task.runtimeId,
+        assignments: proposal?.assignments,
+        message: proposal?.brief,
+      });
+    },
+    [],
+  );
+
+  const handleStartTaskCollaboration = useCallback(
+    (assignments: TaskCollaborationAssignment[], message: string): void => {
+      const draft = collaborationDraft;
+      if (!draft) return;
+      if (draft.taskId) {
+        void window.hermesAPI
+          .saveTaskCollaboration(
+            {
+              taskId: draft.taskId,
+              title: draft.title,
+              projectFolder: draft.projectFolder || undefined,
+              sourceRuntimeId: draft.sourceRuntimeId,
+              assignments,
+              status: "active",
+            },
+            activeProfile,
+          )
+          .then((record) => {
+            window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+            setCollaborationDraft(null);
+            const live = findRunBySession(runs, record.taskId);
+            if (!live) {
+              toast.success("协作设置已保存。请打开该任务后发送任务说明。");
+              return;
+            }
+            setRuns((previous) =>
+              patchRun(previous, live.runId, {
+                collaboration: {
+                  assignments: record.assignments,
+                  ...(record.projectFolder
+                    ? { projectFolder: record.projectFolder }
+                    : {}),
+                  persistedTaskId: record.taskId,
+                  status: record.status,
+                },
+              }),
+            );
+            setActiveRunId(live.runId);
+            goTo("chat");
+            requestAnimationFrame(() => {
+              window.dispatchEvent(
+                new CustomEvent("agents-one:submit-task-message", {
+                  detail: {
+                    runId: live.runId,
+                    content: message,
+                    collaboration: {
+                      taskId: record.taskId,
+                      assignments: record.assignments,
+                      projectFolder: record.projectFolder,
+                    },
+                  },
+                }),
+              );
+            });
+          })
+          .catch((error) =>
+            toast.error(error instanceof Error ? error.message : "无法保存协作设置。"),
+          );
+      } else if (draft.runId) {
+        // A newly created task has no transport session yet. Persist against
+        // its stable UI run id before emitting the first message; later
+        // conversation/session ids only link back to this parent record.
+        const parentTaskId = draft.runId;
+        void window.hermesAPI
+          .saveTaskCollaboration(
+            {
+              taskId: parentTaskId,
+              title: draft.title,
+              projectFolder: draft.projectFolder || undefined,
+              sourceRuntimeId: draft.sourceRuntimeId,
+              assignments,
+              status: "active",
+            },
+            activeProfile,
+          )
+          .then((record) => {
+            setRuns((previous) =>
+              patchRun(previous, parentTaskId, {
+                collaboration: {
+                  assignments: record.assignments,
+                  ...(record.projectFolder ? { projectFolder: record.projectFolder } : {}),
+                  persistedTaskId: record.taskId,
+                  status: record.status,
+                },
+              }),
+            );
+            window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+            setCollaborationDraft(null);
+            setActiveRunId(parentTaskId);
+            goTo("chat");
+            requestAnimationFrame(() => {
+              window.dispatchEvent(
+                new CustomEvent("agents-one:submit-task-message", {
+                  detail: {
+                    runId: parentTaskId,
+                    content: message,
+                    collaboration: {
+                      taskId: record.taskId,
+                      assignments: record.assignments,
+                      projectFolder: record.projectFolder,
+                    },
+                  },
+                }),
+              );
+            });
+          })
+          .catch((error) =>
+            toast.error(error instanceof Error ? error.message : "无法保存协作设置。"),
+          );
+      }
+    },
+    [activeProfile, collaborationDraft, goTo, runs],
+  );
+
+  const handleStartCollaboration = useCallback((): void => {
+    const workspace = collaborationWorkspace;
+    if (!workspace?.taskId) {
+      toast.error("请先向协调者发送首条任务说明，创建可恢复的协作任务。");
+      return;
+    }
+    void window.hermesAPI
+      .saveTaskCollaboration(
+        {
+          taskId: workspace.taskId,
+          title: workspace.title,
+          projectFolder: workspace.projectFolder || undefined,
+          sourceRuntimeId: workspace.sourceRuntimeId,
+          assignments: workspace.assignments,
+          status: "active",
+        },
+        activeProfile,
+      )
+      .then((record) => {
+        setCollaborationWorkspace(collaborationWorkspaceFromRecord(record));
+        window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+      })
+      .catch((error) =>
+        toast.error(error instanceof Error ? error.message : "无法启动协作。"),
+      );
+  }, [activeProfile, collaborationWorkspace]);
+
+  useEffect(() => {
+    const openWorkspace = (event: Event): void => {
+      const taskId = (event as CustomEvent<string>).detail;
+      if (!taskId || typeof taskId !== "string") return;
+      void window.hermesAPI
+        .getTaskCollaboration(taskId, activeProfile)
+        .then((record) => {
+          if (record) setCollaborationWorkspace(collaborationWorkspaceFromRecord(record));
+        })
+        .catch(() => {
+          toast.error("无法读取协作任务配置。 ");
+        });
+    };
+    window.addEventListener("agents-one:open-task-collaboration", openWorkspace);
+    return () =>
+      window.removeEventListener("agents-one:open-task-collaboration", openWorkspace);
+  }, [activeProfile]);
 
   // Listen for menu IPC events (Cmd+N, Cmd+K from app menu)
   useEffect(() => {
     const cleanupNewChat = window.hermesAPI.onMenuNewChat(() => {
-      handleNewChat();
+      handleNewTask();
     });
     const cleanupSearch = window.hermesAPI.onMenuSearchSessions(() => {
       setSessionsModalOpen(true);
@@ -461,7 +851,7 @@ function Layout({
       cleanupNewChat();
       cleanupSearch();
     };
-  }, [handleNewChat]);
+  }, [handleNewTask]);
 
   // Esc closes the full-list sessions modal.
   useEffect(() => {
@@ -488,26 +878,24 @@ function Layout({
     [runs, activeRunId],
   );
 
-  // The "Chat" affordance: start (or reuse a blank) conversation with an agent
-  // and show it. This is the only path from the profile list that opens a chat.
-  const handleChatWithProfile = useCallback(
-    (name: string) => {
-      setActiveProfile(name);
-      const active = runs.find((r) => r.runId === activeRunId);
-      if (active && isScratchRun(active)) {
-        setRuns((prev) =>
-          prev.map((r) =>
-            r.runId === active.runId ? { ...r, profile: name } : r,
-          ),
-        );
-      } else {
-        const run = mintRun(name);
-        setRuns((prev) => [...prev, run]);
-        setActiveRunId(run.runId);
-      }
+  const handleChatWithRuntime = useCallback(
+    (runtime: AgentRuntimeDefinition) => {
+      setRuntimeCatalog((current) => ({ ...current, [runtime.id]: runtime }));
+      const run =
+        usesLegacyHermesChat(runtime)
+          ? mintRun(activeProfile)
+          : mintRuntimeRun({
+              profile: activeProfile,
+              runtimeId: runtime.id,
+              runtimeName: runtime.name,
+              runtimeKind: runtime.kind,
+              runtimeWorkspace: runtime.config.workspace,
+            });
+      setRuns((current) => [...current, run]);
+      setActiveRunId(run.runId);
       goTo("chat");
     },
-    [runs, activeRunId, goTo],
+    [activeProfile, goTo],
   );
 
   // Jump to an already-open run (e.g. from the active-sessions bar), switching
@@ -532,7 +920,7 @@ function Layout({
       const idx = runs.findIndex((r) => r.runId === runId);
       const remaining = runs.filter((r) => r.runId !== runId);
       if (remaining.length === 0) {
-        const fresh = mintRun(activeProfile);
+        const fresh = mintDefaultTaskRun();
         setRuns([fresh]);
         setActiveRunId(fresh.runId);
         return;
@@ -544,7 +932,7 @@ function Layout({
         setActiveProfile(neighbour.profile);
       }
     },
-    [runs, activeRunId, activeProfile],
+    [runs, activeRunId, mintDefaultTaskRun],
   );
 
   // Chrome/iTerm-style tab shortcuts for the conversation tabs: Ctrl+Tab /
@@ -632,6 +1020,45 @@ function Layout({
       resumingRef.current.add(sessionId);
       setResumingSessionId(sessionId);
       try {
+        const runtimeConversation =
+          await window.hermesAPI.getRuntimeConversation(
+            sessionId,
+            activeProfile,
+          );
+        if (runtimeConversation) {
+          const runtime = {
+            id: runtimeConversation.runtimeId,
+            name: runtimeConversation.runtimeName,
+            kind: runtimeConversation.runtimeKind,
+            location: runtimeConversation.runtimeLocation,
+            enabled: true,
+            managed: "user" as const,
+            color: runtimeConversation.runtimeColor,
+            avatar: runtimeConversation.runtimeAvatar,
+            config: {},
+          };
+          setRuntimeCatalog((current) => ({
+            ...current,
+            [runtime.id]: current[runtime.id] ?? runtime,
+          }));
+          const run = mintRuntimeRun({
+            profile: activeProfile,
+            runtimeId: runtime.id,
+            runtimeName: runtime.name,
+            runtimeKind: runtime.kind,
+            title: runtimeConversation.title,
+            runtimeConversationId: runtimeConversation.id,
+            runtimeSeed: runtimeConversation.messages,
+            runtimeWorkspace: runtimeConversation.workspace,
+            sessionId: runtimeConversation.runtimeSessionId ?? null,
+          });
+          setRuns(
+            (prev) => openSessionRunTransition(prev, activeRunId, run).runs,
+          );
+          setActiveRunId(run.runId);
+          goTo("chat");
+          return;
+        }
         const items = (await window.hermesAPI.getSessionMessages(
           sessionId,
         )) as DbHistoryItem[];
@@ -649,6 +1076,23 @@ function Layout({
     },
     [runs, activeRunId, handleActivateRun, activeProfile, goTo],
   );
+
+  useEffect(() => {
+    const handleOpenRuntimeConversation = (event: Event): void => {
+      const conversationId = (event as CustomEvent<unknown>).detail;
+      if (typeof conversationId === "string" && conversationId) {
+        void handleResumeSession(conversationId);
+      }
+    };
+    window.addEventListener(
+      "agents-one:open-runtime-conversation",
+      handleOpenRuntimeConversation,
+    );
+    return () => window.removeEventListener(
+      "agents-one:open-runtime-conversation",
+      handleOpenRuntimeConversation,
+    );
+  }, [handleResumeSession]);
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((collapsed) => {
@@ -670,14 +1114,10 @@ function Layout({
     <div className={`layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <span
+          <img
             className="sidebar-logo"
-            role="img"
-            aria-label="Hermes"
-            style={{
-              maskImage: `url(${hermeslogo})`,
-              WebkitMaskImage: `url(${hermeslogo})`,
-            }}
+            aria-label="Agents One"
+            src={agentsOneLogo}
           />
           <button
             className="sidebar-collapse-toggle"
@@ -706,66 +1146,56 @@ function Layout({
 
         <nav className="sidebar-nav sidebar-nav-pinned">
           <button
-            className={`sidebar-nav-item sidebar-new-chat ${
-              view === "chat" && currentSessionId === null ? "active" : ""
-            }`}
-            onClick={handleNewChat}
-            title={t("navigation.newChat")}
-            aria-label={t("navigation.newChat")}
+            className="sidebar-nav-item sidebar-new-chat"
+            onClick={handleNewTask}
+            title="新建任务"
+            aria-label="新建任务"
           >
             <Plus size={16} />
-            <span className="sidebar-nav-label">{t("navigation.newChat")}</span>
+            <span className="sidebar-nav-label">新建任务</span>
           </button>
-          {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
+          {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, label, quickChat }) => {
+            const active = quickChat ? quickChatOpen : view === v;
             return (
               <button
                 key={v}
-                className={`sidebar-nav-item ${view === v ? "active" : ""}`}
-                onClick={() => goTo(v)}
-                title={t(labelKey)}
-                aria-label={t(labelKey)}
+                className={`sidebar-nav-item ${active ? "active" : ""}`}
+                onClick={() => {
+                  if (quickChat) {
+                    handleNewChat();
+                    return;
+                  }
+                  goTo(v);
+                }}
+                title={label}
+                aria-label={label}
               >
                 <Icon size={16} />
-                <span className="sidebar-nav-label">{t(labelKey)}</span>
+                <span className="sidebar-nav-label">{label}</span>
               </button>
             );
           })}
         </nav>
 
         <div className="sidebar-chat-section">
-          <div className="sidebar-nav-sessions">
-            <div className="sidebar-chat-scroll" ref={sidebarChatScrollRef}>
-              <SidebarRecentSessions
-                open={!sidebarCollapsed}
-                activeProfile={activeProfile}
-                currentSessionId={currentSessionId}
-                loadingSessionIds={loadingSessionIds}
-                resumingSessionId={resumingSessionId}
-                onSelect={handleResumeSession}
-                onSessionDeleted={(id) => {
-                  // If the open chat was the one deleted, drop to a fresh chat
-                  // so the user isn't left viewing a now-gone conversation.
-                  if (id === currentSessionId) handleNewChat();
-                }}
-                scrollRootRef={sidebarChatScrollRef}
-              />
-            </div>
-            {sidebarScrollbar.scrollable && (
-              <div
-                className={`sidebar-chat-scrollbar ${
-                  sidebarScrollbar.visible ? "visible" : ""
-                }`}
-                aria-hidden="true"
-              >
-                <div
-                  className="sidebar-chat-scrollbar-thumb"
-                  style={{
-                    height: sidebarScrollbar.height,
-                    transform: `translateY(${sidebarScrollbar.top}px)`,
-                  }}
-                />
-              </div>
-            )}
+          <div className="sidebar-chat-scroll" ref={sidebarTaskScrollRef}>
+            <SidebarRecentSessions
+              open={!sidebarCollapsed}
+              activeProfile={activeProfile}
+              currentSessionId={currentSessionId}
+              loadingSessionIds={loadingSessionIds}
+              resumingSessionId={resumingSessionId}
+              onSelect={(sessionId) => void handleResumeSession(sessionId)}
+              onSessionDeleted={(id) => {
+                if (id === currentSessionId) handleNewTask();
+              }}
+              scrollRootRef={sidebarTaskScrollRef}
+              sectionLabel="任务"
+              onCreateProjectFolder={(mode) =>
+                void handleProjectFolderChoice(mode)
+              }
+              onCreateProjectTask={handleCreateProjectTask}
+            />
           </div>
         </div>
 
@@ -803,33 +1233,13 @@ function Layout({
               )}
             </button>
           )}
-          <div className="sidebar-footer-actions" aria-label="Workspace tools">
-            {FOOTER_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
-              <button
-                key={v}
-                className={`sidebar-footer-action ${view === v ? "active" : ""}`}
-                onClick={() => goTo(v)}
-                aria-label={t(labelKey)}
-                data-tooltip={t(labelKey)}
-              >
-                <Icon size={16} />
-              </button>
-            ))}
-            <button
-              className="sidebar-footer-action"
-              onClick={() =>
-                openSettings(undefined, { profile: activeProfile })
-              }
-              aria-label={t("navigation.settings")}
-              data-tooltip={t("navigation.settings")}
-            >
-              <SettingsIcon size={16} />
-            </button>
-          </div>
           <ProfileSwitcher
             activeProfile={activeProfile}
             onSwitch={handleSelectProfile}
-            onManage={() => goTo("agents")}
+            onManage={() => openSettings(undefined, { profile: activeProfile })}
+            onRuntimeChat={handleChatWithRuntime}
+            defaultRuntimeId={defaultRuntime?.id ?? defaultRuntimeId}
+            onDefaultRuntimeChange={handleDefaultRuntimeChange}
             compact={sidebarCollapsed}
           />
         </div>
@@ -838,18 +1248,14 @@ function Layout({
       <main className="content">
         {/* Doubles as the window drag strip — keep it first so it owns the top
             band; the warning banner (if any) sits just below it. */}
-        <ActiveSessionsBar
-          runs={runs}
-          activeRunId={activeRunId}
-          onSelect={handleActivateRun}
-          onClose={handleCloseRun}
-          onNew={handleNewChat}
-          getAppearance={getAppearance}
-        />
-        {verifyWarning && onReinstall && onDismissVerifyWarning && (
-          <VerifyWarningBanner
-            onReinstall={onReinstall}
-            onDismiss={onDismissVerifyWarning}
+        {view === "chat" && (
+          <ActiveSessionsBar
+            runs={runs}
+            activeRunId={activeRunId}
+            onSelect={handleActivateRun}
+            onClose={handleCloseRun}
+            onNew={handleNewTask}
+            getAppearance={getAppearance}
           />
         )}
         <div style={paneStyle("chat")}>
@@ -866,20 +1272,64 @@ function Layout({
                 overflow: "hidden",
               }}
             >
-              <Chat
-                runId={run.runId}
-                initialMessages={run.seed}
-                initialSessionId={run.sessionId}
-                active={run.runId === activeRunId}
-                profile={run.profile}
-                onNewChat={handleNewChat}
-                onOpenDiagnose={(section?: string) =>
-                  openSettings(section, { profile: run.profile })
-                }
-                onLoadingChange={handleRunLoading}
-                onSessionIdChange={handleRunSessionId}
-                onTitleChange={handleRunTitle}
-              />
+              {run.runtimeId ? (
+                <RuntimeChat
+                  runId={run.runId}
+                  runtime={
+                    runtimeCatalog[run.runtimeId] ?? {
+                      id: run.runtimeId,
+                      name: run.runtimeName || run.runtimeId,
+                      kind: run.runtimeKind || "hermes",
+                      location: "remote",
+                      enabled: true,
+                      managed: "user",
+                      config: {},
+                    }
+                  }
+                  active={view === "chat" && run.runId === activeRunId}
+                  profile={run.profile}
+                  initialConversationId={run.runtimeConversationId ?? null}
+                  initialRuntimeSessionId={run.sessionId}
+                  initialMessages={run.runtimeSeed}
+                  initialWorkspace={run.runtimeWorkspace}
+                  collaboration={
+                    run.collaboration
+                      ? {
+                          assignments: run.collaboration.assignments,
+                          projectFolder: run.collaboration.projectFolder,
+                          taskId: run.collaboration.persistedTaskId,
+                        }
+                      : undefined
+                  }
+                  runtimeCatalog={runtimeCatalog}
+                  onRequestCollaboration={(proposal) => handleOpenTaskCollaboration(run, proposal)}
+                  onLoadingChange={handleRunLoading}
+                  onSessionIdChange={handleRunSessionId}
+                  onConversationIdChange={handleRuntimeConversationId}
+                  onTitleChange={handleRunTitle}
+                />
+              ) : (
+                <Chat
+                  key={`${run.runId}:${run.contextFolder ?? ""}`}
+                  runId={run.runId}
+                  initialMessages={run.seed}
+                  initialSessionId={run.sessionId}
+                  initialContextFolder={run.contextFolder}
+                  active={view === "chat" && run.runId === activeRunId}
+                  profile={run.profile}
+                  onNewChat={handleNewChat}
+                  onOpenDiagnose={(section?: string) =>
+                    openSettings(section, { profile: run.profile })
+                  }
+                  onLoadingChange={handleRunLoading}
+                  onSessionIdChange={handleRunSessionId}
+                  onTitleChange={handleRunTitle}
+                  collaboration={run.collaboration}
+                  runtimeCatalog={runtimeCatalog}
+                  agentAppearance={getAppearance(run)}
+                  onRequestCollaboration={() => handleOpenTaskCollaboration(run)}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -900,7 +1350,7 @@ function Layout({
                 }}
                 onNewChat={() => {
                   setSessionsModalOpen(false);
-                  handleNewChat();
+                  handleNewTask();
                 }}
                 currentSessionId={currentSessionId}
                 visible={sessionsModalOpen}
@@ -921,15 +1371,9 @@ function Layout({
 
         {visitedViews.has("agents") && (
           <div style={paneStyle("agents")}>
-            {remoteMode ? (
-              <RemoteNotice feature="Profiles" />
-            ) : (
-              <Agents
-                activeProfile={activeProfile}
-                onSelectProfile={handleSelectProfile}
-                onChatWith={handleChatWithProfile}
-              />
-            )}
+            <Agents
+              onChatWithRuntime={handleChatWithRuntime}
+            />
           </div>
         )}
 
@@ -970,12 +1414,6 @@ function Layout({
           </div>
         )}
 
-        {visitedViews.has("schedules") && (
-          <div style={paneStyle("schedules")}>
-            <Schedules profile={activeProfile} />
-          </div>
-        )}
-
         {visitedViews.has("kanban") && (
           <div style={paneStyle("kanban")}>
             <Kanban profile={activeProfile} visible={view === "kanban"} />
@@ -984,13 +1422,22 @@ function Layout({
 
         {visitedViews.has("tasks") && (
           <div style={paneStyle("tasks")}>
-            <TaskCenter />
+            <TaskCenter
+              initialTaskId={taskCenterSelection.taskId}
+              initialTaskNonce={taskCenterSelection.nonce}
+            />
+          </div>
+        )}
+
+        {visitedViews.has("schedules") && (
+          <div style={paneStyle("schedules")}>
+            <Schedules profile={activeProfile} />
           </div>
         )}
 
         {visitedViews.has("projects") && (
           <div style={paneStyle("projects")}>
-            <ProjectCenter />
+            <ProjectCenter visible={view === "projects"} />
           </div>
         )}
 
@@ -998,6 +1445,52 @@ function Layout({
           <div style={paneStyle("gateway")}>
             <Gateway profile={activeProfile} />
           </div>
+        )}
+
+        <QuickChatPanel
+          open={quickChatOpen}
+          runtimes={runtimeList}
+          profile={activeProfile}
+          defaultRuntimeId={
+            quickChatRuntimeId ??
+            activeRun?.runtimeId ??
+            defaultRuntime?.id ??
+            null
+          }
+          currentTaskTitle={activeRun?.title ?? null}
+          onClose={() => setQuickChatOpen(false)}
+          onAddToTask={handleAddQuickChatToTask}
+        />
+        {collaborationDraft && (
+          <TaskCollaborationDialog
+            draft={collaborationDraft}
+            runtimes={runtimeList}
+            onClose={() => setCollaborationDraft(null)}
+            onStart={handleStartTaskCollaboration}
+          />
+        )}
+        {collaborationWorkspace && (
+          <TaskCollaborationWorkspace
+            state={collaborationWorkspace}
+            runtimes={runtimeList}
+            onClose={() => setCollaborationWorkspace(null)}
+            onConfigure={() => {
+              setCollaborationDraft({
+                runId: collaborationWorkspace.runId,
+                taskId: collaborationWorkspace.taskId,
+                title: collaborationWorkspace.title,
+                projectFolder: collaborationWorkspace.projectFolder,
+                sourceRuntimeId: collaborationWorkspace.sourceRuntimeId,
+                assignments: collaborationWorkspace.assignments,
+              });
+              setCollaborationWorkspace(null);
+            }}
+            onStart={handleStartCollaboration}
+            onOpenTask={() => {
+              setCollaborationWorkspace(null);
+              goTo("chat");
+            }}
+          />
         )}
       </main>
     </div>

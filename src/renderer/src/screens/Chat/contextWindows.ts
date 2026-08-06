@@ -9,6 +9,8 @@
  * to a sane default for anything we haven't catalogued.
  */
 const CONTEXT_WINDOWS: Array<[RegExp, number]> = [
+  // GLM-5.2 exposes a 1M-token context window.
+  [/\bglm[-_. ]?5\.2\b/i, 1000000],
   // Groq's production lineup (Llama 3.1/3.3, GPT-OSS) — all 131,072.
   [/llama-3\.[13]/i, 131072],
   [/llama-4/i, 131072],

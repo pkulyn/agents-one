@@ -1,17 +1,28 @@
-import { spawn, execFile as execFileCallback, type ChildProcess } from "child_process";
+import {
+  spawn,
+  execFile as execFileCallback,
+  type ChildProcess,
+} from "child_process";
 import { existsSync, mkdirSync } from "fs";
 import { promisify } from "util";
 import { dirname, extname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
 import { profileHome } from "./utils";
-import type { AgentRuntimeArtifact, AgentRuntimeTaskInput } from "../shared/agent-runtimes";
+import { prepareRuntimeInputs } from "./runtime-inputs";
+import type {
+  AgentRuntimeArtifact,
+  AgentRuntimeTaskInput,
+  RuntimeInputArtifact,
+} from "../shared/agent-runtimes";
 
 const execFile = promisify(execFileCallback);
 const MAX_OUTPUT = 512 * 1024;
-const SECRET_VALUE = /((?:authorization|api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;]+)/gi;
+const SECRET_VALUE =
+  /((?:authorization|api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;]+)/gi;
 
 export interface CodexRuntimeConfig {
   executablePath?: string;
+  model?: string;
   workspace?: string;
   timeoutMs?: number;
 }
@@ -28,10 +39,12 @@ export interface CodexProcessResult {
   worktreePath?: string;
   diffSummary?: string;
   artifacts: AgentRuntimeArtifact[];
+  inputArtifacts: RuntimeInputArtifact[];
 }
 
 export interface StartedCodexProcess {
   worktreePath?: string;
+  inputArtifacts: RuntimeInputArtifact[];
   cancel: () => void;
   completion: Promise<CodexProcessResult>;
 }
@@ -56,12 +69,22 @@ export function codexInvocation(
   platform = process.platform,
   fileExists: (path: string) => boolean = existsSync,
 ): CodexInvocation {
-  if (platform !== "win32" || extname(executablePath).toLowerCase() !== ".cmd") {
+  if (
+    platform !== "win32" ||
+    extname(executablePath).toLowerCase() !== ".cmd"
+  ) {
     return { command: executablePath, prefix: [] };
   }
   const binDir = dirname(executablePath);
   const node = join(binDir, "node.exe");
-  const entry = join(binDir, "node_modules", "@openai", "codex", "bin", "codex.js");
+  const entry = join(
+    binDir,
+    "node_modules",
+    "@openai",
+    "codex",
+    "bin",
+    "codex.js",
+  );
   if (!fileExists(node) || !fileExists(entry)) {
     throw new Error(
       "The Codex .cmd wrapper is incomplete. Select codex.exe or reinstall the user-level Codex CLI.",
@@ -79,28 +102,45 @@ function appendCapped(current: string, next: string): string {
   return merged.length <= MAX_OUTPUT ? merged : merged.slice(-MAX_OUTPUT);
 }
 
-async function command(invocation: CodexInvocation, args: string[], cwd?: string): Promise<string> {
-  const result = await execFile(invocation.command, [...invocation.prefix, ...args], {
-    cwd,
-    windowsHide: true,
-    timeout: 15_000,
-    maxBuffer: MAX_OUTPUT,
-    shell: false,
-  });
+async function command(
+  invocation: CodexInvocation,
+  args: string[],
+  cwd?: string,
+): Promise<string> {
+  const result = await execFile(
+    invocation.command,
+    [...invocation.prefix, ...args],
+    {
+      cwd,
+      windowsHide: true,
+      timeout: 15_000,
+      maxBuffer: MAX_OUTPUT,
+      shell: false,
+    },
+  );
   return String(result.stdout || "").trim();
 }
 
 async function gitRoot(workspace: string): Promise<string> {
-  const root = await command({ command: "git", prefix: [] }, ["-C", workspace, "rev-parse", "--show-toplevel"]);
+  const root = await command({ command: "git", prefix: [] }, [
+    "-C",
+    workspace,
+    "rev-parse",
+    "--show-toplevel",
+  ]);
   if (!root) throw new Error("The selected workspace is not a Git repository.");
   return resolve(root);
 }
 
-function requestedWorkspace(config: CodexRuntimeConfig, input?: AgentRuntimeTaskInput): string | undefined {
+function requestedWorkspace(
+  config: CodexRuntimeConfig,
+  input?: AgentRuntimeTaskInput,
+): string | undefined {
   const raw = input?.workspace?.trim() || config.workspace?.trim();
   if (!raw) return undefined;
   const workspace = resolve(raw);
-  if (!existsSync(workspace)) throw new Error("The selected workspace does not exist.");
+  if (!existsSync(workspace))
+    throw new Error("The selected workspace does not exist.");
   return workspace;
 }
 
@@ -111,18 +151,36 @@ function worktreeRoot(profile?: string): string {
 function safeWorktreePath(profile: string | undefined, id: string): string {
   const root = resolve(worktreeRoot(profile));
   const target = resolve(root, id);
-  if (relative(root, target).startsWith("..")) throw new Error("Invalid worktree path.");
+  if (relative(root, target).startsWith(".."))
+    throw new Error("Invalid worktree path.");
   mkdirSync(root, { recursive: true });
   return target;
 }
 
 function childEnvironment(): NodeJS.ProcessEnv {
   const keys = [
-    "APPDATA", "COMSPEC", "CODEX_HOME", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA",
-    "PATH", "PATHEXT", "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "WINDIR",
+    "APPDATA",
+    "COMSPEC",
+    "CODEX_HOME",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "LOCALAPPDATA",
+    "PATH",
+    "PATHEXT",
+    "SYSTEMDRIVE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "WINDIR",
   ];
   const env: NodeJS.ProcessEnv = {};
   for (const key of keys) if (process.env[key]) env[key] = process.env[key];
+  // Keep the same user-level OpenAI provider settings that `codex` receives
+  // in a terminal, without inheriting unrelated application secrets.
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value && /^(OPENAI_|CODEX_)/.test(key)) env[key] = value;
+  }
   return env;
 }
 
@@ -140,31 +198,50 @@ function terminateTree(child: ChildProcess): void {
 /** This argument contract is intentionally kept pure and regression-tested. */
 export function codexExecArgs(
   cwd: string,
-  mode: "analysis" | "implementation",
+  mode: "analysis" | "implementation" | "full_access",
   prompt: string,
+  inputDirectory?: string,
+  imagePaths: string[] = [],
+  model?: string,
 ): string[] {
-  return [
+  const args = [
     "exec",
     "--json",
     "--sandbox",
-    mode === "implementation" ? "workspace-write" : "read-only",
+    mode === "analysis" ? "read-only" : "workspace-write",
     "--cd",
     cwd,
-    prompt,
   ];
+  if (inputDirectory) args.push("--add-dir", inputDirectory);
+  for (const image of imagePaths) args.push("--image", image);
+  if (model?.trim()) args.push("--model", model.trim());
+  args.push(prompt);
+  return args;
 }
 
-export async function probeCodexRuntime(config: CodexRuntimeConfig): Promise<CodexProbeResult> {
+export async function probeCodexRuntime(
+  config: CodexRuntimeConfig,
+): Promise<CodexProbeResult> {
   try {
-    const version = await command(codexInvocation(executable(config)), ["exec", "--version"]);
+    const version = await command(codexInvocation(executable(config)), [
+      "exec",
+      "--version",
+    ]);
     const workspace = requestedWorkspace(config);
     if (workspace) await gitRoot(workspace);
-    return { healthy: true, workspaceAccess: Boolean(workspace), message: version || "Codex CLI is available." };
+    return {
+      healthy: true,
+      workspaceAccess: Boolean(workspace),
+      message: version || "Codex CLI is available.",
+    };
   } catch (error) {
     return {
       healthy: false,
       workspaceAccess: false,
-      message: error instanceof Error ? redact(error.message) : "Codex CLI is unavailable.",
+      message:
+        error instanceof Error
+          ? redact(error.message)
+          : "Codex CLI is unavailable.",
     };
   }
 }
@@ -177,18 +254,41 @@ export async function startCodexProcess(
   const mode = input.mode || "analysis";
   const invocation = codexInvocation(executable(config));
   const workspace = requestedWorkspace(config, input);
-  if (!workspace) throw new Error("Codex tasks require a configured workspace.");
+  if (!workspace)
+    throw new Error("Codex tasks require a configured workspace.");
 
   let cwd = workspace;
   let worktreePath: string | undefined;
   if (mode === "implementation") {
     const root = await gitRoot(workspace);
     worktreePath = safeWorktreePath(input.profile, `task-${randomUUID()}`);
-    await command({ command: "git", prefix: [] }, ["-C", root, "worktree", "add", "--detach", worktreePath, "HEAD"]);
+    await command({ command: "git", prefix: [] }, [
+      "-C",
+      root,
+      "worktree",
+      "add",
+      "--detach",
+      worktreePath,
+      "HEAD",
+    ]);
     cwd = worktreePath;
   }
 
-  const args = codexExecArgs(cwd, mode, input.prompt);
+  const preparedInputs = prepareRuntimeInputs(
+    input.profile,
+    input.attachments,
+    `codex-${randomUUID()}`,
+  );
+  const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
+
+  const args = codexExecArgs(
+    cwd,
+    mode,
+    runtimePrompt,
+    preparedInputs.directory,
+    preparedInputs.imagePaths,
+    config.model,
+  );
   const child = spawn(invocation.command, [...invocation.prefix, ...args], {
     cwd,
     env: childEnvironment(),
@@ -209,30 +309,74 @@ export async function startCodexProcess(
   });
 
   const completion = new Promise<CodexProcessResult>((resolveResult) => {
-    child.once("error", (error) => resolveResult({ output, error: redact(error.message), worktreePath, artifacts: worktreePath ? [{ kind: "worktree", label: "Isolated worktree", path: worktreePath }] : [] }));
+    child.once("error", (error) =>
+      resolveResult({
+        output,
+        error: redact(error.message),
+        worktreePath,
+        artifacts: worktreePath
+          ? [
+              {
+                kind: "worktree",
+                label: "Isolated worktree",
+                path: worktreePath,
+              },
+            ]
+          : [],
+        inputArtifacts: preparedInputs.artifacts,
+      }),
+    );
     child.once("close", async (code) => {
       let diffSummary: string | undefined;
       let diff: string | undefined;
       if (worktreePath) {
         try {
-          diffSummary = await command({ command: "git", prefix: [] }, ["-C", worktreePath, "diff", "--stat"]);
-          diff = await command({ command: "git", prefix: [] }, ["-C", worktreePath, "diff", "--no-ext-diff"]);
+          diffSummary = await command({ command: "git", prefix: [] }, [
+            "-C",
+            worktreePath,
+            "diff",
+            "--stat",
+          ]);
+          diff = await command({ command: "git", prefix: [] }, [
+            "-C",
+            worktreePath,
+            "diff",
+            "--no-ext-diff",
+          ]);
         } catch {
           // Preserve the Codex output even when the diff inspection fails.
         }
       }
       const artifacts: AgentRuntimeArtifact[] = [];
-      if (worktreePath) artifacts.push({ kind: "worktree", label: "Isolated worktree", path: worktreePath });
-      if (diff) artifacts.push({ kind: "diff", label: "Git diff", content: diff.slice(0, MAX_OUTPUT) });
+      if (worktreePath)
+        artifacts.push({
+          kind: "worktree",
+          label: "Isolated worktree",
+          path: worktreePath,
+        });
+      if (diff)
+        artifacts.push({
+          kind: "diff",
+          label: "Git diff",
+          content: diff.slice(0, MAX_OUTPUT),
+        });
       resolveResult({
         output,
-        ...(code === 0 ? {} : { error: `Codex exited with code ${code ?? "unknown"}.` }),
+        ...(code === 0
+          ? {}
+          : { error: `Codex exited with code ${code ?? "unknown"}.` }),
         ...(worktreePath ? { worktreePath } : {}),
         ...(diffSummary ? { diffSummary } : {}),
         artifacts,
+        inputArtifacts: preparedInputs.artifacts,
       });
     });
   });
 
-  return { worktreePath, cancel: () => terminateTree(child), completion };
+  return {
+    worktreePath,
+    inputArtifacts: preparedInputs.artifacts,
+    cancel: () => terminateTree(child),
+    completion,
+  };
 }

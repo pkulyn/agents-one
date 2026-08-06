@@ -1,6 +1,6 @@
 export default {
   title: "工具",
-  subtitle: "启用或禁用代理在对话期间可使用的工具集",
+  subtitle: "启用或禁用智能体在对话期间可使用的工具集",
   web: { label: "网络搜索", description: "搜索网页并提取 URL 内容" },
   browser: { label: "浏览器", description: "浏览、点击、输入并与网页交互" },
   terminal: { label: "终端", description: "执行 shell 命令和脚本" },
@@ -14,11 +14,11 @@ export default {
   tts: { label: "文本转语音", description: "把文本转换为语音音频" },
   skills: { label: "技能", description: "创建、管理并执行可复用技能" },
   memory: { label: "记忆", description: "存储并召回持久知识" },
-  session_search: { label: "会话搜索", description: "搜索历史会话内容" },
+  session_search: { label: "对话搜索", description: "搜索历史对话内容" },
   clarify: { label: "澄清提问", description: "在需要时向用户发起澄清" },
-  delegation: { label: "任务委派", description: "为并行任务派生子代理" },
+  delegation: { label: "任务委派", description: "为并行任务派生子智能体" },
   cronjob: { label: "计划任务", description: "创建和管理定时任务" },
-  moa: { label: "多代理协作", description: "协调多个 AI 模型协同工作" },
+  moa: { label: "多智能体协作", description: "协调多个 AI 模型协同工作" },
   todo: { label: "任务规划", description: "为复杂任务创建和管理待办列表" },
   mcpServers: "MCP 服务器",
   mcpDescription:

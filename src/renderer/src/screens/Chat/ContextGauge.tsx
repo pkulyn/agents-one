@@ -58,7 +58,8 @@ export const ContextGauge = memo(function ContextGauge({
       className="chat-ctx-gauge"
       tabIndex={0}
       role="img"
-      aria-label={t("chat.contextUsed", { pct, left })}
+      aria-label={`${t("chat.contextUsed", { pct, left })}，窗口 ${fmtTokens(ctxWindow)}`}
+      title={`上下文窗口 ${fmtTokens(ctxWindow)}，已使用 ${fmtTokens(used)}`}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle

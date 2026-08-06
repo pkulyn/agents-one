@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-labelledby="title">
+  <title id="title">Agents One</title>
+  <defs>
+    <linearGradient id="dawn" x1="50" y1="52" x2="270" y2="268" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2C92F5"/>
+      <stop offset=".32" stop-color="#7064E8"/>
+      <stop offset=".58" stop-color="#D976AA"/>
+      <stop offset=".82" stop-color="#FFC46A"/>
+      <stop offset="1" stop-color="#2C92F5"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#293950" flood-opacity=".14"/>
+    </filter>
+  </defs>
+  <rect x="10" y="10" width="300" height="300" rx="74" fill="#fff" stroke="#E3E8F1" stroke-width="4"/>
+  <circle cx="160" cy="160" r="82" fill="none" stroke="#EDF1F6" stroke-width="38"/>
+  <circle cx="160" cy="160" r="82" fill="none" stroke="url(#dawn)" stroke-width="38" filter="url(#shadow)"/>
+</svg>

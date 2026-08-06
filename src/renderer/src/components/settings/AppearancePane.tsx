@@ -8,6 +8,21 @@ import type { GpuPreferenceMode, GpuStatus } from "../../../../shared/gpu";
 
 const GPU_MODES: GpuPreferenceMode[] = ["auto", "on", "off"];
 
+const THEME_NAME_KEYS: Record<string, string> = {
+  dark: "dark",
+  light: "light",
+  dracula: "dracula",
+  nord: "nord",
+  "one-dark": "oneDark",
+  "github-dark": "githubDark",
+  monokai: "monokai",
+  "solarized-dark": "solarizedDark",
+  "gruvbox-dark": "gruvboxDark",
+  "tokyo-night": "tokyoNight",
+  "github-light": "githubLight",
+  "solarized-light": "solarizedLight",
+};
+
 /** Theme, rounded corners, interface font, and hardware acceleration. */
 export default function AppearancePane(): React.JSX.Element {
   const { t } = useI18n();
@@ -74,7 +89,9 @@ export default function AppearancePane(): React.JSX.Element {
                   </div>
                 </div>
                 <div className="settings-theme-card-row">
-                  <span className="settings-theme-card-name">{th.name}</span>
+                  <span className="settings-theme-card-name">
+                    {t(`settings.theme.names.${THEME_NAME_KEYS[th.id]}`)}
+                  </span>
                   {active && (
                     <span className="settings-theme-card-check">
                       <Check size={14} />

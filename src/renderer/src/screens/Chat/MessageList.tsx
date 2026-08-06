@@ -1,7 +1,9 @@
 import { memo, useMemo } from "react";
-import { HermesAvatar, MessageRow } from "./MessageRow";
+import { AgentsOneActivityAvatar, MessageRow } from "./MessageRow";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
 import { ClarifyCard } from "./ClarifyCard";
+import { collapseHistoricalEchoes } from "./messageDedup";
+import { placeInitialUserMessageBeforeAgentTrace } from "./messageOrder";
 import type {
   ChatMessage,
   ClarifyMessage,
@@ -15,7 +17,11 @@ function isToolRow(m: ChatMessage): m is ToolCallMessage | ToolResultMessage {
   return k === "tool_call" || k === "tool_result";
 }
 
-function SystemEventRow({ message }: { message: SystemMessage }): React.JSX.Element {
+function SystemEventRow({
+  message,
+}: {
+  message: SystemMessage;
+}): React.JSX.Element {
   return (
     <details className="chat-system-event">
       <summary>{message.title}</summary>
@@ -28,6 +34,10 @@ interface MessageListProps {
   messages: ChatMessage[];
   isLoading: boolean;
   toolProgress: string | null;
+  /** Visible identity for the Hermes endpoint behind this conversation. */
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
   onApprove: () => void;
   onDeny: () => void;
   /** Mark an inline clarify card resolved once the user answers/skips. */
@@ -41,7 +51,7 @@ function TypingIndicator({
 }): React.JSX.Element {
   return (
     <div className="chat-message chat-message-agent">
-      <HermesAvatar active />
+      <AgentsOneActivityAvatar active />
       <div className="chat-bubble chat-bubble-agent">
         {toolProgress ? (
           <div className="chat-tool-progress">{toolProgress}</div>
@@ -73,24 +83,27 @@ export const MessageList = memo(function MessageList({
   messages,
   isLoading,
   toolProgress,
+  agentName = "Hermes",
+  agentAvatar,
+  agentColor,
   onApprove,
   onDeny,
   onClarifyResolved,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
   // History rows pass through unconditionally.
-  const visibleMessages = useMemo(
-    () =>
-      messages.filter((m) => {
-        if (!isBubble(m)) return true;
-        return !!m.error || ((m.content as string) || "").trim().length > 0;
-      }),
-    [messages],
-  );
+  const visibleMessages = useMemo(() => {
+    const contentMessages = messages.filter((m) => {
+      if (!isBubble(m)) return true;
+      return !!m.error || ((m.content as string) || "").trim().length > 0;
+    });
+    return placeInitialUserMessageBeforeAgentTrace(
+      collapseHistoricalEchoes(contentMessages),
+    );
+  }, [messages]);
 
   const lastBubble = [...messages].reverse().find(isBubble);
   const lastMessageIsAgent = !!lastBubble && lastBubble.role === "agent";
-
   // Render plan: bubble/reasoning rows pass through one-to-one, but a
   // contiguous run of tool_call/tool_result rows folds into a single
   // ToolActivityGroup (collapsed by default) instead of one bubble per call.
@@ -118,10 +131,10 @@ export const MessageList = memo(function MessageList({
           items={group}
           // Active (spinner) only while streaming and this run is trailing.
           active={isLoading && i === visibleMessages.length - 1}
-          showAvatar={
-            !visibleMessages[start - 1] ||
-            visibleMessages[start - 1].role !== "agent"
-          }
+          // Tool history belongs to the agent trace. Its row stays aligned
+          // with the thought above; the Agents One mark is reserved for the
+          // separate live activity indicator below the trace.
+          showAvatar={false}
         />,
       );
       continue;
@@ -142,6 +155,9 @@ export const MessageList = memo(function MessageList({
           // a completed "Thought".
           active={isLoading && i === visibleMessages.length - 1}
           showAvatar={showAvatar}
+          agentName={agentName}
+          agentAvatar={agentAvatar}
+          agentColor={agentColor}
         />,
       );
       continue;
@@ -168,6 +184,9 @@ export const MessageList = memo(function MessageList({
         onApprove={onApprove}
         onDeny={onDeny}
         showAvatar={showAvatar}
+        agentName={agentName}
+        agentAvatar={agentAvatar}
+        agentColor={agentColor}
       />,
     );
   }

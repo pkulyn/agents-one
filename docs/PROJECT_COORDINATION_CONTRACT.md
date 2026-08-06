@@ -1,12 +1,12 @@
 # 项目协作控制面契约
 
 状态：**Phase 3 基础实现完成；Phase 4 联调与跨 Runtime 验收进行中**
-对应路线图：[Hermes One 五阶段实施计划](./HERMES_ONE_FIVE_PHASE_PLAN.md) 的 Phase 3、4。
+对应路线图：[Agents One 五阶段实施计划](./HERMES_ONE_FIVE_PHASE_PLAN.md) 的 Phase 3、4。
 前置条件：完成 Phase 2 的真实 OpenClaw Bridge 联调后才能开始实现。
 
 ## 目标与边界
 
-Hermes One 是项目协作的确定性控制面，不是某个模型的代理外壳。用户选择项目经理 Runtime；控制面负责验证、存储、审计和执行边界。
+Agents One 是项目协作的确定性控制面，不是某个模型的代理外壳。用户选择项目经理 Runtime；控制面负责验证、存储、审计和执行边界。
 
 - 现有 Chat、Cron、Kanban、Hermes 任务与 Task Center 保持原有工作流，不做隐式迁移。
 - `TaskCenterTask` 继续代表一次直接派发；项目任务使用新的 `ProjectTask`，两者可由显式引用关联。

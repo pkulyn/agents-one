@@ -68,7 +68,7 @@ export const DESKTOP_SLASH_COMMANDS: SlashCommandDefinition[] = [
       ["office", "Open Office 3D page"],
       ["discover", "Open Discover page"],
       ["providers", "Open Providers page"],
-      ["schedules", "Open Schedules page"],
+      ["schedules", "Open scheduled tasks in Task Center"],
       ["kanban", "Open Kanban board"],
       ["gateway", "Open Gateway status page"],
     ] as const
@@ -97,7 +97,7 @@ export const DESKTOP_SLASH_COMMANDS: SlashCommandDefinition[] = [
 const LOCAL_COMMANDS: ReadonlyArray<
   readonly [name: string, description: string, uiAction?: boolean]
 > = [
-  ["new", "Start a new chat", true],
+  ["new", "Start a new conversation", true],
   ["clear", "Clear conversation history", true],
   ["persona", "Show the current persona"],
   ["memory", "Show agent memory"],

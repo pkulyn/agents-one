@@ -3,11 +3,11 @@
 ## 2026-06-06 Direction Correction: Dashboard/WebSocket Timeline
 
 This document originally described a conservative stabilization path for the
-existing Hermes One reconciliation layer. That path is useful as background, but
+existing Agents One reconciliation layer. That path is useful as background, but
 it is not sufficient as the long-term implementation direction.
 
 Manual testing and comparison with Hermes Agent desktop showed that PR540/PR545
-and the current Hermes One implementation still share the same risky shape:
+and the current Agents One implementation still share the same risky shape:
 
 - live UI rows are assembled from one stream;
 - restored/final rows are assembled from `state.db`;
@@ -182,7 +182,7 @@ Phase C is partially implemented behind an explicit renderer flag:
   JSON-RPC WebSocket client and now matches upstream's notification envelope:
   `{"method":"event","params":{type,payload,session_id}}`.
 - `src/renderer/src/screens/Chat/dashboardEventAdapter.ts` reduces ordered
-  dashboard events into Hermes One's existing `ChatMessage[]` shape.
+  dashboard events into Agents One's existing `ChatMessage[]` shape.
 - `src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts` can create
   or resume a dashboard runtime session and submit prompts through
   `prompt.submit`.
@@ -194,7 +194,7 @@ Current limitations before making this the normal sandbox path:
 - attachment submission still falls back to the existing HTTP transport;
 - approval/clarify/sudo/secret events are not yet surfaced;
 - runtime session ID and stored session ID are separated internally, but the
-  surrounding Hermes One navigation/history model still needs a fuller stored
+  surrounding Agents One navigation/history model still needs a fuller stored
   session handoff;
 - live manual testing with the flag enabled has not yet been completed.
 
@@ -252,7 +252,7 @@ Useful upstream changes:
   - background-window streaming stalls;
   - focused-chat unscoped event routing.
 
-Immediate Hermes One adjustments from this refresh:
+Immediate Agents One adjustments from this refresh:
 
 - The compatibility addon must treat `_DASHBOARD_EMBEDDED_CHAT_ENABLED = True`
   as already compatible. It should patch only older engines that still expose
@@ -264,14 +264,14 @@ Immediate Hermes One adjustments from this refresh:
   `/api/model/options`, `model.options`, `model.save_key`, and
   `/api/model/set` instead of direct remote `models.json` editing whenever the
   backend supports them.
-- Remote/SSH pasted attachments should move from Hermes One staging/fallback
+- Remote/SSH pasted attachments should move from Agents One staging/fallback
   behavior to the upstream attach RPCs, especially `image.attach_bytes` and
   `file.attach`.
 - Remote OAuth should be promoted from "unsupported warning" to the upstream
   cookie + `/api/auth/ws-ticket` flow.
 - Connection tests should probe `/api/ws` with the same credential mode the
   renderer will use.
-- We should add a Hermes One test matching upstream's submit recovery:
+- We should add a Agents One test matching upstream's submit recovery:
   `prompt.submit` returns `session not found` -> `session.resume` -> retry
   `prompt.submit` against the recovered live id.
 
@@ -292,7 +292,7 @@ Goal:
 Actions:
 
 - keep the separate worktree and sandbox setup;
-- use the sandboxed `Hermes One` app identity;
+- use the sandboxed `Agents One` app identity;
 - keep config isolation and port isolation;
 - make `/v1/runs` opt-in only;
 - leave current DB refresh/reconciliation tests in place as regression coverage;
@@ -361,7 +361,7 @@ HERMES_HOME=<profile-or-sandbox-home>
 
 Open questions to answer during this phase:
 
-- Does the Hermes One installed Hermes Agent version always ship
+- Does the Agents One installed Hermes Agent version always ship
   `hermes dashboard`?
 - For existing user installs, do we need to update Hermes Agent before the
   dashboard path is available?
@@ -425,7 +425,7 @@ Goal:
 - replace row-by-row live appends with a single active-turn state machine.
 
 Do not migrate all rendering to Hermes Agent desktop's `parts[]` in one jump
-unless it proves simpler. Hermes One can use an intermediate timeline and then
+unless it proves simpler. Agents One can use an intermediate timeline and then
 project to existing `ChatMessage` rows.
 
 Suggested internal model:
@@ -564,7 +564,7 @@ Acceptance criteria:
 
 ### Phase H: Manual Test Matrix
 
-Run these in the sandboxed Hermes One instance, with the sandbox home and non-conflicting ports:
+Run these in the sandboxed Agents One instance, with the sandbox home and non-conflicting ports:
 
 - simple no-tool prompt with visible streaming;
 - invalid API key/provider failure;
@@ -614,7 +614,7 @@ Already done:
 
 - separate worktree for development;
 - sandbox scripts/config/ports;
-- sandbox app identity `Hermes One`;
+- sandbox app identity `Agents One`;
 - local error metadata and rendering;
 - preliminary local-error preservation tests;
 - selected PR545 display pieces for grouped tools/reasoning;
@@ -630,7 +630,7 @@ Next recommended phase:
 ## 2026-06-09 Remaining Work After Dashboard Transport Stabilization
 
 The dashboard/WebSocket path, remote HTTP path, and SSH-over-tunnel path are now
-implemented in the sandboxed Hermes One instance and covered by unit/integration tests. Manual live
+implemented in the sandboxed Agents One instance and covered by unit/integration tests. Manual live
 testing has also exercised:
 
 - normal local and remote dashboard chat;
@@ -675,7 +675,7 @@ Current result on 2026-06-11:
 
 Status: first implementation slice complete.
 
-Hermes One currently depends on Hermes Agent dashboard capabilities that may not
+Agents One currently depends on Hermes Agent dashboard capabilities that may not
 be present, or may be present but not enabled correctly, in every installed or
 remote Hermes Agent. We should not leave those fixes as manual source edits.
 
@@ -712,7 +712,7 @@ GET /api/ws upgrade  -> 101 Switching Protocols
 
 If the installed engine does not do that, the addon should either patch/wrap the
 dashboard launch behavior or install a small compatibility module that makes the
-dashboard default compatible with Hermes One.
+dashboard default compatible with Agents One.
 
 Implemented first slice:
 
@@ -728,7 +728,7 @@ Implemented first slice:
 - A diagnostic marker is written to:
   - local: `<HERMES_HOME>/desktop-compat/dashboard-embedded-chat.json`;
   - SSH: `~/.hermes/desktop-compat/dashboard-embedded-chat.json`.
-- Plain remote HTTP is still probe-only. Hermes One cannot safely patch it
+- Plain remote HTTP is still probe-only. Agents One cannot safely patch it
   without either SSH access or a future Hermes Agent deploy endpoint.
 
 Current tests:
@@ -782,7 +782,7 @@ For each transport, cover:
 Known upstream limitation from this pass:
 
 - Gemini failures in the current lab were traced to Hermes Agent upstream
-  behavior, not the Hermes One dashboard transport.
+  behavior, not the Agents One dashboard transport.
 
 ### 5. Reapply Addon After Engine Updates
 
@@ -802,11 +802,11 @@ The update flow should become:
 
 This applies to:
 
-- Hermes One's bundled/local Hermes Agent install;
-- remote HTTP targets when Hermes One is allowed to deploy an addon;
+- Agents One's bundled/local Hermes Agent install;
+- remote HTTP targets when Agents One is allowed to deploy an addon;
 - SSH targets through the tunnel/SSH deployment path.
 
-If the target cannot be modified, Hermes One should keep working in legacy mode
+If the target cannot be modified, Agents One should keep working in legacy mode
 and clearly report why dashboard mode is unavailable.
 
 ### 6. Final Review And Upstreaming
@@ -816,15 +816,15 @@ Status: pending.
 Before this leaves the worktree:
 
 - split the work into reviewable commits/PRs;
-- separate Hermes One changes from Hermes Agent compatibility changes;
-- document the compatibility contract Hermes One expects from Hermes Agent;
+- separate Agents One changes from Hermes Agent compatibility changes;
+- document the compatibility contract Agents One expects from Hermes Agent;
 - upstream the Hermes Agent embedded-chat/dashboard fix if possible;
 - keep the addon/overlay path until the minimum supported Hermes Agent version
   contains the fix natively.
 
 ## Purpose
 
-Hermes One currently merges two views of chat state:
+Agents One currently merges two views of chat state:
 
 - the renderer's streamed in-memory transcript
 - the Hermes Agent `state.db` transcript loaded through `getSessionMessages()`
@@ -857,7 +857,7 @@ In short:
 > canonical for ordering; DB only fills missing persisted artifacts for
 > successful turns.
 
-## Current Hermes One Code Paths
+## Current Agents One Code Paths
 
 ### Message Shape
 
@@ -994,7 +994,7 @@ Upstream `ChatMessage` includes:
 - optional `hidden`
 - optional `attachmentRefs`
 
-The important part for Hermes One is `error` as metadata, not as normal assistant
+The important part for Agents One is `error` as metadata, not as normal assistant
 text.
 
 ### Upstream Error Handling
@@ -1027,7 +1027,7 @@ At completion, upstream only hydrates from stored session data when:
 - there is no unresolved user tail
 - and the stream did not produce useful assistant payload or final text
 
-Hermes One should copy this invariant: failed turns should not trigger a broad DB
+Agents One should copy this invariant: failed turns should not trigger a broad DB
 refresh/merge that can erase or reorder the local failure.
 
 ### Upstream Error Preservation
@@ -1043,21 +1043,21 @@ assistant errors when hydration omits failed turns:
 - avoid duplicating the local user when the hydrated transcript already contains
   equivalent tail user content
 
-Hermes One needs an adapted version that understands `content` bubbles rather
+Agents One needs an adapted version that understands `content` bubbles rather
 than upstream's `parts` model.
 
 ## Scope Decision
 
-Do not migrate Hermes One to upstream's `parts[]` model in this fix. That would
+Do not migrate Agents One to upstream's `parts[]` model in this fix. That would
 touch rendering, transcript copying, history mapping, and live tool rendering all
 at once.
 
-Do not migrate Hermes One to the upstream dashboard/gateway architecture in this
+Do not migrate Agents One to the upstream dashboard/gateway architecture in this
 fix. That is a larger product direction decision.
 
 Instead:
 
-- keep Hermes One's current `ChatMessage` union
+- keep Agents One's current `ChatMessage` union
 - add minimal metadata to support local errors and anchoring
 - wrap or replace the risky whole-session merge at completion boundaries
 - preserve the DB-based cold load behavior
@@ -1441,7 +1441,7 @@ matched/deduped against DB where possible.
 
 ### `preserveLocalAssistantErrors()`
 
-Adapt upstream's helper to Hermes One.
+Adapt upstream's helper to Agents One.
 
 Input:
 
@@ -1532,7 +1532,7 @@ This prevents local errors from matching real assistant text.
 ## Completion Error Text Plan
 
 Upstream detects provider/gateway errors that arrive as final assistant text.
-Hermes One currently can surface errors through `onError`, but failures may also
+Agents One currently can surface errors through `onError`, but failures may also
 arrive as normal completion content depending on API behavior.
 
 Add a helper similar to upstream:

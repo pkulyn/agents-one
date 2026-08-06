@@ -1,6 +1,6 @@
 export default {
   title: "技能",
-  subtitle: "通过可复用技能和工作流扩展你的代理能力",
+  subtitle: "通过可复用技能和工作流扩展智能体能力",
   refresh: "刷新",
   installedTab: "已安装",
   browseTab: "浏览",
@@ -9,7 +9,7 @@ export default {
   all: "全部",
   noMatchingInstalled: "没有匹配的技能",
   noInstalled: "还没有安装技能",
-  noInstalledHint: "浏览可用技能并安装它们来扩展你的代理",
+  noInstalledHint: "浏览并安装可用技能来扩展智能体能力",
   noMatchingHint: "试试其他搜索词",
   noBrowseResults: "未找到技能",
   noBrowseResultsHint: "试试其他搜索词或分类筛选",
