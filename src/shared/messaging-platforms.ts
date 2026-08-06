@@ -99,7 +99,6 @@ interface MessagingToolsetDefinition {
 export const DEFAULT_MESSAGING_PLATFORM_TOOLSETS = [
   "clarify",
   "cronjob",
-  "kanban",
   "memory",
   "messaging",
   "session_search",
@@ -192,11 +191,6 @@ export const MESSAGING_TOOLSET_DEFINITIONS: MessagingToolsetDefinition[] = [
     key: "messaging",
     label: "Messaging",
     description: "Send messages through configured messaging platforms.",
-  },
-  {
-    key: "kanban",
-    label: "Kanban",
-    description: "Read and manage Hermes kanban tasks.",
   },
   {
     key: "delegation",

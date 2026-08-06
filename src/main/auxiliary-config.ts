@@ -18,7 +18,6 @@ export const AUX_TASK_SLOTS = [
   "mcp",
   "title_generation",
   "triage_specifier",
-  "kanban_decomposer",
   "profile_describer",
   "curator",
 ] as const;

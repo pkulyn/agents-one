@@ -15,13 +15,8 @@ export default {
   soul: "Persona",
   memory: "Memory",
   tools: "Capabilities",
-  tasks: "Task Center",
-  taskRuns: "Agent tasks",
   scheduledTasks: "Scheduled tasks",
-  taskCenterSubtitle:
-    "Dispatch agent work, inspect results, and manage scheduled runs.",
   schedules: "Scheduled tasks",
-  kanban: "Kanban",
   gateway: "Gateway",
   settings: "Settings",
   collapseSidebar: "Collapse sidebar",

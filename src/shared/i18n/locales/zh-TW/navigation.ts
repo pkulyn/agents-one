@@ -16,7 +16,6 @@ export default {
   memory: "記憶",
   tools: "工具",
   schedules: "排程工作",
-  kanban: "看板",
   gateway: "網關",
   settings: "設定",
   collapseSidebar: "收合側邊欄",

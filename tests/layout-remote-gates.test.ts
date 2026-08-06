@@ -8,11 +8,9 @@ const layoutSource = readFileSync(
 );
 
 describe("Layout remote-mode feature gates", () => {
-  it("does not replace Discover or Kanban with the generic remote notice", () => {
+  it("does not replace Discover with the generic remote notice", () => {
     expect(layoutSource).not.toContain('RemoteNotice feature="Discover"');
-    expect(layoutSource).not.toContain('RemoteNotice feature="Kanban"');
     expect(layoutSource).toContain("<Discover");
-    expect(layoutSource).toContain("<Kanban");
   });
 
   it("does not block agent management behind the removed Profiles remote notice", () => {

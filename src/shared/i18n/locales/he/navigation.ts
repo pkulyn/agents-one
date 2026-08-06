@@ -16,7 +16,6 @@ export default {
   memory: "זיכרון",
   tools: "כלים",
   schedules: "תזמונים",
-  kanban: "קנבן",
   gateway: "שער",
   settings: "הגדרות",
   collapseSidebar: "כווץ סרגל צד",
