@@ -56,10 +56,6 @@ vi.mock("../Chat/ChatInput", () => ({
   ),
 }));
 
-vi.mock("../Chat/ConversationSidePanel", () => ({
-  ConversationSidePanel: () => <aside>任务侧栏</aside>,
-}));
-
 import RuntimeChat from "./RuntimeChat";
 
 const openClawRuntime: AgentRuntimeDefinition = {
