@@ -40,9 +40,6 @@ import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
 import Office from "../Office/Office";
 import Providers from "../Providers/Providers";
-import Kanban from "../Kanban/Kanban";
-import TaskCenter from "../TaskCenter/TaskCenter";
-import ProjectCenter from "../ProjectCenter/ProjectCenter";
 import Schedules from "../Schedules/Schedules";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
 import agentsOneLogo from "../../assets/agents-one-wordmark.svg";
@@ -73,9 +70,6 @@ type View =
   | "memory"
   | "tools"
   | "schedules"
-  | "kanban"
-  | "tasks"
-  | "projects"
   | "gateway";
 
 const PINNED_NAV_ITEMS: {
@@ -331,10 +325,6 @@ function Layout(): React.JSX.Element {
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
     () => new Set<View>(["chat"]),
   );
-  const [taskCenterSelection, setTaskCenterSelection] = useState<{
-    taskId: string | null;
-    nonce: number;
-  }>({ taskId: null, nonce: 0 });
   // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
   const [remoteMode, setRemoteMode] = useState(false);
   // Set by the Capabilities screen's "Browse" actions to focus a Discover tab
@@ -362,14 +352,6 @@ function Layout(): React.JSX.Element {
         View | { view: View; taskId?: string }
       >).detail;
       const targetView = typeof detail === "string" ? detail : detail?.view;
-      if (targetView === "tasks" && typeof detail === "object" && detail.taskId) {
-        setTaskCenterSelection((current) => ({
-          taskId: detail.taskId || null,
-          nonce: current.nonce + 1,
-        }));
-        goTo("tasks");
-        return;
-      }
       if (targetView === "schedules") {
         goTo("schedules");
         return;
@@ -1414,30 +1396,9 @@ function Layout(): React.JSX.Element {
           </div>
         )}
 
-        {visitedViews.has("kanban") && (
-          <div style={paneStyle("kanban")}>
-            <Kanban profile={activeProfile} visible={view === "kanban"} />
-          </div>
-        )}
-
-        {visitedViews.has("tasks") && (
-          <div style={paneStyle("tasks")}>
-            <TaskCenter
-              initialTaskId={taskCenterSelection.taskId}
-              initialTaskNonce={taskCenterSelection.nonce}
-            />
-          </div>
-        )}
-
         {visitedViews.has("schedules") && (
           <div style={paneStyle("schedules")}>
             <Schedules profile={activeProfile} />
-          </div>
-        )}
-
-        {visitedViews.has("projects") && (
-          <div style={paneStyle("projects")}>
-            <ProjectCenter visible={view === "projects"} />
           </div>
         )}
 

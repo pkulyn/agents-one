@@ -15,7 +15,7 @@ import type {
   AgentRuntimeDefinition,
   AgentRuntimeRun,
 } from "../../../../shared/agent-runtimes";
-import { summarizeTaskOutput } from "../TaskCenter/taskOutput";
+import { summarizeTaskOutput } from "../Chat/runtimeOutput";
 
 const STORAGE_KEY = "agents-one.quick-chats.v1";
 const HIDDEN_TASK_SESSION_IDS_KEY = "agents-one.quick-chat.hidden-task-session-ids.v1";

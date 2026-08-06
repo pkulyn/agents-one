@@ -33,26 +33,6 @@ import type {
   AgentRuntimeTaskInput,
 } from "../shared/agent-runtimes";
 import type {
-  AssignProjectTaskInput,
-  CreateProjectTasksFromPlanInput,
-  CreateProjectInput,
-  CreateProjectTaskInput,
-  ProjectContextPackage,
-  ProjectControlProject,
-  ProjectPlanDraft,
-  ProjectControlTask,
-  ProjectTaskEvent,
-  ProjectTaskStatus,
-  UpdateProjectCollaboratorsInput,
-  UpdateProjectScopeInput,
-} from "../shared/project-control";
-import type {
-  CreateTaskCenterTaskInput,
-  TaskCenterTask,
-  TaskCenterWorktree,
-} from "../shared/task-center";
-import type { ConversationTaskLink } from "../shared/conversation-tasks";
-import type {
   CreateTaskScheduleInput,
   TaskSchedule,
   TaskScheduleTriggerResult,
@@ -393,39 +373,6 @@ const hermesAPI = {
     ipcRenderer.invoke("get-agent-runtime-run", runId),
   cancelAgentRuntimeTask: (runId: string): Promise<boolean> =>
     ipcRenderer.invoke("cancel-agent-runtime-task", runId),
-  listTaskCenterTasks: (): Promise<TaskCenterTask[]> =>
-    ipcRenderer.invoke("list-task-center-tasks"),
-  listConversationTasks: (conversationId: string): Promise<TaskCenterTask[]> =>
-    ipcRenderer.invoke("list-conversation-tasks", conversationId),
-  linkConversationTask: (
-    conversationId: string,
-    taskId: string,
-  ): Promise<ConversationTaskLink> =>
-    ipcRenderer.invoke("link-conversation-task", conversationId, taskId),
-  unlinkConversationTask: (
-    conversationId: string,
-    taskId: string,
-  ): Promise<boolean> =>
-    ipcRenderer.invoke("unlink-conversation-task", conversationId, taskId),
-  createTaskCenterTask: (
-    input: CreateTaskCenterTaskInput,
-  ): Promise<TaskCenterTask> =>
-    ipcRenderer.invoke("create-task-center-task", input),
-  cancelTaskCenterTask: (id: string): Promise<TaskCenterTask | null> =>
-    ipcRenderer.invoke("cancel-task-center-task", id),
-  retryTaskCenterTask: (id: string): Promise<TaskCenterTask | null> =>
-    ipcRenderer.invoke("retry-task-center-task", id),
-  setTaskCenterAcceptance: (
-    id: string,
-    acceptance: "accepted" | "rejected",
-  ): Promise<TaskCenterTask | null> =>
-    ipcRenderer.invoke("set-task-center-acceptance", id, acceptance),
-  openTaskCenterWorktree: (worktree: string): Promise<boolean> =>
-    ipcRenderer.invoke("open-task-center-worktree", worktree),
-  listTaskCenterWorktrees: (): Promise<TaskCenterWorktree[]> =>
-    ipcRenderer.invoke("list-task-center-worktrees"),
-  removeTaskCenterWorktree: (worktree: string): Promise<boolean> =>
-    ipcRenderer.invoke("remove-task-center-worktree", worktree),
   listTaskSchedules: (profile?: string): Promise<TaskSchedule[]> =>
     ipcRenderer.invoke("list-task-schedules", profile),
   createTaskSchedule: (
@@ -446,90 +393,6 @@ const hermesAPI = {
     ipcRenderer.invoke("trigger-task-schedule", id, profile),
   deleteTaskSchedule: (id: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("delete-task-schedule", id, profile),
-  listProjectControlProjects: (): Promise<ProjectControlProject[]> =>
-    ipcRenderer.invoke("list-project-control-projects"),
-  createProjectControlProject: (
-    input: CreateProjectInput,
-  ): Promise<ProjectControlProject> =>
-    ipcRenderer.invoke("create-project-control-project", input),
-  setProjectControlStatus: (
-    projectId: string,
-    status: "active" | "paused" | "completed" | "cancelled",
-    summary: string,
-  ): Promise<ProjectControlProject> =>
-    ipcRenderer.invoke(
-      "set-project-control-status",
-      projectId,
-      status,
-      summary,
-    ),
-  updateProjectControlScope: (
-    input: UpdateProjectScopeInput,
-  ): Promise<ProjectControlProject> =>
-    ipcRenderer.invoke("update-project-control-scope", input),
-  updateProjectControlCollaborators: (
-    input: UpdateProjectCollaboratorsInput,
-  ): Promise<ProjectControlProject> =>
-    ipcRenderer.invoke("update-project-control-collaborators", input),
-  listProjectControlTasks: (projectId: string): Promise<ProjectControlTask[]> =>
-    ipcRenderer.invoke("list-project-control-tasks", projectId),
-  listProjectControlEvents: (projectId: string): Promise<ProjectTaskEvent[]> =>
-    ipcRenderer.invoke("list-project-control-events", projectId),
-  listProjectControlArtifacts: (
-    projectId: string,
-  ): Promise<import("../shared/project-control").ProjectArtifactReference[]> =>
-    ipcRenderer.invoke("list-project-control-artifacts", projectId),
-  createProjectControlTask: (
-    input: CreateProjectTaskInput,
-  ): Promise<ProjectControlTask> =>
-    ipcRenderer.invoke("create-project-control-task", input),
-  assignProjectControlTask: (
-    input: AssignProjectTaskInput,
-  ): Promise<ProjectControlTask> =>
-    ipcRenderer.invoke("assign-project-control-task", input),
-  dispatchProjectControlTask: (taskId: string): Promise<ProjectControlTask> =>
-    ipcRenderer.invoke("dispatch-project-control-task", taskId),
-  startProjectCoordinatorPlan: (
-    projectId: string,
-  ): Promise<ProjectControlTask> =>
-    ipcRenderer.invoke("start-project-coordinator-plan", projectId),
-  previewProjectPlanTasks: (
-    projectId: string,
-    sourceTaskId: string,
-  ): Promise<ProjectPlanDraft> =>
-    ipcRenderer.invoke("preview-project-plan-tasks", projectId, sourceTaskId),
-  createProjectTasksFromPlan: (
-    input: CreateProjectTasksFromPlanInput,
-  ): Promise<ProjectControlTask[]> =>
-    ipcRenderer.invoke("create-project-tasks-from-plan", input),
-  reviewProjectControlTask: (
-    taskId: string,
-    acceptance: "accepted" | "rejected",
-    summary: string,
-  ): Promise<ProjectControlTask> =>
-    ipcRenderer.invoke(
-      "review-project-control-task",
-      taskId,
-      acceptance,
-      summary,
-    ),
-  cancelProjectControlTask: (taskId: string): Promise<ProjectControlTask> =>
-    ipcRenderer.invoke("cancel-project-control-task", taskId),
-  setProjectControlTaskStatus: (
-    taskId: string,
-    status: ProjectTaskStatus,
-    summary: string,
-  ): Promise<ProjectControlTask> =>
-    ipcRenderer.invoke(
-      "set-project-control-task-status",
-      taskId,
-      status,
-      summary,
-    ),
-  createProjectControlContext: (
-    taskId: string,
-  ): Promise<ProjectContextPackage> =>
-    ipcRenderer.invoke("create-project-control-context", taskId),
   getConnectionConfig: (): Promise<{
     mode: "local" | "remote" | "ssh";
     remoteUrl: string;

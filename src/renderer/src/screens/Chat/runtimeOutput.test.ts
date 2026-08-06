@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeTaskOutput } from "./taskOutput";
+import { summarizeTaskOutput } from "./runtimeOutput";
 
 describe("summarizeTaskOutput", () => {
   it("surfaces the final Codex answer while retaining transport context", () => {

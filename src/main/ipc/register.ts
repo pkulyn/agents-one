@@ -255,32 +255,7 @@ import type {
   AgentRuntimeTaskInput,
 } from "../../shared/agent-runtimes";
 import type { SaveRuntimeConversationInput } from "../../shared/runtime-conversations";
-import type { CreateTaskCenterTaskInput } from "../../shared/task-center";
 import type { CreateTaskScheduleInput } from "../../shared/task-schedules";
-import type {
-  AssignProjectTaskInput,
-  CreateProjectTasksFromPlanInput,
-  CreateProjectInput,
-  CreateProjectTaskInput,
-  ProjectTaskStatus,
-  UpdateProjectCollaboratorsInput,
-  UpdateProjectScopeInput,
-} from "../../shared/project-control";
-import {
-  cancelTaskCenterTask,
-  createTaskCenterTask,
-  listTaskCenterWorktrees,
-  listTaskCenterTasks,
-  removeTaskCenterWorktree,
-  retryTaskCenterTask,
-  resolveManagedWorktreePath,
-  setTaskCenterAcceptance,
-} from "../task-center";
-import {
-  linkConversationTask,
-  listConversationTasks,
-  unlinkConversationTask,
-} from "../conversation-tasks";
 import {
   createTaskSchedule,
   deleteTaskSchedule,
@@ -288,26 +263,6 @@ import {
   setTaskScheduleEnabled,
   triggerTaskSchedule,
 } from "../task-schedules";
-import {
-  assignProjectTask,
-  createProject,
-  createProjectContextPackage,
-  createProjectTask,
-  cancelProjectTask,
-  dispatchProjectTask,
-  createProjectTasksFromPlan,
-  listProjectEvents,
-  listProjectArtifacts,
-  listProjectTasks,
-  listProjects,
-  previewProjectPlanTasks,
-  setProjectTaskStatus,
-  setProjectStatus,
-  reviewProjectTask,
-  startCoordinatorPlanningTask,
-  updateProjectCollaborators,
-  updateProjectScope,
-} from "../project-control";
 import { listProjectFolders, registerProjectFolder } from "../project-folders";
 import {
   getTaskCollaboration,
@@ -1338,48 +1293,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("cancel-agent-runtime-task", (_event, runId: string) =>
     cancelAgentRuntimeTask(runId),
   );
-  ipcMain.handle("list-task-center-tasks", () => listTaskCenterTasks());
-  ipcMain.handle("list-conversation-tasks", (_event, conversationId: string) =>
-    listConversationTasks(conversationId),
-  );
-  ipcMain.handle(
-    "link-conversation-task",
-    (_event, conversationId: string, taskId: string) =>
-      linkConversationTask(conversationId, taskId),
-  );
-  ipcMain.handle(
-    "unlink-conversation-task",
-    (_event, conversationId: string, taskId: string) =>
-      unlinkConversationTask(conversationId, taskId),
-  );
-  ipcMain.handle(
-    "create-task-center-task",
-    (_event, input: CreateTaskCenterTaskInput) => createTaskCenterTask(input),
-  );
-  ipcMain.handle("cancel-task-center-task", (_event, id: string) =>
-    cancelTaskCenterTask(id),
-  );
-  ipcMain.handle("retry-task-center-task", (_event, id: string) =>
-    retryTaskCenterTask(id),
-  );
-  ipcMain.handle(
-    "set-task-center-acceptance",
-    (_event, id: string, acceptance: "accepted" | "rejected") =>
-      setTaskCenterAcceptance(id, acceptance),
-  );
-  ipcMain.handle(
-    "open-task-center-worktree",
-    async (_event, worktree: string) => {
-      const target = resolveManagedWorktreePath(worktree);
-      const result = await shell.openPath(target);
-      if (result) throw new Error("Could not open the task worktree.");
-      return true;
-    },
-  );
-  ipcMain.handle("list-task-center-worktrees", () => listTaskCenterWorktrees());
-  ipcMain.handle("remove-task-center-worktree", (_event, worktree: string) =>
-    removeTaskCenterWorktree(worktree),
-  );
   ipcMain.handle("list-task-schedules", (_event, profile?: string) =>
     listTaskSchedules(profile),
   );
@@ -1401,85 +1314,6 @@ export function registerIpcHandlers(context: IpcContext): void {
     "delete-task-schedule",
     (_event, id: string, profile?: string) => deleteTaskSchedule(id, profile),
   );
-  ipcMain.handle("list-project-control-projects", () => listProjects());
-  ipcMain.handle(
-    "create-project-control-project",
-    (_event, input: CreateProjectInput) => createProject(input),
-  );
-  ipcMain.handle(
-    "set-project-control-status",
-    (
-      _event,
-      projectId: string,
-      status: "active" | "paused" | "completed" | "cancelled",
-      summary: string,
-    ) => setProjectStatus(projectId, status, summary),
-  );
-  ipcMain.handle(
-    "update-project-control-scope",
-    (_event, input: UpdateProjectScopeInput) => updateProjectScope(input),
-  );
-  ipcMain.handle(
-    "update-project-control-collaborators",
-    (_event, input: UpdateProjectCollaboratorsInput) =>
-      updateProjectCollaborators(input),
-  );
-  ipcMain.handle("list-project-control-tasks", (_event, projectId: string) =>
-    listProjectTasks(projectId),
-  );
-  ipcMain.handle("list-project-control-events", (_event, projectId: string) =>
-    listProjectEvents(projectId),
-  );
-  ipcMain.handle(
-    "list-project-control-artifacts",
-    (_event, projectId: string) => listProjectArtifacts(projectId),
-  );
-  ipcMain.handle(
-    "create-project-control-task",
-    (_event, input: CreateProjectTaskInput) => createProjectTask(input),
-  );
-  ipcMain.handle(
-    "assign-project-control-task",
-    (_event, input: AssignProjectTaskInput) => assignProjectTask(input),
-  );
-  ipcMain.handle("dispatch-project-control-task", (_event, taskId: string) =>
-    dispatchProjectTask(taskId),
-  );
-  ipcMain.handle(
-    "start-project-coordinator-plan",
-    (_event, projectId: string) => startCoordinatorPlanningTask(projectId),
-  );
-  ipcMain.handle(
-    "preview-project-plan-tasks",
-    (_event, projectId: string, sourceTaskId: string) =>
-      previewProjectPlanTasks(projectId, sourceTaskId),
-  );
-  ipcMain.handle(
-    "create-project-tasks-from-plan",
-    (_event, input: CreateProjectTasksFromPlanInput) =>
-      createProjectTasksFromPlan(input),
-  );
-  ipcMain.handle(
-    "review-project-control-task",
-    (
-      _event,
-      taskId: string,
-      acceptance: "accepted" | "rejected",
-      summary: string,
-    ) => reviewProjectTask(taskId, acceptance, summary),
-  );
-  ipcMain.handle("cancel-project-control-task", (_event, taskId: string) =>
-    cancelProjectTask(taskId),
-  );
-  ipcMain.handle(
-    "set-project-control-task-status",
-    (_event, taskId: string, status: ProjectTaskStatus, summary: string) =>
-      setProjectTaskStatus(taskId, status, summary),
-  );
-  ipcMain.handle("create-project-control-context", (_event, taskId: string) =>
-    createProjectContextPackage(taskId),
-  );
-
   ipcMain.handle(
     "set-connection-config",
     (

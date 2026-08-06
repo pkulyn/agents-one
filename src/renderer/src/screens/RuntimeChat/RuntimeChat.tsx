@@ -39,7 +39,7 @@ import {
   taskCollaborationProposalProtocol,
   type TaskCollaborationProposal,
 } from "../../../../shared/task-collaboration-proposals";
-import { summarizeTaskOutput } from "../TaskCenter/taskOutput";
+import { summarizeTaskOutput } from "../Chat/runtimeOutput";
 
 interface RuntimeChatProps {
   runId: string;

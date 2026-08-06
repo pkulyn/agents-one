@@ -40,26 +40,6 @@ import type {
 } from "../shared/agent-runtimes";
 import type { ProjectFolderRecord } from "../shared/project-folders";
 import type {
-  AssignProjectTaskInput,
-  CreateProjectTasksFromPlanInput,
-  CreateProjectInput,
-  CreateProjectTaskInput,
-  ProjectContextPackage,
-  ProjectControlProject,
-  ProjectPlanDraft,
-  ProjectControlTask,
-  ProjectTaskEvent,
-  ProjectTaskStatus,
-  UpdateProjectCollaboratorsInput,
-  UpdateProjectScopeInput,
-} from "../shared/project-control";
-import type {
-  CreateTaskCenterTaskInput,
-  TaskCenterTask,
-  TaskCenterWorktree,
-} from "../shared/task-center";
-import type { ConversationTaskLink } from "../shared/conversation-tasks";
-import type {
   CreateTaskScheduleInput,
   TaskSchedule,
   TaskScheduleTriggerResult,
@@ -406,28 +386,6 @@ interface HermesAPI {
   ) => Promise<AgentRuntimeRun>;
   getAgentRuntimeRun: (runId: string) => Promise<AgentRuntimeRun | null>;
   cancelAgentRuntimeTask: (runId: string) => Promise<boolean>;
-  listTaskCenterTasks: () => Promise<TaskCenterTask[]>;
-  listConversationTasks: (conversationId: string) => Promise<TaskCenterTask[]>;
-  linkConversationTask: (
-    conversationId: string,
-    taskId: string,
-  ) => Promise<ConversationTaskLink>;
-  unlinkConversationTask: (
-    conversationId: string,
-    taskId: string,
-  ) => Promise<boolean>;
-  createTaskCenterTask: (
-    input: CreateTaskCenterTaskInput,
-  ) => Promise<TaskCenterTask>;
-  cancelTaskCenterTask: (id: string) => Promise<TaskCenterTask | null>;
-  retryTaskCenterTask: (id: string) => Promise<TaskCenterTask | null>;
-  setTaskCenterAcceptance: (
-    id: string,
-    acceptance: "accepted" | "rejected",
-  ) => Promise<TaskCenterTask | null>;
-  openTaskCenterWorktree: (worktree: string) => Promise<boolean>;
-  listTaskCenterWorktrees: () => Promise<TaskCenterWorktree[]>;
-  removeTaskCenterWorktree: (worktree: string) => Promise<boolean>;
   listTaskSchedules: (profile?: string) => Promise<TaskSchedule[]>;
   createTaskSchedule: (
     input: CreateTaskScheduleInput,
@@ -443,57 +401,6 @@ interface HermesAPI {
     profile?: string,
   ) => Promise<TaskScheduleTriggerResult>;
   deleteTaskSchedule: (id: string, profile?: string) => Promise<boolean>;
-  listProjectControlProjects: () => Promise<ProjectControlProject[]>;
-  createProjectControlProject: (
-    input: CreateProjectInput,
-  ) => Promise<ProjectControlProject>;
-  setProjectControlStatus: (
-    projectId: string,
-    status: "active" | "paused" | "completed" | "cancelled",
-    summary: string,
-  ) => Promise<ProjectControlProject>;
-  updateProjectControlScope: (
-    input: UpdateProjectScopeInput,
-  ) => Promise<ProjectControlProject>;
-  updateProjectControlCollaborators: (
-    input: UpdateProjectCollaboratorsInput,
-  ) => Promise<ProjectControlProject>;
-  listProjectControlTasks: (projectId: string) => Promise<ProjectControlTask[]>;
-  listProjectControlEvents: (projectId: string) => Promise<ProjectTaskEvent[]>;
-  listProjectControlArtifacts: (
-    projectId: string,
-  ) => Promise<import("../shared/project-control").ProjectArtifactReference[]>;
-  createProjectControlTask: (
-    input: CreateProjectTaskInput,
-  ) => Promise<ProjectControlTask>;
-  assignProjectControlTask: (
-    input: AssignProjectTaskInput,
-  ) => Promise<ProjectControlTask>;
-  dispatchProjectControlTask: (taskId: string) => Promise<ProjectControlTask>;
-  startProjectCoordinatorPlan: (
-    projectId: string,
-  ) => Promise<ProjectControlTask>;
-  previewProjectPlanTasks: (
-    projectId: string,
-    sourceTaskId: string,
-  ) => Promise<ProjectPlanDraft>;
-  createProjectTasksFromPlan: (
-    input: CreateProjectTasksFromPlanInput,
-  ) => Promise<ProjectControlTask[]>;
-  reviewProjectControlTask: (
-    taskId: string,
-    acceptance: "accepted" | "rejected",
-    summary: string,
-  ) => Promise<ProjectControlTask>;
-  cancelProjectControlTask: (taskId: string) => Promise<ProjectControlTask>;
-  setProjectControlTaskStatus: (
-    taskId: string,
-    status: ProjectTaskStatus,
-    summary: string,
-  ) => Promise<ProjectControlTask>;
-  createProjectControlContext: (
-    taskId: string,
-  ) => Promise<ProjectContextPackage>;
   getConnectionConfig: () => Promise<{
     mode: "local" | "remote" | "ssh";
     remoteUrl: string;
