@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  createExplicitTaskCollaborationProposal,
+  formatTaskCollaborationProposal,
   hasValidTaskCollaborationProposal,
   parseTaskCollaborationProposal,
   taskCollaborationProposalProtocol,
@@ -56,5 +58,63 @@ describe("task collaboration proposals", () => {
         ["pi", "claude"],
       ),
     ).toBe(false);
+  });
+
+  it("builds a deterministic proposal from explicitly named runtime responsibilities", () => {
+    const runtimes = [
+      { id: "hermes-home2", name: "Hers-2", kind: "hermes" },
+      { id: "pi-local", name: "Pi", kind: "pi" },
+      { id: "claude-local", name: "Claude Code", kind: "claude-code" },
+    ];
+    const proposal = createExplicitTaskCollaborationProposal(
+      "Agents One 冒烟测试，想测试多智能协助。你负责编排、验收，Pi 负责执行，Claude 负责复核。",
+      runtimes[0],
+      runtimes,
+    );
+
+    expect(proposal).toMatchObject({
+      assignments: [
+        {
+          role: "项目负责人",
+          runtimeId: "hermes-home2",
+          responsibility: "编排、验收",
+        },
+        { role: "实施", runtimeId: "pi-local", responsibility: "执行" },
+        {
+          role: "复核",
+          runtimeId: "claude-local",
+          responsibility: "复核",
+        },
+      ],
+    });
+
+    const serialized = formatTaskCollaborationProposal(proposal!);
+    expect(
+      parseTaskCollaborationProposal(
+        serialized,
+        runtimes.map((runtime) => runtime.id),
+      ).proposal,
+    ).toEqual(proposal);
+  });
+
+  it("does not synthesize collaboration without at least two explicit registered roles", () => {
+    const runtimes = [
+      { id: "hermes-home2", name: "Hers-2", kind: "hermes" },
+      { id: "pi-local", name: "Pi", kind: "pi" },
+    ];
+    expect(
+      createExplicitTaskCollaborationProposal(
+        "请让 Pi 负责执行。",
+        runtimes[0],
+        runtimes,
+      ),
+    ).toBeUndefined();
+    expect(
+      createExplicitTaskCollaborationProposal(
+        "介绍一下多智能体协作的概念。",
+        runtimes[0],
+        runtimes,
+      ),
+    ).toBeUndefined();
   });
 });

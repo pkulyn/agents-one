@@ -52,6 +52,17 @@ vi.mock("../Chat/ChatInput", () => ({
       >
         发送测试输入
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          props.onSubmit(
+            "Agents One 冒烟测试，想测试多智能协助。你负责编排、验收，Pi 负责执行，Claude 负责复核。",
+            [],
+          )
+        }
+      >
+        发送明确协作输入
+      </button>
     </div>
   ),
 }));
@@ -659,6 +670,60 @@ describe("RuntimeChat inputs and persistence", () => {
         title: "文档协作",
         assignments: expect.arrayContaining([
           expect.objectContaining({ role: "实施", runtimeId: "claude-local" }),
+        ]),
+      }),
+    );
+  });
+
+  it("creates the confirmation proposal locally for explicitly assigned runtimes", async () => {
+    const onRequestCollaboration = vi.fn();
+    render(
+      <RuntimeChat
+        runId="chat-explicit-collaboration"
+        runtime={hers2Runtime}
+        profile="default"
+        runtimeCatalog={{
+          "pi-local": piRuntime,
+          "claude-local": claudeRuntime,
+        }}
+        onRequestCollaboration={onRequestCollaboration}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "发送明确协作输入" }));
+
+    expect(
+      await screen.findByText("建议启用多智能体协作"),
+    ).toBeInTheDocument();
+    expect(startAgentRuntimeTask).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(saveRuntimeConversation).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              role: "agent",
+              content: expect.stringContaining(
+                "<agents-one-collaboration-proposal>",
+              ),
+            }),
+          ]),
+        }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "配置并启动协作" }));
+    expect(onRequestCollaboration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assignments: expect.arrayContaining([
+          expect.objectContaining({
+            role: "项目负责人",
+            runtimeId: "hermes-home2",
+          }),
+          expect.objectContaining({ role: "实施", runtimeId: "pi-local" }),
+          expect.objectContaining({
+            role: "复核",
+            runtimeId: "claude-local",
+          }),
         ]),
       }),
     );
