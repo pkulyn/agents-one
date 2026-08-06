@@ -102,6 +102,29 @@ describe("runtimeChatMessageAdapter", () => {
     );
   });
 
+  it("does not present workspace authorization lifecycle notices as reasoning", () => {
+    const result = runtimeEventsToChatMessages([
+      event(
+        "grant-created",
+        "progress",
+        "已建立不会自动到期的受控本机工作区授权；任务结束或取消时撤销。",
+      ),
+      event("real-reasoning", "progress", "先分析任务并准备协作方案。"),
+      event(
+        "grant-missing",
+        "progress",
+        "本轮未授予远程工作区权限，已按普通只读对话执行。",
+      ),
+    ]);
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "reasoning",
+        text: "先分析任务并准备协作方案。",
+      }),
+    ]);
+  });
+
   it("omits error and artifact notice cards while preserving rendered image artifacts", () => {
     const result = runtimeConversationToChatMessages([
       {

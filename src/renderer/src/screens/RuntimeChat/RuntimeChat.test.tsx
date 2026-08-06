@@ -598,6 +598,29 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(onRequestCollaboration).not.toHaveBeenCalled();
   });
 
+  it("places collaboration policy before the user request when multiple runtimes are available", async () => {
+    render(
+      <RuntimeChat
+        runId="chat-collaboration-policy"
+        runtime={piRuntime}
+        profile="default"
+        runtimeCatalog={{
+          "pi-local": piRuntime,
+          "claude-local": claudeRuntime,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+
+    const prompt = startAgentRuntimeTask.mock.calls[0][1].prompt as string;
+    expect(prompt).toContain("用户明确要求多个智能体");
+    expect(prompt.indexOf("Agents One 平台协作规则")).toBeLessThan(
+      prompt.indexOf("检查输入"),
+    );
+  });
+
   it("turns a runtime proposal into an explicit, user-confirmed collaboration entry", () => {
     const onRequestCollaboration = vi.fn();
     render(

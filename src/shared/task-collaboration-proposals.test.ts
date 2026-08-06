@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasValidTaskCollaborationProposal,
   parseTaskCollaborationProposal,
   taskCollaborationProposalProtocol,
 } from "./task-collaboration-proposals";
@@ -29,7 +30,31 @@ describe("task collaboration proposals", () => {
   });
 
   it("tells runtimes that only the platform may dispatch registered agents", () => {
-    expect(taskCollaborationProposalProtocol([{ id: "pi", name: "Pi", kind: "pi" }]))
-      .toContain("不能通过终端、Shell、CLI");
+    const protocol = taskCollaborationProposalProtocol([
+      { id: "pi", name: "Pi", kind: "pi" },
+    ]);
+    expect(protocol).toContain("不能通过终端、Shell、CLI");
+    expect(protocol).toContain("用户明确要求多个智能体");
+    expect(protocol).toContain("不得先调用工具、检查或修改工作区");
+    expect(protocol).toContain("询问为何没有出现协作确认界面");
+  });
+
+  it("recognizes only a valid proposal that targets registered runtimes", () => {
+    const valid = [
+      "<agents-one-collaboration-proposal>",
+      '{"assignments":[{"role":"执行","runtimeId":"pi"},{"role":"复核","runtimeId":"claude"}]}',
+      "</agents-one-collaboration-proposal>",
+    ].join("\n");
+
+    expect(hasValidTaskCollaborationProposal(valid, ["pi", "claude"])).toBe(
+      true,
+    );
+    expect(hasValidTaskCollaborationProposal(valid, ["pi"])).toBe(false);
+    expect(
+      hasValidTaskCollaborationProposal(
+        "我会输出 <agents-one-collaboration-proposal> 标签。",
+        ["pi", "claude"],
+      ),
+    ).toBe(false);
   });
 });

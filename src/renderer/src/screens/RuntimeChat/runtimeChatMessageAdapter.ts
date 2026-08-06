@@ -91,6 +91,15 @@ function eventDetail(event: AgentRuntimeEvent): string {
   );
 }
 
+const HIDDEN_PLATFORM_PROGRESS = new Set([
+  "已建立不会自动到期的受控本机工作区授权；任务结束或取消时撤销。",
+  "本轮未授予远程工作区权限，已按普通只读对话执行。",
+]);
+
+function isPlatformLifecycleProgress(event: AgentRuntimeEvent): boolean {
+  return HIDDEN_PLATFORM_PROGRESS.has(normalizedSummary(event.summary));
+}
+
 function isImageArtifact(artifact: AgentRuntimeArtifact): boolean {
   return Boolean(
     artifact.path &&
@@ -173,6 +182,7 @@ function runtimeEventMessages(
   for (const event of events) {
     const id = `${prefix}:event:${event.id}`;
     if (event.type === "progress") {
+      if (isPlatformLifecycleProgress(event)) continue;
       const message: ReasoningMessage = {
         id,
         kind: "reasoning",

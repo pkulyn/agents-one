@@ -2014,7 +2014,7 @@ export default function RuntimeChat({
       // actually be proposed and later dispatched.
       const runtimePrompt =
         collaborationCandidates.length > 1
-          ? `${basePrompt}\n\n${taskCollaborationProposalProtocol(collaborationCandidates)}`
+          ? `${taskCollaborationProposalProtocol(collaborationCandidates)}\n\n当前用户请求：\n${basePrompt}`
           : basePrompt;
       const run = await window.hermesAPI.startAgentRuntimeTask(runtime.id, {
         prompt: runtimePrompt,
