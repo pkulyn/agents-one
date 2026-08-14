@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../useI18n";
-import { getAnalyticsConsent } from "../../utils/analytics";
 import {
   CHAT_TRANSPORT_OPTIONS,
   getCachedOpenClaw,
@@ -124,11 +123,6 @@ export function useSettingsData(profile?: string) {
   // Debug dump
   const [dumpOutput, setDumpOutput] = useState<string | null>(null);
   const [dumpRunning, setDumpRunning] = useState(false);
-
-  // Analytics consent
-  const [analyticsEnabled, setAnalyticsEnabled] = useState(() =>
-    getAnalyticsConsent(),
-  );
 
   // Desktop app (Electron) auto-update — a *separate* update channel from the
   // Hermes Agent engine update above: this ships the desktop shell itself via
@@ -1002,11 +996,7 @@ export function useSettingsData(profile?: string) {
     httpProxyRef,
     saveHttpProxy,
     networkSaved,
-    setNetworkSaved,
-    // analytics
-    analyticsEnabled,
-    setAnalyticsEnabled,
-  };
+    setNetworkSaved,  };
 }
 
 export type SettingsData = ReturnType<typeof useSettingsData>;

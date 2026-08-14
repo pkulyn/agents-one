@@ -1,6 +1,4 @@
-# Keep the original identifier so an existing Hermes One installation upgrades
-# in place instead of leaving two desktop applications behind after the rename.
-appId: com.nousresearch.hermes
+appId: com.pkulyn.agents-one
 productName: Agents One
 directories:
   buildResources: build
@@ -75,5 +73,5 @@ rpm:
 npmRebuild: false
 publish:
   provider: github
-  owner: fathah
-  repo: hermes-desktop
+  owner: pkulyn
+  repo: agents-one
