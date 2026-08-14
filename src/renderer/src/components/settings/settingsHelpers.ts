@@ -23,17 +23,7 @@ export type TransportProbe = {
 
 export const LANGUAGE_NATIVE_NAMES: Record<AppLocale, string> = {
   en: "English",
-  ar: "العربية",
-  es: "Español",
-  he: "עברית",
-  id: "Bahasa Indonesia",
-  ja: "日本語",
-  pl: "Polski",
-  "pt-BR": "Português (BR)",
-  "pt-PT": "Português (PT)",
-  tr: "Türkçe",
   "zh-CN": "简体中文",
-  "zh-TW": "繁體中文（台灣）",
 };
 
 // Build a mask string the same width as the stored API key so the

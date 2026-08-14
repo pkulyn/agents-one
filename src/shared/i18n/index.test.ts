@@ -14,29 +14,9 @@ describe("shared i18n", () => {
     expect(t("welcome.title", "zh-CN")).toBe("欢迎使用 Agents One");
   });
 
-  it("returns zh-TW text when available", () => {
-    expect(t("welcome.title", "zh-TW")).toBe("歡迎使用 Agents One");
-  });
-
-  it("returns es text when available", () => {
-    expect(t("welcome.title", "es")).toBe("Bienvenido a Agents One");
-  });
-
-  it("returns id text when available", () => {
-    expect(t("welcome.title", "id")).toBe("Selamat datang di Agents One");
-  });
-
-  it("returns pl text when available", () => {
-    expect(t("welcome.title", "pl")).toBe("Witamy w Agents One");
-  });
-
-  it("returns he text when available", () => {
-    expect(t("welcome.title", "he")).toBe("ברוכים הבאים ל-Agents One");
-  });
-
-  it("reports he as a right-to-left locale", () => {
-    expect(getLocaleDirection("he")).toBe("rtl");
+  it("reports both locales as left-to-right", () => {
     expect(getLocaleDirection("en")).toBe("ltr");
+    expect(getLocaleDirection("zh-CN")).toBe("ltr");
   });
 
   it("falls back to en when zh-CN key is missing", () => {
@@ -45,15 +25,9 @@ describe("shared i18n", () => {
     );
   });
 
-  it("preserves interpolation placeholders in es", () => {
-    expect(t("common.updateAvailable", "es", { version: "1.2.3" })).toBe(
-      "Actualizar a v1.2.3",
-    );
-  });
-
-  it("preserves interpolation placeholders in pl", () => {
-    expect(t("common.updateAvailable", "pl", { version: "1.2.3" })).toBe(
-      "Aktualizacja v1.2.3",
+  it("preserves interpolation placeholders in zh-CN", () => {
+    expect(t("common.updateAvailable", "zh-CN", { version: "1.2.3" })).toBe(
+      "更新 v1.2.3",
     );
   });
 });
