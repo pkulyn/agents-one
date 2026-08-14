@@ -96,6 +96,7 @@ function runtimeTemplate(kind: AgentRuntimeKind): AgentRuntimeDraft {
       config: {
         endpoint: "",
         transport: "http",
+        remoteGateway: { protocol: "agents-one-v1" as const },
         timeoutMs: DEFAULT_TIMEOUT_MS,
         hermes: { mode: "remote", chatTransport: "auto" },
       },
@@ -107,7 +108,12 @@ function runtimeTemplate(kind: AgentRuntimeKind): AgentRuntimeDraft {
     kind: "openclaw",
     location: "remote",
     enabled: true,
-    config: { endpoint: "", transport: "http", timeoutMs: DEFAULT_TIMEOUT_MS },
+    config: {
+      endpoint: "",
+      transport: "http",
+      remoteGateway: { protocol: "agents-one-v1" as const },
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
   };
 }
 
