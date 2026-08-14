@@ -67,7 +67,45 @@ describe("TaskCollaborationDialog", () => {
       target: { value: "资料整理" },
     });
     expect(screen.getByDisplayValue("资料整理")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: "移除角色" }).at(-1)!);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "移除角色" }).at(-1)!,
+    );
     expect(screen.queryByDisplayValue("资料整理")).not.toBeInTheDocument();
+  });
+
+  it("uses the remote runtime's own device when no local project is attached", () => {
+    const onStart = vi.fn();
+    render(
+      <TaskCollaborationDialog
+        draft={{
+          title: "远程主机维护",
+          sourceRuntimeId: "hermes",
+        }}
+        runtimes={[runtime("hermes", "Hers")]}
+        onClose={() => {}}
+        onStart={onStart}
+      />,
+    );
+
+    expect(screen.getByLabelText("项目负责人工作区访问方式")).toHaveValue("");
+    expect(
+      screen.getByRole("option", { name: "智能体所在设备" }),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("任务说明"), {
+      target: { value: "在智能体所在设备执行备份任务" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送并启动" }));
+
+    expect(onStart).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          role: "项目负责人",
+          runtimeId: "hermes",
+          workspaceAccess: undefined,
+        }),
+      ],
+      "在智能体所在设备执行备份任务",
+    );
   });
 });

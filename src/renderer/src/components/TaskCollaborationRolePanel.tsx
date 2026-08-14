@@ -22,7 +22,10 @@ export function TaskCollaborationRolePanel({
   assignments: TaskCollaborationAssignment[];
   runtimes: Record<string, AgentRuntimeDefinition>;
   execution?: TaskCollaborationExecution;
-  onIntervene?: (assignment: TaskCollaborationAssignment, assignmentId: string) => void;
+  onIntervene?: (
+    assignment: TaskCollaborationAssignment,
+    assignmentId: string,
+  ) => void;
 }): React.JSX.Element | null {
   const configured = assignments.filter((assignment) => assignment.runtimeId);
   if (!configured.length) return null;
@@ -56,9 +59,13 @@ export function TaskCollaborationRolePanel({
   return (
     <details className="task-collaboration-inline-panel">
       <summary>
-        <span><Users size={15} /> 协作分工</span>
+        <span>
+          <Users size={15} /> 协作分工
+        </span>
         <small>
-          {execution?.status === "running" ? "平台正在按角色交接" : `${configured.length} 个角色`}
+          {execution?.status === "running"
+            ? "平台正在按角色交接"
+            : `${configured.length} 个角色`}
         </small>
         <ChevronDown size={14} />
       </summary>
@@ -67,21 +74,51 @@ export function TaskCollaborationRolePanel({
           const runtime = agentFor(runtimes, assignment);
           const key = assignment.id || `legacy:${index}:${assignment.role}`;
           const run = runByAssignmentId.get(key);
+          const avatar = runtime?.avatar ? (
+            <img src={runtime.avatar} alt="" />
+          ) : (
+            <Bot size={14} />
+          );
           return (
-            <article key={assignment.id || `${assignment.role}:${assignment.runtimeId}`}>
-              <span
-                className="task-collaboration-inline-avatar"
-                style={runtime?.color ? { background: runtime.color } : undefined}
-              >
-                {runtime?.avatar ? <img src={runtime.avatar} alt="" /> : <Bot size={14} />}
-              </span>
+            <article
+              key={
+                assignment.id || `${assignment.role}:${assignment.runtimeId}`
+              }
+            >
+              {onIntervene ? (
+                <button
+                  type="button"
+                  className="task-collaboration-inline-avatar"
+                  style={
+                    runtime?.color ? { background: runtime.color } : undefined
+                  }
+                  onClick={() => onIntervene(assignment, key)}
+                  aria-label={`与 ${runtime?.name || assignment.runtimeId || assignment.role}（${assignment.role}）沟通`}
+                  title={`与 ${runtime?.name || assignment.runtimeId || assignment.role} 沟通`}
+                >
+                  {avatar}
+                </button>
+              ) : (
+                <span
+                  className="task-collaboration-inline-avatar"
+                  style={
+                    runtime?.color ? { background: runtime.color } : undefined
+                  }
+                >
+                  {avatar}
+                </span>
+              )}
               <div>
                 <strong>{assignment.role}</strong>
                 <span>{runtime?.name || assignment.runtimeId}</span>
-                {assignment.responsibility ? <small>{assignment.responsibility}</small> : null}
+                {assignment.responsibility ? (
+                  <small>{assignment.responsibility}</small>
+                ) : null}
               </div>
               {run ? (
-                <b className={`task-collaboration-role-status ${statusClass[run.status]}`}>
+                <b
+                  className={`task-collaboration-role-status ${statusClass[run.status]}`}
+                >
                   {statusLabel[run.status]}
                 </b>
               ) : null}
