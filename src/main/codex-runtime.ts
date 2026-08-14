@@ -9,6 +9,7 @@ import { dirname, extname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
 import { profileHome } from "./utils";
 import { prepareRuntimeInputs } from "./runtime-inputs";
+import { protectWorkspaceFromRemoval } from "./workspace-protection";
 import type {
   AgentRuntimeArtifact,
   AgentRuntimeTaskInput,
@@ -133,15 +134,29 @@ async function gitRoot(workspace: string): Promise<string> {
 }
 
 function requestedWorkspace(
-  config: CodexRuntimeConfig,
+  _config: CodexRuntimeConfig,
   input?: AgentRuntimeTaskInput,
 ): string | undefined {
-  const raw = input?.workspace?.trim() || config.workspace?.trim();
+  const raw = input?.workspace?.trim();
   if (!raw) return undefined;
   const workspace = resolve(raw);
   if (!existsSync(workspace))
     throw new Error("The selected workspace does not exist.");
   return workspace;
+}
+
+function configuredProbeWorkspace(config: CodexRuntimeConfig): string | undefined {
+  const raw = config.workspace?.trim();
+  if (!raw) return undefined;
+  const workspace = resolve(raw);
+  if (!existsSync(workspace)) throw new Error("The configured workspace does not exist.");
+  return workspace;
+}
+
+function conversationCwd(profile?: string): string {
+  const root = join(profileHome(profile), "desktop", "runtime-chat", "codex");
+  mkdirSync(root, { recursive: true });
+  return root;
 }
 
 function worktreeRoot(profile?: string): string {
@@ -158,30 +173,7 @@ function safeWorktreePath(profile: string | undefined, id: string): string {
 }
 
 function childEnvironment(): NodeJS.ProcessEnv {
-  const keys = [
-    "APPDATA",
-    "COMSPEC",
-    "CODEX_HOME",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "LOCALAPPDATA",
-    "PATH",
-    "PATHEXT",
-    "SYSTEMDRIVE",
-    "SYSTEMROOT",
-    "TEMP",
-    "TMP",
-    "USERPROFILE",
-    "WINDIR",
-  ];
-  const env: NodeJS.ProcessEnv = {};
-  for (const key of keys) if (process.env[key]) env[key] = process.env[key];
-  // Keep the same user-level OpenAI provider settings that `codex` receives
-  // in a terminal, without inheriting unrelated application secrets.
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value && /^(OPENAI_|CODEX_)/.test(key)) env[key] = value;
-  }
-  return env;
+  return { ...process.env };
 }
 
 function terminateTree(child: ChildProcess): void {
@@ -198,7 +190,7 @@ function terminateTree(child: ChildProcess): void {
 /** This argument contract is intentionally kept pure and regression-tested. */
 export function codexExecArgs(
   cwd: string,
-  mode: "analysis" | "implementation" | "full_access",
+  mode: "analysis" | "safe_write" | "implementation" | "full_access",
   prompt: string,
   inputDirectory?: string,
   imagePaths: string[] = [],
@@ -207,11 +199,16 @@ export function codexExecArgs(
   const args = [
     "exec",
     "--json",
-    "--sandbox",
-    mode === "analysis" ? "read-only" : "workspace-write",
-    "--cd",
-    cwd,
   ];
+  if (mode === "full_access") {
+    args.push("--dangerously-bypass-approvals-and-sandbox");
+  } else {
+    args.push(
+      "--sandbox",
+      mode === "analysis" ? "read-only" : "workspace-write",
+    );
+  }
+  args.push("--cd", cwd);
   if (inputDirectory) args.push("--add-dir", inputDirectory);
   for (const image of imagePaths) args.push("--image", image);
   if (model?.trim()) args.push("--model", model.trim());
@@ -227,7 +224,7 @@ export async function probeCodexRuntime(
       "exec",
       "--version",
     ]);
-    const workspace = requestedWorkspace(config);
+    const workspace = configuredProbeWorkspace(config);
     if (workspace) await gitRoot(workspace);
     return {
       healthy: true,
@@ -254,13 +251,14 @@ export async function startCodexProcess(
   const mode = input.mode || "analysis";
   const invocation = codexInvocation(executable(config));
   const workspace = requestedWorkspace(config, input);
-  if (!workspace)
-    throw new Error("Codex tasks require a configured workspace.");
+  if ((mode === "implementation" || mode === "full_access") && !workspace) {
+    throw new Error("Codex file tasks require a task-specific project folder.");
+  }
 
-  let cwd = workspace;
+  let cwd = workspace || conversationCwd(input.profile);
   let worktreePath: string | undefined;
   if (mode === "implementation") {
-    const root = await gitRoot(workspace);
+    const root = await gitRoot(workspace as string);
     worktreePath = safeWorktreePath(input.profile, `task-${randomUUID()}`);
     await command({ command: "git", prefix: [] }, [
       "-C",
@@ -280,6 +278,10 @@ export async function startCodexProcess(
     `codex-${randomUUID()}`,
   );
   const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
+  const workspaceProtection =
+    mode === "safe_write" && workspace
+      ? protectWorkspaceFromRemoval(workspace, input.profile)
+      : undefined;
 
   const args = codexExecArgs(
     cwd,
@@ -309,7 +311,8 @@ export async function startCodexProcess(
   });
 
   const completion = new Promise<CodexProcessResult>((resolveResult) => {
-    child.once("error", (error) =>
+    child.once("error", (error) => {
+      workspaceProtection?.restoreAndDispose();
       resolveResult({
         output,
         error: redact(error.message),
@@ -324,9 +327,10 @@ export async function startCodexProcess(
             ]
           : [],
         inputArtifacts: preparedInputs.artifacts,
-      }),
-    );
+      });
+    });
     child.once("close", async (code) => {
+      const restoredFiles = workspaceProtection?.restoreAndDispose() || [];
       let diffSummary: string | undefined;
       let diff: string | undefined;
       if (worktreePath) {
@@ -361,7 +365,9 @@ export async function startCodexProcess(
           content: diff.slice(0, MAX_OUTPUT),
         });
       resolveResult({
-        output,
+        output: restoredFiles.length
+          ? `${output}\n[Agents One] 已阻止移动或删除 ${restoredFiles.length} 个原有文件。`
+          : output,
         ...(code === 0
           ? {}
           : { error: `Codex exited with code ${code ?? "unknown"}.` }),

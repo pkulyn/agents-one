@@ -46,14 +46,25 @@ describe("Claude Code runtime invocation", () => {
 
   it("allows edits only for a separately-created implementation worktree", () => {
     expect(claudeCodeExecArgs("implementation", "change this")).toContain(
-      "acceptEdits",
+      "--dangerously-skip-permissions",
     );
   });
 
-  it("uses edit permission for a confirmed direct full-access task", () => {
+  it("uses Claude Code's native bypass mode for confirmed full access", () => {
     expect(claudeCodeExecArgs("full_access", "update this")).toContain(
-      "acceptEdits",
+      "--dangerously-skip-permissions",
     );
+  });
+
+  it("keeps Claude Code skills, MCP, plugins, hooks and Bash in safe-write mode", () => {
+    const args = claudeCodeExecArgs("safe_write", "update this safely");
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "--dangerously-skip-permissions",
+      ]),
+    );
+    expect(args).not.toContain("--allowedTools");
+    expect(args).not.toContain("--disallowedTools");
   });
 
   it("adds only Agents One's staged input directory to the Claude Code scope", () => {
@@ -117,6 +128,25 @@ describe("Claude Code runtime invocation", () => {
     expect(
       filterClaudeCodeStreamLine('{"type":"result","result":"done"}'),
     ).not.toBe("");
+  });
+
+  it("retains Claude partial thinking and tool frames without persisting text deltas", () => {
+    const thinkingDelta =
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Inspect files."}}}';
+    const toolStart =
+      '{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu-1","name":"Read","input":{}}}}';
+    const toolInput =
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"file_path\\":\\"README.md\\"}"}}}';
+    const blockStop =
+      '{"type":"stream_event","event":{"type":"content_block_stop","index":1}}';
+    const textDelta =
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"final"}}}';
+
+    expect(filterClaudeCodeStreamLine(thinkingDelta)).toBe(thinkingDelta);
+    expect(filterClaudeCodeStreamLine(toolStart)).toBe(toolStart);
+    expect(filterClaudeCodeStreamLine(toolInput)).toBe(toolInput);
+    expect(filterClaudeCodeStreamLine(blockStop)).toBe(blockStop);
+    expect(filterClaudeCodeStreamLine(textDelta)).toBe("");
   });
 
   it("recognizes authenticated Claude Code status without storing credentials", () => {

@@ -1242,6 +1242,68 @@ describe("agent runtime registry", () => {
         onOutput(
           [
             JSON.stringify({
+              type: "stream_event",
+              event: {
+                type: "content_block_start",
+                index: 0,
+                content_block: { type: "thinking", thinking: "" },
+              },
+            }),
+            JSON.stringify({
+              type: "stream_event",
+              event: {
+                type: "content_block_delta",
+                index: 0,
+                delta: {
+                  type: "thinking_delta",
+                  thinking: "我先确认目标文件",
+                },
+              },
+            }),
+            JSON.stringify({
+              type: "stream_event",
+              event: {
+                type: "content_block_delta",
+                index: 0,
+                delta: {
+                  type: "thinking_delta",
+                  thinking: "及验收约束。",
+                },
+              },
+            }),
+            JSON.stringify({
+              type: "stream_event",
+              event: { type: "content_block_stop", index: 0 },
+            }),
+            JSON.stringify({
+              type: "stream_event",
+              event: {
+                type: "content_block_start",
+                index: 1,
+                content_block: {
+                  type: "tool_use",
+                  id: "toolu-read-1",
+                  name: "Read",
+                  input: {},
+                },
+              },
+            }),
+            JSON.stringify({
+              type: "stream_event",
+              event: {
+                type: "content_block_delta",
+                index: 1,
+                delta: {
+                  type: "input_json_delta",
+                  partial_json: '{"file_path":"docs/README.md"}',
+                },
+              },
+            }),
+            JSON.stringify({
+              type: "stream_event",
+              event: { type: "content_block_stop", index: 1 },
+            }),
+            JSON.stringify({
               type: "assistant",
               message: {
                 content: [
@@ -1273,7 +1335,9 @@ describe("agent runtime registry", () => {
                 "claude-sonnet-4-6": {
                   input_tokens: 640,
                   output_tokens: 96,
-                  total_tokens: 736,
+                  cache_read_input_tokens: 2_048,
+                  cache_creation_input_tokens: 256,
+                  total_tokens: 3_040,
                   context_window: 200_000,
                 },
               },
@@ -1305,12 +1369,17 @@ describe("agent runtime registry", () => {
       usage: {
         inputTokens: 640,
         outputTokens: 96,
-        totalTokens: 736,
+        totalTokens: 3_040,
+        contextUsedTokens: 2_944,
         contextWindowTokens: 200_000,
       },
     });
     expect(completed?.events).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          type: "progress",
+          summary: "我先确认目标文件及验收约束。",
+        }),
         expect.objectContaining({
           type: "tool_call",
           tool: expect.objectContaining({
@@ -1330,6 +1399,18 @@ describe("agent runtime registry", () => {
         }),
       ]),
     );
+    expect(
+      completed?.events.filter(
+        (event) =>
+          event.type === "tool_call" && event.tool?.callId === "toolu-read-1",
+      ),
+    ).toHaveLength(1);
+    expect(
+      completed?.events.find(
+        (event) =>
+          event.type === "tool_result" && event.tool?.callId === "toolu-read-1",
+      )?.tool?.name,
+    ).toBe("Read");
   });
 
   it("times out a local Claude Code runtime and preserves captured output", async () => {
@@ -1429,9 +1510,11 @@ describe("agent runtime registry", () => {
               model: "deepseek-v4-flash",
               provider: "custom",
               usage: {
-                input_tokens: 510,
-                output_tokens: 72,
-                total_tokens: 582,
+                input: 510,
+                output: 72,
+                cacheRead: 2_048,
+                cacheWrite: 0,
+                totalTokens: 2_630,
                 context_window: 131_072,
               },
               content: [
@@ -1511,7 +1594,8 @@ describe("agent runtime registry", () => {
       usage: {
         inputTokens: 510,
         outputTokens: 72,
-        totalTokens: 582,
+        totalTokens: 2_630,
+        contextUsedTokens: 2_558,
         contextWindowTokens: 131_072,
       },
       events: expect.arrayContaining([

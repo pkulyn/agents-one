@@ -46,6 +46,8 @@ export interface RemoteWorkspaceGrantInput {
   runtimeId: string;
   rootPath: string;
   permission: "read" | "write";
+  /** Optional operation subset. Write grants default to the legacy full set. */
+  operations?: RemoteWorkspaceOperation[];
   /** null means the Grant does not expire; it is revoked explicitly. */
   expiresAt?: number | null;
   maxOperationBytes?: number;
@@ -57,6 +59,8 @@ export interface RemoteWorkspaceGrant {
   runtimeId: string;
   rootPath: string;
   permission: "read" | "write";
+  /** Absent only on legacy in-memory grants created before operation scoping. */
+  operations?: RemoteWorkspaceOperation[];
   /** null means the Grant does not expire; it is revoked explicitly. */
   expiresAt: number | null;
   maxOperationBytes: number;
@@ -539,6 +543,18 @@ function checkGrant(grant: RemoteWorkspaceGrant): void {
     throw new Error("Workspace grant has expired.");
 }
 
+function defaultGrantOperations(
+  permission: RemoteWorkspaceGrant["permission"],
+): RemoteWorkspaceOperation[] {
+  return permission === "write"
+    ? ["list", "read", "write", "move", "delete"]
+    : ["list", "read"];
+}
+
+function grantOperations(grant: RemoteWorkspaceGrant): RemoteWorkspaceOperation[] {
+  return grant.operations || defaultGrantOperations(grant.permission);
+}
+
 export function createRemoteWorkspaceGrant(
   input: RemoteWorkspaceGrantInput,
 ): RemoteWorkspaceGrant {
@@ -567,6 +583,18 @@ export function createRemoteWorkspaceGrant(
   }
   if (input.permission !== "read" && input.permission !== "write")
     throw new Error("Workspace permission is invalid.");
+  const operations = input.operations || defaultGrantOperations(input.permission);
+  if (
+    operations.length === 0 ||
+    operations.some(
+      (operation) =>
+        !["list", "read", "write", "move", "delete"].includes(operation),
+    ) ||
+    (input.permission === "read" &&
+      operations.some((operation) => operation !== "list" && operation !== "read"))
+  ) {
+    throw new Error("Workspace grant operations are invalid.");
+  }
   if (
     input.expiresAt !== undefined &&
     input.expiresAt !== null &&
@@ -588,6 +616,7 @@ export function createRemoteWorkspaceGrant(
     runtimeId: assertText(input.runtimeId, "Workspace runtime id", 256),
     rootPath,
     permission: input.permission,
+    operations: [...new Set(operations)],
     expiresAt: input.expiresAt ?? null,
     maxOperationBytes,
     createdAt: Date.now(),
@@ -618,6 +647,13 @@ export function executeRemoteWorkspaceRequest(
     const operation = request.operation;
     if (!["list", "read", "write", "move", "delete"].includes(operation)) {
       throw new Error("Workspace operation is invalid.");
+    }
+    if (!grantOperations(grant).includes(operation)) {
+      throw new Error(
+        grant.permission === "read"
+          ? "Workspace grant is read-only."
+          : `Workspace operation ${operation} is not permitted.`,
+      );
     }
     const target = ensureWithinGrant(grant, request.path, "Workspace path");
     if (operation === "list") {
@@ -819,10 +855,7 @@ export class OutboundRemoteWorkspaceGateway {
             ? null
             : new Date(this.grant.expiresAt).toISOString(),
         maxOperationBytes: this.grant.maxOperationBytes,
-        operations:
-          this.grant.permission === "write"
-            ? ["list", "read", "write", "move", "delete"]
-            : ["list", "read"],
+        operations: grantOperations(this.grant),
       },
     );
     const returnedGrantId =

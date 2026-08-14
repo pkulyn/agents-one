@@ -20,10 +20,21 @@ describe("Codex runtime invocation", () => {
     ).toContain("workspace-write");
   });
 
-  it("uses workspace-write for a confirmed direct full-access task", () => {
+  it("uses Codex's native unsandboxed mode for confirmed full access", () => {
     expect(
       codexExecArgs("D:\\project", "full_access", "update the project"),
-    ).toContain("workspace-write");
+    ).toContain("--dangerously-bypass-approvals-and-sandbox");
+  });
+
+  it("keeps Codex skills, MCP and shell available in safe-write mode", () => {
+    expect(
+      codexExecArgs("D:\\project", "safe_write", "update this safely"),
+    ).toEqual(
+      expect.arrayContaining(["--sandbox", "workspace-write"]),
+    );
+    expect(
+      codexExecArgs("D:\\project", "safe_write", "update this safely"),
+    ).not.toContain("--disable");
   });
 
   it("allows only the staged input directory and declared images alongside the workspace", () => {

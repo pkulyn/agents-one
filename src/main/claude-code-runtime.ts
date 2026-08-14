@@ -9,6 +9,7 @@ import { delimiter, dirname, extname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
 import { profileHome } from "./utils";
 import { prepareRuntimeInputs } from "./runtime-inputs";
+import { protectWorkspaceFromRemoval } from "./workspace-protection";
 import type {
   AgentRuntimeArtifact,
   AgentRuntimeTaskInput,
@@ -186,7 +187,31 @@ export function filterClaudeCodeStreamLine(line: string): string {
     const event = JSON.parse(trimmed) as {
       type?: unknown;
       message?: { content?: Array<{ type?: unknown }> };
+      event?: {
+        type?: unknown;
+        content_block?: { type?: unknown };
+        delta?: { type?: unknown };
+      };
     };
+    if (event.type === "stream_event") {
+      const streamType = event.event?.type;
+      if (streamType === "content_block_stop") return line;
+      if (
+        streamType === "content_block_start" &&
+        (event.event?.content_block?.type === "thinking" ||
+          event.event?.content_block?.type === "tool_use")
+      ) {
+        return line;
+      }
+      if (
+        streamType === "content_block_delta" &&
+        (event.event?.delta?.type === "thinking_delta" ||
+          event.event?.delta?.type === "input_json_delta")
+      ) {
+        return line;
+      }
+      return "";
+    }
     if (
       event.type === "assistant" ||
       event.type === "result" ||
@@ -264,15 +289,36 @@ async function gitRoot(workspace: string): Promise<string> {
 }
 
 function requestedWorkspace(
-  config: ClaudeCodeRuntimeConfig,
+  _config: ClaudeCodeRuntimeConfig,
   input?: AgentRuntimeTaskInput,
 ): string | undefined {
-  const raw = input?.workspace?.trim() || config.workspace?.trim();
+  const raw = input?.workspace?.trim();
   if (!raw) return undefined;
   const workspace = resolve(raw);
   if (!existsSync(workspace))
     throw new Error("The selected workspace does not exist.");
   return workspace;
+}
+
+function configuredProbeWorkspace(
+  config: ClaudeCodeRuntimeConfig,
+): string | undefined {
+  const raw = config.workspace?.trim();
+  if (!raw) return undefined;
+  const workspace = resolve(raw);
+  if (!existsSync(workspace)) throw new Error("The configured workspace does not exist.");
+  return workspace;
+}
+
+function conversationCwd(profile?: string): string {
+  const root = join(
+    profileHome(profile),
+    "desktop",
+    "runtime-chat",
+    "claude-code",
+  );
+  mkdirSync(root, { recursive: true });
+  return root;
 }
 
 function safeWorktreePath(profile: string | undefined, id: string): string {
@@ -290,30 +336,7 @@ function safeWorktreePath(profile: string | undefined, id: string): string {
 }
 
 function childEnvironment(): NodeJS.ProcessEnv {
-  const keys = [
-    "APPDATA",
-    "CLAUDE_CONFIG_DIR",
-    "COMSPEC",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "LOCALAPPDATA",
-    "PATH",
-    "PATHEXT",
-    "SYSTEMDRIVE",
-    "SYSTEMROOT",
-    "TEMP",
-    "TMP",
-    "USERPROFILE",
-    "WINDIR",
-  ];
-  const env: NodeJS.ProcessEnv = {};
-  for (const key of keys) if (process.env[key]) env[key] = process.env[key];
-  // Claude Code can use either its persisted login or a user-level provider
-  // credential. Forward only its own provider variables, never all desktop env.
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value && /^(ANTHROPIC_|CLAUDE_)/.test(key)) env[key] = value;
-  }
-  return env;
+  return { ...process.env };
 }
 
 function terminateTree(child: ChildProcess): void {
@@ -329,7 +352,7 @@ function terminateTree(child: ChildProcess): void {
 
 /** This argument contract is intentionally kept pure and regression-tested. */
 export function claudeCodeExecArgs(
-  mode: "analysis" | "implementation" | "full_access",
+  mode: "analysis" | "safe_write" | "implementation" | "full_access",
   prompt: string,
   inputDirectory?: string,
   options: { sessionId: string; resume?: boolean; model?: string } = {
@@ -342,9 +365,13 @@ export function claudeCodeExecArgs(
     "--output-format",
     "stream-json",
     "--include-partial-messages",
-    "--permission-mode",
-    mode === "analysis" ? "plan" : "acceptEdits",
   ];
+  if (mode !== "analysis") args.push("--dangerously-skip-permissions");
+  else
+    args.push(
+      "--permission-mode",
+      "plan",
+    );
   if (options.model?.trim()) args.push("--model", options.model.trim());
   if (options.resume) args.push("--resume", options.sessionId);
   else args.push("--session-id", options.sessionId);
@@ -375,7 +402,7 @@ export async function probeClaudeCodeRuntime(
     if (!claudeCodeLoggedIn(authStatus)) {
       throw new Error("Claude Code is not logged in. Run `claude auth login`.");
     }
-    const workspace = requestedWorkspace(config);
+    const workspace = configuredProbeWorkspace(config);
     if (workspace) await gitRoot(workspace);
     return {
       healthy: true,
@@ -402,13 +429,16 @@ export async function startClaudeCodeProcess(
   const mode = input.mode || "analysis";
   const invocation = claudeCodeInvocation(configuredExecutable(config));
   const workspace = requestedWorkspace(config, input);
-  if (!workspace)
-    throw new Error("Claude Code tasks require a configured workspace.");
+  if ((mode === "implementation" || mode === "full_access") && !workspace) {
+    throw new Error(
+      "Claude Code file tasks require a task-specific project folder.",
+    );
+  }
 
-  let cwd = workspace;
+  let cwd = workspace || conversationCwd(input.profile);
   let worktreePath: string | undefined;
   if (mode === "implementation") {
-    const root = await gitRoot(workspace);
+    const root = await gitRoot(workspace as string);
     worktreePath = safeWorktreePath(input.profile, `task-${randomUUID()}`);
     await command({ command: "git", prefix: [] }, [
       "-C",
@@ -429,6 +459,10 @@ export async function startClaudeCodeProcess(
     `claude-code-${randomUUID()}`,
   );
   const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
+  const workspaceProtection =
+    mode === "safe_write" && workspace
+      ? protectWorkspaceFromRemoval(workspace, input.profile)
+      : undefined;
   const requestedSessionId = input.sessionId?.trim();
   const sessionId = validClaudeSessionId(requestedSessionId)
     ? requestedSessionId
@@ -469,7 +503,8 @@ export async function startClaudeCodeProcess(
   });
 
   const completion = new Promise<ClaudeCodeProcessResult>((resolveResult) => {
-    child.once("error", (error) =>
+    child.once("error", (error) => {
+      workspaceProtection?.restoreAndDispose();
       resolveResult({
         output,
         error: redact(error.message),
@@ -485,9 +520,10 @@ export async function startClaudeCodeProcess(
             ]
           : [],
         inputArtifacts: preparedInputs.artifacts,
-      }),
-    );
+      });
+    });
     child.once("close", async (code) => {
+      const restoredFiles = workspaceProtection?.restoreAndDispose() || [];
       recordOutput(filterStdout("", true));
       let diffSummary: string | undefined;
       let diff: string | undefined;
@@ -537,7 +573,9 @@ export async function startClaudeCodeProcess(
         }
       }
       resolveResult({
-        output,
+        output: restoredFiles.length
+          ? `${output}\n[Agents One] 已阻止移动或删除 ${restoredFiles.length} 个原有文件。`
+          : output,
         sessionId,
         ...(code === 0
           ? {}

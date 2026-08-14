@@ -26,7 +26,7 @@ describe("local Runtime delivery verification", () => {
     const sha256 = createHash("sha256").update(content).digest("hex");
     const finalText = [
       "实施完成。",
-      "[交付契约]",
+      "[交付物]",
       `路径：${target}`,
       `SHA-256：${sha256}`,
       "来源机器：本机工作区",
@@ -51,6 +51,20 @@ describe("local Runtime delivery verification", () => {
         changeSummary: "创建冒烟测试文件。",
       }),
     ]);
+  });
+
+  it("continues to accept the legacy delivery-contract marker", async () => {
+    const root = workspace();
+    const target = join(root, "legacy.txt");
+    writeFileSync(target, "legacy", "utf8");
+    const sha256 = createHash("sha256").update("legacy").digest("hex");
+
+    await expect(
+      verifyLocalDeliveryArtifacts(
+        `[交付契约]\n路径：${target}\nSHA-256：${sha256}\n来源机器：本机工作区\n变更摘要：兼容旧任务。`,
+        root,
+      ),
+    ).resolves.toHaveLength(1);
   });
 
   it("rejects a missing file, a mismatched hash, and a path outside the selected workspace", async () => {

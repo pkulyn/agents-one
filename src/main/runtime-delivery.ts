@@ -13,7 +13,7 @@ interface DeliveryContract {
 function collectStrings(value: unknown, output: string[], depth = 0): void {
   if (depth > 8 || output.length > 200) return;
   if (typeof value === "string") {
-    if (value.includes("[交付契约]")) output.push(value);
+    if (/\[(?:交付物|交付契约)\]/.test(value)) output.push(value);
     return;
   }
   if (Array.isArray(value)) {
@@ -42,7 +42,7 @@ function contractTexts(output: string): string[] {
 
 function parseDeliveryContract(output: string): DeliveryContract | undefined {
   for (const text of contractTexts(output)) {
-    const marker = text.match(/\[交付契约\]([\s\S]{0,4000})/i)?.[1];
+    const marker = text.match(/\[(?:交付物|交付契约)\]([\s\S]{0,4000})/i)?.[1];
     if (!marker) continue;
     const value = (label: string): string | undefined =>
       marker
@@ -70,7 +70,7 @@ async function sha256File(path: string): Promise<string> {
 }
 
 /**
- * Converts a model-declared delivery contract into platform evidence only
+ * Converts model-declared delivery metadata into platform evidence only
  * after the main process independently verifies workspace containment, file
  * existence and SHA-256. Invalid claims deliberately produce no artifact.
  */
