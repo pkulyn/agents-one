@@ -1642,3 +1642,14 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 打标签 `agents-one-pre-opensource-baseline` 作为开源前回退点（此前基线标签 `agents-one-pre-slim-20260806`）。
 - 全量验证全绿：Node/Web TypeScript 检查通过；Vitest 203 个测试文件、2010 项通过、9 项跳过；Electron Vite 生产构建通过。
 - 两个本地测试产物（`Hers-2-Connector-Adaptation-Package-2026-08-10.zip`、`agents-one-test.md`）保持未跟踪，不入库。
+
+## 2026-08-14：开源前优化 - Phase 2 遗留清理推进
+
+- 用户确认执行顺序调整：Phase 2（旧页面删除）前置，Phase 1（接入统一）后置（SSH/旧远程模式与旧页面支撑模块深度耦合，先删旧页面可清掉大部分消费者）。
+- ①删除孤儿屏幕：Discover、Office（含重型 3D 资源）、Providers、Tools、Gateway、Models、Install、Setup、Welcome；保留 Sessions（Cmd+K 会话搜索/恢复是活功能）；Layout 清理对应 View 类型/渲染/discoverFocus/remoteMode。renderer 产物从 11.7MB 降至 8.6MB。
+- ②删除上游云/钱包/社区栈：agent-sync、hermes-account、account-store、wallet-store/balances/sync 及测试、shared/wallets/account/agent-sync/tokens；UI 组件 FollowUsModal、HermesAccountModal、OAuthLoginModal、ProviderKeysSection、ProfileWalletPane、CommunityPane；对应 IPC/preload API。
+- ③删除 Skills/Memory/Soul 管理界面；ProfileModal 移除死掉的 persona/agentMemory/wallet 段；main 的 memory/skills/soul 模块保留为数据后端（备份仍快照 memories/skills 目录）。
+- ④i18n 收敛为 en + zh-CN：删 10 个 locale 目录，重写 shared/i18n index/config/types，LANGUAGE_NATIVE_NAMES 2 项，更新三个 locale 测试。
+- ⑤清理上游 hermesone/fathah 引用：菜单 issues 指向 pkulyn/agents-one；删除 hermesone provider setup card/PROVIDER_CARDS/BASE_URLS/SETTINGS_SECTIONS/url-key-map；删孤儿 i18n key；删除 stale detect-provider/office-url 测试并更新 layout-remote-gates、ProfileModal 测试。
+- 全量回归：191 个测试文件、1912 项通过、9 项跳过；Node/Web TypeScript 与生产构建通过。
+- 深层主进程清理（registry/messaging-platforms/tools 等 IPC 与 preload）与旧 Hermes 远程/SSH 传输耦合，延后到 Phase 1 一并处理。
