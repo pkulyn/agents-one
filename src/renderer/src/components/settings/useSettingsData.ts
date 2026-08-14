@@ -15,6 +15,12 @@ import {
 export { CHAT_TRANSPORT_OPTIONS };
 export type { RemoteChatTransport, TransportProbe };
 
+type DataOperationResult = {
+  success: boolean;
+  message: string;
+  requiresRestart?: boolean;
+};
+
 /**
  * Owns every piece of Settings state, the config-load effect, and all the
  * mutation handlers that used to live inside the monolithic `Settings`
@@ -94,9 +100,13 @@ export function useSettingsData(profile?: string) {
 
   // Backup / Import state
   const [backingUp, setBackingUp] = useState(false);
-  const [backupResult, setBackupResult] = useState<string | null>(null);
+  const [backupResult, setBackupResult] = useState<DataOperationResult | null>(
+    null,
+  );
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<DataOperationResult | null>(
+    null,
+  );
 
   // Log viewer state
   const [logContent, setLogContent] = useState("");
@@ -651,34 +661,170 @@ export function useSettingsData(profile?: string) {
   async function handleBackup(): Promise<void> {
     setBackingUp(true);
     setBackupResult(null);
-    const result = await window.hermesAPI.runHermesBackup(profile);
-    setBackingUp(false);
-    if (result.success) {
-      setBackupResult(`Backup created: ${result.path || "success"}`);
-    } else {
-      setBackupResult(result.error || "Backup failed.");
+    try {
+      const result = await window.hermesAPI.exportAgentsOneBackup();
+      if (result.canceled) return;
+      if (result.success) {
+        setBackupResult({
+          success: true,
+          message: result.path
+            ? t("settings.backupExportCompleteAt", { path: result.path })
+            : t("settings.backupExportComplete"),
+        });
+      } else {
+        setBackupResult({
+          success: false,
+          message: result.error || t("settings.backupExportFailed"),
+        });
+      }
+    } catch (error) {
+      setBackupResult({
+        success: false,
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : t("settings.backupExportFailed"),
+      });
+    } finally {
+      setBackingUp(false);
     }
   }
 
   async function handleImport(): Promise<void> {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".tar.gz,.tgz,.zip";
+    input.accept = ".agents-one-backup";
     input.onchange = async (): Promise<void> => {
       const file = input.files?.[0];
       if (!file) return;
       setImporting(true);
       setImportResult(null);
-      const filePath = window.hermesAPI.getPathForFile(file);
-      const result = await window.hermesAPI.runHermesImport(filePath, profile);
-      setImporting(false);
-      if (result.success) {
-        setImportResult(t("settings.migrationComplete"));
-      } else {
-        setImportResult(result.error || t("settings.migrationFailed"));
+      try {
+        const filePath = window.hermesAPI.getPathForFile(file);
+        if (!filePath) {
+          setImportResult({
+            success: false,
+            message: t("settings.backupFilePathUnavailable"),
+          });
+          return;
+        }
+
+        const inspection =
+          await window.hermesAPI.inspectAgentsOneBackup(filePath);
+        if (!inspection.success) {
+          setImportResult({
+            success: false,
+            message: inspection.error || t("settings.backupInspectionFailed"),
+          });
+          return;
+        }
+
+        const summary = inspection.summary || {};
+        const count = (value: number | undefined): string =>
+          typeof value === "number" && Number.isFinite(value)
+            ? String(value)
+            : "—";
+        let createdAt = summary.createdAt || "—";
+        if (summary.createdAt) {
+          const parsedDate = new Date(summary.createdAt);
+          if (!Number.isNaN(parsedDate.getTime())) {
+            createdAt = parsedDate.toLocaleString();
+          }
+        }
+        const warnings = Array.isArray(summary.warnings)
+          ? summary.warnings.filter(
+              (warning): warning is string =>
+                typeof warning === "string" && warning.trim().length > 0,
+            )
+          : [];
+        const confirmation = [
+          t("settings.backupRestoreConfirmTitle"),
+          t("settings.backupSummaryCreatedAt", { value: createdAt }),
+          t("settings.backupSummaryVersion", {
+            value: summary.appVersion || "—",
+          }),
+          t("settings.backupSummaryCounts", {
+            profiles: count(summary.profileCount),
+            projects: count(summary.projectCount),
+            tasks: count(summary.taskCount),
+            chats: count(summary.chatCount),
+            collaborations: count(summary.collaborationCount),
+          }),
+          t("settings.backupSummaryConflicts", {
+            count: count(summary.conflictCount),
+          }),
+          "",
+          t("settings.dataExclusions"),
+          ...(warnings.length > 0
+            ? [
+                "",
+                t("settings.backupSummaryWarnings"),
+                ...warnings.map((warning) => `• ${warning}`),
+              ]
+            : []),
+          "",
+          t("settings.backupRestoreConfirmAction"),
+        ].join("\n");
+
+        if (!window.confirm(confirmation)) return;
+
+        const result = await window.hermesAPI.restoreAgentsOneBackup(filePath);
+        if (result.success) {
+          const warningCount =
+            typeof result.warningCount === "number"
+              ? result.warningCount
+              : result.warnings?.length || 0;
+          const requiresRestart = result.requiresRestart !== false;
+          setImportResult({
+            success: true,
+            requiresRestart,
+            message: [
+              t("settings.backupRestoreComplete", {
+                count: result.restoredFiles ?? 0,
+              }),
+              warningCount > 0
+                ? t("settings.backupRestoreWarnings", {
+                    count: warningCount,
+                  })
+                : null,
+              requiresRestart ? t("settings.backupRestartRequired") : null,
+            ]
+              .filter((line): line is string => Boolean(line))
+              .join(" "),
+          });
+        } else {
+          setImportResult({
+            success: false,
+            message: result.error || t("settings.backupRestoreFailed"),
+          });
+        }
+      } catch (error) {
+        setImportResult({
+          success: false,
+          message:
+            error instanceof Error && error.message
+              ? error.message
+              : t("settings.backupRestoreFailed"),
+        });
+      } finally {
+        setImporting(false);
       }
     };
     input.click();
+  }
+
+  async function handleRestartAfterRestore(): Promise<void> {
+    try {
+      await window.hermesAPI.relaunchApp();
+    } catch (error) {
+      setImportResult({
+        success: false,
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : t("settings.backupRestartFailed"),
+      });
+    }
   }
 
   async function loadLogs(): Promise<void> {
@@ -837,6 +983,7 @@ export function useSettingsData(profile?: string) {
     importResult,
     handleBackup,
     handleImport,
+    handleRestartAfterRestore,
     // logs
     logContent,
     logFile,

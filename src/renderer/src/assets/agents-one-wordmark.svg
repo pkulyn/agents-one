@@ -1,7 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 144" role="img" aria-labelledby="title">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 414 104" role="img" aria-labelledby="title description">
   <title id="title">Agents One</title>
+  <desc id="description">Agents One wordmark in Oxanium with the dawn ring replacing the letter O.</desc>
+  <!-- Letterforms derived from Oxanium 700 (SIL Open Font License 1.1). -->
   <defs>
-    <linearGradient id="dawn" x1="18" y1="18" x2="126" y2="126" gradientUnits="userSpaceOnUse">
+    <linearGradient id="dawn" x1="263" y1="23" x2="321" y2="82" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#2C92F5"/>
       <stop offset=".32" stop-color="#7064E8"/>
       <stop offset=".58" stop-color="#D976AA"/>
@@ -9,8 +11,7 @@
       <stop offset="1" stop-color="#2C92F5"/>
     </linearGradient>
   </defs>
-  <rect x="8" y="8" width="128" height="128" rx="31" fill="#fff" stroke="#E3E8F1" stroke-width="3"/>
-  <circle cx="72" cy="72" r="35" fill="none" stroke="#EDF1F6" stroke-width="17"/>
-  <circle cx="72" cy="72" r="35" fill="none" stroke="url(#dawn)" stroke-width="17"/>
-  <text x="164" y="88" fill="#171A21" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="54" font-weight="800">AGENTS ONE</text>
+  <path d="M18 27 223 690H443L648 27L630 0H510L468 140H198L156 0H36ZM237 270H429L341 560H325ZM740 168V522Q740 690 908 690H1197L1264 638V560H914Q884 560 884 530V160Q884 130 914 130H1140V290H1008V420H1284V0H908Q740 0 740 168ZM1430 0V690H1902V560H1574V420H1872V290H1574V130H1902V0ZM2036 0V690H2192L2466 237V690H2610V0H2454L2180 453V0ZM2718 560V690H3282V560H3072V0H2928V560ZM3360 52V130H3670Q3700 130 3700 160V232Q3700 261 3675 265L3480 305Q3360 329 3360 466V522Q3360 690 3528 690H3757L3824 638V560H3534Q3504 560 3504 530V465Q3504 437 3529 432L3724 393Q3844 369 3844 232V168Q3844 0 3676 0H3427Z" fill="#171A21" transform="translate(2 74) scale(.066 -.066)"/>
+  <circle cx="292" cy="52" r="24" fill="none" stroke="url(#dawn)" stroke-width="12"/>
+  <path d="M82 0V690H238L512 237V690H656V0H500L226 453V0ZM822 0V690H1294V560H966V420H1264V290H966V130H1294V0Z" fill="#171A21" transform="translate(325 74) scale(.066 -.066)"/>
 </svg>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Archive,
   Database,
   FileText,
   Info,
@@ -18,6 +19,7 @@ import PrivacyPane from "./PrivacyPane";
 import DataPane from "./DataPane";
 import AboutPane from "./AboutPane";
 import LogsPane from "./LogsPane";
+import ArchivePane from "./ArchivePane";
 
 export type SettingsSection =
   | "appearance"
@@ -25,9 +27,10 @@ export type SettingsSection =
   | "privacy"
   | "data"
   | "about"
-  | "logs";
+  | "logs"
+  | "archives";
 
-type NavGroup = "general" | "hermes";
+type NavGroup = "general";
 
 /** Left-nav sections, grouped. Each renders into the right-hand content pane. */
 const SETTINGS_NAV: ReadonlyArray<{
@@ -60,9 +63,15 @@ const SETTINGS_NAV: ReadonlyArray<{
     labelKey: "settings.nav.data",
     Icon: Database,
   },
-  { group: "hermes", id: "about", labelKey: "settings.nav.about", Icon: Info },
   {
-    group: "hermes",
+    group: "general",
+    id: "archives",
+    labelKey: "settings.nav.archives",
+    Icon: Archive,
+  },
+  { group: "general", id: "about", labelKey: "settings.nav.about", Icon: Info },
+  {
+    group: "general",
     id: "logs",
     labelKey: "settings.nav.logs",
     Icon: FileText,
@@ -71,7 +80,6 @@ const SETTINGS_NAV: ReadonlyArray<{
 
 const NAV_GROUP_ORDER: { id: NavGroup; labelKey: string }[] = [
   { id: "general", labelKey: "settings.nav.groups.general" },
-  { id: "hermes", labelKey: "settings.nav.groups.hermes" },
 ];
 
 /** Map a `/settings <name>` argument (and legacy anchor names) to a nav id. */
@@ -172,6 +180,7 @@ export default function SettingsModal({
             {section === "language" && <LanguagePane />}
             {section === "privacy" && <PrivacyPane />}
             {section === "data" && <DataPane />}
+            {section === "archives" && <ArchivePane profile={profile} />}
             {section === "about" && <AboutPane />}
             {section === "logs" && <LogsPane />}
           </SettingsDataContext.Provider>
