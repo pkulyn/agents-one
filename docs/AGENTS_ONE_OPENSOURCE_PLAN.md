@@ -59,23 +59,16 @@ transport: "gateway-v1" | "local-cli" | "local-api";
 
 ## 3. 执行计划
 
-### Phase 0：提交基线
+> ⚠️ 2026-08-14 用户确认执行顺序调整：**Phase 2（旧页面删除）前置，Phase 1（接入统一）后置**。
+> 原因：SSH/旧远程模式与旧页面支撑模块（dashboard/remote-skills/claw3d 等）深度耦合，先删旧页面可顺带清掉大部分 SSH 消费者，使 Phase 1 的 SSH/旧远程模式删除变小而干净。
 
-1. 检查 `git status`，将 8/6–8/13 未提交工作（备份恢复、Task Center 退役、定时任务收敛、品牌收口等）整理为语义化 commit 提交
-2. 打标签 `agents-one-pre-opensource-baseline` 作为回退点
-3. 全量验证：`npm.cmd test -- --run` + `npm.cmd run typecheck` + `npm.cmd run build` 全绿
+### Phase 0：提交基线（✅ 已完成 2026-08-14）
 
-### Phase 1：智能体接入统一（方案 A）
+1. ✅ 检查 `git status`，将 8/6–8/13 未提交工作整理为 9 个语义化 commit
+2. ✅ 打标签 `agents-one-pre-opensource-baseline`
+3. ✅ 全量验证：typecheck ✅ / test 203 文件 2010 通过 ✅ / build ✅
 
-4. **配置模型收敛**：`AgentRuntimeConfig` 新增 `transport` 必填字段；`location` 派生化；`kind` 降级为显示元数据；编写只读兼容迁移
-5. **SSH 模式移除**：删除 `ssh-tunnel.ts`、`ssh-remote.ts`、`ssh-options.ts` 及对应测试、IPC、preload API、i18n key；存量 SSH 配置标记"需重新设置"；审计 `askpass.ts`/`sudoCreds.ts` 与安装器的依赖关系，仅服务 SSH 的部分一并删除
-6. **主进程分支重构**：probe/start/cancel 收敛为 transport 三分支；内置 Hermes 归入 `local-api`（保留本地 API、API Key、`managed: builtin` 锁定）
-7. **旧远程模式代码删除**：删除 Hermes remote/dashboard 传输、OpenClaw Bridge 直连等多地址多 Token 兼容路径（含 NAS 测试用配置对应的代码路径）；远程只留 Gateway v1
-8. **注册表单统一**：AgentRuntimesPane 两段式（本地/远程 → 对应字段组）；远程只有 Gateway 地址 + Token + 连接测试（自动识别类型和能力标签）；本地 CLI 自动探测 PATH 并预填；内置 Hermes 管理页复用同一表单骨架；ConnectionPane 的代理/IPv4 设置移到设置页作为全局"网络"选项
-9. **Agents 页卡片增强**：transport 标签（Gateway / CLI / 本地 API）、连接摘要（脱敏）、能力标签、"设为默认"入口
-10. **定向测试 + 全量回归**：重点覆盖配置迁移、三类 transport 的 probe/start/cancel、存量 SSH/旧远程配置的降级提示
-
-### Phase 2：上游遗留与旧页面清理
+### Phase 2：上游遗留与旧页面清理（前置）
 
 11. **删除上游云服务**：`agent-sync.ts`、`hermes-account.ts`、`account-store.ts`、`wallet-store.ts`、`wallet-balances.ts`、`wallet-sync.ts` 及测试；移除 `ethers` 依赖
 12. **删除上游 UI 组件**：`FollowUsModal`、`HermesAccountModal`、`OAuthLoginModal`、`ProviderKeysSection`、`CommunityPane`、`ProfileWalletPane`、`VerifyWarningBanner`，并清理引用点

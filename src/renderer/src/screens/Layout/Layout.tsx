@@ -25,7 +25,6 @@ import {
 import { ActiveSessionsBar } from "./ActiveSessionsBar";
 import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
-import Discover from "../Discover/Discover";
 import ProfileSwitcher from "./ProfileSwitcher";
 import SidebarRecentSessions from "./SidebarRecentSessions";
 import QuickChatPanel from "./QuickChatPanel";
@@ -40,12 +39,6 @@ import {
 import TaskCollaborationWorkspace, {
   type CollaborationWorkspaceState,
 } from "./TaskCollaborationWorkspace";
-import Skills from "../Skills/Skills";
-import Memory from "../Memory/Memory";
-import Tools from "../Tools/Tools";
-import Gateway from "../Gateway/Gateway";
-import Office from "../Office/Office";
-import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
 import agentsOneLogo from "../../assets/agents-one-wordmark.svg";
@@ -71,15 +64,8 @@ import type {
 
 type View =
   | "chat"
-  | "discover"
   | "agents"
-  | "office"
-  | "providers"
-  | "skills"
-  | "memory"
-  | "tools"
-  | "schedules"
-  | "gateway";
+  | "schedules";
 
 const PINNED_NAV_ITEMS: {
   view: View;
@@ -397,14 +383,6 @@ function Layout(): React.JSX.Element {
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
     () => new Set<View>(["chat"]),
   );
-  // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
-  const [remoteMode, setRemoteMode] = useState(false);
-  // Set by the Capabilities screen's "Browse" actions to focus a Discover tab
-  // (Skills → Community, or MCPs). The nonce re-fires Discover's effect.
-  const [discoverFocus, setDiscoverFocus] = useState<{
-    kind: "skills" | "mcps";
-    nonce: number;
-  } | null>(null);
 
   const paneStyle = (target: View): React.CSSProperties => ({
     display: view === target ? "flex" : "none",
@@ -446,19 +424,6 @@ function Layout(): React.JSX.Element {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [openSettings, activeProfile]);
-
-  const focusDiscover = useCallback(
-    (kind: "skills" | "mcps") => {
-      setDiscoverFocus((prev) => ({ kind, nonce: (prev?.nonce ?? 0) + 1 }));
-      goTo("discover");
-    },
-    [goTo],
-  );
-
-  // Re-check remote mode on tab switch (picks up Settings changes)
-  useEffect(() => {
-    window.hermesAPI.isRemoteOnlyMode().then(setRemoteMode);
-  }, [view]);
 
   // Restore the last-activated profile on launch. The main process persists it
   // in ~/.hermes/active_profile (via `hermes profile use`), so the desktop
@@ -1513,68 +1478,15 @@ function Layout(): React.JSX.Element {
           </div>
         )}
 
-        {visitedViews.has("discover") && (
-          <div style={paneStyle("discover")}>
-            <Discover
-              profile={activeProfile}
-              visible={view === "discover"}
-              focusKind={discoverFocus ?? undefined}
-            />
-          </div>
-        )}
-
         {visitedViews.has("agents") && (
           <div style={paneStyle("agents")}>
             <Agents onChatWithRuntime={handleChatWithRuntime} />
           </div>
         )}
 
-        {visitedViews.has("office") && (
-          <div style={paneStyle("office")}>
-            <Office profile={activeProfile} visible={view === "office"} />
-          </div>
-        )}
-
-        {visitedViews.has("providers") && (
-          <div style={paneStyle("providers")}>
-            <Providers profile={activeProfile} visible={view === "providers"} />
-          </div>
-        )}
-
-        {visitedViews.has("skills") && (
-          <div style={paneStyle("skills")}>
-            <Skills profile={activeProfile} />
-          </div>
-        )}
-
-        {visitedViews.has("memory") && (
-          <div style={paneStyle("memory")}>
-            <Memory profile={activeProfile} />
-          </div>
-        )}
-
-        {visitedViews.has("tools") && (
-          <div style={paneStyle("tools")}>
-            <Tools
-              profile={activeProfile}
-              showPlatformToolsets
-              remoteMode={remoteMode}
-              visible={view === "tools"}
-              onBrowseSkills={() => focusDiscover("skills")}
-              onBrowseMcps={() => focusDiscover("mcps")}
-            />
-          </div>
-        )}
-
         {visitedViews.has("schedules") && (
           <div style={paneStyle("schedules")}>
             <Schedules profile={activeProfile} />
-          </div>
-        )}
-
-        {visitedViews.has("gateway") && (
-          <div style={paneStyle("gateway")}>
-            <Gateway profile={activeProfile} />
           </div>
         )}
 
