@@ -46,3 +46,7 @@ release/
 # Local Agents One dev artifacts
 .agents-one/
 .agents-one-*.log
+
+# Local test artifacts
+agents-one-test.md
+Hers-2-Connector-Adaptation-Package-*.zip
