@@ -17,7 +17,6 @@ import Soul from "../../screens/Soul/Soul";
 import { MemoryEntries } from "../../screens/Memory/MemoryEntries";
 import type { MemoryData } from "../../screens/Memory/types";
 import { AppModal, AppModalTitle } from "../modal/AppModal";
-import ProfileWalletPane from "./ProfileWalletPane";
 
 /** Mirrors the entry shape returned by `window.hermesAPI.listProfiles()`. */
 interface ProfileInfo {
@@ -526,8 +525,6 @@ export default function ProfileModal({
                 ) : null}
               </div>
             )}
-
-            {section === "wallet" && <ProfileWalletPane profile={profile.id} />}
 
             {section === "advanced" && (
               <div className="profile-modal-pane">

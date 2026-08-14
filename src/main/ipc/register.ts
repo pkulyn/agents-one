@@ -100,14 +100,6 @@ import {
   type McpServerInput,
 } from "../mcp-servers";
 import {
-  runHermesAuthLogin,
-  cancelHermesAuthLogin,
-  detectDeviceCode,
-} from "../hermes-auth";
-import { startDeviceLogin, cancelDeviceLogin } from "../hermes-account";
-import { syncAgents, getAgentSyncStatus } from "../agent-sync";
-import { getAccount, clearAccount } from "../account-store";
-import {
   isRemoteMode,
   isRemoteOnlyMode,
   sendMessage,
@@ -339,16 +331,6 @@ import {
   removeProfileAvatar,
   setProfileName,
 } from "../profile-meta";
-import {
-  createWallet,
-  deleteWallet,
-  importWallet,
-  listWallets,
-  renameWallet,
-} from "../wallet-store";
-import { syncWalletsForProfile } from "../wallet-sync";
-import { getTokenBalances } from "../wallet-balances";
-import type { ImportWalletInput } from "../../shared/wallets";
 import {
   readMemory,
   addMemoryEntry,
@@ -852,77 +834,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       return { success: false, error: (err as Error).message };
     }
   });
-
-  // OAuth provider sign-in — spawns `hermes auth add <provider> --type
-  // oauth`, streaming the CLI's output to the renderer's sign-in modal.
-  ipcMain.handle("oauth-login", (event, provider: string, profile?: string) => {
-    // Codex uses a device-code flow: it prints a URL + code instead
-    // of opening a browser. Watch the stream for that prompt, then
-    // open the page and pre-copy the code so the user just pastes.
-    let buffer = "";
-    let deviceHandled = false;
-    return runHermesAuthLogin(
-      provider,
-      (chunk) => {
-        // The user can close the modal mid-flow before cancelHermesAuthLogin
-        // tears down the subprocess; any send on a destroyed sender throws.
-        if (event.sender.isDestroyed()) return;
-        event.sender.send("oauth-login-progress", chunk);
-        if (deviceHandled) return;
-        buffer += chunk;
-        const device = detectDeviceCode(buffer);
-        if (device) {
-          deviceHandled = true;
-          openExternalUrl(device.url);
-          clipboard.writeText(device.code);
-          event.sender.send(
-            "oauth-login-progress",
-            `\n→ Code ${device.code} copied to clipboard — opening browser...\n`,
-          );
-        }
-      },
-      profile,
-    );
-  });
-  ipcMain.handle("oauth-login-cancel", () => cancelHermesAuthLogin());
-
-  // Hermes account sign-in — OAuth 2.0 Device Authorization Grant against the
-  // Hermes backend. Streams progress to the renderer's modal, opens the browser
-  // approval page once the code is issued, and stores the encrypted session.
-  ipcMain.handle("hermes-account-login", (event, profile?: string) =>
-    startDeviceLogin(profile, {
-      onCode: (info) => {
-        if (event.sender.isDestroyed()) return;
-        // Show the code in the modal, then open the browser to approve it.
-        event.sender.send("hermes-account-login-code", info);
-        openExternalUrl(info.verificationUriComplete);
-      },
-      emit: (chunk) => {
-        if (event.sender.isDestroyed()) return;
-        event.sender.send("hermes-account-login-progress", chunk);
-      },
-    }),
-  );
-  ipcMain.handle("hermes-account-login-cancel", () => cancelDeviceLogin());
-  ipcMain.handle("hermes-account-get", (_event, profile?: string) =>
-    getAccount(profile),
-  );
-  ipcMain.handle("hermes-account-logout", (_event, profile?: string) => {
-    clearAccount(profile);
-    return { success: true };
-  });
-
-  // Cloud agent sync — reconciles local profiles with the signed-in Agents One
-  // account's cloud agents. `agent-sync-updated` tells the renderer to reload
-  // its profile list (pull-created profiles appear without a manual refresh).
-  ipcMain.handle("agent-sync-run", async (event) => {
-    const result = await syncAgents();
-    if (!event.sender.isDestroyed()) {
-      event.sender.send("agent-sync-updated", result);
-    }
-    return result;
-  });
-  ipcMain.handle("agent-sync-status", () => getAgentSyncStatus());
 
   // Configuration (profile-aware)
   ipcMain.handle("get-locale", () => getAppLocale());
@@ -2304,37 +2215,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle("remove-profile-avatar", (_event, name: string) =>
     removeProfileAvatar(name),
-  );
-
-  // Profile wallets are desktop-local and profile-scoped. The renderer only
-  // receives public wallet metadata, plus a one-time recovery phrase immediately
-  // after create/import.
-  ipcMain.handle("list-wallets", (_event, profile?: string) =>
-    listWallets(profile),
-  );
-  ipcMain.handle("create-wallet", (_event, profile?: string, name?: string) =>
-    createWallet(profile, name),
-  );
-  ipcMain.handle("import-wallet", (_event, input: ImportWalletInput) =>
-    importWallet(input),
-  );
-  ipcMain.handle(
-    "rename-wallet",
-    (_event, profile: string | undefined, id: string, name: string) =>
-      renameWallet(profile, id, name),
-  );
-  ipcMain.handle(
-    "delete-wallet",
-    (_event, profile: string | undefined, id: string) =>
-      deleteWallet(profile, id),
-  );
-  // Cloud wallets provisioned by the backend for the profile's linked agent.
-  // Read-only here; the desktop no longer mints wallets locally.
-  ipcMain.handle("wallet-sync", (_event, profile?: string) =>
-    syncWalletsForProfile(profile),
-  );
-  ipcMain.handle("get-token-balances", (_event, address: string) =>
-    getTokenBalances(address),
   );
 
   // Memory

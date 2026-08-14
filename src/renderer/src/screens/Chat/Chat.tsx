@@ -27,7 +27,6 @@ import {
 import { useI18n } from "../../components/useI18n";
 import { buildChatTranscript } from "./transcriptUtils";
 import { ConfigHealthBanner } from "../../components/ConfigHealthBanner";
-import FollowUsModal from "../../components/FollowUsModal";
 import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   type Attachment,
@@ -1313,8 +1312,6 @@ function Chat({
           </div>
         </div>
       )}
-      {/* Show follow-us modal only after setup is complete */}
-      {active && connectionModeLoaded && readiness.ok && <FollowUsModal />}
     </div>
   );
 }

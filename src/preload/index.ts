@@ -5,24 +5,11 @@ import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
 import type {
-  ImportWalletInput,
-  ProfileWallet,
-  WalletMutationResult,
-  WalletSyncResult,
-} from "../shared/wallets";
-import type { TokenBalancesResponse } from "../shared/tokens";
-import type {
   MessagingPlatformsResponse,
   MessagingPlatformTestResponse,
   MessagingPlatformUpdate,
 } from "../shared/messaging-platforms";
 import type { ChatToolEvent } from "../shared/chat-stream";
-import type {
-  DeviceCodeInfo,
-  HermesAccount,
-  HermesAccountUser,
-} from "../shared/account";
-import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
 import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
 import type {
   AgentRuntimeDefinition,
@@ -190,64 +177,6 @@ const hermesAPI = {
     ipcRenderer.invoke("run-claw-migrate"),
 
   // OAuth provider sign-in
-  oauthLogin: (
-    provider: string,
-    profile?: string,
-  ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("oauth-login", provider, profile),
-  cancelOAuthLogin: (): Promise<boolean> =>
-    ipcRenderer.invoke("oauth-login-cancel"),
-  onOAuthLoginProgress: (callback: (chunk: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, chunk: unknown): void =>
-      callback(String(chunk));
-    ipcRenderer.on("oauth-login-progress", handler);
-    return () => ipcRenderer.removeListener("oauth-login-progress", handler);
-  },
-
-  // Hermes account sign-in (device authorization grant)
-  accountLogin: (
-    profile?: string,
-  ): Promise<{ success: boolean; user?: HermesAccountUser; error?: string }> =>
-    ipcRenderer.invoke("hermes-account-login", profile),
-  cancelAccountLogin: (): Promise<boolean> =>
-    ipcRenderer.invoke("hermes-account-login-cancel"),
-  onAccountLoginCode: (
-    callback: (info: DeviceCodeInfo) => void,
-  ): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, info: unknown): void =>
-      callback(info as DeviceCodeInfo);
-    ipcRenderer.on("hermes-account-login-code", handler);
-    return () =>
-      ipcRenderer.removeListener("hermes-account-login-code", handler);
-  },
-  onAccountLoginProgress: (callback: (chunk: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, chunk: unknown): void =>
-      callback(String(chunk));
-    ipcRenderer.on("hermes-account-login-progress", handler);
-    return () =>
-      ipcRenderer.removeListener("hermes-account-login-progress", handler);
-  },
-  getAccount: (profile?: string): Promise<HermesAccount | null> =>
-    ipcRenderer.invoke("hermes-account-get", profile),
-  accountLogout: (profile?: string): Promise<{ success: boolean }> =>
-    ipcRenderer.invoke("hermes-account-logout", profile),
-
-  // Cloud agent sync (profiles ↔ signed-in Agents One account)
-  syncAgents: (): Promise<AgentSyncResult> =>
-    ipcRenderer.invoke("agent-sync-run"),
-  getAgentSyncStatus: (): Promise<AgentSyncStatus> =>
-    ipcRenderer.invoke("agent-sync-status"),
-  onAgentSyncUpdated: (
-    callback: (result: AgentSyncResult) => void,
-  ): (() => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      result: unknown,
-    ): void => callback(result as AgentSyncResult);
-    ipcRenderer.on("agent-sync-updated", handler);
-    return () => ipcRenderer.removeListener("agent-sync-updated", handler);
-  },
-
   getLocale: (): Promise<AppLocale> => ipcRenderer.invoke("get-locale"),
   setLocale: (locale: AppLocale): Promise<AppLocale> =>
     ipcRenderer.invoke("set-locale", locale),
@@ -1033,38 +962,6 @@ const hermesAPI = {
     name: string,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("remove-profile-avatar", name),
-
-  listWallets: (profile?: string): Promise<ProfileWallet[]> =>
-    ipcRenderer.invoke("list-wallets", profile),
-
-  // Cloud wallets from the backend for the profile's linked agent.
-  syncWallets: (profile?: string): Promise<WalletSyncResult> =>
-    ipcRenderer.invoke("wallet-sync", profile),
-
-  createWallet: (
-    profile?: string,
-    name?: string,
-  ): Promise<WalletMutationResult> =>
-    ipcRenderer.invoke("create-wallet", profile, name),
-
-  importWallet: (input: ImportWalletInput): Promise<WalletMutationResult> =>
-    ipcRenderer.invoke("import-wallet", input),
-
-  renameWallet: (
-    profile: string | undefined,
-    id: string,
-    name: string,
-  ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("rename-wallet", profile, id, name),
-
-  deleteWallet: (
-    profile: string | undefined,
-    id: string,
-  ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("delete-wallet", profile, id),
-
-  getTokenBalances: (address: string): Promise<TokenBalancesResponse> =>
-    ipcRenderer.invoke("get-token-balances", address),
 
   // Memory
   readMemory: (
