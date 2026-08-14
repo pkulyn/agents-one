@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Download, X } from "lucide-react";
+import { Download, FileText, X } from "lucide-react";
 import { useLightboxClose } from "../hooks/useLightboxClose";
 import type { MediaToken } from "../screens/Chat/mediaUtils";
 import { useI18n } from "./useI18n";
@@ -143,14 +143,32 @@ export function DownloadChip({
 }: {
   token: MediaToken;
 }): React.JSX.Element {
+  const { t } = useI18n();
+  const localFile =
+    !token.src.startsWith("data:") && !/^https?:\/\//i.test(token.src);
   const onContextMenu = useMediaContextMenu(token);
+  const onFileContextMenu = (event: React.MouseEvent): void => {
+    event.preventDefault();
+    window.hermesAPI.showFileMenu(token.src, {
+      open: t("chat.fileMenu.open"),
+      copyPath: t("chat.fileMenu.copyPath"),
+      copyContent: t("chat.fileMenu.copyContent"),
+      reveal: t("chat.fileMenu.reveal"),
+    });
+  };
   return (
     <button
-      className="chat-media-file"
-      onClick={() => window.hermesAPI.saveMediaFile(token.src, token.name)}
-      onContextMenu={onContextMenu}
+      type="button"
+      className={`chat-media-file${localFile ? " chat-artifact-file" : ""}`}
+      title={token.src}
+      onClick={() =>
+        localFile
+          ? window.hermesAPI.openFileInEditor(token.src)
+          : window.hermesAPI.saveMediaFile(token.src, token.name)
+      }
+      onContextMenu={localFile ? onFileContextMenu : onContextMenu}
     >
-      <Download size={14} />
+      {localFile ? <FileText size={14} /> : <Download size={14} />}
       {token.name}
     </button>
   );
