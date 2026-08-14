@@ -65,7 +65,7 @@ describe("createCronJob", () => {
 });
 
 describe("parseCronListOutput", () => {
-  it("parses the Hermes cron list table used by SSH profiles", async () => {
+  it("parses the Hermes cron list table used by remote profiles", async () => {
     const { parseCronListOutput } = await import("../src/main/cronjobs");
 
     const jobs = parseCronListOutput(`

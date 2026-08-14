@@ -8,7 +8,7 @@ The same value fixes two symptoms at once: the context gauge showing a wrong heu
 
 The override is stored per-model in `models.json` as `contextLength` and mirrored into `config.yaml`'s `model.context_length` whenever a model is activated — the single value both the gauge and the agent read.
 
-Per-model storage (set in the Models add/edit dialog) survives switching between models. On activation, [[src/main/config.ts#setModelConfig]] writes or clears `model.context_length` from the activated model's library entry; an absent override clears any stale value left by a previously-active model. Remote/SSH activation does not propagate the override yet (local-mode only).
+Per-model storage (set in the Models add/edit dialog) survives switching between models. On activation, [[src/main/config.ts#setModelConfig]] writes or clears `model.context_length` from the activated model's library entry; an absent override clears any stale value left by a previously-active model. Remote activation does not propagate the override yet (local-mode only).
 
 ## Gauge resolution order
 

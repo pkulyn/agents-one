@@ -25,12 +25,6 @@ vi.mock("./config", () => ({
   getModelConfig: vi.fn(() => ({})),
   readEnv: vi.fn(() => ({})),
 }));
-vi.mock("./ssh-tunnel", () => ({
-  getSshTunnelUrl: vi.fn(() => null),
-  isSshTunnelActive: vi.fn(() => false),
-  isSshTunnelHealthy: vi.fn(() => false),
-  startSshTunnel: vi.fn(),
-}));
 vi.mock("./utils", () => ({
   pidIsAliveAs: vi.fn(() => false),
   stripAnsi: (s: string) => s,

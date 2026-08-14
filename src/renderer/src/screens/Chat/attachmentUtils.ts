@@ -25,9 +25,9 @@ export interface ProcessFilesOptions {
   // Session id used to scope staged-paste attachments.  May be empty
   // before the agent has assigned one — staging falls back to "default".
   sessionId?: string;
-  // True when the chat is running against a non-local gateway (SSH or
-  // remote-URL mode).  Path-ref attachments require the file path to
-  // exist on the same host as the agent, so binaries are blocked.
+  // True when the chat is running against a non-local gateway (remote-URL
+  // mode). Path-ref attachments require the file path to exist on the same
+  // host as the agent, so binaries are blocked.
   remoteMode?: boolean;
 }
 

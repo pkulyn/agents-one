@@ -385,11 +385,11 @@ export function setActiveProfile(name: string): void {
   }
 
   // The CLI validates against LOCAL profiles and raises when the name exists
-  // only on the SSH/remote host (or when there is no local install at all).
+  // only on the remote host (or when there is no local install at all).
   // That failure is swallowed above, so before this fallback the selection
   // silently never persisted: ~/.hermes/active_profile kept its old value,
-  // every relaunch reset the UI to `default`, and activeSshProfile() scoped
-  // the unified SSH dashboard's data to the wrong profile. The desktop's
+  // every relaunch reset the UI to `default`, and activeProfileName() scoped
+  // the unified remote dashboard's data to the wrong profile. The desktop's
   // source of truth is the local active_profile file (getActiveProfileNameSync),
   // so when the CLI didn't move it, write it directly — `name` is already
   // validated, and "default" is a plain value here (readers treat a missing

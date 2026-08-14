@@ -48,7 +48,7 @@ interface HarnessApi {
   activeTurnRef?: MutableRefObject<ActiveTurn | null>;
   messages?: ChatMessage[];
   send?: (text: string) => Promise<boolean>;
-  setConnectionMode?: Dispatch<SetStateAction<"local" | "remote" | "ssh">>;
+  setConnectionMode?: Dispatch<SetStateAction<"local" | "remote">>;
   setMessages?: Dispatch<SetStateAction<ChatMessage[]>>;
   setModel?: Dispatch<SetStateAction<string>>;
   setProvider?: Dispatch<SetStateAction<string>>;
@@ -77,7 +77,7 @@ function Harness({
 }: {
   api: HarnessApi;
   fallbackOnUnavailable?: boolean;
-  initialConnectionMode?: "local" | "remote" | "ssh";
+  initialConnectionMode?: "local" | "remote";
   onDashboardUnavailable?: (reason: string) => void;
   setUsage?: SetUsageMock;
 }): null {
@@ -91,9 +91,9 @@ function Harness({
   ]);
   const [model, setModel] = useState("bad-model");
   const [provider, setProvider] = useState("bad-provider");
-  const [connectionMode, setConnectionMode] = useState<
-    "local" | "remote" | "ssh"
-  >(initialConnectionMode);
+  const [connectionMode, setConnectionMode] = useState<"local" | "remote">(
+    initialConnectionMode,
+  );
   const activeTurnRef = useRef<ActiveTurn | null>({ ...activeBadTurn });
   const transport = useDashboardChatTransport({
     activeTurnRef,
@@ -422,14 +422,14 @@ describe("useDashboardChatTransport unavailable fallback (issue #667)", () => {
     return startDashboard;
   }
 
-  it("latches unavailable on SSH and fails fast on later sends, notifying once", async () => {
+  it("latches unavailable on remote and fails fast on later sends, notifying once", async () => {
     const startDashboard = mockStartDashboard();
     const onUnavailable = vi.fn();
     const api: HarnessApi = {};
     render(
       <Harness
         api={api}
-        initialConnectionMode="ssh"
+        initialConnectionMode="remote"
         fallbackOnUnavailable
         onDashboardUnavailable={onUnavailable}
       />,
@@ -458,7 +458,7 @@ describe("useDashboardChatTransport unavailable fallback (issue #667)", () => {
     const startDashboard = mockStartDashboard();
     const api: HarnessApi = {};
     render(
-      <Harness api={api} initialConnectionMode="ssh" fallbackOnUnavailable />,
+      <Harness api={api} initialConnectionMode="remote" fallbackOnUnavailable />,
     );
 
     await act(async () => {
@@ -467,6 +467,9 @@ describe("useDashboardChatTransport unavailable fallback (issue #667)", () => {
     expect(startDashboard).toHaveBeenCalledTimes(1);
 
     // Switching connection clears the sticky flag → the dashboard is retried.
+    await act(async () => {
+      api.setConnectionMode?.("local");
+    });
     await act(async () => {
       api.setConnectionMode?.("remote");
     });

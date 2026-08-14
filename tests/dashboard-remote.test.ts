@@ -4,7 +4,6 @@ import type { ConnectionConfig } from "../src/main/config";
 import {
   probeDashboardWebSocket,
   remoteDashboardConnectionFromConfig,
-  sshDashboardConnectionFromTunnel,
 } from "../src/main/dashboard";
 
 let server: http.Server | null = null;
@@ -42,15 +41,6 @@ function remoteConnection(
     remoteUrl: "https://hermes.example/v1/",
     apiKey: "dashboard-token",
     remoteChatTransport: "auto",
-    sshChatTransport: "auto",
-    ssh: {
-      host: "",
-      port: 22,
-      username: "",
-      keyPath: "",
-      remotePort: 8642,
-      localPort: 18642,
-    },
     ...overrides,
   };
 }
@@ -101,51 +91,7 @@ describe("remoteDashboardConnectionFromConfig", () => {
   it("ignores non-remote modes", () => {
     expect(
       remoteDashboardConnectionFromConfig(
-        remoteConnection({ mode: "ssh", remoteUrl: "https://hermes.example" }),
-      ),
-    ).toBeNull();
-  });
-});
-
-describe("sshDashboardConnectionFromTunnel", () => {
-  it("builds an upstream dashboard websocket URL from an SSH tunnel", () => {
-    const connection = sshDashboardConnectionFromTunnel(
-      remoteConnection({ mode: "ssh" }),
-      "http://127.0.0.1:18642/",
-      "ssh-dashboard-token",
-    );
-
-    expect(connection).toMatchObject({
-      baseUrl: "http://127.0.0.1:18642",
-      mode: "ssh",
-      token: "ssh-dashboard-token",
-      wsUrl: "ws://127.0.0.1:18642/api/ws?token=ssh-dashboard-token",
-    });
-  });
-
-  it("returns null when SSH dashboard tunnel settings are incomplete", () => {
-    expect(
-      sshDashboardConnectionFromTunnel(
-        remoteConnection({ mode: "ssh" }),
-        "",
-        "ssh-dashboard-token",
-      ),
-    ).toBeNull();
-    expect(
-      sshDashboardConnectionFromTunnel(
-        remoteConnection({ mode: "ssh" }),
-        "http://127.0.0.1:18642",
-        "",
-      ),
-    ).toBeNull();
-  });
-
-  it("ignores non-SSH modes", () => {
-    expect(
-      sshDashboardConnectionFromTunnel(
-        remoteConnection({ mode: "remote" }),
-        "http://127.0.0.1:18642",
-        "ssh-dashboard-token",
+        remoteConnection({ mode: "local", remoteUrl: "https://hermes.example" }),
       ),
     ).toBeNull();
   });

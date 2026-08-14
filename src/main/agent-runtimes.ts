@@ -12,6 +12,7 @@ import {
   type AgentRuntimeProbe,
   type AgentRuntimeRun,
   type AgentRuntimeTaskInput,
+  type HermesRuntimeMode,
 } from "../shared/agent-runtimes";
 import {
   getConnectionConfig,
@@ -50,7 +51,6 @@ import { randomUUID } from "crypto";
 import { getSecret } from "./secrets";
 import { invalidateSecretsCache, setEnvValue } from "./config";
 import { redactSensitiveText } from "../shared/redaction";
-import { testSshConnection } from "./ssh-tunnel";
 import {
   OutboundRemoteWorkspaceGateway,
   createRemoteWorkspaceGrant,
@@ -1319,10 +1319,15 @@ function runtimeHermesConnectionFrom(
   if (!isRecord(value)) {
     throw new Error("Hermes connection configuration is invalid.");
   }
+  // Legacy SSH mode was removed — the unified remote transport is Gateway v1.
+  // Old persisted configs keep their stored fields untouched; on read they are
+  // coerced to `remote` and flagged for re-setup (see normalizeUserRuntime).
   const mode = value.mode;
   if (mode !== "local" && mode !== "remote" && mode !== "ssh") {
     throw new Error("Hermes connection mode is invalid.");
   }
+  const migratedFromSsh = mode === "ssh";
+  const effectiveMode: HermesRuntimeMode = migratedFromSsh ? "remote" : mode;
   const chatTransport = value.chatTransport;
   if (
     chatTransport !== undefined &&
@@ -1332,49 +1337,13 @@ function runtimeHermesConnectionFrom(
   ) {
     throw new Error("Hermes chat transport is invalid.");
   }
-  const rawSsh = value.ssh;
-  if (rawSsh !== undefined && !isRecord(rawSsh)) {
-    throw new Error("Hermes SSH configuration is invalid.");
-  }
-  const sshPort = rawSsh?.port;
-  const sshRemotePort = rawSsh?.remotePort;
-  const sshLocalPort = rawSsh?.localPort;
-  for (const [label, port] of [
-    ["SSH", sshPort],
-    ["SSH remote", sshRemotePort],
-    ["SSH local", sshLocalPort],
-  ] as const) {
-    if (
-      port !== undefined &&
-      (typeof port !== "number" ||
-        !Number.isInteger(port) ||
-        port < 1 ||
-        port > 65535)
-    ) {
-      throw new Error(`${label} port is invalid.`);
-    }
-  }
-  const ssh = rawSsh
-    ? {
-        host: optionalString(rawSsh.host, 255),
-        port: sshPort as number | undefined,
-        username: optionalString(rawSsh.username, 255),
-        keyPath: optionalString(rawSsh.keyPath, 4096),
-        remotePort: sshRemotePort as number | undefined,
-        localPort: sshLocalPort as number | undefined,
-      }
-    : undefined;
-  if (mode === "remote" && !endpoint) {
+  if (effectiveMode === "remote" && !migratedFromSsh && !endpoint) {
     throw new Error("Remote Hermes server address is required.");
   }
-  if (mode === "ssh" && (!ssh?.host || !ssh.username || !ssh.remotePort)) {
-    throw new Error("SSH host, username, and remote port are required.");
-  }
   return {
-    mode,
+    mode: effectiveMode,
     dashboardUrl: optionalString(value.dashboardUrl, 2048),
     chatTransport: chatTransport as "auto" | "dashboard" | "legacy" | undefined,
-    ...(ssh ? { ssh } : {}),
   };
 }
 
@@ -1440,14 +1409,21 @@ function normalizeUserRuntime(value: unknown): AgentRuntimeDefinition | null {
     return null;
   }
   try {
-    const config = runtimeConfigFrom(value.config);
+    const rawConfig = value.config;
+    // Legacy SSH runtimes are readable but must be re-set up on Gateway v1
+    // before they can connect again (plan D4: SSH 删除).
+    const legacySshMode =
+      isRecord(rawConfig) &&
+      isRecord(rawConfig.hermes) &&
+      rawConfig.hermes.mode === "ssh";
+    const config = runtimeConfigFrom(rawConfig);
     const runtime: AgentRuntimeDefinition = {
       id,
       name,
       kind: kind as AgentRuntimeDefinition["kind"],
       location,
       enabled: value.enabled !== false,
-      needsReauthorization: value.needsReauthorization === true,
+      needsReauthorization: value.needsReauthorization === true || legacySshMode,
       managed: "user",
       config,
     };
@@ -1522,13 +1498,13 @@ function remoteRuntimeForCredential(runtimeId: string): AgentRuntimeDefinition {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (
     !runtime ||
-    (runtime.location !== "remote" && runtime.config.hermes?.mode !== "ssh") ||
+    runtime.location !== "remote" ||
     (!isAgentsOneGatewayRuntime(runtime) &&
       runtime.kind !== "openclaw" &&
       (runtime.kind !== "hermes" || runtime.managed === "builtin"))
   ) {
     throw new Error(
-      "Only user-managed remote or SSH Hermes and OpenClaw runtimes may store a credential.",
+      "Only user-managed remote Hermes and OpenClaw runtimes may store a credential.",
     );
   }
   return runtime;
@@ -1562,10 +1538,7 @@ function runtimeAuth(
   if (runtime.kind === "openclaw" && runtime.location === "remote") {
     return openClawAuth(runtime.id);
   }
-  if (
-    runtime.kind === "hermes" &&
-    (runtime.location === "remote" || runtime.config.hermes?.mode === "ssh")
-  ) {
+  if (runtime.kind === "hermes" && runtime.location === "remote") {
     const token =
       runtime.managed === "builtin"
         ? getConnectionConfig().apiKey.trim()
@@ -1598,7 +1571,7 @@ export function getAgentRuntimeCredentialStatus(runtimeId: string): {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!runtime) throw new Error("Runtime was not found.");
   if (
-    (runtime.location !== "remote" && runtime.config.hermes?.mode !== "ssh") ||
+    runtime.location !== "remote" ||
     (!isAgentsOneGatewayRuntime(runtime) &&
       runtime.kind !== "openclaw" &&
       (runtime.kind !== "hermes" || runtime.managed === "builtin"))
@@ -2044,16 +2017,7 @@ async function probeRuntimeDefinition(
             runtime.config.endpoint || "",
             transientAuth?.bearerToken || runtimeAuth(runtime)?.bearerToken,
           )
-        : mode === "ssh"
-          ? await testSshConnection({
-              host: customHermes.ssh?.host || "",
-              port: customHermes.ssh?.port || 22,
-              username: customHermes.ssh?.username || "",
-              keyPath: customHermes.ssh?.keyPath || "",
-              remotePort: customHermes.ssh?.remotePort || 8642,
-              localPort: customHermes.ssh?.localPort || 19642,
-            })
-          : await testRemoteConnection("http://127.0.0.1:8642");
+        : await testRemoteConnection("http://127.0.0.1:8642");
     return {
       runtimeId: runtime.id,
       state: healthy ? "healthy" : "unreachable",
@@ -2062,10 +2026,7 @@ async function probeRuntimeDefinition(
       ...(healthy
         ? {}
         : {
-            message:
-              mode === "ssh"
-                ? "SSH 隧道或远程 Hermes 健康检查失败。"
-                : `${mode === "local" ? "本地" : "远程"} Hermes 健康检查失败。`,
+            message: `${mode === "local" ? "本地" : "远程"} Hermes 健康检查失败。`,
           }),
     };
   }

@@ -78,23 +78,9 @@ vi.mock("../src/main/config", () => ({
     mode: "remote" as const,
     remoteUrl: "http://test-api.example.com",
     apiKey: "test-key",
-    ssh: {
-      host: "",
-      port: 22,
-      username: "",
-      keyPath: "",
-      remotePort: 8642,
-      localPort: 18642,
-    },
   }),
 }));
 
-vi.mock("../src/main/ssh-tunnel", () => ({
-  getSshTunnelUrl: () => null,
-  isSshTunnelActive: () => false,
-  isSshTunnelHealthy: () => Promise.resolve(false),
-  startSshTunnel: () => Promise.resolve(),
-}));
 
 vi.mock("../src/main/utils", () => ({
   stripAnsi: (s: string) => s,

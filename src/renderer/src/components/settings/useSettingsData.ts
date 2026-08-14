@@ -67,7 +67,7 @@ export function useSettingsData(profile?: string) {
   const migrationLogRef = useRef<HTMLPreElement>(null);
 
   // Connection mode
-  const [connMode, setConnMode] = useState<"local" | "remote" | "ssh">("local");
+  const [connMode, setConnMode] = useState<"local" | "remote">("local");
   const [connRemoteUrl, setConnRemoteUrl] = useState("");
   const [connApiKey, setConnApiKey] = useState("");
   const [connApiKeyMask, setConnApiKeyMask] = useState("");
@@ -78,21 +78,15 @@ export function useSettingsData(profile?: string) {
   const [connHasDashboardToken, setConnHasDashboardToken] = useState(false);
   const [remoteChatTransport, setRemoteChatTransport] =
     useState<RemoteChatTransport>("auto");
-  const [sshChatTransport, setSshChatTransport] =
-    useState<RemoteChatTransport>("auto");
   const [connTesting, setConnTesting] = useState(false);
   const [connStatus, setConnStatus] = useState<string | null>(null);
+  // True when a persisted SSH connection was migrated to the unified remote
+  // mode and still needs a Gateway v1 URL + token (plan D4: SSH 删除).
+  const [migratedFromSsh, setMigratedFromSsh] = useState(false);
   const connLoaded = useRef(false);
   const [apiServerKeyMissing, setApiServerKeyMissing] = useState(false);
   const [generatingKey, setGeneratingKey] = useState(false);
 
-  // SSH connection state
-  const [sshHost, setSshHost] = useState("");
-  const [sshPort, setSshPort] = useState("");
-  const [sshUser, setSshUser] = useState("");
-  const [sshKeyPath, setSshKeyPath] = useState("");
-  const [sshRemotePort, setSshRemotePort] = useState("");
-  const [sshLocalPort, setSshLocalPort] = useState("");
   const [transportProbe, setTransportProbe] = useState<TransportProbe | null>(
     null,
   );
@@ -168,12 +162,12 @@ export function useSettingsData(profile?: string) {
     setHermesVersion(getCachedVersion(cacheKey));
     setAppVersion(aVersion);
     setConnMode(conn.mode);
+    setMigratedFromSsh(conn.migratedFromSsh === true);
     setConnRemoteUrl(conn.remoteUrl);
     setConnDashboardUrl(conn.remoteDashboardUrl || "");
     setConnHasApiKey(conn.hasApiKey);
     setConnHasDashboardToken(conn.hasRemoteDashboardToken || false);
     setRemoteChatTransport(conn.remoteChatTransport ?? "auto");
-    setSshChatTransport(conn.sshChatTransport ?? "auto");
     const mask = conn.hasApiKey ? makeApiKeyMask(conn.apiKeyLength) : "";
     setConnApiKeyMask(mask);
     setConnApiKey(mask);
@@ -182,12 +176,6 @@ export function useSettingsData(profile?: string) {
       : "";
     setConnDashboardTokenMask(dashboardMask);
     setConnDashboardToken(dashboardMask);
-    setSshHost(conn.ssh?.host || "");
-    setSshPort(conn.ssh?.port ? String(conn.ssh.port) : "");
-    setSshUser(conn.ssh?.username || "");
-    setSshKeyPath(conn.ssh?.keyPath || "");
-    setSshRemotePort(conn.ssh?.remotePort ? String(conn.ssh.remotePort) : "");
-    setSshLocalPort(conn.ssh?.localPort ? String(conn.ssh.localPort) : "");
     setApiServerKeyMissing(!keyStatus.hasKey);
     setAutoUpgradeEnabled(autoUpgrade);
     connLoaded.current = true;
@@ -400,31 +388,16 @@ export function useSettingsData(profile?: string) {
     return connDashboardToken.trim();
   }
 
-  async function saveSshConnectionMode(): Promise<void> {
-    await window.hermesAPI.setSshConfig(
-      sshHost.trim(),
-      parseInt(sshPort, 10) || 22,
-      sshUser.trim(),
-      sshKeyPath.trim(),
-      parseInt(sshRemotePort, 10) || 8642,
-      parseInt(sshLocalPort, 10) || 18642,
-    );
-  }
-
   const refreshTransportProbe = useCallback(async (): Promise<void> => {
     if (connMode === "local") {
       setTransportProbe(null);
       return;
     }
-    const preference =
-      connMode === "ssh" ? sshChatTransport : remoteChatTransport;
+    const preference = remoteChatTransport;
     if (preference === "legacy") {
       setTransportProbe({
         label: t("settings.chatTransport.activeLegacy"),
-        detail:
-          connMode === "ssh"
-            ? t("settings.chatTransport.legacySshDisabled")
-            : t("settings.chatTransport.legacyRemoteDisabled"),
+        detail: t("settings.chatTransport.legacyRemoteDisabled"),
         kind: "muted",
         loading: false,
       });
@@ -483,52 +456,45 @@ export function useSettingsData(profile?: string) {
         loading: false,
       });
     }
-  }, [connMode, profile, remoteChatTransport, sshChatTransport, t]);
+  }, [connMode, profile, remoteChatTransport, t]);
 
   useEffect(() => {
     void refreshTransportProbe();
   }, [refreshTransportProbe]);
 
   async function handleSaveConnection(): Promise<void> {
-    if (connMode === "ssh") {
-      await saveSshConnectionMode();
-    } else {
-      const apiKey = getConnectionApiKeyForSave();
-      const dashboardToken = getConnectionDashboardTokenForSave();
-      await window.hermesAPI.setConnectionConfig(
-        connMode,
-        connRemoteUrl,
-        apiKey,
-        connDashboardUrl,
-        dashboardToken,
-      );
-      if (apiKey !== undefined) {
-        const hasApiKey = apiKey.length > 0;
-        setConnHasApiKey(hasApiKey);
-        if (hasApiKey) {
-          const mask = makeApiKeyMask(apiKey.length);
-          setConnApiKeyMask(mask);
-          setConnApiKey(mask);
-        } else {
-          setConnApiKeyMask("");
-        }
-      }
-      if (dashboardToken !== undefined) {
-        const hasToken = dashboardToken.length > 0;
-        setConnHasDashboardToken(hasToken);
-        if (hasToken) {
-          const mask = makeApiKeyMask(dashboardToken.length);
-          setConnDashboardTokenMask(mask);
-          setConnDashboardToken(mask);
-        } else {
-          setConnDashboardTokenMask("");
-        }
+    const apiKey = getConnectionApiKeyForSave();
+    const dashboardToken = getConnectionDashboardTokenForSave();
+    await window.hermesAPI.setConnectionConfig(
+      connMode,
+      connRemoteUrl,
+      apiKey,
+      connDashboardUrl,
+      dashboardToken,
+    );
+    if (apiKey !== undefined) {
+      const hasApiKey = apiKey.length > 0;
+      setConnHasApiKey(hasApiKey);
+      if (hasApiKey) {
+        const mask = makeApiKeyMask(apiKey.length);
+        setConnApiKeyMask(mask);
+        setConnApiKey(mask);
+      } else {
+        setConnApiKeyMask("");
       }
     }
-    await window.hermesAPI.setConnectionChatTransports(
-      remoteChatTransport,
-      sshChatTransport,
-    );
+    if (dashboardToken !== undefined) {
+      const hasToken = dashboardToken.length > 0;
+      setConnHasDashboardToken(hasToken);
+      if (hasToken) {
+        const mask = makeApiKeyMask(dashboardToken.length);
+        setConnDashboardTokenMask(mask);
+        setConnDashboardToken(mask);
+      } else {
+        setConnDashboardTokenMask("");
+      }
+    }
+    await window.hermesAPI.setConnectionChatTransports(remoteChatTransport);
     await loadConfig();
     setConnStatus("Saved");
     setTimeout(() => setConnStatus(null), 2000);
@@ -536,60 +502,33 @@ export function useSettingsData(profile?: string) {
   }
 
   async function handleChatTransportChange(
-    mode: "remote" | "ssh",
     transport: RemoteChatTransport,
   ): Promise<void> {
-    const nextRemote = mode === "remote" ? transport : remoteChatTransport;
-    const nextSsh = mode === "ssh" ? transport : sshChatTransport;
-    if (mode === "remote") {
-      setRemoteChatTransport(transport);
-    } else {
-      setSshChatTransport(transport);
-    }
-    await window.hermesAPI.setConnectionChatTransports(nextRemote, nextSsh);
+    setRemoteChatTransport(transport);
+    await window.hermesAPI.setConnectionChatTransports(transport);
     setConnStatus("Saved");
     setTimeout(() => setConnStatus(null), 2000);
     void refreshTransportProbe();
   }
 
   async function handleTestConnection(): Promise<void> {
-    if (connMode === "ssh") {
-      if (!sshHost.trim() || !sshUser.trim()) {
-        setConnStatus(t("settings.sshErrorRequiredSimple"));
-        return;
-      }
-      setConnTesting(true);
-      setConnStatus(null);
-      const ok = await window.hermesAPI.testSshConnection(
-        sshHost.trim(),
-        parseInt(sshPort, 10) || 22,
-        sshUser.trim(),
-        sshKeyPath.trim(),
-        parseInt(sshRemotePort, 10) || 8642,
-      );
-      setConnTesting(false);
-      setConnStatus(
-        ok ? t("settings.sshSuccess") : t("settings.sshErrorFailedSimple"),
-      );
-    } else {
-      const url = connRemoteUrl.trim();
-      if (!url) {
-        setConnStatus(t("settings.remoteErrorRequiredSimple"));
-        return;
-      }
-      setConnTesting(true);
-      setConnStatus(null);
-      const ok = await window.hermesAPI.testRemoteConnection(
-        url,
-        getConnectionApiKeyForSave(),
-      );
-      setConnTesting(false);
-      setConnStatus(
-        ok
-          ? t("settings.remoteSuccess")
-          : t("settings.remoteErrorFailedSimple"),
-      );
+    const url = connRemoteUrl.trim();
+    if (!url) {
+      setConnStatus(t("settings.remoteErrorRequiredSimple"));
+      return;
     }
+    setConnTesting(true);
+    setConnStatus(null);
+    const ok = await window.hermesAPI.testRemoteConnection(
+      url,
+      getConnectionApiKeyForSave(),
+    );
+    setConnTesting(false);
+    setConnStatus(
+      ok
+        ? t("settings.remoteSuccess")
+        : t("settings.remoteErrorFailedSimple"),
+    );
   }
 
   async function handleSwitchToLocal(): Promise<void> {
@@ -617,10 +556,7 @@ export function useSettingsData(profile?: string) {
       connDashboardUrl.trim(),
       dashboardToken,
     );
-    await window.hermesAPI.setConnectionChatTransports(
-      remoteChatTransport,
-      sshChatTransport,
-    );
+    await window.hermesAPI.setConnectionChatTransports(remoteChatTransport);
     if (apiKey !== undefined) {
       const hasApiKey = apiKey.length > 0;
       setConnHasApiKey(hasApiKey);
@@ -632,20 +568,6 @@ export function useSettingsData(profile?: string) {
         setConnApiKeyMask("");
       }
     }
-    await loadConfig();
-    setConnStatus("Saved");
-    setTimeout(() => setConnStatus(null), 2000);
-    void refreshTransportProbe();
-  }
-
-  async function handleSwitchToSsh(): Promise<void> {
-    setConnMode("ssh");
-    if (!connLoaded.current) return;
-    await saveSshConnectionMode();
-    await window.hermesAPI.setConnectionChatTransports(
-      remoteChatTransport,
-      sshChatTransport,
-    );
     await loadConfig();
     setConnStatus("Saved");
     setTimeout(() => setConnStatus(null), 2000);
@@ -945,31 +867,19 @@ export function useSettingsData(profile?: string) {
     connTesting,
     connStatus,
     connLoaded,
+    migratedFromSsh,
     apiServerKeyMissing,
     setApiServerKeyMissing,
     generatingKey,
     setGeneratingKey,
     setConnStatus,
     remoteChatTransport,
-    sshChatTransport,
     transportProbe,
     handleSaveConnection,
     handleChatTransportChange,
     handleTestConnection,
     handleSwitchToLocal,
     handleSwitchToRemote,
-    handleSwitchToSsh,
-    // ssh
-    sshHost,
-    setSshHost,
-    sshPort,
-    setSshPort,
-    sshUser,
-    setSshUser,
-    sshKeyPath,
-    setSshKeyPath,
-    sshRemotePort,
-    setSshRemotePort,
     // backup / data
     backingUp,
     backupResult,

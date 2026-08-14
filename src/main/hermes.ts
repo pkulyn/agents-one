@@ -33,12 +33,6 @@ import {
   readEnv,
 } from "./config";
 import {
-  getSshTunnelUrl,
-  isSshTunnelActive,
-  isSshTunnelHealthy,
-  ensureSshTunnel,
-} from "./ssh-tunnel";
-import {
   pidIsAliveAs,
   stripAnsi,
   profileHome,
@@ -125,11 +119,6 @@ export function normaliseRemoteUrl(raw: string): string {
 
 export function getApiUrl(profile?: string): string {
   const conn = getConnectionConfig();
-  if (conn.mode === "ssh") {
-    const sshUrl = getSshTunnelUrl();
-    if (sshUrl) return normaliseRemoteUrl(sshUrl);
-    throw new Error("SSH tunnel is not active");
-  }
   if (conn.mode === "remote" && conn.remoteUrl) {
     return normaliseRemoteUrl(conn.remoteUrl);
   }
@@ -141,29 +130,16 @@ export function getApiUrl(profile?: string): string {
 }
 
 export function isRemoteMode(): boolean {
-  const mode = getConnectionConfig().mode;
-  return mode === "remote" || mode === "ssh";
+  return getConnectionConfig().mode === "remote";
 }
 
-/** True only for pure remote HTTP — SSH tunnel has full local access via SSH exec */
+/** True only for pure remote HTTP (SSH mode was removed). */
 export function isRemoteOnlyMode(): boolean {
   return getConnectionConfig().mode === "remote";
 }
 
-// Cached API key read from the remote .env when SSH tunnel starts
-let _sshRemoteApiKey = "";
-
-export function setSshRemoteApiKey(key: string): void {
-  _sshRemoteApiKey = key;
-}
-
 export function getRemoteAuthHeader(): Record<string, string> {
   const conn = getConnectionConfig();
-  if (conn.mode === "ssh") {
-    if (_sshRemoteApiKey)
-      return { Authorization: `Bearer ${_sshRemoteApiKey}` };
-    return {};
-  }
   if (conn.mode === "remote" && conn.apiKey) {
     return { Authorization: `Bearer ${conn.apiKey}` };
   }
@@ -175,7 +151,7 @@ function getApiAuthHeaders(profile?: string): Record<string, string> {
     ...getRemoteAuthHeader(),
   };
   // Local API server key (API_SERVER_KEY in the profile's .env /
-  // config.yaml) only applies in local mode — in remote/SSH mode the
+  // config.yaml) only applies in local mode — in remote mode the
   // remote endpoint's own auth header is authoritative.
   if (!isRemoteMode()) {
     const apiServerKey = getApiServerKey(profile);
@@ -280,15 +256,6 @@ function resolveRemoteApiKey(url: string, apiKey?: string): string {
   return conn.apiKey;
 }
 
-export async function ensureSshTunnelIfNeeded(): Promise<void> {
-  const conn = getConnectionConfig();
-  if (
-    conn.mode === "ssh" &&
-    (!isSshTunnelActive() || !(await isSshTunnelHealthy()))
-  ) {
-    await ensureSshTunnel(conn.ssh);
-  }
-}
 
 function audioExtensionForMime(mimeType: string): string {
   const type = mimeType.split(";", 1)[0].trim().toLowerCase();
@@ -1568,7 +1535,7 @@ function sendMessageViaApi(
   });
   req.on("timeout", () => {
     finish(
-      "API request timed out. Check the SSH tunnel and remote Hermes gateway.",
+      "API request timed out. Check the remote Hermes gateway.",
     );
     req.destroy();
   });
@@ -3137,7 +3104,7 @@ function gatewayCliCommandArgs(
 
 export function startGatewayDetailed(profile?: string): GatewayStartResult {
   // Defensive: the local gateway is never the right thing to spawn in
-  // remote/SSH mode — the user is pointing at an off-machine server.
+  // remote mode — the user is pointing at an off-machine server.
   // Callers should already gate, but several IPC handlers historically
   // forgot to (issue #266), and reaching `spawn(HERMES_PYTHON, …)` when
   // there's no local hermes-agent install produces an uncaught ENOENT
@@ -3146,7 +3113,7 @@ export function startGatewayDetailed(profile?: string): GatewayStartResult {
     const error =
       "The local gateway can only be started in local mode. Switch to local mode, or start the gateway on the remote Hermes host.";
     console.warn(
-      "[gateway] startGateway() called in remote/SSH mode — refusing local spawn",
+      "[gateway] startGateway() called in remote mode — refusing local spawn",
     );
     return { success: false, running: false, error };
   }
@@ -3584,7 +3551,7 @@ export function restartGateway(
   stopTimeoutMs = 5000,
 ): Promise<boolean> {
   // Same defensive gate as startGateway — the local gateway has no role
-  // in remote/SSH mode. Cheap to check; catches IPC paths that don't
+  // in remote mode. Cheap to check; catches IPC paths that don't
   // wrap their restart calls in an isRemoteMode() check.
   if (isRemoteMode()) return Promise.resolve(false);
 

@@ -160,8 +160,8 @@ describe("Sessions tab live refresh (#322)", () => {
   it("keeps visible sessions when a quiet refresh transiently returns empty", async () => {
     const api = installHermesAPI([
       {
-        id: "ssh-session",
-        title: "SSH session",
+        id: "remote-session",
+        title: "Remote session",
         startedAt: Math.floor(Date.now() / 1000),
         source: "api_server",
         messageCount: 3,
@@ -171,7 +171,7 @@ describe("Sessions tab live refresh (#322)", () => {
 
     render(<Sessions {...baseProps} visible={true} />);
     await act(async () => {});
-    expect(screen.getByText("SSH session")).toBeTruthy();
+    expect(screen.getByText("Remote session")).toBeTruthy();
 
     api.syncSessionCache.mockResolvedValue([]);
 
@@ -179,7 +179,7 @@ describe("Sessions tab live refresh (#322)", () => {
       vi.advanceTimersByTime(SESSIONS_REFRESH_MS);
     });
 
-    expect(screen.getByText("SSH session")).toBeTruthy();
+    expect(screen.getByText("Remote session")).toBeTruthy();
     expect(screen.queryByText("sessions.empty")).toBeNull();
   });
 

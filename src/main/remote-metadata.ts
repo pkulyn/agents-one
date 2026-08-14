@@ -16,8 +16,8 @@ function stringValue(value: unknown): string {
 function remoteStatus(config: RemoteSessionConfig): Promise<RemoteRecord> {
   return new Promise((resolve, reject) => {
     // Shared builder from remote-sessions so /api/status carries the same
-    // `?profile=` scoping as every other dashboard request — on the unified
-    // SSH machine dashboard an unscoped status reads the DEFAULT profile's
+    // `?profile=` scoping as every other dashboard request — on the remote
+    // machine dashboard an unscoped status reads the DEFAULT profile's
     // hermes home/version instead of the requested one.
     const parsed = new URL(dashboardApiUrl(config, "/api/status"));
     const client = parsed.protocol === "https:" ? https : http;

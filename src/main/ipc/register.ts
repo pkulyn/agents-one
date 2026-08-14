@@ -85,10 +85,7 @@ import {
   endAgentsOneTemporaryWriteLock,
 } from "../restore-write-lock";
 import { closeDbConnection } from "../db";
-import {
-  ensureLocalDashboardCompatibility,
-  ensureSshDashboardCompatibility,
-} from "../hermes-agent-compat";
+import { ensureLocalDashboardCompatibility } from "../hermes-agent-compat";
 import {
   addMcpServer,
   installMcpCatalogEntry,
@@ -112,7 +109,6 @@ import {
   testRemoteConnection,
   restartGateway,
   notifyProfileSwitched,
-  setSshRemoteApiKey,
   resolvePendingClarify,
 } from "../hermes";
 import {
@@ -121,14 +117,6 @@ import {
   stopDashboard,
   stopAllDashboards,
 } from "../dashboard";
-import {
-  startSshTunnel,
-  ensureSshTunnel,
-  getSshTunnelUrl,
-  stopSshTunnel,
-  testSshConnection,
-  isSshTunnelActive,
-} from "../ssh-tunnel";
 import {
   getClaw3dStatus,
   setupClaw3d,
@@ -379,61 +367,6 @@ import {
   updateRemoteMessagingPlatform,
 } from "../messaging-platforms";
 import { getAppLocale, setAppLocale } from "../locale";
-import {
-  sshListInstalledSkills,
-  sshGetSkillContent,
-  sshInstallSkill,
-  sshUninstallSkill,
-  sshListBundledSkills,
-  sshReadMemory,
-  sshAddMemoryEntry,
-  sshUpdateMemoryEntry,
-  sshRemoveMemoryEntry,
-  sshWriteUserProfile,
-  sshReadSoul,
-  sshWriteSoul,
-  sshResetSoul,
-  sshGetToolsets,
-  sshGetPlatformToolsets,
-  sshSetToolsetEnabled,
-  sshSetMessagingPlatformToolsetEnabled,
-  sshReadEnv,
-  sshSetEnvValue,
-  sshGetConfigValue,
-  sshSetConfigValue,
-  sshGetHermesHome,
-  sshGetModelConfig,
-  sshSetModelConfig,
-  sshListSessions,
-  sshGetSessionMessages,
-  sshSearchSessions,
-  sshListProfiles,
-  sshCreateProfile,
-  sshDeleteProfile,
-  sshGatewayStatus,
-  sshStartGateway,
-  sshStopGateway,
-  sshEnsureDashboard,
-  sshEnsureApiServerKey,
-  sshWaitGatewayApiReady,
-  resetSshDashboardAvailability,
-  sshReadRemoteApiKey,
-  sshResolveApiServerPort,
-  sshReadDirectory,
-  sshGetHermesVersion,
-  sshReadLogs,
-  sshGetPlatformEnabled,
-  sshSetPlatformEnabled,
-  sshListCachedSessions,
-  sshRunDoctor,
-  sshListModels,
-  sshAddModel,
-  sshRemoveModel,
-  sshUpdateModel,
-  sshRunUpdate,
-  sshRunDump,
-  sshDiscoverMemoryProviders,
-} from "../ssh-remote";
 
 export interface IpcContext {
   activeRuns: Map<string, () => void>;
@@ -447,153 +380,14 @@ const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Agents One";
 
 type RemoteSessionBridgeConfig = RemoteSessionConfig;
 
-async function getSshDashboardSessionConfig(
-  conn: ConnectionConfig,
-  profile?: string,
-): Promise<RemoteSessionBridgeConfig> {
-  if (conn.mode !== "ssh" || !conn.ssh)
-    throw new Error("SSH connection is not configured.");
-  // Start the UNIFIED machine `hermes dashboard` on the remote and tunnel to it.
-  // It serves /api/* + the /api/ws chat WS for EVERY profile (scoped via
-  // ?profile=, see RemoteSessionConfig.profile), NOT /v1 — chat over /v1 is the
-  // gateway api_server (prepareSshTunnel gateway branch). All profiles share one
-  // dashboard port + token so the single global SSH tunnel never thrashes. The
-  // /api/* routes are gated by the dashboard session token (the api_server key is
-  // rejected there). Returns null when the remote can't run the dashboard (no
-  // web dist); we throw so callers fall back to legacy.
-  const dash = await sshEnsureDashboard(conn.ssh, profile);
-  if (!dash)
-    throw new Error(
-      "Hermes dashboard is unavailable on this SSH remote (needs Node + the dashboard web dist).",
-    );
-  await ensureSshTunnel({ ...conn.ssh, remotePort: dash.port });
-  const remoteUrl = getSshTunnelUrl();
-  if (!remoteUrl) throw new Error("SSH tunnel is not active.");
-  setSshRemoteApiKey(dash.token);
-  // The tunnel + token are the shared machine dashboard's; scope data to the
-  // requested profile via `?profile=` (handled in dashboardApiUrl).
-  return { remoteUrl, apiKey: dash.token, profile };
-}
-
-// Most session/metadata IPC calls don't carry a profile, but the unified SSH
+// Most session/metadata IPC calls don't carry a profile, but the remote
 // machine dashboard serves EVERY profile — an unscoped request silently
 // returns the DEFAULT profile's data (wrong session list / transcript for a
 // named-profile user). Fall back to the locally persisted active profile so
 // `dashboardApiUrl` appends `?profile=` ("default" needs no param and is
 // skipped there; explicit params like `profile=all` are never overridden).
-function activeSshProfile(profile?: string): string {
+function activeProfileName(profile?: string): string {
   return profile?.trim() || getActiveProfileNameSync();
-}
-
-/**
- * Establish the SSH tunnel to the correct endpoint and cache the matching
- * credential — the remote dashboard (/api/* + chat WS; dashboard-token auth)
- * when available, else the gateway api_server (/v1; api_server-key auth) —
- * the dashboard is NOT a /v1 superset, the two are disjoint. EVERY SSH
- * tunnel entry point routes through this so they never target different ports
- * on the single global tunnel and thrash it (each `startSshTunnel` first calls
- * `stopSshTunnel`, so a 9119↔8642 flip-flop yields "SSH tunnel is not active").
- */
-async function prepareSshTunnel(
-  conn: ConnectionConfig,
-  profile?: string,
-): Promise<void> {
-  if (conn.mode !== "ssh" || !conn.ssh) return;
-  const dash =
-    conn.sshChatTransport === "legacy"
-      ? null
-      : await sshEnsureDashboard(conn.ssh, profile);
-  if (dash) {
-    await ensureSshTunnel({ ...conn.ssh, remotePort: dash.port });
-    setSshRemoteApiKey(dash.token);
-    return;
-  }
-  // Gateway /v1 path — the no-build chat transport used when the remote has no
-  // dashboard web dist (gateway-only installs) or when transport is "legacy".
-  // SSH mode, unlike local mode, never provisioned the remote api_server, so a
-  // fresh server had no /v1 endpoint at all (no API_SERVER_KEY → api_server
-  // refuses to bind; API_SERVER_ENABLED unset → gateway never loads it). Ensure
-  // both, then tunnel to the api_server and use that key.
-  const { key, created } = await sshEnsureApiServerKey(conn.ssh, profile);
-  const remotePort = await sshResolveApiServerPort(conn.ssh, profile);
-  const running = await sshGatewayStatus(conn.ssh, profile);
-  let apiReady = true;
-  if (!running) {
-    // Down → start it. (A cold tunnel must not take over a healthy gateway,
-    // hence the status check; but a stopped gateway must be started.)
-    await sshStartGateway(conn.ssh, profile);
-    apiReady = await sshWaitGatewayApiReady(conn.ssh, remotePort);
-  } else if (created) {
-    // Up, but predates the key/enable we just wrote, so its api_server isn't
-    // bound. Restart so it picks up the new env, then wait for /health.
-    await sshStopGateway(conn.ssh, profile);
-    await sshStartGateway(conn.ssh, profile);
-    apiReady = await sshWaitGatewayApiReady(conn.ssh, remotePort);
-  }
-  // A false readiness result must FAIL setup — opening the tunnel and caching
-  // the key anyway reports success while /v1 isn't bound, so the first chat
-  // hits a confusing connection error later instead of a clear one here.
-  if (!apiReady)
-    throw new Error(
-      `Remote gateway api_server did not become ready on port ${remotePort} ` +
-        "(/health never answered). Check the gateway logs on the remote and retry.",
-    );
-  await ensureSshTunnel({ ...conn.ssh, remotePort });
-  setSshRemoteApiKey(key);
-}
-
-async function withSshDashboardSessions<T>(
-  conn: ConnectionConfig,
-  dashboardOperation: (config: RemoteSessionBridgeConfig) => Promise<T>,
-  legacyOperation?: () => Promise<T> | T,
-  profile?: string,
-): Promise<T> {
-  if (conn.sshChatTransport === "legacy") {
-    if (legacyOperation) return legacyOperation();
-    throw new Error("This SSH session operation requires dashboard transport.");
-  }
-  try {
-    return await dashboardOperation(
-      await getSshDashboardSessionConfig(conn, profile),
-    );
-  } catch (err) {
-    if (conn.sshChatTransport === "auto" && legacyOperation)
-      return legacyOperation();
-    throw err;
-  }
-}
-
-async function withSshDashboardModelLibrary<T>(
-  conn: ConnectionConfig,
-  dashboardOperation: (config: RemoteSessionBridgeConfig) => Promise<T>,
-  legacyOperation: () => Promise<T> | T,
-  profile?: string,
-): Promise<T> {
-  if (conn.mode !== "ssh" || !conn.ssh)
-    throw new Error("SSH connection is not configured.");
-  if (conn.sshChatTransport === "legacy") return legacyOperation();
-  try {
-    // getSshDashboardSessionConfig starts the remote dashboard (which natively
-    // serves /api/model/*) and tunnels to it — no gateway web_server patch /
-    // restart dance needed.
-    return await dashboardOperation(
-      await getSshDashboardSessionConfig(conn, profile),
-    );
-  } catch (err) {
-    // Auto transport degrades to the legacy CLI/file path when the dashboard
-    // can't be reached — e.g. a gateway-only remote that can't run the
-    // dashboard (no Node / no web dist). A forced "dashboard" transport
-    // rethrows so the failure is visible.
-    if (conn.sshChatTransport === "auto") {
-      console.warn(
-        "[ssh-model-library] Dashboard unavailable; " +
-          "falling back to legacy SSH transport",
-        err,
-      );
-      return legacyOperation();
-    }
-    throw err;
-  }
 }
 
 async function withRemoteDashboard<T>(
@@ -616,14 +410,6 @@ async function getActiveDashboardMediaConfig(): Promise<RemoteSessionBridgeConfi
     if (conn.remoteChatTransport === "legacy") return null;
     if (!conn.remoteUrl.trim() || !conn.apiKey.trim()) return null;
     return { remoteUrl: conn.remoteUrl, apiKey: conn.apiKey };
-  }
-  if (conn.mode === "ssh") {
-    if (conn.sshChatTransport === "legacy") return null;
-    try {
-      return await getSshDashboardSessionConfig(conn);
-    } catch {
-      return null;
-    }
   }
   return null;
 }
@@ -736,71 +522,21 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("get-hermes-version", async () => {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
-      return remoteGetHermesVersion(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) => remoteGetHermesVersion(config),
-        () => sshGetHermesVersion(conn.ssh),
-        activeSshProfile(),
-      );
+      return remoteGetHermesVersion(getRemoteDashboardSessionConfig(conn));
     return getHermesVersion();
   });
   ipcMain.handle("refresh-hermes-version", async () => {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
-      return remoteGetHermesVersion(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) => remoteGetHermesVersion(config),
-        () => sshGetHermesVersion(conn.ssh),
-        activeSshProfile(),
-      );
+      return remoteGetHermesVersion(getRemoteDashboardSessionConfig(conn));
     clearVersionCache();
     return getHermesVersion();
   });
   ipcMain.handle("run-hermes-doctor", () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshRunDoctor(conn.ssh);
     return runHermesDoctor();
   });
   ipcMain.handle("run-hermes-update", async (event) => {
     try {
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh) {
-        event.sender.send("install-progress", {
-          step: 1,
-          totalSteps: 1,
-          title: "Updating remote Hermes Agent",
-          detail: "Running hermes update over SSH...",
-          log: "Running hermes update over SSH...\n",
-        });
-        await sshRunUpdate(conn.ssh);
-        const compat = await ensureSshDashboardCompatibility(conn.ssh);
-        if (!compat.ok) {
-          event.sender.send("install-progress", {
-            step: 1,
-            totalSteps: 1,
-            title: "Updating remote Hermes Agent",
-            detail: "Dashboard compatibility check needs attention.",
-            log: `Dashboard compatibility warning: ${
-              compat.error ? `${compat.detail}: ${compat.error}` : compat.detail
-            }\n`,
-          });
-        }
-        await sshStartGateway(conn.ssh);
-        await startSshTunnel(conn.ssh);
-        // Authoritative SSH credential is the remote API_SERVER_KEY (see
-        // getSshDashboardSessionConfig); conn.apiKey is remote-mode-only.
-        const key = (await sshReadRemoteApiKey(conn.ssh)).trim();
-        setSshRemoteApiKey(key);
-        return { success: true };
-      }
       await runHermesUpdate((progress: InstallProgress) => {
         event.sender.send("install-progress", progress);
       });
@@ -845,7 +581,6 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
       return remoteReadEnv(getRemoteDashboardSessionConfig(conn, profile));
-    if (conn.mode === "ssh" && conn.ssh) return sshReadEnv(conn.ssh, profile);
     return readEnv(profile);
   });
 
@@ -895,10 +630,6 @@ export function registerIpcHandlers(context: IpcContext): void {
           value,
         );
       }
-      if (conn.mode === "ssh" && conn.ssh) {
-        await sshSetEnvValue(conn.ssh, key, value, profile);
-        return true;
-      }
       setEnvValue(key, value, profile);
       // Restart gateway so it picks up the new API key.
       // The earlier condition had a precedence bug —
@@ -926,8 +657,6 @@ export function registerIpcHandlers(context: IpcContext): void {
         getRemoteDashboardSessionConfig(conn, profile),
         key,
       );
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshGetConfigValue(conn.ssh, key, profile);
     return getConfigValue(key, profile);
   });
 
@@ -942,10 +671,6 @@ export function registerIpcHandlers(context: IpcContext): void {
           value,
         );
       }
-      if (conn.mode === "ssh" && conn.ssh) {
-        await sshSetConfigValue(conn.ssh, key, value, profile);
-        return true;
-      }
       setConfigValue(key, value, profile);
       return true;
     },
@@ -954,16 +679,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("get-hermes-home", (_event, profile?: string) => {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
-      return remoteGetHermesHome(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) => remoteGetHermesHome(config),
-        () => sshGetHermesHome(conn.ssh, profile),
-        activeSshProfile(profile),
-      );
+      return remoteGetHermesHome(getRemoteDashboardSessionConfig(conn, profile));
     return getHermesHome(profile);
   });
 
@@ -974,18 +690,11 @@ export function registerIpcHandlers(context: IpcContext): void {
         conn,
         () =>
           remoteGetModelConfig(
-            getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+            getRemoteDashboardSessionConfig(conn, profile),
           ),
         () => {
           throw new Error("Remote dashboard model config is unavailable.");
         },
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) => remoteGetModelConfig(config),
-        () => sshGetModelConfig(conn.ssh!, profile),
-        activeSshProfile(profile),
       );
     return getModelConfig(profile);
   });
@@ -1005,7 +714,7 @@ export function registerIpcHandlers(context: IpcContext): void {
           conn,
           () =>
             remoteSetModelConfig(
-              getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+              getRemoteDashboardSessionConfig(conn, profile),
               provider,
               model,
               baseUrl,
@@ -1013,33 +722,6 @@ export function registerIpcHandlers(context: IpcContext): void {
           () => {
             throw new Error("Remote dashboard model config is unavailable.");
           },
-        );
-      }
-      if (conn.mode === "ssh" && conn.ssh) {
-        return withSshDashboardSessions(
-          conn,
-          (config) => remoteSetModelConfig(config, provider, model, baseUrl),
-          async () => {
-            const prev = await sshGetModelConfig(conn.ssh!, profile);
-            await sshSetModelConfig(
-              conn.ssh!,
-              provider,
-              model,
-              baseUrl,
-              profile,
-            );
-            if (
-              (await sshGatewayStatus(conn.ssh!)) &&
-              (prev.provider !== provider ||
-                prev.model !== model ||
-                prev.baseUrl !== baseUrl)
-            ) {
-              await sshStopGateway(conn.ssh!);
-              await sshStartGateway(conn.ssh!);
-            }
-            return true;
-          },
-          activeSshProfile(profile),
         );
       }
       const prev = getModelConfig(profile);
@@ -1076,11 +758,6 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Auxiliary (side-task) model routing
   ipcMain.handle("get-auxiliary-config", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      // TODO: SSH path for auxiliary config (requires sshGetAuxiliaryConfig)
-      return [];
-    }
     return getAuxiliaryConfig(profile);
   });
 
@@ -1092,11 +769,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       cfg: { provider: string; model: string; baseUrl: string },
       profile?: string,
     ) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh) {
-        // TODO: SSH path for auxiliary config (requires sshSetAuxiliaryTask)
-        return false;
-      }
       setAuxiliaryTask(task, cfg, profile);
 
       // Restart gateway so it picks up the new auxiliary config
@@ -1109,11 +781,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
 
   ipcMain.handle("reset-auxiliary-config", async (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      // TODO: SSH path for auxiliary config (requires sshResetAuxiliaryConfig)
-      return false;
-    }
     resetAuxiliaryToAuto(profile);
 
     // Restart gateway so it picks up the reset
@@ -1125,7 +792,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
 
   // API_SERVER_KEY management — lets the renderer detect a missing key and
-  // generate one with a button click (local mode) or show instructions (remote/SSH).
+  // generate one with a button click (local mode) or show instructions (remote).
   // Additive shape: `hasKey` stays the required primary field; `providerId` /
   // `checkedAt` are optional extras for a follow-up Settings/Gateway UI.
   ipcMain.handle("get-api-server-key-status", (_event, profile?: string) =>
@@ -1161,11 +828,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
-  // Connection mode (local / remote / ssh)
+  // Connection mode (local / remote)
   ipcMain.handle("is-remote-mode", () => isRemoteMode());
   ipcMain.handle("is-remote-only-mode", () => isRemoteOnlyMode());
   ipcMain.handle("get-connection-config", () => getPublicConnectionConfig());
-  ipcMain.handle("is-ssh-tunnel-active", () => isSshTunnelActive());
 
   // Agent runtimes deliberately expose only non-secret definitions. Hermes
   // credentials stay in the existing protected connection configuration.
@@ -1288,7 +954,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     "set-connection-config",
     (
       _event,
-      mode: "local" | "remote" | "ssh",
+      mode: "local" | "remote",
       remoteUrl: string,
       apiKey?: string,
       remoteDashboardUrl?: string,
@@ -1314,7 +980,6 @@ export function registerIpcHandlers(context: IpcContext): void {
             ? remoteDashboardToken
             : existing.remoteDashboardToken,
       });
-      resetSshDashboardAvailability();
       notifyConnectionConfigChanged();
       return true;
     },
@@ -1322,37 +987,12 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     "set-connection-chat-transports",
-    (_event, remoteChatTransport: unknown, sshChatTransport: unknown) => {
+    (_event, remoteChatTransport: unknown) => {
       const current = getConnectionConfig();
       setConnectionConfig({
         ...current,
         remoteChatTransport: normalizeRemoteChatTransport(remoteChatTransport),
-        sshChatTransport: normalizeRemoteChatTransport(sshChatTransport),
       });
-      resetSshDashboardAvailability();
-      notifyConnectionConfigChanged();
-      return true;
-    },
-  );
-
-  ipcMain.handle(
-    "set-ssh-config",
-    (
-      _event,
-      host: string,
-      port: number,
-      username: string,
-      keyPath: string,
-      remotePort: number,
-      localPort: number,
-    ) => {
-      const current = getConnectionConfig();
-      setConnectionConfig({
-        ...current,
-        mode: "ssh",
-        ssh: { host, port, username, keyPath, remotePort, localPort },
-      });
-      resetSshDashboardAvailability();
       notifyConnectionConfigChanged();
       return true;
     },
@@ -1362,42 +1002,6 @@ export function registerIpcHandlers(context: IpcContext): void {
     "test-remote-connection",
     (_event, url: string, apiKey?: string) => testRemoteConnection(url, apiKey),
   );
-
-  ipcMain.handle(
-    "test-ssh-connection",
-    (
-      _event,
-      host: string,
-      port: number,
-      username: string,
-      keyPath: string,
-      remotePort: number,
-    ) =>
-      testSshConnection({
-        host,
-        port,
-        username,
-        keyPath,
-        remotePort,
-        localPort: 19642,
-      }),
-  );
-
-  ipcMain.handle("start-ssh-tunnel", async () => {
-    const conn = getConnectionConfig();
-    if (conn.mode !== "ssh") return false;
-    // Route through the shared preparer so this targets the SAME endpoint
-    // (dashboard 9119, else gateway api_server) as every other SSH path — a
-    // bare ensureSshTunnel(conn.ssh) here would tunnel to the gateway port and
-    // fight the dashboard tunnel.
-    await prepareSshTunnel(conn);
-    return true;
-  });
-
-  ipcMain.handle("stop-ssh-tunnel", () => {
-    stopSshTunnel();
-    return true;
-  });
 
   // Chat — lazy-start gateway on first message
   ipcMain.handle(
@@ -1429,14 +1033,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       const chatRunId = runId || `run-${randomUUID()}`;
       if (!isRemoteMode() && !isGatewayRunning(profile)) {
         startGateway(profile);
-      }
-
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh) {
-        // Tunnel to the dashboard (/api/* + chat WS; NOT /v1) and cache its
-        // token, else the gateway api_server (/v1) — via the shared preparer
-        // so all SSH paths agree on one tunnel target.
-        await prepareSshTunnel(conn, profile);
       }
 
       // Abort only a prior run under the SAME runId (a re-send in the same
@@ -1763,10 +1359,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Gateway
   ipcMain.handle("start-gateway", async () => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      await sshStartGateway(conn.ssh);
-      return { success: true, running: true };
-    }
     if (conn.mode === "remote") {
       // The remote server runs its own gateway; nothing to start locally.
       // Without this guard we'd fall through to `startGateway()` and
@@ -1782,10 +1374,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
   ipcMain.handle("stop-gateway", async () => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      await sshStopGateway(conn.ssh);
-      return true;
-    }
     if (conn.mode === "remote") {
       // No local gateway to stop in pure remote mode.
       return true;
@@ -1797,19 +1385,12 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
   ipcMain.handle("restart-gateway", async (_event, profile?: string) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      await sshStopGateway(conn.ssh);
-      await sshStartGateway(conn.ssh);
-      return sshGatewayStatus(conn.ssh);
-    }
     if (conn.mode === "remote") {
       return false;
     }
     return restartGateway(profile);
   });
   ipcMain.handle("gateway-status", () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshGatewayStatus(conn.ssh);
     return isGatewayRunning();
   });
 
@@ -1827,19 +1408,11 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Platform toggles (config.yaml platforms section)
   ipcMain.handle("get-platform-enabled", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshGetPlatformEnabled(conn.ssh, profile);
     return getPlatformEnabled(profile);
   });
   ipcMain.handle(
     "set-platform-enabled",
     async (_event, platform: string, enabled: boolean, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh) {
-        await sshSetPlatformEnabled(conn.ssh, platform, enabled, profile);
-        return true;
-      }
       setPlatformEnabled(platform, enabled, profile);
       // Restart gateway so it picks up the new platform config
       if (isGatewayRunning(profile)) {
@@ -1855,22 +1428,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       const conn = getConnectionConfig();
       if (conn.mode === "remote") {
         return fetchRemoteMessagingPlatforms();
-      }
-      if (conn.mode === "ssh" && conn.ssh) {
-        const [envData, enabled, running, platformToolsets] = await Promise.all(
-          [
-            sshReadEnv(conn.ssh, profile),
-            sshGetPlatformEnabled(conn.ssh, profile),
-            sshGatewayStatus(conn.ssh),
-            sshGetPlatformToolsets(conn.ssh, profile),
-          ],
-        );
-        return buildDesktopMessagingPlatforms(
-          envData,
-          enabled,
-          running,
-          platformToolsets,
-        );
       }
       const running = isGatewayRunning(profile);
       return buildDesktopMessagingPlatforms(
@@ -1889,24 +1446,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       const conn = getConnectionConfig();
       if (conn.mode === "remote") {
         return updateRemoteMessagingPlatform(platform, update);
-      }
-      if (conn.mode === "ssh" && conn.ssh) {
-        await applyMessagingPlatformUpdate(
-          platform,
-          update,
-          (key, value) => sshSetEnvValue(conn.ssh!, key, value, profile),
-          (key, enabled) =>
-            sshSetPlatformEnabled(conn.ssh!, key, enabled, profile),
-          (platformKey, toolsetKey, enabled) =>
-            sshSetMessagingPlatformToolsetEnabled(
-              conn.ssh!,
-              platformKey,
-              toolsetKey,
-              enabled,
-              profile,
-            ),
-        );
-        return { ok: true, platform };
       }
       await applyMessagingPlatformUpdate(
         platform,
@@ -1935,25 +1474,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       if (conn.mode === "remote") {
         return testRemoteMessagingPlatform(platform);
       }
-      if (conn.mode === "ssh" && conn.ssh) {
-        const [envData, enabled, running, platformToolsets] = await Promise.all(
-          [
-            sshReadEnv(conn.ssh, profile),
-            sshGetPlatformEnabled(conn.ssh, profile),
-            sshGatewayStatus(conn.ssh),
-            sshGetPlatformToolsets(conn.ssh, profile),
-          ],
-        );
-        return testDesktopMessagingPlatform(
-          platform,
-          buildDesktopMessagingPlatforms(
-            envData,
-            enabled,
-            running,
-            platformToolsets,
-          ),
-        );
-      }
       const running = isGatewayRunning(profile);
       return testDesktopMessagingPlatform(
         platform,
@@ -1973,16 +1493,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
       return remoteListSessions(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        getRemoteDashboardSessionConfig(conn, activeProfileName()),
         limit,
         offset,
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) => remoteListSessions(config, limit, offset),
-        () => sshListSessions(conn.ssh, limit, offset),
-        activeSshProfile(),
       );
     return listSessions(limit, offset);
   });
@@ -1991,22 +1504,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
       return remoteGetSessionMessages(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        getRemoteDashboardSessionConfig(conn, activeProfileName()),
         sessionId,
       ).then((items) => applySessionLocalOverlays(sessionId, items));
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) =>
-          remoteGetSessionMessages(config, sessionId).then((items) =>
-            applySessionLocalOverlays(sessionId, items),
-          ),
-        () =>
-          sshGetSessionMessages(conn.ssh, sessionId).then((items) =>
-            applySessionLocalOverlays(sessionId, items),
-          ),
-        activeSshProfile(),
-      );
     return getSessionMessages(sessionId);
   });
 
@@ -2106,15 +1606,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
       return remoteDeleteSession(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        getRemoteDashboardSessionConfig(conn, activeProfileName()),
         sessionId,
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) => remoteDeleteSession(config, sessionId),
-        undefined,
-        activeSshProfile(),
       );
     return deleteSession(sessionId);
   });
@@ -2124,84 +1617,48 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
       return remoteDeleteSessions(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        getRemoteDashboardSessionConfig(conn, activeProfileName()),
         ids,
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) => remoteDeleteSessions(config, ids),
-        undefined,
-        activeSshProfile(),
       );
     return deleteSessions(ids);
   });
 
   // Profiles
   ipcMain.handle("list-profiles", async () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      // The desktop's active profile is the LOCAL selection (persisted in
-      // ~/.hermes/active_profile by set-active-profile), not whatever the remote
-      // CLI last marked active. Override isActive so the UI highlights the
-      // profile the user actually selected — and it survives relaunches.
-      const active = getActiveProfileNameSync();
-      const list = await sshListProfiles(conn.ssh);
-      return list.map((p) => ({
-        ...p,
-        id: p.name,
-        isActive: p.name === active,
-      }));
-    }
     return listProfiles();
   });
   ipcMain.handle(
     "create-profile",
     (_event, name: string, cloneFrom: string | null) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshCreateProfile(conn.ssh, name, cloneFrom);
       return createProfile(name, cloneFrom);
     },
   );
   ipcMain.handle("delete-profile", (_event, name: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshDeleteProfile(conn.ssh, name);
     return deleteProfile(name);
   });
   ipcMain.handle("set-active-profile", async (_event, name: string) => {
-    // Persist the selection LOCALLY in every mode (incl. SSH) — the desktop
-    // tracks "which profile is active" via the local ~/.hermes/active_profile,
-    // so without this an SSH session forgot the choice and reset to `default`
-    // on every relaunch. Then drop the cached health flag so the next check
-    // probes the newly-active profile's gateway, not the previous one's.
+    // Persist the selection LOCALLY in every mode — the desktop tracks "which
+    // profile is active" via the local ~/.hermes/active_profile. Then drop the
+    // cached health flag so the next check probes the newly-active profile's
+    // gateway, not the previous one's.
     setActiveProfile(name);
     notifyProfileSwitched();
     // Bring the activated profile's own gateway up if it isn't already —
     // without stopping any other profile's gateway (their bots stay online).
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      // Per-profile gateway lives on the remote; start it over SSH. (Previously
-      // SSH was skipped entirely, so selecting/Chatting a profile in the Agents
-      // page never started its gateway and the status spun on "Starting…".)
-      if (!(await sshGatewayStatus(conn.ssh, name))) {
-        await sshStartGateway(conn.ssh, name);
-      }
-    } else if (!isRemoteMode() && !isGatewayRunning(name)) {
+    if (!isRemoteMode() && !isGatewayRunning(name)) {
       startGateway(name);
     }
     return true;
   });
 
   // Profile appearance (desktop-only avatar + accent colour). Local-only —
-  // these write to the local ~/.hermes profile dirs, not the SSH remote.
+  // these write to the local ~/.hermes profile dirs.
   ipcMain.handle("set-profile-color", (_event, name: string, color: string) =>
     setProfileColor(name, color),
   );
   ipcMain.handle("set-profile-name", (_event, id: string, name: string) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" || conn.mode === "remote") {
+    if (conn.mode === "remote") {
       return {
         success: false,
         error: "Agent renaming is only supported for local profiles",
@@ -2222,10 +1679,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
       return remoteReadMemory(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+        getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
       );
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshReadMemory(conn.ssh, profile);
     return readMemory(profile);
   });
   ipcMain.handle(
@@ -2234,11 +1689,9 @@ export function registerIpcHandlers(context: IpcContext): void {
       const conn = getConnectionConfig();
       if (conn.mode === "remote")
         return remoteAddMemoryEntry(
-          getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+          getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
           content,
         );
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshAddMemoryEntry(conn.ssh, content, profile);
       return addMemoryEntry(content, profile);
     },
   );
@@ -2248,12 +1701,10 @@ export function registerIpcHandlers(context: IpcContext): void {
       const conn = getConnectionConfig();
       if (conn.mode === "remote")
         return remoteUpdateMemoryEntry(
-          getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+          getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
           index,
           content,
         );
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshUpdateMemoryEntry(conn.ssh, index, content, profile);
       return updateMemoryEntry(index, content, profile);
     },
   );
@@ -2263,11 +1714,9 @@ export function registerIpcHandlers(context: IpcContext): void {
       const conn = getConnectionConfig();
       if (conn.mode === "remote")
         return remoteRemoveMemoryEntry(
-          getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+          getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
           index,
         );
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshRemoveMemoryEntry(conn.ssh, index, profile);
       return removeMemoryEntry(index, profile);
     },
   );
@@ -2277,46 +1726,31 @@ export function registerIpcHandlers(context: IpcContext): void {
       const conn = getConnectionConfig();
       if (conn.mode === "remote")
         return remoteWriteUserProfile(
-          getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+          getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
           content,
         );
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshWriteUserProfile(conn.ssh, content, profile);
       return writeUserProfile(content, profile);
     },
   );
 
   // Soul
   ipcMain.handle("read-soul", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshReadSoul(conn.ssh, profile);
     return readSoul(profile);
   });
   ipcMain.handle("write-soul", (_event, content: string, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshWriteSoul(conn.ssh, content, profile);
     return writeSoul(content, profile);
   });
   ipcMain.handle("reset-soul", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshResetSoul(conn.ssh, profile);
     return resetSoul(profile);
   });
 
   // Tools
   ipcMain.handle("get-toolsets", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshGetToolsets(conn.ssh, profile);
     return getToolsets(profile);
   });
   ipcMain.handle(
     "set-toolset-enabled",
     (_event, key: string, enabled: boolean, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshSetToolsetEnabled(conn.ssh, key, enabled, profile);
       return setToolsetEnabled(key, enabled, profile);
     },
   );
@@ -2328,33 +1762,25 @@ export function registerIpcHandlers(context: IpcContext): void {
   // per-machine state.
   ipcMain.handle("list-installed-skills", (_event, profile?: string) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshListInstalledSkills(conn.ssh, profile);
     if (conn.mode === "remote")
-      return remoteListInstalledSkills(activeSshProfile(profile));
+      return remoteListInstalledSkills(activeProfileName(profile));
     return listInstalledSkills(profile);
   });
   ipcMain.handle("list-bundled-skills", () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshListBundledSkills(conn.ssh);
     return listBundledSkills();
   });
   ipcMain.handle("get-skill-content", (_event, skillPath: string) => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshGetSkillContent(conn.ssh, skillPath);
     if (conn.mode === "remote")
-      return remoteGetSkillContent(skillPath, activeSshProfile());
+      return remoteGetSkillContent(skillPath, activeProfileName());
     return getSkillContent(skillPath);
   });
   ipcMain.handle(
     "install-skill",
     (_event, identifier: string, _profile?: string) => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshInstallSkill(conn.ssh, identifier);
       if (conn.mode === "remote")
-        return remoteInstallSkill(identifier, activeSshProfile(_profile));
+        return remoteInstallSkill(identifier, activeProfileName(_profile));
       return installSkill(identifier, _profile);
     },
   );
@@ -2362,10 +1788,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     "uninstall-skill",
     (_event, name: string, _profile?: string) => {
       const conn = getConnectionConfig();
-      if (conn.mode === "ssh" && conn.ssh)
-        return sshUninstallSkill(conn.ssh, name);
       if (conn.mode === "remote")
-        return remoteUninstallSkill(name, activeSshProfile(_profile));
+        return remoteUninstallSkill(name, activeProfileName(_profile));
       return uninstallSkill(name, _profile);
     },
   );
@@ -2377,16 +1801,9 @@ export function registerIpcHandlers(context: IpcContext): void {
       const conn = getConnectionConfig();
       if (conn.mode === "remote")
         return remoteListCachedSessions(
-          getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+          getRemoteDashboardSessionConfig(conn, activeProfileName()),
           limit,
           offset,
-        );
-      if (conn.mode === "ssh" && conn.ssh)
-        return withSshDashboardSessions(
-          conn,
-          (config) => remoteListCachedSessions(config, limit, offset),
-          () => sshListCachedSessions(conn.ssh, limit, offset),
-          activeSshProfile(),
         );
       return listCachedSessions(limit, offset);
     },
@@ -2395,15 +1812,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
       return remoteListCachedSessions(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        getRemoteDashboardSessionConfig(conn, activeProfileName()),
         50,
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) => remoteListCachedSessions(config, 50),
-        () => sshListCachedSessions(conn.ssh, 50),
-        activeSshProfile(),
       );
     try {
       return syncSessionCache();
@@ -2418,16 +1828,9 @@ export function registerIpcHandlers(context: IpcContext): void {
       const conn = getConnectionConfig();
       if (conn.mode === "remote")
         return remoteUpdateSessionTitle(
-          getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+          getRemoteDashboardSessionConfig(conn, activeProfileName()),
           sessionId,
           title,
-        );
-      if (conn.mode === "ssh" && conn.ssh)
-        return withSshDashboardSessions(
-          conn,
-          (config) => remoteUpdateSessionTitle(config, sessionId, title),
-          undefined,
-          activeSshProfile(),
         );
       return updateSessionTitle(sessionId, title);
     },
@@ -2484,16 +1887,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
       return remoteSearchSessions(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+        getRemoteDashboardSessionConfig(conn, activeProfileName()),
         query,
         limit,
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) => remoteSearchSessions(config, query, limit),
-        () => sshSearchSessions(conn.ssh, query, limit),
-        activeSshProfile(),
       );
     return searchSessions(query, limit);
   });
@@ -2548,17 +1944,6 @@ export function registerIpcHandlers(context: IpcContext): void {
         getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
       );
     }
-    if (conn.mode === "ssh" && conn.ssh) {
-      if (conn.sshChatTransport === "legacy") {
-        return sshListModels(conn.ssh);
-      }
-      return withSshDashboardModelLibrary(
-        conn,
-        (config) => remoteListModels(config),
-        () => sshListModels(conn.ssh!),
-        getActiveProfileNameSync(),
-      );
-    }
     return listModels();
   });
   ipcMain.handle(
@@ -2580,21 +1965,14 @@ export function registerIpcHandlers(context: IpcContext): void {
             "Remote model library writes require dashboard transport.",
           );
         }
-        // Remote/SSH library writes don't carry the context-length override
-        // yet (local-mode feature for now); the local branch persists it.
+        // Remote library writes don't carry the context-length override yet
+        // (local-mode feature for now); the local branch persists it.
         addedModel = await remoteAddModel(
           getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
           name,
           provider,
           model,
           baseUrl,
-        );
-      } else if (conn.mode === "ssh" && conn.ssh) {
-        addedModel = await withSshDashboardModelLibrary(
-          conn,
-          (config) => remoteAddModel(config, name, provider, model, baseUrl),
-          () => sshAddModel(conn.ssh!, name, provider, model, baseUrl),
-          getActiveProfileNameSync(),
         );
       } else {
         addedModel = addModel(
@@ -2622,13 +2000,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       removed = await remoteRemoveModel(
         getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
         id,
-      );
-    } else if (conn.mode === "ssh" && conn.ssh) {
-      removed = await withSshDashboardModelLibrary(
-        conn,
-        (config) => remoteRemoveModel(config, id),
-        () => sshRemoveModel(conn.ssh!, id),
-        getActiveProfileNameSync(),
       );
     } else {
       removed = removeModel(id);
@@ -2658,13 +2029,6 @@ export function registerIpcHandlers(context: IpcContext): void {
           getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
           id,
           fields,
-        );
-      } else if (conn.mode === "ssh" && conn.ssh) {
-        updated = await withSshDashboardModelLibrary(
-          conn,
-          (config) => remoteUpdateModel(config, id, fields),
-          () => sshUpdateModel(conn.ssh!, id, fields),
-          getActiveProfileNameSync(),
         );
       } else {
         updated = updateModel(
@@ -2707,12 +2071,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       getConnectionConfig,
       isGatewayRunning,
       startGateway,
-      sshGatewayStatus,
-      sshStartGateway,
-      startSshTunnel,
-      stopSshTunnel,
-      sshReadRemoteApiKey,
-      setSshRemoteApiKey,
       startClaw3dAll,
       stopClaw3dAll: stopClaw3d,
       waitForClaw3dReady,
@@ -2856,15 +2214,8 @@ export function registerIpcHandlers(context: IpcContext): void {
           const conn = getConnectionConfig();
           if (conn.mode === "remote") {
             await remoteDeleteSession(
-              getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+              getRemoteDashboardSessionConfig(conn, activeProfileName()),
               item.targetId,
-            );
-          } else if (conn.mode === "ssh" && conn.ssh) {
-            await withSshDashboardSessions(
-              conn,
-              (config) => remoteDeleteSession(config, item.targetId),
-              undefined,
-              activeSshProfile(),
             );
           } else {
             await deleteSession(item.targetId);
@@ -2901,9 +2252,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       const conn = getConnectionConfig();
       const isLocalWindowsPath =
         /^[a-zA-Z]:[\\/]/.test(dirPath) || /^\\\\/.test(dirPath);
-      if (conn.mode === "ssh" && conn.ssh && !isLocalWindowsPath) {
-        return sshReadDirectory(conn.ssh, dirPath);
-      }
       if (conn.mode === "remote" && !isLocalWindowsPath) {
         return null;
       }
@@ -3106,7 +2454,6 @@ export function registerIpcHandlers(context: IpcContext): void {
         activeRuns.clear();
         await cancelAllAgentRuntimeTasks();
         stopAllDashboards();
-        stopSshTunnel();
         const profiles = await listProfiles();
         for (const profile of profiles) {
           if (!profile.gatewayRunning) continue;
@@ -3138,8 +2485,6 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Debug dump
   ipcMain.handle("run-hermes-dump", () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) return sshRunDump(conn.ssh);
     return runHermesDump();
   });
 
@@ -3199,18 +2544,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "remote")
       return remoteDiscoverMemoryProviders(
-        getRemoteDashboardSessionConfig(conn, activeSshProfile(profile)),
+        getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
       );
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshDiscoverMemoryProviders(conn.ssh, profile);
     return discoverMemoryProviders(profile);
   });
 
   // Log viewer
   ipcMain.handle("read-logs", (_event, logFile?: string, lines?: number) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh)
-      return sshReadLogs(conn.ssh, logFile, lines);
     return readLogs(logFile, lines);
   });
 }

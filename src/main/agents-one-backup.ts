@@ -480,31 +480,6 @@ function disableUntrustedRestoredRuntimes(
         runtime.config && typeof runtime.config === "object"
           ? { ...(runtime.config as Record<string, unknown>) }
           : {};
-      const hermes =
-        config.hermes && typeof config.hermes === "object"
-          ? { ...(config.hermes as Record<string, unknown>) }
-          : null;
-      if (hermes?.ssh && typeof hermes.ssh === "object") {
-        const ssh = { ...(hermes.ssh as Record<string, unknown>) };
-        const existingConfig =
-          existing?.config && typeof existing.config === "object"
-            ? (existing.config as Record<string, unknown>)
-            : {};
-        const existingHermes =
-          existingConfig.hermes && typeof existingConfig.hermes === "object"
-            ? (existingConfig.hermes as Record<string, unknown>)
-            : {};
-        const existingSsh =
-          existingHermes.ssh && typeof existingHermes.ssh === "object"
-            ? (existingHermes.ssh as Record<string, unknown>)
-            : {};
-        ssh.keyPath =
-          sameEndpoint && typeof existingSsh.keyPath === "string"
-            ? existingSsh.keyPath
-            : "";
-        hermes.ssh = ssh;
-        config.hermes = hermes;
-      }
       const protectedRuntime = { ...runtime, config };
       if (!sameEndpoint) {
         return {
@@ -536,12 +511,7 @@ function disableUntrustedRestoredRuntimes(
     restoredMode === currentMode &&
     (restoredMode === "remote"
       ? restored.remoteUrl === currentRecord.remoteUrl
-      : restoredMode === "ssh"
-        ? restoredSsh.host === currentSsh.host &&
-          restoredSsh.port === currentSsh.port &&
-          restoredSsh.username === currentSsh.username &&
-          restoredSsh.remotePort === currentSsh.remotePort
-        : true);
+      : true);
   if (
     (restoredMode === "remote" || restoredMode === "ssh") &&
     !sameBuiltInEndpoint
@@ -552,6 +522,10 @@ function disableUntrustedRestoredRuntimes(
       restored.sshConfig = { ...restoredSsh, keyPath: "" };
     }
   } else if (restoredMode === "ssh") {
+    // Legacy SSH connection (plan D4): SSH mode is removed. Keep the stored
+    // sshConfig for the read-only migration, but coerce to the unified remote
+    // mode so the UI prompts for a Gateway v1 URL + token.
+    restored.connectionMode = "remote";
     restored.sshConfig = {
       ...restoredSsh,
       keyPath: typeof currentSsh.keyPath === "string" ? currentSsh.keyPath : "",

@@ -20,5 +20,5 @@ export default {
   testingConnection: "Testing",
   connect: "Connect",
   remoteHint:
-    "Leave the key empty if the server accepts unauthenticated requests (e.g. via SSH tunnel to localhost).",
+    "Leave the key empty if the server accepts unauthenticated requests.",
 } as const;

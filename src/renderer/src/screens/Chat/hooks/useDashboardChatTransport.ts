@@ -96,7 +96,7 @@ interface UseDashboardChatTransportArgs {
   setToolProgress: (tool: string | null) => void;
   setUsage: React.Dispatch<React.SetStateAction<UsageState | null>>;
   /** Called once per connection when the dashboard transport is found to be
-   *  unavailable on a remote/SSH connection and the renderer is falling back to
+   *  unavailable on a remote connection and the renderer is falling back to
    *  the legacy HTTP transport. Lets the UI surface a one-time notice. */
   onDashboardUnavailable?: (reason: string) => void;
 }
@@ -134,7 +134,7 @@ interface DashboardSeedOptions {
   excludeUserId?: string | null;
 }
 
-type DashboardConnectionMode = "local" | "remote" | "ssh";
+type DashboardConnectionMode = "local" | "remote";
 
 export function dashboardChatEnabledFromEnv(
   value: string | undefined,
@@ -145,7 +145,7 @@ export function dashboardChatEnabledFromEnv(
 export function dashboardChatEnabledForConnection(
   envValue: string | undefined,
   connectionModeLoaded: boolean,
-  mode: "local" | "remote" | "ssh",
+  mode: "local" | "remote",
   preference: "auto" | "dashboard" | "legacy",
 ): boolean {
   if (!dashboardChatEnabledFromEnv(envValue) || !connectionModeLoaded) {
@@ -153,8 +153,7 @@ export function dashboardChatEnabledForConnection(
   }
   if (preference === "legacy") return false;
   if (mode === "local") return true;
-  if (mode === "remote") return true;
-  return mode === "ssh";
+  return mode === "remote";
 }
 
 export function dashboardShouldPersistLocalOverlays(
@@ -912,8 +911,8 @@ export function useDashboardChatTransport({
   const clientRef = useRef<DashboardGatewayClient | null>(null);
   const connectingRef = useRef<Promise<DashboardGatewayClient> | null>(null);
   const clientGenerationRef = useRef(0);
-  // Sticky "dashboard transport can't connect on this remote/SSH connection"
-  // flag. The dashboard WebSocket (`/api/ws`) never connects against a tunneled
+  // Sticky "dashboard transport can't connect on this remote connection"
+  // flag. The dashboard WebSocket (`/api/ws`) never connects against a
   // `hermes gateway` (issue #667), so once we've learned it's unavailable we
   // fail `ensureClient` fast on every later message instead of re-running the
   // multi-second status+probe — letting the caller fall back to legacy HTTP
@@ -1158,7 +1157,7 @@ export function useDashboardChatTransport({
     useCallback(async (): Promise<DashboardGatewayClient> => {
       const existing = clientRef.current;
       if (existing?.connected) return existing;
-      // Already known unavailable on this remote/SSH connection — fail fast so the
+      // Already known unavailable on this remote connection — fail fast so the
       // caller falls back to legacy without re-running the slow status+probe.
       if (dashboardUnavailableRef.current) {
         throw new Error("Hermes dashboard transport is unavailable");
@@ -1169,9 +1168,9 @@ export function useDashboardChatTransport({
       const pending = (async () => {
         // The dashboard `/api/ws` is the ONLY chat transport when a dashboard is
         // available (matching apps/desktop, which has no /v1 chat path). A WS
-        // drop / "socket hang up" — e.g. a momentary SSH tunnel blip — is
+        // drop / "socket hang up" — e.g. a momentary network blip — is
         // TRANSIENT and must reconnect, NOT fall back to the main-process /v1
-        // path: over the dashboard tunnel /v1 doesn't exist and 405s. So retry
+        // path: over the dashboard /v1 doesn't exist and 405s. So retry
         // the connect (re-running startDashboard each attempt to re-establish the
         // tunnel). Only a genuinely-absent dashboard (running=false) latches the
         // negative flag and lets the caller drop to legacy gateway /v1.
@@ -1220,7 +1219,7 @@ export function useDashboardChatTransport({
           return client;
         }
         // Dashboard was up but the WS wouldn't stay connected. Forced-dashboard
-        // and local callers should see the failure. Remote/SSH Auto can still
+        // and local callers should see the failure. Remote Auto can still
         // use the legacy chat API, so latch unavailable and let the caller
         // route this same turn through that path.
         const reason =

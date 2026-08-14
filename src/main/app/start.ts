@@ -9,7 +9,6 @@ import { cleanupTempMediaFiles } from "../media";
 import { closeDbConnection } from "../db";
 import { recoverInterruptedAgentsOneRestore } from "../agents-one-backup";
 import { isAgentsOneRestoreWriteLocked } from "../restore-write-lock";
-import { stopSshTunnel } from "../ssh-tunnel";
 import { shouldAllowConfiguredRemoteCertificateError } from "../remote-tls";
 import {
   hardenAttachedWebContents,
@@ -170,10 +169,6 @@ export function startMainProcess(): void {
     activeRuns.clear();
     cleanupTempMediaFiles();
     stopAllDashboards();
-    // Kill the SSH tunnel process on quit — otherwise the `ssh -N -L` child is
-    // orphaned (reparented to PID 1) and keeps holding its local port, so each
-    // relaunch leaks another tunnel and the port drifts (18642 → 61799 → …).
-    stopSshTunnel();
     closeDbConnection();
   });
 }

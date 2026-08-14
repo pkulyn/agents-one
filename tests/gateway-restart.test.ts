@@ -23,7 +23,7 @@ const {
   return {
     TEST_HOME: path.join(os.tmpdir(), `hermes-gateway-restart-${Date.now()}`),
     TEST_REPO: path.join(os.tmpdir(), `hermes-gateway-repo-${Date.now()}`),
-    connModeRef: { mode: "local" as "local" | "remote" | "ssh" },
+    connModeRef: { mode: "local" as "local" | "remote" },
     healthStatuses: [] as number[],
     aliveGatewayPids: new Set<number>(),
     restartScript: script,
@@ -48,12 +48,6 @@ vi.mock("../src/main/config", () => ({
   setConfigValue: vi.fn(),
 }));
 
-vi.mock("../src/main/ssh-tunnel", () => ({
-  getSshTunnelUrl: () => null,
-  isSshTunnelActive: () => false,
-  isSshTunnelHealthy: () => Promise.resolve(false),
-  startSshTunnel: () => Promise.resolve(),
-}));
 
 vi.mock("../src/main/utils", () => ({
   stripAnsi: (s: string) => s,
@@ -269,7 +263,7 @@ describe("restartGatewayViaCli", () => {
   });
 
   it("treats a throwing health probe as unhealthy", async () => {
-    connModeRef.mode = "ssh";
+    connModeRef.mode = "remote";
 
     await expect(isGatewayHealthy()).resolves.toBe(false);
   });
