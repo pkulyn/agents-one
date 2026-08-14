@@ -13,9 +13,6 @@ import ProfileAvatar from "../common/ProfileAvatar";
 import { PROFILE_COLORS } from "../../../../shared/profileColors";
 import { fileToAvatarDataUrl } from "../../utils/imageResize";
 import { useI18n } from "../useI18n";
-import Soul from "../../screens/Soul/Soul";
-import { MemoryEntries } from "../../screens/Memory/MemoryEntries";
-import type { MemoryData } from "../../screens/Memory/types";
 import { AppModal, AppModalTitle } from "../modal/AppModal";
 
 /** Mirrors the entry shape returned by `window.hermesAPI.listProfiles()`. */
@@ -47,12 +44,7 @@ export interface ProfileModalProps {
   onDeleted?: (name: string) => void;
 }
 
-type ProfileSection =
-  | "profile"
-  | "persona"
-  | "agentMemory"
-  | "wallet"
-  | "advanced";
+type ProfileSection = "profile" | "advanced";
 type ProfileChipIcon = React.ComponentType<{
   size?: number;
   className?: string;
@@ -69,21 +61,6 @@ const PROFILE_SECTIONS: ReadonlyArray<{
   { id: "profile", labelKey: "agents.sectionProfile", Icon: User },
 ];
 
-const MEMORY_LOAD_TIMEOUT_MS = 12_000;
-
-function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  message: string,
-): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
-  });
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    if (timeout) clearTimeout(timeout);
-  });
-}
 
 /**
  * Global profile detail/appearance modal (80vw × 80vh). Opened from anywhere
@@ -105,9 +82,6 @@ export default function ProfileModal({
   const [profile, setProfile] = useState<ProfileInfo | null>(null);
   const [section, setSection] = useState<ProfileSection>("profile");
   const [error, setError] = useState("");
-  const [memoryData, setMemoryData] = useState<MemoryData | null>(null);
-  const [memoryLoading, setMemoryLoading] = useState(false);
-  const [memoryError, setMemoryError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [nameEditing, setNameEditing] = useState(false);
@@ -140,35 +114,6 @@ export default function ProfileModal({
     nameInputRef.current?.focus();
     nameInputRef.current?.select();
   }, [nameEditing]);
-
-  const loadMemoryData = useCallback(async (): Promise<void> => {
-    if (!profile) return;
-    setMemoryLoading(true);
-    setMemoryError("");
-    try {
-      const data = await withTimeout(
-        window.hermesAPI.readMemory(profile.id),
-        MEMORY_LOAD_TIMEOUT_MS,
-        t("memory.loadFailed"),
-      );
-      setMemoryData(data as MemoryData);
-    } catch {
-      setMemoryError(t("memory.loadFailed"));
-    } finally {
-      setMemoryLoading(false);
-    }
-  }, [profile, t]);
-
-  useEffect(() => {
-    setMemoryData(null);
-    setMemoryError("");
-  }, [id]);
-
-  useEffect(() => {
-    if (section === "agentMemory" && profile && !memoryData && !memoryLoading) {
-      void loadMemoryData();
-    }
-  }, [loadMemoryData, memoryData, memoryLoading, profile, section]);
 
   const afterMutation = useCallback(async (): Promise<void> => {
     await load();
@@ -488,41 +433,6 @@ export default function ProfileModal({
                 </div>
 
                 {error && <div className="agents-create-error">{error}</div>}
-              </div>
-            )}
-
-            {section === "persona" && (
-              <div className="profile-modal-pane profile-modal-memory-pane">
-                <div className="memory-soul-tab">
-                  <Soul profile={profile.id} />
-                </div>
-              </div>
-            )}
-
-            {section === "agentMemory" && (
-              <div className="profile-modal-pane profile-modal-memory-pane">
-                {memoryLoading && !memoryData ? (
-                  <div className="profile-modal-loading">
-                    <div className="loading-spinner" />
-                  </div>
-                ) : memoryData ? (
-                  <MemoryEntries
-                    entries={memoryData.memory.entries}
-                    profile={profile.id}
-                    onRefresh={loadMemoryData}
-                  />
-                ) : memoryError ? (
-                  <div className="memory-error profile-modal-memory-error">
-                    <span>{memoryError}</span>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => void loadMemoryData()}
-                    >
-                      {t("agents.retry")}
-                    </button>
-                  </div>
-                ) : null}
               </div>
             )}
 
