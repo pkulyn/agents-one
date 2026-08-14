@@ -76,7 +76,7 @@ export default {
   keyLabel: "金鑰",
   empty: "(空)",
   dataSection: "資料",
-  dataHint: "匯出或匯入你的 Hermes 設定、工作階段、技能和記憶。",
+  dataHint: "匯出或還原 Agents One 的設定、專案、任務、聊天和協作記錄。",
   backingUp: "正在備份...",
   exportBackup: "匯出備份",
   importing: "正在匯入...",

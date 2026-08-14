@@ -90,7 +90,7 @@ export default {
   empty: "(vazio)",
   dataSection: "Dados",
   dataHint:
-    "Exporte ou importe sua configuração do Hermes, sessões, habilidades e memória.",
+    "Exporte ou restaure a configuração, os projetos, as tarefas, os chats e os registros de colaboração do Agents One.",
   backingUp: "Fazendo backup...",
   exportBackup: "Exportar Backup",
   importing: "Importando...",

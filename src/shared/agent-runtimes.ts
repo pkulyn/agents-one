@@ -111,6 +111,8 @@ export interface AgentRuntimeDefinition {
   kind: AgentRuntimeKind;
   location: AgentRuntimeLocation;
   enabled: boolean;
+  /** Restored remote endpoints stay blocked until a fresh credential is saved. */
+  needsReauthorization?: boolean;
   managed: "builtin" | "user";
   config: AgentRuntimeConfig;
 }
@@ -149,9 +151,10 @@ export interface AgentRuntimeTaskInput {
   attachments?: Attachment[];
   /**
    * `implementation` is retained only so historical isolated-worktree tasks
-   * remain readable. New formal conversations use `analysis` or `full_access`.
+   * remain readable. `safe_write` allows create/edit/write inside an explicit
+   * workspace while denying move and delete operations.
    */
-  mode?: "analysis" | "implementation" | "full_access";
+  mode?: "analysis" | "safe_write" | "implementation" | "full_access";
   /** Required by the main process for every direct full-access run. */
   fullAccessConfirmed?: boolean;
   /** Optional task-specific workspace. It is validated in the main process. */

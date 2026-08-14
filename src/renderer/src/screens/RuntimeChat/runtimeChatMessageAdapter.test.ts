@@ -102,6 +102,124 @@ describe("runtimeChatMessageAdapter", () => {
     );
   });
 
+  it("keeps each collaboration reply and its event trace on the producing Runtime identity", () => {
+    const result = runtimeConversationToChatMessages([
+      {
+        id: "pi-reply",
+        role: "agent",
+        content: "Pi 已完成文件交付。",
+        createdAt: 2,
+        agentRuntimeId: "pi",
+        agentName: "Pi",
+        agentAvatar: "data:image/png;base64,cGk=",
+        agentColor: "#7C3AED",
+        collaborationRole: "实施",
+        execution: {
+          runId: "pi-run",
+          events: [event("pi-thinking", "progress", "正在写入文件。")],
+        },
+      },
+      {
+        id: "claude-reply",
+        role: "agent",
+        content: "Claude 已完成复核。",
+        createdAt: 3,
+        agentRuntimeId: "claude-code",
+        agentName: "Claude",
+        agentAvatar: null,
+        agentColor: "#2563eb",
+        collaborationRole: "复核",
+      },
+    ]);
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "reasoning",
+          agentRuntimeId: "pi",
+          agentName: "Pi",
+          agentAvatar: "data:image/png;base64,cGk=",
+        }),
+        expect.objectContaining({
+          kind: "assistant",
+          content: "Pi 已完成文件交付。",
+          agentRuntimeId: "pi",
+          agentName: "Pi",
+          agentAvatar: "data:image/png;base64,cGk=",
+          collaborationRole: "实施",
+        }),
+        expect.objectContaining({
+          kind: "assistant",
+          content: "Claude 已完成复核。",
+          agentRuntimeId: "claude-code",
+          agentName: "Claude",
+          agentAvatar: null,
+          collaborationRole: "复核",
+        }),
+      ]),
+    );
+  });
+
+  it("labels a collaboration reply when its provider omitted detailed trace events", () => {
+    const result = runtimeConversationToChatMessages([
+      {
+        id: "hers-reply",
+        role: "agent",
+        content: "Hers 已完成规划。",
+        createdAt: 2,
+        agentRuntimeId: "hers",
+        agentName: "Hers",
+        collaborationRole: "规划",
+        execution: {
+          runId: "hers-run",
+          events: [
+            event("started", "started", "任务已开始。"),
+            event("completed", "completed", "任务已完成。"),
+          ],
+        },
+      },
+    ]);
+
+    expect(result[0]).toMatchObject({
+      kind: "system",
+      title: "思考记录未上报",
+      agentRuntimeId: "hers",
+      collaborationRole: "规划",
+    });
+    expect(result.at(-1)).toMatchObject({
+      kind: "assistant",
+      content: "Hers 已完成规划。",
+    });
+  });
+
+  it("does not present a mirrored final answer as remote reasoning", () => {
+    const answer =
+      "我已基于全部协作材料完成验收，检查了交付物、路径与测试结果。";
+    const result = runtimeConversationToChatMessages([
+      {
+        id: "hers-mirrored-reply",
+        role: "agent",
+        content: answer,
+        createdAt: 2,
+        agentRuntimeId: "hers-2",
+        agentName: "Hers-2",
+        collaborationRole: "验收",
+        execution: {
+          runId: "hers-mirrored-run",
+          events: [event("mirrored", "progress", answer)],
+        },
+      },
+    ]);
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "system",
+        title: "思考记录未上报",
+      }),
+      expect.objectContaining({ kind: "assistant", content: answer }),
+    ]);
+  });
+
   it("does not present workspace authorization lifecycle notices as reasoning", () => {
     const result = runtimeEventsToChatMessages([
       event(

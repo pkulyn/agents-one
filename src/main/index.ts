@@ -3,6 +3,8 @@ import { cpSync, existsSync, mkdirSync, readdirSync } from "fs";
 import { join, resolve } from "path";
 import { applyGpuPreferences, installGpuCrashGuard } from "./gpu-fallback";
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
 function migrateLegacyUserData(): void {
   // The product name is part of Electron's default userData path. Keep the
   // rename from silently dropping small desktop-level preferences such as the
@@ -37,16 +39,20 @@ function migrateLegacyUserData(): void {
   }
 }
 
-migrateLegacyUserData();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  migrateLegacyUserData();
 
-applyGpuPreferences();
-installGpuCrashGuard();
+  applyGpuPreferences();
+  installGpuCrashGuard();
 
-if (process.env.ENABLE_CDP === "1") {
-  app.commandLine.appendSwitch(
-    "remote-debugging-port",
-    process.env.CDP_PORT || "9222",
-  );
+  if (process.env.ENABLE_CDP === "1") {
+    app.commandLine.appendSwitch(
+      "remote-debugging-port",
+      process.env.CDP_PORT || "9222",
+    );
+  }
+
+  void import("./app/start").then(({ startMainProcess }) => startMainProcess());
 }
-
-void import("./app/start").then(({ startMainProcess }) => startMainProcess());

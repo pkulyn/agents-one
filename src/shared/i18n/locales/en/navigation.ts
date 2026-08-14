@@ -34,6 +34,9 @@ export default {
     removeFromProject: "Remove from project",
     noProjects: "No projects yet",
     delete: "Delete",
+    archive: "Archive task",
+    reveal: "Open in File Explorer",
+    copySessionId: "Copy conversation ID",
     back: "Back",
     deleteConfirmTitle: "Delete chat?",
     deleteConfirm:
@@ -41,5 +44,13 @@ export default {
     deleteCancel: "Cancel",
     deleteConfirmAction: "Delete",
     deleting: "Deleting…",
+  },
+  projectMenu: {
+    pin: "Pin project",
+    unpin: "Unpin project",
+    reveal: "Open in File Explorer",
+    rename: "Rename project",
+    archive: "Archive project",
+    remove: "Remove",
   },
 } as const;

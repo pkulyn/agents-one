@@ -10,6 +10,7 @@ import {
   safeWriteFile,
 } from "./utils";
 import { getYamlPath } from "./yaml-path";
+import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 // NOTE: ./secrets imports back into this module (getConfigValue / readEnv), so
 // this is a static import that closes a cycle (config -> secrets ->
 // commandProvider -> config). It is safe ONLY because BOTH sides defer all work
@@ -92,6 +93,7 @@ export function readDesktopConfig(): Record<string, unknown> {
 }
 
 export function writeDesktopConfig(data: Record<string, unknown>): void {
+  assertAgentsOneWritesAllowed();
   if (!existsSync(HERMES_HOME)) {
     mkdirSync(HERMES_HOME, { recursive: true });
   }

@@ -86,7 +86,7 @@ export default {
   empty: "（空）",
   dataSection: "データ",
   dataHint:
-    "Hermes の設定、セッション、スキル、メモリのエクスポート・インポートを行います。",
+    "Agents One の設定、プロジェクト、タスク、チャット、コラボレーション記録をエクスポートまたは復元します。",
   backingUp: "バックアップ中...",
   exportBackup: "バックアップをエクスポート",
   importing: "インポート中...",

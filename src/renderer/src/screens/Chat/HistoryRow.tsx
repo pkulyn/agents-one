@@ -21,6 +21,7 @@ export const ReasoningRow = memo(function ReasoningRow({
   agentName = "Hermes",
   agentAvatar,
   agentColor,
+  onAgentAvatarClick,
 }: {
   msg: ReasoningMessage;
   /** True only while this turn's reasoning is still streaming. Controls the
@@ -32,6 +33,7 @@ export const ReasoningRow = memo(function ReasoningRow({
   agentName?: string;
   agentAvatar?: string | null;
   agentColor?: string | null;
+  onAgentAvatarClick?: () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -47,51 +49,55 @@ export const ReasoningRow = memo(function ReasoningRow({
           name={agentName}
           avatar={agentAvatar}
           color={agentColor}
+          onClick={onAgentAvatarClick}
         />
       ) : (
         <AvatarSpacer />
       )}
-      <div
-        className={`chat-reasoning-group${
-          active ? " chat-reasoning-group--active" : ""
-        }`}
-      >
-        <button
-          type="button"
-          className="chat-reasoning-group-summary"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-        >
-          {active ? (
-            <Grid
-              visible={true}
-              height={13}
-              width={13}
-              radius={15}
-              color="#8b7cf6"
-              ariaLabel="thinking-loading"
-              wrapperClass="chat-reasoning-group-spinner"
-            />
-          ) : (
-            <Brain size={13} className="chat-reasoning-group-icon" />
-          )}
-          <span className="chat-reasoning-group-title">
-            {active ? t("chat.thinking") : t("chat.thought")}
-          </span>
-          <ChevronRight
-            size={14}
-            className={`chat-reasoning-group-chevron${
-              open ? " chat-reasoning-group-chevron--open" : ""
-            }`}
-          />
-        </button>
+      <div className="chat-agent-message-content">
+        {showAvatar && <span className="chat-agent-name">{agentName}</span>}
         <div
-          className={`chat-tool-collapse${
-            open ? " chat-tool-collapse--open" : ""
+          className={`chat-reasoning-group${
+            active ? " chat-reasoning-group--active" : ""
           }`}
         >
-          <div className="chat-tool-collapse-inner">
-            <pre className="chat-history-pre">{msg.text}</pre>
+          <button
+            type="button"
+            className="chat-reasoning-group-summary"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+          >
+            {active ? (
+              <Grid
+                visible={true}
+                height={13}
+                width={13}
+                radius={15}
+                color="#8b7cf6"
+                ariaLabel="thinking-loading"
+                wrapperClass="chat-reasoning-group-spinner"
+              />
+            ) : (
+              <Brain size={13} className="chat-reasoning-group-icon" />
+            )}
+            <span className="chat-reasoning-group-title">
+              {active ? t("chat.thinking") : t("chat.thought")}
+            </span>
+            <ChevronRight
+              size={14}
+              className={`chat-reasoning-group-chevron${
+                open ? " chat-reasoning-group-chevron--open" : ""
+              }`}
+            />
+          </button>
+          <div
+            className={`chat-tool-collapse${
+              open ? " chat-tool-collapse--open" : ""
+            }`}
+          >
+            <div className="chat-tool-collapse-inner">
+              <pre className="chat-history-pre">{msg.text}</pre>
+            </div>
           </div>
         </div>
       </div>
@@ -255,6 +261,10 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   items,
   active = false,
   showAvatar = true,
+  agentName = "Hermes",
+  agentAvatar,
+  agentColor,
+  onAgentAvatarClick,
 }: {
   items: ToolItem[];
   /** True while the turn is still streaming and this is the trailing run —
@@ -264,6 +274,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   agentName?: string;
   agentAvatar?: string | null;
   agentColor?: string | null;
+  onAgentAvatarClick?: () => void;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const last = items[items.length - 1];
@@ -278,52 +289,65 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
         showAvatar ? "" : " chat-message--grouped"
       }`}
     >
-      <AvatarSpacer />
-      <div
-        className={`chat-tool-group${active ? " chat-tool-group--active" : ""}`}
-      >
-        <button
-          type="button"
-          className="chat-tool-group-summary"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-        >
-          {active ? (
-            <Grid
-              visible={true}
-              height={13}
-              width={13}
-              radius={15}
-              color="#4aa8ff"
-              ariaLabel="tool-loading"
-              wrapperClass="chat-tool-group-spinner"
-            />
-          ) : soloTool ? (
-            <ToolGlyph
-              toolName={soloTool}
-              size={13}
-              className="chat-tool-group-icon"
-            />
-          ) : (
-            <Wrench size={13} className="chat-tool-group-icon" />
-          )}
-          <span className="chat-tool-group-name">{title}</span>
-          {detail && <span className="chat-tool-group-detail">{detail}</span>}
-          <ChevronRight
-            size={14}
-            className={`chat-tool-group-chevron${
-              open ? " chat-tool-group-chevron--open" : ""
-            }`}
-          />
-        </button>
+      {showAvatar ? (
+        <HermesAvatar
+          active={active}
+          name={agentName}
+          avatar={agentAvatar}
+          color={agentColor}
+          onClick={onAgentAvatarClick}
+        />
+      ) : (
+        <AvatarSpacer />
+      )}
+      <div className="chat-agent-message-content">
+        {showAvatar && <span className="chat-agent-name">{agentName}</span>}
         <div
-          className={`chat-tool-collapse${open ? " chat-tool-collapse--open" : ""}`}
+          className={`chat-tool-group${active ? " chat-tool-group--active" : ""}`}
         >
-          <div className="chat-tool-collapse-inner">
-            <div className="chat-tool-group-items">
-              {orderedItems.map((it, index) => (
-                <ToolActivityItem key={`${it.id}-${index}`} msg={it} />
-              ))}
+          <button
+            type="button"
+            className="chat-tool-group-summary"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+          >
+            {active ? (
+              <Grid
+                visible={true}
+                height={13}
+                width={13}
+                radius={15}
+                color="#4aa8ff"
+                ariaLabel="tool-loading"
+                wrapperClass="chat-tool-group-spinner"
+              />
+            ) : soloTool ? (
+              <ToolGlyph
+                toolName={soloTool}
+                size={13}
+                className="chat-tool-group-icon"
+              />
+            ) : (
+              <Wrench size={13} className="chat-tool-group-icon" />
+            )}
+            <span className="chat-tool-group-name">{title}</span>
+            {detail && <span className="chat-tool-group-detail">{detail}</span>}
+            <ChevronRight
+              size={14}
+              className={`chat-tool-group-chevron${
+                open ? " chat-tool-group-chevron--open" : ""
+              }`}
+            />
+          </button>
+          <div
+            className={`chat-tool-collapse${open ? " chat-tool-collapse--open" : ""}`}
+          >
+            <div className="chat-tool-collapse-inner">
+              <div className="chat-tool-group-items">
+                {orderedItems.map((it, index) => (
+                  <ToolActivityItem key={`${it.id}-${index}`} msg={it} />
+                ))}
+              </div>
             </div>
           </div>
         </div>

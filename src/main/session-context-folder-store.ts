@@ -57,6 +57,17 @@ export function setSessionContextFolder(
   ).run(sessionId, folder);
 }
 
+/** Unlinks every native session from a removed project without deleting chats. */
+export function clearSessionContextFolderPath(folder: string): number {
+  if (!folder) return 0;
+  const db = getDbConnection(false);
+  if (!db) return 0;
+  ensureTable(db);
+  return db
+    .prepare(`DELETE FROM ${TABLE} WHERE folder_path = ?`)
+    .run(folder).changes;
+}
+
 /** Read the folder linked to a session, or null when none is stored. */
 export function getSessionContextFolder(sessionId: string): string | null {
   if (!sessionId) return null;

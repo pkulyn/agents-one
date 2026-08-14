@@ -38,17 +38,30 @@ import type {
   AgentRuntimeRun,
   AgentRuntimeTaskInput,
 } from "../shared/agent-runtimes";
-import type { ProjectFolderRecord } from "../shared/project-folders";
+import type {
+  ProjectFolderRecord,
+  UpdateProjectFolderInput,
+} from "../shared/project-folders";
+import type { ArchivedItem, ArchiveItemInput } from "../shared/archives";
 import type {
   CreateTaskScheduleInput,
   TaskSchedule,
+  TaskScheduleRunCompletedEvent,
+  TaskScheduleRunStartedEvent,
   TaskScheduleTriggerResult,
+  UpdateTaskScheduleInput,
 } from "../shared/task-schedules";
 import type {
+  QuickChatConversation,
   RuntimeConversation,
   RuntimeConversationSummary,
   SaveRuntimeConversationInput,
 } from "../shared/runtime-conversations";
+import type {
+  AgentsOneBackupInspection,
+  AgentsOneBackupResult,
+  AgentsOneRestoreResult,
+} from "../shared/agents-one-backup";
 
 interface ElectronAPI {
   process: {
@@ -268,6 +281,12 @@ interface HermesAPI {
   isRemoteMode: () => Promise<boolean>;
   isRemoteOnlyMode: () => Promise<boolean>;
   listAgentRuntimes: () => Promise<AgentRuntimeDefinition[]>;
+  getAgentRuntimeModelContextWindow: (
+    runtimeId: string,
+    provider: string,
+    model: string,
+    profile?: string,
+  ) => Promise<number | null>;
   saveAgentRuntime: (
     draft: AgentRuntimeDraft,
   ) => Promise<AgentRuntimeDefinition>;
@@ -307,6 +326,11 @@ interface HermesAPI {
     input: CreateTaskScheduleInput,
     profile?: string,
   ) => Promise<TaskSchedule>;
+  updateTaskSchedule: (
+    id: string,
+    input: UpdateTaskScheduleInput,
+    profile?: string,
+  ) => Promise<TaskSchedule>;
   setTaskScheduleEnabled: (
     id: string,
     enabled: boolean,
@@ -316,6 +340,12 @@ interface HermesAPI {
     id: string,
     profile?: string,
   ) => Promise<TaskScheduleTriggerResult>;
+  onTaskScheduleRunCompleted: (
+    callback: (event: TaskScheduleRunCompletedEvent) => void,
+  ) => () => void;
+  onTaskScheduleRunStarted: (
+    callback: (event: TaskScheduleRunStartedEvent) => void,
+  ) => () => void;
   deleteTaskSchedule: (id: string, profile?: string) => Promise<boolean>;
   getConnectionConfig: () => Promise<{
     mode: "local" | "remote" | "ssh";
@@ -424,6 +454,15 @@ interface HermesAPI {
     src: string,
     name: string,
     labels: { open: string; saveAs: string },
+  ) => void;
+  showFileMenu: (
+    filePath: string,
+    labels: {
+      open: string;
+      copyPath: string;
+      copyContent: string;
+      reveal: string;
+    },
   ) => void;
   getPathForFile: (file: File) => string;
   stageAttachment: (
@@ -770,7 +809,9 @@ interface HermesAPI {
   getTaskCollaboration: (
     taskId: string,
     profile?: string,
-  ) => Promise<import("../shared/task-collaboration").TaskCollaborationRecord | null>;
+  ) => Promise<
+    import("../shared/task-collaboration").TaskCollaborationRecord | null
+  >;
   linkTaskCollaboration: (
     input: import("../shared/task-collaboration").LinkTaskCollaborationInput,
     profile?: string,
@@ -781,7 +822,9 @@ interface HermesAPI {
   ) => Promise<import("../shared/task-collaboration").TaskCollaborationRecord>;
   listTaskCollaborations: (
     profile?: string,
-  ) => Promise<import("../shared/task-collaboration").TaskCollaborationRecord[]>;
+  ) => Promise<
+    import("../shared/task-collaboration").TaskCollaborationRecord[]
+  >;
   listRuntimeConversations: (
     profile?: string,
     limit?: number,
@@ -800,6 +843,11 @@ interface HermesAPI {
     profile?: string,
   ) => Promise<boolean>;
   deleteRuntimeConversation: (id: string, profile?: string) => Promise<boolean>;
+  listQuickChats: (profile?: string) => Promise<QuickChatConversation[]>;
+  saveQuickChats: (
+    chats: QuickChatConversation[],
+    profile?: string,
+  ) => Promise<QuickChatConversation[]>;
 
   // Session search
   searchSessions: (
@@ -985,6 +1033,20 @@ interface HermesAPI {
   registerProjectFolder: (
     folderPath: string,
   ) => Promise<ProjectFolderRecord | null>;
+  updateProjectFolder: (
+    input: UpdateProjectFolderInput,
+  ) => Promise<ProjectFolderRecord | null>;
+  removeProjectFolder: (
+    folderPath: string,
+    profile?: string,
+  ) => Promise<boolean>;
+  listArchivedItems: (profile?: string) => Promise<ArchivedItem[]>;
+  archiveItem: (
+    input: ArchiveItemInput,
+    profile?: string,
+  ) => Promise<ArchivedItem>;
+  restoreArchivedItem: (id: string, profile?: string) => Promise<boolean>;
+  deleteArchivedItem: (id: string, profile?: string) => Promise<boolean>;
   prepareProjectContext: (folderPath: string) => Promise<Attachment | null>;
   readDirectory: (
     dirPath: string,
@@ -999,14 +1061,14 @@ interface HermesAPI {
   // Shell
   openExternal: (url: string) => Promise<void>;
 
-  // Backup / Import
-  runHermesBackup: (
-    profile?: string,
-  ) => Promise<{ success: boolean; path?: string; error?: string }>;
-  runHermesImport: (
+  // Agents One backup / restore
+  exportAgentsOneBackup: () => Promise<AgentsOneBackupResult>;
+  inspectAgentsOneBackup: (
     archivePath: string,
-    profile?: string,
-  ) => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<AgentsOneBackupInspection>;
+  restoreAgentsOneBackup: (
+    archivePath: string,
+  ) => Promise<AgentsOneRestoreResult>;
 
   // Debug dump
   runHermesDump: () => Promise<string>;

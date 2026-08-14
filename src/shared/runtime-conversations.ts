@@ -46,13 +46,35 @@ export interface RuntimeConversationSummary {
   runtimeColor?: string;
   runtimeAvatar?: string | null;
   runtimeSessionId?: string;
+  /** Background Runtime run currently advancing this persisted conversation. */
+  activeRuntimeRunId?: string;
   /** Last local project explicitly selected for this conversation. */
   workspace?: string;
+  /** Permission selected for this conversation or scheduled execution. */
+  accessMode?: "auto" | "analysis" | "full_access";
   messageCount: number;
 }
 
 export interface RuntimeConversation extends RuntimeConversationSummary {
   messages: RuntimeConversationMessage[];
+}
+
+export interface QuickChatMessage {
+  id: string;
+  role: "user" | "agent" | "system";
+  content: string;
+  createdAt: number;
+}
+
+export interface QuickChatConversation {
+  id: string;
+  title: string;
+  runtimeId: string;
+  runtimeName: string;
+  runtimeSessionId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+  messages: QuickChatMessage[];
 }
 
 export interface SaveRuntimeConversationInput {
@@ -66,6 +88,9 @@ export interface SaveRuntimeConversationInput {
   runtimeColor?: string;
   runtimeAvatar?: string | null;
   runtimeSessionId?: string;
+  /** Set by background task creation and cleared after terminal delivery. */
+  activeRuntimeRunId?: string | null;
   workspace?: string;
+  accessMode?: "auto" | "analysis" | "full_access";
   messages: RuntimeConversationMessage[];
 }

@@ -107,6 +107,12 @@ export default {
     saveImage: "Save image",
     close: "Close",
   },
+  fileMenu: {
+    open: "Open file",
+    copyPath: "Copy path",
+    copyContent: "Copy document contents",
+    reveal: "Show in file explorer",
+  },
   commands: {
     new: "Start a new conversation",
     clear: "Clear conversation history",

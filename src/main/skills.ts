@@ -18,6 +18,7 @@ import {
 } from "./installer";
 import { isValidNamedProfileName, profileHome } from "./utils";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
+import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 export interface InstalledSkill {
   name: string;
@@ -345,6 +346,7 @@ export function installSkill(
   identifier: string,
   profile?: string,
 ): SkillCliResult {
+  assertAgentsOneWritesAllowed();
   try {
     const args = hermesCliArgs(["skills", "install", identifier, "--yes"]);
     if (profile && profile !== "default") {
@@ -378,6 +380,7 @@ export function installSkill(
 }
 
 export function uninstallSkill(name: string, profile?: string): SkillCliResult {
+  assertAgentsOneWritesAllowed();
   // Try the CLI first (updates hub lock files, handles complex cases).
   let cliResult: SkillCliResult | undefined;
   try {

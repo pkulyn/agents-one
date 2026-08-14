@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, shell } from "electron";
+import { app, BrowserWindow, Notification, session, shell } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../../resources/icon.png?asset";
@@ -7,6 +7,8 @@ import { stopHealthPolling } from "../hermes";
 import { stopAllDashboards } from "../dashboard";
 import { cleanupTempMediaFiles } from "../media";
 import { closeDbConnection } from "../db";
+import { recoverInterruptedAgentsOneRestore } from "../agents-one-backup";
+import { isAgentsOneRestoreWriteLocked } from "../restore-write-lock";
 import { stopSshTunnel } from "../ssh-tunnel";
 import { shouldAllowConfiguredRemoteCertificateError } from "../remote-tls";
 import {
@@ -21,7 +23,12 @@ import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
-import { startTaskScheduleRunner, stopTaskScheduleRunner } from "../task-schedules";
+import {
+  onTaskScheduleRunCompleted,
+  onTaskScheduleRunStarted,
+  startTaskScheduleRunner,
+  stopTaskScheduleRunner,
+} from "../task-schedules";
 
 const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Agents One";
 const OPEN_DEVTOOLS_ON_START =
@@ -30,6 +37,8 @@ const OPEN_DEVTOOLS_ON_START =
 
 let mainWindow: BrowserWindow | null = null;
 const activeRuns = new Map<string, () => void>();
+let removeTaskScheduleRunListener: (() => void) | null = null;
+let removeTaskScheduleStartedListener: (() => void) | null = null;
 
 export function startMainProcess(): void {
   process.on("uncaughtException", (err) => {
@@ -50,10 +59,40 @@ export function startMainProcess(): void {
 
   setupUpdater({ getMainWindow: () => mainWindow });
 
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
   app.whenReady().then(() => {
+    // A durable restore journal is replayed before any window, scheduler or
+    // writable database connection can observe a partially replaced snapshot.
+    try {
+      if (recoverInterruptedAgentsOneRestore()) {
+        console.warn("[BACKUP] Recovered an interrupted Agents One restore.");
+      }
+    } catch (error) {
+      console.error("[BACKUP] Failed to recover interrupted restore", error);
+      app.exit(1);
+      return;
+    }
     // Stable Windows identity for an in-place upgrade from Hermes One. The
     // visible product name is configured independently as Agents One.
     electronApp.setAppUserModelId("com.hermes.desktop");
+    removeTaskScheduleStartedListener = onTaskScheduleRunStarted((event) => {
+      mainWindow?.webContents.send("task-schedule-run-started", event);
+      if (Notification.isSupported()) {
+        new Notification({
+          title: `定时任务：${event.scheduleName}`,
+          body: `${event.scheduleName}定时任务已触发，智能体已开始接手并推进任务。`,
+        }).show();
+      }
+    });
+    removeTaskScheduleRunListener = onTaskScheduleRunCompleted((event) => {
+      mainWindow?.webContents.send("task-schedule-run-completed", event);
+    });
     startTaskScheduleRunner();
 
     app.on("browser-window-created", (_, window) => {
@@ -115,12 +154,18 @@ export function startMainProcess(): void {
   });
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+    if (process.platform !== "darwin" && !isAgentsOneRestoreWriteLocked()) {
+      app.quit();
+    }
   });
 
   app.on("before-quit", () => {
     stopHealthPolling();
     stopTaskScheduleRunner();
+    removeTaskScheduleRunListener?.();
+    removeTaskScheduleRunListener = null;
+    removeTaskScheduleStartedListener?.();
+    removeTaskScheduleStartedListener = null;
     for (const abort of activeRuns.values()) abort();
     activeRuns.clear();
     cleanupTempMediaFiles();

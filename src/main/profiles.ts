@@ -19,6 +19,7 @@ import {
 } from "./utils";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { readProfileMeta, defaultColorForName } from "./profile-meta";
+import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 const PROFILES_DIR = join(HERMES_HOME, "profiles");
 
@@ -270,6 +271,7 @@ export function createProfile(
   name: string,
   cloneFrom: string | null,
 ): CreateProfileResult {
+  assertAgentsOneWritesAllowed();
   const agentName = normalizeAgentName(name);
   if (!agentName) {
     return { success: false, error: "Agent name is required" };
@@ -329,6 +331,7 @@ export function deleteProfile(name: string): {
   success: boolean;
   error?: string;
 } {
+  assertAgentsOneWritesAllowed();
   if (name === "default")
     return { success: false, error: "Cannot delete the default profile" };
   if (!isValidNamedProfileName(name)) {
@@ -359,6 +362,7 @@ export function deleteProfile(name: string): {
 }
 
 export function setActiveProfile(name: string): void {
+  assertAgentsOneWritesAllowed();
   if (!isValidProfileName(name)) {
     throw new Error(PROFILE_NAME_ERROR);
   }

@@ -122,6 +122,7 @@ function draftFromRuntime(runtime: AgentRuntimeDefinition): AgentRuntimeDraft {
     kind: runtime.kind,
     location: runtime.location,
     enabled: runtime.enabled,
+    needsReauthorization: runtime.needsReauthorization,
     color: runtime.color,
     avatar: runtime.avatar,
     config: { ...runtime.config },
@@ -255,6 +256,7 @@ export default function AgentRuntimesPane({
           !!draft.config.hermes?.ssh?.username?.trim() &&
           !!draft.config.hermes?.ssh?.remotePort)
       : draft.location === "local" || !!draft.config.endpoint?.trim()) &&
+    (!draft.needsReauthorization || bearerToken.trim().length >= 8) &&
     (!isNew || (draftProbe?.state === "healthy" && draftProbeKey === draftConnectionKey));
 
   async function loadCredentialStatus(runtimeId: string | null): Promise<void> {
@@ -1195,17 +1197,20 @@ export default function AgentRuntimesPane({
                 />
               </label>
               <label className="settings-field">
-                <span className="settings-field-label">工作区</span>
+                <span className="settings-field-label">检测工作区（可选）</span>
                 <input
                   className="input"
-                  aria-label="工作区"
+                  aria-label="检测工作区（可选）"
                   value={draft.config.workspace || ""}
                   onChange={(event) =>
                     updateConfig("workspace", event.target.value)
                   }
-                  placeholder="D:\\Agent Console"
+                  placeholder="留空；项目目录在任务中按需选择"
                   disabled={isBuiltin}
                 />
+                <span className="settings-field-hint">
+                  仅用于连接检测，不会自动带入新对话或定时任务。
+                </span>
               </label>
               <label className="settings-field">
                 <span className="settings-field-label">模型覆盖</span>
@@ -1255,12 +1260,16 @@ export default function AgentRuntimesPane({
               />
               启用
             </label>
+            {draft.needsReauthorization && (
+              <div className="settings-field-hint">
+                此远程智能体来自恢复且端点身份已变化。请先填写新的主凭据；在此之前无法启用或运行。
+              </div>
+            )}
           </div>
 
           {draft.kind === "pi" && (
             <div className="settings-field-hint agent-runtime-pi-note">
-              Pi 的对话与分析默认禁用工具；任务中心选择“实现”时才会在隔离 Git
-              worktree 中允许文件操作。
+              Pi 按每个任务实际选择的项目目录和文件访问级别启动；未选择目录时不继承智能体配置中的工作区。
             </div>
           )}
 

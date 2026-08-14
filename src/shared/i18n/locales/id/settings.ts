@@ -88,7 +88,7 @@ export default {
   empty: "(kosong)",
   dataSection: "Data",
   dataHint:
-    "Ekspor atau impor konfigurasi Hermes, sesi, skill, dan memori Anda.",
+    "Ekspor atau pulihkan konfigurasi, proyek, tugas, chat, dan catatan kolaborasi Agents One.",
   backingUp: "Membuat backup...",
   exportBackup: "Ekspor Backup",
   importing: "Mengimpor...",

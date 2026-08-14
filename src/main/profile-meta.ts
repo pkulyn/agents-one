@@ -1,6 +1,11 @@
 import { join } from "path";
 import { promises as fs } from "fs";
-import { profileHome, isValidProfileName, PROFILE_NAME_ERROR } from "./utils";
+import {
+  profileHome,
+  isValidProfileName,
+  PROFILE_NAME_ERROR,
+  safeWriteFile,
+} from "./utils";
 
 export { PROFILE_COLORS, defaultColorForName } from "../shared/profileColors";
 
@@ -65,8 +70,10 @@ async function writeProfileMeta(
   for (const k of Object.keys(next) as (keyof ProfileMeta)[]) {
     if (next[k] === undefined) delete next[k];
   }
-  await fs.mkdir(profileHome(name), { recursive: true });
-  await fs.writeFile(metaPath(name), JSON.stringify(next, null, 2), "utf-8");
+  // Keep the final write synchronous and behind the shared write gate. An
+  // asynchronous write could already be in flight when a restore starts and
+  // then overwrite the restored snapshot after the renderer is destroyed.
+  safeWriteFile(metaPath(name), JSON.stringify(next, null, 2));
 }
 
 export async function setProfileColor(

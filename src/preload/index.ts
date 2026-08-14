@@ -35,13 +35,22 @@ import type {
 import type {
   CreateTaskScheduleInput,
   TaskSchedule,
+  TaskScheduleRunCompletedEvent,
+  TaskScheduleRunStartedEvent,
   TaskScheduleTriggerResult,
+  UpdateTaskScheduleInput,
 } from "../shared/task-schedules";
 import type {
+  QuickChatConversation,
   RuntimeConversation,
   RuntimeConversationSummary,
   SaveRuntimeConversationInput,
 } from "../shared/runtime-conversations";
+import type {
+  AgentsOneBackupInspection,
+  AgentsOneBackupResult,
+  AgentsOneRestoreResult,
+} from "../shared/agents-one-backup";
 
 /**
  * Mirror of the renderer-side `CredentialPoolEntry` ambient type
@@ -323,6 +332,19 @@ const hermesAPI = {
     ipcRenderer.invoke("is-remote-only-mode"),
   listAgentRuntimes: (): Promise<AgentRuntimeDefinition[]> =>
     ipcRenderer.invoke("list-agent-runtimes"),
+  getAgentRuntimeModelContextWindow: (
+    runtimeId: string,
+    provider: string,
+    model: string,
+    profile?: string,
+  ): Promise<number | null> =>
+    ipcRenderer.invoke(
+      "get-agent-runtime-model-context-window",
+      runtimeId,
+      provider,
+      model,
+      profile,
+    ),
   saveAgentRuntime: (
     draft: AgentRuntimeDraft,
   ): Promise<AgentRuntimeDefinition> =>
@@ -380,6 +402,12 @@ const hermesAPI = {
     profile?: string,
   ): Promise<TaskSchedule> =>
     ipcRenderer.invoke("create-task-schedule", input, profile),
+  updateTaskSchedule: (
+    id: string,
+    input: UpdateTaskScheduleInput,
+    profile?: string,
+  ): Promise<TaskSchedule> =>
+    ipcRenderer.invoke("update-task-schedule", id, input, profile),
   setTaskScheduleEnabled: (
     id: string,
     enabled: boolean,
@@ -391,6 +419,28 @@ const hermesAPI = {
     profile?: string,
   ): Promise<TaskScheduleTriggerResult> =>
     ipcRenderer.invoke("trigger-task-schedule", id, profile),
+  onTaskScheduleRunCompleted: (
+    callback: (event: TaskScheduleRunCompletedEvent) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: TaskScheduleRunCompletedEvent,
+    ): void => callback(payload);
+    ipcRenderer.on("task-schedule-run-completed", handler);
+    return () =>
+      ipcRenderer.removeListener("task-schedule-run-completed", handler);
+  },
+  onTaskScheduleRunStarted: (
+    callback: (event: TaskScheduleRunStartedEvent) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: TaskScheduleRunStartedEvent,
+    ): void => callback(payload);
+    ipcRenderer.on("task-schedule-run-started", handler);
+    return () =>
+      ipcRenderer.removeListener("task-schedule-run-started", handler);
+  },
   deleteTaskSchedule: (id: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("delete-task-schedule", id, profile),
   getConnectionConfig: (): Promise<{
@@ -595,6 +645,17 @@ const hermesAPI = {
     labels: { open: string; saveAs: string },
   ): void => {
     ipcRenderer.send("show-media-menu", src, name, labels);
+  },
+  showFileMenu: (
+    filePath: string,
+    labels: {
+      open: string;
+      copyPath: string;
+      copyContent: string;
+      reveal: string;
+    },
+  ): void => {
+    ipcRenderer.send("show-file-menu", filePath, labels);
   },
 
   // Resolve the absolute filesystem path for a File coming from drag-drop
@@ -1127,8 +1188,9 @@ const hermesAPI = {
   getTaskCollaboration: (
     taskId: string,
     profile?: string,
-  ): Promise<import("../shared/task-collaboration").TaskCollaborationRecord | null> =>
-    ipcRenderer.invoke("get-task-collaboration", taskId, profile),
+  ): Promise<
+    import("../shared/task-collaboration").TaskCollaborationRecord | null
+  > => ipcRenderer.invoke("get-task-collaboration", taskId, profile),
   linkTaskCollaboration: (
     input: import("../shared/task-collaboration").LinkTaskCollaborationInput,
     profile?: string,
@@ -1141,8 +1203,9 @@ const hermesAPI = {
     ipcRenderer.invoke("update-task-collaboration-execution", input, profile),
   listTaskCollaborations: (
     profile?: string,
-  ): Promise<import("../shared/task-collaboration").TaskCollaborationRecord[]> =>
-    ipcRenderer.invoke("list-task-collaborations", profile),
+  ): Promise<
+    import("../shared/task-collaboration").TaskCollaborationRecord[]
+  > => ipcRenderer.invoke("list-task-collaborations", profile),
 
   listRuntimeConversations: (
     profile?: string,
@@ -1167,6 +1230,13 @@ const hermesAPI = {
     ipcRenderer.invoke("update-runtime-conversation-title", id, title, profile),
   deleteRuntimeConversation: (id: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("delete-runtime-conversation", id, profile),
+  listQuickChats: (profile?: string): Promise<QuickChatConversation[]> =>
+    ipcRenderer.invoke("list-quick-chats", profile),
+  saveQuickChats: (
+    chats: QuickChatConversation[],
+    profile?: string,
+  ): Promise<QuickChatConversation[]> =>
+    ipcRenderer.invoke("save-quick-chats", chats, profile),
 
   // Session search
   searchSessions: (
@@ -1469,6 +1539,24 @@ const hermesAPI = {
   listProjectFolders: () => ipcRenderer.invoke("list-project-folders"),
   registerProjectFolder: (folderPath: string) =>
     ipcRenderer.invoke("register-project-folder", folderPath),
+  updateProjectFolder: (
+    input: import("../shared/project-folders").UpdateProjectFolderInput,
+  ) => ipcRenderer.invoke("update-project-folder", input),
+  removeProjectFolder: (
+    folderPath: string,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("remove-project-folder", folderPath, profile),
+  listArchivedItems: (profile?: string) =>
+    ipcRenderer.invoke("list-archived-items", profile),
+  archiveItem: (
+    input: import("../shared/archives").ArchiveItemInput,
+    profile?: string,
+  ) => ipcRenderer.invoke("archive-item", input, profile),
+  restoreArchivedItem: (id: string, profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("restore-archived-item", id, profile),
+  deleteArchivedItem: (id: string, profile?: string): Promise<boolean> =>
+    ipcRenderer.invoke("delete-archived-item", id, profile),
   prepareProjectContext: (folderPath: string): Promise<Attachment | null> =>
     ipcRenderer.invoke("prepare-project-context", folderPath),
   readDirectory: (
@@ -1490,17 +1578,17 @@ const hermesAPI = {
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke("open-external", url),
 
-  // Backup / Import
-  runHermesBackup: (
-    profile?: string,
-  ): Promise<{ success: boolean; path?: string; error?: string }> =>
-    ipcRenderer.invoke("run-hermes-backup", profile),
-
-  runHermesImport: (
+  // Agents One backup / restore
+  exportAgentsOneBackup: (): Promise<AgentsOneBackupResult> =>
+    ipcRenderer.invoke("export-agents-one-backup"),
+  inspectAgentsOneBackup: (
     archivePath: string,
-    profile?: string,
-  ): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("run-hermes-import", archivePath, profile),
+  ): Promise<AgentsOneBackupInspection> =>
+    ipcRenderer.invoke("inspect-agents-one-backup", archivePath),
+  restoreAgentsOneBackup: (
+    archivePath: string,
+  ): Promise<AgentsOneRestoreResult> =>
+    ipcRenderer.invoke("restore-agents-one-backup", archivePath),
 
   // Debug dump
   runHermesDump: (): Promise<string> => ipcRenderer.invoke("run-hermes-dump"),
