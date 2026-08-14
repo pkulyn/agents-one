@@ -139,9 +139,10 @@ describe("AgentRuntimesPane", () => {
     render(<AgentRuntimesPane />);
 
     fireEvent.click(await screen.findByRole("button", { name: "接入" }));
-    fireEvent.change(screen.getByPlaceholderText("https://host.example/bridge"), {
-      target: { value: "https://example.test/bridge" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("https://gateway.example.com/agents-one/v1"),
+      { target: { value: "https://example.test/agents-one/v1" } },
+    );
     fireEvent.click(screen.getByRole("button", { name: "连接测试" }));
     await waitFor(() => expect(api.probeAgentRuntimeDraft).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -156,8 +157,9 @@ describe("AgentRuntimesPane", () => {
       location: "remote",
       enabled: true,
       config: {
-        endpoint: "https://example.test/bridge",
+        endpoint: "https://example.test/agents-one/v1",
         transport: "http",
+        remoteGateway: { protocol: "agents-one-v1" },
         timeoutMs: 10000,
       },
     });
@@ -174,6 +176,8 @@ describe("AgentRuntimesPane", () => {
     fireEvent.change(screen.getByLabelText("类型"), {
       target: { value: "hermes" },
     });
+    // 新远程默认统一 Gateway (v1)；兼容模式覆盖旧 Hermes 连接配置
+    fireEvent.click(screen.getByRole("button", { name: "兼容模式" }));
     fireEvent.change(screen.getByLabelText("远程服务器地址"), {
       target: { value: "https://hermes.example/bridge" },
     });
@@ -238,6 +242,8 @@ describe("AgentRuntimesPane", () => {
     expect(screen.getByRole("button", { name: "本地" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "远程" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "SSH 隧道" })).toBeInTheDocument();
+    // 对话传输方式（自动/Dashboard/基础模式）仅在兼容模式下展示
+    fireEvent.click(screen.getByRole("button", { name: "兼容模式" }));
     expect(screen.getByRole("button", { name: "自动" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "基础模式" })).toBeInTheDocument();
