@@ -3,9 +3,8 @@ import { useI18n } from "../useI18n";
 import { useSettings } from "./SettingsDataContext";
 
 /**
- * Export / import a full Hermes backup archive, plus the OpenClaw → Hermes
- * migration (which imports config, keys, sessions, and skills — a data import,
- * so it lives here rather than under Community).
+ * Export / restore Agents One workspace data, plus the legacy OpenClaw →
+ * Hermes migration (which remains a separate data-import flow).
  */
 export default function DataPane(): React.JSX.Element {
   const { t } = useI18n();
@@ -16,6 +15,7 @@ export default function DataPane(): React.JSX.Element {
     importResult,
     handleBackup,
     handleImport,
+    handleRestartAfterRestore,
     openclawFound,
     openclawPath,
     migrationDismissed,
@@ -34,11 +34,14 @@ export default function DataPane(): React.JSX.Element {
         <div className="settings-field-hint" style={{ marginBottom: 10 }}>
           {t("settings.dataHint")}
         </div>
+        <div className="settings-field-hint" style={{ marginBottom: 12 }}>
+          {t("settings.dataExclusions")}
+        </div>
         <div className="settings-hermes-actions">
           <button
             className="btn btn-secondary"
             onClick={handleBackup}
-            disabled={backingUp}
+            disabled={backingUp || importing}
           >
             <Download size={14} style={{ marginRight: 6 }} />
             {backingUp ? t("settings.backingUp") : t("settings.exportBackup")}
@@ -46,7 +49,7 @@ export default function DataPane(): React.JSX.Element {
           <button
             className="btn btn-secondary"
             onClick={handleImport}
-            disabled={importing}
+            disabled={importing || backingUp}
           >
             <Upload size={14} style={{ marginRight: 6 }} />
             {importing ? t("settings.importing") : t("settings.importBackup")}
@@ -54,19 +57,31 @@ export default function DataPane(): React.JSX.Element {
         </div>
         {backupResult && (
           <div
-            className={`settings-hermes-result ${backupResult.includes("created") || backupResult.includes("success") ? "success" : "error"}`}
+            className={`settings-hermes-result ${backupResult.success ? "success" : "error"}`}
             style={{ marginTop: 8 }}
           >
-            {backupResult}
+            {backupResult.message}
           </div>
         )}
         {importResult && (
-          <div
-            className={`settings-hermes-result ${importResult.includes("complete") ? "success" : "error"}`}
-            style={{ marginTop: 8 }}
-          >
-            {importResult}
-          </div>
+          <>
+            <div
+              className={`settings-hermes-result ${importResult.success ? "success" : "error"}`}
+              style={{ marginTop: 8 }}
+            >
+              {importResult.message}
+            </div>
+            {importResult.success && importResult.requiresRestart && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleRestartAfterRestore()}
+                style={{ marginTop: 8 }}
+              >
+                {t("settings.backupRestartNow")}
+              </button>
+            )}
+          </>
         )}
       </div>
 
