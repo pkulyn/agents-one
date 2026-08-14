@@ -42,3 +42,7 @@ release/
 /*.bat
 /*.ps1
 .mcp.json
+
+# Local Agents One dev artifacts
+.agents-one/
+.agents-one-*.log
