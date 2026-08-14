@@ -109,7 +109,7 @@ transport: "gateway-v1" | "local-cli" | "local-api";
 | 节点 | 状态 | 日期 | 备注 |
 |------|------|------|------|
 | 方案对齐与开发文档生成 | ✅ | 2026-08-14 | 用户确认方案 A + 全部 10 项决策 |
-| Phase 0 提交基线 | ⬜ | | |
+| Phase 0 提交基线 | ✅ | 2026-08-14 | 8 个语义化 commit；标签 `agents-one-pre-opensource-baseline`；typecheck✅ test 203 文件/2010 通过/9 跳过 ✅ build✅ |
 | Phase 1 接入统一 | ⬜ | | |
 | Phase 2 遗留清理 | ⬜ | | |
 | Phase 3 开源准备 | ⬜ | | |

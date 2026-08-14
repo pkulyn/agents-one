@@ -1634,3 +1634,11 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - Claude/Codex 修复：移除自动模式下对 Bash/shell 的禁用与固定工具白名单；Claude 的可写非交互任务使用原生完整授权，Codex 自动模式保留原生 `workspace-write` 边界但不再禁用 shell，完全访问才绕过 sandbox。这样 MCP、插件、Hooks、子智能体和 Shell 不会被适配器裁掉。三个 CLI 子进程均继承桌面进程的完整用户环境，以兼容用户配置的任意本地工具变量。
 - 权限边界：“只读”仍明确使用各 CLI 的 read-only/plan 能力；“自动”启用完整 CLI 能力，但选定项目时 Agents One 会在运行前后保护原有文件并恢复被移动或删除的内容；“完全访问”不做移动/删除恢复。当前“obsidian知识库整理”保存为 `full_access + D:\pkulyn_vault`，满足 `llm-wiki` 的写入、快照、索引及状态更新需要。
 - 验证：Pi 原生技能加载器成功解析 `C:\Users\chenfl\.agents\skills\llm-wiki\SKILL.md` 且无诊断错误；Pi/Codex/Claude/调度/RuntimeChat/文件保护 6 个定向测试文件共 84 项通过，Node/Web TypeScript 检查通过；相关 ESLint 为 0 error（仅有仓库现存格式及 Hook warning）。
+
+## 2026-08-14：开源前优化启动 - Phase 0 提交基线
+
+- 生成最终开发文档 [Agents One 开源前最终优化开发文档](./AGENTS_ONE_OPENSOURCE_PLAN.md)，含用户确认的 10 项决策（接入统一=方案 A/远程走 Gateway v1/本地 CLI+本地 API/SSH 删除/旧远程代码直接删除/上游遗留直接删除/旧页面界面删除数据备份保留/仓库 pkulyn-agents-one/i18n en+zh-CN/MIT Copyright 改 pkulyn）。
+- 将 2026-08-06 至 08-13 的未提交工作整理为 8 个语义化提交：①gitignore 本地产物 ②备份/恢复/归档 ③Task Center 退役+计划任务收敛 ④协作 DAG ⑤safe_write+CLI 原生能力 ⑥侧栏菜单/分页/附件操作 ⑦品牌资产/启动动画 ⑧Plugin SDK 0.1.2+文档+lat.md ⑨Runtime 对话集成/计划任务 UI/统一渲染。
+- 打标签 `agents-one-pre-opensource-baseline` 作为开源前回退点（此前基线标签 `agents-one-pre-slim-20260806`）。
+- 全量验证全绿：Node/Web TypeScript 检查通过；Vitest 203 个测试文件、2010 项通过、9 项跳过；Electron Vite 生产构建通过。
+- 两个本地测试产物（`Hers-2-Connector-Adaptation-Package-2026-08-10.zip`、`agents-one-test.md`）保持未跟踪，不入库。
