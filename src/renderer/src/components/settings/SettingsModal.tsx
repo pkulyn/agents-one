@@ -6,7 +6,6 @@ import {
   Info,
   Languages,
   Palette,
-  ShieldCheck,
   X,
 } from "lucide-react";
 import { useI18n } from "../useI18n";
@@ -15,7 +14,6 @@ import { useSettingsData } from "./useSettingsData";
 import { SettingsDataContext } from "./SettingsDataContext";
 import AppearancePane from "./AppearancePane";
 import LanguagePane from "./LanguagePane";
-import PrivacyPane from "./PrivacyPane";
 import DataPane from "./DataPane";
 import AboutPane from "./AboutPane";
 import LogsPane from "./LogsPane";
@@ -24,7 +22,6 @@ import ArchivePane from "./ArchivePane";
 export type SettingsSection =
   | "appearance"
   | "language"
-  | "privacy"
   | "data"
   | "about"
   | "logs"
@@ -52,14 +49,7 @@ const SETTINGS_NAV: ReadonlyArray<{
     Icon: Languages,
   },
   {
-    group: "general",
-    id: "privacy",
-    labelKey: "settings.nav.privacy",
-    Icon: ShieldCheck,
-  },
-  {
-    group: "general",
-    id: "data",
+    group: "general",    id: "data",
     labelKey: "settings.nav.data",
     Icon: Database,
   },
@@ -178,7 +168,6 @@ export default function SettingsModal({
           <SettingsDataContext.Provider value={data}>
             {section === "appearance" && <AppearancePane />}
             {section === "language" && <LanguagePane />}
-            {section === "privacy" && <PrivacyPane />}
             {section === "data" && <DataPane />}
             {section === "archives" && <ArchivePane profile={profile} />}
             {section === "about" && <AboutPane />}

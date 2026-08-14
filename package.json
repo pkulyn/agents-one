@@ -1,10 +1,18 @@
 {
   "name": "agents-one",
   "version": "0.1.0",
-  "description": "Agents One — a multi-agent desktop workspace",
+  "description": "Agents One — a desktop workspace for coordinating conversations, tasks and artifacts across multiple AI agents (Pi, Claude Code, Codex, Hermes, OpenClaw and any Gateway v1 remote agent)",
   "main": "./out/main/index.js",
-  "author": "fathah",
-  "homepage": "https://github.com/fathah/hermes-desktop",
+  "author": "pkulyn",
+  "license": "MIT",
+  "homepage": "https://github.com/pkulyn/agents-one",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pkulyn/agents-one.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pkulyn/agents-one/issues"
+  },
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",

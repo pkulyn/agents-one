@@ -3,7 +3,6 @@ export default {
   sections: {
     hermesAgent: "Hermes Agent",
     appearance: "Appearance",
-    privacy: "Privacy",
     credentialPool: "Credential Pool",
   },
   nav: {
@@ -13,7 +12,6 @@ export default {
     },
     appearance: "Appearance",
     language: "Language",
-    privacy: "Privacy",
     connection: "Connection",
     network: "Network",
     data: "Data",
@@ -102,10 +100,6 @@ export default {
     portuguese: "Portuguese",
     turkish: "Türkçe",
     hint: "Choose the interface language",
-  },
-  analytics: {
-    label: "Send anonymous usage analytics",
-    hint: "Collected anonymously and used only to improve Agents One — never your chats, files, prompts, or any personal data.",
   },
   notDetected: "Not detected",
   updatedSuccessfully: "Updated successfully!",

@@ -7,7 +7,6 @@ import { SettingsModalProvider } from "./components/settings/SettingsModalProvid
 import ErrorBoundary from "./components/ErrorBoundary";
 import Layout from "./screens/Layout/Layout";
 import SplashScreen from "./screens/SplashScreen/SplashScreen";
-import { captureScreenView } from "./utils/analytics";
 
 type Screen = "splash" | "main";
 
@@ -57,10 +56,6 @@ function App(): React.JSX.Element {
     void runStartup();
   }, [runStartup]);
 
-  // Track screen views for analytics
-  useEffect(() => {
-    captureScreenView(screen);
-  }, [screen]);
 
   const handleSplashFinished = useCallback(() => {
     /* splash transition is driven by the install check, not a timer */
