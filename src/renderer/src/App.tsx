@@ -11,9 +11,10 @@ import { captureScreenView } from "./utils/analytics";
 
 type Screen = "splash" | "main";
 
-// Minimum time the splash stays visible so the background video plays
-// through. Gateway / config checks happen during this window.
-const SPLASH_MIN_MS = 3000;
+// Minimum time for the complete contact → wordmark sequence. Gateway / config
+// checks happen during this window, while the final wordmark gets a readable
+// hold instead of disappearing as soon as its entrance finishes.
+const SPLASH_MIN_MS = 2900;
 
 function App(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>("splash");
