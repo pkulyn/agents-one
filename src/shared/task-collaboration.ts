@@ -43,6 +43,9 @@ export interface TaskCollaborationIntervention {
   assignmentId: string;
   content: string;
   visibility: "role" | "shared";
+  /** Target role's bounded reply for this human-guided turn. */
+  response?: string;
+  respondedAt?: number;
   /**
    * An explicit, role-scoped override chosen by the user while recovering a
    * blocked role. It is never inferred from an agent response.
@@ -67,6 +70,13 @@ export interface TaskCollaborationAssignment {
   workspaceAccess?: "local_direct" | "remote_mapping" | "evidence_bundle";
   /** A remote path, Git ref, mounted share or Bridge workspace reference. */
   workspaceRef?: string;
+  /**
+   * Stable assignment ids that must succeed before this role may start.
+   * If no assignment in a task declares this field, the record retains the
+   * legacy serial ordering. Once any assignment declares it, omitted/empty
+   * dependencies represent a DAG root and can run in parallel.
+   */
+  dependsOn?: string[];
 }
 
 /**
@@ -79,6 +89,8 @@ export interface TaskCollaborationRoleRun {
   runtimeId?: string;
   status: TaskCollaborationRoleRunStatus;
   runtimeRunId?: string;
+  /** Provider session retained so guided turns continue the same agent chat. */
+  runtimeSessionId?: string;
   startedAt?: number;
   completedAt?: number;
   /** Bounded handoff text, not an unbounded copy of the conversation. */
@@ -103,8 +115,9 @@ export interface TaskCollaborationArtifact {
   kind: "file" | "code_diff" | "test_result";
   label: string;
   path?: string;
+  size?: number;
   summary?: string;
-  /** Delivery-contract facts.  They are supplied by the Runtime adapter. */
+  /** Delivery facts. They are supplied by the Runtime adapter. */
   sourceMachine?: string;
   sha256?: string;
   changeSummary?: string;
@@ -153,6 +166,8 @@ export interface TaskCollaborationExecution {
   /** Compact audit trail, linked to role messages and Runtime evidence. */
   timeline?: TaskCollaborationTimelineEvent[];
   activeAssignmentId?: string;
+  /** All roles currently executing in a parallel DAG wave. */
+  activeAssignmentIds?: string[];
   updatedAt: number;
   completedAt?: number;
 }

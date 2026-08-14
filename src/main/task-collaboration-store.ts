@@ -11,6 +11,7 @@ import {
   type TaskCollaborationRecord,
   type TaskCollaborationRoleRun,
   type TaskCollaborationRoleRunStatus,
+  type TaskCollaborationTimelineEvent,
   type TaskCollaborationStatus,
   type LinkTaskCollaborationInput,
   type UpdateTaskCollaborationExecutionInput,
@@ -81,12 +82,33 @@ function assignments(value: unknown): TaskCollaborationAssignment[] {
       240,
     );
     const context = text((item as { context?: unknown }).context, 240);
+    const workspaceAccessRaw = text(
+      (item as { workspaceAccess?: unknown }).workspaceAccess,
+      40,
+    );
+    const workspaceAccess =
+      workspaceAccessRaw === "local_direct" ||
+      workspaceAccessRaw === "remote_mapping" ||
+      workspaceAccessRaw === "evidence_bundle"
+        ? workspaceAccessRaw
+        : undefined;
+    const workspaceRef = text(
+      (item as { workspaceRef?: unknown }).workspaceRef,
+      1024,
+    );
+    const rawDependsOn = (item as { dependsOn?: unknown }).dependsOn;
+    const dependsOn = Array.isArray(rawDependsOn)
+      ? [...new Set(rawDependsOn.map((value) => text(value, 120)).filter(Boolean))]
+      : undefined;
     result.push({
       ...(id ? { id } : {}),
       role,
       ...(runtimeId ? { runtimeId } : {}),
       ...(responsibility ? { responsibility } : {}),
       ...(context ? { context } : {}),
+      ...(workspaceAccess ? { workspaceAccess } : {}),
+      ...(workspaceRef ? { workspaceRef } : {}),
+      ...(dependsOn ? { dependsOn: dependsOn as string[] } : {}),
     });
   }
   return result;
@@ -99,43 +121,87 @@ function assignmentIdentity(
   return assignment.id || `legacy:${index}:${assignment.role}`;
 }
 
-function roleRuns(
-  value: unknown,
+function resolvedAssignment(
+  assignmentId: string,
   configuredAssignments: TaskCollaborationAssignment[],
-): TaskCollaborationRoleRun[] {
-  if (!Array.isArray(value)) return [];
+):
+  | { assignment: TaskCollaborationAssignment; phase?: "final_review" }
+  | undefined {
   const allowed = new Map(
     configuredAssignments.map((assignment, index) => [
       assignmentIdentity(assignment, index),
       assignment,
     ]),
   );
+  const direct = allowed.get(assignmentId);
+  if (direct) return { assignment: direct };
+  const suffix = "::final-review";
+  if (!assignmentId.endsWith(suffix)) return undefined;
+  const coordinator = allowed.get(assignmentId.slice(0, -suffix.length));
+  return coordinator
+    ? { assignment: coordinator, phase: "final_review" }
+    : undefined;
+}
+
+function roleRuns(
+  value: unknown,
+  configuredAssignments: TaskCollaborationAssignment[],
+): TaskCollaborationRoleRun[] {
+  if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const result: TaskCollaborationRoleRun[] = [];
   for (const item of value) {
     if (!item || typeof item !== "object") continue;
     const raw = item as Partial<TaskCollaborationRoleRun>;
     const assignmentId = text(raw.assignmentId, 160);
-    const assignment = assignmentId ? allowed.get(assignmentId) : undefined;
-    if (!assignment || seen.has(assignmentId as string)) continue;
+    const resolved = assignmentId
+      ? resolvedAssignment(assignmentId, configuredAssignments)
+      : undefined;
+    if (!resolved || seen.has(assignmentId as string)) continue;
     const status =
-      typeof raw.status === "string" && ROLE_RUN_STATUSES.has(raw.status as TaskCollaborationRoleRunStatus)
+      typeof raw.status === "string" &&
+      ROLE_RUN_STATUSES.has(raw.status as TaskCollaborationRoleRunStatus)
         ? (raw.status as TaskCollaborationRoleRunStatus)
         : "pending";
     seen.add(assignmentId as string);
     const runtimeRunId = text(raw.runtimeRunId, 200);
+    const runtimeSessionId = text(raw.runtimeSessionId, 500);
     const handoff = text(raw.handoff, 6_000);
     const error = text(raw.error, 1_000);
+    const phase =
+      raw.phase === "final_review" || resolved.phase
+        ? ("final_review" as const)
+        : ("work" as const);
     result.push({
       assignmentId: assignmentId as string,
-      role: assignment.role,
-      ...(assignment.runtimeId ? { runtimeId: assignment.runtimeId } : {}),
+      role:
+        text(raw.role, 80) ||
+        (resolved.phase
+          ? `${resolved.assignment.role} · 终验汇总`
+          : resolved.assignment.role),
+      ...(text(raw.runtimeId, 160) || resolved.assignment.runtimeId
+        ? {
+            runtimeId:
+              text(raw.runtimeId, 160) || resolved.assignment.runtimeId,
+          }
+        : {}),
       status,
       ...(runtimeRunId ? { runtimeRunId } : {}),
-      ...(typeof raw.startedAt === "number" ? { startedAt: raw.startedAt } : {}),
-      ...(typeof raw.completedAt === "number" ? { completedAt: raw.completedAt } : {}),
+      ...(runtimeSessionId ? { runtimeSessionId } : {}),
+      ...(typeof raw.startedAt === "number"
+        ? { startedAt: raw.startedAt }
+        : {}),
+      ...(typeof raw.completedAt === "number"
+        ? { completedAt: raw.completedAt }
+        : {}),
       ...(handoff ? { handoff } : {}),
       ...(error ? { error } : {}),
+      ...(phase === "final_review" ? { phase } : {}),
+      ...(typeof raw.attempt === "number" &&
+      Number.isInteger(raw.attempt) &&
+      raw.attempt >= 0
+        ? { attempt: raw.attempt }
+        : {}),
     });
   }
   return result;
@@ -147,7 +213,9 @@ function interventions(
 ): TaskCollaborationIntervention[] {
   if (!Array.isArray(value)) return [];
   const allowed = new Set(
-    configuredAssignments.map((assignment, index) => assignmentIdentity(assignment, index)),
+    configuredAssignments.map((assignment, index) =>
+      assignmentIdentity(assignment, index),
+    ),
   );
   const seen = new Set<string>();
   const result: TaskCollaborationIntervention[] = [];
@@ -157,14 +225,26 @@ function interventions(
     const id = text(raw.id, 160);
     const assignmentId = text(raw.assignmentId, 160);
     const content = text(raw.content, 4_000);
+    const response = text(raw.response, 6_000);
     const visibility = raw.visibility === "shared" ? "shared" : "role";
-    if (!id || !assignmentId || !content || !allowed.has(assignmentId) || seen.has(id)) continue;
+    if (
+      !id ||
+      !assignmentId ||
+      !content ||
+      !allowed.has(assignmentId) ||
+      seen.has(id)
+    )
+      continue;
     seen.add(id);
     result.push({
       id,
       assignmentId,
       content,
       visibility,
+      ...(response ? { response } : {}),
+      ...(response && typeof raw.respondedAt === "number"
+        ? { respondedAt: raw.respondedAt }
+        : {}),
       ...(raw.accessMode === "analysis" || raw.accessMode === "full_access"
         ? { accessMode: raw.accessMode }
         : {}),
@@ -179,12 +259,6 @@ function artifacts(
   configuredAssignments: TaskCollaborationAssignment[],
 ): TaskCollaborationArtifact[] {
   if (!Array.isArray(value)) return [];
-  const allowed = new Map(
-    configuredAssignments.map((assignment, index) => [
-      assignmentIdentity(assignment, index),
-      assignment,
-    ]),
-  );
   const seen = new Set<string>();
   const result: TaskCollaborationArtifact[] = [];
   for (const item of value) {
@@ -192,17 +266,33 @@ function artifacts(
     const raw = item as Partial<TaskCollaborationArtifact>;
     const id = text(raw.id, 200);
     const assignmentId = text(raw.assignmentId, 160);
-    const assignment = assignmentId ? allowed.get(assignmentId) : undefined;
+    const assignment = assignmentId
+      ? resolvedAssignment(assignmentId, configuredAssignments)?.assignment
+      : undefined;
     const kind = raw.kind;
     const source = raw.source;
     const label = text(raw.label, 240);
     if (
-      !id || !assignmentId || !assignment || !label || seen.has(id) ||
+      !id ||
+      !assignmentId ||
+      !assignment ||
+      !label ||
+      seen.has(id) ||
       (kind !== "file" && kind !== "code_diff" && kind !== "test_result") ||
       (source !== "runtime_artifact" && source !== "runtime_event")
-    ) continue;
+    )
+      continue;
     seen.add(id);
     const path = text(raw.path, 1_000);
+    const sha256 = text(raw.sha256, 128);
+    const sourceMachine = text(raw.sourceMachine, 240);
+    const changeSummary = text(raw.changeSummary, 8_000);
+    const size =
+      typeof raw.size === "number" &&
+      Number.isInteger(raw.size) &&
+      raw.size >= 0
+        ? raw.size
+        : undefined;
     const summary = text(raw.summary, 12_000);
     const runtimeId = text(raw.runtimeId, 160);
     const sourceRunId = text(raw.sourceRunId, 200);
@@ -210,10 +300,20 @@ function artifacts(
       id,
       assignmentId,
       role: assignment.role,
-      ...(runtimeId ? { runtimeId } : assignment.runtimeId ? { runtimeId: assignment.runtimeId } : {}),
+      ...(runtimeId
+        ? { runtimeId }
+        : assignment.runtimeId
+          ? { runtimeId: assignment.runtimeId }
+          : {}),
       kind,
       label,
       ...(path ? { path } : {}),
+      ...(size !== undefined ? { size } : {}),
+      ...(sha256 && /^[a-f0-9]{64}$/i.test(sha256)
+        ? { sha256: sha256.toLowerCase() }
+        : {}),
+      ...(sourceMachine ? { sourceMachine } : {}),
+      ...(changeSummary ? { changeSummary } : {}),
       ...(summary ? { summary } : {}),
       source,
       ...(sourceRunId ? { sourceRunId } : {}),
@@ -221,6 +321,62 @@ function artifacts(
     });
   }
   return result.slice(-200);
+}
+
+function timeline(
+  value: unknown,
+  configuredAssignments: TaskCollaborationAssignment[],
+  knownArtifacts: TaskCollaborationArtifact[],
+): TaskCollaborationTimelineEvent[] {
+  if (!Array.isArray(value)) return [];
+  const types = new Set<TaskCollaborationTimelineEvent["type"]>([
+    "preflight",
+    "started",
+    "handoff",
+    "artifact",
+    "acceptance",
+    "blocked",
+    "recovery",
+  ]);
+  const artifactIds = new Set(knownArtifacts.map((artifact) => artifact.id));
+  const seen = new Set<string>();
+  const result: TaskCollaborationTimelineEvent[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const raw = item as Partial<TaskCollaborationTimelineEvent>;
+    const id = text(raw.id, 200);
+    const label = text(raw.label, 240);
+    const type = raw.type;
+    if (
+      !id ||
+      !label ||
+      seen.has(id) ||
+      !types.has(type as TaskCollaborationTimelineEvent["type"])
+    )
+      continue;
+    const assignmentId = text(raw.assignmentId, 160);
+    if (
+      assignmentId &&
+      !resolvedAssignment(assignmentId, configuredAssignments)
+    )
+      continue;
+    const artifactId = text(raw.artifactId, 240);
+    if (artifactId && !artifactIds.has(artifactId)) continue;
+    seen.add(id);
+    result.push({
+      id,
+      type: type as TaskCollaborationTimelineEvent["type"],
+      label,
+      ...(text(raw.detail, 1_000) ? { detail: text(raw.detail, 1_000) } : {}),
+      ...(assignmentId ? { assignmentId } : {}),
+      ...(artifactId ? { artifactId } : {}),
+      ...(text(raw.messageId, 200)
+        ? { messageId: text(raw.messageId, 200) }
+        : {}),
+      createdAt: typeof raw.createdAt === "number" ? raw.createdAt : Date.now(),
+    });
+  }
+  return result.slice(-250);
 }
 
 function acceptance(
@@ -232,19 +388,28 @@ function acceptance(
   const raw = value as Partial<TaskCollaborationAcceptance>;
   const status = raw.status;
   const conclusion = text(raw.conclusion, 6_000);
-  if (!conclusion || (status !== "passed" && status !== "failed" && status !== "needs_review")) {
+  if (
+    !conclusion ||
+    (status !== "passed" && status !== "failed" && status !== "needs_review")
+  ) {
     return undefined;
   }
-  const allowedAssignments = new Set(
-    configuredAssignments.map((assignment, index) => assignmentIdentity(assignment, index)),
-  );
   const assignmentId = text(raw.assignmentId, 160);
   const knownArtifactIds = new Set(artifacts.map((artifact) => artifact.id));
   const reviewedArtifactIds = Array.isArray(raw.reviewedArtifactIds)
-    ? [...new Set(raw.reviewedArtifactIds.filter((id): id is string => typeof id === "string" && knownArtifactIds.has(id)))].slice(0, 200)
+    ? [
+        ...new Set(
+          raw.reviewedArtifactIds.filter(
+            (id): id is string =>
+              typeof id === "string" && knownArtifactIds.has(id),
+          ),
+        ),
+      ].slice(0, 200)
     : [];
   return {
-    ...(assignmentId && allowedAssignments.has(assignmentId) ? { assignmentId } : {}),
+    ...(assignmentId && resolvedAssignment(assignmentId, configuredAssignments)
+      ? { assignmentId }
+      : {}),
     status,
     conclusion,
     reviewedArtifactIds,
@@ -258,29 +423,59 @@ function execution(
 ): TaskCollaborationExecution | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Partial<TaskCollaborationExecution>;
-  if (typeof raw.status !== "string" || !EXECUTION_STATUSES.has(raw.status as TaskCollaborationExecutionStatus)) {
+  if (
+    typeof raw.status !== "string" ||
+    !EXECUTION_STATUSES.has(raw.status as TaskCollaborationExecutionStatus)
+  ) {
     return undefined;
   }
   const normalizedRoleRuns = roleRuns(raw.roleRuns, configuredAssignments);
-  const normalizedInterventions = interventions(raw.interventions, configuredAssignments);
+  const normalizedInterventions = interventions(
+    raw.interventions,
+    configuredAssignments,
+  );
   const normalizedArtifacts = artifacts(raw.artifacts, configuredAssignments);
-  const normalizedAcceptance = acceptance(raw.acceptance, configuredAssignments, normalizedArtifacts);
+  const normalizedAcceptance = acceptance(
+    raw.acceptance,
+    configuredAssignments,
+    normalizedArtifacts,
+  );
+  const normalizedTimeline = timeline(
+    raw.timeline,
+    configuredAssignments,
+    normalizedArtifacts,
+  );
   const brief = text(raw.brief, 12_000);
   const activeAssignmentId = text(raw.activeAssignmentId, 160);
-  const validActiveAssignmentId = activeAssignmentId && configuredAssignments.some(
-    (assignment, index) => assignmentIdentity(assignment, index) === activeAssignmentId,
-  );
-  const updatedAt = typeof raw.updatedAt === "number" ? raw.updatedAt : Date.now();
+  const activeAssignmentIds = Array.isArray(raw.activeAssignmentIds)
+    ? raw.activeAssignmentIds
+        .map((value) => text(value, 160))
+        .filter((value): value is string => Boolean(value))
+        .filter((value) => Boolean(resolvedAssignment(value, configuredAssignments)))
+    : [];
+  const validActiveAssignmentId =
+    activeAssignmentId &&
+    Boolean(resolvedAssignment(activeAssignmentId, configuredAssignments));
+  const updatedAt =
+    typeof raw.updatedAt === "number" ? raw.updatedAt : Date.now();
   return {
     status: raw.status as TaskCollaborationExecutionStatus,
     roleRuns: normalizedRoleRuns,
     ...(brief ? { brief } : {}),
-    ...(normalizedInterventions.length ? { interventions: normalizedInterventions } : {}),
+    ...(normalizedInterventions.length
+      ? { interventions: normalizedInterventions }
+      : {}),
     ...(normalizedArtifacts.length ? { artifacts: normalizedArtifacts } : {}),
     ...(normalizedAcceptance ? { acceptance: normalizedAcceptance } : {}),
+    ...(normalizedTimeline.length ? { timeline: normalizedTimeline } : {}),
     ...(validActiveAssignmentId ? { activeAssignmentId } : {}),
+    ...(activeAssignmentIds.length > 0
+      ? { activeAssignmentIds: [...new Set(activeAssignmentIds)] }
+      : {}),
     updatedAt,
-    ...(typeof raw.completedAt === "number" ? { completedAt: raw.completedAt } : {}),
+    ...(typeof raw.completedAt === "number"
+      ? { completedAt: raw.completedAt }
+      : {}),
   };
 }
 
@@ -290,19 +485,26 @@ function normalize(value: unknown): TaskCollaborationRecord | null {
   const taskId = text(record.taskId, 200);
   const title = text(record.title, 240);
   if (!taskId || !title) return null;
-  const createdAt = typeof record.createdAt === "number" ? record.createdAt : Date.now();
-  const updatedAt = typeof record.updatedAt === "number" ? record.updatedAt : createdAt;
+  const createdAt =
+    typeof record.createdAt === "number" ? record.createdAt : Date.now();
+  const updatedAt =
+    typeof record.updatedAt === "number" ? record.updatedAt : createdAt;
   const projectFolder = text(record.projectFolder);
   const sourceRuntimeId = text(record.sourceRuntimeId, 160);
   const conversationId = text(record.conversationId, 200);
   const sourceSessionId = text(record.sourceSessionId, 200);
   const status =
-    typeof record.status === "string" && STATUSES.has(record.status as TaskCollaborationStatus)
+    typeof record.status === "string" &&
+    STATUSES.has(record.status as TaskCollaborationStatus)
       ? (record.status as TaskCollaborationStatus)
       : "configured";
-  const startedAt = typeof record.startedAt === "number" ? record.startedAt : undefined;
+  const startedAt =
+    typeof record.startedAt === "number" ? record.startedAt : undefined;
   const normalizedAssignments = assignments(record.assignments);
-  const normalizedExecution = execution(record.execution, normalizedAssignments);
+  const normalizedExecution = execution(
+    record.execution,
+    normalizedAssignments,
+  );
   return {
     taskId,
     title,
@@ -323,7 +525,9 @@ function readStore(profile?: string): CollaborationStore {
   try {
     const file = storePath(profile);
     if (!existsSync(file)) return { version: 1, records: [] };
-    const parsed = JSON.parse(readFileSync(file, "utf8")) as { records?: unknown };
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as {
+      records?: unknown;
+    };
     return {
       version: 1,
       records: Array.isArray(parsed.records)
@@ -337,10 +541,16 @@ function readStore(profile?: string): CollaborationStore {
   }
 }
 
-function writeStore(profile: string | undefined, records: TaskCollaborationRecord[]): void {
+function writeStore(
+  profile: string | undefined,
+  records: TaskCollaborationRecord[],
+): void {
   safeWriteFile(
     storePath(profile),
-    JSON.stringify({ version: 1, records: records.slice(0, MAX_RECORDS) } satisfies CollaborationStore),
+    JSON.stringify({
+      version: 1,
+      records: records.slice(0, MAX_RECORDS),
+    } satisfies CollaborationStore),
   );
 }
 
@@ -356,16 +566,19 @@ export function saveTaskCollaboration(
   const previous = store.records.find((item) => item.taskId === taskId);
   const projectFolder = text(input.projectFolder);
   const sourceRuntimeId = text(input.sourceRuntimeId, 160);
-  const status = input.status && STATUSES.has(input.status) ? input.status : previous?.status ?? "configured";
+  const status =
+    input.status && STATUSES.has(input.status)
+      ? input.status
+      : (previous?.status ?? "configured");
   const startedAt =
-    status === "active" ? previous?.startedAt ?? now : undefined;
+    status === "active" ? (previous?.startedAt ?? now) : undefined;
   const requestedAssignments = assignments(input.assignments);
   // A late UI/session update must never erase the configured team.  Empty
   // assignments are only acceptable for a brand-new configured draft.
   const nextAssignments =
     requestedAssignments.length > 0
       ? requestedAssignments
-      : previous?.assignments ?? [];
+      : (previous?.assignments ?? []);
   if (status === "active" && nextAssignments.length === 0) {
     throw new Error("启动协作前至少要为一个角色选择智能体。");
   }
@@ -379,11 +592,18 @@ export function saveTaskCollaboration(
     createdAt: previous?.createdAt ?? now,
     updatedAt: now,
     ...(startedAt ? { startedAt } : {}),
-    ...(previous?.conversationId ? { conversationId: previous.conversationId } : {}),
-    ...(previous?.sourceSessionId ? { sourceSessionId: previous.sourceSessionId } : {}),
+    ...(previous?.conversationId
+      ? { conversationId: previous.conversationId }
+      : {}),
+    ...(previous?.sourceSessionId
+      ? { sourceSessionId: previous.sourceSessionId }
+      : {}),
     ...(previous?.execution ? { execution: previous.execution } : {}),
   };
-  writeStore(profile, [next, ...store.records.filter((item) => item.taskId !== taskId)]);
+  writeStore(profile, [
+    next,
+    ...store.records.filter((item) => item.taskId !== taskId),
+  ]);
   return next;
 }
 
@@ -427,7 +647,10 @@ export function linkTaskCollaboration(
     ...(sourceSessionId ? { sourceSessionId } : {}),
     updatedAt: Date.now(),
   };
-  writeStore(profile, [next, ...store.records.filter((item) => item.taskId !== taskId)]);
+  writeStore(profile, [
+    next,
+    ...store.records.filter((item) => item.taskId !== taskId),
+  ]);
   return next;
 }
 
@@ -447,6 +670,9 @@ export function updateTaskCollaborationExecution(
     execution: nextExecution,
     updatedAt: Date.now(),
   };
-  writeStore(profile, [next, ...store.records.filter((item) => item.taskId !== taskId)]);
+  writeStore(profile, [
+    next,
+    ...store.records.filter((item) => item.taskId !== taskId),
+  ]);
   return next;
 }
