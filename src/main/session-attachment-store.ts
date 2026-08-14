@@ -5,6 +5,7 @@ import { existsSync, readFileSync, statSync } from "fs";
 import { activeStateDbPath } from "./utils";
 import type { Attachment } from "../shared/attachments";
 import { isImageMime, MAX_IMAGE_BYTES } from "../shared/attachments";
+import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 const TABLE = "desktop_message_attachments";
 
@@ -202,6 +203,7 @@ export function persistPromptImageAttachments(
   promptText: string,
   attachments?: Attachment[],
 ): void {
+  assertAgentsOneWritesAllowed();
   if (!sessionId) return;
   const images = imageAttachments(attachments);
   if (images.length === 0) return;

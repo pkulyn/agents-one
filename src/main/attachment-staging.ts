@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { HERMES_HOME } from "./installer";
+import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 /**
  * Staging area for pasted attachments.  Picker / drag-drop attachments
@@ -55,6 +56,7 @@ export function stageAttachment(
   filename: string,
   base64Bytes: string,
 ): string {
+  assertAgentsOneWritesAllowed();
   const sessionSegment = sanitizeSegment(sessionId || "default", "default");
   const dir = join(STAGING_ROOT, sessionSegment);
   mkdirSync(dir, { recursive: true });

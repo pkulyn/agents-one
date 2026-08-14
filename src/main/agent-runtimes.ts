@@ -73,12 +73,14 @@ import {
   isSyntheticRemoteReasoningSummary,
   normalizeAgentEventStreamModel,
   normalizeAgentEventStreamUsage,
+  type AgentEventStreamUsage,
   type AgentEventStreamTool,
   type AgentEventStreamEvent,
 } from "../shared/agent-event-stream";
 import { materializeBytesToTemp } from "./media";
 import { hasValidTaskCollaborationProposal } from "../shared/task-collaboration-proposals";
 import { verifyLocalDeliveryArtifacts } from "./runtime-delivery";
+import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 const RUNTIME_CONFIG_KEY = "agentRuntimes";
 const RUNTIME_APPEARANCE_KEY = "agentRuntimeAppearances";
@@ -103,9 +105,24 @@ const WORKSPACE_GATEWAY_TOKEN_SECRET_PREFIX = "HERMES_WORKSPACE_GATEWAY_";
 const AGENTS_ONE_GATEWAY_TOKEN_SECRET_PREFIX = "AGENTS_ONE_GATEWAY_";
 const REMOTE_WORKSPACE_POLL_INTERVAL_MS = 500;
 
+interface ClaudeStreamBlockState {
+  type: string;
+  thinking: string;
+  callId?: string;
+  name?: string;
+  input?: unknown;
+  partialJson: string;
+}
+
+interface ClaudeStreamState {
+  blocks: Record<string, ClaudeStreamBlockState>;
+  toolNamesByCallId: Record<string, string>;
+}
+
 interface RuntimeRunRecord {
   run: AgentRuntimeRun;
   pendingEventOutput?: string;
+  claudeStream?: ClaudeStreamState;
   timeout?: NodeJS.Timeout;
   abortHandle?: () => void;
   cancelRequested: boolean;
@@ -559,6 +576,64 @@ function appendRemoteGatewayEvents(
  * provider frames at the main-process boundary so the renderer only consumes
  * the canonical AgentRuntimeRun fields.
  */
+function localUsageNumber(
+  source: Record<string, unknown>,
+  keys: string[],
+): number | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function normalizeLocalRuntimeUsage(
+  value: unknown,
+): AgentEventStreamUsage | undefined {
+  const source = isRecord(value) ? value : undefined;
+  const normalized = normalizeAgentEventStreamUsage(value);
+  if (!source) return normalized;
+
+  const inputTokens =
+    normalized?.inputTokens ?? localUsageNumber(source, ["input"]);
+  const outputTokens =
+    normalized?.outputTokens ?? localUsageNumber(source, ["output"]);
+  const cacheReadTokens = localUsageNumber(source, [
+    "cacheRead",
+    "cache_read",
+    "cacheReadInputTokens",
+    "cache_read_input_tokens",
+  ]);
+  const cacheWriteTokens = localUsageNumber(source, [
+    "cacheWrite",
+    "cache_write",
+    "cacheCreationInputTokens",
+    "cache_creation_input_tokens",
+  ]);
+  const contextUsedTokens =
+    normalized?.contextUsedTokens ??
+    (inputTokens !== undefined
+      ? inputTokens + (cacheReadTokens ?? 0) + (cacheWriteTokens ?? 0)
+      : undefined);
+
+  if (
+    !normalized &&
+    inputTokens === undefined &&
+    outputTokens === undefined &&
+    contextUsedTokens === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    ...(normalized ?? {}),
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(contextUsedTokens !== undefined ? { contextUsedTokens } : {}),
+  };
+}
+
 function appendLocalRuntimeMetadata(
   record: RuntimeRunRecord,
   value: unknown,
@@ -621,9 +696,9 @@ function appendLocalRuntimeMetadata(
         source.metrics ??
         source.tokenUsage ??
         source.token_usage;
-      usage = normalizeAgentEventStreamUsage(explicitUsage);
+      usage = normalizeLocalRuntimeUsage(explicitUsage);
     }
-    if (!usage) usage = normalizeAgentEventStreamUsage(source);
+    if (!usage) usage = normalizeLocalRuntimeUsage(source);
   }
 
   // Claude Code's result stream has historically exposed modelUsage as a
@@ -640,7 +715,7 @@ function appendLocalRuntimeMetadata(
       .map(([id, item]) => ({
         id,
         item,
-        usage: normalizeAgentEventStreamUsage(item),
+        usage: normalizeLocalRuntimeUsage(item),
       }))
       .sort(
         (left, right) =>
@@ -907,10 +982,142 @@ function appendOutputEvent(
   }
 
   if (kind === "claude-code") {
+    const stream = (record.claudeStream ??= {
+      blocks: {},
+      toolNamesByCallId: {},
+    });
+    const appendClaudeThinking = (value: unknown): void => {
+      const thought = compactText(value);
+      if (thought) appendRuntimeEvent(record, "progress", thought);
+    };
+    const upsertClaudeToolCall = (
+      nameValue: unknown,
+      input: unknown,
+      callId?: string,
+    ): void => {
+      const name = toolName(nameValue);
+      const tool = toolEvidence(name, input, undefined, callId);
+      if (callId) stream.toolNamesByCallId[callId] = name;
+
+      let existingIndex = -1;
+      if (callId) {
+        const events = record.run.events || [];
+        for (let index = events.length - 1; index >= 0; index -= 1) {
+          if (
+            events[index].type === "tool_call" &&
+            events[index].tool?.callId === callId
+          ) {
+            existingIndex = index;
+            break;
+          }
+        }
+      }
+      if (existingIndex < 0) {
+        appendRuntimeEvent(
+          record,
+          "tool_call",
+          `Claude Code 正在调用${name}。`,
+          { tool },
+        );
+        return;
+      }
+
+      const events = [...(record.run.events || [])];
+      const existing = events[existingIndex];
+      const mergedTool = runtimeEventTool({
+        ...existing.tool,
+        ...tool,
+        ...(tool.inputSummary ? { inputSummary: tool.inputSummary } : {}),
+      });
+      events[existingIndex] = {
+        ...existing,
+        summary: eventSummary(`Claude Code 正在调用${name}。`),
+        ...(mergedTool ? { tool: mergedTool } : {}),
+      };
+      record.run = { ...record.run, events };
+    };
+    const streamBlockKey = (value: unknown): string | undefined =>
+      typeof value === "number" || typeof value === "string"
+        ? String(value)
+        : undefined;
+    const partialToolInput = (block: ClaudeStreamBlockState): unknown => {
+      if (block.partialJson.trim()) {
+        try {
+          return JSON.parse(block.partialJson) as unknown;
+        } catch {
+          return block.partialJson;
+        }
+      }
+      return block.input;
+    };
+
     for (const line of lines) {
       try {
         const frame = JSON.parse(line) as Record<string, unknown>;
         appendLocalRuntimeMetadata(record, frame);
+        if (frame.type === "stream_event" && isRecord(frame.event)) {
+          const event = frame.event;
+          const eventType = firstString(event, ["type"]);
+          const blockKey = streamBlockKey(event.index);
+          if (eventType === "content_block_start" && blockKey) {
+            const contentBlock = isRecord(event.content_block)
+              ? event.content_block
+              : undefined;
+            const blockType = firstString(contentBlock, ["type"]);
+            if (blockType === "thinking" || blockType === "tool_use") {
+              const block: ClaudeStreamBlockState = {
+                type: blockType,
+                thinking:
+                  typeof contentBlock?.thinking === "string"
+                    ? contentBlock.thinking
+                    : "",
+                callId: toolCallId(contentBlock),
+                name: firstString(contentBlock, ["name"]),
+                input: contentBlock?.input,
+                partialJson: "",
+              };
+              stream.blocks[blockKey] = block;
+              if (block.type === "thinking") {
+                appendClaudeThinking(block.thinking);
+              } else {
+                upsertClaudeToolCall(block.name, block.input, block.callId);
+              }
+            }
+            continue;
+          }
+          if (eventType === "content_block_delta" && blockKey) {
+            const block = stream.blocks[blockKey];
+            const delta = isRecord(event.delta) ? event.delta : undefined;
+            const deltaType = firstString(delta, ["type"]);
+            if (block?.type === "thinking" && deltaType === "thinking_delta") {
+              if (typeof delta?.thinking === "string") {
+                block.thinking += delta.thinking;
+                appendClaudeThinking(block.thinking);
+              }
+            } else if (
+              block?.type === "tool_use" &&
+              deltaType === "input_json_delta" &&
+              typeof delta?.partial_json === "string"
+            ) {
+              block.partialJson += delta.partial_json;
+            }
+            continue;
+          }
+          if (eventType === "content_block_stop" && blockKey) {
+            const block = stream.blocks[blockKey];
+            if (block?.type === "thinking") {
+              appendClaudeThinking(block.thinking);
+            } else if (block?.type === "tool_use") {
+              upsertClaudeToolCall(
+                block.name,
+                partialToolInput(block),
+                block.callId,
+              );
+            }
+            delete stream.blocks[blockKey];
+            continue;
+          }
+        }
         const items = contentItems(frame.message);
         if (frame.type === "assistant") {
           for (const item of items) {
@@ -918,14 +1125,9 @@ function appendOutputEvent(
               const name = toolName(item.name);
               const input = item.input;
               const id = toolCallId(item);
-              appendRuntimeEvent(
-                record,
-                "tool_call",
-                `Claude Code 正在调用${name}。`,
-                {
-                  tool: toolEvidence(name, input, undefined, id),
-                },
-              );
+              upsertClaudeToolCall(name, input, id);
+            } else if (item.type === "thinking") {
+              appendClaudeThinking(piText(item));
             }
           }
         } else if (
@@ -940,7 +1142,11 @@ function appendOutputEvent(
                 ? item.content
                 : jsonPreview(item.content);
             const id = toolCallId(item);
-            const name = toolName(item.name || "Claude Tool");
+            const name = toolName(
+              item.name ||
+                (id ? stream.toolNamesByCallId[id] : undefined) ||
+                "Claude Tool",
+            );
             const isError = item.is_error === true;
             appendRuntimeEvent(
               record,
@@ -1229,6 +1435,7 @@ function normalizeUserRuntime(value: unknown): AgentRuntimeDefinition | null {
       kind: kind as AgentRuntimeDefinition["kind"],
       location,
       enabled: value.enabled !== false,
+      needsReauthorization: value.needsReauthorization === true,
       managed: "user",
       config: runtimeConfigFrom(value.config),
     };
@@ -1311,6 +1518,7 @@ function remoteRuntimeCredentialKey(runtime: AgentRuntimeDefinition): string {
 function runtimeAuth(
   runtime: AgentRuntimeDefinition,
 ): { bearerToken?: string } | undefined {
+  if (runtime.needsReauthorization) return undefined;
   if (isAgentsOneGatewayRuntime(runtime)) {
     const token = (
       getSecret(agentsOneGatewayTokenSecretKey(runtime.id)) || ""
@@ -1365,8 +1573,18 @@ export function getAgentRuntimeCredentialStatus(runtimeId: string): {
   }
   return {
     required: true,
-    configured: Boolean(getSecret(remoteRuntimeCredentialKey(runtime))),
+    configured:
+      runtime.needsReauthorization !== true &&
+      Boolean(getSecret(remoteRuntimeCredentialKey(runtime))),
   };
+}
+
+function markRuntimeReauthorized(runtimeId: string): void {
+  const runtimes = userRuntimes();
+  const runtime = runtimes.find((item) => item.id === runtimeId);
+  if (!runtime?.needsReauthorization) return;
+  runtime.needsReauthorization = false;
+  writeUserRuntimes(runtimes);
 }
 
 export function setAgentRuntimeBearerToken(
@@ -1385,6 +1603,7 @@ export function setAgentRuntimeBearerToken(
     throw new Error("Remote agent credential is invalid.");
   }
   setEnvValue(remoteRuntimeCredentialKey(runtime), bearerToken.trim());
+  markRuntimeReauthorized(runtimeId);
   invalidateSecretsCache();
   return { configured: true };
 }
@@ -1432,6 +1651,9 @@ export function setAgentRuntimeWorkspaceGatewayToken(
 function remoteWorkspaceGatewayConfig(
   runtime: AgentRuntimeDefinition,
 ): RemoteWorkspaceGatewayConfig {
+  if (runtime.needsReauthorization) {
+    throw new Error("请先为恢复的远程智能体重新保存凭据。");
+  }
   const endpoint =
     runtime.config.workspaceGatewayEndpoint?.trim() ||
     runtime.config.endpoint?.trim();
@@ -1453,12 +1675,12 @@ function remoteWorkspaceGatewayConfig(
 
 function remoteWorkspaceInstruction(
   grantId: string,
-  permission: "read" | "write",
+  permission: "read" | "safe_write" | "write",
 ): string {
   return [
     "【受控本机工作区】本次任务已由 Agents One 授予项目范围内的受控访问；授权不会自动到期，任务结束、取消或明确撤销时失效。",
-    `授权标识：desktop-gateway:${grantId}；权限：${permission === "write" ? "可读写（删除须本机人工确认）" : "只读"}。`,
-    "只能通过 Bridge 的 workspace-gateway 工具提交项目相对路径的 list/read/write/move/delete 请求；不得使用或猜测办公电脑绝对路径。",
+    `授权标识：desktop-gateway:${grantId}；权限：${permission === "write" ? "完全访问" : permission === "safe_write" ? "可读写，无移动、删除文件权限" : "只读"}。`,
+    `只能通过 Bridge 的 workspace-gateway 工具提交项目相对路径的 ${permission === "write" ? "list/read/write/move/delete" : permission === "safe_write" ? "list/read/write" : "list/read"} 请求；不得使用或猜测办公电脑绝对路径。`,
     "每项文件变更完成后须在答复中说明相对路径、SHA-256 与变更摘要。",
   ].join("\n");
 }
@@ -1573,6 +1795,9 @@ export function saveAgentRuntimeAppearance(
 ): AgentRuntimeDefinition {
   const runtime = listAgentRuntimes().find((item) => item.id === id);
   if (!runtime) throw new Error("Runtime was not found.");
+  if (runtime.needsReauthorization) {
+    throw new Error("请先为恢复的远程智能体重新保存凭据。");
+  }
   const normalized = runtimeAppearanceFrom(appearance);
   const config = readDesktopConfig();
   const appearances = runtimeAppearances();
@@ -1619,6 +1844,9 @@ async function probeRuntimeDefinition(
   transientAuth?: { bearerToken?: string },
 ): Promise<AgentRuntimeProbe> {
   const checkedAt = Date.now();
+  if (runtime.needsReauthorization && !transientAuth?.bearerToken) {
+    throw new Error("请先为恢复的远程智能体重新保存凭据。");
+  }
 
   if (isAgentsOneGatewayRuntime(runtime)) {
     if (!runtime.config.endpoint) {
@@ -2306,7 +2534,7 @@ function validatedTaskInput(
   profile?: string;
   sessionId?: string;
   conversation?: boolean;
-  mode: "analysis" | "implementation" | "full_access";
+  mode: "analysis" | "safe_write" | "implementation" | "full_access";
   fullAccessConfirmed?: boolean;
   workspace?: string;
   workspaceRef?: string;
@@ -2326,6 +2554,7 @@ function validatedTaskInput(
   const mode = input.mode ?? "analysis";
   if (
     mode !== "analysis" &&
+    mode !== "safe_write" &&
     mode !== "implementation" &&
     mode !== "full_access"
   ) {
@@ -2407,9 +2636,13 @@ export async function startAgentRuntimeTask(
   runtimeId: string,
   input: AgentRuntimeTaskInput,
 ): Promise<AgentRuntimeRun> {
+  assertAgentsOneWritesAllowed();
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!runtime) throw new Error("Runtime was not found.");
   if (!runtime.enabled) throw new Error("Runtime is disabled.");
+  if (runtime.needsReauthorization) {
+    throw new Error("请先为恢复的远程智能体重新保存凭据。");
+  }
   if (
     !isAgentsOneGatewayRuntime(runtime) &&
     runtime.kind !== "hermes" &&
@@ -2484,10 +2717,17 @@ export async function startAgentRuntimeTask(
         throw new Error("统一 Gateway 地址或 Token 尚未配置。");
       }
       const capabilities = await probeRemoteWorkspaceGateway(config);
-      const permission = task.mode === "full_access" ? "write" : "read";
+      const permission =
+        task.mode === "full_access"
+          ? "write"
+          : task.mode === "safe_write"
+            ? "safe_write"
+            : "read";
       const requiredOperations =
         permission === "write"
           ? (["list", "read", "write", "move", "delete"] as const)
+          : permission === "safe_write"
+            ? (["list", "read", "write"] as const)
           : (["list", "read"] as const);
       const missingOperations = requiredOperations.filter(
         (operation) => !capabilities.operations.includes(operation),
@@ -2501,7 +2741,8 @@ export async function startAgentRuntimeTask(
         taskId: id,
         runtimeId: runtime.id,
         rootPath: task.workspace,
-        permission,
+        permission: permission === "read" ? "read" : "write",
+        operations: [...requiredOperations],
         maxOperationBytes: Math.min(
           capabilities.maxOperationBytes || 256 * 1024,
           256 * 1024,
@@ -2523,7 +2764,7 @@ export async function startAgentRuntimeTask(
       dispatchWorkspaceRef = `desktop-gateway:${grant.id}`;
       dispatchPrompt = `${task.prompt}\n\n${remoteWorkspaceInstruction(
         grant.id,
-        grant.permission,
+        permission,
       )}`;
     } catch (error) {
       return finishRuntimeRun(record, "failed", {
@@ -2533,7 +2774,9 @@ export async function startAgentRuntimeTask(
   }
 
   let gatewayPermission: "read" | "write" =
-    task.mode === "full_access" ? "write" : "read";
+    task.mode === "full_access" || task.mode === "safe_write"
+      ? "write"
+      : "read";
   if (task.workspace && unifiedGatewayRuntime && !dispatchWorkspaceRef) {
     gatewayPermission = "read";
     dispatchPrompt = `${task.prompt}\n\n[Agents One 工作区状态]\n当前任务已在桌面端关联本地项目，但本轮尚未建立 Workspace Grant。本地项目路径与文件内容未发送给你。你可以继续处理普通对话；如果请求依赖本地文件，请明确说明需要用户启用受控工作区授权。`;
@@ -2712,7 +2955,6 @@ export async function startAgentRuntimeTask(
         {
           executablePath: runtime.config.executablePath,
           model: runtime.config.model,
-          workspace: runtime.config.workspace,
           timeoutMs: runtime.config.timeoutMs,
         },
         task,
@@ -2746,7 +2988,7 @@ export async function startAgentRuntimeTask(
           !result.error && task.mode === "full_access"
             ? await verifyLocalDeliveryArtifacts(
                 result.output,
-                task.workspace || runtime.config.workspace || "",
+                task.workspace || "",
               )
             : [];
         if (record.run.status !== "running") return;
@@ -2776,7 +3018,6 @@ export async function startAgentRuntimeTask(
         {
           executablePath: runtime.config.executablePath,
           model: runtime.config.model,
-          workspace: runtime.config.workspace,
           timeoutMs: runtime.config.timeoutMs,
         },
         task,
@@ -2815,7 +3056,7 @@ export async function startAgentRuntimeTask(
           !result.error && task.mode === "full_access"
             ? await verifyLocalDeliveryArtifacts(
                 result.output,
-                task.workspace || runtime.config.workspace || "",
+                task.workspace || "",
               )
             : [];
         if (record.run.status !== "running") return;
@@ -2846,7 +3087,6 @@ export async function startAgentRuntimeTask(
         {
           executablePath: runtime.config.executablePath,
           model: runtime.config.model,
-          workspace: runtime.config.workspace,
           timeoutMs: runtime.config.timeoutMs,
         },
         task,
@@ -2881,7 +3121,7 @@ export async function startAgentRuntimeTask(
           !result.error && task.mode === "full_access"
             ? await verifyLocalDeliveryArtifacts(
                 result.output,
-                task.workspace || runtime.config.workspace || "",
+                task.workspace || "",
               )
             : [];
         if (record.run.status !== "running") return;
@@ -3235,4 +3475,24 @@ export async function cancelAgentRuntimeTask(runId: string): Promise<boolean> {
     error: "Runtime task was cancelled.",
   });
   return true;
+}
+
+/** Stop every in-process Runtime task before replacing portable user data. */
+export async function cancelAllAgentRuntimeTasks(): Promise<number> {
+  const activeIds = [...runtimeRuns.entries()]
+    .filter(([, record]) => record.run.status === "running")
+    .map(([runId]) => runId);
+  const outcomes = await Promise.allSettled(
+    activeIds.map((runId) => cancelAgentRuntimeTask(runId)),
+  );
+  return outcomes.filter(
+    (outcome) => outcome.status === "fulfilled" && outcome.value,
+  ).length;
+}
+
+/** Number of in-process Runtime writes that must quiesce before export. */
+export function activeAgentRuntimeTaskCount(): number {
+  return [...runtimeRuns.values()].filter(
+    (record) => record.run.status === "running",
+  ).length;
 }

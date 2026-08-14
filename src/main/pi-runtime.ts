@@ -3,12 +3,14 @@ import {
   execFile as execFileCallback,
   type ChildProcess,
 } from "child_process";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { promisify } from "util";
+import { homedir } from "os";
 import { delimiter, dirname, extname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
 import { profileHome } from "./utils";
 import { prepareRuntimeInputs } from "./runtime-inputs";
+import { protectWorkspaceFromRemoval } from "./workspace-protection";
 import type {
   AgentRuntimeArtifact,
   AgentRuntimeTaskInput,
@@ -149,14 +151,22 @@ async function gitRoot(workspace: string): Promise<string> {
 }
 
 function requestedWorkspace(
-  config: PiRuntimeConfig,
+  _config: PiRuntimeConfig,
   input?: AgentRuntimeTaskInput,
 ): string | undefined {
-  const raw = input?.workspace?.trim() || config.workspace?.trim();
+  const raw = input?.workspace?.trim();
   if (!raw) return undefined;
   const workspace = resolve(raw);
   if (!existsSync(workspace))
     throw new Error("The selected workspace does not exist.");
+  return workspace;
+}
+
+function configuredProbeWorkspace(config: PiRuntimeConfig): string | undefined {
+  const raw = config.workspace?.trim();
+  if (!raw) return undefined;
+  const workspace = resolve(raw);
+  if (!existsSync(workspace)) throw new Error("The configured workspace does not exist.");
   return workspace;
 }
 
@@ -175,38 +185,136 @@ function sessionsRoot(profile?: string): string {
   return root;
 }
 
-function childEnvironment(): NodeJS.ProcessEnv {
-  const keys = [
-    "APPDATA",
-    "COMSPEC",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "LOCALAPPDATA",
-    "PATH",
-    "PATHEXT",
-    "SYSTEMDRIVE",
-    "SYSTEMROOT",
-    "TEMP",
-    "TMP",
-    "USERPROFILE",
-    "WINDIR",
-  ];
-  const env: NodeJS.ProcessEnv = {};
-  for (const key of keys) if (process.env[key]) env[key] = process.env[key];
-  // Pi is intentionally provider-agnostic. Carry common user-level provider
-  // variables that a terminal Pi invocation can use, but do not pass the full
-  // Electron process environment into a model subprocess.
-  for (const [key, value] of Object.entries(process.env)) {
-    if (
-      value &&
-      /^(PI_|OPENAI_|ANTHROPIC_|AZURE_OPENAI_|GOOGLE_|GEMINI_|DEEPSEEK_|DASHSCOPE_|ARK_|VOLCENGINE_|NVIDIA_)/.test(
-        key,
-      )
-    ) {
-      env[key] = value;
+function conversationCwd(profile?: string): string {
+  const root = resolve(profileHome(profile), "desktop", "runtime-chat", "pi");
+  mkdirSync(root, { recursive: true });
+  return root;
+}
+
+export function piChildEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...source };
+}
+
+function positiveInteger(value: unknown): number | null {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : null;
+}
+
+/**
+ * Resolve Pi's own model metadata without invoking the CLI. Custom providers
+ * live in models.json and refreshed provider catalogues live in
+ * models-store.json; both use the same model shape. Reading these files keeps
+ * the context gauge aligned with the model Pi actually selected (and avoids a
+ * slow `pi --list-models` subprocess on every chat open).
+ */
+// @lat: [[runtime-chat#Runtime model context window]]
+export function getPiModelContextWindow(
+  provider: string,
+  model: string,
+  configDir = process.env.PI_CODING_AGENT_DIR?.trim() ||
+    join(homedir(), ".pi", "agent"),
+): number | null {
+  const providerId = provider.trim().toLowerCase();
+  const modelId = model.trim().toLowerCase();
+  if (!providerId || !modelId) return null;
+
+  const findInModels = (models: unknown): number | null => {
+    if (!Array.isArray(models)) return null;
+    const match = models.find((candidate) => {
+      if (!candidate || typeof candidate !== "object") return false;
+      const id = (candidate as Record<string, unknown>).id;
+      return typeof id === "string" && id.trim().toLowerCase() === modelId;
+    }) as Record<string, unknown> | undefined;
+    return match ? positiveInteger(match.contextWindow) : null;
+  };
+
+  try {
+    const customFile = join(configDir, "models.json");
+    if (existsSync(customFile)) {
+      const parsed = JSON.parse(readFileSync(customFile, "utf-8")) as {
+        providers?: Record<string, { models?: unknown }>;
+      };
+      const entry = Object.entries(parsed.providers || {}).find(
+        ([id]) => id.trim().toLowerCase() === providerId,
+      );
+      const contextWindow = findInModels(entry?.[1]?.models);
+      if (contextWindow) return contextWindow;
+    }
+  } catch {
+    // A malformed optional catalogue must not prevent the runtime from loading.
+  }
+
+  try {
+    const storeFile = join(configDir, "models-store.json");
+    if (existsSync(storeFile)) {
+      const parsed = JSON.parse(readFileSync(storeFile, "utf-8")) as Record<
+        string,
+        { models?: unknown }
+      >;
+      const entry = Object.entries(parsed).find(
+        ([id]) => id.trim().toLowerCase() === providerId,
+      );
+      return findInModels(entry?.[1]?.models);
+    }
+  } catch {
+    // Fall through to provider discovery / renderer heuristics.
+  }
+
+  return null;
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function assistantOutcome(
+  value: unknown,
+): { error?: string; succeeded?: boolean } | undefined {
+  if (!record(value) || value.role !== "assistant") return undefined;
+  if (value.stopReason === "error") {
+    return {
+      error:
+        typeof value.errorMessage === "string" && value.errorMessage.trim()
+          ? value.errorMessage.trim()
+          : "Pi Agent returned an error without details.",
+    };
+  }
+  const hasText =
+    Array.isArray(value.content) &&
+    value.content.some(
+      (item) =>
+        record(item) &&
+        item.type === "text" &&
+        typeof item.text === "string" &&
+        item.text.trim(),
+    );
+  return hasText ? { succeeded: true } : undefined;
+}
+
+/** Pi can report a failed model request in JSON while still exiting with code 0. */
+export function piOutputError(output: string): string | undefined {
+  let outcome: { error?: string; succeeded?: boolean } | undefined;
+  for (const line of output.split(/\r?\n/)) {
+    if (!line.trim().startsWith("{")) continue;
+    try {
+      const frame = JSON.parse(line) as Record<string, unknown>;
+      if (frame.type === "message_end" || frame.type === "turn_end") {
+        outcome = assistantOutcome(frame.message) || outcome;
+      } else if (frame.type === "agent_end" && Array.isArray(frame.messages)) {
+        for (const message of frame.messages) {
+          outcome = assistantOutcome(message) || outcome;
+        }
+      }
+    } catch {
+      // Partial or non-JSON stderr lines remain available in the raw output.
     }
   }
-  return env;
+  if (!outcome?.error) return undefined;
+  return /fetch failed/i.test(outcome.error)
+    ? "Pi Agent 无法连接模型服务（fetch failed）。请检查网络或代理设置后重试。"
+    : `Pi Agent 请求失败：${redact(outcome.error)}`;
 }
 
 function terminateTree(child: ChildProcess): void {
@@ -226,7 +334,7 @@ function terminateTree(child: ChildProcess): void {
  * write, edit, or shell access outside an isolated implementation worktree.
  */
 export function piExecArgs(
-  mode: "analysis" | "implementation" | "full_access",
+  mode: "analysis" | "safe_write" | "implementation" | "full_access",
   prompt: string,
   sessionId: string,
   sessionDirectory: string,
@@ -242,15 +350,10 @@ export function piExecArgs(
     sessionDirectory,
     "--session-id",
     sessionId,
-    "--no-extensions",
-    "--no-skills",
-    "--no-prompt-templates",
-    "--no-context-files",
   ];
-  // Analysis may inspect only the selected workspace. Keeping this allowlist
-  // explicit avoids the common failure mode where a model emits raw tool-call
-  // markup because it was asked to inspect files while all tools were hidden.
-  // Historical implementation tasks run in an isolated Git worktree below.
+  // Writable modes keep Pi's native terminal capabilities: built-in/custom
+  // tools, skills, extensions, MCP adapters, packages and project context.
+  // Only a user-selected read-only run narrows the available tools.
   if (mode === "analysis") {
     if (allowReadTools) {
       args.push("--tools", "read,grep,find,ls");
@@ -273,7 +376,7 @@ export async function probePiRuntime(
     const version = await command(piInvocation(configuredExecutable(config)), [
       "--version",
     ]);
-    const workspace = requestedWorkspace(config);
+    const workspace = configuredProbeWorkspace(config);
     if (workspace) await gitRoot(workspace);
     return {
       healthy: true,
@@ -300,13 +403,16 @@ export async function startPiProcess(
   const mode = input.mode || "analysis";
   const invocation = piInvocation(configuredExecutable(config));
   const workspace = requestedWorkspace(config, input);
-  if ((mode === "implementation" || mode === "full_access") && !workspace) {
+  if (
+    (mode === "implementation" || mode === "full_access") &&
+    !workspace
+  ) {
     throw new Error(
-      "Pi full-access tasks require a configured project workspace.",
+      "Pi full-access tasks require a task-specific project folder.",
     );
   }
 
-  let cwd = workspace;
+  let cwd = workspace || conversationCwd(input.profile);
   let worktreePath: string | undefined;
   if (mode === "implementation" && workspace) {
     const root = await gitRoot(workspace);
@@ -330,6 +436,10 @@ export async function startPiProcess(
   );
   const sessionId = input.sessionId?.trim() || `pi-${randomUUID()}`;
   const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
+  const workspaceProtection =
+    mode === "safe_write" && workspace
+      ? protectWorkspaceFromRemoval(workspace, input.profile)
+      : undefined;
   const child = spawn(
     invocation.command,
     [
@@ -345,8 +455,8 @@ export async function startPiProcess(
       ),
     ],
     {
-      ...(cwd ? { cwd } : {}),
-      env: childEnvironment(),
+      cwd,
+      env: piChildEnvironment(),
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
@@ -363,7 +473,8 @@ export async function startPiProcess(
   child.stderr?.on("data", (data: Buffer) => recordOutput(data.toString()));
 
   const completion = new Promise<PiProcessResult>((resolveResult) => {
-    child.once("error", (error) =>
+    child.once("error", (error) => {
+      workspaceProtection?.restoreAndDispose();
       resolveResult({
         output,
         error: redact(error.message),
@@ -379,9 +490,10 @@ export async function startPiProcess(
           : [],
         inputArtifacts: preparedInputs.artifacts,
         sessionId,
-      }),
-    );
+      });
+    });
     child.once("close", async (code) => {
+      const restoredFiles = workspaceProtection?.restoreAndDispose() || [];
       let diffSummary: string | undefined;
       let diff: string | undefined;
       if (worktreePath) {
@@ -415,10 +527,15 @@ export async function startPiProcess(
           label: "Git diff",
           content: diff.slice(0, MAX_OUTPUT),
         });
+      const structuredError = code === 0 ? piOutputError(output) : undefined;
       resolveResult({
-        output,
+        output: restoredFiles.length
+          ? `${output}\n[Agents One] 已阻止移动或删除 ${restoredFiles.length} 个原有文件。`
+          : output,
         ...(code === 0
-          ? {}
+          ? structuredError
+            ? { error: structuredError }
+            : {}
           : { error: `Pi Agent CLI exited with code ${code ?? "unknown"}.` }),
         ...(worktreePath ? { worktreePath } : {}),
         ...(diffSummary ? { diffSummary } : {}),

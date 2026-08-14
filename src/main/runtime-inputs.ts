@@ -9,6 +9,7 @@ import {
 } from "../shared/attachments";
 import type { RuntimeInputArtifact } from "../shared/agent-runtimes";
 import { profileHome } from "./utils";
+import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 const MAX_TOTAL_INPUT_BYTES = 30 * 1024 * 1024;
@@ -84,6 +85,7 @@ export function prepareRuntimeInputs(
   token = `input-${randomUUID()}`,
   rootOverride?: string,
 ): PreparedRuntimeInputs {
+  assertAgentsOneWritesAllowed();
   if (!attachments?.length) {
     return { promptContext: "", artifacts: [], imagePaths: [], files: [] };
   }

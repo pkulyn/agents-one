@@ -185,6 +185,38 @@ describe("remote workspace gateway", () => {
       summary: expect.stringMatching(/read-only/i),
     });
   });
+
+  it("supports safe-write grants without move or delete operations", () => {
+    const grant = createRemoteWorkspaceGrant({
+      taskId: "safe-write-task",
+      runtimeId: "pi-local",
+      rootPath: root,
+      permission: "write",
+      operations: ["list", "read", "write"],
+    });
+    expect(grant.operations).toEqual(["list", "read", "write"]);
+    expect(
+      executeRemoteWorkspaceRequest(grant, {
+        id: "safe-move-denied",
+        operation: "move",
+        path: "from.txt",
+        destinationPath: "to.txt",
+      }),
+    ).toMatchObject({
+      status: "denied",
+      summary: expect.stringMatching(/not permitted/i),
+    });
+    expect(
+      executeRemoteWorkspaceRequest(grant, {
+        id: "safe-delete-denied",
+        operation: "delete",
+        path: "from.txt",
+      }),
+    ).toMatchObject({
+      status: "denied",
+      summary: expect.stringMatching(/not permitted/i),
+    });
+  });
 });
 
 describe("outbound remote workspace gateway client", () => {
