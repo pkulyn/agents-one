@@ -8,9 +8,8 @@ const layoutSource = readFileSync(
 );
 
 describe("Layout remote-mode feature gates", () => {
-  it("does not replace Discover with the generic remote notice", () => {
-    expect(layoutSource).not.toContain('RemoteNotice feature="Discover"');
-    expect(layoutSource).toContain("<Discover");
+  it("no longer renders the removed Discover surface", () => {
+    expect(layoutSource).not.toContain("<Discover");
   });
 
   it("does not block agent management behind the removed Profiles remote notice", () => {
