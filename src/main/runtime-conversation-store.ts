@@ -9,6 +9,8 @@ import type {
   RuntimeConversation,
   RuntimeConversationMessage,
   RuntimeConversationSummary,
+  QuickChatConversation,
+  QuickChatMessage,
   SaveRuntimeConversationInput,
 } from "../shared/runtime-conversations";
 
@@ -23,6 +25,8 @@ const MAX_EXECUTION_EVENTS = 80;
 const MAX_EVENT_SUMMARY_LENGTH = 800;
 const MAX_AVATAR_DATA_URL_LENGTH = 700_000;
 const MAX_WORKSPACE_LENGTH = 4096;
+const MAX_QUICK_CHATS = 40;
+const MAX_QUICK_CHAT_MESSAGES = 80;
 const RUNTIME_EVENT_TYPES = new Set<AgentRuntimeEventType>([
   "queued",
   "started",
@@ -42,6 +46,14 @@ function storeFilePath(profile?: string): string {
     profileHome(profile || getActiveProfileNameSync()),
     "desktop",
     "runtime-conversations.json",
+  );
+}
+
+function quickChatStoreFilePath(profile?: string): string {
+  return join(
+    profileHome(profile || getActiveProfileNameSync()),
+    "desktop",
+    "quick-chats.json",
   );
 }
 
@@ -97,9 +109,7 @@ function cleanRuntimeEvent(value: unknown): AgentRuntimeEvent | null {
   const summary = cleanText(record.summary).slice(0, MAX_EVENT_SUMMARY_LENGTH);
   if (!summary) return null;
   const tool =
-    record.tool && typeof record.tool === "object"
-      ? record.tool
-      : undefined;
+    record.tool && typeof record.tool === "object" ? record.tool : undefined;
   return {
     id: cleanText(record.id, `event-${Date.now()}`),
     type: record.type,
@@ -128,8 +138,8 @@ function cleanExecution(
     : [];
   if (!runId) return undefined;
   const artifacts = Array.isArray(record?.artifacts)
-    ? record.artifacts.filter(
-        (artifact) => Boolean(artifact && artifact.label.trim()),
+    ? record.artifacts.filter((artifact) =>
+        Boolean(artifact && artifact.label.trim()),
       )
     : [];
   if (
@@ -183,7 +193,8 @@ function cleanMessage(value: unknown): RuntimeConversationMessage | null {
   if (agentAvatar) message.agentAvatar = agentAvatar;
   if (agentColor) message.agentColor = agentColor;
   if (collaborationRole) message.collaborationRole = collaborationRole;
-  if (collaborationAssignmentId) message.collaborationAssignmentId = collaborationAssignmentId;
+  if (collaborationAssignmentId)
+    message.collaborationAssignmentId = collaborationAssignmentId;
   const execution = cleanExecution(record.execution);
   if (execution) message.execution = execution;
   return message;
@@ -241,7 +252,13 @@ function normalizeConversation(value: unknown): RuntimeConversation | null {
     runtimeColor: cleanRuntimeColor(record.runtimeColor),
     runtimeAvatar: cleanRuntimeAvatar(record.runtimeAvatar),
     runtimeSessionId: cleanText(record.runtimeSessionId) || undefined,
-    workspace: cleanText(record.workspace).slice(0, MAX_WORKSPACE_LENGTH) || undefined,
+    activeRuntimeRunId: cleanText(record.activeRuntimeRunId) || undefined,
+    workspace:
+      cleanText(record.workspace).slice(0, MAX_WORKSPACE_LENGTH) || undefined,
+    accessMode:
+      record.accessMode === "analysis" || record.accessMode === "full_access"
+        ? record.accessMode
+        : "auto",
     messageCount: messages.length,
     messages,
   };
@@ -271,7 +288,9 @@ function summaryFromConversation(
     runtimeColor: conversation.runtimeColor,
     runtimeAvatar: conversation.runtimeAvatar,
     runtimeSessionId: conversation.runtimeSessionId,
+    activeRuntimeRunId: conversation.activeRuntimeRunId,
     workspace: conversation.workspace,
+    accessMode: conversation.accessMode,
     messageCount: conversation.messageCount,
   };
 }
@@ -327,6 +346,92 @@ export function saveRuntimeConversation(
   return conversation;
 }
 
+function normalizeQuickChatMessage(value: unknown): QuickChatMessage | null {
+  const message = cleanMessage(value);
+  if (!message) return null;
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt,
+  };
+}
+
+function normalizeQuickChat(value: unknown): QuickChatConversation | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Partial<QuickChatConversation>;
+  const id = cleanText(record.id).slice(0, 160);
+  const runtimeId = cleanText(record.runtimeId).slice(0, 160);
+  const runtimeName = cleanText(record.runtimeName, runtimeId).slice(0, 160);
+  if (!id || !runtimeId || !runtimeName) return null;
+  const messages = Array.isArray(record.messages)
+    ? record.messages
+        .map(normalizeQuickChatMessage)
+        .filter((item): item is QuickChatMessage => Boolean(item))
+        .slice(-MAX_QUICK_CHAT_MESSAGES)
+    : [];
+  const now = Date.now();
+  const createdAt =
+    typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
+      ? record.createdAt
+      : messages[0]?.createdAt || now;
+  const updatedAt =
+    typeof record.updatedAt === "number" && Number.isFinite(record.updatedAt)
+      ? record.updatedAt
+      : messages.at(-1)?.createdAt || createdAt;
+  return {
+    id,
+    title:
+      cleanText(record.title, titleFromMessages(messages)).slice(
+        0,
+        MAX_TITLE_LENGTH,
+      ) || "新聊天",
+    runtimeId,
+    runtimeName,
+    runtimeSessionId: cleanText(record.runtimeSessionId) || null,
+    createdAt,
+    updatedAt,
+    messages,
+  };
+}
+
+export function listQuickChats(profile?: string): QuickChatConversation[] {
+  try {
+    const file = quickChatStoreFilePath(profile);
+    if (!existsSync(file)) return [];
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as {
+      chats?: unknown;
+    };
+    return Array.isArray(parsed.chats)
+      ? parsed.chats
+          .map(normalizeQuickChat)
+          .filter((item): item is QuickChatConversation => Boolean(item))
+          .sort((left, right) => right.updatedAt - left.updatedAt)
+          .slice(0, MAX_QUICK_CHATS)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveQuickChats(
+  chats: QuickChatConversation[],
+  profile?: string,
+): QuickChatConversation[] {
+  if (!Array.isArray(chats)) throw new Error("Quick Chat history is invalid.");
+  const normalized = chats
+    .map(normalizeQuickChat)
+    .filter((item): item is QuickChatConversation => Boolean(item))
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .slice(0, MAX_QUICK_CHATS);
+  writeStoreFile(quickChatStoreFilePath(profile), { version: 1, chats: normalized });
+  return normalized;
+}
+
+function writeStoreFile(path: string, value: unknown): void {
+  safeWriteFile(path, JSON.stringify(value));
+}
+
 export function updateRuntimeConversationTitle(
   id: string,
   title: string,
@@ -341,6 +446,25 @@ export function updateRuntimeConversationTitle(
   );
   conversation.updatedAt = Date.now();
   writeStore(profile, data);
+}
+
+/** Moves Runtime conversations out of a removed project but preserves them. */
+export function clearRuntimeConversationWorkspace(
+  workspace: string,
+  profile?: string,
+): number {
+  if (!workspace) return 0;
+  const data = readStore(profile);
+  let changed = 0;
+  for (const conversation of data.conversations) {
+    if (conversation.workspace === workspace) {
+      conversation.workspace = undefined;
+      conversation.updatedAt = Date.now();
+      changed += 1;
+    }
+  }
+  if (changed) writeStore(profile, data);
+  return changed;
 }
 
 export function deleteRuntimeConversation(id: string, profile?: string): void {
