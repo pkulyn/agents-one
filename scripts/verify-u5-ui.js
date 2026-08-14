@@ -107,8 +107,8 @@ async function main() {
 
     step("schedules");
     await openNav("定时任务", "schedules");
-    await page.getByLabel("本地智能体定时任务").waitFor({ timeout: 15_000 });
-    assert(await page.getByLabel("远程 Hermes 定时任务").count(), "定时任务: Hermes compatibility view is missing");
+    await page.getByLabel("本地 CLI 定时任务").waitFor({ timeout: 15_000 });
+    assert(!(await page.getByLabel("远程 Hermes 定时任务").count()), "定时任务: remote Hermes management should be retired");
     await capture("06-schedules-1024");
     step("schedule create form");
     await page.locator(".schedules-container").getByRole("button", { name: "新建定时任务", exact: true }).click();
@@ -116,6 +116,8 @@ async function main() {
     await scheduleModal.waitFor();
     assert(await scheduleModal.getByRole("heading", { name: "新建定时任务" }).count(), "定时任务: form title is ambiguous");
     assert(await scheduleModal.getByText("执行智能体", { exact: true }).count(), "定时任务: runtime field is missing");
+    assert(!(await scheduleModal.getByText("执行位置", { exact: true }).count()), "定时任务: remote target selector is still visible");
+    assert(!(await scheduleModal.getByText("执行方式", { exact: true }).count()), "定时任务: execution mode selector is still visible");
     await assertLayout(page, "定时任务新建表单");
     await capture("06b-schedule-create-1024");
     await scheduleModal.getByRole("button", { name: "取消", exact: true }).click();

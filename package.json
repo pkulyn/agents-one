@@ -1,6 +1,6 @@
 {
   "name": "agents-one",
-  "version": "0.7.3",
+  "version": "0.1.0",
   "description": "Agents One — a multi-agent desktop workspace",
   "main": "./out/main/index.js",
   "author": "fathah",
@@ -56,10 +56,12 @@
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
     "remark-gfm": "^4.0.1",
+    "tar": "^7.5.13",
     "three": "^0.183.2",
     "troika-three-text": "^0.52.4",
     "vscode-material-icons": "^0.1.1",
-    "ws": "^8.20.0"
+    "ws": "^8.20.0",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",

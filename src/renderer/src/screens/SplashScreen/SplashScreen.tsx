@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import startVid from "../../assets/startvid.mp4";
+import { useEffect, useState } from "react";
+import startupHands from "../../assets/startup-hands.jpeg";
 import splashLogo from "../../assets/agents-one-splash.svg";
 
 interface SplashScreenProps {
@@ -16,12 +16,12 @@ interface SplashScreenProps {
 // build, health waits) isn't interrupted, short enough to rescue a hang.
 const ESCAPE_HATCH_DELAY_MS = 12000;
 
+// @lat: [[brand-startup#Startup brand animation]]
 function SplashScreen({
   onFinished,
   status,
   onSwitchToLocal,
 }: SplashScreenProps): React.JSX.Element {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [showEscape, setShowEscape] = useState(false);
   // Stable boolean so the timer below isn't reset every time the parent
   // re-renders and passes a fresh onSwitchToLocal function identity.
@@ -32,15 +32,6 @@ function SplashScreen({
   }, [onFinished]);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.playbackRate = 1;
-    video.play().catch(() => {
-      // autoplay blocked or video error — silently fall back to black bg
-    });
-  }, []);
-
-  useEffect(() => {
     if (!canSwitch) return;
     const timer = setTimeout(() => setShowEscape(true), ESCAPE_HATCH_DELAY_MS);
     return () => clearTimeout(timer);
@@ -48,17 +39,23 @@ function SplashScreen({
 
   return (
     <div className="splash-screen">
-      <video
-        ref={videoRef}
-        className="splash-bg"
-        src={startVid}
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        style={{ display: "block", objectFit: "cover" }}
-      />
+      <div className="splash-hand-stage" aria-hidden="true">
+        <img className="splash-hand-base" src={startupHands} alt="" />
+        <img
+          className="splash-hand-layer splash-hand-robot"
+          src={startupHands}
+          alt=""
+        />
+        <img
+          className="splash-hand-layer splash-hand-human"
+          src={startupHands}
+          alt=""
+        />
+        <div className="splash-vignette" />
+      </div>
+      <div className="splash-contact" aria-hidden="true">
+        <span className="splash-contact-core" />
+      </div>
       <img className="splash-logo" src={splashLogo} alt="Agents One" />
       {onSwitchToLocal && showEscape && (
         <div className="splash-escape">

@@ -35,4 +35,28 @@ describe("project folder registry", () => {
     expect(folders[0]).toMatchObject({ path: "D:\\Projects\\Alpha" });
     expect(folders[1]).toMatchObject({ path: "D:\\Projects\\Beta" });
   });
+
+  it("removes only the registered project entry", async () => {
+    const store = await loadStore();
+    store.registerProjectFolder("D:/Projects/Alpha");
+    expect(store.removeProjectFolder("D:/Projects/Alpha")).toBe(true);
+    expect(store.listProjectFolders()).toEqual([]);
+  });
+
+  it("persists a custom name and pin state without changing the path", async () => {
+    const store = await loadStore();
+    store.registerProjectFolder("D:/Projects/Alpha");
+    store.updateProjectFolder({
+      path: "D:/Projects/Alpha",
+      name: "核心项目",
+      pinned: true,
+    });
+    // A later registration refresh must not overwrite the custom title.
+    store.registerProjectFolder("D:/Projects/Alpha");
+    expect(store.listProjectFolders()[0]).toMatchObject({
+      path: "D:\\Projects\\Alpha",
+      name: "核心项目",
+      pinned: true,
+    });
+  });
 });

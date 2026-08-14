@@ -34,6 +34,7 @@ import {
 import {
   getSessionContextFolder,
   setSessionContextFolder,
+  clearSessionContextFolderPath,
   getRecentSessionContextFolders,
 } from "../session-context-folder-store";
 import {
@@ -68,13 +69,22 @@ import {
   runHermesUpdate,
   checkOpenClawExists,
   runClawMigrate,
-  runHermesBackup,
-  runHermesImport,
   runHermesDump,
   discoverMemoryProviders,
   readLogs,
   type InstallProgress,
 } from "../installer";
+import {
+  exportAgentsOneBackupTo,
+  inspectAgentsOneBackup,
+  restoreAgentsOneBackupFrom,
+} from "../agents-one-backup";
+import {
+  assertAgentsOneWritesAllowed,
+  beginAgentsOneRestoreWriteLock,
+  endAgentsOneTemporaryWriteLock,
+} from "../restore-write-lock";
+import { closeDbConnection } from "../db";
 import {
   ensureLocalDashboardCompatibility,
   ensureSshDashboardCompatibility,
@@ -105,6 +115,7 @@ import {
   startGateway,
   startGatewayDetailed,
   stopGateway,
+  stopGatewayAndWait,
   isGatewayRunning,
   testRemoteConnection,
   restartGateway,
@@ -116,6 +127,7 @@ import {
   getDashboardStatus,
   startDashboard,
   stopDashboard,
+  stopAllDashboards,
 } from "../dashboard";
 import {
   startSshTunnel,
@@ -187,9 +199,12 @@ import {
 import {
   deleteRuntimeConversation,
   getRuntimeConversation,
+  listQuickChats,
   listRuntimeConversations,
+  saveQuickChats,
   saveRuntimeConversation,
   updateRuntimeConversationTitle,
+  clearRuntimeConversationWorkspace,
 } from "../runtime-conversation-store";
 import {
   remoteDeleteSession,
@@ -235,7 +250,9 @@ import {
   remoteWriteUserProfile,
 } from "../remote-memory";
 import {
+  activeAgentRuntimeTaskCount,
   cancelAgentRuntimeTask,
+  cancelAllAgentRuntimeTasks,
   getAgentRuntimeCredentialStatus,
   getAgentRuntimeRun,
   listAgentRuntimes,
@@ -249,21 +266,41 @@ import {
   setAgentRuntimeWorkspaceGatewayToken,
   startAgentRuntimeTask,
 } from "../agent-runtimes";
+import { getPiModelContextWindow } from "../pi-runtime";
 import type {
   AgentRuntimeDraft,
   AgentRuntimeAppearance,
   AgentRuntimeTaskInput,
 } from "../../shared/agent-runtimes";
 import type { SaveRuntimeConversationInput } from "../../shared/runtime-conversations";
-import type { CreateTaskScheduleInput } from "../../shared/task-schedules";
+import type {
+  CreateTaskScheduleInput,
+  UpdateTaskScheduleInput,
+} from "../../shared/task-schedules";
 import {
   createTaskSchedule,
   deleteTaskSchedule,
   listTaskSchedules,
   setTaskScheduleEnabled,
   triggerTaskSchedule,
+  updateTaskSchedule,
+  startTaskScheduleRunner,
+  stopTaskScheduleRunnerAndWait,
 } from "../task-schedules";
-import { listProjectFolders, registerProjectFolder } from "../project-folders";
+import {
+  listProjectFolders,
+  registerProjectFolder,
+  removeProjectFolder,
+  updateProjectFolder,
+} from "../project-folders";
+import type { UpdateProjectFolderInput } from "../../shared/project-folders";
+import {
+  archiveItem,
+  getArchivedItem,
+  listArchivedItems,
+  restoreArchivedItem,
+} from "../archive-store";
+import type { ArchiveItemInput } from "../../shared/archives";
 import {
   getTaskCollaboration,
   linkTaskCollaboration,
@@ -1222,6 +1259,42 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Agent runtimes deliberately expose only non-secret definitions. Hermes
   // credentials stay in the existing protected connection configuration.
   ipcMain.handle("list-agent-runtimes", () => listAgentRuntimes());
+  ipcMain.handle(
+    "get-agent-runtime-model-context-window",
+    async (
+      _event,
+      runtimeId: string,
+      provider: string,
+      model: string,
+      profile?: string,
+    ) => {
+      const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
+      if (!runtime || runtime.location !== "local") return null;
+
+      if (runtime.kind === "pi") {
+        const piContextWindow = getPiModelContextWindow(provider, model);
+        if (piContextWindow) return piContextWindow;
+      }
+
+      const savedContextWindow = listModels().find(
+        (item) =>
+          item.provider.trim().toLowerCase() ===
+            provider.trim().toLowerCase() &&
+          item.model.trim().toLowerCase() === model.trim().toLowerCase() &&
+          typeof item.contextLength === "number" &&
+          item.contextLength > 0,
+      )?.contextLength;
+      if (savedContextWindow) return savedContextWindow;
+
+      return getModelContextWindow(
+        provider,
+        model,
+        undefined,
+        undefined,
+        profile,
+      );
+    },
+  );
   ipcMain.handle("save-agent-runtime", (_event, draft: AgentRuntimeDraft) =>
     saveAgentRuntime(draft),
   );
@@ -1277,6 +1350,15 @@ export function registerIpcHandlers(context: IpcContext): void {
     "create-task-schedule",
     (_event, input: CreateTaskScheduleInput, profile?: string) =>
       createTaskSchedule(input, profile),
+  );
+  ipcMain.handle(
+    "update-task-schedule",
+    (
+      _event,
+      id: string,
+      input: UpdateTaskScheduleInput,
+      profile?: string,
+    ) => updateTaskSchedule(id, input, profile),
   );
   ipcMain.handle(
     "set-task-schedule-enabled",
@@ -1430,6 +1512,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       runId?: string,
       modelOverride?: SessionModelOverride,
     ) => {
+      assertAgentsOneWritesAllowed();
       // Each conversation has a stable runId minted by the renderer. Fall back
       // to a generated id for legacy callers so the run is still tracked.
       const chatRunId = runId || `run-${randomUUID()}`;
@@ -1654,6 +1737,67 @@ export function registerIpcHandlers(context: IpcContext): void {
           void saveMedia(src, name, win);
         },
       });
+      Menu.buildFromTemplate(template).popup({ window: win });
+    },
+  );
+
+  // Local delivery artifacts use file semantics, not download semantics.
+  // Keep the native menu in the main process so paths and file contents do
+  // not need to be materialized into renderer-owned URLs.
+  ipcMain.on(
+    "show-file-menu",
+    async (
+      event,
+      filePath: string,
+      labels: {
+        open: string;
+        copyPath: string;
+        copyContent: string;
+        reveal: string;
+      },
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const target = typeof filePath === "string" ? filePath.trim() : "";
+      if (!win || !target || target.length > 32_768) return;
+
+      let copyContentEnabled = false;
+      try {
+        const info = await stat(target);
+        copyContentEnabled = info.isFile() && info.size <= 5 * 1024 * 1024;
+      } catch {
+        copyContentEnabled = false;
+      }
+
+      const template: Electron.MenuItemConstructorOptions[] = [
+        {
+          label: labels.open,
+          click: () => {
+            void shell.openPath(target).then((error) => {
+              if (error) console.error("[artifact] open failed:", error);
+            });
+          },
+        },
+        { type: "separator" },
+        {
+          label: labels.copyPath,
+          click: () => clipboard.writeText(target),
+        },
+        {
+          label: labels.copyContent,
+          enabled: copyContentEnabled,
+          click: () => {
+            void readFile(target, "utf8")
+              .then((content) => clipboard.writeText(content))
+              .catch((error) =>
+                console.error("[artifact] copy content failed:", error),
+              );
+          },
+        },
+        {
+          label: labels.reveal,
+          click: () => shell.showItemInFolder(target),
+        },
+      ];
       Menu.buildFromTemplate(template).popup({ window: win });
     },
   );
@@ -2443,6 +2587,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
+  ipcMain.handle("list-quick-chats", (_event, profile?: string) =>
+    listQuickChats(profile),
+  );
+  ipcMain.handle(
+    "save-quick-chats",
+    (
+      _event,
+      chats: import("../../shared/runtime-conversations").QuickChatConversation[],
+      profile?: string,
+    ) => saveQuickChats(chats, profile),
+  );
+
   // Session search
   ipcMain.handle("search-sessions", (_event, query: string, limit?: number) => {
     const conn = getConnectionConfig();
@@ -2784,6 +2940,68 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("register-project-folder", (_event, folderPath: string) =>
     registerProjectFolder(folderPath),
   );
+  ipcMain.handle(
+    "update-project-folder",
+    (_event, input: UpdateProjectFolderInput) => updateProjectFolder(input),
+  );
+  ipcMain.handle(
+    "remove-project-folder",
+    (_event, folderPath: string, profile?: string) => {
+      clearSessionContextFolderPath(folderPath);
+      clearRuntimeConversationWorkspace(folderPath, profile);
+      removeProjectFolder(folderPath);
+      return true;
+    },
+  );
+  ipcMain.handle("list-archived-items", (_event, profile?: string) =>
+    listArchivedItems(profile),
+  );
+  ipcMain.handle(
+    "archive-item",
+    (_event, input: ArchiveItemInput, profile?: string) =>
+      archiveItem(input, profile),
+  );
+  ipcMain.handle(
+    "restore-archived-item",
+    (_event, id: string, profile?: string) => restoreArchivedItem(id, profile),
+  );
+  ipcMain.handle(
+    "delete-archived-item",
+    async (_event, id: string, profile?: string) => {
+      const item = getArchivedItem(id, profile);
+      if (!item) return false;
+      if (item.kind === "task") {
+        if (item.runtimeId) deleteRuntimeConversation(item.targetId, profile);
+        else {
+          const conn = getConnectionConfig();
+          if (conn.mode === "remote") {
+            await remoteDeleteSession(
+              getRemoteDashboardSessionConfig(conn, activeSshProfile()),
+              item.targetId,
+            );
+          } else if (conn.mode === "ssh" && conn.ssh) {
+            await withSshDashboardSessions(
+              conn,
+              (config) => remoteDeleteSession(config, item.targetId),
+              undefined,
+              activeSshProfile(),
+            );
+          } else {
+            await deleteSession(item.targetId);
+          }
+        }
+      } else {
+        // Project deletion means removing Agents One's registration only. Never
+        // delete or mutate the user's project directory. Unlink its tasks so
+        // they return to Chats instead of recreating a session-derived project.
+        clearSessionContextFolderPath(item.targetId);
+        clearRuntimeConversationWorkspace(item.targetId, profile);
+        removeProjectFolder(item.targetId);
+      }
+      restoreArchivedItem(id, profile);
+      return true;
+    },
+  );
 
   ipcMain.handle(
     "prepare-project-context",
@@ -2920,14 +3138,122 @@ export function registerIpcHandlers(context: IpcContext): void {
     openExternalUrl(url);
   });
 
-  // Backup / Import
-  ipcMain.handle("run-hermes-backup", (_event, profile?: string) =>
-    runHermesBackup(profile),
+  // Agents One portable backup / restore. The archive is desktop-owned and
+  // intentionally independent from the optional Hermes Python installation.
+  ipcMain.handle("export-agents-one-backup", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const options: SaveDialogOptions = {
+      title: "导出 Agents One 备份",
+      buttonLabel: "导出备份",
+      defaultPath: join(
+        app.getPath("documents"),
+        `Agents-One-Backup-${stamp}.agents-one-backup`,
+      ),
+      filters: [
+        { name: "Agents One 备份", extensions: ["agents-one-backup"] },
+      ],
+      properties: ["createDirectory", "showOverwriteConfirmation"],
+    };
+    const selected = win
+      ? await dialog.showSaveDialog(win, options)
+      : await dialog.showSaveDialog(options);
+    if (selected.canceled || !selected.filePath) {
+      return { success: false, canceled: true };
+    }
+    if (!(await stopTaskScheduleRunnerAndWait())) {
+      startTaskScheduleRunner();
+      return {
+        success: false,
+        error: "计划任务仍在写入数据，请稍后重试导出。",
+      };
+    }
+    let exportWriteLocked = false;
+    try {
+      if (activeRuns.size > 0 || activeAgentRuntimeTaskCount() > 0) {
+        return {
+          success: false,
+          error: "仍有聊天或任务正在运行，请等待完成或停止后再导出备份。",
+        };
+      }
+      beginAgentsOneRestoreWriteLock();
+      exportWriteLocked = true;
+      for (const window of BrowserWindow.getAllWindows()) window.setEnabled(false);
+      closeDbConnection();
+      return await exportAgentsOneBackupTo(selected.filePath, {
+        appVersion: app.getVersion(),
+      });
+    } finally {
+      if (exportWriteLocked) {
+        endAgentsOneTemporaryWriteLock();
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed()) window.setEnabled(true);
+        }
+      }
+      startTaskScheduleRunner();
+    }
+  });
+  ipcMain.handle(
+    "inspect-agents-one-backup",
+    (_event, archivePath: string) => inspectAgentsOneBackup(archivePath),
   );
   ipcMain.handle(
-    "run-hermes-import",
-    (_event, archivePath: string, profile?: string) =>
-      runHermesImport(archivePath, profile),
+    "restore-agents-one-backup",
+    async (_event, archivePath: string) => {
+      const inspection = await inspectAgentsOneBackup(archivePath);
+      if (!inspection.success) return inspection;
+
+      // Stop all desktop and gateway writers before touching profile data.
+      if (!(await stopTaskScheduleRunnerAndWait())) {
+        startTaskScheduleRunner();
+        return {
+          success: false,
+          error: "计划任务仍在写入数据，恢复未开始。",
+        };
+      }
+      let relaunchRequired = false;
+      try {
+        relaunchRequired = true;
+        beginAgentsOneRestoreWriteLock();
+        for (const window of BrowserWindow.getAllWindows()) {
+          // Destroying the old renderer is the global write gate: no delayed
+          // save/invoke can race the restore. `window-all-closed` is suppressed
+          // while the restore lock is active, and this main-process handler
+          // continues until it relaunches the application.
+          window.destroy();
+        }
+        for (const abort of activeRuns.values()) abort();
+        activeRuns.clear();
+        await cancelAllAgentRuntimeTasks();
+        stopAllDashboards();
+        stopSshTunnel();
+        const profiles = await listProfiles();
+        for (const profile of profiles) {
+          if (!profile.gatewayRunning) continue;
+          if (!(await stopGatewayAndWait(profile.id))) {
+            return {
+              success: false,
+              error: `无法安全停止配置档案 ${profile.name} 的本地网关，恢复未开始。`,
+            };
+          }
+        }
+        closeDbConnection();
+        return await restoreAgentsOneBackupFrom(archivePath);
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        if (relaunchRequired) {
+          // A fresh process is the only reliable way to reopen every profile
+          // database, gateway and Runtime against the restored snapshot.
+          setTimeout(() => relaunchApp(), 1_000);
+        } else {
+          startTaskScheduleRunner();
+        }
+      }
+    },
   );
 
   // Debug dump

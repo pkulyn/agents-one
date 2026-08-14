@@ -11,7 +11,9 @@ import type {
   SystemMessage,
   ToolCallMessage,
   ToolResultMessage,
+  ChatMessageAgentIdentity,
 } from "../Chat/types";
+import { isSyntheticRemoteReasoningSummary } from "../../../../shared/agent-event-stream";
 
 export interface RuntimeChatMessageAdapterOptions {
   /**
@@ -22,6 +24,33 @@ export interface RuntimeChatMessageAdapterOptions {
   /** Live events keep their last tool call open until a result arrives. */
   live?: boolean;
   idPrefix?: string;
+  /** Identity of the Runtime that produced a live or durable event trace. */
+  agentIdentity?: ChatMessageAgentIdentity;
+}
+
+function identityForMessage(
+  message: RuntimeConversationMessage,
+): ChatMessageAgentIdentity | undefined {
+  if (!message.agentRuntimeId) return undefined;
+  return {
+    agentRuntimeId: message.agentRuntimeId,
+    ...(message.agentName ? { agentName: message.agentName } : {}),
+    agentAvatar: message.agentAvatar ?? null,
+    ...(message.agentColor ? { agentColor: message.agentColor } : {}),
+    ...(message.collaborationRole
+      ? { collaborationRole: message.collaborationRole }
+      : {}),
+    ...(message.collaborationAssignmentId
+      ? { collaborationAssignmentId: message.collaborationAssignmentId }
+      : {}),
+  };
+}
+
+function withIdentity<T extends ChatMessage>(
+  message: T,
+  identity?: ChatMessageAgentIdentity,
+): T {
+  return identity ? { ...message, ...identity } : message;
 }
 
 function normalizedSummary(summary: string): string {
@@ -103,8 +132,8 @@ function isPlatformLifecycleProgress(event: AgentRuntimeEvent): boolean {
 function isImageArtifact(artifact: AgentRuntimeArtifact): boolean {
   return Boolean(
     artifact.path &&
-      ((artifact.mime || "").toLowerCase().startsWith("image/") ||
-        /\.(?:png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(artifact.path)),
+    ((artifact.mime || "").toLowerCase().startsWith("image/") ||
+      /\.(?:png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(artifact.path)),
   );
 }
 
@@ -152,7 +181,10 @@ function runtimeArtifactAttachments(
 
 function runtimeEventMessages(
   events: AgentRuntimeEvent[],
-  options: Pick<RuntimeChatMessageAdapterOptions, "live" | "idPrefix"> = {},
+  options: Pick<
+    RuntimeChatMessageAdapterOptions,
+    "live" | "idPrefix" | "agentIdentity"
+  > = {},
 ): ChatMessage[] {
   const prefix = options.idPrefix || "runtime";
   const messages: ChatMessage[] = [];
@@ -189,7 +221,7 @@ function runtimeEventMessages(
         role: "agent",
         text: eventDetail(event),
       };
-      messages.push(message);
+      messages.push(withIdentity(message, options.agentIdentity));
       continue;
     }
 
@@ -208,7 +240,7 @@ function runtimeEventMessages(
       callIndexes.set(evidence.name, messages.length);
       callIndexesById.set(callId, messages.length);
       activeCallNames.push(evidence.name);
-      messages.push(message);
+      messages.push(withIdentity(message, options.agentIdentity));
       continue;
     }
 
@@ -232,7 +264,7 @@ function runtimeEventMessages(
         name: call && call.kind === "tool_call" ? call.name : evidence.name,
         content: evidence.output || eventDetail(event),
       };
-      messages.push(result);
+      messages.push(withIdentity(result, options.agentIdentity));
       continue;
     }
 
@@ -264,7 +296,7 @@ function runtimeEventMessages(
         title: "任务已取消",
         detail: eventDetail(event),
       };
-      messages.push(message);
+      messages.push(withIdentity(message, options.agentIdentity));
     }
   }
 
@@ -280,8 +312,12 @@ function runtimeConversationMessage(
     !isUser && options.getAgentContent
       ? options.getAgentContent(message)
       : message.content;
-  const mediaTokens = isUser ? "" : runtimeArtifactMediaTokens(message.execution);
-  const attachments = isUser ? [] : runtimeArtifactAttachments(message.execution);
+  const mediaTokens = isUser
+    ? ""
+    : runtimeArtifactMediaTokens(message.execution);
+  const attachments = isUser
+    ? []
+    : runtimeArtifactAttachments(message.execution);
   const displayContent = isUser
     ? content
     : removeRemoteArtifactMediaTokens(content, message.execution);
@@ -292,6 +328,7 @@ function runtimeConversationMessage(
     content: [displayContent, mediaTokens].filter(Boolean).join("\n"),
     ...(attachments.length ? { attachments } : {}),
     timestamp: message.createdAt,
+    ...identityForMessage(message),
   };
 }
 
@@ -307,9 +344,37 @@ export function runtimeConversationToChatMessages(
   const result: ChatMessage[] = [];
   for (const message of messages) {
     if (message.role === "agent" && message.execution?.events?.length) {
+      const visibleEvents = message.execution.events.filter(
+        (event) =>
+          event.type !== "progress" ||
+          !isSyntheticRemoteReasoningSummary(event.summary, message.content),
+      );
+      const hasReasoning = visibleEvents.some(
+        (event) => event.type === "progress",
+      );
+      const hasTools = visibleEvents.some((event) =>
+        ["tool_call", "tool_result"].includes(event.type),
+      );
+      if (message.collaborationRole && !hasReasoning) {
+        result.push(
+          withIdentity<SystemMessage>(
+            {
+              id: `${message.id}:${message.execution.runId}:trace-unavailable`,
+              kind: "system",
+              role: "agent",
+              title: "思考记录未上报",
+              detail: hasTools
+                ? "该智能体的运行服务本轮提供了工具调用记录，但没有提供可展示的思考摘要。"
+                : "该智能体的运行服务本轮只返回了生命周期和最终答复，没有提供可展示的思考摘要或工具调用事件。",
+            },
+            identityForMessage(message),
+          ),
+        );
+      }
       result.push(
-        ...runtimeEventMessages(message.execution.events, {
+        ...runtimeEventMessages(visibleEvents, {
           idPrefix: `${message.id}:${message.execution.runId}`,
+          agentIdentity: identityForMessage(message),
         }),
       );
     }
@@ -321,7 +386,10 @@ export function runtimeConversationToChatMessages(
 /** Convert the currently running flat event timeline into native history rows. */
 export function runtimeEventsToChatMessages(
   events: AgentRuntimeEvent[],
-  options: Pick<RuntimeChatMessageAdapterOptions, "live" | "idPrefix"> = {},
+  options: Pick<
+    RuntimeChatMessageAdapterOptions,
+    "live" | "idPrefix" | "agentIdentity"
+  > = {},
 ): ChatMessage[] {
   return runtimeEventMessages(events, options);
 }

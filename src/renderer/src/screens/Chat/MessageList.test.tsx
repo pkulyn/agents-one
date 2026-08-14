@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "./types";
 
@@ -9,7 +9,7 @@ vi.mock("../../components/useI18n", () => ({
 import { MessageList } from "./MessageList";
 
 describe("MessageList runtime identity and activity markers", () => {
-  it("keeps the configured avatar on thought rows and the Agents One mark below tool history", () => {
+  it("keeps the configured avatar on thought rows without a separate platform activity logo", () => {
     const avatar = "data:image/png;base64,YXZhdGFy";
     const messages: ChatMessage[] = [
       { id: "user", role: "user", content: "生成图表" },
@@ -45,14 +45,125 @@ describe("MessageList runtime identity and activity markers", () => {
     );
 
     expect(screen.getByAltText("Hers-2").getAttribute("src")).toBe(avatar);
-    expect(screen.getAllByLabelText("Agents One")).toHaveLength(1);
+    expect(screen.getByText("Hers-2")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Agents One")).not.toBeInTheDocument();
 
     const toolGroup = container.querySelector(".chat-tool-group");
-    expect(toolGroup?.previousElementSibling?.className).toBe("chat-avatar");
+    const toolRow = toolGroup?.closest(".chat-message-history");
+    expect(toolRow?.firstElementChild?.className).toBe("chat-avatar");
     expect(
-      toolGroup?.previousElementSibling?.classList.contains(
-        "chat-avatar-agents-one",
-      ),
+      toolRow?.firstElementChild?.classList.contains("chat-avatar-agents-one"),
     ).toBe(false);
+  });
+
+  it("shows the runtime avatar and name when a trace begins with a tool call", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "tool-only",
+        kind: "tool_call",
+        role: "agent",
+        callId: "call-tool-only",
+        name: "read_file",
+        args: "D:\\project\\report.md",
+        status: "running",
+        agentRuntimeId: "claude-local",
+        agentName: "Claude Code",
+        agentColor: "#cc8844",
+      },
+    ];
+
+    render(
+      <MessageList
+        messages={messages}
+        isLoading
+        toolProgress={null}
+        onApprove={vi.fn()}
+        onDeny={vi.fn()}
+        onClarifyResolved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Claude Code")).toBeInTheDocument();
+    expect(screen.getByLabelText("Claude Code")).toBeInTheDocument();
+    expect(screen.getAllByText("Read File").length).toBeGreaterThan(0);
+  });
+
+  it("routes a collaboration avatar click with the stable assignment identity", () => {
+    const onAgentAvatarClick = vi.fn();
+    const messages: ChatMessage[] = [
+      {
+        id: "pi-reply",
+        kind: "assistant",
+        role: "agent",
+        content: "正在修正。",
+        agentRuntimeId: "pi-local",
+        agentName: "Pi",
+        collaborationRole: "实施",
+        collaborationAssignmentId: "implement",
+      },
+    ];
+
+    render(
+      <MessageList
+        messages={messages}
+        isLoading={false}
+        toolProgress={null}
+        onApprove={vi.fn()}
+        onDeny={vi.fn()}
+        onClarifyResolved={vi.fn()}
+        onAgentAvatarClick={onAgentAvatarClick}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "与 Pi 沟通" }));
+    expect(onAgentAvatarClick).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentRuntimeId: "pi-local",
+        collaborationAssignmentId: "implement",
+      }),
+    );
+  });
+
+  it("shows the agent identity on an answer after a trace-unavailable system card", () => {
+    const avatar = "data:image/png;base64,Y2xhdWRl";
+    const identity = {
+      agentRuntimeId: "claude-local",
+      agentName: "Claude Code",
+      agentAvatar: avatar,
+      collaborationRole: "复核",
+      collaborationAssignmentId: "review",
+    };
+    const messages: ChatMessage[] = [
+      {
+        id: "trace-unavailable",
+        kind: "system",
+        role: "agent",
+        title: "思考记录未上报",
+        detail: "该运行服务未提供可展示的思考摘要。",
+        ...identity,
+      },
+      {
+        id: "claude-answer",
+        kind: "assistant",
+        role: "agent",
+        content: "复核完成。",
+        ...identity,
+      },
+    ];
+
+    render(
+      <MessageList
+        messages={messages}
+        isLoading={false}
+        toolProgress={null}
+        onApprove={vi.fn()}
+        onDeny={vi.fn()}
+        onClarifyResolved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("思考记录未上报")).toBeInTheDocument();
+    expect(screen.getByText("Claude Code")).toBeInTheDocument();
+    expect(screen.getByAltText("Claude Code")).toHaveAttribute("src", avatar);
   });
 });

@@ -5,13 +5,16 @@ import { join } from "path";
 const ROOT = join(__dirname, "..");
 // After the app/ refactor, ipcMain.handle registrations live in the dedicated
 // IPC registration module plus the updater module, not in index.ts.
-const indexSrc = [
-  "src/main/ipc/register.ts",
-  "src/main/app/updater.ts",
-]
+const indexSrc = ["src/main/ipc/register.ts", "src/main/app/updater.ts"]
   .map((p) => readFileSync(join(ROOT, p), "utf-8"))
   .join("\n");
 const preloadSrc = readFileSync(join(ROOT, "src/preload/index.ts"), "utf-8");
+const appStartSrc = readFileSync(join(ROOT, "src/main/app/start.ts"), "utf-8");
+const mainBootstrapSrc = readFileSync(join(ROOT, "src/main/index.ts"), "utf-8");
+const profileMetaSrc = readFileSync(
+  join(ROOT, "src/main/profile-meta.ts"),
+  "utf-8",
+);
 
 /**
  * Extract all IPC channel names registered in main/index.ts.
@@ -66,8 +69,11 @@ describe("IPC Handler ↔ Preload Consistency", () => {
 
 describe("New IPC handlers from v0.8/v0.9 features", () => {
   const newChannels = [
-    "run-hermes-backup",
-    "run-hermes-import",
+    "export-agents-one-backup",
+    "inspect-agents-one-backup",
+    "restore-agents-one-backup",
+    "list-quick-chats",
+    "save-quick-chats",
     "read-logs",
     "run-hermes-dump",
     "list-mcp-servers",
@@ -78,6 +84,7 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "list-mcp-catalog",
     "install-mcp-catalog-entry",
     "discover-memory-providers",
+    "update-task-schedule",
   ];
 
   for (const ch of newChannels) {
@@ -89,6 +96,30 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
       expect(preloadChannels).toContain(ch);
     });
   }
+});
+
+describe("Agents One backup IPC boundary", () => {
+  it("does not expose the legacy Hermes CLI backup/import channels", () => {
+    expect(mainChannels).not.toContain("run-hermes-backup");
+    expect(mainChannels).not.toContain("run-hermes-import");
+    expect(preloadChannels).not.toContain("run-hermes-backup");
+    expect(preloadChannels).not.toContain("run-hermes-import");
+  });
+
+  it("freezes the old renderer and recovers a durable journal before startup", () => {
+    expect(indexSrc).toContain("beginAgentsOneRestoreWriteLock()");
+    expect(indexSrc).toContain("window.destroy()");
+    expect(appStartSrc).toContain("recoverInterruptedAgentsOneRestore()");
+    expect(appStartSrc).toContain("isAgentsOneRestoreWriteLocked()");
+  });
+
+  it("prevents a second process and keeps profile metadata behind the write gate", () => {
+    expect(mainBootstrapSrc).toContain("app.requestSingleInstanceLock()");
+    expect(mainBootstrapSrc).toContain("if (!hasSingleInstanceLock)");
+    expect(appStartSrc).toContain('app.on("second-instance"');
+    expect(profileMetaSrc).toContain("safeWriteFile(metaPath(name)");
+    expect(profileMetaSrc).not.toContain("await fs.writeFile(metaPath(name)");
+  });
 });
 
 // ─── Legacy handlers still present ──────────────────────

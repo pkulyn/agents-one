@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Globe } from "../../assets/icons";
-import { ChevronDown, ShieldCheck, Users } from "lucide-react";
+import { ChevronDown, ShieldCheck, Users, X } from "lucide-react";
 import { WebPreviewPanel } from "../Chat/WebPreviewPanel";
 import { ChatInput, type ChatInputHandle } from "../Chat/ChatInput";
 import type { ContextUsage } from "../Chat/ContextGauge";
 import { ContextFolderChip } from "../Chat/ContextFolderChip";
+import { WorktreePanel } from "../Chat/WorktreePanel";
+import { contextWindowForModel } from "../Chat/contextWindows";
 import { ChatEmptyState } from "../Chat/ChatEmptyState";
 import { ConversationWorkspace } from "../Chat/ConversationWorkspace";
 import { MessageList } from "../Chat/MessageList";
@@ -37,11 +39,18 @@ import type {
 import {
   createExplicitTaskCollaborationProposal,
   formatTaskCollaborationProposal,
+  hasExplicitTaskCollaborationIntent,
   parseTaskCollaborationProposal,
+  orderTaskCollaborationAssignments,
   taskCollaborationProposalProtocol,
   type TaskCollaborationProposal,
 } from "../../../../shared/task-collaboration-proposals";
 import { summarizeTaskOutput } from "../Chat/runtimeOutput";
+import {
+  buildTaskCollaborationGraph,
+  hasExplicitTaskCollaborationDependencies,
+  taskCollaborationDescendants,
+} from "../../../../shared/task-collaboration-graph";
 
 interface CollaborationLaunch {
   taskId?: string;
@@ -51,15 +60,24 @@ interface CollaborationLaunch {
   initialCoordinatorHandoff?: string;
 }
 
+interface ActiveCollaborationRun {
+  assignmentId: string;
+  role: string;
+  runtimeId: string;
+  run: AgentRuntimeRun;
+}
+
 interface RuntimeChatProps {
   runId: string;
   runtime: AgentRuntimeDefinition;
   profile: string;
   active?: boolean;
   initialConversationId?: string | null;
+  initialRuntimeRunId?: string | null;
   initialRuntimeSessionId?: string | null;
   initialMessages?: RuntimeConversationMessage[];
   initialWorkspace?: string;
+  initialAccessMode?: "auto" | "analysis" | "full_access";
   collaboration?: {
     assignments: TaskCollaborationAssignment[];
     execution?: TaskCollaborationExecution;
@@ -83,6 +101,12 @@ interface RuntimeChatProps {
 interface CollaborationResume {
   assignmentId: string;
   execution: TaskCollaborationExecution;
+  /** Resume after an already completed guided role instead of rerunning it. */
+  startAfter?: boolean;
+  /** Stop the dependency chain after this role answers the user. */
+  holdAfterAssignmentId?: string;
+  /** Intervention turn whose reply should be persisted with shared context. */
+  interventionId?: string;
 }
 
 function newId(): string {
@@ -235,20 +259,40 @@ function roleIsAcceptance(assignment: TaskCollaborationAssignment): boolean {
   );
 }
 
-function workspaceAccessLabel(assignment: TaskCollaborationAssignment): string {
-  switch (assignment.workspaceAccess) {
+type EffectiveWorkspaceAccess =
+  | NonNullable<TaskCollaborationAssignment["workspaceAccess"]>
+  | "runtime_native";
+
+function effectiveWorkspaceAccess(
+  assignment: TaskCollaborationAssignment,
+  runtime: AgentRuntimeDefinition | undefined,
+  projectFolder: string | undefined,
+): EffectiveWorkspaceAccess {
+  if (assignment.workspaceAccess) return assignment.workspaceAccess;
+  if (runtime?.location !== "remote") return "local_direct";
+  return projectFolder ? "evidence_bundle" : "runtime_native";
+}
+
+function workspaceAccessLabel(
+  assignment: TaskCollaborationAssignment,
+  runtime?: AgentRuntimeDefinition,
+  projectFolder?: string,
+): string {
+  switch (effectiveWorkspaceAccess(assignment, runtime, projectFolder)) {
     case "remote_mapping":
       return assignment.workspaceRef
         ? `远程映射（${assignment.workspaceRef}）`
         : "远程映射（未配置）";
     case "evidence_bundle":
       return "只读证据包";
+    case "runtime_native":
+      return "智能体所在设备";
     default:
       return "本地直连";
   }
 }
 
-function workspacePreflight(
+export function collaborationWorkspacePreflight(
   assignments: TaskCollaborationAssignment[],
   runtimes: Record<string, AgentRuntimeDefinition>,
   projectFolder: string | undefined,
@@ -258,9 +302,11 @@ function workspacePreflight(
       ? runtimes[assignment.runtimeId]
       : undefined;
     if (!assigned) return [];
-    const workspaceAccess =
-      assignment.workspaceAccess ||
-      (assigned.location === "remote" ? "evidence_bundle" : "local_direct");
+    const workspaceAccess = effectiveWorkspaceAccess(
+      assignment,
+      assigned,
+      projectFolder,
+    );
     if (
       assigned.location === "remote" &&
       workspaceAccess === "evidence_bundle" &&
@@ -302,6 +348,7 @@ function workspacePreflight(
         },
       ];
     }
+    if (workspaceAccess === "runtime_native") return [];
     if (workspaceAccess === "evidence_bundle" && roleCanModify(assignment)) {
       return [
         {
@@ -314,12 +361,21 @@ function workspacePreflight(
   });
 }
 
+function remoteRuntimeEnvironmentProtocol(): string {
+  return [
+    "Agents One 执行环境边界：",
+    "- 你的原生工具、终端和绝对路径属于智能体所在设备；它们不是运行 Agents One 桌面客户端的用户电脑，也不是用户在客户端选择的项目文件夹。",
+    "- 只有本轮明确附带 Workspace Grant 时，你才能通过 workspace_gateway 访问用户在 Agents One 中关联的本地项目；不得把原生文件系统访问说成 Workspace Grant，也不得反过来要求用户为远程主机上的任务关联本地项目。",
+    "- 如果任务目标就是智能体所在设备或其可访问的服务器，请直接使用原生能力并如实标注来源机器。只有任务明确依赖用户电脑中的项目文件且本轮没有 Grant 时，才说明需要用户关联项目。",
+  ].join("\n");
+}
+
 function roleAccessMode(
   assignment: TaskCollaborationAssignment,
   assignmentId: string,
-  defaultAccessMode: "analysis" | "full_access",
+  defaultAccessMode: "analysis" | "safe_write" | "full_access",
   interventions: TaskCollaborationIntervention[],
-): "analysis" | "full_access" {
+): "analysis" | "safe_write" | "full_access" {
   if (!roleCanModify(assignment)) return "analysis";
   const override = [...interventions]
     .reverse()
@@ -327,6 +383,32 @@ function roleAccessMode(
       (item) => item.assignmentId === assignmentId && item.accessMode,
     )?.accessMode;
   return override || defaultAccessMode;
+}
+
+export function collaborationPermissionPreflight(
+  assignments: TaskCollaborationAssignment[],
+  defaultAccessMode: "analysis" | "safe_write" | "full_access",
+  interventions: TaskCollaborationIntervention[] = [],
+): Array<{ assignment: TaskCollaborationAssignment; reason: string }> {
+  return assignments.flatMap((assignment, index) => {
+    if (
+      !roleCanModify(assignment) ||
+      roleAccessMode(
+        assignment,
+        assignmentKey(assignment, index),
+        defaultAccessMode,
+        interventions,
+      ) !== "analysis"
+    ) {
+      return [];
+    }
+    return [
+      {
+        assignment,
+        reason: `${assignment.role} 是实施角色，但当前协作权限为“只读”，不能创建或修改文件。请将本轮权限切换为“自动”或“完全访问”后重新启动协作。`,
+      },
+    ];
+  });
 }
 
 function hasConcreteDelivery(
@@ -390,6 +472,7 @@ function collectRuntimeArtifacts(
         artifact.label ||
         (artifact.kind === "diff" ? "Git diff" : "项目工作目录"),
       ...(artifact.path ? { path: artifact.path } : {}),
+      ...(typeof artifact.size === "number" ? { size: artifact.size } : {}),
       ...(artifact.sha256 ? { sha256: artifact.sha256 } : {}),
       ...(artifact.sourceMachine
         ? { sourceMachine: artifact.sourceMachine }
@@ -514,6 +597,7 @@ function artifactEvidence(
         `角色：${artifact.role}`,
         `说明：${artifact.label}`,
         artifact.path ? `路径：${redact(artifact.path)}` : "",
+        typeof artifact.size === "number" ? `大小：${artifact.size} 字节` : "",
         artifact.sourceMachine ? `来源机器：${artifact.sourceMachine}` : "",
         artifact.sha256 ? `SHA-256：${artifact.sha256}` : "",
         artifact.changeSummary
@@ -602,7 +686,7 @@ function acceptanceFromOutput(
       assignmentId,
       status: "needs_review",
       conclusion:
-        "验收角色引用的交付证据缺少路径、SHA-256、来源机器或变更摘要，不能自动判定通过。请由实施角色补齐交付契约后重新验收。",
+        "验收角色引用的交付物缺少路径、SHA-256、来源机器或变更摘要，不能自动判定通过。请由实施角色补齐交付物信息后重新验收。",
       reviewedArtifactIds,
       createdAt: Date.now(),
     };
@@ -635,16 +719,30 @@ function collaborationRolePrompt(
     ? runtimes[recipient.runtimeId]
     : undefined;
   const recipientIsRemote = recipientRuntime?.location === "remote";
+  const recipientWorkspaceAccess = effectiveWorkspaceAccess(
+    recipient,
+    recipientRuntime,
+    projectFolder,
+  );
   const humanGuidance = interventions
     .filter(
       (item) =>
         item.visibility === "shared" || item.assignmentId === recipientKey,
     )
-    .map((item) =>
-      item.visibility === "shared"
-        ? `【用户已同步给协作组】${item.content}`
-        : `【仅给本角色的人工指令】${item.content}`,
-    )
+    .map((item) => {
+      const ownerRole =
+        assignments.find(
+          (assignment, index) =>
+            assignmentKey(assignment, index) === item.assignmentId,
+        )?.role || "目标角色";
+      const instruction =
+        item.visibility === "shared"
+          ? `【用户已同步给协作组】${item.content}`
+          : `【仅给本角色的人工指令】${item.content}`;
+      return item.response
+        ? `${instruction}\n【${ownerRole} 的介入回复】${item.response}`
+        : instruction;
+    })
     .join("\n\n")
     .slice(-8_000);
   const completed = completedHandoffs
@@ -668,14 +766,18 @@ function collaborationRolePrompt(
     `你当前只执行“${roleLabel}”角色。职责：${responsibility}。`,
     "严格边界：只报告和完成本角色职责；不要代替其他已登记角色，不要创建 subagent，也不要把未收到的他人结果写成已完成。平台会在你完成后自动派发下一角色。",
     roleCanModify(recipient)
-      ? "本角色可按当前任务权限在关联项目目录内交付文件或代码；完成时必须发布以下完整格式，路径和 SHA-256 必须来自实际写入后的工具输出：\n[交付契约]\n路径：<实际绝对路径>\nSHA-256：<64 位哈希>\n来源机器：<执行机器或远程环境>\n变更摘要：<实际改动>\n没有该契约的平台不会启动后续验收。"
+      ? `${
+          recipientWorkspaceAccess === "runtime_native"
+            ? "本角色在智能体所在设备的原生环境中执行；不要要求用户关联 Agents One 本地项目，也不要把原生路径声称为用户电脑路径。"
+            : "本角色可按当前任务权限在关联项目目录内交付文件或代码。"
+        }完成时必须发布以下完整格式，路径和 SHA-256 必须来自实际写入后的工具输出：\n[交付物]\n路径：<实际绝对路径>\nSHA-256：<64 位哈希>\n来源机器：<执行机器或远程环境>\n变更摘要：<实际改动>\n没有完整交付物信息时，平台不会启动后续验收。`
       : "本角色为非实施阶段：不得创建、修改或删除项目文件；请基于已经收到的交接材料做规划、测试、复核或验收。",
     "\n完整协作分工：\n" +
       assignments
         .filter((assignment) => assignment.runtimeId)
         .map((assignment) => {
           const assignedRuntime = runtimes[assignment.runtimeId as string];
-          return `- ${assignment.role}：${assignedRuntime?.name || assignment.runtimeId}；职责：${assignment.responsibility || "未说明"}；上下文：${assignment.context || "任务说明"}；工作区：${workspaceAccessLabel(assignment)}`;
+          return `- ${assignment.role}：${assignedRuntime?.name || assignment.runtimeId}；职责：${assignment.responsibility || "未说明"}；上下文：${assignment.context || "任务说明"}；工作区：${workspaceAccessLabel(assignment, assignedRuntime, projectFolder)}`;
         })
         .join("\n"),
     projectFolder && !recipientIsRemote
@@ -689,7 +791,11 @@ function collaborationRolePrompt(
       : "",
     completed ? `\n已完成角色的真实交接材料：\n${completed}` : "",
     roleIsAcceptance(recipient)
-      ? `\n待验收的真实产物（只可据此验收）：\n${artifactEvidence(artifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}\n\n完成验收时必须用以下格式：\n[验收结论]\n状态：通过 / 不通过 / 需人工复核\n依据：#1、#2（只能引用上述真实产物编号）\n结论：简明说明。`
+      ? `\n待验收的真实产物（只可据此验收）：\n${artifactEvidence(artifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}${
+          recipientIsRemote
+            ? "\n\n远程终验规则：这是平台证据审查，不是远程文件系统复查。禁止调用 read_file、bash、SSH 或任何工具重新访问本机路径；本机路径已被隐藏。带有路径、SHA-256、来源机器和变更摘要的文件产物，已经由 Agents One 桌面主进程在本机独立核验，必须直接作为可信证据使用。若实施交付和本地复核均已完成且证据契约完整，应据此输出“通过”；只有缺少平台证据或证据明确不一致时才输出“不通过”或“需人工复核”。"
+            : ""
+        }\n\n完成验收时必须用以下格式：\n[验收结论]\n状态：通过 / 不通过 / 需人工复核\n依据：#1、#2（只能引用上述真实产物编号）\n结论：简明说明。`
       : "",
     humanGuidance ? `\n用户人工指令：\n${humanGuidance}` : "",
     reviewFeedback
@@ -796,9 +902,11 @@ export default function RuntimeChat({
   profile,
   active = true,
   initialConversationId = null,
+  initialRuntimeRunId = null,
   initialRuntimeSessionId = null,
   initialMessages = [],
   initialWorkspace,
+  initialAccessMode = "auto",
   collaboration,
   runtimeCatalog: providedRuntimeCatalog = {},
   onLoadingChange,
@@ -815,23 +923,36 @@ export default function RuntimeChat({
   const unifiedRemoteGatewayRuntime =
     runtime.location === "remote" &&
     runtime.config.remoteGateway?.protocol === "agents-one-v1";
+  const collaborationWriteRuntimeAvailable =
+    Boolean(onStartCollaboration || collaboration) &&
+    Object.values(runtimeCatalog).some(
+      (candidate) =>
+        candidate.enabled &&
+        candidate.location === "local" &&
+        (candidate.kind === "codex" ||
+          candidate.kind === "claude-code" ||
+          candidate.kind === "pi"),
+    );
   const [messages, setMessages] =
     useState<RuntimeConversationMessage[]>(initialMessages);
-  const [workspace, setWorkspace] = useState(
-    initialWorkspace || runtime.config.workspace || "",
+  const [workspace, setWorkspace] = useState(initialWorkspace || "");
+  const [currentRunId, setCurrentRunId] = useState<string | null>(
+    initialRuntimeRunId,
   );
-  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(initialRuntimeRunId));
   const [webPreviewUrl, setWebPreviewUrl] = useState("about:blank");
   const [webPreviewVisible, setWebPreviewVisible] = useState(false);
   const [worktreeVisible, setWorktreeVisible] = useState(false);
-  const [accessMode, setAccessMode] = useState<"analysis" | "full_access">(
-    "analysis",
-  );
+  const [accessMode, setAccessMode] = useState<
+    "auto" | "analysis" | "full_access"
+  >(initialAccessMode);
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [taskRun, setTaskRun] = useState<AgentRuntimeRun | null>(null);
   const [activeCollaborationRuntimeId, setActiveCollaborationRuntimeId] =
     useState<string | null>(null);
+  const [activeCollaborationRuns, setActiveCollaborationRuns] = useState<
+    Record<string, ActiveCollaborationRun>
+  >({});
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [remoteArtifactsSupported, setRemoteArtifactsSupported] =
     useState(false);
@@ -843,6 +964,8 @@ export default function RuntimeChat({
   const [collaborationAssignments, setCollaborationAssignments] = useState<
     TaskCollaborationAssignment[]
   >(() => collaboration?.assignments || []);
+  const [collaborationDashboardVisible, setCollaborationDashboardVisible] =
+    useState(true);
   const cancelledRef = useRef(false);
   const pauseAssignmentRef = useRef<string | null>(null);
   const [interventionTarget, setInterventionTarget] = useState<{
@@ -854,14 +977,18 @@ export default function RuntimeChat({
   const [interventionAccessMode, setInterventionAccessMode] = useState<
     "inherit" | "analysis" | "full_access"
   >("inherit");
+  const [interventionRuntimeId, setInterventionRuntimeId] = useState("");
   const conversationIdRef = useRef<string | null>(initialConversationId);
   const runtimeSessionIdRef = useRef<string | null>(initialRuntimeSessionId);
   const messagesRef = useRef<RuntimeConversationMessage[]>(initialMessages);
   const taskRunRef = useRef<AgentRuntimeRun | null>(null);
+  const activeCollaborationRunsRef = useRef<
+    Record<string, ActiveCollaborationRun>
+  >({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const appearanceRuntime = runtimeCatalog[runtime.id] ?? runtime;
-  const liveAppearanceRuntime =
+  const activeTraceRuntime =
     loading && activeCollaborationRuntimeId
       ? runtimeCatalog[activeCollaborationRuntimeId] || appearanceRuntime
       : appearanceRuntime;
@@ -898,7 +1025,23 @@ export default function RuntimeChat({
     profile,
   ]);
 
-  const agentAvatar = liveAppearanceRuntime.avatar ?? profileAvatar;
+  // The parent conversation keeps its configured appearance while child
+  // collaboration runtimes execute. Per-message/live trace identity is added
+  // separately below and must never replace old parent turns globally.
+  const agentAvatar = appearanceRuntime.avatar ?? profileAvatar;
+
+  const updateActiveCollaborationRun = useCallback(
+    (assignmentId: string, active?: ActiveCollaborationRun): void => {
+      setActiveCollaborationRuns((previous) => {
+        const next = { ...previous };
+        if (active) next[assignmentId] = active;
+        else delete next[assignmentId];
+        activeCollaborationRunsRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
 
   const getAgentContent = useCallback(
     (message: RuntimeConversationMessage): string => {
@@ -917,10 +1060,61 @@ export default function RuntimeChat({
     const history = runtimeConversationToChatMessages(messages, {
       getAgentContent,
     });
+    const parallelRuns = Object.values(activeCollaborationRuns);
+    if (loading && parallelRuns.length) {
+      const liveMessages = parallelRuns.flatMap((active) => {
+        const liveRuntime =
+          runtimeCatalog[active.runtimeId] || appearanceRuntime;
+        const liveIdentity = {
+          agentRuntimeId: liveRuntime.id,
+          agentName: liveRuntime.name,
+          agentAvatar: liveRuntime.avatar ?? null,
+          agentColor: liveRuntime.color ?? null,
+          collaborationRole: active.role,
+          collaborationAssignmentId: active.assignmentId,
+        };
+        const live = runtimeEventsToChatMessages(active.run.events || [], {
+          live: true,
+          idPrefix: `live:${active.run.id}`,
+          agentIdentity: liveIdentity,
+        });
+        return live.some((message) => message.kind === "reasoning")
+          ? live
+          : [
+              {
+                id: `live:${active.run.id}:thinking`,
+                kind: "reasoning" as const,
+                role: "agent" as const,
+                text: `${liveRuntime.name} 正在思考并准备执行……`,
+                ...liveIdentity,
+              },
+              ...live,
+            ];
+      });
+      return [...history, ...liveMessages];
+    }
     if (!loading || !currentRunId) return history;
+    const liveAssignmentId = collaborationExecution?.activeAssignmentId;
+    const liveRole = collaborationExecution?.roleRuns.find(
+      (item) => item.assignmentId === liveAssignmentId,
+    )?.role;
+    const liveIdentity = {
+      agentRuntimeId: activeTraceRuntime.id,
+      agentName: activeTraceRuntime.name,
+      agentAvatar:
+        activeTraceRuntime.id === runtime.id
+          ? agentAvatar
+          : (activeTraceRuntime.avatar ?? null),
+      agentColor: activeTraceRuntime.color ?? null,
+      ...(liveRole ? { collaborationRole: liveRole } : {}),
+      ...(liveAssignmentId
+        ? { collaborationAssignmentId: liveAssignmentId }
+        : {}),
+    };
     const live = runtimeEventsToChatMessages(taskRun?.events || [], {
       live: true,
       idPrefix: `live:${currentRunId}`,
+      agentIdentity: liveIdentity,
     });
     const hasReasoning = live.some((message) => message.kind === "reasoning");
     const liveMessages: ChatMessage[] = hasReasoning
@@ -931,11 +1125,25 @@ export default function RuntimeChat({
             kind: "reasoning",
             role: "agent",
             text: "正在思考并准备执行……",
+            ...liveIdentity,
           },
           ...live,
         ];
     return [...history, ...liveMessages];
-  }, [currentRunId, getAgentContent, loading, messages, taskRun]);
+  }, [
+    agentAvatar,
+    activeCollaborationRuns,
+    appearanceRuntime,
+    collaborationExecution,
+    currentRunId,
+    getAgentContent,
+    activeTraceRuntime,
+    loading,
+    messages,
+    runtime.id,
+    runtimeCatalog,
+    taskRun,
+  ]);
 
   const handleNativeApprove = useCallback(() => undefined, []);
   const handleNativeDeny = useCallback(() => undefined, []);
@@ -975,7 +1183,11 @@ export default function RuntimeChat({
             probe.state === "healthy" &&
             probe.capabilities.workspaceAccess;
           setRemoteWorkspaceSupported(workspaceAvailable);
-          if (unifiedRemoteGatewayRuntime && !workspaceAvailable) {
+          if (
+            unifiedRemoteGatewayRuntime &&
+            !workspaceAvailable &&
+            !collaborationWriteRuntimeAvailable
+          ) {
             setAccessMode("analysis");
             setPermissionMenuOpen(false);
           }
@@ -985,7 +1197,10 @@ export default function RuntimeChat({
         if (!cancelled) {
           setRemoteArtifactsSupported(false);
           setRemoteWorkspaceSupported(false);
-          if (unifiedRemoteGatewayRuntime) {
+          if (
+            unifiedRemoteGatewayRuntime &&
+            !collaborationWriteRuntimeAvailable
+          ) {
             setAccessMode("analysis");
             setPermissionMenuOpen(false);
           }
@@ -994,7 +1209,12 @@ export default function RuntimeChat({
     return () => {
       cancelled = true;
     };
-  }, [runtime.id, runtime.kind, unifiedRemoteGatewayRuntime]);
+  }, [
+    collaborationWriteRuntimeAvailable,
+    runtime.id,
+    runtime.kind,
+    unifiedRemoteGatewayRuntime,
+  ]);
 
   useEffect(() => {
     if (!active) return;
@@ -1023,10 +1243,81 @@ export default function RuntimeChat({
     messagesRef.current = messages;
   }, [messages]);
 
+  useEffect(() => {
+    let disposed = false;
+    const refreshPersistedConversation = (event: Event): void => {
+      const detail = (event as CustomEvent<unknown>).detail as
+        | { profile?: unknown; conversationId?: unknown }
+        | undefined;
+      const conversationId = detail?.conversationId;
+      if (
+        detail?.profile !== profile ||
+        typeof conversationId !== "string" ||
+        conversationId !== conversationIdRef.current
+      ) {
+        return;
+      }
+      void window.hermesAPI
+        .getRuntimeConversation(conversationId, profile)
+        .then((conversation) => {
+          if (
+            disposed ||
+            !conversation ||
+            conversation.id !== conversationIdRef.current
+          ) {
+            return;
+          }
+          messagesRef.current = conversation.messages;
+          setMessages(conversation.messages);
+          setAccessMode(conversation.accessMode || "auto");
+          if (conversation.activeRuntimeRunId) {
+            setCurrentRunId(
+              (current) => current || conversation.activeRuntimeRunId || null,
+            );
+            setLoading(true);
+          } else if (currentRunId && taskRunRef.current?.status !== "running") {
+            setCurrentRunId(null);
+            setLoading(false);
+          }
+          if (conversation.runtimeSessionId) {
+            runtimeSessionIdRef.current = conversation.runtimeSessionId;
+            onSessionIdChange?.(runId, conversation.runtimeSessionId);
+          }
+        })
+        .catch(() => {
+          // Keep the already visible transcript when a background refresh fails.
+        });
+    };
+    window.addEventListener(
+      "agents-one:runtime-conversation-updated",
+      refreshPersistedConversation,
+    );
+    if (conversationIdRef.current) {
+      refreshPersistedConversation(
+        new CustomEvent("agents-one:runtime-conversation-updated", {
+          detail: {
+            profile,
+            conversationId: conversationIdRef.current,
+          },
+        }),
+      );
+    }
+    return () => {
+      disposed = true;
+      window.removeEventListener(
+        "agents-one:runtime-conversation-updated",
+        refreshPersistedConversation,
+      );
+    };
+  }, [currentRunId, onSessionIdChange, profile, runId]);
+
   const persistConversation = useCallback(
     async (
       nextMessages: RuntimeConversationMessage[],
-      options: { runtimeSessionId?: string | null } = {},
+      options: {
+        runtimeSessionId?: string | null;
+        activeRuntimeRunId?: string | null;
+      } = {},
     ): Promise<string> => {
       const id = conversationIdRef.current || newConversationId();
       if (conversationIdRef.current !== id) {
@@ -1052,10 +1343,15 @@ export default function RuntimeChat({
         runtimeColor: runtime.color,
         runtimeAvatar: runtime.avatar,
         runtimeSessionId: nextRuntimeSessionId || undefined,
+        activeRuntimeRunId:
+          options.activeRuntimeRunId === undefined
+            ? currentRunId || null
+            : options.activeRuntimeRunId,
         // This is local UI metadata used to keep the conversation under its
         // project. Runtime dispatch decides separately whether any workspace
         // content or grant may be shared with the selected agent.
         workspace: workspace || undefined,
+        accessMode,
         messages: nextMessages,
       });
       window.dispatchEvent(
@@ -1063,7 +1359,33 @@ export default function RuntimeChat({
       );
       return id;
     },
-    [onConversationIdChange, profile, runId, runtime, workspace],
+    [
+      accessMode,
+      currentRunId,
+      onConversationIdChange,
+      profile,
+      runId,
+      runtime,
+      workspace,
+    ],
+  );
+
+  const linkCollaborationToConversation = useCallback(
+    async (taskId?: string): Promise<void> => {
+      if (
+        !taskId ||
+        !conversationIdRef.current ||
+        typeof window.hermesAPI.linkTaskCollaboration !== "function"
+      ) {
+        return;
+      }
+      await window.hermesAPI.linkTaskCollaboration(
+        { taskId, conversationId: conversationIdRef.current },
+        profile,
+      );
+      window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+    },
+    [profile],
   );
 
   const pollRun = useCallback(
@@ -1071,8 +1393,21 @@ export default function RuntimeChat({
       while (!cancelledRef.current) {
         const current = await window.hermesAPI.getAgentRuntimeRun(runtimeRunId);
         if (!current) {
-          await new Promise((resolve) => setTimeout(resolve, 900));
-          continue;
+          const nextMessages = [
+            ...messagesRef.current,
+            newMessage(
+              "system",
+              "当前运行已不可恢复，可能是桌面应用在执行期间重启。请在本对话中重新发送任务。",
+            ),
+          ];
+          messagesRef.current = nextMessages;
+          setMessages(nextMessages);
+          await persistConversation(nextMessages, {
+            activeRuntimeRunId: null,
+          });
+          setLoading(false);
+          setCurrentRunId(null);
+          return;
         }
         const observed = mergeRuntimeRunObservation(
           taskRunRef.current,
@@ -1091,6 +1426,23 @@ export default function RuntimeChat({
           await new Promise((resolve) => setTimeout(resolve, 900));
           continue;
         }
+        const persistedConversation = conversationIdRef.current
+          ? await window.hermesAPI.getRuntimeConversation(
+              conversationIdRef.current,
+              profile,
+            )
+          : null;
+        if (
+          persistedConversation?.messages.some(
+            (message) => message.execution?.runId === observed.id,
+          )
+        ) {
+          messagesRef.current = persistedConversation.messages;
+          setMessages(persistedConversation.messages);
+          setLoading(false);
+          setCurrentRunId(null);
+          return;
+        }
         const execution = executionFromRun(observed);
         // A terminal runtime result belongs to the selected agent, including
         // failures. Keeping it as a system bubble hides the agent avatar and
@@ -1102,23 +1454,40 @@ export default function RuntimeChat({
           runtime.id,
           ...Object.keys(runtimeCatalog),
         ];
-        const summarizedProposal =
+        const latestUserRequest = [...messagesRef.current]
+          .reverse()
+          .find((message) => message.role === "user")?.content;
+        const collaborationAuthorized = hasExplicitTaskCollaborationIntent(
+          latestUserRequest || "",
+        );
+        const summarizedProposalResult =
           current.status === "succeeded"
             ? parseTaskCollaborationProposal(
                 summarizedTerminalText,
                 availableRuntimeIds,
-              ).proposal
-            : undefined;
-        const rawProposal =
+              )
+            : { displayContent: summarizedTerminalText };
+        const rawProposalResult =
           current.status === "succeeded" && current.output
             ? parseTaskCollaborationProposal(
                 current.output,
                 availableRuntimeIds,
-              ).proposal
+              )
             : undefined;
-        const parsedProposal = summarizedProposal || rawProposal;
-        const terminalText =
-          rawProposal && !summarizedProposal && current.output
+        const summarizedProposal = summarizedProposalResult.proposal;
+        const rawProposal = rawProposalResult?.proposal;
+        const parsedProposal = collaborationAuthorized
+          ? summarizedProposal || rawProposal
+          : undefined;
+        const unrequestedProposal =
+          !collaborationAuthorized &&
+          Boolean(summarizedProposal || rawProposal);
+        const terminalText = unrequestedProposal
+          ? (summarizedProposal
+              ? summarizedProposalResult.displayContent
+              : rawProposalResult?.displayContent) ||
+            "本轮按单智能体任务处理，未启动协作。"
+          : rawProposal && !summarizedProposal && current.output
             ? current.output
             : summarizedTerminalText;
         const nextMessages = [
@@ -1129,6 +1498,7 @@ export default function RuntimeChat({
         setMessages(nextMessages);
         await persistConversation(nextMessages, {
           runtimeSessionId: observed.sessionId || runtimeSessionIdRef.current,
+          activeRuntimeRunId: null,
         });
         setLoading(false);
         setCurrentRunId(null);
@@ -1136,9 +1506,10 @@ export default function RuntimeChat({
           try {
             const launch = await onStartCollaboration(
               parsedProposal,
-              workspace || runtime.config.workspace || undefined,
+              workspace || undefined,
             );
             if (launch) {
+              await linkCollaborationToConversation(launch.taskId);
               setCollaborationAssignments(launch.assignments);
               const brief =
                 parsedProposal.brief ||
@@ -1173,13 +1544,22 @@ export default function RuntimeChat({
     [
       onSessionIdChange,
       onStartCollaboration,
+      linkCollaborationToConversation,
       persistConversation,
+      profile,
       runId,
       runtime,
       runtimeCatalog,
       workspace,
     ],
   );
+
+  useEffect(() => {
+    if (!currentRunId || taskRunRef.current?.id === currentRunId) return;
+    cancelledRef.current = false;
+    setLoading(true);
+    void pollRun(currentRunId);
+  }, [currentRunId, pollRun]);
 
   const appendCollaborationMessage = useCallback(
     async (
@@ -1218,26 +1598,40 @@ export default function RuntimeChat({
       selectedWorkspace?: string,
       resume?: CollaborationResume,
     ): Promise<void> => {
-      const configuredBase = launch.assignments.filter(
+      const dispatchableAssignments = launch.assignments.filter(
         (assignment) => assignment.runtimeId,
       );
+      const explicitDag = hasExplicitTaskCollaborationDependencies(
+        dispatchableAssignments,
+      );
+      const configuredBase = explicitDag
+        ? dispatchableAssignments
+        : orderTaskCollaborationAssignments(dispatchableAssignments);
+      const baseGraph = buildTaskCollaborationGraph(configuredBase);
       const coordinator = configuredBase.find(isCoordinator);
+      const coordinatorOwnsAcceptance = configuredBase.some(
+        (assignment) =>
+          roleIsAcceptance(assignment) &&
+          assignment.runtimeId === coordinator?.runtimeId,
+      );
       // The lead plans first, then returns only after every assigned role has
       // handed off. This final pass is the sole automatic acceptance decision.
       const finalReview: TaskCollaborationAssignment | undefined =
-        coordinator?.runtimeId
+        coordinator?.runtimeId && !coordinatorOwnsAcceptance
           ? {
               ...coordinator,
               id: `${assignmentKey(coordinator, configuredBase.indexOf(coordinator))}::final-review`,
               role: `${coordinator.role} · 终验汇总`,
               responsibility:
-                "基于平台已登记的交付契约与验收证据进行终验汇总；不得自行补做其他角色的工作。",
-              context: "全部交接、交付契约、验收证据",
+                "基于平台已登记的交付物与验收证据进行终验汇总；不得自行补做其他角色的工作。",
+              context: "全部交接、交付物、验收证据",
+              ...(explicitDag ? { dependsOn: baseGraph.sinkIds } : {}),
             }
           : undefined;
       const configured = finalReview
         ? [...configuredBase, finalReview]
         : configuredBase;
+      const collaborationGraph = buildTaskCollaborationGraph(configured);
       const previousRuns = new Map(
         (resume?.execution.roleRuns ?? []).map((item) => [
           item.assignmentId,
@@ -1282,16 +1676,17 @@ export default function RuntimeChat({
           handoff: launch.initialCoordinatorHandoff!.slice(0, 6_000),
         };
       }
-      const startIndex = resume
+      const resumeIndex = resume
         ? roleRuns.findIndex(
             (item) => item.assignmentId === resume.assignmentId,
           )
         : plannedCoordinatorIndex === 0
           ? 1
           : 0;
-      if (resume && startIndex < 0) {
+      if (resume && resumeIndex < 0) {
         throw new Error("要继续的协作角色已不存在，请重新配置协作分工。");
       }
+      const startIndex = resume?.startAfter ? resumeIndex + 1 : resumeIndex;
       const interventions = [...(resume?.execution.interventions ?? [])];
       let artifacts = [...(resume?.execution.artifacts ?? [])];
       let acceptance = resume?.execution.acceptance;
@@ -1315,6 +1710,7 @@ export default function RuntimeChat({
         if (timeline.length > 250) timeline.splice(0, timeline.length - 250);
       };
       if (
+        !collaborationGraph.explicit &&
         startIndex > 0 &&
         roleRuns
           .slice(0, startIndex)
@@ -1322,20 +1718,57 @@ export default function RuntimeChat({
       ) {
         throw new Error("前置角色尚未完成，不能跳过交接直接继续此角色。");
       }
+      const dagInvalidatedAssignments =
+        resume && collaborationGraph.explicit
+          ? new Set([
+              ...(resume.startAfter ? [] : [resume.assignmentId]),
+              ...taskCollaborationDescendants(
+                collaborationGraph,
+                resume.assignmentId,
+              ),
+            ])
+          : undefined;
+      if (
+        resume &&
+        (dagInvalidatedAssignments || startIndex < roleRuns.length)
+      ) {
+        const invalidatedAssignments =
+          dagInvalidatedAssignments ||
+          new Set(roleRuns.slice(startIndex).map((item) => item.assignmentId));
+        artifacts = artifacts.filter(
+          (artifact) => !invalidatedAssignments.has(artifact.assignmentId),
+        );
+        if (
+          acceptance?.assignmentId &&
+          invalidatedAssignments.has(acceptance.assignmentId)
+        ) {
+          acceptance = undefined;
+        }
+      }
       if (resume) {
-        for (let index = startIndex; index < roleRuns.length; index += 1) {
+        for (let index = 0; index < roleRuns.length; index += 1) {
+          if (
+            dagInvalidatedAssignments
+              ? !dagInvalidatedAssignments.has(roleRuns[index].assignmentId)
+              : index < startIndex
+          )
+            continue;
           roleRuns[index] = {
             ...roleRuns[index],
             status: "pending",
             error: undefined,
             completedAt: undefined,
-            ...(index === startIndex ? { handoff: undefined } : {}),
+            handoff: undefined,
           };
         }
       }
       const persistExecution = async (
         status: TaskCollaborationExecution["status"],
-        options: { completed?: boolean; activeAssignmentId?: string } = {},
+        options: {
+          completed?: boolean;
+          activeAssignmentId?: string;
+          activeAssignmentIds?: string[];
+        } = {},
       ): Promise<void> => {
         const nextExecution: TaskCollaborationExecution = {
           status,
@@ -1347,6 +1780,9 @@ export default function RuntimeChat({
           ...(timeline.length ? { timeline } : {}),
           ...(options.activeAssignmentId
             ? { activeAssignmentId: options.activeAssignmentId }
+            : {}),
+          ...(options.activeAssignmentIds?.length
+            ? { activeAssignmentIds: options.activeAssignmentIds }
             : {}),
           updatedAt: Date.now(),
           ...(options.completed ? { completedAt: Date.now() } : {}),
@@ -1385,7 +1821,51 @@ export default function RuntimeChat({
       if (configured.length === 0) {
         throw new Error("协作任务至少需要一个已指定智能体的角色。");
       }
-      const preflightIssues = workspacePreflight(
+      const collaborationAccessMode =
+        accessMode === "auto"
+          ? runtime.location === "local" || selectedWorkspace
+            ? "safe_write"
+            : "analysis"
+          : accessMode;
+      const permissionPreflightIssues = collaborationPermissionPreflight(
+        configuredBase,
+        collaborationAccessMode,
+        interventions,
+      );
+      if (permissionPreflightIssues.length) {
+        const reason = permissionPreflightIssues
+          .map((item) => item.reason)
+          .join("\n");
+        for (const issue of permissionPreflightIssues) {
+          const index = configured.findIndex(
+            (assignment) => assignment.id === issue.assignment.id,
+          );
+          if (index >= 0) {
+            roleRuns[index] = {
+              ...roleRuns[index],
+              status: "waiting_for_user",
+              error: issue.reason,
+            };
+          }
+          recordTimeline(
+            "preflight",
+            `${issue.assignment.role} 权限预检未通过`,
+            { assignmentId: issue.assignment.id, detail: issue.reason },
+          );
+        }
+        blockRemaining(0, "实施角色权限不足，等待人工调整协作配置。");
+        await persistExecution("waiting_for_user", {
+          activeAssignmentId: permissionPreflightIssues[0].assignment.id,
+        });
+        await appendCollaborationMessage(
+          runtime,
+          permissionPreflightIssues[0].assignment,
+          "system",
+          `协作未启动：\n${reason}`,
+        );
+        return;
+      }
+      const preflightIssues = collaborationWorkspacePreflight(
         configuredBase,
         runtimeCatalog,
         launch.projectFolder || selectedWorkspace,
@@ -1475,10 +1955,415 @@ export default function RuntimeChat({
       }
       recordTimeline("preflight", "工作区可达性预检通过", {
         detail: configuredBase
-          .map((item) => `${item.role}：${workspaceAccessLabel(item)}`)
+          .map(
+            (item) =>
+              `${item.role}：${workspaceAccessLabel(
+                item,
+                item.runtimeId ? runtimeCatalog[item.runtimeId] : undefined,
+                projectFolder,
+              )}`,
+          )
           .join("；"),
       });
       await persistExecution("running");
+
+      // Explicit dependency records use topological waves. Every role in a
+      // wave starts together; a join is eligible only after all dependencies
+      // have succeeded. Legacy records continue through the serial loop below.
+      if (collaborationGraph.explicit) {
+        let firstProblemId: string | undefined;
+        let holdAfterGuidedTurn = false;
+        for (const layer of collaborationGraph.layers) {
+          if (cancelledRef.current) break;
+          const runnableIndexes: number[] = [];
+          for (const assignmentId of layer) {
+            const roleIndex = roleRuns.findIndex(
+              (item) => item.assignmentId === assignmentId,
+            );
+            if (roleIndex < 0 || roleRuns[roleIndex].status === "succeeded")
+              continue;
+            const dependencies =
+              collaborationGraph.dependenciesById.get(assignmentId) || [];
+            const blockedBy = dependencies.find((dependencyId) => {
+              const dependency = roleRuns.find(
+                (item) => item.assignmentId === dependencyId,
+              );
+              return dependency?.status !== "succeeded";
+            });
+            if (blockedBy) {
+              roleRuns[roleIndex] = {
+                ...roleRuns[roleIndex],
+                status: "blocked",
+                error: "前置分支未成功，汇合角色未启动。",
+              };
+            } else {
+              runnableIndexes.push(roleIndex);
+            }
+          }
+          if (runnableIndexes.length === 0) continue;
+
+          pauseAssignmentRef.current = null;
+          for (const roleIndex of runnableIndexes) {
+            const assignment = configured[roleIndex];
+            const roleRun = roleRuns[roleIndex];
+            const assignedRuntime =
+              runtimeCatalog[assignment.runtimeId as string];
+            if (!assignedRuntime?.enabled) {
+              roleRuns[roleIndex] = {
+                ...roleRun,
+                status: "waiting_for_user",
+                completedAt: Date.now(),
+                error: `${assignment.role} 未配置可用智能体。`,
+              };
+              firstProblemId ??= roleRun.assignmentId;
+              continue;
+            }
+            roleRuns[roleIndex] = {
+              ...roleRun,
+              status: (roleRun.attempt || 0) > 0 ? "retrying" : "running",
+              attempt: (roleRun.attempt || 0) + 1,
+              startedAt: Date.now(),
+              completedAt: undefined,
+              error: undefined,
+            };
+            recordTimeline("started", `${assignment.role} 已并行启动`, {
+              assignmentId: roleRun.assignmentId,
+              detail: `${assignedRuntime.name} · ${workspaceAccessLabel(
+                assignment,
+                assignedRuntime,
+                projectFolder,
+              )}`,
+            });
+          }
+          const activeIds = runnableIndexes
+            .map((roleIndex) => roleRuns[roleIndex])
+            .filter(
+              (item) => item.status === "running" || item.status === "retrying",
+            )
+            .map((item) => item.assignmentId);
+          await persistExecution("running", { activeAssignmentIds: activeIds });
+
+          await Promise.all(
+            runnableIndexes.map(async (roleIndex) => {
+              const assignment = configured[roleIndex];
+              const roleRun = roleRuns[roleIndex];
+              const assignedRuntime =
+                runtimeCatalog[assignment.runtimeId as string];
+              if (
+                !assignedRuntime?.enabled ||
+                roleRun.status === "waiting_for_user"
+              )
+                return;
+              const roleMode = roleAccessMode(
+                assignment,
+                roleRun.assignmentId,
+                collaborationAccessMode,
+                interventions,
+              );
+              try {
+                const started = await window.hermesAPI.startAgentRuntimeTask(
+                  assignedRuntime.id,
+                  {
+                    prompt: collaborationRolePrompt(
+                      brief,
+                      configured,
+                      runtimeCatalog,
+                      assignment,
+                      roleIndex,
+                      projectFolder,
+                      roleRuns.filter((item) =>
+                        (
+                          collaborationGraph.dependenciesById.get(
+                            roleRun.assignmentId,
+                          ) || []
+                        ).includes(item.assignmentId),
+                      ),
+                      interventions,
+                      artifacts,
+                    ),
+                    mode: roleMode,
+                    fullAccessConfirmed: roleMode === "full_access",
+                    workspace:
+                      assignedRuntime.location === "local"
+                        ? selectedWorkspace || launch.projectFolder
+                        : assignment.workspaceAccess === "remote_mapping"
+                          ? assignment.workspaceRef
+                          : undefined,
+                    workspaceRef:
+                      assignedRuntime.location === "remote" &&
+                      assignment.workspaceAccess === "remote_mapping"
+                        ? assignment.workspaceRef
+                        : undefined,
+                    attachments:
+                      !isFinalReview(assignment) &&
+                      assignedRuntime.location === "remote" &&
+                      assignment.workspaceAccess === "evidence_bundle" &&
+                      evidenceBundle
+                        ? [evidenceBundle]
+                        : undefined,
+                  },
+                );
+                roleRuns[roleIndex] = {
+                  ...roleRuns[roleIndex],
+                  runtimeRunId: started.id,
+                };
+                setCurrentRunId(started.id);
+                setActiveCollaborationRuntimeId(assignedRuntime.id);
+                updateActiveCollaborationRun(roleRun.assignmentId, {
+                  assignmentId: roleRun.assignmentId,
+                  role: assignment.role,
+                  runtimeId: assignedRuntime.id,
+                  run: started,
+                });
+                let observed: AgentRuntimeRun | null = started;
+                while (!cancelledRef.current) {
+                  const current = await window.hermesAPI.getAgentRuntimeRun(
+                    started.id,
+                  );
+                  if (current) {
+                    observed = mergeRuntimeRunObservation(observed, current);
+                    updateActiveCollaborationRun(roleRun.assignmentId, {
+                      assignmentId: roleRun.assignmentId,
+                      role: assignment.role,
+                      runtimeId: assignedRuntime.id,
+                      run: observed,
+                    });
+                    if (current.sessionId) {
+                      roleRuns[roleIndex] = {
+                        ...roleRuns[roleIndex],
+                        runtimeSessionId: current.sessionId,
+                      };
+                    }
+                  }
+                  if (observed.status !== "running") break;
+                  await new Promise((resolve) => setTimeout(resolve, 900));
+                }
+                if (pauseAssignmentRef.current === roleRun.assignmentId) {
+                  roleRuns[roleIndex] = {
+                    ...roleRuns[roleIndex],
+                    status: "paused",
+                    completedAt: Date.now(),
+                    error: "用户已暂停此角色，等待人工处理。",
+                  };
+                  firstProblemId ??= roleRun.assignmentId;
+                  return;
+                }
+                if (!observed || observed.status !== "succeeded") {
+                  const reason = observed
+                    ? responseText(observed)
+                    : "协作任务已取消。";
+                  const guidedTurn = resume?.interventionId
+                    ? interventions.find(
+                        (item) => item.id === resume.interventionId,
+                      )
+                    : undefined;
+                  if (guidedTurn) {
+                    guidedTurn.response = reason.slice(0, 6_000);
+                    guidedTurn.respondedAt = Date.now();
+                  }
+                  roleRuns[roleIndex] = {
+                    ...roleRuns[roleIndex],
+                    status: "waiting_for_user",
+                    completedAt: Date.now(),
+                    error: (reason || `${assignment.role} 未完成。`).slice(
+                      0,
+                      1_000,
+                    ),
+                  };
+                  firstProblemId ??= roleRun.assignmentId;
+                  if (observed)
+                    await appendCollaborationMessage(
+                      assignedRuntime,
+                      assignment,
+                      "system",
+                      `${assignment.role} 未完成，正在等待人工处理：${reason}`,
+                      executionFromRun(observed),
+                    );
+                  return;
+                }
+                const output = responseText(observed);
+                const producedArtifacts = collectRuntimeArtifacts(
+                  assignment,
+                  roleRun.assignmentId,
+                  observed,
+                  assignedRuntime,
+                );
+                artifacts = appendArtifacts(artifacts, producedArtifacts);
+                for (const artifact of producedArtifacts) {
+                  recordTimeline(
+                    "artifact",
+                    `${assignment.role} 发布交付证据`,
+                    {
+                      assignmentId: roleRun.assignmentId,
+                      artifactId: artifact.id,
+                      detail: artifact.label,
+                    },
+                  );
+                }
+                if (
+                  roleCanModify(assignment) &&
+                  !hasConcreteDelivery(producedArtifacts, roleRun.assignmentId)
+                ) {
+                  const reason = `${assignment.role} 未发布可核验的文件或代码变更。`;
+                  roleRuns[roleIndex] = {
+                    ...roleRuns[roleIndex],
+                    status: "waiting_for_user",
+                    completedAt: Date.now(),
+                    error: reason,
+                  };
+                  firstProblemId ??= roleRun.assignmentId;
+                  await appendCollaborationMessage(
+                    assignedRuntime,
+                    assignment,
+                    "system",
+                    reason,
+                    executionFromRun(observed),
+                  );
+                  return;
+                }
+                roleRuns[roleIndex] = {
+                  ...roleRuns[roleIndex],
+                  status: "succeeded",
+                  completedAt: Date.now(),
+                  handoff: output.slice(0, 6_000),
+                };
+                const guidedTurn = resume?.interventionId
+                  ? interventions.find(
+                      (item) => item.id === resume.interventionId,
+                    )
+                  : undefined;
+                if (guidedTurn) {
+                  guidedTurn.response = output.slice(0, 6_000);
+                  guidedTurn.respondedAt = Date.now();
+                }
+                if (resume?.holdAfterAssignmentId === roleRun.assignmentId) {
+                  holdAfterGuidedTurn = true;
+                  recordTimeline(
+                    "recovery",
+                    `${assignment.role} 已回复人工介入`,
+                    {
+                      assignmentId: roleRun.assignmentId,
+                      detail: output.slice(0, 500),
+                    },
+                  );
+                }
+                if (roleIsAcceptance(assignment)) {
+                  acceptance = acceptanceFromOutput(
+                    roleRun.assignmentId,
+                    output,
+                    artifacts,
+                  );
+                  recordTimeline(
+                    "acceptance",
+                    acceptance.status === "passed" ? "终验通过" : "终验未通过",
+                    {
+                      assignmentId: roleRun.assignmentId,
+                      detail: acceptance.conclusion.slice(0, 500),
+                    },
+                  );
+                }
+                await appendCollaborationMessage(
+                  assignedRuntime,
+                  assignment,
+                  "agent",
+                  output,
+                  executionFromRun(observed),
+                );
+                recordTimeline("handoff", `${assignment.role} 已交接`, {
+                  assignmentId: roleRun.assignmentId,
+                  detail: output.slice(0, 500),
+                });
+              } catch (error) {
+                const reason =
+                  error instanceof Error ? error.message : "任务请求失败。";
+                roleRuns[roleIndex] = {
+                  ...roleRuns[roleIndex],
+                  status: "waiting_for_user",
+                  completedAt: Date.now(),
+                  error: reason.slice(0, 1_000),
+                };
+                firstProblemId ??= roleRun.assignmentId;
+                await appendCollaborationMessage(
+                  assignedRuntime,
+                  assignment,
+                  "system",
+                  `${assignment.role} 无法启动，正在等待人工处理：${reason}`,
+                );
+              } finally {
+                updateActiveCollaborationRun(roleRun.assignmentId);
+              }
+            }),
+          );
+
+          for (const roleIndex of runnableIndexes) {
+            const failed = roleRuns[roleIndex];
+            if (failed.status === "succeeded") continue;
+            for (const descendantId of taskCollaborationDescendants(
+              collaborationGraph,
+              failed.assignmentId,
+            )) {
+              const descendantIndex = roleRuns.findIndex(
+                (item) => item.assignmentId === descendantId,
+              );
+              if (
+                descendantIndex >= 0 &&
+                roleRuns[descendantIndex].status === "pending"
+              ) {
+                roleRuns[descendantIndex] = {
+                  ...roleRuns[descendantIndex],
+                  status: "blocked",
+                  error: `${failed.role} 未成功，依赖分支未启动。`,
+                };
+              }
+            }
+          }
+          await persistExecution(
+            firstProblemId ? "waiting_for_user" : "running",
+            {
+              ...(firstProblemId ? { activeAssignmentId: firstProblemId } : {}),
+            },
+          );
+          if (holdAfterGuidedTurn) {
+            await persistExecution("paused", {
+              activeAssignmentId: resume?.holdAfterAssignmentId,
+            });
+            return;
+          }
+        }
+
+        setCurrentRunId(null);
+        setActiveCollaborationRuntimeId(null);
+        activeCollaborationRunsRef.current = {};
+        setActiveCollaborationRuns({});
+        if (cancelledRef.current) {
+          await persistExecution("cancelled", { completed: true });
+          return;
+        }
+        if (firstProblemId) {
+          await persistExecution("waiting_for_user", {
+            activeAssignmentId: firstProblemId,
+          });
+          return;
+        }
+        if (!acceptance) {
+          acceptance = {
+            status: "needs_review",
+            conclusion: "未指定验收角色，平台未自动判定交付是否满足要求。",
+            reviewedArtifactIds: [],
+            createdAt: Date.now(),
+          };
+        }
+        await persistExecution(
+          acceptance.status === "passed"
+            ? "succeeded"
+            : acceptance.status === "failed"
+              ? "failed"
+              : "needs_review",
+          { completed: true },
+        );
+        return;
+      }
+
       let index = startIndex;
       while (index < configured.length) {
         if (cancelledRef.current) {
@@ -1533,7 +2418,11 @@ export default function RuntimeChat({
         };
         recordTimeline("started", `${assignment.role} 已启动`, {
           assignmentId: roleRun.assignmentId,
-          detail: `${assignedRuntime.name} · ${workspaceAccessLabel(assignment)}`,
+          detail: `${assignedRuntime.name} · ${workspaceAccessLabel(
+            assignment,
+            assignedRuntime,
+            projectFolder,
+          )}`,
         });
         await persistExecution("running", {
           activeAssignmentId: roleRun.assignmentId,
@@ -1541,7 +2430,7 @@ export default function RuntimeChat({
         const roleMode = roleAccessMode(
           assignment,
           roleRun.assignmentId,
-          accessMode,
+          collaborationAccessMode,
           interventions,
         );
         try {
@@ -1574,20 +2463,46 @@ export default function RuntimeChat({
                   ? assignment.workspaceRef
                   : undefined,
               attachments:
+                !isFinalReview(assignment) &&
                 assignedRuntime.location === "remote" &&
                 assignment.workspaceAccess === "evidence_bundle" &&
                 evidenceBundle
                   ? [evidenceBundle]
                   : undefined,
+              ...(roleRun.runtimeSessionId
+                ? { sessionId: roleRun.runtimeSessionId }
+                : {}),
             },
           );
           roleRuns[index] = { ...roleRuns[index], runtimeRunId: started.id };
           setCurrentRunId(started.id);
+          taskRunRef.current = started;
           setTaskRun(started);
 
           let completed: AgentRuntimeRun | null = null;
           while (!cancelledRef.current) {
-            completed = await window.hermesAPI.getAgentRuntimeRun(started.id);
+            const current = await window.hermesAPI.getAgentRuntimeRun(
+              started.id,
+            );
+            if (current) {
+              completed = mergeRuntimeRunObservation(
+                taskRunRef.current?.id === started.id
+                  ? taskRunRef.current
+                  : null,
+                current,
+              );
+              taskRunRef.current = completed;
+              setTaskRun(completed);
+              if (
+                current.sessionId &&
+                roleRuns[index].runtimeSessionId !== current.sessionId
+              ) {
+                roleRuns[index] = {
+                  ...roleRuns[index],
+                  runtimeSessionId: current.sessionId,
+                };
+              }
+            }
             if (completed?.status && completed.status !== "running") break;
             await new Promise((resolve) => setTimeout(resolve, 900));
           }
@@ -1615,14 +2530,19 @@ export default function RuntimeChat({
             await persistExecution("cancelled", { completed: true });
             return;
           }
-
-          setTaskRun(completed);
           const output = responseText(completed);
           const runExecution = executionFromRun(completed);
           if (completed.status !== "succeeded") {
             const reason =
               output ||
               `${assignedRuntime.name} 未完成“${assignment.role}”角色。`;
+            const guidedTurn = resume?.interventionId
+              ? interventions.find((item) => item.id === resume.interventionId)
+              : undefined;
+            if (guidedTurn) {
+              guidedTurn.response = reason.slice(0, 6_000);
+              guidedTurn.respondedAt = Date.now();
+            }
             roleRuns[index] = {
               ...roleRuns[index],
               status: "waiting_for_user",
@@ -1686,7 +2606,7 @@ export default function RuntimeChat({
               reason,
               runExecution,
             );
-            recordTimeline("blocked", `${assignment.role} 未发布完整交付契约`, {
+            recordTimeline("blocked", `${assignment.role} 未发布完整交付物`, {
               assignmentId: roleRun.assignmentId,
               detail: reason,
             });
@@ -1699,11 +2619,15 @@ export default function RuntimeChat({
             roleCanModify(assignment) &&
             !hasDeliveryContract(producedArtifacts, roleRun.assignmentId)
           ) {
-            recordTimeline("artifact", `${assignment.role} 的交付契约待补充`, {
-              assignmentId: roleRun.assignmentId,
-              detail:
-                "缺少路径、SHA-256、来源机器或变更摘要；验收会将此标记为低可信证据。",
-            });
+            recordTimeline(
+              "artifact",
+              `${assignment.role} 的交付物信息待补充`,
+              {
+                assignmentId: roleRun.assignmentId,
+                detail:
+                  "缺少路径、SHA-256、来源机器或变更摘要；验收会将此标记为低可信证据。",
+              },
+            );
           }
 
           roleRuns[index] = {
@@ -1712,6 +2636,13 @@ export default function RuntimeChat({
             completedAt: Date.now(),
             handoff: output.slice(0, 6_000),
           };
+          const guidedTurn = resume?.interventionId
+            ? interventions.find((item) => item.id === resume.interventionId)
+            : undefined;
+          if (guidedTurn) {
+            guidedTurn.response = output.slice(0, 6_000);
+            guidedTurn.respondedAt = Date.now();
+          }
           if (roleIsAcceptance(assignment)) {
             acceptance = acceptanceFromOutput(
               roleRun.assignmentId,
@@ -1742,6 +2673,20 @@ export default function RuntimeChat({
             assignmentId: roleRun.assignmentId,
             detail: output.slice(0, 500),
           });
+          if (resume?.holdAfterAssignmentId === roleRun.assignmentId) {
+            blockRemaining(
+              index + 1,
+              `${assignment.role} 已完成定向沟通，等待用户确认后继续。`,
+            );
+            recordTimeline("recovery", `${assignment.role} 已回复人工介入`, {
+              assignmentId: roleRun.assignmentId,
+              detail: output.slice(0, 500),
+            });
+            await persistExecution("paused", {
+              activeAssignmentId: roleRun.assignmentId,
+            });
+            return;
+          }
           if (acceptance?.status === "failed") {
             let implementationIndex = index - 1;
             while (
@@ -1848,11 +2793,18 @@ export default function RuntimeChat({
         { completed: true },
       );
     },
-    [accessMode, appendCollaborationMessage, profile, runtime, runtimeCatalog],
+    [
+      accessMode,
+      appendCollaborationMessage,
+      profile,
+      runtime,
+      runtimeCatalog,
+      updateActiveCollaborationRun,
+    ],
   );
 
   const persistIntervention = useCallback(
-    async (continueRole: boolean): Promise<void> => {
+    async (runTarget: boolean, holdAfterReply = false): Promise<void> => {
       if (!interventionTarget || !collaboration?.taskId) return;
       const content = interventionText.trim();
       if (!content) return;
@@ -1896,14 +2848,15 @@ export default function RuntimeChat({
             runtimeId: assignment.runtimeId,
             status: "pending" as const,
           }),
-          status: continueRole
+          status: runTarget
             ? ("retrying" as const)
             : ("waiting_for_user" as const),
           error: undefined,
         };
       });
       const nextExecution: TaskCollaborationExecution = {
-        status: continueRole ? "running" : "waiting_for_user",
+        ...(existing || {}),
+        status: runTarget ? "running" : "waiting_for_user",
         roleRuns,
         brief: brief.slice(0, 12_000),
         interventions: [...(existing?.interventions || []), intervention].slice(
@@ -1917,22 +2870,25 @@ export default function RuntimeChat({
         { taskId: collaboration.taskId, execution: nextExecution },
         profile,
       );
-      if (interventionShared) {
-        const nextMessages = [
-          ...messagesRef.current,
-          newMessage(
-            "system",
-            `用户已将对“${interventionTarget.assignment.role}”的人工指令同步给协作组。`,
-          ),
-        ];
-        messagesRef.current = nextMessages;
-        setMessages(nextMessages);
-        await persistConversation(nextMessages);
-      }
+      const targetRuntime = interventionTarget.assignment.runtimeId
+        ? runtimeCatalog[interventionTarget.assignment.runtimeId]
+        : undefined;
+      const directedMessage = newMessage(
+        "user",
+        `@${targetRuntime?.name || interventionTarget.assignment.role}${
+          interventionShared ? "（共享给协作组）" : "（仅此角色）"
+        }\n${content}`,
+      );
+      directedMessage.collaborationRole = interventionTarget.assignment.role;
+      directedMessage.collaborationAssignmentId =
+        interventionTarget.assignmentId;
+      const nextMessages = [...messagesRef.current, directedMessage];
+      messagesRef.current = nextMessages;
+      setMessages(nextMessages);
+      await persistConversation(nextMessages);
       setInterventionText("");
-      setInterventionShared(false);
       setInterventionAccessMode("inherit");
-      if (!continueRole) return;
+      if (!runTarget) return;
       setLoading(true);
       cancelledRef.current = false;
       try {
@@ -1943,16 +2899,20 @@ export default function RuntimeChat({
             assignments: collaborationAssignments,
             projectFolder: collaboration.projectFolder,
           },
-          workspace || runtime.config.workspace || undefined,
+          workspace || undefined,
           {
             assignmentId: interventionTarget.assignmentId,
             execution: nextExecution,
+            ...(holdAfterReply
+              ? { holdAfterAssignmentId: interventionTarget.assignmentId }
+              : {}),
+            interventionId: intervention.id,
           },
         );
       } finally {
         setLoading(false);
         setCurrentRunId(null);
-        setInterventionTarget(null);
+        if (!holdAfterReply) setInterventionTarget(null);
       }
     },
     [
@@ -1966,7 +2926,7 @@ export default function RuntimeChat({
       persistConversation,
       profile,
       runCollaboration,
-      runtime.config.workspace,
+      runtimeCatalog,
       workspace,
     ],
   );
@@ -1976,13 +2936,190 @@ export default function RuntimeChat({
       const roleRun = collaborationExecution?.roleRuns.find(
         (item) => item.assignmentId === assignmentId,
       );
-      if (!roleRun || roleRun.status !== "running" || !roleRun.runtimeRunId)
+      if (
+        !roleRun ||
+        !["running", "retrying"].includes(roleRun.status) ||
+        !roleRun.runtimeRunId
+      )
         return;
       pauseAssignmentRef.current = assignmentId;
       await window.hermesAPI.cancelAgentRuntimeTask(roleRun.runtimeRunId);
     },
     [collaborationExecution],
   );
+
+  const openRoleDialogue = useCallback(
+    (assignment: TaskCollaborationAssignment, assignmentId: string): void => {
+      setInterventionTarget({ assignment, assignmentId });
+      setInterventionText("");
+      setInterventionShared(true);
+      setInterventionAccessMode("inherit");
+      setInterventionRuntimeId(assignment.runtimeId || "");
+      const roleRun = collaborationExecution?.roleRuns.find((item) =>
+        ["running", "retrying"].includes(item.status),
+      );
+      if (roleRun) {
+        void pauseCollaborationRole(roleRun.assignmentId);
+      }
+    },
+    [collaborationExecution, pauseCollaborationRole],
+  );
+
+  const continueAfterIntervention = useCallback(async (): Promise<void> => {
+    if (
+      !interventionTarget ||
+      !collaboration?.taskId ||
+      !collaborationExecution?.brief
+    ) {
+      return;
+    }
+    const targetRun = collaborationExecution.roleRuns.find(
+      (item) => item.assignmentId === interventionTarget.assignmentId,
+    );
+    if (targetRun?.status !== "succeeded") return;
+    setLoading(true);
+    cancelledRef.current = false;
+    try {
+      await runCollaboration(
+        collaborationExecution.brief,
+        {
+          taskId: collaboration.taskId,
+          assignments: collaborationAssignments,
+          projectFolder: collaboration.projectFolder,
+        },
+        workspace || undefined,
+        {
+          assignmentId: interventionTarget.assignmentId,
+          execution: collaborationExecution,
+          startAfter: true,
+        },
+      );
+    } finally {
+      setLoading(false);
+      setCurrentRunId(null);
+      setInterventionTarget(null);
+    }
+  }, [
+    collaboration,
+    collaborationAssignments,
+    collaborationExecution,
+    interventionTarget,
+    runCollaboration,
+    workspace,
+  ]);
+
+  const reassignInterventionRole = useCallback(async (): Promise<void> => {
+    if (
+      !interventionTarget ||
+      !interventionRuntimeId ||
+      !collaboration?.taskId ||
+      !collaborationExecution ||
+      interventionRuntimeId === interventionTarget.assignment.runtimeId
+    ) {
+      return;
+    }
+    const assignmentIndex = collaborationAssignments.findIndex(
+      (assignment, index) =>
+        assignmentKey(assignment, index) === interventionTarget.assignmentId,
+    );
+    if (assignmentIndex < 0) return;
+    const now = Date.now();
+    const nextAssignment = {
+      ...collaborationAssignments[assignmentIndex],
+      runtimeId: interventionRuntimeId,
+    };
+    const nextAssignments = collaborationAssignments.map((assignment, index) =>
+      index === assignmentIndex ? nextAssignment : assignment,
+    );
+    const roleIndex = collaborationExecution.roleRuns.findIndex(
+      (item) => item.assignmentId === interventionTarget.assignmentId,
+    );
+    if (roleIndex < 0) return;
+    const invalidatedIds = new Set(
+      collaborationExecution.roleRuns
+        .slice(roleIndex)
+        .map((item) => item.assignmentId),
+    );
+    const nextRoleRuns = collaborationExecution.roleRuns.map((item, index) => {
+      if (index < roleIndex) return item;
+      if (index === roleIndex) {
+        return {
+          ...item,
+          runtimeId: interventionRuntimeId,
+          status: "waiting_for_user" as const,
+          runtimeRunId: undefined,
+          runtimeSessionId: undefined,
+          completedAt: undefined,
+          handoff: undefined,
+          error: undefined,
+        };
+      }
+      return {
+        ...item,
+        status: "blocked" as const,
+        completedAt: undefined,
+        handoff: undefined,
+        error: `${nextAssignment.role} 已改派，等待其重新完成后继续。`,
+      };
+    });
+    const nextExecution: TaskCollaborationExecution = {
+      ...collaborationExecution,
+      status: "waiting_for_user",
+      roleRuns: nextRoleRuns,
+      artifacts: (collaborationExecution.artifacts || []).filter(
+        (artifact) => !invalidatedIds.has(artifact.assignmentId),
+      ),
+      acceptance: undefined,
+      activeAssignmentId: interventionTarget.assignmentId,
+      timeline: [
+        ...(collaborationExecution.timeline || []),
+        {
+          id: newId(),
+          type: "recovery" as const,
+          label: `${nextAssignment.role} 已改派`,
+          assignmentId: interventionTarget.assignmentId,
+          detail: `改派至 ${runtimeCatalog[interventionRuntimeId]?.name || interventionRuntimeId}，等待用户发送新的定向指令。`,
+          createdAt: now,
+        },
+      ].slice(-250),
+      updatedAt: now,
+    };
+    await window.hermesAPI.saveTaskCollaboration(
+      {
+        taskId: collaboration.taskId,
+        title:
+          messagesRef.current
+            .find((item) => item.role === "user")
+            ?.content.slice(0, 80) || "协作任务",
+        projectFolder: collaboration.projectFolder,
+        sourceRuntimeId: runtime.id,
+        assignments: nextAssignments,
+        status: "active",
+      },
+      profile,
+    );
+    await window.hermesAPI.updateTaskCollaborationExecution(
+      { taskId: collaboration.taskId, execution: nextExecution },
+      profile,
+    );
+    setCollaborationAssignments(nextAssignments);
+    setCollaborationExecution(nextExecution);
+    setInterventionTarget({
+      assignment: nextAssignment,
+      assignmentId: interventionTarget.assignmentId,
+    });
+    setInterventionAccessMode("inherit");
+    window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+  }, [
+    collaboration,
+    collaborationAssignments,
+    collaborationExecution,
+    interventionRuntimeId,
+    interventionTarget,
+    profile,
+    runtime.id,
+    runtimeCatalog,
+  ]);
 
   const reassignAcceptance = useCallback(
     async (runtimeId: string): Promise<void> => {
@@ -2049,7 +3186,7 @@ export default function RuntimeChat({
             assignments: nextAssignments,
             projectFolder: collaboration.projectFolder,
           },
-          workspace || runtime.config.workspace || undefined,
+          workspace || undefined,
           { assignmentId: targetId, execution: nextExecution },
         );
       } catch (error) {
@@ -2120,8 +3257,13 @@ export default function RuntimeChat({
   ): Promise<void> {
     const prompt = text.trim();
     if (!prompt || loading) return;
-    const selectedWorkspace =
-      workspace || runtime.config.workspace || undefined;
+    const selectedWorkspace = workspace || undefined;
+    const resolvedAccessMode =
+      accessMode === "auto"
+        ? runtime.location === "local" || selectedWorkspace
+          ? "safe_write"
+          : "analysis"
+        : accessMode;
     cancelledRef.current = false;
     const nextMessages = [...messages, newMessage("user", prompt)];
     messagesRef.current = nextMessages;
@@ -2133,7 +3275,12 @@ export default function RuntimeChat({
     void persistConversation(nextMessages);
     setLoading(true);
     try {
-      if (accessMode === "full_access" && !selectedWorkspace) {
+      if (
+        resolvedAccessMode === "full_access" &&
+        !selectedWorkspace &&
+        !collaborationLaunch &&
+        runtime.location === "local"
+      ) {
         const failedMessages = [
           ...nextMessages,
           newMessage("system", "完全访问需要先选择一个项目目录。"),
@@ -2162,8 +3309,10 @@ export default function RuntimeChat({
           name: candidate.name,
           kind: candidate.kind,
         }));
+      const collaborationRequested = hasExplicitTaskCollaborationIntent(prompt);
       const explicitProposal =
-        onStartCollaboration || onRequestCollaboration
+        collaborationRequested &&
+        (onStartCollaboration || onRequestCollaboration)
           ? createExplicitTaskCollaborationProposal(
               prompt,
               { id: runtime.id, name: runtime.name, kind: runtime.kind },
@@ -2177,6 +3326,7 @@ export default function RuntimeChat({
             selectedWorkspace,
           );
           if (!launch) throw new Error("无法保存协作安排，请稍后重试。");
+          await linkCollaborationToConversation(launch.taskId);
           setCollaborationAssignments(launch.assignments);
           await runCollaboration(prompt, launch, selectedWorkspace);
           setLoading(false);
@@ -2204,17 +3354,35 @@ export default function RuntimeChat({
       const basePrompt = resumableSessionId
         ? prompt
         : promptWithTranscript(messages, prompt);
-      // A single-runtime task should retain its exact existing CLI contract.
-      // The platform policy is only relevant when other registered agents can
-      // actually be proposed and later dispatched.
-      const runtimePrompt =
-        collaborationCandidates.length > 1
-          ? `${taskCollaborationProposalProtocol(collaborationCandidates)}\n\n当前用户请求：\n${basePrompt}`
-          : basePrompt;
+      const platformRules = [
+        runtime.location === "remote"
+          ? remoteRuntimeEnvironmentProtocol()
+          : undefined,
+        collaborationRequested && collaborationCandidates.length > 1
+          ? taskCollaborationProposalProtocol(collaborationCandidates)
+          : undefined,
+      ].filter((rule): rule is string => Boolean(rule));
+      const runtimePrompt = platformRules.length
+        ? `${platformRules.join("\n\n")}\n\n当前用户请求：\n${basePrompt}`
+        : basePrompt;
       const run = await window.hermesAPI.startAgentRuntimeTask(runtime.id, {
         prompt: runtimePrompt,
-        mode: accessMode,
-        fullAccessConfirmed: accessMode === "full_access",
+        mode:
+          collaborationCandidates.length > 1 &&
+          resolvedAccessMode !== "analysis" &&
+          runtime.location === "remote" &&
+          unifiedRemoteGatewayRuntime &&
+          !remoteWorkspaceSupported
+            ? "analysis"
+            : resolvedAccessMode,
+        fullAccessConfirmed:
+          resolvedAccessMode === "full_access" &&
+          !(
+            collaborationCandidates.length > 1 &&
+            runtime.location === "remote" &&
+            unifiedRemoteGatewayRuntime &&
+            !remoteWorkspaceSupported
+          ),
         // Keep the first turn in conversation mode even before the Gateway
         // returns a resumable session id.
         conversation: true,
@@ -2243,8 +3411,22 @@ export default function RuntimeChat({
 
   async function stop(): Promise<void> {
     cancelledRef.current = true;
+    const activeRunIds = [
+      ...new Set([
+        ...Object.values(activeCollaborationRunsRef.current).map(
+          (active) => active.run.id,
+        ),
+        ...(currentRunId ? [currentRunId] : []),
+      ]),
+    ];
+    if (activeRunIds.length) {
+      await Promise.all(
+        activeRunIds.map((runId) =>
+          window.hermesAPI.cancelAgentRuntimeTask(runId),
+        ),
+      );
+    }
     if (currentRunId) {
-      await window.hermesAPI.cancelAgentRuntimeTask(currentRunId);
       const cancelledRun =
         await window.hermesAPI.getAgentRuntimeRun(currentRunId);
       if (cancelledRun) {
@@ -2253,6 +3435,8 @@ export default function RuntimeChat({
     }
     setLoading(false);
     setCurrentRunId(null);
+    activeCollaborationRunsRef.current = {};
+    setActiveCollaborationRuns({});
   }
 
   async function chooseWorkspace(): Promise<void> {
@@ -2286,18 +3470,84 @@ export default function RuntimeChat({
       : runtime.kind === "hermes" || runtime.kind === "openclaw");
   const attachmentInputs = localFileInputs || remoteArtifactsSupported;
   const accessControlAvailable =
-    localFileInputs || remoteWorkspaceGatewayRuntime;
+    localFileInputs ||
+    remoteWorkspaceGatewayRuntime ||
+    collaborationWriteRuntimeAvailable;
   const configuredLocalModel =
     runtime.location === "local" ? runtime.config.model?.trim() : undefined;
+  const lastReportedExecution = [...messages]
+    .reverse()
+    .find(
+      (message) => message.execution?.model || message.execution?.usage,
+    )?.execution;
+  const lastReportedModel = taskRun?.model || lastReportedExecution?.model;
+  const lastReportedUsage = taskRun?.usage || lastReportedExecution?.usage;
+  const configuredModelParts = configuredLocalModel?.includes("/")
+    ? configuredLocalModel.split("/")
+    : [];
+  const runtimeModelProvider =
+    lastReportedModel?.provider?.trim() ||
+    configuredModelParts[0]?.trim() ||
+    "";
+  const runtimeModelId =
+    lastReportedModel?.id?.trim() ||
+    (configuredModelParts.length > 1
+      ? configuredModelParts.slice(1).join("/").trim()
+      : configuredLocalModel || "");
+  const [resolvedRuntimeContextWindow, setResolvedRuntimeContextWindow] =
+    useState<number | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (
+      runtime.location !== "local" ||
+      !runtimeModelProvider ||
+      !runtimeModelId
+    ) {
+      setResolvedRuntimeContextWindow(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setResolvedRuntimeContextWindow(undefined);
+    void window.hermesAPI
+      .getAgentRuntimeModelContextWindow(
+        runtime.id,
+        runtimeModelProvider,
+        runtimeModelId,
+        profile,
+      )
+      .then((contextWindow) => {
+        if (!cancelled) setResolvedRuntimeContextWindow(contextWindow);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedRuntimeContextWindow(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    profile,
+    runtime.id,
+    runtime.location,
+    runtimeModelId,
+    runtimeModelProvider,
+  ]);
+
   const runtimeModelLabel =
-    [taskRun?.model?.provider, taskRun?.model?.id]
+    [lastReportedModel?.provider, lastReportedModel?.id]
       .filter((value): value is string => Boolean(value))
       .join(" / ") ||
     configuredLocalModel ||
     "未提供模型";
   const runtimeContextWindow =
-    taskRun?.usage?.contextWindowTokens ?? taskRun?.model?.contextWindowTokens;
-  const runtimeContextUsed = taskRun?.usage?.contextUsedTokens;
+    lastReportedUsage?.contextWindowTokens ??
+    lastReportedModel?.contextWindowTokens ??
+    (runtime.location === "local" && resolvedRuntimeContextWindow !== undefined
+      ? (resolvedRuntimeContextWindow ?? contextWindowForModel(runtimeModelId))
+      : undefined);
+  const runtimeContextUsed = lastReportedUsage?.contextUsedTokens;
   const runtimeContextUsage: ContextUsage | null =
     typeof runtimeContextWindow === "number" &&
     runtimeContextWindow > 0 &&
@@ -2359,7 +3609,7 @@ export default function RuntimeChat({
         void runCollaboration(
           text,
           payload.collaboration,
-          workspace || runtime.config.workspace || undefined,
+          workspace || undefined,
         ).finally(() => {
           setLoading(false);
           setCurrentRunId(null);
@@ -2377,7 +3627,7 @@ export default function RuntimeChat({
         "agents-one:submit-task-message",
         handleCollaborationSubmit,
       );
-  }, [runId, runCollaboration, runtime.config.workspace, send, workspace]);
+  }, [runId, runCollaboration, send, workspace]);
 
   return (
     <div className="runtime-chat chat-container" aria-hidden={!active}>
@@ -2427,12 +3677,28 @@ export default function RuntimeChat({
                       >
                         <ShieldCheck size={14} />
                         <span className="runtime-permission-label">
-                          {accessMode === "analysis" ? "只读" : "完全访问"}
+                          {accessMode === "auto"
+                            ? "自动"
+                            : accessMode === "analysis"
+                              ? "只读"
+                              : "完全访问"}
                         </span>
                         <ChevronDown size={13} />
                       </button>
                       {permissionMenuOpen ? (
                         <span className="runtime-permission-menu" role="menu">
+                          <button
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={accessMode === "auto"}
+                            onClick={() => {
+                              setAccessMode("auto");
+                              setPermissionMenuOpen(false);
+                            }}
+                          >
+                            <strong>自动</strong>
+                            <small>可读写，无移动、删除文件权限</small>
+                          </button>
                           <button
                             type="button"
                             role="menuitemradio"
@@ -2451,18 +3717,21 @@ export default function RuntimeChat({
                             aria-checked={accessMode === "full_access"}
                             disabled={
                               unifiedRemoteGatewayRuntime &&
-                              !remoteWorkspaceSupported
+                              !remoteWorkspaceSupported &&
+                              !collaborationWriteRuntimeAvailable
                             }
                             title={
                               unifiedRemoteGatewayRuntime &&
-                              !remoteWorkspaceSupported
+                              !remoteWorkspaceSupported &&
+                              !collaborationWriteRuntimeAvailable
                                 ? "完成 Gateway v1 Workspace Grant 接入后开放"
                                 : undefined
                             }
                             onClick={() => {
                               if (
                                 unifiedRemoteGatewayRuntime &&
-                                !remoteWorkspaceSupported
+                                !remoteWorkspaceSupported &&
+                                !collaborationWriteRuntimeAvailable
                               ) {
                                 return;
                               }
@@ -2516,17 +3785,30 @@ export default function RuntimeChat({
       >
         <div className="chat-body">
           <div className="chat-messages" ref={scrollRef}>
-            {collaboration ? (
-              <>
+            {collaboration && collaborationDashboardVisible ? (
+              <aside
+                className="task-collaboration-dashboard"
+                aria-label="智能体协作看板"
+              >
+                <header className="task-collaboration-dashboard-header">
+                  <span>
+                    <Users size={15} /> 协作看板
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-ghost task-collaboration-dashboard-close"
+                    onClick={() => setCollaborationDashboardVisible(false)}
+                    aria-label="隐藏协作看板"
+                    title="隐藏协作看板"
+                  >
+                    <X size={15} />
+                  </button>
+                </header>
                 <TaskCollaborationRolePanel
                   assignments={collaborationAssignments}
                   runtimes={runtimeCatalog}
                   execution={collaborationExecution}
-                  onIntervene={(assignment, assignmentId) => {
-                    setInterventionTarget({ assignment, assignmentId });
-                    setInterventionText("");
-                    setInterventionShared(false);
-                  }}
+                  onIntervene={openRoleDialogue}
                 />
                 <TaskCollaborationArtifactPanel
                   execution={collaborationExecution}
@@ -2552,12 +3834,7 @@ export default function RuntimeChat({
                         )
                       : undefined;
                     if (target && assignment) {
-                      setInterventionTarget({
-                        assignment,
-                        assignmentId: target.assignmentId,
-                      });
-                      setInterventionText("");
-                      setInterventionShared(false);
+                      openRoleDialogue(assignment, target.assignmentId);
                     }
                   }}
                   onReassignImplementation={() => {
@@ -2581,9 +3858,9 @@ export default function RuntimeChat({
                           assignment,
                           collaborationAssignments.indexOf(assignment),
                         );
-                      setInterventionTarget({ assignment, assignmentId });
+                      openRoleDialogue(assignment, assignmentId);
                       setInterventionText(
-                        "请根据验收结论重新实施并发布完整交付契约：路径、SHA-256、来源机器与变更摘要。",
+                        "请根据验收结论重新实施并发布完整交付物：路径、SHA-256、来源机器与变更摘要。",
                       );
                       setInterventionShared(true);
                     }
@@ -2599,7 +3876,18 @@ export default function RuntimeChat({
                   }
                 />
                 <TaskCollaborationTimeline execution={collaborationExecution} />
-              </>
+              </aside>
+            ) : collaboration ? (
+              <button
+                type="button"
+                className="task-collaboration-dashboard-trigger"
+                onClick={() => setCollaborationDashboardVisible(true)}
+                aria-label="显示协作看板"
+                title="显示协作看板"
+              >
+                <Users size={16} />
+                <span>协作看板</span>
+              </button>
             ) : null}
             {interventionTarget
               ? (() => {
@@ -2609,9 +3897,12 @@ export default function RuntimeChat({
                   );
                   const canContinue = Boolean(
                     targetRun &&
-                    ["waiting_for_user", "paused", "failed"].includes(
-                      targetRun.status,
-                    ),
+                    [
+                      "waiting_for_user",
+                      "paused",
+                      "failed",
+                      "succeeded",
+                    ].includes(targetRun.status),
                   );
                   const priorInstructions = (
                     collaborationExecution?.interventions || []
@@ -2649,7 +3940,9 @@ export default function RuntimeChat({
                       </header>
                       <p className="collaboration-intervention-status">
                         当前状态：
-                        {targetRun?.status === "running"
+                        {["running", "retrying"].includes(
+                          targetRun?.status || "",
+                        )
                           ? "执行中"
                           : targetRun?.status === "paused"
                             ? "已暂停"
@@ -2661,12 +3954,27 @@ export default function RuntimeChat({
                       </p>
                       {priorInstructions.length ? (
                         <ol className="collaboration-intervention-history">
-                          {priorInstructions.slice(-3).map((item) => (
+                          {priorInstructions.slice(-6).map((item) => (
                             <li key={item.id}>
-                              {item.visibility === "shared"
-                                ? "已同步："
-                                : "仅本角色："}
-                              {item.content}
+                              <strong>
+                                你 ·{" "}
+                                {item.visibility === "shared"
+                                  ? "已共享"
+                                  : "仅本角色"}
+                              </strong>
+                              <span>{item.content}</span>
+                              {item.response ? (
+                                <>
+                                  <strong>
+                                    {runtimeCatalog[
+                                      interventionTarget.assignment.runtimeId ||
+                                        ""
+                                    ]?.name ||
+                                      interventionTarget.assignment.role}
+                                  </strong>
+                                  <span>{item.response}</span>
+                                </>
+                              ) : null}
                             </li>
                           ))}
                         </ol>
@@ -2678,6 +3986,7 @@ export default function RuntimeChat({
                         }
                         placeholder="说明需要修正的方向、可用资料或处理要求…"
                         aria-label="给当前角色的人工指令"
+                        disabled={loading}
                       />
                       {roleCanModify(interventionTarget.assignment) ? (
                         <label className="collaboration-intervention-access">
@@ -2696,9 +4005,11 @@ export default function RuntimeChat({
                           >
                             <option value="inherit">
                               继承任务权限（当前：
-                              {accessMode === "full_access"
-                                ? "完全访问"
-                                : "只读"}
+                              {accessMode === "auto"
+                                ? "自动"
+                                : accessMode === "full_access"
+                                  ? "完全访问"
+                                  : "只读"}
                               ）
                             </option>
                             <option value="analysis">只读</option>
@@ -2716,10 +4027,46 @@ export default function RuntimeChat({
                             setInterventionShared(event.target.checked)
                           }
                         />
-                        同步给协作组，供后续角色读取
+                        共享给协作组，供后续角色读取本轮问答
                       </label>
+                      <div className="collaboration-intervention-reassign">
+                        <label>
+                          当前智能体
+                          <select
+                            value={interventionRuntimeId}
+                            onChange={(event) =>
+                              setInterventionRuntimeId(event.target.value)
+                            }
+                            aria-label="改派当前角色"
+                            disabled={loading}
+                          >
+                            {Object.values(runtimeCatalog)
+                              .filter((candidate) => candidate.enabled)
+                              .map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.name}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={
+                            loading ||
+                            !interventionRuntimeId ||
+                            interventionRuntimeId ===
+                              interventionTarget.assignment.runtimeId
+                          }
+                          onClick={() => void reassignInterventionRole()}
+                        >
+                          改派当前角色
+                        </button>
+                      </div>
                       <footer>
-                        {targetRun?.status === "running" ? (
+                        {["running", "retrying"].includes(
+                          targetRun?.status || "",
+                        ) ? (
                           <button
                             type="button"
                             className="btn-secondary"
@@ -2735,7 +4082,7 @@ export default function RuntimeChat({
                         <button
                           type="button"
                           className="btn-secondary"
-                          disabled={!interventionText.trim()}
+                          disabled={!interventionText.trim() || loading}
                           onClick={() => void persistIntervention(false)}
                         >
                           保存指令
@@ -2743,11 +4090,24 @@ export default function RuntimeChat({
                         <button
                           type="button"
                           className="btn-primary"
-                          disabled={!interventionText.trim() || !canContinue}
-                          onClick={() => void persistIntervention(true)}
+                          disabled={
+                            !interventionText.trim() || !canContinue || loading
+                          }
+                          onClick={() => void persistIntervention(true, true)}
                         >
-                          保存并继续
+                          {loading ? "正在沟通…" : "发送给此智能体"}
                         </button>
+                        {targetRun?.status === "succeeded" &&
+                        collaborationExecution?.status === "paused" ? (
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={loading}
+                            onClick={() => void continueAfterIntervention()}
+                          >
+                            继续后续任务
+                          </button>
+                        ) : null}
                       </footer>
                       {!collaborationExecution?.brief ? (
                         <small>
@@ -2768,9 +4128,43 @@ export default function RuntimeChat({
                   // Runtime events already provide the native thinking/tool
                   // rows. Do not add a second generic progress bubble.
                   toolProgress={null}
-                  agentName={liveAppearanceRuntime.name}
+                  agentName={appearanceRuntime.name}
+                  onAgentAvatarClick={
+                    collaboration
+                      ? (identity) => {
+                          const identityId = identity.collaborationAssignmentId;
+                          const baseIdentityId = identityId?.replace(
+                            /::final-review$/,
+                            "",
+                          );
+                          const index = collaborationAssignments.findIndex(
+                            (assignment, assignmentIndex) => {
+                              const key = assignmentKey(
+                                assignment,
+                                assignmentIndex,
+                              );
+                              return (
+                                key === identityId ||
+                                key === baseIdentityId ||
+                                (assignment.runtimeId ===
+                                  identity.agentRuntimeId &&
+                                  assignment.role ===
+                                    identity.collaborationRole)
+                              );
+                            },
+                          );
+                          if (index >= 0) {
+                            const assignment = collaborationAssignments[index];
+                            openRoleDialogue(
+                              assignment,
+                              assignmentKey(assignment, index),
+                            );
+                          }
+                        }
+                      : undefined
+                  }
                   agentAvatar={agentAvatar}
-                  agentColor={liveAppearanceRuntime.color}
+                  agentColor={appearanceRuntime.color}
                   onApprove={handleNativeApprove}
                   onDeny={handleNativeDeny}
                   onClarifyResolved={handleNativeClarifyResolved}
@@ -2785,6 +4179,9 @@ export default function RuntimeChat({
               </>
             )}
           </div>
+          {workspace && worktreeVisible && localFileInputs ? (
+            <WorktreePanel folderPath={workspace} />
+          ) : null}
         </div>
       </ConversationWorkspace>
     </div>

@@ -5,6 +5,15 @@ export type {
 
 import type { Attachment } from "../../../../shared/attachments";
 
+export interface ChatMessageAgentIdentity {
+  agentRuntimeId?: string;
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
+  collaborationRole?: string;
+  collaborationAssignmentId?: string;
+}
+
 /**
  * Visible chat bubble (user or assistant). Used for live streaming and as
  * one of the variants of the broader `ChatMessage` history union.
@@ -27,6 +36,13 @@ export interface ChatBubbleMessage {
   timestamp?: number;
   /** Renderer-only progress row while a slash command is executing. */
   isSlashLoader?: boolean;
+  /** Per-turn Runtime identity used by multi-agent conversations. */
+  agentRuntimeId?: string;
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
+  collaborationRole?: string;
+  collaborationAssignmentId?: string;
 }
 
 /**
@@ -40,6 +56,11 @@ export interface ReasoningMessage {
   kind: "reasoning";
   role: "agent";
   text: string;
+  agentRuntimeId?: string;
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
+  collaborationRole?: string;
 }
 
 export interface ToolCallMessage {
@@ -50,6 +71,11 @@ export interface ToolCallMessage {
   name: string;
   args: string;
   status?: "running" | "completed" | "failed";
+  agentRuntimeId?: string;
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
+  collaborationRole?: string;
 }
 
 export interface ToolResultMessage {
@@ -60,6 +86,11 @@ export interface ToolResultMessage {
   name: string;
   content: string;
   attachments?: Attachment[];
+  agentRuntimeId?: string;
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
+  collaborationRole?: string;
 }
 
 /**
@@ -78,6 +109,11 @@ export interface ClarifyMessage {
   choices: string[];
   answer?: string;
   resolved?: boolean;
+  agentRuntimeId?: string;
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
+  collaborationRole?: string;
 }
 
 /** Remote runtime notices are operational metadata, not assistant prose. */
@@ -87,6 +123,11 @@ export interface SystemMessage {
   role: "agent";
   title: string;
   detail: string;
+  agentRuntimeId?: string;
+  agentName?: string;
+  agentAvatar?: string | null;
+  agentColor?: string | null;
+  collaborationRole?: string;
 }
 
 export type ChatMessage =

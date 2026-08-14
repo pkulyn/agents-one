@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { AgentsOneActivityAvatar, MessageRow } from "./MessageRow";
+import { MessageRow } from "./MessageRow";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
 import { ClarifyCard } from "./ClarifyCard";
 import { collapseHistoricalEchoes } from "./messageDedup";
@@ -10,6 +10,7 @@ import type {
   ToolCallMessage,
   ToolResultMessage,
   SystemMessage,
+  ChatMessageAgentIdentity,
 } from "./types";
 
 function isToolRow(m: ChatMessage): m is ToolCallMessage | ToolResultMessage {
@@ -42,6 +43,8 @@ interface MessageListProps {
   onDeny: () => void;
   /** Mark an inline clarify card resolved once the user answers/skips. */
   onClarifyResolved: (requestId: string, answer: string) => void;
+  /** Collaboration chats can focus a role by clicking its visible avatar. */
+  onAgentAvatarClick?: (identity: ChatMessageAgentIdentity) => void;
 }
 
 function TypingIndicator({
@@ -50,8 +53,7 @@ function TypingIndicator({
   toolProgress: string | null;
 }): React.JSX.Element {
   return (
-    <div className="chat-message chat-message-agent">
-      <AgentsOneActivityAvatar active />
+    <div className="chat-message chat-message-agent chat-message-typing">
       <div className="chat-bubble chat-bubble-agent">
         {toolProgress ? (
           <div className="chat-tool-progress">{toolProgress}</div>
@@ -79,6 +81,38 @@ function isBubble(m: ChatMessage): m is import("./types").ChatBubbleMessage {
   return !k || k === "user" || k === "assistant";
 }
 
+function messageIdentity(
+  message: ChatMessage,
+): ChatMessageAgentIdentity | undefined {
+  const identity = message as Partial<ChatMessageAgentIdentity>;
+  return identity.agentRuntimeId
+    ? {
+        agentRuntimeId: identity.agentRuntimeId,
+        ...(identity.agentName ? { agentName: identity.agentName } : {}),
+        agentAvatar: identity.agentAvatar ?? null,
+        ...(identity.agentColor ? { agentColor: identity.agentColor } : {}),
+        ...(identity.collaborationRole
+          ? { collaborationRole: identity.collaborationRole }
+          : {}),
+        ...(identity.collaborationAssignmentId
+          ? { collaborationAssignmentId: identity.collaborationAssignmentId }
+          : {}),
+      }
+    : undefined;
+}
+
+function identityKey(identity?: ChatMessageAgentIdentity): string {
+  return identity
+    ? [
+        identity.agentRuntimeId,
+        identity.agentName,
+        identity.agentAvatar,
+        identity.agentColor,
+        identity.collaborationAssignmentId,
+      ].join("\u0000")
+    : "";
+}
+
 export const MessageList = memo(function MessageList({
   messages,
   isLoading,
@@ -89,6 +123,7 @@ export const MessageList = memo(function MessageList({
   onApprove,
   onDeny,
   onClarifyResolved,
+  onAgentAvatarClick,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
   // History rows pass through unconditionally.
@@ -114,7 +149,28 @@ export const MessageList = memo(function MessageList({
     // of same-role rows. The agent turn's thinking/tool rows + answer bubble
     // share one avatar; the continuation rows render a spacer.
     const prev = visibleMessages[i - 1];
-    const showAvatar = !prev || prev.role !== msg.role;
+    const currentIdentity = messageIdentity(msg);
+    const previousIdentity = prev ? messageIdentity(prev) : undefined;
+    const previousKind = (prev as { kind?: string } | undefined)?.kind;
+    // System/clarify cards do not render an agent avatar. They therefore
+    // cannot own the avatar for the assistant answer that follows them, even
+    // when both rows carry the same persisted collaboration identity.
+    const previousOwnsAvatar =
+      previousKind !== "system" && previousKind !== "clarify";
+    const showAvatar =
+      !prev ||
+      !previousOwnsAvatar ||
+      prev.role !== msg.role ||
+      identityKey(previousIdentity) !== identityKey(currentIdentity);
+    const rowAgentName = currentIdentity?.agentName || agentName;
+    const rowAgentAvatar = currentIdentity
+      ? currentIdentity.agentAvatar
+      : agentAvatar;
+    const rowAgentColor = currentIdentity?.agentColor || agentColor;
+    const handleAvatarClick =
+      currentIdentity && onAgentAvatarClick
+        ? () => onAgentAvatarClick(currentIdentity)
+        : undefined;
 
     if (isToolRow(msg)) {
       // Collect the whole run of consecutive tool rows.
@@ -131,10 +187,14 @@ export const MessageList = memo(function MessageList({
           items={group}
           // Active (spinner) only while streaming and this run is trailing.
           active={isLoading && i === visibleMessages.length - 1}
-          // Tool history belongs to the agent trace. Its row stays aligned
-          // with the thought above; the Agents One mark is reserved for the
-          // separate live activity indicator below the trace.
-          showAvatar={false}
+          // A tool-only trace still needs a visible owner. When reasoning
+          // precedes it this remains a grouped continuation row; otherwise
+          // the tool group carries the runtime avatar and name itself.
+          showAvatar={showAvatar}
+          agentName={rowAgentName}
+          agentAvatar={rowAgentAvatar}
+          agentColor={rowAgentColor}
+          onAgentAvatarClick={handleAvatarClick}
         />,
       );
       continue;
@@ -155,9 +215,10 @@ export const MessageList = memo(function MessageList({
           // a completed "Thought".
           active={isLoading && i === visibleMessages.length - 1}
           showAvatar={showAvatar}
-          agentName={agentName}
-          agentAvatar={agentAvatar}
-          agentColor={agentColor}
+          agentName={rowAgentName}
+          agentAvatar={rowAgentAvatar}
+          agentColor={rowAgentColor}
+          onAgentAvatarClick={handleAvatarClick}
         />,
       );
       continue;
@@ -184,9 +245,10 @@ export const MessageList = memo(function MessageList({
         onApprove={onApprove}
         onDeny={onDeny}
         showAvatar={showAvatar}
-        agentName={agentName}
-        agentAvatar={agentAvatar}
-        agentColor={agentColor}
+        agentName={rowAgentName}
+        agentAvatar={rowAgentAvatar}
+        agentColor={rowAgentColor}
+        onAgentAvatarClick={handleAvatarClick}
       />,
     );
   }

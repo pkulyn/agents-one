@@ -3,6 +3,7 @@ import type BetterDatabase from "better-sqlite3";
 import { dirname } from "path";
 import { existsSync, mkdirSync } from "fs";
 import { activeStateDbPath } from "./utils";
+import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 let cachedDb: BetterDatabase.Database | null = null;
 let cachedDbPath: string | null = null;
@@ -14,6 +15,7 @@ let cachedDbReadonly: boolean | null = null;
  * the old database connection is cleanly closed and a new one is established.
  */
 export function getDbConnection(readonly = true): BetterDatabase.Database | null {
+  if (!readonly) assertAgentsOneWritesAllowed();
   const dbPath = activeStateDbPath();
   if (!existsSync(dbPath)) {
     if (readonly) {

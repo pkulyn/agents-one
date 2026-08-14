@@ -1,6 +1,6 @@
 export default {
   title: "Scheduled Tasks",
-  subtitle: "Automate tasks with scheduled agent runs",
+  subtitle: "Run tasks on a schedule with local CLI agents",
   newTask: "New Task",
   name: "Name",
   frequency: "Frequency",

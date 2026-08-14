@@ -1,6 +1,6 @@
 export default {
   title: "定时任务",
-  subtitle: "通过定时运行智能体来自动完成任务",
+  subtitle: "由本地 CLI 智能体按计划自动执行任务",
   newTask: "新建定时任务",
   name: "名称",
   frequency: "频率",

@@ -6,6 +6,7 @@ import type {
 import type { RuntimeConversationMessage } from "../../../../shared/runtime-conversations";
 import type {
   TaskCollaborationAssignment,
+  TaskCollaborationRecord,
   TaskCollaborationStatus,
 } from "../../../../shared/task-collaboration";
 
@@ -24,8 +25,10 @@ export interface ChatRun {
   runtimeName?: string;
   runtimeKind?: AgentRuntimeKind;
   runtimeConversationId?: string;
+  runtimeActiveRunId?: string;
   runtimeSeed?: RuntimeConversationMessage[];
   runtimeWorkspace?: string;
+  runtimeAccessMode?: "auto" | "analysis" | "full_access";
   /** Gateway session id, known once the first turn reports it. */
   sessionId: string | null;
   /** True while the agent is generating for this run. */
@@ -59,6 +62,18 @@ export function isScratchRun(r: ChatRun): boolean {
   return !r.runtimeId && !r.sessionId && !r.loading && !r.title;
 }
 
+/** A task tab with no conversation, transcript, or in-flight work yet. */
+export function isBlankTaskRun(r: ChatRun): boolean {
+  return (
+    !r.sessionId &&
+    !r.runtimeConversationId &&
+    !r.loading &&
+    !r.title &&
+    !r.seed &&
+    !r.runtimeSeed
+  );
+}
+
 /** Mint a fresh, empty run under the given profile. */
 export function mintRun(
   profile: string,
@@ -86,8 +101,10 @@ export function mintRuntimeRun(input: {
   /** Persisted first-user-message title when resuming a Runtime conversation. */
   title?: string;
   runtimeConversationId?: string;
+  runtimeActiveRunId?: string;
   runtimeSeed?: RuntimeConversationMessage[];
   runtimeWorkspace?: string;
+  runtimeAccessMode?: "auto" | "analysis" | "full_access";
   sessionId?: string | null;
 }): ChatRun {
   return {
@@ -101,8 +118,10 @@ export function mintRuntimeRun(input: {
     runtimeKind: input.runtimeKind,
     title: input.title,
     runtimeConversationId: input.runtimeConversationId,
+    runtimeActiveRunId: input.runtimeActiveRunId,
     runtimeSeed: input.runtimeSeed,
     runtimeWorkspace: input.runtimeWorkspace,
+    runtimeAccessMode: input.runtimeAccessMode,
     sessionId: input.sessionId ?? null,
     loading: false,
   };
@@ -174,6 +193,30 @@ export function openSessionRunTransition(
 }
 
 /**
+ * Open a new task without retaining an unused placeholder for another agent.
+ *
+ * Layout starts with a legacy Hermes placeholder before the Runtime catalogue
+ * resolves. When the configured default is another Runtime, that new task must
+ * replace the blank placeholder instead of producing two "New conversation"
+ * tabs. Tabs with content or active work are always preserved.
+ */
+export function openNewTaskRunTransition(
+  runs: ChatRun[],
+  activeRunId: string,
+  run: ChatRun,
+): { activeRunId: string; runs: ChatRun[] } {
+  const active = runs.find((item) => item.runId === activeRunId);
+  if (active && isBlankTaskRun(active)) {
+    return {
+      activeRunId: run.runId,
+      runs: runs.map((item) => (item.runId === activeRunId ? run : item)),
+    };
+  }
+
+  return { activeRunId: run.runId, runs: [...runs, run] };
+}
+
+/**
  * Chrome-style tab cycling: the run `delta` steps away from the active one,
  * wrapping at both ends. Returns null when there is nothing to switch to.
  */
@@ -209,6 +252,35 @@ export function findRunBySession(
 ): ChatRun | undefined {
   return runs.find(
     (r) => r.sessionId === sessionId || r.runtimeConversationId === sessionId,
+  );
+}
+
+/** Resolve the collaboration metadata owned by a persisted conversation. */
+export function findTaskCollaborationForConversation(
+  records: TaskCollaborationRecord[],
+  conversationId: string,
+  messages: RuntimeConversationMessage[] = [],
+): TaskCollaborationRecord | undefined {
+  const direct =
+    records.find((record) => record.conversationId === conversationId) ||
+    records.find((record) => record.taskId === conversationId);
+  if (direct) return direct;
+
+  // Recover collaborations created during the narrow interval before the
+  // conversation id was linked. Runtime run ids are unique, durable evidence
+  // shared by the transcript and the collaboration execution record.
+  const runtimeRunIds = new Set(
+    messages
+      .map((message) => message.execution?.runId)
+      .filter((runId): runId is string => Boolean(runId)),
+  );
+  if (!runtimeRunIds.size) return undefined;
+  return records.find((record) =>
+    record.execution?.roleRuns.some(
+      (roleRun) =>
+        Boolean(roleRun.runtimeRunId) &&
+        runtimeRunIds.has(roleRun.runtimeRunId as string),
+    ),
   );
 }
 

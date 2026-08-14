@@ -96,7 +96,7 @@ export default {
   keyLabel: "מפתח",
   empty: "(ריק)",
   dataSection: "נתונים",
-  dataHint: "ייצוא או ייבוא של ההגדרות, הסשנים, המיומנויות והזיכרון של Hermes.",
+  dataHint: "ייצוא או שחזור של הגדרות Agents One, פרויקטים, משימות, צ׳אטים ורשומות שיתוף פעולה.",
   backingUp: "מגבה...",
   exportBackup: "ייצוא גיבוי",
   importing: "מייבא...",

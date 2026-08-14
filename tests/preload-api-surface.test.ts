@@ -66,11 +66,27 @@ describe("Preload API Surface", () => {
 // ─── New APIs exist ─────────────────────────────────────
 
 describe("New APIs from v0.8/v0.9 features", () => {
-  it("has backup/import APIs", () => {
-    expect(preloadMethods).toContain("runHermesBackup");
-    expect(preloadMethods).toContain("runHermesImport");
-    expect(typeMethods).toContain("runHermesBackup");
-    expect(typeMethods).toContain("runHermesImport");
+  it("has the Agents One export, inspection, and restore APIs", () => {
+    expect(preloadMethods).toContain("exportAgentsOneBackup");
+    expect(preloadMethods).toContain("inspectAgentsOneBackup");
+    expect(preloadMethods).toContain("restoreAgentsOneBackup");
+    expect(typeMethods).toContain("exportAgentsOneBackup");
+    expect(typeMethods).toContain("inspectAgentsOneBackup");
+    expect(typeMethods).toContain("restoreAgentsOneBackup");
+  });
+
+  it("persists Quick Chat history through the main-process data store", () => {
+    expect(preloadMethods).toContain("listQuickChats");
+    expect(preloadMethods).toContain("saveQuickChats");
+    expect(typeMethods).toContain("listQuickChats");
+    expect(typeMethods).toContain("saveQuickChats");
+  });
+
+  it("does not expose the legacy Hermes CLI backup/import APIs", () => {
+    expect(preloadMethods).not.toContain("runHermesBackup");
+    expect(preloadMethods).not.toContain("runHermesImport");
+    expect(typeMethods).not.toContain("runHermesBackup");
+    expect(typeMethods).not.toContain("runHermesImport");
   });
 
   it("has log viewer API", () => {

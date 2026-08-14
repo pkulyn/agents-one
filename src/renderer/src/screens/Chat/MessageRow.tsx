@@ -96,6 +96,7 @@ export const HermesAvatar = memo(function HermesAvatar({
   name = "Hermes",
   color,
   avatar,
+  onClick,
 }: {
   size?: number;
   /** True only for the avatar of the turn currently being generated. */
@@ -103,14 +104,32 @@ export const HermesAvatar = memo(function HermesAvatar({
   name?: string;
   color?: string | null;
   avatar?: string | null;
+  onClick?: () => void;
 }): React.JSX.Element {
-  return (
+  const className = `chat-avatar chat-avatar-agent chat-avatar-agent--identity${
+    onClick ? " chat-avatar-agent--interactive" : ""
+  }`;
+  const content = (
+    <ProfileAvatar name={name} color={color} avatar={avatar} size={size} />
+  );
+  return onClick ? (
+    <button
+      type="button"
+      className={className}
+      style={{ width: size, height: size }}
+      data-active={active || undefined}
+      onClick={onClick}
+      aria-label={`与 ${name} 沟通`}
+    >
+      {content}
+    </button>
+  ) : (
     <div
-      className="chat-avatar chat-avatar-agent chat-avatar-agent--identity"
+      className={className}
       style={{ width: size, height: size }}
       data-active={active || undefined}
     >
-      <ProfileAvatar name={name} color={color} avatar={avatar} size={size} />
+      {content}
     </div>
   );
 });
@@ -159,6 +178,7 @@ interface MessageRowProps {
   agentName?: string;
   agentAvatar?: string | null;
   agentColor?: string | null;
+  onAgentAvatarClick?: () => void;
 }
 
 export const MessageRow = memo(function MessageRow({
@@ -171,6 +191,7 @@ export const MessageRow = memo(function MessageRow({
   agentName = "Hermes",
   agentAvatar,
   agentColor,
+  onAgentAvatarClick,
 }: MessageRowProps): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -229,6 +250,7 @@ export const MessageRow = memo(function MessageRow({
             name={agentName}
             avatar={agentAvatar}
             color={agentColor}
+            onClick={onAgentAvatarClick}
           />
         ) : (
           <AvatarSpacer />
@@ -334,6 +356,7 @@ export const MessageRow = memo(function MessageRow({
           name={agentName}
           avatar={agentAvatar}
           color={agentColor}
+          onClick={onAgentAvatarClick}
         />
       )}
       {msg.role === "agent" ? (

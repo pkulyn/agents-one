@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   cycleRunId,
+  findTaskCollaborationForConversation,
+  isBlankTaskRun,
   isScratchRun,
   mintRun,
+  openNewTaskRunTransition,
   openSessionRunTransition,
   runIdAtOrdinal,
   selectProfileRunTransition,
@@ -25,6 +28,66 @@ function run(
 }
 
 describe("chat run profile transitions", () => {
+  it("finds collaboration metadata by linked conversation before legacy task id", () => {
+    const base = {
+      title: "协作任务",
+      assignments: [],
+      status: "active" as const,
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    const linked = {
+      ...base,
+      taskId: "run-parent",
+      conversationId: "runtime-conversation",
+    };
+    const legacy = { ...base, taskId: "legacy-conversation" };
+    const recovered = {
+      ...base,
+      taskId: "run-before-link",
+      execution: {
+        status: "succeeded" as const,
+        updatedAt: 3,
+        roleRuns: [
+          {
+            assignmentId: "review",
+            role: "复核",
+            status: "succeeded" as const,
+            runtimeRunId: "runtime-run-review",
+          },
+        ],
+      },
+    };
+
+    expect(
+      findTaskCollaborationForConversation(
+        [legacy, linked],
+        "runtime-conversation",
+      ),
+    ).toBe(linked);
+    expect(
+      findTaskCollaborationForConversation(
+        [legacy, linked, recovered],
+        "legacy-conversation",
+      ),
+    ).toBe(legacy);
+    expect(
+      findTaskCollaborationForConversation(
+        [legacy, linked, recovered],
+        "unlinked-conversation",
+        [
+          {
+            id: "review-answer",
+            role: "agent",
+            content: "验收完成",
+            createdAt: 3,
+            execution: { runId: "runtime-run-review", events: [] },
+          },
+        ],
+      ),
+    ).toBe(recovered);
+  });
+
   it("keeps a custom remote Hermes on its own Runtime conversation", () => {
     expect(
       usesLegacyHermesChat({
@@ -105,6 +168,27 @@ describe("chat run profile transitions", () => {
     );
   });
 
+  it("recognizes unused Runtime and Hermes tabs as blank task placeholders", () => {
+    expect(isBlankTaskRun(run("hermes-blank", "default"))).toBe(true);
+    expect(
+      isBlankTaskRun(
+        run("pi-blank", "default", {
+          runtimeId: "pi",
+          runtimeName: "Pi",
+          runtimeKind: "pi",
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isBlankTaskRun(
+        run("pi-history", "default", {
+          runtimeId: "pi",
+          runtimeConversationId: "conversation-pi",
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it("mints runs under the requested profile", () => {
     const randomUUID = vi
       .spyOn(crypto, "randomUUID")
@@ -154,6 +238,41 @@ describe("chat run profile transitions", () => {
 
     expect(next.activeRunId).toBe("run-saved");
     expect(next.runs).toEqual([active, saved]);
+  });
+
+  it("replaces the unused Hermes placeholder with the default Runtime task", () => {
+    const placeholder = run("run-hermes-placeholder", "default");
+    const runtimeTask = run("run-pi", "default", {
+      runtimeId: "pi",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+    });
+
+    const next = openNewTaskRunTransition(
+      [placeholder],
+      placeholder.runId,
+      runtimeTask,
+    );
+
+    expect(next.activeRunId).toBe("run-pi");
+    expect(next.runs).toEqual([runtimeTask]);
+  });
+
+  it("preserves an existing task when opening a new default Runtime task", () => {
+    const active = run("run-existing", "default", {
+      sessionId: "session-existing",
+      title: "已有任务",
+    });
+    const runtimeTask = run("run-pi", "default", {
+      runtimeId: "pi",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+    });
+
+    const next = openNewTaskRunTransition([active], active.runId, runtimeTask);
+
+    expect(next.activeRunId).toBe("run-pi");
+    expect(next.runs).toEqual([active, runtimeTask]);
   });
 });
 

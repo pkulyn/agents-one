@@ -7,7 +7,10 @@ import {
   Play,
   Pause,
   Zap,
-  Alert,
+  Clock,
+  ChatBubble,
+  Pencil,
+  Folder,
 } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
@@ -17,44 +20,7 @@ import type {
   TaskScheduleRunStatus,
 } from "../../../../shared/task-schedules";
 
-const DELIVER_TARGETS = [
-  { value: "local", label: "Local" },
-  { value: "origin", label: "Origin" },
-  { value: "telegram", label: "Telegram" },
-  { value: "discord", label: "Discord" },
-  { value: "slack", label: "Slack" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "signal", label: "Signal" },
-  { value: "matrix", label: "Matrix" },
-  { value: "mattermost", label: "Mattermost" },
-  { value: "email", label: "Email" },
-  { value: "webhook", label: "Webhook" },
-  { value: "sms", label: "SMS" },
-  { value: "homeassistant", label: "Home Assistant" },
-  { value: "dingtalk", label: "DingTalk" },
-  { value: "feishu", label: "Feishu" },
-  { value: "wecom", label: "WeCom" },
-];
-
-interface CronJob {
-  id: string;
-  name: string;
-  schedule: string;
-  prompt: string;
-  state: "active" | "paused" | "completed";
-  enabled: boolean;
-  next_run_at: string | null;
-  last_run_at: string | null;
-  last_status: string | null;
-  last_error: string | null;
-  repeat: { times: number | null; completed: number } | null;
-  deliver: string[];
-  skills: string[];
-  script: string | null;
-}
-
 type FrequencyType = "minutes" | "hourly" | "daily" | "weekly" | "custom";
-type ScheduleTarget = "agents-one" | "hermes-cron";
 
 const SCHEDULE_RUN_STATUS_LABEL: Record<TaskScheduleRunStatus, string> = {
   queued: "排队中",
@@ -72,23 +38,27 @@ interface SchedulesProps {
 
 function Schedules({ profile }: SchedulesProps): React.JSX.Element {
   const { t } = useI18n();
-  const [jobs, setJobs] = useState<CronJob[]>([]);
   const [localSchedules, setLocalSchedules] = useState<TaskSchedule[]>([]);
   const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(
+    null,
+  );
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [scheduleTarget, setScheduleTarget] = useState<ScheduleTarget>("agents-one");
 
   // Create form state
   const [newName, setNewName] = useState("");
   const [newPrompt, setNewPrompt] = useState("");
-  const [newDeliver, setNewDeliver] = useState("local");
   const [newRuntimeId, setNewRuntimeId] = useState("");
-  const [newMode, setNewMode] = useState<"analysis" | "implementation">("analysis");
-  const [newConcurrencyPolicy, setNewConcurrencyPolicy] = useState<TaskScheduleConcurrencyPolicy>("skip");
+  const [newWorkspace, setNewWorkspace] = useState("");
+  const [newMode, setNewMode] = useState<"auto" | "analysis" | "full_access">(
+    "auto",
+  );
+  const [newConcurrencyPolicy, setNewConcurrencyPolicy] =
+    useState<TaskScheduleConcurrencyPolicy>("skip");
 
   // Schedule builder state
   const [frequency, setFrequency] = useState<FrequencyType>("daily");
@@ -101,44 +71,75 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
 
   const loadJobs = useCallback(async (): Promise<void> => {
     try {
-      const [legacyJobs, schedules, availableRuntimes] = await Promise.all([
-        window.hermesAPI.listCronJobs(true, profile),
+      const [schedules, availableRuntimes] = await Promise.all([
         window.hermesAPI.listTaskSchedules(profile),
         window.hermesAPI.listAgentRuntimes(),
       ]);
-      setJobs(legacyJobs);
-      setLocalSchedules(schedules);
-      setRuntimes(availableRuntimes.filter((runtime) => runtime.enabled));
-      setNewRuntimeId((current) => current || availableRuntimes.find((runtime) => runtime.enabled)?.id || "");
+      const localCliRuntimes = availableRuntimes.filter(
+        (runtime) =>
+          runtime.enabled &&
+          runtime.location === "local" &&
+          runtime.config.transport === "cli",
+      );
+      const localRuntimeIds = new Set(
+        localCliRuntimes.map((runtime) => runtime.id),
+      );
+      setLocalSchedules(
+        schedules.filter((schedule) => localRuntimeIds.has(schedule.runtimeId)),
+      );
+      setRuntimes(localCliRuntimes);
+      setNewRuntimeId((current) =>
+        localRuntimeIds.has(current) ? current : localCliRuntimes[0]?.id || "",
+      );
     } catch {
       setError(t("schedules.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [profile]);
+  }, [profile, t]);
 
   useEffect(() => {
     loadJobs();
   }, [loadJobs]);
 
+  useEffect(() => {
+    const refresh = (): void => {
+      void loadJobs();
+    };
+    const timer = window.setInterval(refresh, 10_000);
+    const disposeStarted = window.hermesAPI.onTaskScheduleRunStarted?.(
+      (event) => {
+        if (event.profile === (profile || "default")) refresh();
+      },
+    );
+    const dispose = window.hermesAPI.onTaskScheduleRunCompleted?.((event) => {
+      if (event.profile === (profile || "default")) refresh();
+    });
+    return () => {
+      window.clearInterval(timer);
+      disposeStarted?.();
+      dispose?.();
+    };
+  }, [loadJobs, profile]);
+
   // Escape key to close modals
   useEffect(() => {
-    if (!showCreate && !confirmDelete) return;
+    if (!showCreate && !editingScheduleId && !confirmDelete) return;
     function handleKeyDown(e: KeyboardEvent): void {
       if (e.key === "Escape") {
         if (confirmDelete) setConfirmDelete(null);
-        else if (showCreate) setShowCreate(false);
+        else if (showCreate || editingScheduleId) closeCreateModal();
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [showCreate, confirmDelete]);
+  }, [showCreate, editingScheduleId, confirmDelete]);
 
   function resetForm(): void {
     setNewName("");
     setNewPrompt("");
-    setNewDeliver("local");
-    setNewMode("analysis");
+    setNewWorkspace("");
+    setNewMode("auto");
     setNewConcurrencyPolicy("skip");
     setFrequency("daily");
     setMinutesInterval("30");
@@ -151,7 +152,61 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
 
   function closeCreateModal(): void {
     setShowCreate(false);
+    setEditingScheduleId(null);
     resetForm();
+  }
+
+  function applyScheduleValue(value: string): void {
+    const interval = /^(\d+)([mh])$/i.exec(value);
+    if (interval) {
+      if (interval[2].toLowerCase() === "m") {
+        setFrequency("minutes");
+        setMinutesInterval(interval[1]);
+      } else {
+        setFrequency("hourly");
+        setHourlyInterval(interval[1]);
+      }
+      return;
+    }
+    const parts = value.trim().split(/\s+/);
+    if (parts.length === 5 && parts[2] === "*" && parts[3] === "*") {
+      const time = `${parts[1].padStart(2, "0")}:${parts[0].padStart(2, "0")}`;
+      if (parts[4] === "*") {
+        setFrequency("daily");
+        setDailyTime(time);
+      } else if (/^[0-6]$/.test(parts[4])) {
+        setFrequency("weekly");
+        setWeeklyDay(parts[4]);
+        setWeeklyTime(time);
+      } else {
+        setFrequency("custom");
+        setCustomCron(value);
+      }
+      return;
+    }
+    setFrequency("custom");
+    setCustomCron(value);
+  }
+
+  function openEditModal(schedule: TaskSchedule): void {
+    resetForm();
+    setEditingScheduleId(schedule.id);
+    setNewName(schedule.name);
+    setNewPrompt(schedule.prompt);
+    setNewRuntimeId(schedule.runtimeId);
+    setNewWorkspace(schedule.workspace || "");
+    setNewMode(
+      schedule.mode === "full_access" || schedule.mode === "analysis"
+        ? schedule.mode
+        : "auto",
+    );
+    setNewConcurrencyPolicy(schedule.concurrencyPolicy);
+    applyScheduleValue(schedule.schedule);
+  }
+
+  async function chooseWorkspace(): Promise<void> {
+    const selected = await window.hermesAPI.selectFolder();
+    if (selected) setNewWorkspace(selected);
   }
 
   function buildSchedule(): string {
@@ -180,94 +235,33 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     return true;
   }
 
-  async function handleCreate(): Promise<void> {
+  async function handleSave(): Promise<void> {
     if (!isScheduleValid()) return;
     setActionInProgress("creating");
     setError("");
     try {
-      if (scheduleTarget === "agents-one") {
-        await window.hermesAPI.createTaskSchedule({
-          name: newName.trim() || "未命名计划任务",
-          schedule: buildSchedule(),
-          prompt: newPrompt.trim(),
-          runtimeId: newRuntimeId,
-          mode: newMode,
-          concurrencyPolicy: newConcurrencyPolicy,
-        }, profile);
-        closeCreateModal();
-        await loadJobs();
-      } else {
-        const result = await window.hermesAPI.createCronJob(
-          buildSchedule(),
-          newPrompt.trim() || undefined,
-          newName.trim() || undefined,
-          newDeliver !== "local" ? newDeliver : undefined,
+      const input = {
+        name: newName.trim() || "未命名计划任务",
+        schedule: buildSchedule(),
+        prompt: newPrompt.trim(),
+        runtimeId: newRuntimeId,
+        workspace: newWorkspace.trim() || undefined,
+        mode: newMode,
+        concurrencyPolicy: newConcurrencyPolicy,
+      };
+      if (editingScheduleId) {
+        await window.hermesAPI.updateTaskSchedule(
+          editingScheduleId,
+          input,
           profile,
         );
-        if (result.success) {
-          closeCreateModal();
-          await loadJobs();
-        } else {
-          setError(result.error || "Failed to create job");
-        }
-      }
-    } catch {
-      setError("Failed to create job");
-    } finally {
-      setActionInProgress(null);
-    }
-  }
-
-  async function handleRemove(jobId: string): Promise<void> {
-    setActionInProgress(jobId);
-    setError("");
-    try {
-      const result = await window.hermesAPI.removeCronJob(jobId, profile);
-      setConfirmDelete(null);
-      if (result.success) {
-        await loadJobs();
       } else {
-        setError(result.error || "Failed to remove job");
+        await window.hermesAPI.createTaskSchedule(input, profile);
       }
-    } catch {
-      setError("Failed to remove job");
-    } finally {
-      setActionInProgress(null);
-    }
-  }
-
-  async function handleToggle(job: CronJob): Promise<void> {
-    setActionInProgress(job.id);
-    setError("");
-    try {
-      const result =
-        job.state === "paused"
-          ? await window.hermesAPI.resumeCronJob(job.id, profile)
-          : await window.hermesAPI.pauseCronJob(job.id, profile);
-      if (result.success) {
-        await loadJobs();
-      } else {
-        setError(result.error || "Failed to update job");
-      }
-    } catch {
-      setError("Failed to update job");
-    } finally {
-      setActionInProgress(null);
-    }
-  }
-
-  async function handleTrigger(jobId: string): Promise<void> {
-    setActionInProgress(jobId);
-    setError("");
-    try {
-      const result = await window.hermesAPI.triggerCronJob(jobId, profile);
-      if (result.success) {
-        await loadJobs();
-      } else {
-        setError(result.error || "Failed to trigger job");
-      }
-    } catch {
-      setError("Failed to trigger job");
+      closeCreateModal();
+      await loadJobs();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "无法保存计划任务");
     } finally {
       setActionInProgress(null);
     }
@@ -277,7 +271,11 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     setActionInProgress(schedule.id);
     setError("");
     try {
-      await window.hermesAPI.setTaskScheduleEnabled(schedule.id, !schedule.enabled, profile);
+      await window.hermesAPI.setTaskScheduleEnabled(
+        schedule.id,
+        !schedule.enabled,
+        profile,
+      );
       await loadJobs();
     } catch (error) {
       setError(error instanceof Error ? error.message : "无法更新计划任务");
@@ -299,17 +297,26 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     }
   }
 
-  async function handleLocalRemove(schedule: TaskSchedule): Promise<void> {
-    setActionInProgress(schedule.id);
+  async function handleLocalRemove(scheduleId: string): Promise<void> {
+    setActionInProgress(scheduleId);
     setError("");
     try {
-      await window.hermesAPI.deleteTaskSchedule(schedule.id, profile);
+      await window.hermesAPI.deleteTaskSchedule(scheduleId, profile);
+      setConfirmDelete(null);
       await loadJobs();
     } catch (error) {
       setError(error instanceof Error ? error.message : "无法删除计划任务");
     } finally {
       setActionInProgress(null);
     }
+  }
+
+  function handleOpenResult(conversationId: string): void {
+    window.dispatchEvent(
+      new CustomEvent("agents-one:open-runtime-conversation", {
+        detail: conversationId,
+      }),
+    );
   }
 
   function formatTime(iso: string | null): string {
@@ -328,6 +335,19 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     }
   }
 
+  function formatSchedule(value: string): string {
+    const interval = /^(\d+)([mh])$/i.exec(value);
+    if (interval)
+      return `每 ${interval[1]} ${interval[2].toLowerCase() === "h" ? "小时" : "分钟"}`;
+    const parts = value.trim().split(/\s+/);
+    if (parts.length !== 5) return value;
+    const [minute, hour, day, month, weekday] = parts;
+    if (day === "*" && month === "*" && weekday === "*") {
+      return `每天 ${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+    }
+    return `Cron · ${value}`;
+  }
+
   if (loading) {
     return (
       <div className="schedules-container">
@@ -341,24 +361,18 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
   return (
     <div className="schedules-container">
       {/* Create Modal */}
-      {showCreate && (
+      {(showCreate || editingScheduleId) && (
         <div className="skills-detail-overlay" onClick={closeCreateModal}>
           <div className="schedules-modal" onClick={(e) => e.stopPropagation()}>
             <div className="schedules-modal-header">
-              <h3>{t("schedules.newTask")}</h3>
+              <h3>
+                {editingScheduleId ? "编辑定时任务" : t("schedules.newTask")}
+              </h3>
               <button className="btn-ghost" onClick={closeCreateModal}>
                 <X size={18} />
               </button>
             </div>
             <div className="schedules-modal-body">
-              <div className="schedules-field">
-                <label className="schedules-field-label">执行位置</label>
-                <div className="schedules-freq-pills">
-                  <button type="button" className={`schedules-freq-pill ${scheduleTarget === "agents-one" ? "active" : ""}`} onClick={() => setScheduleTarget("agents-one")}>本地智能体</button>
-                  <button type="button" className={`schedules-freq-pill ${scheduleTarget === "hermes-cron" ? "active" : ""}`} onClick={() => setScheduleTarget("hermes-cron")}>远程 Hermes</button>
-                </div>
-                <div className="schedules-field-hint">本地智能体可选择任意已接入的运行器，但桌面应用需保持运行；远程 Hermes 规则由服务端执行。</div>
-              </div>
               <div className="schedules-field">
                 <label className="schedules-field-label">
                   {t("schedules.name")}
@@ -519,48 +533,95 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
                   rows={3}
                 />
               </div>
-              {scheduleTarget === "agents-one" ? <>
-                <div className="schedules-field">
-                  <label className="schedules-field-label">执行智能体</label>
-                  <select className="input" value={newRuntimeId} onChange={(e) => setNewRuntimeId(e.target.value)}>
-                    <option value="">选择智能体</option>
-                    {runtimes.map((runtime) => <option key={runtime.id} value={runtime.id}>{runtime.name}（{runtime.kind}）</option>)}
-                  </select>
-                </div>
-                <div className="schedules-field">
-                  <label className="schedules-field-label">执行方式</label>
-                  <select className="input" value={newMode} onChange={(e) => setNewMode(e.target.value as "analysis" | "implementation")}>
-                    <option value="analysis">分析</option>
-                    <option value="implementation">实现（仅 Codex / Claude Code）</option>
-                  </select>
-                </div>
-                <div className="schedules-field">
-                  <label className="schedules-field-label">并发策略</label>
-                  <select className="input" value={newConcurrencyPolicy} onChange={(e) => setNewConcurrencyPolicy(e.target.value as TaskScheduleConcurrencyPolicy)}>
-                    <option value="skip">跳过：上一轮未结束时忽略本次</option>
-                    <option value="queue">排队：上一轮结束后依次执行</option>
-                    <option value="replace">替换：取消上一轮后执行本次</option>
-                  </select>
-                </div>
-              </> : <div className="schedules-field">
-                <label className="schedules-field-label">
-                  {t("schedules.deliverTo")}
-                </label>
+              <div className="schedules-field">
+                <label className="schedules-field-label">执行智能体</label>
                 <select
                   className="input"
-                  value={newDeliver}
-                  onChange={(e) => setNewDeliver(e.target.value)}
+                  aria-label="执行智能体"
+                  value={newRuntimeId}
+                  onChange={(e) => setNewRuntimeId(e.target.value)}
                 >
-                  {DELIVER_TARGETS.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
+                  <option value="">选择本地 CLI 智能体</option>
+                  {runtimes.map((runtime) => (
+                    <option key={runtime.id} value={runtime.id}>
+                      {runtime.name}（{runtime.kind}）
                     </option>
                   ))}
                 </select>
                 <div className="schedules-field-hint">
-                  {t("schedules.deliverHint")}
+                  仅显示已启用的本地 CLI 智能体；执行期间桌面应用需保持运行。
                 </div>
-              </div>}
+              </div>
+              <div className="schedules-field">
+                <label className="schedules-field-label">
+                  项目文件夹（可选）
+                </label>
+                <div className="schedules-workspace-row">
+                  <input
+                    className="input"
+                    type="text"
+                    placeholder="留空进行普通对话；需要读写文件时再选择"
+                    value={newWorkspace}
+                    onChange={(event) => setNewWorkspace(event.target.value)}
+                  />
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() => void chooseWorkspace()}
+                  >
+                    <Folder size={14} />
+                    选择
+                  </button>
+                  {newWorkspace && (
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      onClick={() => setNewWorkspace("")}
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+                <div className="schedules-field-hint">
+                  不再继承智能体配置中的工作区。“自动”可读写所选目录，但不能移动或删除文件。
+                </div>
+              </div>
+              <div className="schedules-field">
+                <label className="schedules-field-label">文件访问</label>
+                <select
+                  className="input"
+                  aria-label="文件访问"
+                  value={newMode}
+                  onChange={(event) =>
+                    setNewMode(event.target.value as typeof newMode)
+                  }
+                >
+                  <option value="auto">
+                    自动：可读写，无移动、删除文件权限
+                  </option>
+                  <option value="analysis">只读：仅允许读取所选项目</option>
+                  <option value="full_access">
+                    完全访问：可创建、编辑、移动或删除项目文件
+                  </option>
+                </select>
+              </div>
+              <div className="schedules-field">
+                <label className="schedules-field-label">并发策略</label>
+                <select
+                  className="input"
+                  aria-label="并发策略"
+                  value={newConcurrencyPolicy}
+                  onChange={(e) =>
+                    setNewConcurrencyPolicy(
+                      e.target.value as TaskScheduleConcurrencyPolicy,
+                    )
+                  }
+                >
+                  <option value="skip">跳过：上一轮未结束时忽略本次</option>
+                  <option value="queue">排队：上一轮结束后依次执行</option>
+                  <option value="replace">替换：取消上一轮后执行本次</option>
+                </select>
+              </div>
             </div>
             <div className="schedules-modal-footer">
               <button className="btn btn-secondary" onClick={closeCreateModal}>
@@ -568,12 +629,20 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
               </button>
               <button
                 className="btn btn-primary"
-                onClick={handleCreate}
-                disabled={!isScheduleValid() || !newPrompt.trim() || (scheduleTarget === "agents-one" && !newRuntimeId) || actionInProgress === "creating"}
+                onClick={handleSave}
+                disabled={
+                  !isScheduleValid() ||
+                  !newPrompt.trim() ||
+                  !newRuntimeId ||
+                  (newMode === "full_access" && !newWorkspace.trim()) ||
+                  actionInProgress === "creating"
+                }
               >
                 {actionInProgress === "creating"
                   ? t("schedules.creating")
-                  : t("schedules.create")}
+                  : editingScheduleId
+                    ? "保存"
+                    : t("schedules.create")}
               </button>
             </div>
           </div>
@@ -613,7 +682,7 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
               </button>
               <button
                 className="btn btn-danger btn-sm"
-                onClick={() => handleRemove(confirmDelete)}
+                onClick={() => handleLocalRemove(confirmDelete)}
                 disabled={actionInProgress === confirmDelete}
               >
                 {actionInProgress === confirmDelete
@@ -654,137 +723,158 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
         </div>
       )}
 
-      <section className="schedules-source" aria-label="本地智能体定时任务">
-        <div className="schedules-source-heading"><h3>本地智能体定时任务</h3><small>保留每轮执行记录和关联产物</small></div>
-        {localSchedules.length === 0 ? <p className="schedules-source-empty">暂无本地计划任务。</p> : <div className="schedules-list">
-          {localSchedules.map((schedule) => {
-            const latest = schedule.runs.at(-1);
-            return <div key={schedule.id} className="schedules-card">
-              <div className="schedules-card-top">
-                <div className="schedules-card-info"><div className="schedules-card-name">{schedule.name}</div><div className="schedules-card-schedule">{schedule.schedule} | {schedule.runtimeId} | {schedule.mode === "implementation" ? "实现" : "分析"}</div></div>
-                <div className="schedules-card-actions">
-                  <span className={`schedules-badge schedules-badge-${schedule.enabled ? "active" : "paused"}`}>{schedule.enabled ? "已启用" : "已暂停"}</span>
-                  <button className="btn-ghost schedules-action-btn" type="button" title={schedule.enabled ? "暂停计划任务" : "继续计划任务"} aria-label={schedule.enabled ? "暂停计划任务" : "继续计划任务"} onClick={() => void handleLocalToggle(schedule)} disabled={actionInProgress === schedule.id}>{schedule.enabled ? <Pause size={14} /> : <Play size={14} />}</button>
-                  <button className="btn-ghost schedules-action-btn" type="button" title="立即执行计划任务" aria-label="立即执行计划任务" onClick={() => void handleLocalTrigger(schedule)} disabled={!schedule.enabled || actionInProgress === schedule.id}><Zap size={14} /></button>
-                  <button className="btn-ghost schedules-action-btn schedules-action-danger" type="button" title="删除计划任务" aria-label="删除计划任务" onClick={() => void handleLocalRemove(schedule)} disabled={Boolean(schedule.activeTaskCenterTaskId) || actionInProgress === schedule.id}><Trash size={14} /></button>
-                </div>
-              </div>
-              <div className="schedules-card-prompt">{schedule.prompt}</div>
-              <div className="schedules-card-meta"><span>并发：{schedule.concurrencyPolicy === "skip" ? "跳过" : schedule.concurrencyPolicy === "queue" ? "排队" : "替换"}</span><span>下次：{formatTime(schedule.nextRunAt ? new Date(schedule.nextRunAt).toISOString() : null)}</span>{schedule.activeTaskCenterTaskId && <span>当前运行：{schedule.activeTaskCenterTaskId}</span>}{schedule.pendingRuns > 0 && <span>等待：{schedule.pendingRuns}</span>}{latest && <span>最近：{SCHEDULE_RUN_STATUS_LABEL[latest.status]}</span>}</div>
-            </div>;
-          })}
-        </div>}
-      </section>
-
-      <section className="schedules-source" aria-label="远程 Hermes 定时任务">
-        <div className="schedules-source-heading"><h3>远程 Hermes 定时任务</h3><small>兼容已有远端规则，由 Hermes 服务端执行</small></div>
-      {jobs.length === 0 ? (
-        <div className="schedules-empty">
-          <p className="schedules-empty-text">暂无远程 Hermes 定时任务</p>
-          <p className="schedules-empty-hint">已有远端规则会继续保留在此处。</p>
+      <section className="schedules-source" aria-label="本地 CLI 定时任务">
+        <div className="schedules-source-heading">
+          <div>
+            <h3>本地 CLI 任务</h3>
+            <small>仅使用已启用的本地 CLI 智能体，保留每轮执行记录</small>
+          </div>
+          <span className="schedules-count">{localSchedules.length} 条</span>
         </div>
-      ) : (
-        <div className="schedules-list">
-          {jobs.map((job) => (
-            <div key={job.id} className="schedules-card">
-              <div className="schedules-card-top">
-                <div className="schedules-card-info">
-                  <div className="schedules-card-name">{job.name}</div>
-                  <div className="schedules-card-schedule">{job.schedule}</div>
-                </div>
-                <div className="schedules-card-actions">
-                  <span
-                    className={`schedules-badge schedules-badge-${job.state}`}
-                  >
-                    {job.state === "active"
-                      ? t("schedules.active")
-                      : job.state === "paused"
-                        ? t("schedules.paused")
-                        : t("schedules.completed")}
-                  </span>
-                  {job.state !== "completed" && (
-                    <button
-                      className="btn-ghost schedules-action-btn"
-                      data-tooltip={
-                        job.state === "paused"
-                          ? t("schedules.resume")
-                          : t("schedules.pause")
-                      }
-                      onClick={() => handleToggle(job)}
-                      disabled={actionInProgress === job.id}
-                    >
-                      {job.state === "paused" ? (
-                        <Play size={14} />
-                      ) : (
-                        <Pause size={14} />
+        {localSchedules.length === 0 ? (
+          <div className="schedules-empty">
+            <div className="schedules-empty-icon">
+              <Clock size={20} />
+            </div>
+            <p className="schedules-empty-text">还没有本地定时任务</p>
+            <p className="schedules-empty-hint">
+              新建任务后，本地 CLI 智能体会在桌面应用运行期间按计划执行。
+            </p>
+          </div>
+        ) : (
+          <div className="schedules-list">
+            {localSchedules.map((schedule) => {
+              const latest = schedule.runs.at(-1);
+              const runtimeName =
+                runtimes.find((runtime) => runtime.id === schedule.runtimeId)
+                  ?.name || schedule.runtimeId;
+              return (
+                <div key={schedule.id} className="schedules-card">
+                  <div className="schedules-card-top">
+                    <div className="schedules-card-info">
+                      <div className="schedules-card-name">{schedule.name}</div>
+                      <div className="schedules-card-schedule">
+                        <Clock size={13} />
+                        {formatSchedule(schedule.schedule)}
+                        <span aria-hidden="true">·</span>
+                        {runtimeName}
+                      </div>
+                    </div>
+                    <div className="schedules-card-actions">
+                      <span
+                        className={`schedules-badge schedules-badge-${schedule.enabled ? "active" : "paused"}`}
+                      >
+                        {schedule.enabled ? "已启用" : "已暂停"}
+                      </span>
+                      <button
+                        className="btn-ghost schedules-action-btn"
+                        type="button"
+                        title="编辑计划任务"
+                        aria-label="编辑计划任务"
+                        onClick={() => openEditModal(schedule)}
+                        disabled={
+                          Boolean(schedule.activeRuntimeRunId) ||
+                          actionInProgress === schedule.id
+                        }
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        className="btn-ghost schedules-action-btn"
+                        type="button"
+                        title={
+                          schedule.enabled ? "暂停计划任务" : "继续计划任务"
+                        }
+                        aria-label={
+                          schedule.enabled ? "暂停计划任务" : "继续计划任务"
+                        }
+                        onClick={() => void handleLocalToggle(schedule)}
+                        disabled={actionInProgress === schedule.id}
+                      >
+                        {schedule.enabled ? (
+                          <Pause size={14} />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                      </button>
+                      <button
+                        className="btn-ghost schedules-action-btn"
+                        type="button"
+                        title="立即执行计划任务"
+                        aria-label="立即执行计划任务"
+                        onClick={() => void handleLocalTrigger(schedule)}
+                        disabled={
+                          !schedule.enabled || actionInProgress === schedule.id
+                        }
+                      >
+                        <Zap size={14} />
+                      </button>
+                      {latest?.conversationId && (
+                        <button
+                          className="btn-ghost schedules-action-btn"
+                          type="button"
+                          title="打开最近执行对话"
+                          aria-label="打开最近执行对话"
+                          onClick={() =>
+                            handleOpenResult(latest.conversationId as string)
+                          }
+                        >
+                          <ChatBubble size={14} />
+                        </button>
                       )}
-                    </button>
+                      <button
+                        className="btn-ghost schedules-action-btn schedules-action-danger"
+                        type="button"
+                        title="删除计划任务"
+                        aria-label="删除计划任务"
+                        onClick={() => setConfirmDelete(schedule.id)}
+                        disabled={
+                          Boolean(schedule.activeRuntimeRunId) ||
+                          actionInProgress === schedule.id
+                        }
+                      >
+                        <Trash size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="schedules-card-prompt">{schedule.prompt}</div>
+                  {latest?.summary && (
+                    <div className="schedules-card-result">
+                      {latest.summary}
+                    </div>
                   )}
-                  {job.state === "active" && (
-                    <button
-                      className="btn-ghost schedules-action-btn"
-                      data-tooltip={t("schedules.triggerNow")}
-                      onClick={() => handleTrigger(job.id)}
-                      disabled={actionInProgress === job.id}
-                    >
-                      <Zap size={14} />
-                    </button>
-                  )}
-                  <button
-                    className="btn-ghost schedules-action-btn schedules-action-danger"
-                    data-tooltip={t("schedules.delete")}
-                    onClick={() => setConfirmDelete(job.id)}
-                    disabled={actionInProgress === job.id}
-                  >
-                    <Trash size={14} />
-                  </button>
-                </div>
-              </div>
-
-              {job.prompt && (
-                <div className="schedules-card-prompt">{job.prompt}</div>
-              )}
-
-              <div className="schedules-card-meta">
-                <span>
-                  {t("schedules.nextRun")}: {formatTime(job.next_run_at)}
-                </span>
-                {job.last_run_at && (
-                  <span>
-                    {t("schedules.lastRun")}: {formatTime(job.last_run_at)}
-                    {job.last_status && job.last_status !== "ok" && (
-                      <span className="schedules-card-error-icon">
-                        <Alert size={12} />
+                  <div className="schedules-card-meta">
+                    <span>
+                      下次执行：
+                      {formatTime(
+                        schedule.nextRunAt
+                          ? new Date(schedule.nextRunAt).toISOString()
+                          : null,
+                      )}
+                    </span>
+                    <span>
+                      并发：
+                      {schedule.concurrencyPolicy === "skip"
+                        ? "跳过"
+                        : schedule.concurrencyPolicy === "queue"
+                          ? "排队"
+                          : "替换"}
+                    </span>
+                    {schedule.activeRuntimeRunId && <span>正在执行</span>}
+                    {schedule.pendingRuns > 0 && (
+                      <span>等待 {schedule.pendingRuns} 次</span>
+                    )}
+                    {latest && (
+                      <span>
+                        最近结果：{SCHEDULE_RUN_STATUS_LABEL[latest.status]}
                       </span>
                     )}
-                  </span>
-                )}
-                {job.repeat && job.repeat.times && (
-                  <span>
-                    {t("schedules.runCount")}: {job.repeat.completed}/
-                    {job.repeat.times}
-                  </span>
-                )}
-                {job.deliver.length > 0 &&
-                  !(job.deliver.length === 1 && job.deliver[0] === "local") && (
-                    <span>
-                      {t("schedules.deliveredTo")}: {job.deliver.join(", ")}
-                    </span>
-                  )}
-                {job.skills.length > 0 && (
-                  <span>
-                    {t("schedules.skills")}: {job.skills.join(", ")}
-                  </span>
-                )}
-              </div>
-
-              {job.last_error && (
-                <div className="schedules-card-error">{job.last_error}</div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
     </div>
   );

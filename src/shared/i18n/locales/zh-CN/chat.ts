@@ -106,6 +106,12 @@ export default {
     saveImage: "保存图片",
     close: "关闭",
   },
+  fileMenu: {
+    open: "打开文件",
+    copyPath: "复制路径",
+    copyContent: "复制文档内容",
+    reveal: "在资源管理器中打开",
+  },
   commands: {
     new: "开始新对话",
     clear: "清空对话历史",

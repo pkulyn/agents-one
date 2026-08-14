@@ -11,10 +11,12 @@ import {
   mintRun,
   mintRuntimeRun,
   patchRun,
-  isScratchRun,
+  isBlankTaskRun,
+  openNewTaskRunTransition,
   openSessionRunTransition,
   selectProfileRunTransition,
   findRunBySession,
+  findTaskCollaborationForConversation,
   cycleRunId,
   runIdAtOrdinal,
   usesLegacyHermesChat,
@@ -30,7 +32,11 @@ import QuickChatPanel from "./QuickChatPanel";
 import TaskCollaborationDialog, {
   type CollaborationTaskDraft,
 } from "./TaskCollaborationDialog";
-import type { TaskCollaborationProposal } from "../../../../shared/task-collaboration-proposals";
+import {
+  anchorTaskCollaborationCoordinator,
+  orderTaskCollaborationAssignments,
+  type TaskCollaborationProposal,
+} from "../../../../shared/task-collaboration-proposals";
 import TaskCollaborationWorkspace, {
   type CollaborationWorkspaceState,
 } from "./TaskCollaborationWorkspace";
@@ -43,6 +49,9 @@ import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
 import agentsOneLogo from "../../assets/agents-one-wordmark.svg";
+import agentsOneLogoOnDark from "../../assets/agents-one-wordmark-on-dark.svg";
+import { useTheme } from "../../components/ThemeProvider";
+import { THEMES } from "../../constants";
 import {
   ChatBubble,
   Clock,
@@ -102,6 +111,12 @@ function collaborationWorkspaceFromRecord(
 function Layout(): React.JSX.Element {
   const { t } = useI18n();
   const { openSettings } = useSettingsModal();
+  const { resolved: resolvedTheme } = useTheme();
+  const sidebarLogo = THEMES.some(
+    (theme) => theme.id === resolvedTheme && theme.appearance === "dark",
+  )
+    ? agentsOneLogoOnDark
+    : agentsOneLogo;
   const [view, setView] = useState<View>("chat");
   // Multiple conversations coexist (background sessions + multi-agent). Each is
   // a ChatRun; all are mounted, only the active one is shown. Profile switches
@@ -139,6 +154,7 @@ function Layout(): React.JSX.Element {
   // otherwise mount two tabs for the same session (the live check straddles an
   // await, so it can't rely on `runs` state alone).
   const resumingRef = useRef<Set<string>>(new Set());
+  const initialDefaultAdoptionCompleteRef = useRef(false);
   const sidebarTaskScrollRef = useRef<HTMLDivElement | null>(null);
 
   const activeRun = runs.find((r) => r.runId === activeRunId);
@@ -172,6 +188,10 @@ function Layout(): React.JSX.Element {
       ),
     [runtimeList],
   );
+  const defaultTaskRuntimeId =
+    defaultRuntime && !usesLegacyHermesChat(defaultRuntime)
+      ? defaultRuntime.id
+      : null;
   const currentSessionId =
     activeRun?.runtimeConversationId ?? activeRun?.sessionId ?? null;
   const loadingSessionIds = useMemo(
@@ -203,6 +223,44 @@ function Layout(): React.JSX.Element {
       cancelled = true;
     };
   }, [activeProfile, view]);
+
+  useEffect(() => {
+    const disposeStarted = window.hermesAPI.onTaskScheduleRunStarted?.(
+      (event) => {
+        if (event.profile !== activeProfile) return;
+        window.dispatchEvent(new Event("hermes-session-transcript-changed"));
+        toast.success(
+          `定时任务“${event.scheduleName}”已触发，智能体已开始接手并推进任务。`,
+        );
+      },
+    );
+    const dispose = window.hermesAPI.onTaskScheduleRunCompleted?.((event) => {
+      if (event.profile !== activeProfile) return;
+      window.dispatchEvent(new Event("hermes-session-transcript-changed"));
+      if (event.conversationId) {
+        window.dispatchEvent(
+          new CustomEvent("agents-one:runtime-conversation-updated", {
+            detail: {
+              profile: event.profile,
+              conversationId: event.conversationId,
+            },
+          }),
+        );
+      }
+      if (event.status === "succeeded") {
+        toast.success(
+          `定时任务“${event.scheduleName}”已完成，结果已写入对话。`,
+        );
+      } else {
+        toast.error(`定时任务“${event.scheduleName}”执行结束：${event.status}`);
+      }
+    });
+    return () => {
+      disposeStarted?.();
+      dispose?.();
+    };
+  }, [activeProfile]);
+
   const getAppearance = useCallback(
     (run: ChatRun) => {
       const runtime = run.runtimeId ? runtimeCatalog[run.runtimeId] : null;
@@ -534,20 +592,9 @@ function Layout(): React.JSX.Element {
     [activeRunId, goTo],
   );
 
-  const isBlankTaskRun = useCallback(
-    (run: ChatRun): boolean =>
-      !run.sessionId &&
-      !run.runtimeConversationId &&
-      !run.loading &&
-      !run.title &&
-      !run.seed &&
-      !run.runtimeSeed,
-    [],
-  );
-
   const mintDefaultTaskRun = useCallback(
     (folder?: string | null): ChatRun => {
-      if (!defaultRuntime || defaultRuntime.kind === "hermes") {
+      if (!defaultRuntime || usesLegacyHermesChat(defaultRuntime)) {
         return mintRun(activeProfile, undefined, folder ?? undefined);
       }
       return mintRuntimeRun({
@@ -555,40 +602,58 @@ function Layout(): React.JSX.Element {
         runtimeId: defaultRuntime.id,
         runtimeName: defaultRuntime.name,
         runtimeKind: defaultRuntime.kind,
-        runtimeWorkspace: folder ?? defaultRuntime.config.workspace,
+        runtimeWorkspace: folder ?? undefined,
       });
     },
     [activeProfile, defaultRuntime],
   );
 
+  // The shell has to mint one placeholder before the asynchronous Runtime
+  // catalogue resolves. Once the configured default is known, let it adopt
+  // that untouched placeholder so Hermes never remains as a second blank tab.
+  useEffect(() => {
+    if (initialDefaultAdoptionCompleteRef.current || runtimeList.length === 0) {
+      return;
+    }
+    initialDefaultAdoptionCompleteRef.current = true;
+
+    const active = runs.find((run) => run.runId === activeRunId);
+    if (!active || !isBlankTaskRun(active)) return;
+    const alreadyUsesDefault = defaultTaskRuntimeId
+      ? active.runtimeId === defaultTaskRuntimeId
+      : !active.runtimeId;
+    if (alreadyUsesDefault) return;
+
+    const run = mintDefaultTaskRun();
+    const next = openNewTaskRunTransition(runs, activeRunId, run);
+    setRuns(next.runs);
+    setActiveRunId(next.activeRunId);
+  }, [
+    runs,
+    activeRunId,
+    defaultTaskRuntimeId,
+    mintDefaultTaskRun,
+    runtimeList.length,
+  ]);
+
   const handleNewTask = useCallback(() => {
     const active = runs.find((r) => r.runId === activeRunId);
-    const defaultRuntimeTask =
-      defaultRuntime && defaultRuntime.kind !== "hermes"
-        ? defaultRuntime.id
-        : null;
     if (
       active &&
       isBlankTaskRun(active) &&
-      (defaultRuntimeTask
-        ? active.runtimeId === defaultRuntimeTask
+      (defaultTaskRuntimeId
+        ? active.runtimeId === defaultTaskRuntimeId
         : !active.runtimeId)
     ) {
       goTo("chat");
       return;
     }
     const run = mintDefaultTaskRun();
-    setRuns((prev) => [...prev, run]);
-    setActiveRunId(run.runId);
+    const next = openNewTaskRunTransition(runs, activeRunId, run);
+    setRuns(next.runs);
+    setActiveRunId(next.activeRunId);
     goTo("chat");
-  }, [
-    runs,
-    activeRunId,
-    defaultRuntime,
-    goTo,
-    isBlankTaskRun,
-    mintDefaultTaskRun,
-  ]);
+  }, [runs, activeRunId, defaultTaskRuntimeId, goTo, mintDefaultTaskRun]);
 
   const handleProjectFolderChoice = useCallback(
     async (mode: "new" | "existing") => {
@@ -613,53 +678,24 @@ function Layout(): React.JSX.Element {
         new CustomEvent("agents-one:project-folders-changed"),
       );
 
-      const active = runs.find((run) => run.runId === activeRunId);
-      if (active && isScratchRun(active)) {
-        setRuns((previous) =>
-          previous.map((run) =>
-            run.runId === active.runId
-              ? { ...run, contextFolder: folder }
-              : run,
-          ),
-        );
-      } else if (
-        active &&
-        isBlankTaskRun(active) &&
-        active.runtimeId &&
-        active.runtimeId === defaultRuntime?.id
-      ) {
-        setRuns((previous) =>
-          previous.map((run) =>
-            run.runId === active.runId
-              ? { ...run, runtimeWorkspace: folder }
-              : run,
-          ),
-        );
-      } else {
-        const run = mintDefaultTaskRun(folder);
-        setRuns((previous) => [...previous, run]);
-        setActiveRunId(run.runId);
-      }
+      const run = mintDefaultTaskRun(folder);
+      const next = openNewTaskRunTransition(runs, activeRunId, run);
+      setRuns(next.runs);
+      setActiveRunId(next.activeRunId);
       goTo("chat");
     },
-    [
-      runs,
-      activeRunId,
-      defaultRuntime?.id,
-      goTo,
-      isBlankTaskRun,
-      mintDefaultTaskRun,
-    ],
+    [runs, activeRunId, goTo, mintDefaultTaskRun],
   );
 
   const handleCreateProjectTask = useCallback(
     (folder: string): void => {
       const run = mintDefaultTaskRun(folder);
-      setRuns((previous) => [...previous, run]);
-      setActiveRunId(run.runId);
+      const next = openNewTaskRunTransition(runs, activeRunId, run);
+      setRuns(next.runs);
+      setActiveRunId(next.activeRunId);
       goTo("chat");
     },
-    [goTo, mintDefaultTaskRun],
+    [runs, activeRunId, goTo, mintDefaultTaskRun],
   );
 
   const handleOpenTaskCollaboration = useCallback(
@@ -684,46 +720,39 @@ function Layout(): React.JSX.Element {
       selectedProjectFolder?: string,
     ) => {
       const taskId = task.runtimeConversationId || task.sessionId || task.runId;
-      const proposedAssignments = proposal.assignments.some(
-        (assignment) => assignment.runtimeId === task.runtimeId,
-      )
-        ? proposal.assignments
-        : [
-            {
-              role: "项目负责人",
-              runtimeId: task.runtimeId,
-              responsibility: "在当前对话中完成编排、协调与最终验收",
-              context: "用户原始任务、全部角色交接与验收证据",
-            },
-            ...proposal.assignments,
-          ];
-      const assignments = proposedAssignments.map((assignment, index) => {
+      if (!task.runtimeId) return null;
+      const projectFolder =
+        selectedProjectFolder ||
+        task.runtimeWorkspace ||
+        task.contextFolder ||
+        undefined;
+      const proposedAssignments = anchorTaskCollaborationCoordinator(
+        proposal.assignments,
+        task.runtimeId,
+      );
+      const assignments = orderTaskCollaborationAssignments(
+        proposedAssignments,
+      ).map((assignment, index) => {
         const assignedRuntime = assignment.runtimeId
           ? runtimeCatalog[assignment.runtimeId]
           : undefined;
         return {
           ...assignment,
-          role:
-            assignment.runtimeId === task.runtimeId
-              ? "项目负责人"
-              : assignment.role,
           id: assignment.id || `role-${Date.now()}-${index}`,
           workspaceAccess:
             assignment.workspaceAccess ||
             (assignedRuntime?.location === "local"
               ? ("local_direct" as const)
-              : ("evidence_bundle" as const)),
+              : projectFolder
+                ? ("evidence_bundle" as const)
+                : undefined),
         };
       });
       const record = await window.hermesAPI.saveTaskCollaboration(
         {
           taskId,
           title: proposal.title || task.title || "当前任务的协作方案",
-          projectFolder:
-            selectedProjectFolder ||
-            task.runtimeWorkspace ||
-            task.contextFolder ||
-            undefined,
+          projectFolder,
           sourceRuntimeId: task.runtimeId,
           assignments,
           status: "active",
@@ -979,7 +1008,6 @@ function Layout(): React.JSX.Element {
             runtimeId: runtime.id,
             runtimeName: runtime.name,
             runtimeKind: runtime.kind,
-            runtimeWorkspace: runtime.config.workspace,
           });
       setRuns((current) => [...current, run]);
       setActiveRunId(run.runId);
@@ -1116,6 +1144,16 @@ function Layout(): React.JSX.Element {
             activeProfile,
           );
         if (runtimeConversation) {
+          const collaborationRecord = await window.hermesAPI
+            .listTaskCollaborations(activeProfile)
+            .then((records) =>
+              findTaskCollaborationForConversation(
+                records,
+                sessionId,
+                runtimeConversation.messages,
+              ),
+            )
+            .catch(() => undefined);
           const runtime = {
             id: runtimeConversation.runtimeId,
             name: runtimeConversation.runtimeName,
@@ -1138,10 +1176,22 @@ function Layout(): React.JSX.Element {
             runtimeKind: runtime.kind,
             title: runtimeConversation.title,
             runtimeConversationId: runtimeConversation.id,
+            runtimeActiveRunId: runtimeConversation.activeRuntimeRunId,
             runtimeSeed: runtimeConversation.messages,
             runtimeWorkspace: runtimeConversation.workspace,
+            runtimeAccessMode: runtimeConversation.accessMode,
             sessionId: runtimeConversation.runtimeSessionId ?? null,
           });
+          if (collaborationRecord) {
+            run.collaboration = {
+              assignments: collaborationRecord.assignments,
+              ...(collaborationRecord.projectFolder
+                ? { projectFolder: collaborationRecord.projectFolder }
+                : {}),
+              persistedTaskId: collaborationRecord.taskId,
+              status: collaborationRecord.status,
+            };
+          }
           setRuns(
             (prev) => openSessionRunTransition(prev, activeRunId, run).runs,
           );
@@ -1208,7 +1258,7 @@ function Layout(): React.JSX.Element {
           <img
             className="sidebar-logo"
             aria-label="Agents One"
-            src={agentsOneLogo}
+            src={sidebarLogo}
           />
           <button
             className="sidebar-collapse-toggle"
@@ -1380,9 +1430,11 @@ function Layout(): React.JSX.Element {
                   active={view === "chat" && run.runId === activeRunId}
                   profile={run.profile}
                   initialConversationId={run.runtimeConversationId ?? null}
+                  initialRuntimeRunId={run.runtimeActiveRunId ?? null}
                   initialRuntimeSessionId={run.sessionId}
                   initialMessages={run.runtimeSeed}
                   initialWorkspace={run.runtimeWorkspace}
+                  initialAccessMode={run.runtimeAccessMode}
                   collaboration={
                     run.collaboration
                       ? {

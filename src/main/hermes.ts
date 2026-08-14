@@ -3429,6 +3429,37 @@ async function waitForApiServerStopped(
   return false;
 }
 
+/** Stop one local profile gateway and wait until its process/API is gone. */
+export async function stopGatewayAndWait(
+  profile?: string,
+  timeoutMs = 5000,
+): Promise<boolean> {
+  const resolved = resolveProfile(profile);
+  const key = profileKey(profile);
+  const trackedProcess = gatewayProcesses.get(key);
+  const pid = trackedProcess?.pid || readPidFile(resolved);
+  stopGateway(profile, true);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    let processAlive = false;
+    if (trackedProcess) {
+      processAlive = isChildProcessAlive(trackedProcess);
+    } else if (pid) {
+      processAlive = pidIsAliveAs(pid, GATEWAY_IMAGE_PREFIXES);
+    }
+    if (!processAlive && !(await isApiServerReady(profile))) {
+      return true;
+    }
+    await delay(100);
+  }
+  const processAlive = trackedProcess
+    ? isChildProcessAlive(trackedProcess)
+    : pid
+      ? pidIsAliveAs(pid, GATEWAY_IMAGE_PREFIXES)
+      : false;
+  return !processAlive && !(await isApiServerReady(profile));
+}
+
 function gatewayRestartProfileKey(profile?: string): string {
   return profileKey(profile);
 }

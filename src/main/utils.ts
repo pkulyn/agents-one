@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "fs";
 import { HERMES_HOME } from "./installer";
+import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 const PROFILE_NAME_RE = /^[a-z0-9_][a-z0-9_-]{0,63}$/;
 export const PROFILE_NAME_ERROR =
@@ -211,6 +212,7 @@ export function escapeRegex(str: string): string {
  * Prevents ENOENT crashes when ~/.hermes has been deleted or doesn't exist yet.
  */
 export function safeWriteFile(filePath: string, content: string): void {
+  assertAgentsOneWritesAllowed();
   const dir = dirname(filePath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 

@@ -100,7 +100,7 @@ export default {
   empty: "(boş)",
   dataSection: "Veri",
   dataHint:
-    "Hermes yapılandırmanızı, oturumlarınızı, yeteneklerinizi ve belleğinizi dışa veya içe aktarın.",
+    "Agents One yapılandırmasını, projeleri, görevleri, sohbetleri ve iş birliği kayıtlarını dışa aktarın veya geri yükleyin.",
   backingUp: "Yedekleniyor...",
   exportBackup: "Yedek Dışa Aktar",
   importing: "İçe aktarılıyor...",
