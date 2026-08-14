@@ -64,7 +64,7 @@ Agents One Remote Gateway v1
 
 `plugin` 是 SDK 插件识别信息。桌面端连接测试会显示 `已识别 Agents One 插件 v...`；迁移期也兼容同结构的 `pluginInfo`，但新插件必须使用 `plugin`。
 
-只有在插件实际能够持续输出对应事件时，才可以声明 `reasoningSummaries`、`toolEvents`、`modelMetadata` 或 `usageMetadata`。最终答复、"已返回新的答复"、运行状态都不能伪装成思考事件。
+只有在插件实际能够持续输出对应事件时，才可以声明 `reasoningSummaries`、`toolEvents`、`modelMetadata` 或 `usageMetadata`。这些标志必须由 Adapter 配置在进程启动时稳定声明，不能根据已经观察到的事件动态 `false → true`。最终答复、"已返回新的答复"、运行状态都不能伪装成思考事件。
 
 ### 3.2 Run 状态快照
 
@@ -109,20 +109,21 @@ Agents One Remote Gateway v1
 - `createdAt` 使用 ISO 8601 或 Unix 毫秒。
 - 完成运行应至少保留 `reasoning.summary`、关键工具结果、真实产物和 `assistant.completed`，让用户在重开历史后仍能看懂过程。
 - `assistant.completed` 必须在 `run.completed` 前持久化，且 `data.text` 必须同时可由终态快照的 `output` 读取。桌面端会在终态缺少答复时额外轮询 3 次；仍缺失则显示明确的插件协议诊断，而不会把一个模糊的 `failed` 当成最终答复。
+- SDK 0.1.2 会先追加 `getRun()` 返回的 `events`，最后根据 `status` 生成 `run.completed` / `run.failed`。Connector 应通过标准 `events` 返回 `assistant.completed` 和工具/Workspace 证据，不再直接写入 SDK 内部 `record.journal`。
 - 不能提供过程事件时不要伪造；不声明 `eventStream` 即可，桌面端将继续显示最终答复。
 
 ## 4. 事件映射规则
 
-| 原生行为 | 标准事件 | 说明 |
-| --- | --- | --- |
-| 一段完成的用户可见推理摘要 | `reasoning.summary` | 只保留最后的完整摘要；不要发送逐 token 或不断扩写的快照。 |
-| 普通工具、浏览器、代码执行 | `tool.started` / `tool.completed` / `tool.failed` | `kind: tool` 或 `terminal`；仅携带摘要。 |
-| 技能加载、技能执行 | `tool.*` | `kind: skill`，`name` 为技能名。 |
-| MCP 调用 | `tool.*` | `kind: mcp`，例如 `powermem_recall`。 |
-| 受控工作区 list/read/write/move/delete | `workspace.*` | 仅传项目相对路径；删除以桌面确认后的结果为准。 |
-| 创建文件、代码变更、报告、测试结果 | `artifact.created` | 必须存在可核验交付物，普通文本答复不创建 artifact。 |
-| 调用常驻智能体或完成交接 | `handoff.created` / `handoff.completed` | 用于协作时间线。 |
-| 最终答复 | `assistant.completed` | 放入 `data.text`，不要重复作为 artifact。 |
+| 原生行为                               | 标准事件                                          | 说明                                                      |
+| -------------------------------------- | ------------------------------------------------- | --------------------------------------------------------- |
+| 一段完成的用户可见推理摘要             | `reasoning.summary`                               | 只保留最后的完整摘要；不要发送逐 token 或不断扩写的快照。 |
+| 普通工具、浏览器、代码执行             | `tool.started` / `tool.completed` / `tool.failed` | `kind: tool` 或 `terminal`；仅携带摘要。                  |
+| 技能加载、技能执行                     | `tool.*`                                          | `kind: skill`，`name` 为技能名。                          |
+| MCP 调用                               | `tool.*`                                          | `kind: mcp`，例如 `powermem_recall`。                     |
+| 受控工作区 list/read/write/move/delete | `workspace.*`                                     | 仅传项目相对路径；删除以桌面确认后的结果为准。            |
+| 创建文件、代码变更、报告、测试结果     | `artifact.created`                                | 必须存在可核验交付物，普通文本答复不创建 artifact。       |
+| 调用常驻智能体或完成交接               | `handoff.created` / `handoff.completed`           | 用于协作时间线。                                          |
+| 最终答复                               | `assistant.completed`                             | 放入 `data.text`，不要重复作为 artifact。                 |
 
 ## 5. 各智能体插件要点
 

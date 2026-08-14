@@ -32,6 +32,35 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+const WORKSPACE_OPERATIONS = new Set([
+  "list",
+  "read",
+  "write",
+  "move",
+  "delete",
+]);
+
+function sanitizeWorkspaceOperation(value) {
+  const operation = nonEmptyString(value)?.toLowerCase();
+  return operation && WORKSPACE_OPERATIONS.has(operation)
+    ? operation
+    : undefined;
+}
+
+function sanitizeWorkspacePath(value) {
+  const path = nonEmptyString(value);
+  if (!path) return undefined;
+  const normalized = path.replaceAll("\\", "/");
+  if (
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:\//.test(normalized) ||
+    normalized.split("/").includes("..")
+  ) {
+    return undefined;
+  }
+  return sanitizeEventText(normalized, 2048);
+}
+
 export function sanitizeEventText(value, maxLength = 12000) {
   const text = nonEmptyString(value);
   if (!text) return undefined;
@@ -39,20 +68,37 @@ export function sanitizeEventText(value, maxLength = 12000) {
     (result, pattern) => result.replace(pattern, "[已脱敏]"),
     text,
   );
-  return sanitized.length > maxLength ? `${sanitized.slice(0, maxLength)}\n[内容已截断]` : sanitized;
+  return sanitized.length > maxLength
+    ? `${sanitized.slice(0, maxLength)}\n[内容已截断]`
+    : sanitized;
 }
 
 function sanitizeTool(tool) {
-  if (!tool || typeof tool !== "object" || !nonEmptyString(tool.name)) return undefined;
-  const kind = ["tool", "skill", "mcp", "terminal", "workspace"].includes(tool.kind)
+  if (!tool || typeof tool !== "object" || !nonEmptyString(tool.name))
+    return undefined;
+  const kind = ["tool", "skill", "mcp", "terminal", "workspace"].includes(
+    tool.kind,
+  )
     ? tool.kind
     : "tool";
+  const duration = Number.isFinite(tool.duration)
+    ? Math.max(0, Math.floor(tool.duration))
+    : undefined;
+  const durationMs = Number.isFinite(tool.durationMs)
+    ? Math.max(0, Math.floor(tool.durationMs))
+    : undefined;
   return {
     ...(nonEmptyString(tool.callId) ? { callId: tool.callId.trim() } : {}),
     name: tool.name.trim(),
     kind,
-    ...(sanitizeEventText(tool.inputSummary) ? { inputSummary: sanitizeEventText(tool.inputSummary) } : {}),
-    ...(sanitizeEventText(tool.outputSummary) ? { outputSummary: sanitizeEventText(tool.outputSummary) } : {}),
+    ...(sanitizeEventText(tool.inputSummary)
+      ? { inputSummary: sanitizeEventText(tool.inputSummary) }
+      : {}),
+    ...(sanitizeEventText(tool.outputSummary)
+      ? { outputSummary: sanitizeEventText(tool.outputSummary) }
+      : {}),
+    ...(duration !== undefined ? { duration } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
   };
 }
 
@@ -68,8 +114,12 @@ function sanitizeArtifact(artifact) {
       ? { size: Math.floor(artifact.size) }
       : {}),
     ...(nonEmptyString(artifact.path) ? { path: artifact.path.trim() } : {}),
-    ...(nonEmptyString(artifact.sha256) ? { sha256: artifact.sha256.trim() } : {}),
-    ...(sanitizeEventText(artifact.summary) ? { summary: sanitizeEventText(artifact.summary) } : {}),
+    ...(nonEmptyString(artifact.sha256)
+      ? { sha256: artifact.sha256.trim() }
+      : {}),
+    ...(sanitizeEventText(artifact.summary)
+      ? { summary: sanitizeEventText(artifact.summary) }
+      : {}),
   };
 }
 
@@ -88,24 +138,49 @@ export class EventJournal {
 
   append(rawEvent) {
     if (!rawEvent || !EVENT_TYPES.has(rawEvent.type)) return undefined;
-    const id = nonEmptyString(rawEvent.id) || nonEmptyString(rawEvent.eventId) || `evt_${randomUUID()}`;
+    const id =
+      nonEmptyString(rawEvent.id) ||
+      nonEmptyString(rawEvent.eventId) ||
+      `evt_${randomUUID()}`;
     if (this.ids.has(id)) return this.events.find((event) => event.id === id);
-    const data = rawEvent.data && typeof rawEvent.data === "object" ? rawEvent.data : rawEvent;
+    const data =
+      rawEvent.data && typeof rawEvent.data === "object"
+        ? rawEvent.data
+        : rawEvent;
+    const workspaceEvent = rawEvent.type.startsWith("workspace.");
+    const operation = workspaceEvent
+      ? sanitizeWorkspaceOperation(data.operation)
+      : undefined;
+    const path = workspaceEvent ? sanitizeWorkspacePath(data.path) : undefined;
     const event = {
       id,
       type: rawEvent.type,
-      sequence: Number.isFinite(rawEvent.sequence) ? rawEvent.sequence : this.nextSequence,
+      sequence: Number.isFinite(rawEvent.sequence)
+        ? rawEvent.sequence
+        : this.nextSequence,
       createdAt: rawEvent.createdAt || new Date().toISOString(),
       data: {
-        ...(sanitizeEventText(data.summary) ? { summary: sanitizeEventText(data.summary) } : {}),
-        ...(sanitizeEventText(data.text) ? { text: sanitizeEventText(data.text) } : {}),
+        ...(sanitizeEventText(data.summary)
+          ? { summary: sanitizeEventText(data.summary) }
+          : {}),
+        ...(sanitizeEventText(data.text)
+          ? { text: sanitizeEventText(data.text) }
+          : {}),
         ...(sanitizeEventText(data.reasoningSummary)
           ? { reasoningSummary: sanitizeEventText(data.reasoningSummary) }
           : {}),
         ...(sanitizeTool(data.tool) ? { tool: sanitizeTool(data.tool) } : {}),
-        ...(sanitizeArtifact(data.artifact) ? { artifact: sanitizeArtifact(data.artifact) } : {}),
-        ...(data.model && typeof data.model === "object" ? { model: data.model } : {}),
-        ...(data.usage && typeof data.usage === "object" ? { usage: data.usage } : {}),
+        ...(sanitizeArtifact(data.artifact)
+          ? { artifact: sanitizeArtifact(data.artifact) }
+          : {}),
+        ...(operation ? { operation } : {}),
+        ...(path ? { path } : {}),
+        ...(data.model && typeof data.model === "object"
+          ? { model: data.model }
+          : {}),
+        ...(data.usage && typeof data.usage === "object"
+          ? { usage: data.usage }
+          : {}),
       },
     };
     this.ids.add(id);
@@ -127,13 +202,19 @@ export class EventJournal {
   }
 }
 
-export function eventStreamCapability(transport = "poll") {
+export function eventStreamCapability(transport = "poll", support = {}) {
+  const normalizedTransport = ["sse", "poll", "websocket"].includes(transport)
+    ? transport
+    : "poll";
+  const declared = support && typeof support === "object" ? support : {};
   return {
     protocol: EVENT_STREAM_PROTOCOL,
-    transport,
-    reasoningSummaries: true,
-    toolEvents: true,
-    modelMetadata: true,
-    usageMetadata: true,
+    transport: normalizedTransport,
+    ...(declared.reasoningSummaries === true
+      ? { reasoningSummaries: true }
+      : {}),
+    ...(declared.toolEvents === true ? { toolEvents: true } : {}),
+    ...(declared.modelMetadata === true ? { modelMetadata: true } : {}),
+    ...(declared.usageMetadata === true ? { usageMetadata: true } : {}),
   };
 }

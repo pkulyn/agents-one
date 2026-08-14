@@ -29,7 +29,7 @@ D:\efunds\nodejs\npm.cmd pack
 生成的文件类似：
 
 ```text
-agents-one-plugin-sdk-0.1.1.tgz
+agents-one-plugin-sdk-0.1.2.tgz
 ```
 
 在 Hers Relay 主机上，使用 Node.js 20 或更高版本，以当前 Connector 的运行用户执行：
@@ -37,7 +37,7 @@ agents-one-plugin-sdk-0.1.1.tgz
 ```powershell
 node --version
 npm --version
-npm install .\agents-one-plugin-sdk-0.1.1.tgz
+npm install .\agents-one-plugin-sdk-0.1.2.tgz
 npx agents-one-plugin-verify
 ```
 
@@ -107,7 +107,7 @@ async uploadArtifact(input) {
 
 ### 3.3 把输出文件发布为真实 Artifact
 
-SDK v0.1.1 会在 `startRun` 上下文中提供 `publishArtifact`。Connector 必须把它包装成 Hers/Hermes 智能体可调用的结构化工具；工具只读取本次运行的受控输出目录，并把真实字节交给 SDK：
+SDK v0.1.2 会在 `startRun` 上下文中提供 `publishArtifact`。Connector 必须把它包装成 Hers/Hermes 智能体可调用的结构化工具；工具只读取本次运行的受控输出目录，并把真实字节交给 SDK：
 
 ```js
 async startRun(input, { emit, publishArtifact }) {
@@ -171,6 +171,19 @@ return {
 ### 3.5 保留真实事件
 
 至少保留并返回以下事件：
+
+在 Adapter 启动配置中稳定声明已经实现的事件能力，不要根据本进程是否观察到过事件动态切换：
+
+```js
+capabilities: {
+  eventStream: {
+    reasoningSummaries: true,
+    toolEvents: true,
+    modelMetadata: true,
+    usageMetadata: true,
+  },
+}
+```
 
 ```js
 emit({

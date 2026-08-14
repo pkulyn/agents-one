@@ -7,7 +7,7 @@ import {
 } from "./event-stream.mjs";
 
 export const AGENTS_ONE_PLUGIN_ID = "agents-one-plugin-sdk";
-export const AGENTS_ONE_PLUGIN_VERSION = "0.1.1";
+export const AGENTS_ONE_PLUGIN_VERSION = "0.1.2";
 
 function json(response, status, payload) {
   response.writeHead(status, {
@@ -23,9 +23,17 @@ function error(response, status, code, message) {
   });
 }
 
-async function readJson(request) {
+export async function readJsonBody(request) {
   const parts = [];
-  for await (const part of request) parts.push(part);
+  for await (const part of request) {
+    parts.push(
+      Buffer.isBuffer(part)
+        ? part
+        : part instanceof Uint8Array
+          ? Buffer.from(part)
+          : Buffer.from(String(part), "utf8"),
+    );
+  }
   const text = Buffer.concat(parts).toString("utf8");
   return text ? JSON.parse(text) : {};
 }
@@ -127,6 +135,11 @@ export function createRemoteGatewayPlugin({
     adapter.capabilities && typeof adapter.capabilities === "object"
       ? adapter.capabilities
       : {};
+  const declaredEventStream =
+    declaredCapabilities.eventStream &&
+    typeof declaredCapabilities.eventStream === "object"
+      ? declaredCapabilities.eventStream
+      : {};
 
   function artifactPublisher(record) {
     return async (input) => {
@@ -195,7 +208,6 @@ export function createRemoteGatewayPlugin({
       publishArtifact,
     });
     if (!update || typeof update !== "object") return;
-    recordStatus(record, update.status);
     if (update.output) record.output = update.output;
     if (update.error) record.error = String(update.error);
     if (Array.isArray(update.artifacts)) {
@@ -204,6 +216,10 @@ export function createRemoteGatewayPlugin({
     if (update.model) record.model = update.model;
     if (update.usage) record.usage = update.usage;
     for (const event of update.events || []) record.journal.append(event);
+    // Provider evidence must be durable before the SDK synthesizes the
+    // terminal run event. Otherwise a successful refresh can persist
+    // run.completed ahead of assistant.completed/tool/workspace evidence.
+    recordStatus(record, update.status);
   }
 
   const server = createServer(async (request, response) => {
@@ -245,7 +261,7 @@ export function createRemoteGatewayPlugin({
               upload: Boolean(adapter.uploadArtifact),
               download: true,
             },
-            eventStream: eventStreamCapability("poll"),
+            eventStream: eventStreamCapability("poll", declaredEventStream),
           },
           limits: {
             maxConcurrentRuns: 2,
@@ -264,7 +280,7 @@ export function createRemoteGatewayPlugin({
             "Artifact upload is unsupported.",
           );
         }
-        const input = await readJson(request);
+        const input = await readJsonBody(request);
         const contentBase64 =
           typeof input.contentBase64 === "string"
             ? input.contentBase64
@@ -362,7 +378,7 @@ export function createRemoteGatewayPlugin({
         return json(response, 200, payload);
       }
       if (request.method === "POST" && url.pathname === "/runs") {
-        const input = await readJson(request);
+        const input = await readJsonBody(request);
         if (!validRunInput(input))
           return error(response, 422, "invalid_run", "input.text is required.");
         const id = `run_${randomUUID()}`;

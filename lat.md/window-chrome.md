@@ -20,9 +20,15 @@ Visually the strip is a Safari-style tab bar: the strip uses the darker `--bg-se
 
 The bar always renders so it is always a drag area, but chips stay hidden only while the sole conversation is still a blank scratch chat.
 
-Chips show when more than one run is open, any run is loading, or any run has a session id/title (`showChips` in [[src/renderer/src/screens/Layout/ActiveSessionsBar.tsx#ActiveSessionsBar]]). When chips show, a browser-style new-tab **"+"** button (`.active-session-new`, `no-drag`) trails them and calls `onNew` → `handleNewChat` in [[src/renderer/src/screens/Layout/Layout.tsx]] to open a fresh conversation.
+Chips show when more than one run is open, any run is loading, or any run has a session id/title (`showChips` in [[src/renderer/src/screens/Layout/ActiveSessionsBar.tsx#ActiveSessionsBar]]). When chips show, a browser-style new-tab **"+"** button (`.active-session-new`, `no-drag`) trails them and calls `onNew` → `handleNewTask` in [[src/renderer/src/screens/Layout/Layout.tsx]] to open a fresh conversation.
 
 Because the bar doubles as the drag strip, [[src/renderer/src/screens/Layout/Layout.tsx]] renders it as the first child of `.content`; the verify-warning banner (when shown) sits just below it, clear of the drag layer.
+
+## New tasks adopt the default agent
+
+The shell initially has one blank legacy Hermes placeholder while the asynchronous Runtime catalogue loads, but it must not survive beside a configured default Runtime.
+
+[[src/renderer/src/screens/Layout/chatRuns.ts#openNewTaskRunTransition]] replaces the active untouched placeholder with the new default-agent task and appends only when the active tab already has content or work. [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] applies the transition as soon as the default Runtime resolves and from sidebar, title-bar, and project task creation paths. This prevents an unused Hermes “New conversation” tab from appearing beside the default agent while preserving every real conversation.
 
 ## Follow-us modal
 

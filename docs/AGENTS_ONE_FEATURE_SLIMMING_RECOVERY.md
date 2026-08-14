@@ -2,6 +2,25 @@
 
 本记录用于在删除旧独立管理界面前固化可恢复基线，确保任务对话、任务内多智能体协作、运行时配置和历史数据可在回归失败时及时恢复。
 
+## 2026-08-13：Task Center 执行器退役补充
+
+定时任务已经收敛为普通 Runtime 任务对话，独立 Task Center 不再有 UI、IPC、Preload 或现役业务调用。当前代码进一步删除 Task Center 主进程执行器、共享类型、专用测试、孤儿样式及旧 U1 回放脚本；调度只保留一套 `AgentRuntimeRun` 状态机。
+
+删除前完成了真实数据审计：默认 Profile 的 `task-schedules.json` 为 v4、0 条计划、0 条旧 Task Center 引用；`task-center.json` 有 19 条历史任务但 0 条 `queued/running`，其中 10 条为历史 `review_required`，3 个受管 worktree 仍被历史记录引用。代码退役不等于数据清理：现有 `task-center.json` 和 `desktop/worktrees` 均不删除、不改名、不迁移、不重写。
+
+本次额外快照目录：
+
+```text
+D:\Agent Console\artifacts\agents-one-pre-task-center-retirement-20260813
+```
+
+| 文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `task-center.json` | 6,662,348 | `0865F1CC909D4408B123A92EEE8649F9F5474E3E82E792DBF9A7B9653C658AA4` |
+| `task-schedules.json` | 28 | `737B35CF5E7F3D4C5E40E198BE2EF15D10B5EAE2D3725F2B79802C761871E75B` |
+
+`task-center.json` 现在是冻结的回退档案，现役程序不再读取或写入。计划存储升级为 v5：读取到旧 `activeTaskCenterTaskId` 时不再把它视为活动运行；旧 `queued/running` 记录被幂等显示为“旧执行引擎无法恢复，请重新触发”，已完成记录的状态、摘要、对话链接和 `taskCenterTaskId` 指针原样保留。
+
 ## 变更边界
 
 本轮计划退役以下旧独立管理功能：
@@ -15,7 +34,7 @@
 - 左侧项目文件夹分组和任务对话历史。
 - 任务对话内的多智能体协作配置、顺序编排、人工介入、真实产物与验收。
 - Runtime 注册、凭据引用、Gateway v1、Workspace Grant、图片/文件产物和定时任务。
-- Task Center 的最小后台执行存储，供现有定时任务继续创建、取消和对账 Runtime Run。
+- 2026-08-06 阶段曾保留的 Task Center 后台执行存储已于 2026-08-13 退役；只保留历史 JSON 和关联 worktree 作为冻结回退资料。
 
 ## 删除前代码基线
 
@@ -90,12 +109,18 @@ Copy-Item -LiteralPath (Join-Path $backup 'task-collaborations.json') -Destinati
 1. Node/Web TypeScript 检查通过。
 2. 任务对话可创建、发送、恢复，任务内多智能体协作入口和已保存分工仍可使用。
 3. Hermes Gateway v1、图片/文件产物、Workspace Grant 和本地 Runtime 事件链路不受影响。
-4. 定时任务仍可创建执行记录、取消和对账；后台仍保留受管工作树路径校验与安全清理函数及其单元测试。
-5. 被删除的 Task Center、Project Center、Kanban 页面、IPC 和文案没有残余入口。
+4. 定时任务仍可创建普通 Runtime 对话、显示实时进度、取消和对账；旧 Task Center 活动标记不会阻塞编辑、删除或重新触发。
+5. 被删除的 Task Center、Project Center、Kanban 页面、IPC、执行器和专属文案没有残余入口；历史数据文件哈希不变。
 
 任何一项出现数据丢失、Runtime 不可用、协作记录无法恢复或任务对话失败，立即停止后续删除并回到基线标签或 revert 最近提交。
 
 ## 删除完成后的验证记录
+
+### 2026-08-13 执行器退役
+
+- Task Center 退役边界、调度和管理页定向回归 20/20，扩展调度/会话回归 26/26；全量 Vitest 201 个文件、1973 项通过、13 项跳过。
+- Node/Web TypeScript、Electron Vite 生产构建、`lat check` 与 `git diff --check` 通过；生产源码没有 Task Center 执行器、共享类型、IPC/Preload 或页面导入残留。
+- 删除后再次计算源 `task-center.json` 和本次快照哈希，两者仍为 `0865F1CC909D4408B123A92EEE8649F9F5474E3E82E792DBF9A7B9653C658AA4`；没有删除、覆盖或迁移用户历史数据与关联 worktree。
 
 - `npm.cmd run build` 通过，其中包含 Node/Web TypeScript 检查和 Electron Vite 生产构建。
 - 全量 Vitest 输出 189 个测试文件通过、1885 项通过、13 项跳过；测试汇总已完成后，外层 PowerShell 因遗留子进程未及时退出触发 180 秒超时，不存在失败用例。

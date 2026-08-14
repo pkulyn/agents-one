@@ -1,5 +1,78 @@
 # Agents One 项目进展日志
 
+## 2026-08-13：Agents One 可迁移备份与恢复
+
+- 产品边界：设置页“数据”已从 Hermes CLI 的导入导出切换为 Agents One 自有 `*.agents-one-backup`。备份覆盖配置档案、项目登记、任务/定时任务、Runtime/Quick Chat/原生会话、协作记录、SQLite 状态、记忆、技能、附件和 Runtime 输入证据；项目实际文件、worktree、日志、缓存与安装引擎不进入归档。
+- 凭据边界：`.env`、账户/认证/钱包文件、Token、API Key、SSH keyPath、代理和原始 `config.yaml` 不导出。安全配置采用白名单迁移并合并进目标配置，保留目标机凭据与未知键；新的或变化的远程端点默认停用并要求重新授权，本机可执行路径/工作目录变化时清空并停用。
+- 数据完整性：归档使用版本化 manifest、逐文件大小与 SHA-256；SQLite 通过 `VACUUM INTO` 生成含已提交 WAL 的单文件快照。导出先在目标旁生成临时归档并走完整导入校验，成功后才原子替换旧备份。
+- 恢复安全：导入先拒绝路径穿越、链接/特殊文件、Windows 设备名与 ADS、超限归档、清单外文件、哈希错误、畸形核心 JSON、不安全配置和损坏 SQLite。恢复按“备份内托管数据快照”清理目标残留，同时保留目标独有凭据、未知文件及备份外配置档案；写前建立持久 `.restore-transaction` 日志和回滚快照，进程内失败立即恢复，断电/崩溃后会在打开窗口或写连接前自动回放，回滚失败保留救援目录。
+- 运行一致性：应用取得 Electron 单实例锁，导出等待计划调度写入结束且拒绝活动聊天/Runtime；恢复先销毁旧 Renderer 形成全局写入闸门，再停止计划、活动运行、Dashboard、SSH 隧道、所有 Profile Gateway 和数据库连接，核心文件写入也统一受进程内闸门保护。迁移后的计划任务统一停用并清空 pending/active run，聊天不保留旧进程 run id；`desktop-staging` 只重绑定明确的附件 path，聊天正文保持原样；完成或中途失败后自动重启，避免其他实例、异步尾写或旧内存状态覆盖新快照。
+- 兼容补齐：Quick Chat 从仅 localStorage 升级为按 Profile 的主进程持久化，并一次性迁移旧本地数据，确保快速聊天也能进入备份。Renderer、Preload、IPC 和中英文文案均改用结构化预检/确认/结果契约，不再声称备份 Hermes。
+- 项目记忆：PowerMem 健康检查与长期事实写入成功，新记忆 ID 为 `743037391287091200`；即时语义复核仍优先召回既有备份/恢复事实，符合 `infer` 后台索引尚未完成的表现，本地进展日志与设计文档继续作为当前权威记录。
+- 自动验证：备份专项 18/18 通过，覆盖真实 SQLite/WAL、凭据金丝雀、路径与归档攻击、哈希/JSON/SQLite 损坏、配置合并、远程重新授权、计划停用、托管快照删除、跨机附件重绑定、prepared/committed 崩溃日志恢复和完整往返；全量 Vitest 203 个文件、2006 项通过、13 项跳过，Node/Web TypeScript、Electron Vite 生产构建、`lat check` 与 `git diff --check` 全部通过。独立安全复核确认无遗留 P0/P1。完整设计和安全边界见 [Agents One 备份恢复设计](../lat.md/backup-recovery.md)。
+
+## 2026-08-13：Task Center 执行器完整退役
+
+- 全量可达性审计确认 Task Center 已无 Layout、IPC、Preload 或现役业务消费者；新建任务、项目任务和定时任务都直接进入普通 Runtime 对话。生产代码唯一残留是旧计划的读取、取消和结果回填分支，继续保留会形成双状态机与 5 秒轮询大文件的回归风险，因此 Task Center 已可判定为冗余执行层。
+- 删除 `src/main/task-center.ts`、共享 Task Center 类型、专用单元测试和约 700 行孤儿样式，同时删除只验证旧 Project/Task Center 导航的 U1 历史脚本。定时任务只调用 `start/get/cancelAgentRuntimeTask`；设置页也移除了“任务中心选择实现”的过期 Pi 权限说明。
+- 计划存储升级为 v5。旧 `activeTaskCenterTaskId` 不再是活动信号，也不会阻塞编辑、删除或重新触发；旧 `queued/running` 计划运行被幂等收口为明确失败并提示重新触发。已经完成的旧运行继续保留原状态、摘要、对话链接和历史指针，但程序不再打开 Task Center 数据库。
+- 数据保护审计覆盖当前默认 Profile：`task-schedules.json` 为空且没有旧引用；`task-center.json` 有 19 条历史记录、0 条 `queued/running`，其中 10 条 `review_required`，3 个历史 worktree 仍被引用。当前文件及 worktree 均未删除或重写；最新 6,662,348 字节历史库已复制到 `D:\Agent Console\artifacts\agents-one-pre-task-center-retirement-20260813`，源文件和快照 SHA-256 均为 `0865F1CC909D4408B123A92EEE8649F9F5474E3E82E792DBF9A7B9653C658AA4`。
+- 性能结论保持克制：当前无旧引用时正常调度本来就不会读取历史库，所以即时提速有限；核心收益是消除约 1,500 行死代码/测试/样式、双持久化和潜在的主线程大文件解析卡顿。任务对话内多智能体协作属于现役能力，与 Task Center 无关，完整保留。
+- 项目记忆已同步更新 `lat.md/main-process.md`；PowerMem 健康检查和写入成功，新长期记忆 ID 为 `742997757165305856`。两次即时语义复核仍优先召回 8 月 6 日/12 日旧阶段事实，属于 `infer` 后台索引尚未完成，本地日志和恢复记录继续作为当前权威事实源。
+- 自动验证：Task Center 退役边界、计划主进程和管理页首轮定向回归 3 个文件 20/20 通过，扩展调度/会话回归 26/26 通过；全量 Vitest 201 个文件、1973 项通过、13 项跳过。Node/Web TypeScript、Electron Vite 生产构建、`lat check` 和 `git diff --check` 全部通过。一次 99 项并行回归中的既有 RuntimeChat 时序用例偶发超时，单项复跑通过，随后全量回归也通过。
+
+## 2026-08-12：定时任务收敛为普通 Runtime 任务对话
+
+- 体验根因：旧调度会先保存一条只有用户提示词的 Runtime 对话，再把真正执行交给内部 Task Center；打开对话后没有可追踪的 Runtime run，只有等 30 秒调度轮询发现终态才一次性追加结果，因此思考、工具与进度长期空白，并存在两套任务状态和频繁全量对账开销。
+- 执行模型：新调度直接调用与新建任务相同的 `startAgentRuntimeTask(..., conversation=true)`，继续使用用户配置的 Pi/Claude Code/Codex 原生技能、MCP、插件、Hooks、Shell、工作目录与文件权限；`runtimeRunId` 同时写入计划执行和持久 Runtime 对话，不再为新执行创建 Task Center 任务。
+- 实时对话：Runtime 对话新增 `activeRuntimeRunId`。打开已触发的计划对话时，RuntimeChat 立即进入 loading 状态并恢复同一运行的轮询，沿用普通任务的思考、工具、进度、取消、最终回复和 session 持久化；终态清除活动运行字段。后台对账仍作为无人打开对话时的幂等结果投递兜底，避免重复回复。
+- 通知与性能：Windows 系统通知由“执行完成后”前移到触发瞬间，正文为“XXX定时任务已触发，智能体已开始接手并推进任务”；完成事件只刷新页面。调度对账从 30 秒缩短到 5 秒，但新任务不再每轮读取 Task Center 全表，仅存在旧记录需要恢复时才加载，减少运行中卡顿来源。
+- 兼容与恢复：旧 `activeTaskCenterTaskId/taskCenterTaskId` 继续只读兼容和一次性结果回填，不迁移、不删除历史；应用中途重启导致进程内 Runtime run 丢失时，计划和对话明确记录失败并允许用户在同一对话重发，不再永久停留“执行中”。数据变更仅新增可选字段，旧文件可直接读取，回退代码会忽略未知字段。
+- 安全评估：未修改 Runtime id、智能体配置、凭据、头像名称、项目归属或既有消息；消费者仅限计划存储、Runtime 对话存储、Layout 恢复、RuntimeChat 与调度通知。主要风险为重复终态投递、活动状态不清除和旧记录失联，已通过 run-id 幂等、终态清除及遗留回填路径约束。
+- 项目记忆：长期方案已明确“普通任务、项目任务和本地定时任务共享终端原生能力契约”；PowerMem 健康检查、写入与语义检索均成功，新记忆 ID 为 `742678542881390592`。
+- 自动验证：调度、会话存储、RuntimeChat 与管理页定向回归 4 个文件 63/63 通过，覆盖启动事件、直接 Runtime 并发、实时恢复、后台/前台终态竞争幂等和重启失联；Node/Web TypeScript 检查、生产构建与 `lat check` 通过。变更文件 ESLint 为 0 error，仅保留代码库既有的 RuntimeChat `send` 与 Schedules 弹窗 Hook warning。
+
+## 2026-08-12：定时任务结果投递到可见对话
+
+- 现场证据确认“定时任务测试”并非未触发：计划时间为 11:20，调度器在 11:20:18 创建 Pi 运行，Pi 在 11:22 前生成完整问候和自我介绍，11:22:48 被对账为成功；但 `runtime-conversations.json` 未更新，因此用户侧没有任何可见回复。
+- 每轮计划执行现在在派发前创建独立 Runtime 对话，并将 `conversationId` 写入该轮 `TaskScheduleRun`；终态对账把经过共享结构化输出解析器提取的最终回复（或明确失败信息）、执行事件和产物追加到同一对话，不再把 JSONL 前 500 字误当结果。
+- 主进程完成事件通过受控 Preload 通道通知 Renderer；当前窗口显示完成/失败提示，窗口未聚焦时显示系统通知。定时任务页每 10 秒自动刷新并在完成事件到达时立即刷新，任务卡展示两行结果摘要和“打开最近执行对话”入口。
+- 兼容旧数据：每条本地计划只回填最近一次已完成但没有 `conversationId` 的执行，恢复用户这次测试结果；回填不发送过期通知，重复对账不重复追加消息。远程旧记录仍不派发、不迁移。
+- 自动验证：计划调度、会话持久化、结果解析和管理页 4 个测试文件共 17/17 通过，覆盖新执行投递、完成事件、管理页打开对话、旧执行一次性恢复及幂等性；Node/Web 类型检查通过。
+
+## 2026-08-12：新建任务只打开默认智能体
+
+- 根因：Shell 在 Runtime 目录异步加载前先创建一个空 Hermes 占位；默认智能体解析为 Pi/Codex/Claude 等 Runtime 后，“新建任务”旧逻辑继续追加新 Runtime 会话，没有替换未使用的 Hermes 占位，因此顶部同时出现两个“新对话”。
+- 修复：新增统一的新任务状态转换，空且未运行的当前占位由默认智能体原位接管；已有会话、历史内容和运行中任务一律保留并正常新增标签。默认 Runtime 解析完成后会主动接管初始占位，侧栏“新建任务”、标题栏“+”和项目任务入口复用同一规则。
+- 同源边界：只有内置 Hermes 使用旧 Profile 对话；用户自定义 Hermes Runtime 若被设为默认，继续保留自己的 Runtime id、连接和持久化通道。
+- 改动限于 Renderer 会话状态转换和测试，未修改默认智能体的 localStorage 键、Runtime 注册、配置文件、历史记录或主进程传输。
+- 验证：Layout 会话状态、标签栏和默认智能体选择 3 个测试文件共 25/25 通过，Web 类型检查、生产构建、目标文件 ESLint、Prettier、`lat.md check` 与 `git diff --check` 均通过；在真实开发界面以已配置默认 `pi` 复核，页面加载后及连续点击“新建任务”后均保持 1 个 Runtime 对话、0 个额外标签、无 Hermes 会话残留。
+
+## 2026-08-12：定时任务收敛为本地 CLI 能力
+
+- 功能边界调整：桌面定时任务只允许已启用且 `location=local`、`transport=cli` 的 Runtime。主进程在新建、重新启用、手动触发和后台轮询四处执行同一校验，非本地 CLI 任务不会被派发。
+- 远程能力退役：定时任务页不再读取、创建或管理 Hermes 服务端 Cron，也不再展示“执行位置”；远程智能体如需服务端计划任务，由用户在对话中让智能体自行建立。
+- 创建表单移除“执行方式”，默认沿用安全的分析任务契约；智能体下拉仅列出本地 CLI Runtime，并明确提示桌面应用需保持运行。旧的远程关联记录不删除、不迁移，仍保留在原数据文件中，但不会继续执行。
+- 管理页改为单一“本地 CLI 任务”面板，统一标题、分区、卡片、状态与空状态字号，增加安全删除确认和 720px 以下响应式收敛。
+- 自动验证：定时任务 Renderer/主进程 6/6 用例通过，Node/Web 类型检查和 `git diff --check` 通过；1024×768 的管理页与创建弹窗 U5 步骤通过并完成截图。完整 U5 在后续 768 宽聊天检查遇到既有的双 `.chat-input-area` 严格定位冲突，与本次定时任务变更无关。
+- PowerMem 已写入本次能力边界事实（memory `742573171885998080`）；服务健康、写入成功。由于 `infer` 后台处理，紧接写入的两次语义检索尚未召回该条目，本地进展日志仍作为当前可审计事实来源。
+
+## 2026-08-10：Claude 本地 CLI partial-stream 轨迹修复
+
+- 复盘真实协作运行 `runtime-conv-9b498ccb-debc-427a-9b0d-df04ecbbdea4`：Claude 的持久会话包含多段 thinking，Agents One 也保存了 9 次工具调用及其 5 次成功、4 次失败结果，但旧输出过滤器丢弃 `--include-partial-messages` 产生的 `stream_event`，因此 thinking 只能依赖最终 assistant 帧，工具参数也无法在 partial 阶段重建。
+- 解析修复：Claude 本地 Adapter 只放行 `thinking/tool_use` block 的 start/stop，以及 `thinking_delta/input_json_delta`；普通文本增量、签名和 SessionStart/system 噪声继续丢弃。Runtime 按 block index 累积思考和工具 JSON，按稳定 callId 更新既有工具调用，并把调用时工具名带到后续 tool_result，避免笼统显示“Claude Tool”。
+- 兼容与边界：最终 `assistant.content[].thinking/tool_use` 和 `user.tool_result` 仍是权威兜底；partial 与最终帧按 callId/内容快照去重。新增状态只存在于单次 Runtime 的内存中，不改变 CLI 参数、Runtime 配置、用户凭据、Gateway、会话格式或既有历史。
+- 真实只读冒烟：Claude Code 2.1.224 在 `plan` 模式读取项目 `package.json`，退出码 0；捕获 526 个 `thinking_delta`、20 个 `input_json_delta`、2 个 thinking block 和 1 个 tool block，验证新适配覆盖当前真实输出结构，冒烟未修改工作区文件。
+- 自动验证：Claude Runtime、RuntimeChat、消息适配和 MessageList 5 个相关测试文件 85/85 通过；Node/Web TypeScript 检查、变更文件 ESLint、生产构建、`lat check` 与 `git diff --check` 均通过。
+
+## 2026-08-10：单智能体授权、远程环境边界与运行状态显示修复
+
+- 现场复盘任务 `runtime-conv-c388a8af-1be5-4abb-ad33-7d7dd131ea14`：用户只要求 Hers 执行 PowerMem 备份方案，Hers 却自行输出协作提案；客户端仅校验提案 JSON 和 runtimeId，未再次核验当前用户请求是否明确授权协作，因此自动创建了协作记录。
+- 协作现在以当前用户请求的明确意图为硬边界：普通任务、“开始执行”、任务复杂度或模型自认为适合分工都不构成授权；这类运行不再收到协作控制协议，即使模型自行输出合法提案标签，客户端也会剥离控制块且不自动启动。明确要求多智能体、协作或角色分工的请求仍保留自动编排。
+- 远程 Runtime 的原生工具/路径与 Agents One 桌面本地项目正式区分：未关联项目的远程角色默认在“智能体所在设备”执行，不再自动套用“只读证据包”并要求选择本地文件夹；只有明确选择 Workspace Grant、远程映射或证据包时才进入相应预检。
+- 等待回复的三点气泡移除了无实际信息的旋转彩虹 Agents One 标识；输入栏模型标签在新 run 尚未上报 metadata 时沿用该对话最近一次真实 provider/model，收到新模型后再更新，不再短暂清空为“未提供模型”。
+- 改动边界仅限共享协作意图解析与 Renderer 派发/展示；未修改 Runtime 注册、身份外观、Gateway 协议、凭据、历史记录或持久化格式。定向回归 54/54、Node/Web 类型检查、生产构建、`lat check` 与 `git diff --check` 均通过。默认并发全量测试仅有 2 个既有 Gateway 重启 50ms 定时用例偶发失败；对应测试文件立即独立复跑 17/17 通过，判定为并发时序抖动，与本次改动无关。
+
 ## 2026-08-06：旧管理功能瘦身完成
 
 - 已在分支 `agents-one-slim-task-dialog` 完成两步可回退删除：`2a69749` 退役独立 Task Center、Project Center、旧对话任务侧栏和控制面 IPC；`200686b` 退役 Hermes Kanban 页面、命令、IPC、本地/SSH 桥接、样式与翻译。
@@ -1343,3 +1416,221 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 闭环恢复：复核输出“不通过”时，平台保留失败消息和时间线，清除本轮陈旧证据，把复核结论注入对应实施角色后自动重试，再次进入复核；最多三次实施尝试，超过上限才等待人工介入。最终只有负责人基于登记证据输出“通过”才把任务标记成功。
 - 自动验证：本地交付、三类 Runtime、proposal、协作存储、RuntimeChat、消息适配、协作查看与手动配置 8 个测试文件共 74 项通过，其中 RuntimeChat 27 项覆盖开放式 proposal 自动接力；Node/Web 类型检查与生产构建通过。当前 PowerShell 找不到 `lat` 可执行文件，已更新并人工核对新增 `lat.md` 源码锚点，待工具恢复后补跑 `lat check`；最终 `git diff --check` 通过。
 - PowerMem：当前会话未加载 MCP 工具且 `codex mcp get powermem` 未找到注册项，但服务脚本、API Key 与健康检查正常；已按 stdio 兜底写入长期记忆 `740600315727839232` 并执行语义检索。服务提示 infer 异步处理，本次即时检索先召回了既有“任务对话是唯一协作入口”和真实审计门禁等强相关记忆。
+
+### 2026-08-07：多智能体协作冒烟失败复盘与闭环修复
+
+- 测试结论：8月7日冒烟未通过。真实任务记录显示角色顺序被 Runtime 注册顺序打乱为“负责人 → Claude 复核 → Pi 实施”，Claude 在实施前必然报告 `test.txt` 不存在；Pi 随后虽在本机写入文件，远程 Hers-2 终验又把本机路径当作可直读目录，因远程环境文件系统不同而重复误判“不通过”。
+- 头像根因：协作回复已经保存 `agentRuntimeId/agentName/agentAvatar/agentColor`，但 RuntimeChat 适配器将每条回复降级为公共 `MessageList` 身份，历史和实时消息都沿用了负责人头像。Pi 的自定义头像在桌面配置中存在，Claude 未配置自定义图片时应显示其稳定字母头像，而不是继承 Hers-2。
+- 修复边界：新增依赖顺序排序（负责人/协调 → 实施 → 复核/验收），对旧记录重跑也在执行前收口顺序；远程终验只消费平台主进程已核验的文件证据，不再附带项目证据包诱导其访问错误文件系统；协作存储补齐文件大小、SHA-256、来源机器、变更摘要、重试次数、终验阶段和时间线；消息适配与实时事件行按生产 Runtime 渲染名称、头像、颜色和角色。未改写用户的 `desktop.json`、既有对话内容或项目文件。
+- 回退与风险：排序保持同一阶段内原有相对顺序；旧协作记录继续可读，新增终验角色以 `::final-review` 关联基础负责人；无自定义头像的 Runtime 继续使用字母回退。若远程模型仍违反证据审查规则，平台仍会保留其不通过结论并进入有界重试/人工介入。
+- 自动验证：协作 proposal、RuntimeChat 闭环、消息身份适配、任务协作存储和本地交付验证定向测试通过；Node/Web TypeScript 检查通过。待补生产构建、`lat check` 和最终真实 Hers-2 → Pi → Claude → Hers-2 冒烟。
+- 新一轮复测定位：新建任务实际停在 Pi 实施阶段，Pi 运行 `300000ms` 后超时。Pi 会话被继承为只读工具集 `read/grep/find/ls`，没有 `write/edit/bash`，因此无法创建 `smoke-test.txt`；这不是 Pi 网络故障，也不是 Claude 复核先行。
+- 修复：Pi 的 `implementation/full_access` 启动参数显式授予 `read,bash,edit,write,grep,find,ls`；协作启动前新增实施角色权限预检，未选择“完全访问”立即阻断并提示，不再无提示等待 5 分钟。远程负责人仍可先以只读方式编排，本地 Pi/Claude 实施角色按本机权限执行。
+- 自动验证补充：Pi Runtime 与 RuntimeChat 定向测试 35 项通过；全量 190 个测试文件、1899 项通过、13 项跳过；Node/Web TypeScript 检查与生产构建通过。待重启开发版后，以 `D:\\Users\\chenfl\\Desktop\\test` 目录重新执行完整 Hers-2 → Pi → Claude → Hers-2 人工冒烟。
+
+### 2026-08-09：协作过程实时呈现与交付物文件交互
+
+- 冒烟现象：Pi、Claude Code 和 Hers-2 的协作角色运行时只显示“处理中”，思考、工具调用与最终答复在终态一起出现；工具调用作为首条事件时没有可见智能体名称；本地交付物沿用下载按钮，无法像 Codex 文件链接一样直接打开和执行路径操作。
+- 实时根因与修复：`RuntimeChat` 的协作循环虽然每 900ms 读取 Runtime Run，但中间快照只写入局部变量。现在每轮都通过单调事件合并更新活动 Run，终态薄快照也不会覆盖前序事件，因此三类 Runtime 只要上报事件即可逐步显示并持久化完整轨迹。
+- 身份修复：思考行在角色首条记录显示 Runtime 头像与名称；没有 reasoning、直接从工具开始的 Claude/Pi/Hers 轨迹也由工具组显示对应身份，后续连续行仍共用一次身份，避免重复头像。
+- 文件交互：本地 Runtime artifact 与正文识别出的本机文件路径统一渲染为文件链接；悬停显示完整路径，单击用默认应用打开，右键提供“打开文件、复制路径、复制文档内容、在资源管理器中打开”。URL/data 产物继续保留下载/另存行为。
+- 变更边界评估：实时刷新与身份仅修改 Renderer 状态和展示；文件右键菜单复用现有 `read-file`、`open-file-in-editor`、剪贴板和 Electron shell 能力，新增最小 preload/IPC 通道，不修改 Runtime 注册、凭据、配置写入、会话结构或历史迁移。复制内容仅对存在且不超过 5 MiB 的文件启用；可按 Renderer、IPC 两层独立回滚。
+- 自动验证：RuntimeChat、MessageList、MediaImage、AttachmentChip 和 preload API 定向测试 188 项通过；全量 191 个测试文件、1903 项通过、13 项跳过；Node/Web TypeScript 检查、生产构建和 `lat check` 均通过。最终差异检查在交付前执行。
+- PowerMem：当前会话未自动暴露 MCP 工具且全局注册未加载，已按 stdio 兜底完成健康检查、写入长期记忆 `741341184399507456`，并以“协作运行思考工具实时显示、交付物文件链接”执行语义检索复核；新记忆按服务端提示异步进入 infer 索引，检索已召回既有同一对话多角色独立事件与可信 artifact 规则。
+
+### 2026-08-09：协作中的定向多轮沟通（实施前评估）
+
+- 改动原因：现有“介入”只能保存一条指令并立即恢复整条串行链路，无法点击角色头像进入与单智能体一致的多轮沟通，也无法在人工确认前持续阻断后续复核和验收。
+- 改动边界：优先复用 Renderer 的 `MessageList`、角色执行循环和介入抽屉；共享类型只为介入记录增加可选回复与回复时间，主进程协作存储仅保留这两个向后兼容字段。不修改 Runtime 注册、用户配置、CLI 参数、历史迁移或既有消息内容。
+- 影响数据与消费者：未来的 `TaskCollaborationIntervention` 可同时持久化用户指令与目标角色回复，角色运行记录可选保留 Runtime 会话 ID；`RuntimeChat` 将问答注入目标角色和明确选择共享后的后续角色，并在提供方支持时复用同一角色会话。旧记录缺少新字段时保持原行为。
+- 失败模式：头像误指向同 Runtime 的其他角色、暂停后仍启动下游、介入回复未持久化、共享上下文越界、恢复时重复执行已完成角色。使用稳定 assignment id、显式 `role/shared` 可见性、单角色 hold 点和定向回归测试防护。
+- 回退方案：新增字段均为可选，旧存储格式无需迁移；头像回调、定向发送和 hold/resume 参数可作为 Renderer 小补丁独立回退，现有“保存指令”恢复路径继续可用。
+- 验证清单：覆盖角色面板与消息头像入口、自动暂停、连续两轮目标角色运行、共享回复进入后续角色提示、人工继续前下游不启动、继续后从下一角色开始、重启后介入回复仍在；再执行定向 Vitest、Node/Web 类型检查、生产构建、`lat check` 与差异检查。
+- 实施结果：角色面板头像和对话消息头像均可进入定向沟通；打开时自动取消当前活动角色。每次发送只重跑目标角色并在成功回复后保持整条依赖链暂停，用户可继续多轮沟通、显式点击“继续后续任务”，或在抽屉中改派当前角色。
+- 上下文与证据：默认共享本轮问答，也可切换为仅目标角色；用户消息和目标回复共同进入主对话及持久化介入记录。支持的 Runtime 会复用同一角色会话 ID；重新执行或改派时清除该角色及下游的陈旧 artifact/验收结论。
+- 自动验证：定向 3 个测试文件 39 项通过；全量 191 个测试文件、1907 项通过、13 项跳过；Node/Web TypeScript 检查和生产构建通过。测试覆盖头像路由、活动角色暂停、连续两轮不启动下游、共享回复传递、会话复用、人工恢复、改派及重启持久化。
+- PowerMem：当前会话未自动暴露工具且全局注册未加载，已按 stdio 兜底完成健康检查、写入长期记忆 `741360595361595392` 并执行语义检索；服务健康，新记忆仍按 infer 异步进入索引，当前检索已召回既有“任务对话是唯一协作入口”和“角色独立呈现”的强相关记忆。
+
+### 2026-08-09：DAG 编排与任务/项目归档（实施前评估）
+
+- 改动原因：现有协作仅按语义排序串行运行，无法表达独立并行分支和多前置汇合；侧栏任务只能直接删除，项目没有归档入口，用户也无法在设置中恢复或永久清理已归档对象。
+- DAG 边界：为角色分配增加可选 `dependsOn`，新增共享纯函数负责校验未知依赖、自依赖、环路、拓扑层和下游集合。无显式依赖的旧记录继续使用原串行顺序；显式 DAG 才启用并行波次。调度仍由 Agents One 客户端掌握，不允许模型绕过 runtimeId 白名单、权限预检、artifact 和验收门禁。
+- 归档边界：新增 profile 级独立归档 JSON 与最小 IPC/preload API，只保存任务/项目身份、标题、路径、Runtime 类型和归档时间；不改写会话正文、Runtime 配置或项目文件。侧栏读取归档索引后过滤，恢复只删除归档标记。
+- 永久删除：仅设置中的归档管理可发起并要求二次确认；任务按原有原生会话/Runtime 会话删除路径清理，项目永久删除只移除桌面项目登记和归档记录，绝不删除磁盘目录或项目内文件。
+- 下游消费者：协作配置对话、RuntimeChat 调度与恢复、协作存储清洗；侧栏项目/任务菜单、设置导航与归档管理面板、IPC 注册和 preload 类型。
+- 失败模式与防护：环路导致死锁、并发完成覆盖状态、汇合节点提前启动、分支失败仍推进、旧记录顺序变化、归档任务重新出现在分页结果、跨 profile 误删。以纯图算法测试、按层启动/全部完成后汇合、失败后只阻断后代、旧串行回归、profile 归档存储测试和永久删除确认防护。
+- 回退方案：`dependsOn` 和归档字段/API 均为可选增量；DAG 调度可回退到旧串行分支，删除归档索引即可恢复全部侧栏对象。项目文件不进入删除范围，因此归档功能回退不会造成磁盘数据丢失。
+- 实施结果（DAG）：角色支持稳定 `id + dependsOn[]`；共享图模块完成缺失依赖、自依赖、重复 ID、环路、拓扑层、后代和汇合终点校验。显式 DAG 按 ready layer 并行派发，汇合节点等待全部前置成功；单分支失败只阻断其后代，其他独立分支继续。旧记录完全不含 `dependsOn` 时仍走原串行闭环。负责人终验自动依赖所有终点分支。
+- 实施结果（配置与持久化）：配置对话增加前置角色多选和错误提示，删除角色会同步清理依赖；proposal 协议支持 DAG JSON。协作存储保留依赖、工作区访问和并行活动角色 `activeAssignmentIds`，字段均为可选，无历史迁移。
+- 实施结果（归档）：任务菜单增加“归档任务”，项目标题增加项目操作/归档入口；归档任务、归档项目及项目内任务都会从侧栏隐藏。设置新增“归档管理”，支持搜索、任务/项目筛选和恢复；只有已归档任务显示永久删除并二次确认。原生、本地 Runtime、远程/SSH 任务按既有删除通道处理；项目始终只处理登记元数据，绝不删除目录。
+- 自动验证：全量 194 个测试文件通过，1915 项通过、13 项跳过；新增用例真实保持两个 sibling Runtime 运行并确认 join 在两者成功前不派发，同时覆盖图校验、归档持久化、项目登记移除、协作存储和归档管理 UI。Node/Web TypeScript 检查、生产构建和 `git diff --check` 通过；`lat check` 在最终交付前执行。
+- 明日人工检查：①配置一个“规划 → 前端/后端并行 → 验收汇合”真实任务，观察两个分支的实时思考/工具与汇合时机；②分别归档普通任务、项目及项目内任务，重启后确认仍隐藏；③在设置归档管理中搜索、筛选、恢复；④对临时归档任务执行永久删除，确认不会恢复且项目磁盘目录未受影响。
+- PowerMem：当前长会话未加载 MCP 工具表且 `codex mcp get powermem` 未发现注册项；按既有 stdio 兜底完成健康检查并写入长期记忆 `741377466190266368`，随后语义检索成功召回相关 Agents One 记忆，新记录按服务端提示异步进入 infer 索引。
+
+### 2026-08-09：项目/任务菜单补齐与侧栏分页稳定性
+
+- 问题与根因：项目菜单只有归档且采用独立小卡片；任务菜单缺少会话 ID 和工作目录操作。侧栏分页把每轮固定查询的 Runtime 对话计入原生 `sessions.json` 的 offset 与 `hasMore`，造成后续页重复、`hasMore` 永远为真，并被初始同步反复重置到第一页，表现为列表底部持续“加载中”和界面跳动。
+- 项目菜单：项目与任务统一复用同一套 Portal 浮层、样式、动画、视口钳制和关闭规则；项目增加置顶/取消置顶、在资源管理器中打开、重命名、归档和移除。浮层支持外部点击、侧栏滚动、窗口失焦和 `Esc` 关闭；内联重命名的 `Esc` 会取消并抑制卸载时的失焦保存。
+- 任务菜单：增加“在资源管理器中打开”和“复制会话 ID”。只有存在上下文工作目录时才启用资源管理器操作；会话 ID 直接复制稳定任务 ID，不改写对话或标题。
+- 数据边界：项目自定义名称与置顶状态只写入桌面项目登记，不重命名/移动磁盘目录。移除项目只删除桌面登记并解除原生及 Runtime 对话的项目关联，使任务回到“对话”分组；不会删除任务、历史、项目目录或任何文件。归档仍使用独立 profile 级标记。
+- 分页修复：原生缓存分页拥有独立的 `loadedNativeCount`、lookahead 和 `hasMore`；Runtime 对话只在刷新时合并一次，不参与原生 offset。初始缓存同步保留已经加载的原生窗口，不能再把第二页压回第一页。新增纯分页函数覆盖满页、末页与 offset 推进。
+- 回退方案：菜单 UI、项目登记 API 和分页 helper 可分层回退；项目移除没有磁盘删除副作用，且解除关联后的任务仍保留，因此回退不会造成历史或项目文件丢失。
+- 自动验证：项目/任务菜单、原生分页、项目登记和 Runtime 项目解除关联 5 个定向测试文件共 9 项通过；全量 197 个测试文件通过，1920 项通过、13 项跳过；Node/Web TypeScript 检查、生产构建、`lat check` 与 `git diff --check` 均通过。
+- 明日人工检查：①项目菜单样式与任务菜单一致，`Esc` 可关闭；②置顶排序、重命名、资源管理器打开和移除后任务回到“对话”；③任务复制会话 ID 与有/无工作目录时的菜单状态；④连续滚动超过两页，确认列表不跳动、不重复且最终停止加载。
+- PowerMem：当前会话未暴露 MCP 工具，已通过本机 stdio 兜底完成健康检查并写入长期记忆 `741574340679565312`；新记忆按服务端提示异步索引。随后以“Agents One 任务对话、项目管理、协作”执行语义检索，召回 5 条既有相关记忆，最高相关度 0.713。
+
+### 2026-08-10：归档项目任务清单、项目删除与字号收口
+
+- 现场问题：归档管理使用浏览器默认 `h2/strong/select` 字号，明显大于设置页其他面板；归档项目无法查看被项目归档一并隐藏的任务，也没有删除入口。
+- 展示修复：归档页改用设置系统一致的 13px 主文字、12px 辅助文字和紧凑控件；项目卡片增加“任务对话”折叠区，默认关闭。展开后同时列出原生会话缓存和 Runtime 对话索引中项目路径一致的任务，兼容 Windows 斜杠、大小写和末尾分隔符差异，不读取或改写对话正文。
+- 搜索与加载：任务索引按 100 条分页并设置最大页数防护；项目折叠条在索引完成后显示任务数。归档搜索也能通过项目内任务标题命中对应项目，任务清单仍仅在用户展开时渲染。
+- 项目删除：归档项目现在与任务一样显示删除按钮，但使用独立确认文案。确认后仅清除 Agents One 项目登记、归档标记和原生/Runtime 任务的项目关联，使保留任务回到“对话”；绝不删除项目目录、磁盘文件或任务历史。
+- 回退与风险：折叠清单和字号仅为 Renderer/CSS 增量；项目删除沿用既有 `deleteArchivedItem` IPC，并补齐与普通“移除项目”一致的解除关联行为。所有底层对话仍保留，可按 UI、IPC 两层独立回退。
+- 自动验证：归档 UI、归档存储、项目登记和 Runtime 解除关联 4 个定向测试文件共 9 项通过；降低并发后的全量 197 个测试文件通过，1921 项通过、13 项跳过；Node/Web TypeScript 检查、生产构建、`lat check` 与 `git diff --check` 均通过。两次默认高并发全量运行分别出现既有 Gateway 50ms 定时竞态和 Windows 临时文件 `EPERM`，相关用例单独复跑均通过，降低并发后全量无失败。
+- PowerMem：当前会话未暴露 MCP 工具，已通过本机 stdio 兜底完成健康检查、写入长期记忆 `741693308794830848`，并以“归档项目、任务清单、删除不删除磁盘文件”执行语义检索，成功召回 5 条相关记忆。
+
+### 2026-08-10：真实 DAG 会话复盘与多分支实时呈现
+
+- 复盘对象：只读检查会话 `runtime-conv-0e41fcc3-36f8-45f3-bfc3-001324e1bc12` 及其协作记录，未重跑任务、未修改历史消息或测试交付物。会话主 Runtime 为 Hers-2；原 proposal 却把 `plan` 和 `acceptance` 指派给 Hers，并由平台额外补了一个无依赖的 Hers-2 负责人节点，形成两个根节点。Pi 与 Claude 的实际运行时间重叠，DAG 并行成功，但 Renderer 的单个 `taskRun/activeRuntimeId` 被后写入的 Claude 覆盖，导致 Pi 活动态直到终态才出现。
+- 身份与调度修复：自动 proposal 在持久化前由平台把负责人、规划/编排/汇合与验收职责锚定到当前对话 Runtime；实施与独立复核仍可自由选择其他 Runtime。首个负责人规划节点复用当前可见 proposal 轮次；负责人已有显式末端验收节点时不再追加重复的合成终验。这样同类智能体不能在用户未指定时替换被直接交办的 Hers-2。
+- 并行实时修复：显式 DAG 以 assignment 为键维护多条活动 Runtime Run；同一波次的 Pi、Claude 等分支分别保留头像、名称、角色、事件和占位状态，并同时呈现。停止任务会取消全部活动 Run，不再只取消最后写入的分支。
+- 轨迹真实性：该实测中 Pi 有 29 条事件、Claude 有 18 条（含结构化工具名、调用 ID、输入与结果），Hers/Hers-2 各轮只有 4–5 条远程事件，主要是生命周期、最终答复及与最终答复重复的 summary。客户端会过滤冒充思考摘要的最终答复镜像；提供方未上报思考摘要或工具事件时明确显示“运行轨迹未上报”，不伪造内部思维或不存在的工具调用。完整远程摘要/工具轨迹仍需对应 Gateway Connector 实际上报 Agent Event Stream。
+- 看板与措辞：协作分工、交付物与验收、时间线收成右下角紧凑悬浮看板，默认折叠，字号统一为 13px/12px，避免占据首条对话上方的大面积空间；头像介入和恢复动作保留。智能体提示、状态和用户答复统一使用“交付物”，新输出标记为 `[交付物]`，主进程继续兼容旧 `[交付契约]` 历史。
+- 自动验证：负责人锚定、实施职责防误判、远程轨迹缺失/最终答复镜像、交付物新旧格式及并行双分支实时呈现等 4 个定向测试文件共 54 项通过；全量 Vitest 通过；Node/Web TypeScript 检查、变更文件 ESLint（0 error）及生产构建通过。全仓 ESLint 在 120 秒窗口内未结束，变更文件检查仅有既有格式与 Hook 警告。
+- PowerMem：当前会话未暴露 MCP 工具且全局注册未加载，已按 stdio 兜底完成健康检查并写入长期记忆 `741713323166269440`；随后检索召回既有 DAG 并行、汇合和远程 Gateway 记忆，新记录按服务端提示异步进入 infer 索引。
+
+### 2026-08-10：并行协作身份、思考提示与看板收起修复
+
+- 复盘真实任务 `runtime-conv-9b498ccb-debc-427a-9b0d-df04ecbbdea4`：Pi 上报了 `progress` 与工具事件；Claude 只上报工具事件，Hers-2 验收只上报生命周期与最终答复，因此后两者本轮没有可展示的真实思考摘要，前端不得伪造。
+- 根因一：并行执行时，最后启动的子 Runtime 被当成整段主会话的默认外观，导致 Hers-2 的历史头像/名称临时变成 Claude。现已分离“主会话默认外观”和“当前子任务事件身份”，每条子任务轨迹仍保留自己的 Runtime 身份。
+- 根因二：“思考记录未上报”系统卡不渲染头像，却占用了同身份连续行的头像位，导致随后 Claude/Hers-2 最终答复没有头像和名称。现由下一条真实答复重新承担头像；Claude CLI 若实际返回 `thinking` 内容块，也会保存为真实思考记录。
+- 根因三：自动协作先创建 Runtime 会话、后保存协作任务，旧关联回调可能在 `persistedTaskId` 尚未进入 Run 状态时提前返回。本轮自动启动入口会在会话 ID 已存在后直接补链；重开历史时优先按 `conversationId` 恢复协作，并可用消息执行与角色运行共享的唯一 `runtimeRunId` 恢复此前未链接的任务。
+- 交互：右下协作看板新增“隐藏协作看板”按钮；隐藏后保留紧凑“协作看板”按钮，可随时原位调回，不影响角色状态、产物、验收或时间线。
+- 变更边界：仅调整 Runtime 会话渲染、Claude 结构化事件解析、协作会话关联/恢复与看板 UI；未修改 Runtime 注册、用户凭证、智能体配置或既有历史内容。
+- 自动验证：定向 Vitest 95 项通过，最终受影响测试 86 项复跑通过；Node/Web TypeScript 检查、生产构建、`lat check` 与 `git diff --check` 均通过。旧未链接任务的 run-id 恢复路径和看板隐藏/显示均有回归用例。
+
+### 2026-08-10：Hers-2 Connector Agent Event Stream v1 最终验收
+
+- 验收对象：Hers-2（`hermes-home2`）远端 Connector/Relay，Gateway 使用 `agents-one-plugin-sdk` v0.1.1。Connector 已将真实 Hermes SSE 推理摘要、工具生命周期、Workspace Grant 事件、最终答复、模型与用量映射到 Agent Event Stream v1；没有发送原始思维链或伪造工具事件。
+- 能力声明：删除依赖 `_observedEventTypes` 的运行后动态声明，Connector 启动及重启后均稳定返回 `reasoningSummaries=true`、`toolEvents=true`、`modelMetadata=true`、`usageMetadata=true`，与实际 Adapter 能力一致。
+- 独立远程复核：直接查询真实 Run `run_bda14bc2-b9ef-4125-a240-65a40ba57d12` 两次，均返回 HTTP 200、`succeeded`、12 个唯一事件；`sequence` 严格为 1–12，两次 event ID 列表完全一致。事件依次覆盖 `run.started`、三组真实工具开始/完成、`workspace.requested(list, .)`、`workspace.completed(list, .)`、`reasoning.summary`、带真实 text/model/usage 的 `assistant.completed` 和 `run.completed`。
+- Workspace 验收：`workspace_gateway` 的 started/completed 复用稳定 `callId=call_run_7e10_3_workspace_gateway`，Workspace 事件保留 `operation=list` 和相对路径 `.`；成功路径与此前保留的 `workspace.blocked/tool.failed` 失败路径均有真实证据。
+- 附带修复：修复 Hermes 工具结果含 `"error": null` 时的误判失败；在 SSE、Connector 与 Adapter 链路保留 Workspace args/operation/path；补齐 SDK EventJournal 对 `operation/path` 的白名单；修复 SDK 字符串输入导致的 `Buffer.concat` 崩溃。
+- 最终结论：通过。当前 Gateway v1 能力声明、事件顺序、稳定 ID/sequence、成功与失败 Workspace 路径、最终输出以及模型/用量均有真实运行证据支撑。
+- PowerMem：当前会话未暴露 MCP 工具，已通过本机 stdio 兜底成功写入本次最终验收事实；随后的语义检索复核因 PowerMem 五小时账户配额耗尽返回 429，写入本身成功，待配额于服务端提示时间恢复后可再次检索确认。
+
+### 2026-08-10：Plugin SDK 0.1.2 发布包
+
+- 发布原因：SDK 0.1.1 的 `refresh()` 在追加 Adapter 事件前先生成 `run.completed/run.failed`，迫使 Hers-2 Adapter 直接写内部 journal；Event Stream 四项增强能力又被固定声明为 `true`，无法表达 Adapter 的真实支持范围。现场还发现 Workspace `operation/path` 被白名单剥离，以及字符串请求 chunk 触发 `Buffer.concat` 崩溃。
+- 核心修复：Gateway refresh 先合并 output/error/artifact/model/usage 和 `getRun().events`，最后应用终态；`eventStreamCapability` 只返回 Adapter 在 `capabilities.eventStream` 中稳定声明为 `true` 的标志，基础 Adapter 仍保留 protocol/transport。Connector 升级后可删除 `/capabilities` 拦截、直接 `record.journal` 写入和 SDK 本地白名单补丁。
+- 事件与安全：EventJournal 保留允许的 Workspace `operation`、Grant 相对 `path`、稳定 `callId` 及非负工具时长；绝对路径和包含 `..` 的路径不进入持久事件。请求体读取统一兼容 Buffer、Uint8Array 和字符串 chunk。
+- 版本与回退：`package.json`、插件 manifest 和 Gateway capability 版本统一升级到0.1.2；旧 `agents-one-plugin-sdk-0.1.1.tgz` 保留，可由 Connector 回装并恢复原 Adapter 备份。未修改用户配置、Runtime 注册、对话历史或 Hers-2 远端服务。
+- 发布物：`plugins/agents-one-plugin/agents-one-plugin-sdk-0.1.2.tgz`，14,946 bytes，SHA-256 `a5a3836a3c9bf229ce2a6e467b9f16a734b9332c956fdc55dcd085cebebde61a`；包内 `package.json` 与 manifest 均确认版本0.1.2。
+- 自动验证：SDK 自身13项测试通过；桌面端 Event Stream、Remote Gateway 和 Agent Runtime 定向47项通过；Node/Web TypeScript 检查和生产构建通过；`npm run verify`、pack 内容检查、`lat check` 与 `git diff --check` 均通过。
+- PowerMem：已按 stdio 兜底尝试同步0.1.2发布事实，但 `memory_store` 与 `memory_search` 均因 PowerMem 五小时账户配额耗尽返回 429，未写入云记忆；完整事实已保存在本地进展日志，待服务端提示的 2026-08-10 17:32:46 +0800 后可重试。
+
+### 2026-08-10：设置页品牌与关于信息收口
+
+- 问题：设置左侧导航仍显示冗余的“Agents One”分组标题；“关于与更新”混入本地 Hermes 引擎维护卡片，桌面端又误用旧 Hermes 图标和上游 Hermes Desktop `0.7.3` 版本。
+- 改动边界：仅调整设置 Renderer 展示、Agents One 产品版本元数据和对应文档；保留“关于与更新”“日志与诊断”等入口，不修改 Runtime 注册、用户配置、IPC、更新状态机或历史数据。
+- 实施：所有设置入口合并到一个“通用”分组；关于页只保留 Agents One 桌面端卡片，使用正式 dawn-ring 标志；产品版本从重命名前的上游版本线重置为 Agents One `0.1.0`，界面仍通过 Electron `app.getVersion()` 读取真实构建版本。
+- 回归保护：新增设置导航和关于页组件测试，覆盖单一分组、Hermes 卡片移除、正式 Logo、版本显示及桌面更新操作；相关设置测试 5/5、Node/Web 类型检查、生产构建和变更文件 ESLint 均通过。
+
+### 2026-08-11：Pi 模型请求失败诊断与错误语义修复
+
+- 现场结论：失败会话 `runtime-conv-e6b86741-a785-42b2-a1d0-6f516b1e7850` 使用 `openai-codex/gpt-5.6-luna`，用量为 0；对应 Pi 原生会话连续记录 `stopReason=error / errorMessage=fetch failed`，但 CLI 以退出码 0 结束，桌面端误记为成功并显示“没有返回可显示的最终答复”。
+- 对照验证：用户切换至 `ark/deepseek-v4-flash` 后，会话 `runtime-conv-f5871dc5-0f87-47e8-bc55-2fedca0ed546` 连续两轮成功，分别返回 3150、3802 tokens。由此确认 Pi Runtime、工作区与会话 UI 正常，问题集中在原 OpenAI Codex 模型请求链路；原模型在修复逻辑下单独验证 120 秒仍未完成，未宣称已恢复该模型。
+- 修复：Pi 子进程继续使用最小环境白名单，同时补传标准大小写代理变量；完成时解析 Pi JSONL 的最后 assistant 结果，将退出码 0 中的结构化模型错误转为失败状态。成功重试会覆盖较早的瞬时错误，`fetch failed` 会显示可操作的网络/代理提示，不再伪装成空成功。
+- 变更边界：仅修改 Pi 本地 Runtime 的子进程环境与终态判定，以及对应测试/文档；未更改智能体注册、用户模型选择、认证信息、历史会话或 Ark 配置。诊断请求使用独立 Pi session，超时后确认无残留诊断进程。
+- 自动验证：Pi Runtime 与输出摘要定向测试 15 项通过；Node/Web TypeScript 类型检查与生产构建通过；变更文件 ESLint 为 0 error（仅有仓库现存 CRLF/Prettier 警告），`lat check` 与 `git diff --check` 通过。
+
+### 2026-08-11：Runtime 对话上下文占用与项目文件面板恢复
+
+- 现场问题：Pi、Claude Code 等 Runtime 对话的输入栏没有上下文占用仪表；同一输入栏的项目树按钮虽然切换了 `worktreeVisible` 状态，却没有渲染右侧文件面板，导致浏览项目文件、查看文档和在项目路径打开终端全部无效。
+- 元数据根因：RuntimeChat 只读取 `contextUsedTokens`。真实 Pi 使用 `input/cacheRead/cacheWrite`，Claude Code 使用 `input_tokens/cache_read_input_tokens/cache_creation_input_tokens`；现有归一化只保留部分输入/总量，既丢失缓存 tokens，也不能用包含输出的 `totalTokens` 代替上下文占用。
+- 修复：本地 CLI 元数据边界把本轮输入与缓存读取/创建相加为 `contextUsedTokens`，明确排除输出 tokens；RuntimeChat 从当前 Run 或最近持久化回复恢复用量，优先采用实际上报的上下文窗口，本地模型缺失窗口时复用模型族映射。远程 Runtime 仅有 `inputTokens` 时仍不猜测占用。
+- 文件面板：本地 Codex、Claude Code、Pi 对话重新复用原生 `WorktreePanel`；项目树在右侧展示、支持目录展开与文件查看、宽度拖拽，并通过既有 `open-terminal` IPC 在选中项目路径打开终端。远程路径不会交给本地文件面板。
+- 变更边界：修改本地 Runtime 元数据归一化和 RuntimeChat 展示接线，未改写智能体配置、模型选择、会话正文、工作区文件或终端实现。
+- 自动验证：Agent Runtime 与 RuntimeChat 定向测试 2 个文件、63 项通过；Node/Web TypeScript 类型检查与生产构建通过；变更文件 ESLint 为 0 error（4 条为工作区既有 Hook/Prettier 警告），`lat check` 与 `git diff --check` 通过。
+
+### 2026-08-11：Runtime 上下文窗口按实际模型动态解析
+
+- 现场问题：Pi 对话虽已显示上下文占用，但 `ark/deepseek-v4-flash` 的上限固定落到静态模型族兜底 `131072`，与 Pi 模型目录声明的 `1000000` 不一致；切换模型也无法同步更新分母。
+- 根因：RuntimeChat 没有调用原生对话的异步模型窗口解析链，且 Hermes 模型库中该 Pi 自定义 Provider 模型没有 `contextLength`；仅凭模型名启发式无法知道 Pi 自己的自定义模型元数据。
+- 修复：新增本地 Runtime 模型窗口 IPC。Pi 优先只读解析其 `models.json` 和 `models-store.json` 中当前 provider/model 的 `contextWindow`，随后依次尝试 Agents One 模型库显式值和原生 config/provider discovery；Renderer 在当前 Run 未上报窗口时异步取值，并在 provider/model 改变后重新解析。查询未完成期间不显示错误的 131K 瞬时值，所有权威来源均缺失时才回退静态模型族映射。
+- 安全与边界：只读取模型 ID 与窗口数字，不返回、记录或改写 Pi 模型配置中的 API Key、Header 等字段；不启动 Pi 子进程，不修改用户模型选择、认证信息、会话正文或工作区文件。
+- 自动验证：Pi Runtime 与 RuntimeChat 定向测试 2 个文件、52 项通过，覆盖 Pi 自定义/刷新目录解析以及 `ark/deepseek-v4-flash` 显示 `3680/1000000`；Node/Web TypeScript 检查、生产构建、`lat check` 与 `git diff --check` 通过。变更文件 ESLint 为 0 error，仅保留 RuntimeChat 中既有的 1 条 Hook 依赖 warning。
+
+### 2026-08-11：启动字标、侧栏品牌与双手触碰动效
+
+- 品牌收口：移除启动页和展开侧栏字标中独立的白色圆角 Logo 底板；统一由 dawn ring 直接替代 `ONE` 的字母 `O`。深色启动页使用白色字标，常驻浅色导航使用深色字标。
+- 折叠兼容：折叠侧栏继续保留既有圆角渐变方形标记以及 hover/focus 切换展开图标的交互，未改变折叠宽度、命中区域或导航结构。
+- 启动动效：以用户提供的机器手与人手照片为主视觉，使用连续背景层和两层羽化手部图层实现相向靠近；约 1.42 秒在指尖产生短促接触光，约 1.62 秒从接触点显现完整新字标。连续背景层随动效显现，避免运动遮罩产生斜向接缝。
+- 可访问性与边界：支持 `prefers-reduced-motion`，减少动态时直接显示终帧；保留启动状态文本和远程连接的本地模式逃生按钮。未修改侧栏信息架构、智能体配置、会话数据或更新逻辑。
+- 验证：启动页、品牌资产与侧栏关联定向测试 3 个文件、6 项通过；Node/Web TypeScript 检查、变更文件 ESLint、生产构建、逐帧视觉检查、`lat check` 与定向 `git diff --check` 均通过。
+- PowerMem：当前会话未暴露记忆工具；本机 `powermem` MCP 全局注册当前缺失，直接 stdio 兜底调用超时，未写入云记忆。完整品牌规则、动效参数与验证结论已保存于本地品牌规范、架构索引和本进展日志。
+
+### 2026-08-11：启动动效指尖、光效与 Logo 时长校准
+
+- 反馈复核：原图本身保留了指尖间距，旧终帧回到原图位置，因此两只手没有真正接触；接触光和 Logo 使用的固定锚点又没有跟随视觉接触点；3 秒启动窗口只给完成入场的 Logo 留下约 0.6 秒稳定展示。
+- 空间校准：机器人手和人手使用对称视口位移，在 1.15 秒终点闭合原图间距；统一以画面 `50% / 44%` 作为指尖、接触光和 Logo 的唯一锚点。隐藏 Logo 的独立验收帧确认光效核心正好位于两指接触处。
+- 时间校准：接触光约 1.12 秒触发，Logo 约 1.30 秒开始出现；启动页最低时长从 3.0 秒延长至 4.2 秒，使 Logo 完成入场后稳定展示约 2 秒。前段反而更快，不用延长等待来弥补迟缓靠近。
+- 可访问性：减少动态模式直接使用新的接触终帧，不再退回有明显指尖间距的原始照片位置。
+- 验证：品牌资产与启动页定向测试 2 个文件、3 项通过；Node/Web TypeScript 检查、变更文件 ESLint（0 error）、生产构建和逐帧视觉检查通过。视觉检查包含临时隐藏 Logo 的接触帧，用于独立确认指尖闭合和光效中心位置。
+
+### 2026-08-11：启动动画总时长收口至 2.9 秒
+
+- 用户体验判断：4.2 秒虽然给 Logo 足够停留，但超过了启动反馈的合理等待感，容易让用户误判系统卡顿；确认将完整启动动画控制在 3 秒以内。
+- 最终时间轴：双手约 1.1 秒接触，接触光约 1.06 秒触发，Logo 于约 1.20 秒开始出现并用 0.7 秒完成入场；启动页最低时长为 2.9 秒，Logo 总可见约 1.7 秒，其中稳定展示约 1 秒。
+- 变更边界：仅压缩启动节奏，继续保留已验收的 `50% / 44%` 指尖、光效和 Logo 共用锚点、双手接触终帧及减少动态模式。
+- 验证：自动时间点检查确认 2.5 秒仍显示启动页、3.0 秒已进入主界面；指尖接触帧和 Logo 停留帧视觉正常。定向测试 2 个文件、3 项通过，Node/Web TypeScript、生产构建、`lat check` 与定向 `git diff --check` 通过。
+
+### 2026-08-12：启动页与导航栏字标切换为 Oxanium 700
+
+- 用户确认：在 Space Grotesk、Sora、Oxanium、Rajdhani 四组同时覆盖启动页大尺寸与导航栏小尺寸的对比稿中，最终选择 `03 · Oxanium 700`，强化切角几何和未来科技感。
+- 实施：启动页白色字标与展开导航栏深色字标同步采用 Oxanium 700；字母由 Google Fonts 官方字体文件生成并固化为两段 SVG 矢量路径，Dawn Ring 继续直接替代 `ONE` 的 `O`，渐变色、粗细、背景和启动动画时间轴保持不变。应用不内置字体文件，也不产生启动阶段的外部字体请求。
+- 变更边界：仅替换两份 Renderer 字标 SVG，并更新品牌资产测试、品牌规范、架构索引与设计记忆；未修改 CSS 动画、侧栏布局、折叠标记、Runtime 注册、配置、IPC、会话或历史数据。
+- 回归保护：品牌资产测试要求两份字标均包含两段路径和一个圆环，同时禁止 `<text>`、`font-family` 与白色底板，防止以后退回系统字体或旧版独立图标结构。
+- 验证：品牌资产与启动页定向测试 2 个文件、3 项通过；Node/Web TypeScript 检查、变更测试 ESLint 和生产构建通过；隔离开发实例在 1920×1080 启动页、1920×1080 展开导航及 375×812 窄视口完成真实截图复核，字标居中且 30px 高度下清晰；`lat check` 与 `git diff --check` 通过。
+- PowerMem：当前会话未加载记忆工具且全局注册项缺失，已按既有 stdio 兜底完成健康检查并写入长期记忆 `742432768968884224`；随后执行语义检索复核，新记录仍处于服务端提示的异步 infer 索引阶段，暂未进入检索结果。
+
+### 2026-08-12：深色主题导航栏字标对比度修复
+
+- 现场问题：导航栏通过外部 `<img>` 加载固定深色填充的 SVG；切换到深色主题后，字母仍为 `#171A21`，与侧栏背景接近而不可见。
+- 修复：新增深色表面专用的 Oxanium 700 矢量字标，字母使用 `#F5F7FA`；布局依据主题注册表中的 `appearance` 语义自动选择深色或浅色表面资产，覆盖当前及后续登记的全部深色主题。Dawn Ring 的紫橙渐变在两份资产中保持一致，没有使用会改变品牌色的整图滤镜或反色。
+- 变更边界：仅调整 Renderer 字标资产选择、品牌资产测试与文档；未修改主题配置值、侧栏结构、Runtime、IPC、用户设置持久化、会话或历史数据。
+- 验证：品牌资产定向测试 4 项通过；Node/Web TypeScript 检查、变更文件 ESLint 和生产构建通过。隔离开发实例分别切换 `dark` 与 `light` 完成真实截图和 SVG 色值复核：深色主题使用浅色字母、浅色主题使用深色字母，两者 Dawn Ring 均保持原渐变。
+
+### 2026-08-12：定时任务编辑与任务级工作区/权限修复
+
+- 根因：普通 Runtime 新对话、项目任务入口以及 Codex/Claude Code/Pi 主进程适配器都会把智能体配置中的 `workspace` 当作任务兜底；RuntimeChat 同时默认使用 `analysis`，因此 Pi 会话被隐式带入 Agents-One 目录并显示“只读”。
+- 任务语义：智能体配置中的工作区改为可选“检测工作区”，只参与连接检测，不再进入普通新对话、项目外任务或定时任务。普通新对话默认“自动 · 对话”；用户显式选择项目目录后，“自动”解析为可读写，仍可手动切换为只读或完全访问。Codex/Claude Code 无项目的普通对话在应用私有空目录运行，不暴露用户项目目录；写入任务必须显式选择项目文件夹。
+- 定时任务：管理卡片新增编辑图标，复用新建表单修改名称、频率、提示词、本地 CLI 智能体、项目目录、文件访问和并发策略；活动执行期间禁止编辑。新任务默认 `auto` 且不设置工作区；选择项目后自动以 `full_access` 执行，显式完全访问必须有项目目录。v1 旧任务的隐式 `analysis` 在读取时迁移为 `auto`。
+- 界面：定时任务标题、说明、分组标题、任务名称、正文与元数据字号统一上调；智能体编辑页将“工作区”更名为“检测工作区（可选）”，并明确项目目录在每个任务中按需选择，不存在跨项目冲突。
+- 回归保护：新增定时任务编辑、旧模式迁移、自动可写与新对话不继承智能体工作区用例；相关 6 个测试文件 78 项通过，新增专项 3 个测试文件 53 项通过；Node/Web TypeScript 检查和生产构建通过，变更文件 ESLint 为 0 error，`git diff --check` 通过。
+
+## 2026-08-12：统一“自动”为安全读写权限
+
+- 权限入口统一只显示“自动”，不再根据是否选择项目目录显示“自动 · 对话”或“自动 · 可写”；说明统一为“可读写，无移动、删除文件权限”。新对话、定时任务以及选择/切换项目目录后都保持“自动”，不暗中切换成只读或完全访问。
+- 实际执行新增 `safe_write` 模式：未选择项目目录时仍以无项目普通对话运行；选择目录后，Pi 仅开放 read/edit/write/grep/find/ls，Claude Code 开放 Read/Edit/Write/Glob/Grep 并禁用 Bash，Codex 使用 workspace-write 且禁用 shell tool。三者均在运行期间保护原有项目文件，若智能体尝试移动或删除，会在任务结束时恢复原路径并写入执行结果提示。
+- 远程 Workspace Grant 同步支持操作级授权；“自动”只下发 list/read/write，不再下发 move/delete。显式“完全访问”仍保留移动、删除能力，显式“只读”仍只开放 list/read。
+- 定时任务的持久化值继续使用 `auto`，触发时有项目目录映射到 `safe_write`，无项目目录映射到普通对话；旧任务和旧远程 Grant 保持兼容。
+- 回归验证：权限/调度/CLI/Gateway 定向测试 96 项通过，界面与文件保护复测 63 项通过；Node/Web TypeScript 检查、生产构建和 `git diff --check` 通过，变更文件 ESLint 为 0 error（仅保留项目既有格式与 Hook warnings）。
+
+## 2026-08-12：定时任务结果对话实时刷新与权限回显
+
+- 修复“任务卡已有结果、已打开的任务对话仍只有用户提示词”：完成结果和 Runtime 执行事件原本已经持久化，但对话组件没有订阅后台完成后的 conversation 更新。现在完成事件会携带 conversationId 定向通知已打开对话重新读取；重新打开已有对话时也会主动同步最新持久化内容。
+- Runtime 对话新增 `accessMode` 元数据。定时任务创建结果对话时写入本任务真实权限，打开结果对话后准确显示“自动 / 只读 / 完全访问”，不再总是回退到聊天默认“自动”。
+- 定时任务文件访问第三项由“可读写”明确改名为“完全访问：可创建、编辑、移动或删除项目文件”，保存值保持独立 `full_access`；历史 `implementation` 计划迁移为 `full_access`，避免被新版默认值折叠为自动。
+- 本机数据核验确认本轮“obsidian知识库整理”的最终回复与执行记录均已完整保存；专项 UI、调度、对话存储测试 59 项通过，扩展回归 113 项通过，Node/Web TypeScript 检查通过。
+- PowerMem：当前会话未加载 MCP 注册，但本地 stdio 服务可用；已写入长期记忆 `742631226967326720`。随后的语义检索召回既有“仅本地 CLI 定时任务、移除执行位置/执行方式”等强相关记录，新记忆按服务端提示仍在后台 infer 索引。
+
+## 2026-08-12：本地 CLI 任务恢复终端原生能力
+
+- 现场复盘：会话 `runtime-conv-schedule-a2d4f824-9e3b-49fb-8ed1-4a3d5130b809` 的 Pi 运行实际由当前 Electron 用户 `chenfl` 启动，并非 Windows 任务计划程序或 SYSTEM 账户；Pi 在会话中的 HOME/USERPROFILE 推断不符合 Agents One 的进程模型。
+- 根因：Agents One 的统一 Pi Runtime 为所有普通对话、手动任务和定时任务固定传入 `--no-skills`，因此 `C:\Users\chenfl\.agents\skills\llm-wiki\SKILL.md` 虽真实存在，也不会进入 Pi 的可用技能清单。首轮任务只读取了 Pi 自身文档和知识库文件，却错误声称已加载 `llm-wiki`。
+- 产品目标：普通新任务与定时任务作为 Pi、Claude Code、Codex 的桌面入口，应继承对应 CLI 在终端中的用户配置、技能、MCP、扩展/插件、Hooks、项目指令、Shell 和自定义工具；Agents One 只负责工作目录、用户选择的文件权限、运行记录和结果展示，不再维护一套会导致能力缺失的工具白名单。
+- Pi 修复：移除 `--no-skills / --no-extensions / --no-prompt-templates / --no-context-files` 以及可写模式的 `--tools` 白名单，让 Pi 自行加载 `~/.pi/agent`、`~/.agents/skills`、已安装 packages、MCP adapter 和项目资源；无项目的自动对话在应用私有目录运行，但仍保留完整工具能力。
+- Claude/Codex 修复：移除自动模式下对 Bash/shell 的禁用与固定工具白名单；Claude 的可写非交互任务使用原生完整授权，Codex 自动模式保留原生 `workspace-write` 边界但不再禁用 shell，完全访问才绕过 sandbox。这样 MCP、插件、Hooks、子智能体和 Shell 不会被适配器裁掉。三个 CLI 子进程均继承桌面进程的完整用户环境，以兼容用户配置的任意本地工具变量。
+- 权限边界：“只读”仍明确使用各 CLI 的 read-only/plan 能力；“自动”启用完整 CLI 能力，但选定项目时 Agents One 会在运行前后保护原有文件并恢复被移动或删除的内容；“完全访问”不做移动/删除恢复。当前“obsidian知识库整理”保存为 `full_access + D:\pkulyn_vault`，满足 `llm-wiki` 的写入、快照、索引及状态更新需要。
+- 验证：Pi 原生技能加载器成功解析 `C:\Users\chenfl\.agents\skills\llm-wiki\SKILL.md` 且无诊断错误；Pi/Codex/Claude/调度/RuntimeChat/文件保护 6 个定向测试文件共 84 项通过，Node/Web TypeScript 检查通过；相关 ESLint 为 0 error（仅有仓库现存格式及 Hook warning）。

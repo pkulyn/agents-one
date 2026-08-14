@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { Readable } from "node:stream";
 import test from "node:test";
-import { EventJournal } from "../src/event-stream.mjs";
-import { createRemoteGatewayPlugin } from "../src/remote-gateway-plugin.mjs";
+import { EventJournal, eventStreamCapability } from "../src/event-stream.mjs";
+import {
+  createRemoteGatewayPlugin,
+  readJsonBody,
+} from "../src/remote-gateway-plugin.mjs";
 import { createCliAdapter } from "../src/cli-adapter-plugin.mjs";
 import { createAgentsOneArtifactTool } from "../examples/hermes-or-hers-adapter.mjs";
 
@@ -51,12 +55,85 @@ test("event journal preserves safe artifact MIME and size metadata", () => {
   });
 });
 
+test("event journal preserves safe workspace evidence and tool duration", () => {
+  const journal = new EventJournal({ runId: "run_workspace" });
+  journal.append({
+    id: "evt_workspace",
+    type: "workspace.completed",
+    data: {
+      operation: "list",
+      path: ".",
+      tool: {
+        callId: "call_workspace_1",
+        name: "workspace_gateway",
+        kind: "workspace",
+        duration: 42,
+      },
+    },
+  });
+  assert.deepEqual(journal.snapshot()[0].data, {
+    operation: "list",
+    path: ".",
+    tool: {
+      callId: "call_workspace_1",
+      name: "workspace_gateway",
+      kind: "workspace",
+      duration: 42,
+    },
+  });
+
+  journal.append({
+    id: "evt_unsafe_workspace",
+    type: "workspace.requested",
+    data: { operation: "read", path: "D:\\private\\secret.txt" },
+  });
+  assert.equal(journal.snapshot()[1].data.path, undefined);
+});
+
+test("event stream capabilities reflect stable adapter declarations", () => {
+  assert.deepEqual(eventStreamCapability("poll"), {
+    protocol: "agents-one-event-stream-v1",
+    transport: "poll",
+  });
+  assert.deepEqual(
+    eventStreamCapability("poll", {
+      reasoningSummaries: true,
+      toolEvents: true,
+      modelMetadata: false,
+      usageMetadata: true,
+    }),
+    {
+      protocol: "agents-one-event-stream-v1",
+      transport: "poll",
+      reasoningSummaries: true,
+      toolEvents: true,
+      usageMetadata: true,
+    },
+  );
+});
+
+test("JSON request reader accepts string and Buffer chunks", async () => {
+  const request = Readable.from([
+    '{"input":',
+    Buffer.from('{"text":"hello"}}', "utf8"),
+  ]);
+  assert.deepEqual(await readJsonBody(request), {
+    input: { text: "hello" },
+  });
+});
+
 test("remote gateway plugin exposes a v1 run with event snapshots", async () => {
   let routedRuntimeId;
   const plugin = createRemoteGatewayPlugin({
     agent: { id: "fixture", kind: "custom", displayName: "Fixture" },
     token: "test-token",
     adapter: {
+      capabilities: {
+        eventStream: {
+          reasoningSummaries: true,
+          toolEvents: true,
+        },
+      },
       async startRun(_input, { emit, runtimeId }) {
         routedRuntimeId = runtimeId;
         emit({
@@ -103,9 +180,126 @@ test("remote gateway plugin exposes a v1 run with event snapshots", async () => 
   );
   assert.deepEqual(capabilityBody.plugin, {
     id: "agents-one-plugin-sdk",
-    version: "0.1.1",
+    version: "0.1.2",
     kind: "remote-gateway",
   });
+  assert.deepEqual(capabilityBody.capabilities.eventStream, {
+    protocol: "agents-one-event-stream-v1",
+    transport: "poll",
+    reasoningSummaries: true,
+    toolEvents: true,
+  });
+  await plugin.close();
+});
+
+test("remote gateway appends provider events before terminal status events", async () => {
+  const plugin = createRemoteGatewayPlugin({
+    agent: { id: "fixture", kind: "custom" },
+    token: "test-token",
+    adapter: {
+      capabilities: { eventStream: { toolEvents: true } },
+      async startRun() {
+        return { vendorRunId: "vendor_refresh", status: "running" };
+      },
+      async getRun() {
+        return {
+          status: "succeeded",
+          output: "完成。",
+          events: [
+            {
+              id: "evt_tool_completed",
+              type: "tool.completed",
+              data: {
+                tool: {
+                  callId: "call_1",
+                  name: "read",
+                  kind: "workspace",
+                },
+              },
+            },
+            {
+              id: "evt_assistant_completed",
+              type: "assistant.completed",
+              data: { text: "完成。" },
+            },
+          ],
+        };
+      },
+    },
+  });
+  await plugin.listen(0);
+  const port = plugin.server.address().port;
+  const headers = {
+    authorization: "Bearer test-token",
+    "content-type": "application/json",
+  };
+  const created = await fetch(`http://127.0.0.1:${port}/runs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ input: { text: "hello" } }),
+  });
+  const createdRun = await created.json();
+  const refreshed = await fetch(
+    `http://127.0.0.1:${port}/runs/${createdRun.id}`,
+    { headers },
+  );
+  const run = await refreshed.json();
+  assert.equal(run.status, "succeeded");
+  assert.deepEqual(
+    run.events.map((event) => event.type),
+    ["run.started", "tool.completed", "assistant.completed", "run.completed"],
+  );
+  await plugin.close();
+});
+
+test("remote gateway appends failure evidence before run.failed", async () => {
+  const plugin = createRemoteGatewayPlugin({
+    agent: { id: "fixture", kind: "custom" },
+    token: "test-token",
+    adapter: {
+      async startRun() {
+        return { vendorRunId: "vendor_failed", status: "running" };
+      },
+      async getRun() {
+        return {
+          status: "failed",
+          error: "read failed",
+          events: [
+            {
+              id: "evt_tool_failed",
+              type: "tool.failed",
+              data: {
+                summary: "读取失败。",
+                tool: { callId: "call_1", name: "read", kind: "workspace" },
+              },
+            },
+          ],
+        };
+      },
+    },
+  });
+  await plugin.listen(0);
+  const port = plugin.server.address().port;
+  const headers = {
+    authorization: "Bearer test-token",
+    "content-type": "application/json",
+  };
+  const created = await fetch(`http://127.0.0.1:${port}/runs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ input: { text: "hello" } }),
+  });
+  const createdRun = await created.json();
+  const refreshed = await fetch(
+    `http://127.0.0.1:${port}/runs/${createdRun.id}`,
+    { headers },
+  );
+  const run = await refreshed.json();
+  assert.equal(run.status, "failed");
+  assert.deepEqual(
+    run.events.map((event) => event.type),
+    ["run.started", "tool.failed", "run.failed"],
+  );
   await plugin.close();
 });
 
@@ -144,6 +338,10 @@ test("remote gateway plugin exposes and accepts Artifact API uploads", async () 
   );
   const capabilities = await capabilityResponse.json();
   assert.equal(capabilities.capabilities.artifacts.upload, true);
+  assert.deepEqual(capabilities.capabilities.eventStream, {
+    protocol: "agents-one-event-stream-v1",
+    transport: "poll",
+  });
 
   const uploadResponse = await fetch(`http://127.0.0.1:${port}/artifacts`, {
     method: "POST",

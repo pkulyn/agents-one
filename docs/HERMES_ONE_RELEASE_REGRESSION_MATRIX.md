@@ -1,61 +1,65 @@
 # Agents One 发布前回归矩阵
 
-日期：2026-08-06
+日期：2026-08-13
 
-本矩阵用于发布前验收。2026-08-06 起独立 Task Center、Project Center 与 Hermes Kanban 已退役；任务对话内多智能体协作是唯一交互式协作入口。下方 2026-07 历史验收记录仅用于追溯，不再作为当前界面入口说明。
+本矩阵用于发布前验收。2026-08-06 起独立 Task Center、Project Center 与 Hermes Kanban 页面已退役，2026-08-13 起 Task Center 后台执行器也已退役；任务对话内多智能体协作是唯一交互式协作入口。下方 2026-07 历史验收记录仅用于追溯，不再作为当前界面入口说明。
 
 ## 当前瘦身边界
 
-| 编号 | 场景 | 验收方式 | 通过标准 |
-| --- | --- | --- | --- |
-| N1 | 任务对话 | 自动 + 手工 | 可发送、恢复，错误/产物发布事件不混入正文，图片与文件产物正常显示。 |
-| N2 | 对话内多智能体协作 | 自动 + 手工 | 协作建议、角色配置、顺序执行、工作区预检、人工介入、产物和历史恢复可用。 |
-| N3 | 项目文件夹 | 自动 + 手工 | 左侧仍可按目录归集任务对话；不会出现旧 Project Center 控制面。 |
-| N4 | 定时任务 | 自动 + 手工 | Agents One 计划任务仍能通过内部任务执行器创建、取消和对账运行；Hermes Cron 不受影响。 |
-| N5 | 退役入口 | 自动 | Layout、桌面命令、Preload/IPC 中不存在 Task Center、Project Center、Hermes Kanban 入口。 |
-| N6 | 恢复性 | 代码审查 | 基线标签、拆分提交、用户数据备份、SHA-256 和恢复命令完整可用。 |
+| 编号 | 场景               | 验收方式    | 通过标准                                                                                                                                   |
+| ---- | ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| N1   | 任务对话           | 自动 + 手工 | 可发送、恢复，错误/产物发布事件不混入正文，图片与文件产物正常显示。                                                                        |
+| N2   | 对话内多智能体协作 | 自动 + 手工 | 协作建议、角色配置、顺序执行、工作区预检、人工介入、产物和历史恢复可用。                                                                   |
+| N3   | 项目文件夹         | 自动 + 手工 | 左侧仍可按目录归集任务对话；不会出现旧 Project Center 控制面。                                                                             |
+| N4   | 定时任务           | 自动 + 手工 | 本地 CLI 计划到点后创建普通 Runtime 任务对话，立即显示运行态与触发通知；取消、并发、终态写回及重启失联失败均可对账。远程计划不由桌面管理。 |
+| N5   | 退役边界           | 自动        | Layout、桌面命令、Preload/IPC 和生产 Main 中不存在 Task Center 入口或执行器；Project Center、Hermes Kanban 入口也保持退役。                 |
+| N6   | 恢复性             | 代码审查    | 基线标签、用户数据快照、SHA-256 和恢复说明完整；历史 `task-center.json` 与关联 worktree 不删除、不重写。                                   |
 
 ## Runtime 与任务执行
 
-| 编号 | 场景 | 验收方式 | 通过标准 |
-| --- | --- | --- | --- |
-| R1 | 远程 Hermes 对话 | 手工 | 可正常发送问题、接收回复；错误事件不混入正文。 |
-| R2 | 远程 Hermes coordinator planning | 手工 + 自动测试 | Bridge 强制只读规划可用，计划 artifact 可进入 Task Center。2026-07-16：真实能力探测与只读计划已通过；即时取消返回 `cancelled` 且 `cleanedUp: true`。 |
-| R3 | 远程 OpenClaw coordinator planning | 手工 + 自动测试 | Bridge 能力探测健康，计划 artifact 可预览生成 Project tasks。2026-07-16：真实能力探测与只读计划已通过。 |
-| R4 | Codex analysis | 手工 + 自动测试 | Task Center 可运行分析任务，输出可读，可取消。 |
-| R5 | Codex implementation | 手工 + 自动测试 | 只写隔离 Git worktree，产出 worktree/diff artifact，原工作区不被直接修改。2026-07-16：真实项目闭环已通过。 |
-| R6 | Claude Code analysis | 手工 + 自动测试 | `claude auth status` 已登录，analysis 使用 `plan` 权限，输出进入 Task Center。2026-07-16：真实 Runtime 分析任务通过。 |
-| R7 | Claude Code implementation | 手工 + 自动测试 | 只写隔离 Git worktree，产出 worktree/diff artifact，可取消、可超时。2026-07-16：真实不改文件的 implementation 任务通过，并返回受管 worktree。 |
+| 编号 | 场景                               | 验收方式        | 通过标准                                                                                                                                             |
+| ---- | ---------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1   | 远程 Hermes 对话                   | 手工            | 可正常发送问题、接收回复；错误事件不混入正文。                                                                                                       |
+| R2   | 远程 Hermes coordinator planning   | 手工 + 自动测试 | Bridge 强制只读规划可用，结果进入当前任务对话。2026-07-16：真实能力探测与只读计划已通过；即时取消返回 `cancelled` 且 `cleanedUp: true`。            |
+| R3   | 远程 OpenClaw coordinator planning | 手工 + 自动测试 | Bridge 能力探测健康，计划 artifact 可预览生成 Project tasks。2026-07-16：真实能力探测与只读计划已通过。                                              |
+| R4   | Codex analysis                     | 手工 + 自动测试 | 普通 Runtime 任务对话可运行分析任务，实时过程和输出可读，可取消。                                                                                     |
+| R5   | Codex implementation               | 手工 + 自动测试 | 只写隔离 Git worktree，产出 worktree/diff artifact，原工作区不被直接修改。2026-07-16：真实项目闭环已通过。                                           |
+| R6   | Claude Code analysis               | 手工 + 自动测试 | `claude auth status` 已登录，analysis 使用 `plan` 权限，输出进入当前任务对话。2026-07-16：真实 Runtime 分析任务通过。                               |
+| R7   | Claude Code implementation         | 手工 + 自动测试 | 只写隔离 Git worktree，产出 worktree/diff artifact，可取消、可超时。2026-07-16：真实不改文件的 implementation 任务通过，并返回受管 worktree。        |
 
 ## Project Center 与协作流
 
-| 编号 | 场景 | 验收方式 | 通过标准 |
-| --- | --- | --- | --- |
-| P1 | 指定任意 Runtime 作为 coordinator | 手工 | Hermes/OpenClaw 走远程 Bridge；Codex/Claude Code 走本地只读分析。2026-07-16：Hermes coordinator 已在隔离 Electron 中通过。 |
-| P2 | Coordinator plan 预览 | 手工 + 自动测试 | 结构化 plan 可解析为任务草稿；非结构化 plan 降级为人工复核任务。2026-07-16：真实 Hermes plan 产生 4 条草案。 |
-| P3 | 从 plan 创建 Project tasks | 手工 + 自动测试 | 用户确认后才创建任务；重复点击不会重复生成。 |
-| P4 | 建议 Runtime 映射 | 手工 + 自动测试 | `suggestedRuntimeKind` 优先筛选候选 Runtime，仍由用户手动 Assign。 |
-| P5 | Context package | 手工 | 只包含相关依赖任务与 artifact 引用，不泄露 secret。 |
+| 编号 | 场景                              | 验收方式        | 通过标准                                                                                                                   |
+| ---- | --------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| P1   | 指定任意 Runtime 作为 coordinator | 手工            | Hermes/OpenClaw 走远程 Bridge；Codex/Claude Code 走本地只读分析。2026-07-16：Hermes coordinator 已在隔离 Electron 中通过。 |
+| P2   | Coordinator plan 预览             | 手工 + 自动测试 | 结构化 plan 可解析为任务草稿；非结构化 plan 降级为人工复核任务。2026-07-16：真实 Hermes plan 产生 4 条草案。               |
+| P3   | 从 plan 创建 Project tasks        | 手工 + 自动测试 | 用户确认后才创建任务；重复点击不会重复生成。                                                                               |
+| P4   | 建议 Runtime 映射                 | 手工 + 自动测试 | `suggestedRuntimeKind` 优先筛选候选 Runtime，仍由用户手动 Assign。                                                         |
+| P5   | Context package                   | 手工            | 只包含相关依赖任务与 artifact 引用，不泄露 secret。                                                                        |
 
 ## 安全与恢复
 
-| 编号 | 场景 | 验收方式 | 通过标准 |
-| --- | --- | --- | --- |
-| S1 | 输出脱敏 | 自动测试 | 日志、错误、diff/final artifact 不显示 Token、API Key、Authorization、Cookie。2026-07-16：Hermes 真实安全事件查询返回 1 条脱敏记录，未检出认证字段。 |
-| S2 | 子进程环境 | 代码审查 | Codex/Claude Code 仅继承最小必要环境变量，不通过 shell 拼接命令。 |
-| S3 | Worktree 路径校验 | 自动测试 | 打开/清理操作只能作用于 Agents One 用户数据目录下的受管 worktree。 |
-| S4 | 重启恢复 | 自动测试 + 手工 | 应用重启后遗留 running task 被标记为 failed/recoverable，历史不丢失。 |
-| S5 | 远端错误分类 | 手工 | 502、403、证书、WebSocket 断连能被定位，不泄露请求头或密钥。 |
+| 编号 | 场景              | 验收方式        | 通过标准                                                                                                                                             |
+| ---- | ----------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1   | 输出脱敏          | 自动测试        | 日志、错误、diff/final artifact 不显示 Token、API Key、Authorization、Cookie。2026-07-16：Hermes 真实安全事件查询返回 1 条脱敏记录，未检出认证字段。 |
+| S2   | 子进程环境        | 代码审查        | Codex/Claude Code 仅继承最小必要环境变量，不通过 shell 拼接命令。                                                                                    |
+| S3   | Worktree 数据保护 | 自动测试 + 审查 | 当前 Runtime 只发布受管 worktree 路径；历史 Task Center 关联 worktree 不自动移动或删除。                                                            |
+| S4   | 重启恢复          | 自动测试 + 手工 | 应用重启后遗留 running task 被标记为 failed/recoverable，历史不丢失。                                                                                |
+| S5   | 远端错误分类      | 手工            | 502、403、证书、WebSocket 断连能被定位，不泄露请求头或密钥。                                                                                         |
+| S6   | 备份完整性        | 自动测试 + 手工 | 归档 manifest、SHA-256、文件/总量限制、SQLite quick-check 与核心 JSON 结构全部通过；损坏或清单外数据在写目标前被拒绝。                              |
+| S7   | 备份凭据边界      | 自动测试 + 审查 | `.env`、认证/钱包、Token/API Key、SSH keyPath、代理和原始配置凭据不导出；目标凭据和未知配置键在恢复后保留。                                        |
+| S8   | 迁移后安全状态    | 自动测试 + 手工 | 新/变化远程端点停用并要求重授权；本机路径变化时停用；计划任务停用且无 pending/active run，恢复不会自动执行旧任务。                                  |
+| S9   | 恢复与回滚        | 自动测试 + 手工 | 托管数据与备份一致、目标独有凭据/未知文件保留；写入失败自动回滚，恢复后应用重启并可打开项目、任务、聊天、协作、记忆与技能。                       |
 
 ## Windows 发布
 
-| 编号 | 场景 | 验收方式 | 通过标准 |
-| --- | --- | --- | --- |
-| W1 | 开发构建 | 自动 | `npm.cmd run build` 通过。 |
-| W2 | 单元/组件回归 | 自动 | Phase 4/H3/H4 相关测试全部通过。 |
-| W3 | 普通用户权限运行 | 手工 | 无需管理员权限、无需 Visual Studio，即可启动和配置 Runtime。 |
-| W4 | Worktree 运维 | 自动 + 手工 | 后台只允许识别和清理 Agents One 数据目录下的非活跃受管 worktree；运行中或待验收记录不可清理。 |
-| W5 | 发布阻断条件 | 人工评审 | 无 P0/P1 安全问题、数据丢失问题或原工作区直接写入问题。 |
+| 编号 | 场景             | 验收方式    | 通过标准                                                                                      |
+| ---- | ---------------- | ----------- | --------------------------------------------------------------------------------------------- |
+| W1   | 开发构建         | 自动        | `npm.cmd run build` 通过。                                                                    |
+| W2   | 单元/组件回归    | 自动        | Phase 4/H3/H4 相关测试全部通过。                                                              |
+| W3   | 普通用户权限运行 | 手工        | 无需管理员权限、无需 Visual Studio，即可启动和配置 Runtime。                                  |
+| W4   | Worktree 运维    | 自动 + 手工 | 当前 Runtime 受管 worktree 仍可作为执行产物使用；Task Center 退役不触碰历史 worktree。       |
+| W5   | 发布阻断条件     | 人工评审    | 无 P0/P1 安全问题、数据丢失问题或原工作区直接写入问题。                                       |
 
 ## 已执行的开发版验证（2026-07-16）
 
@@ -110,7 +114,7 @@
 ## 当前自动化命令
 
 ```powershell
-npx.cmd vitest run tests/feature-slimming-boundaries.test.ts tests/task-center.test.ts tests/task-schedules.test.ts tests/task-collaboration-store.test.ts src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx src/renderer/src/screens/Layout/TaskCollaborationDialog.test.tsx src/renderer/src/screens/Layout/TaskCollaborationWorkspace.test.tsx
+npx.cmd vitest run tests/feature-slimming-boundaries.test.ts tests/task-schedules.test.ts tests/task-collaboration-store.test.ts src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx src/renderer/src/screens/Layout/TaskCollaborationDialog.test.tsx src/renderer/src/screens/Layout/TaskCollaborationWorkspace.test.tsx
 npm.cmd run typecheck
 npm.cmd run test:u5-ui
 ```

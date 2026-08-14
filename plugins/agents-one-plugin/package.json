@@ -1,6 +1,6 @@
 {
   "name": "@agents-one/plugin-sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Agents One Remote Gateway and local CLI adapter plugin SDK",
   "type": "module",
   "private": true,

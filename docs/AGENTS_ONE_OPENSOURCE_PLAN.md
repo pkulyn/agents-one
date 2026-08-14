@@ -1,0 +1,116 @@
+# Agents One 开源前最终优化开发文档
+
+> 创建日期：2026-08-14
+> 状态：已与用户全面对齐，执行中
+> 目标仓库：`github.com/pkulyn/agents-one`（MIT，public）
+
+## 0. 背景与目标
+
+Agents One 基本功能已实现并验证（多 Runtime 接入、统一对话、多智能体协作 DAG、Gateway v1、Workspace Grant、定时任务、备份恢复、归档管理；203 个测试文件、2006 项测试全绿）。本轮为开源前最后一轮优化，完成后发布到 GitHub。
+
+**用户核心目标**：在保证智能体调用功能的前提下，让用户的接入设置尽可能简单——
+
+- 远程智能体：输入**一个链接 + 一个 Token** 即可接入（插件负责远程智能体的安装部署并产出链接与 Token）
+- 本地智能体：给出**可执行文件路径**即可接入（常见 CLI 自动探测路径）
+- 不需要复杂繁琐的配置过程
+
+## 1. 已确认的关键决策
+
+| # | 决策项 | 结论 |
+|---|--------|------|
+| D1 | 智能体接入统一方案 | **方案 A（Transport 主轴收敛）**；方案 C（Adapter 注册表）作为后续按需迭代方向 |
+| D2 | 远程接入 | 统一走 **Gateway v1**（单地址 + 单 Token + capabilities 自动探测）；协议已涵盖"能力协商而非类型分支" |
+| D3 | 本地接入 | `local-cli`（Pi/Claude Code/Codex，可执行文件路径，自动探测）+ `local-api`（内置 Hermes 本地 API，保留） |
+| D4 | Hermes SSH 模式 | **删除**。无公网 IP 场景由 Gateway v1 出站 Connector 模式覆盖 |
+| D5 | NAS Hermes/OpenClaw 旧兼容模式 | **不迁移，直接删除旧代码**。这两个智能体是测试用途；后续有需要时按 Gateway v1 协议重新接入 |
+| D6 | 上游遗留（云账号同步/钱包/社区） | **直接删除源码** |
+| D7 | 隐藏旧页面（Discover/Office/Providers/Skills/Memory/Soul/Tools/Gateway/Models/Sessions 等） | **全部删除界面**；Skills/Memory/Soul 的**数据备份保留**（数据备份 ≠ 管理界面） |
+| D8 | GitHub 仓库 | `pkulyn/agents-one` |
+| D9 | i18n 首发范围 | 只保留 **en + zh-CN**，删除其余 10 个 locale |
+| D10 | LICENSE | 保留 MIT，Copyright 改为 pkulyn |
+
+## 2. 智能体接入统一的最终形态
+
+```
+新增智能体
+├─ 远程智能体
+│   └─ [Gateway 地址] + [Token] → 连接测试 → 自动显示类型/能力 → 保存
+│       （无 SSH 模式；无多地址多 Token；无 Hermes/OpenClaw 私有表单）
+│
+└─ 本地智能体
+    ├─ CLI 智能体：自动列出 PATH 检测到的 Pi / Claude Code / Codex，
+    │   或手动填可执行文件路径
+    └─ 本地 Hermes（内置保留）：本地 API（127.0.0.1:端口），
+        managed: builtin，字段锁定不可删
+```
+
+**配置模型**：
+
+```typescript
+// AgentRuntimeConfig 新增必填字段
+transport: "gateway-v1" | "local-cli" | "local-api";
+// location 从 transport 派生：gateway-v1 → remote；local-cli/local-api → local
+// kind 降级为显示元数据（图标/名称/默认参数模板），不参与逻辑分支
+```
+
+**主进程分支**：`probeAgentRuntime` / `startAgentRuntimeTask` / `cancelAgentRuntimeTask` 从 6+ 个 `kind+location` 分支收敛为按 transport 的三个主分支。
+
+**存量配置迁移**：只读兼容迁移，保留旧字段，不删数据；存量 SSH 配置标记为"需重新设置"，提示改用 Gateway v1。
+
+## 3. 执行计划
+
+### Phase 0：提交基线
+
+1. 检查 `git status`，将 8/6–8/13 未提交工作（备份恢复、Task Center 退役、定时任务收敛、品牌收口等）整理为语义化 commit 提交
+2. 打标签 `agents-one-pre-opensource-baseline` 作为回退点
+3. 全量验证：`npm.cmd test -- --run` + `npm.cmd run typecheck` + `npm.cmd run build` 全绿
+
+### Phase 1：智能体接入统一（方案 A）
+
+4. **配置模型收敛**：`AgentRuntimeConfig` 新增 `transport` 必填字段；`location` 派生化；`kind` 降级为显示元数据；编写只读兼容迁移
+5. **SSH 模式移除**：删除 `ssh-tunnel.ts`、`ssh-remote.ts`、`ssh-options.ts` 及对应测试、IPC、preload API、i18n key；存量 SSH 配置标记"需重新设置"；审计 `askpass.ts`/`sudoCreds.ts` 与安装器的依赖关系，仅服务 SSH 的部分一并删除
+6. **主进程分支重构**：probe/start/cancel 收敛为 transport 三分支；内置 Hermes 归入 `local-api`（保留本地 API、API Key、`managed: builtin` 锁定）
+7. **旧远程模式代码删除**：删除 Hermes remote/dashboard 传输、OpenClaw Bridge 直连等多地址多 Token 兼容路径（含 NAS 测试用配置对应的代码路径）；远程只留 Gateway v1
+8. **注册表单统一**：AgentRuntimesPane 两段式（本地/远程 → 对应字段组）；远程只有 Gateway 地址 + Token + 连接测试（自动识别类型和能力标签）；本地 CLI 自动探测 PATH 并预填；内置 Hermes 管理页复用同一表单骨架；ConnectionPane 的代理/IPv4 设置移到设置页作为全局"网络"选项
+9. **Agents 页卡片增强**：transport 标签（Gateway / CLI / 本地 API）、连接摘要（脱敏）、能力标签、"设为默认"入口
+10. **定向测试 + 全量回归**：重点覆盖配置迁移、三类 transport 的 probe/start/cancel、存量 SSH/旧远程配置的降级提示
+
+### Phase 2：上游遗留与旧页面清理
+
+11. **删除上游云服务**：`agent-sync.ts`、`hermes-account.ts`、`account-store.ts`、`wallet-store.ts`、`wallet-balances.ts`、`wallet-sync.ts` 及测试；移除 `ethers` 依赖
+12. **删除上游 UI 组件**：`FollowUsModal`、`HermesAccountModal`、`OAuthLoginModal`、`ProviderKeysSection`、`CommunityPane`、`ProfileWalletPane`、`VerifyWarningBanner`，并清理引用点
+13. **删除旧页面**：Discover、Office、Providers、Skills、Memory、Soul、Tools、Gateway、Models、Sessions 及审计确认孤儿的 Kanban/TaskCenter/ProjectCenter/Install/Setup/Welcome 残留；同步清理主进程模块（`skills.ts`、`memory.ts`、`soul.ts`、`registry.ts`、`model-discovery.ts`、`mcp-servers.ts`、`claw3d.ts` 等仅服务旧页面的部分）、IPC、preload、i18n key、CSS；审计 `installer.ts` 与内置 Hermes 本地模式的依赖关系，保留仍在用的安装能力；**备份功能继续备份 Skills/Memory/Soul 数据**
+14. **清理上游引用**：`constants.ts` 的 hermesone.org provider 预设与 console 链接、`menu.ts` 的 fathah issues 链接、analytics 模块与 i18n 文案中的 `analytics.hermesone.org`
+15. **i18n 收敛**：删除 ar/es/he/id/ja/pl/pt-BR/pt-PT/tr/zh-TW 十个 locale，只保留 en + zh-CN
+
+### Phase 3：开源准备
+
+16. **重写 README.md**：Agents One 定位、功能、截图（复用 previews/）、安装与快速开始（远程 = 链接+Token；本地 = 路径）、Gateway v1 与 Plugin SDK 指引；删除全部上游徽章/赞助商/Token/Ko-fi
+17. **更新元数据**：package.json（author=pkulyn、repository/homepage 指向 `github.com/pkulyn/agents-one`）、LICENSE（Copyright 改 pkulyn，保留 MIT）、`dev-app-update.yml` 与 `electron-builder.yml` 指向新仓库
+18. **清理个人路径**：`scripts/verify-hers-*.js` 硬编码路径改为参数必填；测试文件中 `C:\Users\chenfl` 改为通用临时路径
+19. **更新文档**：CONTRIBUTING.md（仅保留 en + zh-CN，删除 ja-JP 版）、changelogs 合并为 Agents One 初始条目、删除 README.ja-JP/es-LATAM
+20. **更新 lat.md 知识库**：接入统一、页面删除、SSH 移除等架构变更同步进 `lat.md/`，跑通 `lat check`
+
+### Phase 4：发布
+
+21. **干净目录全量验证**：全新 clone → install → typecheck → test → build → build:win 便携版冒烟
+22. **推送 GitHub**：创建 `pkulyn/agents-one`，推送 main，配置/验证 GitHub Actions CI（typecheck + vitest + build）
+23. **发布后首项迭代**：远程 502 错误分类降级；四 Runtime 端到端复测
+
+## 4. 执行纪律
+
+- 遵守 [变更安全守则](./AGENTS_ONE_CHANGE_SAFETY_PROTOCOL.md)：先评估边界、小补丁、定向验证、可回退
+- 每完成一个关键节点：更新 `docs/AGENTS_ONE_PROGRESS_LOG.md`（开发日志）、本开发文档（勾选完成项）、`lat.md/`（架构变更），并写入 PowerMem 云记忆（scope=group，共享给所有智能体）
+- 删除类改动前先确认引用点清零；配置迁移保留旧字段不删数据
+- npm 命令一律使用 `npm.cmd`（企业 PowerShell 策略）
+
+## 5. 执行记录
+
+| 节点 | 状态 | 日期 | 备注 |
+|------|------|------|------|
+| 方案对齐与开发文档生成 | ✅ | 2026-08-14 | 用户确认方案 A + 全部 10 项决策 |
+| Phase 0 提交基线 | ⬜ | | |
+| Phase 1 接入统一 | ⬜ | | |
+| Phase 2 遗留清理 | ⬜ | | |
+| Phase 3 开源准备 | ⬜ | | |
+| Phase 4 发布 | ⬜ | | |
