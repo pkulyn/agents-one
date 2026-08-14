@@ -124,21 +124,6 @@ export const PROVIDERS = {
 
   setup: [
     {
-      // Agents One's own inference gateway — shown first. OpenAI-compatible, so
-      // it routes through `custom` + base_url (like the `openai` card); the key
-      // is stored/host-derived as HERMESONE_API_KEY (see url-key-map.ts).
-      id: "hermesone",
-      name: "Agents One",
-      desc: "Agents One Inference — pay-per-token with AI Credits",
-      tag: "Recommended",
-      envKey: "HERMESONE_API_KEY",
-      url: "https://console.hermesone.org/credits",
-      placeholder: "hs-live-...",
-      configProvider: "custom",
-      baseUrl: "https://inference.hermesone.org/v1",
-      needsKey: true,
-    },
-    {
       id: "openrouter",
       name: "constants.openrouterName",
       desc: "constants.openrouterDesc",
@@ -336,7 +321,6 @@ export interface LocalPreset {
 // OPENAI_COMPATIBLE_BASE_URLS). Distinct from PROVIDERS.setup, which stays the
 // curated first-run set.
 export const PROVIDER_CARDS: { id: string; name: string }[] = [
-  { id: "hermesone", name: "Agents One" },
   { id: "openrouter", name: "constants.openrouterName" },
   { id: "anthropic", name: "constants.anthropicName" },
   { id: "openai", name: "constants.openaiName" },
@@ -371,7 +355,6 @@ export const PROVIDER_CARDS: { id: string; name: string }[] = [
 // picker routes it consistently (autofill base_url + persist as `custom`).
 // Keep this in sync with LOCAL_PRESETS below.
 export const OPENAI_COMPATIBLE_BASE_URLS: Record<string, string> = {
-  hermesone: "https://inference.hermesone.org/v1",
   openai: "https://api.openai.com/v1",
   aimlapi: "https://api.aimlapi.com/v1",
   mistral: "https://api.mistral.ai/v1",
@@ -600,15 +583,6 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
   {
     title: "constants.sectionLlmProviders",
     items: [
-      // Agents One's own inference gateway — first-class + first in the list.
-      // Custom under the hood (routes as `custom` + inference.hermesone.org),
-      // keyed by HERMESONE_API_KEY via URL_KEY_MAP.
-      {
-        key: "HERMESONE_API_KEY",
-        label: "constants.hermesoneApiKey",
-        type: "password",
-        hint: "constants.hermesoneHint",
-      },
       {
         key: "OPENROUTER_API_KEY",
         label: "constants.openrouterApiKey",

@@ -27,14 +27,6 @@ vi.mock("../common/ProfileAvatar", () => ({
   ),
 }));
 
-vi.mock("../../screens/Soul/Soul", () => ({
-  default: (): React.JSX.Element => <div data-testid="soul" />,
-}));
-
-vi.mock("../../screens/Memory/MemoryEntries", () => ({
-  MemoryEntries: (): React.JSX.Element => <div data-testid="memory" />,
-}));
-
 import ProfileModal from "./ProfileModal";
 
 interface ProfileInfo {
@@ -80,7 +72,6 @@ function installHermesAPI(profiles: ProfileInfo[]): {
       setProfileAvatar: vi.fn().mockResolvedValue({ success: true }),
       removeProfileAvatar: vi.fn().mockResolvedValue({ success: true }),
       deleteProfile: vi.fn().mockResolvedValue({ success: true }),
-      readMemory: vi.fn().mockResolvedValue({ entries: [] }),
     },
   });
   return { setProfileName };

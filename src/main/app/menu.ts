@@ -92,7 +92,9 @@ export function buildMenu({
         {
           label: "Report an Issue",
           click: () =>
-            openExternalUrl("https://github.com/fathah/hermes-desktop/issues"),
+            openExternalUrl(
+              "https://github.com/pkulyn/agents-one/issues",
+            ),
         },
       ],
     },
