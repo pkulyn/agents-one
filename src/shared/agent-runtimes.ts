@@ -92,6 +92,13 @@ export interface AgentRuntimeConfig {
    * When omitted, the gateway is discovered below the Runtime endpoint. */
   workspaceGatewayEndpoint?: string;
   transport?: "http" | "cli";
+  /** Canonical connection transport (Agents One unified model).
+   * `gateway-v1` = remote via one URL + one token; `local-cli` = local
+   * executable path (Pi/Claude Code/Codex); `local-api` = local HTTP API
+   * (built-in Hermes).  Derived from legacy fields when absent, so old
+   * persisted configs keep working without a data migration.
+   */
+  agentTransport?: "gateway-v1" | "local-cli" | "local-api";
   executablePath?: string;
   /** Optional CLI model override. Empty keeps the CLI's own default. */
   model?: string;
@@ -257,3 +264,31 @@ export const NO_AGENT_RUNTIME_CAPABILITIES: AgentRuntimeCapabilities = {
   artifacts: false,
   workspaceAccess: false,
 };
+
+export type AgentRuntimeTransport = "gateway-v1" | "local-cli" | "local-api";
+
+/**
+ * Derive the canonical Agents One transport from a runtime definition.
+ * Backward compatible: absent `agentTransport` is inferred from legacy
+ * location/kind/remoteGateway fields, so old persisted configs keep working.
+ */
+export function deriveAgentTransport(
+  runtime: Pick<AgentRuntimeDefinition, "location" | "kind" | "config">,
+): AgentRuntimeTransport {
+  if (runtime.config?.agentTransport) return runtime.config.agentTransport;
+  if (
+    runtime.location === "remote" &&
+    runtime.config?.remoteGateway?.protocol === "agents-one-v1"
+  ) {
+    return "gateway-v1";
+  }
+  if (runtime.location === "remote") return "gateway-v1";
+  if (
+    runtime.config?.transport === "http" ||
+    runtime.kind === "hermes" ||
+    runtime.config?.hermes
+  ) {
+    return "local-api";
+  }
+  return "local-cli";
+}

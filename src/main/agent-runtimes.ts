@@ -1,6 +1,7 @@
 import {
   AGENT_RUNTIME_KINDS,
   NO_AGENT_RUNTIME_CAPABILITIES,
+  deriveAgentTransport,
   type AgentRuntimeConfig,
   type AgentRuntimeDefinition,
   type AgentRuntimeDraft,
@@ -1258,6 +1259,15 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
   if (transport !== undefined && transport !== "http" && transport !== "cli") {
     throw new Error("Runtime transport must be http or cli.");
   }
+  const agentTransport = value.agentTransport;
+  if (
+    agentTransport !== undefined &&
+    agentTransport !== "gateway-v1" &&
+    agentTransport !== "local-cli" &&
+    agentTransport !== "local-api"
+  ) {
+    throw new Error("Runtime agent transport is invalid.");
+  }
   const timeoutMs = value.timeoutMs;
   if (
     timeoutMs !== undefined &&
@@ -1292,6 +1302,7 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     ...(remoteGateway ? { remoteGateway } : {}),
     workspaceGatewayEndpoint,
     transport,
+    ...(agentTransport ? { agentTransport } : {}),
     executablePath: optionalString(value.executablePath, 4096),
     model: optionalString(value.model, 256),
     workspace: optionalString(value.workspace, 4096),
@@ -1429,7 +1440,8 @@ function normalizeUserRuntime(value: unknown): AgentRuntimeDefinition | null {
     return null;
   }
   try {
-    return {
+    const config = runtimeConfigFrom(value.config);
+    const runtime: AgentRuntimeDefinition = {
       id,
       name,
       kind: kind as AgentRuntimeDefinition["kind"],
@@ -1437,8 +1449,12 @@ function normalizeUserRuntime(value: unknown): AgentRuntimeDefinition | null {
       enabled: value.enabled !== false,
       needsReauthorization: value.needsReauthorization === true,
       managed: "user",
-      config: runtimeConfigFrom(value.config),
+      config,
     };
+    if (!config.agentTransport) {
+      runtime.config = { ...config, agentTransport: deriveAgentTransport(runtime) };
+    }
+    return runtime;
   } catch {
     return null;
   }
@@ -1744,8 +1760,13 @@ function builtInHermesRuntime(): AgentRuntimeDefinition {
     enabled: true,
     managed: "builtin",
     config: remote
-      ? { endpoint: connection.remoteUrl, transport: "http", timeoutMs: 15_000 }
-      : { transport: "cli", timeoutMs: 15_000 },
+      ? {
+          endpoint: connection.remoteUrl,
+          transport: "http",
+          agentTransport: "gateway-v1",
+          timeoutMs: 15_000,
+        }
+      : { transport: "cli", agentTransport: "local-api", timeoutMs: 15_000 },
   };
 }
 
@@ -1772,6 +1793,7 @@ function defaultPiRuntime(): AgentRuntimeDefinition {
     config: {
       executablePath: defaultWindowsCommand("pi.cmd"),
       transport: "cli",
+      agentTransport: "local-cli",
       timeoutMs: DEFAULT_TASK_TIMEOUT_MS,
     },
   };

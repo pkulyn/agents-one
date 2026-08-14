@@ -4,6 +4,7 @@ import http from "http";
 import { createHash } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
+import { deriveAgentTransport } from "../src/shared/agent-runtimes";
 
 const testRemoteConnectionMock = vi.hoisted(() => vi.fn());
 const sendMessageMock = vi.hoisted(() => vi.fn());
@@ -1788,5 +1789,68 @@ describe("agent runtime registry", () => {
         server.close((err) => (err ? reject(err) : resolve()));
       });
     }
+  });
+});
+
+describe("deriveAgentTransport", () => {
+  it("returns the explicit agentTransport when set", () => {
+    expect(
+      deriveAgentTransport({
+        location: "local",
+        kind: "pi",
+        config: { agentTransport: "local-cli", transport: "cli" },
+      }),
+    ).toBe("local-cli");
+  });
+
+  it("maps any remote runtime to gateway-v1", () => {
+    expect(
+      deriveAgentTransport({
+        location: "remote",
+        kind: "hermes",
+        config: { endpoint: "https://x" },
+      }),
+    ).toBe("gateway-v1");
+    expect(
+      deriveAgentTransport({
+        location: "remote",
+        kind: "openclaw",
+        config: { remoteGateway: { protocol: "agents-one-v1" } },
+      }),
+    ).toBe("gateway-v1");
+  });
+
+  it("maps local Hermes / http transport to local-api", () => {
+    expect(
+      deriveAgentTransport({
+        location: "local",
+        kind: "hermes",
+        config: { transport: "cli" },
+      }),
+    ).toBe("local-api");
+    expect(
+      deriveAgentTransport({
+        location: "local",
+        kind: "codex",
+        config: { transport: "http" },
+      }),
+    ).toBe("local-api");
+  });
+
+  it("maps local CLI runtimes to local-cli by default", () => {
+    expect(
+      deriveAgentTransport({
+        location: "local",
+        kind: "pi",
+        config: { transport: "cli" },
+      }),
+    ).toBe("local-cli");
+    expect(
+      deriveAgentTransport({
+        location: "local",
+        kind: "claude-code",
+        config: { transport: "cli" },
+      }),
+    ).toBe("local-cli");
   });
 });
