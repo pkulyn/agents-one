@@ -104,6 +104,7 @@ transport: "gateway-v1" | "local-cli" | "local-api";
 | 方案对齐与开发文档生成 | ✅ | 2026-08-14 | 用户确认方案 A + 全部 10 项决策 |
 | Phase 0 提交基线 | ✅ | 2026-08-14 | 8 个语义化 commit；标签 `agents-one-pre-opensource-baseline`；typecheck✅ test 203 文件/2010 通过/9 跳过 ✅ build✅ |
 | Phase 1 接入统一 | ⬜（后置） | | 用户确认 Phase 2 前置，Phase 1 后置（SSH/旧远程与旧页面支撑模块耦合） |
-| Phase 2 遗留清理 | 🔄 进行中 | 2026-08-14 | ①孤儿屏狄删除（Discover/Office/Providers/Tools/Gateway/Models/Install/Setup/Welcome）✅ ②上游云/钱包/社区删除✅ ③Skills/Memory/Soul UI 删除✅ ④i18n 收敛为 en+zh-CN✅ ⑤上游 hermesone/fathah 引用清理✅ ⑥深层主进程清理（registry/messaging/tools IPC）⬜与 Phase 1 耦合，后置 |
+| Phase 2 遗留清理 | ✅ 主体完成 | 2026-08-14 | ①孤儿屏狄删除✅ ②上游云/钱包/社区删除✅ ③Skills/Memory/Soul UI 删除✅ ④i18n 收敛 en+zh-CN✅ ⑤上游 hermesone/fathah 引用清理✅ ⑥分析器删除✅；深层主进程 IPC 清理（registry/messaging/tools）与 Phase 1 旧远程传输耦合，延后 |
+| Phase 3 开源准备 | 🔄 部分完成 | 2026-08-14 | 元数据（package.json/LICENSE/electron-builder/updater/CONTRIBUTING/删上游 changelog+README 变体）✅；README 重写待 Phase 1 完成后（需描述统一接入模型） |
 | Phase 3 开源准备 | ⬜ | | |
 | Phase 4 发布 | ⬜ | | |

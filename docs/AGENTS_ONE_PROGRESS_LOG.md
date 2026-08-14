@@ -1653,3 +1653,11 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - ⑤清理上游 hermesone/fathah 引用：菜单 issues 指向 pkulyn/agents-one；删除 hermesone provider setup card/PROVIDER_CARDS/BASE_URLS/SETTINGS_SECTIONS/url-key-map；删孤儿 i18n key；删除 stale detect-provider/office-url 测试并更新 layout-remote-gates、ProfileModal 测试。
 - 全量回归：191 个测试文件、1912 项通过、9 项跳过；Node/Web TypeScript 与生产构建通过。
 - 深层主进程清理（registry/messaging-platforms/tools 等 IPC 与 preload）与旧 Hermes 远程/SSH 传输耦合，延后到 Phase 1 一并处理。
+
+## 2026-08-14：Phase 2 主体完成 + Phase 3 元数据
+
+- Phase 2 遗留清理主体完成：除深层主进程 IPC（registry/messaging/tools，与 Phase 1 旧远程传输耦合延后）外全部落地——孤儿屏幕、上游云/钱包/社区、Skills/Memory/Soul 界面、i18n 收敛、hermesone/fathah 引用、上游 analytics 均已删除/清理。
+- Phase 3 元数据完成：package.json author=pkulyn + repository/homepage/bugs；LICENSE copyright pkulyn（保留 MIT，注明 hermes-desktop fork 起源）；electron-builder appId=com.pkulyn.agents-one + publish 指向 pkulyn/agents-one；dev-app-update.yml 改 agents-one；删除上游 changelogs(0.4.5-0.7.0)、README.ja-JP/es-LATAM、CONTRIBUTING.ja-JP；CONTRIBUTING 链接改新仓库；.env.example 精简。
+- 删除上游 analytics 客户端（utils/analytics.ts）与 PrivacyPane 隐私同意 UI、privacy 设置导航、VITE_ANALYTICS_* / MAIN_VITE_HERMES_API_* 环境变量与 workflow 引用。
+- 全量回归：191 个测试文件、1912 项通过、9 项跳过；Node/Web TypeScript 与生产构建通过；renderer 产物降至约 8.1MB。
+- 下一步进入 Phase 1：智能体接入统一（方案 A）——配置模型 transport=gateway-v1/local-cli/local-api、SSH 与旧远程 Hermes/OpenClaw 传输删除、注册表单统一为链接+Token 或路径。
