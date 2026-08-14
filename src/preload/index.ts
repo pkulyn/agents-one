@@ -70,7 +70,7 @@ interface DashboardConnection {
   baseUrl: string;
   wsUrl: string;
   token: string;
-  mode: "local" | "remote" | "ssh";
+  mode: "local" | "remote";
   profile?: string;
   pid?: number;
   port?: number;
@@ -255,7 +255,7 @@ const hermesAPI = {
   resetAuxiliaryConfig: (profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("reset-auxiliary-config", profile),
 
-  // Connection mode (local / remote / ssh)
+  // Connection mode (local / remote)
   isRemoteMode: (): Promise<boolean> => ipcRenderer.invoke("is-remote-mode"),
   isRemoteOnlyMode: (): Promise<boolean> =>
     ipcRenderer.invoke("is-remote-only-mode"),
@@ -373,27 +373,19 @@ const hermesAPI = {
   deleteTaskSchedule: (id: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("delete-task-schedule", id, profile),
   getConnectionConfig: (): Promise<{
-    mode: "local" | "remote" | "ssh";
+    mode: "local" | "remote";
     remoteUrl: string;
     remoteDashboardUrl: string;
     remoteChatTransport: "auto" | "dashboard" | "legacy";
-    sshChatTransport: "auto" | "dashboard" | "legacy";
     hasApiKey: boolean;
     hasRemoteDashboardToken: boolean;
     apiKeyLength: number;
     remoteDashboardTokenLength: number;
-    ssh: {
-      host: string;
-      port: number;
-      username: string;
-      keyPath: string;
-      remotePort: number;
-      localPort: number;
-    };
+    migratedFromSsh?: boolean;
   }> => ipcRenderer.invoke("get-connection-config"),
 
   setConnectionConfig: (
-    mode: "local" | "remote" | "ssh",
+    mode: "local" | "remote",
     remoteUrl: string,
     apiKey?: string,
     remoteDashboardUrl?: string,
@@ -410,33 +402,23 @@ const hermesAPI = {
 
   setConnectionChatTransports: (
     remoteChatTransport: "auto" | "dashboard" | "legacy",
-    sshChatTransport: "auto" | "dashboard" | "legacy",
   ): Promise<boolean> =>
     ipcRenderer.invoke(
       "set-connection-chat-transports",
       remoteChatTransport,
-      sshChatTransport,
     ),
 
   onConnectionConfigChanged: (
     callback: (config: {
-      mode: "local" | "remote" | "ssh";
+      mode: "local" | "remote";
       remoteUrl: string;
       remoteDashboardUrl: string;
       remoteChatTransport: "auto" | "dashboard" | "legacy";
-      sshChatTransport: "auto" | "dashboard" | "legacy";
       hasApiKey: boolean;
       hasRemoteDashboardToken: boolean;
       apiKeyLength: number;
       remoteDashboardTokenLength: number;
-      ssh: {
-        host: string;
-        port: number;
-        username: string;
-        keyPath: string;
-        remotePort: number;
-        localPort: number;
-      };
+      migratedFromSsh?: boolean;
     }) => void,
   ): (() => void) => {
     const handler = (
@@ -445,23 +427,15 @@ const hermesAPI = {
     ): void =>
       callback(
         config as {
-          mode: "local" | "remote" | "ssh";
+          mode: "local" | "remote";
           remoteUrl: string;
           remoteDashboardUrl: string;
           remoteChatTransport: "auto" | "dashboard" | "legacy";
-          sshChatTransport: "auto" | "dashboard" | "legacy";
           hasApiKey: boolean;
           hasRemoteDashboardToken: boolean;
           apiKeyLength: number;
           remoteDashboardTokenLength: number;
-          ssh: {
-            host: string;
-            port: number;
-            username: string;
-            keyPath: string;
-            remotePort: number;
-            localPort: number;
-          };
+          migratedFromSsh?: boolean;
         },
       );
     ipcRenderer.on("connection-config-changed", handler);
@@ -469,50 +443,8 @@ const hermesAPI = {
       ipcRenderer.removeListener("connection-config-changed", handler);
   },
 
-  setSshConfig: (
-    host: string,
-    port: number,
-    username: string,
-    keyPath: string,
-    remotePort: number,
-    localPort: number,
-  ): Promise<boolean> =>
-    ipcRenderer.invoke(
-      "set-ssh-config",
-      host,
-      port,
-      username,
-      keyPath,
-      remotePort,
-      localPort,
-    ),
-
   testRemoteConnection: (url: string, apiKey?: string): Promise<boolean> =>
     ipcRenderer.invoke("test-remote-connection", url, apiKey),
-
-  testSshConnection: (
-    host: string,
-    port: number,
-    username: string,
-    keyPath: string,
-    remotePort: number,
-  ): Promise<boolean> =>
-    ipcRenderer.invoke(
-      "test-ssh-connection",
-      host,
-      port,
-      username,
-      keyPath,
-      remotePort,
-    ),
-
-  isSshTunnelActive: (): Promise<boolean> =>
-    ipcRenderer.invoke("is-ssh-tunnel-active"),
-
-  startSshTunnel: (): Promise<boolean> =>
-    ipcRenderer.invoke("start-ssh-tunnel"),
-
-  stopSshTunnel: (): Promise<boolean> => ipcRenderer.invoke("stop-ssh-tunnel"),
 
   // Chat
   sendMessage: (
@@ -1251,7 +1183,6 @@ const hermesAPI = {
     running: boolean;
     error: string;
     remoteUrl?: string | null;
-    remoteSource?: "ssh" | null;
   }> => ipcRenderer.invoke("claw3d-status"),
 
   claw3dSetup: (): Promise<{ success: boolean; error?: string }> =>

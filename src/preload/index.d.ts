@@ -119,7 +119,7 @@ interface DashboardConnection {
   baseUrl: string;
   wsUrl: string;
   token: string;
-  mode: "local" | "remote" | "ssh";
+  mode: "local" | "remote";
   profile?: string;
   pid?: number;
   port?: number;
@@ -239,7 +239,7 @@ interface HermesAPI {
     profile?: string,
   ) => Promise<boolean>;
 
-  // Connection mode (local / remote / ssh)
+  // Connection mode (local / remote)
   isRemoteMode: () => Promise<boolean>;
   isRemoteOnlyMode: () => Promise<boolean>;
   listAgentRuntimes: () => Promise<AgentRuntimeDefinition[]>;
@@ -310,26 +310,18 @@ interface HermesAPI {
   ) => () => void;
   deleteTaskSchedule: (id: string, profile?: string) => Promise<boolean>;
   getConnectionConfig: () => Promise<{
-    mode: "local" | "remote" | "ssh";
+    mode: "local" | "remote";
     remoteUrl: string;
     remoteDashboardUrl: string;
     remoteChatTransport: "auto" | "dashboard" | "legacy";
-    sshChatTransport: "auto" | "dashboard" | "legacy";
     hasApiKey: boolean;
     hasRemoteDashboardToken: boolean;
     apiKeyLength: number;
     remoteDashboardTokenLength: number;
-    ssh: {
-      host: string;
-      port: number;
-      username: string;
-      keyPath: string;
-      remotePort: number;
-      localPort: number;
-    };
+    migratedFromSsh?: boolean;
   }>;
   setConnectionConfig: (
-    mode: "local" | "remote" | "ssh",
+    mode: "local" | "remote",
     remoteUrl: string,
     apiKey?: string,
     remoteDashboardUrl?: string,
@@ -337,48 +329,21 @@ interface HermesAPI {
   ) => Promise<boolean>;
   setConnectionChatTransports: (
     remoteChatTransport: "auto" | "dashboard" | "legacy",
-    sshChatTransport: "auto" | "dashboard" | "legacy",
   ) => Promise<boolean>;
   onConnectionConfigChanged: (
     callback: (config: {
-      mode: "local" | "remote" | "ssh";
+      mode: "local" | "remote";
       remoteUrl: string;
       remoteDashboardUrl: string;
       remoteChatTransport: "auto" | "dashboard" | "legacy";
-      sshChatTransport: "auto" | "dashboard" | "legacy";
       hasApiKey: boolean;
       hasRemoteDashboardToken: boolean;
       apiKeyLength: number;
       remoteDashboardTokenLength: number;
-      ssh: {
-        host: string;
-        port: number;
-        username: string;
-        keyPath: string;
-        remotePort: number;
-        localPort: number;
-      };
+      migratedFromSsh?: boolean;
     }) => void,
   ) => () => void;
-  setSshConfig: (
-    host: string,
-    port: number,
-    username: string,
-    keyPath: string,
-    remotePort: number,
-    localPort: number,
-  ) => Promise<boolean>;
   testRemoteConnection: (url: string, apiKey?: string) => Promise<boolean>;
-  testSshConnection: (
-    host: string,
-    port: number,
-    username: string,
-    keyPath: string,
-    remotePort: number,
-  ) => Promise<boolean>;
-  isSshTunnelActive: () => Promise<boolean>;
-  startSshTunnel: () => Promise<boolean>;
-  stopSshTunnel: () => Promise<boolean>;
 
   // Chat
   sendMessage: (
@@ -622,7 +587,7 @@ interface HermesAPI {
       hasSoul: boolean;
       skillCount: number;
       gatewayRunning: boolean;
-      /** Resolved accent colour; absent on SSH/remote profiles. */
+      /** Resolved accent colour; absent on remote profiles. */
       color?: string;
       /** Avatar data URL, or null/absent when none is set. */
       avatar?: string | null;
@@ -876,7 +841,6 @@ interface HermesAPI {
     running: boolean;
     error: string;
     remoteUrl?: string | null;
-    remoteSource?: "ssh" | null;
   }>;
   claw3dSetup: () => Promise<{ success: boolean; error?: string }>;
   onClaw3dSetupProgress: (

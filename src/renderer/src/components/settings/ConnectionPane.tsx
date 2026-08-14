@@ -1,12 +1,13 @@
-import { Laptop, Server, Terminal, Wifi } from "lucide-react";
+import { Laptop, Server, Wifi } from "lucide-react";
 import { useI18n } from "../useI18n";
 import { useSettings } from "./SettingsDataContext";
 import { CHAT_TRANSPORT_OPTIONS } from "./settingsHelpers";
 
 /**
- * Local / Remote / SSH connection mode, chat transport, server config, and the
+ * Local / Remote connection mode, chat transport, server config, and the
  * outgoing Network settings (Force IPv4 + proxy) — proxy/IPv4 shape every
  * connection, so they live here as a subsection rather than a separate tab.
+ * SSH mode was removed: remote Hermes now always goes through Gateway v1.
  */
 export default function ConnectionPane(): React.JSX.Element {
   const { t } = useI18n();
@@ -29,29 +30,18 @@ export default function ConnectionPane(): React.JSX.Element {
     setConnDashboardToken,
     connDashboardTokenMask,
     connTesting,
+    migratedFromSsh,
     apiServerKeyMissing,
     setApiServerKeyMissing,
     generatingKey,
     setGeneratingKey,
     remoteChatTransport,
-    sshChatTransport,
     transportProbe,
-    sshHost,
-    setSshHost,
-    sshPort,
-    setSshPort,
-    sshUser,
-    setSshUser,
-    sshKeyPath,
-    setSshKeyPath,
-    sshRemotePort,
-    setSshRemotePort,
     handleSaveConnection,
     handleTestConnection,
     handleChatTransportChange,
     handleSwitchToLocal,
     handleSwitchToRemote,
-    handleSwitchToSsh,
     forceIpv4,
     setForceIpv4,
     httpProxy,
@@ -92,24 +82,24 @@ export default function ConnectionPane(): React.JSX.Element {
               {t("settings.modeRemote")}
             </span>
           </button>
-          <button
-            className={`settings-theme-option ${connMode === "ssh" ? "active" : ""}`}
-            onClick={() => void handleSwitchToSsh()}
-          >
-            <span className="settings-mode-option">
-              <Terminal size={15} />
-              {t("settings.modeSsh")}
-            </span>
-          </button>
         </div>
         <div className="settings-field-hint">
           {connMode === "local"
             ? t("settings.modeLocalHint")
-            : connMode === "ssh"
-              ? t("settings.modeSshHint")
-              : t("settings.modeRemoteHint")}
+            : t("settings.modeRemoteHint")}
         </div>
       </div>
+
+      {connMode === "remote" && migratedFromSsh && (
+        <div className="settings-api-key-banner settings-api-key-banner--info">
+          <div className="settings-api-key-banner-title">
+            {t("settings.sshMigratedTitle")}
+          </div>
+          <div className="settings-api-key-banner-desc">
+            {t("settings.sshMigratedDesc")}
+          </div>
+        </div>
+      )}
 
       {!apiServerKeyMissing ? null : connMode === "local" ? (
         <div className="settings-api-key-banner">
@@ -142,9 +132,7 @@ export default function ConnectionPane(): React.JSX.Element {
             {t("settings.remoteEnvTitle")}
           </div>
           <div className="settings-api-key-banner-desc">
-            {connMode === "ssh"
-              ? t("settings.remoteEnvSshDesc")
-              : t("settings.remoteEnvDesc")}
+            {t("settings.remoteEnvDesc")}
           </div>
         </div>
       )}
@@ -237,9 +225,7 @@ export default function ConnectionPane(): React.JSX.Element {
                   className={`settings-theme-option ${
                     remoteChatTransport === option ? "active" : ""
                   }`}
-                  onClick={() =>
-                    void handleChatTransportChange("remote", option)
-                  }
+                  onClick={() => void handleChatTransportChange(option)}
                 >
                   {t(`settings.chatTransport.${option}`)}
                 </button>
@@ -269,127 +255,6 @@ export default function ConnectionPane(): React.JSX.Element {
               {connTesting
                 ? t("settings.testingConnection")
                 : t("settings.testConnection")}
-            </button>
-            <button className="btn btn-primary" onClick={handleSaveConnection}>
-              {t("settings.save")}
-            </button>
-          </div>
-        </>
-      )}
-
-      {connMode === "ssh" && (
-        <>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.sshHost")}
-            </label>
-            <input
-              className="input"
-              type="text"
-              value={sshHost}
-              onChange={(e) => setSshHost(e.target.value)}
-              placeholder={t("settings.sshHostPlaceholder")}
-            />
-          </div>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.sshPort")}
-            </label>
-            <input
-              className="input"
-              type="number"
-              value={sshPort}
-              onChange={(e) => setSshPort(e.target.value)}
-              placeholder="22"
-            />
-          </div>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.sshUsername")}
-            </label>
-            <input
-              className="input"
-              type="text"
-              value={sshUser}
-              onChange={(e) => setSshUser(e.target.value)}
-              placeholder={t("settings.sshUsernamePlaceholder")}
-            />
-          </div>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.sshKeyPath")}{" "}
-              <span style={{ fontWeight: 400, opacity: 0.6 }}>
-                {t("settings.sshKeyPathOptional")}
-              </span>
-            </label>
-            <input
-              className="input"
-              type="text"
-              value={sshKeyPath}
-              onChange={(e) => setSshKeyPath(e.target.value)}
-              placeholder="~/.ssh/id_rsa"
-            />
-          </div>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.sshRemotePort")}{" "}
-              <span style={{ fontWeight: 400, opacity: 0.6 }}>
-                {t("settings.sshRemotePortDefault")}
-              </span>
-            </label>
-            <input
-              className="input"
-              type="number"
-              value={sshRemotePort}
-              onChange={(e) => setSshRemotePort(e.target.value)}
-              placeholder="8642"
-            />
-            <div className="settings-field-hint">
-              {t("settings.sshHint", {
-                cmd: `${sshUser || "user"}@${sshHost || "host"}`,
-              })}
-            </div>
-          </div>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.chatTransport.label")}
-            </label>
-            <div className="settings-theme-options">
-              {CHAT_TRANSPORT_OPTIONS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  className={`settings-theme-option ${
-                    sshChatTransport === option ? "active" : ""
-                  }`}
-                  onClick={() => void handleChatTransportChange("ssh", option)}
-                >
-                  {t(`settings.chatTransport.${option}`)}
-                </button>
-              ))}
-            </div>
-            <div className="settings-field-hint">
-              {t("settings.chatTransport.sshHint")}
-            </div>
-            {transportProbe && (
-              <div
-                className={`settings-transport-status settings-transport-status--${transportProbe.kind}`}
-              >
-                <span>{transportProbe.label}</span>
-                {transportProbe.loading && (
-                  <span>{t("settings.chatTransport.checking")}</span>
-                )}
-                {transportProbe.detail && <code>{transportProbe.detail}</code>}
-              </div>
-            )}
-          </div>
-          <div className="settings-hermes-actions">
-            <button
-              className="btn btn-secondary"
-              onClick={handleTestConnection}
-              disabled={connTesting}
-            >
-              {connTesting ? t("settings.testingSsh") : t("settings.testSsh")}
             </button>
             <button className="btn btn-primary" onClick={handleSaveConnection}>
               {t("settings.save")}

@@ -30,9 +30,9 @@ Local Codex, Claude Code, and Pi conversations reuse the same panel in [[src/ren
 
 ## Remote folder picker
 
-Remote and SSH chats use an in-app picker so users do not accidentally select a local macOS folder for a remote session.
+Remote chats use an in-app picker so users do not accidentally select a local macOS folder for a remote session.
 
-[[src/renderer/src/screens/Chat/RemoteFolderPicker.tsx#RemoteFolderPicker]] provides a scrollable folder list, horizontally scrollable breadcrumbs, manual path entry, Escape-to-close, and arrow/Enter keyboard navigation. [[src/main/ipc/register.ts#registerIpcHandlers]] routes `read-directory` to [[src/main/ssh-remote.ts#sshReadDirectory]] for SSH connections and returns no listing for pure Remote Gateway mode until the backend exposes a directory-list endpoint, so the picker still allows typed remote paths.
+[[src/renderer/src/screens/Chat/RemoteFolderPicker.tsx#RemoteFolderPicker]] provides a scrollable folder list, horizontally scrollable breadcrumbs, manual path entry, Escape-to-close, and arrow/Enter keyboard navigation. [[src/main/ipc/register.ts#registerIpcHandlers]] returns no listing for Remote Gateway mode until the backend exposes a directory-list endpoint, so the picker still allows typed remote paths.
 
 ## Muted tree icons
 

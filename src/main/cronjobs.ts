@@ -8,12 +8,8 @@ import {
   isRemoteMode,
   getApiUrl,
   getRemoteAuthHeader,
-  normaliseRemoteUrl,
 } from "./hermes";
-import { getConnectionConfig } from "./config";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
-import { sshRunCron } from "./ssh-remote";
-import type { SshConfig } from "./ssh-tunnel";
 
 export interface CronJob {
   id: string;
@@ -170,26 +166,6 @@ export function parseCronListOutput(output: string): CronJob[] {
   return jobs;
 }
 
-function getSshCronConfig(profile?: string): SshConfig | null {
-  if (!profile || profile === "default" || !isRemoteMode()) return null;
-  const conn = getConnectionConfig();
-  return conn.mode === "ssh" && conn.ssh ? conn.ssh : null;
-}
-
-async function runNamedProfileSshCron(
-  args: string[],
-  profile?: string,
-): Promise<{ success: boolean; output: string; error?: string } | null> {
-  const ssh = getSshCronConfig(profile);
-  if (!ssh) return null;
-  const res = await sshRunCron(ssh, args, { profile, timeoutMs: 15000 });
-  return {
-    success: res.success,
-    output: res.stdout || "",
-    error: res.error,
-  };
-}
-
 async function remoteFetch(
   path: string,
   init: RequestInit = {},
@@ -198,49 +174,12 @@ async function remoteFetch(
     ...getRemoteAuthHeader(),
     ...((init.headers as Record<string, string>) || {}),
   };
-  const apiUrl = await getCronApiUrl(headers);
+  const apiUrl = await getCronApiUrl();
   return fetch(`${apiUrl}${path}`, { ...init, headers });
 }
 
-async function getCronApiUrl(headers: Record<string, string>): Promise<string> {
-  try {
-    return getApiUrl();
-  } catch (err) {
-    const conn = getConnectionConfig();
-    if (conn.mode !== "ssh" || !conn.ssh?.localPort) throw err;
-
-    // Schedules/Cron can be opened without first running the Chat path that
-    // starts/refreshes the in-process SSH tunnel state. As a narrow fallback for
-    // that screen, probe the configured/default local SSH port before using it.
-    // This port may be stale if startSshTunnel() had to choose a different free
-    // port, so a failed /health check preserves getApiUrl()'s original error
-    // instead of sending authenticated API requests to an unrelated service.
-    const fallbackUrl = normaliseRemoteUrl(
-      `http://127.0.0.1:${conn.ssh.localPort}`,
-    );
-    if (await isCronFallbackHealthy(fallbackUrl, headers)) return fallbackUrl;
-    throw err;
-  }
-}
-
-async function isCronFallbackHealthy(
-  apiUrl: string,
-  headers: Record<string, string>,
-): Promise<boolean> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1500);
-  try {
-    const res = await fetch(`${apiUrl}/health`, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-    });
-    return res.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
+async function getCronApiUrl(): Promise<string> {
+  return getApiUrl();
 }
 
 async function remoteJsonError(res: Response): Promise<string> {
@@ -260,19 +199,6 @@ export async function listCronJobs(
   includeDisabled = true,
   profile?: string,
 ): Promise<CronJob[]> {
-  const sshResult = await runNamedProfileSshCron(
-    includeDisabled ? ["list", "--all"] : ["list"],
-    profile,
-  );
-  if (sshResult) {
-    if (!sshResult.success) {
-      console.error("[CRON] remote SSH list failed:", sshResult.error);
-      return [];
-    }
-    const jobs = parseCronListOutput(sshResult.output);
-    return includeDisabled ? jobs : jobs.filter((job) => job.enabled);
-  }
-
   if (isRemoteMode()) {
     try {
       const qs = includeDisabled ? "?include_disabled=true" : "";
@@ -369,11 +295,6 @@ export async function createCronJob(
   if (name) args.push("--name", name);
   if (deliver) args.push("--deliver", deliver);
 
-  const sshResult = await runNamedProfileSshCron(args, profile);
-  if (sshResult) {
-    return { success: sshResult.success, error: sshResult.error };
-  }
-
   if (isRemoteMode()) {
     try {
       const res = await remoteFetch("/api/jobs", {
@@ -404,10 +325,6 @@ export async function removeCronJob(
   profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (!jobId) return { success: false, error: "Missing job ID" };
-  const sshResult = await runNamedProfileSshCron(["remove", jobId], profile);
-  if (sshResult) {
-    return { success: sshResult.success, error: sshResult.error };
-  }
   if (isRemoteMode()) {
     try {
       const res = await remoteFetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
@@ -428,12 +345,8 @@ export async function removeCronJob(
 async function remoteJobAction(
   jobId: string,
   action: "pause" | "resume" | "run",
-  profile?: string,
+  _profile?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const sshResult = await runNamedProfileSshCron([action, jobId], profile);
-  if (sshResult) {
-    return { success: sshResult.success, error: sshResult.error };
-  }
   try {
     const res = await remoteFetch(
       `/api/jobs/${encodeURIComponent(jobId)}/${action}`,

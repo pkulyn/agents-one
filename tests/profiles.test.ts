@@ -300,12 +300,12 @@ describe("setActiveProfile persistence", () => {
   const activeFile = join(TEST_HOME, "active_profile");
 
   it("persists a remote-only profile even when the local CLI rejects it", () => {
-    // In SSH mode the selected profile lives on the REMOTE. The local
+    // In remote mode the selected profile lives on the REMOTE. The local
     // `hermes profile use` validates against local profiles and raises
     // FileNotFoundError for it; before the direct-write fallback that error
     // was swallowed and ~/.hermes/active_profile never changed — so the
-    // selection reset to `default` on relaunch and activeSshProfile() scoped
-    // the unified SSH dashboard to the wrong profile.
+    // selection reset to `default` on relaunch and activeProfileName() scoped
+    // the unified remote dashboard to the wrong profile.
     execFileSyncMock.mockImplementation(() => {
       throw new Error("Profile 'vps-agent' does not exist.");
     });

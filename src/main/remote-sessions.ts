@@ -39,7 +39,7 @@ export interface RemoteSessionConfig {
    * gateway API key while leaving a stale dashboard token configured. */
   fallbackApiKey?: string;
   /** When set (and not "default"), every dashboard request is scoped to this
-   *  profile via `?profile=`. The SSH transport uses ONE unified machine
+   *  profile via `?profile=`. The remote transport uses ONE unified machine
    *  dashboard for all profiles (see ensureDashboardInner), so per-profile data
    *  correctness comes from this query param rather than a per-profile server. */
   profile?: string;

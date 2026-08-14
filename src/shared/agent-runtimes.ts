@@ -16,9 +16,10 @@ export const AGENT_RUNTIME_KINDS = [
 
 export type AgentRuntimeKind = (typeof AGENT_RUNTIME_KINDS)[number];
 export type AgentRuntimeLocation = "local" | "remote";
-/** A Hermes Runtime has the same three connection choices as the built-in
- * Hermes connection, while retaining its own independent connection profile. */
-export type HermesRuntimeMode = "local" | "remote" | "ssh";
+/** A Hermes Runtime has the same connection choices as the built-in
+ * Hermes connection, while retaining its own independent connection profile.
+ * SSH mode was removed: remote Hermes now always goes through Gateway v1. */
+export type HermesRuntimeMode = "local" | "remote";
 export type HermesChatTransport = "auto" | "dashboard" | "legacy";
 
 /**
@@ -30,20 +31,10 @@ export interface AgentsOneRemoteGatewayConfig {
   protocol: "agents-one-v1";
 }
 
-export interface HermesRuntimeSshConfig {
-  host?: string;
-  port?: number;
-  username?: string;
-  keyPath?: string;
-  remotePort?: number;
-  localPort?: number;
-}
-
 export interface HermesRuntimeConnectionConfig {
   mode: HermesRuntimeMode;
   dashboardUrl?: string;
   chatTransport?: HermesChatTransport;
-  ssh?: HermesRuntimeSshConfig;
 }
 export type AgentRuntimeHealthState =
   | "healthy"

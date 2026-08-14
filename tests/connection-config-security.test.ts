@@ -47,8 +47,6 @@ describe("connection config secret exposure", () => {
       remoteUrl: "https://hermes.example",
       apiKey: "remote-secret",
       remoteChatTransport: "dashboard",
-      sshChatTransport: "auto",
-      ssh: getConnectionConfig().ssh,
     });
 
     expect(getConnectionConfig().apiKey).toBe("remote-secret");
@@ -58,7 +56,6 @@ describe("connection config secret exposure", () => {
       mode: "remote",
       remoteUrl: "https://hermes.example",
       remoteChatTransport: "dashboard",
-      sshChatTransport: "auto",
       hasApiKey: true,
       // Length is intentionally exposed so the renderer can render a
       // mask that matches the stored key's width. The secret itself
@@ -110,7 +107,6 @@ describe("connection config secret exposure", () => {
   it("uses the gateway API key as a dashboard fallback only for the same origin", async () => {
     const { getConnectionConfig, getRemoteDashboardSessionConfig, setConnectionConfig } =
       await loadConnectionConfigModule();
-    const ssh = getConnectionConfig().ssh;
 
     setConnectionConfig({
       mode: "remote",
@@ -119,8 +115,6 @@ describe("connection config secret exposure", () => {
       remoteDashboardUrl: "https://hermes.example/hermes-dashboard",
       remoteDashboardToken: "dashboard-secret",
       remoteChatTransport: "auto",
-      sshChatTransport: "auto",
-      ssh,
     });
 
     expect(getRemoteDashboardSessionConfig(getConnectionConfig())).toMatchObject({
@@ -142,7 +136,6 @@ describe("connection config secret exposure", () => {
     const { getConnectionConfig, setConnectionConfig } =
       await loadConnectionConfigModule();
     const { configuredRemoteTlsOptions } = await import("../src/main/remote-tls");
-    const ssh = getConnectionConfig().ssh;
 
     setConnectionConfig({
       mode: "remote",
@@ -151,8 +144,6 @@ describe("connection config secret exposure", () => {
       remoteDashboardUrl: "https://hermes.example/hermes-dashboard",
       remoteDashboardToken: "dashboard-secret",
       remoteChatTransport: "auto",
-      sshChatTransport: "auto",
-      ssh,
     });
 
     expect(
@@ -185,15 +176,6 @@ describe("connection config secret exposure", () => {
         remoteUrl: url,
         apiKey: "remote-secret",
         remoteChatTransport: "auto",
-        sshChatTransport: "auto",
-        ssh: {
-          host: "",
-          port: 22,
-          username: "",
-          keyPath: "",
-          remotePort: 8642,
-          localPort: 18642,
-        },
       });
 
       await expect(testRemoteConnection(url)).resolves.toBe(true);
@@ -212,14 +194,11 @@ describe("connection config secret exposure", () => {
       setConnectionConfig,
     } = await loadConnectionConfigModule();
 
-    const ssh = getConnectionConfig().ssh;
     setConnectionConfig({
       mode: "remote",
       remoteUrl: "https://hermes.example",
       apiKey: "remote-secret",
       remoteChatTransport: "dashboard",
-      sshChatTransport: "auto",
-      ssh,
     });
 
     setConnectionConfig({
@@ -258,17 +237,14 @@ describe("connection config secret exposure", () => {
     });
   });
 
-  it("exposes SSH settings without exposing the stored remote API key", async () => {
-    const { getPublicConnectionConfig, setConnectionConfig } =
+  it("read-only migrates a persisted SSH connection to remote without leaking the API key", async () => {
+    const { getConnectionConfig, getPublicConnectionConfig, writeDesktopConfig } =
       await loadConnectionConfigModule();
 
-    setConnectionConfig({
-      mode: "ssh",
-      remoteUrl: "",
-      apiKey: "remote-secret",
-      remoteChatTransport: "auto",
-      sshChatTransport: "legacy",
-      ssh: {
+    // Simulate a legacy SSH connection persisted before SSH mode was removed.
+    writeDesktopConfig({
+      connectionMode: "ssh",
+      sshConfig: {
         host: "example.internal",
         port: 22,
         username: "hermes",
@@ -276,12 +252,16 @@ describe("connection config secret exposure", () => {
         remotePort: 8642,
         localPort: 18642,
       },
+      remoteApiKey: "remote-secret",
     });
 
+    const config = getConnectionConfig();
+    expect(config.mode).toBe("remote");
+    expect(config.migratedFromSsh).toBe(true);
+
     const publicConfig = getPublicConnectionConfig();
-    expect(publicConfig.mode).toBe("ssh");
-    expect(publicConfig.sshChatTransport).toBe("legacy");
-    expect(publicConfig.ssh.host).toBe("example.internal");
+    expect(publicConfig.mode).toBe("remote");
+    expect(publicConfig.migratedFromSsh).toBe(true);
     expect("apiKey" in publicConfig).toBe(false);
     expect(JSON.stringify(publicConfig)).not.toContain("remote-secret");
   });

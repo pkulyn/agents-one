@@ -230,7 +230,7 @@ describe("AgentRuntimesPane", () => {
     );
   });
 
-  it("offers local, remote, and SSH tunnel modes for a custom Hermes runtime", async () => {
+  it("offers local and remote modes (SSH removed) for a custom Hermes runtime", async () => {
     installHermesAPI([]);
     render(<AgentRuntimesPane />);
 
@@ -241,17 +241,15 @@ describe("AgentRuntimesPane", () => {
 
     expect(screen.getByRole("button", { name: "本地" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "远程" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "SSH 隧道" })).toBeInTheDocument();
+    // SSH 隧道模式已移除（远程统一走 Gateway v1）
+    expect(
+      screen.queryByRole("button", { name: "SSH 隧道" }),
+    ).not.toBeInTheDocument();
     // 对话传输方式（自动/Dashboard/基础模式）仅在兼容模式下展示
     fireEvent.click(screen.getByRole("button", { name: "兼容模式" }));
     expect(screen.getByRole("button", { name: "自动" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "基础模式" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "SSH 隧道" }));
-    expect(screen.getByLabelText("SSH 主机")).toBeInTheDocument();
-    expect(screen.getByLabelText("SSH 用户名")).toBeInTheDocument();
-    expect(screen.getByLabelText("远程 API 端口")).toBeInTheDocument();
   });
 
   it("offers Pi Agent CLI as a configurable local runtime template", async () => {

@@ -215,7 +215,6 @@ export default function AgentRuntimesPane({
     : draft.location === "remote";
   const usesUnifiedGateway =
     isRemoteConnection &&
-    !(isHermesRuntime && hermesMode === "ssh") &&
     draft.config.remoteGateway?.protocol === "agents-one-v1";
   const requiresRemoteCredential =
     !isBuiltin &&
@@ -256,11 +255,7 @@ export default function AgentRuntimesPane({
     (isHermesRuntime
       ? (usesUnifiedGateway && !!draft.config.endpoint?.trim()) ||
         hermesMode === "local" ||
-        (hermesMode === "remote" && !!draft.config.endpoint?.trim()) ||
-        (hermesMode === "ssh" &&
-          !!draft.config.hermes?.ssh?.host?.trim() &&
-          !!draft.config.hermes?.ssh?.username?.trim() &&
-          !!draft.config.hermes?.ssh?.remotePort)
+        (hermesMode === "remote" && !!draft.config.endpoint?.trim())
       : draft.location === "local" || !!draft.config.endpoint?.trim()) &&
     (!draft.needsReauthorization || bearerToken.trim().length >= 8) &&
     (!isNew || (draftProbe?.state === "healthy" && draftProbeKey === draftConnectionKey));
@@ -415,7 +410,7 @@ export default function AgentRuntimesPane({
       }
       if (
         (saved.config.remoteGateway?.protocol === "agents-one-v1" ||
-          ((saved.location === "remote" || saved.config.hermes?.mode === "ssh") &&
+          (saved.location === "remote" &&
             (saved.kind === "openclaw" || saved.kind === "hermes"))) &&
         bearerToken.trim()
       ) {
@@ -908,7 +903,7 @@ export default function AgentRuntimesPane({
             </label>
             <div className="settings-theme-options">
               {isHermesRuntime
-                ? (["local", "remote", "ssh"] as HermesRuntimeMode[]).map(
+                ? (["local", "remote"] as HermesRuntimeMode[]).map(
                     (mode) => (
                       <button
                         key={mode}
@@ -919,11 +914,7 @@ export default function AgentRuntimesPane({
                         onClick={() => updateHermesConnection({ mode })}
                         disabled={isBuiltin}
                       >
-                        {mode === "local"
-                          ? "本地"
-                          : mode === "remote"
-                            ? "远程"
-                            : "SSH 隧道"}
+                        {mode === "local" ? "本地" : "远程"}
                       </button>
                     ),
                   )
@@ -954,7 +945,7 @@ export default function AgentRuntimesPane({
             </div>
           </div>
 
-          {isRemoteConnection && !(isHermesRuntime && hermesMode === "ssh") && (
+          {isRemoteConnection && (
             <div className="settings-field">
               <label className="settings-field-label">接入协议</label>
               <div className="settings-theme-options">
@@ -1031,30 +1022,6 @@ export default function AgentRuntimesPane({
               </>
             ) : (
             <>
-              {isHermesRuntime && hermesMode === "ssh" ? (
-                <div className="agent-runtime-form-grid">
-                  <label className="settings-field">
-                    <span className="settings-field-label">SSH 主机</span>
-                    <input className="input" aria-label="SSH 主机" value={draft.config.hermes?.ssh?.host || ""} onChange={(event) => updateHermesConnection({ ssh: { ...draft.config.hermes?.ssh, host: event.target.value } })} disabled={isBuiltin} />
-                  </label>
-                  <label className="settings-field">
-                    <span className="settings-field-label">SSH 用户名</span>
-                    <input className="input" aria-label="SSH 用户名" value={draft.config.hermes?.ssh?.username || ""} onChange={(event) => updateHermesConnection({ ssh: { ...draft.config.hermes?.ssh, username: event.target.value } })} disabled={isBuiltin} />
-                  </label>
-                  <label className="settings-field">
-                    <span className="settings-field-label">SSH 端口</span>
-                    <input className="input" type="number" aria-label="SSH 端口" value={draft.config.hermes?.ssh?.port || 22} onChange={(event) => updateHermesConnection({ ssh: { ...draft.config.hermes?.ssh, port: Number(event.target.value) || 22 } })} disabled={isBuiltin} />
-                  </label>
-                  <label className="settings-field">
-                    <span className="settings-field-label">远程 API 端口</span>
-                    <input className="input" type="number" aria-label="远程 API 端口" value={draft.config.hermes?.ssh?.remotePort || 8642} onChange={(event) => updateHermesConnection({ ssh: { ...draft.config.hermes?.ssh, remotePort: Number(event.target.value) || 8642 } })} disabled={isBuiltin} />
-                  </label>
-                  <label className="settings-field">
-                    <span className="settings-field-label">SSH 私钥文件</span>
-                    <input className="input" aria-label="SSH 私钥文件" value={draft.config.hermes?.ssh?.keyPath || ""} onChange={(event) => updateHermesConnection({ ssh: { ...draft.config.hermes?.ssh, keyPath: event.target.value } })} placeholder="C:\\Users\\you\\.ssh\\id_rsa" disabled={isBuiltin} />
-                  </label>
-                </div>
-              ) : (
                 <label className="settings-field">
                   <span className="settings-field-label">
                     {isHermesRuntime ? "远程服务器地址" : "服务地址"}
@@ -1072,7 +1039,6 @@ export default function AgentRuntimesPane({
                     凭据仅保存在受保护的连接配置中。
                   </span>
                 </label>
-              )}
               {requiresRemoteCredential && (
                 <div className="agent-runtime-form-grid agent-runtime-form-grid--compact">
                   <label className="settings-field">

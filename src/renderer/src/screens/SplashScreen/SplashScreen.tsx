@@ -6,8 +6,8 @@ interface SplashScreenProps {
   onFinished: () => void;
   status?: string;
   // When provided, a "Switch to local mode" escape hatch appears after a delay
-  // so a stuck remote/SSH connect (e.g. an unresponsive "Starting SSH tunnel…")
-  // never traps the user on the splash. Omitted in local mode.
+  // so a stuck remote connect never traps the user on the splash. Omitted in
+  // local mode.
   onSwitchToLocal?: () => void;
 }
 

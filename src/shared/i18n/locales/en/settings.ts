@@ -213,11 +213,8 @@ export default {
     legacy: "Legacy",
     remoteHint:
       "Auto tries the Hermes Dashboard WebSocket first, then falls back to the legacy remote API. Dashboard requires a valid URL and session token.",
-    sshHint:
-      "Auto tries Dashboard WebSocket through the SSH tunnel first, then falls back to legacy SSH chat.",
     checking: "Checking…",
     activeLegacy: "Active: Legacy",
-    legacySshDisabled: "Dashboard over SSH is disabled.",
     legacyRemoteDisabled: "Dashboard WebSocket is disabled.",
     checkingTransport: "Checking transport…",
     activeDashboard: "Active: Dashboard",
@@ -253,50 +250,22 @@ export default {
     "Agents One is free and open source — if it helps you, consider supporting its development.",
   supportKofi: "Support on Ko-fi",
 
-  // SSH & Server Config
-  modeSsh: "SSH Tunnel",
-  modeSshHint:
-    "Tunnel to a remote Hermes over SSH — no exposed ports or API keys needed.",
+  // Server Config
   sessionDisabledTitle: "Session history disabled — API_SERVER_KEY not set",
   sessionDisabledDesc:
     "Without an API server key the gateway cannot authenticate session continuation requests. Messages will still send, but conversation history won't be preserved across restarts.",
   generateKey: "Generate & save a key for me",
   generating: "Generating…",
   remoteEnvTitle: "Set API_SERVER_KEY on the remote server",
-  remoteEnvSshDesc:
-    "SSH mode: add API_SERVER_KEY=<your-key> to ~/.hermes/profiles/<profile>/.env on the remote host, then restart the gateway there.",
   remoteEnvDesc:
     "Remote mode: add API_SERVER_KEY=<your-key> to the .env on your remote Hermes server, then restart the gateway.",
-  sshHost: "SSH Host",
-  sshPort: "SSH Port",
-  sshUsername: "Username",
-  sshKeyPath: "Private Key Path",
-  sshKeyPathOptional: "(optional, defaults to ~/.ssh/id_rsa)",
-  sshRemotePort: "Remote Hermes Port",
-  sshRemotePortDefault: "(default 8642)",
-  sshHint:
-    "Make sure you can run ssh {{cmd}} without a password prompt. The first connection trusts the host key and stores it in ~/.ssh/known_hosts; SSH will fail closed if that key changes later.",
-  sshHintWelcome:
-    "Uses your system SSH. Make sure you can already run ssh {{cmd}} without a password prompt.",
-  testingSsh: "Testing SSH…",
-  testSsh: "Test SSH Connection",
-  connectSsh: "Connect via SSH",
-  sshTitle: "Connect via SSH",
-  sshSubtitle:
-    "Tunnel to a remote Hermes over SSH — no exposed ports or API keys needed.",
-  sshHostPlaceholder: "192.168.1.100 or myserver.local",
-  sshUsernamePlaceholder: "hermes",
-  sshErrorRequired: "Host and username are required.",
-  sshErrorConnection:
-    "Could not connect via SSH or reach Hermes on the remote. Make sure:\n• SSH key is correct (or default ~/.ssh/id_rsa works)\n• Hermes gateway is running on the remote\n• The remote port is correct (default 8642)",
-  sshErrorFailed: "SSH connection test failed: {{msg}}",
-  sshErrorFailedSimple: "SSH connection test failed.",
+  sshMigratedTitle: "SSH connection needs re-setup",
+  sshMigratedDesc:
+    "SSH mode was removed — remote agents now connect through a Gateway v1 URL and token. Enter the Gateway address and token below to re-enable this connection.",
   remoteErrorUrl: "Please enter a URL.",
   remoteErrorConnection:
-    "Could not reach Hermes at this URL. Check the URL and API key.\n\nLeave the key empty if the server accepts unauthenticated requests (e.g. via SSH tunnel to localhost).",
+    "Could not reach Hermes at this URL. Check the URL and API key.",
   remoteErrorFailed: "Connection test failed.",
-  sshSuccess: "SSH tunnel connected!",
-  sshErrorRequiredSimple: "Host and username are required",
   remoteSuccess: "Connected successfully!",
   remoteErrorRequiredSimple: "Please enter a URL",
   remoteErrorFailedSimple: "Could not reach server",

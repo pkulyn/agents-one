@@ -184,7 +184,7 @@ function Chat({
   const [dragActive, setDragActive] = useState(false);
   const [remoteMode, setRemoteMode] = useState(false);
   const [connectionMode, setConnectionMode] = useState<
-    "local" | "remote" | "ssh"
+    "local" | "remote"
   >("local");
   const [chatTransportPreference, setChatTransportPreference] = useState<
     "auto" | "dashboard" | "legacy"
@@ -318,14 +318,12 @@ function Chat({
           setChatTransportPreference(
             conn.mode === "local"
               ? "auto"
-              : conn.mode === "ssh"
-                ? (conn.sshChatTransport ?? "auto")
-                : (conn.remoteChatTransport ?? "auto"),
+              : (conn.remoteChatTransport ?? "auto"),
           );
         }
       } catch {
         if (!cancelled) {
-          setConnectionMode("ssh");
+          setConnectionMode("remote");
           setRemoteMode(true);
           setChatTransportPreference("legacy");
         }
@@ -341,9 +339,7 @@ function Chat({
       setChatTransportPreference(
         conn.mode === "local"
           ? "auto"
-          : conn.mode === "ssh"
-            ? (conn.sshChatTransport ?? "auto")
-            : (conn.remoteChatTransport ?? "auto"),
+          : (conn.remoteChatTransport ?? "auto"),
       );
     });
     return (): void => {
@@ -352,7 +348,7 @@ function Chat({
     };
   }, []);
 
-  // Persist one transport-agnostic transcript for remote/SSH chats. Dashboard
+  // Persist one transport-agnostic transcript for remote chats. Dashboard
   // and Legacy transports surface session ids through different event paths;
   // keeping this at Chat level guarantees both paths preserve the user prompt.
   const persistedTranscriptRef = useRef("");
@@ -672,7 +668,7 @@ function Chat({
   }, [active]);
 
   // Fired once per connection when the dashboard WebSocket transport can't
-  // connect (e.g. SSH tunnel → `hermes gateway`, which has no `/api/ws`, issue
+  // connect (e.g. a remote `hermes gateway`, which has no `/api/ws`, issue
   // #667) and we fall back to legacy chat. A fixed toast id dedupes.
   const handleDashboardUnavailable = useCallback(() => {
     if (!dashboardFallbackToastEnabledRef.current) return;

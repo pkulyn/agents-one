@@ -22,8 +22,6 @@ import {
 import { buildLocalDashboardCliArgs } from "./dashboard-launch";
 import { ensureLocalDashboardCompatibility } from "./hermes-agent-compat";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
-import { ensureSshTunnel, getSshTunnelUrl } from "./ssh-tunnel";
-import { sshEnsureDashboard } from "./ssh-remote";
 import {
   configuredRemoteTlsOptions,
   shouldAllowConfiguredRemoteCertificateError,
@@ -39,7 +37,7 @@ export interface DashboardConnection {
   wsUrl: string;
   token: string;
   fallbackToken?: string;
-  mode: "local" | "remote" | "ssh";
+  mode: "local" | "remote";
   profile?: string;
   pid?: number;
   port?: number;
@@ -117,49 +115,6 @@ export function remoteDashboardConnectionFromConfig(
   };
 }
 
-export function sshDashboardConnectionFromTunnel(
-  config: ConnectionConfig,
-  baseUrl: string | null,
-  token: string,
-  profile?: string,
-): DashboardConnection | null {
-  if (config.mode !== "ssh") return null;
-  const normalizedBaseUrl = normalizeRemoteDashboardBaseUrl(baseUrl || "");
-  const cleanToken = token.trim();
-  if (!normalizedBaseUrl || !cleanToken) return null;
-  return {
-    baseUrl: normalizedBaseUrl,
-    wsUrl: dashboardWsUrl(normalizedBaseUrl, cleanToken),
-    token: cleanToken,
-    mode: "ssh",
-    profile: resolveProfile(profile),
-  };
-}
-
-async function sshDashboardConnectionFromConfig(
-  config: ConnectionConfig,
-  profile?: string,
-): Promise<DashboardConnection | null> {
-  if (config.mode !== "ssh" || !config.ssh) return null;
-
-  // Start `hermes dashboard` on the remote and tunnel to it (full parity with
-  // local mode). NB: the dashboard is NOT a /v1 superset — web_server.py has no
-  // /v1 chat routes (those live only on the gateway api_server, port 8642).
-  // This tunnel serves the /api/* set and the /api/ws chat WebSocket, gated by
-  // the dashboard session token, which is the SSH credential here. Returns
-  // null when the remote can't run the dashboard (no Node / no web dist) —
-  // the caller then falls back to legacy over the gateway /v1 tunnel.
-  const dash = await sshEnsureDashboard(config.ssh, profile);
-  if (!dash) return null;
-
-  await ensureSshTunnel({ ...config.ssh, remotePort: dash.port });
-  return sshDashboardConnectionFromTunnel(
-    config,
-    getSshTunnelUrl(),
-    dash.token,
-    profile,
-  );
-}
 
 function getManagedDashboard(profile?: string): ManagedDashboard | undefined {
   const key = profileKey(profile);
@@ -484,93 +439,12 @@ async function getRemoteDashboardStatusForConfig(
   }
 }
 
-async function getSshDashboardStatusForConfig(
-  config: ConnectionConfig,
-  profile?: string,
-): Promise<DashboardStatus> {
-  if (config.sshChatTransport === "legacy") {
-    return {
-      supported: false,
-      running: false,
-      error: "SSH dashboard transport is disabled in Settings.",
-    };
-  }
-
-  if (!config.ssh?.host || !config.ssh.username) {
-    return {
-      supported: true,
-      running: false,
-      error: "SSH dashboard transport needs a configured host and username.",
-    };
-  }
-
-  let connection: DashboardConnection | null = null;
-  try {
-    connection = await sshDashboardConnectionFromConfig(config, profile);
-  } catch (err) {
-    return {
-      supported: true,
-      running: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-
-  if (!connection) {
-    return {
-      supported: true,
-      running: false,
-      error:
-        "SSH dashboard transport needs an active tunnel and API_SERVER_KEY on the remote Hermes host.",
-    };
-  }
-
-  try {
-    const status = await requestDashboardJson(connection, "/api/status");
-    if (dashboardStatusRequiresOAuth(status)) {
-      return {
-        supported: true,
-        running: false,
-        connection,
-        error:
-          "SSH dashboard requires OAuth browser authentication. Token-based dashboard over SSH is supported now; OAuth ticket flow is not wired in Agents One yet.",
-      };
-    }
-
-    await requestDashboardJson(connection, "/api/sessions?limit=1");
-    try {
-      await probeDashboardWebSocket(connection);
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      return {
-        supported: true,
-        running: false,
-        connection,
-        error:
-          "SSH dashboard management API is reachable, but the chat WebSocket is unavailable. " +
-          `Auto chat transport can still use the legacy API fallback. ${detail}`,
-      };
-    }
-
-    return { supported: true, running: true, connection };
-  } catch (err) {
-    return {
-      supported: true,
-      running: false,
-      connection,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
 export async function getDashboardStatus(
   profile?: string,
 ): Promise<DashboardStatus> {
   const config = getConnectionConfig();
-  const mode =
-    config.mode === "remote" || config.mode === "ssh" ? config.mode : "local";
-  if (mode === "remote")
+  if (config.mode === "remote")
     return getRemoteDashboardStatusForConfig(config, profile);
-  if (mode === "ssh") return getSshDashboardStatusForConfig(config, profile);
 
   const managed = getManagedDashboard(profile);
   if (managed) {
@@ -598,11 +472,8 @@ export async function startDashboard(
   profile?: string,
 ): Promise<DashboardStatus> {
   const config = getConnectionConfig();
-  const mode =
-    config.mode === "remote" || config.mode === "ssh" ? config.mode : "local";
-  if (mode === "remote")
+  if (config.mode === "remote")
     return getRemoteDashboardStatusForConfig(config, profile);
-  if (mode === "ssh") return getSshDashboardStatusForConfig(config, profile);
 
   const existing = getManagedDashboard(profile);
   if (existing) {

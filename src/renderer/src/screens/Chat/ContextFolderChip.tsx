@@ -5,7 +5,7 @@ import { useI18n } from "../../components/useI18n";
 interface ContextFolderChipProps {
   /** Working folder bound to this conversation (issue #27), or null. */
   contextFolder: string | null;
-  /** Hidden in remote/SSH mode, where the picker browses the wrong machine. */
+  /** Hidden in remote mode, where the picker browses the wrong machine. */
   show: boolean;
   worktreeVisible: boolean;
   onPickFolder: () => void;

@@ -18,8 +18,6 @@ vi.mock("./config", async (importOriginal) => {
       remoteDashboardUrl: "",
       remoteDashboardToken: "",
       remoteChatTransport: "auto",
-      sshChatTransport: "auto",
-      ssh: {},
     }),
     getRemoteDashboardSessionConfig: (
       config: { remoteUrl: string; apiKey: string },

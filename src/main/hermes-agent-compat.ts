@@ -8,17 +8,14 @@ import {
   writeFileSync,
 } from "fs";
 import { join } from "path";
-import { Buffer } from "buffer";
-import type { SshConfig } from "./ssh-tunnel";
 import { HERMES_HOME, HERMES_REPO } from "./installer";
-import { sshExec } from "./ssh-remote";
 
 export const HERMES_AGENT_COMPAT_VERSION =
   "2026-06-11.dashboard-chat-model-library.v2";
 
 export interface HermesAgentCompatResult {
   ok: boolean;
-  target: "local" | "ssh" | "remote-http";
+  target: "local" | "remote-http";
   compatible: boolean;
   applied: boolean;
   version: string;
@@ -56,7 +53,7 @@ const MODEL_LIBRARY_COMPAT_SOURCE = `
 # --- HERMES_ONE_MODEL_LIBRARY_COMPAT_V1 -------------------------------------
 # Compatibility endpoint installed by Agents One. Upstream Hermes Agent exposes
 # /api/model/options and /api/model/set, but Agents One also needs a small
-# configured-model shortcut library for remote/SSH model pickers. The library is
+# configured-model shortcut library for remote model pickers. The library is
 # deliberately stored in this agent's HERMES_HOME so remote shortcuts stay on
 # the remote host and survive desktop restarts without changing upstream model
 # assignment semantics.
@@ -446,167 +443,6 @@ export function ensureLocalDashboardCompatibility(): HermesAgentCompatResult {
   }
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\"'\"'")}'`;
-}
-
-export async function ensureSshDashboardCompatibility(
-  config: SshConfig,
-): Promise<HermesAgentCompatResult> {
-  const modelLibraryCompatBase64 = Buffer.from(
-    MODEL_LIBRARY_COMPAT_SOURCE,
-    "utf-8",
-  ).toString("base64");
-  const script = String.raw`
-import base64, json, os, re, sys
-version = "2026-06-11.dashboard-chat-model-library.v2"
-model_library_compat_source = base64.b64decode("__MODEL_LIBRARY_COMPAT_BASE64__").decode("utf-8")
-candidates = []
-try:
-    import hermes_cli.web_server as ws
-    p = getattr(ws, "__file__", None)
-    if p:
-        candidates.append(p)
-except Exception:
-    pass
-candidates.extend([
-    os.path.expanduser("~/hermes-agent/hermes_cli/web_server.py"),
-    os.path.expanduser("~/.hermes/hermes-agent/hermes_cli/web_server.py"),
-    "/opt/hermes/hermes_cli/web_server.py",
-    "/opt/hermes/hermes-agent/hermes_cli/web_server.py",
-])
-seen = set()
-paths = []
-for p in candidates:
-    if p and p not in seen:
-        seen.add(p)
-        paths.append(p)
-path = next((p for p in paths if os.path.exists(p)), None)
-if not path:
-    print(json.dumps({
-        "ok": False,
-        "target": "ssh",
-        "compatible": False,
-        "applied": False,
-        "version": version,
-        "detail": "Could not find Hermes Agent hermes_cli/web_server.py on the SSH host.",
-    }))
-    sys.exit(0)
-with open(path, "r", encoding="utf-8") as f:
-    source = f.read()
-details = []
-changed = False
-model_library_start = "# --- HERMES_ONE_MODEL_LIBRARY_COMPAT_V1 -------------------------------------"
-model_library_end = "# --- /HERMES_ONE_MODEL_LIBRARY_COMPAT_V1 ------------------------------------"
-dashboard_spa_mount_anchor = "mount_spa(app)"
-def remove_model_library_compat_block(text):
-    start = text.find(model_library_start)
-    if start < 0:
-        return text, False
-    end = text.find(model_library_end, start)
-    if end < 0:
-        return text, False
-    after_end = end + len(model_library_end)
-    before = re.sub(r"\n*$", "\n", text[:start])
-    after = re.sub(r"^\n*", "", text[after_end:])
-    return before + after, True
-def insert_model_library_compat_block(text):
-    block = model_library_compat_source.rstrip()
-    index = text.find(dashboard_spa_mount_anchor)
-    if index >= 0:
-        before = re.sub(r"\n*$", "\n", text[:index])
-        after = text[index:]
-        return before + block + "\n\n" + after
-    return text.rstrip() + "\n" + block + "\n"
-if re.search(r"\b_DASHBOARD_EMBEDDED_CHAT_ENABLED\s*=\s*True\b", source):
-    compatible = True
-    details.append("Dashboard embedded chat is always enabled by this Hermes Agent.")
-elif re.search(r"\bembedded_chat\s*:\s*bool\s*=\s*True\b", source):
-    compatible = True
-    details.append("Dashboard embedded chat is already enabled by default.")
-elif re.search(r"(\bembedded_chat\s*:\s*bool\s*=\s*)False\b", source):
-    source = re.sub(r"(\bembedded_chat\s*:\s*bool\s*=\s*)False\b", r"\1True", source, count=1)
-    changed = True
-    compatible = True
-    details.append("Patched Hermes Agent dashboard embedded_chat default to True.")
-else:
-    compatible = False
-    details.append("Could not find the Hermes Agent embedded_chat default in web_server.py.")
-if compatible:
-    original_source = source
-    source_without_model_library, removed_model_library = remove_model_library_compat_block(source)
-    if '@app.post("/api/model/set")' in source_without_model_library:
-        source = insert_model_library_compat_block(source_without_model_library)
-        if source != original_source:
-            changed = True
-            if removed_model_library:
-                details.append("Moved Agents One model library endpoint before the dashboard catch-all route.")
-            else:
-                details.append("Installed Agents One model library endpoint.")
-        else:
-            details.append("Agents One model library endpoint is already installed.")
-    else:
-        compatible = False
-        details.append("Could not find Hermes Agent model REST endpoints in web_server.py.")
-if changed and compatible:
-    backup_path = path + ".orig"
-    tmp_path = path + ".hermes-one-%s.tmp" % os.getpid()
-    if not os.path.exists(backup_path):
-        with open(path, "rb") as src, open(backup_path, "wb") as dst:
-            dst.write(src.read())
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        f.write(source)
-    os.replace(tmp_path, path)
-marker_dir = os.path.expanduser("~/.hermes/desktop-compat")
-try:
-    os.makedirs(marker_dir, exist_ok=True)
-    with open(os.path.join(marker_dir, "dashboard-embedded-chat.json"), "w", encoding="utf-8") as f:
-        json.dump({
-            "version": version,
-            "target": "ssh",
-            "compatible": compatible,
-            "applied": changed,
-            "path": path,
-        }, f, indent=2)
-except Exception:
-    pass
-print(json.dumps({
-    "ok": compatible,
-    "target": "ssh",
-    "compatible": compatible,
-    "applied": changed,
-    "version": version,
-    "detail": " ".join(details),
-    "path": path,
-}))
-`.replace("__MODEL_LIBRARY_COMPAT_BASE64__", modelLibraryCompatBase64);
-
-  try {
-    const out = await sshExec(
-      config,
-      `python3 -c ${shellQuote(script)}`,
-      undefined,
-      30_000,
-    );
-    const parsed = JSON.parse(out.trim()) as HermesAgentCompatResult;
-    return {
-      ...parsed,
-      target: "ssh",
-      version: parsed.version || HERMES_AGENT_COMPAT_VERSION,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      target: "ssh",
-      compatible: false,
-      applied: false,
-      version: HERMES_AGENT_COMPAT_VERSION,
-      detail: "Could not apply Hermes Agent compatibility patch over SSH.",
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
 export function remoteHttpCompatibilityResult(): HermesAgentCompatResult {
   return {
     ok: false,
@@ -615,6 +451,6 @@ export function remoteHttpCompatibilityResult(): HermesAgentCompatResult {
     applied: false,
     version: HERMES_AGENT_COMPAT_VERSION,
     detail:
-      "Plain remote HTTP can be probed but not patched by Agents One. Use SSH mode for deployable compatibility fixes or update the remote Hermes Agent directly.",
+      "Plain remote HTTP can be probed but not patched by Agents One. Update the remote Hermes Agent directly.",
   };
 }

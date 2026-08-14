@@ -38,16 +38,8 @@ export function makeApiKeyMask(length: number): string {
 }
 
 export type PublicConnectionSnapshot = {
-  mode: "local" | "remote" | "ssh";
+  mode: "local" | "remote";
   remoteUrl: string;
-  ssh?: {
-    host: string;
-    keyPath: string;
-    localPort: number;
-    port: number;
-    remotePort: number;
-    username: string;
-  };
 };
 
 export function versionCacheKey(
@@ -57,18 +49,6 @@ export function versionCacheKey(
   const profileKey = profile || "default";
   if (conn.mode === "remote") {
     return `remote:${conn.remoteUrl.trim() || "unset"}:${profileKey}`;
-  }
-  if (conn.mode === "ssh") {
-    const ssh = conn.ssh;
-    return [
-      "ssh",
-      ssh?.username || "",
-      ssh?.host || "",
-      ssh?.port || "",
-      ssh?.remotePort || "",
-      ssh?.localPort || "",
-      profileKey,
-    ].join(":");
   }
   return `local:${profileKey}`;
 }

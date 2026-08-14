@@ -30,36 +30,30 @@ import {
   OPENAI_COMPAT_PROVIDERS,
 } from "../shared/url-key-map";
 
-// ── Connection Config (local / remote / ssh) ─────────────
-
-export interface SshConnectionConfig {
-  host: string;
-  port: number;
-  username: string;
-  keyPath: string;
-  remotePort: number;
-  localPort: number;
-}
+// ── Connection Config (local / remote) ────────────────────
+// SSH mode was removed (plan D4): remote Hermes now always goes through
+// Gateway v1. Old persisted `connectionMode: "ssh"` is read-only migrated
+// to `remote` and flagged so the UI prompts for a Gateway URL + token.
 
 export type RemoteChatTransport = "auto" | "dashboard" | "legacy";
 
 export interface ConnectionConfig {
-  mode: "local" | "remote" | "ssh";
+  mode: "local" | "remote";
   remoteUrl: string;
   apiKey: string;
   remoteDashboardUrl: string;
   remoteDashboardToken: string;
   remoteChatTransport: RemoteChatTransport;
-  sshChatTransport: RemoteChatTransport;
-  ssh: SshConnectionConfig;
+  /** True when a persisted SSH connection was migrated to the unified remote
+   * model and still needs a Gateway v1 URL + token before it can connect. */
+  migratedFromSsh?: boolean;
 }
 
 export interface PublicConnectionConfig {
-  mode: "local" | "remote" | "ssh";
+  mode: "local" | "remote";
   remoteUrl: string;
   remoteDashboardUrl: string;
   remoteChatTransport: RemoteChatTransport;
-  sshChatTransport: RemoteChatTransport;
   hasApiKey: boolean;
   hasRemoteDashboardToken: boolean;
   // Length of the stored API key, exposed so the renderer can show a
@@ -67,7 +61,7 @@ export interface PublicConnectionConfig {
   // leaves the main process. 0 when no key is set.
   apiKeyLength: number;
   remoteDashboardTokenLength: number;
-  ssh: SshConnectionConfig;
+  migratedFromSsh?: boolean;
 }
 
 // Lazy getter — avoids circular dependency with installer.ts
@@ -102,23 +96,21 @@ export function writeDesktopConfig(data: Record<string, unknown>): void {
 
 export function getConnectionConfig(): ConnectionConfig {
   const data = readDesktopConfig();
-  const ssh = (data.sshConfig as Partial<SshConnectionConfig>) ?? {};
+  // Read-only migration (plan D4): a persisted SSH connection is coerced to
+  // the unified remote mode and flagged for re-setup. The stored sshConfig
+  // fields are left untouched on disk.
+  const rawMode = (data.connectionMode as string) || "local";
+  const migratedFromSsh = rawMode === "ssh";
+  const mode: "local" | "remote" =
+    migratedFromSsh || rawMode === "remote" ? "remote" : "local";
   return {
-    mode: (data.connectionMode as "local" | "remote" | "ssh") || "local",
+    mode,
     remoteUrl: (data.remoteUrl as string) || "",
     apiKey: (data.remoteApiKey as string) || "",
     remoteDashboardUrl: (data.remoteDashboardUrl as string) || "",
     remoteDashboardToken: (data.remoteDashboardToken as string) || "",
     remoteChatTransport: normalizeRemoteChatTransport(data.remoteChatTransport),
-    sshChatTransport: normalizeRemoteChatTransport(data.sshChatTransport),
-    ssh: {
-      host: (ssh.host as string) || "",
-      port: (ssh.port as number) || 22,
-      username: (ssh.username as string) || "",
-      keyPath: (ssh.keyPath as string) || "",
-      remotePort: (ssh.remotePort as number) || 8642,
-      localPort: (ssh.localPort as number) || 18642,
-    },
+    ...(migratedFromSsh ? { migratedFromSsh: true } : {}),
   };
 }
 
@@ -129,12 +121,11 @@ export function getPublicConnectionConfig(): PublicConnectionConfig {
     remoteUrl: config.remoteUrl,
     remoteDashboardUrl: config.remoteDashboardUrl,
     remoteChatTransport: config.remoteChatTransport,
-    sshChatTransport: config.sshChatTransport,
     hasApiKey: config.apiKey.length > 0,
     hasRemoteDashboardToken: config.remoteDashboardToken.length > 0,
     apiKeyLength: config.apiKey.length,
     remoteDashboardTokenLength: config.remoteDashboardToken.length,
-    ssh: config.ssh,
+    ...(config.migratedFromSsh ? { migratedFromSsh: true } : {}),
   };
 }
 
@@ -158,16 +149,15 @@ export function setConnectionConfig(config: ConnectionConfig): void {
   data.remoteChatTransport = normalizeRemoteChatTransport(
     config.remoteChatTransport,
   );
-  data.sshChatTransport = normalizeRemoteChatTransport(config.sshChatTransport);
-  if (config.mode === "ssh") {
-    data.sshConfig = config.ssh;
-  }
+  // Saving a new config supersedes a stale SSH migration marker; legacy
+  // sshConfig is kept on disk untouched (read-only migration).
+  delete data.sshChatTransport;
   writeDesktopConfig(data);
 }
 
 export function resolveConnectionApiKeyUpdate(
   existing: ConnectionConfig,
-  _mode: "local" | "remote" | "ssh",
+  _mode: "local" | "remote",
   remoteUrl: string,
   apiKey?: string,
 ): string {

@@ -27,16 +27,7 @@ function App(): React.JSX.Element {
 
     try {
       setSplashStatus("正在准备工作区…");
-      const conn = await window.hermesAPI.getConnectionConfig();
-
-      if (conn.mode === "ssh" && conn.ssh) {
-        setSplashStatus("正在建立 SSH 连接…");
-        try {
-          await window.hermesAPI.startSshTunnel();
-        } catch (tunnelErr) {
-          console.warn("SSH tunnel failed to start on launch:", tunnelErr);
-        }
-      }
+      await window.hermesAPI.getConnectionConfig();
     } catch (err) {
       // Agents One is a Runtime aggregator. A transient connection/config
       // read must never block the desktop shell behind a first-install page.

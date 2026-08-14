@@ -17,17 +17,10 @@ vi.mock("./config", () => ({
     mode: "local",
     remoteUrl: "",
     apiKey: "",
-    ssh: {},
   })),
   getConfigValue: vi.fn(() => null),
   getModelConfig: vi.fn(),
   readEnv: vi.fn(() => ({})),
-}));
-vi.mock("./ssh-tunnel", () => ({
-  getSshTunnelUrl: vi.fn(() => null),
-  isSshTunnelActive: vi.fn(() => false),
-  isSshTunnelHealthy: vi.fn(() => false),
-  startSshTunnel: vi.fn(),
 }));
 vi.mock("./utils", () => ({
   pidIsAliveAs: vi.fn(() => false),
@@ -82,15 +75,6 @@ function testConnection(
     remoteDashboardUrl: "",
     remoteDashboardToken: "",
     remoteChatTransport: "auto",
-    sshChatTransport: "auto",
-    ssh: {
-      host: "",
-      port: 22,
-      username: "",
-      keyPath: "",
-      remotePort: 8642,
-      localPort: 8642,
-    },
     ...fields,
   };
 }

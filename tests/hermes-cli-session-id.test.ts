@@ -342,12 +342,6 @@ vi.mock("../src/main/config", () => ({
   getConnectionConfig: () => ({ mode: "local" as const }),
 }));
 
-vi.mock("../src/main/ssh-tunnel", () => ({
-  getSshTunnelUrl: () => null,
-  isSshTunnelActive: () => false,
-  isSshTunnelHealthy: () => Promise.resolve(false),
-  startSshTunnel: () => Promise.resolve(),
-}));
 
 vi.mock("../src/main/utils", () => ({
   stripAnsi: (s: string) => s,
@@ -790,7 +784,7 @@ describe("CLI fallback session id propagation", () => {
         }).catch(reject);
       }),
     ).rejects.toThrow(
-      "API request timed out. Check the SSH tunnel and remote Hermes gateway.",
+      "API request timed out. Check the remote Hermes gateway.",
     );
 
     expect(chunks).toEqual([]);

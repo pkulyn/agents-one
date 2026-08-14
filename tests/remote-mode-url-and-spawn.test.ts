@@ -7,29 +7,26 @@ import { describe, it, expect, vi, afterEach } from "vitest";
  *      that append `/v1/<path>` don't produce `/v1/v1/...` → 404.
  *
  *   2. `startGateway` and `restartGateway` refuse to spawn a local
- *      hermes-agent when the connection is in remote/SSH mode — the
+ *      hermes-agent when the connection is in remote mode — the
  *      defensive net that catches IPC paths that don't explicitly gate
  *      on `isRemoteMode()`.
  */
 
-const { TEST_HOME, connModeRef, sshTunnelUrlRef, sshLocalPortRef, spawnSpy } =
-  vi.hoisted(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const path = require("path");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const os = require("os");
-    return {
-      TEST_HOME: path.join(os.tmpdir(), `hermes-remote-test-${Date.now()}`),
-      connModeRef: { mode: "local" as "local" | "remote" | "ssh" },
-      sshTunnelUrlRef: { value: "http://localhost:18642" as string | null },
-      sshLocalPortRef: { value: 18642 as number | undefined },
-      spawnSpy: vi.fn(() => ({
-        unref: () => {},
-        pid: 12345,
-        on: () => {},
-      })),
-    };
-  });
+const { TEST_HOME, connModeRef, spawnSpy } = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require("path");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const os = require("os");
+  return {
+    TEST_HOME: path.join(os.tmpdir(), `hermes-remote-test-${Date.now()}`),
+    connModeRef: { mode: "local" as "local" | "remote" },
+    spawnSpy: vi.fn(() => ({
+      unref: () => {},
+      pid: 12345,
+      on: () => {},
+    })),
+  };
+});
 
 vi.mock("../src/main/installer", () => ({
   HERMES_HOME: TEST_HOME,
@@ -47,27 +44,14 @@ vi.mock("../src/main/config", () => ({
     mode: connModeRef.mode,
     remoteUrl: "http://example.com",
     apiKey: "",
-    ssh: {
-      host: "",
-      port: 22,
-      username: "",
-      keyPath: "",
-      remotePort: 8642,
-      localPort: sshLocalPortRef.value,
-    },
   }),
-}));
-
-vi.mock("../src/main/ssh-tunnel", () => ({
-  getSshTunnelUrl: () => sshTunnelUrlRef.value,
-  isSshTunnelActive: () => true,
-  isSshTunnelHealthy: () => Promise.resolve(true),
-  startSshTunnel: () => Promise.resolve(),
 }));
 
 vi.mock("../src/main/utils", () => ({
   stripAnsi: (s: string) => s,
   pidIsAliveAs: () => false,
+  normalizeProfileName: (p?: string) => p,
+  getActiveProfileNameSync: () => undefined,
 }));
 
 vi.mock("../src/main/models", () => ({
@@ -168,104 +152,6 @@ describe("normaliseRemoteUrl", () => {
   });
 });
 
-describe("getApiUrl in SSH mode", () => {
-  it("uses the active SSH tunnel URL when tunnel state is available", () => {
-    connModeRef.mode = "ssh";
-    sshTunnelUrlRef.value = "http://localhost:18642";
-    sshLocalPortRef.value = 18642;
-
-    expect(getApiUrl()).toBe("http://localhost:18642");
-  });
-
-  it("preserves the original error when tunnel state is unavailable", () => {
-    connModeRef.mode = "ssh";
-    sshTunnelUrlRef.value = null;
-    sshLocalPortRef.value = 18642;
-
-    expect(() => getApiUrl()).toThrow("SSH tunnel is not active");
-  });
-
-  it("preserves the original error when no tunnel state or local port is available", () => {
-    connModeRef.mode = "ssh";
-    sshTunnelUrlRef.value = null;
-    sshLocalPortRef.value = undefined;
-
-    expect(() => getApiUrl()).toThrow("SSH tunnel is not active");
-  });
-});
-
-describe("Cron SSH fallback", () => {
-  it("scopes the configured/default port fallback to cron after a successful /health probe", async () => {
-    connModeRef.mode = "ssh";
-    sshTunnelUrlRef.value = null;
-    sshLocalPortRef.value = 18642;
-
-    const fetchSpy = vi.fn(async (target: string) => {
-      if (target === "http://127.0.0.1:18642/health") {
-        return { ok: true } as Response;
-      }
-      if (target === "http://127.0.0.1:18642/api/jobs?include_disabled=true") {
-        return {
-          ok: true,
-          json: async () => ({
-            jobs: [{ id: "job-1", name: "Daily", schedule: "0 9 * * *" }],
-          }),
-        } as Response;
-      }
-      throw new Error(`unexpected fetch target: ${target}`);
-    });
-    vi.stubGlobal("fetch", fetchSpy);
-
-    const { listCronJobs } = await import("../src/main/cronjobs");
-    const jobs = await listCronJobs();
-
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0].id).toBe("job-1");
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      "http://127.0.0.1:18642/health",
-      expect.objectContaining({ method: "GET" }),
-    );
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      2,
-      "http://127.0.0.1:18642/api/jobs?include_disabled=true",
-      expect.any(Object),
-    );
-  });
-
-  it("does not send cron API requests to the configured/default port when /health fails", async () => {
-    connModeRef.mode = "ssh";
-    sshTunnelUrlRef.value = null;
-    sshLocalPortRef.value = 18642;
-
-    const fetchSpy = vi.fn(async (target: string) => {
-      if (target === "http://127.0.0.1:18642/health") {
-        return { ok: false } as Response;
-      }
-      throw new Error(`unexpected fetch target: ${target}`);
-    });
-    vi.stubGlobal("fetch", fetchSpy);
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
-    const { listCronJobs } = await import("../src/main/cronjobs");
-    const jobs = await listCronJobs();
-
-    expect(jobs).toEqual([]);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "[CRON] remote list error:",
-      expect.any(Error),
-    );
-    consoleErrorSpy.mockRestore();
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "http://127.0.0.1:18642/health",
-      expect.objectContaining({ method: "GET" }),
-    );
-  });
-});
-
 describe("testRemoteConnection URL probe", () => {
   it("strips trailing /v1 before appending /health", async () => {
     // Capture the URL handed to http.request by the health probe.
@@ -318,24 +204,6 @@ describe("startGateway / restartGateway in remote mode", () => {
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 
-  it("startGateway refuses to spawn in ssh mode", () => {
-    spawnSpy.mockClear();
-    connModeRef.mode = "ssh";
-    const result = startGateway();
-    expect(result).toBe(false);
-    expect(spawnSpy).not.toHaveBeenCalled();
-  });
-
-  it("startGatewayDetailed reports why ssh mode cannot start a local gateway", () => {
-    spawnSpy.mockClear();
-    connModeRef.mode = "ssh";
-    const result = startGatewayDetailed();
-    expect(result.success).toBe(false);
-    expect(result.running).toBe(false);
-    expect(result.error).toContain("local mode");
-    expect(spawnSpy).not.toHaveBeenCalled();
-  });
-
   it("restartGateway is a no-op in remote mode", () => {
     spawnSpy.mockClear();
     connModeRef.mode = "remote";
@@ -343,23 +211,9 @@ describe("startGateway / restartGateway in remote mode", () => {
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 
-  it("restartGateway is a no-op in ssh mode", () => {
-    spawnSpy.mockClear();
-    connModeRef.mode = "ssh";
-    restartGateway();
-    expect(spawnSpy).not.toHaveBeenCalled();
-  });
-
   it("restartGatewayViaCli refuses to spawn in remote mode", async () => {
     spawnSpy.mockClear();
     connModeRef.mode = "remote";
-    await expect(restartGatewayViaCli()).resolves.toBe(false);
-    expect(spawnSpy).not.toHaveBeenCalled();
-  });
-
-  it("restartGatewayViaCli refuses to spawn in ssh mode", async () => {
-    spawnSpy.mockClear();
-    connModeRef.mode = "ssh";
     await expect(restartGatewayViaCli()).resolves.toBe(false);
     expect(spawnSpy).not.toHaveBeenCalled();
   });

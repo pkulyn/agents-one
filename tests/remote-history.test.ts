@@ -56,11 +56,11 @@ function extractPrivateFunction(name: string, nextFunction: string): string {
 /**
  * Test that sendMessage passes history parameter in remote mode.
  *
- * This test verifies the fix for the bug where remote/SSH mode was dropping
+ * This test verifies the fix for the bug where remote mode was dropping
  * conversation history, causing multi-turn conversations to degrade into
  * single-turn requests.
  */
-describe("Remote/SSH Mode History Preservation", () => {
+describe("Remote Mode History Preservation", () => {
   it("sendMessage passes history to the best API transport in remote mode", () => {
     // Extract the sendMessage function's remote mode branch
     const remoteModeBranch = hermesSrc.match(

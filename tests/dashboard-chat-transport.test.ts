@@ -87,15 +87,12 @@ describe("dashboardChatEnabledForConnection", () => {
     ).toBe(false);
   });
 
-  it("enables SSH dashboard chat unless the user selected legacy", () => {
+  it("keeps the dashboard chat enabled for remote unless the user selected legacy", () => {
     expect(
-      dashboardChatEnabledForConnection(undefined, true, "ssh", "auto"),
+      dashboardChatEnabledForConnection(undefined, true, "remote", "dashboard"),
     ).toBe(true);
     expect(
-      dashboardChatEnabledForConnection(undefined, true, "ssh", "dashboard"),
-    ).toBe(true);
-    expect(
-      dashboardChatEnabledForConnection(undefined, true, "ssh", "legacy"),
+      dashboardChatEnabledForConnection(undefined, true, "remote", "legacy"),
     ).toBe(false);
   });
 
@@ -113,7 +110,6 @@ describe("dashboardShouldPersistLocalOverlays", () => {
   it("keeps dashboard recovery overlays for every dashboard-backed connection", () => {
     expect(dashboardShouldPersistLocalOverlays("local")).toBe(true);
     expect(dashboardShouldPersistLocalOverlays("remote")).toBe(true);
-    expect(dashboardShouldPersistLocalOverlays("ssh")).toBe(true);
   });
 });
 
