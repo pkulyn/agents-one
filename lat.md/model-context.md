@@ -12,9 +12,11 @@ Per-model storage (set in the Models add/edit dialog) survives switching between
 
 ## Gauge resolution order
 
-The context gauge resolves its window size as: config override (active model) → provider `/models` `context_length` → static heuristic.
+The native Hermes context gauge resolves its window size as: config override (active model) → provider `/models` `context_length` → static heuristic.
 
 [[src/main/model-discovery.ts#getModelContextWindow]] consults [[src/main/config.ts#getModelContextLengthOverride]] first, returning it only when it targets the model being asked about (so a stale value can't leak onto a different model id), before falling through to the authoritative `/models` lookup and finally the renderer's substring heuristic.
+
+Local Runtime conversations add their own model owner ahead of that chain: Run-reported window → Pi catalogue or exact `models.json` override → native config/provider discovery → static heuristic. This is required for Pi custom providers such as `ark`, whose model-specific window exists in Pi's catalogue but is not available through the Hermes provider discovery table.
 
 ## Occupancy estimate when the provider omits usage
 

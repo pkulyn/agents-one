@@ -27,3 +27,9 @@ The upstream desktop model applies the session switch on the active gateway sess
 Attachment turns must not be forced through the CLI override fallback because the CLI path cannot carry multimodal input.
 
 [[src/main/hermes.ts#sendMessageViaCli]] can inline text-file attachments but ignores images, while the gateway/API path preserves image parts and path refs through [[src/main/hermes.ts#buildUserContent]]. When a session override is active and the user sends attachments, [[src/main/hermes.ts#shouldForceCliForSessionOverride]] leaves the turn eligible for the dashboard/gateway or API transport instead of silently dropping media.
+
+## Runtime model metadata continuity
+
+Runtime conversations keep the most recently reported provider/model label visible while a new run has not yet returned metadata.
+
+[[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]] reads the current run's model first, then falls back to the latest persisted execution model. Starting a reply therefore does not flash “model unavailable”; a later provider update replaces the retained label with the new real model.

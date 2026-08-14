@@ -6,15 +6,15 @@ The sidebar starts with New Chat, keeps app destinations pinned, then gives conv
 
 ## Collapse toggle brand mark
 
-The sidebar header's collapse control doubles as the brand mark: collapsed it shows a circular dot that swaps to the expand icon on hover; expanded it shows the full wordmark beside the collapse icon.
+The sidebar header's collapse control doubles as the brand mark: collapsed it preserves the compact rounded gradient mark that swaps to the expand icon on hover; expanded it shows the integrated Agents One wordmark beside the collapse icon.
 
-[[src/renderer/src/screens/Layout/Layout.tsx#Layout]] renders `.sidebar-collapse-toggle`. Collapsed, it holds a fixed-size `.sidebar-collapse-swap` box stacking a `.sidebar-collapse-mark` circle (filled with `--text-primary`, so white on dark themes and dark on light) over the `PanelLeftOpen` icon; only opacity toggles on hover/focus, so the button never reflows. Expanded, the maskable `.sidebar-logo` wordmark shows next to the `PanelLeftClose` icon.
+[[src/renderer/src/screens/Layout/Layout.tsx#Layout]] renders `.sidebar-collapse-toggle`. Collapsed, it holds a fixed-size `.sidebar-collapse-swap` box stacking the existing `.sidebar-collapse-mark` rounded gradient square over the `PanelLeftOpen` icon; only opacity toggles on hover/focus, so the button never reflows. Expanded, `src/renderer/src/assets/agents-one-wordmark.svg` renders `AGENTS`, then the dawn ring directly as the `O` in `ONE`, with no white tile, next to the `PanelLeftClose` icon. The collapsed affordance deliberately remains independent from the expanded wordmark geometry.
 
 ## Infinite sidebar list
 
 The inline list lazily loads cached sessions in pages as the user scrolls, so the sidebar can expose the full chat history without a fixed inline cap.
 
-[[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] fetches `RECENT_SESSIONS_PAGE_SIZE + 1` rows from the `sessions.json` cache to detect whether another page exists. [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] passes the chat scroll container ref down, and the sidebar loads the next page when that container nears the bottom. The initial sync still refreshes `state.db`, then paints the first page.
+[[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] fetches `RECENT_SESSIONS_PAGE_SIZE + 1` rows from the `sessions.json` cache to detect whether another page exists. [[src/renderer/src/screens/Layout/sidebarSessionPagination.ts#consumeNativeSessionPage]] keeps the native-cache offset and `hasMore` decision isolated from Runtime conversations: Runtime rows are merged once during refresh and never counted as a native page. This prevents the fixed Runtime query window from making `hasMore` permanently true, repeating native pages, or resetting an already loaded second page during initial cache synchronization. [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] passes the chat scroll container ref down, and the sidebar loads the next native page when that container nears the bottom. The initial sync still refreshes `state.db`, then preserves the already loaded native window instead of collapsing it to page one.
 
 Session titles in the inline list are constrained to the sidebar width and truncate with ellipses, while the chat section only scrolls vertically. This keeps long generated titles from creating a horizontal scrollbar.
 
@@ -32,15 +32,27 @@ Projects and Chats are top-level collapsible sections, and each project folder c
 
 ## Row context menu
 
-Each sidebar session row exposes a ChatGPT-style options menu — Pin, Rename, Move to project, and Delete — opened from a hover-revealed `…` button or by right-clicking the row.
+Each sidebar session row exposes a ChatGPT-style options menu — Pin, Rename, Move to project, Open in File Explorer, Copy conversation ID, Archive, and Delete — opened from a hover-revealed `…` button or by right-clicking the row.
 
 [[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] renders each row as a `div role="button"` (so the trailing `.sidebar-recent-session-options` button is valid nested markup) and tracks the open row in `menuTarget`. [[src/renderer/src/screens/Layout/SidebarSessionMenu.tsx#SidebarSessionMenu]] renders the menu in a `document.body` portal at clamped viewport coordinates so it escapes the sidebar's clipped scroll container, and closes on outside click, Escape, a scroll of the sidebar list's own `scrollContainer`, or window blur. The scroll listener is scoped to that one container (not a global capture listener) so the chat's streaming auto-scroll — which fires window-level scroll events on every chunk — no longer dismisses the menu mid-stream. "Move to project" swaps the menu to a second in-place page listing every distinct context folder (`projectChoices`) plus **New folder…** ([[src/preload/index.ts]] `selectFolder`) and **Remove from project**, rather than a hover flyout.
 
 Transitions are `motion/react`-driven (the same library as [[src/renderer/src/components/modal/AppModal.tsx#AppModal]]): the whole menu fades/scales/blurs from its top-left anchor on open, and an internal `open` flag plays the exit before the parent unmounts it (`AnimatePresence onExitComplete` → `onClose`). Switching between the main and project pages cross-slides them (direction-aware) inside a `.sidebar-session-menu-body` wrapper whose `layout` prop animates the height difference; the wrapper clips the sliding pages. Viewport clamping measures the offset box, not `getBoundingClientRect`, so an in-flight scale/height animation doesn't skew positioning.
 
-Each action calls an existing desktop API with an optimistic local update and rollback on failure: Rename → `updateSessionTitle` (inline `.sidebar-recent-session-rename` input), Move → [[src/main/session-context-folder-store.ts#setSessionContextFolder]] then a `hermes-session-context-folder-changed` event so other surfaces re-group, Delete → a confirmation dialog (portal overlay) then [[src/main/sessions.ts#deleteSessionRows|deleteSession]]. Deleting the open chat calls `onSessionDeleted`, which [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] uses to drop to a fresh New Chat.
+Each action calls an existing desktop API with an optimistic local update and rollback on failure: Rename → `updateSessionTitle` (inline `.sidebar-recent-session-rename` input), Move → [[src/main/session-context-folder-store.ts#setSessionContextFolder]] then a `hermes-session-context-folder-changed` event so other surfaces re-group, Open in File Explorer → Electron `shell.openPath` for the task's context folder, Copy conversation ID → the preload clipboard bridge, Delete → a confirmation dialog (portal overlay) then [[src/main/sessions.ts#deleteSessionRows|deleteSession]]. The Explorer action is disabled when a task has no context folder. Deleting the open chat calls `onSessionDeleted`, which [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] uses to drop to a fresh New Chat.
 
 Pinned rows are a desktop-only affordance: their ids live in `localStorage` (`hermes.sidebar.pinnedSessions`), and pinned sessions are pulled out of the normal grouping into a collapsible **Pinned** section at the top of the list.
+
+Project rows use [[src/renderer/src/screens/Layout/SidebarProjectMenu.tsx#SidebarProjectMenu]], which deliberately reuses the same portal shell, CSS classes, viewport clamping, animation and dismissal rules as the task menu. It exposes Pin/Unpin, Open in File Explorer, Rename, Archive, and Remove. Project display names and pin state are persisted by [[src/main/project-folders.ts#updateProjectFolder]] without renaming or moving the physical folder. Rename is inline; Escape cancels and suppresses the blur-save emitted during unmount. Remove clears the desktop project registration plus native/Runtime task-to-workspace links, returning those conversations to Chats; it never deletes a conversation, directory, or project file.
+
+## Task and project archives
+
+Archive is a reversible, profile-scoped visibility state rather than deletion.
+
+[[src/main/archive-store.ts]] stores task/project markers in `desktop/archives.json`; it never rewrites conversation history or project files. [[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] filters archived tasks from every section and filters an archived project together with its tasks. Task and project menus create markers, and an `agents-one:archives-changed` event keeps open sidebar and Settings views consistent.
+
+[[src/renderer/src/components/settings/ArchivePane.tsx]] is the Settings → Archived items management surface with search and kind filters. Its typography follows the shared Settings scale (13px primary text, 12px supporting text) instead of browser-default heading/control sizes. Archived projects include a task-conversation disclosure that is collapsed by default; the pane pages through both the native session cache and Runtime conversation index, normalizes Windows path separators/case, and lists matching tasks only when expanded. Task titles also participate in archive search without rewriting conversation data.
+
+Both tasks and projects can be restored by removing the marker, or permanently deleted after a kind-specific confirmation. The main-process handler routes Runtime conversations, local sessions and remote/SSH sessions through their corresponding stores. Project deletion clears its desktop registration and native/Runtime task-to-project links so retained conversations return to Chats; project directories and files are never deleted or mutated.
 
 ## Full-list modal
 

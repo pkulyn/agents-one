@@ -1,7 +1,8 @@
 # Agents One Plugin SDK 规划与接入标准
 
-状态：**预览实现（0.1.0）**  
-日期：2026-07-31
+状态：**预览实现（0.1.2）**
+
+日期：2026-08-10
 
 ## 目标
 
@@ -9,11 +10,11 @@
 
 ## 与既有协议的关系
 
-| 层级 | 规范/组件 | 责任 |
-| --- | --- | --- |
-| 连接、鉴权、Run、Grant | [Remote Gateway v1](AGENTS_ONE_REMOTE_GATEWAY_V1.md) | 远程机器如何安全地被调用。 |
-| 事件语义 | [Agent Event Stream v1](AGENT_EVENT_STREAM_V1.md) | 思考摘要、工具、技能、MCP、产物和交接如何统一表达。 |
-| 可安装实现 | `plugins/agents-one-plugin` | 将供应商原生事件转换为以上两项规范。 |
+| 层级                   | 规范/组件                                            | 责任                                                |
+| ---------------------- | ---------------------------------------------------- | --------------------------------------------------- |
+| 连接、鉴权、Run、Grant | [Remote Gateway v1](AGENTS_ONE_REMOTE_GATEWAY_V1.md) | 远程机器如何安全地被调用。                          |
+| 事件语义               | [Agent Event Stream v1](AGENT_EVENT_STREAM_V1.md)    | 思考摘要、工具、技能、MCP、产物和交接如何统一表达。 |
+| 可安装实现             | `plugins/agents-one-plugin`                          | 将供应商原生事件转换为以上两项规范。                |
 
 Remote Gateway 是远程插件的外层协议；Event Stream 是远程和本地 CLI 都可使用的内部事件语言。本地 CLI 不经由 Remote Gateway，因此不会被 Gateway 的权限或网络边界限制。
 
@@ -32,10 +33,10 @@ plugins/agents-one-plugin/
 
 ## 给接入方的文件清单
 
-| 接入方 | 必须提供/安装 | 应阅读的规范 | Agents One 中的配置 |
-| --- | --- | --- | --- |
-| Hers、Hermes、OpenClaw 等远程智能体 | `gateway` 宿主加各自原生 API/Relay 映射 | [Remote Gateway v1](AGENTS_ONE_REMOTE_GATEWAY_V1.md)、[事件插件实施指南](AGENT_EVENT_STREAM_PLUGIN_GUIDE.md) | 一个 Gateway URL，一个 Bearer Token。 |
-| Pi、Codex、Claude Code 等本地 CLI | `cli` Adapter 加该 CLI 的 JSONL/Hook mapper | [事件插件实施指南](AGENT_EVENT_STREAM_PLUGIN_GUIDE.md)、本包 `examples/cli-jsonl-adapter.mjs` | 本地可执行文件、工作区与 Adapter 配置；不填写 Gateway Token。 |
+| 接入方                              | 必须提供/安装                               | 应阅读的规范                                                                                                 | Agents One 中的配置                                           |
+| ----------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Hers、Hermes、OpenClaw 等远程智能体 | `gateway` 宿主加各自原生 API/Relay 映射     | [Remote Gateway v1](AGENTS_ONE_REMOTE_GATEWAY_V1.md)、[事件插件实施指南](AGENT_EVENT_STREAM_PLUGIN_GUIDE.md) | 一个 Gateway URL，一个 Bearer Token。                         |
+| Pi、Codex、Claude Code 等本地 CLI   | `cli` Adapter 加该 CLI 的 JSONL/Hook mapper | [事件插件实施指南](AGENT_EVENT_STREAM_PLUGIN_GUIDE.md)、本包 `examples/cli-jsonl-adapter.mjs`                | 本地可执行文件、工作区与 Adapter 配置；不填写 Gateway Token。 |
 
 远程实现必须由插件的 `GET /capabilities` 声明 `eventStream.protocol=agents-one-event-stream-v1`。否则桌面端仍可按旧 Gateway 使用最终答复，但会标记为“基础反馈”，不会伪造思考、工具或技能记录。
 
@@ -66,6 +67,25 @@ D:\efunds\nodejs\node.exe --test .\test\*.test.mjs
 ```
 
 未来新增字段应保持向后兼容；破坏性变化才发布 `v2`。桌面端根据能力声明提示“可升级”，不通过智能体类型猜测端点。插件升级由远端维护者或本地 CLI 用户更新包完成，更新后重新执行固定验收夹具。
+
+### 0.1.2
+
+该补丁版把 Hers-2 现场验收中的通用兼容修复收回 SDK：Gateway 先追加 Adapter 返回的工具、Workspace、推理与最终答复事件，再生成运行终态；能力标志只来自 Adapter 启动时的稳定声明。EventJournal 保留脱敏后的 Workspace `operation`/相对 `path` 和工具时长，请求体读取同时兼容字符串与 Buffer chunk。
+
+Adapter 应在 `capabilities.eventStream` 中只声明真实实现的增强能力，例如：
+
+```js
+capabilities: {
+  eventStream: {
+    reasoningSummaries: true,
+    toolEvents: true,
+    modelMetadata: true,
+    usageMetadata: true,
+  },
+}
+```
+
+未声明的能力不会出现在 `/capabilities`。升级到0.1.2后，Connector 应删除对 `/capabilities` 的拦截、对 `record.journal` 的直接写入以及对 SDK EventJournal 白名单的本地补丁，让 `getRun()` 通过标准 `events` 返回真实事件。
 
 ## 首批试点顺序
 

@@ -26,6 +26,8 @@ The context-folder tree panel uses a compact header and can be resized from its 
 
 [[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] stores its width in `localStorage` under `hermes:worktreePanelWidth`, clamps it between a usable minimum and the available chat width, and updates it through a pointer-drag handle styled by `.worktree-resize-handle`.
 
+Local Codex, Claude Code, and Pi conversations reuse the same panel in [[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]]. Their folder-tree button therefore opens the selected project on the right, preserves file viewing and resizing, and launches [[src/main/ipc/register.ts]] `open-terminal` in that exact folder. Remote Runtime paths are not passed to the local tree panel.
+
 ## Remote folder picker
 
 Remote and SSH chats use an in-app picker so users do not accidentally select a local macOS folder for a remote session.

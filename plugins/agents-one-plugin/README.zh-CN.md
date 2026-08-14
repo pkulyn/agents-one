@@ -27,7 +27,7 @@ D:\efunds\nodejs\node.exe --test ./test/*.test.mjs
 cd D:\Agent Console\Agents-One\plugins\agents-one-plugin
 D:\efunds\nodejs\npm.cmd pack
 # 在远程 Relay 或本地 CLI 的插件目录执行：
-D:\efunds\nodejs\npm.cmd install .\agents-one-plugin-sdk-0.1.1.tgz
+D:\efunds\nodejs\npm.cmd install .\agents-one-plugin-sdk-0.1.2.tgz
 ```
 
 `agents-one-plugin.manifest.json` 声明该包支持的协议与安全约束。升级插件后应重新执行 `agents-one-plugin-verify`、插件自身回归和目标智能体的真实对话/工具/工作区验收；只有破坏性协议变更才升级到 v2。
@@ -41,6 +41,14 @@ const plugin = createRemoteGatewayPlugin({
   agent: { id: "hers-home", kind: "hermes", displayName: "Hers" },
   token: process.env.AGENTS_ONE_GATEWAY_TOKEN,
   adapter: {
+    capabilities: {
+      eventStream: {
+        reasoningSummaries: true,
+        toolEvents: true,
+        modelMetadata: true,
+        usageMetadata: true,
+      },
+    },
     async startRun(input, { emit, publishArtifact }) {
       // 立即创建/派发原生 run；不要等待长任务结束。
       emit({
@@ -83,6 +91,8 @@ const plugin = createRemoteGatewayPlugin({
 await plugin.listen(8787, "127.0.0.1");
 ```
 
+`capabilities.eventStream` 必须描述 Adapter 启动时已经实现的真实能力。SDK 不会根据近期运行自动打开这些标志；未实现或无法持续上报的字段应省略，不能为了通过连接测试而声明为 `true`。
+
 `publishArtifact` 是 Connector 侧的发布能力，不会凭空变成模型工具。Hers/Hermes Connector 必须把它注册为智能体可调用的结构化工具，并只允许读取该次运行的受控输出目录。仅在最终答复里打印 `artifact.created` JSON、`MEDIA:` 文件名或远端绝对路径，不代表文件已上传，桌面端也无法据此显示图片。
 
 可从 `@agents-one/plugin-sdk/hermes` 导入 `createAgentsOneArtifactTool({ publishArtifact, readOutput })` 生成通用工具定义；`readOutput(path)` 必须由 Connector 实现，并拒绝本次运行受控输出目录之外的路径。
@@ -117,5 +127,6 @@ CLI Adapter 只以参数数组启动进程，不调用 Shell，也不替换 CLI 
 - 真实文件、代码变更和测试报告才是 artifact；普通最终答复不是 artifact。
 - 若需要桌面端“上传附件”，适配器必须实现 `uploadArtifact(input, context)`；SDK 会暴露 `POST /artifacts`，并在 `/runs` 的 `input.artifactIds` 中传入不可变附件 ID。
 - 若需要桌面端显示远端生成的图片/文件，适配器可实现 `getArtifact(artifactId, context)`，或使用运行上下文的 `publishArtifact`；SDK 会暴露 `GET /artifacts/{artifactId}`，返回元数据及 `contentBase64`。
-- SDK v0.1.1 也支持通过 `startRun` 上下文中的 `publishArtifact({ name, mime, bytes })` 发布输出文件；它会自动计算 SHA-256、登记运行产物、写入 `artifact.created` 并提供下载接口。Connector 仍须把该回调接入远端智能体的真实工具系统。
+- SDK v0.1.2 支持通过 `startRun` 上下文中的 `publishArtifact({ name, mime, bytes })` 发布输出文件；它会自动计算 SHA-256、登记运行产物、写入 `artifact.created` 并提供下载接口。Connector 仍须把该回调接入远端智能体的真实工具系统。
+- SDK v0.1.2 只声明 Adapter 在 `capabilities.eventStream` 中明确启用的增强能力，并在追加 provider 事件后再生成 `run.completed` / `run.failed`；Adapter 不再需要直接操作 `record.journal` 或拦截 `/capabilities`。
 - 为显示真实模型和上下文占用，适配器应在 `getRun` 或事件的 `data.model`、`data.usage` 中返回 `model_name`/`modelId`、`context_window_tokens`、`context_used` 等真实字段，不要猜测或伪造。
