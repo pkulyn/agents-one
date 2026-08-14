@@ -15,6 +15,10 @@ import type {
   AgentRuntimeDefinition,
   AgentRuntimeRun,
 } from "../../../../shared/agent-runtimes";
+import type {
+  QuickChatConversation,
+  QuickChatMessage,
+} from "../../../../shared/runtime-conversations";
 import { summarizeTaskOutput } from "../Chat/runtimeOutput";
 
 const STORAGE_KEY = "agents-one.quick-chats.v1";
@@ -23,25 +27,7 @@ const MAX_QUICK_CHATS = 40;
 const MAX_MESSAGES_PER_CHAT = 80;
 const QUICK_CHAT_TIMEOUT_MS = 120_000;
 
-type QuickChatRole = "user" | "agent" | "system";
-
-interface QuickChatMessage {
-  id: string;
-  role: QuickChatRole;
-  content: string;
-  createdAt: number;
-}
-
-interface QuickChatConversation {
-  id: string;
-  title: string;
-  runtimeId: string;
-  runtimeName: string;
-  runtimeSessionId?: string | null;
-  createdAt: number;
-  updatedAt: number;
-  messages: QuickChatMessage[];
-}
+type QuickChatRole = QuickChatMessage["role"];
 
 interface QuickChatPanelProps {
   open: boolean;
@@ -71,7 +57,7 @@ function loadQuickChats(): QuickChatConversation[] {
   }
 }
 
-function saveQuickChats(chats: QuickChatConversation[]): void {
+function saveLegacyQuickChats(chats: QuickChatConversation[]): void {
   try {
     localStorage.setItem(
       STORAGE_KEY,
@@ -228,6 +214,7 @@ export default function QuickChatPanel({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cancelledRef = useRef(false);
+  const loadedProfileRef = useRef<string | null>(null);
 
   const runtimeOptions = useMemo(
     () => runtimes.filter((runtime) => runtime.enabled),
@@ -250,8 +237,34 @@ export default function QuickChatPanel({
   }, [open]);
 
   useEffect(() => {
-    saveQuickChats(chats);
-  }, [chats]);
+    if (loadedProfileRef.current !== profile) return;
+    saveLegacyQuickChats(chats);
+    void window.hermesAPI.saveQuickChats(chats, profile).catch(() => undefined);
+  }, [chats, profile]);
+
+  useEffect(() => {
+    let active = true;
+    setChats([]);
+    setActiveChatId(null);
+    void window.hermesAPI
+      .listQuickChats(profile)
+      .then((persisted) => {
+        if (!active) return;
+        const next =
+          persisted.length > 0
+            ? persisted
+            : loadedProfileRef.current === null
+              ? loadQuickChats()
+              : [];
+        loadedProfileRef.current = profile;
+        setChats(next);
+        setActiveChatId(next[0]?.id ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [profile]);
 
   useEffect(() => {
     if (!scrollRef.current) return;

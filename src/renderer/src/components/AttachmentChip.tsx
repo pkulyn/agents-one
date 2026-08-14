@@ -22,6 +22,8 @@ export function AttachmentChip({
   const [zoomed, setZoomed] = useState(false);
   useLightboxClose(zoomed, () => setZoomed(false));
   const isImage = attachment.kind === "image";
+  const localFilePath =
+    attachment.kind === "path-ref" ? attachment.path : undefined;
   const showImageMenu = (event: React.MouseEvent): void => {
     if (!isImage || !attachment.dataUrl) return;
     event.preventDefault();
@@ -35,15 +37,26 @@ export function AttachmentChip({
     onPreview?.(attachment);
     setZoomed(true);
   };
+  const showFileMenu = (event: React.MouseEvent): void => {
+    if (!localFilePath) return;
+    event.preventDefault();
+    window.hermesAPI.showFileMenu(localFilePath, {
+      open: t("chat.fileMenu.open"),
+      copyPath: t("chat.fileMenu.copyPath"),
+      copyContent: t("chat.fileMenu.copyContent"),
+      reveal: t("chat.fileMenu.reveal"),
+    });
+  };
 
   // When the renderer compressed the image down to fit the gateway's
   // request-body cap (#405), surface the size delta in the tooltip so the
   // user knows quality changed and isn't surprised by a "compressed"
   // version appearing in the chat transcript.
   const tooltip =
-    attachment.originalSize && attachment.originalSize > attachment.size
+    localFilePath ||
+    (attachment.originalSize && attachment.originalSize > attachment.size
       ? `${attachment.name} (${formatSize(attachment.originalSize)} -> ${formatSize(attachment.size)}, ${t("chat.attachmentCompressed")})`
-      : `${attachment.name} (${formatSize(attachment.size)})`;
+      : `${attachment.name} (${formatSize(attachment.size)})`);
 
   return (
     <>
@@ -60,6 +73,16 @@ export function AttachmentChip({
             aria-label={attachment.name}
           >
             <img src={attachment.dataUrl} alt={attachment.name} />
+          </button>
+        ) : localFilePath ? (
+          <button
+            type="button"
+            className="attachment-chip-file attachment-chip-file--action"
+            onClick={() => window.hermesAPI.openFileInEditor(localFilePath)}
+            onContextMenu={showFileMenu}
+          >
+            <FileText size={14} />
+            <span className="attachment-chip-name">{attachment.name}</span>
           </button>
         ) : (
           <div className="attachment-chip-file">

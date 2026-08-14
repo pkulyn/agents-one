@@ -1,6 +1,6 @@
 import { fireEvent, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MediaImage } from "./MediaImage";
+import { DownloadChip, MediaImage } from "./MediaImage";
 import type { MediaToken } from "../screens/Chat/mediaUtils";
 
 vi.mock("./useI18n", () => ({
@@ -29,6 +29,8 @@ describe("MediaImage lightbox", () => {
       value: {
         saveMediaFile: vi.fn(async () => true),
         showMediaMenu: vi.fn(),
+        showFileMenu: vi.fn(),
+        openFileInEditor: vi.fn(async () => true),
       },
     });
   });
@@ -72,5 +74,31 @@ describe("MediaImage lightbox", () => {
 
     fireEvent.click(document.querySelector(".chat-image-preview-backdrop")!);
     expect(document.querySelector(".chat-image-preview-backdrop")).toBeNull();
+  });
+
+  it("opens local delivery files on click and exposes the native file menu", () => {
+    const fileToken: MediaToken = {
+      src: "D:\\project\\smoke-test.txt",
+      isUrl: false,
+      isImage: false,
+      name: "smoke-test.txt",
+    };
+    render(<DownloadChip token={fileToken} />);
+
+    const link = document.querySelector(".chat-artifact-file");
+    expect(link).toHaveAttribute("title", fileToken.src);
+    fireEvent.click(link!);
+    expect(window.hermesAPI.openFileInEditor).toHaveBeenCalledWith(
+      fileToken.src,
+    );
+
+    fireEvent.contextMenu(link!);
+    expect(window.hermesAPI.showFileMenu).toHaveBeenCalledWith(fileToken.src, {
+      open: "chat.fileMenu.open",
+      copyPath: "chat.fileMenu.copyPath",
+      copyContent: "chat.fileMenu.copyContent",
+      reveal: "chat.fileMenu.reveal",
+    });
+    expect(window.hermesAPI.saveMediaFile).not.toHaveBeenCalled();
   });
 });

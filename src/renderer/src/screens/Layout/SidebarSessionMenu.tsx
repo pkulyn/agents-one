@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
+import { Archive, Copy, FolderOpen } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import {
   Check,
@@ -72,6 +73,9 @@ function SidebarSessionMenu({
   onRename,
   onMoveToProject,
   onPickNewFolder,
+  onCopySessionId,
+  onReveal,
+  onArchive,
   onDelete,
 }: {
   target: SidebarMenuTarget;
@@ -89,6 +93,9 @@ function SidebarSessionMenu({
   onRename: () => void;
   onMoveToProject: (path: string | null) => void;
   onPickNewFolder: () => void;
+  onCopySessionId: () => void;
+  onReveal: () => void;
+  onArchive: () => void;
   onDelete: () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
@@ -235,6 +242,44 @@ function SidebarSessionMenu({
                       />
                     </button>
                     <div className="sidebar-session-menu-divider" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sidebar-session-menu-item"
+                      disabled={!target.contextFolder}
+                      onClick={() => {
+                        onReveal();
+                        requestClose();
+                      }}
+                    >
+                      <FolderOpen size={15} />
+                      <span>{t("navigation.sessionMenu.reveal")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sidebar-session-menu-item"
+                      onClick={() => {
+                        onCopySessionId();
+                        requestClose();
+                      }}
+                    >
+                      <Copy size={15} />
+                      <span>{t("navigation.sessionMenu.copySessionId")}</span>
+                    </button>
+                    <div className="sidebar-session-menu-divider" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sidebar-session-menu-item"
+                      onClick={() => {
+                        onArchive();
+                        requestClose();
+                      }}
+                    >
+                      <Archive size={15} />
+                      <span>{t("navigation.sessionMenu.archive")}</span>
+                    </button>
                     <button
                       type="button"
                       role="menuitem"
