@@ -1500,6 +1500,24 @@ function isAgentsOneGatewayRuntime(runtime: AgentRuntimeDefinition): boolean {
   );
 }
 
+/** Canonical transport classifiers (Agents One unified model).
+ * `gateway-v1` = remote via one URL + one token; `local-cli` = local
+ * executable path (Pi/Claude Code/Codex); `local-api` = local HTTP API
+ * (built-in Hermes).  Falls back to `deriveAgentTransport` for legacy
+ * persisted runtimes without an explicit `agentTransport`.
+ */
+function isGatewayTransport(runtime: AgentRuntimeDefinition): boolean {
+  return deriveAgentTransport(runtime) === "gateway-v1";
+}
+
+function isLocalCliTransport(runtime: AgentRuntimeDefinition): boolean {
+  return deriveAgentTransport(runtime) === "local-cli";
+}
+
+function isLocalApiTransport(runtime: AgentRuntimeDefinition): boolean {
+  return deriveAgentTransport(runtime) === "local-api";
+}
+
 function remoteRuntimeForCredential(runtimeId: string): AgentRuntimeDefinition {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (
@@ -2666,33 +2684,25 @@ export async function startAgentRuntimeTask(
     throw new Error("请先为恢复的远程智能体重新保存凭据。");
   }
   if (
-    !isAgentsOneGatewayRuntime(runtime) &&
-    runtime.kind !== "hermes" &&
-    !(runtime.kind === "openclaw" && runtime.location === "remote") &&
-    !(runtime.kind === "codex" && runtime.location === "local") &&
-    !(runtime.kind === "claude-code" && runtime.location === "local") &&
-    !(runtime.kind === "pi" && runtime.location === "local")
+    !isGatewayTransport(runtime) &&
+    !isLocalCliTransport(runtime) &&
+    !isLocalApiTransport(runtime)
   ) {
     throw new Error(`${runtime.kind} task dispatch is not available yet.`);
   }
 
   const task = validatedTaskInput(
     input,
-    isAgentsOneGatewayRuntime(runtime)
-      ? DEFAULT_GATEWAY_TASK_TIMEOUT_MS
-      : DEFAULT_TASK_TIMEOUT_MS,
+    isGatewayTransport(runtime) ? DEFAULT_GATEWAY_TASK_TIMEOUT_MS : DEFAULT_TASK_TIMEOUT_MS,
   );
   if (
     task.mode === "full_access" &&
     !(
-      (runtime.location === "local" &&
-        (runtime.kind === "codex" ||
-          runtime.kind === "claude-code" ||
-          runtime.kind === "pi")) ||
-      (runtime.location === "remote" &&
-        (isAgentsOneGatewayRuntime(runtime) ||
-          runtime.kind === "hermes" ||
-          runtime.kind === "openclaw"))
+      isLocalCliTransport(runtime) ||
+      (isGatewayTransport(runtime) &&
+        (runtime.kind === "hermes" || runtime.kind === "openclaw")) ||
+      (isLocalApiTransport(runtime) &&
+        (runtime.kind === "hermes" || runtime.kind === "openclaw"))
     )
   ) {
     throw new Error(
