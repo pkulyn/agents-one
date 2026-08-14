@@ -18,7 +18,9 @@ vi.mock("./utils", () => ({
 
 describe("runtime conversation store", () => {
   beforeEach(() => {
-    state.root = mkdtempSync(join(tmpdir(), "agents-one-runtime-conversations-"));
+    state.root = mkdtempSync(
+      join(tmpdir(), "agents-one-runtime-conversations-"),
+    );
     vi.resetModules();
   });
 
@@ -58,7 +60,9 @@ describe("runtime conversation store", () => {
       agentColor: "#7357e8",
       collaborationRole: "实施交付",
     });
-    expect(store.getRuntimeConversation("collaboration-1")?.messages[1]).toMatchObject({
+    expect(
+      store.getRuntimeConversation("collaboration-1")?.messages[1],
+    ).toMatchObject({
       agentRuntimeId: "claude-code",
       agentName: "Claude",
       collaborationRole: "实施交付",
@@ -113,7 +117,9 @@ describe("runtime conversation store", () => {
       ],
     });
 
-    expect(store.getRuntimeConversation("remote-trace-1")?.messages[1]).toMatchObject({
+    expect(
+      store.getRuntimeConversation("remote-trace-1")?.messages[1],
+    ).toMatchObject({
       execution: {
         events: [
           expect.objectContaining({
@@ -130,5 +136,38 @@ describe("runtime conversation store", () => {
         ],
       },
     });
+  });
+
+  it("persists and clears a background conversation's active Runtime run", async () => {
+    const store = await import("./runtime-conversation-store");
+    const base = {
+      id: "schedule-live-1",
+      title: "定时任务：整理知识库",
+      runtimeId: "pi",
+      runtimeName: "Pi",
+      runtimeKind: "pi" as const,
+      runtimeLocation: "local" as const,
+      messages: [
+        {
+          id: "u1",
+          role: "user" as const,
+          content: "整理知识库",
+          createdAt: 1,
+        },
+      ],
+    };
+
+    store.saveRuntimeConversation({
+      ...base,
+      activeRuntimeRunId: "runtime-run-schedule-1",
+    });
+    expect(store.getRuntimeConversation(base.id)).toMatchObject({
+      activeRuntimeRunId: "runtime-run-schedule-1",
+    });
+
+    store.saveRuntimeConversation({ ...base, activeRuntimeRunId: null });
+    expect(
+      store.getRuntimeConversation(base.id)?.activeRuntimeRunId,
+    ).toBeUndefined();
   });
 });

@@ -122,6 +122,26 @@ describe("runtime conversation store", () => {
     });
   });
 
+  it("unlinks runtime conversations when a project is removed", async () => {
+    const store = await loadStore();
+    store.saveRuntimeConversation({
+      profile: "default",
+      id: "runtime-project-task",
+      title: "项目任务",
+      runtimeId: "codex",
+      runtimeName: "Codex",
+      runtimeKind: "codex",
+      runtimeLocation: "local",
+      workspace: "D:\\Projects\\Alpha",
+      messages: [{ id: "m1", role: "user", content: "测试", createdAt: 1 }],
+    });
+    expect(
+      store.clearRuntimeConversationWorkspace("D:\\Projects\\Alpha", "default"),
+    ).toBe(1);
+    expect(store.getRuntimeConversation("runtime-project-task", "default")?.workspace)
+      .toBeUndefined();
+  });
+
   it("renames and deletes conversations within the selected profile", async () => {
     const store = await loadStore();
 
