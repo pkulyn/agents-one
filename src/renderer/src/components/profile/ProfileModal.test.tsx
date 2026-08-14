@@ -35,10 +35,6 @@ vi.mock("../../screens/Memory/MemoryEntries", () => ({
   MemoryEntries: (): React.JSX.Element => <div data-testid="memory" />,
 }));
 
-vi.mock("./ProfileWalletPane", () => ({
-  default: (): React.JSX.Element => <div data-testid="wallet" />,
-}));
-
 import ProfileModal from "./ProfileModal";
 
 interface ProfileInfo {

@@ -4,19 +4,6 @@ import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
 import type {
-  ImportWalletInput,
-  ProfileWallet,
-  WalletMutationResult,
-  WalletSyncResult,
-} from "../shared/wallets";
-import type { TokenBalancesResponse } from "../shared/tokens";
-import type {
-  DeviceCodeInfo,
-  HermesAccount,
-  HermesAccountUser,
-} from "../shared/account";
-import type { AgentSyncResult, AgentSyncStatus } from "../shared/agent-sync";
-import type {
   RegistryKind,
   RegistryItem,
   RegistryCatalog,
@@ -199,31 +186,6 @@ interface HermesAPI {
   // OpenClaw migration
   checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
   runClawMigrate: () => Promise<{ success: boolean; error?: string }>;
-
-  // OAuth provider sign-in
-  oauthLogin: (
-    provider: string,
-    profile?: string,
-  ) => Promise<{ success: boolean; error?: string }>;
-  cancelOAuthLogin: () => Promise<boolean>;
-  onOAuthLoginProgress: (callback: (chunk: string) => void) => () => void;
-
-  // Hermes account sign-in (device authorization grant)
-  accountLogin: (
-    profile?: string,
-  ) => Promise<{ success: boolean; user?: HermesAccountUser; error?: string }>;
-  cancelAccountLogin: () => Promise<boolean>;
-  onAccountLoginCode: (callback: (info: DeviceCodeInfo) => void) => () => void;
-  onAccountLoginProgress: (callback: (chunk: string) => void) => () => void;
-  getAccount: (profile?: string) => Promise<HermesAccount | null>;
-  accountLogout: (profile?: string) => Promise<{ success: boolean }>;
-
-  // Cloud agent sync (profiles ↔ signed-in Agents One account)
-  syncAgents: () => Promise<AgentSyncResult>;
-  getAgentSyncStatus: () => Promise<AgentSyncStatus>;
-  onAgentSyncUpdated: (
-    callback: (result: AgentSyncResult) => void,
-  ) => () => void;
 
   getLocale: () => Promise<AppLocale>;
   setLocale: (locale: AppLocale) => Promise<AppLocale>;
@@ -689,24 +651,6 @@ interface HermesAPI {
   removeProfileAvatar: (
     name: string,
   ) => Promise<{ success: boolean; error?: string }>;
-  listWallets: (profile?: string) => Promise<ProfileWallet[]>;
-  syncWallets: (profile?: string) => Promise<WalletSyncResult>;
-  createWallet: (
-    profile?: string,
-    name?: string,
-  ) => Promise<WalletMutationResult>;
-  importWallet: (input: ImportWalletInput) => Promise<WalletMutationResult>;
-  renameWallet: (
-    profile: string | undefined,
-    id: string,
-    name: string,
-  ) => Promise<{ success: boolean; error?: string }>;
-  deleteWallet: (
-    profile: string | undefined,
-    id: string,
-  ) => Promise<{ success: boolean; error?: string }>;
-  getTokenBalances: (address: string) => Promise<TokenBalancesResponse>;
-
   // Memory
   readMemory: (profile?: string) => Promise<{
     memory: { content: string; exists: boolean; lastModified: number | null };
