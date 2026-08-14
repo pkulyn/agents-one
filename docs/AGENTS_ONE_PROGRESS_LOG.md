@@ -1661,3 +1661,10 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 删除上游 analytics 客户端（utils/analytics.ts）与 PrivacyPane 隐私同意 UI、privacy 设置导航、VITE_ANALYTICS_* / MAIN_VITE_HERMES_API_* 环境变量与 workflow 引用。
 - 全量回归：191 个测试文件、1912 项通过、9 项跳过；Node/Web TypeScript 与生产构建通过；renderer 产物降至约 8.1MB。
 - 下一步进入 Phase 1：智能体接入统一（方案 A）——配置模型 transport=gateway-v1/local-cli/local-api、SSH 与旧远程 Hermes/OpenClaw 传输删除、注册表单统一为链接+Token 或路径。
+
+## 2026-08-14：Phase 1 启动 - 配置模型与 transport 守卫
+
+- Phase 1（智能体接入统一，方案 A）正式启动。已提交两个 slice：
+- 1.1 配置模型（c414f23）：shared `AgentRuntimeConfig` 新增 `agentTransport` 字段（gateway-v1/local-cli/local-api）；新增纯函数 `deriveAgentTransport()` 从旧字段自动推导（向后兼容，无数据迁移）；main normalization 自动回填；内置 Hermes（local-api）/Pi（local-cli）显式携带；新增 4 个单元测试。
+- 1.2 transport 分类器与 start 守卫（e393d9a）：main 新增 `isGatewayTransport/isLocalCliTransport/isLocalApiTransport` 三个分类器；`startAgentRuntimeTask` 的"派发不可用"守卫与 `full_access` 检查改按 transport 分类（行为不变，现有 27+18=45 个 runtime/gateway 测试通过）。
+- 下一步（未开始）：1.3 SSH 删除、1.4 旧远程模式删除、1.5 注册表单统一、1.6 Agents 卡片增强、1.7 定向+全量回归。
