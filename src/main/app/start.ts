@@ -9,7 +9,6 @@ import { cleanupTempMediaFiles } from "../media";
 import { closeDbConnection } from "../db";
 import { recoverInterruptedAgentsOneRestore } from "../agents-one-backup";
 import { isAgentsOneRestoreWriteLocked } from "../restore-write-lock";
-import { shouldAllowConfiguredRemoteCertificateError } from "../remote-tls";
 import {
   hardenAttachedWebContents,
   hardenWebviewPreferences,
@@ -131,18 +130,6 @@ export function startMainProcess(): void {
         },
       });
     });
-
-    app.on(
-      "certificate-error",
-      (event, _webContents, url, _error, _certificate, callback) => {
-        if (shouldAllowConfiguredRemoteCertificateError(url)) {
-          event.preventDefault();
-          callback(true);
-          return;
-        }
-        callback(false);
-      },
-    );
 
     createWindow();
     buildMenu({ getMainWindow: () => mainWindow, openExternalUrl });

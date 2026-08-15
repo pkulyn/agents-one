@@ -12,7 +12,6 @@ import {
 import { extname, join } from "path";
 import { randomUUID } from "crypto";
 import { mkdir, open as openFile, readdir, readFile, stat } from "fs/promises";
-import { getActiveProfileNameSync } from "../utils";
 import type { Attachment } from "../../shared/attachments";
 import type { SessionModelOverride } from "../../shared/model-override";
 import type { AppLocale } from "../../shared/i18n/types";
@@ -67,8 +66,6 @@ import {
   clearVersionCache,
   runHermesDoctor,
   runHermesUpdate,
-  checkOpenClawExists,
-  runClawMigrate,
   runHermesDump,
   discoverMemoryProviders,
   readLogs,
@@ -147,16 +144,11 @@ import {
   setCredentialPool,
   addCredentialPoolEntry,
   getConnectionConfig,
-  getRemoteDashboardSessionConfig,
   getPublicConnectionConfig,
-  normalizeRemoteChatTransport,
-  resolveConnectionApiKeyUpdate,
-  setConnectionConfig,
   getPlatformEnabled,
   setPlatformEnabled,
   getApiServerKeyStatus,
   invalidateSecretsCache,
-  type ConnectionConfig,
 } from "../config";
 import {
   getAuxiliaryConfig,
@@ -164,7 +156,6 @@ import {
   resetAuxiliaryToAuto,
 } from "../auxiliary-config";
 import {
-  applySessionLocalOverlays,
   listSessions,
   getSessionMessages,
   searchSessions,
@@ -187,49 +178,6 @@ import {
   clearRuntimeConversationWorkspace,
 } from "../runtime-conversation-store";
 import {
-  remoteDeleteSession,
-  remoteDeleteSessions,
-  remoteGetSessionMessages,
-  remoteListCachedSessions,
-  remoteListSessions,
-  remoteReadMediaAsDataUrl,
-  remoteSearchSessions,
-  remoteUpdateSessionTitle,
-  type RemoteSessionConfig,
-} from "../remote-sessions";
-import {
-  remoteGetHermesHome,
-  remoteGetHermesVersion,
-} from "../remote-metadata";
-import {
-  remoteGetSkillContent,
-  remoteInstallSkill,
-  remoteListInstalledSkills,
-  remoteUninstallSkill,
-} from "../remote-skills";
-import {
-  remoteAddModel,
-  remoteGetModelConfig,
-  remoteListModels,
-  remoteRemoveModel,
-  remoteSetModelConfig,
-  remoteUpdateModel,
-} from "../remote-models";
-import {
-  remoteGetConfigValue,
-  remoteReadEnv,
-  remoteSetConfigValue,
-  remoteSetEnvValue,
-} from "../remote-config";
-import {
-  remoteAddMemoryEntry,
-  remoteDiscoverMemoryProviders,
-  remoteReadMemory,
-  remoteRemoveMemoryEntry,
-  remoteUpdateMemoryEntry,
-  remoteWriteUserProfile,
-} from "../remote-memory";
-import {
   activeAgentRuntimeTaskCount,
   cancelAgentRuntimeTask,
   cancelAllAgentRuntimeTasks,
@@ -242,7 +190,6 @@ import {
   saveAgentRuntime,
   saveAgentRuntimeAppearance,
   setAgentRuntimeBearerToken,
-  setAgentRuntimeDashboardToken,
   setAgentRuntimeWorkspaceGatewayToken,
   startAgentRuntimeTask,
 } from "../agent-runtimes";
@@ -360,11 +307,8 @@ import {
 import {
   applyMessagingPlatformUpdate,
   buildDesktopMessagingPlatforms,
-  fetchRemoteMessagingPlatforms,
   readLocalGatewayPlatformStates,
   testDesktopMessagingPlatform,
-  testRemoteMessagingPlatform,
-  updateRemoteMessagingPlatform,
 } from "../messaging-platforms";
 import { getAppLocale, setAppLocale } from "../locale";
 
@@ -378,60 +322,18 @@ export interface IpcContext {
 
 const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Agents One";
 
-type RemoteSessionBridgeConfig = RemoteSessionConfig;
-
-// Most session/metadata IPC calls don't carry a profile, but the remote
-// machine dashboard serves EVERY profile — an unscoped request silently
-// returns the DEFAULT profile's data (wrong session list / transcript for a
-// named-profile user). Fall back to the locally persisted active profile so
-// `dashboardApiUrl` appends `?profile=` ("default" needs no param and is
-// skipped there; explicit params like `profile=all` are never overridden).
-function activeProfileName(profile?: string): string {
-  return profile?.trim() || getActiveProfileNameSync();
-}
-
-async function withRemoteDashboard<T>(
-  conn: ConnectionConfig,
-  dashboardOperation: () => Promise<T>,
-  legacyOperation: () => Promise<T> | T,
-): Promise<T> {
-  if (conn.remoteChatTransport === "legacy") return legacyOperation();
-  try {
-    return await dashboardOperation();
-  } catch (err) {
-    if (conn.remoteChatTransport === "auto") return legacyOperation();
-    throw err;
-  }
-}
-
-async function getActiveDashboardMediaConfig(): Promise<RemoteSessionBridgeConfig | null> {
-  const conn = getConnectionConfig();
-  if (conn.mode === "remote") {
-    if (conn.remoteChatTransport === "legacy") return null;
-    if (!conn.remoteUrl.trim() || !conn.apiKey.trim()) return null;
-    return { remoteUrl: conn.remoteUrl, apiKey: conn.apiKey };
-  }
-  return null;
-}
-
 async function readMediaForCurrentConnection(
   filePath: string,
 ): Promise<string | null> {
   const normalizedPath = normalizeMediaPath(filePath);
-  const local = readMediaAsDataUrl(normalizedPath);
-  if (local) return local;
-  const remote = await getActiveDashboardMediaConfig();
-  return remote ? remoteReadMediaAsDataUrl(remote, normalizedPath) : null;
+  return readMediaAsDataUrl(normalizedPath);
 }
 
 async function mediaFileExistsForCurrentConnection(
   filePath: string,
 ): Promise<boolean> {
   const normalizedPath = normalizeMediaPath(filePath);
-  if (mediaFileExists(normalizedPath)) return true;
-  const remote = await getActiveDashboardMediaConfig();
-  if (!remote) return false;
-  return (await remoteReadMediaAsDataUrl(remote, normalizedPath)) !== null;
+  return mediaFileExists(normalizedPath);
 }
 
 async function resolveMediaForSave(src: string): Promise<string> {
@@ -520,15 +422,9 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Hermes engine info
   ipcMain.handle("get-hermes-version", async () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteGetHermesVersion(getRemoteDashboardSessionConfig(conn));
     return getHermesVersion();
   });
   ipcMain.handle("refresh-hermes-version", async () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteGetHermesVersion(getRemoteDashboardSessionConfig(conn));
     clearVersionCache();
     return getHermesVersion();
   });
@@ -558,19 +454,6 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   });
 
-  // OpenClaw migration
-  ipcMain.handle("check-openclaw", () => checkOpenClawExists());
-  ipcMain.handle("run-claw-migrate", async (event) => {
-    try {
-      await runClawMigrate((progress: InstallProgress) => {
-        event.sender.send("install-progress", progress);
-      });
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: (err as Error).message };
-    }
-  });
-
   // Configuration (profile-aware)
   ipcMain.handle("get-locale", () => getAppLocale());
   ipcMain.handle("set-locale", (_event, locale: AppLocale) =>
@@ -578,9 +461,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
 
   ipcMain.handle("get-env", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteReadEnv(getRemoteDashboardSessionConfig(conn, profile));
     return readEnv(profile);
   });
 
@@ -622,14 +502,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     "set-env",
     async (_event, key: string, value: string, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote") {
-        return remoteSetEnvValue(
-          getRemoteDashboardSessionConfig(conn, profile),
-          key,
-          value,
-        );
-      }
       setEnvValue(key, value, profile);
       // Restart gateway so it picks up the new API key.
       // The earlier condition had a precedence bug —
@@ -651,51 +523,22 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
 
   ipcMain.handle("get-config", (_event, key: string, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteGetConfigValue(
-        getRemoteDashboardSessionConfig(conn, profile),
-        key,
-      );
     return getConfigValue(key, profile);
   });
 
   ipcMain.handle(
     "set-config",
     async (_event, key: string, value: string, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote") {
-        return remoteSetConfigValue(
-          getRemoteDashboardSessionConfig(conn, profile),
-          key,
-          value,
-        );
-      }
       setConfigValue(key, value, profile);
       return true;
     },
   );
 
   ipcMain.handle("get-hermes-home", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteGetHermesHome(getRemoteDashboardSessionConfig(conn, profile));
     return getHermesHome(profile);
   });
 
   ipcMain.handle("get-model-config", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return withRemoteDashboard(
-        conn,
-        () =>
-          remoteGetModelConfig(
-            getRemoteDashboardSessionConfig(conn, profile),
-          ),
-        () => {
-          throw new Error("Remote dashboard model config is unavailable.");
-        },
-      );
     return getModelConfig(profile);
   });
 
@@ -708,22 +551,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       baseUrl: string,
       profile?: string,
     ) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote") {
-        return withRemoteDashboard(
-          conn,
-          () =>
-            remoteSetModelConfig(
-              getRemoteDashboardSessionConfig(conn, profile),
-              provider,
-              model,
-              baseUrl,
-            ),
-          () => {
-            throw new Error("Remote dashboard model config is unavailable.");
-          },
-        );
-      }
       const prev = getModelConfig(profile);
       // Mirror the activated model's context-window override and API-protocol
       // mode (if any) into config.yaml so the gauge, the agent's
@@ -828,7 +655,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
-  // Connection mode (local / remote)
+  // Connection mode (local-only — plan D5)
   ipcMain.handle("is-remote-mode", () => isRemoteMode());
   ipcMain.handle("is-remote-only-mode", () => isRemoteOnlyMode());
   ipcMain.handle("get-connection-config", () => getPublicConnectionConfig());
@@ -892,11 +719,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       setAgentRuntimeBearerToken(id, bearerToken),
   );
   ipcMain.handle(
-    "set-agent-runtime-dashboard-token",
-    (_event, id: string, dashboardToken: string) =>
-      setAgentRuntimeDashboardToken(id, dashboardToken),
-  );
-  ipcMain.handle(
     "set-agent-runtime-workspace-gateway-token",
     (_event, id: string, bearerToken: string) =>
       setAgentRuntimeWorkspaceGatewayToken(id, bearerToken),
@@ -950,53 +772,17 @@ export function registerIpcHandlers(context: IpcContext): void {
     "delete-task-schedule",
     (_event, id: string, profile?: string) => deleteTaskSchedule(id, profile),
   );
-  ipcMain.handle(
-    "set-connection-config",
-    (
-      _event,
-      mode: "local" | "remote",
-      remoteUrl: string,
-      apiKey?: string,
-      remoteDashboardUrl?: string,
-      remoteDashboardToken?: string,
-    ) => {
-      const existing = getConnectionConfig();
-      setConnectionConfig({
-        ...existing,
-        mode,
-        remoteUrl,
-        apiKey: resolveConnectionApiKeyUpdate(
-          existing,
-          mode,
-          remoteUrl,
-          apiKey,
-        ),
-        remoteDashboardUrl:
-          remoteDashboardUrl !== undefined
-            ? remoteDashboardUrl
-            : existing.remoteDashboardUrl,
-        remoteDashboardToken:
-          remoteDashboardToken !== undefined
-            ? remoteDashboardToken
-            : existing.remoteDashboardToken,
-      });
-      notifyConnectionConfigChanged();
-      return true;
-    },
-  );
+  ipcMain.handle("set-connection-config", () => {
+    // The built-in Hermes connection is local-only (plan D5); remote agents go
+    // through Gateway v1, so there is no remote connection to persist here.
+    notifyConnectionConfigChanged();
+    return true;
+  });
 
-  ipcMain.handle(
-    "set-connection-chat-transports",
-    (_event, remoteChatTransport: unknown) => {
-      const current = getConnectionConfig();
-      setConnectionConfig({
-        ...current,
-        remoteChatTransport: normalizeRemoteChatTransport(remoteChatTransport),
-      });
-      notifyConnectionConfigChanged();
-      return true;
-    },
-  );
+  ipcMain.handle("set-connection-chat-transports", () => {
+    notifyConnectionConfigChanged();
+    return true;
+  });
 
   ipcMain.handle(
     "test-remote-connection",
@@ -1031,7 +817,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       // Each conversation has a stable runId minted by the renderer. Fall back
       // to a generated id for legacy callers so the run is still tracked.
       const chatRunId = runId || `run-${randomUUID()}`;
-      if (!isRemoteMode() && !isGatewayRunning(profile)) {
+      if (!isGatewayRunning(profile)) {
         startGateway(profile);
       }
 
@@ -1356,38 +1142,17 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
-  // Gateway
+  // Gateway (local-only — plan D5)
   ipcMain.handle("start-gateway", async () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote") {
-      // The remote server runs its own gateway; nothing to start locally.
-      // Without this guard we'd fall through to `startGateway()` and
-      // spawn a non-existent local hermes-agent (issue #266).
-      return {
-        success: false,
-        running: false,
-        error:
-          "Remote mode points at an already-running Hermes server. Start or restart the gateway on that remote host.",
-      };
-    }
     return startGatewayDetailed();
   });
   ipcMain.handle("stop-gateway", async () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote") {
-      // No local gateway to stop in pure remote mode.
-      return true;
-    }
     // No profile argument → stops the active profile's gateway, leaving any
     // other profiles' gateways running.
     stopGateway(undefined, true);
     return true;
   });
   ipcMain.handle("restart-gateway", async (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote") {
-      return false;
-    }
     return restartGateway(profile);
   });
   ipcMain.handle("gateway-status", () => {
@@ -1425,10 +1190,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     "get-messaging-platforms",
     async (_event, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote") {
-        return fetchRemoteMessagingPlatforms();
-      }
       const running = isGatewayRunning(profile);
       return buildDesktopMessagingPlatforms(
         readEnv(profile),
@@ -1443,10 +1204,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     "update-messaging-platform",
     async (_event, platform: string, update, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote") {
-        return updateRemoteMessagingPlatform(platform, update);
-      }
       await applyMessagingPlatformUpdate(
         platform,
         update,
@@ -1470,10 +1227,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     "test-messaging-platform",
     async (_event, platform: string, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote") {
-        return testRemoteMessagingPlatform(platform);
-      }
       const running = isGatewayRunning(profile);
       return testDesktopMessagingPlatform(
         platform,
@@ -1490,23 +1243,10 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Sessions
   ipcMain.handle("list-sessions", (_event, limit?: number, offset?: number) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteListSessions(
-        getRemoteDashboardSessionConfig(conn, activeProfileName()),
-        limit,
-        offset,
-      );
     return listSessions(limit, offset);
   });
 
   ipcMain.handle("get-session-messages", (_event, sessionId: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteGetSessionMessages(
-        getRemoteDashboardSessionConfig(conn, activeProfileName()),
-        sessionId,
-      ).then((items) => applySessionLocalOverlays(sessionId, items));
     return getSessionMessages(sessionId);
   });
 
@@ -1603,23 +1343,11 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
 
   ipcMain.handle("delete-session", (_event, sessionId: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteDeleteSession(
-        getRemoteDashboardSessionConfig(conn, activeProfileName()),
-        sessionId,
-      );
     return deleteSession(sessionId);
   });
 
   ipcMain.handle("delete-sessions", (_event, sessionIds: string[]) => {
     const ids = Array.isArray(sessionIds) ? sessionIds : [];
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteDeleteSessions(
-        getRemoteDashboardSessionConfig(conn, activeProfileName()),
-        ids,
-      );
     return deleteSessions(ids);
   });
 
@@ -1637,15 +1365,15 @@ export function registerIpcHandlers(context: IpcContext): void {
     return deleteProfile(name);
   });
   ipcMain.handle("set-active-profile", async (_event, name: string) => {
-    // Persist the selection LOCALLY in every mode — the desktop tracks "which
-    // profile is active" via the local ~/.hermes/active_profile. Then drop the
-    // cached health flag so the next check probes the newly-active profile's
-    // gateway, not the previous one's.
+    // Persist the selection LOCALLY — the desktop tracks "which profile is
+    // active" via the local ~/.hermes/active_profile. Then drop the cached
+    // health flag so the next check probes the newly-active profile's gateway,
+    // not the previous one's.
     setActiveProfile(name);
     notifyProfileSwitched();
     // Bring the activated profile's own gateway up if it isn't already —
     // without stopping any other profile's gateway (their bots stay online).
-    if (!isRemoteMode() && !isGatewayRunning(name)) {
+    if (!isGatewayRunning(name)) {
       startGateway(name);
     }
     return true;
@@ -1657,13 +1385,6 @@ export function registerIpcHandlers(context: IpcContext): void {
     setProfileColor(name, color),
   );
   ipcMain.handle("set-profile-name", (_event, id: string, name: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote") {
-      return {
-        success: false,
-        error: "Agent renaming is only supported for local profiles",
-      };
-    }
     return setProfileName(id, name);
   });
   ipcMain.handle(
@@ -1676,59 +1397,29 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Memory
   ipcMain.handle("read-memory", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteReadMemory(
-        getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
-      );
     return readMemory(profile);
   });
   ipcMain.handle(
     "add-memory-entry",
     (_event, content: string, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote")
-        return remoteAddMemoryEntry(
-          getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
-          content,
-        );
       return addMemoryEntry(content, profile);
     },
   );
   ipcMain.handle(
     "update-memory-entry",
     (_event, index: number, content: string, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote")
-        return remoteUpdateMemoryEntry(
-          getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
-          index,
-          content,
-        );
       return updateMemoryEntry(index, content, profile);
     },
   );
   ipcMain.handle(
     "remove-memory-entry",
     (_event, index: number, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote")
-        return remoteRemoveMemoryEntry(
-          getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
-          index,
-        );
       return removeMemoryEntry(index, profile);
     },
   );
   ipcMain.handle(
     "write-user-profile",
     (_event, content: string, profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote")
-        return remoteWriteUserProfile(
-          getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
-          content,
-        );
       return writeUserProfile(content, profile);
     },
   );
@@ -1755,41 +1446,25 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
-  // Skills. Remote (HTTP) mode routes to the dashboard's /api/skills* —
-  // falling through to the local CLI there showed (and mutated) the LOCAL
-  // machine's skills while connected to a remote (#578's report). Bundled
-  // skills stay local in remote mode: that list is the shipped catalog, not
-  // per-machine state.
+  // Skills (local-only — plan D5)
   ipcMain.handle("list-installed-skills", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteListInstalledSkills(activeProfileName(profile));
     return listInstalledSkills(profile);
   });
   ipcMain.handle("list-bundled-skills", () => {
     return listBundledSkills();
   });
   ipcMain.handle("get-skill-content", (_event, skillPath: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteGetSkillContent(skillPath, activeProfileName());
     return getSkillContent(skillPath);
   });
   ipcMain.handle(
     "install-skill",
     (_event, identifier: string, _profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote")
-        return remoteInstallSkill(identifier, activeProfileName(_profile));
       return installSkill(identifier, _profile);
     },
   );
   ipcMain.handle(
     "uninstall-skill",
     (_event, name: string, _profile?: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote")
-        return remoteUninstallSkill(name, activeProfileName(_profile));
       return uninstallSkill(name, _profile);
     },
   );
@@ -1798,23 +1473,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     "list-cached-sessions",
     (_event, limit?: number, offset?: number) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote")
-        return remoteListCachedSessions(
-          getRemoteDashboardSessionConfig(conn, activeProfileName()),
-          limit,
-          offset,
-        );
       return listCachedSessions(limit, offset);
     },
   );
   ipcMain.handle("sync-session-cache", () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteListCachedSessions(
-        getRemoteDashboardSessionConfig(conn, activeProfileName()),
-        50,
-      );
     try {
       return syncSessionCache();
     } catch (error) {
@@ -1825,13 +1487,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     "update-session-title",
     (_event, sessionId: string, title: string) => {
-      const conn = getConnectionConfig();
-      if (conn.mode === "remote")
-        return remoteUpdateSessionTitle(
-          getRemoteDashboardSessionConfig(conn, activeProfileName()),
-          sessionId,
-          title,
-        );
       return updateSessionTitle(sessionId, title);
     },
   );
@@ -1884,13 +1539,6 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Session search
   ipcMain.handle("search-sessions", (_event, query: string, limit?: number) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteSearchSessions(
-        getRemoteDashboardSessionConfig(conn, activeProfileName()),
-        query,
-        limit,
-      );
     return searchSessions(query, limit);
   });
 
@@ -1931,19 +1579,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
-  // Models
+  // Models (local-only — plan D5)
   ipcMain.handle("list-models", () => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote") {
-      if (conn.remoteChatTransport === "legacy") {
-        throw new Error(
-          "Remote model library reads require dashboard transport.",
-        );
-      }
-      return remoteListModels(
-        getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
-      );
-    }
     return listModels();
   });
   ipcMain.handle(
@@ -1957,53 +1594,20 @@ export function registerIpcHandlers(context: IpcContext): void {
       contextLength?: number,
       providerLabel?: string,
     ) => {
-      const conn = getConnectionConfig();
-      let addedModel: Awaited<ReturnType<typeof addModel>>;
-      if (conn.mode === "remote") {
-        if (conn.remoteChatTransport === "legacy") {
-          throw new Error(
-            "Remote model library writes require dashboard transport.",
-          );
-        }
-        // Remote library writes don't carry the context-length override yet
-        // (local-mode feature for now); the local branch persists it.
-        addedModel = await remoteAddModel(
-          getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
-          name,
-          provider,
-          model,
-          baseUrl,
-        );
-      } else {
-        addedModel = addModel(
-          name,
-          provider,
-          model,
-          baseUrl,
-          contextLength,
-          providerLabel,
-        );
-      }
+      const addedModel = addModel(
+        name,
+        provider,
+        model,
+        baseUrl,
+        contextLength,
+        providerLabel,
+      );
       notifyModelLibraryChanged();
       return addedModel;
     },
   );
   ipcMain.handle("remove-model", async (_event, id: string) => {
-    const conn = getConnectionConfig();
-    let removed: boolean;
-    if (conn.mode === "remote") {
-      if (conn.remoteChatTransport === "legacy") {
-        throw new Error(
-          "Remote model library writes require dashboard transport.",
-        );
-      }
-      removed = await remoteRemoveModel(
-        getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
-        id,
-      );
-    } else {
-      removed = removeModel(id);
-    }
+    const removed = removeModel(id);
     if (removed) notifyModelLibraryChanged();
     return removed;
   });
@@ -2014,28 +1618,13 @@ export function registerIpcHandlers(context: IpcContext): void {
       id: string,
       fields: Record<string, string>,
       // Context-length override travels as a separate arg (it's numeric, so it
-      // can't ride inside the string-only `fields`). Local-mode only for now.
+      // can't ride inside the string-only `fields`).
       contextLength?: number | null,
     ) => {
-      const conn = getConnectionConfig();
-      let updated: boolean;
-      if (conn.mode === "remote") {
-        if (conn.remoteChatTransport === "legacy") {
-          throw new Error(
-            "Remote model library writes require dashboard transport.",
-          );
-        }
-        updated = await remoteUpdateModel(
-          getRemoteDashboardSessionConfig(conn, getActiveProfileNameSync()),
-          id,
-          fields,
-        );
-      } else {
-        updated = updateModel(
-          id,
-          contextLength === undefined ? fields : { ...fields, contextLength },
-        );
-      }
+      const updated = updateModel(
+        id,
+        contextLength === undefined ? fields : { ...fields, contextLength },
+      );
       if (updated) notifyModelLibraryChanged();
       return updated;
     },
@@ -2211,15 +1800,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       if (item.kind === "task") {
         if (item.runtimeId) deleteRuntimeConversation(item.targetId, profile);
         else {
-          const conn = getConnectionConfig();
-          if (conn.mode === "remote") {
-            await remoteDeleteSession(
-              getRemoteDashboardSessionConfig(conn, activeProfileName()),
-              item.targetId,
-            );
-          } else {
-            await deleteSession(item.targetId);
-          }
+          await deleteSession(item.targetId);
         }
       } else {
         // Project deletion means removing Agents One's registration only. Never
@@ -2249,12 +1830,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       _event,
       dirPath: string,
     ): Promise<{ name: string; isDirectory: boolean }[] | null> => {
-      const conn = getConnectionConfig();
-      const isLocalWindowsPath =
-        /^[a-zA-Z]:[\\/]/.test(dirPath) || /^\\\\/.test(dirPath);
-      if (conn.mode === "remote" && !isLocalWindowsPath) {
-        return null;
-      }
       try {
         const entries = await readdir(dirPath, { withFileTypes: true });
         return entries
@@ -2319,7 +1894,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle("open-terminal", async (_event, dirPath: string) => {
-    if (isRemoteOnlyMode()) return false;
     if (typeof dirPath !== "string" || dirPath.trim().length === 0)
       return false;
     try {
@@ -2541,11 +2115,6 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Memory providers
   ipcMain.handle("discover-memory-providers", (_event, profile?: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteDiscoverMemoryProviders(
-        getRemoteDashboardSessionConfig(conn, activeProfileName(profile)),
-      );
     return discoverMemoryProviders(profile);
   });
 

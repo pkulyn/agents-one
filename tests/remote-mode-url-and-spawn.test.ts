@@ -185,40 +185,6 @@ describe("testRemoteConnection URL probe", () => {
   });
 });
 
-describe("startGateway / restartGateway in remote mode", () => {
-  it("startGateway refuses to spawn in remote mode", () => {
-    spawnSpy.mockClear();
-    connModeRef.mode = "remote";
-    const result = startGateway();
-    expect(result).toBe(false);
-    expect(spawnSpy).not.toHaveBeenCalled();
-  });
-
-  it("startGatewayDetailed reports why remote mode cannot start a local gateway", () => {
-    spawnSpy.mockClear();
-    connModeRef.mode = "remote";
-    const result = startGatewayDetailed();
-    expect(result.success).toBe(false);
-    expect(result.running).toBe(false);
-    expect(result.error).toContain("local mode");
-    expect(spawnSpy).not.toHaveBeenCalled();
-  });
-
-  it("restartGateway is a no-op in remote mode", () => {
-    spawnSpy.mockClear();
-    connModeRef.mode = "remote";
-    restartGateway();
-    expect(spawnSpy).not.toHaveBeenCalled();
-  });
-
-  it("restartGatewayViaCli refuses to spawn in remote mode", async () => {
-    spawnSpy.mockClear();
-    connModeRef.mode = "remote";
-    await expect(restartGatewayViaCli()).resolves.toBe(false);
-    expect(spawnSpy).not.toHaveBeenCalled();
-  });
-});
-
 describe("contextFolderSystemMessage (issue #27)", () => {
   it("returns null when no folder is set", () => {
     expect(contextFolderSystemMessage(undefined)).toBeNull();

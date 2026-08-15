@@ -8,7 +8,6 @@ import type {
 
 export const AGENT_RUNTIME_KINDS = [
   "hermes",
-  "openclaw",
   "codex",
   "claude-code",
   "pi",
@@ -16,11 +15,9 @@ export const AGENT_RUNTIME_KINDS = [
 
 export type AgentRuntimeKind = (typeof AGENT_RUNTIME_KINDS)[number];
 export type AgentRuntimeLocation = "local" | "remote";
-/** A Hermes Runtime has the same connection choices as the built-in
- * Hermes connection, while retaining its own independent connection profile.
- * SSH mode was removed: remote Hermes now always goes through Gateway v1. */
-export type HermesRuntimeMode = "local" | "remote";
-export type HermesChatTransport = "auto" | "dashboard" | "legacy";
+/** Hermes runtimes are local-only: remote Hermes now always goes through
+ * Gateway v1, and SSH mode was removed (plan D4/D5). */
+export type HermesRuntimeMode = "local";
 
 /**
  * Agents One Remote Gateway is deliberately separate from legacy Hermes and
@@ -34,7 +31,6 @@ export interface AgentsOneRemoteGatewayConfig {
 export interface HermesRuntimeConnectionConfig {
   mode: HermesRuntimeMode;
   dashboardUrl?: string;
-  chatTransport?: HermesChatTransport;
 }
 export type AgentRuntimeHealthState =
   | "healthy"

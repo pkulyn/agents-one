@@ -12,17 +12,46 @@ const { capturedRequests, makeMockRequest } = vi.hoisted(() => {
   function makeMockRequest(
     url: string,
     options: Record<string, unknown>,
+    cb?: (res: {
+      statusCode: number;
+      headers: Record<string, string>;
+      on: (event: string, handler: (chunk: Buffer | undefined) => void) => void;
+    }) => void,
   ): {
     write: (body: string) => void;
     end: () => void;
     on: (event: string, cb: () => void) => void;
     destroy: () => void;
   } {
+    const handlers: Record<string, (chunk: Buffer | undefined) => void> = {};
+    const response = {
+      statusCode: 200,
+      headers: {} as Record<string, string>,
+      on: (event: string, handler: (chunk: Buffer | undefined) => void) => {
+        handlers[event] = handler;
+      },
+    };
     return {
       write: (body: string) => {
         capturedRequests.push({ url, options, body });
       },
-      end: () => {},
+      end: () => {
+        if (cb) {
+          cb(response);
+          // Emit a content chunk followed by the SSE [DONE] terminator so
+          // sendMessageViaApi sees real output and resolves its promise
+          // instead of hanging on the empty-stream probe.
+          setImmediate(() => {
+            handlers.data?.(
+              Buffer.from(
+                'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n',
+              ),
+            );
+            handlers.data?.(Buffer.from("data: [DONE]\n\n"));
+            handlers.end?.(undefined);
+          });
+        }
+      },
       on: (_event: string, _cb: () => void) => {},
       destroy: () => {},
     };
@@ -38,15 +67,15 @@ const { capturedRequests, makeMockRequest } = vi.hoisted(() => {
 
 vi.mock("http", () => ({
   default: {
-    request: (url: string, options: Record<string, unknown>) =>
-      makeMockRequest(url, options),
+    request: (url: string, options: Record<string, unknown>, cb?: unknown) =>
+      makeMockRequest(url, options, cb as never),
   },
 }));
 
 vi.mock("https", () => ({
   default: {
-    request: (url: string, options: Record<string, unknown>) =>
-      makeMockRequest(url, options),
+    request: (url: string, options: Record<string, unknown>, cb?: unknown) =>
+      makeMockRequest(url, options, cb as never),
   },
 }));
 
@@ -71,20 +100,23 @@ vi.mock("../src/main/installer", () => ({
 }));
 
 vi.mock("../src/main/config", () => ({
+  getApiServerKey: () => "test-api-server-key",
   getModelConfig: () => ({ model: "test-model", provider: "openrouter" }),
   getConfigValue: () => "",
   readEnv: () => ({}),
   getConnectionConfig: () => ({
-    mode: "remote" as const,
-    remoteUrl: "http://test-api.example.com",
-    apiKey: "test-key",
+    mode: "local" as const,
   }),
 }));
 
 
 vi.mock("../src/main/utils", () => ({
   stripAnsi: (s: string) => s,
+  normalizeProfileName: (p?: string) => p,
+  getActiveProfileNameSync: () => undefined,
 }));
+
+vi.mock("../src/main/gateway-ports", () => ({ getProfilePort: () => 8642 }));
 
 vi.mock("../src/main/models", () => ({
   readModels: () => [],

@@ -69,7 +69,7 @@ function runtime(
     id,
     name,
     kind,
-    location: kind === "hermes" || kind === "openclaw" ? "remote" : "local",
+    location: kind === "hermes" ? "remote" : "local",
     enabled: true,
     managed: "user",
     config: {},

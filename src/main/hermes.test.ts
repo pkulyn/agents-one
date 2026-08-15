@@ -1,3 +1,4 @@
+import http from "http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // hermes.ts pulls in the full main-process import graph; mock the modules with
@@ -65,34 +66,36 @@ const mockedReadEnv = vi.mocked(readEnv);
 const mockedProviderListSafe = vi.mocked(providerListSafe);
 const mockedSpawn = vi.mocked(spawn);
 
-function testConnection(
-  fields: Partial<ConnectionConfig> = {},
-): ConnectionConfig {
+function testConnection(fields: Partial<ConnectionConfig> = {}): ConnectionConfig {
   return {
     mode: "local",
-    remoteUrl: "",
-    apiKey: "",
-    remoteDashboardUrl: "",
-    remoteDashboardToken: "",
-    remoteChatTransport: "auto",
     ...fields,
   };
 }
 
 describe("transcribeAudio API route", () => {
   const fetchMock = vi.fn();
+  // The built-in Hermes connection is local-only, so transcribeAudio first
+  // probes the local gateway /health over http.request. Respond 200 so the
+  // readiness gate passes and the transcription fetch runs.
+  const httpReqSpy = vi
+    .spyOn(http, "request")
+    .mockImplementation((url: unknown, ...rest: unknown[]) => {
+      void url;
+      const cb = rest[rest.length - 1] as (res: unknown) => void;
+      cb({ statusCode: 200, resume: () => {} });
+      return {
+        on: () => {},
+        end: () => {},
+        destroy: () => {},
+      } as unknown as ReturnType<typeof http.request>;
+    });
 
   beforeEach(() => {
     mockedGetApiServerKey.mockReset();
     mockedGetApiServerKey.mockReturnValue("");
     mockedGetConnectionConfig.mockReset();
-    mockedGetConnectionConfig.mockReturnValue(
-      testConnection({
-        mode: "remote",
-        remoteUrl: "http://remote.test:8642",
-        apiKey: "remote-key",
-      }),
-    );
+    mockedGetConnectionConfig.mockReturnValue(testConnection({}));
     mockedGetModelConfig.mockReset();
     mockedReadEnv.mockReset();
     mockedProviderListSafe.mockReset();
@@ -109,6 +112,7 @@ describe("transcribeAudio API route", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    httpReqSpy.mockClear();
   });
 
   function sentRequest(): [string, RequestInit] {
@@ -124,17 +128,16 @@ describe("transcribeAudio API route", () => {
     };
   }
 
-  it("posts desktop recordings to the Hermes audio endpoint", async () => {
+  it("posts desktop recordings to the local Hermes audio endpoint", async () => {
     await expect(
       transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default"),
     ).resolves.toBe("transcribed");
 
     const [url, init] = sentRequest();
-    expect(url).toBe("http://remote.test:8642/api/audio/transcribe");
+    expect(url).toBe("http://127.0.0.1:8642/api/audio/transcribe");
     expect(init.method).toBe("POST");
     expect(init.headers).toMatchObject({
       "Content-Type": "application/json",
-      Authorization: "Bearer remote-key",
     });
     expect(sentJsonBody()).toEqual({
       data_url: "data:audio/webm;base64,AQID",
@@ -142,31 +145,23 @@ describe("transcribeAudio API route", () => {
     });
   });
 
-  it("strips a remote /v1 suffix before calling the desktop audio route", async () => {
-    mockedGetConnectionConfig.mockReturnValue(
-      testConnection({
-        mode: "remote",
-        remoteUrl: "http://remote.test:8642/v1",
-        apiKey: "",
-      }),
-    );
-
+  it("calls the local desktop audio route", async () => {
     await transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default");
 
     const [url] = sentRequest();
-    expect(url).toBe("http://remote.test:8642/api/audio/transcribe");
+    expect(url).toBe("http://127.0.0.1:8642/api/audio/transcribe");
   });
 
   it("surfaces backend transcription errors", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
-      status: 404,
-      text: async () => "404 page not found",
+      status: 500,
+      text: async () => "internal server error",
     });
 
     await expect(
       transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default"),
-    ).rejects.toThrow("Transcription failed (404). 404 page not found");
+    ).rejects.toThrow("Transcription failed (500). internal server error");
   });
 });
 
@@ -196,13 +191,7 @@ describe("sendMessage session model override routing", () => {
     mockedGetApiServerKey.mockReset();
     mockedGetApiServerKey.mockReturnValue("");
     mockedGetConnectionConfig.mockReset();
-    mockedGetConnectionConfig.mockReturnValue(
-      testConnection({
-        mode: "local",
-        remoteUrl: "",
-        apiKey: "",
-      }),
-    );
+    mockedGetConnectionConfig.mockReturnValue(testConnection({}));
     mockedGetModelConfig.mockReset();
     mockedReadEnv.mockReset();
     mockedReadEnv.mockReturnValue({});

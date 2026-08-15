@@ -315,17 +315,13 @@ function Chat({
         if (!cancelled) {
           setConnectionMode(conn.mode);
           setRemoteMode(conn.mode !== "local");
-          setChatTransportPreference(
-            conn.mode === "local"
-              ? "auto"
-              : (conn.remoteChatTransport ?? "auto"),
-          );
+          setChatTransportPreference("auto");
         }
       } catch {
         if (!cancelled) {
-          setConnectionMode("remote");
-          setRemoteMode(true);
-          setChatTransportPreference("legacy");
+          setConnectionMode("local");
+          setRemoteMode(false);
+          setChatTransportPreference("auto");
         }
       } finally {
         if (!cancelled) setConnectionModeLoaded(true);
@@ -336,11 +332,7 @@ function Chat({
       setConnectionModeLoaded(true);
       setConnectionMode(conn.mode);
       setRemoteMode(conn.mode !== "local");
-      setChatTransportPreference(
-        conn.mode === "local"
-          ? "auto"
-          : (conn.remoteChatTransport ?? "auto"),
-      );
+      setChatTransportPreference("auto");
     });
     return (): void => {
       cancelled = true;

@@ -25,7 +25,6 @@ interface ProfileSwitcherProps {
 
 const RUNTIME_LABELS: Record<AgentRuntimeKind, string> = {
   hermes: "Hermes",
-  openclaw: "OpenClaw",
   codex: "Codex",
   "claude-code": "Claude Code",
   pi: "Pi Agent CLI",

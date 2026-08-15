@@ -38,8 +38,7 @@ export function makeApiKeyMask(length: number): string {
 }
 
 export type PublicConnectionSnapshot = {
-  mode: "local" | "remote";
-  remoteUrl: string;
+  mode: "local";
 };
 
 export function versionCacheKey(
@@ -47,9 +46,7 @@ export function versionCacheKey(
   profile?: string,
 ): string {
   const profileKey = profile || "default";
-  if (conn.mode === "remote") {
-    return `remote:${conn.remoteUrl.trim() || "unset"}:${profileKey}`;
-  }
+  void conn;
   return `local:${profileKey}`;
 }
 
@@ -73,14 +70,3 @@ export function setCachedVersion(cacheKey: string, version: string): void {
   }
 }
 
-export function getCachedOpenClaw(): {
-  found: boolean;
-  path: string | null;
-} | null {
-  try {
-    const raw = localStorage.getItem("hermes-openclaw-cache");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}

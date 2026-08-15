@@ -7,12 +7,6 @@ import net from "net";
 import { homedir } from "os";
 import { join } from "path";
 import {
-  getConnectionConfig,
-  getRemoteDashboardSessionConfig,
-  getRemoteDashboardUrl,
-  type ConnectionConfig,
-} from "./config";
-import {
   getEnhancedPath,
   hermesCliArgs,
   HERMES_HOME,
@@ -22,10 +16,6 @@ import {
 import { buildLocalDashboardCliArgs } from "./dashboard-launch";
 import { ensureLocalDashboardCompatibility } from "./hermes-agent-compat";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
-import {
-  configuredRemoteTlsOptions,
-  shouldAllowConfiguredRemoteCertificateError,
-} from "./remote-tls";
 import {
   getActiveProfileNameSync,
   normalizeProfileName,
@@ -37,7 +27,7 @@ export interface DashboardConnection {
   wsUrl: string;
   token: string;
   fallbackToken?: string;
-  mode: "local" | "remote";
+  mode: "local";
   profile?: string;
   pid?: number;
   port?: number;
@@ -76,45 +66,6 @@ function dashboardWsUrl(baseUrl: string, token: string): string {
   url.searchParams.set("token", token);
   return url.toString();
 }
-
-function normalizeRemoteDashboardBaseUrl(value: string): string | null {
-  const raw = value.trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    url.hash = "";
-    url.search = "";
-    url.pathname = url.pathname.replace(/\/+$/, "");
-    if (url.pathname === "/v1" || url.pathname === "/api") {
-      url.pathname = "";
-    }
-    return url.toString().replace(/\/+$/, "");
-  } catch {
-    return null;
-  }
-}
-
-export function remoteDashboardConnectionFromConfig(
-  config: ConnectionConfig,
-  profile?: string,
-): DashboardConnection | null {
-  if (config.mode !== "remote") return null;
-  const baseUrl = normalizeRemoteDashboardBaseUrl(
-    getRemoteDashboardUrl(config),
-  );
-  const session = getRemoteDashboardSessionConfig(config, profile);
-  const token = session.apiKey;
-  if (!baseUrl || !token) return null;
-  return {
-    baseUrl,
-    wsUrl: dashboardWsUrl(baseUrl, token),
-    token,
-    fallbackToken: session.fallbackApiKey,
-    mode: "remote",
-    profile: resolveProfile(profile),
-  };
-}
-
 
 function getManagedDashboard(profile?: string): ManagedDashboard | undefined {
   const key = profileKey(profile);
@@ -185,7 +136,6 @@ function requestJson(
       parsed,
       {
         method: "GET",
-        ...configuredRemoteTlsOptions(parsed.toString()),
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -293,7 +243,6 @@ function probeDashboardWebSocketWithToken(
     parsed.protocol = parsed.protocol === "wss:" ? "https:" : "http:";
     const req = client.request(parsed, {
       method: "GET",
-      ...configuredRemoteTlsOptions(parsed.toString()),
       headers: {
         Connection: "Upgrade",
         Upgrade: "websocket",
@@ -364,88 +313,9 @@ async function waitForDashboardReady(
   throw new Error(`Timed out waiting for Hermes dashboard: ${message}`);
 }
 
-function dashboardStatusRequiresOAuth(status: unknown): boolean {
-  return (
-    typeof status === "object" &&
-    status !== null &&
-    (status as { auth_required?: unknown }).auth_required === true
-  );
-}
-
-async function getRemoteDashboardStatusForConfig(
-  config: ConnectionConfig,
-  profile?: string,
-): Promise<DashboardStatus> {
-  if (config.remoteChatTransport === "legacy") {
-    return {
-      supported: false,
-      running: false,
-      error: "Remote dashboard transport is disabled in Settings.",
-    };
-  }
-
-  const connection = remoteDashboardConnectionFromConfig(config, profile);
-  if (!connection) {
-    return {
-      supported: true,
-      running: false,
-      error:
-        "Remote dashboard transport needs a valid dashboard URL and session token.",
-    };
-  }
-
-  try {
-    let managementError: unknown = null;
-    try {
-      const status = await requestDashboardJson(connection, "/api/status");
-      if (dashboardStatusRequiresOAuth(status)) {
-        return {
-          supported: true,
-          running: false,
-          error:
-            "Remote dashboard requires OAuth browser authentication. Token-based remote dashboard is supported now; OAuth ticket flow is not wired in Agents One yet.",
-        };
-      }
-      // Touch an authenticated endpoint when the reverse proxy exposes the
-      // REST management API. Some deployments intentionally expose only the
-      // static dashboard and /api/ws; session RPC remains fully functional.
-      await requestDashboardJson(connection, "/api/sessions?limit=1");
-    } catch (error) {
-      managementError = error;
-    }
-
-    try {
-      await probeDashboardWebSocket(connection);
-    } catch (error) {
-      const wsDetail = error instanceof Error ? error.message : String(error);
-      const managementDetail =
-        managementError instanceof Error ? managementError.message : "";
-      return {
-        supported: true,
-        running: false,
-        connection,
-        error: [managementDetail, wsDetail].filter(Boolean).join("; "),
-      };
-    }
-
-    return { supported: true, running: true, connection };
-  } catch (err) {
-    return {
-      supported: true,
-      running: false,
-      connection,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
 export async function getDashboardStatus(
   profile?: string,
 ): Promise<DashboardStatus> {
-  const config = getConnectionConfig();
-  if (config.mode === "remote")
-    return getRemoteDashboardStatusForConfig(config, profile);
-
   const managed = getManagedDashboard(profile);
   if (managed) {
     return {
@@ -471,10 +341,6 @@ export async function getDashboardStatus(
 export async function startDashboard(
   profile?: string,
 ): Promise<DashboardStatus> {
-  const config = getConnectionConfig();
-  if (config.mode === "remote")
-    return getRemoteDashboardStatusForConfig(config, profile);
-
   const existing = getManagedDashboard(profile);
   if (existing) {
     return {
@@ -602,5 +468,3 @@ export function stopAllDashboards(): void {
     stopDashboard(key === "default" ? undefined : key);
   }
 }
-
-export { shouldAllowConfiguredRemoteCertificateError };

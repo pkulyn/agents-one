@@ -12,35 +12,12 @@ import {
   type AgentRuntimeProbe,
   type AgentRuntimeRun,
   type AgentRuntimeTaskInput,
-  type HermesRuntimeMode,
 } from "../shared/agent-runtimes";
-import {
-  getConnectionConfig,
-  readDesktopConfig,
-  writeDesktopConfig,
-} from "./config";
+import { readDesktopConfig, writeDesktopConfig } from "./config";
 import { sendMessage, testRemoteConnection } from "./hermes";
-import {
-  cancelOpenClawTask,
-  getOpenClawTask,
-  probeOpenClawRuntime,
-  startOpenClawTask,
-  uploadOpenClawArtifact,
-  type OpenClawBridgeTask,
-  type OpenClawRuntimeConfig,
-} from "./openclaw-runtime";
 import { existsSync, readFileSync } from "fs";
 import { delimiter, join } from "path";
 import { prepareRuntimeInputs } from "./runtime-inputs";
-import type { OpenClawRuntimeAuth } from "./openclaw-runtime";
-import {
-  cancelRemoteCoordinatorPlan,
-  getRemoteCoordinatorPlan,
-  probeRemoteCoordinatorBridge,
-  startRemoteCoordinatorPlan,
-  type RemoteCoordinatorConfig,
-  type RemoteCoordinatorPlan,
-} from "./remote-coordinator-bridge";
 import { probeCodexRuntime, startCodexProcess } from "./codex-runtime";
 import {
   probeClaudeCodeRuntime,
@@ -55,7 +32,6 @@ import {
   OutboundRemoteWorkspaceGateway,
   createRemoteWorkspaceGrant,
   probeRemoteWorkspaceGateway,
-  type RemoteWorkspaceGatewayConfig,
 } from "./remote-workspace-gateway";
 import { promptRemoteWorkspaceDelete } from "./workspace-delete-prompt";
 import {
@@ -85,7 +61,7 @@ import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 const RUNTIME_CONFIG_KEY = "agentRuntimes";
 const RUNTIME_APPEARANCE_KEY = "agentRuntimeAppearances";
-const RESERVED_RUNTIME_IDS = new Set(["hermes-local", "hermes-remote"]);
+const RESERVED_RUNTIME_IDS = new Set(["hermes-local"]);
 const RUNTIME_ID = /^[a-z][a-z0-9-]{1,63}$/;
 const SECRET_CONFIG_KEY = /(token|secret|password|api.?key|credential)/i;
 const MAX_RUNTIME_TIMEOUT_MS = 10 * 60 * 1000;
@@ -99,9 +75,6 @@ const MAX_RETAINED_RUNS = 100;
 const MAX_RUNTIME_EVENTS = 200;
 const MAX_RUNTIME_EVENT_SUMMARY_LENGTH = 1_000;
 const MAX_RUNTIME_EVENT_DETAIL_LENGTH = 8_000;
-const OPENCLAW_BEARER_SECRET_PREFIX = "HERMES_OPENCLAW_RUNTIME_";
-const HERMES_API_KEY_SECRET_PREFIX = "HERMES_REMOTE_RUNTIME_";
-const HERMES_DASHBOARD_TOKEN_SECRET_PREFIX = "HERMES_RUNTIME_DASHBOARD_";
 const WORKSPACE_GATEWAY_TOKEN_SECRET_PREFIX = "HERMES_WORKSPACE_GATEWAY_";
 const AGENTS_ONE_GATEWAY_TOKEN_SECRET_PREFIX = "AGENTS_ONE_GATEWAY_";
 const REMOTE_WORKSPACE_POLL_INTERVAL_MS = 500;
@@ -127,14 +100,6 @@ interface RuntimeRunRecord {
   timeout?: NodeJS.Timeout;
   abortHandle?: () => void;
   cancelRequested: boolean;
-  openClaw?: {
-    config: OpenClawRuntimeConfig;
-    taskId: string;
-  };
-  remotePlan?: {
-    config: RemoteCoordinatorConfig;
-    planId: string;
-  };
   codex?: {
     cancel: () => void;
   };
@@ -1313,37 +1278,22 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
 
 function runtimeHermesConnectionFrom(
   value: unknown,
-  endpoint?: string,
+  _endpoint?: string,
 ): NonNullable<AgentRuntimeConfig["hermes"]> | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) {
     throw new Error("Hermes connection configuration is invalid.");
   }
-  // Legacy SSH mode was removed — the unified remote transport is Gateway v1.
-  // Old persisted configs keep their stored fields untouched; on read they are
-  // coerced to `remote` and flagged for re-setup (see normalizeUserRuntime).
+  // Legacy SSH/remote modes were removed (plan D4/D5) — the unified remote
+  // transport is Gateway v1. Old persisted modes are read as local; legacy
+  // SSH runtimes are additionally flagged for re-setup in normalizeUserRuntime.
   const mode = value.mode;
   if (mode !== "local" && mode !== "remote" && mode !== "ssh") {
     throw new Error("Hermes connection mode is invalid.");
   }
-  const migratedFromSsh = mode === "ssh";
-  const effectiveMode: HermesRuntimeMode = migratedFromSsh ? "remote" : mode;
-  const chatTransport = value.chatTransport;
-  if (
-    chatTransport !== undefined &&
-    chatTransport !== "auto" &&
-    chatTransport !== "dashboard" &&
-    chatTransport !== "legacy"
-  ) {
-    throw new Error("Hermes chat transport is invalid.");
-  }
-  if (effectiveMode === "remote" && !migratedFromSsh && !endpoint) {
-    throw new Error("Remote Hermes server address is required.");
-  }
   return {
-    mode: effectiveMode,
+    mode: "local",
     dashboardUrl: optionalString(value.dashboardUrl, 2048),
-    chatTransport: chatTransport as "auto" | "dashboard" | "legacy" | undefined,
   };
 }
 
@@ -1444,21 +1394,6 @@ function userRuntimes(): AgentRuntimeDefinition[] {
     .filter((runtime): runtime is AgentRuntimeDefinition => runtime !== null);
 }
 
-export function openClawBearerSecretKey(runtimeId: string): string {
-  if (!RUNTIME_ID.test(runtimeId)) throw new Error("Runtime ID is invalid.");
-  return `${OPENCLAW_BEARER_SECRET_PREFIX}${runtimeId.replace(/-/g, "_").toUpperCase()}_BEARER_TOKEN`;
-}
-
-export function hermesApiKeySecretKey(runtimeId: string): string {
-  if (!RUNTIME_ID.test(runtimeId)) throw new Error("Runtime ID is invalid.");
-  return `${HERMES_API_KEY_SECRET_PREFIX}${runtimeId.replace(/-/g, "_").toUpperCase()}_API_KEY`;
-}
-
-export function hermesDashboardTokenSecretKey(runtimeId: string): string {
-  if (!RUNTIME_ID.test(runtimeId)) throw new Error("Runtime ID is invalid.");
-  return `${HERMES_DASHBOARD_TOKEN_SECRET_PREFIX}${runtimeId.replace(/-/g, "_").toUpperCase()}_TOKEN`;
-}
-
 export function workspaceGatewayTokenSecretKey(runtimeId: string): string {
   if (!RUNTIME_ID.test(runtimeId)) throw new Error("Runtime ID is invalid.");
   return `${WORKSPACE_GATEWAY_TOKEN_SECRET_PREFIX}${runtimeId.replace(/-/g, "_").toUpperCase()}_TOKEN`;
@@ -1496,33 +1431,12 @@ function isLocalApiTransport(runtime: AgentRuntimeDefinition): boolean {
 
 function remoteRuntimeForCredential(runtimeId: string): AgentRuntimeDefinition {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
-  if (
-    !runtime ||
-    runtime.location !== "remote" ||
-    (!isAgentsOneGatewayRuntime(runtime) &&
-      runtime.kind !== "openclaw" &&
-      (runtime.kind !== "hermes" || runtime.managed === "builtin"))
-  ) {
+  if (!runtime || !isAgentsOneGatewayRuntime(runtime)) {
     throw new Error(
-      "Only user-managed remote Hermes and OpenClaw runtimes may store a credential.",
+      "Only remote Gateway v1 runtimes may store a credential.",
     );
   }
   return runtime;
-}
-
-function openClawAuth(runtimeId: string): OpenClawRuntimeAuth {
-  return {
-    bearerToken: getSecret(openClawBearerSecretKey(runtimeId)) || undefined,
-  };
-}
-
-function remoteRuntimeCredentialKey(runtime: AgentRuntimeDefinition): string {
-  if (isAgentsOneGatewayRuntime(runtime)) {
-    return agentsOneGatewayTokenSecretKey(runtime.id);
-  }
-  return runtime.kind === "hermes"
-    ? hermesApiKeySecretKey(runtime.id)
-    : openClawBearerSecretKey(runtime.id);
 }
 
 function runtimeAuth(
@@ -1535,33 +1449,7 @@ function runtimeAuth(
     ).trim();
     return token ? { bearerToken: token } : undefined;
   }
-  if (runtime.kind === "openclaw" && runtime.location === "remote") {
-    return openClawAuth(runtime.id);
-  }
-  if (runtime.kind === "hermes" && runtime.location === "remote") {
-    const token =
-      runtime.managed === "builtin"
-        ? getConnectionConfig().apiKey.trim()
-        : (getSecret(hermesApiKeySecretKey(runtime.id)) || "").trim();
-    return token ? { bearerToken: token } : undefined;
-  }
   return undefined;
-}
-
-function hasConstrainedPlanning(capabilities: {
-  orchestration: boolean;
-  readOnlyPlanning: boolean;
-  cancellation: boolean;
-  artifacts: boolean;
-  securityEvents: boolean;
-}): boolean {
-  return Boolean(
-    capabilities.orchestration &&
-    capabilities.readOnlyPlanning &&
-    capabilities.cancellation &&
-    capabilities.artifacts &&
-    capabilities.securityEvents,
-  );
 }
 
 export function getAgentRuntimeCredentialStatus(runtimeId: string): {
@@ -1570,19 +1458,14 @@ export function getAgentRuntimeCredentialStatus(runtimeId: string): {
 } {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!runtime) throw new Error("Runtime was not found.");
-  if (
-    runtime.location !== "remote" ||
-    (!isAgentsOneGatewayRuntime(runtime) &&
-      runtime.kind !== "openclaw" &&
-      (runtime.kind !== "hermes" || runtime.managed === "builtin"))
-  ) {
+  if (!isAgentsOneGatewayRuntime(runtime)) {
     return { required: false, configured: false };
   }
   return {
     required: true,
     configured:
       runtime.needsReauthorization !== true &&
-      Boolean(getSecret(remoteRuntimeCredentialKey(runtime))),
+      Boolean(getSecret(agentsOneGatewayTokenSecretKey(runtime.id))),
   };
 }
 
@@ -1609,29 +1492,8 @@ export function setAgentRuntimeBearerToken(
   ) {
     throw new Error("Remote agent credential is invalid.");
   }
-  setEnvValue(remoteRuntimeCredentialKey(runtime), bearerToken.trim());
+  setEnvValue(agentsOneGatewayTokenSecretKey(runtime.id), bearerToken.trim());
   markRuntimeReauthorized(runtimeId);
-  invalidateSecretsCache();
-  return { configured: true };
-}
-
-export function setAgentRuntimeDashboardToken(
-  runtimeId: string,
-  dashboardToken: string,
-): { configured: true } {
-  const runtime = remoteRuntimeForCredential(runtimeId);
-  if (runtime.kind !== "hermes") {
-    throw new Error("Only Hermes runtimes use a Dashboard token.");
-  }
-  if (
-    typeof dashboardToken !== "string" ||
-    dashboardToken.trim().length < 8 ||
-    dashboardToken.length > 4096 ||
-    /[\0\r\n]/.test(dashboardToken)
-  ) {
-    throw new Error("Remote Hermes Dashboard token is invalid.");
-  }
-  setEnvValue(hermesDashboardTokenSecretKey(runtime.id), dashboardToken.trim());
   invalidateSecretsCache();
   return { configured: true };
 }
@@ -1653,31 +1515,6 @@ export function setAgentRuntimeWorkspaceGatewayToken(
   setEnvValue(workspaceGatewayTokenSecretKey(runtime.id), bearerToken.trim());
   invalidateSecretsCache();
   return { configured: true };
-}
-
-function remoteWorkspaceGatewayConfig(
-  runtime: AgentRuntimeDefinition,
-): RemoteWorkspaceGatewayConfig {
-  if (runtime.needsReauthorization) {
-    throw new Error("请先为恢复的远程智能体重新保存凭据。");
-  }
-  const endpoint =
-    runtime.config.workspaceGatewayEndpoint?.trim() ||
-    runtime.config.endpoint?.trim();
-  if (!endpoint) {
-    throw new Error("请先在智能体管理中配置受控工作区网关地址。");
-  }
-  const bearerToken =
-    (getSecret(workspaceGatewayTokenSecretKey(runtime.id)) || "").trim() ||
-    runtimeAuth(runtime)?.bearerToken;
-  if (!bearerToken) {
-    throw new Error("请先在智能体管理中保存受控工作区网关 Token。");
-  }
-  return {
-    endpoint,
-    bearerToken,
-    timeoutMs: runtime.config.timeoutMs,
-  };
 }
 
 function remoteWorkspaceInstruction(
@@ -1741,23 +1578,14 @@ function writeUserRuntimes(runtimes: AgentRuntimeDefinition[]): void {
 }
 
 function builtInHermesRuntime(): AgentRuntimeDefinition {
-  const connection = getConnectionConfig();
-  const remote = connection.mode === "remote";
   return {
-    id: remote ? "hermes-remote" : "hermes-local",
+    id: "hermes-local",
     name: "Hermes",
     kind: "hermes",
-    location: remote ? "remote" : "local",
+    location: "local",
     enabled: true,
     managed: "builtin",
-    config: remote
-      ? {
-          endpoint: connection.remoteUrl,
-          transport: "http",
-          agentTransport: "gateway-v1",
-          timeoutMs: 15_000,
-        }
-      : { transport: "cli", agentTransport: "local-api", timeoutMs: 15_000 },
+    config: { transport: "cli", agentTransport: "local-api", timeoutMs: 15_000 },
   };
 }
 
@@ -1881,26 +1709,6 @@ async function probeRuntimeDefinition(
     };
   }
 
-  if (runtime.kind === "openclaw" && runtime.location === "remote") {
-    if (!runtime.config.endpoint) {
-      throw new Error("OpenClaw runtime endpoint is required.");
-    }
-    const result = await probeOpenClawRuntime(
-      {
-        endpoint: runtime.config.endpoint,
-        timeoutMs: runtime.config.timeoutMs,
-      },
-      transientAuth?.bearerToken ? transientAuth : openClawAuth(runtime.id),
-    );
-    return {
-      runtimeId: runtime.id,
-      state: result.state === "healthy" ? "healthy" : "unreachable",
-      capabilities: result.capabilities,
-      checkedAt,
-      ...(result.message ? { message: result.message } : {}),
-    };
-  }
-
   if (runtime.kind === "codex" && runtime.location === "local") {
     const result = await probeCodexRuntime({
       executablePath: runtime.config.executablePath,
@@ -2010,94 +1818,25 @@ async function probeRuntimeDefinition(
       artifacts: false,
       workspaceAccess: false,
     };
-    const mode = customHermes.mode;
-    const healthy =
-      mode === "remote"
-        ? await testRemoteConnection(
-            runtime.config.endpoint || "",
-            transientAuth?.bearerToken || runtimeAuth(runtime)?.bearerToken,
-          )
-        : await testRemoteConnection("http://127.0.0.1:8642");
+    const healthy = await testRemoteConnection("http://127.0.0.1:8642");
     return {
       runtimeId: runtime.id,
       state: healthy ? "healthy" : "unreachable",
       capabilities: healthy ? capabilities : NO_AGENT_RUNTIME_CAPABILITIES,
       checkedAt,
-      ...(healthy
-        ? {}
-        : {
-            message: `${mode === "local" ? "本地" : "远程"} Hermes 健康检查失败。`,
-          }),
+      ...(healthy ? {} : { message: "本地 Hermes 健康检查失败。" }),
     };
   }
 
-  if (runtime.kind !== "hermes" || runtime.location !== "remote") {
-    return {
-      runtimeId: runtime.id,
-      state: "unsupported",
-      capabilities: NO_AGENT_RUNTIME_CAPABILITIES,
-      checkedAt,
-      message: `${runtime.kind} adapter is not installed yet.`,
-    };
-  }
-
-  if (runtime.config.endpoint) {
-    const coordinatorProbe = await probeRemoteCoordinatorBridge(
-      {
-        endpoint: runtime.config.endpoint,
-        timeoutMs: runtime.config.timeoutMs,
-      },
-      transientAuth?.bearerToken ? transientAuth : runtimeAuth(runtime),
-    );
-    if (coordinatorProbe.state === "healthy") {
-      return {
-        runtimeId: runtime.id,
-        state: "healthy",
-        capabilities: coordinatorProbe.capabilities,
-        checkedAt,
-        ...(coordinatorProbe.message
-          ? { message: coordinatorProbe.message }
-          : {}),
-      };
-    }
-    if (runtime.managed !== "builtin") {
-      return {
-        runtimeId: runtime.id,
-        state: "unreachable",
-        capabilities: NO_AGENT_RUNTIME_CAPABILITIES,
-        checkedAt,
-        ...(coordinatorProbe.message
-          ? { message: coordinatorProbe.message }
-          : { message: "Remote Hermes health check failed." }),
-      };
-    }
-  }
-  const connection = getConnectionConfig();
-  const healthy = await testRemoteConnection(
-    connection.remoteUrl,
-    connection.apiKey,
-  );
+  // Legacy remote Hermes/OpenClaw transports were removed (plan D5): any
+  // non-gateway, non-local runtime is unsupported until it is re-registered
+  // on Gateway v1.
   return {
     runtimeId: runtime.id,
-    state: healthy ? "healthy" : "unreachable",
-    capabilities: healthy
-      ? {
-          chat: true,
-          taskDispatch: true,
-          streaming: true,
-          cancellation: true,
-          tools: true,
-          memory: true,
-          orchestration: false,
-          readOnlyPlanning: false,
-          mailbox: false,
-          securityEvents: false,
-          artifacts: false,
-          workspaceAccess: false,
-        }
-      : NO_AGENT_RUNTIME_CAPABILITIES,
+    state: "unsupported",
+    capabilities: NO_AGENT_RUNTIME_CAPABILITIES,
     checkedAt,
-    ...(healthy ? {} : { message: "Remote Hermes health check failed." }),
+    message: `${runtime.kind} adapter is not installed yet.`,
   };
 }
 
@@ -2125,93 +1864,6 @@ export async function probeAgentRuntimeDraft(
     runtime,
     token ? { bearerToken: token } : undefined,
   );
-}
-
-function statusFromOpenClaw(status: string): AgentRuntimeRun["status"] {
-  switch (status.toLowerCase()) {
-    case "running":
-    case "queued":
-    case "pending":
-      return "running";
-    case "succeeded":
-    case "success":
-    case "completed":
-    case "done":
-      return "succeeded";
-    case "cancelled":
-    case "canceled":
-      return "cancelled";
-    case "timed_out":
-    case "timeout":
-      return "timed_out";
-    case "failed":
-    case "error":
-      return "failed";
-    default:
-      return "failed";
-  }
-}
-
-function statusFromRemotePlan(
-  status: RemoteCoordinatorPlan["status"],
-): AgentRuntimeRun["status"] {
-  switch (status) {
-    case "queued":
-    case "running":
-    case "cancelling":
-      return "running";
-    case "succeeded":
-      return "succeeded";
-    case "cancelled":
-      return "cancelled";
-    case "timed_out":
-      return "timed_out";
-    case "failed":
-    default:
-      return "failed";
-  }
-}
-
-function applyOpenClawTask(
-  record: RuntimeRunRecord,
-  task: OpenClawBridgeTask,
-): AgentRuntimeRun {
-  const status = statusFromOpenClaw(task.status);
-  if (task.status !== record.run.status) {
-    appendRuntimeEvent(
-      record,
-      status === "running"
-        ? "progress"
-        : status === "succeeded"
-          ? "completed"
-          : status === "cancelled"
-            ? "cancelled"
-            : status === "timed_out"
-              ? "timed_out"
-              : "error",
-      status === "running"
-        ? "OpenClaw 正在远端执行。"
-        : status === "succeeded"
-          ? "OpenClaw 已完成远端任务。"
-          : `OpenClaw 任务状态：${task.status}。`,
-    );
-  }
-  if (task.output && task.output !== record.run.output) {
-    appendRuntimeEvent(record, "message", "OpenClaw 已返回新的任务输出。");
-  }
-  const baseArtifacts = record.run.artifacts || [];
-  const artifacts = baseArtifacts;
-  const next: AgentRuntimeRun = {
-    ...record.run,
-    status,
-    output: task.output ?? record.run.output,
-    sessionId: task.sessionId ?? record.run.sessionId,
-    error: task.error ?? record.run.error,
-    ...(artifacts.length ? { artifacts } : {}),
-    ...(status === "running" ? {} : { completedAt: Date.now() }),
-  };
-  record.run = next;
-  return { ...next };
 }
 
 function applyAgentsOneRemoteGatewayRun(
@@ -2393,57 +2045,6 @@ async function applyHydratedAgentsOneRemoteGatewayRun(
   );
 }
 
-function planOutput(plan: RemoteCoordinatorPlan): string {
-  return plan.output || (plan.plan ? JSON.stringify(plan.plan, null, 2) : "");
-}
-
-function applyRemoteCoordinatorPlan(
-  record: RuntimeRunRecord,
-  plan: RemoteCoordinatorPlan,
-): AgentRuntimeRun {
-  const status = statusFromRemotePlan(plan.status);
-  if (plan.status !== record.run.status) {
-    appendRuntimeEvent(
-      record,
-      status === "running"
-        ? "progress"
-        : status === "succeeded"
-          ? "completed"
-          : status === "cancelled"
-            ? "cancelled"
-            : status === "timed_out"
-              ? "timed_out"
-              : "error",
-      status === "running"
-        ? "远程协调者正在生成受控计划。"
-        : status === "succeeded"
-          ? "远程协调者已完成受控计划。"
-          : `远程协调计划状态：${plan.status}。`,
-    );
-  }
-  if (status !== "running" && record.timeout) {
-    clearTimeout(record.timeout);
-    record.timeout = undefined;
-  }
-  const output = planOutput(plan) || record.run.output;
-  const artifacts = [
-    ...(plan.artifacts || []),
-    ...(status === "succeeded" && output
-      ? [{ kind: "final" as const, label: "Coordinator plan", content: output }]
-      : []),
-  ];
-  const next: AgentRuntimeRun = {
-    ...record.run,
-    status,
-    output,
-    error: plan.error ?? record.run.error,
-    artifacts: artifacts.length ? artifacts : record.run.artifacts,
-    ...(status === "running" ? {} : { completedAt: Date.now() }),
-  };
-  record.run = next;
-  return { ...next };
-}
-
 function rememberRuntimeRun(record: RuntimeRunRecord): void {
   runtimeRuns.set(record.run.id, record);
   while (runtimeRuns.size > MAX_RETAINED_RUNS) {
@@ -2541,7 +2142,6 @@ function validatedTaskInput(
   workspaceRef?: string;
   attachments?: AgentRuntimeTaskInput["attachments"];
   timeoutMs: number;
-  coordinatorPlan?: NonNullable<AgentRuntimeTaskInput["coordinatorPlan"]>;
 } {
   const prompt = typeof input?.prompt === "string" ? input.prompt.trim() : "";
   if (!prompt || prompt.length > MAX_TASK_PROMPT_LENGTH) {
@@ -2582,43 +2182,6 @@ function validatedTaskInput(
       "Runtime task timeout must be between 1000 and 3600000 milliseconds.",
     );
   }
-  const coordinatorPlan = input.coordinatorPlan;
-  if (coordinatorPlan !== undefined) {
-    if (
-      !coordinatorPlan ||
-      typeof coordinatorPlan !== "object" ||
-      typeof coordinatorPlan.projectId !== "string" ||
-      typeof coordinatorPlan.title !== "string" ||
-      typeof coordinatorPlan.objective !== "string"
-    ) {
-      throw new Error("Coordinator planning context is invalid.");
-    }
-    return {
-      prompt,
-      profile,
-      sessionId,
-      conversation,
-      mode,
-      fullAccessConfirmed,
-      workspace,
-      workspaceRef,
-      attachments,
-      timeoutMs,
-      coordinatorPlan: {
-        projectId: coordinatorPlan.projectId.trim(),
-        title: coordinatorPlan.title.trim(),
-        objective: coordinatorPlan.objective.trim(),
-        existingTasks: Array.isArray(coordinatorPlan.existingTasks)
-          ? coordinatorPlan.existingTasks.map((item) => ({
-              id: String(item.id || ""),
-              title: String(item.title || ""),
-              status: String(item.status || ""),
-              ...(item.runtimeId ? { runtimeId: String(item.runtimeId) } : {}),
-            }))
-          : [],
-      },
-    };
-  }
   return {
     prompt,
     profile,
@@ -2628,8 +2191,8 @@ function validatedTaskInput(
     fullAccessConfirmed,
     workspace,
     workspaceRef,
-    timeoutMs,
     attachments,
+    timeoutMs,
   };
 }
 
@@ -2658,13 +2221,7 @@ export async function startAgentRuntimeTask(
   );
   if (
     task.mode === "full_access" &&
-    !(
-      isLocalCliTransport(runtime) ||
-      (isGatewayTransport(runtime) &&
-        (runtime.kind === "hermes" || runtime.kind === "openclaw")) ||
-      (isLocalApiTransport(runtime) &&
-        (runtime.kind === "hermes" || runtime.kind === "openclaw"))
-    )
+    !(isLocalCliTransport(runtime) || isLocalApiTransport(runtime))
   ) {
     throw new Error(
       "Full access is available only for local CLI agents or configured remote workspace gateways.",
@@ -2689,24 +2246,16 @@ export async function startAgentRuntimeTask(
   let dispatchPrompt = task.prompt;
   let dispatchWorkspaceRef = task.workspaceRef;
   const unifiedGatewayRuntime = isAgentsOneGatewayRuntime(runtime);
-  if (
-    task.workspace &&
-    runtime.location === "remote" &&
-    (unifiedGatewayRuntime ||
-      runtime.kind === "hermes" ||
-      runtime.kind === "openclaw")
-  ) {
+  if (task.workspace && runtime.location === "remote" && unifiedGatewayRuntime) {
     try {
       const auth = runtimeAuth(runtime);
-      const config = unifiedGatewayRuntime
-        ? {
-            endpoint: runtime.config.endpoint || "",
-            bearerToken: auth?.bearerToken,
-            timeoutMs: runtime.config.timeoutMs,
-            contract: "agents-one-v1" as const,
-          }
-        : remoteWorkspaceGatewayConfig(runtime);
-      if (unifiedGatewayRuntime && (!config.endpoint || !config.bearerToken)) {
+      const config = {
+        endpoint: runtime.config.endpoint || "",
+        bearerToken: auth?.bearerToken,
+        timeoutMs: runtime.config.timeoutMs,
+        contract: "agents-one-v1" as const,
+      };
+      if (!config.endpoint || !config.bearerToken) {
         throw new Error("统一 Gateway 地址或 Token 尚未配置。");
       }
       const capabilities = await probeRemoteWorkspaceGateway(config);
@@ -2773,82 +2322,6 @@ export async function startAgentRuntimeTask(
   if (task.workspace && unifiedGatewayRuntime && !dispatchWorkspaceRef) {
     gatewayPermission = "read";
     dispatchPrompt = `${task.prompt}\n\n[Agents One 工作区状态]\n当前任务已在桌面端关联本地项目，但本轮尚未建立 Workspace Grant。本地项目路径与文件内容未发送给你。你可以继续处理普通对话；如果请求依赖本地文件，请明确说明需要用户启用受控工作区授权。`;
-  }
-
-  if (task.coordinatorPlan) {
-    if (task.attachments?.length) {
-      return finishRuntimeRun(record, "failed", {
-        error: "Coordinator planning does not accept file inputs yet.",
-      });
-    }
-    if (
-      runtime.location !== "remote" ||
-      (runtime.kind !== "hermes" && runtime.kind !== "openclaw")
-    ) {
-      return finishRuntimeRun(record, "failed", {
-        error:
-          "Coordinator planning requires a remote Hermes or OpenClaw Bridge.",
-      });
-    }
-    if (!runtime.config.endpoint) {
-      return finishRuntimeRun(record, "failed", {
-        error: "Remote coordinator endpoint is required.",
-      });
-    }
-    try {
-      const probe = await probeRemoteCoordinatorBridge(
-        {
-          endpoint: runtime.config.endpoint,
-          timeoutMs: runtime.config.timeoutMs,
-        },
-        runtimeAuth(runtime),
-      );
-      if (
-        probe.state !== "healthy" ||
-        !hasConstrainedPlanning(probe.capabilities)
-      ) {
-        return finishRuntimeRun(record, "failed", {
-          error:
-            "Remote coordinator Bridge does not expose enforceable read-only planning.",
-        });
-      }
-      const config: RemoteCoordinatorConfig = {
-        endpoint: runtime.config.endpoint,
-        timeoutMs: runtime.config.timeoutMs,
-      };
-      const plan = await startRemoteCoordinatorPlan(
-        config,
-        {
-          projectId: task.coordinatorPlan.projectId,
-          request: task.prompt,
-          context: {
-            title: task.coordinatorPlan.title,
-            requirements: task.coordinatorPlan.objective,
-            ...(task.workspace ? { workspace: task.workspace } : {}),
-            existingTasks: task.coordinatorPlan.existingTasks,
-          },
-          timeoutSeconds: Math.ceil(task.timeoutMs / 1000),
-        },
-        runtimeAuth(runtime),
-      );
-      record.remotePlan = { config, planId: plan.id };
-      record.timeout = setTimeout(() => {
-        void cancelRemoteCoordinatorPlan(
-          config,
-          plan.id,
-          runtimeAuth(runtime),
-        ).catch(() => undefined);
-        finishRuntimeRun(record, "timed_out", {
-          output: record.run.output,
-          error: `Remote coordinator planning exceeded ${task.timeoutMs}ms.`,
-        });
-      }, task.timeoutMs);
-      return applyRemoteCoordinatorPlan(record, plan);
-    } catch (error) {
-      return finishRuntimeRun(record, "failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
   }
 
   if (isAgentsOneGatewayRuntime(runtime)) {
@@ -3139,76 +2612,6 @@ export async function startAgentRuntimeTask(
     }
   }
 
-  if (runtime.kind === "openclaw") {
-    if (!runtime.config.endpoint) {
-      throw new Error("OpenClaw runtime endpoint is required.");
-    }
-    const config: OpenClawRuntimeConfig = {
-      endpoint: runtime.config.endpoint,
-      timeoutMs: runtime.config.timeoutMs,
-    };
-    return (async () => {
-      const auth = openClawAuth(runtime.id);
-      if (task.workspace && !dispatchWorkspaceRef) {
-        throw new Error(
-          "远程 OpenClaw 无法直接访问本机工作区。请配置受控工作区网关、上传上下文包或使用 git: 工作区引用。",
-        );
-      }
-      let artifactIds: string[] | undefined;
-      if (task.attachments?.length) {
-        const probe = await probeOpenClawRuntime(config, auth);
-        if (probe.state !== "healthy" || !probe.capabilities.artifacts) {
-          throw new Error(
-            "OpenClaw Bridge does not advertise the Artifact capability.",
-          );
-        }
-        const prepared = prepareRuntimeInputs(
-          task.profile,
-          task.attachments,
-          `openclaw-${id}`,
-        );
-        artifactIds = [];
-        for (const file of prepared.files) {
-          const uploaded = await uploadOpenClawArtifact(
-            config,
-            {
-              name: file.artifact.name,
-              mime: file.artifact.mime,
-              bytes: readFileSync(file.path),
-              sha256: file.artifact.sha256,
-            },
-            auth,
-          );
-          artifactIds.push(uploaded.id);
-        }
-        record.run = {
-          ...record.run,
-          inputArtifacts: prepared.artifacts,
-        };
-      }
-      return startOpenClawTask(
-        config,
-        {
-          prompt: dispatchPrompt,
-          profile: task.profile,
-          sessionId: task.sessionId,
-          artifactIds,
-          workspaceRef: dispatchWorkspaceRef,
-        },
-        auth,
-      );
-    })()
-      .then((bridgeTask) => {
-        record.openClaw = { config, taskId: bridgeTask.id };
-        return applyOpenClawTask(record, bridgeTask);
-      })
-      .catch((error) => {
-        return finishRuntimeRun(record, "failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-  }
-
   const finish = (
     status: Exclude<AgentRuntimeRun["status"], "running">,
     details: Pick<AgentRuntimeRun, "output" | "sessionId" | "error"> = {},
@@ -3266,23 +2669,6 @@ export async function getAgentRuntimeRun(
 ): Promise<AgentRuntimeRun | null> {
   const record = runtimeRuns.get(runId);
   if (!record) return null;
-  if (record.remotePlan && record.run.status === "running") {
-    try {
-      const plan = await getRemoteCoordinatorPlan(
-        record.remotePlan.config,
-        record.remotePlan.planId,
-        runtimeAuth(
-          listAgentRuntimes().find((item) => item.id === record.run.runtimeId)!,
-        ),
-      );
-      return applyRemoteCoordinatorPlan(record, plan);
-    } catch (error) {
-      return finishRuntimeRun(record, "failed", {
-        output: record.run.output,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
   if (record.remoteGateway && record.run.status === "running") {
     if (Date.now() < record.remoteGateway.nextPollAt) {
       return { ...record.run };
@@ -3339,21 +2725,6 @@ export async function getAgentRuntimeRun(
       });
     }
   }
-  if (record.openClaw && record.run.status === "running") {
-    try {
-      const task = await getOpenClawTask(
-        record.openClaw.config,
-        record.openClaw.taskId,
-        openClawAuth(record.run.runtimeId),
-      );
-      return applyOpenClawTask(record, task);
-    } catch (error) {
-      return finishRuntimeRun(record, "failed", {
-        output: record.run.output,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
   return { ...record.run };
 }
 
@@ -3376,25 +2747,6 @@ export async function cancelAgentRuntimeTask(runId: string): Promise<boolean> {
   const record = runtimeRuns.get(runId);
   if (!record || record.run.status !== "running") return false;
   record.cancelRequested = true;
-  if (record.remotePlan) {
-    try {
-      const runtime = listAgentRuntimes().find(
-        (item) => item.id === record.run.runtimeId,
-      );
-      const plan = await cancelRemoteCoordinatorPlan(
-        record.remotePlan.config,
-        record.remotePlan.planId,
-        runtime ? runtimeAuth(runtime) : undefined,
-      );
-      applyRemoteCoordinatorPlan(record, plan);
-    } catch (error) {
-      finishRuntimeRun(record, "failed", {
-        output: record.run.output,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-    return true;
-  }
   if (record.remoteGateway) {
     try {
       const runtime = listAgentRuntimes().find(
@@ -3418,22 +2770,6 @@ export async function cancelAgentRuntimeTask(runId: string): Promise<boolean> {
       });
       return true;
     }
-  }
-  if (record.openClaw) {
-    try {
-      const task = await cancelOpenClawTask(
-        record.openClaw.config,
-        record.openClaw.taskId,
-        openClawAuth(record.run.runtimeId),
-      );
-      applyOpenClawTask(record, task);
-    } catch (error) {
-      finishRuntimeRun(record, "failed", {
-        output: record.run.output,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-    return true;
   }
   if (record.codex) {
     record.codex.cancel();

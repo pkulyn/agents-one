@@ -11,11 +11,7 @@ import { join, delimiter, resolve } from "path";
 import { homedir, tmpdir } from "os";
 import { randomBytes } from "crypto";
 import { app, type BrowserWindow } from "electron";
-import {
-  getConnectionConfig,
-  getModelConfig,
-  hasOAuthCredentials,
-} from "./config";
+import { getModelConfig, hasOAuthCredentials } from "./config";
 import { providerDoesNotNeedApiKey } from "./providers";
 import { getActiveProfileNameSync, profileHome, stripAnsi } from "./utils";
 import { setupAskpass, AskpassHandle } from "./askpass";
@@ -469,18 +465,6 @@ export function validateHermesHome(dir: string): boolean {
 
 export function checkInstallStatus(): InstallStatus {
   const activeProfile = getActiveProfileNameSync();
-
-  // Remote mode: skip local checks entirely
-  const conn = getConnectionConfig();
-  if (conn.mode === "remote" && conn.remoteUrl) {
-    return {
-      installed: true,
-      configured: true,
-      hasApiKey: true,
-      verified: true,
-      activeProfile,
-    };
-  }
 
   // Fast path: file existence is enough to gate the UI. The deep
   // `python --version` check used to run here adds 1–10s of cold-start

@@ -2,17 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../useI18n";
 import {
   CHAT_TRANSPORT_OPTIONS,
-  getCachedOpenClaw,
-  getCachedVersion,
-  makeApiKeyMask,
   setCachedVersion,
   versionCacheKey,
-  type RemoteChatTransport,
-  type TransportProbe,
 } from "./settingsHelpers";
 
 export { CHAT_TRANSPORT_OPTIONS };
-export type { RemoteChatTransport, TransportProbe };
 
 type DataOperationResult = {
   success: boolean;
@@ -47,49 +41,12 @@ export function useSettingsData(profile?: string) {
   const [autoUpgradeEnabled, setAutoUpgradeEnabled] = useState(true);
   const [autoUpgradeSaved, setAutoUpgradeSaved] = useState(false);
 
-  // OpenClaw migration — initialize from localStorage cache
-  const cachedClaw = getCachedOpenClaw();
-  const [openclawFound, setOpenclawFound] = useState(
-    cachedClaw?.found ?? false,
-  );
-  const [openclawPath, setOpenclawPath] = useState<string | null>(
-    cachedClaw?.path ?? null,
-  );
-  const [migrationDismissed, setMigrationDismissed] = useState(
-    () => localStorage.getItem("hermes-openclaw-dismissed") === "true",
-  );
-  const [migrating, setMigrating] = useState(false);
-  const [migrationLog, setMigrationLog] = useState("");
-  const [migrationResult, setMigrationResult] = useState<string | null>(null);
-  const [migrationResultType, setMigrationResultType] = useState<
-    "success" | "error" | null
-  >(null);
-  const migrationLogRef = useRef<HTMLPreElement>(null);
-
-  // Connection mode
-  const [connMode, setConnMode] = useState<"local" | "remote">("local");
-  const [connRemoteUrl, setConnRemoteUrl] = useState("");
-  const [connApiKey, setConnApiKey] = useState("");
-  const [connApiKeyMask, setConnApiKeyMask] = useState("");
-  const [connHasApiKey, setConnHasApiKey] = useState(false);
-  const [connDashboardUrl, setConnDashboardUrl] = useState("");
-  const [connDashboardToken, setConnDashboardToken] = useState("");
-  const [connDashboardTokenMask, setConnDashboardTokenMask] = useState("");
-  const [connHasDashboardToken, setConnHasDashboardToken] = useState(false);
-  const [remoteChatTransport, setRemoteChatTransport] =
-    useState<RemoteChatTransport>("auto");
-  const [connTesting, setConnTesting] = useState(false);
+  // Connection mode (local-only — plan D5)
+  const [connMode] = useState<"local">("local");
   const [connStatus, setConnStatus] = useState<string | null>(null);
-  // True when a persisted SSH connection was migrated to the unified remote
-  // mode and still needs a Gateway v1 URL + token (plan D4: SSH 删除).
-  const [migratedFromSsh, setMigratedFromSsh] = useState(false);
   const connLoaded = useRef(false);
   const [apiServerKeyMissing, setApiServerKeyMissing] = useState(false);
   const [generatingKey, setGeneratingKey] = useState(false);
-
-  const [transportProbe, setTransportProbe] = useState<TransportProbe | null>(
-    null,
-  );
 
   // Backup / Import state
   const [backingUp, setBackingUp] = useState(false);
@@ -159,23 +116,7 @@ export function useSettingsData(profile?: string) {
     if (requestId !== loadConfigRequestRef.current) return;
 
     const cacheKey = versionCacheKey(conn, profile);
-    setHermesVersion(getCachedVersion(cacheKey));
     setAppVersion(aVersion);
-    setConnMode(conn.mode);
-    setMigratedFromSsh(conn.migratedFromSsh === true);
-    setConnRemoteUrl(conn.remoteUrl);
-    setConnDashboardUrl(conn.remoteDashboardUrl || "");
-    setConnHasApiKey(conn.hasApiKey);
-    setConnHasDashboardToken(conn.hasRemoteDashboardToken || false);
-    setRemoteChatTransport(conn.remoteChatTransport ?? "auto");
-    const mask = conn.hasApiKey ? makeApiKeyMask(conn.apiKeyLength) : "";
-    setConnApiKeyMask(mask);
-    setConnApiKey(mask);
-    const dashboardMask = conn.hasRemoteDashboardToken
-      ? makeApiKeyMask(conn.remoteDashboardTokenLength)
-      : "";
-    setConnDashboardTokenMask(dashboardMask);
-    setConnDashboardToken(dashboardMask);
     setApiServerKeyMissing(!keyStatus.hasKey);
     setAutoUpgradeEnabled(autoUpgrade);
     connLoaded.current = true;
@@ -211,18 +152,6 @@ export function useSettingsData(profile?: string) {
       httpProxyRef.current = loadedProxy;
       savedHttpProxyRef.current = loadedProxy.trim();
     });
-
-    if (localStorage.getItem("hermes-openclaw-dismissed") !== "true") {
-      window.hermesAPI.checkOpenClaw().then((claw) => {
-        setOpenclawFound(claw.found);
-        setOpenclawPath(claw.path);
-        try {
-          localStorage.setItem("hermes-openclaw-cache", JSON.stringify(claw));
-        } catch {
-          /* ignore */
-        }
-      });
-    }
   }, [profile]);
 
   useEffect(() => {
@@ -329,250 +258,6 @@ export function useSettingsData(profile?: string) {
       void saveHttpProxy();
     };
   }, [saveHttpProxy]);
-
-  async function handleMigrate(): Promise<void> {
-    setMigrating(true);
-    setMigrationLog("");
-    setMigrationResult(null);
-
-    const cleanup = window.hermesAPI.onInstallProgress((p) => {
-      setMigrationLog(p.log);
-    });
-
-    try {
-      const result = await window.hermesAPI.runClawMigrate();
-      cleanup();
-      if (result.success) {
-        setMigrationResult(t("settings.migrationComplete"));
-        setMigrationResultType("success");
-        setOpenclawFound(false);
-      } else {
-        setMigrationResult(result.error || t("settings.migrationFailed"));
-        setMigrationResultType("error");
-      }
-    } catch (err) {
-      cleanup();
-      setMigrationResult(
-        (err as Error).message || t("settings.migrationFailed"),
-      );
-      setMigrationResultType("error");
-    }
-    setMigrating(false);
-  }
-
-  function handleDismissMigration(): void {
-    localStorage.setItem("hermes-openclaw-dismissed", "true");
-    setMigrationDismissed(true);
-  }
-
-  function getConnectionApiKeyForSave(): string | undefined {
-    // Mask sentinel in the field means "the secret is still server-side
-    // and the user hasn't touched it" — always preserve the stored key.
-    // The old code wiped the key whenever the URL changed, so a one-
-    // character URL edit (fix typo, add /v1) silently dropped the saved
-    // credential. To clear the key, the user must explicitly erase the
-    // field.
-    if (connHasApiKey && connApiKey === connApiKeyMask) {
-      return undefined;
-    }
-    return connApiKey.trim();
-  }
-
-  function getConnectionDashboardTokenForSave(): string | undefined {
-    if (
-      connHasDashboardToken &&
-      connDashboardToken === connDashboardTokenMask
-    ) {
-      return undefined;
-    }
-    return connDashboardToken.trim();
-  }
-
-  const refreshTransportProbe = useCallback(async (): Promise<void> => {
-    if (connMode === "local") {
-      setTransportProbe(null);
-      return;
-    }
-    const preference = remoteChatTransport;
-    if (preference === "legacy") {
-      setTransportProbe({
-        label: t("settings.chatTransport.activeLegacy"),
-        detail: t("settings.chatTransport.legacyRemoteDisabled"),
-        kind: "muted",
-        loading: false,
-      });
-      return;
-    }
-
-    setTransportProbe((prev) => ({
-      label: prev?.label || t("settings.chatTransport.checkingTransport"),
-      detail: prev?.detail || "",
-      kind: prev?.kind || "muted",
-      loading: true,
-    }));
-
-    try {
-      const status = await window.hermesAPI.dashboardStatus(profile);
-      if (status.running && status.connection?.baseUrl) {
-        setTransportProbe({
-          label:
-            preference === "dashboard"
-              ? t("settings.chatTransport.activeDashboard")
-              : t("settings.chatTransport.autoDashboard"),
-          detail: status.connection.baseUrl,
-          kind: "ok",
-          loading: false,
-        });
-        return;
-      }
-      const managementReachable =
-        status.error?.includes("management API is reachable") ?? false;
-      if (managementReachable && preference === "auto") {
-        setTransportProbe({
-          label: t("settings.chatTransport.autoLegacy"),
-          detail: status.error || t("settings.chatTransport.managementAvailable"),
-          kind: "ok",
-          loading: false,
-        });
-        return;
-      }
-      setTransportProbe({
-        label:
-          preference === "dashboard"
-            ? t("settings.chatTransport.dashboardUnavailable")
-            : t("settings.chatTransport.autoLegacyFallback"),
-        detail: status.error || t("settings.chatTransport.transportUnavailable"),
-        kind: "warn",
-        loading: false,
-      });
-    } catch (err) {
-      setTransportProbe({
-        label:
-          preference === "dashboard"
-            ? t("settings.chatTransport.dashboardUnavailable")
-            : t("settings.chatTransport.autoLegacyFallback"),
-        detail: err instanceof Error ? err.message : String(err),
-        kind: "warn",
-        loading: false,
-      });
-    }
-  }, [connMode, profile, remoteChatTransport, t]);
-
-  useEffect(() => {
-    void refreshTransportProbe();
-  }, [refreshTransportProbe]);
-
-  async function handleSaveConnection(): Promise<void> {
-    const apiKey = getConnectionApiKeyForSave();
-    const dashboardToken = getConnectionDashboardTokenForSave();
-    await window.hermesAPI.setConnectionConfig(
-      connMode,
-      connRemoteUrl,
-      apiKey,
-      connDashboardUrl,
-      dashboardToken,
-    );
-    if (apiKey !== undefined) {
-      const hasApiKey = apiKey.length > 0;
-      setConnHasApiKey(hasApiKey);
-      if (hasApiKey) {
-        const mask = makeApiKeyMask(apiKey.length);
-        setConnApiKeyMask(mask);
-        setConnApiKey(mask);
-      } else {
-        setConnApiKeyMask("");
-      }
-    }
-    if (dashboardToken !== undefined) {
-      const hasToken = dashboardToken.length > 0;
-      setConnHasDashboardToken(hasToken);
-      if (hasToken) {
-        const mask = makeApiKeyMask(dashboardToken.length);
-        setConnDashboardTokenMask(mask);
-        setConnDashboardToken(mask);
-      } else {
-        setConnDashboardTokenMask("");
-      }
-    }
-    await window.hermesAPI.setConnectionChatTransports(remoteChatTransport);
-    await loadConfig();
-    setConnStatus("Saved");
-    setTimeout(() => setConnStatus(null), 2000);
-    void refreshTransportProbe();
-  }
-
-  async function handleChatTransportChange(
-    transport: RemoteChatTransport,
-  ): Promise<void> {
-    setRemoteChatTransport(transport);
-    await window.hermesAPI.setConnectionChatTransports(transport);
-    setConnStatus("Saved");
-    setTimeout(() => setConnStatus(null), 2000);
-    void refreshTransportProbe();
-  }
-
-  async function handleTestConnection(): Promise<void> {
-    const url = connRemoteUrl.trim();
-    if (!url) {
-      setConnStatus(t("settings.remoteErrorRequiredSimple"));
-      return;
-    }
-    setConnTesting(true);
-    setConnStatus(null);
-    const ok = await window.hermesAPI.testRemoteConnection(
-      url,
-      getConnectionApiKeyForSave(),
-    );
-    setConnTesting(false);
-    setConnStatus(
-      ok
-        ? t("settings.remoteSuccess")
-        : t("settings.remoteErrorFailedSimple"),
-    );
-  }
-
-  async function handleSwitchToLocal(): Promise<void> {
-    setConnMode("local");
-    await window.hermesAPI.setConnectionConfig(
-      "local",
-      connRemoteUrl.trim(),
-      undefined,
-    );
-    await loadConfig();
-    setConnStatus(t("settings.switchedToLocal"));
-    setTimeout(() => setConnStatus(null), 2000);
-  }
-
-  async function handleSwitchToRemote(): Promise<void> {
-    setConnMode("remote");
-    if (!connLoaded.current) return;
-
-    const apiKey = getConnectionApiKeyForSave();
-    const dashboardToken = getConnectionDashboardTokenForSave();
-    await window.hermesAPI.setConnectionConfig(
-      "remote",
-      connRemoteUrl.trim(),
-      apiKey,
-      connDashboardUrl.trim(),
-      dashboardToken,
-    );
-    await window.hermesAPI.setConnectionChatTransports(remoteChatTransport);
-    if (apiKey !== undefined) {
-      const hasApiKey = apiKey.length > 0;
-      setConnHasApiKey(hasApiKey);
-      if (hasApiKey) {
-        const mask = makeApiKeyMask(apiKey.length);
-        setConnApiKeyMask(mask);
-        setConnApiKey(mask);
-      } else {
-        setConnApiKeyMask("");
-      }
-    }
-    await loadConfig();
-    setConnStatus("Saved");
-    setTimeout(() => setConnStatus(null), 2000);
-    void refreshTransportProbe();
-  }
 
   async function handleBackup(): Promise<void> {
     setBackingUp(true);
@@ -841,45 +526,15 @@ export function useSettingsData(profile?: string) {
     checkDesktopUpdate,
     handleDesktopUpdate,
     // migration / community
-    openclawFound,
-    openclawPath,
-    migrationDismissed,
-    migrating,
-    migrationLog,
-    migrationResult,
-    migrationResultType,
-    migrationLogRef,
-    handleMigrate,
-    handleDismissMigration,
-    // connection
+    // connection (local-only — plan D5)
     connMode,
-    setConnMode,
-    connRemoteUrl,
-    setConnRemoteUrl,
-    connApiKey,
-    setConnApiKey,
-    connApiKeyMask,
-    connDashboardUrl,
-    setConnDashboardUrl,
-    connDashboardToken,
-    setConnDashboardToken,
-    connDashboardTokenMask,
-    connTesting,
     connStatus,
     connLoaded,
-    migratedFromSsh,
     apiServerKeyMissing,
     setApiServerKeyMissing,
     generatingKey,
     setGeneratingKey,
     setConnStatus,
-    remoteChatTransport,
-    transportProbe,
-    handleSaveConnection,
-    handleChatTransportChange,
-    handleTestConnection,
-    handleSwitchToLocal,
-    handleSwitchToRemote,
     // backup / data
     backingUp,
     backupResult,

@@ -1,10 +1,6 @@
 import http from "http";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ConnectionConfig } from "../src/main/config";
-import {
-  probeDashboardWebSocket,
-  remoteDashboardConnectionFromConfig,
-} from "../src/main/dashboard";
+import { probeDashboardWebSocket } from "../src/main/dashboard";
 
 let server: http.Server | null = null;
 
@@ -31,70 +27,6 @@ afterEach(async () => {
     await new Promise<void>((resolve) => server!.close(() => resolve()));
     server = null;
   }
-});
-
-function remoteConnection(
-  overrides: Partial<ConnectionConfig>,
-): ConnectionConfig {
-  return {
-    mode: "remote",
-    remoteUrl: "https://hermes.example/v1/",
-    apiKey: "dashboard-token",
-    remoteChatTransport: "auto",
-    ...overrides,
-  };
-}
-
-describe("remoteDashboardConnectionFromConfig", () => {
-  it("builds an upstream dashboard websocket URL from remote settings", () => {
-    const connection = remoteDashboardConnectionFromConfig(
-      remoteConnection({}),
-    );
-
-    expect(connection).toMatchObject({
-      baseUrl: "https://hermes.example",
-      mode: "remote",
-      token: "dashboard-token",
-      wsUrl: "wss://hermes.example/api/ws?token=dashboard-token",
-    });
-  });
-
-  it("preserves a remote dashboard path prefix in the websocket URL", () => {
-    const connection = remoteDashboardConnectionFromConfig(
-      remoteConnection({
-        remoteDashboardUrl: "https://hermes.example/hermes-dashboard/",
-      }),
-    );
-
-    expect(connection).toMatchObject({
-      baseUrl: "https://hermes.example/hermes-dashboard",
-      mode: "remote",
-      token: "dashboard-token",
-      wsUrl:
-        "wss://hermes.example/hermes-dashboard/api/ws?token=dashboard-token",
-    });
-  });
-
-  it("returns null when remote dashboard settings are incomplete", () => {
-    expect(
-      remoteDashboardConnectionFromConfig(
-        remoteConnection({ remoteUrl: "", apiKey: "dashboard-token" }),
-      ),
-    ).toBeNull();
-    expect(
-      remoteDashboardConnectionFromConfig(
-        remoteConnection({ remoteUrl: "https://hermes.example", apiKey: "" }),
-      ),
-    ).toBeNull();
-  });
-
-  it("ignores non-remote modes", () => {
-    expect(
-      remoteDashboardConnectionFromConfig(
-        remoteConnection({ mode: "local", remoteUrl: "https://hermes.example" }),
-      ),
-    ).toBeNull();
-  });
 });
 
 describe("probeDashboardWebSocket", () => {

@@ -1162,7 +1162,7 @@ export default function RuntimeChat({
 
   useEffect(() => {
     let cancelled = false;
-    if (runtime.kind !== "openclaw" && !unifiedRemoteGatewayRuntime) {
+    if (!unifiedRemoteGatewayRuntime) {
       setRemoteArtifactsSupported(false);
       setRemoteWorkspaceSupported(false);
       return () => {
@@ -3347,10 +3347,7 @@ export default function RuntimeChat({
         setCurrentRunId(null);
         return;
       }
-      const resumableSessionId =
-        runtime.kind !== "openclaw"
-          ? runtimeSessionIdRef.current || undefined
-          : undefined;
+      const resumableSessionId = runtimeSessionIdRef.current || undefined;
       const basePrompt = resumableSessionId
         ? prompt
         : promptWithTranscript(messages, prompt);
@@ -3464,10 +3461,7 @@ export default function RuntimeChat({
   // Remote runtimes receive a short-lived outbound workspace grant instead of
   // a local path. Gateway v1 advertises that support through its probe.
   const remoteWorkspaceGatewayRuntime =
-    runtime.location === "remote" &&
-    (unifiedRemoteGatewayRuntime
-      ? remoteWorkspaceSupported
-      : runtime.kind === "hermes" || runtime.kind === "openclaw");
+    runtime.location === "remote" && remoteWorkspaceSupported;
   const attachmentInputs = localFileInputs || remoteArtifactsSupported;
   const accessControlAvailable =
     localFileInputs ||

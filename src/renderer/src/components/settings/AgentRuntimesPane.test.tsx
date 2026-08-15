@@ -28,7 +28,6 @@ function installHermesAPI(runtimes: AgentRuntimeDefinition[]): {
   probeAgentRuntime: ReturnType<typeof vi.fn>;
   probeAgentRuntimeDraft: ReturnType<typeof vi.fn>;
   setAgentRuntimeBearerToken: ReturnType<typeof vi.fn>;
-  setAgentRuntimeDashboardToken: ReturnType<typeof vi.fn>;
 } {
   let current = [...runtimes];
   const listAgentRuntimes = vi.fn(async () => current);
@@ -45,16 +44,15 @@ function installHermesAPI(runtimes: AgentRuntimeDefinition[]): {
     return saved;
   });
   const probe: AgentRuntimeProbe = {
-    runtimeId: "openclaw-remote",
+    runtimeId: "hermes-gateway",
     state: "healthy",
     capabilities,
     checkedAt: Date.now(),
-    message: "OpenClaw bridge ready",
+    message: "Gateway ready",
   };
   const probeAgentRuntime = vi.fn(async () => probe);
   const probeAgentRuntimeDraft = vi.fn(async () => probe);
   const setAgentRuntimeBearerToken = vi.fn(async () => ({ configured: true as const }));
-  const setAgentRuntimeDashboardToken = vi.fn(async () => ({ configured: true as const }));
 
   Object.defineProperty(window, "hermesAPI", {
     configurable: true,
@@ -68,7 +66,6 @@ function installHermesAPI(runtimes: AgentRuntimeDefinition[]): {
         configured: false,
       })),
       setAgentRuntimeBearerToken,
-      setAgentRuntimeDashboardToken,
       probeAgentRuntime,
       probeAgentRuntimeDraft,
     },
@@ -81,7 +78,6 @@ function installHermesAPI(runtimes: AgentRuntimeDefinition[]): {
     probeAgentRuntime,
     probeAgentRuntimeDraft,
     setAgentRuntimeBearerToken,
-    setAgentRuntimeDashboardToken,
   };
 }
 
@@ -98,15 +94,16 @@ describe("AgentRuntimesPane", () => {
         config: { transport: "http", timeoutMs: 10000 },
       },
       {
-        id: "openclaw-remote",
-        name: "OpenClaw Remote",
-        kind: "openclaw",
+        id: "hermes-gateway",
+        name: "Hermes Gateway",
+        kind: "hermes",
         location: "remote",
         enabled: true,
         managed: "user",
         config: {
-          endpoint: "https://example.test/openclaw",
+          endpoint: "https://example.test/agents-one/v1",
           transport: "http",
+          remoteGateway: { protocol: "agents-one-v1" },
           timeoutMs: 10000,
         },
       },
@@ -119,22 +116,22 @@ describe("AgentRuntimesPane", () => {
     );
     await waitFor(() => {
       expect(api.probeAgentRuntime).toHaveBeenCalledWith("hermes-default");
-      expect(api.probeAgentRuntime).toHaveBeenCalledWith("openclaw-remote");
+      expect(api.probeAgentRuntime).toHaveBeenCalledWith("hermes-gateway");
     });
     expect(screen.queryByText("未检测")).not.toBeInTheDocument();
-    fireEvent.click(screen.getAllByText("OpenClaw Remote")[0]);
+    fireEvent.click(screen.getAllByText("Hermes Gateway")[0]);
     fireEvent.click(screen.getByRole("button", { name: "检测" }));
 
     await waitFor(() => {
-      expect(api.probeAgentRuntime).toHaveBeenCalledWith("openclaw-remote");
+      expect(api.probeAgentRuntime).toHaveBeenCalledWith("hermes-gateway");
     });
     expect(
-      (await screen.findAllByText("OpenClaw bridge ready")).length,
+      (await screen.findAllByText("Gateway ready")).length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("健康").length).toBeGreaterThan(0);
   });
 
-  it("saves a new remote OpenClaw runtime without embedding credentials", async () => {
+  it("saves a new remote Hermes Gateway runtime without embedding credentials", async () => {
     const api = installHermesAPI([]);
     render(<AgentRuntimesPane />);
 
@@ -151,9 +148,9 @@ describe("AgentRuntimesPane", () => {
       expect(api.saveAgentRuntime).toHaveBeenCalled();
     });
     expect(api.saveAgentRuntime.mock.calls[0][0]).toMatchObject({
-      id: "openclaw-remote",
-      name: "OpenClaw Remote",
-      kind: "openclaw",
+      id: "hermes-gateway",
+      name: "Hermes",
+      kind: "hermes",
       location: "remote",
       enabled: true,
       config: {
@@ -168,7 +165,7 @@ describe("AgentRuntimesPane", () => {
     );
   });
 
-  it("configures custom Hermes connection modes and keeps both tokens outside the runtime definition", async () => {
+  it("configures a custom Hermes Gateway and keeps the token outside the runtime definition", async () => {
     const api = installHermesAPI([]);
     render(<AgentRuntimesPane />);
 
@@ -176,61 +173,41 @@ describe("AgentRuntimesPane", () => {
     fireEvent.change(screen.getByLabelText("类型"), {
       target: { value: "hermes" },
     });
-    // 新远程默认统一 Gateway (v1)；兼容模式覆盖旧 Hermes 连接配置
-    fireEvent.click(screen.getByRole("button", { name: "兼容模式" }));
-    fireEvent.change(screen.getByLabelText("远程服务器地址"), {
-      target: { value: "https://hermes.example/bridge" },
+    fireEvent.change(screen.getByLabelText("Gateway 地址"), {
+      target: { value: "https://hermes.example/agents-one/v1" },
     });
-    fireEvent.change(screen.getByLabelText("API 密钥"), {
-      target: { value: "hermes-api-key" },
+    fireEvent.change(screen.getByLabelText("Gateway Token"), {
+      target: { value: "gateway-token" },
     });
-    fireEvent.change(screen.getByLabelText("远程 Dashboard 地址"), {
-      target: { value: "https://hermes.example/dashboard" },
-    });
-    fireEvent.change(screen.getByLabelText("远程 Dashboard 令牌"), {
-      target: { value: "dashboard-session-token" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
     fireEvent.click(screen.getByRole("button", { name: "连接测试" }));
 
     await waitFor(() =>
       expect(api.probeAgentRuntimeDraft).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: "hermes-remote-custom",
+          id: "hermes-gateway",
           kind: "hermes",
           config: expect.objectContaining({
-            endpoint: "https://hermes.example/bridge",
-            hermes: {
-              mode: "remote",
-              dashboardUrl: "https://hermes.example/dashboard",
-              chatTransport: "dashboard",
-            },
+            endpoint: "https://hermes.example/agents-one/v1",
+            remoteGateway: { protocol: "agents-one-v1" },
           }),
         }),
-        "hermes-api-key",
+        "gateway-token",
       ),
     );
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
       expect(api.setAgentRuntimeBearerToken).toHaveBeenCalledWith(
-        "hermes-remote-custom",
-        "hermes-api-key",
+        "hermes-gateway",
+        "gateway-token",
       ),
     );
-    expect(api.setAgentRuntimeDashboardToken).toHaveBeenCalledWith(
-      "hermes-remote-custom",
-      "dashboard-session-token",
-    );
     expect(JSON.stringify(api.saveAgentRuntime.mock.calls[0][0])).not.toContain(
-      "hermes-api-key",
-    );
-    expect(JSON.stringify(api.saveAgentRuntime.mock.calls[0][0])).not.toContain(
-      "dashboard-session-token",
+      "gateway-token",
     );
   });
 
-  it("offers local and remote modes (SSH removed) for a custom Hermes runtime", async () => {
+  it("offers only remote Gateway and local modes for a custom Hermes runtime", async () => {
     installHermesAPI([]);
     render(<AgentRuntimesPane />);
 
@@ -239,17 +216,15 @@ describe("AgentRuntimesPane", () => {
       target: { value: "hermes" },
     });
 
-    expect(screen.getByRole("button", { name: "本地" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "远程" })).toBeInTheDocument();
-    // SSH 隧道模式已移除（远程统一走 Gateway v1）
+    expect(screen.getByRole("button", { name: "本地" })).toBeInTheDocument();
+    // SSH 隧道与兼容模式均已移除（远程统一走 Gateway v1）
     expect(
       screen.queryByRole("button", { name: "SSH 隧道" }),
     ).not.toBeInTheDocument();
-    // 对话传输方式（自动/Dashboard/基础模式）仅在兼容模式下展示
-    fireEvent.click(screen.getByRole("button", { name: "兼容模式" }));
-    expect(screen.getByRole("button", { name: "自动" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "基础模式" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "兼容模式" }),
+    ).not.toBeInTheDocument();
   });
 
   it("offers Pi Agent CLI as a configurable local runtime template", async () => {
@@ -279,38 +254,39 @@ describe("AgentRuntimesPane", () => {
     });
   });
 
-  it("saves an OpenClaw Bridge token through IPC without adding it to runtime config", async () => {
+  it("saves a Gateway token through IPC without adding it to runtime config", async () => {
     const api = installHermesAPI([
       {
-        id: "openclaw-remote",
-        name: "OpenClaw Remote",
-        kind: "openclaw",
+        id: "hermes-gateway",
+        name: "Hermes Gateway",
+        kind: "hermes",
         location: "remote",
         enabled: true,
         managed: "user",
         config: {
-          endpoint: "https://example.test/openclaw",
+          endpoint: "https://example.test/agents-one/v1",
           transport: "http",
+          remoteGateway: { protocol: "agents-one-v1" },
           timeoutMs: 10000,
         },
       },
     ]);
     render(<AgentRuntimesPane />);
 
-    await screen.findByRole("button", { name: /OpenClaw Remote/i });
-    fireEvent.change(screen.getByLabelText("Bridge Token"), {
-      target: { value: "bridge-test-token" },
+    await screen.findByRole("button", { name: /Hermes Gateway/i });
+    fireEvent.change(screen.getByLabelText("Gateway Token"), {
+      target: { value: "gateway-test-token" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存 Token" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 Gateway Token" }));
 
     await waitFor(() =>
       expect(api.setAgentRuntimeBearerToken).toHaveBeenCalledWith(
-        "openclaw-remote",
-        "bridge-test-token",
+        "hermes-gateway",
+        "gateway-test-token",
       ),
     );
     expect(JSON.stringify(api.saveAgentRuntime.mock.calls)).not.toContain(
-      "bridge-test-token",
+      "gateway-test-token",
     );
   });
 

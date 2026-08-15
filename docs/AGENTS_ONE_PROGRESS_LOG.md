@@ -1680,3 +1680,16 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 迁移验证：新增 `connection-config-security` 测试验证存量 `connectionMode:"ssh"` 只读收敛为 remote + `migratedFromSsh`，且不泄露 API Key；Agent Runtime 侧存量 `hermes.mode:"ssh"` 归一化为 remote 并标记需要重新授权。
 - 自动验证：Node/Web TypeScript 检查通过；Vitest 全量 186 个测试文件、1843 项通过、9 项跳过；Electron Vite 生产构建通过。删除 4 个 SSH 专用测试文件（ssh-options/ssh-remote/ssh-remote-paths/cronjobs-ssh），更新 office-start/dashboard-remote/dashboard-chat-transport/remote-mode-url-and-spawn/connection-config-security/hermes-cli-session-id 等测试。
 - 下一步：1.4 旧远程模式删除（NAS Hermes/OpenClaw 兼容、old remote 传输）。
+
+## 2026-08-15：Phase 1.4 旧远程模式删除完成
+
+- 目标（计划 D5）：删除 NAS Hermes/OpenClaw 旧兼容模式与旧远程传输，远程统一走 Gateway v1。
+- 删除模块：`remote-sessions.ts`、`remote-models.ts`、`remote-memory.ts`、`remote-metadata.ts`、`remote-skills.ts`、`remote-config.ts`、`remote-dashboard-rpc.ts`、`remote-coordinator-bridge.ts`、`remote-tls.ts`、`openclaw-runtime.ts` 及 `hermes-agent-compat.ts` 的 remote-http 部分（保留本地 dashboard 兼容）。
+- 类型收敛：shared `AGENT_RUNTIME_KINDS` 移除 `openclaw`；`HermesRuntimeMode` 收敛为 `"local"`；删除 `HermesChatTransport` 与 `hermes.chatTransport`。
+- 配置模型：`ConnectionConfig`/`PublicConnectionConfig` 收敛为 `{ mode: "local" }`；`getConnectionConfig` 恒返回 local；存量 `connectionMode: ssh/remote` 读取时忽略（远程改走 Gateway v1）。`getRemoteDashboardSessionConfig`/`getRemoteDashboardUrl`/`normalizeRemoteChatTransport`/`resolveConnectionApiKeyUpdate` 移除或收敛。
+- 主进程：`agent-runtimes.ts` 删除 OpenClaw probe/dispatch/poll/cancel、remote coordinator plan、远程 hermes probe（`conn.mode === "remote"`）、`remoteWorkspaceGatewayConfig`、旧凭证（hermesApiKeySecretKey/openClawBearerSecretKey/remoteRuntimeCredentialKey）；`setAgentRuntimeDashboardToken` 删除；`builtInHermesRuntime` 恒为 hermes-local（local-api）。`hermes.ts` 的 getApiUrl/isRemoteMode/getRemoteAuthHeader/getApiAuthHeaders 收敛为本地；`dashboard.ts`/`cronjobs.ts`/`mcp-servers.ts`/`messaging-platforms.ts`/`installer.ts`/`app/start.ts`/`office-start.ts` 全部去远程。
+- IPC：删除 `check-openclaw`/`run-claw-migrate`/`set-agent-runtime-dashboard-token` 与全部 `conn.mode === "remote"` 分支（约 60 处）；`set-connection-config`/`set-connection-chat-transports` 变为 no-op。
+- preload/renderer：preload 删除 OpenClaw IPC、dashboard token、远程连接字段（getConnectionConfig 返回 `{mode:"local"}`）；`ConnectionPane.tsx` 重写为 local-only（本地 API_SERVER_KEY 管理 + 网络设置）；`useSettingsData.ts`/`DataPane.tsx` 删除 OpenClaw 迁移功能与远程连接状态；`AgentRuntimesPane.tsx` 删除 hermes 远程/兼容模式与 dashboard/chatTransport 表单（自定义 Hermes 恒为 Gateway v1 远程模板）；`Chat.tsx`/`useDashboardChatTransport.ts` 收敛为本地；i18n 移除 remote 相关文案键。
+- 测试：删除 `ssh-options/ssh-remote/ssh-remote-paths/cronjobs-ssh/messaging-platforms-remote` 等已删功能测试；重写 `connection-config-security` 为 local-only；更新 `agent-runtimes`（删除旧远程/OpenClaw/coordinator 测试）、`hermes-api`（http mock 补回调 + getApiServerKey）、`remote-mode-url-and-spawn`（删 startGateway 远程块）、`task-schedules`/`runtime-conversation-store`/`RuntimeChat`/`AgentRuntimesPane`/`ProfileSwitcher`/`dashboard-remote`。
+- 自动验证：Node/Web TypeScript 检查通过；Vitest 全量 178 个测试文件、1775 项通过、9 项跳过（1 项 RuntimeChat 顺序敏感测试待稳定）；生产构建待跑。
+- 下一步：1.5 注册表单统一（远程=链接+Token，本地=路径）。
