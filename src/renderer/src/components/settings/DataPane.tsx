@@ -3,8 +3,7 @@ import { useI18n } from "../useI18n";
 import { useSettings } from "./SettingsDataContext";
 
 /**
- * Export / restore Agents One workspace data, plus the legacy OpenClaw →
- * Hermes migration (which remains a separate data-import flow).
+ * Export / restore Agents One workspace data.
  */
 export default function DataPane(): React.JSX.Element {
   const { t } = useI18n();
@@ -16,16 +15,6 @@ export default function DataPane(): React.JSX.Element {
     handleBackup,
     handleImport,
     handleRestartAfterRestore,
-    openclawFound,
-    openclawPath,
-    migrationDismissed,
-    migrating,
-    migrationLog,
-    migrationResult,
-    migrationResultType,
-    migrationLogRef,
-    handleMigrate,
-    handleDismissMigration,
   } = useSettings();
 
   return (
@@ -85,61 +74,6 @@ export default function DataPane(): React.JSX.Element {
         )}
       </div>
 
-      {openclawFound && !migrationDismissed && (
-        <div className="settings-migration-banner">
-          <div className="settings-migration-header">
-            <div>
-              <div className="settings-migration-title">
-                {t("settings.migrationDetected")}
-              </div>
-              <div
-                className="settings-migration-desc"
-                dangerouslySetInnerHTML={{
-                  __html: t("settings.migrationDesc", {
-                    path: openclawPath || "",
-                  }),
-                }}
-              />
-            </div>
-            <button
-              className="btn-ghost settings-migration-dismiss"
-              onClick={handleDismissMigration}
-              title={t("settings.migrationDismiss")}
-            >
-              &times;
-            </button>
-          </div>
-          {migrationLog && (
-            <pre className="settings-hermes-doctor" ref={migrationLogRef}>
-              {migrationLog}
-            </pre>
-          )}
-          {migrationResult && (
-            <div
-              className={`settings-hermes-result ${migrationResultType || "error"}`}
-            >
-              {migrationResult}
-            </div>
-          )}
-          <div className="settings-migration-actions">
-            <button
-              className="btn btn-primary "
-              onClick={handleMigrate}
-              disabled={migrating}
-            >
-              {migrating
-                ? t("settings.migrating")
-                : t("settings.migrateToHermes")}
-            </button>
-            <button
-              className="btn btn-secondary "
-              onClick={handleDismissMigration}
-            >
-              {t("settings.skip")}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

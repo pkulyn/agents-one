@@ -30,50 +30,23 @@ import {
   OPENAI_COMPAT_PROVIDERS,
 } from "../shared/url-key-map";
 
-// ── Connection Config (local / remote) ────────────────────
-// SSH mode was removed (plan D4): remote Hermes now always goes through
-// Gateway v1. Old persisted `connectionMode: "ssh"` is read-only migrated
-// to `remote` and flagged so the UI prompts for a Gateway URL + token.
-
-export type RemoteChatTransport = "auto" | "dashboard" | "legacy";
+// ── Connection Config (local-only) ────────────────────────
+// SSH and old remote Hermes connections were removed (plan D4/D5): remote
+// agents now go through Gateway v1. The built-in Hermes connection is
+// always local (each profile's gateway on 127.0.0.1).
 
 export interface ConnectionConfig {
-  mode: "local" | "remote";
-  remoteUrl: string;
-  apiKey: string;
-  remoteDashboardUrl: string;
-  remoteDashboardToken: string;
-  remoteChatTransport: RemoteChatTransport;
-  /** True when a persisted SSH connection was migrated to the unified remote
-   * model and still needs a Gateway v1 URL + token before it can connect. */
-  migratedFromSsh?: boolean;
+  mode: "local";
 }
 
 export interface PublicConnectionConfig {
-  mode: "local" | "remote";
-  remoteUrl: string;
-  remoteDashboardUrl: string;
-  remoteChatTransport: RemoteChatTransport;
-  hasApiKey: boolean;
-  hasRemoteDashboardToken: boolean;
-  // Length of the stored API key, exposed so the renderer can show a
-  // mask that matches the real value's width. The secret itself never
-  // leaves the main process. 0 when no key is set.
-  apiKeyLength: number;
-  remoteDashboardTokenLength: number;
-  migratedFromSsh?: boolean;
+  mode: "local";
 }
 
 // Lazy getter — avoids circular dependency with installer.ts
 // (HERMES_HOME may not be assigned yet when this module first loads)
 function desktopConfigFile(): string {
   return join(HERMES_HOME, "desktop.json");
-}
-
-export function normalizeRemoteChatTransport(
-  value: unknown,
-): RemoteChatTransport {
-  return value === "dashboard" || value === "legacy" ? value : "auto";
 }
 
 export function readDesktopConfig(): Record<string, unknown> {
@@ -95,148 +68,29 @@ export function writeDesktopConfig(data: Record<string, unknown>): void {
 }
 
 export function getConnectionConfig(): ConnectionConfig {
-  const data = readDesktopConfig();
-  // Read-only migration (plan D4): a persisted SSH connection is coerced to
-  // the unified remote mode and flagged for re-setup. The stored sshConfig
-  // fields are left untouched on disk.
-  const rawMode = (data.connectionMode as string) || "local";
-  const migratedFromSsh = rawMode === "ssh";
-  const mode: "local" | "remote" =
-    migratedFromSsh || rawMode === "remote" ? "remote" : "local";
-  return {
-    mode,
-    remoteUrl: (data.remoteUrl as string) || "",
-    apiKey: (data.remoteApiKey as string) || "",
-    remoteDashboardUrl: (data.remoteDashboardUrl as string) || "",
-    remoteDashboardToken: (data.remoteDashboardToken as string) || "",
-    remoteChatTransport: normalizeRemoteChatTransport(data.remoteChatTransport),
-    ...(migratedFromSsh ? { migratedFromSsh: true } : {}),
-  };
+  // The built-in Hermes connection is local-only (plan D5); remote agents go
+  // through Gateway v1. Legacy persisted `connectionMode` (ssh/remote) is
+  // ignored on read — the user re-registers remote agents via Gateway v1.
+  return { mode: "local" };
 }
 
 export function getPublicConnectionConfig(): PublicConnectionConfig {
-  const config = getConnectionConfig();
-  return {
-    mode: config.mode,
-    remoteUrl: config.remoteUrl,
-    remoteDashboardUrl: config.remoteDashboardUrl,
-    remoteChatTransport: config.remoteChatTransport,
-    hasApiKey: config.apiKey.length > 0,
-    hasRemoteDashboardToken: config.remoteDashboardToken.length > 0,
-    apiKeyLength: config.apiKey.length,
-    remoteDashboardTokenLength: config.remoteDashboardToken.length,
-    ...(config.migratedFromSsh ? { migratedFromSsh: true } : {}),
-  };
+  return { mode: "local" };
 }
 
 export function setConnectionConfig(config: ConnectionConfig): void {
-  const data = readDesktopConfig();
-  data.connectionMode = config.mode;
-  if (config.mode === "remote" || config.remoteUrl.trim()) {
-    data.remoteUrl = config.remoteUrl;
-  }
-  if (config.mode === "remote" || config.apiKey.trim()) {
-    data.remoteApiKey = config.apiKey;
-  }
-  const remoteDashboardUrl = config.remoteDashboardUrl || "";
-  const remoteDashboardToken = config.remoteDashboardToken || "";
-  if (config.mode === "remote" || remoteDashboardUrl.trim()) {
-    data.remoteDashboardUrl = remoteDashboardUrl;
-  }
-  if (config.mode === "remote" || remoteDashboardToken.trim()) {
-    data.remoteDashboardToken = remoteDashboardToken;
-  }
-  data.remoteChatTransport = normalizeRemoteChatTransport(
-    config.remoteChatTransport,
-  );
-  // Saving a new config supersedes a stale SSH migration marker; legacy
-  // sshConfig is kept on disk untouched (read-only migration).
-  delete data.sshChatTransport;
-  writeDesktopConfig(data);
+  void config;
+  // The built-in Hermes connection is local-only; there is nothing remote to
+  // persist anymore. Legacy sshConfig/remote fields stay on disk untouched.
 }
 
 export function resolveConnectionApiKeyUpdate(
-  existing: ConnectionConfig,
-  _mode: "local" | "remote",
-  remoteUrl: string,
+  _existing: ConnectionConfig,
+  _mode: "local",
+  _remoteUrl: string,
   apiKey?: string,
 ): string {
-  if (apiKey !== undefined) return apiKey;
-  if (remoteUrl.trim() && existing.remoteUrl === remoteUrl) {
-    return existing.apiKey;
-  }
-  return "";
-}
-
-function deriveRemoteDashboardUrl(remoteUrl: string): string {
-  const raw = remoteUrl.trim();
-  if (!raw) return "";
-  try {
-    const url = new URL(raw);
-    const pathname = url.pathname.replace(/\/+$/, "");
-    if (/\/hermes-api$/i.test(pathname)) {
-      url.pathname = pathname.replace(/\/hermes-api$/i, "/hermes-dashboard");
-      url.search = "";
-      url.hash = "";
-      return url.toString().replace(/\/+$/, "");
-    }
-  } catch {
-    // Fall back below.
-  }
-  return raw;
-}
-
-export function getRemoteDashboardUrl(config: ConnectionConfig): string {
-  const remoteDashboardUrl = config.remoteDashboardUrl || "";
-  const remoteUrl = config.remoteUrl || "";
-  return (
-    remoteDashboardUrl.trim() ||
-    deriveRemoteDashboardUrl(remoteUrl) ||
-    remoteUrl.trim()
-  );
-}
-
-export function getRemoteDashboardToken(config: ConnectionConfig): string {
-  return (
-    (config.remoteDashboardToken || "").trim() || (config.apiKey || "").trim()
-  );
-}
-
-function sameOrigin(left: string, right: string): boolean {
-  try {
-    return new URL(left).origin === new URL(right).origin;
-  } catch {
-    return false;
-  }
-}
-
-export function getRemoteDashboardSessionConfig(
-  config: ConnectionConfig,
-  profile?: string,
-): {
-  remoteUrl: string;
-  apiKey: string;
-  fallbackApiKey?: string;
-  profile?: string;
-} {
-  const remoteUrl = getRemoteDashboardUrl(config);
-  const apiKey = getRemoteDashboardToken(config);
-  const gatewayApiKey = (config.apiKey || "").trim();
-  return {
-    remoteUrl,
-    apiKey,
-    // Some reverse-proxied Hermes deployments accept API_SERVER_KEY on the
-    // dashboard management API but use a separate/stale dashboard token. A
-    // fallback is safe only for the exact same origin, and remoteRequestJson
-    // retries it only after an authentication failure.
-    fallbackApiKey:
-      gatewayApiKey &&
-      gatewayApiKey !== apiKey &&
-      sameOrigin(remoteUrl, config.remoteUrl)
-        ? gatewayApiKey
-        : undefined,
-    profile,
-  };
+  return apiKey ?? "";
 }
 
 // ── In-memory cache with TTL ─────────────────────────────

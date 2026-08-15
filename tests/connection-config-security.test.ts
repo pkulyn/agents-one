@@ -24,7 +24,7 @@ function listen(server: http.Server): Promise<string> {
   });
 }
 
-describe("connection config secret exposure", () => {
+describe("connection config (local-only — plan D5)", () => {
   beforeEach(() => {
     testHome = mkdtempSync(join(tmpdir(), "hermes-connection-config-"));
   });
@@ -34,133 +34,48 @@ describe("connection config secret exposure", () => {
     rmSync(testHome, { recursive: true, force: true });
   });
 
-  it("keeps the remote API key out of the public renderer config", async () => {
-    const {
-      getConnectionConfig,
-      getPublicConnectionConfig,
-      resolveConnectionApiKeyUpdate,
-      setConnectionConfig,
-    } = await loadConnectionConfigModule();
+  it("exposes a local-only connection and never leaks stored secrets", async () => {
+    const { getConnectionConfig, getPublicConnectionConfig } =
+      await loadConnectionConfigModule();
 
-    setConnectionConfig({
-      mode: "remote",
-      remoteUrl: "https://hermes.example",
-      apiKey: "remote-secret",
-      remoteChatTransport: "dashboard",
-    });
-
-    expect(getConnectionConfig().apiKey).toBe("remote-secret");
-
+    expect(getConnectionConfig()).toEqual({ mode: "local" });
     const publicConfig = getPublicConnectionConfig();
-    expect(publicConfig).toMatchObject({
-      mode: "remote",
-      remoteUrl: "https://hermes.example",
-      remoteChatTransport: "dashboard",
-      hasApiKey: true,
-      // Length is intentionally exposed so the renderer can render a
-      // mask that matches the stored key's width. The secret itself
-      // must NOT be present — covered by the assertions below.
-      apiKeyLength: "remote-secret".length,
-    });
+    expect(publicConfig).toEqual({ mode: "local" });
+    // No secret fields may ever be exposed to the renderer.
     expect("apiKey" in publicConfig).toBe(false);
-    expect(JSON.stringify(publicConfig)).not.toContain("remote-secret");
-
-    const existing = getConnectionConfig();
-    expect(
-      resolveConnectionApiKeyUpdate(
-        existing,
-        "remote",
-        "https://hermes.example",
-      ),
-    ).toBe("remote-secret");
-    expect(
-      resolveConnectionApiKeyUpdate(
-        existing,
-        "remote",
-        "https://attacker.example",
-      ),
-    ).toBe("");
   });
 
-  it("reads desktop config files written with a UTF-8 BOM", async () => {
-    const { getConnectionConfig } = await loadConnectionConfigModule();
+  it("reads legacy remote/ssh desktop configs as local without leaking secrets", async () => {
+    const { getConnectionConfig, getPublicConnectionConfig } =
+      await loadConnectionConfigModule();
 
     writeFileSync(
       join(testHome, "desktop.json"),
-      `\uFEFF${JSON.stringify({
+      `﻿${JSON.stringify({
         connectionMode: "remote",
         remoteUrl: "https://hermes.example",
         remoteApiKey: "remote-secret",
-        remoteChatTransport: "dashboard",
+        sshConfig: {
+          host: "example.internal",
+          port: 22,
+          username: "hermes",
+          keyPath: "~/.ssh/id_rsa",
+          remotePort: 8642,
+          localPort: 18642,
+        },
       })}`,
       "utf-8",
     );
 
-    expect(getConnectionConfig()).toMatchObject({
-      mode: "remote",
-      remoteUrl: "https://hermes.example",
-      apiKey: "remote-secret",
-      remoteChatTransport: "dashboard",
-    });
+    // The built-in Hermes connection is local-only: legacy remote/ssh fields
+    // are ignored on read (plan D4/D5) — remote agents go through Gateway v1.
+    expect(getConnectionConfig()).toEqual({ mode: "local" });
+    const publicConfig = getPublicConnectionConfig();
+    expect(publicConfig).toEqual({ mode: "local" });
+    expect(JSON.stringify(publicConfig)).not.toContain("remote-secret");
   });
 
-  it("uses the gateway API key as a dashboard fallback only for the same origin", async () => {
-    const { getConnectionConfig, getRemoteDashboardSessionConfig, setConnectionConfig } =
-      await loadConnectionConfigModule();
-
-    setConnectionConfig({
-      mode: "remote",
-      remoteUrl: "https://hermes.example/hermes-api",
-      apiKey: "gateway-secret",
-      remoteDashboardUrl: "https://hermes.example/hermes-dashboard",
-      remoteDashboardToken: "dashboard-secret",
-      remoteChatTransport: "auto",
-    });
-
-    expect(getRemoteDashboardSessionConfig(getConnectionConfig())).toMatchObject({
-      apiKey: "dashboard-secret",
-      fallbackApiKey: "gateway-secret",
-    });
-
-    setConnectionConfig({
-      ...getConnectionConfig(),
-      remoteDashboardUrl: "https://other.example/hermes-dashboard",
-    });
-
-    expect(
-      getRemoteDashboardSessionConfig(getConnectionConfig()).fallbackApiKey,
-    ).toBeUndefined();
-  });
-
-  it("allows self-signed certificates only for configured remote Hermes origins", async () => {
-    const { getConnectionConfig, setConnectionConfig } =
-      await loadConnectionConfigModule();
-    const { configuredRemoteTlsOptions } = await import("../src/main/remote-tls");
-
-    setConnectionConfig({
-      mode: "remote",
-      remoteUrl: "https://hermes.example/hermes-api",
-      apiKey: "remote-secret",
-      remoteDashboardUrl: "https://hermes.example/hermes-dashboard",
-      remoteDashboardToken: "dashboard-secret",
-      remoteChatTransport: "auto",
-    });
-
-    expect(
-      configuredRemoteTlsOptions(
-        "https://hermes.example/hermes-api/v1/chat/completions",
-      ),
-    ).toEqual({ rejectUnauthorized: false });
-    expect(
-      configuredRemoteTlsOptions("https://hermes.example/hermes-dashboard/api/status"),
-    ).toEqual({ rejectUnauthorized: false });
-    expect(
-      configuredRemoteTlsOptions("https://attacker.example/hermes-api/health"),
-    ).toEqual({});
-  });
-
-  it("uses the stored remote API key for main-process connection tests", async () => {
-    const { setConnectionConfig } = await loadConnectionConfigModule();
+  it("uses the caller-supplied API key for main-process connection tests", async () => {
     const { testRemoteConnection } = await import("../src/main/hermes");
     const server = http.createServer((req, res) => {
       res.statusCode =
@@ -171,98 +86,14 @@ describe("connection config secret exposure", () => {
     const url = await listen(server);
 
     try {
-      setConnectionConfig({
-        mode: "remote",
-        remoteUrl: url,
-        apiKey: "remote-secret",
-        remoteChatTransport: "auto",
-      });
-
-      await expect(testRemoteConnection(url)).resolves.toBe(true);
+      await expect(testRemoteConnection(url, "remote-secret")).resolves.toBe(
+        true,
+      );
       await expect(testRemoteConnection(url, "wrong-secret")).resolves.toBe(
         false,
       );
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-  });
-
-  it("preserves remote settings when switching away from remote mode", async () => {
-    const {
-      getConnectionConfig,
-      resolveConnectionApiKeyUpdate,
-      setConnectionConfig,
-    } = await loadConnectionConfigModule();
-
-    setConnectionConfig({
-      mode: "remote",
-      remoteUrl: "https://hermes.example",
-      apiKey: "remote-secret",
-      remoteChatTransport: "dashboard",
-    });
-
-    setConnectionConfig({
-      ...getConnectionConfig(),
-      mode: "local",
-      remoteUrl: "",
-      apiKey: "",
-    });
-
-    expect(getConnectionConfig()).toMatchObject({
-      mode: "local",
-      remoteUrl: "https://hermes.example",
-      apiKey: "remote-secret",
-      remoteChatTransport: "dashboard",
-    });
-
-    const localConfig = getConnectionConfig();
-    const restoredApiKey = resolveConnectionApiKeyUpdate(
-      localConfig,
-      "remote",
-      "https://hermes.example",
-      undefined,
-    );
-    setConnectionConfig({
-      ...localConfig,
-      mode: "remote",
-      remoteUrl: "https://hermes.example",
-      apiKey: restoredApiKey,
-    });
-
-    expect(getConnectionConfig()).toMatchObject({
-      mode: "remote",
-      remoteUrl: "https://hermes.example",
-      apiKey: "remote-secret",
-      remoteChatTransport: "dashboard",
-    });
-  });
-
-  it("read-only migrates a persisted SSH connection to remote without leaking the API key", async () => {
-    const { getConnectionConfig, getPublicConnectionConfig, writeDesktopConfig } =
-      await loadConnectionConfigModule();
-
-    // Simulate a legacy SSH connection persisted before SSH mode was removed.
-    writeDesktopConfig({
-      connectionMode: "ssh",
-      sshConfig: {
-        host: "example.internal",
-        port: 22,
-        username: "hermes",
-        keyPath: "~/.ssh/id_rsa",
-        remotePort: 8642,
-        localPort: 18642,
-      },
-      remoteApiKey: "remote-secret",
-    });
-
-    const config = getConnectionConfig();
-    expect(config.mode).toBe("remote");
-    expect(config.migratedFromSsh).toBe(true);
-
-    const publicConfig = getPublicConnectionConfig();
-    expect(publicConfig.mode).toBe("remote");
-    expect(publicConfig.migratedFromSsh).toBe(true);
-    expect("apiKey" in publicConfig).toBe(false);
-    expect(JSON.stringify(publicConfig)).not.toContain("remote-secret");
   });
 });

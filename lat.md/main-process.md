@@ -58,7 +58,7 @@ The planned contract, task ownership, and acceptance gates are recorded in `docs
 
 The current remote Hermes acceptance matrix is documented in `docs/REMOTE_HERMES_SMOKE_MATRIX.md`; it records the supported management APIs and the same-origin credential fallback used when a stale dashboard token is rejected by a NAS reverse proxy.
 
-All remote dashboard management requests must preserve a reverse-proxy path prefix such as `/hermes-dashboard`. [[src/main/remote-sessions.ts#dashboardApiUrl]] strips leading slashes from the requested API path before resolving it against the configured base; otherwise `new URL("/api/...", base)` silently drops the prefix and sends management calls to the site root, producing 404s even though the dashboard itself is healthy.
+All remote dashboard management requests must preserve a reverse-proxy path prefix such as `/hermes-dashboard` (the old `remote-sessions.ts` dashboard API was removed with the legacy remote transport — plan D5; remote agents now go through Gateway v1).
 
 The first runtime-registry backend lives in [[src/shared/agent-runtimes.ts]] and [[src/main/agent-runtimes.ts]]. It exposes a protected built-in Hermes runtime plus user-defined non-secret runtimes, rejects secret-looking config fields, and surfaces Electron IPC for listing, saving, removing, probing, starting, querying, and cancelling runtime tasks through [[src/main/ipc/register.ts#registerIpcHandlers]] and the preload bridge.
 
@@ -68,7 +68,7 @@ Task-conversation collaboration uses a client-owned control boundary: the coordi
 
 For local Codex, Claude Code, and Pi `full_access` runs, [[src/main/runtime-delivery.ts#verifyLocalDeliveryArtifacts]] converts a textual `[交付契约]` into a `file` artifact only after the main process resolves the path inside the selected workspace, verifies that it is a real file, recalculates SHA-256, and matches the declared hash. Missing, escaped, or mismatched files publish no artifact and therefore cannot unlock a later review role.
 
-The OpenClaw bridge client lives in [[src/main/openclaw-runtime.ts]] and is integrated by the runtime registry for remote `openclaw` runtimes. It accepts only non-secret endpoint config, validates http/https URLs and timeouts, probes `/health`, starts `/tasks`, refreshes `/tasks/:id`, and cancels with `POST /tasks/:id/cancel` so cancelled task records remain queryable.
+The legacy remote OpenClaw bridge client was removed (plan D5): remote agents now connect through Gateway v1 via [[src/main/remote-workspace-gateway.ts]] and [[src/main/agents-one-remote-gateway.ts]].
 
 The minimal runtime-management UI lives in [[src/renderer/src/components/settings/AgentRuntimesPane.tsx]] and is mounted under Settings -> Runtimes. It lists built-in and user runtimes, saves only non-secret config fields, supports enable/disable, probes health/capabilities, and removes user runtimes. [[src/renderer/src/components/settings/AgentRuntimesPane.test.tsx]] covers load/probe/save behavior alongside the backend registry tests.
 

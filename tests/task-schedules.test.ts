@@ -135,19 +135,23 @@ describe("local Runtime schedules", () => {
   it("rejects every schedule that is not backed by an enabled local CLI Runtime", async () => {
     const { runtimes, schedules } = await loadModules();
     runtimes.saveAgentRuntime({
-      id: "openclaw-remote",
-      name: "OpenClaw",
-      kind: "openclaw",
+      id: "hermes-gateway",
+      name: "Hermes Gateway",
+      kind: "hermes",
       location: "remote",
       enabled: true,
-      config: { transport: "http", endpoint: "https://example.invalid" },
+      config: {
+        transport: "http",
+        endpoint: "https://example.invalid/agents-one/v1",
+        remoteGateway: { protocol: "agents-one-v1" },
+      },
     });
     expect(() =>
       schedules.createTaskSchedule({
         name: "Unsafe write",
         schedule: "0 9 * * 1",
         prompt: "Change production files.",
-        runtimeId: "openclaw-remote",
+        runtimeId: "hermes-gateway",
       }),
     ).toThrow(/enabled local CLI Runtime/);
   });
@@ -532,12 +536,16 @@ describe("local Runtime schedules", () => {
   it("preserves legacy remote records without dispatching them", async () => {
     const { runtimes, schedules } = await loadModules();
     runtimes.saveAgentRuntime({
-      id: "openclaw-remote",
-      name: "OpenClaw",
-      kind: "openclaw",
+      id: "hermes-gateway",
+      name: "Hermes Gateway",
+      kind: "hermes",
       location: "remote",
       enabled: true,
-      config: { transport: "http", endpoint: "https://example.invalid" },
+      config: {
+        transport: "http",
+        endpoint: "https://example.invalid/agents-one/v1",
+        remoteGateway: { protocol: "agents-one-v1" },
+      },
     });
     const now = Date.now();
     const desktopDir = join(testHome, "desktop");
@@ -552,7 +560,7 @@ describe("local Runtime schedules", () => {
             name: "Legacy remote task",
             schedule: "5m",
             prompt: "Do not dispatch this task.",
-            runtimeId: "openclaw-remote",
+            runtimeId: "hermes-gateway",
             mode: "analysis",
             timeoutMs: 600_000,
             enabled: true,

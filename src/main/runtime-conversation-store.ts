@@ -213,7 +213,6 @@ function normalizeConversation(value: unknown): RuntimeConversation | null {
     !runtimeName ||
     !(
       runtimeKind === "hermes" ||
-      runtimeKind === "openclaw" ||
       runtimeKind === "codex" ||
       runtimeKind === "claude-code" ||
       runtimeKind === "pi"

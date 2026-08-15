@@ -28,11 +28,11 @@ describe("runtime conversation store", () => {
 
     store.saveRuntimeConversation({
       profile: "default",
-      id: "runtime-conv-openclaw",
-      title: "OpenClaw hello",
-      runtimeId: "openclaw-nas",
-      runtimeName: "OpenClaw",
-      runtimeKind: "openclaw",
+      id: "runtime-conv-gateway",
+      title: "Hermes Gateway hello",
+      runtimeId: "hermes-gateway",
+      runtimeName: "Hermes Gateway",
+      runtimeKind: "hermes",
       runtimeLocation: "remote",
       runtimeSessionId: "oc-session-1",
       messages: [
@@ -105,16 +105,16 @@ describe("runtime conversation store", () => {
         messageCount: 1,
       }),
       expect.objectContaining({
-        id: "runtime-conv-openclaw",
-        runtimeName: "OpenClaw",
+        id: "runtime-conv-gateway",
+        runtimeName: "Hermes Gateway",
         runtimeSessionId: "oc-session-1",
         messageCount: 2,
       }),
     ]);
     expect(
-      store.getRuntimeConversation("runtime-conv-openclaw", "default"),
+      store.getRuntimeConversation("runtime-conv-gateway", "default"),
     ).toMatchObject({
-      title: "OpenClaw hello",
+      title: "Hermes Gateway hello",
       messages: [
         expect.objectContaining({ role: "user", content: "你好" }),
         expect.objectContaining({ role: "agent", content: "你好，连接正常。" }),
@@ -149,9 +149,9 @@ describe("runtime conversation store", () => {
       profile: "default",
       id: "runtime-conv-1",
       title: "Before",
-      runtimeId: "openclaw-nas",
-      runtimeName: "OpenClaw",
-      runtimeKind: "openclaw",
+      runtimeId: "hermes-gateway",
+      runtimeName: "Hermes Gateway",
+      runtimeKind: "hermes",
       runtimeLocation: "remote",
       messages: [
         {

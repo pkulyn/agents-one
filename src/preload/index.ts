@@ -70,7 +70,7 @@ interface DashboardConnection {
   baseUrl: string;
   wsUrl: string;
   token: string;
-  mode: "local" | "remote";
+  mode: "local";
   profile?: string;
   pid?: number;
   port?: number;
@@ -171,10 +171,6 @@ const hermesAPI = {
     ipcRenderer.invoke("run-hermes-update"),
 
   // OpenClaw migration
-  checkOpenClaw: (): Promise<{ found: boolean; path: string | null }> =>
-    ipcRenderer.invoke("check-openclaw"),
-  runClawMigrate: (): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("run-claw-migrate"),
 
   // OAuth provider sign-in
   getLocale: (): Promise<AppLocale> => ipcRenderer.invoke("get-locale"),
@@ -255,7 +251,7 @@ const hermesAPI = {
   resetAuxiliaryConfig: (profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("reset-auxiliary-config", profile),
 
-  // Connection mode (local / remote)
+  // Connection mode (local-only — plan D5)
   isRemoteMode: (): Promise<boolean> => ipcRenderer.invoke("is-remote-mode"),
   isRemoteOnlyMode: (): Promise<boolean> =>
     ipcRenderer.invoke("is-remote-only-mode"),
@@ -294,11 +290,6 @@ const hermesAPI = {
     bearerToken: string,
   ): Promise<{ configured: true }> =>
     ipcRenderer.invoke("set-agent-runtime-bearer-token", id, bearerToken),
-  setAgentRuntimeDashboardToken: (
-    id: string,
-    dashboardToken: string,
-  ): Promise<{ configured: true }> =>
-    ipcRenderer.invoke("set-agent-runtime-dashboard-token", id, dashboardToken),
   setAgentRuntimeWorkspaceGatewayToken: (
     id: string,
     bearerToken: string,
@@ -373,52 +364,18 @@ const hermesAPI = {
   deleteTaskSchedule: (id: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("delete-task-schedule", id, profile),
   getConnectionConfig: (): Promise<{
-    mode: "local" | "remote";
-    remoteUrl: string;
-    remoteDashboardUrl: string;
-    remoteChatTransport: "auto" | "dashboard" | "legacy";
-    hasApiKey: boolean;
-    hasRemoteDashboardToken: boolean;
-    apiKeyLength: number;
-    remoteDashboardTokenLength: number;
-    migratedFromSsh?: boolean;
+    mode: "local";
   }> => ipcRenderer.invoke("get-connection-config"),
 
-  setConnectionConfig: (
-    mode: "local" | "remote",
-    remoteUrl: string,
-    apiKey?: string,
-    remoteDashboardUrl?: string,
-    remoteDashboardToken?: string,
-  ): Promise<boolean> =>
-    ipcRenderer.invoke(
-      "set-connection-config",
-      mode,
-      remoteUrl,
-      apiKey,
-      remoteDashboardUrl,
-      remoteDashboardToken,
-    ),
+  setConnectionConfig: (): Promise<boolean> =>
+    ipcRenderer.invoke("set-connection-config"),
 
-  setConnectionChatTransports: (
-    remoteChatTransport: "auto" | "dashboard" | "legacy",
-  ): Promise<boolean> =>
-    ipcRenderer.invoke(
-      "set-connection-chat-transports",
-      remoteChatTransport,
-    ),
+  setConnectionChatTransports: (): Promise<boolean> =>
+    ipcRenderer.invoke("set-connection-chat-transports"),
 
   onConnectionConfigChanged: (
     callback: (config: {
-      mode: "local" | "remote";
-      remoteUrl: string;
-      remoteDashboardUrl: string;
-      remoteChatTransport: "auto" | "dashboard" | "legacy";
-      hasApiKey: boolean;
-      hasRemoteDashboardToken: boolean;
-      apiKeyLength: number;
-      remoteDashboardTokenLength: number;
-      migratedFromSsh?: boolean;
+      mode: "local";
     }) => void,
   ): (() => void) => {
     const handler = (
@@ -427,15 +384,7 @@ const hermesAPI = {
     ): void =>
       callback(
         config as {
-          mode: "local" | "remote";
-          remoteUrl: string;
-          remoteDashboardUrl: string;
-          remoteChatTransport: "auto" | "dashboard" | "legacy";
-          hasApiKey: boolean;
-          hasRemoteDashboardToken: boolean;
-          apiKeyLength: number;
-          remoteDashboardTokenLength: number;
-          migratedFromSsh?: boolean;
+          mode: "local";
         },
       );
     ipcRenderer.on("connection-config-changed", handler);
@@ -1182,7 +1131,6 @@ const hermesAPI = {
     wsUrl: string;
     running: boolean;
     error: string;
-    remoteUrl?: string | null;
   }> => ipcRenderer.invoke("claw3d-status"),
 
   claw3dSetup: (): Promise<{ success: boolean; error?: string }> =>

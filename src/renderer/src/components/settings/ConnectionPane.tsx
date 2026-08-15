@@ -1,13 +1,13 @@
-import { Laptop, Server, Wifi } from "lucide-react";
+import { Laptop, Wifi } from "lucide-react";
 import { useI18n } from "../useI18n";
 import { useSettings } from "./SettingsDataContext";
-import { CHAT_TRANSPORT_OPTIONS } from "./settingsHelpers";
 
 /**
- * Local / Remote connection mode, chat transport, server config, and the
- * outgoing Network settings (Force IPv4 + proxy) — proxy/IPv4 shape every
- * connection, so they live here as a subsection rather than a separate tab.
- * SSH mode was removed: remote Hermes now always goes through Gateway v1.
+ * Built-in Hermes connection settings. The connection is local-only (plan
+ * D5): SSH and old remote Hermes transports were removed, and remote agents
+ * now go through Gateway v1 in the Agent Runtimes pane. This pane keeps the
+ * local API_SERVER_KEY management and the outgoing Network settings
+ * (Force IPv4 + proxy), which shape every local gateway connection.
  */
 export default function ConnectionPane(): React.JSX.Element {
   const { t } = useI18n();
@@ -15,33 +15,12 @@ export default function ConnectionPane(): React.JSX.Element {
   const {
     profile,
     connMode,
-    setConnMode,
     connStatus,
     setConnStatus,
-    connLoaded,
-    connRemoteUrl,
-    setConnRemoteUrl,
-    connApiKey,
-    setConnApiKey,
-    connApiKeyMask,
-    connDashboardUrl,
-    setConnDashboardUrl,
-    connDashboardToken,
-    setConnDashboardToken,
-    connDashboardTokenMask,
-    connTesting,
-    migratedFromSsh,
     apiServerKeyMissing,
     setApiServerKeyMissing,
     generatingKey,
     setGeneratingKey,
-    remoteChatTransport,
-    transportProbe,
-    handleSaveConnection,
-    handleTestConnection,
-    handleChatTransportChange,
-    handleSwitchToLocal,
-    handleSwitchToRemote,
     forceIpv4,
     setForceIpv4,
     httpProxy,
@@ -61,27 +40,12 @@ export default function ConnectionPane(): React.JSX.Element {
           {t("settings.connectionMode")}
         </label>
         <div className="settings-theme-options">
-          <button
-            className={`settings-theme-option ${connMode === "local" ? "active" : ""}`}
-            onClick={() => {
-              setConnMode("local");
-              if (connLoaded.current) handleSwitchToLocal();
-            }}
-          >
+          <span className={`settings-theme-option active`}>
             <span className="settings-mode-option">
               <Laptop size={15} />
               {t("settings.modeLocal")}
             </span>
-          </button>
-          <button
-            className={`settings-theme-option ${connMode === "remote" ? "active" : ""}`}
-            onClick={() => void handleSwitchToRemote()}
-          >
-            <span className="settings-mode-option">
-              <Server size={15} />
-              {t("settings.modeRemote")}
-            </span>
-          </button>
+          </span>
         </div>
         <div className="settings-field-hint">
           {connMode === "local"
@@ -90,18 +54,7 @@ export default function ConnectionPane(): React.JSX.Element {
         </div>
       </div>
 
-      {connMode === "remote" && migratedFromSsh && (
-        <div className="settings-api-key-banner settings-api-key-banner--info">
-          <div className="settings-api-key-banner-title">
-            {t("settings.sshMigratedTitle")}
-          </div>
-          <div className="settings-api-key-banner-desc">
-            {t("settings.sshMigratedDesc")}
-          </div>
-        </div>
-      )}
-
-      {!apiServerKeyMissing ? null : connMode === "local" ? (
+      {!apiServerKeyMissing ? null : (
         <div className="settings-api-key-banner">
           <div className="settings-api-key-banner-title">
             {t("settings.sessionDisabledTitle")}
@@ -126,156 +79,9 @@ export default function ConnectionPane(): React.JSX.Element {
               : t("settings.generateKey")}
           </button>
         </div>
-      ) : (
-        <div className="settings-api-key-banner settings-api-key-banner--info">
-          <div className="settings-api-key-banner-title">
-            {t("settings.remoteEnvTitle")}
-          </div>
-          <div className="settings-api-key-banner-desc">
-            {t("settings.remoteEnvDesc")}
-          </div>
-        </div>
       )}
 
-      {connMode === "remote" && (
-        <>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.remoteUrl")}
-            </label>
-            <input
-              className="input"
-              type="url"
-              value={connRemoteUrl}
-              onChange={(e) => setConnRemoteUrl(e.target.value)}
-              placeholder="http://192.168.1.100:8642"
-              onBlur={handleSaveConnection}
-            />
-            <div className="settings-field-hint">
-              {t("settings.remoteUrlHint")}
-            </div>
-          </div>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.remoteApiKey")}
-            </label>
-            <input
-              className="input"
-              type="password"
-              value={connApiKey}
-              onChange={(e) => setConnApiKey(e.target.value)}
-              onFocus={(e) => {
-                if (connApiKey === connApiKeyMask) {
-                  e.currentTarget.select();
-                }
-              }}
-              placeholder={t("settings.remoteApiKey")}
-              onBlur={handleSaveConnection}
-            />
-            <div className="settings-field-hint">
-              {t("settings.remoteApiKeyHint")}
-            </div>
-          </div>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.dashboardUrl")}
-            </label>
-            <input
-              className="input"
-              type="url"
-              value={connDashboardUrl}
-              onChange={(e) => setConnDashboardUrl(e.target.value)}
-              placeholder="http://192.168.1.100:9119"
-              onBlur={handleSaveConnection}
-            />
-            <div className="settings-field-hint">
-              {t("settings.dashboardUrlHint")}
-            </div>
-          </div>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.dashboardToken")}
-            </label>
-            <input
-              className="input"
-              type="password"
-              value={connDashboardToken}
-              onChange={(e) => setConnDashboardToken(e.target.value)}
-              onFocus={(e) => {
-                if (connDashboardToken === connDashboardTokenMask) {
-                  e.currentTarget.select();
-                }
-              }}
-              placeholder="HERMES_DASHBOARD_SESSION_TOKEN"
-              onBlur={handleSaveConnection}
-            />
-            <div className="settings-field-hint">
-              {t("settings.dashboardTokenHint")}
-            </div>
-          </div>
-          <div className="settings-field">
-            <label className="settings-field-label">
-              {t("settings.chatTransport.label")}
-            </label>
-            <div className="settings-theme-options">
-              {CHAT_TRANSPORT_OPTIONS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  className={`settings-theme-option ${
-                    remoteChatTransport === option ? "active" : ""
-                  }`}
-                  onClick={() => void handleChatTransportChange(option)}
-                >
-                  {t(`settings.chatTransport.${option}`)}
-                </button>
-              ))}
-            </div>
-            <div className="settings-field-hint">
-              {t("settings.chatTransport.remoteHint")}
-            </div>
-            {transportProbe && (
-              <div
-                className={`settings-transport-status settings-transport-status--${transportProbe.kind}`}
-              >
-                <span>{transportProbe.label}</span>
-                {transportProbe.loading && (
-                  <span>{t("settings.chatTransport.checking")}</span>
-                )}
-                {transportProbe.detail && <code>{transportProbe.detail}</code>}
-              </div>
-            )}
-          </div>
-          <div className="settings-hermes-actions">
-            <button
-              className="btn btn-secondary"
-              onClick={handleTestConnection}
-              disabled={connTesting}
-            >
-              {connTesting
-                ? t("settings.testingConnection")
-                : t("settings.testConnection")}
-            </button>
-            <button className="btn btn-primary" onClick={handleSaveConnection}>
-              {t("settings.save")}
-            </button>
-          </div>
-        </>
-      )}
-
-      {connMode === "remote" && (
-        <div className="settings-field">
-          <label className="settings-field-label">
-            {t("settings.serverConfigTitle")}
-          </label>
-          <div
-            className="settings-field-hint"
-            dangerouslySetInnerHTML={{ __html: t("settings.serverConfigHint") }}
-          />
-        </div>
-      )}
-
-      {/* Network — applies to every outgoing connection above. */}
+      {/* Network — applies to the local gateway connection. */}
       <div className="settings-subsection">
         <div className="settings-subsection-head">
           <Wifi size={14} />

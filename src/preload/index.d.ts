@@ -119,7 +119,7 @@ interface DashboardConnection {
   baseUrl: string;
   wsUrl: string;
   token: string;
-  mode: "local" | "remote";
+  mode: "local";
   profile?: string;
   pid?: number;
   port?: number;
@@ -184,8 +184,6 @@ interface HermesAPI {
   runHermesUpdate: () => Promise<{ success: boolean; error?: string }>;
 
   // OpenClaw migration
-  checkOpenClaw: () => Promise<{ found: boolean; path: string | null }>;
-  runClawMigrate: () => Promise<{ success: boolean; error?: string }>;
 
   getLocale: () => Promise<AppLocale>;
   setLocale: (locale: AppLocale) => Promise<AppLocale>;
@@ -264,10 +262,6 @@ interface HermesAPI {
     id: string,
     bearerToken: string,
   ) => Promise<{ configured: true }>;
-  setAgentRuntimeDashboardToken: (
-    id: string,
-    dashboardToken: string,
-  ) => Promise<{ configured: true }>;
   setAgentRuntimeWorkspaceGatewayToken: (
     id: string,
     bearerToken: string,
@@ -310,37 +304,13 @@ interface HermesAPI {
   ) => () => void;
   deleteTaskSchedule: (id: string, profile?: string) => Promise<boolean>;
   getConnectionConfig: () => Promise<{
-    mode: "local" | "remote";
-    remoteUrl: string;
-    remoteDashboardUrl: string;
-    remoteChatTransport: "auto" | "dashboard" | "legacy";
-    hasApiKey: boolean;
-    hasRemoteDashboardToken: boolean;
-    apiKeyLength: number;
-    remoteDashboardTokenLength: number;
-    migratedFromSsh?: boolean;
+    mode: "local";
   }>;
-  setConnectionConfig: (
-    mode: "local" | "remote",
-    remoteUrl: string,
-    apiKey?: string,
-    remoteDashboardUrl?: string,
-    remoteDashboardToken?: string,
-  ) => Promise<boolean>;
-  setConnectionChatTransports: (
-    remoteChatTransport: "auto" | "dashboard" | "legacy",
-  ) => Promise<boolean>;
+  setConnectionConfig: () => Promise<boolean>;
+  setConnectionChatTransports: () => Promise<boolean>;
   onConnectionConfigChanged: (
     callback: (config: {
-      mode: "local" | "remote";
-      remoteUrl: string;
-      remoteDashboardUrl: string;
-      remoteChatTransport: "auto" | "dashboard" | "legacy";
-      hasApiKey: boolean;
-      hasRemoteDashboardToken: boolean;
-      apiKeyLength: number;
-      remoteDashboardTokenLength: number;
-      migratedFromSsh?: boolean;
+      mode: "local";
     }) => void,
   ) => () => void;
   testRemoteConnection: (url: string, apiKey?: string) => Promise<boolean>;
@@ -840,7 +810,6 @@ interface HermesAPI {
     wsUrl: string;
     running: boolean;
     error: string;
-    remoteUrl?: string | null;
   }>;
   claw3dSetup: () => Promise<{ success: boolean; error?: string }>;
   onClaw3dSetupProgress: (

@@ -14,8 +14,6 @@ import type {
   AgentRuntimeKind,
   AgentRuntimeLocation,
   AgentRuntimeProbe,
-  HermesChatTransport,
-  HermesRuntimeMode,
 } from "../../../../shared/agent-runtimes";
 import { AGENT_RUNTIME_KINDS } from "../../../../shared/agent-runtimes";
 import { PROFILE_COLORS } from "../../../../shared/profileColors";
@@ -28,7 +26,6 @@ const DEFAULT_TIMEOUT_MS = 10000;
 
 const KIND_LABELS: Record<AgentRuntimeKind, string> = {
   hermes: "Hermes",
-  openclaw: "OpenClaw",
   codex: "Codex",
   "claude-code": "Claude Code",
   pi: "Pi Agent CLI",
@@ -86,26 +83,12 @@ function runtimeTemplate(kind: AgentRuntimeKind): AgentRuntimeDraft {
       },
     };
   }
-  if (kind === "hermes") {
-    return {
-      id: "hermes-remote-custom",
-      name: "Hermes",
-      kind,
-      location: "remote",
-      enabled: true,
-      config: {
-        endpoint: "",
-        transport: "http",
-        remoteGateway: { protocol: "agents-one-v1" as const },
-        timeoutMs: DEFAULT_TIMEOUT_MS,
-        hermes: { mode: "remote", chatTransport: "auto" },
-      },
-    };
-  }
+  // Hermes (and any remote agent kind) connects via Gateway v1 — the legacy
+  // Hermes/OpenClaw remote transports were removed (plan D5).
   return {
-    id: "openclaw-remote",
-    name: "OpenClaw Remote",
-    kind: "openclaw",
+    id: `${kind}-gateway`,
+    name: kind === "hermes" ? "Hermes" : "Gateway Agent",
+    kind,
     location: "remote",
     enabled: true,
     config: {
@@ -118,7 +101,7 @@ function runtimeTemplate(kind: AgentRuntimeKind): AgentRuntimeDraft {
 }
 
 function emptyDraft(): AgentRuntimeDraft {
-  return runtimeTemplate("openclaw");
+  return runtimeTemplate("hermes");
 }
 
 function draftFromRuntime(runtime: AgentRuntimeDefinition): AgentRuntimeDraft {
@@ -189,7 +172,6 @@ export default function AgentRuntimesPane({
     "load" | "save" | "probe" | "remove" | "appearance" | null
   >(null);
   const [bearerToken, setBearerToken] = useState("");
-  const [dashboardToken, setDashboardToken] = useState("");
   const [workspaceGatewayToken, setWorkspaceGatewayToken] = useState("");
   const [credentialRevision, setCredentialRevision] = useState(0);
   const [credentialConfigured, setCredentialConfigured] = useState(false);
@@ -206,43 +188,20 @@ export default function AgentRuntimesPane({
   const selectedProbe = selectedId ? probes[selectedId] : undefined;
   const isNew = selectedId === null;
   const isBuiltin = selectedRuntime?.managed === "builtin";
-  const hermesMode: HermesRuntimeMode =
-    draft.config.hermes?.mode ||
-    (draft.location === "local" ? "local" : "remote");
-  const isHermesRuntime = draft.kind === "hermes";
-  const isRemoteConnection = isHermesRuntime
-    ? hermesMode !== "local"
-    : draft.location === "remote";
+  const isRemoteConnection = draft.location === "remote";
   const usesUnifiedGateway =
     isRemoteConnection &&
     draft.config.remoteGateway?.protocol === "agents-one-v1";
-  const requiresRemoteCredential =
-    !isBuiltin &&
-    (usesUnifiedGateway ||
-      (draft.kind === "openclaw" && draft.location === "remote") ||
-      (isHermesRuntime && hermesMode !== "local"));
+  const requiresRemoteCredential = !isBuiltin && usesUnifiedGateway;
   const supportsRemoteWorkspaceGateway =
-    !isBuiltin &&
-    (draft.kind === "hermes" || draft.kind === "openclaw") &&
-    (isHermesRuntime ? hermesMode !== "local" : draft.location === "remote");
-  const credentialLabel =
-    usesUnifiedGateway
-      ? "Gateway Token"
-      : draft.kind === "hermes"
-        ? "API 密钥"
-        : "Bridge Token";
-  const credentialActionLabel =
-    usesUnifiedGateway
-      ? "保存 Gateway Token"
-      : draft.kind === "hermes"
-        ? "保存 API 密钥"
-        : "保存 Token";
+    !isBuiltin && isRemoteConnection && usesUnifiedGateway;
+  const credentialLabel = usesUnifiedGateway ? "Gateway Token" : "";
+  const credentialActionLabel = usesUnifiedGateway ? "保存 Gateway Token" : "";
   const draftConnectionKey = JSON.stringify({
     kind: draft.kind,
     location: draft.location,
     endpoint: draft.config.endpoint?.trim() || "",
     remoteGateway: draft.config.remoteGateway?.protocol || null,
-    hermes: draft.config.hermes || null,
     executablePath: draft.config.executablePath?.trim() || "",
     workspace: draft.config.workspace?.trim() || "",
     timeoutMs: draft.config.timeoutMs || DEFAULT_TIMEOUT_MS,
@@ -252,11 +211,7 @@ export default function AgentRuntimesPane({
     !isBuiltin &&
     draft.id.trim().length > 0 &&
     draft.name.trim().length > 0 &&
-    (isHermesRuntime
-      ? (usesUnifiedGateway && !!draft.config.endpoint?.trim()) ||
-        hermesMode === "local" ||
-        (hermesMode === "remote" && !!draft.config.endpoint?.trim())
-      : draft.location === "local" || !!draft.config.endpoint?.trim()) &&
+    (draft.location === "local" || !!draft.config.endpoint?.trim()) &&
     (!draft.needsReauthorization || bearerToken.trim().length >= 8) &&
     (!isNew || (draftProbe?.state === "healthy" && draftProbeKey === draftConnectionKey));
 
@@ -285,7 +240,6 @@ export default function AgentRuntimesPane({
           : next[0]?.id || null;
       setSelectedId(nextSelected);
       setBearerToken("");
-      setDashboardToken("");
       setWorkspaceGatewayToken("");
       setCredentialRevision(0);
       setDraftProbe(null);
@@ -356,7 +310,6 @@ export default function AgentRuntimesPane({
     setDraft(draftFromRuntime(runtime));
     setFlash(null);
     setBearerToken("");
-    setDashboardToken("");
     setWorkspaceGatewayToken("");
     setCredentialRevision(0);
     setDraftProbe(null);
@@ -369,7 +322,6 @@ export default function AgentRuntimesPane({
     setDraft(emptyDraft());
     setFlash(null);
     setBearerToken("");
-    setDashboardToken("");
     setWorkspaceGatewayToken("");
     setCredentialRevision(0);
     setDraftProbe(null);
@@ -385,12 +337,7 @@ export default function AgentRuntimesPane({
         ...draft,
         id: draft.id.trim(),
         name: draft.name.trim(),
-        location:
-          draft.kind === "hermes"
-            ? hermesMode === "local"
-              ? "local"
-              : "remote"
-            : draft.location,
+        location: draft.location,
         config: {
           ...draft.config,
           endpoint: draft.config.endpoint?.trim() || undefined,
@@ -409,9 +356,7 @@ export default function AgentRuntimesPane({
         });
       }
       if (
-        (saved.config.remoteGateway?.protocol === "agents-one-v1" ||
-          (saved.location === "remote" &&
-            (saved.kind === "openclaw" || saved.kind === "hermes"))) &&
+        saved.config.remoteGateway?.protocol === "agents-one-v1" &&
         bearerToken.trim()
       ) {
         await window.hermesAPI.setAgentRuntimeBearerToken(
@@ -422,16 +367,8 @@ export default function AgentRuntimesPane({
         setCredentialRevision(0);
         setCredentialConfigured(true);
       }
-      if (saved.kind === "hermes" && dashboardToken.trim()) {
-        await window.hermesAPI.setAgentRuntimeDashboardToken(
-          saved.id,
-          dashboardToken.trim(),
-        );
-        setDashboardToken("");
-      }
       if (
-        saved.location === "remote" &&
-        (saved.kind === "openclaw" || saved.kind === "hermes") &&
+        saved.config.remoteGateway?.protocol === "agents-one-v1" &&
         workspaceGatewayToken.trim()
       ) {
         await window.hermesAPI.setAgentRuntimeWorkspaceGatewayToken(
@@ -510,12 +447,7 @@ export default function AgentRuntimesPane({
           ...draft,
           id: draft.id.trim(),
           name: draft.name.trim(),
-          location:
-            draft.kind === "hermes"
-              ? hermesMode === "local"
-                ? "local"
-                : "remote"
-              : draft.location,
+          location: draft.location,
           config: {
             ...draft.config,
             endpoint: draft.config.endpoint?.trim() || undefined,
@@ -596,43 +528,6 @@ export default function AgentRuntimesPane({
     } finally {
       setSavingCredential(false);
     }
-  }
-
-  function updateHermesConnection(
-    patch: Partial<NonNullable<AgentRuntimeDraft["config"]["hermes"]>>,
-  ): void {
-    setDraft((current) => ({
-      ...current,
-      location:
-        (patch.mode || current.config.hermes?.mode) === "local"
-          ? "local"
-          : "remote",
-      config: {
-        ...current.config,
-        transport: "http",
-        hermes: {
-          mode: current.config.hermes?.mode || "remote",
-          chatTransport: current.config.hermes?.chatTransport || "auto",
-          ...current.config.hermes,
-          ...patch,
-        },
-      },
-    }));
-  }
-
-  function setRemoteProtocol(unified: boolean): void {
-    setDraft((current) => ({
-      ...current,
-      config: {
-        ...current.config,
-        transport: "http",
-        ...(unified
-          ? { remoteGateway: { protocol: "agents-one-v1" as const } }
-          : { remoteGateway: undefined }),
-      },
-    }));
-    setDraftProbe(null);
-    setDraftProbeKey(null);
   }
 
   return (
@@ -875,170 +770,73 @@ export default function AgentRuntimesPane({
               )}
             </label>
 
-            {!isHermesRuntime && (
-              <label className="settings-field">
-                <span className="settings-field-label">连接方式</span>
-                <select
-                  className="input"
-                  aria-label="连接方式"
-                  value={draft.config.transport || "http"}
-                  onChange={(event) =>
-                    updateConfig(
-                      "transport",
-                      event.target.value as "http" | "cli",
-                    )
-                  }
-                  disabled={isBuiltin}
-                >
-                  <option value="http">HTTP</option>
-                  <option value="cli">CLI</option>
-                </select>
-              </label>
-            )}
+            <label className="settings-field">
+              <span className="settings-field-label">连接方式</span>
+              <select
+                className="input"
+                aria-label="连接方式"
+                value={draft.config.transport || "http"}
+                onChange={(event) =>
+                  updateConfig(
+                    "transport",
+                    event.target.value as "http" | "cli",
+                  )
+                }
+                disabled={isBuiltin}
+              >
+                <option value="http">HTTP</option>
+                <option value="cli">CLI</option>
+              </select>
+            </label>
           </div>
 
           <div className="settings-field">
-            <label className="settings-field-label">
-              {isHermesRuntime ? "模式" : "位置"}
-            </label>
+            <label className="settings-field-label">位置</label>
             <div className="settings-theme-options">
-              {isHermesRuntime
-                ? (["local", "remote"] as HermesRuntimeMode[]).map(
-                    (mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        className={`settings-theme-option ${
-                          hermesMode === mode ? "active" : ""
-                        }`}
-                        onClick={() => updateHermesConnection({ mode })}
-                        disabled={isBuiltin}
-                      >
-                        {mode === "local" ? "本地" : "远程"}
-                      </button>
-                    ),
-                  )
-                : (["remote", "local"] as AgentRuntimeLocation[]).map(
-                    (location) => (
-                      <button
-                        key={location}
-                        type="button"
-                        className={`settings-theme-option ${
-                          draft.location === location ? "active" : ""
-                        }`}
-                        onClick={() =>
-                          setDraft((current) => ({
-                            ...current,
-                            location,
-                            config: {
-                              ...current.config,
-                              transport: location === "remote" ? "http" : "cli",
-                            },
-                          }))
-                        }
-                        disabled={isBuiltin}
-                      >
-                        {location === "remote" ? "远程" : "本地"}
-                      </button>
-                    ),
-                  )}
+              {(["remote", "local"] as AgentRuntimeLocation[]).map(
+                (location) => (
+                  <button
+                    key={location}
+                    type="button"
+                    className={`settings-theme-option ${
+                      draft.location === location ? "active" : ""
+                    }`}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        location,
+                        config: {
+                          ...current.config,
+                          transport: location === "remote" ? "http" : "cli",
+                        },
+                      }))
+                    }
+                    disabled={isBuiltin}
+                  >
+                    {location === "remote" ? "远程" : "本地"}
+                  </button>
+                ),
+              )}
             </div>
           </div>
 
-          {isRemoteConnection && (
-            <div className="settings-field">
-              <label className="settings-field-label">接入协议</label>
-              <div className="settings-theme-options">
-                <button
-                  type="button"
-                  className={`settings-theme-option ${usesUnifiedGateway ? "active" : ""}`}
-                  onClick={() => setRemoteProtocol(true)}
-                  disabled={isBuiltin}
-                >
-                  统一 Gateway (v1)
-                </button>
-                <button
-                  type="button"
-                  className={`settings-theme-option ${!usesUnifiedGateway ? "active" : ""}`}
-                  onClick={() => setRemoteProtocol(false)}
-                  disabled={isBuiltin}
-                >
-                  兼容模式
-                </button>
-              </div>
-              <span className="settings-field-hint">
-                统一 Gateway 只需一个地址和一个 Token；兼容模式保留现有 Hermes、OpenClaw 连接配置。
-              </span>
-            </div>
-          )}
-
           {isRemoteConnection ? (
-            usesUnifiedGateway ? (
-              <>
-                <label className="settings-field">
-                  <span className="settings-field-label">Gateway 地址</span>
-                  <input
-                    className="input"
-                    type="url"
-                    aria-label="Gateway 地址"
-                    value={draft.config.endpoint || ""}
-                    onChange={(event) => updateConfig("endpoint", event.target.value)}
-                    placeholder="https://gateway.example.com/agents-one/v1"
-                    disabled={isBuiltin}
-                  />
-                  <span className="settings-field-hint">
-                    填写 Relay 或 Gateway 的 v1 基础地址；不填写 Hermes API、Dashboard 或工作区网关内部地址。
-                  </span>
-                </label>
-                <div className="agent-runtime-form-grid agent-runtime-form-grid--compact">
-                  <label className="settings-field">
-                    <span className="settings-field-label">Gateway Token</span>
-                    <input
-                      className="input"
-                      type="password"
-                      autoComplete="new-password"
-                      value={bearerToken}
-                      onChange={(event) => {
-                        setBearerToken(event.target.value);
-                        setCredentialRevision((current) => current + 1);
-                      }}
-                      placeholder={credentialConfigured ? "已配置" : "Gateway Token"}
-                    />
-                  </label>
-                  {selectedRuntime && (
-                    <div className="settings-card-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => void saveBearerToken()}
-                        disabled={savingCredential || !bearerToken.trim()}
-                      >
-                        <Save size={14} />
-                        保存 Gateway Token
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
             <>
-                <label className="settings-field">
-                  <span className="settings-field-label">
-                    {isHermesRuntime ? "远程服务器地址" : "服务地址"}
-                  </span>
-                  <input
-                    className="input"
-                    type="url"
-                    aria-label={isHermesRuntime ? "远程服务器地址" : "服务地址"}
-                    value={draft.config.endpoint || ""}
-                    onChange={(event) => updateConfig("endpoint", event.target.value)}
-                    placeholder={isHermesRuntime ? "https://host.example/hermes-api" : "https://host.example/bridge"}
-                    disabled={isBuiltin}
-                  />
-                  <span className="settings-field-hint">
-                    凭据仅保存在受保护的连接配置中。
-                  </span>
-                </label>
+              <label className="settings-field">
+                <span className="settings-field-label">Gateway 地址</span>
+                <input
+                  className="input"
+                  type="url"
+                  aria-label="Gateway 地址"
+                  value={draft.config.endpoint || ""}
+                  onChange={(event) => updateConfig("endpoint", event.target.value)}
+                  placeholder="https://gateway.example.com/agents-one/v1"
+                  disabled={isBuiltin}
+                />
+                <span className="settings-field-hint">
+                  填写 Relay 或 Gateway 的 v1 基础地址；远程 Hermes/OpenClaw 统一经 Gateway v1 接入（plan D5）。
+                </span>
+              </label>
               {requiresRemoteCredential && (
                 <div className="agent-runtime-form-grid agent-runtime-form-grid--compact">
                   <label className="settings-field">
@@ -1052,27 +850,25 @@ export default function AgentRuntimesPane({
                         setBearerToken(event.target.value);
                         setCredentialRevision((current) => current + 1);
                       }}
-                      placeholder={
-                        credentialConfigured ? "已配置" : credentialLabel
-                      }
+                      placeholder={credentialConfigured ? "已配置" : credentialLabel}
                     />
                   </label>
                   {selectedRuntime && (
-                  <div className="settings-card-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => void saveBearerToken()}
-                      disabled={savingCredential || !bearerToken.trim()}
-                    >
-                      {savingCredential ? (
-                        <Loader2 size={14} className="settings-spin" />
-                      ) : (
-                        <Save size={14} />
-                      )}
-                      {credentialActionLabel}
-                    </button>
-                  </div>
+                    <div className="settings-card-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => void saveBearerToken()}
+                        disabled={savingCredential || !bearerToken.trim()}
+                      >
+                        {savingCredential ? (
+                          <Loader2 size={14} className="settings-spin" />
+                        ) : (
+                          <Save size={14} />
+                        )}
+                        {credentialActionLabel}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -1091,7 +887,7 @@ export default function AgentRuntimesPane({
                       placeholder="留空则使用服务地址下的 /workspace-gateway"
                     />
                     <span className="settings-field-hint">
-                      OpenClaw 独立部署时填写完整的 https://host/workspace-gateway；Hermes 通常可留空。
+                      远程部署独立时填写完整的 https://host/workspace-gateway；通常可留空。
                     </span>
                   </label>
                   <label className="settings-field">
@@ -1118,35 +914,7 @@ export default function AgentRuntimesPane({
                   </label>
                 </div>
               )}
-              {isHermesRuntime && (
-                <>
-                  <div className="agent-runtime-form-grid">
-                    <label className="settings-field">
-                      <span className="settings-field-label">远程 Dashboard 地址</span>
-                      <input className="input" type="url" aria-label="远程 Dashboard 地址" value={draft.config.hermes?.dashboardUrl || ""} onChange={(event) => updateHermesConnection({ dashboardUrl: event.target.value })} placeholder="https://host.example/hermes-dashboard" disabled={isBuiltin} />
-                    </label>
-                    <label className="settings-field">
-                      <span className="settings-field-label">远程 Dashboard 令牌</span>
-                      <input className="input" type="password" autoComplete="new-password" aria-label="远程 Dashboard 令牌" value={dashboardToken} onChange={(event) => setDashboardToken(event.target.value)} placeholder="留空复用 API 密钥" disabled={isBuiltin} />
-                    </label>
-                  </div>
-                  <div className="settings-field">
-                    <label className="settings-field-label">对话传输方式</label>
-                    <div className="settings-theme-options">
-                      {(["auto", "dashboard", "legacy"] as HermesChatTransport[]).map((transport) => (
-                        <button key={transport} type="button" className={`settings-theme-option ${(draft.config.hermes?.chatTransport || "auto") === transport ? "active" : ""}`} onClick={() => updateHermesConnection({ chatTransport: transport })} disabled={isBuiltin}>
-                          {transport === "auto" ? "自动" : transport === "dashboard" ? "Dashboard" : "基础模式"}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="settings-field-hint">自动优先使用 Dashboard；不可用时切换到基础模式。</span>
-                  </div>
-                </>
-              )}
             </>
-            )
-          ) : isHermesRuntime ? (
-            <span className="settings-field-hint">本地模式连接本机 Hermes 服务；可直接进行连接测试。</span>
           ) : (
             <div className="agent-runtime-form-grid">
               <label className="settings-field">

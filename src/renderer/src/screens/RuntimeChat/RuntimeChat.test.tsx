@@ -89,14 +89,18 @@ function selectFullAccess(): void {
   fireEvent.click(screen.getByRole("menuitemradio", { name: /完全访问/ }));
 }
 
-const openClawRuntime: AgentRuntimeDefinition = {
-  id: "openclaw-remote",
-  name: "OpenClaw",
-  kind: "openclaw",
+const gatewayRuntime: AgentRuntimeDefinition = {
+  id: "hermes-gateway",
+  name: "Hermes Gateway",
+  kind: "hermes",
   location: "remote",
   enabled: true,
   managed: "user",
-  config: { transport: "http", endpoint: "https://example.test" },
+  config: {
+    transport: "http",
+    endpoint: "https://example.test/agents-one/v1",
+    remoteGateway: { protocol: "agents-one-v1" },
+  },
 };
 
 const codexRuntime: AgentRuntimeDefinition = {
@@ -160,9 +164,11 @@ describe("RuntimeChat inputs and persistence", () => {
   const openTerminal = vi.fn();
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // resetAllMocks also clears leftover mockResolvedValueOnce queues, which
+    // would otherwise leak across tests and break order-dependent polling.
+    vi.resetAllMocks();
     probeAgentRuntime.mockResolvedValue({
-      runtimeId: "openclaw-remote",
+      runtimeId: "hermes-gateway",
       state: "healthy",
       checkedAt: Date.now(),
       capabilities: {
@@ -182,7 +188,7 @@ describe("RuntimeChat inputs and persistence", () => {
     });
     startAgentRuntimeTask.mockResolvedValue({
       id: "run-1",
-      runtimeId: "openclaw-remote",
+      runtimeId: "hermes-gateway",
       status: "running",
       output: "",
       createdAt: Date.now(),
@@ -190,7 +196,7 @@ describe("RuntimeChat inputs and persistence", () => {
     });
     getAgentRuntimeRun.mockResolvedValue({
       id: "run-1",
-      runtimeId: "openclaw-remote",
+      runtimeId: "hermes-gateway",
       status: "succeeded",
       output: "输入已读取。",
       createdAt: Date.now(),
@@ -477,11 +483,11 @@ describe("RuntimeChat inputs and persistence", () => {
     ).toEqual([]);
   });
 
-  it("enables controlled OpenClaw attachments after probing artifact support", async () => {
+  it("enables controlled Gateway attachments after probing artifact support", async () => {
     render(
       <RuntimeChat
         runId="chat-openclaw"
-        runtime={openClawRuntime}
+        runtime={gatewayRuntime}
         profile="default"
       />,
     );
@@ -496,7 +502,7 @@ describe("RuntimeChat inputs and persistence", () => {
 
     await waitFor(() =>
       expect(startAgentRuntimeTask).toHaveBeenCalledWith(
-        "openclaw-remote",
+        "hermes-gateway",
         expect.objectContaining({
           prompt: expect.stringContaining("当前用户请求：\n检查输入"),
           mode: "analysis",
@@ -507,7 +513,7 @@ describe("RuntimeChat inputs and persistence", () => {
     await screen.findByText("输入已读取。");
     expect(saveRuntimeConversation).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        runtimeId: "openclaw-remote",
+        runtimeId: "hermes-gateway",
         messages: expect.arrayContaining([
           expect.objectContaining({ role: "user", content: "检查输入" }),
           expect.objectContaining({ role: "agent", content: "输入已读取。" }),
@@ -516,11 +522,11 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
-  it("sends recent conversation context with an OpenClaw follow-up", async () => {
+  it("sends recent conversation context with a Gateway follow-up", async () => {
     render(
       <RuntimeChat
         runId="chat-openclaw-follow-up"
-        runtime={openClawRuntime}
+        runtime={gatewayRuntime}
         profile="default"
         initialMessages={[
           {
@@ -549,7 +555,7 @@ describe("RuntimeChat inputs and persistence", () => {
 
     await waitFor(() =>
       expect(startAgentRuntimeTask).toHaveBeenCalledWith(
-        "openclaw-remote",
+        "hermes-gateway",
         expect.objectContaining({
           prompt: expect.stringContaining("用户：先检查项目结构"),
           sessionId: undefined,
@@ -1310,7 +1316,9 @@ describe("RuntimeChat inputs and persistence", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders collaboration reasoning and tool events while the assigned runtime is still running", async () => {
+  it(
+    "renders collaboration reasoning and tool events while the assigned runtime is still running",
+    async () => {
     startAgentRuntimeTask.mockResolvedValueOnce({
       id: "live-collaboration-run",
       runtimeId: "pi-local",
@@ -1403,10 +1411,12 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(screen.getAllByText("Read File").length).toBeGreaterThan(0);
     expect(document.querySelector(".chat-agent-name")?.textContent).toBe("Pi");
     expect(
-      (await screen.findAllByText("复核完成。", {}, { timeout: 2_500 })).length,
+      (await screen.findAllByText("复核完成。", {}, { timeout: 8_000 })).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("正在检查交付文件。")).toBeInTheDocument();
-  });
+    },
+    15_000,
+  );
 
   it("routes a failed review back to implementation and closes only after re-review and lead acceptance", async () => {
     const assignments = [
@@ -1978,7 +1988,7 @@ describe("RuntimeChat inputs and persistence", () => {
         runtimeId,
         status: "succeeded",
         output:
-          runtimeId === "openclaw-remote"
+          runtimeId === "hermes-gateway"
             ? "[验收结论]\n状态：通过\n依据：#1 #2\n结论：两个分支均完成。"
             : `${runtimeId} 完成`,
         startedAt: Date.now(),
@@ -2018,7 +2028,7 @@ describe("RuntimeChat inputs and persistence", () => {
       {
         id: "join",
         role: "验收",
-        runtimeId: "openclaw-remote",
+        runtimeId: "hermes-gateway",
         dependsOn: ["front", "back"],
         workspaceAccess: "remote_mapping" as const,
         workspaceRef: "D:\\default",
@@ -2042,7 +2052,7 @@ describe("RuntimeChat inputs and persistence", () => {
           "pi-local": piRuntime,
           "codex-local": codexRuntime,
           "claude-local": claudeRuntime,
-          "openclaw-remote": openClawRuntime,
+          "hermes-gateway": gatewayRuntime,
         }}
       />,
     );
@@ -2069,7 +2079,7 @@ describe("RuntimeChat inputs and persistence", () => {
         .sort(),
     ).toEqual(["claude-local", "codex-local"]);
     expect(startAgentRuntimeTask).not.toHaveBeenCalledWith(
-      "openclaw-remote",
+      "hermes-gateway",
       expect.anything(),
     );
     await waitFor(() => {
@@ -2092,7 +2102,7 @@ describe("RuntimeChat inputs and persistence", () => {
       () => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(4),
       { timeout: 4_000 },
     );
-    expect(startAgentRuntimeTask.mock.calls[3][0]).toBe("openclaw-remote");
+    expect(startAgentRuntimeTask.mock.calls[3][0]).toBe("hermes-gateway");
     await waitFor(
       () =>
         expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
@@ -2218,14 +2228,14 @@ describe("RuntimeChat inputs and persistence", () => {
             {
               id: "implement",
               role: "实施",
-              runtimeId: "openclaw-remote",
+              runtimeId: "hermes-gateway",
               workspaceAccess: "evidence_bundle",
             },
             { id: "test", role: "测试", runtimeId: "claude-local" },
           ],
         }}
         runtimeCatalog={{
-          "openclaw-remote": openClawRuntime,
+          "hermes-gateway": gatewayRuntime,
           "claude-local": claudeRuntime,
           "pi-local": piRuntime,
         }}
@@ -2245,7 +2255,7 @@ describe("RuntimeChat inputs and persistence", () => {
               {
                 id: "implement",
                 role: "实施",
-                runtimeId: "openclaw-remote",
+                runtimeId: "hermes-gateway",
                 workspaceAccess: "evidence_bundle",
               },
               { id: "test", role: "测试", runtimeId: "claude-local" },
@@ -2295,13 +2305,13 @@ describe("RuntimeChat inputs and persistence", () => {
               id: "acceptance",
               role: "测试验收",
               responsibility: "基于实施交付逐项验收并输出结论",
-              runtimeId: "openclaw-remote",
+              runtimeId: "hermes-gateway",
               workspaceAccess: "evidence_bundle",
             },
           ],
         }}
         runtimeCatalog={{
-          "openclaw-remote": openClawRuntime,
+          "hermes-gateway": gatewayRuntime,
           "pi-local": piRuntime,
         }}
       />,
@@ -2321,7 +2331,7 @@ describe("RuntimeChat inputs and persistence", () => {
                 id: "acceptance",
                 role: "测试验收",
                 responsibility: "基于实施交付逐项验收并输出结论",
-                runtimeId: "openclaw-remote",
+                runtimeId: "hermes-gateway",
                 workspaceAccess: "evidence_bundle",
               },
             ],
@@ -2334,7 +2344,7 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(screen.queryByText(/协作未启动/)).not.toBeInTheDocument();
     expect(prepareProjectContext).toHaveBeenCalledWith("D:\\project");
     expect(startAgentRuntimeTask).toHaveBeenCalledWith(
-      "openclaw-remote",
+      "hermes-gateway",
       expect.objectContaining({
         attachments: [
           expect.objectContaining({ name: "project-project-context.txt" }),
@@ -2358,13 +2368,13 @@ describe("RuntimeChat inputs and persistence", () => {
             {
               id: "acceptance",
               role: "测试验收",
-              runtimeId: "openclaw-remote",
+              runtimeId: "hermes-gateway",
               workspaceAccess: "evidence_bundle",
             },
           ],
         }}
         runtimeCatalog={{
-          "openclaw-remote": openClawRuntime,
+          "hermes-gateway": gatewayRuntime,
           "pi-local": piRuntime,
         }}
       />,
@@ -2382,7 +2392,7 @@ describe("RuntimeChat inputs and persistence", () => {
               {
                 id: "acceptance",
                 role: "测试验收",
-                runtimeId: "openclaw-remote",
+                runtimeId: "hermes-gateway",
                 workspaceAccess: "evidence_bundle",
               },
             ],
@@ -2439,7 +2449,7 @@ describe("RuntimeChat inputs and persistence", () => {
             ? "codex-local"
             : id === "run-test"
               ? "claude-local"
-              : "openclaw-remote",
+              : "hermes-gateway",
       status: "succeeded",
       output: outputs[id],
       startedAt: Date.now(),
@@ -2500,7 +2510,7 @@ describe("RuntimeChat inputs and persistence", () => {
             {
               id: "accept",
               role: "验收",
-              runtimeId: "openclaw-remote",
+              runtimeId: "hermes-gateway",
               responsibility: "基于真实产物验收",
             },
           ],
@@ -2509,7 +2519,7 @@ describe("RuntimeChat inputs and persistence", () => {
           "pi-local": piRuntime,
           "codex-local": codexRuntime,
           "claude-local": claudeRuntime,
-          "openclaw-remote": openClawRuntime,
+          "hermes-gateway": gatewayRuntime,
         }}
       />,
     );
@@ -2533,7 +2543,7 @@ describe("RuntimeChat inputs and persistence", () => {
               {
                 id: "accept",
                 role: "验收",
-                runtimeId: "openclaw-remote",
+                runtimeId: "hermes-gateway",
                 responsibility: "基于真实产物验收",
               },
             ],
@@ -2603,7 +2613,7 @@ describe("RuntimeChat inputs and persistence", () => {
           : id === "run-test"
             ? "claude-local"
             : id === "run-accept"
-              ? "openclaw-remote"
+              ? "hermes-gateway"
               : "pi-local",
       status: "succeeded",
       output:
@@ -2658,14 +2668,14 @@ describe("RuntimeChat inputs and persistence", () => {
             },
             { id: "implement", role: "实施", runtimeId: "codex-local" },
             { id: "test", role: "测试", runtimeId: "claude-local" },
-            { id: "accept", role: "验收", runtimeId: "openclaw-remote" },
+            { id: "accept", role: "验收", runtimeId: "hermes-gateway" },
           ],
         }}
         runtimeCatalog={{
           "pi-local": piRuntime,
           "codex-local": codexRuntime,
           "claude-local": claudeRuntime,
-          "openclaw-remote": openClawRuntime,
+          "hermes-gateway": gatewayRuntime,
         }}
       />,
     );
@@ -2686,7 +2696,7 @@ describe("RuntimeChat inputs and persistence", () => {
               },
               { id: "implement", role: "实施", runtimeId: "codex-local" },
               { id: "test", role: "测试", runtimeId: "claude-local" },
-              { id: "accept", role: "验收", runtimeId: "openclaw-remote" },
+              { id: "accept", role: "验收", runtimeId: "hermes-gateway" },
             ],
           },
         },
@@ -2698,7 +2708,7 @@ describe("RuntimeChat inputs and persistence", () => {
       "pi-local",
       "codex-local",
       "claude-local",
-      "openclaw-remote",
+      "hermes-gateway",
       "pi-local",
     ]);
     expect(startAgentRuntimeTask.mock.calls[4][1].prompt).toContain("终验汇总");

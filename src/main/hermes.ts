@@ -27,7 +27,6 @@ import {
 } from "./installer";
 import {
   getApiServerKey,
-  getConnectionConfig,
   getConfigValue,
   getModelConfig,
   readEnv,
@@ -78,7 +77,6 @@ import {
   hostDerivedEnvKeyForUrl,
   shouldPruneOpenRouterApiKey,
 } from "./host-derived-env";
-import { configuredRemoteTlsOptions } from "./remote-tls";
 
 /**
  * Resolve which profile a gateway call targets. An explicit profile always
@@ -118,46 +116,35 @@ export function normaliseRemoteUrl(raw: string): string {
 }
 
 export function getApiUrl(profile?: string): string {
-  const conn = getConnectionConfig();
-  if (conn.mode === "remote" && conn.remoteUrl) {
-    return normaliseRemoteUrl(conn.remoteUrl);
-  }
-  // Local mode: each profile's gateway binds its own port so they can run
-  // concurrently. Address the active (or explicitly requested) profile's
-  // gateway rather than a fixed 8642 — that constant would always resolve to
-  // whichever gateway grabbed the port first, regardless of active profile.
+  // The built-in Hermes connection is local-only (plan D5); remote agents go
+  // through Gateway v1. Each profile's local gateway binds its own port so
+  // they can run concurrently. Address the active (or explicitly requested)
+  // profile's gateway rather than a fixed 8642 — that constant would always
+  // resolve to whichever gateway grabbed the port first, regardless of
+  // active profile.
   return `http://127.0.0.1:${getProfilePort(resolveProfile(profile))}`;
 }
 
 export function isRemoteMode(): boolean {
-  return getConnectionConfig().mode === "remote";
+  return false;
 }
 
 /** True only for pure remote HTTP (SSH mode was removed). */
 export function isRemoteOnlyMode(): boolean {
-  return getConnectionConfig().mode === "remote";
+  return false;
 }
 
 export function getRemoteAuthHeader(): Record<string, string> {
-  const conn = getConnectionConfig();
-  if (conn.mode === "remote" && conn.apiKey) {
-    return { Authorization: `Bearer ${conn.apiKey}` };
-  }
   return {};
 }
 
 function getApiAuthHeaders(profile?: string): Record<string, string> {
-  const headers: Record<string, string> = {
-    ...getRemoteAuthHeader(),
-  };
+  const headers: Record<string, string> = {};
   // Local API server key (API_SERVER_KEY in the profile's .env /
-  // config.yaml) only applies in local mode — in remote mode the
-  // remote endpoint's own auth header is authoritative.
-  if (!isRemoteMode()) {
-    const apiServerKey = getApiServerKey(profile);
-    if (apiServerKey) {
-      headers.Authorization = `Bearer ${apiServerKey}`;
-    }
+  // config.yaml) is the canonical gateway credential.
+  const apiServerKey = getApiServerKey(profile);
+  if (apiServerKey) {
+    headers.Authorization = `Bearer ${apiServerKey}`;
   }
   return headers;
 }
@@ -205,7 +192,6 @@ async function getApiCapabilities(
       url,
       {
         method: "GET",
-        ...configuredRemoteTlsOptions(url),
         headers: getApiAuthHeaders(profile),
         timeout: CAPABILITIES_TIMEOUT_MS,
       },
@@ -245,15 +231,8 @@ async function getApiCapabilities(
   return value;
 }
 
-function resolveRemoteApiKey(url: string, apiKey?: string): string {
-  if (apiKey !== undefined) return apiKey;
-
-  const conn = getConnectionConfig();
-  if (conn.mode !== "remote" || !conn.apiKey || !conn.remoteUrl) return "";
-  if (normaliseRemoteUrl(conn.remoteUrl) !== normaliseRemoteUrl(url)) {
-    return "";
-  }
-  return conn.apiKey;
+function resolveRemoteApiKey(_url: string, apiKey?: string): string {
+  return apiKey ?? "";
 }
 
 
@@ -903,7 +882,6 @@ function isApiServerReady(profile?: string): Promise<boolean> {
         url,
         {
           method: "GET",
-          ...configuredRemoteTlsOptions(url),
           timeout: 1500,
           headers: getRemoteAuthHeader(),
         },
@@ -1446,7 +1424,6 @@ function sendMessageViaApi(
     chatUrl,
     {
       method: "POST",
-      ...configuredRemoteTlsOptions(chatUrl),
       headers,
       signal: controller.signal,
       timeout: 120000,
@@ -1574,7 +1551,6 @@ function postRunStop(
   const requester = url.startsWith("https") ? https : http;
   const req = requester.request(url, {
     method: "POST",
-    ...configuredRemoteTlsOptions(url),
     headers: getApiAuthHeaders(profile),
     timeout: 3000,
   });
@@ -1743,7 +1719,6 @@ function sendMessageViaRuns(
       eventsUrl,
       {
         method: "GET",
-        ...configuredRemoteTlsOptions(eventsUrl),
         headers: getApiAuthHeaders(profile),
         signal: controller.signal,
         timeout: 120000,
@@ -1814,7 +1789,6 @@ function sendMessageViaRuns(
     startUrl,
     {
       method: "POST",
-      ...configuredRemoteTlsOptions(startUrl),
       headers,
       signal: controller.signal,
       timeout: 30000,
@@ -3365,7 +3339,6 @@ export function testRemoteConnection(
       target,
       {
         method: "GET",
-        ...configuredRemoteTlsOptions(target),
         timeout: 5000,
         headers,
       },
