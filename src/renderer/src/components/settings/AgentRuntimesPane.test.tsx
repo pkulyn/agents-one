@@ -21,13 +21,17 @@ const capabilities = {
   workspaceAccess: false,
 };
 
-function installHermesAPI(runtimes: AgentRuntimeDefinition[]): {
+function installHermesAPI(
+  runtimes: AgentRuntimeDefinition[],
+  detected: Record<string, string | null> = {},
+): {
   listAgentRuntimes: ReturnType<typeof vi.fn>;
   saveAgentRuntime: ReturnType<typeof vi.fn>;
   saveAgentRuntimeAppearance: ReturnType<typeof vi.fn>;
   probeAgentRuntime: ReturnType<typeof vi.fn>;
   probeAgentRuntimeDraft: ReturnType<typeof vi.fn>;
   setAgentRuntimeBearerToken: ReturnType<typeof vi.fn>;
+  detectLocalCliPaths: ReturnType<typeof vi.fn>;
 } {
   let current = [...runtimes];
   const listAgentRuntimes = vi.fn(async () => current);
@@ -53,6 +57,7 @@ function installHermesAPI(runtimes: AgentRuntimeDefinition[]): {
   const probeAgentRuntime = vi.fn(async () => probe);
   const probeAgentRuntimeDraft = vi.fn(async () => probe);
   const setAgentRuntimeBearerToken = vi.fn(async () => ({ configured: true as const }));
+  const detectLocalCliPaths = vi.fn(async () => detected);
 
   Object.defineProperty(window, "hermesAPI", {
     configurable: true,
@@ -68,6 +73,7 @@ function installHermesAPI(runtimes: AgentRuntimeDefinition[]): {
       setAgentRuntimeBearerToken,
       probeAgentRuntime,
       probeAgentRuntimeDraft,
+      detectLocalCliPaths,
     },
   });
 
@@ -78,6 +84,7 @@ function installHermesAPI(runtimes: AgentRuntimeDefinition[]): {
     probeAgentRuntime,
     probeAgentRuntimeDraft,
     setAgentRuntimeBearerToken,
+    detectLocalCliPaths,
   };
 }
 
@@ -252,6 +259,25 @@ describe("AgentRuntimesPane", () => {
         }),
       );
     });
+  });
+
+  it("auto-fills a PATH-detected local CLI path and derives location/transport for new agents", async () => {
+    const api = installHermesAPI([], { pi: "C:\\tools\\pi.cmd" });
+    render(<AgentRuntimesPane />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "接入" }));
+    fireEvent.change(screen.getByLabelText("类型"), { target: { value: "pi" } });
+
+    // PATH detection (plan 1.5) prefills the executable path.
+    expect(screen.getByLabelText("可执行文件")).toHaveValue("C:\\tools\\pi.cmd");
+    expect(
+      screen.getByText("已在 PATH 检测到：C:\\tools\\pi.cmd"),
+    ).toBeInTheDocument();
+    // Location and transport are derived from the template for new agents.
+    expect(screen.getByRole("button", { name: "本地" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "远程" })).toBeDisabled();
+    expect(screen.getByLabelText("连接方式")).toBeDisabled();
+    expect(api.detectLocalCliPaths).toHaveBeenCalled();
   });
 
   it("saves a Gateway token through IPC without adding it to runtime config", async () => {

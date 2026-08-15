@@ -177,6 +177,7 @@ import {
   updateRuntimeConversationTitle,
   clearRuntimeConversationWorkspace,
 } from "../runtime-conversation-store";
+import { detectLocalCliPaths } from "../local-cli-detect";
 import {
   activeAgentRuntimeTaskCount,
   cancelAgentRuntimeTask,
@@ -663,6 +664,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Agent runtimes deliberately expose only non-secret definitions. Hermes
   // credentials stay in the existing protected connection configuration.
   ipcMain.handle("list-agent-runtimes", () => listAgentRuntimes());
+  // Local CLI PATH detection (plan 1.5): the "add agent" form auto-lists the
+  // Pi / Claude Code / Codex executables found on PATH for one-click paths.
+  ipcMain.handle("detect-local-cli-paths", () => detectLocalCliPaths());
   ipcMain.handle(
     "get-agent-runtime-model-context-window",
     async (
