@@ -1693,3 +1693,12 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 测试：删除 `ssh-options/ssh-remote/ssh-remote-paths/cronjobs-ssh/messaging-platforms-remote` 等已删功能测试；重写 `connection-config-security` 为 local-only；更新 `agent-runtimes`（删除旧远程/OpenClaw/coordinator 测试）、`hermes-api`（http mock 补回调 + getApiServerKey）、`remote-mode-url-and-spawn`（删 startGateway 远程块）、`task-schedules`/`runtime-conversation-store`/`RuntimeChat`/`AgentRuntimesPane`/`ProfileSwitcher`/`dashboard-remote`。
 - 自动验证：Node/Web TypeScript 检查通过；Vitest 全量 178 个测试文件、1775 项通过、9 项跳过（1 项 RuntimeChat 顺序敏感测试待稳定）；生产构建待跑。
 - 下一步：1.5 注册表单统一（远程=链接+Token，本地=路径）。
+
+## 2026-08-15：Phase 1.5 注册表单统一完成
+
+- 目标：新增智能体表单统一为「远程 = 链接 + Token，本地 = 可执行文件路径（自动探测）」，与计划最终形态对齐。
+- 本地 CLI 自动探测（核心）：新增 `src/main/local-cli-detect.ts`，跨平台 PATH 扫描（Windows 依次尝试 `.cmd`/`.exe`/`.bat`/裸名，POSIX 裸名）定位 pi/claude/codex 可执行文件；`detectLocalCliPaths()` 一次返回三者。新增 IPC `detect-local-cli-paths` 与 preload `detectLocalCliPaths`。
+- 表单回填：`AgentRuntimesPane` 挂载时获取 PATH 检测结果，选择本地 CLI 模板时自动回填 `executablePath`（检测不到则回退裸命令名）；本地表单显示"已在 PATH 检测到：<路径>"或"未检测到，请填写完整路径"提示。
+- 表单收敛：新增智能体时「位置」与「连接方式」由模板派生并禁用（Hermes → 远程 Gateway http；pi/codex/claude-code → 本地 CLI cli），表单心智模型对齐「远程 = 链接 + Token，本地 = 路径」；编辑已有智能体仍可调整。
+- 验证：Node/Web TypeScript 检查通过；新增 `local-cli-detect.test.ts` 5 项单测（含 Windows `.cmd` 与 POSIX 裸名、未命中 null）；`AgentRuntimesPane.test.tsx` 新增 PATH 自动回填 + 派生位置/连接方式测试；全量 179 个测试文件、1782 项通过、9 项跳过；生产构建通过（renderer 约 8.07MB）。
+- 下一步：1.6 Agents 卡片增强；1.7 定向+全量回归。

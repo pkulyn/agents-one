@@ -241,6 +241,7 @@ interface HermesAPI {
   isRemoteMode: () => Promise<boolean>;
   isRemoteOnlyMode: () => Promise<boolean>;
   listAgentRuntimes: () => Promise<AgentRuntimeDefinition[]>;
+  detectLocalCliPaths: () => Promise<Record<string, string | null>>;
   getAgentRuntimeModelContextWindow: (
     runtimeId: string,
     provider: string,

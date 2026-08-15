@@ -40,7 +40,10 @@ function HermesConnectionManager(): React.JSX.Element {
   );
 }
 
-function runtimeTemplate(kind: AgentRuntimeKind): AgentRuntimeDraft {
+function runtimeTemplate(
+  kind: AgentRuntimeKind,
+  detected: Record<string, string | null> = {},
+): AgentRuntimeDraft {
   if (kind === "pi") {
     return {
       id: "pi-agent",
@@ -49,7 +52,9 @@ function runtimeTemplate(kind: AgentRuntimeKind): AgentRuntimeDraft {
       location: "local",
       enabled: true,
       config: {
-        executablePath: "pi",
+        // Auto-fill the PATH-detected executable (plan 1.5); fall back to the
+        // bare command name so the form still works when detection is empty.
+        executablePath: detected.pi || "pi",
         transport: "cli",
         timeoutMs: DEFAULT_TIMEOUT_MS,
       },
@@ -63,7 +68,7 @@ function runtimeTemplate(kind: AgentRuntimeKind): AgentRuntimeDraft {
       location: "local",
       enabled: true,
       config: {
-        executablePath: "codex",
+        executablePath: detected.codex || "codex",
         transport: "cli",
         timeoutMs: DEFAULT_TIMEOUT_MS,
       },
@@ -77,7 +82,7 @@ function runtimeTemplate(kind: AgentRuntimeKind): AgentRuntimeDraft {
       location: "local",
       enabled: true,
       config: {
-        executablePath: "claude",
+        executablePath: detected["claude-code"] || "claude",
         transport: "cli",
         timeoutMs: DEFAULT_TIMEOUT_MS,
       },
@@ -180,6 +185,21 @@ export default function AgentRuntimesPane({
   const [savingCredential, setSavingCredential] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  // PATH-detected local CLI executables (plan 1.5) — auto-fill the executable
+  // path when the user starts a local CLI template.
+  const [localCliPaths, setLocalCliPaths] = useState<
+    Record<string, string | null>
+  >({});
+
+  useEffect(() => {
+    if (!window.hermesAPI.detectLocalCliPaths) return;
+    window.hermesAPI
+      .detectLocalCliPaths()
+      .then(setLocalCliPaths)
+      .catch(() => {
+        /* best-effort — detection is a convenience, not a requirement */
+      });
+  }, []);
 
   const selectedRuntime = useMemo(
     () => runtimes.find((runtime) => runtime.id === selectedId) || null,
@@ -750,7 +770,7 @@ export default function AgentRuntimesPane({
                 onChange={(event) => {
                   const kind = event.target.value as AgentRuntimeKind;
                   if (isNew) {
-                    setDraft(runtimeTemplate(kind));
+                    setDraft(runtimeTemplate(kind, localCliPaths));
                     return;
                   }
                   setDraft((current) => ({ ...current, kind }));
@@ -782,7 +802,9 @@ export default function AgentRuntimesPane({
                     event.target.value as "http" | "cli",
                   )
                 }
-                disabled={isBuiltin}
+                // For a new agent the transport is derived from the template:
+                // remote (Gateway v1) → http, local CLI → cli (plan 1.5).
+                disabled={isBuiltin || isNew}
               >
                 <option value="http">HTTP</option>
                 <option value="cli">CLI</option>
@@ -811,13 +833,20 @@ export default function AgentRuntimesPane({
                         },
                       }))
                     }
-                    disabled={isBuiltin}
+                    // For a new agent the location is derived from the chosen
+                    // template (Hermes → remote Gateway, others → local CLI).
+                    disabled={isBuiltin || isNew}
                   >
                     {location === "remote" ? "远程" : "本地"}
                   </button>
                 ),
               )}
             </div>
+            {isNew && (
+              <span className="settings-field-hint">
+                由模板决定：Hermes 为远程 Gateway（地址 + Token），其余为本地 CLI（可执行文件路径）。
+              </span>
+            )}
           </div>
 
           {isRemoteConnection ? (
@@ -935,6 +964,13 @@ export default function AgentRuntimesPane({
                   }
                   disabled={isBuiltin}
                 />
+                <span className="settings-field-hint">
+                  {isNew && localCliPaths[draft.kind]
+                    ? `已在 PATH 检测到：${localCliPaths[draft.kind]}`
+                    : isNew && draft.kind !== "hermes"
+                      ? "未在 PATH 检测到，请填写可执行文件完整路径。"
+                      : "可执行文件路径或命令名（自动检测优先）。"}
+                </span>
               </label>
               <label className="settings-field">
                 <span className="settings-field-label">检测工作区（可选）</span>

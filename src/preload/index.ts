@@ -257,6 +257,8 @@ const hermesAPI = {
     ipcRenderer.invoke("is-remote-only-mode"),
   listAgentRuntimes: (): Promise<AgentRuntimeDefinition[]> =>
     ipcRenderer.invoke("list-agent-runtimes"),
+  detectLocalCliPaths: (): Promise<Record<string, string | null>> =>
+    ipcRenderer.invoke("detect-local-cli-paths"),
   getAgentRuntimeModelContextWindow: (
     runtimeId: string,
     provider: string,

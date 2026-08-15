@@ -72,6 +72,10 @@ The legacy remote OpenClaw bridge client was removed (plan D5): remote agents no
 
 The minimal runtime-management UI lives in [[src/renderer/src/components/settings/AgentRuntimesPane.tsx]] and is mounted under Settings -> Runtimes. It lists built-in and user runtimes, saves only non-secret config fields, supports enable/disable, probes health/capabilities, and removes user runtimes. [[src/renderer/src/components/settings/AgentRuntimesPane.test.tsx]] covers load/probe/save behavior alongside the backend registry tests.
 
+### Registration form (plan 1.5)
+
+The "add agent" form is unified to two shapes: remote = one Gateway v1 URL + one token, local = an executable path. For a new agent the location/transport are derived from the chosen kind template (Hermes → remote Gateway http; pi/Codex/Claude Code → local CLI cli), so the form never produces the old inconsistent kind+location combinations. [[src/main/local-cli-detect.ts#detectLocalCliPaths]] scans PATH for `pi` / `claude` / `codex` (Windows checks `.cmd`/`.exe`/`.bat` variants) and prefills the executable path via the `detect-local-cli-paths` IPC (plan 1.5). [[src/main/local-cli-detect.test.ts]] fixes the PATH-resolution contract.
+
 ### Codex worktree runtime and scheduled Runtime conversations
 
 The first local coding runtime runs Codex through the permission boundary selected for each task. Scheduled work uses the same Runtime conversation path as an ordinary new task instead of a parallel hidden task system.
