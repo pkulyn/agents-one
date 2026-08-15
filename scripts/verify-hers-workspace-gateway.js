@@ -4,8 +4,7 @@ const https = require("https");
 const path = require("path");
 
 const runtimeId = "hermes-home";
-const workspaceRoot =
-  process.argv[2] || "D:\\Users\\chenfl\\Desktop\\test";
+const workspaceRoot = process.argv[2];
 const desktopConfigPath = path.join(
   process.env.LOCALAPPDATA || "",
   "hermes",
@@ -231,6 +230,11 @@ function executeWorkspaceRequest(request) {
 }
 
 async function main() {
+  if (!workspaceRoot) {
+    fail(
+      "workspaceRoot is required: node verify-hers-workspace-gateway.js <workspaceRoot>",
+    );
+  }
   const config = JSON.parse(fs.readFileSync(desktopConfigPath, "utf8"));
   const runtime = (config.agentRuntimes || []).find(
     (candidate) => candidate?.id === runtimeId,

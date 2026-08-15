@@ -106,5 +106,5 @@ transport: "gateway-v1" | "local-cli" | "local-api";
 | Phase 2 遗留清理 | ✅ 主体完成 | 2026-08-14 | ①孤儿屏狄删除✅ ②上游云/钱包/社区删除✅ ③Skills/Memory/Soul UI 删除✅ ④i18n 收敛 en+zh-CN✅ ⑤上游 hermesone/fathah 引用清理✅ ⑥分析器删除✅；深层主进程 IPC 清理（registry/messaging/tools）与 Phase 1 旧远程传输耦合，延后 |
 | Phase 3 开源准备 | 🔄 部分完成 | 2026-08-14 | 元数据（package.json/LICENSE/electron-builder/updater/CONTRIBUTING/删上游 changelog+README 变体）✅；README 重写待 Phase 1 完成后（需描述统一接入模型） |
 | Phase 1 接入统一 | ✅ 完成 | 2026-08-14 | 1.1 配置模型 `agentTransport`+推导 ✅（c414f23）；1.2 transport 分类器+start 守卫 ✅（e393d9a）；1.3 SSH 删除 ✅；1.4 旧远程模式删除 ✅；1.5 注册表单统一 ✅；1.6 Agents 卡片增强 ✅；1.7 定向+全量回归 ✅（全量 179 文件 1783 通过，typecheck/build/diff-check 全绿；修复 RuntimeChat 协作 flaky） |
-| Phase 3 开源准备 | ⬜ | | |
+| Phase 3 开源准备 | ✅ 完成 | 2026-08-16 | 16 README 重写 ✅（README.md/zh-CN 描述统一接入模型、Gateway v1 与 Plugin SDK 指引、删除上游徽章/赞助/Ko-fi、替换为当前构建实拍截图）；18 硬编码路径清理 ✅（verify-hers-*.js 参数必填、测试 chenfl→tester、HERS_GATEWAY 文档命令示例改占位符）；20 lat.md 知识库同步 ✅（删除 5 个已删功能文档 + 修 sidebar-navigation/main-process/window-chrome 失效链接与过时章节；lat.md CLI 未安装，用本地脚本验证 253 链接 0 失效） |
 | Phase 4 发布 | ⬜ | | |

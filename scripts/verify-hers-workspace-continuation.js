@@ -9,7 +9,7 @@ const {
 } = require("./verify-hers-workspace-gateway");
 
 const runtimeId = "hermes-home";
-const workspaceRoot = process.argv[2] || "D:\\Users\\chenfl\\Desktop\\test";
+const workspaceRoot = process.argv[2];
 const desktopConfigPath = path.join(
   process.env.LOCALAPPDATA || "",
   "hermes",
@@ -150,6 +150,11 @@ async function revoke(endpoint, token, grantId) {
 }
 
 async function main() {
+  if (!workspaceRoot) {
+    fail(
+      "workspaceRoot is required: node verify-hers-workspace-continuation.js <workspaceRoot>",
+    );
+  }
   if (!fs.statSync(workspaceRoot).isDirectory()) {
     fail("Verification workspace is not a directory.");
   }

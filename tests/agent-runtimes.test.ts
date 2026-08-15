@@ -292,7 +292,7 @@ describe("agent runtime registry", () => {
 
     expect(
       runtimes.hasRemoteDeliveredContent(
-        'MEDIA:"C:\\Users\\chenfl\\Desktop\\test-chart.png"',
+        'MEDIA:"C:\\Users\\tester\\Desktop\\test-chart.png"',
       ),
     ).toBe(true);
     expect(

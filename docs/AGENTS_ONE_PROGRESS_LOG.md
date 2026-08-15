@@ -1720,3 +1720,12 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 残留清理：删除 `settings.ts`（en/zh-CN）中已无引用的死 i18n 键（OpenClaw 迁移、远程连接、Dashboard/chatTransport、serverConfig、switchedToLocal 等）；更新 AgentRuntimesPane 用户提示与 ActiveSessionsBar/RuntimeChat 注释中的 OpenClaw 残留。
 - 全量回归：Node/Web TypeScript 检查通过；Vitest 全量 179 个测试文件、1783 项通过、9 项跳过（两次运行一致）；Electron Vite 生产构建通过（renderer 约 8.06MB）；`git diff --check` 通过。
 - Phase 1（智能体接入统一，方案 A）全部 slice 完成：1.1 配置模型 / 1.2 transport 守卫 / 1.3 SSH 删除 / 1.4 旧远程+OpenClaw 删除 / 1.5 注册表单统一 / 1.6 Agents 卡片增强 / 1.7 回归。下一步进入 Phase 3 收尾（README 重写描述统一接入模型）与 Phase 4 发布。
+
+## 2026-08-16：Phase 3 开源准备收尾完成
+
+- README 重写（项 16）：`README.md` / `README.zh-CN.md` 从上游 Hermes Desktop 内容整体重写为 Agents One 自述——定位（本地 CLI 智能体 + 远程 Gateway v1 的统一桌面工作区）、功能清单（统一对话壳/智能体注册表/本地 CLI Runtime/远程 Gateway v1/项目/任务与定时任务/多智能体协作/会话管理/归档/备份恢复/Plugin SDK/i18n）、快速开始（远程 = 链接 + Token，本地 = 路径）、架构说明（Runtime Adapter 契约、Remote Gateway v1、Agent Event Stream v1、Plugin SDK）、数据与隐私章节；删除全部上游徽章、Sponsors、Ko-fi、$HD Token、star-history、fathah/hermesone.org 链接与多语言入口。
+- README 截图更新：现有 `previews/*.png` 均为上游旧界面（Discover/Gateway/Kanban/Office 等已删页面），用 Playwright `_electron.launch` 以隔离 userData + 隔离 `HERMES_HOME` 启动当前构建，截取当前实拍 `previews/agents.png`（智能体卡片，本地/远程分组）与 `previews/chat.png`（统一对话欢迎页）；隔离环境确保截图不含真实会话标题、项目名、个人路径或真实 IP（逐张经多模态识图复核）。
+- 硬编码路径清理（项 18）：`scripts/verify-hers-workspace-gateway.js` 与 `verify-hers-workspace-continuation.js` 的 `workspaceRoot` 从默认值改为参数必填（main() 内校验，无参数时报用法错误退出）；`tests/agent-runtimes.test.ts` 与 `runtimeChatMessageAdapter.test.ts` 的 `C:\Users\chenfl\...` mock 路径改为通用 `C:\Users\tester\...`；`docs/HERS_GATEWAY_V1_WORKSPACE_GRANT_ALIGNMENT.md` 可重复运行命令示例改为 `<workspaceRoot>` 占位符。
+- lat.md 知识库同步（项 20）：删除 5 个描述已删除上游功能的文档（`agent-sync.md`、`analytics.md`、`hermes-account-login.md`、`provider-setup.md`、`wallet-token-balances.md`）并移除索引条目；`main-process.md` 删除 wallet IPC 段落；`sidebar-navigation.md` 删除 Discover/Office/Profile wallets 章节、更新 Profile 详情模态（单 Profile section，无 Persona/Memory/Wallet）、Footer 行动行（仅 update + ProfileSwitcher）、Settings 导航（Appearance/Language/Data/Archives/About/Logs）；`window-chrome.md` 删除 Follow-us 模态章节。链接验证 251 个全部有效、0 失效（lat.md CLI 未安装，用本地脚本验证 wiki 链接/代码引用目标存在性与格式规范）。
+- 验证：Node/Web TypeScript 检查通过；受影响的 agent-runtimes / runtimeChatMessageAdapter 32 项测试通过；生产构建通过（renderer 约 8.1MB）；README 引用的 docs/ 与 previews/ 文件全部存在。
+- 下一步：Phase 4 发布（干净目录全量验证 → 推送 `pkulyn/agents-one` + GitHub Actions CI → 发布后远程 502 错误分类降级与四 Runtime 端到端复测）。推进前需处理分支：当前 `agents-one-slim-task-dialog`（领先 main 38 个提交）。

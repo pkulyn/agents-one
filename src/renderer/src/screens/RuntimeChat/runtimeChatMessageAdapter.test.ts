@@ -28,7 +28,7 @@ describe("runtimeChatMessageAdapter", () => {
       {
         id: "agent-1",
         role: "agent",
-        content: "图表如下：\nMEDIA:C:\\Users\\chenfl\\Desktop\\test-chart.png",
+        content: "图表如下：\nMEDIA:C:\\Users\\tester\\Desktop\\test-chart.png",
         createdAt: 2,
       },
     ];
@@ -40,7 +40,7 @@ describe("runtimeChatMessageAdapter", () => {
     expect(result[1]).toMatchObject({
       kind: "assistant",
       role: "agent",
-      content: expect.stringContaining("MEDIA:C:\\Users\\chenfl"),
+      content: expect.stringContaining("MEDIA:C:\\Users\\tester"),
     });
   });
 
@@ -263,7 +263,7 @@ describe("runtimeChatMessageAdapter", () => {
               label: "quarterly-revenue.png",
               mime: "image/png",
               size: 128,
-              path: "C:\\Users\\chenfl\\AppData\\Local\\Temp\\quarterly-revenue.png",
+              path: "C:\\Users\\tester\\AppData\\Local\\Temp\\quarterly-revenue.png",
             },
           ],
         },
@@ -274,7 +274,7 @@ describe("runtimeChatMessageAdapter", () => {
     expect(result[0]).toMatchObject({
       kind: "assistant",
       content: expect.stringContaining(
-        "MEDIA:`C:\\Users\\chenfl\\AppData\\Local\\Temp\\quarterly-revenue.png`",
+        "MEDIA:`C:\\Users\\tester\\AppData\\Local\\Temp\\quarterly-revenue.png`",
       ),
     });
   });
@@ -296,7 +296,7 @@ describe("runtimeChatMessageAdapter", () => {
               label: "test-chart.png",
               mime: "image/png",
               size: 128,
-              path: "C:\\Users\\chenfl\\AppData\\Local\\Temp\\test-chart.png",
+              path: "C:\\Users\\tester\\AppData\\Local\\Temp\\test-chart.png",
             },
             {
               id: "report-1",
@@ -304,7 +304,7 @@ describe("runtimeChatMessageAdapter", () => {
               label: "report.pdf",
               mime: "application/pdf",
               size: 256,
-              path: "C:\\Users\\chenfl\\AppData\\Local\\Temp\\report.pdf",
+              path: "C:\\Users\\tester\\AppData\\Local\\Temp\\report.pdf",
             },
           ],
         },
@@ -314,12 +314,12 @@ describe("runtimeChatMessageAdapter", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       kind: "assistant",
-      content: expect.stringContaining("MEDIA:`C:\\Users\\chenfl"),
+      content: expect.stringContaining("MEDIA:`C:\\Users\\tester"),
       attachments: [
         expect.objectContaining({
           kind: "path-ref",
           name: "report.pdf",
-          path: "C:\\Users\\chenfl\\AppData\\Local\\Temp\\report.pdf",
+          path: "C:\\Users\\tester\\AppData\\Local\\Temp\\report.pdf",
         }),
       ],
     });
@@ -343,7 +343,7 @@ describe("runtimeChatMessageAdapter", () => {
               label: "quarterly_revenue_chart.png",
               mime: "image/png",
               size: 128,
-              path: "C:\\Users\\chenfl\\AppData\\Local\\Temp\\artifact-chart.png",
+              path: "C:\\Users\\tester\\AppData\\Local\\Temp\\artifact-chart.png",
             },
           ],
         },
@@ -355,7 +355,7 @@ describe("runtimeChatMessageAdapter", () => {
     });
     expect(result[0]).toMatchObject({
       content: expect.stringContaining(
-        "MEDIA:`C:\\Users\\chenfl\\AppData\\Local\\Temp\\artifact-chart.png`",
+        "MEDIA:`C:\\Users\\tester\\AppData\\Local\\Temp\\artifact-chart.png`",
       ),
     });
   });

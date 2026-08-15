@@ -210,7 +210,7 @@ Workspace Grant 是 **Run 级短时授权**，不能作为会话级永久绑定�
 可重复运行：
 
 ```powershell
-node scripts/verify-hers-workspace-continuation.js "D:\Users\chenfl\Desktop\test"
+node scripts/verify-hers-workspace-continuation.js "<workspaceRoot>"
 ```
 
 此脚本不会输出 Gateway Token，并使用专用测试文件名，避免修改业务文档。
