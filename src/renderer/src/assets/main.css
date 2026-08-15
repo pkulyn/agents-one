@@ -10618,6 +10618,26 @@ button.task-collaboration-inline-avatar:focus-visible {
 .agents-runtime-health.unreachable {
   color: var(--danger, #dc2626);
 }
+.agents-runtime-connection {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agents-runtime-capabilities {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.agents-runtime-capability {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
 .runtime-appearance-avatar-row {
   display: flex;
   align-items: center;
