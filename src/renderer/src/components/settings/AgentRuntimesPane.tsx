@@ -863,7 +863,7 @@ export default function AgentRuntimesPane({
                   disabled={isBuiltin}
                 />
                 <span className="settings-field-hint">
-                  填写 Relay 或 Gateway 的 v1 基础地址；远程 Hermes/OpenClaw 统一经 Gateway v1 接入（plan D5）。
+                  填写 Relay 或 Gateway 的 v1 基础地址；远程智能体统一经 Gateway v1 接入。
                 </span>
               </label>
               {requiresRemoteCredential && (

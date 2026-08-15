@@ -3383,9 +3383,9 @@ export default function RuntimeChat({
         // Keep the first turn in conversation mode even before the Gateway
         // returns a resumable session id.
         conversation: true,
-        // The current OpenClaw Bridge creates a subagent session ID which it
-        // cannot safely resume. Send a bounded transcript instead, so a
-        // follow-up keeps its context without leaving the run stuck in running.
+        // The remote Gateway may create a subagent session ID which it cannot
+        // safely resume. Send a bounded transcript instead, so a follow-up
+        // keeps its context without leaving the run stuck in running.
         sessionId: resumableSessionId,
         workspace: selectedWorkspace,
         attachments,
