@@ -30,8 +30,4 @@ The shell initially has one blank legacy Hermes placeholder while the asynchrono
 
 [[src/renderer/src/screens/Layout/chatRuns.ts#openNewTaskRunTransition]] replaces the active untouched placeholder with the new default-agent task and appends only when the active tab already has content or work. [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] applies the transition as soon as the default Runtime resolves and from sidebar, title-bar, and project task creation paths. This prevents an unused Hermes “New conversation” tab from appearing beside the default agent while preserving every real conversation.
 
-## Follow-us modal
-
-A one-time modal prompting the user to follow Hermes on X. Dismissed permanently via localStorage after either button is clicked.
-
-[[src/renderer/src/components/FollowUsModal.tsx]] stores the dismissal flag in `localStorage` under `hermes-follow-x-dismissed`. Both "Follow" (opens `https://x.com/HermesOneApp` via `openExternal`) and "Not Now" write the flag and close the modal. It renders in [[src/renderer/src/screens/Chat/Chat.tsx]] only when `connectionModeLoaded && readiness.ok`, so it appears after setup is complete. The modal reuses the `.models-modal-overlay` / `.models-modal` pattern for consistent styling.
+The upstream "Follow us on X" one-time modal (`FollowUsModal`) was removed with the upstream community UI (plan D5 cleanup); no follow prompt renders in the window chrome anymore.
