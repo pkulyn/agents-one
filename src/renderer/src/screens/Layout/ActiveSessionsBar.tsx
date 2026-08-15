@@ -41,7 +41,7 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
 
   const anyLoading = runs.some((r) => r.loading);
   // A blank runtime selector is not a conversation yet. Keeping it out of the
-  // tab strip prevents a new Codex/OpenClaw draft from looking like a duplicate
+  // tab strip prevents a new Codex draft from looking like a duplicate
   // of the persisted conversation that appears in the sidebar after send.
   const hasRealSession = runs.some(
     (r) => r.sessionId || r.runtimeConversationId || r.title,

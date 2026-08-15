@@ -179,13 +179,6 @@ export default {
   runDiagnosis: "Run Diagnosis",
   running: "Running...",
   debugDump: "Debug Dump",
-  migrationDetected: "OpenClaw Installation Detected",
-  migrationDesc:
-    "Found OpenClaw at <code>{{path}}</code>. You can migrate your configuration, API keys, sessions, and skills to Hermes.",
-  migrationDismiss: "Don't show again",
-  migrating: "Migrating...",
-  migrateToHermes: "Migrate to Hermes",
-  skip: "Skip",
   appearanceHint: "Choose your preferred interface appearance",
   apiKeyPlaceholder: "API Key",
   labelPlaceholder: "Label ({{optional}})",
@@ -194,45 +187,8 @@ export default {
   modeRemote: "Remote",
   modeLocalHint: "Using Hermes installed on this device",
   modeRemoteHint: "Connect to a Hermes API server on your network or cloud",
-  remoteUrl: "Remote URL",
-  remoteUrlHint:
-    "The Hermes API server URL (must expose /health and /v1/chat/completions)",
-  remoteApiKey: "API Key",
-  remoteApiKeyHint:
-    "Matches API_SERVER_KEY on the remote host. Leave empty if the server accepts unauthenticated requests.",
-  dashboardUrl: "Remote Dashboard URL",
-  dashboardUrlHint:
-    "Optional. Leave blank to derive it from the remote API URL, for example /hermes-api to /hermes-dashboard.",
-  dashboardToken: "Remote Dashboard Token",
-  dashboardTokenHint:
-    "Optional. Leave blank to reuse the API key; set this when Dashboard uses a separate session token.",
-  chatTransport: {
-    label: "Chat transport",
-    auto: "Auto",
-    dashboard: "Dashboard",
-    legacy: "Legacy",
-    remoteHint:
-      "Auto tries the Hermes Dashboard WebSocket first, then falls back to the legacy remote API. Dashboard requires a valid URL and session token.",
-    checking: "Checking…",
-    activeLegacy: "Active: Legacy",
-    legacyRemoteDisabled: "Dashboard WebSocket is disabled.",
-    checkingTransport: "Checking transport…",
-    activeDashboard: "Active: Dashboard",
-    autoDashboard: "Auto active: Dashboard",
-    autoLegacy: "Auto active: Legacy chat",
-    managementAvailable: "Dashboard management API is available.",
-    dashboardUnavailable: "Dashboard unavailable",
-    autoLegacyFallback: "Auto active: Legacy fallback",
-    transportUnavailable: "Dashboard transport is not available.",
-  },
-  testingConnection: "Testing...",
-  testConnection: "Test Connection",
   save: "Save",
-  serverConfigTitle: "Server Configuration",
-  serverConfigHint:
-    "You&apos;re connected to a remote Hermes server. Model selection, provider API keys, and credentials are managed on the server&apos;s <code>~/.hermes/.env</code> and <code>config.yaml</code>. Edit them on the host (e.g. <code>docker exec -it hermes vi /opt/data/.env</code>) and restart the container.",
   connectionMode: "Connection Mode",
-  switchedToLocal: "Switched to local mode",
 
   // Community
   communityTitle: "Community",
@@ -256,18 +212,5 @@ export default {
     "Without an API server key the gateway cannot authenticate session continuation requests. Messages will still send, but conversation history won't be preserved across restarts.",
   generateKey: "Generate & save a key for me",
   generating: "Generating…",
-  remoteEnvTitle: "Set API_SERVER_KEY on the remote server",
-  remoteEnvDesc:
-    "Remote mode: add API_SERVER_KEY=<your-key> to the .env on your remote Hermes server, then restart the gateway.",
-  sshMigratedTitle: "SSH connection needs re-setup",
-  sshMigratedDesc:
-    "SSH mode was removed — remote agents now connect through a Gateway v1 URL and token. Enter the Gateway address and token below to re-enable this connection.",
-  remoteErrorUrl: "Please enter a URL.",
-  remoteErrorConnection:
-    "Could not reach Hermes at this URL. Check the URL and API key.",
-  remoteErrorFailed: "Connection test failed.",
-  remoteSuccess: "Connected successfully!",
-  remoteErrorRequiredSimple: "Please enter a URL",
-  remoteErrorFailedSimple: "Could not reach server",
   apiGenerated: "API key generated — gateway restarting…",
 } as const;

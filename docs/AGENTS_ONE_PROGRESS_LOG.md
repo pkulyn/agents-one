@@ -1712,3 +1712,11 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 新增 CSS：`.agents-runtime-connection`（截断提示行）与 `.agents-runtime-capabilities`/`.agents-runtime-capability`（徽章行，跨整行）。
 - 验证：Node/Web TypeScript 检查通过；`Agents.test.tsx` 新增接入标签/连接提示/能力徽章测试（能力容器内断言，避免与"对话"按钮歧义）；全量 179 个测试文件、1783 项通过、9 项跳过；生产构建通过。
 - 下一步：1.7 定向+全量回归。
+
+## 2026-08-15：Phase 1.7 定向 + 全量回归完成，Phase 1 收官
+
+- 定向回归：重跑 Phase 1（1.3-1.6）涉及的全部关键测试（agent-runtimes/local-cli-detect/connection-config-security/ipc-handlers/hermes/hermes-api/dashboard-remote/task-schedules/runtime-conversation-store/remote-mode-url-and-spawn/Agents/AgentRuntimesPane/RuntimeChat/useDashboardChatTransport/i18n）——除 RuntimeChat 协作测试外全部通过。
+- 修复 RuntimeChat 顺序敏感 flaky：协作测试的 `getAgentRuntimeRun` 第二个 mock 从 `mockResolvedValueOnce` 改为持久 `mockResolvedValue`（首个轮询返回 running 事件，之后所有轮询返回成功），消除负载下多轮询导致的「复核完成。」渲染缺失；连续两次全量套件稳定通过。
+- 残留清理：删除 `settings.ts`（en/zh-CN）中已无引用的死 i18n 键（OpenClaw 迁移、远程连接、Dashboard/chatTransport、serverConfig、switchedToLocal 等）；更新 AgentRuntimesPane 用户提示与 ActiveSessionsBar/RuntimeChat 注释中的 OpenClaw 残留。
+- 全量回归：Node/Web TypeScript 检查通过；Vitest 全量 179 个测试文件、1783 项通过、9 项跳过（两次运行一致）；Electron Vite 生产构建通过（renderer 约 8.06MB）；`git diff --check` 通过。
+- Phase 1（智能体接入统一，方案 A）全部 slice 完成：1.1 配置模型 / 1.2 transport 守卫 / 1.3 SSH 删除 / 1.4 旧远程+OpenClaw 删除 / 1.5 注册表单统一 / 1.6 Agents 卡片增强 / 1.7 回归。下一步进入 Phase 3 收尾（README 重写描述统一接入模型）与 Phase 4 发布。

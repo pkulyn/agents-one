@@ -1355,7 +1355,10 @@ describe("RuntimeChat inputs and persistence", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
+      // First poll returns the running reasoning/tool events; every later poll
+      // returns the succeeded run. A persistent mock (not once) keeps the test
+      // stable when the collaboration DAG polls more than twice under load.
+      .mockResolvedValue({
         id: "live-collaboration-run",
         runtimeId: "pi-local",
         status: "succeeded",
