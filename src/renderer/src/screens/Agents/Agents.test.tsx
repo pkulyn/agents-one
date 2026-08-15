@@ -74,4 +74,54 @@ describe("Agents", () => {
       expect.objectContaining({ id: "codex-local" }),
     );
   });
+
+  it("shows the unified transport label, connection hint, and capability badges", async () => {
+    const api = installHermesAPI();
+    api.listAgentRuntimes.mockResolvedValue([
+      {
+        id: "hermes-gateway",
+        name: "Hermes Gateway",
+        kind: "hermes",
+        location: "remote",
+        enabled: true,
+        managed: "user",
+        config: {
+          endpoint: "https://gateway.example/agents-one/v1",
+          remoteGateway: { protocol: "agents-one-v1" },
+          transport: "http",
+        },
+      },
+    ]);
+    api.probeAgentRuntime.mockResolvedValue({
+      runtimeId: "hermes-gateway",
+      state: "healthy",
+      capabilities: {
+        chat: true,
+        taskDispatch: true,
+        tools: true,
+        artifacts: false,
+        workspaceAccess: true,
+      },
+      checkedAt: Date.now(),
+    });
+
+    render(<Agents onChatWithRuntime={() => {}} />);
+
+    await screen.findByText("Hermes Gateway");
+    // Unified access label (plan 1.1/1.5).
+    expect(screen.getByText(/Gateway v1/)).toBeTruthy();
+    // Connection hint shows the Gateway endpoint.
+    expect(
+      screen.getByText("https://gateway.example/agents-one/v1"),
+    ).toBeTruthy();
+    // Capability badges come from the probe (chat/taskDispatch/tools/
+    // workspaceAccess; artifacts is false). "对话" also names the chat button,
+    // so scope to the capability badge row.
+    const capabilities = document.querySelector(".agents-runtime-capabilities");
+    expect(capabilities?.textContent).toContain("对话");
+    expect(capabilities?.textContent).toContain("任务派发");
+    expect(capabilities?.textContent).toContain("工具");
+    expect(capabilities?.textContent).toContain("工作区");
+    expect(capabilities?.textContent).not.toContain("产物");
+  });
 });

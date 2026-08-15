@@ -1702,3 +1702,13 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 表单收敛：新增智能体时「位置」与「连接方式」由模板派生并禁用（Hermes → 远程 Gateway http；pi/codex/claude-code → 本地 CLI cli），表单心智模型对齐「远程 = 链接 + Token，本地 = 路径」；编辑已有智能体仍可调整。
 - 验证：Node/Web TypeScript 检查通过；新增 `local-cli-detect.test.ts` 5 项单测（含 Windows `.cmd` 与 POSIX 裸名、未命中 null）；`AgentRuntimesPane.test.tsx` 新增 PATH 自动回填 + 派生位置/连接方式测试；全量 179 个测试文件、1782 项通过、9 项跳过；生产构建通过（renderer 约 8.07MB）。
 - 下一步：1.6 Agents 卡片增强；1.7 定向+全量回归。
+
+## 2026-08-15：Phase 1.6 Agents 卡片增强完成
+
+- 目标：让 Agents 页的智能体卡片更清晰地呈现"接入统一"后的信息（接入方式、连接地址、能力）。
+- 接入方式标签：卡片信息行新增统一接入标签（`deriveAgentTransport` → Gateway v1 / 本地 CLI / 本地 API），与 1.1-1.5 的 transport 模型对齐。
+- 连接信息行：卡片新增连接提示——远程显示 Gateway 地址（截断），本地 CLI 显示可执行文件路径，本地 API 显示 `本地 API（127.0.0.1）`。
+- 能力徽章：从 probe 的 capabilities 提取已启用能力（对话/任务派发/工具/产物/工作区）以徽章展示，帮助用户一眼判断智能体能做什么。
+- 新增 CSS：`.agents-runtime-connection`（截断提示行）与 `.agents-runtime-capabilities`/`.agents-runtime-capability`（徽章行，跨整行）。
+- 验证：Node/Web TypeScript 检查通过；`Agents.test.tsx` 新增接入标签/连接提示/能力徽章测试（能力容器内断言，避免与"对话"按钮歧义）；全量 179 个测试文件、1783 项通过、9 项跳过；生产构建通过。
+- 下一步：1.7 定向+全量回归。

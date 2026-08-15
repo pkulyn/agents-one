@@ -3,10 +3,12 @@ import { Bot, Plus, ChatBubble } from "../../assets/icons";
 import { RefreshCw, X } from "lucide-react";
 import { AppModal, AppModalTitle } from "../../components/modal/AppModal";
 import AgentRuntimesPane from "../../components/settings/AgentRuntimesPane";
-import type {
-  AgentRuntimeDefinition,
-  AgentRuntimeKind,
-  AgentRuntimeProbe,
+import {
+  deriveAgentTransport,
+  type AgentRuntimeDefinition,
+  type AgentRuntimeKind,
+  type AgentRuntimeProbe,
+  type AgentRuntimeTransport,
 } from "../../../../shared/agent-runtimes";
 
 interface AgentsProps {
@@ -25,6 +27,14 @@ const RUNTIME_LOCATION_LABEL: Record<AgentRuntimeDefinition["location"], string>
   remote: "远程",
 };
 
+// Unified access labels (plan 1.1 / 1.5): remote → Gateway v1, local CLI,
+// local API.
+const TRANSPORT_LABEL: Record<AgentRuntimeTransport, string> = {
+  "gateway-v1": "Gateway v1",
+  "local-cli": "本地 CLI",
+  "local-api": "本地 API",
+};
+
 const HEALTH_LABEL: Record<AgentRuntimeProbe["state"], string> = {
   healthy: "正常",
   degraded: "受限",
@@ -32,6 +42,32 @@ const HEALTH_LABEL: Record<AgentRuntimeProbe["state"], string> = {
   unsupported: "不支持",
   unknown: "未检测",
 };
+
+const CAPABILITY_LABELS: Record<string, string> = {
+  chat: "对话",
+  taskDispatch: "任务派发",
+  tools: "工具",
+  artifacts: "产物",
+  workspaceAccess: "工作区",
+};
+
+function runtimeCapabilityLabels(probe?: AgentRuntimeProbe): string[] {
+  if (!probe) return [];
+  return Object.entries(probe.capabilities)
+    .filter(([, enabled]) => enabled === true)
+    .map(([key]) => CAPABILITY_LABELS[key] || key);
+}
+
+function runtimeConnectionHint(runtime: AgentRuntimeDefinition): string {
+  const transport = deriveAgentTransport(runtime);
+  if (transport === "gateway-v1") {
+    return runtime.config.endpoint?.trim() || "未配置地址";
+  }
+  if (transport === "local-cli") {
+    return runtime.config.executablePath?.trim() || "未配置可执行文件";
+  }
+  return "本地 API（127.0.0.1）";
+}
 
 function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
   const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
@@ -140,7 +176,12 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     <span className="agents-runtime-info">
                       <strong>{runtime.name}</strong>
                       <small>
-                        {RUNTIME_LABELS[runtime.kind]} / {RUNTIME_LOCATION_LABEL[runtime.location]}
+                        {RUNTIME_LABELS[runtime.kind]} ·{" "}
+                        {RUNTIME_LOCATION_LABEL[runtime.location]} ·{" "}
+                        {TRANSPORT_LABEL[deriveAgentTransport(runtime)]}
+                      </small>
+                      <small className="agents-runtime-connection" title={runtimeConnectionHint(runtime)}>
+                        {runtimeConnectionHint(runtime)}
                       </small>
                     </span>
                   </div>
@@ -152,6 +193,15 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     </span>
                     <span>{runtime.enabled ? "可用" : "已停用"}</span>
                   </div>
+                  {runtimeCapabilityLabels(runtimeProbes[runtime.id]).length > 0 && (
+                    <div className="agents-runtime-capabilities">
+                      {runtimeCapabilityLabels(runtimeProbes[runtime.id]).map((capability) => (
+                        <span className="agents-runtime-capability" key={capability}>
+                          {capability}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div className="agents-runtime-actions">
                     <button
                       type="button"
