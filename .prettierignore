@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out/
+release/
+.cache/
+.sandbox/
+.agents-one/
+.agents-one-node_modules-interrupted-*/
+node_modules.upstream-junction-backup-*/
+.belt/
+tmp/
+.claude/worktrees/
