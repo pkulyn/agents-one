@@ -1,7 +1,8 @@
 # Agents One Remote Gateway v1
 
-日期：2026-07-28  
-状态：**协议规范草案（v1）**  
+日期：2026-07-28
+更新：2026-08-21
+状态：**协议规范草案（v1）**
 适用对象：Agents One 桌面端，以及 Hermes、OpenClaw、Claude Code、Pi Agent 或后续任意**远程**智能体的 Gateway Adapter。
 
 ## 1. 目标
@@ -148,6 +149,163 @@ Agents One 桌面端
 - Connector 重连必须使用指数退避、会话 ID 和事件序号续传；旧会话恢复后不能重复执行 Run 或重复写入 Artifact。
 
 Connector 模式是 Gateway v1 的推荐部署 Profile；公网静态 Gateway、企业 VPN/私有网络可继续使用直接 Profile。无论使用哪一种，Agents One 客户端的配置结构不变。
+
+## 5.5 三种部署 Profile
+
+远程智能体主机是否有域名，不是 Gateway v1 的硬性要求。真正需要稳定 HTTPS 入口的是 **Agents One 连接的 Gateway/Relay**。因此，服务器或个人电脑上的 Hers 可以没有域名、没有公网 IP；它通过 Connector 主动连接 Relay 即可。
+
+| Profile | Agents One 连接的地址 | 远端智能体主机要求 | 适用场景 | 默认级别 |
+| --- | --- | --- | --- | --- |
+| 托管 Relay | 有可信域名的 `https://<managed-relay>/agents-one/v1` | 只需出站访问 443；不需要公网 IP 或域名 | 普通用户、家庭电脑、企业桌面 | **推荐** |
+| 自托管 Relay | 用户自己域名下的 `https://<relay-domain>/agents-one/v1` | Connector 主机可在内网、CGNAT 或公网 | 企业、NAS、VPS、私有部署 | 推荐 |
+| 公网 IP 直连 | `https://<public-ip>/agents-one/v1` | Gateway 直接监听公网入口 | 专家用户、临时或已有证书环境 | 高级 |
+
+### 5.5.1 托管 Relay（普通用户默认）
+
+- Agents One 只连接 Relay 的受信任域名；Relay 负责证书申请、续期、Token 授权和 Connector 在线状态。
+- Hers 所在服务器或个人电脑只运行 Connector，主动建立 WSS/mTLS（或可轮换 Connector Token）长连接。
+- Connector 主机不监听互联网入站端口，不要求端口映射、DDNS、SSH、RDP、SMB 或任意 TCP 转发。
+- Relay 必须将 Gateway Token、稳定 `agentId`、Connector 身份和在线会话绑定；Connector 离线时，新 Run 返回结构化 `503 agent_offline`。
+- 托管 Relay 可以是 Agents One 官方服务，也可以是受信任的组织级共享 Relay；客户端配置模型完全相同。
+
+### 5.5.2 自托管 Relay
+
+- 用户在自己的域名下部署 Relay，并使用 Caddy、Traefik、Nginx 或同类组件配置受信任 CA 证书和自动续期。
+- 域名只属于 Relay，不属于每一台运行 Hers 的服务器或个人电脑。
+- Relay 与 Connector 之间使用独立设备凭据；桌面端 Gateway Token 不得复用为 Connector 身份。
+- 公网跨网络部署必须使用 HTTPS；证书必须包含域名 SAN、提供完整证书链，禁止使用自签名证书作为普通默认配置。
+- 自托管 Relay 必须提供健康检查、Connector 离线状态、Token 轮换和回滚方式；不得把 Relay 退化为任意 Shell、文件服务器或端口代理。
+
+### 5.5.3 公网 IP 直连（高级 Profile）
+
+IP 地址不是协议禁止项，但必须同时满足：
+
+1. 使用 HTTPS，不能将公网 IP Gateway 降级为 HTTP。
+2. 证书由 Agents One 客户端信任的公共或企业 CA 签发。
+3. 证书的 Subject Alternative Name（SAN）明确包含该公网 IP；仅设置 `CN=<ip>` 不足以通过现代客户端校验。
+4. 服务端返回完整证书链，客户端不使用 `-k`、`rejectUnauthorized=false` 或隐式自签名重试。
+5. 变更证书或 IP 后，必须重新执行严格校验的 `/capabilities`、Run、SSE 和取消测试。
+
+公共 CA 对 IP 证书的签发和续期支持通常比域名证书受限；因此 IP 直连只作为高级选项，不作为普通用户的默认路径。若只能使用企业自签 CA，必须在受管控终端上明确安装并验证该 CA 的信任链，不能要求所有用户关闭 TLS 校验。
+
+### 5.5.4 私网和本机联调
+
+- 本机回环地址和 RFC1918 私网地址（`10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`）可用于受控 HTTP 联调；跨公网或跨不受信任网络仍必须使用 HTTPS。
+- 生产环境即使使用私网 Relay，也建议继续使用 HTTPS，避免凭据和任务数据在企业内部网络中明文传输。
+- 若远端智能体与 Agents One 在同一台电脑，优先使用本地 CLI Runtime，而不是为了本机调用额外部署 Remote Gateway。
+
+### 5.5.5 客户端选择规则
+
+Agents One 的新增远程智能体向导应按以下顺序引导：
+
+1. 无公网 IP、无域名：选择“通过 Relay 接入”，生成 Connector 注册码。
+2. 有域名并希望自行运维：选择“自托管 Relay”，填写 Relay v1 地址和 Gateway Token。
+3. 有可信 IP 证书并了解证书运维：展开“高级：公网 IP 直连”。
+
+任何 TLS 证书错误、Token 错误和 Connector 离线都必须分别显示，不能统一伪装成“不可达”；也不得为了提高连接成功率而自动绕过证书校验。
+
+### 5.6 远程智能体的一键 Connector 接入模型
+
+对于大多数“服务器/个人电脑上已有 Hers 或其他远程智能体，用户只希望安装一个插件”的场景，推荐使用通用 **Agents One Connector**，而不是要求用户自行暴露 Hermes API 或手工配置第二套 Gateway。Hers 只是首个 Connector Adapter 示例。当前仓库的 `agents-one-plugin-sdk` 是 Gateway/Adapter SDK；它负责协议和事件归一化，尚不是完整的一键安装器。完整一键体验应由 Connector、Relay 和 Agents One 配对流程共同提供。
+
+```text
+Hers 本机插件（只访问本机 Loopback）
+        │ 主动 WSS + mTLS/设备凭据
+        ▼
+托管或自托管 Relay（可信域名 + Gateway v1）
+        │ HTTPS + 受限 Gateway Token
+        ▼
+Agents One 桌面端
+```
+
+#### 5.6.1 用户流程
+
+1. Agents One 选择“新增远程 Hers → 通过 Relay 接入”，创建短时、一次性的配对会话并显示验证码/二维码。
+2. 用户在 Hers 主机安装 Connector 插件，输入 Relay 地址和一次性配对码；不需要配置公网 IP、域名、端口映射或 Hermes API 公网监听。
+3. Connector 在本机生成设备密钥对，通过出站 TLS 完成配对；私钥只保存在本机受保护存储中。
+4. Relay 将 Connector 身份绑定到稳定 `runtimeId`，并向 Agents One 返回该 Runtime 的 Gateway 地址和受限凭据。桌面端自动把凭据写入系统受保护存储，用户不需要在聊天中复制 Token。
+5. Agents One 自动执行 `/capabilities` 探测；成功后显示 Hers 在线。Connector 断线时显示“远端智能体离线”，而不是把离线伪装为普通 Run 失败。
+
+#### 5.6.2 凭据和配对安全
+
+- 配对码默认 5 分钟有效、只能使用一次、限速并绑定目标用户/Runtime；配对完成或取消后立即失效。
+- 配对必须在桌面端和 Hers 主机显示相同的短校验码，防止把 Connector 绑定到错误 Relay。
+- Connector 设备凭据、Relay Gateway Token、Workspace Grant 必须是三种不同凭据；不得互相复用。
+- Gateway Token 至少绑定 `subject`、稳定 `agentId`、scope、到期时间和撤销状态；Connector 断线或用户撤销时可立即吊销。
+- Connector 以普通用户权限运行，只访问本机 Loopback Hermes API 和本次允许的工作目录；不得监听公网入站端口，不得提供任意 Shell、端口转发或绝对路径文件服务。
+- Relay 只转发 Gateway v1 的 Run、事件、Artifact 和 Workspace Grant 结构化消息；不得把配对流程变成任意远程执行通道。
+
+#### 5.6.3 可靠性要求
+
+- Connector 使用带抖动的指数退避重连、心跳、会话 ID 和事件序号续传。
+- Relay 为每个 Connector 暴露明确的 `online`、`offline`、`reauthorization_required` 状态。
+- 断线期间不得重复执行 Run；恢复时按 Run ID 和事件序号幂等续传。
+- 用户撤销配对后，Relay 必须拒绝新 Run、撤销 Gateway Token，并使 Connector 设备凭据失效。
+
+该模型的关键结论是：**Hers 所在机器不需要域名；只有 Relay 需要稳定、可验证的 HTTPS 入口。** 这样既覆盖无公网 IP 的个人电脑，也覆盖有公网 IP 但没有域名的服务器，同时不牺牲 TLS、身份绑定和最小权限边界。
+
+### 5.7 托管 WebSocket 配对（无用户侧 Relay 的默认体验）
+
+飞书插件的连接体验说明了一个重要事实：用户不部署 Relay，并不等于网络中没有中间服务；飞书本身提供了账号、配对、长连接和消息路由云服务。Agents One 若要达到“安装插件、扫码、立即可用”，也需要提供一个统一运营的 **Agents One Connect** 服务，将 Relay/配对能力从用户侧隐藏到官方连接云中。
+
+#### 5.7.1 目标拓扑
+
+```text
+Agents One Connector 插件 ──主动 WSS──┐
+                               ├── Agents One Connect（官方连接云）
+Agents One 桌面端 ──HTTPS/WSS──┘
+```
+
+- Hers 主机和 Agents One 桌面端都只发起出站连接，不需要公网 URL、域名、端口映射、NAT 穿透或 ngrok。
+- Connect 服务提供固定的受信任域名和证书、配对会话、设备注册、在线状态和消息路由；用户不需要理解或部署“Relay”。
+- 对 Gateway v1 而言，Connect 是托管 Relay Profile；协议层仍保持一个 Gateway v1 地址、一个受保护 Gateway Token 和稳定 `runtimeId`。
+- WebSocket 隧道只允许转发 Gateway v1 的 capabilities、Run、事件、Artifact 和 Workspace Grant 消息；不得演变为任意 TCP、Shell 或文件代理。
+
+#### 5.7.2 类飞书的扫码配对流程
+
+1. 用户在 Agents One 选择“添加远程 Hers”，桌面端向 Connect 创建短时配对会话。
+2. 用户在 Hers 主机安装 Connector 插件并运行 `connect`，插件生成二维码或一次性配对链接；二维码不包含长期 Token、私钥或工作区路径。
+3. 用户使用 Agents One 的扫码/导入二维码入口确认配对（无摄像头时允许粘贴一次性链接或短码）。
+4. Connector 与 Connect 建立出站 WSS，Connector 本地生成设备密钥对；Connect 将设备公钥、桌面端账户、稳定 `runtimeId` 和配对会话绑定。
+5. 双方完成短校验码确认后，Connect 向桌面端受保护存储写入受限 Gateway 凭据；Connector 使用独立设备凭据，不复用桌面端 Token。
+
+### 5.8 Herdr SSH 远程模式的参考价值
+
+Herdr 的远程模式采用“远程主机运行持久会话服务器，本地客户端通过 SSH 连接”的模型；`herdr --remote` 负责远程二进制检查/安装、SSH 保活、远程会话连接和客户端 UI 流式呈现。远程客户端断开后，服务器中的窗格和智能体继续运行，重新连接即可恢复。[Herdr 工作方式](https://herdr.dev/zh-cn/docs/how-to-work/)、[Herdr 持久化与远程访问](https://herdr.dev/zh-cn/docs/persistence-remote/)
+
+对 Agents One 的可吸收设计：
+
+- **远程运行时持久化**：Connector 不是一次性命令，而应由用户级守护进程运行；Connector 重启、桌面重启和短时网络断开都应自动恢复，Run 使用 `runId + event sequence` 防止重复执行。
+- **远程目标配置**：参考 Herdr 的 SSH Host profile，Agents One 可以增加 Connect Endpoint、Runtime ID、Connector 版本和最后在线状态等“远程目标档案”，减少重复输入和排障成本。
+- **一键引导与版本匹配**：参考 Herdr 检查远程 PATH、平台架构和版本并自动安装/升级；Agents One Connector 安装器应下载与目标系统匹配的版本，升级失败自动回滚且不覆盖设备密钥。
+- **运维通道与业务通道分离**：未来可提供 SSH Bootstrap Profile，仅用于安装、更新、诊断 Connector；正式对话/任务仍走 Connect + Gateway v1，不把 SSH 当作默认业务数据通道。
+- **本地能力桥接**：Herdr 将剪贴板/图像通过受控桥接带到远端；Agents One 应继续使用 Artifact API 和 Workspace Grant，不能把 SSH 退化为任意端口、Shell 或文件代理。
+
+不直接采用 Herdr SSH 作为 Agents One 默认远程接入的原因：SSH 要求远端开放入站 SSH、管理用户密钥和 Host Key，移动网络/防火墙/CGNAT 场景仍需额外网络条件；它也不能自然提供 Connect 所需的多 Runtime 路由、设备撤销、账户绑定和结构化 Gateway v1 Artifact/Workspace Grant。SSH 适合作为高级 Profile 或安装维护通道，Agents One Connector + Connect WSS 仍是默认业务接入方式。
+6. Agents One 自动探测 `/capabilities`，显示 Hers 在线。用户不需要申请域名、配置 Nginx、开放端口或手工复制长 Token。
+
+#### 5.7.3 安全与隐私边界
+
+- 配对二维码默认一次性、短时有效、限速，并绑定明确的用户账户和 Runtime；过期、取消或完成后立即失效。
+- Connect 只保存设备注册、路由和审计所需的最小元数据；可选的端到端加密隧道使 Connect 只转发密文，不读取提示词、文件内容或模型输出。
+- Gateway Token、Connector 设备密钥和 Workspace Grant 分离管理，均支持撤销和轮换。
+- Connector 运行在用户权限下，只访问本机 Loopback Hermes 和受控任务输入/输出；不监听公网端口。
+- Connect、Connector 和桌面端都必须按稳定 `runId`、事件序号和幂等键去重，断线恢复不能重复执行任务。
+- Connect 不在线或 Connector 离线时，桌面端显示明确的 `offline`/`reauthorization_required`，不把连接中断伪装成模型失败。
+
+#### 5.7.4 产品部署结论
+
+这会把用户侧接入收敛为“一次安装 + 一次扫码”，但需要 Agents One 官方运营 Connect 服务。若项目不运营统一 Connect，就无法同时保证无域名、无公网 IP、无需端口映射和跨网络安全连接；此时只能退回 5.5 的自托管 Relay 或公网 IP 直连 Profile。自托管 Relay 继续保留，作为企业内网、私有部署和不愿使用官方 Connect 用户的高级选项。
+
+### 5.5.6 域名可达性、SNI 阻断与动态 DNS 回退
+
+证书有效不等于网络路径一定可达。部分网络或云厂商会依据 TLS ClientHello 的 SNI，在证书交换前对未备案、被阻断或策略不允许的域名执行连接重置。因此远程 Gateway 验收必须同时检查 DNS、TCP、TLS/SNI、证书 SAN 和 HTTP v1 响应，不能只在单一网络环境中验证。
+
+- 若某个正式域名在目标网络被 SNI 精准阻断，应更换可达域名或将 Gateway/Relay 部署到不受该策略影响的网络；不应通过关闭 TLS、伪装 SNI 或把 Token 放入其他明文通道绕过阻断。
+- `sslip.io` 等“IP 编码域名”可以作为无自有域名用户的临时/过渡入口：其 DNS 将主机名解析到编码的 IP，Relay 仍必须为**完整主机名**申请受信任证书，并在反向代理中配置相同的 `server_name`/SNI。
+- 仅把客户端地址改为 `https://<ip>.sslip.io/...` 不足以完成迁移。服务端必须同时更新证书 SAN、证书链、Nginx/Caddy 的 SNI 虚拟主机和自动续期配置；否则会出现证书仍属于旧域名的主机名不匹配错误。
+- 动态 DNS 服务是额外的第三方依赖，生产环境应记录服务可用性、域名控制权、证书续期方式和回滚地址。条件允许时，仍优先使用自有域名或托管 Relay 域名。
+- 验收至少从本地、远端用户所在网络各执行一次：DNS 解析、TCP 443/8443（若使用）、严格 TLS 校验、`GET /agents-one/v1/capabilities`、Bearer 认证和一次最小 Run。任一步骤失败都应记录为对应阶段错误，不统称“Gateway 不可达”。
 
 ## 6. 能力发现
 

@@ -45,8 +45,8 @@ plugins/agents-one-plugin/
 `plugins/agents-one-plugin/agents-one-plugin.manifest.json` 是插件的机器可读声明。任何适配器发布前至少运行：
 
 ```powershell
-D:\efunds\nodejs\npm.cmd pack
-D:\efunds\nodejs\node.exe --test .\test\*.test.mjs
+npm.cmd pack
+node --test .\test\*.test.mjs
 ```
 
 接入方需要把打包得到的 tarball 安装到其 Relay 或 CLI 的用户级目录，再重启其自身进程；无需修改 Agents One 桌面端安装目录。
