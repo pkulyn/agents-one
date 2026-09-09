@@ -36,9 +36,7 @@ jobs:
       - name: Test
         run: npm test
 
-      # Lint is informational for now — the codebase has a large backlog of
-      # prettier/line-ending warnings (no errors). Surfaced but not gating,
-      # so a warning backlog doesn't block merges.
+      # Lint is a release gate. Formatting warnings are tracked separately,
+      # while every ESLint error must block a merge.
       - name: Lint
         run: npm run lint
-        continue-on-error: true

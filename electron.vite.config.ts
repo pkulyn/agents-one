@@ -3,7 +3,11 @@ import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-const rendererPort = Number(process.env.HERMES_DESKTOP_RENDERER_PORT || 0);
+const rendererPort = Number(
+  process.env.AGENTS_ONE_RENDERER_PORT ||
+    process.env.HERMES_DESKTOP_RENDERER_PORT ||
+    0,
+);
 
 export default defineConfig({
   main: {
