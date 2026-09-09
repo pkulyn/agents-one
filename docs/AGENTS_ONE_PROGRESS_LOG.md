@@ -1,5 +1,13 @@
 # Agents One 项目进展日志
 
+## 2026-09-10：OR-004 本地分支与远端模型校正（外部仓库待建立）
+
+- 拓扑核验：`main...agents-one-slim-task-dialog` 为 `0/44`，merge-base 是旧 main tip `8a4268f`，因此全部 Agents One 工作可无合并提交地快进到本地 `main`，不存在双边分叉或冲突。
+- 远端核验：GitHub CLI 已登录维护者账号，但 `pkulyn/agents-one` 经 Git HTTPS 与 GitHub API 双重查询均不存在或当前账号不可见；在 OR-007 前未创建公开仓库、未推送代码，也未修改任何远端保护规则。
+- 本地处置：RC1 Windows workflow 的默认 ref 从历史功能分支改为 `main`；本提交后将旧本地 `origin` 重命名为 `upstream` 并保留 Hermes 地址，新增目标 `origin=https://github.com/pkulyn/agents-one.git`，再把本地 `main` 快进到本提交。历史功能分支暂时保留为恢复引用，待目标仓库建立并验证 main 后再删除。
+- 完成边界：OR-004 仍未完成；需要维护者先建立目标仓库（建议在 OR-007/公开前保持 private 或空仓库），随后验证 origin、推送已审计 main、设置默认分支及保护规则。外部仓库就绪前严格停在 OR-004，不越级建立 OR-005 标签或执行 OR-006 迁移。
+- 回退：远端命名可用 `git remote remove origin`、`git remote rename upstream origin` 恢复；本地 main 旧 tip 已由 OR-001 bundle 和 `upstream/main` 保全。不得用强制推送覆盖任何已存在远端分支。
+
 ## 2026-09-10：OR-003 语义提交与公开内容处置完成
 
 - 提交边界：从 OR-001 固定基线 `333cf4d` 出发，使用逐文件精确暂存形成五个切片：`7227256` 仓库卫生与开发资产、`a4d6691` 构建/依赖/CI、`10b80f8` Plugin SDK/Connector/Connect Service、`714632b` 桌面产品源码与配套测试/脚本/lat.md，以及本日志所在的发布文档提交。全过程未使用 `git add .`、`git add -A`、目录通配暂存或历史改写。

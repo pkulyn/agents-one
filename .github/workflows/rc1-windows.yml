@@ -6,7 +6,7 @@ on:
       ref:
         description: "Git ref to validate"
         required: true
-        default: "agents-one-slim-task-dialog"
+        default: "main"
         type: string
 
 permissions:
