@@ -1,13 +1,18 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { extname, join } from "path";
 import { tmpdir } from "os";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const listProjectFoldersMock = vi.hoisted(() => vi.fn(() => []));
 
 vi.mock("electron", () => ({
   BrowserWindow: class {},
   dialog: {
     showSaveDialog: vi.fn(),
   },
+}));
+vi.mock("../src/main/project-folders", () => ({
+  listProjectFolders: listProjectFoldersMock,
 }));
 
 import {
@@ -17,6 +22,8 @@ import {
   mediaFileExists,
   normalizeMediaPath,
   readMediaAsDataUrl,
+  isAuthorizedMediaPath,
+  isAuthorizedProjectPath,
 } from "../src/main/media";
 
 describe("materializeDataUrlToTemp", () => {
@@ -34,6 +41,9 @@ describe("materializeDataUrlToTemp", () => {
     expect(extname(path || "")).toBe(".png");
     expect(existsSync(path || "")).toBe(true);
     expect(readFileSync(path || "", "utf-8")).toBe("Hermes");
+    expect(readMediaAsDataUrl(path || "")).toBe(
+      "data:image/png;base64,SGVybWVz",
+    );
 
     if (path) rmSync(path, { force: true });
   });
@@ -66,18 +76,35 @@ describe("materializeDataUrlToTemp", () => {
     expect(existsSync(path || "")).toBe(false);
   });
 
-  it("normalizes connector-escaped Windows paths before reading local media", () => {
+  it("normalizes but rejects connector paths outside an authorized root", () => {
     const source = join(tmpdir(), `agents-one-media-${Date.now()}.png`);
     writeFileSync(source, Buffer.from("PNG test"));
     const escaped = source.replace(/\\/g, "\\\\");
 
     expect(normalizeMediaPath(`"${escaped}"`)).toBe(source);
-    expect(mediaFileExists(escaped)).toBe(true);
-    expect(readMediaAsDataUrl(escaped)).toBe(
-      `data:image/png;base64,${Buffer.from("PNG test").toString("base64")}`,
-    );
+    expect(mediaFileExists(escaped)).toBe(false);
+    expect(readMediaAsDataUrl(escaped)).toBeNull();
 
     rmSync(source, { force: true });
+  });
+
+  it("authorizes registered project content but not temporary media as a terminal root", () => {
+    const project = join(tmpdir(), `agents-one-project-${Date.now()}`);
+    const file = join(project, "artifact.png");
+    mkdirSync(project, { recursive: true });
+    writeFileSync(file, Buffer.from("PNG test"));
+    listProjectFoldersMock.mockReturnValueOnce([{ path: project }]);
+    expect(isAuthorizedMediaPath(file)).toBe(true);
+    listProjectFoldersMock.mockReturnValueOnce([{ path: project }]);
+    expect(isAuthorizedProjectPath(file)).toBe(true);
+
+    const temporary = materializeDataUrlToTemp(
+      "data:image/png;base64,SGVybWVz",
+      "temporary",
+    );
+    expect(isAuthorizedProjectPath(temporary || "")).toBe(false);
+
+    rmSync(project, { recursive: true, force: true });
   });
 });
 

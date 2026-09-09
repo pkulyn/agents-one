@@ -38,19 +38,32 @@ const testAttachment: Attachment = {
 vi.mock("../Chat/ChatInput", () => ({
   ChatInput: (props: {
     attachmentsEnabled?: boolean;
+    allowAttachmentsWhileLoading?: boolean;
     contextUsage?: { used: number; window: number } | null;
+    onContextUsageClick?: () => void;
     toolbarExtras?: React.ReactNode;
+    slashCommands?: Array<{ name: string }>;
     onSubmit: (text: string, attachments: Attachment[]) => void;
   }) => (
     <div
       data-testid="runtime-composer"
       data-attachments={String(props.attachmentsEnabled)}
+      data-attachments-while-loading={String(
+        props.allowAttachmentsWhileLoading,
+      )}
     >
       {props.toolbarExtras}
       {props.contextUsage && (
-        <span data-testid="runtime-context">
-          {props.contextUsage.used}/{props.contextUsage.window}
-        </span>
+        <>
+          <span data-testid="runtime-context">
+            {props.contextUsage.used}/{props.contextUsage.window}
+          </span>
+          {props.onContextUsageClick ? (
+            <button type="button" onClick={props.onContextUsageClick}>
+              提交 Runtime 上下文压缩
+            </button>
+          ) : null}
+        </>
       )}
       <button
         type="button"
@@ -74,6 +87,21 @@ vi.mock("../Chat/ChatInput", () => ({
         onClick={() => props.onSubmit("请使用多智能体协作完成这个任务。", [])}
       >
         发送泛化协作输入
+      </button>
+      <button type="button" onClick={() => props.onSubmit("/status", [])}>
+        提交 Runtime 状态命令
+      </button>
+      <button
+        type="button"
+        onClick={() => props.onSubmit("/compact 保留接口", [])}
+      >
+        提交 Runtime 压缩命令
+      </button>
+      <button
+        type="button"
+        onClick={() => props.onSubmit("/statuz", [testAttachment])}
+      >
+        提交未知 Runtime 命令
       </button>
     </div>
   ),
@@ -100,6 +128,24 @@ const gatewayRuntime: AgentRuntimeDefinition = {
     transport: "http",
     endpoint: "https://example.test/agents-one/v1",
     remoteGateway: { protocol: "agents-one-v1" },
+  },
+};
+
+const doubaoRuntime: AgentRuntimeDefinition = {
+  id: "doubao-web-test",
+  name: "豆包网页版",
+  kind: "web-agent",
+  location: "local",
+  enabled: true,
+  managed: "user",
+  config: {
+    agentTransport: "local-web",
+    webAgent: {
+      provider: "doubao",
+      profileId: "doubao-test",
+      adapterVersion: "1.0.0",
+      enabled: true,
+    },
   },
 };
 
@@ -133,6 +179,16 @@ const piRuntime: AgentRuntimeDefinition = {
   config: { transport: "cli", workspace: "D:\\default" },
 };
 
+const openCodeRuntime: AgentRuntimeDefinition = {
+  id: "opencode-local",
+  name: "OpenCode",
+  kind: "opencode",
+  location: "local",
+  enabled: true,
+  managed: "user",
+  config: { transport: "cli", executablePath: "opencode" },
+};
+
 const hers2Runtime: AgentRuntimeDefinition = {
   id: "hermes-home2",
   name: "Hers-2",
@@ -150,18 +206,26 @@ describe("RuntimeChat inputs and persistence", () => {
   const probeAgentRuntime = vi.fn();
   const startAgentRuntimeTask = vi.fn();
   const getAgentRuntimeRun = vi.fn();
+  const retryAgentRuntimeArtifact = vi.fn();
   const getAgentRuntimeModelContextWindow = vi.fn();
   const getRuntimeConversation = vi.fn();
   const saveRuntimeConversation = vi.fn();
+  const forkRuntimeConversation = vi.fn();
   const saveTaskCollaboration = vi.fn();
   const updateTaskCollaborationExecution = vi.fn();
   const getTaskCollaboration = vi.fn();
   const linkTaskCollaboration = vi.fn();
   const selectFolder = vi.fn();
+  const registerProjectFolder = vi.fn();
+  const listProjectWorkspaces = vi.fn();
   const listRecentSessionContextFolders = vi.fn();
   const prepareProjectContext = vi.fn();
   const readDirectory = vi.fn();
+  const readWorkspaceDirectory = vi.fn();
   const openTerminal = vi.fn();
+  const getAgentRuntimeCommandCatalog = vi.fn();
+  const executeAgentRuntimeCommand = vi.fn();
+  const onAgentRuntimeCommandProgress = vi.fn();
 
   beforeEach(() => {
     // resetAllMocks also clears leftover mockResolvedValueOnce queues, which
@@ -202,14 +266,18 @@ describe("RuntimeChat inputs and persistence", () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
+    retryAgentRuntimeArtifact.mockResolvedValue(null);
     getAgentRuntimeModelContextWindow.mockResolvedValue(null);
     getRuntimeConversation.mockResolvedValue(null);
     saveRuntimeConversation.mockResolvedValue(undefined);
+    forkRuntimeConversation.mockResolvedValue({ id: "branch-conversation" });
     saveTaskCollaboration.mockResolvedValue(undefined);
     updateTaskCollaborationExecution.mockResolvedValue(undefined);
     getTaskCollaboration.mockResolvedValue(null);
     linkTaskCollaboration.mockResolvedValue(undefined);
     selectFolder.mockResolvedValue("D:\\selected-project");
+    registerProjectFolder.mockResolvedValue({ path: "D:\\selected-project" });
+    listProjectWorkspaces.mockResolvedValue([]);
     listRecentSessionContextFolders.mockResolvedValue([]);
     prepareProjectContext.mockResolvedValue({
       id: "project-context",
@@ -223,29 +291,502 @@ describe("RuntimeChat inputs and persistence", () => {
       { name: "docs", isDirectory: true },
       { name: "README.md", isDirectory: false },
     ]);
+    readWorkspaceDirectory.mockResolvedValue([
+      { name: "remote-docs", isDirectory: true },
+      { name: "remote-README.md", isDirectory: false },
+    ]);
     openTerminal.mockResolvedValue(true);
-    Object.defineProperty(window, "hermesAPI", {
+    getAgentRuntimeCommandCatalog.mockResolvedValue({
+      commands: [
+        {
+          name: "status",
+          description: "查看运行状态",
+          category: "Runtime",
+          source: "desktop",
+          target: "runtime-control",
+          availability: "any",
+        },
+      ],
+      fetchedAt: Date.now(),
+    });
+    executeAgentRuntimeCommand.mockResolvedValue({
+      type: "handled",
+      message: "运行时：Hermes Gateway",
+    });
+    onAgentRuntimeCommandProgress.mockReturnValue(vi.fn());
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         probeAgentRuntime,
         startAgentRuntimeTask,
         getAgentRuntimeRun,
+        retryAgentRuntimeArtifact,
         getAgentRuntimeModelContextWindow,
         getRuntimeConversation,
         saveRuntimeConversation,
+        forkRuntimeConversation,
         saveTaskCollaboration,
         updateTaskCollaborationExecution,
         getTaskCollaboration,
         linkTaskCollaboration,
         selectFolder,
+        registerProjectFolder,
+        listProjectWorkspaces,
         listRecentSessionContextFolders,
         prepareProjectContext,
         readDirectory,
+        readWorkspaceDirectory,
         openTerminal,
+        getAgentRuntimeCommandCatalog,
+        executeAgentRuntimeCommand,
+        onAgentRuntimeCommandProgress,
         mediaFileExists: vi.fn().mockResolvedValue(false),
         cancelAgentRuntimeTask: vi.fn(),
       },
     });
+  });
+
+  it("routes a slash control through IPC without starting a normal Runtime task", async () => {
+    render(
+      <RuntimeChat
+        runId="runtime-command"
+        runtime={gatewayRuntime}
+        profile="default"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "提交 Runtime 状态命令" }),
+    );
+
+    await waitFor(() => {
+      expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtimeId: "hermes-gateway",
+          name: "status",
+          requestId: expect.stringMatching(/^runtime-command-/),
+        }),
+      );
+    });
+    expect(startAgentRuntimeTask).not.toHaveBeenCalled();
+    expect(screen.getByText("运行时：Hermes Gateway")).toBeInTheDocument();
+    await waitFor(() => {
+      const persisted = saveRuntimeConversation.mock.calls.at(-1)?.[0];
+      expect(persisted?.messages.at(-1)?.controlAudit).toMatchObject({
+        command: "status",
+        runtimeId: "hermes-gateway",
+        target: "runtime-control",
+        outcome: "handled",
+      });
+      const audit = persisted?.messages.at(-1)?.controlAudit;
+      expect(audit?.completedAt).toBeGreaterThanOrEqual(audit?.startedAt ?? 0);
+    });
+  });
+
+  it("opens a reply branch in a new task without replacing the parent conversation", async () => {
+    const onConversationIdChange = vi.fn();
+    const opened = vi.fn();
+    window.addEventListener("agents-one:open-runtime-conversation", opened);
+
+    render(
+      <RuntimeChat
+        runId="parent-task"
+        runtime={piRuntime}
+        profile="default"
+        initialConversationId="parent-conversation"
+        onConversationIdChange={onConversationIdChange}
+        initialMessages={[
+          {
+            id: "user-1",
+            role: "user",
+            content: "请先完成第一步",
+            createdAt: 1,
+          },
+          {
+            id: "reply-1",
+            role: "agent",
+            content: "第一步已经完成",
+            createdAt: 2,
+          },
+          {
+            id: "user-2",
+            role: "user",
+            content: "这是父对话后续历史",
+            createdAt: 3,
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("从这条答复创建新对话分支"));
+
+    await waitFor(() => {
+      expect(forkRuntimeConversation).toHaveBeenCalledWith(
+        "parent-conversation",
+        expect.objectContaining({ forkedFromMessageId: "reply-1" }),
+        "default",
+      );
+    });
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect((opened.mock.calls[0][0] as CustomEvent).detail).toBe(
+      "branch-conversation",
+    );
+    expect(onConversationIdChange).not.toHaveBeenCalled();
+    expect(screen.getByText("这是父对话后续历史")).toBeInTheDocument();
+    expect(saveRuntimeConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "parent-conversation",
+        messages: expect.arrayContaining([
+          expect.objectContaining({ id: "user-2" }),
+        ]),
+      }),
+    );
+    window.removeEventListener("agents-one:open-runtime-conversation", opened);
+  });
+
+  it("follows live output until the user scrolls back, then offers a jump to the latest message", () => {
+    render(
+      <RuntimeChat
+        runId="scroll-follow"
+        runtime={piRuntime}
+        profile="default"
+        initialMessages={[
+          {
+            id: "user-1",
+            role: "user",
+            content: "请持续展示最新进度",
+            createdAt: 1,
+          },
+          {
+            id: "reply-1",
+            role: "agent",
+            content: "正在执行第一步",
+            createdAt: 2,
+          },
+        ]}
+      />,
+    );
+
+    const messagePane = document.querySelector(
+      ".runtime-chat .chat-messages",
+    ) as HTMLDivElement;
+    Object.defineProperties(messagePane, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1_200 },
+      scrollTop: { configurable: true, writable: true, value: 120 },
+    });
+
+    fireEvent.scroll(messagePane);
+    expect(
+      screen.getByRole("button", { name: "回到最新消息" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "回到最新消息" }));
+    expect(messagePane.scrollTop).toBe(1_200);
+    expect(
+      screen.queryByRole("button", { name: "回到最新消息" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows compact lifecycle feedback without submitting a normal prompt", async () => {
+    getAgentRuntimeCommandCatalog.mockResolvedValue({
+      commands: [
+        {
+          name: "compact",
+          description: "压缩上下文",
+          category: "Runtime",
+          source: "desktop",
+          target: "runtime-control",
+          availability: "idle",
+          argumentHint: "[保留重点]",
+        },
+      ],
+      fetchedAt: Date.now(),
+    });
+    executeAgentRuntimeCommand.mockResolvedValue({
+      type: "handled",
+      message: "Pi 上下文压缩完成：1200 → 300 tokens。",
+      statePatch: {
+        compacted: true,
+        compaction: {
+          trigger: "manual",
+          tokensBefore: 1_200,
+          tokensAfter: 300,
+        },
+      },
+    });
+    render(
+      <RuntimeChat
+        runId="runtime-compact"
+        runtime={piRuntime}
+        profile="default"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "提交 Runtime 压缩命令" }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "确认压缩当前会话上下文" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("保留重点：保留接口")).toBeInTheDocument();
+    expect(executeAgentRuntimeCommand).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认压缩" }));
+
+    expect(
+      screen.queryByText("正在请求 Runtime 压缩当前会话上下文…"),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "compact", args: "保留接口" }),
+      );
+    });
+    expect(startAgentRuntimeTask).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("Pi 上下文压缩完成：1200 → 300 tokens。"),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      const audit = saveRuntimeConversation.mock.calls
+        .at(-1)?.[0]
+        ?.messages.at(-1)?.controlAudit;
+      expect(audit?.compaction).toEqual({
+        trigger: "manual",
+        tokensBefore: 1_200,
+        tokensAfter: 300,
+      });
+    });
+  });
+
+  it("routes the model label through the same Runtime /model handler", async () => {
+    getAgentRuntimeCommandCatalog.mockResolvedValue({
+      commands: [
+        {
+          name: "model",
+          description: "选择模型",
+          category: "Runtime",
+          source: "desktop",
+          target: "runtime-control",
+          availability: "any",
+        },
+      ],
+      fetchedAt: Date.now(),
+    });
+    executeAgentRuntimeCommand.mockImplementation(async (request) =>
+      request.args
+        ? {
+            type: "handled",
+            message: `当前会话已切换到模型：${request.args}`,
+            statePatch: { model: request.args },
+          }
+        : {
+            type: "needs-input",
+            input: "model-picker",
+            models: [{ id: "ark/glm-5.2" }],
+          },
+    );
+    render(
+      <RuntimeChat
+        runId="runtime-model-label"
+        runtime={piRuntime}
+        profile="default"
+      />,
+    );
+
+    const trigger = await screen.findByRole("button", {
+      name: "模型：未提供模型",
+    });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    fireEvent.click(trigger);
+
+    await waitFor(() =>
+      expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "model", runtimeId: "pi-local" }),
+      ),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "选择当前会话模型" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("模型列表")).toHaveValue("ark/glm-5.2");
+    expect(
+      screen.queryByText("Runtime 命令正在等待补充输入。"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("模型列表"), {
+      target: { value: "ark/glm-5.2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认切换" }));
+    await waitFor(() => {
+      expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "model", args: "ark/glm-5.2" }),
+      );
+    });
+  });
+
+  it("renders a readable execution-boundary badge instead of a raw host label", async () => {
+    render(
+      <RuntimeChat
+        runId="runtime-isolation-badge"
+        runtime={piRuntime}
+        profile="default"
+        initialMessages={[
+          {
+            id: "host-execution",
+            role: "agent",
+            content: "已完成本机分析。",
+            createdAt: Date.now(),
+            execution: {
+              runId: "host-run",
+              events: [],
+              isolation: {
+                level: "host",
+                summary: "使用启动 Agents One 的本机用户权限直接执行。",
+              },
+            },
+          },
+        ]}
+      />,
+    );
+
+    const badge = await screen.findByLabelText("执行边界：host");
+    expect(badge).toHaveTextContent("本机执行");
+    expect(badge).toHaveAttribute(
+      "title",
+      "使用启动 Agents One 的本机用户权限直接执行。",
+    );
+  });
+
+  it("optimistically shows the chosen model while Pi confirms the live session switch", async () => {
+    let resolveSwitch: ((result: Record<string, unknown>) => void) | undefined;
+    getAgentRuntimeCommandCatalog.mockResolvedValue({
+      commands: [
+        {
+          name: "model",
+          description: "选择模型",
+          category: "Runtime",
+          source: "desktop",
+          target: "runtime-control",
+          availability: "any",
+        },
+      ],
+      fetchedAt: Date.now(),
+    });
+    executeAgentRuntimeCommand.mockImplementation((request) => {
+      if (!request.args) {
+        return Promise.resolve({
+          type: "needs-input",
+          input: "model-picker",
+          models: [
+            { id: "ark/deepseek-v4-flash" },
+            { id: "ark/doubao-seed-2.1-turbo" },
+          ],
+        });
+      }
+      return new Promise((resolve) => {
+        resolveSwitch = resolve;
+      });
+    });
+    render(
+      <RuntimeChat
+        runId="runtime-model-optimistic"
+        runtime={{
+          ...piRuntime,
+          config: { ...piRuntime.config, model: "ark/deepseek-v4-flash" },
+        }}
+        profile="default"
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "模型：ark/deepseek-v4-flash",
+      }),
+    );
+    await screen.findByRole("dialog", { name: "选择当前会话模型" });
+    fireEvent.change(screen.getByLabelText("模型列表"), {
+      target: { value: "ark/doubao-seed-2.1-turbo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认切换" }));
+
+    const trigger = screen.getByRole("button", {
+      name: "正在切换模型：ark/doubao-seed-2.1-turbo",
+    });
+    expect(trigger).toBeDisabled();
+    resolveSwitch?.({
+      type: "handled",
+      message: "当前会话已切换到模型：ark/doubao-seed-2.1-turbo",
+      statePatch: { model: "ark/doubao-seed-2.1-turbo" },
+    });
+    await screen.findByText("当前会话已切换到模型：ark/doubao-seed-2.1-turbo");
+  });
+
+  it("renders only matching native command progress as system feedback", async () => {
+    let progressListener: ((progress: Record<string, unknown>) => void) | null =
+      null;
+    onAgentRuntimeCommandProgress.mockImplementation((listener) => {
+      progressListener = listener;
+      return vi.fn();
+    });
+    executeAgentRuntimeCommand.mockImplementation(async (request) => {
+      progressListener?.({
+        requestId: "other-command",
+        runtimeId: "pi-local",
+        phase: "progress",
+        message: "这条旧命令不得显示。",
+      });
+      progressListener?.({
+        requestId: request.requestId,
+        runtimeId: request.runtimeId,
+        phase: "progress",
+        message: "Pi 正在整理并压缩会话上下文…",
+      });
+      return { type: "handled", message: "Pi 上下文压缩完成。" };
+    });
+    render(
+      <RuntimeChat
+        runId="runtime-command-progress"
+        runtime={piRuntime}
+        profile="default"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "提交 Runtime 压缩命令" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "确认压缩" }));
+
+    expect(
+      await screen.findByText("Pi 正在整理并压缩会话上下文…"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("这条旧命令不得显示。")).not.toBeInTheDocument();
+  });
+
+  it("keeps unknown slash input on the control path even when it has attachments", async () => {
+    executeAgentRuntimeCommand.mockResolvedValue({
+      type: "error",
+      message: "未知命令 /statuz。你是否想使用：/status？",
+    });
+    render(
+      <RuntimeChat
+        runId="runtime-unknown-command"
+        runtime={gatewayRuntime}
+        profile="default"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "提交未知 Runtime 命令" }),
+    );
+
+    await waitFor(() => {
+      expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "statuz" }),
+      );
+    });
+    expect(startAgentRuntimeTask).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("未知命令 /statuz。你是否想使用：/status？"),
+    ).toBeInTheDocument();
   });
 
   it("refreshes an open scheduled-task conversation after its result is persisted", async () => {
@@ -522,6 +1063,257 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
+  it("keeps the Web Agent attachment affordance available for queued follow-ups", async () => {
+    render(
+      <RuntimeChat
+        runId="chat-doubao"
+        runtime={doubaoRuntime}
+        profile="default"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("runtime-composer")).toHaveAttribute(
+        "data-attachments",
+        "true",
+      ),
+    );
+    expect(screen.getByTestId("runtime-composer")).toHaveAttribute(
+      "data-attachments-while-loading",
+      "true",
+    );
+  });
+
+  it("queues a Web Agent prompt and its attachment until the current run ends", async () => {
+    probeAgentRuntime.mockResolvedValue({
+      runtimeId: "doubao-web-test",
+      state: "healthy",
+      checkedAt: Date.now(),
+      capabilities: {
+        chat: true,
+        taskDispatch: true,
+        streaming: true,
+        cancellation: true,
+        tools: false,
+        memory: false,
+        orchestration: false,
+        readOnlyPlanning: false,
+        mailbox: false,
+        securityEvents: false,
+        artifacts: true,
+        artifactUpload: true,
+        workspaceAccess: false,
+        steering: "follow_up",
+      },
+    });
+    startAgentRuntimeTask
+      .mockResolvedValueOnce({
+        id: "doubao-run-1",
+        runtimeId: "doubao-web-test",
+        status: "running",
+        output: "",
+        sessionId: "web-doubao:conversation-1",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .mockResolvedValueOnce({
+        id: "doubao-run-2",
+        runtimeId: "doubao-web-test",
+        status: "running",
+        output: "",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    getAgentRuntimeRun
+      .mockResolvedValueOnce({
+        id: "doubao-run-1",
+        runtimeId: "doubao-web-test",
+        status: "running",
+        output: "",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .mockResolvedValueOnce({
+        id: "doubao-run-1",
+        runtimeId: "doubao-web-test",
+        status: "succeeded",
+        output: "首轮答复",
+        sessionId: "web-doubao:conversation-1",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .mockResolvedValueOnce({
+        id: "doubao-run-2",
+        runtimeId: "doubao-web-test",
+        status: "succeeded",
+        output: "跟进答复",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+    render(
+      <RuntimeChat
+        runId="chat-doubao-queue"
+        runtime={doubaoRuntime}
+        profile="default"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("runtime-composer")).toHaveAttribute(
+        "data-attachments-while-loading",
+        "true",
+      ),
+    );
+
+    const send = screen.getByRole("button", { name: "发送测试输入" });
+    fireEvent.click(send);
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    fireEvent.click(send);
+
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2));
+    expect(startAgentRuntimeTask.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        attachments: [testAttachment],
+        sessionId: "web-doubao:conversation-1",
+      }),
+    );
+    expect(screen.queryByText("停止当前运行并以新消息恢复？")).toBeNull();
+    await screen.findByText("跟进答复");
+  });
+
+  it("releases a completed Web Agent turn even when terminal persistence fails", async () => {
+    startAgentRuntimeTask.mockResolvedValue({
+      id: "doubao-storage-run",
+      runtimeId: "doubao-web-test",
+      status: "running",
+      output: "",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    getAgentRuntimeRun.mockResolvedValue({
+      id: "doubao-storage-run",
+      runtimeId: "doubao-web-test",
+      status: "succeeded",
+      output: "豆包最终答复",
+      sessionId: "web-doubao:storage-test",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    saveRuntimeConversation.mockImplementation(async (input) => {
+      if (
+        input.messages.some(
+          (message: { role: string; content: string }) =>
+            message.role === "agent" && message.content === "豆包最终答复",
+        )
+      ) {
+        throw new Error("storage unavailable");
+      }
+    });
+
+    render(
+      <RuntimeChat
+        runId="chat-doubao-storage-failure"
+        runtime={doubaoRuntime}
+        profile="default"
+      />,
+    );
+
+    const send = screen.getByRole("button", { name: "发送测试输入" });
+    fireEvent.click(send);
+    expect(await screen.findByText("豆包最终答复")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "答复已收到，但本地会话记录保存失败；本轮运行已正常结束。",
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(send);
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2));
+  });
+
+  it("retries an unavailable remote artifact without rerunning the task", async () => {
+    getAgentRuntimeRun.mockResolvedValue({
+      id: "run-1",
+      runtimeId: "hermes-gateway",
+      status: "succeeded",
+      output: "产物已生成。",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      artifacts: [
+        {
+          id: "remote-report",
+          kind: "file",
+          label: "报告.pdf",
+          unavailableReason: "下载暂时失败。",
+        },
+      ],
+    });
+    retryAgentRuntimeArtifact.mockResolvedValue({
+      id: "run-1",
+      runtimeId: "hermes-gateway",
+      status: "succeeded",
+      output: "产物已生成。",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      artifacts: [
+        {
+          id: "remote-report",
+          kind: "file",
+          label: "报告.pdf",
+          mime: "application/pdf",
+          path: "C:\\Users\\tester\\AppData\\Local\\Temp\\报告.pdf",
+        },
+      ],
+    });
+    render(
+      <RuntimeChat
+        runId="chat-retry-artifact"
+        runtime={gatewayRuntime}
+        profile="default"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("runtime-composer")).toHaveAttribute(
+        "data-attachments",
+        "true",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await screen.findByRole("complementary", { name: "远程产物重新同步" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "重新同步产物 报告.pdf" }),
+    );
+
+    await waitFor(() =>
+      expect(retryAgentRuntimeArtifact).toHaveBeenCalledWith(
+        "run-1",
+        "remote-report",
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("complementary", { name: "远程产物重新同步" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(saveRuntimeConversation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            execution: expect.objectContaining({
+              artifacts: [
+                expect.objectContaining({
+                  id: "remote-report",
+                  path: expect.stringContaining("报告.pdf"),
+                }),
+              ],
+            }),
+          }),
+        ]),
+      }),
+    );
+  });
+
   it("sends recent conversation context with a Gateway follow-up", async () => {
     render(
       <RuntimeChat
@@ -666,6 +1458,77 @@ describe("RuntimeChat inputs and persistence", () => {
     );
     expect(startAgentRuntimeTask.mock.calls[0][1].workspace).not.toBe(
       piRuntime.config.workspace,
+    );
+  });
+
+  it("keeps a workspace-less OpenCode greeting read-only and persists the transcript", async () => {
+    startAgentRuntimeTask.mockResolvedValue({
+      id: "run-opencode-dialogue",
+      runtimeId: "opencode-local",
+      status: "running",
+      output: "",
+      startedAt: Date.now(),
+    });
+    getAgentRuntimeRun.mockResolvedValue({
+      id: "run-opencode-dialogue",
+      runtimeId: "opencode-local",
+      status: "succeeded",
+      output: "OpenCode 已连接。",
+      startedAt: Date.now(),
+    });
+    render(
+      <RuntimeChat
+        runId="chat-opencode-dialogue"
+        runtime={openCodeRuntime}
+        profile="default"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "选择项目目录" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await waitFor(() =>
+      expect(startAgentRuntimeTask).toHaveBeenCalledWith(
+        "opencode-local",
+        expect.objectContaining({
+          mode: "analysis",
+          workspace: undefined,
+        }),
+      ),
+    );
+    expect(await screen.findByText("OpenCode 已连接。")).toBeInTheDocument();
+    expect(saveRuntimeConversation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        runtimeKind: "opencode",
+        messages: expect.arrayContaining([
+          expect.objectContaining({ content: "OpenCode 已连接。" }),
+        ]),
+      }),
+    );
+    expect(
+      screen.queryByText(
+        "答复已收到，但本地会话记录保存失败；本轮运行已正常结束。",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows OpenCode's automatic reasoning status when ACP has no thinking picker", async () => {
+    render(
+      <RuntimeChat
+        runId="chat-opencode-thinking-status"
+        runtime={openCodeRuntime}
+        profile="default"
+      />,
+    );
+
+    const indicator = await screen.findByRole("status", {
+      name: "思考等级：自动；OpenCode ACP 未提供可切换选项",
+    });
+    expect(indicator).toHaveTextContent("思考自动");
+    expect(indicator).toHaveAttribute(
+      "title",
+      "OpenCode ACP 当前未声明可切换的思考等级，思考过程由当前模型自动决定。",
     );
   });
 
@@ -857,6 +1720,89 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(screen.queryByText("未提供模型")).not.toBeInTheDocument();
   });
 
+  it("keeps a remote final answer out of the thinking group when the operation also failed", async () => {
+    const answer =
+      "老大，删除被拒了：目标文件存在，但当前 Workspace Gateway 不允许 delete。";
+    startAgentRuntimeTask.mockResolvedValueOnce({
+      id: "run-remote-answer-with-error",
+      runtimeId: "hermes-home2",
+      status: "running",
+      output: "",
+      startedAt: Date.now(),
+    });
+    getAgentRuntimeRun.mockResolvedValueOnce({
+      id: "run-remote-answer-with-error",
+      runtimeId: "hermes-home2",
+      status: "failed",
+      output: answer,
+      error: "Workspace operation failed",
+      startedAt: Date.now(),
+      completedAt: Date.now(),
+      events: [
+        {
+          id: "remote-answer-progress",
+          type: "progress",
+          summary: answer,
+          createdAt: Date.now(),
+        },
+      ],
+    });
+
+    render(
+      <RuntimeChat
+        runId="chat-remote-answer-with-error"
+        runtime={hers2Runtime}
+        profile="default"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+
+    await screen.findByText(answer);
+    expect(
+      [...document.querySelectorAll(".chat-history-pre")].some(
+        (node) => node.textContent === answer,
+      ),
+    ).toBe(false);
+    expect(
+      screen.queryByText("Workspace operation failed"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the actual OpenCode model when the requested model falls back", () => {
+    render(
+      <RuntimeChat
+        runId="chat-opencode-model-fallback"
+        runtime={{
+          ...openCodeRuntime,
+          config: {
+            ...openCodeRuntime.config,
+            model: "opencode/deepseek-v4-flash-free",
+          },
+        }}
+        profile="default"
+        initialMessages={[
+          {
+            id: "opencode-answer",
+            role: "agent",
+            content: "我是 OpenCode。",
+            createdAt: Date.now(),
+            execution: {
+              runId: "opencode-model-run",
+              events: [],
+              model: { provider: "opencode", id: "big-pickle" },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("opencode / big-pickle")).toBeInTheDocument();
+    expect(
+      screen.queryByText("opencode/deepseek-v4-flash-free"),
+    ).not.toBeInTheDocument();
+  });
+
   it("does not present input tokens as context occupancy", async () => {
     probeAgentRuntime.mockResolvedValueOnce({
       runtimeId: "hermes-home2",
@@ -958,6 +1904,58 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
+  it("routes an interactive Runtime context gauge through /compact", async () => {
+    getAgentRuntimeCommandCatalog.mockResolvedValue({
+      commands: [
+        {
+          name: "compact",
+          description: "压缩上下文",
+          category: "Runtime",
+          source: "desktop",
+          target: "runtime-control",
+          availability: "idle",
+        },
+      ],
+      fetchedAt: Date.now(),
+    });
+    getAgentRuntimeModelContextWindow.mockResolvedValueOnce(1_000_000);
+    render(
+      <RuntimeChat
+        runId="runtime-context-compact"
+        runtime={{
+          ...piRuntime,
+          config: { ...piRuntime.config, model: "ark/deepseek-v4-flash" },
+        }}
+        profile="default"
+        initialMessages={[
+          {
+            id: "context-answer",
+            role: "agent",
+            content: "上下文占用已上报。",
+            createdAt: Date.now(),
+            execution: {
+              runId: "context-run",
+              events: [],
+              model: { provider: "ark", id: "deepseek-v4-flash" },
+              usage: { contextUsedTokens: 3_680 },
+            },
+          },
+        ]}
+      />,
+    );
+
+    await screen.findByTestId("runtime-context");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "提交 Runtime 上下文压缩" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "确认压缩" }));
+    await waitFor(() =>
+      expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "compact", runtimeId: "pi-local" }),
+      ),
+    );
+  });
+
   it("opens the shared project tree and launches a terminal in its folder", async () => {
     render(
       <RuntimeChat
@@ -977,6 +1975,66 @@ describe("RuntimeChat inputs and persistence", () => {
     await waitFor(() =>
       expect(openTerminal).toHaveBeenCalledWith("D:\\selected-project"),
     );
+  });
+
+  it("opens the project tree for a remote Gateway workspace capability", async () => {
+    probeAgentRuntime.mockResolvedValueOnce({
+      runtimeId: "hermes-home2",
+      state: "healthy",
+      checkedAt: Date.now(),
+      capabilities: {
+        chat: true,
+        taskDispatch: true,
+        streaming: true,
+        cancellation: true,
+        tools: true,
+        memory: false,
+        orchestration: false,
+        readOnlyPlanning: false,
+        mailbox: false,
+        securityEvents: false,
+        artifacts: true,
+        artifactUpload: true,
+        workspaceAccess: true,
+      },
+    });
+    render(
+      <RuntimeChat
+        runId="chat-hers-2-worktree"
+        runtime={hers2Runtime}
+        profile="default"
+        initialWorkspace="test"
+        initialWorkspaceId="project-test"
+      />,
+    );
+
+    const treeButton = await screen.findByTitle("显示项目树");
+    fireEvent.click(treeButton);
+
+    await screen.findByText("remote-README.md");
+    expect(readWorkspaceDirectory).toHaveBeenCalledWith("project-test", "");
+    expect(readDirectory).not.toHaveBeenCalled();
+  });
+
+  it("keeps remote Gateway host full access separate from the desktop Workspace Grant", async () => {
+    render(
+      <RuntimeChat
+        runId="chat-hers-2-host-access"
+        runtime={hers2Runtime}
+        profile="default"
+      />,
+    );
+
+    const permissionButton = await screen.findByRole("button", {
+      name: "管理本轮任务权限",
+    });
+    fireEvent.click(permissionButton);
+    const fullAccess = screen.getByRole("menuitemradio", {
+      name: /完全访问/,
+    });
+    expect(fullAccess).toBeEnabled();
+    fireEvent.click(fullAccess);
+    expect(screen.getByText("完全访问")).toBeInTheDocument();
   });
 
   it("opens the shared Web Preview when a runtime message requests navigation", async () => {
@@ -1248,7 +2306,7 @@ describe("RuntimeChat inputs and persistence", () => {
               {
                 kind: "file",
                 label: "multi-agent-smoke-test.txt",
-                path: "D:\\default\\multi-agent-smoke-test.txt",
+                path: "multi-agent-smoke-test.txt",
                 sha256: "b".repeat(64),
                 sourceMachine: "本机工作区",
                 changeSummary: "创建冒烟测试文件。",
@@ -1288,7 +2346,7 @@ describe("RuntimeChat inputs and persistence", () => {
           }),
         ]),
       }),
-      undefined,
+      expect.any(Object),
     );
     expect(
       startAgentRuntimeTask.mock.calls.map(([runtimeId]) => runtimeId),
@@ -1316,9 +2374,7 @@ describe("RuntimeChat inputs and persistence", () => {
     ).not.toBeInTheDocument();
   });
 
-  it(
-    "renders collaboration reasoning and tool events while the assigned runtime is still running",
-    async () => {
+  it("renders collaboration reasoning and tool events while the assigned runtime is still running", async () => {
     startAgentRuntimeTask.mockResolvedValueOnce({
       id: "live-collaboration-run",
       runtimeId: "pi-local",
@@ -1417,9 +2473,7 @@ describe("RuntimeChat inputs and persistence", () => {
       (await screen.findAllByText("复核完成。", {}, { timeout: 8_000 })).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("正在检查交付文件。")).toBeInTheDocument();
-    },
-    15_000,
-  );
+  }, 15_000);
 
   it("routes a failed review back to implementation and closes only after re-review and lead acceptance", async () => {
     const assignments = [
@@ -1482,7 +2536,7 @@ describe("RuntimeChat inputs and persistence", () => {
                 {
                   kind: "file",
                   label: "multi-agent-smoke-test.txt",
-                  path: "D:\\default\\multi-agent-smoke-test.txt",
+                  path: "multi-agent-smoke-test.txt",
                   sha256: (attempt === 2 ? "a" : "b").repeat(64),
                   sourceMachine: "本机工作区",
                   changeSummary:
@@ -1618,7 +2672,7 @@ describe("RuntimeChat inputs and persistence", () => {
               {
                 kind: "file",
                 label: "smoke.txt",
-                path: "D:\\default\\smoke.txt",
+                path: "smoke.txt",
                 sha256: "c".repeat(64),
                 sourceMachine: "本机工作区",
                 changeSummary: "创建 smoke.txt。",
@@ -2002,7 +3056,7 @@ describe("RuntimeChat inputs and persistence", () => {
                 {
                   kind: "file",
                   label: `${runtimeId}.txt`,
-                  path: `D:\\default\\${runtimeId}.txt`,
+                  path: `${runtimeId}.txt`,
                   sha256: "d".repeat(64),
                   sourceMachine: "本机工作区",
                   changeSummary: "创建分支产物。",
@@ -2464,7 +3518,7 @@ describe("RuntimeChat inputs and persistence", () => {
               {
                 kind: "file",
                 label: "feature.ts",
-                path: "D:\\worktrees\\feature\\src\\feature.ts",
+                path: "src/feature.ts",
                 sha256: "a".repeat(64),
                 sourceMachine: "本机工作区",
                 changeSummary: "新增 feature 实现。",
@@ -2568,7 +3622,7 @@ describe("RuntimeChat inputs and persistence", () => {
           artifacts: expect.arrayContaining([
             expect.objectContaining({
               kind: "file",
-              path: "D:\\worktrees\\feature\\src\\feature.ts",
+              path: "src/feature.ts",
             }),
             expect.objectContaining({ kind: "code_diff" }),
             expect.objectContaining({
@@ -2635,7 +3689,7 @@ describe("RuntimeChat inputs and persistence", () => {
               {
                 kind: "file",
                 label: "交付文件",
-                path: "D:\\project\\output.txt",
+                path: "output.txt",
                 sha256: "b".repeat(64),
                 sourceMachine: "本机工作区",
                 changeSummary: "创建 output.txt。",
@@ -2921,7 +3975,7 @@ describe("RuntimeChat inputs and persistence", () => {
     );
 
     await waitFor(() =>
-      expect(window.hermesAPI.cancelAgentRuntimeTask).toHaveBeenCalledWith(
+      expect(window.agentsOneAPI.cancelAgentRuntimeTask).toHaveBeenCalledWith(
         "active-implement-run",
       ),
     );

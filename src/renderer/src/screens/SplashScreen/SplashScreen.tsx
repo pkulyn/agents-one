@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import startupHands from "../../assets/startup-hands.jpeg";
+import startupHandsBackground from "../../assets/startup-hands-background-v2.png";
+import startupHumanHand from "../../assets/startup-human-hand-alpha-v2.png";
+import startupRobotHand from "../../assets/startup-robot-hand-alpha-v2.png";
 import splashLogo from "../../assets/agents-one-splash.svg";
 
 interface SplashScreenProps {
@@ -40,15 +42,19 @@ function SplashScreen({
   return (
     <div className="splash-screen">
       <div className="splash-hand-stage" aria-hidden="true">
-        <img className="splash-hand-base" src={startupHands} alt="" />
+        <img
+          className="splash-hand-background"
+          src={startupHandsBackground}
+          alt=""
+        />
         <img
           className="splash-hand-layer splash-hand-robot"
-          src={startupHands}
+          src={startupRobotHand}
           alt=""
         />
         <img
           className="splash-hand-layer splash-hand-human"
-          src={startupHands}
+          src={startupHumanHand}
           alt=""
         />
         <div className="splash-vignette" />

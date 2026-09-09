@@ -28,6 +28,139 @@ describe("runtime conversation store", () => {
     rmSync(state.root, { recursive: true, force: true });
   });
 
+  it("keeps entry audience metadata and branch links without migrating old messages", async () => {
+    const store = await import("./runtime-conversation-store");
+    store.saveRuntimeConversation({
+      id: "root",
+      title: "根会话",
+      runtimeId: "pi",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+      runtimeLocation: "local",
+      messages: [
+        { id: "u1", role: "user", content: "需求", createdAt: 1 },
+        {
+          id: "s1",
+          role: "system",
+          content: "仅审计",
+          createdAt: 2,
+          meta: {
+            audience: ["user", "audit"],
+            origin: "platform",
+            persistence: "durable",
+          },
+          controlAudit: {
+            requestId: "audit-1",
+            command: "compact",
+            runtimeId: "pi",
+            outcome: "handled",
+            startedAt: 1,
+            completedAt: 2,
+            createdAt: 2,
+          },
+        },
+      ],
+    });
+    const branch = store.forkRuntimeConversation("root", {
+      id: "branch",
+      forkedFromMessageId: "u1",
+      branchLabel: "方案 B",
+      branchSummary: "仅保留用户可见事实。",
+    });
+    expect(branch.messages.map((message) => message.id)).toEqual(["u1"]);
+    expect(branch.branch).toMatchObject({
+      parentConversationId: "root",
+      forkedFromMessageId: "u1",
+    });
+    expect(() =>
+      store.forkRuntimeConversation("root", {
+        id: "unsafe",
+        implementation: true,
+      }),
+    ).toThrow(/worktree/);
+    expect(
+      store.getRuntimeConversation("root")?.messages[1].controlAudit,
+    ).toMatchObject({
+      requestId: "audit-1",
+      command: "compact",
+    });
+  });
+
+  it("keeps OpenCode, OpenClaw, and future runtime kinds in conversation storage", async () => {
+    const store = await import("./runtime-conversation-store");
+    for (const runtimeKind of ["opencode", "openclaw", "future-cli"] as const) {
+      const saved = store.saveRuntimeConversation({
+        id: `conversation-${runtimeKind}`,
+        title: runtimeKind,
+        runtimeId: runtimeKind,
+        runtimeName: runtimeKind,
+        runtimeKind,
+        runtimeLocation: runtimeKind === "openclaw" ? "remote" : "local",
+        messages: [
+          {
+            id: `message-${runtimeKind}`,
+            role: "user",
+            content: "hello",
+            createdAt: 1,
+          },
+        ],
+      });
+      expect(saved.runtimeKind).toBe(runtimeKind);
+      expect(
+        store.getRuntimeConversation(`conversation-${runtimeKind}`)
+          ?.runtimeKind,
+      ).toBe(runtimeKind);
+    }
+  });
+
+  it("persists OpenCode execution metadata without failing on incomplete artifacts", async () => {
+    const store = await import("./runtime-conversation-store");
+    const saved = store.saveRuntimeConversation({
+      id: "opencode-metadata",
+      title: "OpenCode 元数据",
+      runtimeId: "opencode",
+      runtimeName: "OpenCode",
+      runtimeKind: "opencode",
+      runtimeLocation: "local",
+      messages: [
+        { id: "u1", role: "user", content: "你是谁？", createdAt: 1 },
+        {
+          id: "a1",
+          role: "agent",
+          content: "我是 OpenCode。",
+          createdAt: 2,
+          execution: {
+            runId: "opencode-run-1",
+            events: [
+              {
+                id: "thought-1",
+                type: "progress",
+                summary: "用户请求介绍自己。",
+                createdAt: 2,
+              },
+            ],
+            model: { provider: "ark", id: "glm-5.2" },
+            usage: {
+              inputTokens: 10,
+              outputTokens: 4,
+              totalTokens: 14,
+              contextUsedTokens: 42,
+              contextWindowTokens: 100,
+            },
+            artifacts: [{ kind: "diff" } as never],
+          },
+        },
+      ],
+    });
+
+    expect(saved.messages[1]?.execution).toMatchObject({
+      model: { provider: "ark", id: "glm-5.2" },
+      usage: { inputTokens: 10, totalTokens: 14 },
+      events: [expect.objectContaining({ summary: "用户请求介绍自己。" })],
+    });
+    expect(saved.messages[1]?.execution?.artifacts).toBeUndefined();
+  });
+
   it("preserves individual collaboration agent identity on disk", async () => {
     const store = await import("./runtime-conversation-store");
     const saved = store.saveRuntimeConversation({
@@ -169,5 +302,31 @@ describe("runtime conversation store", () => {
     expect(
       store.getRuntimeConversation(base.id)?.activeRuntimeRunId,
     ).toBeUndefined();
+  });
+
+  it("persists Web Agent conversations and their resumable session", async () => {
+    const store = await import("./runtime-conversation-store");
+    const saved = store.saveRuntimeConversation({
+      id: "doubao-conversation-1",
+      title: "介绍豆包功能",
+      runtimeId: "doubao-web-test",
+      runtimeName: "豆包网页版",
+      runtimeKind: "web-agent",
+      runtimeLocation: "local",
+      runtimeSessionId: "web-doubao:conversation-1",
+      messages: [
+        { id: "u1", role: "user", content: "介绍一下功能", createdAt: 1 },
+        { id: "a1", role: "agent", content: "这是最终答复", createdAt: 2 },
+      ],
+    });
+
+    expect(saved).toMatchObject({
+      runtimeKind: "web-agent",
+      runtimeSessionId: "web-doubao:conversation-1",
+      messageCount: 2,
+    });
+    expect(
+      store.getRuntimeConversation(saved.id)?.messages.at(-1)?.content,
+    ).toBe("这是最终答复");
   });
 });

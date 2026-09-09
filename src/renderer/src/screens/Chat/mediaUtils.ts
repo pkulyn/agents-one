@@ -18,6 +18,36 @@
  */
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
+const RUNTIME_ARTIFACT_PREFIX = "agents-one-artifact://runtime/";
+
+export interface RuntimeArtifactMediaRef {
+  runId: string;
+  artifactId: string;
+}
+
+/** A renderer-safe URI for a main-process Runtime artifact capability. */
+export function runtimeArtifactMediaUri(
+  runId: string,
+  artifactId: string,
+  name: string,
+): string {
+  return `${RUNTIME_ARTIFACT_PREFIX}${encodeURIComponent(runId)}/${encodeURIComponent(artifactId)}/${encodeURIComponent(name || "artifact")}`;
+}
+
+export function parseRuntimeArtifactMediaUri(
+  value: string,
+): RuntimeArtifactMediaRef | null {
+  if (!value.startsWith(RUNTIME_ARTIFACT_PREFIX)) return null;
+  const parts = value.slice(RUNTIME_ARTIFACT_PREFIX.length).split("/");
+  if (parts.length < 2) return null;
+  try {
+    const runId = decodeURIComponent(parts[0]);
+    const artifactId = decodeURIComponent(parts[1]);
+    return runId && artifactId ? { runId, artifactId } : null;
+  } catch {
+    return null;
+  }
+}
 
 // Extensions recognised in a bare (untagged) path.
 const BARE_PATH_EXT =
@@ -118,6 +148,8 @@ export interface MediaToken {
   isImage: boolean;
   /** Last path/URL segment, for download filenames and alt text. */
   name: string;
+  /** Present only for a Runtime artifact capability, never a filesystem path. */
+  runtimeArtifact?: RuntimeArtifactMediaRef;
 }
 
 export type MediaSegment =
@@ -158,13 +190,22 @@ function toToken(raw: string, wasQuoted: boolean): MediaToken | null {
   // Bare MEDIA: tokens may swallow trailing sentence punctuation.
   if (!wasQuoted) src = src.replace(/[).,;:!?\]}]+$/, "");
   if (!src) return null;
-  const isUrl = /^(?:https?:\/\/|data:image\/)/i.test(src);
-  const name = src.split(/[\\/]/).filter(Boolean).pop() || src;
+  const runtimeArtifact = parseRuntimeArtifactMediaUri(src);
+  const isUrl =
+    Boolean(runtimeArtifact) || /^(?:https?:\/\/|data:image\/)/i.test(src);
+  const encodedName = src.split(/[\\/]/).filter(Boolean).pop() || src;
+  let name = encodedName;
+  try {
+    name = runtimeArtifact ? decodeURIComponent(encodedName) : encodedName;
+  } catch {
+    // Keep the safe encoded segment if an untrusted token is malformed.
+  }
   return {
     src,
     isUrl,
-    isImage: /^data:image\//i.test(src) || IMAGE_EXT.test(src),
+    isImage: /^data:image\//i.test(src) || IMAGE_EXT.test(name),
     name,
+    ...(runtimeArtifact ? { runtimeArtifact } : {}),
   };
 }
 

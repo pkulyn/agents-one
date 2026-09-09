@@ -11,7 +11,7 @@ const { attach } = require("./e2e-attach");
 (async () => {
   const { browser, page } = await attach();
   const result = await page.evaluate(async () => {
-    return await window.hermesAPI.discoverProviderModels(
+    return await window.agentsOneAPI.discoverProviderModels(
       "nous",
       undefined,
       undefined,

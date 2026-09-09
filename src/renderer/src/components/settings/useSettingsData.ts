@@ -60,7 +60,7 @@ export function useSettingsData(profile?: string) {
 
   // Log viewer state
   const [logContent, setLogContent] = useState("");
-  const [logFile, setLogFile] = useState("gateway.log");
+  const [logFile, setLogFile] = useState("application.log");
   const [logPath, setLogPath] = useState("");
   const [logsExpanded, setLogsExpanded] = useState(false);
 
@@ -107,10 +107,10 @@ export function useSettingsData(profile?: string) {
 
     // Load fast config first (cached in main process)
     const [aVersion, conn, keyStatus, autoUpgrade] = await Promise.all([
-      window.hermesAPI.getAppVersion(),
-      window.hermesAPI.getConnectionConfig(),
-      window.hermesAPI.getApiServerKeyStatus(profile),
-      window.hermesAPI.getAutoUpgradeEnabled(),
+      window.agentsOneAPI.getAppVersion(),
+      window.agentsOneAPI.getConnectionConfig(),
+      window.agentsOneAPI.getApiServerKeyStatus(profile),
+      window.agentsOneAPI.getAutoUpgradeEnabled(),
     ]);
 
     if (requestId !== loadConfigRequestRef.current) return;
@@ -122,13 +122,13 @@ export function useSettingsData(profile?: string) {
     connLoaded.current = true;
 
     const homeResult = await Promise.resolve()
-      .then(() => window.hermesAPI.getHermesHome(profile))
+      .then(() => window.agentsOneAPI.getHermesHome(profile))
       .then(
         (value) => ({ status: "fulfilled" as const, value }),
         (reason) => ({ status: "rejected" as const, reason }),
       );
     const versionResult = await Promise.resolve()
-      .then(() => window.hermesAPI.getHermesVersion())
+      .then(() => window.agentsOneAPI.getHermesVersion())
       .then(
         (value) => ({ status: "fulfilled" as const, value }),
         (reason) => ({ status: "rejected" as const, reason }),
@@ -143,10 +143,10 @@ export function useSettingsData(profile?: string) {
     if (version) setCachedVersion(cacheKey, version);
 
     // Load network settings from config.yaml
-    window.hermesAPI.getConfig("network.force_ipv4", profile).then((v) => {
+    window.agentsOneAPI.getConfig("network.force_ipv4", profile).then((v) => {
       setForceIpv4(v === "true" || v === "True");
     });
-    window.hermesAPI.getConfig("network.proxy", profile).then((v) => {
+    window.agentsOneAPI.getConfig("network.proxy", profile).then((v) => {
       const loadedProxy = v || "";
       setHttpProxy(loadedProxy);
       httpProxyRef.current = loadedProxy;
@@ -159,7 +159,7 @@ export function useSettingsData(profile?: string) {
   }, [loadConfig]);
 
   useEffect(() => {
-    const unsubscribe = window.hermesAPI.onConnectionConfigChanged(() => {
+    const unsubscribe = window.agentsOneAPI.onConnectionConfigChanged(() => {
       void loadConfig();
     });
     return unsubscribe;
@@ -168,24 +168,24 @@ export function useSettingsData(profile?: string) {
   // Track desktop-app update lifecycle events (the same ones the sidebar-footer
   // upgrade button listens to) so the About pane reflects live progress.
   useEffect(() => {
-    const cleanupAvailable = window.hermesAPI.onUpdateAvailable((info) => {
+    const cleanupAvailable = window.agentsOneAPI.onUpdateAvailable((info) => {
       setDesktopUpdateState("available");
       setDesktopUpdateVersion(info.version);
       setDesktopUpdateError(null);
     });
-    const cleanupProgress = window.hermesAPI.onUpdateDownloadProgress(
+    const cleanupProgress = window.agentsOneAPI.onUpdateDownloadProgress(
       (info) => {
         setDesktopUpdateState("downloading");
         setDesktopUpdatePercent(info.percent);
         setDesktopUpdateError(null);
       },
     );
-    const cleanupDownloaded = window.hermesAPI.onUpdateDownloaded(() => {
+    const cleanupDownloaded = window.agentsOneAPI.onUpdateDownloaded(() => {
       setDesktopUpdateState("ready");
       setDesktopUpdatePercent(null);
       setDesktopUpdateError(null);
     });
-    const cleanupError = window.hermesAPI.onUpdateError((message) => {
+    const cleanupError = window.agentsOneAPI.onUpdateError((message) => {
       setDesktopUpdateState("error");
       setDesktopUpdateError(message);
     });
@@ -201,7 +201,7 @@ export function useSettingsData(profile?: string) {
     setDesktopUpdateState("checking");
     setDesktopUpdateError(null);
     try {
-      const version = await window.hermesAPI.checkForUpdates();
+      const version = await window.agentsOneAPI.checkForUpdates();
       if (version) {
         setDesktopUpdateState("available");
         setDesktopUpdateVersion(version);
@@ -216,7 +216,7 @@ export function useSettingsData(profile?: string) {
 
   async function handleDesktopUpdate(): Promise<void> {
     if (desktopUpdateState === "ready") {
-      await window.hermesAPI.installUpdate();
+      await window.agentsOneAPI.installUpdate();
       return;
     }
     // "available" or "error" → (re)start the download. Set downloading state
@@ -225,7 +225,7 @@ export function useSettingsData(profile?: string) {
     setDesktopUpdatePercent(null);
     setDesktopUpdateError(null);
     try {
-      const ok = await window.hermesAPI.downloadUpdate();
+      const ok = await window.agentsOneAPI.downloadUpdate();
       if (!ok) setDesktopUpdateState("error");
     } catch (err) {
       setDesktopUpdateError(err instanceof Error ? err.message : String(err));
@@ -236,7 +236,7 @@ export function useSettingsData(profile?: string) {
   const saveHttpProxy = useCallback(async (): Promise<void> => {
     const trimmed = httpProxyRef.current.trim();
     if (trimmed === savedHttpProxyRef.current) return;
-    await window.hermesAPI.setConfig("network.proxy", trimmed, profile);
+    await window.agentsOneAPI.setConfig("network.proxy", trimmed, profile);
     savedHttpProxyRef.current = trimmed;
     setNetworkSaved(true);
     setTimeout(() => setNetworkSaved(false), 2000);
@@ -263,7 +263,7 @@ export function useSettingsData(profile?: string) {
     setBackingUp(true);
     setBackupResult(null);
     try {
-      const result = await window.hermesAPI.exportAgentsOneBackup();
+      const result = await window.agentsOneAPI.exportAgentsOneBackup();
       if (result.canceled) return;
       if (result.success) {
         setBackupResult({
@@ -301,7 +301,7 @@ export function useSettingsData(profile?: string) {
       setImporting(true);
       setImportResult(null);
       try {
-        const filePath = window.hermesAPI.getPathForFile(file);
+        const filePath = window.agentsOneAPI.getPathForFile(file);
         if (!filePath) {
           setImportResult({
             success: false,
@@ -311,7 +311,7 @@ export function useSettingsData(profile?: string) {
         }
 
         const inspection =
-          await window.hermesAPI.inspectAgentsOneBackup(filePath);
+          await window.agentsOneAPI.inspectAgentsOneBackup(filePath);
         if (!inspection.success) {
           setImportResult({
             success: false,
@@ -369,7 +369,7 @@ export function useSettingsData(profile?: string) {
 
         if (!window.confirm(confirmation)) return;
 
-        const result = await window.hermesAPI.restoreAgentsOneBackup(filePath);
+        const result = await window.agentsOneAPI.restoreAgentsOneBackup(filePath);
         if (result.success) {
           const warningCount =
             typeof result.warningCount === "number"
@@ -416,7 +416,7 @@ export function useSettingsData(profile?: string) {
 
   async function handleRestartAfterRestore(): Promise<void> {
     try {
-      await window.hermesAPI.relaunchApp();
+      await window.agentsOneAPI.relaunchApp();
     } catch (error) {
       setImportResult({
         success: false,
@@ -429,7 +429,7 @@ export function useSettingsData(profile?: string) {
   }
 
   async function loadLogs(): Promise<void> {
-    const result = await window.hermesAPI.readLogs(logFile, 300);
+    const result = await window.agentsOneAPI.readDiagnostics(logFile, 300);
     setLogContent(result.content);
     setLogPath(result.path);
   }
@@ -437,7 +437,7 @@ export function useSettingsData(profile?: string) {
   async function handleDoctor(): Promise<void> {
     setDoctorRunning(true);
     setDoctorOutput(null);
-    const output = await window.hermesAPI.runHermesDoctor();
+    const output = await window.agentsOneAPI.runHermesDoctor();
     setDoctorOutput(output);
     setDoctorRunning(false);
   }
@@ -446,11 +446,11 @@ export function useSettingsData(profile?: string) {
   function refreshVersion(): void {
     const requestId = ++loadConfigRequestRef.current;
     setHermesVersion(null);
-    window.hermesAPI
+    window.agentsOneAPI
       .getConnectionConfig()
       .then((conn) => {
         const cacheKey = versionCacheKey(conn, profile);
-        return window.hermesAPI.refreshHermesVersion().then((version) => ({
+        return window.agentsOneAPI.refreshHermesVersion().then((version) => ({
           cacheKey,
           version,
         }));
@@ -465,7 +465,7 @@ export function useSettingsData(profile?: string) {
   async function handleUpdateHermes(): Promise<void> {
     setUpdating(true);
     setUpdateResult(null);
-    const result = await window.hermesAPI.runHermesUpdate();
+    const result = await window.agentsOneAPI.runHermesUpdate();
     setUpdating(false);
     if (result.success) {
       setUpdateResult(t("settings.updateSuccess"));
@@ -479,7 +479,7 @@ export function useSettingsData(profile?: string) {
 
   async function handleAutoUpgradeChange(enabled: boolean): Promise<void> {
     setAutoUpgradeEnabled(enabled);
-    await window.hermesAPI.setAutoUpgradeEnabled(enabled);
+    await window.agentsOneAPI.setAutoUpgradeEnabled(enabled);
     setAutoUpgradeSaved(true);
     setTimeout(() => setAutoUpgradeSaved(false), 2000);
   }

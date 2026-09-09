@@ -4,17 +4,20 @@ import {
   BrowserWindow,
   ipcMain,
   Menu,
-  Notification,
   dialog,
   clipboard,
   type SaveDialogOptions,
 } from "electron";
-import { extname, join } from "path";
+import { basename, extname, join } from "path";
 import { randomUUID } from "crypto";
 import { mkdir, open as openFile, readdir, readFile, stat } from "fs/promises";
 import type { Attachment } from "../../shared/attachments";
 import type { SessionModelOverride } from "../../shared/model-override";
 import type { AppLocale } from "../../shared/i18n/types";
+import type {
+  TrayCompletionData,
+  TrayCompletionStatus,
+} from "../../shared/tray-completion";
 import type {
   DesktopSessionContinuationItem,
   DesktopSessionLocalError,
@@ -32,9 +35,13 @@ import {
 } from "../session-continuation-store";
 import {
   getSessionContextFolder,
+  getSessionContextWorkspace,
   setSessionContextFolder,
+  setSessionContextWorkspace,
   clearSessionContextFolderPath,
+  clearSessionContextWorkspaceId,
   getRecentSessionContextFolders,
+  getRecentSessionContextWorkspaces,
 } from "../session-context-folder-store";
 import {
   getSessionModelOverride,
@@ -45,9 +52,18 @@ import {
   readMediaAsDataUrl,
   saveMedia,
   mediaFileExists,
+  isAuthorizedMediaPath,
+  isAuthorizedProjectPath,
   normalizeMediaPath,
 } from "../media";
 import { openTerminalInDirectory } from "../terminal-launcher";
+import {
+  authorizeUserSelectedWorkspace,
+  resolveAuthorizedWorkspaceId,
+  resolveAuthorizedWorkspaceRelativePath,
+  isAuthorizedWorkspacePath,
+  isAuthorizedWorkspaceRoot,
+} from "../workspace-authority";
 import {
   getGpuStatus,
   reenableGpuAndRelaunch,
@@ -60,6 +76,7 @@ import {
   verifyInstall,
   runInstall,
   inspectInstallTarget,
+  discoverHermesInstallations,
   validateHermesHome,
   setHermesHomeOverride,
   getHermesVersion,
@@ -68,9 +85,9 @@ import {
   runHermesUpdate,
   runHermesDump,
   discoverMemoryProviders,
-  readLogs,
   type InstallProgress,
 } from "../installer";
+import { readAgentsOneLogs } from "../agents-one-logs";
 import {
   exportAgentsOneBackupTo,
   inspectAgentsOneBackup,
@@ -97,6 +114,9 @@ import {
   isRemoteMode,
   isRemoteOnlyMode,
   sendMessage,
+  getVoiceInputPublicConfig,
+  saveVoiceInputConfig,
+  testVoiceInputService,
   transcribeAudio,
   startGateway,
   startGatewayDetailed,
@@ -109,7 +129,15 @@ import {
   resolvePendingClarify,
 } from "../hermes";
 import {
+  sendStreamingAudio,
+  startStreamingTranscription,
+  stopStreamingTranscription,
+  type StreamingCaptureAudit,
+} from "../voice-stream";
+import {
+  createDashboardWorkspaceSession,
   getDashboardStatus,
+  setDashboardWorkspaceCwd,
   startDashboard,
   stopDashboard,
   stopAllDashboards,
@@ -169,6 +197,7 @@ import {
 } from "../session-cache";
 import {
   deleteRuntimeConversation,
+  forkRuntimeConversation,
   getRuntimeConversation,
   listQuickChats,
   listRuntimeConversations,
@@ -176,23 +205,37 @@ import {
   saveRuntimeConversation,
   updateRuntimeConversationTitle,
   clearRuntimeConversationWorkspace,
+  clearRuntimeConversationWorkspaceId,
 } from "../runtime-conversation-store";
 import { detectLocalCliPaths } from "../local-cli-detect";
+import { listRuntimeAdapterManifests } from "../runtime-adapters/registry";
+import { discoverRuntimeSkills } from "../runtime-skills";
+import { homedir } from "os";
 import {
   activeAgentRuntimeTaskCount,
   cancelAgentRuntimeTask,
   cancelAllAgentRuntimeTasks,
+  clearWebAgentRuntimeLogin,
+  executeAgentRuntimeCommand,
+  stopAcceptingAgentRuntimeTasks,
   getAgentRuntimeCredentialStatus,
+  getAgentRuntimeDiagnostics,
   getAgentRuntimeRun,
+  getAgentRuntimeCommandCatalog,
   listAgentRuntimes,
+  openWebAgentRuntime,
   probeAgentRuntime,
   probeAgentRuntimeDraft,
+  retryAgentRuntimeArtifact,
+  resumeWebAgentRuntimeRun,
+  resolveAgentRuntimeArtifactPath,
   removeAgentRuntime,
   saveAgentRuntime,
   saveAgentRuntimeAppearance,
   setAgentRuntimeBearerToken,
   setAgentRuntimeWorkspaceGatewayToken,
   startAgentRuntimeTask,
+  toRendererAgentRuntimeRun,
 } from "../agent-runtimes";
 import { getPiModelContextWindow } from "../pi-runtime";
 import type {
@@ -200,6 +243,15 @@ import type {
   AgentRuntimeAppearance,
   AgentRuntimeTaskInput,
 } from "../../shared/agent-runtimes";
+import type { RuntimeCommandRequest } from "../../shared/runtime-commands";
+import {
+  createAgentsOneConnectPairingSession,
+  getAgentsOneConnectPairingStatus,
+  consumeAgentsOneConnectPairingSession,
+  claimAgentsOneConnectPairingCode,
+  previewAgentsOneConnectPairingCode,
+  completeAgentsOneConnectPairingPreview,
+} from "../agents-one-connect";
 import type { SaveRuntimeConversationInput } from "../../shared/runtime-conversations";
 import type {
   CreateTaskScheduleInput,
@@ -217,8 +269,12 @@ import {
 } from "../task-schedules";
 import {
   listProjectFolders,
+  listProjectWorkspaceCapabilities,
+  projectWorkspaceCapability,
   registerProjectFolder,
   removeProjectFolder,
+  removeProjectWorkspace,
+  resolveProjectFolderPath,
   updateProjectFolder,
 } from "../project-folders";
 import type { UpdateProjectFolderInput } from "../../shared/project-folders";
@@ -313,15 +369,115 @@ import {
 } from "../messaging-platforms";
 import { getAppLocale, setAppLocale } from "../locale";
 
+export interface ActiveChatRun {
+  abort: () => void;
+  notifyCancelled: () => void;
+  title: string;
+  projectName: string;
+  startedAt: number;
+}
+
 export interface IpcContext {
-  activeRuns: Map<string, () => void>;
+  activeRuns: Map<string, ActiveChatRun>;
   getMainWindow: () => BrowserWindow | null;
   notifyConnectionConfigChanged: () => void;
   notifyModelLibraryChanged: () => void;
   openExternalUrl: (rawUrl: unknown) => void;
+  onChatRunFinished?: (data: TrayCompletionData) => void;
 }
 
-const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Agents One";
+function legacyChatFailureStatus(error: string): TrayCompletionStatus {
+  if (/cancel|abort|取消|中止/i.test(error)) return "cancelled";
+  if (/tim(?:e|ed)[ -]?out|timeout|deadline|超时/i.test(error)) {
+    return "timed_out";
+  }
+  return "failed";
+}
+
+function compactTrayCompletionDetail(detail: string): string {
+  return detail.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function activeChatProjectName(
+  contextWorkspaceId?: string,
+  contextFolder?: string,
+): string {
+  const registered = contextWorkspaceId
+    ? listProjectFolders().find((folder) => folder.id === contextWorkspaceId)
+    : undefined;
+  const value = registered?.name || contextFolder?.trim() || "";
+  if (!value) return "未关联项目";
+  return basename(value.replace(/[\\/]+$/, "")) || value;
+}
+
+type ClaimedConnectPairing = Awaited<
+  ReturnType<typeof claimAgentsOneConnectPairingCode>
+>;
+
+function saveClaimedConnectRuntime(
+  draft: AgentRuntimeDraft,
+  claimed: ClaimedConnectPairing,
+): ReturnType<typeof saveAgentRuntime> {
+  const saved = saveAgentRuntime({
+    ...draft,
+    connectionProfile: "managed-connect",
+    id: draft.id.trim() || claimed.runtimeId,
+    name: draft.name.trim() || claimed.displayName,
+    location: "remote",
+    config: {
+      ...draft.config,
+      endpoint: claimed.connectEndpoint,
+      remoteGateway: { protocol: "agents-one-v1" },
+      connect: {
+        endpoint: claimed.connectEndpoint,
+        runtimeId: claimed.runtimeId,
+        ...(claimed.deviceId ? { deviceId: claimed.deviceId } : {}),
+      },
+      transport: "http",
+      agentTransport: "gateway-v1",
+    },
+  });
+  setAgentRuntimeBearerToken(
+    saved.id,
+    claimed.runtimeTokens?.[claimed.runtimeId] || claimed.gatewayToken,
+  );
+  // A v1.1 Connector may publish more than one Runtime. Keep the primary
+  // Runtime bound to the current wizard draft, and materialize the remaining
+  // advertised identities as separate definitions with explicit routes.
+  for (const descriptor of claimed.runtimes || []) {
+    if (descriptor.runtimeId === claimed.runtimeId) continue;
+    const additional = saveAgentRuntime({
+      ...draft,
+      connectionProfile: "managed-connect",
+      id: descriptor.runtimeId,
+      name: descriptor.displayName,
+      kind: descriptor.kind || draft.kind,
+      adapterId: descriptor.adapterId || draft.adapterId,
+      adapterVersion: descriptor.adapterVersion || draft.adapterVersion,
+      location: "remote",
+      enabled: descriptor.enabled !== false,
+      config: {
+        ...draft.config,
+        endpoint: claimed.connectEndpoint,
+        remoteGateway: { protocol: "agents-one-v1" },
+        connect: {
+          endpoint: claimed.connectEndpoint,
+          runtimeId: descriptor.runtimeId,
+          ...(claimed.deviceId ? { deviceId: claimed.deviceId } : {}),
+        },
+        transport: "http",
+        agentTransport: "gateway-v1",
+      },
+    });
+    if (claimed.runtimeTokens?.[descriptor.runtimeId]) {
+      setAgentRuntimeBearerToken(
+        additional.id,
+        claimed.runtimeTokens[descriptor.runtimeId],
+      );
+    }
+  }
+  return saved;
+}
 
 async function readMediaForCurrentConnection(
   filePath: string,
@@ -339,7 +495,9 @@ async function mediaFileExistsForCurrentConnection(
 
 async function resolveMediaForSave(src: string): Promise<string> {
   if (src.startsWith("data:") || /^https?:\/\//i.test(src)) return src;
-  return (await readMediaForCurrentConnection(src)) ?? src;
+  const resolved = await readMediaForCurrentConnection(src);
+  if (!resolved) throw new Error("媒体路径不在 Agents One 授权目录中。");
+  return resolved;
 }
 
 /**
@@ -373,6 +531,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     notifyConnectionConfigChanged,
     notifyModelLibraryChanged,
     openExternalUrl,
+    onChatRunFinished,
   } = context;
   const mainWindow = getMainWindow();
   // Installation
@@ -395,6 +554,26 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Pre-install inspection + "use an existing installation" (issue #272).
   ipcMain.handle("inspect-install-target", () => inspectInstallTarget());
+  ipcMain.handle("discover-hermes-installations", () =>
+    discoverHermesInstallations(),
+  );
+  ipcMain.handle("select-hermes-home", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = win
+      ? await dialog.showOpenDialog(win, {
+          title: "选择已有 Hermes Agent Runtime 安装目录",
+          buttonLabel: "校验此目录",
+          properties: ["openDirectory"],
+        })
+      : await dialog.showOpenDialog({
+          title: "选择已有 Hermes Agent Runtime 安装目录",
+          buttonLabel: "校验此目录",
+          properties: ["openDirectory"],
+        });
+    return result.canceled || !result.filePaths.length
+      ? null
+      : result.filePaths[0];
+  });
   ipcMain.handle("validate-hermes-home", (_event, dir: string) =>
     validateHermesHome(dir),
   );
@@ -442,7 +621,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         event.sender.send("install-progress", {
           step: 1,
           totalSteps: 1,
-          title: "Updating Hermes Agent",
+          title: "Updating Hermes Agent Runtime",
           detail: "Dashboard compatibility check needs attention.",
           log: `Dashboard compatibility warning: ${
             compat.error ? `${compat.detail}: ${compat.error}` : compat.detail
@@ -660,10 +839,77 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("is-remote-mode", () => isRemoteMode());
   ipcMain.handle("is-remote-only-mode", () => isRemoteOnlyMode());
   ipcMain.handle("get-connection-config", () => getPublicConnectionConfig());
+  ipcMain.handle(
+    "agents-one-connect-create-pairing",
+    (_event, runtimeId: string, displayName: string) =>
+      createAgentsOneConnectPairingSession(runtimeId, displayName),
+  );
+  ipcMain.handle(
+    "agents-one-connect-pairing-status",
+    (_event, sessionId: string) => getAgentsOneConnectPairingStatus(sessionId),
+  );
+  ipcMain.handle(
+    "agents-one-connect-preview-pairing-code",
+    (_event, pairingCode: string, runtimeId?: string) =>
+      previewAgentsOneConnectPairingCode(pairingCode, runtimeId),
+  );
+  ipcMain.handle(
+    "agents-one-connect-complete-pairing-preview",
+    async (_event, sessionId: string, draft: AgentRuntimeDraft) => {
+      const claimed = await completeAgentsOneConnectPairingPreview(sessionId);
+      return saveClaimedConnectRuntime(draft, claimed);
+    },
+  );
+  ipcMain.handle(
+    "agents-one-connect-complete-pairing",
+    async (_event, sessionId: string, draft: AgentRuntimeDraft) => {
+      const status = await getAgentsOneConnectPairingStatus(sessionId);
+      if (status.state !== "paired") {
+        throw new Error("Connector 尚未完成配对。");
+      }
+      const material = consumeAgentsOneConnectPairingSession(sessionId);
+      if (!material) throw new Error("Connect 配对会话已失效。");
+      const saved = saveAgentRuntime({
+        ...draft,
+        connectionProfile: "managed-connect",
+        location: "remote",
+        config: {
+          ...draft.config,
+          endpoint: material.connectEndpoint,
+          remoteGateway: { protocol: "agents-one-v1" },
+          connect: {
+            endpoint: material.connectEndpoint,
+            runtimeId: material.runtimeId,
+            ...(material.deviceId ? { deviceId: material.deviceId } : {}),
+          },
+          transport: "http",
+          agentTransport: "gateway-v1",
+        },
+      });
+      setAgentRuntimeBearerToken(
+        saved.id,
+        material.runtimeTokens?.[material.runtimeId] || material.gatewayToken,
+      );
+      return saved;
+    },
+  );
+  ipcMain.handle(
+    "agents-one-connect-claim-pairing-code",
+    async (_event, pairingCode: string, draft: AgentRuntimeDraft) => {
+      const claimed = await claimAgentsOneConnectPairingCode(
+        pairingCode,
+        draft.id.trim() || undefined,
+      );
+      return saveClaimedConnectRuntime(draft, claimed);
+    },
+  );
 
   // Agent runtimes deliberately expose only non-secret definitions. Hermes
   // credentials stay in the existing protected connection configuration.
   ipcMain.handle("list-agent-runtimes", () => listAgentRuntimes());
+  ipcMain.handle("list-agent-runtime-adapters", () =>
+    listRuntimeAdapterManifests(),
+  );
   // Local CLI PATH detection (plan 1.5): the "add agent" form auto-lists the
   // Pi / Claude Code / Codex executables found on PATH for one-click paths.
   ipcMain.handle("detect-local-cli-paths", () => detectLocalCliPaths());
@@ -717,6 +963,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("get-agent-runtime-credential-status", (_event, id: string) =>
     getAgentRuntimeCredentialStatus(id),
   );
+  ipcMain.handle("get-agent-runtime-diagnostics", (_event, id: string) =>
+    getAgentRuntimeDiagnostics(id, app.getVersion()),
+  );
   ipcMain.handle(
     "set-agent-runtime-bearer-token",
     (_event, id: string, bearerToken: string) =>
@@ -735,16 +984,71 @@ export function registerIpcHandlers(context: IpcContext): void {
     (_event, draft: AgentRuntimeDraft, bearerToken?: string) =>
       probeAgentRuntimeDraft(draft, bearerToken),
   );
+  ipcMain.handle("open-web-agent-runtime", (_event, runtimeId: string) =>
+    openWebAgentRuntime(runtimeId),
+  );
+  ipcMain.handle("clear-web-agent-runtime-login", (_event, runtimeId: string) =>
+    clearWebAgentRuntimeLogin(runtimeId),
+  );
+  ipcMain.handle("resume-web-agent-runtime-run", (_event, runId: string) =>
+    resumeWebAgentRuntimeRun(runId),
+  );
   ipcMain.handle(
     "start-agent-runtime-task",
-    (_event, runtimeId: string, input: AgentRuntimeTaskInput) =>
-      startAgentRuntimeTask(runtimeId, input),
+    async (_event, runtimeId: string, input: AgentRuntimeTaskInput) =>
+      toRendererAgentRuntimeRun(await startAgentRuntimeTask(runtimeId, input)),
   );
-  ipcMain.handle("get-agent-runtime-run", (_event, runId: string) =>
-    getAgentRuntimeRun(runId),
+  ipcMain.handle(
+    "get-agent-runtime-command-catalog",
+    (_event, runtimeId: string, sessionId?: string) =>
+      getAgentRuntimeCommandCatalog(runtimeId, sessionId),
+  );
+  ipcMain.handle(
+    "execute-agent-runtime-command",
+    (event, request: RuntimeCommandRequest) =>
+      executeAgentRuntimeCommand(request, (progress) =>
+        event.sender.send("agent-runtime-command-progress", progress),
+      ),
+  );
+  ipcMain.handle("get-agent-runtime-run", async (_event, runId: string) =>
+    toRendererAgentRuntimeRun(await getAgentRuntimeRun(runId)),
   );
   ipcMain.handle("cancel-agent-runtime-task", (_event, runId: string) =>
     cancelAgentRuntimeTask(runId),
+  );
+  ipcMain.handle(
+    "retry-agent-runtime-artifact",
+    async (_event, runId: string, artifactId: string) =>
+      toRendererAgentRuntimeRun(
+        await retryAgentRuntimeArtifact(runId, artifactId),
+      ),
+  );
+  ipcMain.handle(
+    "open-agent-runtime-artifact",
+    async (_event, runId: string, artifactId: string): Promise<boolean> => {
+      const artifact = resolveAgentRuntimeArtifactPath(runId, artifactId);
+      if (!artifact) return false;
+      return !(await shell.openPath(artifact.path));
+    },
+  );
+  ipcMain.handle(
+    "read-agent-runtime-artifact-image",
+    (_event, runId: string, artifactId: string): string | null => {
+      const artifact = resolveAgentRuntimeArtifactPath(runId, artifactId);
+      return artifact ? readMediaAsDataUrl(artifact.path) : null;
+    },
+  );
+  ipcMain.handle(
+    "save-agent-runtime-artifact",
+    async (event, runId: string, artifactId: string): Promise<boolean> => {
+      const artifact = resolveAgentRuntimeArtifactPath(runId, artifactId);
+      if (!artifact) return false;
+      return saveMedia(
+        artifact.path,
+        artifact.label,
+        BrowserWindow.fromWebContents(event.sender),
+      );
+    },
   );
   ipcMain.handle("list-task-schedules", (_event, profile?: string) =>
     listTaskSchedules(profile),
@@ -756,12 +1060,8 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle(
     "update-task-schedule",
-    (
-      _event,
-      id: string,
-      input: UpdateTaskScheduleInput,
-      profile?: string,
-    ) => updateTaskSchedule(id, input, profile),
+    (_event, id: string, input: UpdateTaskScheduleInput, profile?: string) =>
+      updateTaskSchedule(id, input, profile),
   );
   ipcMain.handle(
     "set-task-schedule-enabled",
@@ -770,14 +1070,20 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle(
     "trigger-task-schedule",
-    (_event, id: string, profile?: string) => triggerTaskSchedule(id, profile),
+    async (_event, id: string, profile?: string) => {
+      const result = await triggerTaskSchedule(id, profile);
+      return {
+        ...result,
+        ...(result.run ? { run: toRendererAgentRuntimeRun(result.run)! } : {}),
+      };
+    },
   );
   ipcMain.handle(
     "delete-task-schedule",
     (_event, id: string, profile?: string) => deleteTaskSchedule(id, profile),
   );
   ipcMain.handle("set-connection-config", () => {
-    // The built-in Hermes connection is local-only (plan D5); remote agents go
+    // The built-in Hermes Agent Runtime connection is local-only (plan D5); remote agents go
     // through Gateway v1, so there is no remote connection to persist here.
     notifyConnectionConfigChanged();
     return true;
@@ -804,6 +1110,49 @@ export function registerIpcHandlers(context: IpcContext): void {
     ): Promise<string> => transcribeAudio(audio, mimeType, profile),
   );
 
+  ipcMain.handle("get-voice-input-config", (_event, profile?: string) => {
+    return getVoiceInputPublicConfig(profile);
+  });
+
+  ipcMain.handle("save-voice-input-config", (_event, input, profile?: string) =>
+    saveVoiceInputConfig(input, profile),
+  );
+
+  ipcMain.handle(
+    "test-voice-input-service",
+    (_event, input, profile?: string) => {
+      return testVoiceInputService(input, profile);
+    },
+  );
+
+  ipcMain.handle(
+    "start-streaming-transcription",
+    async (event, profile?: string): Promise<string> =>
+      startStreamingTranscription(
+        event.sender.id,
+        (streamEvent) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send("streaming-transcription-event", streamEvent);
+          }
+        },
+        profile,
+      ),
+  );
+
+  ipcMain.handle(
+    "send-streaming-audio",
+    (_event, sessionId: string, audio: Uint8Array): void => {
+      sendStreamingAudio(sessionId, _event.sender.id, audio);
+    },
+  );
+
+  ipcMain.handle(
+    "stop-streaming-transcription",
+    (_event, sessionId: string, captureAudit?: StreamingCaptureAudit): void => {
+      stopStreamingTranscription(sessionId, _event.sender.id, captureAudit);
+    },
+  );
+
   ipcMain.handle(
     "send-message",
     async (
@@ -816,6 +1165,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       contextFolder?: string,
       runId?: string,
       modelOverride?: SessionModelOverride,
+      contextWorkspaceId?: string,
     ) => {
       assertAgentsOneWritesAllowed();
       // Each conversation has a stable runId minted by the renderer. Fall back
@@ -829,7 +1179,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       // conversation). Sibling runs — other background sessions / agents —
       // keep streaming untouched.
       const existing = activeRuns.get(chatRunId);
-      if (existing) existing();
+      if (existing) existing.abort();
 
       let fullResponse = "";
       const chatStartTime = Date.now();
@@ -841,6 +1191,30 @@ export function registerIpcHandlers(context: IpcContext): void {
           rejectChat = rej;
         },
       );
+      let terminalNoticeSent = false;
+      const notifyChatRunFinished = (
+        status: TrayCompletionStatus,
+        detail?: string,
+      ): void => {
+        if (terminalNoticeSent) return;
+        terminalNoticeSent = true;
+        const finishedAt = Date.now();
+        const runtime = listAgentRuntimes().find(
+          (item) => item.kind === "hermes" && item.enabled,
+        );
+        const compactDetail = detail ? compactTrayCompletionDetail(detail) : "";
+        onChatRunFinished?.({
+          id: `chat-${status}-${chatRunId}-${finishedAt}`,
+          title:
+            message.replace(/\s+/g, " ").trim().slice(0, 80) || "未命名任务",
+          status,
+          ...(compactDetail ? { detail: compactDetail } : {}),
+          runtimeName: runtime?.name || "Agent",
+          runtimeKind: runtime?.kind || "hermes",
+          runtimeAvatar: runtime?.avatar,
+          completedAt: finishedAt,
+        });
+      };
 
       // Streaming sends to `event.sender` will throw "Object has been
       // destroyed" if the renderer WebContents goes away mid-response
@@ -859,7 +1233,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         }
       };
       const abortThisRun = (): void => {
-        activeRuns.get(chatRunId)?.();
+        activeRuns.get(chatRunId)?.abort();
       };
 
       const handle = await sendMessage(
@@ -894,21 +1268,7 @@ export function registerIpcHandlers(context: IpcContext): void {
             }
             safeSend("chat-done", sessionId || "");
             resolveChat({ response: fullResponse, sessionId });
-            // Desktop notification when window is not focused and response took >10s
-            if (
-              mainWindow &&
-              !mainWindow.isFocused() &&
-              Date.now() - chatStartTime > 10000
-            ) {
-              const preview = fullResponse
-                .replace(/[#*_`~\n]+/g, " ")
-                .trim()
-                .slice(0, 80);
-              new Notification({
-                title: APP_NAME,
-                body: preview || "Response ready",
-              }).show();
-            }
+            notifyChatRunFinished("succeeded");
           },
           onSessionStarted: (sessionId) => {
             safeSend("chat-session-started", sessionId);
@@ -917,13 +1277,7 @@ export function registerIpcHandlers(context: IpcContext): void {
             activeRuns.delete(chatRunId);
             safeSend("chat-error", error);
             rejectChat(new Error(error));
-            // Notify on error too if window not focused
-            if (mainWindow && !mainWindow.isFocused()) {
-              new Notification({
-                title: `${APP_NAME} — Error`,
-                body: error.slice(0, 100),
-              }).show();
-            }
+            notifyChatRunFinished(legacyChatFailureStatus(error), error);
           },
           onToolProgress: (tool) => {
             safeSend("chat-tool-progress", tool);
@@ -942,11 +1296,20 @@ export function registerIpcHandlers(context: IpcContext): void {
         resumeSessionId,
         history,
         attachments,
-        contextFolder,
+        contextWorkspaceId
+          ? resolveAuthorizedWorkspaceId(contextWorkspaceId) || undefined
+          : contextFolder,
         modelOverride,
       );
 
-      activeRuns.set(chatRunId, handle.abort);
+      activeRuns.set(chatRunId, {
+        abort: handle.abort,
+        notifyCancelled: () =>
+          notifyChatRunFinished("cancelled", "任务已由用户取消。"),
+        title: message,
+        projectName: activeChatProjectName(contextWorkspaceId, contextFolder),
+        startedAt: chatStartTime,
+      });
       return promise;
     },
   );
@@ -954,11 +1317,16 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("abort-chat", (_event, runId?: string) => {
     // Abort one run when given its id; with no id (legacy callers) abort all.
     if (runId) {
-      activeRuns.get(runId)?.();
+      const run = activeRuns.get(runId);
+      run?.notifyCancelled();
+      run?.abort();
       activeRuns.delete(runId);
       return;
     }
-    for (const abort of activeRuns.values()) abort();
+    for (const run of activeRuns.values()) {
+      run.notifyCancelled();
+      run.abort();
+    }
     activeRuns.clear();
   });
 
@@ -1012,6 +1380,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       if (!win || !src) return;
       const isUrl = /^https?:\/\//i.test(src);
       const isData = src.startsWith("data:");
+      if (!isUrl && !isData && !isAuthorizedMediaPath(src)) return;
       const template: Electron.MenuItemConstructorOptions[] = [];
       template.push({
         label: labels.open,
@@ -1171,6 +1540,61 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("start-dashboard", (_event, profile?: string) =>
     startDashboard(profile),
   );
+  ipcMain.handle(
+    "create-dashboard-workspace-session",
+    async (
+      _event,
+      workspaceId: string,
+      profile?: string,
+      messages?: Array<{ role: "assistant" | "user"; content: string }>,
+    ) => {
+      const workspacePath = resolveAuthorizedWorkspaceId(workspaceId);
+      if (!workspacePath) return null;
+      const safeMessages = Array.isArray(messages)
+        ? messages
+            .filter(
+              (
+                message,
+              ): message is { role: "assistant" | "user"; content: string } =>
+                Boolean(
+                  message &&
+                  (message.role === "assistant" || message.role === "user") &&
+                  typeof message.content === "string",
+                ),
+            )
+            .slice(-200)
+            .map((message) => ({
+              role: message.role,
+              content: message.content.slice(0, 100_000),
+            }))
+        : undefined;
+      return createDashboardWorkspaceSession(
+        workspacePath,
+        profile,
+        safeMessages,
+      );
+    },
+  );
+  ipcMain.handle(
+    "set-dashboard-workspace-cwd",
+    async (
+      _event,
+      workspaceId: string,
+      sessionId: string,
+      profile?: string,
+    ) => {
+      const workspacePath = resolveAuthorizedWorkspaceId(workspaceId);
+      if (
+        !workspacePath ||
+        typeof sessionId !== "string" ||
+        !sessionId.trim()
+      ) {
+        return false;
+      }
+      await setDashboardWorkspaceCwd(workspacePath, sessionId.trim(), profile);
+      return true;
+    },
+  );
   ipcMain.handle("stop-dashboard", (_event, profile?: string) =>
     stopDashboard(profile),
   );
@@ -1275,6 +1699,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("get-session-context-folder", (_event, sessionId: string) => {
     return getSessionContextFolder(sessionId);
   });
+  ipcMain.handle("get-session-context-workspace", (_event, sessionId: string) =>
+    getSessionContextWorkspace(sessionId),
+  );
 
   ipcMain.handle(
     "set-session-context-folder",
@@ -1283,11 +1710,57 @@ export function registerIpcHandlers(context: IpcContext): void {
       return true;
     },
   );
+  ipcMain.handle(
+    "set-session-context-workspace",
+    (
+      _event,
+      sessionId: string,
+      workspace: { workspaceId?: unknown; name?: unknown } | null,
+    ) => {
+      const workspaceId =
+        typeof workspace?.workspaceId === "string"
+          ? workspace.workspaceId.trim().slice(0, 128)
+          : "";
+      const capability = workspaceId
+        ? listProjectWorkspaceCapabilities().find(
+            (item) => item.id === workspaceId,
+          )
+        : undefined;
+      setSessionContextWorkspace(
+        sessionId,
+        capability
+          ? { workspaceId: capability.id, name: capability.name }
+          : null,
+      );
+      return !workspaceId || Boolean(capability);
+    },
+  );
 
   ipcMain.handle(
     "save-task-collaboration",
-    (_event, input: SaveTaskCollaborationInput, profile?: string) =>
-      saveTaskCollaboration(input, profile),
+    (_event, input: SaveTaskCollaborationInput, profile?: string) => {
+      if (input.projectWorkspaceId) {
+        const capability = listProjectWorkspaceCapabilities().find(
+          (item) => item.id === input.projectWorkspaceId,
+        );
+        // A failed opaque lookup must never degrade to a renderer-provided
+        // path. Legacy paths are accepted only when no capability was claimed.
+        input = capability
+          ? {
+              ...input,
+              projectWorkspaceId: capability.id,
+              projectName: capability.name,
+              projectFolder: undefined,
+            }
+          : {
+              ...input,
+              projectWorkspaceId: undefined,
+              projectName: undefined,
+              projectFolder: undefined,
+            };
+      }
+      return saveTaskCollaboration(input, profile);
+    },
   );
 
   ipcMain.handle(
@@ -1321,7 +1794,11 @@ export function registerIpcHandlers(context: IpcContext): void {
         const cached = listCachedSessions(100);
         const seen = new Set(folders);
         for (const s of cached) {
-          if (s.contextFolder && !seen.has(s.contextFolder)) {
+          if (
+            !s.contextWorkspaceId &&
+            s.contextFolder &&
+            !seen.has(s.contextFolder)
+          ) {
             seen.add(s.contextFolder);
             folders.push(s.contextFolder);
             if (folders.length >= lim) break;
@@ -1329,6 +1806,33 @@ export function registerIpcHandlers(context: IpcContext): void {
         }
       }
       return folders;
+    },
+  );
+  ipcMain.handle(
+    "list-recent-session-context-workspaces",
+    (_event, limit?: number) => {
+      const lim = typeof limit === "number" && limit > 0 ? limit : 20;
+      const workspaces = getRecentSessionContextWorkspaces(lim);
+      const seen = new Set(
+        workspaces.map((workspace) => workspace.workspaceId),
+      );
+      if (workspaces.length < lim) {
+        for (const session of listCachedSessions(100)) {
+          if (
+            session.contextWorkspaceId &&
+            session.contextFolder &&
+            !seen.has(session.contextWorkspaceId)
+          ) {
+            seen.add(session.contextWorkspaceId);
+            workspaces.push({
+              workspaceId: session.contextWorkspaceId,
+              name: session.contextFolder,
+            });
+            if (workspaces.length >= lim) break;
+          }
+        }
+      }
+      return workspaces;
     },
   );
 
@@ -1528,6 +2032,24 @@ export function registerIpcHandlers(context: IpcContext): void {
       return true;
     },
   );
+
+  ipcMain.handle(
+    "fork-runtime-conversation",
+    (
+      _event,
+      parentId: string,
+      input: Parameters<typeof forkRuntimeConversation>[1],
+      profile?: string,
+    ) => forkRuntimeConversation(parentId, input, profile),
+  );
+
+  ipcMain.handle("list-runtime-skills", () => [
+    ...discoverRuntimeSkills(join(homedir(), ".codex", "skills"), "user"),
+    ...discoverRuntimeSkills(
+      join(process.cwd(), ".agents", "skills"),
+      "project",
+    ),
+  ]);
 
   ipcMain.handle("list-quick-chats", (_event, profile?: string) =>
     listQuickChats(profile),
@@ -1741,7 +2263,8 @@ export function registerIpcHandlers(context: IpcContext): void {
             properties: ["openDirectory", "createDirectory"],
           });
       if (result.canceled || result.filePaths.length === 0) return null;
-      return result.filePaths[0];
+      const selected = result.filePaths[0];
+      return authorizeUserSelectedWorkspace(selected) ? selected : null;
     },
   );
 
@@ -1760,7 +2283,9 @@ export function registerIpcHandlers(context: IpcContext): void {
 
     try {
       await mkdir(result.filePath);
-      return result.filePath;
+      return authorizeUserSelectedWorkspace(result.filePath)
+        ? result.filePath
+        : null;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(`无法创建项目文件夹：${detail}`);
@@ -1768,12 +2293,33 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle("list-project-folders", () => listProjectFolders());
+  ipcMain.handle("list-project-workspaces", () =>
+    listProjectWorkspaceCapabilities(),
+  );
   ipcMain.handle("register-project-folder", (_event, folderPath: string) =>
-    registerProjectFolder(folderPath),
+    isAuthorizedWorkspaceRoot(folderPath)
+      ? registerProjectFolder(folderPath)
+      : null,
+  );
+  ipcMain.handle("register-project-workspace", (_event, folderPath: string) =>
+    projectWorkspaceCapability(
+      isAuthorizedWorkspaceRoot(folderPath)
+        ? registerProjectFolder(folderPath)
+        : null,
+    ),
   );
   ipcMain.handle(
     "update-project-folder",
     (_event, input: UpdateProjectFolderInput) => updateProjectFolder(input),
+  );
+  ipcMain.handle(
+    "update-project-workspace",
+    (_event, input: Pick<UpdateProjectFolderInput, "id" | "name" | "pinned">) =>
+      projectWorkspaceCapability(
+        input?.id && resolveProjectFolderPath(input.id)
+          ? updateProjectFolder(input)
+          : null,
+      ),
   );
   ipcMain.handle(
     "remove-project-folder",
@@ -1784,6 +2330,15 @@ export function registerIpcHandlers(context: IpcContext): void {
       return true;
     },
   );
+  ipcMain.handle(
+    "remove-project-workspace",
+    (_event, workspaceId: string, profile?: string) => {
+      if (!resolveProjectFolderPath(workspaceId)) return false;
+      clearSessionContextWorkspaceId(workspaceId);
+      clearRuntimeConversationWorkspaceId(workspaceId, profile);
+      return removeProjectWorkspace(workspaceId);
+    },
+  );
   ipcMain.handle("list-archived-items", (_event, profile?: string) =>
     listArchivedItems(profile),
   );
@@ -1791,6 +2346,25 @@ export function registerIpcHandlers(context: IpcContext): void {
     "archive-item",
     (_event, input: ArchiveItemInput, profile?: string) =>
       archiveItem(input, profile),
+  );
+  ipcMain.handle(
+    "archive-project-workspace",
+    (_event, workspaceId: string, profile?: string) => {
+      const capability = listProjectWorkspaceCapabilities().find(
+        (item) => item.id === workspaceId,
+      );
+      return capability
+        ? archiveItem(
+            {
+              kind: "project",
+              targetId: capability.id,
+              title: capability.name,
+              projectWorkspaceId: capability.id,
+            },
+            profile,
+          )
+        : null;
+    },
   );
   ipcMain.handle(
     "restore-archived-item",
@@ -1810,9 +2384,15 @@ export function registerIpcHandlers(context: IpcContext): void {
         // Project deletion means removing Agents One's registration only. Never
         // delete or mutate the user's project directory. Unlink its tasks so
         // they return to Chats instead of recreating a session-derived project.
-        clearSessionContextFolderPath(item.targetId);
-        clearRuntimeConversationWorkspace(item.targetId, profile);
-        removeProjectFolder(item.targetId);
+        if (item.projectWorkspaceId) {
+          clearSessionContextWorkspaceId(item.projectWorkspaceId);
+          clearRuntimeConversationWorkspaceId(item.projectWorkspaceId, profile);
+          removeProjectWorkspace(item.projectWorkspaceId);
+        } else {
+          clearSessionContextFolderPath(item.targetId);
+          clearRuntimeConversationWorkspace(item.targetId, profile);
+          removeProjectFolder(item.targetId);
+        }
       }
       restoreArchivedItem(id, profile);
       return true;
@@ -1823,7 +2403,15 @@ export function registerIpcHandlers(context: IpcContext): void {
     "prepare-project-context",
     async (_event, folderPath: string) => {
       if (typeof folderPath !== "string" || !folderPath.trim()) return null;
+      if (!isAuthorizedWorkspaceRoot(folderPath)) return null;
       return prepareProjectContextAttachment(folderPath);
+    },
+  );
+  ipcMain.handle(
+    "prepare-project-workspace-context",
+    async (_event, workspaceId: string) => {
+      const folderPath = resolveAuthorizedWorkspaceId(workspaceId);
+      return folderPath ? prepareProjectContextAttachment(folderPath) : null;
     },
   );
 
@@ -1835,6 +2423,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       dirPath: string,
     ): Promise<{ name: string; isDirectory: boolean }[] | null> => {
       try {
+        if (!isAuthorizedWorkspacePath(dirPath)) return null;
         const entries = await readdir(dirPath, { withFileTypes: true });
         return entries
           .map((entry) => ({
@@ -1851,6 +2440,114 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
     },
   );
+  ipcMain.handle(
+    "read-workspace-directory",
+    async (
+      _event,
+      workspaceId: string,
+      relativePath = "",
+    ): Promise<{ name: string; isDirectory: boolean }[] | null> => {
+      const directory = resolveAuthorizedWorkspaceRelativePath(
+        workspaceId,
+        relativePath,
+      );
+      if (!directory) return null;
+      try {
+        const entries = await readdir(directory, { withFileTypes: true });
+        return entries
+          .map((entry) => ({
+            name: entry.name,
+            isDirectory: entry.isDirectory(),
+          }))
+          .sort(
+            (a, b) =>
+              Number(b.isDirectory) - Number(a.isDirectory) ||
+              a.name.localeCompare(b.name),
+          );
+      } catch {
+        return null;
+      }
+    },
+  );
+  ipcMain.handle(
+    "read-workspace-file",
+    async (
+      _event,
+      workspaceId: string,
+      relativePath: string,
+      maxBytes?: number,
+    ): Promise<{ content: string; truncated: boolean } | null> => {
+      const filePath = resolveAuthorizedWorkspaceRelativePath(
+        workspaceId,
+        relativePath,
+      );
+      if (!filePath) return null;
+      try {
+        const info = await stat(filePath);
+        if (!info.isFile()) return null;
+        const bytesToRead = Math.max(
+          1,
+          Math.min(
+            typeof maxBytes === "number" ? maxBytes : 1024 * 1024,
+            5 * 1024 * 1024,
+            info.size,
+          ),
+        );
+        const handle = await openFile(filePath, "r");
+        try {
+          const buffer = Buffer.alloc(bytesToRead);
+          const { bytesRead } = await handle.read(buffer, 0, bytesToRead, 0);
+          return {
+            content: buffer.subarray(0, bytesRead).toString("utf-8"),
+            truncated: info.size > bytesRead,
+          };
+        } finally {
+          await handle.close();
+        }
+      } catch {
+        return null;
+      }
+    },
+  );
+  ipcMain.handle(
+    "read-workspace-image",
+    (_event, workspaceId: string, relativePath: string): string | null => {
+      const filePath = resolveAuthorizedWorkspaceRelativePath(
+        workspaceId,
+        relativePath,
+      );
+      return filePath ? readMediaAsDataUrl(filePath) : null;
+    },
+  );
+  ipcMain.handle(
+    "open-workspace-file",
+    async (
+      _event,
+      workspaceId: string,
+      relativePath: string,
+    ): Promise<boolean> => {
+      const filePath = resolveAuthorizedWorkspaceRelativePath(
+        workspaceId,
+        relativePath,
+      );
+      if (!filePath) return false;
+      return !(await shell.openPath(filePath));
+    },
+  );
+  ipcMain.handle(
+    "open-project-workspace",
+    async (_event, workspaceId: string): Promise<boolean> => {
+      const folderPath = resolveAuthorizedWorkspaceId(workspaceId);
+      return folderPath ? !(await shell.openPath(folderPath)) : false;
+    },
+  );
+  ipcMain.handle(
+    "open-workspace-terminal",
+    async (_event, workspaceId: string): Promise<boolean> => {
+      const directory = resolveAuthorizedWorkspaceRelativePath(workspaceId);
+      return directory ? openTerminalInDirectory(directory) : false;
+    },
+  );
 
   // Read file contents for file viewer
   ipcMain.handle(
@@ -1861,6 +2558,12 @@ export function registerIpcHandlers(context: IpcContext): void {
       maxBytes?: number,
     ): Promise<{ content: string; truncated: boolean } | null> => {
       try {
+        if (
+          !isAuthorizedMediaPath(filePath) &&
+          !isAuthorizedWorkspacePath(filePath)
+        ) {
+          return null;
+        }
         const limit =
           typeof maxBytes === "number" &&
           Number.isFinite(maxBytes) &&
@@ -1890,7 +2593,13 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Open file in default application
   ipcMain.handle("open-file-in-editor", async (_event, filePath: string) => {
     try {
-      await shell.openPath(filePath);
+      if (
+        !isAuthorizedMediaPath(filePath) &&
+        !isAuthorizedWorkspacePath(filePath)
+      ) {
+        return false;
+      }
+      await shell.openPath(normalizeMediaPath(filePath));
       return true;
     } catch {
       return false;
@@ -1901,6 +2610,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     if (typeof dirPath !== "string" || dirPath.trim().length === 0)
       return false;
     try {
+      if (
+        !isAuthorizedProjectPath(dirPath) &&
+        !isAuthorizedWorkspacePath(dirPath)
+      ) {
+        return false;
+      }
       const info = await stat(dirPath);
       if (!info.isDirectory()) return false;
       return await openTerminalInDirectory(dirPath);
@@ -1914,6 +2629,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     "read-image-file",
     async (_event, filePath: string): Promise<string | null> => {
       try {
+        if (
+          !isAuthorizedMediaPath(filePath) &&
+          !isAuthorizedWorkspacePath(filePath)
+        ) {
+          return null;
+        }
         const buffer = await readFile(filePath);
         const ext = extname(filePath).toLowerCase().slice(1);
         const mimeType =
@@ -1945,7 +2666,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
 
   // Agents One portable backup / restore. The archive is desktop-owned and
-  // intentionally independent from the optional Hermes Python installation.
+  // intentionally independent from the optional Hermes Agent Runtime Python installation.
   ipcMain.handle("export-agents-one-backup", async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const stamp = new Date().toISOString().slice(0, 10);
@@ -1956,9 +2677,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         app.getPath("documents"),
         `Agents-One-Backup-${stamp}.agents-one-backup`,
       ),
-      filters: [
-        { name: "Agents One 备份", extensions: ["agents-one-backup"] },
-      ],
+      filters: [{ name: "Agents One 备份", extensions: ["agents-one-backup"] }],
       properties: ["createDirectory", "showOverwriteConfirmation"],
     };
     const selected = win
@@ -1984,7 +2703,8 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       beginAgentsOneRestoreWriteLock();
       exportWriteLocked = true;
-      for (const window of BrowserWindow.getAllWindows()) window.setEnabled(false);
+      for (const window of BrowserWindow.getAllWindows())
+        window.setEnabled(false);
       closeDbConnection();
       return await exportAgentsOneBackupTo(selected.filePath, {
         appVersion: app.getVersion(),
@@ -1999,9 +2719,8 @@ export function registerIpcHandlers(context: IpcContext): void {
       startTaskScheduleRunner();
     }
   });
-  ipcMain.handle(
-    "inspect-agents-one-backup",
-    (_event, archivePath: string) => inspectAgentsOneBackup(archivePath),
+  ipcMain.handle("inspect-agents-one-backup", (_event, archivePath: string) =>
+    inspectAgentsOneBackup(archivePath),
   );
   ipcMain.handle(
     "restore-agents-one-backup",
@@ -2021,6 +2740,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       try {
         relaunchRequired = true;
         beginAgentsOneRestoreWriteLock();
+        stopAcceptingAgentRuntimeTasks();
         for (const window of BrowserWindow.getAllWindows()) {
           // Destroying the old renderer is the global write gate: no delayed
           // save/invoke can race the restore. `window-all-closed` is suppressed
@@ -2028,9 +2748,20 @@ export function registerIpcHandlers(context: IpcContext): void {
           // continues until it relaunches the application.
           window.destroy();
         }
-        for (const abort of activeRuns.values()) abort();
+        for (const run of activeRuns.values()) run.abort();
         activeRuns.clear();
-        await cancelAllAgentRuntimeTasks();
+        const activeRuntimeCount = activeAgentRuntimeTaskCount();
+        const cancelledRuntimeCount = await cancelAllAgentRuntimeTasks();
+        if (
+          activeAgentRuntimeTaskCount() > 0 ||
+          cancelledRuntimeCount < activeRuntimeCount
+        ) {
+          return {
+            success: false,
+            error:
+              "仍有 Runtime 进程未确认退出，恢复未开始。请稍后重试或结束对应本地 CLI 进程。",
+          };
+        }
         stopAllDashboards();
         const profiles = await listProfiles();
         for (const profile of profiles) {
@@ -2122,8 +2853,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     return discoverMemoryProviders(profile);
   });
 
-  // Log viewer
-  ipcMain.handle("read-logs", (_event, logFile?: string, lines?: number) => {
-    return readLogs(logFile, lines);
-  });
+  // Agents One diagnostic log viewer
+  ipcMain.handle(
+    "read-agents-one-diagnostics",
+    (_event, logFile?: string, lines?: number) => {
+      return readAgentsOneLogs(logFile, lines);
+    },
+  );
 }

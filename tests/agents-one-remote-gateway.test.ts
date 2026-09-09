@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   explainAgentsOneRemoteGatewayError,
+  executeAgentsOneRemoteGatewayCommand,
+  getAgentsOneRemoteGatewayCommandCatalog,
   getAgentsOneRemoteGatewayArtifact,
   getAgentsOneRemoteGatewayRun,
   isAgentsOneRemoteGatewayRunNotFound,
@@ -12,6 +14,111 @@ import {
 describe("Agents One Remote Gateway run contract", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("discovers and executes enhanced Gateway commands with one request id", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          commands: [
+            {
+              name: "model",
+              description: "Choose model",
+              category: "Runtime",
+              source: "runtime",
+              target: "runtime-control",
+              availability: "any",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          type: "handled",
+          message: "模型已更新",
+          statePatch: {
+            model: "remote/model",
+            compacted: true,
+            compaction: {
+              trigger: "platform",
+              tokensBefore: 10_000,
+              tokensAfter: 1_500,
+              summaryRef: "summary-42",
+            },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    const config = { endpoint: "https://relay.example/agents-one/v1" };
+    const auth = { bearerToken: "gateway-token" };
+    await expect(
+      getAgentsOneRemoteGatewayCommandCatalog(
+        config,
+        {
+          requestId: "catalog-1",
+          runtimeId: "remote-1",
+          conversationId: "conv-1",
+        },
+        auth,
+      ),
+    ).resolves.toMatchObject({ commands: [{ name: "model" }] });
+    await expect(
+      executeAgentsOneRemoteGatewayCommand(
+        config,
+        {
+          requestId: "command-1",
+          runtimeId: "remote-1",
+          conversationId: "conv-1",
+          name: "model",
+          args: "remote/model",
+        },
+        auth,
+      ),
+    ).resolves.toMatchObject({
+      type: "handled",
+      statePatch: {
+        model: "remote/model",
+        compacted: true,
+        compaction: {
+          trigger: "platform",
+          tokensBefore: 10_000,
+          tokensAfter: 1_500,
+          summaryRef: "summary-42",
+        },
+      },
+    });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST" });
+  });
+
+  it("redacts and bounds untrusted Gateway command results before IPC", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          type: "send-prompt",
+          prompt: "请处理 Authorization: Bearer not-for-the-chat-model",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      executeAgentsOneRemoteGatewayCommand(
+        { endpoint: "https://relay.example/agents-one/v1" },
+        {
+          requestId: "command-redact",
+          runtimeId: "remote-1",
+          name: "template",
+        },
+      ),
+    ).resolves.toEqual({
+      type: "send-prompt",
+      prompt: "请处理 Authorization: [redacted]",
+    });
   });
 
   it("preserves nested offline errors and explains how to recover the connector", async () => {
@@ -50,6 +157,37 @@ describe("Agents One Remote Gateway run contract", () => {
     expect(explainAgentsOneRemoteGatewayError(error)).toContain(
       "Relay 重启、热更新",
     );
+  });
+
+  it("turns stable Gateway error codes into layer-specific recovery guidance", () => {
+    expect(
+      explainAgentsOneRemoteGatewayError("provider_auth_required"),
+    ).toContain("Provider 尚未登录");
+    expect(explainAgentsOneRemoteGatewayError("runtime_offline")).toContain(
+      "目标 Runtime 当前离线",
+    );
+    expect(
+      explainAgentsOneRemoteGatewayError("workspace_grant_expired"),
+    ).toContain("工作区授权已过期");
+    expect(
+      explainAgentsOneRemoteGatewayError("gateway_tls_untrusted"),
+    ).toContain("不要关闭证书校验");
+  });
+
+  it("rejects oversized Gateway JSON responses before parsing them", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "run-1", status: "running" }), {
+        status: 200,
+        headers: { "content-length": String(4 * 1024 * 1024 + 1) },
+      }),
+    );
+
+    await expect(
+      getAgentsOneRemoteGatewayRun(
+        { endpoint: "https://relay.example/agents-one/v1" },
+        "run-1",
+      ),
+    ).rejects.toThrow("超过 4 MiB 上限");
   });
 
   it("recognizes an SDK-backed Gateway without changing its runtime contract", async () => {
@@ -95,6 +233,26 @@ describe("Agents One Remote Gateway run contract", () => {
       transport: "poll",
       reasoningSummaries: true,
       toolEvents: true,
+    });
+  });
+
+  it("reports an untrusted HTTPS certificate instead of a generic outage", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: {
+          code: "DEPTH_ZERO_SELF_SIGNED_CERT",
+          message: "self-signed certificate",
+        },
+      }),
+    );
+
+    await expect(
+      probeAgentsOneRemoteGateway({
+        endpoint: "https://relay.example/agents-one/v1",
+      }),
+    ).resolves.toMatchObject({
+      healthy: false,
+      message: "统一 Gateway 的 HTTPS 证书链不受信任；请为远端配置受信任证书。",
     });
   });
 
@@ -198,6 +356,51 @@ describe("Agents One Remote Gateway run contract", () => {
     });
   });
 
+  it("prefers an explicit actualModel over a requested/default model", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ protocolVersion: "1.0" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "run-actual-model-only",
+            status: "succeeded",
+            requestedModel: "custom:deepseek/deepseek-v4-flash",
+            model: {
+              provider: "custom",
+              id: "deepseek-v4-flash",
+            },
+            actualModel: {
+              provider: "opencode",
+              id: "big-pickle",
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+    await probeAgentsOneRemoteGateway(
+      { endpoint: "https://relay.example/agents-one/v1" },
+      { bearerToken: "gateway-token" },
+    );
+    const run = await getAgentsOneRemoteGatewayRun(
+      { endpoint: "https://relay.example/agents-one/v1" },
+      "run-actual-model-only",
+      { bearerToken: "gateway-token" },
+    );
+
+    expect(run.requestedModel).toBe("custom:deepseek/deepseek-v4-flash");
+    expect(run.actualModel).toEqual({
+      provider: "opencode",
+      id: "big-pickle",
+    });
+    expect(run.model).toEqual(run.actualModel);
+  });
+
   it("keeps a continued workspace run in task mode with its conversation id", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -272,13 +475,43 @@ describe("Agents One Remote Gateway run contract", () => {
     expect(body.input?.workspaceRef).toBeUndefined();
   });
 
-  it("sends uploaded artifact ids inside the v1 run input", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({ id: "run-with-artifact", status: "running" }),
-        { status: 202, headers: { "content-type": "application/json" } },
-      ),
+  it("forwards a selected model to the remote adapter input", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ id: "run-selected-model", status: "running" }),
+          { status: 202, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+    await startAgentsOneRemoteGatewayRun(
+      { endpoint: "https://relay.example/agents-one/v1" },
+      {
+        mode: "conversation",
+        text: "使用指定模型继续。",
+        model: "custom:deepseek/deepseek-v4-flash",
+        timeoutSeconds: 60,
+        permission: "read",
+      },
+      { bearerToken: "gateway-token" },
     );
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      input?: { model?: string };
+    };
+    expect(body.input?.model).toBe("custom:deepseek/deepseek-v4-flash");
+  });
+
+  it("sends uploaded artifact ids inside the v1 run input", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ id: "run-with-artifact", status: "running" }),
+          { status: 202, headers: { "content-type": "application/json" } },
+        ),
+      );
 
     await startAgentsOneRemoteGatewayRun(
       { endpoint: "https://relay.example/agents-one/v1" },
@@ -533,6 +766,7 @@ describe("Agents One Remote Gateway run contract", () => {
           id: "run-terminal-event-stream",
           status: "succeeded",
           conversationId: "conversation-hers",
+          sessionId: "acp-session-hers",
           error: "failed",
           events: [
             {
@@ -559,9 +793,42 @@ describe("Agents One Remote Gateway run contract", () => {
     );
 
     expect(run.output).toBe("已完成事件流联调。");
+    expect(run.sessionId).toBe("acp-session-hers");
     expect(run.error).toBeUndefined();
     expect(run.model).toEqual({ provider: "ark", id: "glm-5.2" });
     expect(run.usage).toEqual({ inputTokens: 39849, outputTokens: 128 });
+  });
+
+  it("prefers the actual terminal-event model over the requested model in the run envelope", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "run-model-fallback",
+          status: "succeeded",
+          model: { provider: "ark", id: "requested-model" },
+          events: [
+            {
+              id: "evt-model-fallback",
+              sequence: 2,
+              type: "assistant.completed",
+              data: {
+                text: "已完成。",
+                model: { provider: "ark", id: "actual-model" },
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const run = await getAgentsOneRemoteGatewayRun(
+      { endpoint: "https://relay.example/agents-one/v1" },
+      "run-model-fallback",
+      { bearerToken: "gateway-token" },
+    );
+
+    expect(run.model).toEqual({ provider: "ark", id: "actual-model" });
   });
 
   it("preserves a meaningful failure reason from terminal events", async () => {

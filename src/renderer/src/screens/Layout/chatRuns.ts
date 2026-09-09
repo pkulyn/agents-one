@@ -28,6 +28,7 @@ export interface ChatRun {
   runtimeActiveRunId?: string;
   runtimeSeed?: RuntimeConversationMessage[];
   runtimeWorkspace?: string;
+  runtimeWorkspaceId?: string;
   runtimeAccessMode?: "auto" | "analysis" | "full_access";
   /** Gateway session id, known once the first turn reports it. */
   sessionId: string | null;
@@ -42,6 +43,8 @@ export interface ChatRun {
   /** Saved once the first message gives this draft a durable conversation id. */
   collaboration?: {
     assignments: TaskCollaborationAssignment[];
+    projectWorkspaceId?: string;
+    projectName?: string;
     projectFolder?: string;
     persistedTaskId?: string;
     status?: TaskCollaborationStatus;
@@ -104,6 +107,7 @@ export function mintRuntimeRun(input: {
   runtimeActiveRunId?: string;
   runtimeSeed?: RuntimeConversationMessage[];
   runtimeWorkspace?: string;
+  runtimeWorkspaceId?: string;
   runtimeAccessMode?: "auto" | "analysis" | "full_access";
   sessionId?: string | null;
 }): ChatRun {
@@ -121,6 +125,7 @@ export function mintRuntimeRun(input: {
     runtimeActiveRunId: input.runtimeActiveRunId,
     runtimeSeed: input.runtimeSeed,
     runtimeWorkspace: input.runtimeWorkspace,
+    runtimeWorkspaceId: input.runtimeWorkspaceId,
     runtimeAccessMode: input.runtimeAccessMode,
     sessionId: input.sessionId ?? null,
     loading: false,

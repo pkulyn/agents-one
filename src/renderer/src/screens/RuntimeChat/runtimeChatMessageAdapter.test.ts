@@ -44,6 +44,37 @@ describe("runtimeChatMessageAdapter", () => {
     });
   });
 
+  it("marks platform controls as chrome-free and preserves runtime timing facts", () => {
+    const result = runtimeConversationToChatMessages([
+      {
+        id: "reply",
+        role: "agent",
+        content: "已完成。",
+        createdAt: 1_780_000_000_000,
+        execution: {
+          runId: "run-1",
+          events: [],
+          startedAt: 1_780_000_000_000,
+          completedAt: 1_780_000_013_000,
+          model: { provider: "ark", id: "deepseek-v4-flash" },
+        },
+      },
+      {
+        id: "control",
+        role: "system",
+        content: "当前会话已切换到模型。",
+        createdAt: 1_780_000_014_000,
+      },
+    ]);
+
+    expect(result[0]).toMatchObject({
+      runtimeMeta: {
+        durationMs: 13_000,
+      },
+    });
+    expect(result[1]).toMatchObject({ isControlMessage: true });
+  });
+
   it("maps runtime reasoning and tool events to native history rows", () => {
     const messages: RuntimeConversationMessage[] = [
       {
@@ -100,6 +131,67 @@ describe("runtimeChatMessageAdapter", () => {
     expect(result).not.toContainEqual(
       expect.objectContaining({ kind: "system", title: "错误" }),
     );
+  });
+
+  it("merges repeated ACP tool_call snapshots by call id", () => {
+    const result = runtimeEventsToChatMessages([
+      event("call-pending", "tool_call", "正在调用工具：read", {
+        tool: { callId: "call-1", kind: "workspace", name: "read" },
+      }),
+      event("call-input", "tool_call", "正在调用工具：read", {
+        tool: {
+          callId: "call-1",
+          kind: "workspace",
+          name: "read",
+          inputSummary: '{"filePath":"README.md"}',
+        },
+      }),
+      event("call-result", "tool_result", "工具已完成：read", {
+        detail: "1: hello",
+        tool: {
+          callId: "call-1",
+          kind: "workspace",
+          name: "read",
+          outputSummary: "1: hello",
+        },
+      }),
+    ]);
+
+    expect(result.map((message) => message.kind)).toEqual([
+      "tool_call",
+      "tool_result",
+    ]);
+    expect(result[0]).toMatchObject({
+      kind: "tool_call",
+      name: "Read File",
+      args: '{"filePath":"README.md"}',
+      callId: "call-1",
+      status: "completed",
+    });
+    expect(result[1]).toMatchObject({
+      kind: "tool_result",
+      name: "Read File",
+      callId: "call-1",
+      content: "1: hello",
+    });
+  });
+
+  it("coalesces persisted cumulative Pi thinking snapshots into one reasoning row", () => {
+    const result = runtimeEventsToChatMessages([
+      event("pi-thought-prefix", "progress", "用户"),
+      event(
+        "pi-thought-full",
+        "progress",
+        "用户说这是 Agents One 联调测试，需要简单介绍。",
+      ),
+    ]);
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "reasoning",
+        text: "用户说这是 Agents One 联调测试，需要简单介绍。",
+      }),
+    ]);
   });
 
   it("keeps each collaboration reply and its event trace on the producing Runtime identity", () => {
@@ -192,6 +284,21 @@ describe("runtimeChatMessageAdapter", () => {
     });
   });
 
+  it("coalesces OpenCode thought deltas after the ACP adapter turns them into snapshots", () => {
+    const result = runtimeEventsToChatMessages([
+      event("opencode-thought-1", "progress", "用户"),
+      event("opencode-thought-2", "progress", "用户请求介绍"),
+      event("opencode-thought-3", "progress", "用户请求介绍自己。"),
+    ]);
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "reasoning",
+        text: "用户请求介绍自己。",
+      }),
+    ]);
+  });
+
   it("does not present a mirrored final answer as remote reasoning", () => {
     const answer =
       "我已基于全部协作材料完成验收，检查了交付物、路径与测试结果。";
@@ -263,7 +370,6 @@ describe("runtimeChatMessageAdapter", () => {
               label: "quarterly-revenue.png",
               mime: "image/png",
               size: 128,
-              path: "C:\\Users\\tester\\AppData\\Local\\Temp\\quarterly-revenue.png",
             },
           ],
         },
@@ -274,7 +380,7 @@ describe("runtimeChatMessageAdapter", () => {
     expect(result[0]).toMatchObject({
       kind: "assistant",
       content: expect.stringContaining(
-        "MEDIA:`C:\\Users\\tester\\AppData\\Local\\Temp\\quarterly-revenue.png`",
+        "MEDIA:`agents-one-artifact://runtime/run-artifact-notices/chart-1/quarterly-revenue.png`",
       ),
     });
   });
@@ -296,7 +402,6 @@ describe("runtimeChatMessageAdapter", () => {
               label: "test-chart.png",
               mime: "image/png",
               size: 128,
-              path: "C:\\Users\\tester\\AppData\\Local\\Temp\\test-chart.png",
             },
             {
               id: "report-1",
@@ -304,7 +409,6 @@ describe("runtimeChatMessageAdapter", () => {
               label: "report.pdf",
               mime: "application/pdf",
               size: 256,
-              path: "C:\\Users\\tester\\AppData\\Local\\Temp\\report.pdf",
             },
           ],
         },
@@ -314,12 +418,17 @@ describe("runtimeChatMessageAdapter", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       kind: "assistant",
-      content: expect.stringContaining("MEDIA:`C:\\Users\\tester"),
+      content: expect.stringContaining(
+        "MEDIA:`agents-one-artifact://runtime/run-artifacts/chart-1/test-chart.png`",
+      ),
       attachments: [
         expect.objectContaining({
           kind: "path-ref",
           name: "report.pdf",
-          path: "C:\\Users\\tester\\AppData\\Local\\Temp\\report.pdf",
+          runtimeArtifact: {
+            runId: "run-artifacts",
+            artifactId: "report-1",
+          },
         }),
       ],
     });
@@ -343,7 +452,6 @@ describe("runtimeChatMessageAdapter", () => {
               label: "quarterly_revenue_chart.png",
               mime: "image/png",
               size: 128,
-              path: "C:\\Users\\tester\\AppData\\Local\\Temp\\artifact-chart.png",
             },
           ],
         },
@@ -355,7 +463,7 @@ describe("runtimeChatMessageAdapter", () => {
     });
     expect(result[0]).toMatchObject({
       content: expect.stringContaining(
-        "MEDIA:`C:\\Users\\tester\\AppData\\Local\\Temp\\artifact-chart.png`",
+        "MEDIA:`agents-one-artifact://runtime/run-remote-media/chart-1/quarterly_revenue_chart.png`",
       ),
     });
   });

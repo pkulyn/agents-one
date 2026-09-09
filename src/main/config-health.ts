@@ -8,7 +8,7 @@
  * Each issue carries an `autoFixable` flag and a fix description; the
  * renderer's Diagnose UI renders a per-issue "Fix" button for those.
  *
- * Audit log: every auto-fix appends to `~/.hermes/logs/config-fixes.log`
+ * Audit log: every auto-fix appends to the Agents One diagnostic directory
  * via `appendConfigFixLog` (capped at 1000 entries).
  */
 
@@ -29,8 +29,8 @@ import {
   upsertBlockChild,
 } from "./config";
 import { safeWriteFile } from "./utils";
-import { HERMES_HOME } from "./installer";
 import { expectedEnvKeyForModel } from "./installer";
+import { agentsOneLogsDirectory } from "./agents-one-logs";
 import { expectedEnvKeyForUrl, isLocalBaseUrl } from "../shared/url-key-map";
 import { findSiblingHermesHomes } from "./wsl-detection";
 // Audit checks must consult the secrets provider too — a vault-only user has
@@ -242,9 +242,9 @@ function checkApiServerKeyPlacement(profile?: string): ConfigHealthIssue[] {
         code: "EMPTY_API_SERVER_KEY",
         severity: "warning",
         message:
-          "No API_SERVER_KEY is set — chat will fail because the Hermes gateway requires auth.",
+          "No API_SERVER_KEY is set — chat will fail because the Hermes Agent Runtime gateway requires auth.",
         detail:
-          "API_SERVER_KEY is mandatory for Hermes API access. " +
+          "API_SERVER_KEY is mandatory for Hermes Agent Runtime API access. " +
           "Set it in .env (or under Settings → Providers) to authenticate requests.",
         locations: [envFile],
         autoFixable: false,
@@ -1062,7 +1062,7 @@ export { checkLegacyToolsetName, fixLegacyToolsetName };
  * filesystem from the renderer.
  */
 export function configFixLogPath(): string {
-  return join(HERMES_HOME, "logs", "config-fixes.log");
+  return join(agentsOneLogsDirectory(), "config-fixes.log");
 }
 
 /**

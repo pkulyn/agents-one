@@ -20,7 +20,7 @@ The selected model/provider is saved in a desktop-owned table keyed by session i
 
 Text-only legacy turns can use the CLI fallback when a session override changes provider or base URL away from `config.yaml`.
 
-The upstream desktop model applies the session switch on the active gateway session with `/model <model> --provider <provider>`, then attaches media and submits on that same session. Hermes Desktop's dashboard transport follows that path; [[src/main/hermes.ts#shouldForceCliForSessionOverride]] keeps the CLI escape hatch only for text-only legacy fallback, where it can pass `-m <model>` and `--provider` without dropping attachments. Same-provider model swaps stay on the gateway/API path, where the new `model` string is sufficient. Remote mode has no local CLI transport, so it remains limited to the model string.
+The upstream runtime applies the session switch on the active gateway session with `/model <model> --provider <provider>`, then attaches media and submits on that same session. Agents One's Hermes Runtime dashboard transport follows that path; [[src/main/hermes.ts#shouldForceCliForSessionOverride]] keeps the CLI escape hatch only for text-only legacy fallback, where it can pass `-m <model>` and `--provider` without dropping attachments. Same-provider model swaps stay on the gateway/API path, where the new `model` string is sufficient. Remote mode has no local CLI transport, so it remains limited to the model string.
 
 ## Attachment turns stay on session transport
 

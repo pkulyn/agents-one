@@ -3,6 +3,10 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("electron", () => ({
+  app: { setPath: vi.fn(), getPath: () => "C:\\temp" },
+}));
+
 let testHome: string;
 
 async function loadStore(): Promise<
@@ -120,6 +124,24 @@ describe("runtime conversation store", () => {
         expect.objectContaining({ role: "agent", content: "你好，连接正常。" }),
       ],
     });
+  });
+
+  it("round-trips an opaque workspace id without requiring a local path", async () => {
+    const store = await loadStore();
+    store.saveRuntimeConversation({
+      profile: "default",
+      id: "runtime-conv-workspace-id",
+      title: "Capability workspace",
+      runtimeId: "pi",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+      runtimeLocation: "local",
+      workspaceId: "project-safe",
+      messages: [],
+    });
+
+    expect(store.getRuntimeConversation("runtime-conv-workspace-id", "default"))
+      .toMatchObject({ workspaceId: "project-safe" });
   });
 
   it("unlinks runtime conversations when a project is removed", async () => {

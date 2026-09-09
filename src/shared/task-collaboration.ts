@@ -114,6 +114,7 @@ export interface TaskCollaborationArtifact {
   runtimeId?: string;
   kind: "file" | "code_diff" | "test_result";
   label: string;
+  /** Workspace-relative delivery path; absolute paths are never persisted. */
   path?: string;
   size?: number;
   summary?: string;
@@ -175,6 +176,11 @@ export interface TaskCollaborationExecution {
 export interface TaskCollaborationRecord {
   taskId: string;
   title: string;
+  /** Opaque registered project capability for new collaboration records. */
+  projectWorkspaceId?: string;
+  /** Renderer-safe display name paired with `projectWorkspaceId`. */
+  projectName?: string;
+  /** Legacy absolute path retained only for pre-capability records. */
   projectFolder?: string;
   sourceRuntimeId?: string;
   assignments: TaskCollaborationAssignment[];
@@ -192,6 +198,9 @@ export interface TaskCollaborationRecord {
 export interface SaveTaskCollaborationInput {
   taskId: string;
   title: string;
+  projectWorkspaceId?: string;
+  projectName?: string;
+  /** Legacy absolute path retained only for pre-capability records. */
   projectFolder?: string;
   sourceRuntimeId?: string;
   assignments: TaskCollaborationAssignment[];

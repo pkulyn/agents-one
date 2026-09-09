@@ -24,10 +24,11 @@ export function AttachmentChip({
   const isImage = attachment.kind === "image";
   const localFilePath =
     attachment.kind === "path-ref" ? attachment.path : undefined;
+  const runtimeArtifact = attachment.runtimeArtifact;
   const showImageMenu = (event: React.MouseEvent): void => {
     if (!isImage || !attachment.dataUrl) return;
     event.preventDefault();
-    window.hermesAPI.showMediaMenu(attachment.dataUrl, attachment.name, {
+    window.agentsOneAPI.showMediaMenu(attachment.dataUrl, attachment.name, {
       open: t("chat.media.open"),
       saveAs: t("chat.media.saveAs"),
     });
@@ -40,7 +41,7 @@ export function AttachmentChip({
   const showFileMenu = (event: React.MouseEvent): void => {
     if (!localFilePath) return;
     event.preventDefault();
-    window.hermesAPI.showFileMenu(localFilePath, {
+    window.agentsOneAPI.showFileMenu(localFilePath, {
       open: t("chat.fileMenu.open"),
       copyPath: t("chat.fileMenu.copyPath"),
       copyContent: t("chat.fileMenu.copyContent"),
@@ -74,12 +75,19 @@ export function AttachmentChip({
           >
             <img src={attachment.dataUrl} alt={attachment.name} />
           </button>
-        ) : localFilePath ? (
+        ) : localFilePath || runtimeArtifact ? (
           <button
             type="button"
             className="attachment-chip-file attachment-chip-file--action"
-            onClick={() => window.hermesAPI.openFileInEditor(localFilePath)}
-            onContextMenu={showFileMenu}
+            onClick={() =>
+              runtimeArtifact
+                ? window.agentsOneAPI.openAgentRuntimeArtifact(
+                    runtimeArtifact.runId,
+                    runtimeArtifact.artifactId,
+                  )
+                : window.agentsOneAPI.openFileInEditor(localFilePath!)
+            }
+            {...(localFilePath ? { onContextMenu: showFileMenu } : {})}
           >
             <FileText size={14} />
             <span className="attachment-chip-name">{attachment.name}</span>
@@ -127,7 +135,7 @@ export function AttachmentChip({
               <button
                 className="chat-image-preview-btn"
                 onClick={() =>
-                  window.hermesAPI.saveMediaFile(
+                  window.agentsOneAPI.saveMediaFile(
                     attachment.dataUrl!,
                     attachment.name,
                   )

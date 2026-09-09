@@ -82,7 +82,7 @@ export function ConfigHealthBanner({
     let cancelled = false;
     (async (): Promise<void> => {
       try {
-        const r = (await window.hermesAPI.getConfigHealth(profile)) as
+        const r = (await window.agentsOneAPI.getConfigHealth(profile)) as
           | (Report & { ranAt: number })
           | null;
         if (!cancelled) setReport(r);
@@ -164,13 +164,13 @@ export function ConfigHealthBanner({
     if (!apiKeyValue.trim()) return;
     setSaving(true);
     try {
-      await window.hermesAPI.setEnv(
+      await window.agentsOneAPI.setEnv(
         "API_SERVER_KEY",
         apiKeyValue.trim(),
         profile,
       );
       // Re-run the health check so the banner disappears.
-      const r = (await window.hermesAPI.rerunConfigHealth(profile)) as
+      const r = (await window.agentsOneAPI.rerunConfigHealth(profile)) as
         | (Report & { ranAt: number })
         | null;
       setReport(r);

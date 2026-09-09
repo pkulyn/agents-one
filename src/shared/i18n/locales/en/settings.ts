@@ -1,7 +1,7 @@
 export default {
   title: "Settings",
   sections: {
-    hermesAgent: "Hermes Agent",
+    hermesAgent: "Hermes Agent Runtime",
     appearance: "Appearance",
     credentialPool: "Credential Pool",
   },
@@ -12,6 +12,7 @@ export default {
     },
     appearance: "Appearance",
     language: "Language",
+    voice: "Voice",
     connection: "Connection",
     network: "Network",
     data: "Data",
@@ -103,7 +104,7 @@ export default {
   },
   notDetected: "Not detected",
   updatedSuccessfully: "Updated successfully!",
-  updateSuccess: "Hermes updated successfully.",
+  updateSuccess: "Hermes Agent Runtime updated successfully.",
   updateFailed: "Update failed.",
   version: "v{{version}}",
   proxyPlaceholder: "e.g. socks5://127.0.0.1:1080 or http://proxy:8080",
@@ -132,7 +133,7 @@ export default {
   compatApiKeyHint:
     "Stored as {{envVar}} — required for remote endpoints, optional for localhost.",
   poolHint:
-    "Add multiple API Keys for the same provider for automatic rotation and load balancing. Hermes will cycle through them.",
+    "Add multiple API keys for the same provider for automatic rotation and load balancing. Agents One will cycle through them.",
   add: "Add",
   remove: "Remove",
   keyLabel: "Key",
@@ -185,15 +186,41 @@ export default {
   connectionSection: "Connection",
   modeLocal: "Local",
   modeRemote: "Remote",
-  modeLocalHint: "Using Hermes installed on this device",
-  modeRemoteHint: "Connect to a Hermes API server on your network or cloud",
+  modeLocalHint: "Use the Hermes Agent Runtime installed on this device",
+  modeRemoteHint: "Connect to a Hermes Agent Runtime API on your network or cloud",
   save: "Save",
   connectionMode: "Connection Mode",
+  voice: {
+    intro:
+      "Connect a self-hosted or trusted OpenAI-compatible speech-to-text service. New installations are off by default and never contact a preset server.",
+    enabled: "Enable voice",
+    enabledHint: "When off, the microphone never sends recordings to a voice service.",
+    url: "Voice service URL",
+    urlPlaceholder: "https://voice.example.com/voice",
+    urlHint:
+      "Enter the service base URL, a /v1/audio/transcriptions URL, or the WS/WSS stream URL from the v1.4 guide.",
+    apiKey: "API key (optional)",
+    apiKeyPlaceholder: "Leave blank when the service does not require a key",
+    apiKeyConfigured: "Configured (leave blank to retain the current key)",
+    apiKeyHint:
+      "The key is never shown or written to chats, projects, or backups; after saving it can only be replaced or cleared.",
+    clearKey: "Clear saved key",
+    keyWillClear: "Saving will clear the key stored for this profile.",
+    test: "Test connection",
+    testing: "Testing…",
+    saved: "Voice settings saved.",
+    saving: "Saving…",
+    loadFailed: "Could not load voice settings.",
+    saveFailed: "Could not save voice settings.",
+    testFailed: "Voice service test failed.",
+    bridgeUnavailable:
+      "Voice settings were updated, but the desktop main process is still using an older version. Fully quit and restart Agents One, then try again.",
+  },
 
   // Community
   communityTitle: "Community",
   communityHint:
-    "Join our Discord channel to ask questions, report issues, and chat with other Hermes users.",
+    "Join our Discord channel to ask questions, report issues, and chat with other Agents One users.",
   joinDiscord: "Join Discord Channel",
   communityLinksHint:
     "Connect with the Agents One community, get help, and stay up to date.",

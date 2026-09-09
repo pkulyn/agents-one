@@ -9,13 +9,33 @@ vi.mock("./useI18n", () => ({
 
 describe("AttachmentChip local file actions", () => {
   beforeEach(() => {
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         openFileInEditor: vi.fn(async () => true),
+        openAgentRuntimeArtifact: vi.fn(async () => true),
         showFileMenu: vi.fn(),
       },
     });
+  });
+
+  it("opens a Runtime artifact through its opaque capability", () => {
+    const attachment: Attachment = {
+      id: "runtime-artifact-report-1",
+      kind: "path-ref",
+      name: "report.pdf",
+      mime: "application/pdf",
+      size: 433,
+      runtimeArtifact: { runId: "run-1", artifactId: "report-1" },
+    };
+    render(<AttachmentChip attachment={attachment} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "report.pdf" }));
+    expect(window.agentsOneAPI.openAgentRuntimeArtifact).toHaveBeenCalledWith(
+      "run-1",
+      "report-1",
+    );
+    expect(window.agentsOneAPI.openFileInEditor).not.toHaveBeenCalled();
   });
 
   it("renders a verified runtime artifact as an openable file link", () => {
@@ -35,12 +55,12 @@ describe("AttachmentChip local file actions", () => {
       attachment.path,
     );
     fireEvent.click(link);
-    expect(window.hermesAPI.openFileInEditor).toHaveBeenCalledWith(
+    expect(window.agentsOneAPI.openFileInEditor).toHaveBeenCalledWith(
       attachment.path,
     );
 
     fireEvent.contextMenu(link);
-    expect(window.hermesAPI.showFileMenu).toHaveBeenCalledWith(
+    expect(window.agentsOneAPI.showFileMenu).toHaveBeenCalledWith(
       attachment.path,
       {
         open: "chat.fileMenu.open",

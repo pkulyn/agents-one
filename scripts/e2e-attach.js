@@ -81,9 +81,9 @@ if (require.main === module) {
       const title = await page.title();
       const url = page.url();
       const sessionsCount = await page.evaluate(async () => {
-        if (!window.hermesAPI || !window.hermesAPI.listSessions) return null;
+        if (!window.agentsOneAPI || !window.agentsOneAPI.listSessions) return null;
         try {
-          const s = await window.hermesAPI.listSessions(5, 0);
+          const s = await window.agentsOneAPI.listSessions(5, 0);
           return Array.isArray(s) ? s.length : "unknown";
         } catch (e) {
           return `error: ${e?.message || e}`;
@@ -92,7 +92,7 @@ if (require.main === module) {
       console.log(`[attach OK]`);
       console.log(`  url:            ${url}`);
       console.log(`  title:          ${title}`);
-      console.log(`  hermesAPI:      ${sessionsCount === null ? "absent" : "present"}`);
+      console.log(`  agentsOneAPI:   ${sessionsCount === null ? "absent" : "present"}`);
       console.log(`  listSessions(5): ${sessionsCount}`);
       await browser.close();
     })

@@ -146,7 +146,7 @@ function Configure-Desktop {
     $data["remoteApiKey"] = $remoteEnv["HERMES_LAB_TOKEN"]
   }
   $data | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $DesktopConfig -Encoding UTF8
-  Write-Host "Hermes One sandbox desktop config now points to the SSH dashboard lab in auto mode."
+  Write-Host "Agents One sandbox desktop config now points to the SSH dashboard lab in auto mode."
 }
 
 switch ($Command) {

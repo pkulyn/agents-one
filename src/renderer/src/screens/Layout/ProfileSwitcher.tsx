@@ -1,10 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Check, ChevronDown, Settings } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
-import type {
-  AgentRuntimeDefinition,
-  AgentRuntimeKind,
-} from "../../../../shared/agent-runtimes";
+import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
+import { addMigratedEventListener } from "../../utils/brandMigration";
 
 interface ProfileSwitcherProps {
   /** Id of the currently active profile ("default" for the base workspace). */
@@ -23,11 +21,14 @@ interface ProfileSwitcherProps {
   compact?: boolean;
 }
 
-const RUNTIME_LABELS: Record<AgentRuntimeKind, string> = {
-  hermes: "Hermes",
+const RUNTIME_LABELS: Record<string, string> = {
+  hermes: "Hermes Agent Runtime",
   codex: "Codex",
   "claude-code": "Claude Code",
   pi: "Pi Agent CLI",
+  opencode: "OpenCode",
+  openclaw: "OpenClaw",
+  "web-agent": "网页智能体",
 };
 
 function locationLabel(location: "local" | "remote"): string {
@@ -50,7 +51,7 @@ export default function ProfileSwitcher({
   const rootRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
-    window.hermesAPI
+    window.agentsOneAPI
       .listAgentRuntimes()
       .then(setRuntimes)
       .catch(() => {
@@ -72,10 +73,13 @@ export default function ProfileSwitcher({
 
   useEffect(() => {
     window.addEventListener("agents-one:runtime-appearance-changed", load);
-    window.addEventListener("hermes-agent-runtime-changed", load);
+    const removeRuntimeChangedListener = addMigratedEventListener(
+      "runtimeChanged",
+      load,
+    );
     return () => {
       window.removeEventListener("agents-one:runtime-appearance-changed", load);
-      window.removeEventListener("hermes-agent-runtime-changed", load);
+      removeRuntimeChangedListener();
     };
   }, [load]);
 
@@ -119,11 +123,20 @@ export default function ProfileSwitcher({
         className={`profile-menu-runtime ${runtime?.kind ?? "hermes"}`}
         style={
           runtime?.color
-            ? { background: runtime.color, color: "#fff", width: size, height: size }
+            ? {
+                background: runtime.color,
+                color: "#fff",
+                width: size,
+                height: size,
+              }
             : { width: size, height: size }
         }
       >
-        {runtime?.avatar ? <img src={runtime.avatar} alt="" /> : <Bot size={Math.max(13, size - 7)} />}
+        {runtime?.avatar ? (
+          <img src={runtime.avatar} alt="" />
+        ) : (
+          <Bot size={Math.max(13, size - 7)} />
+        )}
       </span>
     );
   }
@@ -176,10 +189,13 @@ export default function ProfileSwitcher({
                           )}
                         </span>
                         <span className="profile-menu-meta">
-                          {RUNTIME_LABELS[runtime.kind]} / {locationLabel(runtime.location)}
+                          {RUNTIME_LABELS[runtime.kind]} /{" "}
+                          {locationLabel(runtime.location)}
                         </span>
                       </span>
-                      {selected && <Check className="profile-menu-check" size={14} />}
+                      {selected && (
+                        <Check className="profile-menu-check" size={14} />
+                      )}
                     </button>
                   );
                 })}

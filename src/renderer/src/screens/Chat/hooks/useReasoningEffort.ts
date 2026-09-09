@@ -38,7 +38,7 @@ export function useReasoningEffort(profile?: string): UseReasoningEffortResult {
 
   useEffect(() => {
     let cancelled = false;
-    window.hermesAPI
+    window.agentsOneAPI
       .getConfig("agent.reasoning_effort", profile)
       .then((value) => {
         if (!cancelled) {
@@ -66,7 +66,7 @@ export function useReasoningEffort(profile?: string): UseReasoningEffortResult {
       setReasoningEffortState(next);
 
       try {
-        await window.hermesAPI.setConfig(
+        await window.agentsOneAPI.setConfig(
           "agent.reasoning_effort",
           next,
           profile,

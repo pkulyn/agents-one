@@ -30,4 +30,14 @@ describe("shared i18n", () => {
       "更新 v1.2.3",
     );
   });
+
+  it("translates the settings interface in zh-CN", () => {
+    expect(t("settings.theme.label", "zh-CN")).toBe("主题");
+    expect(t("settings.roundedCorners.hint", "zh-CN")).toBe(
+      "关闭后，应用中的圆角将改为直角",
+    );
+    expect(t("settings.hardwareAcceleration.label", "zh-CN")).toBe("硬件加速");
+    expect(t("settings.archives.title", "zh-CN")).toBe("已归档的任务和项目");
+    expect(t("settings.checkForUpdates", "zh-CN")).toBe("检查更新");
+  });
 });

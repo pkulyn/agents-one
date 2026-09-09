@@ -24,15 +24,36 @@ function openLightbox(): ReturnType<typeof render> {
 
 describe("MediaImage lightbox", () => {
   beforeEach(() => {
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         saveMediaFile: vi.fn(async () => true),
         showMediaMenu: vi.fn(),
         showFileMenu: vi.fn(),
         openFileInEditor: vi.fn(async () => true),
+        openAgentRuntimeArtifact: vi.fn(async () => true),
+        readAgentRuntimeArtifactImage: vi.fn(async () => null),
+        saveAgentRuntimeArtifact: vi.fn(async () => true),
       },
     });
+  });
+
+  it("opens Runtime artifact files without exposing an absolute path", () => {
+    const artifactToken: MediaToken = {
+      src: "agents-one-artifact://runtime/run-1/report-1/report.pdf",
+      isUrl: true,
+      isImage: false,
+      name: "report.pdf",
+      runtimeArtifact: { runId: "run-1", artifactId: "report-1" },
+    };
+    render(<DownloadChip token={artifactToken} />);
+    const link = document.querySelector(".chat-artifact-file");
+    expect(link).toHaveAttribute("title", "report.pdf");
+    fireEvent.click(link!);
+    expect(window.agentsOneAPI.openAgentRuntimeArtifact).toHaveBeenCalledWith(
+      "run-1",
+      "report-1",
+    );
   });
 
   it("portals the lightbox to document.body so paint containment cannot clip it", () => {
@@ -88,17 +109,17 @@ describe("MediaImage lightbox", () => {
     const link = document.querySelector(".chat-artifact-file");
     expect(link).toHaveAttribute("title", fileToken.src);
     fireEvent.click(link!);
-    expect(window.hermesAPI.openFileInEditor).toHaveBeenCalledWith(
+    expect(window.agentsOneAPI.openFileInEditor).toHaveBeenCalledWith(
       fileToken.src,
     );
 
     fireEvent.contextMenu(link!);
-    expect(window.hermesAPI.showFileMenu).toHaveBeenCalledWith(fileToken.src, {
+    expect(window.agentsOneAPI.showFileMenu).toHaveBeenCalledWith(fileToken.src, {
       open: "chat.fileMenu.open",
       copyPath: "chat.fileMenu.copyPath",
       copyContent: "chat.fileMenu.copyContent",
       reveal: "chat.fileMenu.reveal",
     });
-    expect(window.hermesAPI.saveMediaFile).not.toHaveBeenCalled();
+    expect(window.agentsOneAPI.saveMediaFile).not.toHaveBeenCalled();
   });
 });

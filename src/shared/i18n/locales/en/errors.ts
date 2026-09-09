@@ -1,8 +1,8 @@
 export default {
   installBroken:
-    "Hermes is installed but appears to be broken. Try reinstalling to fix it.",
+    "Hermes Agent Runtime is installed but appears to be broken. Try reinstalling to fix it.",
   verifyFailed:
-    "Hermes is installed, but a health check didn't complete. The app should still work — reinstall if you run into issues.",
+    "Hermes Agent Runtime is installed, but a health check didn't complete. Agents One should still work — reinstall the runtime if you run into issues.",
   verifyReinstall: "Reinstall",
   verifyDismiss: "Dismiss",
 } as const;

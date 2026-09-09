@@ -3,7 +3,7 @@ import { useI18n } from "../useI18n";
 import { useSettings } from "./SettingsDataContext";
 
 /**
- * Built-in Hermes connection settings. The connection is local-only (plan
+ * Built-in Hermes Agent Runtime connection settings. The connection is local-only (plan
  * D5): SSH and old remote Hermes transports were removed, and remote agents
  * now go through Gateway v1 in the Agent Runtimes pane. This pane keeps the
  * local API_SERVER_KEY management and the outgoing Network settings
@@ -67,7 +67,7 @@ export default function ConnectionPane(): React.JSX.Element {
             disabled={generatingKey}
             onClick={async () => {
               setGeneratingKey(true);
-              await window.hermesAPI.generateApiServerKey(profile);
+              await window.agentsOneAPI.generateApiServerKey(profile);
               setApiServerKeyMissing(false);
               setGeneratingKey(false);
               setConnStatus(t("settings.apiGenerated"));
@@ -103,7 +103,7 @@ export default function ConnectionPane(): React.JSX.Element {
                 onChange={async (e) => {
                   const val = e.target.checked;
                   setForceIpv4(val);
-                  await window.hermesAPI.setConfig(
+                  await window.agentsOneAPI.setConfig(
                     "network.force_ipv4",
                     val ? "true" : "false",
                     profile,

@@ -3,8 +3,8 @@ param()
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $ElectronPath = Join-Path $ProjectRoot "node_modules\electron\dist\electron.exe"
-$PortableNode = "D:\efunds\nodejs"
-$PortableNpm = Join-Path $PortableNode "npm.cmd"
+$NpmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
+$PortableNpm = if ($NpmCommand) { $NpmCommand.Source } else { $null }
 
 Add-Type -TypeDefinition @"
 using System;
@@ -56,7 +56,7 @@ Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyC
 
 Start-Sleep -Milliseconds 500
 
-if (-not (Test-Path -LiteralPath $ElectronPath) -or -not (Test-Path -LiteralPath $PortableNpm)) {
+if (-not (Test-Path -LiteralPath $ElectronPath) -or -not $PortableNpm -or -not (Test-Path -LiteralPath $PortableNpm)) {
   Add-Type -AssemblyName PresentationFramework
   [System.Windows.MessageBox]::Show(
     "Agents One dependencies are not ready. Run npm install in the project directory first.",
@@ -67,22 +67,24 @@ if (-not (Test-Path -LiteralPath $ElectronPath) -or -not (Test-Path -LiteralPath
   exit 1
 }
 
-if (Test-Path -LiteralPath $PortableNode) {
-  $env:Path = "$PortableNode;$env:Path"
-}
-
 # This launcher is for the user's real Agents One workspace. The sandbox
 # launcher deliberately uses isolated config/history and must only be used by
 # automated tests, otherwise configured runtimes and prior records appear to
 # disappear.
 $env:HERMES_HOME = Join-Path $env:LOCALAPPDATA "hermes"
+$env:AGENTS_ONE_SANDBOX = $null
+$env:AGENTS_ONE_USER_DATA_DIR = $null
+$env:AGENTS_ONE_DEFAULT_API_PORT = $null
+$env:AGENTS_ONE_PORT_RANGE_START = $null
+$env:AGENTS_ONE_PORT_RANGE_END = $null
+$env:AGENTS_ONE_RENDERER_PORT = $null
 $env:HERMES_DESKTOP_SANDBOX = $null
 $env:HERMES_DESKTOP_USER_DATA_DIR = $null
 $env:HERMES_DESKTOP_DEFAULT_API_PORT = $null
 $env:HERMES_DESKTOP_PORT_RANGE_START = $null
 $env:HERMES_DESKTOP_PORT_RANGE_END = $null
 $env:HERMES_DESKTOP_RENDERER_PORT = $null
-$env:VITE_HERMES_DESKTOP_APP_NAME = "Agents One"
+$env:VITE_AGENTS_ONE_APP_NAME = "Agents One"
 
 $CdpPort = 19232
 while (

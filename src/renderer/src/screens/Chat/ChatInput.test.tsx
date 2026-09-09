@@ -12,12 +12,25 @@ vi.mock("../../components/useI18n", () => ({
   }),
 }));
 
+vi.mock("./hooks/useVoiceInput", () => ({
+  useVoiceInput: () => ({
+    supported: false,
+    recording: false,
+    elapsedSeconds: 0,
+    recordingLimitSeconds: null,
+    transcribing: false,
+    error: null,
+    toggle: vi.fn(),
+  }),
+}));
+
 import { ChatInput } from "./ChatInput";
 
 afterEach(cleanup);
 
 function renderInput(
   slashCommands?: React.ComponentProps<typeof ChatInput>["slashCommands"],
+  options: Partial<React.ComponentProps<typeof ChatInput>> = {},
 ): {
   onSubmit: ReturnType<typeof vi.fn>;
   textarea: HTMLTextAreaElement;
@@ -31,6 +44,7 @@ function renderInput(
       onQuickAsk={vi.fn()}
       onAbort={vi.fn()}
       slashCommands={slashCommands}
+      {...options}
     />,
   );
   const textarea = screen.getByPlaceholderText(
@@ -119,5 +133,41 @@ describe("ChatInput — slash command palette", () => {
     fireEvent.keyDown(textarea, { key: "ArrowUp" });
     expect(screen.getByText("command-999")).toBeTruthy();
     expect(screen.queryByText("command-0")).toBeNull();
+  });
+
+  it("shows Runtime command source and availability metadata", () => {
+    const { textarea } = renderInput([
+      {
+        name: "/review",
+        description: "Review the current patch",
+        category: "tools",
+        argumentHint: "[--strict]",
+        source: "plugin",
+        availability: "idle",
+      },
+    ]);
+
+    fireEvent.change(textarea, { target: { value: "/" } });
+
+    expect(screen.getByText("plugin · idle")).toBeTruthy();
+    expect(screen.getByText("[--strict]")).toBeTruthy();
+  });
+});
+
+describe("ChatInput — attachments while a queued runtime run is finishing", () => {
+  it("keeps attachments locked by default during a run", () => {
+    renderInput(undefined, { isLoading: true });
+
+    expect(screen.getByRole("button", { name: "chat.attach" })).toBeDisabled();
+  });
+
+  it("allows transports with a follow-up queue to pick an attachment", () => {
+    renderInput(undefined, {
+      isLoading: true,
+      attachmentsEnabled: true,
+      allowAttachmentsWhileLoading: true,
+    });
+
+    expect(screen.getByRole("button", { name: "chat.attach" })).toBeEnabled();
   });
 });

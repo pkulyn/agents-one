@@ -146,7 +146,7 @@ describe("useDashboardChatTransport recovery", () => {
     dashboardMock.instances.length = 0;
     dashboardMock.onEvent = null;
     dashboardMock.request.mockReset();
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         recordSessionContinuation: vi.fn(async () => true),
@@ -252,14 +252,14 @@ describe("useDashboardChatTransport recovery", () => {
         ],
       },
     });
-    expect(window.hermesAPI.recordSessionLocalError).toHaveBeenCalledWith(
+    expect(window.agentsOneAPI.recordSessionLocalError).toHaveBeenCalledWith(
       "stored-chat",
       {
         error: "Invalid API Key",
         userContent: "bad provider turn",
       },
     );
-    expect(window.hermesAPI.recordSessionContinuation).toHaveBeenCalledWith(
+    expect(window.agentsOneAPI.recordSessionContinuation).toHaveBeenCalledWith(
       "stored-chat",
       [
         { kind: "user", content: "bad provider turn" },
@@ -291,7 +291,7 @@ describe("useDashboardChatTransport recovery", () => {
       return {};
     });
 
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         recordSessionContinuation: vi.fn(async () => true),
@@ -317,7 +317,7 @@ describe("useDashboardChatTransport recovery", () => {
       firstSend = api.send?.("first prompt") ?? null;
     });
     await waitFor(() =>
-      expect(window.hermesAPI.startDashboard).toHaveBeenCalledTimes(1),
+      expect(window.agentsOneAPI.startDashboard).toHaveBeenCalledTimes(1),
     );
 
     await act(async () => {
@@ -395,7 +395,7 @@ describe("useDashboardChatTransport unavailable fallback (issue #667)", () => {
       await api.send?.("bad provider turn");
     });
 
-    expect(window.hermesAPI.recordSessionContinuation).toHaveBeenCalledWith(
+    expect(window.agentsOneAPI.recordSessionContinuation).toHaveBeenCalledWith(
       "stored-now",
       [{ kind: "user", content: "bad provider turn" }],
     );
@@ -411,7 +411,7 @@ describe("useDashboardChatTransport unavailable fallback (issue #667)", () => {
       running: false,
       error: "Hermes dashboard chat WebSocket is unavailable (404)",
     }));
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         recordSessionContinuation: vi.fn(async () => true),
@@ -505,7 +505,7 @@ describe("useDashboardChatTransport unavailable fallback (issue #667)", () => {
       connection: { wsUrl: "ws://remote-dashboard" },
       running: true,
     }));
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         recordSessionContinuation: vi.fn(async () => true),
@@ -554,7 +554,7 @@ describe("useDashboardChatTransport messagesRef sync", () => {
     dashboardMock.instances.length = 0;
     dashboardMock.onEvent = null;
     dashboardMock.request.mockReset();
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         recordSessionContinuation: vi.fn(async () => true),
@@ -648,7 +648,7 @@ describe("useDashboardChatTransport context gauge estimate (no usage payload)", 
       }
       return {};
     });
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         recordSessionContinuation: vi.fn(async () => true),

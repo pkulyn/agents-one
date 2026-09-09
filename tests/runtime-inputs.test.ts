@@ -1,13 +1,14 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { afterEach, describe, expect, it } from "vitest";
-import { prepareRuntimeInputs } from "../src/main/runtime-inputs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const roots: string[] = [];
+let testHome: string;
 
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0))
+    rmSync(root, { recursive: true, force: true });
 });
 
 function root(): string {
@@ -16,11 +17,33 @@ function root(): string {
   return value;
 }
 
+async function loadModules(): Promise<{
+  prepareRuntimeInputs: typeof import("../src/main/runtime-inputs").prepareRuntimeInputs;
+  stageAttachment: typeof import("../src/main/attachment-staging").stageAttachment;
+}> {
+  vi.resetModules();
+  vi.stubEnv("HERMES_HOME", testHome);
+  const inputs = await import("../src/main/runtime-inputs");
+  const staging = await import("../src/main/attachment-staging");
+  return {
+    prepareRuntimeInputs: inputs.prepareRuntimeInputs,
+    stageAttachment: staging.stageAttachment,
+  };
+}
+
 describe("Runtime input staging", () => {
-  it("copies explicit text and document inputs into a private task directory", () => {
+  beforeEach(() => {
+    testHome = root();
+  });
+
+  it("copies explicit text and staged document inputs into a private task directory", async () => {
+    const { prepareRuntimeInputs, stageAttachment } = await loadModules();
     const staging = root();
-    const source = join(staging, "source.pdf");
-    writeFileSync(source, "document bytes");
+    const source = stageAttachment(
+      "session-1",
+      "source.pdf",
+      Buffer.from("document bytes").toString("base64"),
+    );
 
     const result = prepareRuntimeInputs(
       undefined,
@@ -56,7 +79,8 @@ describe("Runtime input staging", () => {
     expect(result.files[1].path).not.toBe(source);
   });
 
-  it("rejects secret-like file names before a Runtime can access them", () => {
+  it("rejects secret-like file names before a Runtime can access them", async () => {
+    const { prepareRuntimeInputs } = await loadModules();
     expect(() =>
       prepareRuntimeInputs(
         undefined,
@@ -74,5 +98,28 @@ describe("Runtime input staging", () => {
         root(),
       ),
     ).toThrow(/excluded/i);
+  });
+
+  it("rejects arbitrary renderer paths that were not staged by the main process", async () => {
+    const { prepareRuntimeInputs } = await loadModules();
+    const source = join(root(), "untrusted.pdf");
+    writeFileSync(source, "document bytes");
+    expect(() =>
+      prepareRuntimeInputs(
+        undefined,
+        [
+          {
+            id: "untrusted-1",
+            kind: "path-ref",
+            name: "untrusted.pdf",
+            mime: "application/pdf",
+            size: 14,
+            path: source,
+          },
+        ],
+        "task-3",
+        root(),
+      ),
+    ).toThrow(/main-process staged attachment/i);
   });
 });

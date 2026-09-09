@@ -11,6 +11,9 @@ vi.mock("./DataPane", () => ({ default: () => <div>Data</div> }));
 vi.mock("./ArchivePane", () => ({ default: () => <div>Archives</div> }));
 vi.mock("./AboutPane", () => ({ default: () => <div>About</div> }));
 vi.mock("./LogsPane", () => ({ default: () => <div>Logs</div> }));
+vi.mock("./VoiceInputPane", () => ({
+  default: () => <div>Voice input pane</div>,
+}));
 
 describe("SettingsModal navigation", () => {
   it("uses one general group without a separate Agents One heading", () => {
@@ -23,5 +26,15 @@ describe("SettingsModal navigation", () => {
     const labels = document.querySelectorAll(".settings-modal-nav-group-label");
     expect(labels).toHaveLength(1);
     expect(labels[0]).not.toHaveTextContent("Agents One");
+  });
+
+  it("opens the voice input pane when targeted by settings navigation", () => {
+    render(
+      <I18nProvider>
+        <SettingsModal open initialSection="voice" onClose={vi.fn()} />
+      </I18nProvider>,
+    );
+
+    expect(document.body).toHaveTextContent("Voice input pane");
   });
 });

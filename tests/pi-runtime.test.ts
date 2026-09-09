@@ -4,10 +4,12 @@ import { tmpdir } from "os";
 import { join } from "path";
 import {
   getPiModelContextWindow,
+  getPiConfiguredModels,
   piChildEnvironment,
   piExecArgs,
   piInvocation,
   piOutputError,
+  piRpcArgs,
 } from "../src/main/pi-runtime";
 
 describe("Pi Agent CLI runtime invocation", () => {
@@ -49,6 +51,50 @@ describe("Pi Agent CLI runtime invocation", () => {
     expect(
       getPiModelContextWindow("deepseek", "deepseek-v4-flash", configDir),
     ).toBe(999_000);
+  });
+
+  it("lists locally configured models without launching Pi", () => {
+    const configDir = mkdtempSync(join(tmpdir(), "agents-one-pi-catalog-"));
+    writeFileSync(
+      join(configDir, "models.json"),
+      JSON.stringify({
+        providers: {
+          ark: {
+            apiKey: "must-not-leak",
+            models: [{ id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" }],
+          },
+        },
+      }),
+      "utf-8",
+    );
+    writeFileSync(
+      join(configDir, "models-store.json"),
+      JSON.stringify({
+        ark: {
+          models: [
+            { id: "deepseek-v4-flash", name: "Duplicate" },
+            { id: "doubao-seed-2.1-turbo", name: "Doubao Seed" },
+          ],
+        },
+      }),
+      "utf-8",
+    );
+
+    expect(getPiConfiguredModels(configDir)).toEqual([
+      {
+        provider: "ark",
+        id: "deepseek-v4-flash",
+        displayName: "DeepSeek V4 Flash",
+      },
+      {
+        provider: "ark",
+        id: "doubao-seed-2.1-turbo",
+        displayName: "Doubao Seed",
+      },
+    ]);
+    expect(JSON.stringify(getPiConfiguredModels(configDir))).not.toContain(
+      "must-not-leak",
+    );
   });
 
   it("keeps unscoped conversations tool-free and noninteractive", () => {
@@ -152,6 +198,24 @@ describe("Pi Agent CLI runtime invocation", () => {
     ).toEqual(expect.arrayContaining(["--model", "ark/glm-5.2"]));
   });
 
+  it("uses Pi RPC mode with an explicit session only for stateful controls", () => {
+    expect(piRpcArgs("D:\\sessions", "pi-session-5")).toEqual([
+      "--mode",
+      "rpc",
+      "--session-dir",
+      "D:\\sessions",
+      "--session-id",
+      "pi-session-5",
+    ]);
+    expect(piRpcArgs("D:\\sessions")).toEqual([
+      "--mode",
+      "rpc",
+      "--session-dir",
+      "D:\\sessions",
+      "--no-session",
+    ]);
+  });
+
   it("unwraps the Windows npm shim without enabling a shell", () => {
     expect(
       piInvocation("D:\\portable-node\\pi.cmd", "win32", () => true),
@@ -169,7 +233,7 @@ describe("Pi Agent CLI runtime invocation", () => {
         PATH: "D:\\portable-node",
         HTTPS_PROXY: "http://127.0.0.1:7890",
         no_proxy: "localhost,127.0.0.1",
-      CUSTOM_MCP_TOKEN: "available-to-user-configured-mcp",
+        CUSTOM_MCP_TOKEN: "available-to-user-configured-mcp",
       }),
     ).toEqual({
       PATH: "D:\\portable-node",
@@ -230,5 +294,40 @@ describe("Pi Agent CLI runtime invocation", () => {
     ].join("\n");
 
     expect(piOutputError(output)).toBeUndefined();
+  });
+
+  it("recognizes Pi print-mode message frames with a final text reply", () => {
+    expect(
+      piOutputError(
+        JSON.stringify({
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "Inspect the image." },
+              { type: "text", text: "图片识别完成。" },
+            ],
+            stopReason: "stop",
+          },
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("treats a terminal Pi turn without final text as incomplete", () => {
+    expect(
+      piOutputError(
+        JSON.stringify({
+          type: "agent_end",
+          messages: [
+            {
+              role: "assistant",
+              content: [{ type: "thinking", thinking: "Inspect the image." }],
+              stopReason: "stop",
+            },
+          ],
+        }),
+      ),
+    ).toBe("Pi Agent 本轮在工具或思考阶段结束，未返回最终答复。");
   });
 });

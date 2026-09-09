@@ -118,8 +118,8 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
   const reload = useCallback(async (): Promise<void> => {
     const seq = ++loadSeqRef.current;
     const [mc, savedModels] = await Promise.all([
-      window.hermesAPI.getModelConfig(profile),
-      window.hermesAPI.listModels(),
+      window.agentsOneAPI.getModelConfig(profile),
+      window.agentsOneAPI.listModels(),
     ]);
     if (seq !== loadSeqRef.current) return;
     setCurrentModel(mc.model);
@@ -139,14 +139,14 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
   }, [modelsForPicker]);
 
   useEffect(() => {
-    return window.hermesAPI.onConnectionConfigChanged(() => {
+    return window.agentsOneAPI.onConnectionConfigChanged(() => {
       setModelGroups([]);
       void reload();
     });
   }, [reload]);
 
   useEffect(() => {
-    return window.hermesAPI.onModelLibraryChanged(() => {
+    return window.agentsOneAPI.onModelLibraryChanged(() => {
       void reload();
     });
   }, [reload]);
@@ -173,13 +173,13 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       }
       const seq = ++loadSeqRef.current;
       try {
-        await window.hermesAPI.setModelConfig(
+        await window.agentsOneAPI.setModelConfig(
           provider,
           model,
           effectiveBaseUrl,
           profile,
         );
-        const mc = await window.hermesAPI.getModelConfig(profile);
+        const mc = await window.agentsOneAPI.getModelConfig(profile);
         if (seq !== loadSeqRef.current) return;
         setCurrentModel(mc.model);
         setCurrentProvider(mc.provider);

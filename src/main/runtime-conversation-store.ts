@@ -4,11 +4,14 @@ import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
 import type {
   AgentRuntimeEvent,
   AgentRuntimeEventType,
+  AgentRuntimeKind,
 } from "../shared/agent-runtimes";
 import type {
   RuntimeConversation,
   RuntimeConversationMessage,
   RuntimeConversationSummary,
+  ConversationBranchRef,
+  ConversationEntryMeta,
   QuickChatConversation,
   QuickChatMessage,
   SaveRuntimeConversationInput,
@@ -27,6 +30,7 @@ const MAX_AVATAR_DATA_URL_LENGTH = 700_000;
 const MAX_WORKSPACE_LENGTH = 4096;
 const MAX_QUICK_CHATS = 40;
 const MAX_QUICK_CHAT_MESSAGES = 80;
+const RUNTIME_KIND_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
 const RUNTIME_EVENT_TYPES = new Set<AgentRuntimeEventType>([
   "queued",
   "started",
@@ -102,6 +106,13 @@ function cleanRuntimeAvatar(value: unknown): string | null | undefined {
     : undefined;
 }
 
+function cleanRuntimeKind(value: unknown): AgentRuntimeKind | undefined {
+  const kind = cleanText(value).slice(0, 64);
+  return RUNTIME_KIND_PATTERN.test(kind)
+    ? (kind as AgentRuntimeKind)
+    : undefined;
+}
+
 function cleanRuntimeEvent(value: unknown): AgentRuntimeEvent | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Partial<AgentRuntimeEvent>;
@@ -138,24 +149,130 @@ function cleanExecution(
     : [];
   if (!runId) return undefined;
   const artifacts = Array.isArray(record?.artifacts)
-    ? record.artifacts.filter((artifact) =>
-        Boolean(artifact && artifact.label.trim()),
-      )
+    ? record.artifacts.filter((artifact) => {
+        if (!artifact || typeof artifact !== "object") return false;
+        const label = (artifact as { label?: unknown }).label;
+        return typeof label === "string" && label.trim().length > 0;
+      })
     : [];
   if (
     events.length === 0 &&
     artifacts.length === 0 &&
+    !record.actualModel &&
     !record.model &&
-    !record.usage
+    !record.usage &&
+    !record.isolation
   ) {
     return undefined;
   }
   return {
     runId,
     events,
+    ...(typeof record.startedAt === "number" &&
+    Number.isFinite(record.startedAt)
+      ? { startedAt: record.startedAt }
+      : {}),
+    ...(typeof record.completedAt === "number" &&
+    Number.isFinite(record.completedAt)
+      ? { completedAt: record.completedAt }
+      : {}),
     ...(artifacts.length ? { artifacts } : {}),
+    ...(record.actualModel ? { actualModel: record.actualModel } : {}),
     ...(record.model ? { model: record.model } : {}),
     ...(record.usage ? { usage: record.usage } : {}),
+    ...(record.isolation ? { isolation: record.isolation } : {}),
+  };
+}
+
+function cleanEntryMeta(value: unknown): ConversationEntryMeta | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Partial<ConversationEntryMeta>;
+  const audience = Array.isArray(record.audience)
+    ? record.audience.filter(
+        (item): item is "model" | "user" | "audit" =>
+          item === "model" || item === "user" || item === "audit",
+      )
+    : [];
+  if (
+    audience.length === 0 ||
+    !(
+      record.origin === "user" ||
+      record.origin === "runtime" ||
+      record.origin === "platform"
+    ) ||
+    !(record.persistence === "transient" || record.persistence === "durable")
+  ) {
+    return undefined;
+  }
+  return {
+    audience: [...new Set(audience)],
+    origin: record.origin,
+    persistence: record.persistence,
+  };
+}
+
+function cleanControlAudit(
+  value: unknown,
+): RuntimeConversationMessage["controlAudit"] | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as NonNullable<
+    RuntimeConversationMessage["controlAudit"]
+  >;
+  const requestId = cleanText(record.requestId).slice(0, 160);
+  const command = cleanText(record.command).slice(0, 80);
+  const runtimeId = cleanText(record.runtimeId).slice(0, 160);
+  if (
+    !requestId ||
+    !command ||
+    !runtimeId ||
+    !["handled", "needs-input", "unsupported", "error"].includes(record.outcome)
+  ) {
+    return undefined;
+  }
+  const timestamp = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) ? value : Date.now();
+  return {
+    requestId,
+    command,
+    runtimeId,
+    ...(record.target ? { target: record.target } : {}),
+    outcome: record.outcome,
+    startedAt: timestamp(record.startedAt),
+    completedAt: timestamp(record.completedAt),
+    ...(record.degraded === true ? { degraded: true } : {}),
+    ...(record.compaction ? { compaction: record.compaction } : {}),
+    createdAt: timestamp(record.createdAt),
+  };
+}
+
+function cleanBranch(value: unknown): ConversationBranchRef | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Partial<ConversationBranchRef>;
+  const parentConversationId = cleanText(record.parentConversationId).slice(
+    0,
+    160,
+  );
+  const forkedFromMessageId = cleanText(record.forkedFromMessageId).slice(
+    0,
+    160,
+  );
+  const activeLeafId = cleanText(record.activeLeafId).slice(0, 160);
+  const branchLabel = cleanText(record.branchLabel).slice(0, MAX_TITLE_LENGTH);
+  const branchSummary = cleanText(record.branchSummary).slice(0, 8_000);
+  if (
+    !parentConversationId &&
+    !forkedFromMessageId &&
+    !activeLeafId &&
+    !branchLabel &&
+    !branchSummary
+  )
+    return undefined;
+  return {
+    ...(parentConversationId ? { parentConversationId } : {}),
+    ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
+    ...(activeLeafId ? { activeLeafId } : {}),
+    ...(branchLabel ? { branchLabel } : {}),
+    ...(branchSummary ? { branchSummary } : {}),
   };
 }
 
@@ -197,6 +314,10 @@ function cleanMessage(value: unknown): RuntimeConversationMessage | null {
     message.collaborationAssignmentId = collaborationAssignmentId;
   const execution = cleanExecution(record.execution);
   if (execution) message.execution = execution;
+  const meta = cleanEntryMeta(record.meta);
+  if (meta) message.meta = meta;
+  const controlAudit = cleanControlAudit(record.controlAudit);
+  if (controlAudit) message.controlAudit = controlAudit;
   return message;
 }
 
@@ -206,18 +327,8 @@ function normalizeConversation(value: unknown): RuntimeConversation | null {
   const id = cleanText(record.id);
   const runtimeId = cleanText(record.runtimeId);
   const runtimeName = cleanText(record.runtimeName, runtimeId);
-  const runtimeKind = record.runtimeKind;
-  if (
-    !id ||
-    !runtimeId ||
-    !runtimeName ||
-    !(
-      runtimeKind === "hermes" ||
-      runtimeKind === "codex" ||
-      runtimeKind === "claude-code" ||
-      runtimeKind === "pi"
-    )
-  ) {
+  const runtimeKind = cleanRuntimeKind(record.runtimeKind);
+  if (!id || !runtimeId || !runtimeName || !runtimeKind) {
     return null;
   }
   const messages = Array.isArray(record.messages)
@@ -254,10 +365,12 @@ function normalizeConversation(value: unknown): RuntimeConversation | null {
     activeRuntimeRunId: cleanText(record.activeRuntimeRunId) || undefined,
     workspace:
       cleanText(record.workspace).slice(0, MAX_WORKSPACE_LENGTH) || undefined,
+    workspaceId: cleanText(record.workspaceId).slice(0, 128) || undefined,
     accessMode:
       record.accessMode === "analysis" || record.accessMode === "full_access"
         ? record.accessMode
         : "auto",
+    branch: cleanBranch(record.branch),
     messageCount: messages.length,
     messages,
   };
@@ -289,7 +402,9 @@ function summaryFromConversation(
     runtimeSessionId: conversation.runtimeSessionId,
     activeRuntimeRunId: conversation.activeRuntimeRunId,
     workspace: conversation.workspace,
+    workspaceId: conversation.workspaceId,
     accessMode: conversation.accessMode,
+    branch: conversation.branch,
     messageCount: conversation.messageCount,
   };
 }
@@ -343,6 +458,64 @@ export function saveRuntimeConversation(
   ].sort((a, b) => b.updatedAt - a.updatedAt);
   writeStore(input.profile, { conversations: next });
   return conversation;
+}
+
+/**
+ * Creates an associated conversation without mutating its parent. Callers that
+ * plan to write files must provide the independently created worktree id;
+ * this store never pretends a branch is isolated merely because it has a name.
+ */
+export function forkRuntimeConversation(
+  parentId: string,
+  input: {
+    id: string;
+    forkedFromMessageId?: string;
+    branchLabel?: string;
+    branchSummary?: string;
+    implementation?: boolean;
+    worktreeId?: string;
+  },
+  profile?: string,
+): RuntimeConversation {
+  if (input.implementation && !cleanText(input.worktreeId)) {
+    throw new Error(
+      "Implementation conversation branches require a separate worktree.",
+    );
+  }
+  const parent = getRuntimeConversation(parentId, profile);
+  if (!parent) throw new Error("Parent runtime conversation was not found.");
+  if (!cleanText(input.id))
+    throw new Error("Conversation branch id is required.");
+  const forkIndex = input.forkedFromMessageId
+    ? parent.messages.findIndex(
+        (message) => message.id === input.forkedFromMessageId,
+      )
+    : parent.messages.length - 1;
+  const messages = parent.messages.slice(0, Math.max(0, forkIndex + 1));
+  return saveRuntimeConversation({
+    profile,
+    id: input.id,
+    title: input.branchLabel || `${parent.title}（分支）`,
+    runtimeId: parent.runtimeId,
+    runtimeName: parent.runtimeName,
+    runtimeKind: parent.runtimeKind,
+    runtimeLocation: parent.runtimeLocation,
+    runtimeColor: parent.runtimeColor,
+    runtimeAvatar: parent.runtimeAvatar,
+    runtimeSessionId: undefined,
+    workspace: parent.workspace,
+    workspaceId: parent.workspaceId,
+    accessMode: parent.accessMode,
+    branch: {
+      parentConversationId: parent.id,
+      ...(input.forkedFromMessageId
+        ? { forkedFromMessageId: input.forkedFromMessageId }
+        : {}),
+      ...(input.branchLabel ? { branchLabel: input.branchLabel } : {}),
+      ...(input.branchSummary ? { branchSummary: input.branchSummary } : {}),
+    },
+    messages,
+  });
 }
 
 function normalizeQuickChatMessage(value: unknown): QuickChatMessage | null {
@@ -423,7 +596,10 @@ export function saveQuickChats(
     .filter((item): item is QuickChatConversation => Boolean(item))
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, MAX_QUICK_CHATS);
-  writeStoreFile(quickChatStoreFilePath(profile), { version: 1, chats: normalized });
+  writeStoreFile(quickChatStoreFilePath(profile), {
+    version: 1,
+    chats: normalized,
+  });
   return normalized;
 }
 
@@ -457,6 +633,26 @@ export function clearRuntimeConversationWorkspace(
   let changed = 0;
   for (const conversation of data.conversations) {
     if (conversation.workspace === workspace) {
+      conversation.workspace = undefined;
+      conversation.updatedAt = Date.now();
+      changed += 1;
+    }
+  }
+  if (changed) writeStore(profile, data);
+  return changed;
+}
+
+/** Moves opaque-capability Runtime conversations out of a removed project. */
+export function clearRuntimeConversationWorkspaceId(
+  workspaceId: string,
+  profile?: string,
+): number {
+  if (!workspaceId) return 0;
+  const data = readStore(profile);
+  let changed = 0;
+  for (const conversation of data.conversations) {
+    if (conversation.workspaceId === workspaceId) {
+      conversation.workspaceId = undefined;
       conversation.workspace = undefined;
       conversation.updatedAt = Date.now();
       changed += 1;

@@ -11,16 +11,26 @@ import {
   ChatBubble,
   Pencil,
   Folder,
+  Search,
+  Check,
+  Alert,
 } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
+import ProfileAvatar from "../../components/common/ProfileAvatar";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
-import type {
-  TaskSchedule,
-  TaskScheduleConcurrencyPolicy,
-  TaskScheduleRunStatus,
+import type { ProjectFolderRecord } from "../../../../shared/project-folders";
+import {
+  isTaskScheduleRuntimeEligible,
+  taskScheduleRuntimeCategory,
+  type TaskSchedule,
+  type TaskScheduleConcurrencyPolicy,
+  type TaskScheduleRuntimeCategory,
+  type TaskScheduleRunStatus,
+  type TaskScheduleRun,
 } from "../../../../shared/task-schedules";
 
 type FrequencyType = "minutes" | "hourly" | "daily" | "weekly" | "custom";
+type ScheduleFilter = "all" | "enabled" | "paused" | "attention";
 
 const SCHEDULE_RUN_STATUS_LABEL: Record<TaskScheduleRunStatus, string> = {
   queued: "排队中",
@@ -32,13 +42,20 @@ const SCHEDULE_RUN_STATUS_LABEL: Record<TaskScheduleRunStatus, string> = {
   skipped: "已跳过",
 };
 
+const RUNTIME_CATEGORY_LABEL: Record<TaskScheduleRuntimeCategory, string> = {
+  local: "本地智能体",
+  web: "网页智能体",
+  remote: "远程智能体",
+};
+
 interface SchedulesProps {
   profile?: string;
 }
 
+// @lat: [[task-schedules#Renderer behavior]]
 function Schedules({ profile }: SchedulesProps): React.JSX.Element {
   const { t } = useI18n();
-  const [localSchedules, setLocalSchedules] = useState<TaskSchedule[]>([]);
+  const [schedules, setSchedules] = useState<TaskSchedule[]>([]);
   const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -48,12 +65,20 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     null,
   );
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [scheduleFilter, setScheduleFilter] =
+    useState<ScheduleFilter>("all");
 
   // Create form state
   const [newName, setNewName] = useState("");
   const [newPrompt, setNewPrompt] = useState("");
   const [newRuntimeId, setNewRuntimeId] = useState("");
   const [newWorkspace, setNewWorkspace] = useState("");
+  const [newWorkspaceId, setNewWorkspaceId] = useState("");
+  const [projectFolders, setProjectFolders] = useState<ProjectFolderRecord[]>(
+    [],
+  );
+  const [newTimeoutMs, setNewTimeoutMs] = useState("7200000");
   const [newMode, setNewMode] = useState<"auto" | "analysis" | "full_access">(
     "auto",
   );
@@ -71,25 +96,24 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
 
   const loadJobs = useCallback(async (): Promise<void> => {
     try {
-      const [schedules, availableRuntimes] = await Promise.all([
-        window.hermesAPI.listTaskSchedules(profile),
-        window.hermesAPI.listAgentRuntimes(),
+      const [schedules, availableRuntimes, folders] = await Promise.all([
+        window.agentsOneAPI.listTaskSchedules(profile),
+        window.agentsOneAPI.listAgentRuntimes(),
+        window.agentsOneAPI.listProjectFolders(),
       ]);
-      const localCliRuntimes = availableRuntimes.filter(
-        (runtime) =>
-          runtime.enabled &&
-          runtime.location === "local" &&
-          runtime.config.transport === "cli",
+      const schedulableRuntimes = availableRuntimes.filter(
+        isTaskScheduleRuntimeEligible,
       );
-      const localRuntimeIds = new Set(
-        localCliRuntimes.map((runtime) => runtime.id),
+      const schedulableRuntimeIds = new Set(
+        schedulableRuntimes.map((runtime) => runtime.id),
       );
-      setLocalSchedules(
-        schedules.filter((schedule) => localRuntimeIds.has(schedule.runtimeId)),
-      );
-      setRuntimes(localCliRuntimes);
+      setSchedules(schedules);
+      setRuntimes(availableRuntimes);
+      setProjectFolders(folders);
       setNewRuntimeId((current) =>
-        localRuntimeIds.has(current) ? current : localCliRuntimes[0]?.id || "",
+        schedulableRuntimeIds.has(current)
+          ? current
+          : schedulableRuntimes[0]?.id || "",
       );
     } catch {
       setError(t("schedules.loadFailed"));
@@ -107,12 +131,12 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
       void loadJobs();
     };
     const timer = window.setInterval(refresh, 10_000);
-    const disposeStarted = window.hermesAPI.onTaskScheduleRunStarted?.(
+    const disposeStarted = window.agentsOneAPI.onTaskScheduleRunStarted?.(
       (event) => {
         if (event.profile === (profile || "default")) refresh();
       },
     );
-    const dispose = window.hermesAPI.onTaskScheduleRunCompleted?.((event) => {
+    const dispose = window.agentsOneAPI.onTaskScheduleRunCompleted?.((event) => {
       if (event.profile === (profile || "default")) refresh();
     });
     return () => {
@@ -139,6 +163,8 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     setNewName("");
     setNewPrompt("");
     setNewWorkspace("");
+    setNewWorkspaceId("");
+    setNewTimeoutMs("7200000");
     setNewMode("auto");
     setNewConcurrencyPolicy("skip");
     setFrequency("daily");
@@ -190,23 +216,43 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
 
   function openEditModal(schedule: TaskSchedule): void {
     resetForm();
+    const runtime = runtimes.find((item) => item.id === schedule.runtimeId);
+    const webRuntime = runtime
+      ? taskScheduleRuntimeCategory(runtime) === "web"
+      : false;
     setEditingScheduleId(schedule.id);
     setNewName(schedule.name);
     setNewPrompt(schedule.prompt);
     setNewRuntimeId(schedule.runtimeId);
-    setNewWorkspace(schedule.workspace || "");
+    setNewWorkspace(
+      webRuntime
+        ? ""
+        : schedule.workspace ||
+            projectFolders.find((folder) => folder.id === schedule.workspaceId)
+              ?.path ||
+            "",
+    );
+    setNewWorkspaceId(webRuntime ? "" : schedule.workspaceId || "");
+    setNewTimeoutMs(String(schedule.timeoutMs));
     setNewMode(
-      schedule.mode === "full_access" || schedule.mode === "analysis"
-        ? schedule.mode
-        : "auto",
+      webRuntime
+        ? "analysis"
+        : schedule.mode === "full_access" || schedule.mode === "analysis"
+          ? schedule.mode
+          : "auto",
     );
     setNewConcurrencyPolicy(schedule.concurrencyPolicy);
     applyScheduleValue(schedule.schedule);
   }
 
   async function chooseWorkspace(): Promise<void> {
-    const selected = await window.hermesAPI.selectFolder();
-    if (selected) setNewWorkspace(selected);
+    const selected = await window.agentsOneAPI.selectFolder();
+    if (!selected) return;
+    const registered = await window.agentsOneAPI.registerProjectFolder(selected);
+    if (registered) {
+      setNewWorkspace(selected);
+      setNewWorkspaceId(registered.id || "");
+    }
   }
 
   function buildSchedule(): string {
@@ -237,6 +283,12 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
 
   async function handleSave(): Promise<void> {
     if (!isScheduleValid()) return;
+    const runtime = runtimes.find((item) => item.id === newRuntimeId);
+    if (!runtime || !isTaskScheduleRuntimeEligible(runtime)) {
+      setError("请选择当前可用的执行智能体");
+      return;
+    }
+    const webRuntime = taskScheduleRuntimeCategory(runtime) === "web";
     setActionInProgress("creating");
     setError("");
     try {
@@ -245,18 +297,20 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
         schedule: buildSchedule(),
         prompt: newPrompt.trim(),
         runtimeId: newRuntimeId,
-        workspace: newWorkspace.trim() || undefined,
-        mode: newMode,
+        workspace: webRuntime ? undefined : newWorkspace.trim() || undefined,
+        workspaceId: webRuntime ? undefined : newWorkspaceId || undefined,
+        mode: webRuntime ? "analysis" : newMode,
         concurrencyPolicy: newConcurrencyPolicy,
+        timeoutMs: Number(newTimeoutMs),
       };
       if (editingScheduleId) {
-        await window.hermesAPI.updateTaskSchedule(
+        await window.agentsOneAPI.updateTaskSchedule(
           editingScheduleId,
           input,
           profile,
         );
       } else {
-        await window.hermesAPI.createTaskSchedule(input, profile);
+        await window.agentsOneAPI.createTaskSchedule(input, profile);
       }
       closeCreateModal();
       await loadJobs();
@@ -271,7 +325,7 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     setActionInProgress(schedule.id);
     setError("");
     try {
-      await window.hermesAPI.setTaskScheduleEnabled(
+      await window.agentsOneAPI.setTaskScheduleEnabled(
         schedule.id,
         !schedule.enabled,
         profile,
@@ -288,7 +342,7 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     setActionInProgress(schedule.id);
     setError("");
     try {
-      await window.hermesAPI.triggerTaskSchedule(schedule.id, profile);
+      await window.agentsOneAPI.triggerTaskSchedule(schedule.id, profile);
       await loadJobs();
     } catch (error) {
       setError(error instanceof Error ? error.message : "无法触发计划任务");
@@ -301,7 +355,7 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     setActionInProgress(scheduleId);
     setError("");
     try {
-      await window.hermesAPI.deleteTaskSchedule(scheduleId, profile);
+      await window.agentsOneAPI.deleteTaskSchedule(scheduleId, profile);
       setConfirmDelete(null);
       await loadJobs();
     } catch (error) {
@@ -340,13 +394,110 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
     if (interval)
       return `每 ${interval[1]} ${interval[2].toLowerCase() === "h" ? "小时" : "分钟"}`;
     const parts = value.trim().split(/\s+/);
-    if (parts.length !== 5) return value;
+    if (parts.length !== 5) return "自定义计划";
     const [minute, hour, day, month, weekday] = parts;
+    const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
     if (day === "*" && month === "*" && weekday === "*") {
-      return `每天 ${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+      return `每天 ${time}`;
     }
-    return `Cron · ${value}`;
+    if (day === "*" && month === "*") {
+      const weekdayLabel: Record<string, string> = {
+        "0": "周日",
+        "1": "周一",
+        "2": "周二",
+        "3": "周三",
+        "4": "周四",
+        "5": "周五",
+        "6": "周六",
+        "1-5": "工作日",
+        "0,6": "周末",
+        "6,0": "周末",
+      };
+      const label = weekdayLabel[weekday] ||
+        (/^[0-6](,[0-6])+$/.test(weekday)
+          ? weekday.split(",").map((value) => weekdayLabel[value]).join("、")
+          : "");
+      if (label) return `每${label} ${time}`;
+    }
+    if (/^\d+$/.test(day) && month === "*" && weekday === "*") {
+      return `每月${day}日 ${time}`;
+    }
+    if (/^\d+$/.test(day) && /^\d+$/.test(month) && weekday === "*") {
+      return `每年${month}月${day}日 ${time}`;
+    }
+    return "自定义计划";
   }
+
+  function formatRunDuration(run: TaskScheduleRun): string | null {
+    if (!run.completedAt || run.completedAt < run.triggeredAt) return null;
+    const seconds = (run.completedAt - run.triggeredAt) / 1000;
+    if (seconds < 1) return "耗时 <1 秒";
+    if (seconds < 60) return `耗时 ${seconds.toFixed(seconds < 10 ? 1 : 0)} 秒`;
+    const minutes = Math.floor(seconds / 60);
+    return `耗时 ${minutes} 分${Math.round(seconds % 60)} 秒`;
+  }
+
+  function resultIcon(status: TaskScheduleRunStatus): React.JSX.Element {
+    if (status === "succeeded") return <Check size={14} />;
+    if (status === "failed" || status === "timed_out" || status === "cancelled") {
+      return <Alert size={14} />;
+    }
+    if (status === "running") return <Refresh size={14} />;
+    return <Clock size={14} />;
+  }
+
+  function latestRunNeedsAttention(schedule: TaskSchedule): boolean {
+    const status = schedule.runs.at(-1)?.status;
+    return status === "failed" || status === "timed_out" || status === "cancelled";
+  }
+
+  function latestResultClass(schedule: TaskSchedule): string {
+    const status = schedule.runs.at(-1)?.status;
+    if (status === "succeeded") return "success";
+    if (status === "failed" || status === "timed_out" || status === "cancelled") {
+      return "danger";
+    }
+    if (status === "running" || status === "queued") return "active";
+    return "muted";
+  }
+
+  const schedulableRuntimes = runtimes.filter(isTaskScheduleRuntimeEligible);
+  const selectedRuntime = runtimes.find(
+    (runtime) => runtime.id === newRuntimeId,
+  );
+  const selectedRuntimeCategory = selectedRuntime
+    ? taskScheduleRuntimeCategory(selectedRuntime)
+    : null;
+  const selectedRuntimeIsWeb = selectedRuntimeCategory === "web";
+  const runtimeGroups = (
+    ["local", "web", "remote"] as TaskScheduleRuntimeCategory[]
+  ).map((category) => ({
+    category,
+    runtimes: schedulableRuntimes.filter(
+      (runtime) => taskScheduleRuntimeCategory(runtime) === category,
+    ),
+  }));
+  const scheduleCounts = {
+    total: schedules.length,
+    enabled: schedules.filter((schedule) => schedule.enabled).length,
+    paused: schedules.filter((schedule) => !schedule.enabled).length,
+    attention: schedules.filter(latestRunNeedsAttention).length,
+  };
+  const visibleSchedules = schedules.filter((schedule) => {
+    const query = searchTerm.trim().toLocaleLowerCase();
+    const runtime = runtimes.find((item) => item.id === schedule.runtimeId);
+    const matchesSearch =
+      !query ||
+      [schedule.name, schedule.prompt, schedule.schedule, runtime?.name]
+        .filter(Boolean)
+        .some((value) => value?.toLocaleLowerCase().includes(query));
+    const matchesFilter =
+      scheduleFilter === "all" ||
+      (scheduleFilter === "enabled" && schedule.enabled) ||
+      (scheduleFilter === "paused" && !schedule.enabled) ||
+      (scheduleFilter === "attention" && latestRunNeedsAttention(schedule));
+    return matchesSearch && matchesFilter;
+  });
 
   if (loading) {
     return (
@@ -539,71 +690,136 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
                   className="input"
                   aria-label="执行智能体"
                   value={newRuntimeId}
-                  onChange={(e) => setNewRuntimeId(e.target.value)}
+                  onChange={(e) => {
+                    const runtime = runtimes.find(
+                      (item) => item.id === e.target.value,
+                    );
+                    setNewRuntimeId(e.target.value);
+                    if (
+                      runtime &&
+                      taskScheduleRuntimeCategory(runtime) === "web"
+                    ) {
+                      setNewWorkspace("");
+                      setNewWorkspaceId("");
+                      setNewMode("analysis");
+                    }
+                  }}
                 >
-                  <option value="">选择本地 CLI 智能体</option>
-                  {runtimes.map((runtime) => (
-                    <option key={runtime.id} value={runtime.id}>
-                      {runtime.name}（{runtime.kind}）
-                    </option>
-                  ))}
+                  <option value="">选择执行智能体</option>
+                  {editingScheduleId &&
+                    selectedRuntime &&
+                    !isTaskScheduleRuntimeEligible(selectedRuntime) && (
+                      <option value={selectedRuntime.id} disabled>
+                        {selectedRuntime.name}（当前不可用）
+                      </option>
+                    )}
+                  {runtimeGroups.map(
+                    (group) =>
+                      group.runtimes.length > 0 && (
+                        <optgroup
+                          key={group.category}
+                          label={RUNTIME_CATEGORY_LABEL[group.category]}
+                        >
+                          {group.runtimes.map((runtime) => (
+                            <option key={runtime.id} value={runtime.id}>
+                              {runtime.name}（{runtime.kind}）
+                            </option>
+                          ))}
+                        </optgroup>
+                      ),
+                  )}
                 </select>
                 <div className="schedules-field-hint">
-                  仅显示已启用的本地 CLI 智能体；执行期间桌面应用需保持运行。
+                  支持已启用的本地 CLI、网页智能体和远程 Gateway
+                  智能体；执行期间桌面应用需保持运行。
                 </div>
               </div>
-              <div className="schedules-field">
-                <label className="schedules-field-label">
-                  项目文件夹（可选）
-                </label>
-                <div className="schedules-workspace-row">
-                  <input
-                    className="input"
-                    type="text"
-                    placeholder="留空进行普通对话；需要读写文件时再选择"
-                    value={newWorkspace}
-                    onChange={(event) => setNewWorkspace(event.target.value)}
-                  />
-                  <button
-                    className="btn btn-secondary"
-                    type="button"
-                    onClick={() => void chooseWorkspace()}
-                  >
-                    <Folder size={14} />
-                    选择
-                  </button>
-                  {newWorkspace && (
-                    <button
-                      className="btn btn-secondary"
-                      type="button"
-                      onClick={() => setNewWorkspace("")}
-                    >
-                      清除
-                    </button>
-                  )}
-                </div>
+              {selectedRuntimeIsWeb ? (
                 <div className="schedules-field-hint">
-                  不再继承智能体配置中的工作区。“自动”可读写所选目录，但不能移动或删除文件。
+                  网页智能体使用独立浏览器登录态执行，仅支持对话分析，不访问项目文件夹。
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="schedules-field">
+                    <label className="schedules-field-label">
+                      项目文件夹（可选）
+                    </label>
+                    <div className="schedules-workspace-row">
+                      <input
+                        className="input"
+                        type="text"
+                        placeholder="留空进行普通对话；需要读写文件时再选择"
+                        value={newWorkspace}
+                        onChange={(event) => {
+                          setNewWorkspace(event.target.value);
+                          setNewWorkspaceId("");
+                        }}
+                      />
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() => void chooseWorkspace()}
+                      >
+                        <Folder size={14} />
+                        选择
+                      </button>
+                      {newWorkspace && (
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          onClick={() => {
+                            setNewWorkspace("");
+                            setNewWorkspaceId("");
+                          }}
+                        >
+                          清除
+                        </button>
+                      )}
+                    </div>
+                    <div className="schedules-field-hint">
+                      不再继承智能体配置中的工作区。“自动”可读写所选目录，但不能移动或删除文件。
+                    </div>
+                  </div>
+                  <div className="schedules-field">
+                    <label className="schedules-field-label">文件访问</label>
+                    <select
+                      className="input"
+                      aria-label="文件访问"
+                      value={newMode}
+                      onChange={(event) =>
+                        setNewMode(event.target.value as typeof newMode)
+                      }
+                    >
+                      <option value="auto">
+                        自动：可读写，无移动、删除文件权限
+                      </option>
+                      <option value="analysis">只读：仅允许读取所选项目</option>
+                      <option value="full_access">
+                        完全访问：可创建、编辑、移动或删除项目文件
+                      </option>
+                    </select>
+                  </div>
+                </>
+              )}
               <div className="schedules-field">
-                <label className="schedules-field-label">文件访问</label>
+                <label className="schedules-field-label">最长执行时长</label>
                 <select
                   className="input"
-                  aria-label="文件访问"
-                  value={newMode}
-                  onChange={(event) =>
-                    setNewMode(event.target.value as typeof newMode)
-                  }
+                  aria-label="最长执行时长"
+                  value={newTimeoutMs}
+                  onChange={(event) => setNewTimeoutMs(event.target.value)}
                 >
-                  <option value="auto">
-                    自动：可读写，无移动、删除文件权限
-                  </option>
-                  <option value="analysis">只读：仅允许读取所选项目</option>
-                  <option value="full_access">
-                    完全访问：可创建、编辑、移动或删除项目文件
-                  </option>
+                  <option value="600000">10 分钟</option>
+                  <option value="1800000">30 分钟</option>
+                  <option value="3600000">1 小时</option>
+                  <option value="7200000">2 小时（推荐）</option>
+                  <option value="21600000">6 小时</option>
+                  <option value="43200000">12 小时</option>
+                  <option value="86400000">24 小时</option>
                 </select>
+                <div className="schedules-field-hint">
+                  到达时限会自动停止；执行中的任务仍可从对话界面手动停止。
+                </div>
               </div>
               <div className="schedules-field">
                 <label className="schedules-field-label">并发策略</label>
@@ -723,49 +939,174 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
         </div>
       )}
 
-      <section className="schedules-source" aria-label="本地 CLI 定时任务">
+      <div className="schedules-summary" aria-label="任务概览">
+        <div className="schedules-summary-card">
+          <div className="schedules-summary-icon schedules-summary-icon-total">
+            <Clock size={18} />
+          </div>
+          <div>
+            <span>全部任务</span>
+            <strong>{scheduleCounts.total}</strong>
+          </div>
+        </div>
+        <div className="schedules-summary-card">
+          <div className="schedules-summary-icon schedules-summary-icon-enabled">
+            <Check size={18} />
+          </div>
+          <div>
+            <span>已启用</span>
+            <strong>{scheduleCounts.enabled}</strong>
+          </div>
+        </div>
+        <div className="schedules-summary-card">
+          <div className="schedules-summary-icon schedules-summary-icon-paused">
+            <Pause size={18} />
+          </div>
+          <div>
+            <span>已暂停</span>
+            <strong>{scheduleCounts.paused}</strong>
+          </div>
+        </div>
+        <div className="schedules-summary-card">
+          <div className="schedules-summary-icon schedules-summary-icon-attention">
+            <Alert size={18} />
+          </div>
+          <div>
+            <span>需关注</span>
+            <strong>{scheduleCounts.attention}</strong>
+          </div>
+        </div>
+      </div>
+
+      <section className="schedules-source" aria-label="智能体定时任务">
         <div className="schedules-source-heading">
           <div>
-            <h3>本地 CLI 任务</h3>
-            <small>仅使用已启用的本地 CLI 智能体，保留每轮执行记录</small>
+            <h3>智能体任务</h3>
+            <small>按状态和执行结果快速定位需要处理的任务</small>
           </div>
-          <span className="schedules-count">{localSchedules.length} 条</span>
+          <div className="schedules-tools">
+            <label className="schedules-search">
+              <Search size={15} aria-hidden="true" />
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="搜索任务名称、描述或智能体"
+                aria-label="搜索定时任务"
+              />
+            </label>
+            <select
+              className="schedules-filter"
+              value={scheduleFilter}
+              onChange={(event) =>
+                setScheduleFilter(event.target.value as ScheduleFilter)
+              }
+              aria-label="筛选任务状态"
+            >
+              <option value="all">全部状态</option>
+              <option value="enabled">已启用</option>
+              <option value="paused">已暂停</option>
+              <option value="attention">需关注</option>
+            </select>
+          </div>
         </div>
-        {localSchedules.length === 0 ? (
+        {schedules.length === 0 ? (
           <div className="schedules-empty">
             <div className="schedules-empty-icon">
               <Clock size={20} />
             </div>
-            <p className="schedules-empty-text">还没有本地定时任务</p>
+            <p className="schedules-empty-text">还没有定时任务</p>
             <p className="schedules-empty-hint">
-              新建任务后，本地 CLI 智能体会在桌面应用运行期间按计划执行。
+              新建任务后，所选智能体会在桌面应用运行期间按计划执行。
             </p>
           </div>
         ) : (
-          <div className="schedules-list">
-            {localSchedules.map((schedule) => {
+          <div className="schedules-table-wrap">
+            <div className="schedules-table" role="table" aria-label="定时任务列表">
+              <div className="schedules-table-header" role="row">
+                <span role="columnheader">任务信息</span>
+                <span role="columnheader">调度计划</span>
+                <span role="columnheader">执行智能体</span>
+                <span role="columnheader">下次执行</span>
+                <span role="columnheader">最近结果</span>
+                <span role="columnheader">状态</span>
+                <span role="columnheader">操作</span>
+              </div>
+              {visibleSchedules.map((schedule) => {
               const latest = schedule.runs.at(-1);
-              const runtimeName =
-                runtimes.find((runtime) => runtime.id === schedule.runtimeId)
-                  ?.name || schedule.runtimeId;
+              const runtime = runtimes.find(
+                (item) => item.id === schedule.runtimeId,
+              );
+              const runtimeName = runtime?.name || schedule.runtimeId;
+              const runtimeCategory = runtime
+                ? taskScheduleRuntimeCategory(runtime)
+                : null;
+              const runtimeAvailable = runtime
+                ? isTaskScheduleRuntimeEligible(runtime)
+                : false;
               return (
-                <div key={schedule.id} className="schedules-card">
-                  <div className="schedules-card-top">
-                    <div className="schedules-card-info">
-                      <div className="schedules-card-name">{schedule.name}</div>
-                      <div className="schedules-card-schedule">
-                        <Clock size={13} />
-                        {formatSchedule(schedule.schedule)}
-                        <span aria-hidden="true">·</span>
-                        {runtimeName}
-                      </div>
+                <div key={schedule.id} className="schedules-table-row" role="row">
+                  <div className="schedules-task-cell" role="cell">
+                    <div className="schedules-card-name">{schedule.name}</div>
+                    <div className="schedules-task-prompt">{schedule.prompt}</div>
+                  </div>
+                  <div className="schedules-plan-cell" role="cell">
+                    <span>{formatSchedule(schedule.schedule)}</span>
+                  </div>
+                  <div className="schedules-agent-cell" role="cell">
+                    <ProfileAvatar
+                      name={runtimeName}
+                      color={runtime?.color}
+                      avatar={runtime?.avatar}
+                      defaultLogo={false}
+                      size={32}
+                      className="schedules-agent-avatar"
+                    />
+                    <div className="schedules-agent-copy">
+                      <strong>{runtimeName}</strong>
+                      {runtimeCategory && <span>{RUNTIME_CATEGORY_LABEL[runtimeCategory]}</span>}
                     </div>
-                    <div className="schedules-card-actions">
+                  </div>
+                  <div className="schedules-time-cell" role="cell">
+                    {formatTime(
+                      schedule.nextRunAt
+                        ? new Date(schedule.nextRunAt).toISOString()
+                        : null,
+                    )}
+                    {schedule.activeRuntimeRunId && <span>正在执行</span>}
+                    {schedule.pendingRuns > 0 && <span>等待 {schedule.pendingRuns} 次</span>}
+                  </div>
+                  <div className="schedules-result-cell" role="cell">
+                    {latest ? (
+                      <div
+                        className={`schedules-result-row schedules-result-${latestResultClass(schedule)}`}
+                        aria-label={`最近结果：${SCHEDULE_RUN_STATUS_LABEL[latest.status]}`}
+                        title={latest.summary}
+                      >
+                        <span className="schedules-result-icon" aria-hidden="true">
+                          {resultIcon(latest.status)}
+                        </span>
+                        <div>
+                          <strong>{SCHEDULE_RUN_STATUS_LABEL[latest.status]}</strong>
+                          <span>{formatTime(new Date(latest.triggeredAt).toISOString())}</span>
+                          {formatRunDuration(latest) && (
+                            <small>{formatRunDuration(latest)}</small>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="schedules-result-muted">暂无执行记录</span>
+                    )}
+                  </div>
+                  <div className="schedules-state-cell" role="cell">
                       <span
                         className={`schedules-badge schedules-badge-${schedule.enabled ? "active" : "paused"}`}
                       >
                         {schedule.enabled ? "已启用" : "已暂停"}
                       </span>
+                      {!runtimeAvailable && <span className="schedules-unavailable">智能体不可用</span>}
+                  </div>
+                  <div className="schedules-table-actions" role="cell">
                       <button
                         className="btn-ghost schedules-action-btn"
                         type="button"
@@ -789,7 +1130,10 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
                           schedule.enabled ? "暂停计划任务" : "继续计划任务"
                         }
                         onClick={() => void handleLocalToggle(schedule)}
-                        disabled={actionInProgress === schedule.id}
+                        disabled={
+                          actionInProgress === schedule.id ||
+                          (!schedule.enabled && !runtimeAvailable)
+                        }
                       >
                         {schedule.enabled ? (
                           <Pause size={14} />
@@ -804,7 +1148,9 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
                         aria-label="立即执行计划任务"
                         onClick={() => void handleLocalTrigger(schedule)}
                         disabled={
-                          !schedule.enabled || actionInProgress === schedule.id
+                          !schedule.enabled ||
+                          !runtimeAvailable ||
+                          actionInProgress === schedule.id
                         }
                       >
                         <Zap size={14} />
@@ -835,44 +1181,16 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
                       >
                         <Trash size={14} />
                       </button>
-                    </div>
-                  </div>
-                  <div className="schedules-card-prompt">{schedule.prompt}</div>
-                  {latest?.summary && (
-                    <div className="schedules-card-result">
-                      {latest.summary}
-                    </div>
-                  )}
-                  <div className="schedules-card-meta">
-                    <span>
-                      下次执行：
-                      {formatTime(
-                        schedule.nextRunAt
-                          ? new Date(schedule.nextRunAt).toISOString()
-                          : null,
-                      )}
-                    </span>
-                    <span>
-                      并发：
-                      {schedule.concurrencyPolicy === "skip"
-                        ? "跳过"
-                        : schedule.concurrencyPolicy === "queue"
-                          ? "排队"
-                          : "替换"}
-                    </span>
-                    {schedule.activeRuntimeRunId && <span>正在执行</span>}
-                    {schedule.pendingRuns > 0 && (
-                      <span>等待 {schedule.pendingRuns} 次</span>
-                    )}
-                    {latest && (
-                      <span>
-                        最近结果：{SCHEDULE_RUN_STATUS_LABEL[latest.status]}
-                      </span>
-                    )}
                   </div>
                 </div>
               );
             })}
+              {visibleSchedules.length === 0 && (
+                <div className="schedules-no-results">
+                  没有符合当前搜索或筛选条件的任务
+                </div>
+              )}
+            </div>
           </div>
         )}
       </section>

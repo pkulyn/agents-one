@@ -9,7 +9,8 @@ describe("SplashScreen", () => {
     );
 
     expect(container.querySelector("video")).not.toBeInTheDocument();
-    expect(container.querySelector(".splash-hand-base")).toBeInTheDocument();
+    expect(container.querySelector(".splash-hand-base")).not.toBeInTheDocument();
+    expect(container.querySelector(".splash-hand-background")).toBeInTheDocument();
     expect(container.querySelectorAll(".splash-hand-layer")).toHaveLength(2);
     const wordmark = screen.getByRole("img", { name: "Agents One" });
     expect(wordmark).toHaveClass("splash-logo");

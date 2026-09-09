@@ -9,9 +9,20 @@ import {
 import { tmpdir } from "os";
 import { join } from "path";
 
+vi.mock("electron", () => ({
+  app: { setPath: vi.fn(), getPath: () => "C:\\temp" },
+  BrowserWindow: { getFocusedWindow: () => null },
+  dialog: {},
+}));
+
 const startAgentRuntimeTaskMock = vi.hoisted(() => vi.fn());
 const getAgentRuntimeRunMock = vi.hoisted(() => vi.fn(async () => null));
 const cancelAgentRuntimeTaskMock = vi.hoisted(() => vi.fn(async () => true));
+const resolveAuthorizedWorkspaceIdMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../src/main/workspace-authority", () => ({
+  resolveAuthorizedWorkspaceId: resolveAuthorizedWorkspaceIdMock,
+}));
 
 vi.mock("../src/main/agent-runtimes", async (importOriginal) => {
   const actual =
@@ -40,12 +51,13 @@ async function loadModules(): Promise<{
   };
 }
 
-describe("local Runtime schedules", () => {
+describe("Runtime schedules", () => {
   beforeEach(() => {
     testHome = mkdtempSync(join(tmpdir(), "agents-one-schedules-"));
     startAgentRuntimeTaskMock.mockReset();
     getAgentRuntimeRunMock.mockReset();
     cancelAgentRuntimeTaskMock.mockReset();
+    resolveAuthorizedWorkspaceIdMock.mockReset();
     startAgentRuntimeTaskMock.mockResolvedValue({
       id: "runtime-run-default",
       runtimeId: "pi-local",
@@ -88,7 +100,7 @@ describe("local Runtime schedules", () => {
         startedAt: Date.now(),
         events: [],
       });
-    const schedule = schedules.createTaskSchedule({
+    const schedule = await schedules.createTaskSchedule({
       name: "Nightly checks",
       schedule: "5m",
       prompt: "Run the test suite.",
@@ -132,9 +144,260 @@ describe("local Runtime schedules", () => {
     });
   });
 
-  it("rejects every schedule that is not backed by an enabled local CLI Runtime", async () => {
+  it("serializes concurrent manual triggers so only one Runtime starts", async () => {
     const { runtimes, schedules } = await loadModules();
     runtimes.saveAgentRuntime({
+      id: "codex-local",
+      name: "Local Codex",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", workspace: testHome },
+    });
+    const schedule = await schedules.createTaskSchedule({
+      name: "Single click guard",
+      schedule: "5m",
+      prompt: "Run once.",
+      runtimeId: "codex-local",
+      concurrencyPolicy: "skip",
+    });
+    let resolveStart!: (run: {
+      id: string;
+      runtimeId: string;
+      status: "running";
+      startedAt: number;
+      output: string;
+      events: never[];
+    }) => void;
+    startAgentRuntimeTaskMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+
+    const first = schedules.triggerTaskSchedule(schedule.id);
+    const second = schedules.triggerTaskSchedule(schedule.id);
+    await vi.waitFor(() =>
+      expect(startAgentRuntimeTaskMock).toHaveBeenCalledTimes(1),
+    );
+    resolveStart({
+      id: "runtime-run-once",
+      runtimeId: "codex-local",
+      status: "running",
+      startedAt: Date.now(),
+      output: "",
+      events: [],
+    });
+    await Promise.all([first, second]);
+
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledTimes(1);
+    expect(schedules.listTaskSchedules()[0]).toMatchObject({
+      activeRuntimeRunId: "runtime-run-once",
+      runs: expect.arrayContaining([
+        expect.objectContaining({ runtimeRunId: "runtime-run-once" }),
+        expect.objectContaining({ status: "skipped" }),
+      ]),
+    });
+  });
+
+  it("serializes 100 triggers and prevents an edit/delete race from reviving a schedule", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-local",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", workspace: testHome },
+    });
+    const triggerSchedule = await schedules.createTaskSchedule({
+      name: "Burst trigger guard",
+      schedule: "5m",
+      prompt: "Run once.",
+      runtimeId: "pi-local",
+    });
+
+    await Promise.all(
+      Array.from({ length: 100 }, () =>
+        schedules.triggerTaskSchedule(triggerSchedule.id),
+      ),
+    );
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledTimes(1);
+
+    const schedule = await schedules.createTaskSchedule({
+      name: "Delete wins over edit",
+      schedule: "5m",
+      prompt: "Do not revive after delete.",
+      runtimeId: "pi-local",
+    });
+    // Submit 100 edits and 100 deletes at once. The queue serializes the
+    // first winning update/delete pair, then every stale mutation must fail
+    // closed without reviving the deleted schedule or rewriting the store.
+    const races = Array.from({ length: 100 }, () => [
+      schedules.updateTaskSchedule(schedule.id, {
+        name: "This edit loses to delete.",
+        schedule: "10m",
+        prompt: "Do not revive after delete.",
+        runtimeId: "pi-local",
+      }),
+      schedules.deleteTaskSchedule(schedule.id),
+    ]).flat();
+    await Promise.allSettled(races);
+    expect(
+      schedules.listTaskSchedules().find((item) => item.id === schedule.id),
+    ).toBeUndefined();
+  });
+
+  it("coalesces an overdue schedule into one explicitly marked catch-up run", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-local",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", workspace: testHome },
+    });
+    const schedule = await schedules.createTaskSchedule({
+      name: "Coalesced catch-up",
+      schedule: "5m",
+      prompt: "Run once after wake.",
+      runtimeId: "pi-local",
+    });
+    const now = Math.floor(Date.now() / 60_000) * 60_000;
+    const overdueAt = now - 5 * 60_000;
+    const path = join(testHome, "desktop", "task-schedules.json");
+    const store = JSON.parse(readFileSync(path, "utf8"));
+    store.schedules[0].lastDueAt = now - 10 * 60_000;
+    store.schedules[0].nextRunAt = overdueAt;
+    writeFileSync(path, JSON.stringify(store));
+
+    startAgentRuntimeTaskMock.mockResolvedValueOnce({
+      id: "runtime-catch-up",
+      runtimeId: "pi-local",
+      status: "running",
+      startedAt: now,
+      output: "",
+      events: [],
+    });
+
+    await schedules.tickTaskSchedules(undefined, now);
+    const afterCatchUp = schedules
+      .listTaskSchedules()
+      .find((item) => item.id === schedule.id);
+    expect(afterCatchUp).toMatchObject({
+      activeRuntimeRunId: "runtime-catch-up",
+      nextRunAt: expect.any(Number),
+      runs: [
+        expect.objectContaining({
+          runtimeRunId: "runtime-catch-up",
+          trigger: "missed",
+          dueAt: overdueAt,
+        }),
+      ],
+    });
+    expect(afterCatchUp?.nextRunAt).toBeGreaterThan(now);
+
+    await schedules.tickTaskSchedules(undefined, now);
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not dispatch the same local cron minute twice after a clock rollback", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-local",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", workspace: testHome },
+    });
+    const schedule = await schedules.createTaskSchedule({
+      name: "Civil minute only once",
+      schedule: "* * * * *",
+      prompt: "Run at most once in this local minute.",
+      runtimeId: "pi-local",
+    });
+    const now = Math.floor(Date.now() / 60_000) * 60_000;
+    const path = join(testHome, "desktop", "task-schedules.json");
+    const store = JSON.parse(readFileSync(path, "utf8"));
+    store.schedules[0].lastDueAt = now;
+    store.schedules[0].nextRunAt = now;
+    writeFileSync(path, JSON.stringify(store));
+
+    await schedules.tickTaskSchedules(undefined, now);
+
+    const afterRollback = schedules
+      .listTaskSchedules()
+      .find((item) => item.id === schedule.id);
+    expect(startAgentRuntimeTaskMock).not.toHaveBeenCalled();
+    expect(afterRollback).toMatchObject({ lastDueAt: now });
+    expect(afterRollback?.nextRunAt).toBeGreaterThan(now);
+  });
+
+  it("continues ticking later schedules when one due Runtime cannot start", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-local",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", workspace: testHome },
+    });
+    const first = await schedules.createTaskSchedule({
+      name: "Broken due task",
+      schedule: "5m",
+      prompt: "First.",
+      runtimeId: "pi-local",
+    });
+    const second = await schedules.createTaskSchedule({
+      name: "Healthy due task",
+      schedule: "5m",
+      prompt: "Second.",
+      runtimeId: "pi-local",
+    });
+    const now = Math.floor(Date.now() / 60_000) * 60_000;
+    const path = join(testHome, "desktop", "task-schedules.json");
+    const store = JSON.parse(readFileSync(path, "utf8"));
+    for (const item of store.schedules) item.nextRunAt = now;
+    writeFileSync(path, JSON.stringify(store));
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    startAgentRuntimeTaskMock
+      .mockRejectedValueOnce(new Error("token=secret-value"))
+      .mockResolvedValueOnce({
+        id: "runtime-healthy",
+        runtimeId: "pi-local",
+        status: "running",
+        startedAt: now,
+        output: "",
+        events: [],
+      });
+
+    await schedules.tickTaskSchedules(undefined, now);
+
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledTimes(2);
+    expect(
+      schedules.listTaskSchedules().find((item) => item.id === first.id),
+    ).toMatchObject({ activeRuntimeRunId: "runtime-healthy" });
+    expect(
+      schedules.listTaskSchedules().find((item) => item.id === second.id),
+    ).not.toHaveProperty("activeRuntimeRunId");
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("[TASK SCHEDULE] Tick failed"),
+    );
+    expect(error).not.toHaveBeenCalledWith(
+      expect.stringContaining("secret-value"),
+    );
+    error.mockRestore();
+  });
+
+  it("dispatches schedules through Web Agent and remote Gateway runtimes", async () => {
+    const { runtimes, schedules } = await loadModules();
+    const remote = runtimes.saveAgentRuntime({
       id: "hermes-gateway",
       name: "Hermes Gateway",
       kind: "hermes",
@@ -146,14 +409,104 @@ describe("local Runtime schedules", () => {
         remoteGateway: { protocol: "agents-one-v1" },
       },
     });
-    expect(() =>
-      schedules.createTaskSchedule({
-        name: "Unsafe write",
-        schedule: "0 9 * * 1",
-        prompt: "Change production files.",
-        runtimeId: "hermes-gateway",
+    const web = runtimes.saveAgentRuntime({
+      id: "chatgpt-web",
+      name: "ChatGPT Web",
+      kind: "web-agent",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-web",
+        webAgent: {
+          provider: "chatgpt",
+          profileId: "scheduled-account",
+          adapterVersion: "1.0.0",
+          enabled: true,
+        },
+      },
+    });
+    startAgentRuntimeTaskMock.mockImplementation(async (runtimeId: string) => ({
+      id: `run-${runtimeId}`,
+      runtimeId,
+      status: "running",
+      startedAt: Date.now(),
+      output: "",
+      events: [],
+    }));
+
+    const webSchedule = await schedules.createTaskSchedule({
+      name: "Web digest",
+      schedule: "5m",
+      prompt: "Summarize the latest items.",
+      runtimeId: web.id,
+    });
+    expect(webSchedule).toMatchObject({ mode: "analysis" });
+    await schedules.triggerTaskSchedule(webSchedule.id);
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledWith(
+      web.id,
+      expect.objectContaining({
+        mode: "analysis",
+        conversation: true,
       }),
-    ).toThrow(/enabled local CLI Runtime/);
+    );
+    expect(startAgentRuntimeTaskMock.mock.calls[0][1]).not.toHaveProperty(
+      "workspace",
+    );
+
+    const remoteSchedule = await schedules.createTaskSchedule({
+      name: "Remote research",
+      schedule: "0 9 * * 1",
+      prompt: "Research on the remote agent.",
+      runtimeId: remote.id,
+      mode: "analysis",
+    });
+    await schedules.triggerTaskSchedule(remoteSchedule.id);
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledWith(
+      remote.id,
+      expect.objectContaining({
+        mode: "analysis",
+        conversation: true,
+      }),
+    );
+  });
+
+  it("rejects disabled or browser-disabled runtimes", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-disabled",
+      name: "Disabled Pi",
+      kind: "pi",
+      location: "local",
+      enabled: false,
+      config: { transport: "cli" },
+    });
+    runtimes.saveAgentRuntime({
+      id: "chatgpt-web-disabled",
+      name: "Disabled Web Agent",
+      kind: "web-agent",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-web",
+        webAgent: {
+          provider: "chatgpt",
+          profileId: "disabled-account",
+          adapterVersion: "1.0.0",
+          enabled: false,
+        },
+      },
+    });
+
+    for (const runtimeId of ["pi-disabled", "chatgpt-web-disabled"]) {
+      await expect(
+        schedules.createTaskSchedule({
+          name: "Unavailable target",
+          schedule: "5m",
+          prompt: "Do not run.",
+          runtimeId,
+        }),
+      ).rejects.toThrow(/local CLI, Web Agent, or remote Gateway v1 Runtime/);
+    }
   });
 
   it("edits schedules and auto-enables writes only for an explicit project folder", async () => {
@@ -166,7 +519,7 @@ describe("local Runtime schedules", () => {
       enabled: true,
       config: { transport: "cli", workspace: testHome },
     });
-    const created = schedules.createTaskSchedule({
+    const created = await schedules.createTaskSchedule({
       name: "Before",
       schedule: "5m",
       prompt: "Talk only.",
@@ -175,7 +528,7 @@ describe("local Runtime schedules", () => {
     expect(created).toMatchObject({ mode: "auto" });
     expect(created).not.toHaveProperty("workspace");
 
-    const updated = schedules.updateTaskSchedule(created.id, {
+    const updated = await schedules.updateTaskSchedule(created.id, {
       name: "After",
       schedule: "10m",
       prompt: "Update the selected project.",
@@ -211,7 +564,7 @@ describe("local Runtime schedules", () => {
       enabled: true,
       config: { transport: "cli" },
     });
-    const created = schedules.createTaskSchedule({
+    const created = await schedules.createTaskSchedule({
       name: "General assistant",
       schedule: "5m",
       prompt: "Use your configured tools.",
@@ -229,6 +582,55 @@ describe("local Runtime schedules", () => {
       }),
     );
   });
+
+  it("allows a schedule to retain a finite 24-hour timeout", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-long-running",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli" },
+    });
+    const created = await schedules.createTaskSchedule({
+      name: "Long running maintenance",
+      schedule: "24h",
+      prompt: "Complete the maintenance task.",
+      runtimeId: "pi-long-running",
+      timeoutMs: 24 * 60 * 60_000,
+    });
+
+    expect(created.timeoutMs).toBe(24 * 60 * 60_000);
+    await schedules.triggerTaskSchedule(created.id);
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledWith(
+      "pi-long-running",
+      expect.objectContaining({ timeoutMs: 24 * 60 * 60_000 }),
+    );
+  });
+
+  it("persists a selected workspace by opaque project id", async () => {
+    const { runtimes, schedules } = await loadModules();
+    resolveAuthorizedWorkspaceIdMock.mockReturnValue(testHome);
+    runtimes.saveAgentRuntime({
+      id: "pi-workspace-id",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli" },
+    });
+
+    const created = await schedules.createTaskSchedule({
+      name: "Opaque workspace",
+      schedule: "5m",
+      prompt: "更新项目。",
+      runtimeId: "pi-workspace-id",
+      workspaceId: "project-opaque-workspace",
+    });
+    expect(created).toMatchObject({ workspaceId: "project-opaque-workspace" });
+    expect(created).not.toHaveProperty("workspace");
+  }, 15_000);
 
   it("migrates legacy implicit read-only schedules to automatic access", async () => {
     const { schedules } = await loadModules();
@@ -325,7 +727,7 @@ describe("local Runtime schedules", () => {
     const startedEvent = vi.fn();
     const dispose = schedules.onTaskScheduleRunCompleted(completed);
     const disposeStarted = schedules.onTaskScheduleRunStarted(startedEvent);
-    const schedule = schedules.createTaskSchedule({
+    const schedule = await schedules.createTaskSchedule({
       name: "Morning greeting",
       schedule: "5m",
       prompt: "Say hello from the scheduled task.",
@@ -355,6 +757,9 @@ describe("local Runtime schedules", () => {
         expect.objectContaining({
           scheduleId: schedule.id,
           runtimeRunId: "runtime-run-visible",
+          runtimeId: "pi-local",
+          runtimeName: "Pi",
+          runtimeKind: "pi",
           conversationId,
         }),
       ),
@@ -425,7 +830,7 @@ describe("local Runtime schedules", () => {
       enabled: true,
       config: { transport: "cli" },
     });
-    const schedule = schedules.createTaskSchedule({
+    const schedule = await schedules.createTaskSchedule({
       name: "Restart recovery",
       schedule: "5m",
       prompt: "Continue after restart.",
@@ -533,7 +938,7 @@ describe("local Runtime schedules", () => {
     );
   });
 
-  it("preserves legacy remote records without dispatching them", async () => {
+  it("starts an existing remote schedule once its Gateway Runtime is eligible", async () => {
     const { runtimes, schedules } = await loadModules();
     runtimes.saveAgentRuntime({
       id: "hermes-gateway",
@@ -559,7 +964,7 @@ describe("local Runtime schedules", () => {
             id: "schedule-remote",
             name: "Legacy remote task",
             schedule: "5m",
-            prompt: "Do not dispatch this task.",
+            prompt: "Dispatch this task through the configured Gateway.",
             runtimeId: "hermes-gateway",
             mode: "analysis",
             timeoutMs: 600_000,
@@ -576,13 +981,63 @@ describe("local Runtime schedules", () => {
       }),
     );
 
+    startAgentRuntimeTaskMock.mockResolvedValueOnce({
+      id: "runtime-run-remote",
+      runtimeId: "hermes-gateway",
+      status: "running",
+      startedAt: now,
+      output: "",
+      events: [],
+    });
+
     await schedules.tickTaskSchedules(undefined, now);
-    expect(startAgentRuntimeTaskMock).not.toHaveBeenCalled();
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledWith(
+      "hermes-gateway",
+      expect.objectContaining({ mode: "safe_write", conversation: true }),
+    );
     expect(schedules.listTaskSchedules()).toEqual([
-      expect.objectContaining({ id: "schedule-remote", enabled: true }),
+      expect.objectContaining({
+        id: "schedule-remote",
+        enabled: true,
+        activeRuntimeRunId: "runtime-run-remote",
+      }),
     ]);
-    await expect(
-      schedules.triggerTaskSchedule("schedule-remote"),
-    ).rejects.toThrow(/enabled local CLI Runtime/);
+  });
+
+  it("accepts only cron expressions that the scheduler can match", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-local",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", workspace: testHome },
+    });
+
+    const schedule = await schedules.createTaskSchedule({
+      name: "Business-hour checks",
+      schedule: "*/15 9-17/2 1-31 1-12 1-5",
+      prompt: "Run the checks.",
+      runtimeId: "pi-local",
+    });
+    expect(schedule.nextRunAt).toEqual(expect.any(Number));
+
+    for (const invalid of [
+      "61 * * * *",
+      "*/0 * * * *",
+      "10-2 * * * *",
+      "* * * * 8",
+      "this is not cron",
+    ]) {
+      await expect(
+        schedules.createTaskSchedule({
+          name: "Invalid cron",
+          schedule: invalid,
+          prompt: "Do not save.",
+          runtimeId: "pi-local",
+        }),
+      ).rejects.toThrow(/5-field Cron or interval/);
+    }
   });
 });

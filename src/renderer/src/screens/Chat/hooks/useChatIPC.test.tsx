@@ -33,7 +33,7 @@ function installHermesApi(callbacks: ChatIpcCallbacks): {
     return [];
   });
 
-  Object.defineProperty(window, "hermesAPI", {
+  Object.defineProperty(window, "agentsOneAPI", {
     configurable: true,
     value: {
       getSessionMessages,
@@ -120,7 +120,7 @@ function Harness({
 
 afterEach(() => {
   cleanup();
-  Reflect.deleteProperty(window, "hermesAPI");
+  Reflect.deleteProperty(window, "agentsOneAPI");
 });
 
 describe("useChatIPC session scoping", () => {

@@ -33,6 +33,7 @@ import {
 } from "../../../../shared/attachments";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
 import type { TaskCollaborationAssignment } from "../../../../shared/task-collaboration";
+import { dispatchAgentsOneEvent } from "../../utils/brandMigration";
 import type { SessionModelOverride } from "../../../../shared/model-override";
 import type { ActiveTurn, ChatMessage, UsageState } from "./types";
 import type { ContextUsage } from "./ContextGauge";
@@ -196,11 +197,20 @@ function Chat({
   const [contextFolder, setContextFolder] = useState<string | null>(
     initialContextFolder,
   );
+  const [contextWorkspaceId, setContextWorkspaceId] = useState<string | null>(
+    null,
+  );
   // A blank run can be turned into a project task from the sidebar while this
   // component is already mounted. Reflect that parent-level assignment right
   // away so the composer shows the selected folder before the first message.
   useEffect(() => {
-    if (!initialSessionId) setContextFolder(initialContextFolder);
+    if (!initialSessionId) {
+      // `initialContextFolder` is the legacy, parent-owned path hand-off for
+      // a blank chat. It must not retain an opaque id restored from a previous
+      // mounted run, otherwise the next send could resolve the wrong project.
+      setContextFolder(initialContextFolder);
+      setContextWorkspaceId(null);
+    }
   }, [initialContextFolder, initialSessionId]);
   // Gate folder persistence until the stored value for a resumed session has
   // been loaded — otherwise the initial null would overwrite the saved folder
@@ -214,9 +224,12 @@ function Chat({
     let cancelled = false;
     void (async () => {
       try {
-        const folder =
-          await window.hermesAPI.getSessionContextFolder(initialSessionId);
-        if (!cancelled && folder) setContextFolder(folder);
+        const workspace =
+          await window.agentsOneAPI.getSessionContextWorkspace(initialSessionId);
+        if (!cancelled && workspace) {
+          setContextFolder(workspace.name);
+          setContextWorkspaceId(workspace.workspaceId || null);
+        }
       } catch {
         /* best-effort — a missing folder just leaves the session unlinked */
       } finally {
@@ -233,19 +246,22 @@ function Chat({
   // stored folder is never clobbered by the initial null.
   useEffect(() => {
     if (!hermesSessionId || !contextFolderLoadedRef.current) return;
-    void window.hermesAPI
-      .setSessionContextFolder(hermesSessionId, contextFolder)
+    const persist = contextWorkspaceId
+      ? window.agentsOneAPI.setSessionContextWorkspace(hermesSessionId, {
+          workspaceId: contextWorkspaceId,
+          name: contextFolder || "项目工作区",
+        })
+      : window.agentsOneAPI.setSessionContextFolder(hermesSessionId, contextFolder);
+    void persist
       .then(() => {
-        window.dispatchEvent(
-          new CustomEvent("hermes-session-context-folder-changed", {
-            detail: { sessionId: hermesSessionId },
-          }),
-        );
+        dispatchAgentsOneEvent("sessionContextFolderChanged", {
+          sessionId: hermesSessionId,
+        });
       })
       .catch(() => {
         /* best-effort sidebar refresh signal */
       });
-  }, [hermesSessionId, contextFolder]);
+  }, [hermesSessionId, contextFolder, contextWorkspaceId]);
   // Whether the worktree panel is visible (only applies when contextFolder is set)
   // Default false so the panel doesn't open automatically and interfere with scrolling
   const [worktreeVisible, setWorktreeVisible] = useState<boolean>(false);
@@ -259,15 +275,19 @@ function Chat({
     if (
       !connectionModeLoaded ||
       !remoteMode ||
-      !contextFolder ||
+      (!contextFolder && !contextWorkspaceId) ||
       projectContextAttachment ||
-      !(/^[a-zA-Z]:[\\/]/.test(contextFolder) || /^\\\\/.test(contextFolder))
+      (!contextWorkspaceId &&
+        !(/^[a-zA-Z]:[\\/]/.test(contextFolder || "") ||
+          /^\\\\/.test(contextFolder || "")))
     ) {
       return;
     }
     let cancelled = false;
-    void window.hermesAPI
-      .prepareProjectContext(contextFolder)
+    const prepare = contextWorkspaceId
+      ? window.agentsOneAPI.prepareProjectWorkspaceContext(contextWorkspaceId)
+      : window.agentsOneAPI.prepareProjectContext(contextFolder!);
+    void prepare
       .then((attachment) => {
         if (!cancelled && attachment) setProjectContextAttachment(attachment);
       })
@@ -280,6 +300,7 @@ function Chat({
   }, [
     connectionModeLoaded,
     contextFolder,
+    contextWorkspaceId,
     projectContextAttachment,
     remoteMode,
   ]);
@@ -301,7 +322,8 @@ function Chat({
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessage[]>([]);
   const activeTurnRef = useRef<ActiveTurn | null>(null);
   const dashboardChatEnabled = dashboardChatEnabledForConnection(
-    import.meta.env.VITE_HERMES_DESKTOP_DASHBOARD_CHAT,
+    import.meta.env.VITE_AGENTS_ONE_DASHBOARD_CHAT ??
+      import.meta.env.VITE_HERMES_DESKTOP_DASHBOARD_CHAT,
     connectionModeLoaded,
     connectionMode,
     chatTransportPreference,
@@ -311,7 +333,7 @@ function Chat({
     let cancelled = false;
     const loadConnectionConfig = async (): Promise<void> => {
       try {
-        const conn = await window.hermesAPI.getConnectionConfig();
+        const conn = await window.agentsOneAPI.getConnectionConfig();
         if (!cancelled) {
           setConnectionMode(conn.mode);
           setRemoteMode(conn.mode !== "local");
@@ -328,7 +350,7 @@ function Chat({
       }
     };
     void loadConnectionConfig();
-    const unsubscribe = window.hermesAPI.onConnectionConfigChanged((conn) => {
+    const unsubscribe = window.agentsOneAPI.onConnectionConfigChanged((conn) => {
       setConnectionModeLoaded(true);
       setConnectionMode(conn.mode);
       setRemoteMode(conn.mode !== "local");
@@ -359,15 +381,13 @@ function Chat({
     if (persistedTranscriptRef.current === signature) return;
 
     const timer = window.setTimeout(() => {
-      void window.hermesAPI
+      void window.agentsOneAPI
         .recordSessionContinuation(hermesSessionId, transcript)
         .then(() => {
           persistedTranscriptRef.current = signature;
-          window.dispatchEvent(
-            new CustomEvent("hermes-session-transcript-changed", {
-              detail: { sessionId: hermesSessionId },
-            }),
-          );
+          dispatchAgentsOneEvent("sessionTranscriptChanged", {
+            sessionId: hermesSessionId,
+          });
         })
         .catch(() => undefined);
     }, 150);
@@ -401,7 +421,7 @@ function Chat({
     void (async () => {
       try {
         const override =
-          await window.hermesAPI.getSessionModelOverride(initialSessionId);
+          await window.agentsOneAPI.getSessionModelOverride(initialSessionId);
         if (!cancelled && override) {
           setSessionModelOverride(override);
           await modelConfig.selectModel(
@@ -427,7 +447,7 @@ function Chat({
   // initial undefined state cannot erase its saved model before restore.
   useEffect(() => {
     if (!hermesSessionId || !sessionModelOverrideLoadedRef.current) return;
-    void window.hermesAPI.setSessionModelOverride(
+    void window.agentsOneAPI.setSessionModelOverride(
       hermesSessionId,
       sessionModelOverride ?? null,
     );
@@ -451,7 +471,7 @@ function Chat({
     let cancelled = false;
     (async (): Promise<void> => {
       try {
-        const r = await window.hermesAPI.validateChatReadiness(profile);
+        const r = await window.agentsOneAPI.validateChatReadiness(profile);
         if (!cancelled) setReadiness(r);
       } catch {
         // Fail open on IPC error — never block Send on validation failure
@@ -473,7 +493,7 @@ function Chat({
     let cancelled = false;
     setRealContextWindow(null);
     if (!chatCurrentModel) return;
-    window.hermesAPI
+    window.agentsOneAPI
       .getModelContextWindow(
         chatCurrentProvider,
         chatCurrentModel,
@@ -552,10 +572,10 @@ function Chat({
   });
   useEffect(() => {
     if (!active) return;
-    return window.hermesAPI.onContextMenuCopyChat((format) => {
+    return window.agentsOneAPI.onContextMenuCopyChat((format) => {
       const msgs = messagesRef.current;
       if (msgs.length === 0) return;
-      void window.hermesAPI.copyToClipboard(buildChatTranscript(msgs, format));
+      void window.agentsOneAPI.copyToClipboard(buildChatTranscript(msgs, format));
     });
   }, [active]);
 
@@ -564,7 +584,7 @@ function Chat({
   // cursor — the user can then Copy that message.
   useEffect(() => {
     if (!active) return;
-    return window.hermesAPI.onContextMenuSelectBubble(({ x, y }) => {
+    return window.agentsOneAPI.onContextMenuSelectBubble(({ x, y }) => {
       const bubble = document.elementFromPoint(x, y)?.closest(".chat-bubble");
       if (!bubble) return;
       const selection = window.getSelection();
@@ -618,13 +638,13 @@ function Chat({
 
   const handleClear = useCallback(() => {
     if (isLoading) {
-      window.hermesAPI.abortChat(runId);
+      window.agentsOneAPI.abortChat(runId);
       setIsLoading(false);
     }
     const idToDelete = hermesSessionId;
     if (idToDelete) {
-      void window.hermesAPI.deleteSession(idToDelete);
-      void window.hermesAPI.clearStagedAttachments(idToDelete);
+      void window.agentsOneAPI.deleteSession(idToDelete);
+      void window.agentsOneAPI.clearStagedAttachments(idToDelete);
     }
     setMessages([]);
     setHermesSessionId(null);
@@ -672,10 +692,16 @@ function Chat({
   }, [t]);
 
   const agentContextFolder =
-    connectionModeLoaded && connectionMode === "local" ? contextFolder : null;
+    connectionModeLoaded && connectionMode === "local" && !contextWorkspaceId
+      ? contextFolder
+      : null;
   const dashboardTransport = useDashboardChatTransport({
     activeTurnRef,
     contextFolder: agentContextFolder,
+    contextWorkspaceId:
+      connectionModeLoaded && connectionMode === "local"
+        ? contextWorkspaceId
+        : null,
     connectionMode,
     enabled: dashboardChatEnabled,
     fallbackOnUnavailable: chatTransportPreference === "auto",
@@ -789,6 +815,7 @@ function Chat({
     onOpenSettings: onOpenDiagnose,
     activeTurnRef,
     contextFolder: agentContextFolder,
+    contextWorkspaceId,
     sessionModel: sessionModelOverride,
     sendViaDashboard: dashboardTransport.enabled
       ? dashboardTransport.sendMessage
@@ -837,18 +864,19 @@ function Chat({
   const handleSubmitOrQueue = useCallback(
     (text: string, attachments: Attachment[]) => {
       let outgoingAttachments = attachments;
+      const projectContextKey = contextWorkspaceId || contextFolder;
       if (
         remoteMode &&
-        contextFolder &&
+        projectContextKey &&
         projectContextAttachment &&
-        sharedProjectContextRef.current !== contextFolder
+        sharedProjectContextRef.current !== projectContextKey
       ) {
         if (attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
           toast.error("本次附件已达上限，请移除一个文件后再共享项目文件夹。");
           return;
         }
         outgoingAttachments = [...attachments, projectContextAttachment];
-        sharedProjectContextRef.current = contextFolder;
+        sharedProjectContextRef.current = projectContextKey;
       }
       // Side questions (`/btw`) run on a concurrent background agent, so they
       // must never queue — fire them immediately even while the main turn is in
@@ -874,7 +902,13 @@ function Chat({
       }
       void handleSendRef.current(text, outgoingAttachments);
     },
-    [contextFolder, isLoading, projectContextAttachment, remoteMode],
+    [
+      contextFolder,
+      contextWorkspaceId,
+      isLoading,
+      projectContextAttachment,
+      remoteMode,
+    ],
   );
 
   const handleSuggestion = useCallback((text: string) => {
@@ -928,9 +962,15 @@ function Chat({
 
   const applyContextFolder = useCallback(
     async (path: string) => {
+      const registered = await window.agentsOneAPI.registerProjectWorkspace(path);
+      if (!registered) {
+        toast.error("所选项目文件夹未获得主进程授权。");
+        return;
+      }
       if (remoteMode) {
         try {
-          const attachment = await window.hermesAPI.prepareProjectContext(path);
+          const attachment =
+            await window.agentsOneAPI.prepareProjectWorkspaceContext(registered.id);
           if (!attachment) throw new Error("无法读取所选文件夹");
           setProjectContextAttachment(attachment);
           sharedProjectContextRef.current = null;
@@ -944,18 +984,20 @@ function Chat({
         setProjectContextAttachment(null);
         sharedProjectContextRef.current = null;
       }
-      setContextFolder(path);
+      setContextFolder(registered.name);
+      setContextWorkspaceId(registered.id);
     },
     [remoteMode],
   );
 
   const handlePickFolder = useCallback(async () => {
-    const path = await window.hermesAPI.selectFolder();
+    const path = await window.agentsOneAPI.selectFolder();
     if (path) await applyContextFolder(path);
   }, [applyContextFolder]);
 
   const handleClearFolder = useCallback(() => {
     setContextFolder(null);
+    setContextWorkspaceId(null);
     setProjectContextAttachment(null);
     sharedProjectContextRef.current = null;
   }, []);
@@ -988,6 +1030,26 @@ function Chat({
       void applyContextFolder(path);
     },
     [applyContextFolder],
+  );
+  const handleSelectRecentWorkspace = useCallback(
+    async (workspace: { workspaceId: string; name: string }) => {
+      if (remoteMode) {
+        const attachment = await window.agentsOneAPI.prepareProjectWorkspaceContext(
+          workspace.workspaceId,
+        );
+        if (!attachment) {
+          toast.error("所选项目文件夹已不可用或未获授权。");
+          return;
+        }
+        setProjectContextAttachment(attachment);
+      } else {
+        setProjectContextAttachment(null);
+      }
+      sharedProjectContextRef.current = null;
+      setContextFolder(workspace.name);
+      setContextWorkspaceId(workspace.workspaceId);
+    },
+    [remoteMode],
   );
 
   const handleToggleWorktree = useCallback(() => {
@@ -1186,6 +1248,7 @@ function Chat({
                     onPickFolder={handlePickFolder}
                     onClearFolder={handleClearFolder}
                     onToggleWorktree={handleToggleWorktree}
+                    onSelectRecentWorkspace={handleSelectRecentWorkspace}
                     onSelectRecentFolder={handleSelectRecentFolder}
                   />
                   <span className="runtime-permission-control">
@@ -1195,7 +1258,7 @@ function Chat({
                       aria-haspopup="menu"
                       aria-expanded={permissionMenuOpen}
                       aria-label="管理本轮任务权限"
-                      title="原生 Hermes 当前使用只读项目上下文"
+                      title="Hermes Agent Runtime 当前使用只读项目上下文"
                       onClick={() => setPermissionMenuOpen((open) => !open)}
                     >
                       <ShieldCheck size={14} />
@@ -1218,7 +1281,7 @@ function Chat({
                           role="menuitemradio"
                           aria-checked={false}
                           disabled
-                          title="原生 Hermes 迁移到 Gateway v1 后开放"
+                          title="Hermes Agent Runtime 迁移到 Gateway v1 后开放"
                         >
                           <strong>完全访问</strong>
                           <small>迁移到 Gateway v1 后开放</small>
@@ -1268,7 +1331,7 @@ function Chat({
                 toolProgress={toolProgress}
                 agentName={
                   agentAppearance?.name ||
-                  (profile === "default" ? "Hermes" : profile || "Hermes")
+                  (profile === "default" ? "Agent" : profile || "Agent")
                 }
                 agentAvatar={agentAppearance?.avatar}
                 agentColor={agentAppearance?.color}
@@ -1280,8 +1343,12 @@ function Chat({
             <div ref={bottomRef} />
           </div>
 
-          {contextFolder && worktreeVisible && (
-            <WorktreePanel folderPath={contextFolder} />
+          {(contextFolder || contextWorkspaceId) && worktreeVisible && (
+            <WorktreePanel
+              folderPath={contextWorkspaceId ? undefined : contextFolder || undefined}
+              workspaceId={contextWorkspaceId || undefined}
+              folderLabel={contextWorkspaceId ? contextFolder || undefined : undefined}
+            />
           )}
 
           {webPreviewVisible && (

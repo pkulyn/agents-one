@@ -324,7 +324,10 @@ describe("restartGatewayViaCli", () => {
     healthStatuses.push(503, 200, 503, 503, 503, 200, 200, 200);
 
     const first = restartGatewayViaCli("work", 50, 1);
-    const second = restartGatewayViaCli("personal", 50, 1);
+    // The first queued command intentionally fails before spawning. Give the
+    // second process a realistic readiness window: Windows can take longer
+    // than 50 ms merely to create the child process under test.
+    const second = restartGatewayViaCli("personal", 500, 1);
     const third = restartGatewayViaCli("personal", 50, 1);
 
     await expect(Promise.all([first, second, third])).resolves.toEqual([
@@ -344,7 +347,10 @@ describe("restartGatewayViaCli", () => {
     healthStatuses.push(503, 200, 503, 503, 503, 200, 200, 200);
 
     const first = restartGatewayViaCli("work", 5, 1);
-    const second = restartGatewayViaCli("personal", 50, 1);
+    // This assertion is about queue recovery, not a sub-50-ms process-spawn
+    // race. Keep the probe interval short but allow Windows to launch the
+    // replacement process before declaring its health check unsuccessful.
+    const second = restartGatewayViaCli("personal", 500, 1);
 
     await expect(Promise.all([first, second])).resolves.toEqual([false, true]);
     expect(hermesCliArgsSpy).toHaveBeenCalledTimes(2);

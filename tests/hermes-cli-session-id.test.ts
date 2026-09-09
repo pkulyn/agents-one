@@ -784,7 +784,7 @@ describe("CLI fallback session id propagation", () => {
         }).catch(reject);
       }),
     ).rejects.toThrow(
-      "API request timed out. Check the remote Hermes gateway.",
+      "API request timed out. Check the remote Hermes Agent Runtime gateway.",
     );
 
     expect(chunks).toEqual([]);

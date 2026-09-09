@@ -13,13 +13,15 @@ import {
   readFileSync,
   writeFileSync,
   copyFileSync,
+  realpathSync,
   statSync,
   rmSync,
 } from "fs";
-import { join, extname } from "path";
+import { join, extname, isAbsolute, relative, resolve, sep } from "path";
 import { tmpdir } from "os";
 import { createHash } from "crypto";
 import { BrowserWindow, dialog } from "electron";
+import { listProjectFolders } from "./project-folders";
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 const TEMP_MEDIA_DIR = join(tmpdir(), "hermes-desktop-media");
@@ -40,6 +42,59 @@ const MIME_BY_EXT: Record<string, string> = {
 const EXT_BY_MIME: Record<string, string> = Object.fromEntries(
   Object.entries(MIME_BY_EXT).map(([ext, mime]) => [mime, ext]),
 );
+
+function containedBy(root: string, candidate: string): boolean {
+  const relation = relative(root, candidate);
+  return !(
+    relation === ".." ||
+    relation.startsWith(`..${sep}`) ||
+    isAbsolute(relation)
+  );
+}
+
+/**
+ * Renderer-supplied paths are capabilities, not filenames to trust. Native
+ * media can only be read/opened/saved from the bounded temp store or from a
+ * project root the user registered in Agents One. Resolve both sides so a
+ * symlink inside a project cannot escape its authorized root.
+ */
+export function isAuthorizedMediaPath(value: string): boolean {
+  try {
+    const candidate = realpathSync(resolve(normalizeMediaPath(value)));
+    return isContainedByAuthorizedRoots(candidate, [
+      TEMP_MEDIA_DIR,
+      ...listProjectFolders().map((item) => item.path),
+    ]);
+  } catch {
+    return false;
+  }
+}
+
+/** Project-only authorization for operations that can execute native tools. */
+export function isAuthorizedProjectPath(value: string): boolean {
+  try {
+    const candidate = realpathSync(resolve(normalizeMediaPath(value)));
+    return isContainedByAuthorizedRoots(
+      candidate,
+      listProjectFolders().map((item) => item.path),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isContainedByAuthorizedRoots(
+  candidate: string,
+  roots: string[],
+): boolean {
+  return roots.some((root) => {
+    try {
+      return containedBy(realpathSync(resolve(root)), candidate);
+    } catch {
+      return false;
+    }
+  });
+}
 
 /**
  * Normalize paths copied through JSON/Markdown before asking Windows to open
@@ -151,7 +206,11 @@ export function materializeBytesToTemp(
   mime = "application/octet-stream",
 ): string | null {
   try {
-    if (!Buffer.isBuffer(bytes) || bytes.length <= 0 || bytes.length > MAX_MEDIA_BYTES) {
+    if (
+      !Buffer.isBuffer(bytes) ||
+      bytes.length <= 0 ||
+      bytes.length > MAX_MEDIA_BYTES
+    ) {
       return null;
     }
 
@@ -183,7 +242,8 @@ export function materializeBytesToTemp(
 export function readMediaAsDataUrl(filePath: string): string | null {
   try {
     filePath = normalizeMediaPath(filePath);
-    if (!filePath || !existsSync(filePath)) return null;
+    if (!filePath || !isAuthorizedMediaPath(filePath) || !existsSync(filePath))
+      return null;
     const ext = extname(filePath).toLowerCase();
     const mime = MIME_BY_EXT[ext];
     if (!mime) return null;
@@ -203,7 +263,12 @@ export function readMediaAsDataUrl(filePath: string): string | null {
 export function mediaFileExists(filePath: string): boolean {
   try {
     filePath = normalizeMediaPath(filePath);
-    return !!filePath && existsSync(filePath) && statSync(filePath).isFile();
+    return (
+      !!filePath &&
+      isAuthorizedMediaPath(filePath) &&
+      existsSync(filePath) &&
+      statSync(filePath).isFile()
+    );
   } catch {
     return false;
   }

@@ -49,7 +49,7 @@ describe("useModelConfig", () => {
     ];
     emitModelLibraryChanged = null;
 
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         getModelConfig: vi.fn(async () => ({
@@ -70,7 +70,7 @@ describe("useModelConfig", () => {
 
   afterEach(() => {
     cleanup();
-    Reflect.deleteProperty(window, "hermesAPI");
+    Reflect.deleteProperty(window, "agentsOneAPI");
   });
 
   it("reloads the chat picker when the model library changes", async () => {

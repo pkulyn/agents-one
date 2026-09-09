@@ -9,10 +9,12 @@ import {
   type AppLocale,
 } from "../../../shared/i18n";
 import { I18nContext, type I18nContextValue } from "./I18nContext";
+import { readMigratedStorageValue } from "../utils/brandMigration";
 
 void sharedI18n.use(initReactI18next);
 
-const STORAGE_KEY = "hermes-locale";
+const STORAGE_KEY = "agents-one.locale.v1";
+const LEGACY_STORAGE_KEY = "hermes-locale";
 
 // Mirror the whole UI for right-to-left languages (e.g. Hebrew) by
 // setting the document's dir/lang. Kept in sync with the active locale.
@@ -25,7 +27,7 @@ function applyDocumentLocale(locale: AppLocale): void {
 
 function readStoredLocale(): AppLocale {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readMigratedStorageValue(STORAGE_KEY, LEGACY_STORAGE_KEY);
     if (raw && (APP_LOCALES as string[]).includes(raw)) {
       return raw as AppLocale;
     }
@@ -46,7 +48,7 @@ export function I18nProvider({
 }): React.JSX.Element {
   const [locale, setLocaleState] = useState<AppLocale>(initialLocale);
   const [mainLocaleLoaded, setMainLocaleLoaded] = useState(
-    () => !window.hermesAPI?.getLocale,
+    () => !window.agentsOneAPI?.getLocale,
   );
   const userSelectedLocale = useRef(false);
 
@@ -57,7 +59,7 @@ export function I18nProvider({
 
   useEffect(() => {
     let cancelled = false;
-    const getMainLocale = window.hermesAPI?.getLocale;
+    const getMainLocale = window.agentsOneAPI?.getLocale;
 
     if (!getMainLocale) {
       return;
@@ -89,7 +91,7 @@ export function I18nProvider({
       setSharedLocale(locale);
     }
     applyDocumentLocale(locale);
-    void window.hermesAPI?.setLocale?.(locale).catch(() => {
+    void window.agentsOneAPI?.setLocale?.(locale).catch(() => {
       /* ignore */
     });
     try {

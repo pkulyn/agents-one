@@ -24,10 +24,10 @@ function LocaleSwitcherProbe(): React.JSX.Element {
   );
 }
 
-function installHermesAPI(
-  api: Pick<Window["hermesAPI"], "getLocale" | "setLocale">,
+function installAgentsOneAPI(
+  api: Pick<Window["agentsOneAPI"], "getLocale" | "setLocale">,
 ): void {
-  Object.defineProperty(window, "hermesAPI", {
+  Object.defineProperty(window, "agentsOneAPI", {
     configurable: true,
     value: api,
   });
@@ -38,7 +38,7 @@ describe("I18nProvider", () => {
   const setLocale = vi.fn().mockResolvedValue(DEFAULT_ACTIVE_LOCALE);
 
   beforeEach(() => {
-    installHermesAPI({
+    installAgentsOneAPI({
       getLocale,
       setLocale,
     });
@@ -51,6 +51,7 @@ describe("I18nProvider", () => {
   afterEach(() => {
     setSharedLocale(DEFAULT_ACTIVE_LOCALE);
     try {
+      localStorage.removeItem("agents-one.locale.v1");
       localStorage.removeItem("hermes-locale");
     } catch {
       /* ignore */

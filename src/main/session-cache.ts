@@ -15,7 +15,7 @@ import {
 } from "../shared/session-list";
 import { getAppLocale } from "./locale";
 import { getDbConnection } from "./db";
-import { getSessionContextFolders } from "./session-context-folder-store";
+import { getSessionContextWorkspaces } from "./session-context-folder-store";
 
 /**
  * The session cache lives alongside its own profile's data so profiles
@@ -38,6 +38,9 @@ export interface CachedSession {
   source: string;
   messageCount: number;
   model: string;
+  /** Opaque project capability for new records; never a local path. */
+  contextWorkspaceId?: string | null;
+  /** Display label for a capability-backed project, or a legacy path. */
   contextFolder: string | null;
 }
 
@@ -122,6 +125,10 @@ function readCache(): CacheData {
             ...s,
             contextFolder:
               typeof s.contextFolder === "string" ? s.contextFolder : null,
+            contextWorkspaceId:
+              typeof s.contextWorkspaceId === "string"
+                ? s.contextWorkspaceId
+                : null,
           }))
         : [],
     };
@@ -147,10 +154,11 @@ function getDb(): BetterDatabase.Database | null {
 // written into the JSON cache by `syncSessionCache`, which lets the renderer's
 // fast read path (`listCachedSessions`) stay DB-free.
 function attachContextFolders(sessions: CachedSession[]): CachedSession[] {
-  const folders = getSessionContextFolders(sessions.map((s) => s.id));
+  const contexts = getSessionContextWorkspaces(sessions.map((s) => s.id));
   return sessions.map((session) => ({
     ...session,
-    contextFolder: folders.get(session.id) ?? null,
+    contextWorkspaceId: contexts.get(session.id)?.workspaceId ?? null,
+    contextFolder: contexts.get(session.id)?.name ?? null,
   }));
 }
 
@@ -220,6 +228,7 @@ export function syncSessionCache(): CachedSession[] {
         // Filled in below by the single batched `attachContextFolders` pass
         // over the merged set, so we don't query the store once per new row.
         contextFolder: null,
+        contextWorkspaceId: null,
       });
     }
 

@@ -5,7 +5,7 @@ import { Archive, FolderOpen, Pencil, Pin, PinOff, X } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 export interface SidebarProjectMenuTarget {
-  path: string;
+  workspaceId: string;
   name: string;
   pinned: boolean;
   x: number;
@@ -57,7 +57,11 @@ export default function SidebarProjectMenu({
     };
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        event.preventDefault();
         event.stopPropagation();
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
         requestClose();
       }
     };

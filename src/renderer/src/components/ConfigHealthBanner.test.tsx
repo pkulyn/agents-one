@@ -36,7 +36,7 @@ function report(
 describe("ConfigHealthBanner", () => {
   beforeEach(() => {
     localStorage.clear();
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         getConfigHealth: vi
@@ -68,7 +68,7 @@ describe("ConfigHealthBanner", () => {
   });
 
   it("hides when the report only contains info-level issues", async () => {
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         getConfigHealth: vi

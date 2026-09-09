@@ -63,7 +63,7 @@ function installHermesAPI(profiles: ProfileInfo[]): {
   setProfileName: ReturnType<typeof vi.fn>;
 } {
   const setProfileName = vi.fn().mockResolvedValue({ success: true });
-  Object.defineProperty(window, "hermesAPI", {
+  Object.defineProperty(window, "agentsOneAPI", {
     configurable: true,
     value: {
       listProfiles: vi.fn().mockResolvedValue(profiles),

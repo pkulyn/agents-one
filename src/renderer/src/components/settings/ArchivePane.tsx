@@ -56,14 +56,14 @@ export default function ArchivePane({ profile }: { profile?: string }): React.JS
   );
 
   const load = useCallback(() => {
-    void window.hermesAPI.listArchivedItems(profile).then(setItems);
+    void window.agentsOneAPI.listArchivedItems(profile).then(setItems);
     setTasksLoading(true);
     void Promise.all([
       collectPages((limit, offset) =>
-        window.hermesAPI.listCachedSessions(limit, offset),
+        window.agentsOneAPI.listCachedSessions(limit, offset),
       ),
       collectPages((limit, offset) =>
-        window.hermesAPI.listRuntimeConversations(profile, limit, offset),
+        window.agentsOneAPI.listRuntimeConversations(profile, limit, offset),
       ),
     ])
       .then(([nativeSessions, runtimeConversations]) => {
@@ -142,7 +142,7 @@ export default function ArchivePane({ profile }: { profile?: string }): React.JS
   };
   const restore = async (item: ArchivedItem): Promise<void> => {
     setBusyId(item.id);
-    try { await window.hermesAPI.restoreArchivedItem(item.id, profile); changed(); }
+    try { await window.agentsOneAPI.restoreArchivedItem(item.id, profile); changed(); }
     finally { setBusyId(null); }
   };
   const permanentlyDelete = async (item: ArchivedItem): Promise<void> => {
@@ -151,7 +151,7 @@ export default function ArchivePane({ profile }: { profile?: string }): React.JS
       : t("settings.archives.deleteTaskConfirm");
     if (!window.confirm(warning)) return;
     setBusyId(item.id);
-    try { await window.hermesAPI.deleteArchivedItem(item.id, profile); changed(); }
+    try { await window.agentsOneAPI.deleteArchivedItem(item.id, profile); changed(); }
     finally { setBusyId(null); }
   };
 

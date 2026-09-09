@@ -14,6 +14,7 @@ import { executeSlash, type SlashExecOutcome } from "../slashExec";
 import type { AgentCommandsCatalogResponse } from "../slash/types";
 import type { ActiveTurn, Attachment, ChatMessage, UsageState } from "../types";
 import type { DesktopSessionContinuationItem } from "../../../../../shared/session-continuation";
+import { dispatchAgentsOneEvent } from "../../../utils/brandMigration";
 
 interface SessionResponse {
   info?: unknown;
@@ -65,6 +66,12 @@ interface DashboardPromptClient {
 interface EnsureDashboardRuntimeSessionParams {
   client: DashboardPromptClient;
   contextFolder?: string | null;
+  contextWorkspaceId?: string | null;
+  createWorkspaceSession?: (
+    workspaceId: string,
+    profile: string | undefined,
+    messages: Array<{ role: "assistant" | "user"; content: string }>,
+  ) => Promise<{ sessionId: string; storedSessionId: string } | null>;
   excludeSeedUserId?: string | null;
   forceCreate?: boolean;
   messages: ReadonlyArray<ChatMessage>;
@@ -81,6 +88,7 @@ interface EnsureDashboardRuntimeSessionResult {
 interface UseDashboardChatTransportArgs {
   activeTurnRef: React.MutableRefObject<ActiveTurn | null>;
   contextFolder: string | null;
+  contextWorkspaceId?: string | null;
   connectionMode: DashboardConnectionMode;
   enabled: boolean;
   fallbackOnUnavailable: boolean;
@@ -163,11 +171,7 @@ export function dashboardShouldPersistLocalOverlays(
 }
 
 function notifySessionTranscriptChanged(sessionId: string): void {
-  window.dispatchEvent(
-    new CustomEvent("hermes-session-transcript-changed", {
-      detail: { sessionId },
-    }),
-  );
+  dispatchAgentsOneEvent("sessionTranscriptChanged", { sessionId });
 }
 
 export function isDashboardSessionNotFoundError(err: unknown): boolean {
@@ -263,6 +267,19 @@ export async function ensureDashboardRuntimeSession(
   const seedMessages = dashboardSeedMessagesFromTranscript(params.messages, {
     excludeUserId: params.excludeSeedUserId ?? null,
   });
+  if (params.contextWorkspaceId && params.createWorkspaceSession) {
+    const created = await params.createWorkspaceSession(
+      params.contextWorkspaceId,
+      params.profile,
+      seedMessages,
+    );
+    if (!created) throw new Error("Selected project workspace is unavailable");
+    return {
+      created: true,
+      runtimeSessionId: created.sessionId,
+      storedSessionId: created.storedSessionId,
+    };
+  }
   const created = await params.client.request<SessionResponse>(
     "session.create",
     {
@@ -614,7 +631,11 @@ function logDashboardEvent(
   status: "accepted" | "dropped",
   runtimeSessionId: string | null,
 ): void {
-  if (import.meta.env.VITE_HERMES_DESKTOP_DASHBOARD_EVENT_LOG !== "1") return;
+  if (
+    (import.meta.env.VITE_AGENTS_ONE_DASHBOARD_EVENT_LOG ??
+      import.meta.env.VITE_HERMES_DESKTOP_DASHBOARD_EVENT_LOG) !== "1"
+  )
+    return;
   const payload = asRecord(event.payload);
   const summary: DashboardEventSummary = {
     timestamp: new Date().toISOString(),
@@ -632,12 +653,12 @@ function logDashboardEvent(
   const events = window.__HERMES_DASHBOARD_EVENTS__ ?? [];
   events.push(summary);
   window.__HERMES_DASHBOARD_EVENTS__ = events.slice(-200);
-  console.info("[Hermes dashboard event]", summary);
+  console.info("[Hermes Agent Runtime dashboard event]", summary);
 }
 
 export function usageFromPayload(payload: unknown): Partial<UsageState> | null {
   const usage = asRecord(asRecord(payload).usage);
-  // The Hermes gateway (`_get_usage` in tui_gateway/server.py) emits
+  // The Hermes Agent Runtime gateway (`_get_usage` in tui_gateway/server.py) emits
   // snake-case, non-`_tokens` keys: input/output/prompt/completion/total plus
   // context_used/context_max/context_percent when the context compressor is
   // active. Older OpenAI-style payloads use prompt_tokens/promptTokens. Read
@@ -741,7 +762,10 @@ export function completionFailed(payload: unknown): boolean {
 function completionErrorMessage(payload: unknown): string {
   const row = asRecord(payload);
   const raw = String(row.error || row.text || row.rendered || "").trim();
-  return raw.replace(/^error\s*:\s*/i, "") || "Hermes reported an error";
+  return (
+    raw.replace(/^error\s*:\s*/i, "") ||
+    "The Hermes Agent Runtime reported an error"
+  );
 }
 
 function userContentById(
@@ -892,6 +916,7 @@ export function dashboardContinuationItemsFromTranscript(
 export function useDashboardChatTransport({
   activeTurnRef,
   contextFolder,
+  contextWorkspaceId,
   connectionMode,
   enabled,
   fallbackOnUnavailable,
@@ -1064,7 +1089,7 @@ export function useDashboardChatTransport({
             messagesRef.current,
             activeTurnRef.current?.userId,
           );
-          const recordLocalError = window.hermesAPI.recordSessionLocalError;
+          const recordLocalError = window.agentsOneAPI.recordSessionLocalError;
           if (
             dashboardShouldPersistLocalOverlays(connectionMode) &&
             storedSessionId &&
@@ -1084,7 +1109,7 @@ export function useDashboardChatTransport({
         setIsLoading(false);
         if (!failed && dashboardShouldPersistLocalOverlays(connectionMode)) {
           const storedSessionId = storedSessionIdRef.current;
-          const recordContinuation = window.hermesAPI.recordSessionContinuation;
+          const recordContinuation = window.agentsOneAPI.recordSessionContinuation;
           const transcript = dashboardContinuationItemsFromTranscript(
             messagesRef.current,
           );
@@ -1160,7 +1185,7 @@ export function useDashboardChatTransport({
       // Already known unavailable on this remote connection — fail fast so the
       // caller falls back to legacy without re-running the slow status+probe.
       if (dashboardUnavailableRef.current) {
-        throw new Error("Hermes dashboard transport is unavailable");
+        throw new Error("Hermes Agent Runtime dashboard transport is unavailable");
       }
       if (connectingRef.current) return connectingRef.current;
 
@@ -1176,18 +1201,18 @@ export function useDashboardChatTransport({
         // negative flag and lets the caller drop to legacy gateway /v1.
         let lastConnectErr: unknown = null;
         for (let attempt = 0; attempt < 3; attempt++) {
-          const status = await window.hermesAPI.startDashboard(profile);
+          const status = await window.agentsOneAPI.startDashboard(profile);
           if (clientGenerationRef.current !== generation) {
-            throw new Error("Hermes dashboard connection was superseded");
+            throw new Error("Hermes Agent Runtime dashboard connection was superseded");
           }
           if (!status.running || !status.connection?.wsUrl) {
             // No dashboard on this remote (gateway-only install). Latch + notify
             // only in auto mode where we actually fall back to legacy.
             markDashboardUnavailableForFallback(
-              status.error || "Hermes dashboard transport is unavailable",
+              status.error || "Hermes Agent Runtime dashboard transport is unavailable",
             );
             throw new Error(
-              status.error || "Hermes dashboard transport is unavailable",
+              status.error || "Hermes Agent Runtime dashboard transport is unavailable",
             );
           }
           const client: DashboardGatewayClient = new DashboardGatewayClient({
@@ -1204,7 +1229,7 @@ export function useDashboardChatTransport({
             lastConnectErr = err;
             client.close();
             if (clientGenerationRef.current !== generation) {
-              throw new Error("Hermes dashboard connection was superseded");
+              throw new Error("Hermes Agent Runtime dashboard connection was superseded");
             }
             // Transient connect failure while the dashboard IS up — back off and
             // retry (the tunnel may be re-establishing).
@@ -1213,7 +1238,7 @@ export function useDashboardChatTransport({
           }
           if (clientGenerationRef.current !== generation) {
             client.close();
-            throw new Error("Hermes dashboard connection was superseded");
+            throw new Error("Hermes Agent Runtime dashboard connection was superseded");
           }
           clientRef.current = client;
           return client;
@@ -1224,8 +1249,8 @@ export function useDashboardChatTransport({
         // route this same turn through that path.
         const reason =
           lastConnectErr instanceof Error
-            ? `Hermes dashboard chat connection failed: ${lastConnectErr.message}`
-            : "Hermes dashboard chat connection failed";
+            ? `Hermes Agent Runtime dashboard chat connection failed: ${lastConnectErr.message}`
+            : "Hermes Agent Runtime dashboard chat connection failed";
         if (connectionMode !== "local" && fallbackOnUnavailable) {
           markDashboardUnavailableForFallback(reason);
           throw new Error(reason);
@@ -1271,6 +1296,8 @@ export function useDashboardChatTransport({
         const response = await ensureDashboardRuntimeSession({
           client,
           contextFolder,
+          contextWorkspaceId,
+          createWorkspaceSession: window.agentsOneAPI.createDashboardWorkspaceSession,
           excludeSeedUserId,
           forceCreate: options.forceCreate ?? false,
           messages: messagesRef.current,
@@ -1289,8 +1316,8 @@ export function useDashboardChatTransport({
         runtimeSessionIdRef.current = targetSessionId;
         lastRuntimeSessionWasCreatedRef.current = response.created;
         justCreated = response.created;
-        if (justCreated && contextFolder) {
-          lastSyncedCwdRef.current = contextFolder;
+        if (justCreated && (contextFolder || contextWorkspaceId)) {
+          lastSyncedCwdRef.current = contextWorkspaceId || contextFolder;
         }
         const storedId = response.storedSessionId;
         storedSessionIdRef.current = storedId;
@@ -1299,16 +1326,23 @@ export function useDashboardChatTransport({
       }
 
       if (
-        contextFolder &&
+        (contextFolder || contextWorkspaceId) &&
         targetSessionId &&
-        lastSyncedCwdRef.current !== contextFolder
+        lastSyncedCwdRef.current !== (contextWorkspaceId || contextFolder)
       ) {
-        lastSyncedCwdRef.current = contextFolder;
-        await client
-          .request("session.cwd.set", {
-            session_id: targetSessionId,
-            cwd: contextFolder,
-          })
+        const workspaceRef = contextWorkspaceId || contextFolder!;
+        lastSyncedCwdRef.current = workspaceRef;
+        const syncCwd = contextWorkspaceId
+          ? window.agentsOneAPI.setDashboardWorkspaceCwd(
+              contextWorkspaceId,
+              targetSessionId,
+              profile,
+            )
+          : client.request("session.cwd.set", {
+              session_id: targetSessionId,
+              cwd: contextFolder,
+            });
+        await syncCwd
           .catch((err) => {
             lastSyncedCwdRef.current = null;
             console.warn("Failed to sync dashboard CWD:", err);
@@ -1317,7 +1351,13 @@ export function useDashboardChatTransport({
 
       return targetSessionId;
     },
-    [activeTurnRef, contextFolder, profile, setHermesSessionId],
+    [
+      activeTurnRef,
+      contextFolder,
+      contextWorkspaceId,
+      profile,
+      setHermesSessionId,
+    ],
   );
 
   const ensureSelectedModel = useCallback(
@@ -1427,7 +1467,7 @@ export function useDashboardChatTransport({
             ? `; /model output: ${slashResponse.output}`
             : "";
           throw new Error(
-            `Hermes dashboard did not switch to ${dashboardProvider}/${model}; live model is ${live.provider || "unknown"}/${live.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}`,
+            `Hermes Agent Runtime dashboard did not switch to ${dashboardProvider}/${model}; live model is ${live.provider || "unknown"}/${live.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}`,
           );
         }
         appliedModelRef.current = key;
@@ -1508,7 +1548,7 @@ export function useDashboardChatTransport({
         items: DesktopSessionContinuationItem[],
       ): Promise<void> => {
         const storedSessionId = storedSessionIdRef.current;
-        const recordContinuation = window.hermesAPI.recordSessionContinuation;
+        const recordContinuation = window.agentsOneAPI.recordSessionContinuation;
         if (
           dashboardShouldPersistLocalOverlays(connectionMode) &&
           storedSessionId &&
@@ -1535,7 +1575,7 @@ export function useDashboardChatTransport({
           failedMessages ?? messagesRef.current,
           activeTurn?.userId,
         );
-        const recordLocalError = window.hermesAPI.recordSessionLocalError;
+        const recordLocalError = window.agentsOneAPI.recordSessionLocalError;
         if (
           dashboardShouldPersistLocalOverlays(connectionMode) &&
           storedSessionId &&
@@ -1624,7 +1664,7 @@ export function useDashboardChatTransport({
         if (!syncedAttachments.handled) {
           if (fallbackOnUnavailable) return false;
           return failActiveTurn(
-            "Hermes dashboard could not attach the selected file. Use Auto or Legacy to fall back to the legacy attachment path.",
+            "Hermes Agent Runtime dashboard could not attach the selected file. Use Auto or Legacy to fall back to the legacy attachment path.",
           );
         }
         const submitText = dashboardPromptTextWithAttachmentRefs(

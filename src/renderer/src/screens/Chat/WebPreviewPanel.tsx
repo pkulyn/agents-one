@@ -9,6 +9,7 @@ import {
   MousePointerClick,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import { readMigratedStorageValue } from "../../utils/brandMigration";
 
 interface WebPreviewPanelProps {
   initialUrl: string;
@@ -24,7 +25,8 @@ interface WebPreviewPanelProps {
 // Resizable panel bounds. Min keeps the toolbar usable; max leaves room for
 // the chat column. Width is persisted across sessions.
 const MIN_PANEL_WIDTH = 320;
-const WIDTH_STORAGE_KEY = "hermes:webPreviewWidth";
+const WIDTH_STORAGE_KEY = "agents-one.web-preview-width.v1";
+const LEGACY_WIDTH_STORAGE_KEY = "hermes:webPreviewWidth";
 const maxPanelWidth = (): number =>
   Math.max(MIN_PANEL_WIDTH, window.innerWidth - 360);
 
@@ -193,7 +195,9 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
 
   // Draggable panel width (px). Persisted so it survives reopen/restart.
   const [width, setWidth] = useState<number>(() => {
-    const saved = Number(localStorage.getItem(WIDTH_STORAGE_KEY));
+    const saved = Number(
+      readMigratedStorageValue(WIDTH_STORAGE_KEY, LEGACY_WIDTH_STORAGE_KEY),
+    );
     return Number.isFinite(saved) && saved >= MIN_PANEL_WIDTH ? saved : 480;
   });
   const [isResizing, setIsResizing] = useState(false);
@@ -397,7 +401,7 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
   };
 
   const handleOpenExternal = (): void => {
-    window.hermesAPI.openExternal(currentUrl);
+    window.agentsOneAPI.openExternal(currentUrl);
   };
 
   const handleAddressSubmit = (e: React.FormEvent): void => {

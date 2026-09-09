@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   rmSync,
+  unlinkSync,
 } from "fs";
 import { dirname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -24,6 +25,17 @@ const IGNORED_DIRECTORIES = new Set([
 
 export interface WorkspaceProtection {
   restoreAndDispose: () => string[];
+}
+
+function hasSymbolicLinkParent(root: string, target: string): boolean {
+  let current = dirname(target);
+  while (current !== root) {
+    if (relative(root, current).startsWith("..")) return true;
+    const info = lstatSync(current, { throwIfNoEntry: false });
+    if (info?.isSymbolicLink()) return true;
+    current = dirname(current);
+  }
+  return false;
 }
 
 /**
@@ -92,7 +104,14 @@ export function protectWorkspaceFromRemoval(
       try {
         for (const rel of files) {
           const target = resolve(root, rel);
-          if (existsSync(target)) continue;
+          if (relative(root, target).startsWith("..")) continue;
+          if (hasSymbolicLinkParent(root, target)) continue;
+          const targetInfo = lstatSync(target, { throwIfNoEntry: false });
+          if (targetInfo?.isSymbolicLink()) {
+            unlinkSync(target);
+          } else if (existsSync(target)) {
+            continue;
+          }
           mkdirSync(dirname(target), { recursive: true });
           copyFileSync(join(backupRoot, rel), target);
           restored.push(rel);

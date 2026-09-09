@@ -21,6 +21,7 @@ async function freshHealth(
     findSiblingHermesHomes: () => [],
   }));
   process.env.HERMES_HOME = home;
+  process.env.AGENTS_ONE_LOG_DIR = join(home, "logs");
   return await import("../src/main/config-health");
 }
 
@@ -38,6 +39,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.HERMES_HOME;
+  delete process.env.AGENTS_ONE_LOG_DIR;
   vi.resetModules();
   rmSync(TEST_DIR, { recursive: true, force: true });
 });

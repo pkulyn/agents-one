@@ -18,7 +18,7 @@ function useMediaContextMenu(
   const { t } = useI18n();
   return (event) => {
     event.preventDefault();
-    window.hermesAPI.showMediaMenu(token.src, token.name, {
+    window.agentsOneAPI.showMediaMenu(token.src, token.name, {
       open: t("chat.media.open"),
       saveAs: t("chat.media.saveAs"),
     });
@@ -37,6 +37,7 @@ export function MediaImage({
   token: MediaToken;
 }): React.JSX.Element {
   const { t } = useI18n();
+  const runtimeArtifact = token.runtimeArtifact;
   const isDirect =
     token.src.startsWith("data:") || /^https?:\/\//i.test(token.src);
   const [resolved, setResolved] = useState<string | null>(
@@ -46,13 +47,29 @@ export function MediaImage({
   const [zoomed, setZoomed] = useState(false);
   useLightboxClose(zoomed, () => setZoomed(false));
   const resolvedToken = { ...token, src: resolved ?? token.src };
-  const onContextMenu = useMediaContextMenu(resolvedToken);
+  const directContextMenu = useMediaContextMenu(resolvedToken);
+  const onContextMenu = (event: React.MouseEvent): void => {
+    if (!runtimeArtifact) {
+      directContextMenu(event);
+      return;
+    }
+    event.preventDefault();
+    void window.agentsOneAPI.openAgentRuntimeArtifact(
+      runtimeArtifact.runId,
+      runtimeArtifact.artifactId,
+    );
+  };
 
   useEffect(() => {
     if (isDirect) return;
     let cancelled = false;
-    window.hermesAPI
-      .readMediaFile(token.src)
+    const read = runtimeArtifact
+      ? window.agentsOneAPI.readAgentRuntimeArtifactImage(
+          runtimeArtifact.runId,
+          runtimeArtifact.artifactId,
+        )
+      : window.agentsOneAPI.readMediaFile(token.src);
+    read
       .then((dataUrl) => {
         if (cancelled) return;
         if (dataUrl) setResolved(dataUrl);
@@ -64,7 +81,7 @@ export function MediaImage({
     return () => {
       cancelled = true;
     };
-  }, [token.src, isDirect]);
+  }, [token.src, isDirect, runtimeArtifact]);
 
   if (failed) {
     return (
@@ -112,12 +129,18 @@ export function MediaImage({
             >
               <button
                 className="chat-image-preview-btn"
-                onClick={() =>
-                  window.hermesAPI.saveMediaFile(
+                onClick={() => {
+                  if (runtimeArtifact) {
+                    return window.agentsOneAPI.saveAgentRuntimeArtifact(
+                      runtimeArtifact.runId,
+                      runtimeArtifact.artifactId,
+                    );
+                  }
+                  return window.agentsOneAPI.saveMediaFile(
                     resolved ?? token.src,
                     token.name,
-                  )
-                }
+                  );
+                }}
               >
                 <Download size={14} />
                 {t("chat.media.saveImage")}
@@ -144,12 +167,15 @@ export function DownloadChip({
   token: MediaToken;
 }): React.JSX.Element {
   const { t } = useI18n();
+  const runtimeArtifact = token.runtimeArtifact;
   const localFile =
-    !token.src.startsWith("data:") && !/^https?:\/\//i.test(token.src);
+    !runtimeArtifact &&
+    !token.src.startsWith("data:") &&
+    !/^https?:\/\//i.test(token.src);
   const onContextMenu = useMediaContextMenu(token);
   const onFileContextMenu = (event: React.MouseEvent): void => {
     event.preventDefault();
-    window.hermesAPI.showFileMenu(token.src, {
+    window.agentsOneAPI.showFileMenu(token.src, {
       open: t("chat.fileMenu.open"),
       copyPath: t("chat.fileMenu.copyPath"),
       copyContent: t("chat.fileMenu.copyContent"),
@@ -159,16 +185,33 @@ export function DownloadChip({
   return (
     <button
       type="button"
-      className={`chat-media-file${localFile ? " chat-artifact-file" : ""}`}
-      title={token.src}
+      className={`chat-media-file${localFile || runtimeArtifact ? " chat-artifact-file" : ""}`}
+      title={runtimeArtifact ? token.name : token.src}
       onClick={() =>
-        localFile
-          ? window.hermesAPI.openFileInEditor(token.src)
-          : window.hermesAPI.saveMediaFile(token.src, token.name)
+        runtimeArtifact
+          ? window.agentsOneAPI.openAgentRuntimeArtifact(
+              runtimeArtifact.runId,
+              runtimeArtifact.artifactId,
+            )
+          : localFile
+          ? window.agentsOneAPI.openFileInEditor(token.src)
+          : window.agentsOneAPI.saveMediaFile(token.src, token.name)
       }
-      onContextMenu={localFile ? onFileContextMenu : onContextMenu}
+      onContextMenu={
+        runtimeArtifact
+          ? (event) => {
+              event.preventDefault();
+              void window.agentsOneAPI.openAgentRuntimeArtifact(
+                runtimeArtifact.runId,
+                runtimeArtifact.artifactId,
+              );
+            }
+          : localFile
+            ? onFileContextMenu
+            : onContextMenu
+      }
     >
-      {localFile ? <FileText size={14} /> : <Download size={14} />}
+      {localFile || runtimeArtifact ? <FileText size={14} /> : <Download size={14} />}
       {token.name}
     </button>
   );
@@ -199,7 +242,7 @@ export function MediaSegmentView({
     // URLs are trusted as-is.
     if (source !== "bare-path" || token.isUrl) return;
     let cancelled = false;
-    window.hermesAPI
+    window.agentsOneAPI
       .mediaFileExists(token.src)
       .then((ok) => {
         if (!cancelled) setVerified(ok);

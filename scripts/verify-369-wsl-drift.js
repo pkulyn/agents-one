@@ -35,7 +35,7 @@ const WIN_ENV_BAK = WIN_ENV + ".wsl-drift-test-bk";
 
     // ── A. Run audit, look for drift issues ─────────────────────
     const report = await page.evaluate(async () => {
-      return await window.hermesAPI.getConfigHealth();
+      return await window.agentsOneAPI.getConfigHealth();
     });
     const drifts = (report.issues || []).filter(
       (i) => i.code === "SIBLING_HERMES_HOME_DRIFT",
@@ -73,7 +73,7 @@ const WIN_ENV_BAK = WIN_ENV + ".wsl-drift-test-bk";
     console.log(`[B] applying auto-fix for ${target.context?.field}...`);
     const fixResult = await page.evaluate(
       async (issue) => {
-        return await window.hermesAPI.autofixConfigIssue(
+        return await window.agentsOneAPI.autofixConfigIssue(
           issue.code,
           undefined,
           issue.context,
@@ -96,7 +96,7 @@ const WIN_ENV_BAK = WIN_ENV + ".wsl-drift-test-bk";
 
     // ── D. Re-run audit — the same drift should be gone ────────
     const reportAfter = await page.evaluate(async () => {
-      return await window.hermesAPI.rerunConfigHealth();
+      return await window.agentsOneAPI.rerunConfigHealth();
     });
     const sameDriftStillPresent = (reportAfter.issues || []).some(
       (i) =>

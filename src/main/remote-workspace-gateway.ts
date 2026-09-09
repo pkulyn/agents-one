@@ -112,7 +112,7 @@ export interface RemoteWorkspaceGatewayCapabilities {
 }
 
 const DEFAULT_TIMEOUT_MS = 25_000;
-const MAX_TIMEOUT_MS = 60_000;
+export const MAX_REMOTE_WORKSPACE_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_OPERATION_BYTES = 256 * 1024;
 const MAX_MAX_OPERATION_BYTES = 1024 * 1024;
 const MAX_LIST_ENTRIES = 200;
@@ -125,9 +125,7 @@ function sha256(value: Buffer | string): string {
 function errorMessage(error: unknown): string {
   if (error && typeof error === "object") {
     const code =
-      "code" in error
-        ? String((error as { code?: unknown }).code || "")
-        : "";
+      "code" in error ? String((error as { code?: unknown }).code || "") : "";
     if (code === "ENOENT") {
       const syscall =
         "syscall" in error
@@ -311,38 +309,18 @@ function requestUrl(
   return url;
 }
 
-function isSelfSignedCertificateError(error: unknown): boolean {
-  const code =
-    error && typeof error === "object" && "code" in error
-      ? String((error as { code?: unknown }).code || "")
-      : "";
-  if (
-    code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
-    code === "SELF_SIGNED_CERT_IN_CHAIN"
-  ) {
-    return true;
-  }
-  return Boolean(
-    error &&
-    typeof error === "object" &&
-    "cause" in error &&
-    isSelfSignedCertificateError((error as { cause?: unknown }).cause),
-  );
-}
-
 function requestJsonOnce<T>(
   config: RemoteWorkspaceGatewayConfig,
   segments: string[],
   method: "GET" | "POST",
   body?: unknown,
-  rejectUnauthorized?: boolean,
 ): Promise<T> {
   const url = requestUrl(config, segments);
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (
     !Number.isInteger(timeoutMs) ||
     timeoutMs < 1_000 ||
-    timeoutMs > MAX_TIMEOUT_MS
+    timeoutMs > MAX_REMOTE_WORKSPACE_TIMEOUT_MS
   ) {
     throw new Error("Remote workspace timeout is invalid.");
   }
@@ -365,9 +343,6 @@ function requestJsonOnce<T>(
             : {}),
           ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
         },
-        ...(url.protocol === "https:" && rejectUnauthorized === false
-          ? { rejectUnauthorized: false }
-          : {}),
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -432,20 +407,7 @@ async function requestJson<T>(
   method: "GET" | "POST",
   body?: unknown,
 ): Promise<T> {
-  try {
-    return await requestJsonOnce<T>(config, segments, method, body);
-  } catch (error) {
-    // The user explicitly configured this exact Gateway. Retry only a
-    // self-signed certificate; non-TLS validation and transport errors remain
-    // strict, and public plaintext HTTP is still rejected by requestUrl().
-    if (
-      config.endpoint.trim().toLowerCase().startsWith("https://") &&
-      isSelfSignedCertificateError(error)
-    ) {
-      return await requestJsonOnce<T>(config, segments, method, body, false);
-    }
-    throw error;
-  }
+  return requestJsonOnce<T>(config, segments, method, body);
 }
 
 function validateRelativePath(value: unknown, label: string): string {
@@ -551,7 +513,9 @@ function defaultGrantOperations(
     : ["list", "read"];
 }
 
-function grantOperations(grant: RemoteWorkspaceGrant): RemoteWorkspaceOperation[] {
+function grantOperations(
+  grant: RemoteWorkspaceGrant,
+): RemoteWorkspaceOperation[] {
   return grant.operations || defaultGrantOperations(grant.permission);
 }
 
@@ -583,7 +547,8 @@ export function createRemoteWorkspaceGrant(
   }
   if (input.permission !== "read" && input.permission !== "write")
     throw new Error("Workspace permission is invalid.");
-  const operations = input.operations || defaultGrantOperations(input.permission);
+  const operations =
+    input.operations || defaultGrantOperations(input.permission);
   if (
     operations.length === 0 ||
     operations.some(
@@ -591,7 +556,9 @@ export function createRemoteWorkspaceGrant(
         !["list", "read", "write", "move", "delete"].includes(operation),
     ) ||
     (input.permission === "read" &&
-      operations.some((operation) => operation !== "list" && operation !== "read"))
+      operations.some(
+        (operation) => operation !== "list" && operation !== "read",
+      ))
   ) {
     throw new Error("Workspace grant operations are invalid.");
   }

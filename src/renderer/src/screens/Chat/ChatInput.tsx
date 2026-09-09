@@ -8,7 +8,14 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Square as Stop, Search, Paperclip, ArrowUp } from "lucide-react";
+import {
+  Square as Stop,
+  Search,
+  Paperclip,
+  Mic,
+  LoaderCircle,
+  ArrowUp,
+} from "lucide-react";
 import { isImeComposing } from "./keyboard";
 import { useI18n } from "../../components/useI18n";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
@@ -20,6 +27,7 @@ import {
   SLASH_COMMAND_VIEWPORT_HEIGHT,
 } from "./slash/virtualSlashCommands";
 import { useInputHistory } from "./hooks/useInputHistory";
+import { useVoiceInput } from "./hooks/useVoiceInput";
 import {
   processFiles,
   filesFromClipboard,
@@ -31,6 +39,8 @@ import type { Attachment } from "../../../../shared/attachments";
 
 export interface ChatInputHandle {
   setText(text: string): void;
+  /** Restore a rejected submission without making the user recreate its input. */
+  restore(text: string, attachments?: Attachment[]): void;
   appendText(text: string): void;
   clear(): void;
   focus(): void;
@@ -46,23 +56,42 @@ export interface ChatInputReadiness {
   expectedEnvKey?: string;
 }
 
+function formatVoiceDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(
+    seconds % 60,
+  ).padStart(2, "0")}`;
+}
+
 interface ChatInputProps {
   isLoading: boolean;
   hasSession: boolean;
   /** Runtime adapters can opt out until their transport supports file inputs. */
   attachmentsEnabled?: boolean;
+  /** Some transports queue a message while the current run is finishing. */
+  allowAttachmentsWhileLoading?: boolean;
   placeholder?: string;
   sessionId?: string | null;
   remoteMode?: boolean;
   profile?: string;
   /** Context-window occupancy for the gauge; null until the first response. */
   contextUsage?: ContextUsage | null;
+  /** Optional action for an interactive context gauge. */
+  onContextUsageClick?: () => void;
   /** Pre-send validation state. When `ok` is false, Send is disabled
    * and an inline banner explains why + how to fix it. */
   readiness?: ChatInputReadiness;
   /** Controls rendered inline in the bottom toolbar row (model + folder
    * pickers) so they share the composer's single bordered container. */
   toolbarExtras?: React.ReactNode;
+  /** Optional controls rendered before the textarea. Compact surfaces use
+   * this for an agent identity/switcher without duplicating input behavior. */
+  leadingExtras?: React.ReactNode;
+  /** Compact surfaces can replace the default file button with a combined
+   * file/project menu while retaining attachment ingestion. */
+  showAttachmentButton?: boolean;
+  /** Tray composer supplies its own compact microphone control. */
+  showVoiceInput?: boolean;
   slashCommands?: SlashCommand[];
   onSubmit: (text: string, attachments: Attachment[]) => void;
   onQuickAsk: (text: string, attachments: Attachment[]) => void;
@@ -75,12 +104,18 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       isLoading,
       hasSession,
       attachmentsEnabled = true,
+      allowAttachmentsWhileLoading = false,
       placeholder,
       sessionId,
       remoteMode,
+      profile,
       contextUsage,
+      onContextUsageClick,
       readiness,
       toolbarExtras,
+      leadingExtras,
+      showAttachmentButton = true,
+      showVoiceInput = true,
       slashCommands = SLASH_COMMANDS,
       onSubmit,
       onQuickAsk,
@@ -107,6 +142,55 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // composition events rather than the synthetic event's `isComposing` flag,
     // which macOS Chromium can report as false on the finalizing Enter.
     const composingRef = useRef(false);
+
+    // Keep the user's existing draft intact while the recorded utterance is
+    // being transcribed, then append the final text without auto-sending it.
+    const voiceBaseRef = useRef("");
+    const handleVoiceResult = useCallback((text: string, isFinal: boolean) => {
+      const base = voiceBaseRef.current;
+      setInput(
+        base.trim() ? (text ? `${base.trimEnd()} ${text}` : base) : text,
+      );
+      if (isFinal) requestAnimationFrame(() => inputRef.current?.focus());
+    }, []);
+    const voice = useVoiceInput(handleVoiceResult, profile);
+    const {
+      recording: voiceRecording,
+      transcribing: voiceTranscribing,
+      toggle: toggleVoice,
+    } = voice;
+
+    const toggleVoiceRecording = useCallback((): void => {
+      if (!voiceRecording && !voiceTranscribing) {
+        voiceBaseRef.current = input;
+      }
+      toggleVoice();
+    }, [input, toggleVoice, voiceRecording, voiceTranscribing]);
+
+    useEffect(() => {
+      const handleVoiceShortcut = (event: KeyboardEvent): void => {
+        if (
+          !event.ctrlKey ||
+          event.altKey ||
+          event.metaKey ||
+          event.key.toLowerCase() !== "m" ||
+          !showVoiceInput ||
+          !voice.supported ||
+          voice.transcribing
+        ) {
+          return;
+        }
+        event.preventDefault();
+        toggleVoiceRecording();
+      };
+      window.addEventListener("keydown", handleVoiceShortcut);
+      return () => window.removeEventListener("keydown", handleVoiceShortcut);
+    }, [
+      showVoiceInput,
+      toggleVoiceRecording,
+      voice.supported,
+      voice.transcribing,
+    ]);
 
     const autoResize = useCallback((): void => {
       const el = inputRef.current;
@@ -186,7 +270,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         }
         return errors;
       },
-      [attachments.length, attachmentsEnabled, formatError, sessionId, remoteMode],
+      [
+        attachments.length,
+        attachmentsEnabled,
+        formatError,
+        sessionId,
+        remoteMode,
+      ],
     );
 
     useImperativeHandle(
@@ -201,6 +291,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               inputRef.current.focus();
             }
           });
+        },
+        restore(text: string, restoredAttachments: Attachment[] = []): void {
+          setInput(text);
+          setAttachments(restoredAttachments);
+          requestAnimationFrame(() => inputRef.current?.focus());
         },
         appendText(text: string): void {
           setInput((prev) => {
@@ -334,7 +429,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         case "tools":
           return "Tools & skills";
         case "agent":
-          return "Hermes Agent";
+          return "Hermes Agent Runtime";
       }
     }
 
@@ -572,6 +667,19 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                         <span className="slash-menu-item-desc">
                           {row.command.description}
                         </span>
+                        {row.command.argumentHint ? (
+                          <span className="slash-menu-item-args">
+                            {row.command.argumentHint}
+                          </span>
+                        ) : null}
+                        {row.command.source || row.command.availability ? (
+                          <span className="slash-menu-item-runtime-meta">
+                            {row.command.source || "runtime"}
+                            {row.command.availability
+                              ? ` · ${row.command.availability}`
+                              : ""}
+                          </span>
+                        ) : null}
                         <span className="slash-menu-item-badge">
                           {slashCategoryLabel(row.command.category)}
                         </span>
@@ -633,6 +741,43 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             )}
           </div>
         )}
+        {voice.error && (
+          <div className="chat-attachment-error chat-voice-error" role="alert">
+            {voice.error}
+          </div>
+        )}
+        {voice.recording && (
+          <div
+            className="chat-voice-recording-indicator"
+            role="status"
+            aria-live="polite"
+            data-testid="chat-voice-recording-indicator"
+          >
+            <span className="chat-voice-wave" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+            <span>{t("chat.voiceRecording")}</span>
+            <span className="chat-voice-recording-hint">
+              {t("chat.voiceRecordingHint")}
+            </span>
+            <time
+              className="chat-voice-recording-time"
+              dateTime={`PT${voice.elapsedSeconds}S`}
+            >
+              {formatVoiceDuration(voice.elapsedSeconds)}
+              {voice.recordingLimitSeconds !== null && (
+                <>
+                  {" / "}
+                  {formatVoiceDuration(voice.recordingLimitSeconds)}
+                </>
+              )}
+            </time>
+          </div>
+        )}
         <div className="chat-input-wrapper">
           <input
             ref={fileInputRef}
@@ -641,6 +786,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             style={{ display: "none" }}
             onChange={handleFileInputChange}
           />
+          {leadingExtras && <>{leadingExtras}</>}
           <textarea
             ref={inputRef}
             className="chat-input"
@@ -659,22 +805,61 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             autoFocus
           />
           <div className="chat-input-toolbar">
-            <button
-              className="chat-attach-btn"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isLoading || !attachmentsEnabled}
-              title={attachmentsEnabled ? t("chat.attach") : "该智能体暂不支持文件输入"}
-              aria-label={attachmentsEnabled ? t("chat.attach") : "该智能体暂不支持文件输入"}
-              type="button"
-            >
-              <Paperclip size={16} />
-            </button>
-            {toolbarExtras && (
-              <>{toolbarExtras}</>
+            {showAttachmentButton && (
+              <button
+                className="chat-attach-btn"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={
+                  (!allowAttachmentsWhileLoading && isLoading) ||
+                  !attachmentsEnabled
+                }
+                title={
+                  attachmentsEnabled
+                    ? t("chat.attach")
+                    : "该智能体暂不支持文件输入"
+                }
+                aria-label={
+                  attachmentsEnabled
+                    ? t("chat.attach")
+                    : "该智能体暂不支持文件输入"
+                }
+                type="button"
+              >
+                <Paperclip size={16} />
+              </button>
+            )}
+            {toolbarExtras && <>{toolbarExtras}</>}
+            {showVoiceInput && voice.supported && (
+              <button
+                className={`chat-mic-btn${
+                  voice.recording ? " chat-mic-btn--recording" : ""
+                }`}
+                onClick={toggleVoiceRecording}
+                disabled={voice.transcribing}
+                title={
+                  voice.transcribing
+                    ? t("chat.voiceTranscribing")
+                    : voice.recording
+                      ? `${t("chat.voiceStop")} (Ctrl+M)`
+                      : `${t("chat.voiceInput")} (Ctrl+M)`
+                }
+                aria-label={
+                  voice.recording ? t("chat.voiceStop") : t("chat.voiceInput")
+                }
+                aria-keyshortcuts="Control+M"
+                aria-pressed={voice.recording}
+                type="button"
+              >
+                {voice.transcribing ? (
+                  <LoaderCircle className="chat-mic-spinner" size={16} />
+                ) : (
+                  <Mic size={16} />
+                )}
+              </button>
             )}
             <div className="chat-input-toolbar-spacer" />
             {contextUsage && (
-              <ContextGauge {...contextUsage} />
+              <ContextGauge {...contextUsage} onClick={onContextUsageClick} />
             )}
             {isLoading ? (
               <button

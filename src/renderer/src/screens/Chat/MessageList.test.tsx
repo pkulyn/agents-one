@@ -166,4 +166,46 @@ describe("MessageList runtime identity and activity markers", () => {
     expect(screen.getByText("Claude Code")).toBeInTheDocument();
     expect(screen.getByAltText("Claude Code")).toHaveAttribute("src", avatar);
   });
+
+  it("keeps copy, branch, and full time on real replies but not control notices", () => {
+    const onBranchFromMessage = vi.fn();
+    render(
+      <MessageList
+        messages={[
+          {
+            id: "reply",
+            kind: "assistant",
+            role: "agent",
+            content: "任务完成。",
+            timestamp: new Date(2026, 7, 27, 9, 5).getTime(),
+            runtimeMeta: {
+              durationMs: 836_000,
+            },
+          },
+          {
+            id: "control",
+            kind: "assistant",
+            role: "agent",
+            content: "当前会话已切换到模型。",
+            timestamp: new Date(2026, 7, 27, 9, 6).getTime(),
+            isControlMessage: true,
+          },
+        ]}
+        isLoading={false}
+        toolProgress={null}
+        onApprove={vi.fn()}
+        onDeny={vi.fn()}
+        onClarifyResolved={vi.fn()}
+        onBranchFromMessage={onBranchFromMessage}
+      />,
+    );
+
+    expect(screen.getByText("2026年8月27日（星期四）09:05")).toBeInTheDocument();
+    expect(screen.getByText("· 用时 13 分 56 秒")).toBeInTheDocument();
+    expect(screen.getByLabelText("从这条答复创建新对话分支")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("chat.copyMessage")).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText("从这条答复创建新对话分支"));
+    expect(onBranchFromMessage).toHaveBeenCalledWith("reply");
+    expect(screen.queryByText("2026年8月27日（星期四）09:06")).not.toBeInTheDocument();
+  });
 });

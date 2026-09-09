@@ -1,7 +1,7 @@
 export default {
   title: "Memory",
   subtitle:
-    "What Hermes remembers about you and your environment across sessions.",
+    "What Agents One remembers about you and your environment across sessions.",
   sessions: "Sessions",
   messages: "Messages",
   memories: "Memories",
@@ -21,14 +21,14 @@ export default {
   noProvidersFound: "No memory providers found in this installation.",
   openProviderWebsite: "Open provider website",
   noMemoriesYet:
-    "No memories yet. Hermes will save important facts as you chat.",
+    "No memories yet. Agents One will save important facts as you chat.",
   noMemoryEntries: "No memory entries yet.",
   noToolsetsFound: "No toolsets found.",
   addManuallyHint: "You can also add memories manually using the button above.",
   userProfileHint:
-    "Tell Hermes about yourself — name, role, preferences, communication style.",
+    "Tell Agents One about yourself — name, role, preferences, communication style.",
   providersHint:
-    "Pluggable memory providers give Hermes advanced long-term memory. Built-in memory (above) is always active alongside the selected provider.",
+    "Pluggable memory providers give Agents One advanced long-term memory. Built-in memory (above) is always active alongside the selected provider.",
   providersHintActive: "Active: <strong>{{provider}}</strong>",
   providersHintInactive: "No external provider active — using built-in only.",
   enterEnvKey: "Enter {{key}}",

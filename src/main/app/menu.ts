@@ -85,7 +85,7 @@ export function buildMenu({
             ]
           : []),
         {
-          label: "Hermes Agent on GitHub",
+          label: "Hermes Agent Runtime on GitHub",
           click: () =>
             openExternalUrl("https://github.com/NousResearch/hermes-agent/"),
         },

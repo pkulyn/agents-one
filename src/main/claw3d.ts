@@ -925,7 +925,7 @@ export function startAdapter(): boolean {
 
   adapterError = "";
   adapterLogs = "";
-  // The hermes-gateway-adapter authenticates to the Hermes gateway with
+  // The hermes-gateway-adapter authenticates to the Hermes Agent Runtime gateway with
   // `Authorization: Bearer ${HERMES_API_KEY}`. Without it, a gateway that
   // has an API_SERVER_KEY configured rejects the Office chat with HTTP 401.
   const env = {
@@ -972,7 +972,7 @@ export function startAdapter(): boolean {
 
   proc.on("close", (code) => {
     if (code && code !== 0 && !adapterError) {
-      adapterError = `Hermes adapter exited with code ${code}`;
+      adapterError = `Hermes Agent Runtime adapter exited with code ${code}`;
     }
     adapterProcess = null;
     cleanupPid(ADAPTER_PID_FILE);
@@ -1033,7 +1033,7 @@ export function startAll(profile?: string): {
   // Start adapter
   const adapterOk = startAdapter();
   if (!adapterOk) {
-    return { success: false, error: "Failed to start Hermes adapter" };
+    return { success: false, error: "Failed to start Hermes Agent Runtime adapter" };
   }
 
   return { success: true };

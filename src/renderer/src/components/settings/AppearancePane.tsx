@@ -36,7 +36,7 @@ export default function AppearancePane(): React.JSX.Element {
   const [gpuSaveError, setGpuSaveError] = useState(false);
 
   useEffect(() => {
-    window.hermesAPI
+    window.agentsOneAPI
       .getGpuStatus()
       .then((status) => {
         setGpuStatus(status);
@@ -50,7 +50,7 @@ export default function AppearancePane(): React.JSX.Element {
   const selectGpuMode = (mode: GpuPreferenceMode): void => {
     setGpuSaveError(false);
     setSavedPref(mode);
-    window.hermesAPI
+    window.agentsOneAPI
       .setGpuPreference(mode)
       .then((ok) => {
         if (!ok) setGpuSaveError(true);
@@ -188,7 +188,7 @@ export default function AppearancePane(): React.JSX.Element {
               <button
                 type="button"
                 className="settings-theme-option"
-                onClick={() => void window.hermesAPI.relaunchApp()}
+                onClick={() => void window.agentsOneAPI.relaunchApp()}
               >
                 {t("settings.hardwareAcceleration.restartNow")}
               </button>

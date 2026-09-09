@@ -3,7 +3,9 @@ import {
   DEFAULT_FONT,
   FONT_OPTIONS,
   FONT_STORAGE_KEY as STORAGE_KEY,
+  LEGACY_FONT_STORAGE_KEY,
 } from "../constants";
+import { readMigratedStorageValue } from "../utils/brandMigration";
 
 interface FontContextValue {
   font: string;
@@ -32,7 +34,10 @@ export function FontProvider({
   children: React.ReactNode;
 }): React.JSX.Element {
   const [font, setFontState] = useState<string>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = readMigratedStorageValue(
+      STORAGE_KEY,
+      LEGACY_FONT_STORAGE_KEY,
+    );
     return isKnownFont(stored) ? stored : DEFAULT_FONT;
   });
 

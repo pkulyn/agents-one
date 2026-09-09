@@ -8,7 +8,7 @@ describe("SidebarProjectMenu", () => {
     const onClose = vi.fn();
     render(
       <I18nProvider><SidebarProjectMenu
-        target={{ path: "D:\\work", name: "work", pinned: false, x: 20, y: 20 }}
+        target={{ workspaceId: "project-test", name: "work", pinned: false, x: 20, y: 20 }}
         onClose={onClose}
         onTogglePin={() => {}}
         onReveal={() => {}}

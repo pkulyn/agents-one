@@ -11,6 +11,7 @@ import {
 } from "./utils";
 import { getYamlPath } from "./yaml-path";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
+import { agentsOneLogsDirectory } from "./agents-one-logs";
 // NOTE: ./secrets imports back into this module (getConfigValue / readEnv), so
 // this is a static import that closes a cycle (config -> secrets ->
 // commandProvider -> config). It is safe ONLY because BOTH sides defer all work
@@ -31,8 +32,8 @@ import {
 } from "../shared/url-key-map";
 
 // ── Connection Config (local-only) ────────────────────────
-// SSH and old remote Hermes connections were removed (plan D4/D5): remote
-// agents now go through Gateway v1. The built-in Hermes connection is
+// SSH and old remote Hermes Agent Runtime connections were removed (plan D4/D5): remote
+// agents now go through Gateway v1. The built-in Hermes Agent Runtime connection is
 // always local (each profile's gateway on 127.0.0.1).
 
 export interface ConnectionConfig {
@@ -68,7 +69,7 @@ export function writeDesktopConfig(data: Record<string, unknown>): void {
 }
 
 export function getConnectionConfig(): ConnectionConfig {
-  // The built-in Hermes connection is local-only (plan D5); remote agents go
+  // The built-in Hermes Agent Runtime connection is local-only (plan D5); remote agents go
   // through Gateway v1. Legacy persisted `connectionMode` (ssh/remote) is
   // ignored on read — the user re-registers remote agents via Gateway v1.
   return { mode: "local" };
@@ -80,7 +81,7 @@ export function getPublicConnectionConfig(): PublicConnectionConfig {
 
 export function setConnectionConfig(config: ConnectionConfig): void {
   void config;
-  // The built-in Hermes connection is local-only; there is nothing remote to
+  // The built-in Hermes Agent Runtime connection is local-only; there is nothing remote to
   // persist anymore. Legacy sshConfig/remote fields stay on disk untouched.
 }
 
@@ -1313,7 +1314,7 @@ export function maskKey(value: string): string {
 }
 
 /**
- * Append a JSONL entry to `~/.hermes/logs/config-fixes.log` recording
+ * Append a JSONL entry to the Agents One diagnostic directory recording
  * an automated or user-initiated config migration. Auto-truncates the
  * log to the most-recent 1000 entries on each write so it doesn't grow
  * unbounded. Best-effort — any I/O error is silently swallowed so a
@@ -1334,7 +1335,7 @@ const CONFIG_FIX_LOG_MAX_LINES = 1000;
 
 export function appendConfigFixLog(entry: ConfigFixLogEntry): void {
   try {
-    const logDir = join(HERMES_HOME, "logs");
+    const logDir = agentsOneLogsDirectory();
     if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
     const logFile = join(logDir, "config-fixes.log");
     let existing = "";

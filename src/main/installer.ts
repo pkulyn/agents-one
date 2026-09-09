@@ -20,11 +20,12 @@ import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 const IS_WINDOWS = process.platform === "win32";
 
-const HERMES_DESKTOP_USER_DATA_DIR =
+const AGENTS_ONE_USER_DATA_DIR =
+  process.env.AGENTS_ONE_USER_DATA_DIR?.trim() ||
   process.env.HERMES_DESKTOP_USER_DATA_DIR?.trim();
-if (HERMES_DESKTOP_USER_DATA_DIR) {
+if (AGENTS_ONE_USER_DATA_DIR) {
   try {
-    app.setPath("userData", HERMES_DESKTOP_USER_DATA_DIR);
+    app.setPath("userData", AGENTS_ONE_USER_DATA_DIR);
   } catch {
     /* best effort: Electron may reject late path changes in tests */
   }
@@ -431,6 +432,319 @@ export interface InstallTargetInfo {
   state: InstallTargetState;
 }
 
+export type HermesDiscoverySource =
+  | "active-home"
+  | "environment"
+  | "default-home"
+  | "path";
+
+export interface HermesInstallationCandidate {
+  home: string;
+  repoPath: string;
+  pythonPath: string;
+  scriptPath: string;
+  source: HermesDiscoverySource;
+  valid: boolean;
+  /** Whether the expected executable pair exists in this Hermes Home. */
+  executableAvailable: boolean;
+  /** Non-secret configuration health derived from file presence/content. */
+  configState: "configured" | "missing" | "invalid";
+  /** Local API health; probing is best-effort and never starts a process. */
+  apiState: "unknown" | "healthy" | "unreachable" | "not-running" | "unrelated";
+  /** Version returned by the candidate's own CLI, when it can be queried. */
+  version?: string;
+}
+
+function hermesHomeCandidates(): Array<{
+  home: string;
+  source: HermesDiscoverySource;
+}> {
+  const candidates: Array<{
+    home: string;
+    source: HermesDiscoverySource;
+  }> = [];
+  const add = (
+    home: string | undefined,
+    source: HermesDiscoverySource,
+  ): void => {
+    const value = home?.trim();
+    if (!value) return;
+    const resolved = resolve(value);
+    const key = IS_WINDOWS ? resolved.toLowerCase() : resolved;
+    if (
+      candidates.some((item) => {
+        const itemKey = IS_WINDOWS
+          ? resolve(item.home).toLowerCase()
+          : resolve(item.home);
+        return itemKey === key;
+      })
+    )
+      return;
+    candidates.push({ home: resolved, source });
+  };
+
+  add(readHermesHomeOverride(), "active-home");
+  add(process.env.HERMES_HOME, "environment");
+  add(HERMES_HOME, "active-home");
+  if (IS_WINDOWS) {
+    add(
+      process.env.LOCALAPPDATA
+        ? join(process.env.LOCALAPPDATA, "hermes")
+        : undefined,
+      "default-home",
+    );
+  }
+  add(join(homedir(), ".hermes"), "default-home");
+
+  const pathValue = getEnhancedPath();
+  for (const directory of pathValue
+    .split(delimiter)
+    .map((item) => item.trim())
+    .filter(Boolean)) {
+    const executable = IS_WINDOWS
+      ? [join(directory, "hermes.exe"), join(directory, "hermes.cmd")].find(
+          (item) => existsSync(item),
+        )
+      : existsSync(join(directory, "hermes"))
+        ? join(directory, "hermes")
+        : undefined;
+    if (!executable) continue;
+    const executableDir = resolve(executable, "..");
+    const home = IS_WINDOWS
+      ? resolve(executableDir, "..", "..", "..")
+      : resolve(executableDir, "..");
+    add(home, "path");
+  }
+  return candidates;
+}
+
+function hermesConfigState(
+  home: string,
+): HermesInstallationCandidate["configState"] {
+  const configPath = join(home, "config.yaml");
+  const envPath = join(home, ".env");
+  const authPath = join(home, "auth.json");
+  const anyConfig = [configPath, envPath, authPath].some((path) =>
+    existsSync(path),
+  );
+  if (!anyConfig) return "missing";
+  try {
+    if (existsSync(configPath) && !readFileSync(configPath, "utf8").trim()) {
+      return "invalid";
+    }
+    if (existsSync(authPath)) JSON.parse(readFileSync(authPath, "utf8"));
+    return "configured";
+  } catch {
+    return "invalid";
+  }
+}
+
+function candidateApiPort(home: string): number {
+  const fallback = Number(
+    process.env.AGENTS_ONE_DEFAULT_API_PORT ||
+      process.env.HERMES_DESKTOP_DEFAULT_API_PORT ||
+      8642,
+  );
+  try {
+    const config = readFileSync(join(home, "config.yaml"), "utf8");
+    const match = config.match(/(?:^|\n)\s*port\s*:\s*(\d+)\s*(?:\n|$)/);
+    const port = match ? Number(match[1]) : fallback;
+    return Number.isInteger(port) && port > 0 && port < 65_536
+      ? port
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readCandidatePid(home: string): number | null {
+  try {
+    const raw = readFileSync(join(home, "gateway.pid"), "utf8").trim();
+    const value = raw.startsWith("{")
+      ? (JSON.parse(raw) as { pid?: unknown }).pid
+      : Number(raw);
+    return typeof value === "number" && Number.isInteger(value) && value > 0
+      ? value
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Return the process IDs currently listening on a TCP port.
+ *
+ * The Hermes health endpoint is intentionally only treated as healthy when
+ * it can be tied back to the candidate's own gateway.pid. A different local
+ * service may otherwise return HTTP 200 on the same configured port and be
+ * mistaken for Hermes. This helper is best-effort: missing OS inspection
+ * tools reduce the result to "unknown" rather than authorizing adoption.
+ */
+function listeningPidsForPort(port: number): Set<number> | undefined {
+  try {
+    if (IS_WINDOWS) {
+      const output = execFileSync("netstat.exe", ["-ano", "-p", "tcp"], {
+        encoding: "utf8",
+        timeout: 1_500,
+        ...HIDDEN_SUBPROCESS_OPTIONS,
+      });
+      const pids = new Set<number>();
+      for (const line of output.split(/\r?\n/)) {
+        const fields = line.trim().split(/\s+/);
+        if (fields.length < 5 || fields[0] !== "TCP") continue;
+        const localEndpoint = fields[1];
+        const state = fields[3];
+        const pid = Number(fields[4]);
+        if (
+          state === "LISTENING" &&
+          localEndpoint.endsWith(`:${port}`) &&
+          Number.isInteger(pid) &&
+          pid > 0
+        ) {
+          pids.add(pid);
+        }
+      }
+      return pids;
+    }
+
+    try {
+      const output = execFileSync(
+        "lsof",
+        ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
+        {
+          encoding: "utf8",
+          timeout: 1_500,
+          ...HIDDEN_SUBPROCESS_OPTIONS,
+        },
+      );
+      return new Set(
+        output
+          .split(/\r?\n/)
+          .map((value) => Number(value.trim()))
+          .filter((value) => Number.isInteger(value) && value > 0),
+      );
+    } catch {
+      const output = execFileSync("ss", ["-ltnp"], {
+        encoding: "utf8",
+        timeout: 1_500,
+        ...HIDDEN_SUBPROCESS_OPTIONS,
+      });
+      const pids = new Set<number>();
+      for (const line of output.split(/\r?\n/)) {
+        if (!line.includes(`:${port}`)) continue;
+        for (const match of line.matchAll(/pid=(\d+)/g)) {
+          const pid = Number(match[1]);
+          if (Number.isInteger(pid) && pid > 0) pids.add(pid);
+        }
+      }
+      return pids;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/** Pure ownership-aware classification used by discovery and unit tests. */
+export function classifyHermesApiState(
+  responseOk: boolean,
+  candidatePid: number | null,
+  listenerPids: ReadonlySet<number> | undefined,
+): HermesInstallationCandidate["apiState"] {
+  if (!responseOk) return candidatePid ? "unreachable" : "not-running";
+  if (candidatePid && listenerPids) {
+    return listenerPids.has(candidatePid) ? "healthy" : "unrelated";
+  }
+  return "unknown";
+}
+
+function candidateVersion(
+  home: string,
+  binaries: { python: string; script: string },
+): Promise<string | undefined> {
+  if (!existsSync(binaries.python) || !existsSync(binaries.script)) {
+    return Promise.resolve(undefined);
+  }
+  const args = IS_WINDOWS
+    ? ["-m", "hermes_cli.main", "--version"]
+    : ["--version"];
+  const executable = IS_WINDOWS ? binaries.python : binaries.script;
+  return new Promise((resolveVersion) => {
+    execFile(
+      executable,
+      args,
+      {
+        cwd: join(home, "hermes-agent"),
+        env: {
+          ...process.env,
+          PATH: getEnhancedPath(),
+          HOME: homedir(),
+          HERMES_HOME: home,
+        },
+        timeout: 5_000,
+        ...HIDDEN_SUBPROCESS_OPTIONS,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          resolveVersion(undefined);
+          return;
+        }
+        const output = `${stdout || ""}\n${stderr || ""}`.trim();
+        resolveVersion(output || undefined);
+      },
+    );
+  });
+}
+
+async function candidateApiState(
+  home: string,
+): Promise<HermesInstallationCandidate["apiState"]> {
+  const port = candidateApiPort(home);
+  const candidatePid = readCandidatePid(home);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/health`, {
+      method: "GET",
+      signal: AbortSignal.timeout(1_500),
+    });
+    response.body?.cancel();
+    return classifyHermesApiState(
+      response.ok,
+      candidatePid,
+      response.ok ? listeningPidsForPort(port) : undefined,
+    );
+  } catch {
+    return classifyHermesApiState(false, candidatePid, undefined);
+  }
+}
+
+/** Discover local Hermes installations and collect only non-secret health
+ * metadata. No directory is adopted and no process is started. */
+export async function discoverHermesInstallations(): Promise<
+  HermesInstallationCandidate[]
+> {
+  return Promise.all(
+    hermesHomeCandidates().map(async ({ home, source }) => {
+      const binaries = installBinariesFor(home);
+      const executableAvailable =
+        existsSync(binaries.python) && existsSync(binaries.script);
+      const [version, apiState] = await Promise.all([
+        candidateVersion(home, binaries),
+        candidateApiState(home),
+      ]);
+      return {
+        home,
+        repoPath: join(home, "hermes-agent"),
+        pythonPath: binaries.python,
+        scriptPath: binaries.script,
+        source,
+        valid: executableAvailable,
+        executableAvailable,
+        configState: hermesConfigState(home),
+        apiState,
+        ...(version ? { version } : {}),
+      };
+    }),
+  );
+}
+
 /** Classify what the installer will do to the target directory. Pure — the
  *  filesystem probing lives in `inspectInstallTarget`. */
 export function classifyInstallTarget(
@@ -604,7 +918,7 @@ export function clearVersionCache(): void {
 
 export function runHermesDoctor(): string {
   if (!canInvokeHermesCli()) {
-    return "Hermes is not installed.";
+    return "Hermes Agent Runtime is not installed.";
   }
   try {
     const output = execFileSync(HERMES_PYTHON, hermesCliArgs(["doctor"]), {
@@ -667,7 +981,7 @@ export async function runClawMigrate(
   onProgress: (progress: InstallProgress) => void,
 ): Promise<void> {
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
-    throw new Error("Hermes is not installed.");
+    throw new Error("Hermes Agent Runtime is not installed.");
   }
 
   const openclaw = checkOpenClawExists();
@@ -732,7 +1046,7 @@ export async function runHermesUpdate(
   onProgress: (progress: InstallProgress) => void,
 ): Promise<void> {
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
-    throw new Error("Hermes is not installed. Please install it first.");
+    throw new Error("Hermes Agent Runtime is not installed. Please install it first.");
   }
 
   let log = "";
@@ -741,7 +1055,7 @@ export async function runHermesUpdate(
     onProgress({
       step: 1,
       totalSteps: 1,
-      title: "Updating Hermes Agent",
+      title: "Updating Hermes Agent Runtime",
       detail: text.trim().slice(0, 120),
       log,
     });
@@ -822,7 +1136,7 @@ const STAGE_MARKERS: { pattern: RegExp; step: number; title: string }[] = [
     pattern:
       /Cloning|cloning|Updating.*repository|Repository|Installing to .*hermes-agent|Downloading PortableGit/i,
     step: 4,
-    title: "Downloading Hermes Agent",
+    title: "Downloading Hermes Agent Runtime",
   },
   {
     pattern: /Creating virtual|virtual environment|uv venv|\bvenv\b/i,
@@ -959,7 +1273,7 @@ export async function runInstall(
           // If Hermes is actually installed and working, treat as success.
           if (existsSync(HERMES_PYTHON) && existsSync(HERMES_SCRIPT)) {
             emit(
-              "\nInstall script exited with warnings, but Hermes is installed successfully.\n",
+              "\nInstall script exited with warnings, but Hermes Agent Runtime is installed successfully.\n",
             );
             resolve();
           } else {
@@ -1044,7 +1358,7 @@ async function runInstallWindows(emit: (t: string) => void): Promise<void> {
     "  & $installer -SkipSetup -NonInteractive -HermesHome $hermesHome -InstallDir $installDir",
     "  $exit = $LASTEXITCODE",
     "} finally {",
-    "  if ($env:HERMES_DESKTOP_SANDBOX -eq '1') {",
+    "  if ($env:AGENTS_ONE_SANDBOX -eq '1' -or $env:HERMES_DESKTOP_SANDBOX -eq '1') {",
     "    $sandboxVenv = Join-Path $installDir 'venv\\Scripts'",
     "    $userHermesHome = [Environment]::GetEnvironmentVariable('HERMES_HOME', 'User')",
     "    if ($userHermesHome -and ($userHermesHome.TrimEnd('\\') -ieq $hermesHome.TrimEnd('\\'))) {",
@@ -1121,7 +1435,7 @@ async function runInstallWindows(emit: (t: string) => void): Promise<void> {
       // Same tolerance as the bash path: if the binary tree exists, count it.
       if (existsSync(HERMES_PYTHON) && existsSync(HERMES_SCRIPT)) {
         emit(
-          "\nInstall script exited with warnings, but Hermes is installed successfully.\n",
+          "\nInstall script exited with warnings, but Hermes Agent Runtime is installed successfully.\n",
         );
         resolve();
       } else {
@@ -1157,7 +1471,7 @@ export async function runHermesBackup(
   profile?: string,
 ): Promise<{ success: boolean; path?: string; error?: string }> {
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
-    return { success: false, error: "Hermes is not installed." };
+    return { success: false, error: "Hermes Agent Runtime is not installed." };
   }
   const args = hermesCliArgs();
   if (profile && profile !== "default") args.push("-p", profile);
@@ -1211,7 +1525,7 @@ export async function runHermesImport(
   }
 
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
-    return { success: false, error: "Hermes is not installed." };
+    return { success: false, error: "Hermes Agent Runtime is not installed." };
   }
   const args = hermesCliArgs();
   if (profile && profile !== "default") args.push("-p", profile);
@@ -1276,7 +1590,7 @@ export function validateImportArchivePath(
 
 export function runHermesDump(): Promise<string> {
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
-    return Promise.resolve("Hermes is not installed.");
+    return Promise.resolve("Hermes Agent Runtime is not installed.");
   }
   return new Promise((resolve) => {
     execFile(
@@ -1479,33 +1793,5 @@ export function listMcpServers(
     return servers;
   } catch {
     return [];
-  }
-}
-
-// ────────────────────────────────────────────────────
-//  Log viewer
-// ────────────────────────────────────────────────────
-
-export function readLogs(
-  logFile = "agent.log",
-  lines = 200,
-): { content: string; path: string } {
-  const logsDir = join(HERMES_HOME, "logs");
-  // Sanitize: only allow known log file names
-  const allowed = ["agent.log", "errors.log", "gateway.log"];
-  const file = allowed.includes(logFile) ? logFile : "agent.log";
-  const fullPath = join(logsDir, file);
-
-  if (!existsSync(fullPath)) {
-    return { content: "", path: fullPath };
-  }
-  try {
-    const content = readFileSync(fullPath, "utf-8");
-    // Return the last N lines
-    const allLines = content.split("\n");
-    const tail = allLines.slice(-lines).join("\n");
-    return { content: tail, path: fullPath };
-  } catch {
-    return { content: "", path: fullPath };
   }
 }

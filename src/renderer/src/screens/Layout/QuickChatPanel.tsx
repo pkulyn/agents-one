@@ -20,6 +20,7 @@ import type {
   QuickChatMessage,
 } from "../../../../shared/runtime-conversations";
 import { summarizeTaskOutput } from "../Chat/runtimeOutput";
+import { dispatchAgentsOneEvent } from "../../utils/brandMigration";
 
 const STORAGE_KEY = "agents-one.quick-chats.v1";
 const HIDDEN_TASK_SESSION_IDS_KEY = "agents-one.quick-chat.hidden-task-session-ids.v1";
@@ -239,14 +240,14 @@ export default function QuickChatPanel({
   useEffect(() => {
     if (loadedProfileRef.current !== profile) return;
     saveLegacyQuickChats(chats);
-    void window.hermesAPI.saveQuickChats(chats, profile).catch(() => undefined);
+    void window.agentsOneAPI.saveQuickChats(chats, profile).catch(() => undefined);
   }, [chats, profile]);
 
   useEffect(() => {
     let active = true;
     setChats([]);
     setActiveChatId(null);
-    void window.hermesAPI
+    void window.agentsOneAPI
       .listQuickChats(profile)
       .then((persisted) => {
         if (!active) return;
@@ -340,8 +341,8 @@ export default function QuickChatPanel({
     cancelledRef.current = true;
     if (currentRunId) {
       await Promise.all([
-        window.hermesAPI.cancelAgentRuntimeTask(currentRunId).catch(() => false),
-        window.hermesAPI.abortChat(currentRunId).catch(() => undefined),
+        window.agentsOneAPI.cancelAgentRuntimeTask(currentRunId).catch(() => false),
+        window.agentsOneAPI.abortChat(currentRunId).catch(() => undefined),
       ]);
     }
     setCurrentRunId(null);
@@ -356,7 +357,7 @@ export default function QuickChatPanel({
       baseMessages: QuickChatMessage[],
     ) => {
       while (!cancelledRef.current) {
-        const run = await window.hermesAPI.getAgentRuntimeRun(runId);
+        const run = await window.agentsOneAPI.getAgentRuntimeRun(runId);
         if (!run) {
           await new Promise((resolve) => setTimeout(resolve, 800));
           continue;
@@ -390,7 +391,7 @@ export default function QuickChatPanel({
     ) => {
       const runId = newId("quick-hermes-run");
       const agentMessageId = newId("quick-msg");
-      const runtimeName = runtime.name || "Hermes";
+      const runtimeName = runtime.name || "Agent";
       let response = "";
       let completed = false;
       const cleanup: Array<() => void> = [];
@@ -435,13 +436,11 @@ export default function QuickChatPanel({
           updatedAt: Date.now(),
         }));
         if (sessionId) {
-          void window.hermesAPI
+          void window.agentsOneAPI
             .deleteSession(sessionId)
             .catch(() => undefined)
             .finally(() => {
-              window.dispatchEvent(
-                new CustomEvent("hermes-session-transcript-changed"),
-              );
+              dispatchAgentsOneEvent("sessionTranscriptChanged");
             });
         }
         if (!response.trim()) {
@@ -460,20 +459,20 @@ export default function QuickChatPanel({
       };
 
       cleanup.push(
-        window.hermesAPI.onChatChunk((eventRunId, chunk) => {
+        window.agentsOneAPI.onChatChunk((eventRunId, chunk) => {
           if (eventRunId !== runId || !chunk) return;
           setProgress(`${runtimeName} 正在回复...`);
           appendAgentChunk(chunk);
         }),
-        window.hermesAPI.onChatReasoningChunk((eventRunId) => {
+        window.agentsOneAPI.onChatReasoningChunk((eventRunId) => {
           if (eventRunId !== runId) return;
           setProgress(`${runtimeName} 正在思考...`);
         }),
-        window.hermesAPI.onChatToolProgress((eventRunId, tool) => {
+        window.agentsOneAPI.onChatToolProgress((eventRunId, tool) => {
           if (eventRunId !== runId) return;
           setProgress(tool || `${runtimeName} 正在调用工具...`);
         }),
-        window.hermesAPI.onChatSessionStarted((eventRunId, sessionId) => {
+        window.agentsOneAPI.onChatSessionStarted((eventRunId, sessionId) => {
           if (eventRunId !== runId) return;
           rememberHiddenTaskSessionId(sessionId);
           updateChatById(chat.id, (current) => ({
@@ -482,11 +481,11 @@ export default function QuickChatPanel({
             updatedAt: Date.now(),
           }));
         }),
-        window.hermesAPI.onChatDone((eventRunId, sessionId) => {
+        window.agentsOneAPI.onChatDone((eventRunId, sessionId) => {
           if (eventRunId !== runId) return;
           finish(sessionId);
         }),
-        window.hermesAPI.onChatError((eventRunId, error) => {
+        window.agentsOneAPI.onChatError((eventRunId, error) => {
           if (eventRunId !== runId) return;
           if (completed) return;
           completed = true;
@@ -495,7 +494,7 @@ export default function QuickChatPanel({
             ...current,
             messages: [
               ...current.messages,
-              message("system", error || "Hermes 聊天请求失败。"),
+              message("system", error || "智能体聊天请求失败。"),
             ].slice(-MAX_MESSAGES_PER_CHAT),
             updatedAt: Date.now(),
           }));
@@ -508,7 +507,7 @@ export default function QuickChatPanel({
       setCurrentRunId(runId);
       setProgress(`正在提交给 ${runtimeName}...`);
       try {
-        const result = await window.hermesAPI.sendMessage(
+        const result = await window.agentsOneAPI.sendMessage(
           text,
           profile,
           undefined,
@@ -531,7 +530,7 @@ export default function QuickChatPanel({
             ...current.messages,
             message(
               "system",
-              error instanceof Error ? error.message : "Hermes 聊天请求失败。",
+              error instanceof Error ? error.message : "智能体聊天请求失败。",
             ),
           ].slice(-MAX_MESSAGES_PER_CHAT),
           updatedAt: Date.now(),
@@ -584,7 +583,7 @@ export default function QuickChatPanel({
         await sendHermesMessage(runtime, nextChat, text);
         return;
       }
-      const run = await window.hermesAPI.startAgentRuntimeTask(runtime.id, {
+      const run = await window.agentsOneAPI.startAgentRuntimeTask(runtime.id, {
         prompt: buildPrompt(chat, text),
         mode: "analysis",
         sessionId: chat.runtimeSessionId || undefined,

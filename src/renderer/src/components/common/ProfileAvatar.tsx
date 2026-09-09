@@ -1,4 +1,4 @@
-import HermesLogo from "./HermesLogo";
+import agentsOneMark from "../../assets/agents-one-mark.svg";
 import { defaultColorForName } from "../../../../shared/profileColors";
 
 interface ProfileAvatarProps {
@@ -10,7 +10,7 @@ interface ProfileAvatarProps {
   avatar?: string | null;
   /** Pixel diameter. */
   size?: number;
-  /** Show the Hermes logo (instead of a letter) for the default profile when
+  /** Show the Agents One mark (instead of a letter) for the default profile when
    *  it has no custom avatar. */
   defaultLogo?: boolean;
   className?: string;
@@ -19,7 +19,7 @@ interface ProfileAvatarProps {
 /**
  * Unified profile/agent avatar used in the nav, the active-sessions bar and the
  * manage page. Renders a custom image when one is set, otherwise a flat
- * coloured circle with the profile's initial (or the Hermes logo for the
+ * coloured circle with the profile's initial (or the Agents One mark for the
  * default profile).
  */
 export default function ProfileAvatar({
@@ -50,7 +50,14 @@ export default function ProfileAvatar({
         className={`profile-avatar profile-avatar-logo ${className}`}
         style={dimension}
       >
-        <HermesLogo size={Math.round(size * 0.82)} />
+        <img
+          src={agentsOneMark}
+          alt="Agents One"
+          style={{
+            width: Math.round(size * 0.82),
+            height: Math.round(size * 0.82),
+          }}
+        />
       </div>
     );
   }

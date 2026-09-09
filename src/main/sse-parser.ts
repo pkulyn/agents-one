@@ -127,14 +127,25 @@ export function parseSseBlock(
   block: string,
 ): { eventType: string; data: string } | null {
   let eventType = "";
-  let dataLine = "";
-  for (const line of block.split("\n")) {
-    if (line.startsWith("event: ")) {
-      eventType = line.slice(7).trim();
-    } else if (line.startsWith("data: ")) {
-      dataLine = line.slice(6);
+  const dataLines: string[] = [];
+  for (const rawLine of block.split(/\r?\n/)) {
+    if (rawLine.startsWith("event:")) {
+      eventType = rawLine.slice(6).replace(/^ /, "").trim();
+    } else if (rawLine.startsWith("data:")) {
+      // SSE removes at most one optional space after the colon. Preserve any
+      // subsequent spaces and join multi-line payloads according to spec.
+      dataLines.push(rawLine.slice(5).replace(/^ /, ""));
     }
   }
-  if (!dataLine) return null;
-  return { eventType, data: dataLine };
+  if (!dataLines.length) return null;
+  return { eventType, data: dataLines.join("\n") };
+}
+
+/** Split complete LF or CRLF-delimited SSE frames without losing a tail. */
+export function splitSseFrames(buffer: string): {
+  frames: string[];
+  remainder: string;
+} {
+  const parts = buffer.split(/\r?\n\r?\n/);
+  return { frames: parts.slice(0, -1), remainder: parts.at(-1) || "" };
 }

@@ -10,6 +10,20 @@ async function loadStore(): Promise<
 > {
   vi.resetModules();
   vi.stubEnv("HERMES_HOME", testHome);
+  // The store only needs these three helpers. Mock them immediately before the
+  // dynamic import so this JSON unit test cannot transitively load Electron.
+  vi.doMock("../src/main/utils", () => ({
+    profileHome: () => testHome,
+    getActiveProfileNameSync: () => "default",
+    safeWriteFile: (path: string, data: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require("fs");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pathModule = require("path");
+      fs.mkdirSync(pathModule.dirname(path), { recursive: true });
+      fs.writeFileSync(path, data, "utf8");
+    },
+  }));
   return import("../src/main/task-collaboration-store");
 }
 
@@ -46,6 +60,43 @@ describe("task collaboration store", () => {
       { id: "implement", role: "实施", runtimeId: "codex" },
     ]);
     expect(updated.status).toBe("active");
+  });
+
+  it("stores an opaque capability without retaining a parallel path", async () => {
+    const store = await loadStore();
+
+    const saved = store.saveTaskCollaboration({
+      taskId: "task-capability",
+      title: "能力项目",
+      projectWorkspaceId: "project-alpha",
+      projectName: "Alpha",
+      projectFolder: "D:/should-not-be-persisted",
+      assignments: [{ id: "lead", role: "协调", runtimeId: "pi" }],
+    });
+
+    expect(saved).toMatchObject({
+      projectWorkspaceId: "project-alpha",
+      projectName: "Alpha",
+    });
+    expect(saved).not.toHaveProperty("projectFolder");
+  });
+
+  it("never writes a path beside a capability, regardless of the caller input", async () => {
+    const store = await loadStore();
+    const saved = store.saveTaskCollaboration({
+      taskId: "task-invalid-capability",
+      title: "无效能力",
+      projectWorkspaceId: "project-unverified-at-storage-layer",
+      projectName: "未验证项目",
+      projectFolder: "D:/must-not-be-stored",
+      assignments: [{ id: "lead", role: "协调", runtimeId: "pi" }],
+    });
+
+    expect(saved).toMatchObject({
+      projectWorkspaceId: "project-unverified-at-storage-layer",
+      projectName: "未验证项目",
+    });
+    expect(saved).not.toHaveProperty("projectFolder");
   });
 
   it("persists DAG dependencies and parallel active roles", async () => {

@@ -1,7 +1,6 @@
 import {
   spawn,
   execFile as execFileCallback,
-  type ChildProcess,
 } from "child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync } from "fs";
 import { promisify } from "util";
@@ -10,6 +9,7 @@ import { randomUUID } from "crypto";
 import { profileHome } from "./utils";
 import { prepareRuntimeInputs } from "./runtime-inputs";
 import { protectWorkspaceFromRemoval } from "./workspace-protection";
+import { terminateProcessTree } from "./process-control";
 import type {
   AgentRuntimeArtifact,
   AgentRuntimeTaskInput,
@@ -48,7 +48,8 @@ export interface StartedClaudeCodeProcess {
   worktreePath?: string;
   inputArtifacts: RuntimeInputArtifact[];
   sessionId: string;
-  cancel: () => void;
+  /** Resolves only after the child has closed and its cleanup has completed. */
+  cancel: () => Promise<void>;
   completion: Promise<ClaudeCodeProcessResult>;
 }
 
@@ -104,7 +105,10 @@ function workspaceSnapshot(root: string): WorkspaceSnapshot {
         continue;
       }
       if (!stat.isFile()) continue;
-      entries.set(relative(root, fullPath), `${stat.size}:${Math.floor(stat.mtimeMs)}`);
+      entries.set(
+        relative(root, fullPath),
+        `${stat.size}:${Math.floor(stat.mtimeMs)}`,
+      );
       if (entries.size >= WORKSPACE_SNAPSHOT_LIMIT) {
         truncated = true;
         return;
@@ -306,7 +310,8 @@ function configuredProbeWorkspace(
   const raw = config.workspace?.trim();
   if (!raw) return undefined;
   const workspace = resolve(raw);
-  if (!existsSync(workspace)) throw new Error("The configured workspace does not exist.");
+  if (!existsSync(workspace))
+    throw new Error("The configured workspace does not exist.");
   return workspace;
 }
 
@@ -339,17 +344,6 @@ function childEnvironment(): NodeJS.ProcessEnv {
   return { ...process.env };
 }
 
-function terminateTree(child: ChildProcess): void {
-  if (child.pid && process.platform === "win32") {
-    void execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
-      windowsHide: true,
-      shell: false,
-    }).catch(() => child.kill());
-    return;
-  }
-  child.kill("SIGTERM");
-}
-
 /** This argument contract is intentionally kept pure and regression-tested. */
 export function claudeCodeExecArgs(
   mode: "analysis" | "safe_write" | "implementation" | "full_access",
@@ -367,11 +361,7 @@ export function claudeCodeExecArgs(
     "--include-partial-messages",
   ];
   if (mode !== "analysis") args.push("--dangerously-skip-permissions");
-  else
-    args.push(
-      "--permission-mode",
-      "plan",
-    );
+  else args.push("--permission-mode", "plan");
   if (options.model?.trim()) args.push("--model", options.model.trim());
   if (options.resume) args.push("--resume", options.sessionId);
   else args.push("--session-id", options.sessionId);
@@ -439,7 +429,10 @@ export async function startClaudeCodeProcess(
   let worktreePath: string | undefined;
   if (mode === "implementation") {
     const root = await gitRoot(workspace as string);
-    worktreePath = safeWorktreePath(input.profile, `task-${randomUUID()}`);
+    worktreePath = safeWorktreePath(
+      input.profile,
+      input.worktreeId || `task-${randomUUID()}`,
+    );
     await command({ command: "git", prefix: [] }, [
       "-C",
       root,
@@ -451,7 +444,8 @@ export async function startClaudeCodeProcess(
     ]);
     cwd = worktreePath;
   }
-  const fullAccessSnapshot = mode === "full_access" ? workspaceSnapshot(cwd) : undefined;
+  const fullAccessSnapshot =
+    mode === "full_access" ? workspaceSnapshot(cwd) : undefined;
 
   const preparedInputs = prepareRuntimeInputs(
     input.profile,
@@ -559,7 +553,10 @@ export async function startClaudeCodeProcess(
           content: diff.slice(0, MAX_OUTPUT),
         });
       if (fullAccessSnapshot) {
-        const changedFiles = changedWorkspaceFiles(fullAccessSnapshot, workspaceSnapshot(cwd));
+        const changedFiles = changedWorkspaceFiles(
+          fullAccessSnapshot,
+          workspaceSnapshot(cwd),
+        );
         if (changedFiles.length) {
           artifacts.push({
             kind: "diff",
@@ -569,7 +566,9 @@ export async function startClaudeCodeProcess(
           diffSummary = [
             diffSummary,
             `Claude Code 直接修改了 ${changedFiles.length} 个文件：${changedFiles.join(", ")}`,
-          ].filter(Boolean).join("\n");
+          ]
+            .filter(Boolean)
+            .join("\n");
         }
       }
       resolveResult({
@@ -592,7 +591,10 @@ export async function startClaudeCodeProcess(
     worktreePath,
     inputArtifacts: preparedInputs.artifacts,
     sessionId,
-    cancel: () => terminateTree(child),
+    cancel: async () => {
+      await terminateProcessTree(child);
+      await completion;
+    },
     completion,
   };
 }

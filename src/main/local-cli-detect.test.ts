@@ -55,6 +55,7 @@ describe("detectLocalCliPaths", () => {
       pi: join(testHome, "pi"),
       "claude-code": join(testHome, "claude"),
       codex: join(testHome, "codex"),
+      opencode: null,
     });
   });
 
@@ -67,5 +68,6 @@ describe("detectLocalCliPaths", () => {
     expect(detected.pi).toBe(join(testHome, "pi"));
     expect(detected.codex).toBeNull();
     expect(detected["claude-code"]).toBeNull();
+    expect(detected.opencode).toBeNull();
   });
 });

@@ -1,8 +1,4 @@
-import {
-  spawn,
-  execFile as execFileCallback,
-  type ChildProcess,
-} from "child_process";
+import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, mkdirSync } from "fs";
 import { promisify } from "util";
 import { dirname, extname, join, relative, resolve } from "path";
@@ -10,6 +6,7 @@ import { randomUUID } from "crypto";
 import { profileHome } from "./utils";
 import { prepareRuntimeInputs } from "./runtime-inputs";
 import { protectWorkspaceFromRemoval } from "./workspace-protection";
+import { terminateProcessTree } from "./process-control";
 import type {
   AgentRuntimeArtifact,
   AgentRuntimeTaskInput,
@@ -36,6 +33,8 @@ export interface CodexProbeResult {
 
 export interface CodexProcessResult {
   output: string;
+  /** Persisted Codex thread id reported by `exec --json`, when available. */
+  sessionId?: string;
   error?: string;
   worktreePath?: string;
   diffSummary?: string;
@@ -46,7 +45,8 @@ export interface CodexProcessResult {
 export interface StartedCodexProcess {
   worktreePath?: string;
   inputArtifacts: RuntimeInputArtifact[];
-  cancel: () => void;
+  /** Resolves only after the child has closed and its cleanup has completed. */
+  cancel: () => Promise<void>;
   completion: Promise<CodexProcessResult>;
 }
 
@@ -103,6 +103,27 @@ function appendCapped(current: string, next: string): string {
   return merged.length <= MAX_OUTPUT ? merged : merged.slice(-MAX_OUTPUT);
 }
 
+/** Tolerate both current and older JSONL event spellings without parsing prose. */
+export function codexThreadIdFromOutput(output: string): string | undefined {
+  for (const line of output.split(/\r?\n/)) {
+    try {
+      const event: unknown = JSON.parse(line);
+      if (!event || typeof event !== "object" || Array.isArray(event)) continue;
+      const record = event as Record<string, unknown>;
+      const direct = record.thread_id ?? record.threadId;
+      if (typeof direct === "string" && direct.trim()) return direct.trim();
+      const thread = record.thread;
+      if (thread && typeof thread === "object" && !Array.isArray(thread)) {
+        const id = (thread as Record<string, unknown>).id;
+        if (typeof id === "string" && id.trim()) return id.trim();
+      }
+    } catch {
+      // stderr and partial JSON are deliberately ignored.
+    }
+  }
+  return undefined;
+}
+
 async function command(
   invocation: CodexInvocation,
   args: string[],
@@ -145,11 +166,14 @@ function requestedWorkspace(
   return workspace;
 }
 
-function configuredProbeWorkspace(config: CodexRuntimeConfig): string | undefined {
+function configuredProbeWorkspace(
+  config: CodexRuntimeConfig,
+): string | undefined {
   const raw = config.workspace?.trim();
   if (!raw) return undefined;
   const workspace = resolve(raw);
-  if (!existsSync(workspace)) throw new Error("The configured workspace does not exist.");
+  if (!existsSync(workspace))
+    throw new Error("The configured workspace does not exist.");
   return workspace;
 }
 
@@ -176,17 +200,6 @@ function childEnvironment(): NodeJS.ProcessEnv {
   return { ...process.env };
 }
 
-function terminateTree(child: ChildProcess): void {
-  if (child.pid && process.platform === "win32") {
-    void execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
-      windowsHide: true,
-      shell: false,
-    }).catch(() => child.kill());
-    return;
-  }
-  child.kill("SIGTERM");
-}
-
 /** This argument contract is intentionally kept pure and regression-tested. */
 export function codexExecArgs(
   cwd: string,
@@ -196,10 +209,7 @@ export function codexExecArgs(
   imagePaths: string[] = [],
   model?: string,
 ): string[] {
-  const args = [
-    "exec",
-    "--json",
-  ];
+  const args = ["exec", "--json"];
   if (mode === "full_access") {
     args.push("--dangerously-bypass-approvals-and-sandbox");
   } else {
@@ -259,7 +269,10 @@ export async function startCodexProcess(
   let worktreePath: string | undefined;
   if (mode === "implementation") {
     const root = await gitRoot(workspace as string);
-    worktreePath = safeWorktreePath(input.profile, `task-${randomUUID()}`);
+    worktreePath = safeWorktreePath(
+      input.profile,
+      input.worktreeId || `task-${randomUUID()}`,
+    );
     await command({ command: "git", prefix: [] }, [
       "-C",
       root,
@@ -368,6 +381,9 @@ export async function startCodexProcess(
         output: restoredFiles.length
           ? `${output}\n[Agents One] 已阻止移动或删除 ${restoredFiles.length} 个原有文件。`
           : output,
+        ...(codexThreadIdFromOutput(output)
+          ? { sessionId: codexThreadIdFromOutput(output) }
+          : {}),
         ...(code === 0
           ? {}
           : { error: `Codex exited with code ${code ?? "unknown"}.` }),
@@ -382,7 +398,10 @@ export async function startCodexProcess(
   return {
     worktreePath,
     inputArtifacts: preparedInputs.artifacts,
-    cancel: () => terminateTree(child),
+    cancel: async () => {
+      await terminateProcessTree(child);
+      await completion;
+    },
     completion,
   };
 }

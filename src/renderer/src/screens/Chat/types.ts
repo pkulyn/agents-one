@@ -36,6 +36,12 @@ export interface ChatBubbleMessage {
   timestamp?: number;
   /** Renderer-only progress row while a slash command is executing. */
   isSlashLoader?: boolean;
+  /** Platform command/result notices retain their text but not message chrome. */
+  isControlMessage?: boolean;
+  /** Runtime-provided execution facts retained for optional message metadata. */
+  runtimeMeta?: {
+    durationMs?: number;
+  };
   /** Per-turn Runtime identity used by multi-agent conversations. */
   agentRuntimeId?: string;
   agentName?: string;

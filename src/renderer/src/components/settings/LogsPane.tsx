@@ -9,12 +9,12 @@ const LOG_FILES: {
   label: string;
   Icon: React.ComponentType<{ size?: number }>;
 }[] = [
-  { file: "gateway.log", label: "网关", Icon: Signal },
-  { file: "agent.log", label: "智能体", Icon: Bot },
+  { file: "application.log", label: "应用", Icon: Signal },
+  { file: "tasks.log", label: "任务", Icon: Bot },
   { file: "errors.log", label: "错误", Icon: CircleAlert },
 ];
 
-/** Gateway / agent / error log viewer. */
+/** Agents One application / task / error diagnostic viewer. */
 export default function LogsPane(): React.JSX.Element {
   const { t } = useI18n();
   const {
@@ -44,7 +44,7 @@ export default function LogsPane(): React.JSX.Element {
               className={`btn btn-sm ${logFile === file ? "btn-primary" : "btn-secondary"}`}
               onClick={() => {
                 setLogFile(file);
-                window.hermesAPI.readLogs(file, 300).then((r) => {
+                window.agentsOneAPI.readDiagnostics(file, 300).then((r) => {
                   setLogContent(r.content);
                   setLogPath(r.path);
                 });

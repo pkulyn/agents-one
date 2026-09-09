@@ -331,7 +331,7 @@ function Sessions({
   // loading state, so it can run on a timer or on focus with no spinner flash.
   const refreshSessions = useCallback(async (): Promise<void> => {
     const requestId = ++loadRequestId.current;
-    const synced = await window.hermesAPI.syncSessionCache();
+    const synced = await window.agentsOneAPI.syncSessionCache();
     if (loadRequestId.current !== requestId) return;
     setSessions((prev) => {
       if (synced.length === 0 && prev.length > 0) {
@@ -345,13 +345,13 @@ function Sessions({
     const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
-      const synced = await window.hermesAPI.syncSessionCache();
+      const synced = await window.agentsOneAPI.syncSessionCache();
       if (loadRequestId.current !== requestId) return;
       setSessions(synced.slice(0, 50));
     } catch (error) {
       console.error("Failed to load sessions", error);
       try {
-        const cached = await window.hermesAPI.listCachedSessions(50);
+        const cached = await window.agentsOneAPI.listCachedSessions(50);
         if (loadRequestId.current === requestId) {
           setSessions(cached);
         }
@@ -416,7 +416,7 @@ function Sessions({
         );
       });
       try {
-        await window.hermesAPI.updateSessionTitle(sessionId, trimmed);
+        await window.agentsOneAPI.updateSessionTitle(sessionId, trimmed);
       } catch (err) {
         console.error("Failed to rename session", sessionId, err);
         // Rollback optimistic update
@@ -459,7 +459,7 @@ function Sessions({
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       setSearchResults((prev) => prev.filter((r) => r.sessionId !== sessionId));
       try {
-        await window.hermesAPI.deleteSession(sessionId);
+        await window.agentsOneAPI.deleteSession(sessionId);
       } catch (err) {
         console.error("Failed to delete session", sessionId, err);
       } finally {
@@ -512,7 +512,7 @@ function Sessions({
       setSessions((prev) => prev.filter((s) => !idSet.has(s.id)));
       setSearchResults((prev) => prev.filter((r) => !idSet.has(r.sessionId)));
       try {
-        await window.hermesAPI.deleteSessions(ids);
+        await window.agentsOneAPI.deleteSessions(ids);
       } catch (err) {
         console.error("Failed to delete selected sessions", ids, err);
       } finally {
@@ -560,7 +560,7 @@ function Sessions({
   }, [visible, loadSessions]);
 
   useEffect(() => {
-    const unsubscribe = window.hermesAPI.onConnectionConfigChanged(() => {
+    const unsubscribe = window.agentsOneAPI.onConnectionConfigChanged(() => {
       setSessions([]);
       setSearchResults([]);
       setSearchQuery("");
@@ -605,9 +605,9 @@ function Sessions({
     setIsSearching(true);
     searchTimer.current = setTimeout(async () => {
       try {
-        await window.hermesAPI.syncSessionCache().catch(() => []);
+        await window.agentsOneAPI.syncSessionCache().catch(() => []);
         if (searchRequestId.current !== requestId) return;
-        const results = await window.hermesAPI.searchSessions(query);
+        const results = await window.agentsOneAPI.searchSessions(query);
         if (searchRequestId.current !== requestId) return;
         setSearchResults(results);
       } finally {

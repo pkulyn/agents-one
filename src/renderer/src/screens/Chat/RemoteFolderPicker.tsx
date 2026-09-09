@@ -83,7 +83,7 @@ export const RemoteFolderPicker = memo(function RemoteFolderPicker({
     setError(null);
 
     try {
-      const result = await window.hermesAPI.readDirectory(nextPath);
+      const result = await window.agentsOneAPI.readDirectory(nextPath);
       if (result === null) {
         setEntries([]);
         setError(t("chat.folderPicker.unavailable"));

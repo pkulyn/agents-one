@@ -407,7 +407,7 @@ describe("expandRowsToHistory", () => {
     ).toBe("data:image/png;base64,AAA=");
   });
 
-  it("hides Hermes vision fallback text when restoring pasted-image prompts", () => {
+  it("keeps an unregistered Hermes vision fallback path as literal history text", () => {
     const items = expandRowsToHistory([
       row({
         id: 20,
@@ -423,14 +423,14 @@ describe("expandRowsToHistory", () => {
 
     const merged = mergeStoredPromptImageAttachments(items, new Map());
 
-    expect(merged[0]).toMatchObject({
-      kind: "user",
-      content: "what is this?",
-    });
+    expect(merged[0]).toMatchObject({ kind: "user" });
+    expect((merged[0] as Extract<HistoryItem, { kind: "user" }>).content).toContain(
+      "C:\\Users\\pmos6\\image.png",
+    );
     expect("attachments" in merged[0]).toBe(false);
   });
 
-  it("rehydrates a local image referenced by Hermes vision fallback text", () => {
+  it("does not rehydrate an unregistered local image referenced by vision fallback text", () => {
     const dir = mkdtempSync(join(tmpdir(), "hermes-session-image-"));
     const imagePath = join(dir, "upload.png");
     try {
@@ -457,21 +457,16 @@ describe("expandRowsToHistory", () => {
       const merged = mergeStoredPromptImageAttachments(items, new Map());
       const user = merged[0] as Extract<HistoryItem, { kind: "user" }>;
 
-      expect(user.content).toBe("what is this?");
-      expect(user.attachments).toHaveLength(1);
-      expect(user.attachments?.[0]).toMatchObject({
-        kind: "image",
-        name: "upload.png",
-        mime: "image/png",
-        path: imagePath,
-      });
-      expect(user.attachments?.[0].dataUrl).toMatch(/^data:image\/png;base64,/);
+      expect(user.content).toContain(
+        `[You can examine it with vision_analyze using image_url: ${imagePath}]`,
+      );
+      expect(user.attachments).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("rehydrates a local image referenced by Hermes successful vision preface", () => {
+  it("keeps an unregistered vision-preface path as text instead of reading it", () => {
     const dir = mkdtempSync(join(tmpdir(), "hermes-session-image-"));
     const imagePath = join(dir, "upload.png");
     try {
@@ -499,20 +494,14 @@ describe("expandRowsToHistory", () => {
       const merged = mergeStoredPromptImageAttachments(items, new Map());
       const user = merged[0] as Extract<HistoryItem, { kind: "user" }>;
 
-      expect(user.content).toBe("what is this?");
-      expect(user.attachments).toHaveLength(1);
-      expect(user.attachments?.[0]).toMatchObject({
-        kind: "image",
-        name: "upload.png",
-        mime: "image/png",
-        path: imagePath,
-      });
+      expect(user.content).toContain(`[You can examine it with vision_analyze using image_url: ${imagePath}]`);
+      expect(user.attachments).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("rehydrates a local image referenced by trailing desktop image marker", () => {
+  it("keeps an unregistered trailing image marker as text instead of reading it", () => {
     const dir = mkdtempSync(join(tmpdir(), "hermes-session-image-"));
     const imagePath = join(dir, "upload.png");
     try {
@@ -536,15 +525,8 @@ describe("expandRowsToHistory", () => {
       const merged = mergeStoredPromptImageAttachments(items, new Map());
       const user = merged[0] as Extract<HistoryItem, { kind: "user" }>;
 
-      expect(user.content).toBe("what is this?");
-      expect(user.attachments).toHaveLength(1);
-      expect(user.attachments?.[0]).toMatchObject({
-        kind: "image",
-        name: "upload.png",
-        mime: "image/png",
-        path: imagePath,
-      });
-      expect(user.attachments?.[0].dataUrl).toMatch(/^data:image\/png;base64,/);
+      expect(user.content).toContain(`[Image attached at: ${imagePath}]`);
+      expect(user.attachments).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

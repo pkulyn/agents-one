@@ -12,6 +12,8 @@ import { HERMES_HOME } from "./installer";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 const PROFILE_NAME_RE = /^[a-z0-9_][a-z0-9_-]{0,63}$/;
+const ATOMIC_RENAME_RETRY_SIGNAL = new Int32Array(new SharedArrayBuffer(4));
+const ATOMIC_RENAME_RETRY_DELAYS_MS = [15, 35, 75] as const;
 export const PROFILE_NAME_ERROR =
   "Profile names may contain lowercase letters, numbers, underscores, and hyphens, and cannot start with a hyphen.";
 
@@ -227,7 +229,7 @@ export function safeWriteFile(filePath: string, content: string): void {
   try {
     writeFileSync(tempPath, content, "utf-8");
     tempWritten = true;
-    renameSync(tempPath, filePath);
+    renameAtomicTempFile(tempPath, filePath);
   } catch (err) {
     if (tempWritten) {
       try {
@@ -237,5 +239,34 @@ export function safeWriteFile(filePath: string, content: string): void {
       }
     }
     throw err;
+  }
+}
+
+/**
+ * Windows can transiently reject a same-directory atomic rename while an
+ * indexer, antivirus process, or a just-closed reader still holds the target.
+ * Retry only those transient lock codes, with a tiny bounded synchronous wait;
+ * all other errors retain the original fail-closed behavior.
+ */
+function renameAtomicTempFile(tempPath: string, filePath: string): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      renameSync(tempPath, filePath);
+      return;
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String(error.code)
+          : "";
+      const delay = ATOMIC_RENAME_RETRY_DELAYS_MS[attempt];
+      if (
+        process.platform !== "win32" ||
+        (code !== "EPERM" && code !== "EBUSY" && code !== "ENOTEMPTY") ||
+        delay === undefined
+      ) {
+        throw error;
+      }
+      Atomics.wait(ATOMIC_RENAME_RETRY_SIGNAL, 0, 0, delay);
+    }
   }
 }
