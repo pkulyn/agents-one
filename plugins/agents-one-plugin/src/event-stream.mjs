@@ -152,12 +152,16 @@ export class EventJournal {
       ? sanitizeWorkspaceOperation(data.operation)
       : undefined;
     const path = workspaceEvent ? sanitizeWorkspacePath(data.path) : undefined;
+    const requestedSequence = Number.isSafeInteger(rawEvent.sequence)
+      ? rawEvent.sequence
+      : this.nextSequence;
     const event = {
       id,
       type: rawEvent.type,
-      sequence: Number.isFinite(rawEvent.sequence)
-        ? rawEvent.sequence
-        : this.nextSequence,
+      // A provider may restart its counter or send a stale frame. The
+      // Gateway owns the durable cursor, so never expose duplicate or
+      // backwards sequences to reconnecting clients.
+      sequence: Math.max(this.nextSequence, requestedSequence, 1),
       createdAt: rawEvent.createdAt || new Date().toISOString(),
       data: {
         ...(sanitizeEventText(data.summary)
@@ -168,6 +172,9 @@ export class EventJournal {
           : {}),
         ...(sanitizeEventText(data.reasoningSummary)
           ? { reasoningSummary: sanitizeEventText(data.reasoningSummary) }
+          : {}),
+        ...(sanitizeEventText(data.code, 256)
+          ? { code: sanitizeEventText(data.code, 256) }
           : {}),
         ...(sanitizeTool(data.tool) ? { tool: sanitizeTool(data.tool) } : {}),
         ...(sanitizeArtifact(data.artifact)

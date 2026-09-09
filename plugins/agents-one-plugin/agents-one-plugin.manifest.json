@@ -7,7 +7,7 @@
     "remoteGateway": ["agents-one-remote-gateway-v1"],
     "eventStream": ["agents-one-event-stream-v1"]
   },
-  "hosts": ["remote-gateway", "local-cli-adapter"],
+  "hosts": ["remote-gateway", "remote-cli-host", "local-cli-adapter"],
   "security": {
     "requiresBearerTokenForRemoteGateway": true,
     "forbidsRawChainOfThought": true,
