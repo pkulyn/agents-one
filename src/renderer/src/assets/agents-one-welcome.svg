@@ -12,7 +12,5 @@
       <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#293950" flood-opacity=".14"/>
     </filter>
   </defs>
-  <rect x="10" y="10" width="300" height="300" rx="74" fill="#fff" stroke="#E3E8F1" stroke-width="4"/>
-  <circle cx="160" cy="160" r="82" fill="none" stroke="#EDF1F6" stroke-width="38"/>
   <circle cx="160" cy="160" r="82" fill="none" stroke="url(#dawn)" stroke-width="38" filter="url(#shadow)"/>
 </svg>

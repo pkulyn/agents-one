@@ -75,7 +75,7 @@ export default function TaskCollaborationWorkspace({
             <h2 id="task-collaboration-workspace-title">
               {state.title || "协作任务"}
             </h2>
-            <p>{projectName(state.projectFolder)}</p>
+            <p>{state.projectName || projectName(state.projectFolder)}</p>
           </div>
           <div className="task-collaboration-workspace-actions">
             <button

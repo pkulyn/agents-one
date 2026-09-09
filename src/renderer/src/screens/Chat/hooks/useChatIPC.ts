@@ -183,7 +183,7 @@ export function useChatIPC({
       dbPollInFlightRef.current = true;
       const activeTurn = activeTurnRef.current ?? undefined;
       try {
-        const items = (await window.hermesAPI.getSessionMessages(
+        const items = (await window.agentsOneAPI.getSessionMessages(
           sessionId,
         )) as DbHistoryItem[];
         if (
@@ -248,7 +248,7 @@ export function useChatIPC({
       }, 750);
     };
 
-    const cleanupSessionStarted = window.hermesAPI.onChatSessionStarted(
+    const cleanupSessionStarted = window.agentsOneAPI.onChatSessionStarted(
       (eventRunId, sessionId) => {
         if (!eventMatchesRun(eventRunId, runId) || !sessionId) return;
         acceptedSessionIdRef.current = sessionId;
@@ -258,7 +258,7 @@ export function useChatIPC({
       },
     );
 
-    const cleanupChunk = window.hermesAPI.onChatChunk((eventRunId, chunk) => {
+    const cleanupChunk = window.agentsOneAPI.onChatChunk((eventRunId, chunk) => {
       if (!eventMatchesRun(eventRunId, runId)) return;
       if (!activeTurnRef.current) return;
       persistedCompletionRef.current = null;
@@ -300,7 +300,7 @@ export function useChatIPC({
       });
     });
 
-    const cleanupReasoning = window.hermesAPI.onChatReasoningChunk(
+    const cleanupReasoning = window.agentsOneAPI.onChatReasoningChunk(
       (eventRunId, chunk) => {
         if (!eventMatchesRun(eventRunId, runId)) return;
         if (!activeTurnRef.current) return;
@@ -315,7 +315,7 @@ export function useChatIPC({
       },
     );
 
-    const cleanupDone = window.hermesAPI.onChatDone(
+    const cleanupDone = window.agentsOneAPI.onChatDone(
       async (eventRunId, sessionId) => {
         if (!eventMatchesRun(eventRunId, runId)) return;
         reasoningSegmentClosedRef.current = false;
@@ -339,7 +339,7 @@ export function useChatIPC({
           return;
         }
         try {
-          const items = (await window.hermesAPI.getSessionMessages(
+          const items = (await window.agentsOneAPI.getSessionMessages(
             sessionId,
           )) as DbHistoryItem[];
           const dbMessages = dbItemsToChatMessages(items);
@@ -361,7 +361,7 @@ export function useChatIPC({
       },
     );
 
-    const cleanupError = window.hermesAPI.onChatError((eventRunId, error) => {
+    const cleanupError = window.agentsOneAPI.onChatError((eventRunId, error) => {
       if (!eventMatchesRun(eventRunId, runId)) return;
       reasoningSegmentClosedRef.current = false;
       persistedCompletionRef.current = null;
@@ -374,7 +374,7 @@ export function useChatIPC({
       setIsLoading(false);
     });
 
-    const cleanupClarify = window.hermesAPI.onClarifyRequest(
+    const cleanupClarify = window.agentsOneAPI.onClarifyRequest(
       (eventRunId, req) => {
         if (!eventMatchesRun(eventRunId, runId)) return;
         reasoningSegmentClosedRef.current = true;
@@ -403,7 +403,7 @@ export function useChatIPC({
       },
     );
 
-    const cleanupToolProgress = window.hermesAPI.onChatToolProgress(
+    const cleanupToolProgress = window.agentsOneAPI.onChatToolProgress(
       (eventRunId, tool) => {
         if (!eventMatchesRun(eventRunId, runId)) return;
         if (!activeTurnRef.current) return;
@@ -440,7 +440,7 @@ export function useChatIPC({
       },
     );
 
-    const cleanupToolEvent = window.hermesAPI.onChatToolEvent(
+    const cleanupToolEvent = window.agentsOneAPI.onChatToolEvent(
       (eventRunId, toolEvent) => {
         if (!eventMatchesRun(eventRunId, runId)) return;
         if (!activeTurnRef.current) return;
@@ -473,7 +473,7 @@ export function useChatIPC({
       },
     );
 
-    const cleanupUsage = window.hermesAPI.onChatUsage((eventRunId, u) => {
+    const cleanupUsage = window.agentsOneAPI.onChatUsage((eventRunId, u) => {
       if (!eventMatchesRun(eventRunId, runId)) return;
       setUsage((prev) => ({
         promptTokens: (prev?.promptTokens || 0) + u.promptTokens,

@@ -331,10 +331,9 @@ export interface ProcessFilesResult {
  *     a data URL.
  *   - Text/code file (by MIME prefix or extension allowlist) → inline
  *     `text-file` attachment with UTF-8 contents.
- *   - Everything else → `path-ref` attachment carrying the file's
- *     absolute path.  Picker / drag-drop expose the path via
- *     `webUtils.getPathForFile`; clipboard-pasted blobs have no origin
- *     path and are staged to disk via the main process.
+ *   - Everything else → `path-ref` attachment backed by a main-process
+ *     staging copy. Picker, drag-drop and clipboard inputs all follow the
+ *     same capability path; original renderer file paths never reach a Runtime.
  */
 export async function processFiles(
   files: File[] | FileList,
@@ -452,30 +451,24 @@ export async function processFiles(
       continue;
     }
 
+    // A picked File is explicit user input, but its renderer-exposed path is
+    // not a durable main-process capability. Always stage bytes first so a
+    // Runtime can never be pointed at an arbitrary renderer-supplied path.
     let path = "";
     try {
-      path = window.hermesAPI.getPathForFile(file) || "";
-    } catch {
-      path = "";
-    }
-
-    if (!path) {
-      // No origin path (clipboard paste) — stage the bytes to disk.
-      try {
-        const base64 = await readAsBase64(file);
-        path = await window.hermesAPI.stageAttachment(
-          options.sessionId || "",
-          name,
-          base64,
-        );
-      } catch (err) {
-        errors.push({
-          code: "read-failed",
-          filename: name,
-          detail: err instanceof Error ? err.message : String(err),
-        });
-        continue;
-      }
+      const base64 = await readAsBase64(file);
+      path = await window.agentsOneAPI.stageAttachment(
+        options.sessionId || "",
+        name,
+        base64,
+      );
+    } catch (err) {
+      errors.push({
+        code: "read-failed",
+        filename: name,
+        detail: err instanceof Error ? err.message : String(err),
+      });
+      continue;
     }
 
     if (!path) {

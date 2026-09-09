@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,10 +19,11 @@ vi.mock("../../components/useI18n", () => ({
 
 import Schedules from "./Schedules";
 
-describe("local Runtime schedules", () => {
+describe("Runtime schedules", () => {
   const listCronJobs = vi.fn();
   const listTaskSchedules = vi.fn();
   const listAgentRuntimes = vi.fn();
+  const listProjectFolders = vi.fn();
   const createTaskSchedule = vi.fn();
   const updateTaskSchedule = vi.fn();
   const triggerTaskSchedule = vi.fn();
@@ -43,6 +45,7 @@ describe("local Runtime schedules", () => {
     vi.clearAllMocks();
     scheduleCompletedCallback = undefined;
     listCronJobs.mockResolvedValue([]);
+    listProjectFolders.mockResolvedValue([]);
     listTaskSchedules.mockResolvedValue([
       {
         id: "schedule-1",
@@ -54,21 +57,6 @@ describe("local Runtime schedules", () => {
         timeoutMs: 600000,
         enabled: true,
         concurrencyPolicy: "queue",
-        pendingRuns: 0,
-        runs: [],
-        createdAt: 1,
-        updatedAt: 1,
-      },
-      {
-        id: "schedule-remote",
-        name: "Remote legacy task",
-        schedule: "5m",
-        prompt: "Must not be managed here.",
-        runtimeId: "openclaw-remote",
-        mode: "analysis",
-        timeoutMs: 600000,
-        enabled: true,
-        concurrencyPolicy: "skip",
         pendingRuns: 0,
         runs: [],
         createdAt: 1,
@@ -92,7 +80,28 @@ describe("local Runtime schedules", () => {
         location: "remote",
         enabled: true,
         managed: "user",
-        config: { transport: "http", endpoint: "https://example.invalid" },
+        config: {
+          transport: "http",
+          endpoint: "https://example.invalid",
+          remoteGateway: { protocol: "agents-one-v1" },
+        },
+      },
+      {
+        id: "chatgpt-web",
+        name: "ChatGPT 网页版",
+        kind: "web-agent",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {
+          agentTransport: "local-web",
+          webAgent: {
+            provider: "chatgpt",
+            profileId: "work",
+            adapterVersion: "1.0.0",
+            enabled: true,
+          },
+        },
       },
     ]);
     createTaskSchedule.mockResolvedValue({ id: "schedule-2" });
@@ -103,12 +112,13 @@ describe("local Runtime schedules", () => {
       return vi.fn();
     });
     onTaskScheduleRunStarted.mockImplementation(() => vi.fn());
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
         listCronJobs,
         listTaskSchedules,
         listAgentRuntimes,
+        listProjectFolders,
         createTaskSchedule,
         updateTaskSchedule,
         triggerTaskSchedule,
@@ -122,25 +132,90 @@ describe("local Runtime schedules", () => {
         resumeCronJob: vi.fn(),
         triggerCronJob: vi.fn(),
         selectFolder: vi.fn().mockResolvedValue("D:\\selected-project"),
+        registerProjectFolder: vi
+          .fn()
+          .mockResolvedValue({ path: "D:\\selected-project" }),
       },
     });
   });
 
-  it("manages only desktop-owned local CLI schedules", async () => {
+  it("manages local, web, and remote Runtime schedules together", async () => {
+    listTaskSchedules.mockResolvedValueOnce([
+      {
+        id: "schedule-1",
+        name: "Nightly checks",
+        schedule: "5m",
+        prompt: "Run tests.",
+        runtimeId: "codex-local",
+        mode: "analysis",
+        timeoutMs: 600000,
+        enabled: true,
+        concurrencyPolicy: "queue",
+        pendingRuns: 0,
+        runs: [],
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: "schedule-remote",
+        name: "Remote research",
+        schedule: "5m",
+        prompt: "Research remotely.",
+        runtimeId: "openclaw-remote",
+        mode: "analysis",
+        timeoutMs: 600000,
+        enabled: true,
+        concurrencyPolicy: "skip",
+        pendingRuns: 0,
+        runs: [],
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: "schedule-web",
+        name: "Web digest",
+        schedule: "5m",
+        prompt: "Summarize in the browser.",
+        runtimeId: "chatgpt-web",
+        mode: "analysis",
+        timeoutMs: 600000,
+        enabled: true,
+        concurrencyPolicy: "skip",
+        pendingRuns: 0,
+        runs: [],
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
     render(<Schedules profile="default" />);
     await screen.findByText("Nightly checks");
-    expect(screen.getByText("本地 CLI 任务")).toBeInTheDocument();
-    expect(screen.queryByText("远程 Hermes 定时任务")).toBeNull();
-    expect(screen.queryByText("Remote legacy task")).toBeNull();
+    expect(screen.getByText("智能体任务")).toBeInTheDocument();
+    const remoteCard = screen
+      .getByText("Remote research")
+      .closest(".schedules-table-row");
+    const webCard = screen
+      .getByText("Web digest")
+      .closest(".schedules-table-row");
+    expect(remoteCard).toHaveTextContent("远程智能体");
+    expect(webCard).toHaveTextContent("网页智能体");
     expect(listCronJobs).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "立即执行计划任务" }));
+    const localCard = screen
+      .getByText("Nightly checks")
+      .closest(".schedules-table-row");
+    expect(localCard).not.toBeNull();
+    expect(localCard).toHaveTextContent("本地智能体");
+    fireEvent.click(
+      within(localCard as HTMLElement).getByRole("button", {
+        name: "立即执行计划任务",
+      }),
+    );
     await waitFor(() =>
       expect(triggerTaskSchedule).toHaveBeenCalledWith("schedule-1", "default"),
     );
   });
 
-  it("creates a local schedule with its selected Runtime and concurrency policy", async () => {
+  it("creates a Web Agent schedule in analysis-only mode", async () => {
     render(<Schedules profile="default" />);
     await screen.findByText("Nightly checks");
     fireEvent.click(screen.getByRole("button", { name: "schedules.newTask" }));
@@ -148,8 +223,11 @@ describe("local Runtime schedules", () => {
     expect(screen.queryByText("执行方式")).toBeNull();
     expect(screen.queryByText("远程 Hermes")).toBeNull();
     expect(
-      screen.queryByRole("option", { name: /Remote OpenClaw/ }),
-    ).toBeNull();
+      screen.getByRole("option", { name: /Remote OpenClaw/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /ChatGPT 网页版/ }),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("schedules.namePlaceholder"), {
       target: { value: "Hourly research" },
     });
@@ -158,8 +236,17 @@ describe("local Runtime schedules", () => {
       { target: { value: "Summarize new findings." } },
     );
     fireEvent.change(screen.getByRole("combobox", { name: "执行智能体" }), {
-      target: { value: "codex-local" },
+      target: { value: "chatgpt-web" },
     });
+    expect(
+      screen.getByText(
+        "网页智能体使用独立浏览器登录态执行，仅支持对话分析，不访问项目文件夹。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("留空进行普通对话；需要读写文件时再选择"),
+    ).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "文件访问" })).toBeNull();
     fireEvent.change(screen.getByRole("combobox", { name: "并发策略" }), {
       target: { value: "queue" },
     });
@@ -169,14 +256,14 @@ describe("local Runtime schedules", () => {
       expect(createTaskSchedule).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Hourly research",
-          runtimeId: "codex-local",
+          runtimeId: "chatgpt-web",
           concurrencyPolicy: "queue",
         }),
         "default",
       ),
     );
     expect(createTaskSchedule.mock.calls[0][0]).toMatchObject({
-      mode: "auto",
+      mode: "analysis",
       workspace: undefined,
     });
   });
@@ -199,6 +286,59 @@ describe("local Runtime schedules", () => {
           name: "Updated checks",
           workspace: undefined,
           mode: "analysis",
+        }),
+        "default",
+      ),
+    );
+  });
+
+  it("restores an opaque workspace id as its saved folder path when editing", async () => {
+    listTaskSchedules.mockResolvedValueOnce([
+      {
+        id: "schedule-workspace",
+        name: "Project task",
+        schedule: "5m",
+        prompt: "Update the project.",
+        runtimeId: "codex-local",
+        workspaceId: "project-pkulyn",
+        mode: "auto",
+        timeoutMs: 7_200_000,
+        enabled: true,
+        concurrencyPolicy: "skip",
+        pendingRuns: 0,
+        runs: [],
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    listProjectFolders.mockResolvedValueOnce([
+      {
+        id: "project-pkulyn",
+        path: "D:\\pkulyn_vault",
+        name: "pkulyn_vault",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    render(<Schedules profile="default" />);
+    await screen.findByText("Project task");
+    fireEvent.click(screen.getByRole("button", { name: "编辑计划任务" }));
+
+    expect(
+      screen.getByPlaceholderText("留空进行普通对话；需要读写文件时再选择"),
+    ).toHaveValue("D:\\pkulyn_vault");
+    expect(screen.getByRole("combobox", { name: "最长执行时长" })).toHaveValue(
+      "7200000",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(updateTaskSchedule).toHaveBeenCalledWith(
+        "schedule-workspace",
+        expect.objectContaining({
+          workspace: "D:\\pkulyn_vault",
+          workspaceId: "project-pkulyn",
+          timeoutMs: 7_200_000,
         }),
         "default",
       ),
@@ -267,7 +407,7 @@ describe("local Runtime schedules", () => {
     window.addEventListener("agents-one:open-runtime-conversation", opened);
     render(<Schedules profile="default" />);
 
-    await screen.findByText("All checks passed.");
+    await screen.findByLabelText("最近结果：已完成");
     fireEvent.click(screen.getByRole("button", { name: "打开最近执行对话" }));
     expect(opened).toHaveBeenCalledTimes(1);
     expect((opened.mock.calls[0][0] as CustomEvent).detail).toBe(
@@ -299,7 +439,7 @@ describe("local Runtime schedules", () => {
     listTaskSchedules.mockResolvedValue([]);
     render(<Schedules profile="default" />);
 
-    await screen.findByText("还没有本地定时任务");
+    await screen.findByText("还没有定时任务");
     expect(
       screen.getAllByRole("button", { name: "schedules.newTask" }),
     ).toHaveLength(1);

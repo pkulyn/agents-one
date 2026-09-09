@@ -6,6 +6,7 @@ import { activeStateDbPath } from "./utils";
 import type { Attachment } from "../shared/attachments";
 import { isImageMime, MAX_IMAGE_BYTES } from "../shared/attachments";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
+import { isAuthorizedMediaPath } from "./media";
 
 const TABLE = "desktop_message_attachments";
 
@@ -84,19 +85,30 @@ export function extractLeadingVisionImageFallback(text: string): {
   const raw = text || "";
   const match = VISION_IMAGE_FALLBACK_RE.exec(raw);
   if (match) {
+    const imagePath = cleanFallbackImagePath(match[1] || "");
+    // Historical message text is not a filesystem capability. Only strip a
+    // marker once its path is still under an Agents One-authorized root;
+    // otherwise retain the literal text and never attempt to read it.
+    if (!imagePath || !isAuthorizedMediaPath(imagePath)) {
+      return { content: raw, imagePath: null };
+    }
     return {
       content: raw.slice(match[0].length).trimStart(),
-      imagePath: cleanFallbackImagePath(match[1] || "") || null,
+      imagePath,
     };
   }
 
   const attachedAt = IMAGE_ATTACHED_AT_RE.exec(raw);
   if (attachedAt) {
+    const imagePath = cleanFallbackImagePath(attachedAt[1] || "");
+    if (!imagePath || !isAuthorizedMediaPath(imagePath)) {
+      return { content: raw, imagePath: null };
+    }
     return {
       content: `${raw.slice(0, attachedAt.index)}${raw.slice(
         attachedAt.index + attachedAt[0].length,
       )}`.trim(),
-      imagePath: cleanFallbackImagePath(attachedAt[1] || "") || null,
+      imagePath,
     };
   }
 
@@ -112,6 +124,7 @@ export function attachmentFromLocalVisionImagePath(
   id: string,
 ): Attachment | null {
   if (!filePath || filePath.startsWith("data:")) return null;
+  if (!isAuthorizedMediaPath(filePath)) return null;
   const ext = extname(filePath).toLowerCase();
   const mime = IMAGE_MIME_BY_EXT[ext];
   if (!mime || !isImageMime(mime)) return null;

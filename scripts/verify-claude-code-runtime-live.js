@@ -16,9 +16,9 @@ async function main() {
   assert(fs.existsSync(executable), "Claude Code executable was not found.");
   const { browser, page } = await attach({ cdpUrl: "http://127.0.0.1:9223" });
   try {
-    await page.waitForFunction(() => Boolean(window.hermesAPI), { timeout: 30_000 });
+    await page.waitForFunction(() => Boolean(window.agentsOneAPI), { timeout: 30_000 });
     const started = await page.evaluate(async ({ executablePath, workspacePath, timeout }) => {
-      await window.hermesAPI.saveAgentRuntime({
+      await window.agentsOneAPI.saveAgentRuntime({
         id: "e2e-claude-code",
         name: "E2E Claude Code",
         kind: "claude-code",
@@ -31,9 +31,9 @@ async function main() {
           timeoutMs: timeout,
         },
       });
-      const probe = await window.hermesAPI.probeAgentRuntime("e2e-claude-code");
+      const probe = await window.agentsOneAPI.probeAgentRuntime("e2e-claude-code");
       if (probe.state !== "healthy") throw new Error(probe.message || "Claude Code probe failed.");
-      return window.hermesAPI.startAgentRuntimeTask("e2e-claude-code", {
+      return window.agentsOneAPI.startAgentRuntimeTask("e2e-claude-code", {
         prompt: "Reply with one concise sentence confirming that this is a read-only Claude Code runtime acceptance test. Do not modify files.",
         mode: "analysis",
         workspace: workspacePath,
@@ -44,7 +44,7 @@ async function main() {
       const deadline = Date.now() + timeoutMs + 30_000;
       let run;
       while (Date.now() < deadline) {
-        run = await page.evaluate((id) => window.hermesAPI.getAgentRuntimeRun(id), runId);
+        run = await page.evaluate((id) => window.agentsOneAPI.getAgentRuntimeRun(id), runId);
         if (run && run.status !== "running") return run;
         await new Promise((resolve) => setTimeout(resolve, 1_500));
       }
@@ -57,7 +57,7 @@ async function main() {
     assert(String(run.output || "").trim(), "Claude Code returned no visible output.");
 
     const implementation = await page.evaluate((workspacePath) =>
-      window.hermesAPI.startAgentRuntimeTask("e2e-claude-code", {
+      window.agentsOneAPI.startAgentRuntimeTask("e2e-claude-code", {
         prompt: "Do not modify any files. Inspect the repository and reply with one concise sentence confirming this implementation-mode acceptance run used an isolated worktree.",
         mode: "implementation",
         workspace: workspacePath,

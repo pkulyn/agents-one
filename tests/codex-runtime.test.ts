@@ -1,7 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { codexExecArgs, codexInvocation } from "../src/main/codex-runtime";
+import {
+  codexExecArgs,
+  codexInvocation,
+  codexThreadIdFromOutput,
+} from "../src/main/codex-runtime";
 
 describe("Codex runtime invocation", () => {
+  it("captures a persisted thread id only from structured exec events", () => {
+    expect(
+      codexThreadIdFromOutput(
+        [
+          "not json",
+          JSON.stringify({ type: "thread.started", thread_id: "thr_123" }),
+        ].join("\n"),
+      ),
+    ).toBe("thr_123");
+    expect(
+      codexThreadIdFromOutput("Codex mentioned thr_nope in prose"),
+    ).toBeUndefined();
+  });
+
   it("uses the read-only noninteractive contract for analysis", () => {
     expect(codexExecArgs("D:\\repo", "analysis", "inspect this")).toEqual([
       "exec",
@@ -29,9 +47,7 @@ describe("Codex runtime invocation", () => {
   it("keeps Codex skills, MCP and shell available in safe-write mode", () => {
     expect(
       codexExecArgs("D:\\project", "safe_write", "update this safely"),
-    ).toEqual(
-      expect.arrayContaining(["--sandbox", "workspace-write"]),
-    );
+    ).toEqual(expect.arrayContaining(["--sandbox", "workspace-write"]));
     expect(
       codexExecArgs("D:\\project", "safe_write", "update this safely"),
     ).not.toContain("--disable");

@@ -49,7 +49,7 @@ function installHermesAPI(initialSessions: unknown[] = []): {
       };
     }),
   };
-  Object.defineProperty(window, "hermesAPI", {
+  Object.defineProperty(window, "agentsOneAPI", {
     configurable: true,
     value: api,
   });

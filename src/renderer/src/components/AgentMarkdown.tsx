@@ -134,7 +134,7 @@ function CodeBlock({
   }, [boxDiagram, highlighterReady, isDiff]);
 
   function handleCopy(): void {
-    void window.hermesAPI.copyToClipboard(code);
+    void window.agentsOneAPI.copyToClipboard(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -233,7 +233,7 @@ const AgentMarkdown = memo(function AgentMarkdown({
               } catch {
                 return;
               }
-              window.hermesAPI.openExternal(href);
+              window.agentsOneAPI.openExternal(href);
             }}
           >
             {children}

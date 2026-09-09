@@ -4,6 +4,7 @@ import { closeSync, existsSync, mkdirSync, openSync } from "fs";
 import http from "http";
 import https from "https";
 import net from "net";
+import WebSocket from "ws";
 import { homedir } from "os";
 import { join } from "path";
 import {
@@ -43,6 +44,11 @@ export interface DashboardStatus {
   logPath?: string;
 }
 
+export interface DashboardWorkspaceSession {
+  sessionId: string;
+  storedSessionId: string;
+}
+
 interface ManagedDashboard {
   proc: ChildProcess;
   connection: DashboardConnection;
@@ -78,10 +84,10 @@ function getManagedDashboard(profile?: string): ManagedDashboard | undefined {
 
 function unsupportedReasonForLocalSpawn(): string | undefined {
   if (!existsSync(HERMES_REPO)) {
-    return `Hermes repo not found at ${HERMES_REPO}.`;
+    return `Hermes Agent Runtime repo not found at ${HERMES_REPO}.`;
   }
   if (!existsSync(HERMES_PYTHON)) {
-    return `Hermes Python environment not found at ${HERMES_PYTHON}.`;
+    return `Hermes Agent Runtime Python environment not found at ${HERMES_PYTHON}.`;
   }
   return undefined;
 }
@@ -97,7 +103,10 @@ function dashboardHasPrebuiltWebDist(): boolean {
 }
 
 async function getFreePort(): Promise<number> {
-  const preferred = Number(process.env.HERMES_DESKTOP_DASHBOARD_PORT);
+  const preferred = Number(
+    process.env.AGENTS_ONE_DASHBOARD_PORT ||
+      process.env.HERMES_DESKTOP_DASHBOARD_PORT,
+  );
   if (Number.isInteger(preferred) && preferred > 0 && preferred < 65536) {
     if (await isPortFree(preferred)) return preferred;
   }
@@ -177,7 +186,7 @@ function requestJson(
     req.setTimeout(timeoutMs, () => {
       req.destroy(
         new Error(
-          `Timed out connecting to Hermes dashboard after ${timeoutMs}ms`,
+          `Timed out connecting to Hermes Agent Runtime dashboard after ${timeoutMs}ms`,
         ),
       );
     });
@@ -272,7 +281,7 @@ function probeDashboardWebSocketWithToken(
         const body = Buffer.concat(chunks).toString("utf8").trim();
         finish(
           new Error(
-            `Hermes dashboard chat WebSocket is unavailable (${res.statusCode}${
+            `Hermes Agent Runtime dashboard chat WebSocket is unavailable (${res.statusCode}${
               body ? `: ${body.slice(0, 160)}` : ""
             })`,
           ),
@@ -283,7 +292,7 @@ function probeDashboardWebSocketWithToken(
     req.setTimeout(timeoutMs, () => {
       finish(
         new Error(
-          `Timed out connecting to Hermes dashboard chat WebSocket after ${timeoutMs}ms`,
+          `Timed out connecting to Hermes Agent Runtime dashboard chat WebSocket after ${timeoutMs}ms`,
         ),
       );
     });
@@ -310,7 +319,7 @@ async function waitForDashboardReady(
     lastError instanceof Error
       ? lastError.message
       : "dashboard did not respond";
-  throw new Error(`Timed out waiting for Hermes dashboard: ${message}`);
+  throw new Error(`Timed out waiting for Hermes Agent Runtime dashboard: ${message}`);
 }
 
 export async function getDashboardStatus(
@@ -448,6 +457,121 @@ export async function startDashboard(
   }
 
   return { supported: true, running: true, connection, logPath };
+}
+
+/**
+ * Create a Dashboard session whose cwd comes from a main-process workspace
+ * capability. The renderer receives only session ids and continues to own its
+ * streaming WebSocket; it never receives the resolved path.
+ */
+export async function createDashboardWorkspaceSession(
+  workspacePath: string,
+  profile?: string,
+  messages?: Array<{ role: "assistant" | "user"; content: string }>,
+): Promise<DashboardWorkspaceSession> {
+  const status = await startDashboard(profile);
+  if (!status.running || !status.connection) {
+    throw new Error(status.error || "Dashboard is unavailable");
+  }
+  const response = await requestDashboardRpc<{
+    session_id?: unknown;
+    stored_session_id?: unknown;
+  }>(status.connection, "session.create", {
+    cols: 96,
+    cwd: workspacePath,
+    ...(messages?.length ? { messages } : {}),
+    ...(profile ? { profile } : {}),
+  });
+  const sessionId =
+    typeof response.session_id === "string" ? response.session_id : "";
+  if (!sessionId) {
+    throw new Error("Dashboard session.create returned no session id");
+  }
+  return {
+    sessionId,
+    storedSessionId:
+      typeof response.stored_session_id === "string"
+        ? response.stored_session_id
+        : sessionId,
+  };
+}
+
+/** Update an existing Dashboard session cwd from an opaque workspace id. */
+export async function setDashboardWorkspaceCwd(
+  workspacePath: string,
+  sessionId: string,
+  profile?: string,
+): Promise<void> {
+  const status = await startDashboard(profile);
+  if (!status.running || !status.connection) {
+    throw new Error(status.error || "Dashboard is unavailable");
+  }
+  await requestDashboardRpc(status.connection, "session.cwd.set", {
+    session_id: sessionId,
+    cwd: workspacePath,
+    ...(profile ? { profile } : {}),
+  });
+}
+
+function requestDashboardRpc<T>(
+  connection: DashboardConnection,
+  method: string,
+  params: Record<string, unknown>,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const requestId = randomBytes(12).toString("hex");
+    const socket = new WebSocket(connection.wsUrl);
+    let settled = false;
+    const finish = (error?: Error, value?: T): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        socket.close();
+      } catch {
+        // Best-effort close after a one-shot RPC.
+      }
+      if (error) reject(error);
+      else resolve(value as T);
+    };
+    const timeout = setTimeout(
+      () => finish(new Error(`Dashboard request timed out: ${method}`)),
+      30_000,
+    );
+    timeout.unref?.();
+    socket.on("open", () => {
+      socket.send(
+        JSON.stringify({ jsonrpc: "2.0", id: requestId, method, params }),
+      );
+    });
+    socket.on("message", (raw) => {
+      try {
+        const message = JSON.parse(raw.toString()) as {
+          id?: unknown;
+          result?: T;
+          error?: { message?: unknown } | unknown;
+        };
+        if (message.id !== requestId) return;
+        if (message.error) {
+          const detail =
+            message.error &&
+            typeof message.error === "object" &&
+            "message" in message.error
+              ? String(message.error.message || "Dashboard request failed")
+              : "Dashboard request failed";
+          finish(new Error(detail));
+          return;
+        }
+        finish(undefined, message.result as T);
+      } catch {
+        // Ignore unrelated/malformed events until timeout or response.
+      }
+    });
+    socket.on("error", (error) => finish(error));
+    socket.on("close", () => {
+      if (!settled) finish(new Error("Dashboard WebSocket closed"));
+    });
+  });
 }
 
 export function stopDashboard(profile?: string): boolean {

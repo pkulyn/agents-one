@@ -58,7 +58,7 @@ const PROMPT =
 
     // Bust the main-process model-config cache by writing it through IPC
     await page.evaluate(async (model) => {
-      await window.hermesAPI.setModelConfig("nous", model, "");
+      await window.agentsOneAPI.setModelConfig("nous", model, "");
     }, NOUS_MODEL);
     await new Promise((r) => setTimeout(r, 400));
 

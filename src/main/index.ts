@@ -1,5 +1,11 @@
 import { app } from "electron";
-import { cpSync, existsSync, mkdirSync, readdirSync } from "fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  writeFileSync,
+} from "fs";
 import { join, resolve } from "path";
 import { applyGpuPreferences, installGpuCrashGuard } from "./gpu-fallback";
 
@@ -10,11 +16,17 @@ function migrateLegacyUserData(): void {
   // rename from silently dropping small desktop-level preferences such as the
   // selected Hermes home, GPU fallback and update settings. Core agent data
   // stays in HERMES_HOME and is deliberately not moved.
-  if (process.env.HERMES_DESKTOP_USER_DATA_DIR?.trim()) return;
+  if (
+    process.env.AGENTS_ONE_USER_DATA_DIR?.trim() ||
+    process.env.HERMES_DESKTOP_USER_DATA_DIR?.trim()
+  )
+    return;
 
   try {
     const current = resolve(app.getPath("userData"));
     const appData = app.getPath("appData");
+    const migrationMarker = join(current, ".agents-one-brand-migration-v1");
+    if (existsSync(migrationMarker)) return;
     const legacyDirectories = [
       join(appData, "Hermes One"),
       join(appData, "hermes-desktop"),
@@ -33,6 +45,7 @@ function migrateLegacyUserData(): void {
       }
       break;
     }
+    writeFileSync(migrationMarker, "completed\n", "utf8");
   } catch {
     // A failed preference migration must never prevent the application from
     // starting. HERMES_HOME data remains available independently.

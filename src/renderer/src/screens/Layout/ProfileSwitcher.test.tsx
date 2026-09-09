@@ -38,7 +38,7 @@ function installHermesAPI(
   profiles: ProfileInfo[],
   runtimes: AgentRuntimeDefinition[] = [],
 ): void {
-  Object.defineProperty(window, "hermesAPI", {
+  Object.defineProperty(window, "agentsOneAPI", {
     configurable: true,
     value: {
       listProfiles: vi.fn().mockResolvedValue(profiles),

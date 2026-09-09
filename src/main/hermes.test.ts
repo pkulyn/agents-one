@@ -1,4 +1,3 @@
-import http from "http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // hermes.ts pulls in the full main-process import graph; mock the modules with
@@ -22,6 +21,8 @@ vi.mock("./config", () => ({
   getConfigValue: vi.fn(() => null),
   getModelConfig: vi.fn(),
   readEnv: vi.fn(() => ({})),
+  setEnvValue: vi.fn(),
+  invalidateSecretsCache: vi.fn(),
 }));
 vi.mock("./utils", () => ({
   pidIsAliveAs: vi.fn(() => false),
@@ -36,7 +37,10 @@ vi.mock("./utils", () => ({
 }));
 vi.mock("./gateway-ports", () => ({ getProfilePort: vi.fn(() => 8642) }));
 vi.mock("./models", () => ({ readModels: vi.fn(() => []) }));
-vi.mock("./secrets", () => ({ providerListSafe: vi.fn(() => ({})) }));
+vi.mock("./secrets", () => ({
+  getSecret: vi.fn(() => null),
+  providerListSafe: vi.fn(() => ({})),
+}));
 vi.mock("child_process", () => {
   const spawn = vi.fn();
   return { spawn, ChildProcess: class {}, default: { spawn } };
@@ -47,14 +51,19 @@ import {
   getApiServerKey,
   getConnectionConfig,
   getModelConfig,
+  invalidateSecretsCache,
   readEnv,
+  setEnvValue,
 } from "./config";
 import type { ConnectionConfig } from "./config";
-import { providerListSafe } from "./secrets";
+import { getSecret, providerListSafe } from "./secrets";
 import {
+  getVoiceInputPublicConfig,
+  saveVoiceInputConfig,
   sendMessage,
   shouldForceCliForSessionOverride,
   stopHealthPolling,
+  testVoiceInputService,
   transcribeAudio,
 } from "./hermes";
 import type { ChatCallbacks } from "./hermes";
@@ -63,10 +72,15 @@ const mockedGetModelConfig = vi.mocked(getModelConfig);
 const mockedGetApiServerKey = vi.mocked(getApiServerKey);
 const mockedGetConnectionConfig = vi.mocked(getConnectionConfig);
 const mockedReadEnv = vi.mocked(readEnv);
+const mockedSetEnvValue = vi.mocked(setEnvValue);
+const mockedInvalidateSecretsCache = vi.mocked(invalidateSecretsCache);
+const mockedGetSecret = vi.mocked(getSecret);
 const mockedProviderListSafe = vi.mocked(providerListSafe);
 const mockedSpawn = vi.mocked(spawn);
 
-function testConnection(fields: Partial<ConnectionConfig> = {}): ConnectionConfig {
+function testConnection(
+  fields: Partial<ConnectionConfig> = {},
+): ConnectionConfig {
   return {
     mode: "local",
     ...fields,
@@ -75,29 +89,21 @@ function testConnection(fields: Partial<ConnectionConfig> = {}): ConnectionConfi
 
 describe("transcribeAudio API route", () => {
   const fetchMock = vi.fn();
-  // The built-in Hermes connection is local-only, so transcribeAudio first
-  // probes the local gateway /health over http.request. Respond 200 so the
-  // readiness gate passes and the transcription fetch runs.
-  const httpReqSpy = vi
-    .spyOn(http, "request")
-    .mockImplementation((url: unknown, ...rest: unknown[]) => {
-      void url;
-      const cb = rest[rest.length - 1] as (res: unknown) => void;
-      cb({ statusCode: 200, resume: () => {} });
-      return {
-        on: () => {},
-        end: () => {},
-        destroy: () => {},
-      } as unknown as ReturnType<typeof http.request>;
-    });
 
   beforeEach(() => {
+    delete process.env.AGENTS_ONE_VOICE_API_URL;
+    delete process.env.AGENTS_ONE_VOICE_API_KEY;
     mockedGetApiServerKey.mockReset();
     mockedGetApiServerKey.mockReturnValue("");
     mockedGetConnectionConfig.mockReset();
     mockedGetConnectionConfig.mockReturnValue(testConnection({}));
     mockedGetModelConfig.mockReset();
     mockedReadEnv.mockReset();
+    mockedReadEnv.mockReturnValue({});
+    mockedSetEnvValue.mockReset();
+    mockedInvalidateSecretsCache.mockReset();
+    mockedGetSecret.mockReset();
+    mockedGetSecret.mockReturnValue(null);
     mockedProviderListSafe.mockReset();
     mockedGetModelConfig.mockReturnValue({
       baseUrl: "https://api.groq.com/openai/v1",
@@ -105,14 +111,15 @@ describe("transcribeAudio API route", () => {
     fetchMock.mockReset();
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ ok: true, transcript: "transcribed" }),
+      json: async () => ({ text: "transcribed" }),
     });
     vi.stubGlobal("fetch", fetchMock);
   });
 
   afterEach(() => {
+    delete process.env.AGENTS_ONE_VOICE_API_URL;
+    delete process.env.AGENTS_ONE_VOICE_API_KEY;
     vi.unstubAllGlobals();
-    httpReqSpy.mockClear();
   });
 
   function sentRequest(): [string, RequestInit] {
@@ -120,39 +127,93 @@ describe("transcribeAudio API route", () => {
     return fetchMock.mock.calls[0] as [string, RequestInit];
   }
 
-  function sentJsonBody(): { data_url: string; mime_type: string } {
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    return JSON.parse(init.body as string) as {
-      data_url: string;
-      mime_type: string;
-    };
-  }
-
-  it("posts desktop recordings to the local Hermes audio endpoint", async () => {
+  it("keeps voice input disabled until an open-source user configures a service", async () => {
+    // @lat: [[voice-input#Main-process service routing]]
+    expect(getVoiceInputPublicConfig("default")).toEqual({
+      enabled: false,
+      url: "",
+      hasApiKey: false,
+      configured: false,
+    });
     await expect(
       transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default"),
-    ).resolves.toBe("transcribed");
-
-    const [url, init] = sentRequest();
-    expect(url).toBe("http://127.0.0.1:8642/api/audio/transcribe");
-    expect(init.method).toBe("POST");
-    expect(init.headers).toMatchObject({
-      "Content-Type": "application/json",
-    });
-    expect(sentJsonBody()).toEqual({
-      data_url: "data:audio/webm;base64,AQID",
-      mime_type: "audio/webm",
-    });
+    ).rejects.toThrow("语音输入尚未启用");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("calls the local desktop audio route", async () => {
-    await transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default");
+  it("does not route a legacy Hermes selector to local transcription", async () => {
+    mockedReadEnv.mockReturnValue({ AGENTS_ONE_VOICE_API_URL: "hermes" });
+    await expect(
+      transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default"),
+    ).rejects.toThrow("语音服务地址无效");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the configured OpenAI-compatible voice service with multipart audio", async () => {
+    // @lat: [[voice-input#Main-process service routing]]
+    mockedReadEnv.mockReturnValue({
+      AGENTS_ONE_VOICE_API_URL: "http://115.191.47.168/voice",
+    });
+    mockedGetSecret.mockReturnValue("test-token");
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: "你好，Agents One。" }),
+    });
+
+    await expect(
+      transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm;codecs=opus"),
+    ).resolves.toBe("你好，Agents One。");
+
+    const [url, init] = sentRequest();
+    expect(url).toBe("http://115.191.47.168/voice/v1/audio/transcriptions");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ Authorization: "Bearer test-token" });
+    const form = init.body as FormData;
+    const file = form.get("file") as File;
+    expect(file.name).toBe("recording.webm");
+    expect(file.type).toBe("audio/webm;codecs=opus");
+    expect(file.size).toBe(3);
+  });
+
+  it("accepts a full transcription endpoint without duplicating its path", async () => {
+    mockedReadEnv.mockReturnValue({
+      AGENTS_ONE_VOICE_API_URL:
+        "https://voice.example.test/voice/v1/audio/transcriptions",
+    });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: "done" }),
+    });
+
+    await transcribeAudio(new Uint8Array([4]), "audio/mp4");
 
     const [url] = sentRequest();
-    expect(url).toBe("http://127.0.0.1:8642/api/audio/transcribe");
+    expect(url).toBe(
+      "https://voice.example.test/voice/v1/audio/transcriptions",
+    );
+  });
+
+  it("accepts the v1.4 direct WebSocket stream endpoint", async () => {
+    mockedReadEnv.mockReturnValue({
+      AGENTS_ONE_VOICE_API_URL:
+        "ws://115.191.47.168/voice/v1/audio/transcriptions/stream",
+    });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: "done" }),
+    });
+
+    await transcribeAudio(new Uint8Array([4]), "audio/mp4");
+
+    const [url] = sentRequest();
+    expect(url).toBe("http://115.191.47.168/voice/v1/audio/transcriptions");
   });
 
   it("surfaces backend transcription errors", async () => {
+    mockedReadEnv.mockReturnValue({
+      AGENTS_ONE_VOICE_API_URL: "http://voice.example.test/voice",
+      AGENTS_ONE_VOICE_ENABLED: "1",
+    });
     fetchMock.mockResolvedValue({
       ok: false,
       status: 500,
@@ -161,7 +222,78 @@ describe("transcribeAudio API route", () => {
 
     await expect(
       transcribeAudio(new Uint8Array([1, 2, 3]), "audio/webm", "default"),
-    ).rejects.toThrow("Transcription failed (500). internal server error");
+    ).rejects.toThrow(
+      "Voice service transcription failed (500). internal server error",
+    );
+  });
+
+  it("saves only whitelisted voice settings and never returns the API key", () => {
+    mockedReadEnv.mockReturnValue({
+      AGENTS_ONE_VOICE_API_URL: "https://voice.example.test/voice",
+      AGENTS_ONE_VOICE_ENABLED: "1",
+    });
+    mockedGetSecret.mockReturnValue("stored-key");
+
+    const result = saveVoiceInputConfig(
+      {
+        enabled: true,
+        url: "https://voice.example.test/voice/",
+        apiKey: "replacement-key",
+      },
+      "default",
+    );
+
+    expect(mockedSetEnvValue).toHaveBeenCalledWith(
+      "AGENTS_ONE_VOICE_ENABLED",
+      "1",
+      "default",
+    );
+    expect(mockedSetEnvValue).toHaveBeenCalledWith(
+      "AGENTS_ONE_VOICE_API_URL",
+      "https://voice.example.test/voice",
+      "default",
+    );
+    expect(mockedSetEnvValue).toHaveBeenCalledWith(
+      "AGENTS_ONE_VOICE_API_KEY",
+      "replacement-key",
+      "default",
+    );
+    expect(mockedInvalidateSecretsCache).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      enabled: true,
+      url: "https://voice.example.test/voice",
+      hasApiKey: true,
+      configured: true,
+    });
+    expect(result).not.toHaveProperty("apiKey");
+  });
+
+  it("tests the service health endpoint without uploading audio", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: "ok",
+        version: "1.4.0",
+        stream_backend: "qwen3",
+      }),
+    });
+
+    await expect(
+      testVoiceInputService({
+        url: "https://voice.example.test/voice",
+        apiKey: "draft-key",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      message: "语音服务连接正常。",
+      version: "1.4.0",
+      streamBackend: "qwen3",
+    });
+    const [url, init] = sentRequest();
+    expect(String(url)).toBe("https://voice.example.test/voice/health");
+    expect(init.method).toBeUndefined();
+    expect(init.headers).toEqual({ Authorization: "Bearer draft-key" });
+    expect(init.body).toBeUndefined();
   });
 });
 

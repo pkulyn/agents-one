@@ -53,10 +53,10 @@ function restoreFile(file, snapshot) {
 
     // Phase A - observe HERMES_HOME + engine version.
     const home = await page.evaluate(
-      async () => await window.hermesAPI.getHermesHome(),
+      async () => await window.agentsOneAPI.getHermesHome(),
     );
     const engine = await page.evaluate(
-      async () => await window.hermesAPI.getHermesVersion(),
+      async () => await window.agentsOneAPI.getHermesVersion(),
     );
     console.log("HERMES_HOME:", home);
     console.log("Engine:    ", engine);
@@ -103,7 +103,7 @@ function restoreFile(file, snapshot) {
       console.log("[C] Temporarily deleted models.json to force re-seed");
     }
     const listed = await page.evaluate(
-      async () => await window.hermesAPI.listModels(),
+      async () => await window.agentsOneAPI.listModels(),
     );
     const found = listed.find((model) => model.name === PROVIDER_NAME);
     console.log(

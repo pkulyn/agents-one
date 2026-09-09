@@ -5,6 +5,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "fs";
 import { tmpdir } from "os";
@@ -46,5 +47,33 @@ describe("safe-write workspace protection", () => {
     expect(readFileSync(join(workspace, "created.txt"), "utf8")).toBe("new");
     expect(existsSync(join(workspace, "moved.txt"))).toBe(true);
     expect(protection.restoreAndDispose()).toEqual([]);
+  });
+
+  it("restores an original file instead of following a replacement symlink", () => {
+    const profileHome = mkdtempSync(join(tmpdir(), "agents-one-profile-"));
+    const workspace = mkdtempSync(join(tmpdir(), "agents-one-safe-write-"));
+    const outside = mkdtempSync(join(tmpdir(), "agents-one-outside-"));
+    roots.push(profileHome, workspace, outside);
+    const original = join(workspace, "keep.txt");
+    const outsideFile = join(outside, "outside.txt");
+    writeFileSync(original, "original", "utf8");
+    writeFileSync(outsideFile, "outside", "utf8");
+    const protection = protectWorkspaceFromRemoval(
+      workspace,
+      undefined,
+      profileHome,
+    );
+
+    rmSync(original);
+    try {
+      symlinkSync(outsideFile, original, "file");
+    } catch {
+      // Developer Mode/enterprise policy may forbid symlinks on Windows.
+      return;
+    }
+
+    expect(protection.restoreAndDispose()).toEqual(["keep.txt"]);
+    expect(readFileSync(original, "utf8")).toBe("original");
+    expect(readFileSync(outsideFile, "utf8")).toBe("outside");
   });
 });

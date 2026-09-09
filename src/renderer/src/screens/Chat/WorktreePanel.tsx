@@ -4,10 +4,11 @@ import {
   ChevronRight,
   ChevronDown,
   SquareTerminal,
+  File,
 } from "lucide-react";
-import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { FileViewer } from "./FileViewer";
 import { useI18n } from "../../components/useI18n";
+import { readMigratedStorageValue } from "../../utils/brandMigration";
 
 interface FileEntry {
   name: string;
@@ -15,33 +16,34 @@ interface FileEntry {
 }
 
 interface WorktreePanelProps {
-  folderPath: string;
+  /** Legacy absolute path; only used by the original Chat screen. */
+  folderPath?: string;
+  /** Opaque registered-project capability; relative paths are used with it. */
+  workspaceId?: string;
+  /** Presentation-only label, used when no path is exposed to the renderer. */
+  folderLabel?: string;
 }
 
 const MIN_PANEL_WIDTH = 220;
-const WIDTH_STORAGE_KEY = "hermes:worktreePanelWidth";
+const WIDTH_STORAGE_KEY = "agents-one.worktree-panel-width.v1";
+const LEGACY_WIDTH_STORAGE_KEY = "hermes:worktreePanelWidth";
 const maxPanelWidth = (): number =>
   Math.max(MIN_PANEL_WIDTH, window.innerWidth - 360);
 
 interface TreeItemProps {
   entry: FileEntry;
   parentPath: string;
+  workspaceId?: string;
   depth: number;
   onFileClick?: (filePath: string) => void;
 }
 
 function FileIcon({ filename }: { filename: string }): React.JSX.Element {
-  const iconType = getIconForFile(filename);
-  const iconData = iconType ? getSVGStringFromFileType(iconType) : null;
-  const svgString =
-    iconData && typeof iconData === "object" && "svg" in iconData
-      ? iconData.svg
-      : "";
-
   return (
-    <div
-      className="worktree-file-icon-wrapper"
-      dangerouslySetInnerHTML={{ __html: svgString }}
+    <File
+      size={14}
+      aria-label={filename}
+      className="worktree-icon worktree-file-icon"
     />
   );
 }
@@ -49,6 +51,7 @@ function FileIcon({ filename }: { filename: string }): React.JSX.Element {
 function TreeItem({
   entry,
   parentPath,
+  workspaceId,
   depth,
   onFileClick,
 }: TreeItemProps): React.JSX.Element {
@@ -57,12 +60,16 @@ function TreeItem({
   const [children, setChildren] = useState<FileEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const fullPath = `${parentPath}/${entry.name}`;
+  const fullPath = workspaceId
+    ? [parentPath, entry.name].filter(Boolean).join("/")
+    : `${parentPath}/${entry.name}`;
 
   const loadChildren = useCallback(async () => {
     if (!entry.isDirectory || children !== null) return;
     setIsLoading(true);
-    const result = await window.hermesAPI.readDirectory(fullPath);
+    const result = workspaceId
+      ? await window.agentsOneAPI.readWorkspaceDirectory(workspaceId, fullPath)
+      : await window.agentsOneAPI.readDirectory(fullPath);
     if (result) {
       // Sort: directories first, then files, both alphabetically
       const sorted = result.sort((a, b) => {
@@ -74,7 +81,7 @@ function TreeItem({
       setChildren(sorted);
     }
     setIsLoading(false);
-  }, [entry.isDirectory, fullPath, children]);
+  }, [entry.isDirectory, fullPath, children, workspaceId]);
 
   const handleClick = (): void => {
     if (entry.isDirectory) {
@@ -138,6 +145,7 @@ function TreeItem({
                 key={`${fullPath}/${child.name}`}
                 entry={child}
                 parentPath={fullPath}
+                workspaceId={workspaceId}
                 depth={depth + 1}
                 onFileClick={onFileClick}
               />
@@ -151,6 +159,8 @@ function TreeItem({
 
 export const WorktreePanel = memo(function WorktreePanel({
   folderPath,
+  workspaceId,
+  folderLabel,
 }: WorktreePanelProps): React.JSX.Element {
   const { t } = useI18n();
   const [entries, setEntries] = useState<FileEntry[] | null>(null);
@@ -159,7 +169,9 @@ export const WorktreePanel = memo(function WorktreePanel({
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [width, setWidth] = useState<number>(() => {
-    const saved = Number(localStorage.getItem(WIDTH_STORAGE_KEY));
+    const saved = Number(
+      readMigratedStorageValue(WIDTH_STORAGE_KEY, LEGACY_WIDTH_STORAGE_KEY),
+    );
     return Number.isFinite(saved) && saved >= MIN_PANEL_WIDTH ? saved : 240;
   });
   const [isResizing, setIsResizing] = useState(false);
@@ -201,7 +213,11 @@ export const WorktreePanel = memo(function WorktreePanel({
     setTerminalError(null);
 
     const loadRoot = async (): Promise<void> => {
-      const result = await window.hermesAPI.readDirectory(folderPath);
+      const result = workspaceId
+        ? await window.agentsOneAPI.readWorkspaceDirectory(workspaceId, "")
+        : folderPath
+          ? await window.agentsOneAPI.readDirectory(folderPath)
+          : null;
       if (cancelled) return;
       if (result === null) {
         setError(t("chat.worktree.errorLoading"));
@@ -222,15 +238,22 @@ export const WorktreePanel = memo(function WorktreePanel({
     return () => {
       cancelled = true;
     };
-  }, [folderPath]);
+  }, [folderPath, workspaceId, t]);
 
   // Get the folder name from the path
   const folderName =
-    folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
+    folderLabel ||
+    (folderPath
+      ? folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath
+      : t("chat.worktree.projectWorkspace"));
 
   const handleOpenTerminal = async (): Promise<void> => {
     setTerminalError(null);
-    const opened = await window.hermesAPI.openTerminal(folderPath);
+    const opened = workspaceId
+      ? await window.agentsOneAPI.openWorkspaceTerminal(workspaceId)
+      : folderPath
+        ? await window.agentsOneAPI.openTerminal(folderPath)
+        : false;
     if (!opened) setTerminalError(t("chat.worktree.openTerminalFailed"));
   };
 
@@ -245,7 +268,7 @@ export const WorktreePanel = memo(function WorktreePanel({
       />
       <div className="worktree-header">
         <Folder size={16} className="worktree-header-icon" />
-        <span className="worktree-header-title" title={folderPath}>
+        <span className="worktree-header-title" title={folderLabel || folderPath}>
           {folderName}
         </span>
         <button
@@ -273,9 +296,10 @@ export const WorktreePanel = memo(function WorktreePanel({
         ) : (
           entries.map((entry) => (
             <TreeItem
-              key={`${folderPath}/${entry.name}`}
+              key={`${workspaceId || folderPath}/${entry.name}`}
               entry={entry}
-              parentPath={folderPath}
+              parentPath={workspaceId ? "" : folderPath || ""}
+              workspaceId={workspaceId}
               depth={0}
               onFileClick={setSelectedFile}
             />
@@ -285,6 +309,7 @@ export const WorktreePanel = memo(function WorktreePanel({
       {selectedFile && (
         <FileViewer
           filePath={selectedFile}
+          workspaceId={workspaceId}
           onClose={() => setSelectedFile(null)}
         />
       )}

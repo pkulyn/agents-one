@@ -15,7 +15,7 @@ import { fileToAvatarDataUrl } from "../../utils/imageResize";
 import { useI18n } from "../useI18n";
 import { AppModal, AppModalTitle } from "../modal/AppModal";
 
-/** Mirrors the entry shape returned by `window.hermesAPI.listProfiles()`. */
+/** Mirrors the entry shape returned by `window.agentsOneAPI.listProfiles()`. */
 interface ProfileInfo {
   id: string;
   name: string;
@@ -93,7 +93,7 @@ export default function ProfileModal({
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      const list = await window.hermesAPI.listProfiles();
+      const list = await window.agentsOneAPI.listProfiles();
       setProfile(list.find((p) => p.id === id) ?? null);
     } catch {
       /* keep last-known profile */
@@ -122,7 +122,7 @@ export default function ProfileModal({
 
   async function handlePickColor(color: string): Promise<void> {
     setProfile((cur) => (cur ? { ...cur, color } : cur));
-    const result = await window.hermesAPI.setProfileColor(id, color);
+    const result = await window.agentsOneAPI.setProfileColor(id, color);
     if (!result.success) setError(result.error || t("agents.appearanceFailed"));
     await afterMutation();
   }
@@ -135,7 +135,7 @@ export default function ProfileModal({
     if (!file) return;
     try {
       const dataUrl = await fileToAvatarDataUrl(file);
-      const result = await window.hermesAPI.setProfileAvatar(id, dataUrl);
+      const result = await window.agentsOneAPI.setProfileAvatar(id, dataUrl);
       if (!result.success)
         setError(result.error || t("agents.uploadImageFailed"));
     } catch {
@@ -145,7 +145,7 @@ export default function ProfileModal({
   }
 
   async function handleRemoveAvatar(): Promise<void> {
-    const result = await window.hermesAPI.removeProfileAvatar(id);
+    const result = await window.agentsOneAPI.removeProfileAvatar(id);
     if (!result.success) setError(result.error || t("agents.appearanceFailed"));
     await afterMutation();
   }
@@ -166,7 +166,7 @@ export default function ProfileModal({
     setNameSaving(true);
     setError("");
     try {
-      const result = await window.hermesAPI.setProfileName(
+      const result = await window.agentsOneAPI.setProfileName(
         profile.id,
         nameDraft,
       );
@@ -200,7 +200,7 @@ export default function ProfileModal({
   async function handleDelete(): Promise<void> {
     setConfirmDelete(false);
     setError("");
-    const result = await window.hermesAPI.deleteProfile(id);
+    const result = await window.agentsOneAPI.deleteProfile(id);
     if (result.success) {
       onDeleted?.(id);
       onChanged?.();

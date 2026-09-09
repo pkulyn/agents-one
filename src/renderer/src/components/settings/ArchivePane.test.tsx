@@ -23,7 +23,7 @@ describe("ArchivePane", () => {
     listRuntimeConversations.mockResolvedValue([
       { id: "runtime-1", title: "Runtime 项目任务", updatedAt: 4, workspace: "D:/work" },
     ]);
-    Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
+    Object.defineProperty(window, "agentsOneAPI", { configurable: true, value: {
       listArchivedItems,
       listCachedSessions,
       listRuntimeConversations,

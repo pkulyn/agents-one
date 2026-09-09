@@ -4,8 +4,8 @@ import { HERMES_HOME } from "./installer";
 import { normalizeProfileName } from "./utils";
 import { getConfigValue, setConfigValue } from "./config";
 
-function envPort(name: string, fallback: number): number {
-  const raw = process.env[name];
+function envPort(names: string[], fallback: number): number {
+  const raw = names.map((name) => process.env[name]).find(Boolean);
   if (!raw || !/^\d+$/.test(raw.trim())) return fallback;
   const port = parseInt(raw.trim(), 10);
   return port > 0 && port < 65536 ? port : fallback;
@@ -13,18 +13,21 @@ function envPort(name: string, fallback: number): number {
 
 // The default profile keeps the historical port so existing installs and
 // docs (curl examples, etc.) keep working. Sandbox/dev runners can override
-// these via env vars to avoid colliding with a user's running Hermes gateway.
+// these via env vars to avoid colliding with a user's running Hermes Agent Runtime gateway.
 export const DEFAULT_API_SERVER_PORT = envPort(
-  "HERMES_DESKTOP_DEFAULT_API_PORT",
+  ["AGENTS_ONE_DEFAULT_API_PORT", "HERMES_DESKTOP_DEFAULT_API_PORT"],
   8642,
 );
 const PORT_RANGE_START = envPort(
-  "HERMES_DESKTOP_PORT_RANGE_START",
+  ["AGENTS_ONE_PORT_RANGE_START", "HERMES_DESKTOP_PORT_RANGE_START"],
   DEFAULT_API_SERVER_PORT + 1,
 );
 const PORT_RANGE_END = Math.max(
   PORT_RANGE_START,
-  envPort("HERMES_DESKTOP_PORT_RANGE_END", PORT_RANGE_START + 99),
+  envPort(
+    ["AGENTS_ONE_PORT_RANGE_END", "HERMES_DESKTOP_PORT_RANGE_END"],
+    PORT_RANGE_START + 99,
+  ),
 );
 const API_SERVER_PORT_PATH = "platforms.api_server.extra.port";
 

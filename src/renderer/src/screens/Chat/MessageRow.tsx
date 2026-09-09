@@ -1,7 +1,6 @@
 import { memo, useMemo, useState, useCallback } from "react";
-import { formatDistanceToNowStrict } from "date-fns";
 import { Grid } from "react-loader-spinner";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, GitBranch } from "lucide-react";
 import agentsOneMark from "../../assets/agents-one-mark.svg";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AttachmentChip } from "../../components/AttachmentChip";
@@ -57,28 +56,29 @@ function isValidEpochMs(ms: number): boolean {
   );
 }
 
-/**
- * Relative "time ago" label for the hover-time element.
- */
-function formatBubbleTime(ms: number): string | null {
+/** A stable, full Chinese timestamp shown in each actual conversation bubble. */
+function formatBubbleTime(ms: number): string {
   try {
-    if (Date.now() - ms < 10_000 && Date.now() >= ms) return "just now";
-    return formatDistanceToNowStrict(ms, { addSuffix: true });
-  } catch {
-    return null;
-  }
-}
-
-/** Absolute timestamp for the tooltip and `<time dateTime>` value. */
-function formatBubbleTimeAbsolute(ms: number): string {
-  try {
-    return new Date(ms).toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
+    const value = new Date(ms);
+    const weekday = ["日", "一", "二", "三", "四", "五", "六"][
+      value.getDay()
+    ];
+    const hour = String(value.getHours()).padStart(2, "0");
+    const minute = String(value.getMinutes()).padStart(2, "0");
+    return `${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日（星期${weekday}）${hour}:${minute}`;
   } catch {
     return "";
   }
+}
+
+function formatRuntimeDuration(durationMs: number): string {
+  const seconds = Math.max(0, Math.round(durationMs / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  if (hours) return `${hours} 小时 ${minutes} 分`;
+  if (minutes) return `${minutes} 分 ${remainder} 秒`;
+  return `${remainder} 秒`;
 }
 
 function isChatBubbleMessage(msg: ChatMessage): msg is ChatBubbleMessage {
@@ -93,7 +93,7 @@ function isChatBubbleMessage(msg: ChatMessage): msg is ChatBubbleMessage {
 export const HermesAvatar = memo(function HermesAvatar({
   size = 30,
   active = false,
-  name = "Hermes",
+  name = "Agent",
   color,
   avatar,
   onClick,
@@ -179,6 +179,8 @@ interface MessageRowProps {
   agentAvatar?: string | null;
   agentColor?: string | null;
   onAgentAvatarClick?: () => void;
+  /** Runtime conversations can fork a new read-only conversation from a reply. */
+  onBranchFromMessage?: (messageId: string) => void;
 }
 
 export const MessageRow = memo(function MessageRow({
@@ -188,10 +190,11 @@ export const MessageRow = memo(function MessageRow({
   onApprove,
   onDeny,
   showAvatar = true,
-  agentName = "Hermes",
+  agentName = "Agent",
   agentAvatar,
   agentColor,
   onAgentAvatarClick,
+  onBranchFromMessage,
 }: MessageRowProps): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -232,7 +235,7 @@ export const MessageRow = memo(function MessageRow({
   const handleCopy = useCallback(async () => {
     if (!displayBubbleContent) return;
     try {
-      await window.hermesAPI.copyToClipboard(displayBubbleContent);
+      await window.agentsOneAPI.copyToClipboard(displayBubbleContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -271,7 +274,11 @@ export const MessageRow = memo(function MessageRow({
   const hasAttachments = !!msg.attachments && msg.attachments.length > 0;
   const epochMs = coerceToEpochMs(msg.timestamp);
   const isTimeValid = isValidEpochMs(epochMs);
-  const bubbleTime = isTimeValid ? formatBubbleTime(epochMs) : null;
+  const bubbleTime = isTimeValid ? formatBubbleTime(epochMs) : "";
+  const showMessageChrome =
+    !msg.isControlMessage && !isLoading && !msg.isSlashLoader;
+  const canBranch =
+    showMessageChrome && msg.role === "agent" && Boolean(onBranchFromMessage);
 
   const bubble = (
     <div
@@ -279,19 +286,6 @@ export const MessageRow = memo(function MessageRow({
         msg.error ? " chat-bubble-error" : ""
       }`}
     >
-      {displayBubbleContent && !isLoading && !msg.isSlashLoader && (
-        <div className="chat-bubble-actions">
-          <button
-            type="button"
-            className="chat-bubble-copy"
-            onClick={handleCopy}
-            title={copied ? t("common.copied") : t("chat.copyMessage")}
-            aria-label={copied ? t("common.copied") : t("chat.copyMessage")}
-          >
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-          </button>
-        </div>
-      )}
       {hasAttachments && (
         <div className="chat-message-attachments">
           {msg.attachments!.map((att) => (
@@ -340,6 +334,62 @@ export const MessageRow = memo(function MessageRow({
     </div>
   );
 
+  // The footer is deliberately a sibling of the card, not card content: it
+  // stays discoverable on hover while leaving reading and Markdown layout
+  // completely uninterrupted.
+  const messageFooter =
+    showMessageChrome && (bubbleTime || displayBubbleContent) ? (
+      <footer className={`chat-bubble-footer chat-bubble-footer--${msg.role}`}>
+        {msg.role === "agent" && displayBubbleContent ? (
+          <button
+            type="button"
+            className="chat-bubble-footer-action"
+            onClick={handleCopy}
+            title={copied ? t("common.copied") : t("chat.copyMessage")}
+            aria-label={copied ? t("common.copied") : t("chat.copyMessage")}
+          >
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+          </button>
+        ) : null}
+        {canBranch ? (
+          <button
+            type="button"
+            className="chat-bubble-footer-action"
+            onClick={() => onBranchFromMessage?.(msg.id)}
+            title="从这条答复创建新对话分支"
+            aria-label="从这条答复创建新对话分支"
+          >
+            <GitBranch size={15} />
+          </button>
+        ) : null}
+        {bubbleTime ? (
+          <time
+            className="chat-bubble-footer-time"
+            dateTime={new Date(epochMs).toISOString()}
+            title={bubbleTime}
+          >
+            {bubbleTime}
+          </time>
+        ) : null}
+        {msg.role === "agent" && msg.runtimeMeta?.durationMs !== undefined ? (
+          <span className="chat-bubble-footer-duration">
+            · 用时 {formatRuntimeDuration(msg.runtimeMeta.durationMs)}
+          </span>
+        ) : null}
+        {msg.role === "user" && displayBubbleContent ? (
+          <button
+            type="button"
+            className="chat-bubble-footer-action"
+            onClick={handleCopy}
+            title={copied ? t("common.copied") : t("chat.copyMessage")}
+            aria-label={copied ? t("common.copied") : t("chat.copyMessage")}
+          >
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+          </button>
+        ) : null}
+      </footer>
+    ) : null;
+
   return (
     <div
       className={`chat-message chat-message-${msg.role}${
@@ -363,18 +413,13 @@ export const MessageRow = memo(function MessageRow({
         <div className="chat-agent-message-content">
           {showAvatar && <span className="chat-agent-name">{agentName}</span>}
           {bubble}
+          {messageFooter}
         </div>
       ) : (
-        bubble
-      )}
-      {bubbleTime && isTimeValid && (
-        <time
-          className="chat-bubble-time"
-          dateTime={new Date(epochMs).toISOString()}
-          title={formatBubbleTimeAbsolute(epochMs)}
-        >
-          {bubbleTime}
-        </time>
+        <div className="chat-user-message-content">
+          {bubble}
+          {messageFooter}
+        </div>
       )}
       {showApprovalBar && (
         <div className="chat-approval-bar">

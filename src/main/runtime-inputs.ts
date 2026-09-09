@@ -1,4 +1,12 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { createHash, randomUUID } from "crypto";
 import { basename, join, relative, resolve } from "path";
 import type { Attachment } from "../shared/attachments";
@@ -10,10 +18,12 @@ import {
 import type { RuntimeInputArtifact } from "../shared/agent-runtimes";
 import { profileHome } from "./utils";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
+import { isStagedAttachmentPath } from "./attachment-staging";
 
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 const MAX_TOTAL_INPUT_BYTES = 30 * 1024 * 1024;
-const SENSITIVE_FILE_NAME = /^(?:\.env(?:\..*)?|.*\.(?:pem|key|p12|pfx)|.*(?:credential|secret|token|password).*)$/i;
+const SENSITIVE_FILE_NAME =
+  /^(?:\.env(?:\..*)?|.*\.(?:pem|key|p12|pfx)|.*(?:credential|secret|token|password).*)$/i;
 
 export interface PreparedRuntimeInputs {
   directory?: string;
@@ -26,6 +36,7 @@ export interface PreparedRuntimeInputs {
 function safeName(value: unknown, fallback: string): string {
   const name = typeof value === "string" ? basename(value).trim() : "";
   const cleaned = name
+    // eslint-disable-next-line no-control-regex -- strip invalid filename controls
     .replace(/[\x00-\x1F<>:"/\\|?*]/g, "")
     .replace(/\.{2,}/g, ".")
     .trim()
@@ -33,7 +44,11 @@ function safeName(value: unknown, fallback: string): string {
   return cleaned && cleaned !== "." && cleaned !== ".." ? cleaned : fallback;
 }
 
-function uniquePath(directory: string, fileName: string, index: number): string {
+function uniquePath(
+  directory: string,
+  fileName: string,
+  index: number,
+): string {
   const candidate = join(directory, fileName);
   if (!existsSync(candidate)) return candidate;
   const dot = fileName.lastIndexOf(".");
@@ -90,7 +105,9 @@ export function prepareRuntimeInputs(
     return { promptContext: "", artifacts: [], imagePaths: [], files: [] };
   }
   if (attachments.length > MAX_ATTACHMENTS_PER_MESSAGE) {
-    throw new Error(`A task may include at most ${MAX_ATTACHMENTS_PER_MESSAGE} input files.`);
+    throw new Error(
+      `A task may include at most ${MAX_ATTACHMENTS_PER_MESSAGE} input files.`,
+    );
   }
 
   const directory = inputDirectory(profile, token, rootOverride);
@@ -134,6 +151,11 @@ export function prepareRuntimeInputs(
         throw new Error(`${name} has no source path.`);
       }
       const source = realpathSync(resolve(attachment.path));
+      if (!isStagedAttachmentPath(source)) {
+        throw new Error(
+          `${name} is not a main-process staged attachment and cannot be passed to a Runtime.`,
+        );
+      }
       const info = statSync(source);
       if (!info.isFile()) throw new Error(`${name} is not a file.`);
       if (info.size > MAX_DOCUMENT_BYTES) {
@@ -152,7 +174,10 @@ export function prepareRuntimeInputs(
     const artifact: RuntimeInputArtifact = {
       id: attachment.id || `input-${index + 1}`,
       name,
-      mime: typeof attachment.mime === "string" ? attachment.mime : "application/octet-stream",
+      mime:
+        typeof attachment.mime === "string"
+          ? attachment.mime
+          : "application/octet-stream",
       size: bytes.length,
       kind: artifactKind(attachment),
       sha256: sha256(bytes),
@@ -163,7 +188,10 @@ export function prepareRuntimeInputs(
   }
 
   const summary = artifacts
-    .map((artifact) => `- ${artifact.name} (${artifact.kind}, ${artifact.size} bytes)`)
+    .map(
+      (artifact) =>
+        `- ${artifact.name} (${artifact.kind}, ${artifact.size} bytes)`,
+    )
     .join("\n");
   return {
     directory,

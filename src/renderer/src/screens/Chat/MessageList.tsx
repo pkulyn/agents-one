@@ -45,6 +45,8 @@ interface MessageListProps {
   onClarifyResolved: (requestId: string, answer: string) => void;
   /** Collaboration chats can focus a role by clicking its visible avatar. */
   onAgentAvatarClick?: (identity: ChatMessageAgentIdentity) => void;
+  /** Create a new Runtime conversation from one completed assistant reply. */
+  onBranchFromMessage?: (messageId: string) => void;
 }
 
 function TypingIndicator({
@@ -117,13 +119,14 @@ export const MessageList = memo(function MessageList({
   messages,
   isLoading,
   toolProgress,
-  agentName = "Hermes",
+  agentName = "Agent",
   agentAvatar,
   agentColor,
   onApprove,
   onDeny,
   onClarifyResolved,
   onAgentAvatarClick,
+  onBranchFromMessage,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
   // History rows pass through unconditionally.
@@ -249,6 +252,7 @@ export const MessageList = memo(function MessageList({
         agentAvatar={rowAgentAvatar}
         agentColor={rowAgentColor}
         onAgentAvatarClick={handleAvatarClick}
+        onBranchFromMessage={onBranchFromMessage}
       />,
     );
   }

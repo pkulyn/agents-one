@@ -3,6 +3,7 @@ import {
   processCustomEvent,
   processSseData,
   parseSseBlock,
+  splitSseFrames,
 } from "../src/main/sse-parser";
 
 // ─── parseSseBlock ──────────────────────────────────────
@@ -38,6 +39,22 @@ describe("parseSseBlock", () => {
     expect(result).toEqual({
       eventType: "hermes.tool.progress",
       data: "{}",
+    });
+  });
+
+  it("accepts CRLF, data without a space, and multi-line payloads", () => {
+    expect(
+      parseSseBlock('event:hermes.tool.progress\r\ndata:{"tool":\r\ndata:"search"}\r\n'),
+    ).toEqual({
+      eventType: "hermes.tool.progress",
+      data: '{"tool":\n"search"}',
+    });
+  });
+
+  it("splits complete LF and CRLF frames while retaining an incomplete tail", () => {
+    expect(splitSseFrames("data: one\r\n\r\ndata: two\n\ndata: tail")).toEqual({
+      frames: ["data: one", "data: two"],
+      remainder: "data: tail",
     });
   });
 });

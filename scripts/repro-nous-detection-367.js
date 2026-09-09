@@ -76,25 +76,25 @@ function restore() {
 
     // Bust the readEnv/getModelConfig caches by writing a dummy env entry
     await page.evaluate(async () => {
-      await window.hermesAPI.setEnv("__NOUS_PROBE__", String(Date.now()));
+      await window.agentsOneAPI.setEnv("__NOUS_PROBE__", String(Date.now()));
       // Also trigger a model config reload — getModelConfig is cached
       // for 5s; invalidating it requires either a write or a wait.
     });
     // Trigger model config write to bust mc cache
     await page.evaluate(async () => {
-      const mc = await window.hermesAPI.getModelConfig();
-      await window.hermesAPI.setModelConfig(mc.provider, mc.model, mc.baseUrl);
+      const mc = await window.agentsOneAPI.getModelConfig();
+      await window.agentsOneAPI.setModelConfig(mc.provider, mc.model, mc.baseUrl);
     });
 
     // 1. validateChatReadiness
     const readiness = await page.evaluate(async () => {
-      return await window.hermesAPI.validateChatReadiness();
+      return await window.agentsOneAPI.validateChatReadiness();
     });
     console.log("[A] validateChatReadiness:", JSON.stringify(readiness));
 
     // 2. getConfigHealth
     const health = await page.evaluate(async () => {
-      return await window.hermesAPI.getConfigHealth();
+      return await window.agentsOneAPI.getConfigHealth();
     });
     const modelKeyIssue = (health.issues || []).find(
       (i) => i.code === "MODEL_KEY_MISSING",
@@ -122,13 +122,13 @@ function restore() {
     fs.writeFileSync(AUTH, JSON.stringify(auth, null, 2));
     // Cache bust again
     await page.evaluate(async () => {
-      await window.hermesAPI.setEnv("__NOUS_PROBE2__", String(Date.now()));
+      await window.agentsOneAPI.setEnv("__NOUS_PROBE2__", String(Date.now()));
     });
     const readinessAfter = await page.evaluate(async () => {
-      return await window.hermesAPI.validateChatReadiness();
+      return await window.agentsOneAPI.validateChatReadiness();
     });
     const healthAfter = await page.evaluate(async () => {
-      return await window.hermesAPI.rerunConfigHealth();
+      return await window.agentsOneAPI.rerunConfigHealth();
     });
     const modelKeyIssueAfter = (healthAfter.issues || []).find(
       (i) => i.code === "MODEL_KEY_MISSING",

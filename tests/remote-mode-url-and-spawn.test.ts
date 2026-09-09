@@ -77,11 +77,6 @@ vi.mock("child_process", async () => {
 
 import {
   normaliseRemoteUrl,
-  getApiUrl,
-  startGateway,
-  startGatewayDetailed,
-  restartGateway,
-  restartGatewayViaCli,
   testRemoteConnection,
   contextFolderSystemMessage,
 } from "../src/main/hermes";

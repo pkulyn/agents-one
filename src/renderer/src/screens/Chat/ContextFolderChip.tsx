@@ -11,6 +11,8 @@ interface ContextFolderChipProps {
   onPickFolder: () => void;
   onClearFolder: () => void;
   onToggleWorktree: () => void;
+  onSelectRecentWorkspace?: (workspace: { workspaceId: string; name: string }) => void;
+  /** Legacy callback kept only for old path-only session bindings. */
   onSelectRecentFolder?: (path: string) => void;
 }
 
@@ -32,28 +34,44 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   onPickFolder,
   onClearFolder,
   onToggleWorktree,
+  onSelectRecentWorkspace,
   onSelectRecentFolder,
 }: ContextFolderChipProps): React.JSX.Element | null {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
+  const [recentWorkspaces, setRecentWorkspaces] = useState<
+    Array<{ workspaceId: string; name: string }>
+  >([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    if (!window.hermesAPI.listRecentSessionContextFolders) {
-      setRecentFolders([]);
-      return;
-    }
     let cancelled = false;
-    void window.hermesAPI
-      .listRecentSessionContextFolders(20)
-      .then((list) => {
-        if (!cancelled && Array.isArray(list)) setRecentFolders(list);
-      })
-      .catch(() => {
-        /* ignore */
-      });
+    if (window.agentsOneAPI.listRecentSessionContextFolders) {
+      void window.agentsOneAPI
+        .listRecentSessionContextFolders(20)
+        .then((list) => {
+          if (!cancelled && Array.isArray(list)) setRecentFolders(list);
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    } else {
+      setRecentFolders([]);
+    }
+    if (window.agentsOneAPI.listRecentSessionContextWorkspaces) {
+      void window.agentsOneAPI
+        .listRecentSessionContextWorkspaces(20)
+        .then((list) => {
+          if (!cancelled && Array.isArray(list)) setRecentWorkspaces(list);
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    } else {
+      setRecentWorkspaces([]);
+    }
     return () => {
       cancelled = true;
     };
@@ -86,10 +104,31 @@ export const ContextFolderChip = memo(function ContextFolderChip({
     <div className="chat-ctxfolder-dropdown">
       <div className="chat-ctxfolder-dropdown-header">最近使用</div>
       <div className="chat-ctxfolder-dropdown-list">
-        {recentFolders.length === 0 ? (
+        {recentWorkspaces.length === 0 && recentFolders.length === 0 ? (
           <div className="chat-ctxfolder-dropdown-empty">暂无最近文件夹</div>
         ) : (
-          recentFolders.map((path) => {
+          <>
+            {recentWorkspaces.map((workspace) => {
+            const isSelected = workspace.name === contextFolder;
+            return (
+              <button
+                key={workspace.workspaceId}
+                type="button"
+                className={`chat-ctxfolder-dropdown-item${
+                  isSelected ? " chat-ctxfolder-dropdown-item--active" : ""
+                }`}
+                onClick={() => {
+                  onSelectRecentWorkspace?.(workspace);
+                  setIsOpen(false);
+                }}
+                title={workspace.name}
+              >
+                <span className="chat-ctxfolder-dropdown-item-name">{workspace.name}</span>
+                {isSelected && <Check size={14} className="chat-ctxfolder-dropdown-item-check" />}
+              </button>
+            );
+            })}
+            {recentFolders.map((path) => {
             const isSelected = path === contextFolder;
             return (
               <button
@@ -110,7 +149,8 @@ export const ContextFolderChip = memo(function ContextFolderChip({
                 )}
               </button>
             );
-          })
+            })}
+          </>
         )}
       </div>
       <div className="chat-ctxfolder-dropdown-divider" />

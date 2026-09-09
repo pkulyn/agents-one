@@ -14,7 +14,7 @@ import {
 } from "../../assets/icons";
 
 export interface SidebarMenuProject {
-  path: string;
+  workspaceId: string;
   name: string;
 }
 
@@ -22,6 +22,7 @@ export interface SidebarMenuTarget {
   id: string;
   title: string;
   contextFolder: string | null;
+  contextWorkspaceId?: string | null;
   runtimeId?: string;
   /** Viewport coordinates the menu should anchor to (trigger / cursor). */
   x: number;
@@ -91,7 +92,7 @@ function SidebarSessionMenu({
   onClose: () => void;
   onTogglePin: () => void;
   onRename: () => void;
-  onMoveToProject: (path: string | null) => void;
+  onMoveToProject: (workspace: SidebarMenuProject | null) => void;
   onPickNewFolder: () => void;
   onCopySessionId: () => void;
   onReveal: () => void;
@@ -147,7 +148,11 @@ function SidebarSessionMenu({
     };
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
+        e.preventDefault();
         e.stopPropagation();
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
         requestClose();
       }
     };
@@ -168,7 +173,7 @@ function SidebarSessionMenu({
     };
   }, [scrollContainer]);
 
-  const currentFolder = target.contextFolder?.trim() || null;
+  const currentWorkspaceId = target.contextWorkspaceId?.trim() || null;
 
   return createPortal(
     <AnimatePresence onExitComplete={onClose}>
@@ -246,7 +251,9 @@ function SidebarSessionMenu({
                       type="button"
                       role="menuitem"
                       className="sidebar-session-menu-item"
-                      disabled={!target.contextFolder}
+                      disabled={
+                        !target.contextWorkspaceId && !target.contextFolder
+                      }
                       onClick={() => {
                         onReveal();
                         requestClose();
@@ -314,16 +321,17 @@ function SidebarSessionMenu({
                         </div>
                       ) : (
                         projects.map((project) => {
-                          const active = project.path === currentFolder;
+                          const active =
+                            project.workspaceId === currentWorkspaceId;
                           return (
                             <button
-                              key={project.path}
+                              key={project.workspaceId}
                               type="button"
                               role="menuitem"
                               className="sidebar-session-menu-item"
-                              title={project.path}
+                              title={project.name}
                               onClick={() => {
-                                if (!active) onMoveToProject(project.path);
+                                if (!active) onMoveToProject(project);
                                 requestClose();
                               }}
                             >
@@ -356,7 +364,7 @@ function SidebarSessionMenu({
                         {t("navigation.sessionMenu.newProjectFolder")}
                       </span>
                     </button>
-                    {currentFolder && (
+                    {currentWorkspaceId && (
                       <button
                         type="button"
                         role="menuitem"

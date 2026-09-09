@@ -69,7 +69,7 @@ export function useDiscoveredModels(
     setStatus("loading");
     const handle = setTimeout(async () => {
       try {
-        const result = await window.hermesAPI.discoverProviderModels(
+        const result = await window.agentsOneAPI.discoverProviderModels(
           provider,
           baseUrl,
           apiKey,

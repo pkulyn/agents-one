@@ -74,7 +74,7 @@ describe("New IPC handlers from v0.8/v0.9 features", () => {
     "restore-agents-one-backup",
     "list-quick-chats",
     "save-quick-chats",
-    "read-logs",
+    "read-agents-one-diagnostics",
     "run-hermes-dump",
     "list-mcp-servers",
     "add-mcp-server",

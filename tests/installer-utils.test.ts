@@ -35,39 +35,6 @@ afterEach(() => {
   rmSync(TEST_DIR, { recursive: true, force: true });
 });
 
-// ─── readLogs (test the logic, not the import) ─────────
-
-describe("readLogs logic", () => {
-  it("returns last N lines from a log file", () => {
-    const logDir = join(TEST_DIR, "logs");
-    mkdirSync(logDir, { recursive: true });
-    const lines = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`);
-    writeFileSync(join(logDir, "agent.log"), lines.join("\n"));
-
-    const content = readFileSync(join(logDir, "agent.log"), "utf-8");
-    const allLines = content.split("\n");
-    const tail = allLines.slice(-10).join("\n");
-
-    expect(tail).toContain("line 50");
-    expect(tail).toContain("line 41");
-    expect(tail).not.toContain("line 30");
-  });
-
-  it("sanitizes log file names", () => {
-    const allowed = ["agent.log", "errors.log", "gateway.log"];
-    // Simulating the sanitization logic from readLogs
-    const sanitize = (f: string): string =>
-      allowed.includes(f) ? f : "agent.log";
-
-    expect(sanitize("agent.log")).toBe("agent.log");
-    expect(sanitize("errors.log")).toBe("errors.log");
-    expect(sanitize("gateway.log")).toBe("gateway.log");
-    expect(sanitize("../../etc/passwd")).toBe("agent.log");
-    expect(sanitize("malicious.log")).toBe("agent.log");
-    expect(sanitize("")).toBe("agent.log");
-  });
-});
-
 // ─── MCP server YAML parsing ───────────────────────────
 
 describe("MCP server YAML parsing", () => {
@@ -348,6 +315,30 @@ describe("checkOpenClawExists", () => {
     writeFileSync(join(dir, "clawdbot.json"), "{}");
     const { checkOpenClawExists } = await import("../src/main/installer");
     expect(checkOpenClawExists(TEST_DIR)).toEqual({ found: true, path: dir });
+  });
+});
+
+// ─── Hermes local API ownership ───────────────────────
+
+describe("classifyHermesApiState", () => {
+  it("accepts a healthy probe only when the candidate owns the port", async () => {
+    const { classifyHermesApiState } = await import("../src/main/installer");
+    expect(classifyHermesApiState(true, 1234, new Set([1234]))).toBe("healthy");
+    expect(classifyHermesApiState(true, 1234, new Set([5678]))).toBe(
+      "unrelated",
+    );
+  });
+
+  it("does not claim ownership when process inspection is unavailable", async () => {
+    const { classifyHermesApiState } = await import("../src/main/installer");
+    expect(classifyHermesApiState(true, 1234, undefined)).toBe("unknown");
+    expect(classifyHermesApiState(true, null, new Set([1234]))).toBe("unknown");
+  });
+
+  it("distinguishes an offline candidate from a running but unreachable one", async () => {
+    const { classifyHermesApiState } = await import("../src/main/installer");
+    expect(classifyHermesApiState(false, 1234, undefined)).toBe("unreachable");
+    expect(classifyHermesApiState(false, null, undefined)).toBe("not-running");
   });
 });
 

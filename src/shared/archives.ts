@@ -6,6 +6,8 @@ export interface ArchivedItem {
   targetId: string;
   title: string;
   projectPath?: string;
+  /** Opaque project capability for new project archives. */
+  projectWorkspaceId?: string;
   runtimeId?: string;
   archivedAt: number;
 }
@@ -15,5 +17,7 @@ export interface ArchiveItemInput {
   targetId: string;
   title: string;
   projectPath?: string;
+  /** Opaque project capability for new project archives. */
+  projectWorkspaceId?: string;
   runtimeId?: string;
 }

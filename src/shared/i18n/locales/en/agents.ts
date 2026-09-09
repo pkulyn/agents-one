@@ -1,12 +1,12 @@
 export default {
   title: "Profiles",
   subtitle:
-    "Each profile is an isolated Hermes workspace with its own config, memory, and skills",
+    "Each profile is an isolated agent workspace with its own config, memory, and skills",
   remoteLocalNoticeTitle: "Managing local desktop profiles",
   remoteLocalNoticeDesc:
-    "Agents One is connected to a remote Hermes service, but these profiles live on this desktop and control local agent configuration, switching, and chat entry points.",
+    "Agents One is connected to a remote agent service, but these profiles live on this desktop and control local agent configuration, switching, and chat entry points.",
   retry: "Retry",
-  hermesProfiles: "Hermes profiles",
+  hermesProfiles: "Local profiles",
   connectedRuntimes: "Connected runtimes",
   runtimeChat: "Conversation",
   runtimeConfigure: "Configure",
@@ -86,7 +86,7 @@ export default {
   walletCreateFailed: "Couldn't add wallet",
   walletRecoveryTitle: "Recovery phrase",
   walletRecoveryInfo:
-    "Save this phrase now. Hermes will not show it again after this modal closes.",
+    "Save this phrase now. Agents One will not show it again after this modal closes.",
   walletCopyRecovery: "Copy phrase",
   walletDone: "I've saved it",
   walletBalanceLoading: "Loading…",
@@ -94,7 +94,7 @@ export default {
   walletBalanceRefresh: "Refresh",
   walletDeleteTitle: "Remove wallet",
   walletDeleteWarning:
-    "This will permanently remove this wallet from Hermes. Make sure you have backed up the recovery phrase — you won't be able to recover the wallet without it.",
+    "This will permanently remove this wallet from Agents One. Make sure you have backed up the recovery phrase — you won't be able to recover the wallet without it.",
   walletDeleteConfirmLabel: "Remove wallet",
   sync: "Sync",
   syncing: "Syncing…",

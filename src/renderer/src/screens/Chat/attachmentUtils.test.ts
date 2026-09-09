@@ -2,12 +2,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { processFiles, filesFromClipboard } from "./attachmentUtils";
 
-// Stub the window.hermesAPI surface used by the path-ref code path.
+// Stub the window.agentsOneAPI surface used by the path-ref code path.
 // Picker / drag-drop normally return an absolute path via webUtils; we
 // simulate the paste path (no origin) by leaving getPathForFile empty
 // and routing through a fake stageAttachment.
 beforeEach(() => {
-  (window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI = {
+  (window as unknown as { agentsOneAPI: Record<string, unknown> }).agentsOneAPI = {
     getPathForFile: vi.fn(() => ""),
     stageAttachment: vi.fn(
       async (sessionId: string, filename: string): Promise<string> =>
@@ -134,10 +134,13 @@ describe("processFiles", () => {
     expect(a.mime).toBe("application/pdf");
   });
 
-  it("uses the origin path returned by webUtils for picker/drag-drop files", async () => {
-    (window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI = {
+  it("stages picker/drag-drop files instead of forwarding their origin path", async () => {
+    (window as unknown as { agentsOneAPI: Record<string, unknown> }).agentsOneAPI = {
       getPathForFile: vi.fn(() => "C:/Users/me/Downloads/doc.pdf"),
-      stageAttachment: vi.fn(),
+      stageAttachment: vi.fn(
+        async (sessionId: string, filename: string): Promise<string> =>
+          `C:/staging/${sessionId || "default"}/${filename}`,
+      ),
     };
     const file = makeFile("doc.pdf", "application/pdf", "%PDF-1.4");
     const out = await processFiles([file], 0);
@@ -145,14 +148,14 @@ describe("processFiles", () => {
     expect(out.attachments).toHaveLength(1);
     const a = out.attachments[0];
     expect(a.kind).toBe("path-ref");
-    expect(a.path).toBe("C:/Users/me/Downloads/doc.pdf");
+    expect(a.path).toBe("C:/staging/default/doc.pdf");
     expect(
       (
         window as unknown as {
-          hermesAPI: { stageAttachment: ReturnType<typeof vi.fn> };
+          agentsOneAPI: { stageAttachment: ReturnType<typeof vi.fn> };
         }
-      ).hermesAPI.stageAttachment,
-    ).not.toHaveBeenCalled();
+      ).agentsOneAPI.stageAttachment,
+    ).toHaveBeenCalledWith("", "doc.pdf", expect.any(String));
   });
 
   it("blocks path-ref attachments in remote mode", async () => {

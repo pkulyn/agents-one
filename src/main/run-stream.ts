@@ -1,4 +1,5 @@
 import type { ChatToolEvent } from "../shared/chat-stream";
+import { parseSseBlock } from "./sse-parser";
 
 export interface HermesApiCapabilities {
   features?: Record<string, unknown>;
@@ -103,16 +104,5 @@ export function runCompletedUsage(event: Record<string, unknown>): {
 export function parseRunSseBlock(
   block: string,
 ): { eventType: string; data: string } | null {
-  let eventType = "";
-  const dataLines: string[] = [];
-  for (const rawLine of block.split("\n")) {
-    const line = rawLine.replace(/\r$/, "");
-    if (line.startsWith("event: ")) {
-      eventType = line.slice(7).trim();
-    } else if (line.startsWith("data: ")) {
-      dataLines.push(line.slice(6));
-    }
-  }
-  if (dataLines.length === 0) return null;
-  return { eventType, data: dataLines.join("\n") };
+  return parseSseBlock(block);
 }

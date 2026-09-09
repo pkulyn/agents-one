@@ -54,6 +54,8 @@ interface UseChatActionsArgs {
   activeTurnRef: React.MutableRefObject<ActiveTurn | null>;
   /** Working folder bound to this conversation (issue #27), or null. */
   contextFolder: string | null;
+  /** Preferred opaque project reference; main resolves it immediately before dispatch. */
+  contextWorkspaceId?: string | null;
   /** Session-local model override — selected via the chat picker without
    *  persisting to config.yaml (issue #688). Carries the full identity so a
    *  cross-provider switch routes to the right backend, not just the model. */
@@ -121,6 +123,7 @@ export function useChatActions({
   onOpenSettings,
   activeTurnRef,
   contextFolder,
+  contextWorkspaceId,
   sessionModel,
   sendViaDashboard,
   execSlashViaDashboard,
@@ -163,7 +166,7 @@ export function useChatActions({
           const handled = await sendViaDashboard(text, attachments);
           if (handled) return;
         }
-        await window.hermesAPI.sendMessage(
+        await window.agentsOneAPI.sendMessage(
           text,
           profile,
           hermesSessionId || undefined,
@@ -175,12 +178,20 @@ export function useChatActions({
           contextFolder ?? undefined,
           runId,
           sessionModelRef.current || undefined,
+          contextWorkspaceId || undefined,
         );
       } catch {
         // onChatError IPC already surfaces this to the user
       }
     },
-    [runId, profile, hermesSessionId, contextFolder, sendViaDashboard],
+    [
+      runId,
+      profile,
+      hermesSessionId,
+      contextFolder,
+      contextWorkspaceId,
+      sendViaDashboard,
+    ],
   );
 
   // Shared "side question" flow (the 💭 quick-ask button and a typed `/btw`).
@@ -305,7 +316,7 @@ export function useChatActions({
             (async () => ({
               kind: "error",
               message:
-                "This command requires the Hermes Agent gateway. Switch chat transport to Auto or Dashboard and try again.",
+                "This command requires the Hermes Agent Runtime gateway. Switch chat transport to Auto or Dashboard and try again.",
             })),
           submitPrompt: async (submission: PreparedModelSubmission) => {
             removePending();
@@ -401,7 +412,7 @@ export function useChatActions({
 
   const handleAbort = useCallback(() => {
     abortDashboard?.();
-    window.hermesAPI.abortChat(runId);
+    window.agentsOneAPI.abortChat(runId);
     activeTurnRef.current = null;
     setIsLoading(false);
     setTimeout(() => chatInputRef.current?.focus(), 50);

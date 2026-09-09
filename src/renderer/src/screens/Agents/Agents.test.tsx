@@ -15,7 +15,7 @@ function installHermesAPI(): {
       checkedAt: Date.now(),
     }),
   };
-  Object.defineProperty(window, "hermesAPI", {
+  Object.defineProperty(window, "agentsOneAPI", {
     configurable: true,
     value: api,
   });
@@ -23,6 +23,17 @@ function installHermesAPI(): {
 }
 
 describe("Agents", () => {
+  it("uses the shared runtime-location descriptions for all three agent domains", async () => {
+    installHermesAPI();
+    render(<Agents onChatWithRuntime={() => {}} />);
+
+    expect(
+      await screen.findByText("在当前电脑运行的智能体CLI或服务"),
+    ).toBeTruthy();
+    expect(screen.getByText("连接远端服务器或电脑上的智能体")).toBeTruthy();
+    expect(screen.getByText("在隔离浏览器中连接网页端智能体服务")).toBeTruthy();
+  });
+
   it("only shows connected runtimes and not the legacy local Hermes profile", async () => {
     const api = installHermesAPI();
     api.listAgentRuntimes.mockResolvedValue([
@@ -37,11 +48,7 @@ describe("Agents", () => {
       },
     ]);
 
-    render(
-      <Agents
-        onChatWithRuntime={() => {}}
-      />,
-    );
+    render(<Agents onChatWithRuntime={() => {}} />);
 
     await waitFor(() => {
       expect(screen.getByText("Pi")).toBeTruthy();
@@ -69,13 +76,17 @@ describe("Agents", () => {
 
     await screen.findByText("Codex");
     expect(screen.getByRole("button", { name: "管理" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "对话" }));
+    const chatButton = screen.getByRole("button", { name: "对话" });
+    await waitFor(() => {
+      expect((chatButton as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(chatButton);
     expect(onChatWithRuntime).toHaveBeenCalledWith(
       expect.objectContaining({ id: "codex-local" }),
     );
   });
 
-  it("shows the unified transport label, connection hint, and capability badges", async () => {
+  it("shows the unified transport label and connection hint without capability badges", async () => {
     const api = installHermesAPI();
     api.listAgentRuntimes.mockResolvedValue([
       {
@@ -114,14 +125,167 @@ describe("Agents", () => {
     expect(
       screen.getByText("https://gateway.example/agents-one/v1"),
     ).toBeTruthy();
-    // Capability badges come from the probe (chat/taskDispatch/tools/
-    // workspaceAccess; artifacts is false). "对话" also names the chat button,
-    // so scope to the capability badge row.
-    const capabilities = document.querySelector(".agents-runtime-capabilities");
-    expect(capabilities?.textContent).toContain("对话");
-    expect(capabilities?.textContent).toContain("任务派发");
-    expect(capabilities?.textContent).toContain("工具");
-    expect(capabilities?.textContent).toContain("工作区");
-    expect(capabilities?.textContent).not.toContain("产物");
+    expect(document.querySelector(".agents-runtime-capabilities")).toBeNull();
+  });
+
+  it("keeps browser-backed runtimes in the dedicated web agent section", async () => {
+    const api = installHermesAPI();
+    api.listAgentRuntimes.mockResolvedValue([
+      {
+        id: "doubao-web",
+        name: "豆包网页版",
+        kind: "web-agent",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {
+          agentTransport: "local-web",
+          webAgent: {
+            provider: "doubao",
+            profileId: "default",
+            adapterVersion: "test",
+            enabled: true,
+          },
+        },
+      },
+    ]);
+
+    render(<Agents onChatWithRuntime={() => {}} />);
+
+    await screen.findByText("豆包网页版");
+    const localSection = screen
+      .getByRole("heading", { name: "本地智能体" })
+      .closest("section");
+    const webSection = screen
+      .getByRole("heading", { name: "网页智能体" })
+      .closest("section");
+    expect(localSection?.textContent).not.toContain("豆包网页版");
+    expect(webSection?.textContent).toContain("豆包网页版");
+  });
+
+  it("marks an unreachable runtime as a connection error and blocks chat", async () => {
+    const api = installHermesAPI();
+    api.listAgentRuntimes.mockResolvedValue([
+      {
+        id: "hers-remote",
+        name: "Hers",
+        kind: "hermes",
+        location: "remote",
+        enabled: true,
+        managed: "user",
+        config: {
+          endpoint: "https://gateway.example/agents-one/v1",
+          remoteGateway: { protocol: "agents-one-v1" },
+          transport: "http",
+        },
+      },
+    ]);
+    api.probeAgentRuntime.mockResolvedValue({
+      runtimeId: "hers-remote",
+      state: "unreachable",
+      capabilities: {},
+      checkedAt: Date.now(),
+      message: "连接检测失败",
+    });
+
+    render(<Agents onChatWithRuntime={() => {}} />);
+
+    await screen.findByText("Hers");
+    await waitFor(() => {
+      expect(screen.getByText(/^连接异常/)).toBeTruthy();
+    });
+    const chatButton = screen.getByRole("button", { name: "对话" });
+    expect((chatButton as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it.each([
+    ["degraded", "连接受限"],
+    ["unsupported", "暂不支持"],
+    ["unknown", "检测异常"],
+  ] as const)(
+    "shows the web runtime %s state and keeps chat disabled",
+    async (state, metaLabel) => {
+      const api = installHermesAPI();
+      api.listAgentRuntimes.mockResolvedValue([
+        {
+          id: `doubao-web-${state}`,
+          name: "豆包网页版",
+          kind: "web-agent",
+          location: "local",
+          enabled: true,
+          managed: "user",
+          config: {
+            agentTransport: "local-web",
+            webAgent: {
+              provider: "doubao",
+              profileId: "default",
+              adapterVersion: "test",
+              enabled: true,
+            },
+          },
+        },
+      ]);
+      api.probeAgentRuntime.mockResolvedValue({
+        runtimeId: `doubao-web-${state}`,
+        state,
+        capabilities: {},
+        checkedAt: Date.now(),
+        message: "网页会话需要处理",
+      });
+
+      render(<Agents onChatWithRuntime={() => {}} />);
+
+      await screen.findByText("豆包网页版");
+      await waitFor(() => {
+        expect(
+          document.querySelector(".agents-runtime-meta")?.textContent,
+        ).toMatch(new RegExp(`^${metaLabel}`));
+      });
+      expect(
+        (screen.getByRole("button", { name: "对话" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+      expect(
+        (screen.getByRole("button", { name: "管理" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    },
+  );
+
+  it("surfaces a web probe exception as a visible detection error", async () => {
+    const api = installHermesAPI();
+    api.listAgentRuntimes.mockResolvedValue([
+      {
+        id: "chatgpt-web",
+        name: "ChatGPT 网页版",
+        kind: "web-agent",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {
+          agentTransport: "local-web",
+          webAgent: {
+            provider: "chatgpt",
+            profileId: "default",
+            adapterVersion: "test",
+            enabled: true,
+          },
+        },
+      },
+    ]);
+    api.probeAgentRuntime.mockRejectedValue(new Error("网页窗口启动失败"));
+
+    render(<Agents onChatWithRuntime={() => {}} />);
+
+    await screen.findByText("ChatGPT 网页版");
+    await waitFor(() => {
+      expect(
+        document.querySelector(".agents-runtime-meta")?.textContent,
+      ).toMatch(/^检测异常/);
+    });
+    expect(
+      (screen.getByRole("button", { name: "对话" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

@@ -19,14 +19,23 @@ import type { ChatToolEvent } from "../shared/chat-stream";
 import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
 import type {
   AgentRuntimeDefinition,
+  AgentRuntimeDiagnostics,
   AgentRuntimeDraft,
   AgentRuntimeAppearance,
   AgentRuntimeProbe,
   AgentRuntimeRun,
   AgentRuntimeTaskInput,
 } from "../shared/agent-runtimes";
+import type { ConnectPairingPreview } from "../shared/agents-one-connect";
+import type {
+  RuntimeCommandCatalogSnapshot,
+  RuntimeCommandProgress,
+  RuntimeCommandRequest,
+  RuntimeCommandResult,
+} from "../shared/runtime-commands";
 import type {
   ProjectFolderRecord,
+  ProjectWorkspaceCapability,
   UpdateProjectFolderInput,
 } from "../shared/project-folders";
 import type { ArchivedItem, ArchiveItemInput } from "../shared/archives";
@@ -49,6 +58,10 @@ import type {
   AgentsOneBackupResult,
   AgentsOneRestoreResult,
 } from "../shared/agents-one-backup";
+import type { RuntimeSkillDescriptor } from "../shared/runtime-skills";
+import type { AgentRuntimeAdapterManifest } from "../shared/runtime-adapters";
+import type { TrayMenuAction, TrayMenuData } from "../shared/tray-menu";
+import type { TrayCompletionData } from "../shared/tray-completion";
 
 interface ElectronAPI {
   process: {
@@ -156,7 +169,7 @@ interface CredentialPoolEntry {
   key?: string;
 }
 
-interface HermesAPI {
+interface AgentsOneAPI {
   // Installation
   checkInstall: () => Promise<InstallStatus>;
   verifyInstall: () => Promise<boolean>;
@@ -166,9 +179,30 @@ interface HermesAPI {
     repoPath: string;
     state: "fresh" | "update" | "replace";
   }>;
+  discoverHermesInstallations: () => Promise<
+    Array<{
+      home: string;
+      repoPath: string;
+      pythonPath: string;
+      scriptPath: string;
+      source: "active-home" | "environment" | "default-home" | "path";
+      valid: boolean;
+      executableAvailable: boolean;
+      configState: "configured" | "missing" | "invalid";
+      apiState: "unknown" | "healthy" | "unreachable" | "not-running";
+      version?: string;
+    }>
+  >;
+  selectHermesHome: () => Promise<string | null>;
   validateHermesHome: (dir: string) => Promise<boolean>;
   adoptHermesHome: (dir: string) => Promise<boolean>;
   quitApp: () => Promise<void>;
+  closeTrayComposer: () => void;
+  resizeTrayComposer: (height: number) => void;
+  getTrayMenuData: () => Promise<TrayMenuData>;
+  onTrayMenuData: (callback: (data: TrayMenuData) => void) => () => void;
+  sendTrayMenuAction: (action: TrayMenuAction) => void;
+  resizeTrayMenu: (width: number, height: number) => void;
   getGpuStatus: () => Promise<GpuStatus>;
   reenableGpu: () => Promise<boolean>;
   setGpuPreference: (mode: GpuPreferenceMode) => Promise<boolean>;
@@ -191,6 +225,38 @@ interface HermesAPI {
   // Configuration (profile-aware)
   getEnv: (profile?: string) => Promise<Record<string, string>>;
   setEnv: (key: string, value: string, profile?: string) => Promise<boolean>;
+  getVoiceInputConfig: (profile?: string) => Promise<{
+    enabled: boolean;
+    url: string;
+    hasApiKey: boolean;
+    configured: boolean;
+  }>;
+  saveVoiceInputConfig: (
+    input: {
+      enabled: boolean;
+      url: string;
+      apiKey?: string;
+      clearApiKey?: boolean;
+    },
+    profile?: string,
+  ) => Promise<{
+    enabled: boolean;
+    url: string;
+    hasApiKey: boolean;
+    configured: boolean;
+  }>;
+  testVoiceInputService: (
+    input: {
+      url: string;
+      apiKey?: string;
+    },
+    profile?: string,
+  ) => Promise<{
+    ok: boolean;
+    message: string;
+    version?: string;
+    streamBackend?: string;
+  }>;
   validateChatReadiness: (profile?: string) => Promise<{
     ok: boolean;
     code?:
@@ -240,7 +306,44 @@ interface HermesAPI {
   // Connection mode (local / remote)
   isRemoteMode: () => Promise<boolean>;
   isRemoteOnlyMode: () => Promise<boolean>;
+  createAgentsOneConnectPairing: (
+    runtimeId: string,
+    displayName: string,
+  ) => Promise<{
+    sessionId: string;
+    pairingCode: string;
+    runtimeId: string;
+    displayName: string;
+    expiresAt: number;
+    connectEndpoint: string;
+    tunnelEndpoint: string;
+  }>;
+  getAgentsOneConnectPairingStatus: (sessionId: string) => Promise<{
+    sessionId: string;
+    runtimeId: string;
+    displayName: string;
+    state: "pending" | "paired" | "expired";
+    expiresAt: number;
+    deviceId?: string;
+  }>;
+  completeAgentsOneConnectPairing: (
+    sessionId: string,
+    draft: AgentRuntimeDraft,
+  ) => Promise<AgentRuntimeDefinition>;
+  previewAgentsOneConnectPairingCode: (
+    pairingCode: string,
+    runtimeId?: string,
+  ) => Promise<ConnectPairingPreview>;
+  completeAgentsOneConnectPairingPreview: (
+    sessionId: string,
+    draft: AgentRuntimeDraft,
+  ) => Promise<AgentRuntimeDefinition>;
+  claimAgentsOneConnectPairingCode: (
+    pairingCode: string,
+    draft: AgentRuntimeDraft,
+  ) => Promise<AgentRuntimeDefinition>;
   listAgentRuntimes: () => Promise<AgentRuntimeDefinition[]>;
+  listAgentRuntimeAdapters: () => Promise<AgentRuntimeAdapterManifest[]>;
   detectLocalCliPaths: () => Promise<Record<string, string | null>>;
   getAgentRuntimeModelContextWindow: (
     runtimeId: string,
@@ -259,6 +362,7 @@ interface HermesAPI {
   getAgentRuntimeCredentialStatus: (
     id: string,
   ) => Promise<{ required: boolean; configured: boolean }>;
+  getAgentRuntimeDiagnostics: (id: string) => Promise<AgentRuntimeDiagnostics>;
   setAgentRuntimeBearerToken: (
     id: string,
     bearerToken: string,
@@ -272,12 +376,41 @@ interface HermesAPI {
     draft: AgentRuntimeDraft,
     bearerToken?: string,
   ) => Promise<AgentRuntimeProbe>;
+  openWebAgentRuntime: (runtimeId: string) => Promise<void>;
+  clearWebAgentRuntimeLogin: (runtimeId: string) => Promise<void>;
+  resumeWebAgentRuntimeRun: (runId: string) => Promise<boolean>;
   startAgentRuntimeTask: (
     runtimeId: string,
     input: AgentRuntimeTaskInput,
   ) => Promise<AgentRuntimeRun>;
+  getAgentRuntimeCommandCatalog: (
+    runtimeId: string,
+    sessionId?: string,
+  ) => Promise<RuntimeCommandCatalogSnapshot>;
+  executeAgentRuntimeCommand: (
+    request: RuntimeCommandRequest,
+  ) => Promise<RuntimeCommandResult>;
+  onAgentRuntimeCommandProgress: (
+    callback: (progress: RuntimeCommandProgress) => void,
+  ) => () => void;
   getAgentRuntimeRun: (runId: string) => Promise<AgentRuntimeRun | null>;
   cancelAgentRuntimeTask: (runId: string) => Promise<boolean>;
+  retryAgentRuntimeArtifact: (
+    runId: string,
+    artifactId: string,
+  ) => Promise<AgentRuntimeRun | null>;
+  openAgentRuntimeArtifact: (
+    runId: string,
+    artifactId: string,
+  ) => Promise<boolean>;
+  readAgentRuntimeArtifactImage: (
+    runId: string,
+    artifactId: string,
+  ) => Promise<string | null>;
+  saveAgentRuntimeArtifact: (
+    runId: string,
+    artifactId: string,
+  ) => Promise<boolean>;
   listTaskSchedules: (profile?: string) => Promise<TaskSchedule[]>;
   createTaskSchedule: (
     input: CreateTaskScheduleInput,
@@ -310,9 +443,7 @@ interface HermesAPI {
   setConnectionConfig: () => Promise<boolean>;
   setConnectionChatTransports: () => Promise<boolean>;
   onConnectionConfigChanged: (
-    callback: (config: {
-      mode: "local";
-    }) => void,
+    callback: (config: { mode: "local" }) => void,
   ) => () => void;
   testRemoteConnection: (url: string, apiKey?: string) => Promise<boolean>;
 
@@ -326,6 +457,7 @@ interface HermesAPI {
     contextFolder?: string,
     runId?: string,
     modelOverride?: SessionModelOverride,
+    contextWorkspaceId?: string,
   ) => Promise<{ response: string; sessionId?: string }>;
   abortChat: (runId?: string) => Promise<void>;
   transcribeAudio: (
@@ -333,6 +465,24 @@ interface HermesAPI {
     mimeType: string,
     profile?: string,
   ) => Promise<string>;
+  startStreamingTranscription: (profile?: string) => Promise<string>;
+  sendStreamingAudio: (sessionId: string, audio: Uint8Array) => Promise<void>;
+  stopStreamingTranscription: (
+    sessionId: string,
+    captureAudit?: {
+      capturedChunks: number;
+      capturedBytes: number;
+      sendFailures: number;
+    },
+  ) => Promise<void>;
+  onStreamingTranscriptionEvent: (
+    callback: (event: {
+      sessionId: string;
+      type: "final" | "error" | "ended";
+      text?: string;
+      message?: string;
+    }) => void,
+  ) => () => void;
   getApiServerKeyStatus: (
     profile?: string,
   ) => Promise<{ hasKey: boolean; providerId?: string; checkedAt?: number }>;
@@ -438,6 +588,19 @@ interface HermesAPI {
   gatewayStatus: () => Promise<boolean>;
   dashboardStatus: (profile?: string) => Promise<DashboardStatus>;
   startDashboard: (profile?: string) => Promise<DashboardStatus>;
+  createDashboardWorkspaceSession: (
+    workspaceId: string,
+    profile?: string,
+    messages?: Array<{ role: "assistant" | "user"; content: string }>,
+  ) => Promise<{
+    sessionId: string;
+    storedSessionId: string;
+  } | null>;
+  setDashboardWorkspaceCwd: (
+    workspaceId: string,
+    sessionId: string,
+    profile?: string,
+  ) => Promise<boolean>;
   stopDashboard: (profile?: string) => Promise<boolean>;
 
   // Platform toggles
@@ -529,11 +692,23 @@ interface HermesAPI {
     error: DesktopSessionLocalError,
   ) => Promise<boolean>;
   getSessionContextFolder: (sessionId: string) => Promise<string | null>;
+  getSessionContextWorkspace: (sessionId: string) => Promise<{
+    workspaceId?: string;
+    name: string;
+    legacyPath?: string;
+  } | null>;
   setSessionContextFolder: (
     sessionId: string,
     folder: string | null,
   ) => Promise<boolean>;
+  setSessionContextWorkspace: (
+    sessionId: string,
+    workspace: { workspaceId: string; name: string } | null,
+  ) => Promise<boolean>;
   listRecentSessionContextFolders: (limit?: number) => Promise<string[]>;
+  listRecentSessionContextWorkspaces: (
+    limit?: number,
+  ) => Promise<Array<{ workspaceId: string; name: string }>>;
   getSessionModelOverride: (
     sessionId: string,
   ) => Promise<SessionModelOverride | null>;
@@ -663,6 +838,9 @@ interface HermesAPI {
       source: string;
       messageCount: number;
       model: string;
+      /** Opaque project id for capability-backed session context. */
+      contextWorkspaceId?: string | null;
+      /** Display name for capability-backed context, legacy path otherwise. */
       contextFolder: string | null;
     }>
   >;
@@ -674,6 +852,9 @@ interface HermesAPI {
       source: string;
       messageCount: number;
       model: string;
+      /** Opaque project id for capability-backed session context. */
+      contextWorkspaceId?: string | null;
+      /** Display name for capability-backed context, legacy path otherwise. */
       contextFolder: string | null;
     }>
   >;
@@ -723,6 +904,19 @@ interface HermesAPI {
     profile?: string,
   ) => Promise<boolean>;
   deleteRuntimeConversation: (id: string, profile?: string) => Promise<boolean>;
+  forkRuntimeConversation: (
+    parentId: string,
+    input: {
+      id: string;
+      forkedFromMessageId?: string;
+      branchLabel?: string;
+      branchSummary?: string;
+      implementation?: boolean;
+      worktreeId?: string;
+    },
+    profile?: string,
+  ) => Promise<RuntimeConversation>;
+  listRuntimeSkills: () => Promise<RuntimeSkillDescriptor[]>;
   listQuickChats: (profile?: string) => Promise<QuickChatConversation[]>;
   saveQuickChats: (
     chats: QuickChatConversation[],
@@ -855,6 +1049,13 @@ interface HermesAPI {
   // Menu events
   onMenuNewChat: (callback: () => void) => () => void;
   onMenuSearchSessions: (callback: () => void) => () => void;
+  onTrayOpenTask: (callback: (sessionId: string) => void) => () => void;
+  getTrayCompletionData: () => Promise<TrayCompletionData | null>;
+  onTrayCompletionData: (
+    callback: (data: TrayCompletionData) => void,
+  ) => () => void;
+  openTrayCompletion: () => void;
+  closeTrayCompletion: () => void;
 
   // Cron Jobs
   listCronJobs: (
@@ -908,14 +1109,25 @@ interface HermesAPI {
   }) => Promise<string | null>;
   createProjectFolder: () => Promise<string | null>;
   listProjectFolders: () => Promise<ProjectFolderRecord[]>;
+  listProjectWorkspaces: () => Promise<ProjectWorkspaceCapability[]>;
   registerProjectFolder: (
     folderPath: string,
   ) => Promise<ProjectFolderRecord | null>;
+  registerProjectWorkspace: (
+    folderPath: string,
+  ) => Promise<ProjectWorkspaceCapability | null>;
   updateProjectFolder: (
     input: UpdateProjectFolderInput,
   ) => Promise<ProjectFolderRecord | null>;
+  updateProjectWorkspace: (
+    input: Pick<UpdateProjectFolderInput, "id" | "name" | "pinned">,
+  ) => Promise<ProjectWorkspaceCapability | null>;
   removeProjectFolder: (
     folderPath: string,
+    profile?: string,
+  ) => Promise<boolean>;
+  removeProjectWorkspace: (
+    workspaceId: string,
     profile?: string,
   ) => Promise<boolean>;
   listArchivedItems: (profile?: string) => Promise<ArchivedItem[]>;
@@ -923,12 +1135,38 @@ interface HermesAPI {
     input: ArchiveItemInput,
     profile?: string,
   ) => Promise<ArchivedItem>;
+  archiveProjectWorkspace: (
+    workspaceId: string,
+    profile?: string,
+  ) => Promise<ArchivedItem | null>;
   restoreArchivedItem: (id: string, profile?: string) => Promise<boolean>;
   deleteArchivedItem: (id: string, profile?: string) => Promise<boolean>;
   prepareProjectContext: (folderPath: string) => Promise<Attachment | null>;
+  prepareProjectWorkspaceContext: (
+    workspaceId: string,
+  ) => Promise<Attachment | null>;
   readDirectory: (
     dirPath: string,
   ) => Promise<{ name: string; isDirectory: boolean }[] | null>;
+  readWorkspaceDirectory: (
+    workspaceId: string,
+    relativePath?: string,
+  ) => Promise<{ name: string; isDirectory: boolean }[] | null>;
+  readWorkspaceFile: (
+    workspaceId: string,
+    relativePath: string,
+    maxBytes?: number,
+  ) => Promise<{ content: string; truncated: boolean } | null>;
+  readWorkspaceImage: (
+    workspaceId: string,
+    relativePath: string,
+  ) => Promise<string | null>;
+  openWorkspaceFile: (
+    workspaceId: string,
+    relativePath: string,
+  ) => Promise<boolean>;
+  openProjectWorkspace: (workspaceId: string) => Promise<boolean>;
+  openWorkspaceTerminal: (workspaceId: string) => Promise<boolean>;
   readFile: (
     filePath: string,
     maxBytes?: number,
@@ -1051,8 +1289,8 @@ interface HermesAPI {
     profile?: string,
   ) => Promise<{ success: boolean; error?: string }>;
 
-  // Log viewer
-  readLogs: (
+  // Agents One diagnostic log viewer
+  readDiagnostics: (
     logFile?: string,
     lines?: number,
   ) => Promise<{ content: string; path: string }>;
@@ -1061,6 +1299,8 @@ interface HermesAPI {
 declare global {
   interface Window {
     electron: ElectronAPI;
-    hermesAPI: HermesAPI;
+    agentsOneAPI: AgentsOneAPI;
+    /** @deprecated Use agentsOneAPI. Kept temporarily for older automation. */
+    hermesAPI: AgentsOneAPI;
   }
 }

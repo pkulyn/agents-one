@@ -11,9 +11,10 @@ export default {
   installSizeHint: "This will install required components (~2 GB)",
   copyInstallCommand: "Copy install command",
   dividerOr: "or",
-  connectRemote: "Connect to Remote Hermes",
-  connectRemoteTitle: "Connect to Remote Hermes",
-  connectRemoteSubtitle: "Enter the URL of a running Hermes API server.",
+  connectRemote: "Connect a remote Hermes runtime",
+  connectRemoteTitle: "Connect a remote Hermes Agent Runtime",
+  connectRemoteSubtitle:
+    "Enter the URL of a running Hermes Agent Runtime API server.",
   remoteServerUrl: "Server URL",
   remoteApiKey: "API Key (optional)",
   remoteApiKeyPlaceholder: "Bearer token (API_SERVER_KEY)",

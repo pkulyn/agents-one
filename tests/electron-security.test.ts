@@ -28,6 +28,7 @@ describe("Electron main process hardening", () => {
   });
 
   it("keeps a production diagnostics path for renderer DevTools", () => {
+    expect(mainSrc).toContain("AGENTS_ONE_OPEN_DEVTOOLS");
     expect(mainSrc).toContain("HERMES_OPEN_DEVTOOLS");
     expect(mainSrc).toContain("openDevTools({ mode: \"detach\" })");
     expect(menuSrc).toContain("Toggle Developer Tools");
@@ -77,6 +78,15 @@ describe("Electron main process hardening", () => {
 
   it("keeps the sandboxed main preload free of external runtime imports", () => {
     expect(preloadSrc).not.toContain("@electron-toolkit/preload");
+  });
+
+  it("uses the Agents One preload name while retaining the legacy alias", () => {
+    expect(preloadSrc).toContain(
+      'contextBridge.exposeInMainWorld("agentsOneAPI", agentsOneAPI)',
+    );
+    expect(preloadSrc).toContain(
+      'contextBridge.exposeInMainWorld("hermesAPI", agentsOneAPI)',
+    );
   });
 
   it("runs hermes doctor without a shell-built command string", () => {

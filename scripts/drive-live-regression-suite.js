@@ -1,5 +1,5 @@
 /**
- * Full live visual regression suite for Hermes One.
+ * Full live visual regression suite for Agents One.
  *
  * This drives the running Electron app through Chrome DevTools Protocol and
  * checks the rendered UI. It intentionally uses the real chat composer,
@@ -187,7 +187,7 @@ let cachedRemoteToken = args.remoteToken || process.env.HERMES_REMOTE_TOKEN || "
 
 if (args.help) {
   console.log(`
-Hermes One live visual regression suite
+Agents One live visual regression suite
 
 Usage:
   node scripts/drive-live-regression-suite.js [options]
@@ -447,26 +447,26 @@ async function newChat(page) {
 
 async function setConnectionMode(page, mode) {
   if (mode === "local") {
-    await renderer(page, () => window.hermesAPI.setConnectionConfig("local", "", ""));
+    await renderer(page, () => window.agentsOneAPI.setConnectionConfig("local", "", ""));
   } else if (mode === "remote") {
     const token = await readRemoteDashboardToken();
     await renderer(
       page,
-      ({ url, token }) => window.hermesAPI.setConnectionConfig("remote", url, token),
+      ({ url, token }) => window.agentsOneAPI.setConnectionConfig("remote", url, token),
       { url: REMOTE_URL, token },
     );
   } else if (mode === "ssh") {
     const token = await readRemoteDashboardToken();
     await renderer(
       page,
-      ({ url, token }) => window.hermesAPI.setConnectionConfig("remote", url, token),
+      ({ url, token }) => window.agentsOneAPI.setConnectionConfig("remote", url, token),
       { url: REMOTE_URL, token },
     );
-    const cfg = await renderer(page, () => window.hermesAPI.getConnectionConfig());
+    const cfg = await renderer(page, () => window.agentsOneAPI.getConnectionConfig());
     await renderer(
       page,
       (ssh) =>
-        window.hermesAPI.setSshConfig(
+        window.agentsOneAPI.setSshConfig(
           ssh.host,
           ssh.port,
           ssh.username,
@@ -481,7 +481,7 @@ async function setConnectionMode(page, mode) {
   }
 
   await sleep(mode === "ssh" ? 5_000 : 2_500);
-  const cfg = await renderer(page, () => window.hermesAPI.getConnectionConfig());
+  const cfg = await renderer(page, () => window.agentsOneAPI.getConnectionConfig());
   assert(cfg.mode === mode, `Connection mode did not switch to ${mode}`, { cfg });
   return cfg;
 }
@@ -490,7 +490,7 @@ async function setModel(page, model) {
   await renderer(
     page,
     ({ provider, model, baseUrl }) =>
-      window.hermesAPI.setModelConfig(provider, model, baseUrl || ""),
+      window.agentsOneAPI.setModelConfig(provider, model, baseUrl || ""),
     model,
   );
   await sleep(1_000);
@@ -516,7 +516,7 @@ async function setModelConfigOnly(page, model) {
   await renderer(
     page,
     ({ provider, model, baseUrl }) =>
-      window.hermesAPI.setModelConfig(provider, model, baseUrl || ""),
+      window.agentsOneAPI.setModelConfig(provider, model, baseUrl || ""),
     model,
   );
   await sleep(1_000);
@@ -603,7 +603,7 @@ async function addTemporaryModel(page, mode, runId) {
 async function addConfiguredModel(page, model) {
   const added = await renderer(
     page,
-    (m) => window.hermesAPI.addModel(m.name, m.provider, m.model, m.baseUrl),
+    (m) => window.agentsOneAPI.addModel(m.name, m.provider, m.model, m.baseUrl),
     model,
   );
   await sleep(1_500);
@@ -612,7 +612,7 @@ async function addConfiguredModel(page, model) {
 
 async function removeTemporaryModel(page, id) {
   if (!id) return;
-  await renderer(page, (modelId) => window.hermesAPI.removeModel(modelId), id).catch(
+  await renderer(page, (modelId) => window.agentsOneAPI.removeModel(modelId), id).catch(
     () => false,
   );
   await sleep(1_500);
@@ -813,7 +813,7 @@ async function runMode(page, report, mode) {
       await setConnectionMode(page, opposite);
       await setConnectionMode(page, mode);
       const persisted = await renderer(page, (model) =>
-        window.hermesAPI
+        window.agentsOneAPI
           .listModels()
           .then((rows) => rows.some((row) => row.model === model)),
         added.model,
@@ -822,7 +822,7 @@ async function runMode(page, report, mode) {
 
       await removeTemporaryModel(page, added.id);
       const removed = await renderer(page, (model) =>
-        window.hermesAPI
+        window.agentsOneAPI
           .listModels()
           .then((rows) => !rows.some((row) => row.model === model)),
         added.model,
@@ -976,13 +976,13 @@ async function runMode(page, report, mode) {
   ensureDir(OUTPUT_DIR);
   const { browser, page } = await attach({
     cdpUrl: `http://127.0.0.1:${CDP_PORT}`,
-    titleHint: "Hermes One",
+    titleHint: "Agents One",
   });
   page.setDefaultTimeout(15_000);
 
   const original = await renderer(page, async () => ({
-    connection: await window.hermesAPI.getConnectionConfig(),
-    model: await window.hermesAPI.getModelConfig().catch(() => null),
+    connection: await window.agentsOneAPI.getConnectionConfig(),
+    model: await window.agentsOneAPI.getModelConfig().catch(() => null),
   }));
 
   if (original.connection.mode !== "local" && !cachedRemoteToken) {
@@ -1017,7 +1017,7 @@ async function runMode(page, report, mode) {
     assert(page.url(), "No renderer page attached");
     assert(await page.title(), "Renderer page has no title");
     assert(
-      await renderer(page, () => Boolean(window.hermesAPI && window.hermesAPI.sendMessage)),
+      await renderer(page, () => Boolean(window.agentsOneAPI && window.agentsOneAPI.sendMessage)),
       "Renderer hermesAPI is not available",
     );
     assert(
@@ -1036,10 +1036,10 @@ async function runMode(page, report, mode) {
         async ({ connection, model, remoteToken }) => {
           try {
             if (connection.mode === "local") {
-              await window.hermesAPI.setConnectionConfig("local", "", "");
+              await window.agentsOneAPI.setConnectionConfig("local", "", "");
             } else if (connection.mode === "remote") {
               if (remoteToken) {
-                await window.hermesAPI.setConnectionConfig(
+                await window.agentsOneAPI.setConnectionConfig(
                   "remote",
                   connection.remoteUrl || "",
                   remoteToken,
@@ -1047,14 +1047,14 @@ async function runMode(page, report, mode) {
               }
             } else if (connection.mode === "ssh") {
               if (remoteToken) {
-                await window.hermesAPI.setConnectionConfig(
+                await window.agentsOneAPI.setConnectionConfig(
                   "remote",
                   connection.remoteUrl || "",
                   remoteToken,
                 );
               }
               if (connection.ssh) {
-                await window.hermesAPI.setSshConfig(
+                await window.agentsOneAPI.setSshConfig(
                   connection.ssh.host,
                   connection.ssh.port,
                   connection.ssh.username,
@@ -1068,7 +1068,7 @@ async function runMode(page, report, mode) {
             /* best effort */
           }
           try {
-            await window.hermesAPI.setConnectionChatTransports(
+            await window.agentsOneAPI.setConnectionChatTransports(
               connection.remoteChatTransport || "auto",
               connection.sshChatTransport || "auto",
             );
@@ -1077,7 +1077,7 @@ async function runMode(page, report, mode) {
           }
           if (model) {
             try {
-              await window.hermesAPI.setModelConfig(
+              await window.agentsOneAPI.setModelConfig(
                 model.provider,
                 model.model,
                 model.baseUrl || "",

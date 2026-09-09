@@ -1,6 +1,6 @@
 export default {
   title: "档案",
-  subtitle: "每个档案都是独立的 Hermes 工作区，拥有自己的配置、记忆和技能",
+  subtitle: "每个档案都是独立的智能体工作区，拥有自己的配置、记忆和技能",
   newAgent: "新建智能体",
   namePlaceholder: "智能体名称（例如 coder）",
   createTitle: "新建档案",
@@ -65,7 +65,7 @@ export default {
   walletCreateFailed: "Couldn't add wallet",
   walletRecoveryTitle: "Recovery phrase",
   walletRecoveryInfo:
-    "Save this phrase now. Hermes will not show it again after this modal closes.",
+    "请立即保存此恢复短语；关闭窗口后，Agents One 将不会再次显示。",
   walletCopyRecovery: "Copy phrase",
   walletDone: "I've saved it",
   walletBalanceLoading: "Loading…",
@@ -73,6 +73,6 @@ export default {
   walletBalanceRefresh: "Refresh",
   walletDeleteTitle: "Remove wallet",
   walletDeleteWarning:
-    "This will permanently remove this wallet from Hermes. Make sure you have backed up the recovery phrase — you won't be able to recover the wallet without it.",
+    "这将从 Agents One 永久移除此钱包。请确认已备份恢复短语，否则无法恢复钱包。",
   walletDeleteConfirmLabel: "Remove wallet",
 } as const;

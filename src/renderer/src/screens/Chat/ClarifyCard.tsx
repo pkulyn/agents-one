@@ -3,7 +3,7 @@ import { useI18n } from "../../components/useI18n";
 import type { ClarifyMessage } from "./types";
 
 /**
- * Sentinel answer for "skip — let Hermes decide". Mirrors the gateway's
+ * Sentinel answer for "skip — let the agent decide". Mirrors the gateway's
  * autonomous-proceed convention: an empty answer tells the agent to choose a
  * reasonable default rather than block.
  */
@@ -37,7 +37,7 @@ export const ClarifyCard = memo(function ClarifyCard({
     setSubmitting(true);
     setError(false);
     try {
-      const ok = await window.hermesAPI.respondClarify(msg.requestId, answer);
+      const ok = await window.agentsOneAPI.respondClarify(msg.requestId, answer);
       // The IPC handler returns false when no pending request matched (e.g. the
       // turn already ended). Only flip the card to resolved on a confirmed
       // delivery; otherwise surface an error and let the user retry.

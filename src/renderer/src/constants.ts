@@ -519,6 +519,8 @@ export interface ThemeDef {
 export const THEMES: ThemeDef[] = [
   { id: "dark", name: "Dark", appearance: "dark" },
   { id: "light", name: "Light", appearance: "light" },
+  { id: "github-light", name: "GitHub Light", appearance: "light" },
+  { id: "solarized-light", name: "Solarized Light", appearance: "light" },
   { id: "dracula", name: "Dracula", appearance: "dark" },
   { id: "nord", name: "Nord", appearance: "dark" },
   { id: "one-dark", name: "One Dark", appearance: "dark" },
@@ -527,8 +529,6 @@ export const THEMES: ThemeDef[] = [
   { id: "solarized-dark", name: "Solarized Dark", appearance: "dark" },
   { id: "gruvbox-dark", name: "Gruvbox Dark", appearance: "dark" },
   { id: "tokyo-night", name: "Tokyo Night", appearance: "dark" },
-  { id: "github-light", name: "GitHub Light", appearance: "light" },
-  { id: "solarized-light", name: "Solarized Light", appearance: "light" },
 ];
 
 /**
@@ -545,7 +545,8 @@ export const THEME_OPTIONS = [
 export const DEFAULT_DARK_THEME = "dark";
 export const DEFAULT_LIGHT_THEME = "light";
 
-export const THEME_STORAGE_KEY = "hermes-theme";
+export const THEME_STORAGE_KEY = "agents-one.theme.v1";
+export const LEGACY_THEME_STORAGE_KEY = "hermes-theme";
 
 // ── Font ────────────────────────────────────────────────
 
@@ -575,7 +576,8 @@ export const FONT_OPTIONS: FontOption[] = [
 
 export const DEFAULT_FONT = "manrope";
 
-export const FONT_STORAGE_KEY = "hermes-font";
+export const FONT_STORAGE_KEY = "agents-one.font.v1";
+export const LEGACY_FONT_STORAGE_KEY = "hermes-font";
 
 // ── Settings API Key Sections ───────────────────────────
 

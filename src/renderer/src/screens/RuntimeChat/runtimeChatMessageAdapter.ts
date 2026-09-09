@@ -14,6 +14,7 @@ import type {
   ChatMessageAgentIdentity,
 } from "../Chat/types";
 import { isSyntheticRemoteReasoningSummary } from "../../../../shared/agent-event-stream";
+import { runtimeArtifactMediaUri } from "../Chat/mediaUtils";
 
 export interface RuntimeChatMessageAdapterOptions {
   /**
@@ -55,6 +56,17 @@ function withIdentity<T extends ChatMessage>(
 
 function normalizedSummary(summary: string): string {
   return summary.replace(/\s+/g, " ").trim();
+}
+
+/** Pi (and a few CLI versions) emit cumulative reasoning snapshots. */
+function isReasoningSnapshotOf(left: string, right: string): boolean {
+  const a = normalizedSummary(left)
+    .replace(/^Pi 思考：/, "")
+    .toLowerCase();
+  const b = normalizedSummary(right)
+    .replace(/^Pi 思考：/, "")
+    .toLowerCase();
+  return Boolean(a && b && a !== b && (a.startsWith(b) || b.startsWith(a)));
 }
 
 /** Recover a stable human-readable tool name from legacy flat summaries. */
@@ -131,9 +143,9 @@ function isPlatformLifecycleProgress(event: AgentRuntimeEvent): boolean {
 
 function isImageArtifact(artifact: AgentRuntimeArtifact): boolean {
   return Boolean(
-    artifact.path &&
+    artifact.id &&
     ((artifact.mime || "").toLowerCase().startsWith("image/") ||
-      /\.(?:png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(artifact.path)),
+      /\.(?:png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(artifact.label)),
   );
 }
 
@@ -143,8 +155,11 @@ function runtimeArtifactMediaTokens(
   return (execution?.artifacts || [])
     .filter(isImageArtifact)
     .map((artifact) => {
-      const path = artifact.path!.replace(/`/g, "");
-      return `MEDIA:\`${path}\``;
+      return `MEDIA:\`${runtimeArtifactMediaUri(
+        execution!.runId,
+        artifact.id!,
+        artifact.label,
+      )}\``;
     })
     .join("\n");
 }
@@ -168,14 +183,23 @@ function runtimeArtifactAttachments(
   execution: RuntimeConversationMessage["execution"],
 ): Attachment[] {
   return (execution?.artifacts || [])
-    .filter((artifact) => artifact.path && !isImageArtifact(artifact))
+    .filter(
+      (artifact) =>
+        artifact.id &&
+        !artifact.content &&
+        artifact.kind !== "diff" &&
+        !isImageArtifact(artifact),
+    )
     .map((artifact, index) => ({
       id: `runtime-artifact-${artifact.id || index}`,
       kind: "path-ref" as const,
       name: artifact.label,
       mime: artifact.mime || "application/octet-stream",
       size: artifact.size || 0,
-      path: artifact.path,
+      runtimeArtifact: {
+        runId: execution!.runId,
+        artifactId: artifact.id!,
+      },
     }));
 }
 
@@ -215,6 +239,17 @@ function runtimeEventMessages(
     const id = `${prefix}:event:${event.id}`;
     if (event.type === "progress") {
       if (isPlatformLifecycleProgress(event)) continue;
+      const previous = messages.at(-1);
+      if (
+        previous?.kind === "reasoning" &&
+        isReasoningSnapshotOf(previous.text, eventDetail(event))
+      ) {
+        previous.text =
+          eventDetail(event).length > previous.text.length
+            ? eventDetail(event)
+            : previous.text;
+        continue;
+      }
       const message: ReasoningMessage = {
         id,
         kind: "reasoning",
@@ -228,6 +263,16 @@ function runtimeEventMessages(
     if (event.type === "tool_call") {
       const evidence = runtimeToolEvidence(event);
       const callId = evidence.callId || `${prefix}:call:${event.id}`;
+      const existingIndex = callIndexesById.get(callId);
+      const existing =
+        existingIndex === undefined ? undefined : messages[existingIndex];
+      if (existing?.kind === "tool_call" && existingIndex !== undefined) {
+        existing.name = evidence.name;
+        if (evidence.input) existing.args = evidence.input;
+        existing.status = options.live ? "running" : "completed";
+        callIndexes.set(evidence.name, existingIndex);
+        continue;
+      }
       const message: ToolCallMessage = {
         id,
         kind: "tool_call",
@@ -308,6 +353,8 @@ function runtimeConversationMessage(
   options: RuntimeChatMessageAdapterOptions,
 ): ChatBubbleMessage {
   const isUser = message.role === "user";
+  const isControlMessage =
+    message.role === "system" || Boolean(message.controlAudit);
   const content =
     !isUser && options.getAgentContent
       ? options.getAgentContent(message)
@@ -321,6 +368,14 @@ function runtimeConversationMessage(
   const displayContent = isUser
     ? content
     : removeRemoteArtifactMediaTokens(content, message.execution);
+  const startedAt = message.execution?.startedAt;
+  const completedAt = message.execution?.completedAt;
+  const durationMs =
+    typeof startedAt === "number" &&
+    typeof completedAt === "number" &&
+    completedAt >= startedAt
+      ? completedAt - startedAt
+      : undefined;
   return {
     id: message.id,
     kind: isUser ? "user" : "assistant",
@@ -328,6 +383,14 @@ function runtimeConversationMessage(
     content: [displayContent, mediaTokens].filter(Boolean).join("\n"),
     ...(attachments.length ? { attachments } : {}),
     timestamp: message.createdAt,
+    ...(isControlMessage ? { isControlMessage: true } : {}),
+    ...(durationMs !== undefined
+      ? {
+          runtimeMeta: {
+            durationMs,
+          },
+        }
+      : {}),
     ...identityForMessage(message),
   };
 }

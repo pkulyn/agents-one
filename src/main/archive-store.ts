@@ -30,6 +30,7 @@ function readStore(profile?: string): ArchiveStore {
       return [{
         id, kind: item.kind, targetId, title,
         ...(clean(item.projectPath) ? { projectPath: clean(item.projectPath) } : {}),
+        ...(clean(item.projectWorkspaceId, 128) ? { projectWorkspaceId: clean(item.projectWorkspaceId, 128) } : {}),
         ...(clean(item.runtimeId, 160) ? { runtimeId: clean(item.runtimeId, 160) } : {}),
         archivedAt: typeof item.archivedAt === "number" ? item.archivedAt : Date.now(),
       }];
@@ -56,6 +57,7 @@ export function archiveItem(input: ArchiveItemInput, profile?: string): Archived
   const item: ArchivedItem = {
     id, kind: input.kind, targetId, title,
     ...(clean(input.projectPath) ? { projectPath: clean(input.projectPath) } : {}),
+    ...(clean(input.projectWorkspaceId, 128) ? { projectWorkspaceId: clean(input.projectWorkspaceId, 128) } : {}),
     ...(clean(input.runtimeId, 160) ? { runtimeId: clean(input.runtimeId, 160) } : {}),
     archivedAt: Date.now(),
   };

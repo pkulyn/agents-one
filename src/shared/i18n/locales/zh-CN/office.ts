@@ -23,6 +23,6 @@ export default {
   startingClaw3dService: "正在启动 Claw3D 服务...",
   clickToStart: '点击"启动"来运行 Claw3D',
   setupDesc1:
-    "Claw3D 是 Hermes 智能体的 3D 可视化环境，可以展示智能体在交互式办公空间中的工作状态。",
+    "Claw3D 是 Hermes Agent Runtime 的 3D 可视化环境，可以展示智能体在交互式办公空间中的工作状态。",
   setupDesc2: "点击下方自动下载并设置 Claw3D。这将克隆仓库并安装所有依赖。",
 } as const;

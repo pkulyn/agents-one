@@ -13,7 +13,10 @@ import type {
   AgentRuntimeDefinition,
   AgentRuntimeKind,
 } from "../../../../shared/agent-runtimes";
-import type { ProjectFolderRecord } from "../../../../shared/project-folders";
+import type {
+  ProjectFolderRecord,
+  ProjectWorkspaceCapability,
+} from "../../../../shared/project-folders";
 import type { RuntimeConversationSummary } from "../../../../shared/runtime-conversations";
 import type { TaskCollaborationRecord } from "../../../../shared/task-collaboration";
 import type { ArchivedItem } from "../../../../shared/archives";
@@ -35,11 +38,17 @@ import SidebarProjectMenu, {
   type SidebarProjectMenuTarget,
 } from "./SidebarProjectMenu";
 import { consumeNativeSessionPage } from "./sidebarSessionPagination";
+import {
+  addMigratedEventListener,
+  dispatchAgentsOneEvent,
+  readMigratedStorageValue,
+} from "../../utils/brandMigration";
 
 interface RecentSession {
   id: string;
   title: string;
   contextFolder?: string | null;
+  contextWorkspaceId?: string | null;
   updatedAt?: number;
   runtimeId?: string;
   runtimeName?: string;
@@ -68,16 +77,21 @@ const RECENT_REFRESH_MS = 60_000;
 const REFRESH_THROTTLE_MS = 5_000;
 const INFINITE_SCROLL_THRESHOLD_PX = 180;
 const EQUIVALENT_CONVERSATION_WINDOW_MS = 24 * 60 * 60 * 1000;
-const PROJECTS_OPEN_KEY = "hermes.sidebar.projectsOpen";
-const CHATS_OPEN_KEY = "hermes.sidebar.chatsOpen";
-const FOLDERS_CLOSED_KEY = "hermes.sidebar.closedProjectFolders";
-const PINNED_OPEN_KEY = "hermes.sidebar.pinnedOpen";
+const PROJECTS_OPEN_KEY = "agents-one.sidebar.projects-open.v1";
+const LEGACY_PROJECTS_OPEN_KEY = "hermes.sidebar.projectsOpen";
+const CHATS_OPEN_KEY = "agents-one.sidebar.chats-open.v1";
+const LEGACY_CHATS_OPEN_KEY = "hermes.sidebar.chatsOpen";
+const FOLDERS_CLOSED_KEY = "agents-one.sidebar.closed-project-folders.v1";
+const LEGACY_FOLDERS_CLOSED_KEY = "hermes.sidebar.closedProjectFolders";
+const PINNED_OPEN_KEY = "agents-one.sidebar.pinned-open.v1";
+const LEGACY_PINNED_OPEN_KEY = "hermes.sidebar.pinnedOpen";
 const QUICK_CHAT_STORAGE_KEY = "agents-one.quick-chats.v1";
 const QUICK_CHAT_HIDDEN_SESSION_IDS_KEY =
   "agents-one.quick-chat.hidden-task-session-ids.v1";
 // Pinned session ids live in localStorage like the disclosure state — pinning
 // is a desktop-only UI affordance, not part of the agent session schema.
-const PINNED_IDS_KEY = "hermes.sidebar.pinnedSessions";
+const PINNED_IDS_KEY = "agents-one.sidebar.pinned-sessions.v1";
+const LEGACY_PINNED_IDS_KEY = "hermes.sidebar.pinnedSessions";
 const HERMES_RUNTIME_APPEARANCE_KEY = "__hermes__";
 
 interface RuntimeAppearance {
@@ -90,7 +104,10 @@ interface RuntimeAppearance {
 
 function readStoredPinned(): Set<string> {
   try {
-    const raw = localStorage.getItem(PINNED_IDS_KEY);
+    const raw = readMigratedStorageValue(
+      PINNED_IDS_KEY,
+      LEGACY_PINNED_IDS_KEY,
+    );
     const parsed = raw ? JSON.parse(raw) : [];
     return new Set(Array.isArray(parsed) ? parsed.filter(String) : []);
   } catch {
@@ -186,9 +203,9 @@ function resolveRuntimeAppearance(
   return undefined;
 }
 
-function readStoredOpen(key: string): boolean {
+function readStoredOpen(key: string, legacyKey: string): boolean {
   try {
-    return localStorage.getItem(key) !== "false";
+    return readMigratedStorageValue(key, legacyKey) !== "false";
   } catch {
     return true;
   }
@@ -196,7 +213,10 @@ function readStoredOpen(key: string): boolean {
 
 function readStoredClosedFolders(): Set<string> {
   try {
-    const raw = localStorage.getItem(FOLDERS_CLOSED_KEY);
+    const raw = readMigratedStorageValue(
+      FOLDERS_CLOSED_KEY,
+      LEGACY_FOLDERS_CLOSED_KEY,
+    );
     const parsed = raw ? JSON.parse(raw) : [];
     return new Set(Array.isArray(parsed) ? parsed.filter(String) : []);
   } catch {
@@ -219,6 +239,8 @@ function sameSessions(a: RecentSession[], b: RecentSession[]): boolean {
       a[i].id !== b[i].id ||
       a[i].title !== b[i].title ||
       (a[i].contextFolder ?? null) !== (b[i].contextFolder ?? null) ||
+      (a[i].contextWorkspaceId ?? null) !==
+        (b[i].contextWorkspaceId ?? null) ||
       (a[i].updatedAt ?? null) !== (b[i].updatedAt ?? null) ||
       (a[i].runtimeId ?? null) !== (b[i].runtimeId ?? null) ||
       (a[i].runtimeName ?? null) !== (b[i].runtimeName ?? null) ||
@@ -253,6 +275,7 @@ function mergeSessionRows(
       runtimeSessionId: conversation.runtimeSessionId,
       messageCount: conversation.messageCount,
       contextFolder: conversation.workspace ?? null,
+      contextWorkspaceId: conversation.workspaceId ?? null,
     });
   }
   return Array.from(rows.values()).sort(
@@ -264,7 +287,7 @@ function mergeSessionRows(
 function equivalentConversationKey(session: RecentSessionRow): string {
   const agent = session.runtimeId || "hermes";
   const title = (session.title || "").trim().replace(/\s+/g, " ").toLowerCase();
-  const folder = (session.contextFolder || "")
+  const folder = (session.contextWorkspaceId || session.contextFolder || "")
     .trim()
     .replace(/\\/g, "/")
     .replace(/\/+$/g, "")
@@ -310,12 +333,14 @@ function sortSessionsNewestFirst<T extends RecentSession>(sessions: T[]): T[] {
   return [...sessions].sort((a, b) => newestTimestamp(b) - newestTimestamp(a));
 }
 
-function groupSessionsByWorkspace(
+export function groupSessionsByWorkspace(
   sessions: RecentSession[],
+  projectWorkspaces: ProjectWorkspaceCapability[] = [],
   projectFolders: ProjectFolderRecord[] = [],
 ): {
   projectGroups: Array<{
-    path: string;
+    key: string;
+    workspaceId?: string;
     name: string;
     sessions: RecentSession[];
     updatedAt: number;
@@ -324,40 +349,53 @@ function groupSessionsByWorkspace(
   chats: RecentSession[];
 } {
   const projects = new Map<string, RecentSession[]>();
-  const folderMeta = new Map<string, ProjectFolderRecord>();
+  const workspaceMeta = new Map<string, ProjectWorkspaceCapability>();
+  const workspaceIdByPath = new Map<string, string>();
   const chats: RecentSession[] = [];
 
+  for (const workspace of projectWorkspaces) {
+    const workspaceId = workspace.id.trim();
+    if (!workspaceId) continue;
+    workspaceMeta.set(workspaceId, workspace);
+    if (!projects.has(workspaceId)) projects.set(workspaceId, []);
+  }
   for (const folder of projectFolders) {
-    const path = folder.path.trim();
-    if (!path) continue;
-    folderMeta.set(path, folder);
-    if (!projects.has(path)) projects.set(path, []);
+    if (!folder.id || !folder.path) continue;
+    workspaceIdByPath.set(folder.path.trim().toLowerCase(), folder.id);
   }
 
   for (const session of sessions) {
+    const workspaceId = session.contextWorkspaceId?.trim();
     const contextFolder = session.contextFolder?.trim();
-    if (!contextFolder) {
+    const key =
+      workspaceId ||
+      (contextFolder
+        ? workspaceIdByPath.get(contextFolder.toLowerCase()) || contextFolder
+        : undefined);
+    if (!key) {
       chats.push(session);
       continue;
     }
-    const existing = projects.get(contextFolder);
+    const existing = projects.get(key);
     if (existing) existing.push(session);
-    else projects.set(contextFolder, [session]);
+    else projects.set(key, [session]);
   }
 
   return {
     projectGroups: Array.from(projects.entries())
-      .map(([path, list]) => {
+      .map(([key, list]) => {
         const sortedSessions = sortSessionsNewestFirst(list);
+        const workspace = workspaceMeta.get(key);
         return {
-          path,
-          name: folderMeta.get(path)?.name || folderName(path),
+          key,
+          ...(workspace ? { workspaceId: workspace.id } : {}),
+          name: workspace?.name || folderName(key),
           sessions: sortedSessions,
           updatedAt: Math.max(
-            folderMeta.get(path)?.updatedAt ?? 0,
+            workspace?.updatedAt ?? 0,
             sortedSessions[0] ? newestTimestamp(sortedSessions[0]) : 0,
           ),
-          pinned: Boolean(folderMeta.get(path)?.pinned),
+          pinned: Boolean(workspace?.pinned),
         };
       })
       .sort(
@@ -393,6 +431,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   showSessionFolders = true,
   onCreateProjectFolder,
   onCreateProjectTask,
+  onCreateTask,
 }: {
   open: boolean;
   /** Active profile — the list is per-profile, so switching forces a reload. */
@@ -415,7 +454,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onCreateProjectFolder?: (mode: "new" | "existing") => void;
   /** Starts a normal task within a project folder. Collaboration is established
    * from inside an existing task only after an explicit user confirmation. */
-  onCreateProjectTask?: (folder: string) => void;
+  onCreateProjectTask?: (workspace: { workspaceId: string; name: string }) => void;
+  /** Opens a fresh task without changing its project association. */
+  onCreateTask?: () => void;
 }): React.JSX.Element | null {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<RecentSession[]>([]);
@@ -423,10 +464,10 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(() =>
-    readStoredOpen(PROJECTS_OPEN_KEY),
+    readStoredOpen(PROJECTS_OPEN_KEY, LEGACY_PROJECTS_OPEN_KEY),
   );
   const [chatsOpen, setChatsOpen] = useState(() =>
-    readStoredOpen(CHATS_OPEN_KEY),
+    readStoredOpen(CHATS_OPEN_KEY, LEGACY_CHATS_OPEN_KEY),
   );
   const [closedProjectFolders, setClosedProjectFolders] = useState<Set<string>>(
     () => readStoredClosedFolders(),
@@ -435,15 +476,19 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     readStoredPinned(),
   );
   const [pinnedOpen, setPinnedOpen] = useState(() =>
-    readStoredOpen(PINNED_OPEN_KEY),
+    readStoredOpen(PINNED_OPEN_KEY, LEGACY_PINNED_OPEN_KEY),
   );
   const [runtimeAppearances, setRuntimeAppearances] = useState<
     Record<string, RuntimeAppearance>
   >({});
+  const [projectWorkspaces, setProjectWorkspaces] = useState<ProjectWorkspaceCapability[]>(
+    [],
+  );
   const [projectFolders, setProjectFolders] = useState<ProjectFolderRecord[]>(
     [],
   );
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [taskMenuOpen, setTaskMenuOpen] = useState(false);
   const [projectTaskMenuPath, setProjectTaskMenuPath] = useState<string | null>(
     null,
   );
@@ -477,8 +522,31 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   // are merged separately and must never affect the native cache offset.
   const loadedNativeCountRef = useRef(0);
 
+  useEffect(() => {
+    if (!projectMenuOpen && !taskMenuOpen && !projectTaskMenuPath) return;
+    const closeCreateMenusOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      if (projectMenuOpen || taskMenuOpen || projectTaskMenuPath) {
+        const activeElement = document.activeElement;
+        if (
+          activeElement instanceof HTMLElement &&
+          activeElement.matches(
+            ".sidebar-recent-new-project, .sidebar-recent-new-task, .sidebar-recent-project-task-add[data-create-project-task-trigger]",
+          )
+        ) {
+          activeElement.blur();
+        }
+      }
+      setProjectMenuOpen(false);
+      setTaskMenuOpen(false);
+      setProjectTaskMenuPath(null);
+    };
+    window.addEventListener("keydown", closeCreateMenusOnEscape);
+    return () => window.removeEventListener("keydown", closeCreateMenusOnEscape);
+  }, [projectMenuOpen, projectTaskMenuPath, taskMenuOpen]);
+
   const refreshRuntimeAppearances = useCallback((): void => {
-    window.hermesAPI
+    window.agentsOneAPI
       .listAgentRuntimes()
       .then((runtimes) =>
         setRuntimeAppearances(runtimeAppearanceFrom(runtimes)),
@@ -489,16 +557,21 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   }, []);
 
   const refreshProjectFolders = useCallback((): void => {
-    window.hermesAPI
-      .listProjectFolders()
-      .then((folders) => setProjectFolders(folders))
+    Promise.all([
+      window.agentsOneAPI.listProjectWorkspaces(),
+      window.agentsOneAPI.listProjectFolders(),
+    ])
+      .then(([workspaces, folders]) => {
+        setProjectWorkspaces(workspaces);
+        setProjectFolders(folders);
+      })
       .catch(() => {
         /* keep last-known project folder list */
       });
   }, []);
 
   const refreshArchives = useCallback((): void => {
-    window.hermesAPI
+    window.agentsOneAPI
       .listArchivedItems(activeProfile)
       .then(setArchivedItems)
       .catch(() => {
@@ -507,7 +580,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   }, [activeProfile]);
 
   const refreshCollaborations = useCallback((): void => {
-    window.hermesAPI
+    window.agentsOneAPI
       .listTaskCollaborations(activeProfile)
       .then((records: TaskCollaborationRecord[]) =>
         setCollaborationTaskIds(
@@ -598,6 +671,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             id,
             title,
             contextFolder,
+            contextWorkspaceId,
             updatedAt,
             runtimeId,
             runtimeName,
@@ -610,6 +684,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             id,
             title,
             contextFolder: contextFolder?.trim() || null,
+            contextWorkspaceId: contextWorkspaceId?.trim() || null,
             updatedAt,
             runtimeId,
             runtimeName,
@@ -674,8 +749,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       lastRefreshRef.current = now;
       try {
         const [synced, runtimeConversations] = await Promise.all([
-          window.hermesAPI.syncSessionCache().catch(() => []),
-          window.hermesAPI
+          window.agentsOneAPI.syncSessionCache().catch(() => []),
+          window.agentsOneAPI
             .listRuntimeConversations(activeProfile, 100)
             .catch(() => []),
         ]);
@@ -706,7 +781,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const nextPage = await window.hermesAPI
+      const nextPage = await window.agentsOneAPI
         .listCachedSessions(
           RECENT_SESSIONS_PAGE_SIZE + 1,
           loadedNativeCountRef.current,
@@ -749,14 +824,14 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           loadedNativeCountRef.current,
         );
         const [cached, runtimeConversations] = await Promise.all([
-          window.hermesAPI
+          window.agentsOneAPI
             .listCachedSessions(
               // One over the page size so the cache read alone can decide whether
               // another page exists without a separate count query.
               nativeWindowSize + 1,
             )
             .catch(() => []),
-          window.hermesAPI
+          window.agentsOneAPI
             .listRuntimeConversations(activeProfile, 100)
             .catch(() => []),
         ]);
@@ -778,8 +853,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       lastRefreshRef.current = Date.now();
       try {
         const [synced, runtimeConversations] = await Promise.all([
-          window.hermesAPI.syncSessionCache().catch(() => []),
-          window.hermesAPI
+          window.agentsOneAPI.syncSessionCache().catch(() => []),
+          window.agentsOneAPI
             .listRuntimeConversations(activeProfile, 100)
             .catch(() => []),
         ]);
@@ -826,12 +901,12 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       void refresh(true);
     };
     window.addEventListener("focus", onFocus);
-    window.addEventListener(
-      "hermes-session-context-folder-changed",
+    const removeContextFolderChangedListener = addMigratedEventListener(
+      "sessionContextFolderChanged",
       onContextFolderChanged,
     );
-    window.addEventListener(
-      "hermes-session-transcript-changed",
+    const removeTranscriptChangedListener = addMigratedEventListener(
+      "sessionTranscriptChanged",
       onTranscriptChanged,
     );
     window.addEventListener(
@@ -841,14 +916,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     return () => {
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
-      window.removeEventListener(
-        "hermes-session-context-folder-changed",
-        onContextFolderChanged,
-      );
-      window.removeEventListener(
-        "hermes-session-transcript-changed",
-        onTranscriptChanged,
-      );
+      removeContextFolderChangedListener();
+      removeTranscriptChangedListener();
       window.removeEventListener(
         "agents-one:hidden-task-sessions-changed",
         onHiddenSessionsChanged,
@@ -909,7 +978,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       ),
     [archivedItems],
   );
-  const archivedProjectPaths = useMemo(
+  const archivedProjectIds = useMemo(
     () =>
       new Set(
         archivedItems
@@ -923,17 +992,14 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       sessions.filter(
         (session) =>
           !archivedTaskIds.has(session.id) &&
-          !(
-            session.contextFolder &&
-            archivedProjectPaths.has(session.contextFolder)
-          ),
+          !(session.contextWorkspaceId && archivedProjectIds.has(session.contextWorkspaceId)),
       ),
-    [archivedProjectPaths, archivedTaskIds, sessions],
+    [archivedProjectIds, archivedTaskIds, sessions],
   );
-  const visibleProjectFolders = useMemo(
+  const visibleProjectWorkspaces = useMemo(
     () =>
-      projectFolders.filter((folder) => !archivedProjectPaths.has(folder.path)),
-    [archivedProjectPaths, projectFolders],
+      projectWorkspaces.filter((workspace) => !archivedProjectIds.has(workspace.id)),
+    [archivedProjectIds, projectWorkspaces],
   );
   const pinnedSessions = useMemo(
     () =>
@@ -946,28 +1012,20 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     () =>
       groupSessionsByWorkspace(
         visibleSessions.filter((s) => !pinnedIds.has(s.id)),
-        visibleProjectFolders,
+        visibleProjectWorkspaces,
+        projectFolders,
       ),
-    [visibleProjectFolders, visibleSessions, pinnedIds],
+    [visibleProjectWorkspaces, visibleSessions, pinnedIds, projectFolders],
   );
 
-  // Every distinct project folder currently in use, so "Move to project" lists
-  // them all — even ones whose only conversation is pinned or filtered out.
+  // The renderer receives only opaque project references, including in the
+  // context-menu move picker. Legacy paths remain display-only migration data.
   const projectChoices = useMemo<SidebarMenuProject[]>(() => {
-    const byPath = new Map<string, SidebarMenuProject>();
-    for (const s of sessions) {
-      const folder = s.contextFolder?.trim();
-      if (folder && !byPath.has(folder)) {
-        byPath.set(folder, { path: folder, name: folderName(folder) });
-      }
-    }
-    for (const folder of projectFolders) {
-      if (folder.path && !byPath.has(folder.path)) {
-        byPath.set(folder.path, { path: folder.path, name: folder.name });
-      }
-    }
-    return Array.from(byPath.values());
-  }, [projectFolders, sessions]);
+    return projectWorkspaces.map((workspace) => ({
+      workspaceId: workspace.id,
+      name: workspace.name,
+    }));
+  }, [projectWorkspaces]);
 
   const togglePinned = (): void => {
     setPinnedOpen((prev) => {
@@ -994,12 +1052,12 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     async (id: string): Promise<void> => {
       const session = sessionsRef.current.find((item) => item.id === id);
       if (!session) return;
-      await window.hermesAPI.archiveItem(
+      await window.agentsOneAPI.archiveItem(
         {
           kind: "task",
           targetId: session.id,
           title: session.title || "未命名任务",
-          ...(session.contextFolder
+          ...(session.contextFolder && !session.contextWorkspaceId
             ? { projectPath: session.contextFolder }
             : {}),
           ...(session.runtimeId ? { runtimeId: session.runtimeId } : {}),
@@ -1018,11 +1076,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   );
 
   const archiveProject = useCallback(
-    async (path: string, name: string): Promise<void> => {
-      await window.hermesAPI.archiveItem(
-        { kind: "project", targetId: path, title: name, projectPath: path },
-        activeProfile,
-      );
+    async (workspaceId: string): Promise<void> => {
+      await window.agentsOneAPI.archiveProjectWorkspace(workspaceId, activeProfile);
       setProjectMenuTarget(null);
       refreshArchives();
       window.dispatchEvent(new Event("agents-one:archives-changed"));
@@ -1031,23 +1086,23 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   );
 
   const toggleProjectPin = useCallback(
-    async (path: string, pinned: boolean): Promise<void> => {
-      setProjectFolders((current) =>
-        current.map((folder) =>
-          folder.path === path
-            ? { ...folder, pinned: !pinned, updatedAt: Date.now() }
-            : folder,
+    async (workspaceId: string, pinned: boolean): Promise<void> => {
+      setProjectWorkspaces((current) =>
+        current.map((workspace) =>
+          workspace.id === workspaceId
+            ? { ...workspace, pinned: !pinned, updatedAt: Date.now() }
+            : workspace,
         ),
       );
-      await window.hermesAPI.updateProjectFolder({ path, pinned: !pinned });
+      await window.agentsOneAPI.updateProjectWorkspace({ id: workspaceId, pinned: !pinned });
       refreshProjectFolders();
     },
     [refreshProjectFolders],
   );
 
-  const startProjectRename = useCallback((path: string, name: string): void => {
+  const startProjectRename = useCallback((workspaceId: string, name: string): void => {
     projectRenameCancelledRef.current = false;
-    setEditingProjectPath(path);
+    setEditingProjectPath(workspaceId);
     setEditingProjectName(name);
     setTimeout(() => {
       projectRenameInputRef.current?.focus();
@@ -1061,21 +1116,21 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   }, []);
 
   const confirmProjectRename = useCallback(async (): Promise<void> => {
-    const path = editingProjectPath;
+    const workspaceId = editingProjectPath;
     const name = editingProjectName.trim();
-    if (!path || !name) {
+    if (!workspaceId || !name) {
       cancelProjectRename();
       return;
     }
-    setProjectFolders((current) =>
-      current.map((folder) =>
-        folder.path === path
-          ? { ...folder, name, updatedAt: Date.now() }
-          : folder,
+    setProjectWorkspaces((current) =>
+      current.map((workspace) =>
+        workspace.id === workspaceId
+          ? { ...workspace, name, updatedAt: Date.now() }
+          : workspace,
       ),
     );
     cancelProjectRename();
-    await window.hermesAPI.updateProjectFolder({ path, name });
+    await window.agentsOneAPI.updateProjectWorkspace({ id: workspaceId, name });
     refreshProjectFolders();
   }, [
     cancelProjectRename,
@@ -1085,20 +1140,20 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   ]);
 
   const removeProject = useCallback(
-    async (path: string): Promise<void> => {
-      await window.hermesAPI.removeProjectFolder(path, activeProfile);
+    async (workspaceId: string): Promise<void> => {
+      await window.agentsOneAPI.removeProjectWorkspace(workspaceId, activeProfile);
       setSessions((current) =>
         current.map((session) =>
-          session.contextFolder === path
-            ? { ...session, contextFolder: null }
+          session.contextWorkspaceId === workspaceId
+            ? { ...session, contextFolder: null, contextWorkspaceId: null }
             : session,
         ),
       );
-      setProjectFolders((current) =>
-        current.filter((folder) => folder.path !== path),
+      setProjectWorkspaces((current) =>
+        current.filter((workspace) => workspace.id !== workspaceId),
       );
       setProjectMenuTarget(null);
-      window.dispatchEvent(new Event("hermes-session-context-folder-changed"));
+      dispatchAgentsOneEvent("sessionContextFolderChanged");
     },
     [activeProfile],
   );
@@ -1133,13 +1188,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       if (editingIdRef.current === id) cancelRename();
       try {
         if (current?.runtimeId) {
-          await window.hermesAPI.updateRuntimeConversationTitle(
+          await window.agentsOneAPI.updateRuntimeConversationTitle(
             id,
             trimmed,
             activeProfile,
           );
         } else {
-          await window.hermesAPI.updateSessionTitle(id, trimmed);
+          await window.agentsOneAPI.updateSessionTitle(id, trimmed);
         }
       } catch (err) {
         console.error("Failed to rename session", id, err);
@@ -1152,29 +1207,39 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   );
 
   const handleMoveToProject = useCallback(
-    async (id: string, folder: string | null): Promise<void> => {
-      const normalized = folder?.trim() || null;
+    async (id: string, workspace: SidebarMenuProject | null): Promise<void> => {
       const current = sessionsRef.current.find((s) => s.id === id);
       if (current?.runtimeId) return;
-      if ((current?.contextFolder ?? null) === normalized) return;
-      const previous = current?.contextFolder ?? null;
+      if ((current?.contextWorkspaceId ?? null) === (workspace?.workspaceId ?? null)) return;
+      const previous = {
+        contextFolder: current?.contextFolder ?? null,
+        contextWorkspaceId: current?.contextWorkspaceId ?? null,
+      };
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === id ? { ...s, contextFolder: normalized } : s,
+          s.id === id
+            ? {
+                ...s,
+                contextFolder: workspace?.name ?? null,
+                contextWorkspaceId: workspace?.workspaceId ?? null,
+              }
+            : s,
         ),
       );
       try {
-        await window.hermesAPI.setSessionContextFolder(id, normalized);
+        const saved = await window.agentsOneAPI.setSessionContextWorkspace(
+          id,
+          workspace ? { workspaceId: workspace.workspaceId, name: workspace.name } : null,
+        );
+        if (!saved) throw new Error("项目已不可用");
         // Other surfaces (chat view, Sessions screen) listen for this to
         // refresh their own grouping.
-        window.dispatchEvent(
-          new CustomEvent("hermes-session-context-folder-changed"),
-        );
+        dispatchAgentsOneEvent("sessionContextFolderChanged");
       } catch (err) {
         console.error("Failed to move session to project", id, err);
         setSessions((prev) =>
           prev.map((s) =>
-            s.id === id ? { ...s, contextFolder: previous } : s,
+            s.id === id ? { ...s, ...previous } : s,
           ),
         );
       }
@@ -1185,8 +1250,11 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const handlePickNewFolder = useCallback(
     async (id: string): Promise<void> => {
       try {
-        const folder = await window.hermesAPI.selectFolder();
-        if (folder) await handleMoveToProject(id, folder);
+        const folder = await window.agentsOneAPI.selectFolder();
+        if (folder) {
+          const registered = await window.agentsOneAPI.registerProjectWorkspace(folder);
+          if (registered) await handleMoveToProject(id, { workspaceId: registered.id, name: registered.name });
+        }
       } catch (err) {
         console.error("Folder selection failed", err);
       }
@@ -1207,9 +1275,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       });
       try {
         if (current?.runtimeId) {
-          await window.hermesAPI.deleteRuntimeConversation(id, activeProfile);
+          await window.agentsOneAPI.deleteRuntimeConversation(id, activeProfile);
         } else {
-          await window.hermesAPI.deleteSession(id);
+          await window.agentsOneAPI.deleteSession(id);
         }
         onSessionDeleted?.(id);
       } catch (err) {
@@ -1230,6 +1298,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         id: s.id,
         title: s.title,
         contextFolder: s.contextFolder ?? null,
+        contextWorkspaceId: s.contextWorkspaceId ?? null,
         runtimeId: s.runtimeId,
         x,
         y,
@@ -1284,7 +1353,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     const menuOpen = menuTarget?.id === s.id;
     const runtimeAppearance = resolveRuntimeAppearance(s, runtimeAppearances);
     const runtimeLabel =
-      runtimeAppearance?.name?.trim() || s.runtimeName?.trim() || "Hermes";
+      runtimeAppearance?.name?.trim() || s.runtimeName?.trim() || "Agent";
     const runtimeKind = runtimeAppearance?.kind ?? s.runtimeKind ?? "hermes";
     const runtimeColor = runtimeAppearance?.color ?? s.runtimeColor;
     const runtimeAvatar = runtimeAppearance?.avatar ?? s.runtimeAvatar;
@@ -1437,7 +1506,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           </div>
         )}
         {showSessionFolders && (
-          <div className="sidebar-recent-section">
+          <div className="sidebar-recent-section sidebar-recent-section--projects">
             <div className="sidebar-recent-section-heading">
               <button
                 type="button"
@@ -1465,7 +1534,12 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                   className="sidebar-recent-new-project"
                   title="新建项目"
                   aria-label="新建项目"
-                  onClick={() => setProjectMenuOpen((open) => !open)}
+                  aria-haspopup="menu"
+                  aria-expanded={projectMenuOpen}
+                  onClick={() => {
+                    setProjectMenuOpen((open) => !open);
+                    setTaskMenuOpen(false);
+                  }}
                   tabIndex={expanded ? 0 : -1}
                 >
                   <Plus size={15} />
@@ -1510,12 +1584,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                   </div>
                 ) : (
                   projectGroups.map((group) => {
-                    const projectOpen = !closedProjectFolders.has(group.path);
+                    const projectOpen = !closedProjectFolders.has(group.key);
                     const visible = expanded && projectsOpen && projectOpen;
+                    const workspaceId = group.workspaceId;
                     return (
-                      <div className="sidebar-recent-project" key={group.path}>
+                      <div className="sidebar-recent-project" key={group.key}>
                         <div className="sidebar-recent-project-heading-wrap">
-                          {editingProjectPath === group.path ? (
+                          {editingProjectPath === group.workspaceId ? (
                             <input
                               ref={projectRenameInputRef}
                               className="sidebar-recent-project-rename"
@@ -1546,13 +1621,14 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                             <button
                               type="button"
                               className="sidebar-recent-project-heading"
-                              title={group.path}
-                              onClick={() => toggleProjectFolder(group.path)}
+                              title={group.name}
+                              onClick={() => toggleProjectFolder(group.key)}
                               onContextMenu={(event) => {
                                 event.preventDefault();
                                 setMenuTarget(null);
+                                if (!group.workspaceId) return;
                                 setProjectMenuTarget({
-                                  path: group.path,
+                                  workspaceId: group.workspaceId,
                                   name: group.name,
                                   pinned: group.pinned,
                                   x: event.clientX,
@@ -1577,16 +1653,17 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                               )}
                             </button>
                           )}
-                          {onCreateProjectTask ? (
+                          {onCreateProjectTask && group.workspaceId ? (
                             <button
                               type="button"
                               className="sidebar-recent-project-task-add"
+                              data-create-project-task-trigger
                               title={`在${group.name}中新建任务`}
                               aria-label={`在${group.name}中新建任务`}
                               tabIndex={expanded && projectsOpen ? 0 : -1}
                               onClick={() =>
                                 setProjectTaskMenuPath((path) =>
-                                  path === group.path ? null : group.path,
+                                  path === group.key ? null : group.key,
                                 )
                               }
                             >
@@ -1602,8 +1679,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                               const rect =
                                 event.currentTarget.getBoundingClientRect();
                               setMenuTarget(null);
+                              if (!group.workspaceId) return;
                               setProjectMenuTarget({
-                                path: group.path,
+                                workspaceId: group.workspaceId,
                                 name: group.name,
                                 pinned: group.pinned,
                                 x: rect.right,
@@ -1613,8 +1691,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                           >
                             <MoreHorizontal size={14} />
                           </button>
-                          {projectTaskMenuPath === group.path &&
-                          onCreateProjectTask ? (
+                          {projectTaskMenuPath === group.key &&
+                          onCreateProjectTask && workspaceId ? (
                             <div
                               className="sidebar-project-task-create-menu"
                               role="menu"
@@ -1624,7 +1702,10 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                                 role="menuitem"
                                 onClick={() => {
                                   setProjectTaskMenuPath(null);
-                                  onCreateProjectTask(group.path);
+                                  onCreateProjectTask({
+                                    workspaceId,
+                                    name: group.name,
+                                  });
                                 }}
                               >
                                 <Plus size={14} />
@@ -1652,27 +1733,64 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             </div>
           </div>
         )}
-        <div className="sidebar-recent-section">
-          <button
-            type="button"
-            className="sidebar-recent-section-toggle"
-            onClick={toggleChats}
-            aria-expanded={chatsOpen}
-            tabIndex={expanded ? 0 : -1}
-          >
-            <span>{sectionLabel || t("navigation.chats")}</span>
-            {chatsOpen ? (
-              <ChevronDown
-                className="sidebar-recent-disclosure-icon"
-                size={13}
-              />
-            ) : (
-              <ChevronRight
-                className="sidebar-recent-disclosure-icon"
-                size={13}
-              />
-            )}
-          </button>
+        <div className="sidebar-recent-section sidebar-recent-section--tasks">
+          <div className="sidebar-recent-section-heading">
+            <button
+              type="button"
+              className="sidebar-recent-section-toggle"
+              onClick={toggleChats}
+              aria-expanded={chatsOpen}
+              tabIndex={expanded ? 0 : -1}
+            >
+              <span>{sectionLabel || t("navigation.chats")}</span>
+              {chatsOpen ? (
+                <ChevronDown
+                  className="sidebar-recent-disclosure-icon"
+                  size={13}
+                />
+              ) : (
+                <ChevronRight
+                  className="sidebar-recent-disclosure-icon"
+                  size={13}
+                />
+              )}
+            </button>
+            {onCreateTask ? (
+              <button
+                type="button"
+                className="sidebar-recent-new-task"
+                title="新建任务"
+                aria-label="新建任务"
+                aria-haspopup="menu"
+                aria-expanded={taskMenuOpen}
+                onClick={() => {
+                  setTaskMenuOpen((open) => !open);
+                  setProjectMenuOpen(false);
+                }}
+                tabIndex={expanded ? 0 : -1}
+              >
+                <Plus size={15} />
+              </button>
+            ) : null}
+            {taskMenuOpen && onCreateTask ? (
+              <div
+                className="sidebar-project-create-menu sidebar-task-create-menu"
+                role="menu"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setTaskMenuOpen(false);
+                    onCreateTask();
+                  }}
+                >
+                  <Plus size={15} />
+                  新建任务
+                </button>
+              </div>
+            ) : null}
+          </div>
           <div
             className={`sidebar-recent-collapse ${chatsOpen ? "expanded" : ""}`}
           >
@@ -1716,11 +1834,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           }
           onPickNewFolder={() => void handlePickNewFolder(menuTarget.id)}
           onCopySessionId={() =>
-            void window.hermesAPI.copyToClipboard(menuTarget.id)
+            void window.agentsOneAPI.copyToClipboard(menuTarget.id)
           }
           onReveal={() => {
-            if (menuTarget.contextFolder) {
-              void window.hermesAPI.openFileInEditor(menuTarget.contextFolder);
+            if (menuTarget.contextWorkspaceId) {
+              void window.agentsOneAPI.openProjectWorkspace(
+                menuTarget.contextWorkspaceId,
+              );
             }
           }}
           onArchive={() => void archiveTask(menuTarget.id)}
@@ -1734,20 +1854,25 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           onClose={() => setProjectMenuTarget(null)}
           onTogglePin={() =>
             void toggleProjectPin(
-              projectMenuTarget.path,
+              projectMenuTarget.workspaceId,
               projectMenuTarget.pinned,
             )
           }
           onReveal={() =>
-            void window.hermesAPI.openFileInEditor(projectMenuTarget.path)
+            void window.agentsOneAPI.openProjectWorkspace(
+              projectMenuTarget.workspaceId,
+            )
           }
           onRename={() =>
-            startProjectRename(projectMenuTarget.path, projectMenuTarget.name)
+            startProjectRename(
+              projectMenuTarget.workspaceId,
+              projectMenuTarget.name,
+            )
           }
           onArchive={() =>
-            void archiveProject(projectMenuTarget.path, projectMenuTarget.name)
+            void archiveProject(projectMenuTarget.workspaceId)
           }
-          onRemove={() => void removeProject(projectMenuTarget.path)}
+          onRemove={() => void removeProject(projectMenuTarget.workspaceId)}
         />
       ) : null}
       {pendingDeleteId &&

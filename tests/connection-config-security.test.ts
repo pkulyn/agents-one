@@ -51,7 +51,7 @@ describe("connection config (local-only — plan D5)", () => {
 
     writeFileSync(
       join(testHome, "desktop.json"),
-      `﻿${JSON.stringify({
+      `\uFEFF${JSON.stringify({
         connectionMode: "remote",
         remoteUrl: "https://hermes.example",
         remoteApiKey: "remote-secret",

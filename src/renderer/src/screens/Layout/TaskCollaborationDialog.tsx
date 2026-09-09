@@ -38,6 +38,9 @@ export interface CollaborationTaskDraft {
   runId?: string;
   taskId?: string;
   title: string;
+  projectWorkspaceId?: string | null;
+  projectName?: string | null;
+  /** Legacy path used only while opening an old collaboration record. */
   projectFolder?: string | null;
   sourceRuntimeId?: string;
   assignments?: TaskCollaborationAssignment[];
@@ -70,7 +73,8 @@ function defaultAssignments(
       responsibility: definition.responsibility,
       context: definition.context,
       workspaceAccess:
-        definition.role === "项目负责人" && draft.projectFolder
+        definition.role === "项目负责人" &&
+        (draft.projectWorkspaceId || draft.projectFolder)
           ? "evidence_bundle"
           : undefined,
     };
@@ -213,8 +217,8 @@ export default function TaskCollaborationDialog({
             <span>
               <Folder size={15} /> 关联项目
             </span>
-            <strong title={draft.projectFolder || undefined}>
-              {projectName(draft.projectFolder)}
+              <strong title={draft.projectName || draft.projectFolder || undefined}>
+              {draft.projectName || projectName(draft.projectFolder)}
             </strong>
           </div>
 
@@ -404,8 +408,8 @@ export default function TaskCollaborationDialog({
             }}
           />
           <div className="task-collaboration-composer-tools">
-            <span title={draft.projectFolder || "未关联项目"}>
-              <Folder size={16} /> {projectName(draft.projectFolder)}
+            <span title={draft.projectName || draft.projectFolder || "未关联项目"}>
+              <Folder size={16} /> {draft.projectName || projectName(draft.projectFolder)}
             </span>
             <span>确认分工后，发送任务说明才会启动协作</span>
             <button

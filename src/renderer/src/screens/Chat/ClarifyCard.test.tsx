@@ -17,7 +17,7 @@ afterEach(cleanup);
 
 function stubRespond(): ReturnType<typeof vi.fn> {
   const respondClarify = vi.fn().mockResolvedValue(true);
-  (window as unknown as { hermesAPI: unknown }).hermesAPI = { respondClarify };
+  (window as unknown as { agentsOneAPI: unknown }).agentsOneAPI = { respondClarify };
   return respondClarify;
 }
 
@@ -113,7 +113,7 @@ describe("ClarifyCard", () => {
 
   it("does not resolve the card when delivery fails (respondClarify -> false)", async () => {
     const respondClarify = vi.fn().mockResolvedValue(false);
-    (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+    (window as unknown as { agentsOneAPI: unknown }).agentsOneAPI = {
       respondClarify,
     };
     const onResolved = vi.fn();
@@ -139,7 +139,7 @@ describe("ClarifyCard", () => {
 
   it("does not resolve the card when the IPC call rejects", async () => {
     const respondClarify = vi.fn().mockRejectedValue(new Error("ipc down"));
-    (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+    (window as unknown as { agentsOneAPI: unknown }).agentsOneAPI = {
       respondClarify,
     };
     const onResolved = vi.fn();

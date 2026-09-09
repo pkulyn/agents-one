@@ -5,6 +5,7 @@ import {
   FileText,
   Info,
   Languages,
+  Mic,
   Palette,
   X,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import DataPane from "./DataPane";
 import AboutPane from "./AboutPane";
 import LogsPane from "./LogsPane";
 import ArchivePane from "./ArchivePane";
+import VoiceInputPane from "./VoiceInputPane";
 
 export type SettingsSection =
   | "appearance"
@@ -25,7 +27,8 @@ export type SettingsSection =
   | "data"
   | "about"
   | "logs"
-  | "archives";
+  | "archives"
+  | "voice";
 
 type NavGroup = "general";
 
@@ -49,7 +52,14 @@ const SETTINGS_NAV: ReadonlyArray<{
     Icon: Languages,
   },
   {
-    group: "general",    id: "data",
+    group: "general",
+    id: "voice",
+    labelKey: "settings.nav.voice",
+    Icon: Mic,
+  },
+  {
+    group: "general",
+    id: "data",
     labelKey: "settings.nav.data",
     Icon: Database,
   },
@@ -170,6 +180,7 @@ export default function SettingsModal({
             {section === "language" && <LanguagePane />}
             {section === "data" && <DataPane />}
             {section === "archives" && <ArchivePane profile={profile} />}
+            {section === "voice" && <VoiceInputPane profile={profile} />}
             {section === "about" && <AboutPane />}
             {section === "logs" && <LogsPane />}
           </SettingsDataContext.Provider>

@@ -1,13 +1,20 @@
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
-import { join } from "path";
+import {
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  realpathSync,
+  readdirSync,
+  lstatSync,
+} from "fs";
+import { isAbsolute, join, relative, resolve, sep } from "path";
 import { HERMES_HOME } from "./installer";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 /**
- * Staging area for pasted attachments.  Picker / drag-drop attachments
- * keep their original filesystem path; pasted attachments have no origin
- * path, so we write their bytes to disk here and pass that path to the
- * agent.
+ * Main-process-owned staging area for every binary/document attachment.
+ * The Renderer never passes an original local path to a Runtime; it first
+ * sends attachment bytes here, then passes only this controlled path.
  *
  * Layout:
  *   %LOCALAPPDATA%/hermes/desktop-staging/<sessionId>/<filename>
@@ -17,6 +24,18 @@ import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
  * session is deleted.
  */
 const STAGING_ROOT = join(HERMES_HOME, "desktop-staging");
+const MAX_STAGED_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+const MAX_STAGED_SESSION_BYTES = 100 * 1024 * 1024;
+const MAX_STAGED_TOTAL_BYTES = 1024 * 1024 * 1024;
+
+function containedBy(root: string, candidate: string): boolean {
+  const relation = relative(root, candidate);
+  return !(
+    relation === ".." ||
+    relation.startsWith(`..${sep}`) ||
+    isAbsolute(relation)
+  );
+}
 
 function sanitizeSegment(value: string, fallback: string): string {
   // Strip path separators, null bytes, and any other dodgy chars; collapse
@@ -46,6 +65,21 @@ function uniquePath(dir: string, filename: string): string {
   return join(dir, `${stem}_${Date.now()}${ext}`);
 }
 
+/** Count regular files only; a staging symlink never contributes authority. */
+function regularFileBytes(path: string): number {
+  if (!existsSync(path)) return 0;
+  let total = 0;
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    const candidate = join(path, entry.name);
+    if (entry.isDirectory()) {
+      total += regularFileBytes(candidate);
+      continue;
+    }
+    if (entry.isFile()) total += lstatSync(candidate).size;
+  }
+  return total;
+}
+
 /**
  * Write a base64-encoded attachment to the staging area and return the
  * absolute path.  Caller is the renderer (via IPC); we don't trust the
@@ -57,12 +91,43 @@ export function stageAttachment(
   base64Bytes: string,
 ): string {
   assertAgentsOneWritesAllowed();
+  if (
+    typeof base64Bytes !== "string" ||
+    !/^[A-Za-z0-9+/=\s]+$/.test(base64Bytes)
+  ) {
+    throw new Error("Attachment bytes are invalid.");
+  }
+  const bytes = Buffer.from(base64Bytes.replace(/\s/g, ""), "base64");
+  if (!bytes.length || bytes.length > MAX_STAGED_ATTACHMENT_BYTES) {
+    throw new Error("Attachment exceeds the staging size limit.");
+  }
   const sessionSegment = sanitizeSegment(sessionId || "default", "default");
   const dir = join(STAGING_ROOT, sessionSegment);
+  const sessionBytes = regularFileBytes(dir);
+  const totalBytes = regularFileBytes(STAGING_ROOT);
+  if (sessionBytes + bytes.length > MAX_STAGED_SESSION_BYTES) {
+    throw new Error("Attachment exceeds the per-session staging quota.");
+  }
+  if (totalBytes + bytes.length > MAX_STAGED_TOTAL_BYTES) {
+    throw new Error(
+      "Attachment exceeds the total staging quota. Delete old sessions before adding more files.",
+    );
+  }
   mkdirSync(dir, { recursive: true });
   const target = uniquePath(dir, filename);
-  writeFileSync(target, Buffer.from(base64Bytes, "base64"));
+  writeFileSync(target, bytes);
   return target;
+}
+
+/** True only for a real file below the main-process owned staging root. */
+export function isStagedAttachmentPath(value: string): boolean {
+  try {
+    const root = realpathSync(resolve(STAGING_ROOT));
+    const candidate = realpathSync(resolve(value));
+    return containedBy(root, candidate);
+  } catch {
+    return false;
+  }
 }
 
 /**

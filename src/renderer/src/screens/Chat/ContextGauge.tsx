@@ -10,6 +10,11 @@ export interface ContextUsage {
   cacheWriteTokens?: number;
 }
 
+export interface ContextGaugeProps extends ContextUsage {
+  /** Optional control-plane action, e.g. RuntimeChat's native `/compact`. */
+  onClick?: () => void;
+}
+
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) {
     const val = (n / 1_000_000).toFixed(1);
@@ -33,7 +38,8 @@ export const ContextGauge = memo(function ContextGauge({
   window: ctxWindow,
   cacheReadTokens,
   cacheWriteTokens,
-}: ContextUsage): React.JSX.Element {
+  onClick,
+}: ContextGaugeProps): React.JSX.Element {
   const { t } = useI18n();
   const pct =
     ctxWindow > 0 ? Math.min(100, Math.round((used / ctxWindow) * 100)) : 0;
@@ -52,14 +58,27 @@ export const ContextGauge = memo(function ContextGauge({
     used > 0 && cacheReadTokens
       ? Math.min(100, Math.round((cacheReadTokens / used) * 100))
       : 0;
+  const interactive = typeof onClick === "function";
+  const label = `${t("chat.contextUsed", { pct, left })}，窗口 ${fmtTokens(ctxWindow)}`;
 
   return (
     <div
-      className="chat-ctx-gauge"
+      className={`chat-ctx-gauge${interactive ? " chat-ctx-gauge--interactive" : ""}`}
       tabIndex={0}
-      role="img"
-      aria-label={`${t("chat.contextUsed", { pct, left })}，窗口 ${fmtTokens(ctxWindow)}`}
-      title={`上下文窗口 ${fmtTokens(ctxWindow)}，已使用 ${fmtTokens(used)}`}
+      role={interactive ? "button" : "img"}
+      aria-label={interactive ? `${label}；压缩当前会话上下文` : label}
+      title={`${`上下文窗口 ${fmtTokens(ctxWindow)}，已使用 ${fmtTokens(used)}`}${interactive ? "；点击压缩当前会话" : ""}`}
+      {...(interactive
+        ? {
+            onClick,
+            onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick();
+              }
+            },
+          }
+        : {})}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle

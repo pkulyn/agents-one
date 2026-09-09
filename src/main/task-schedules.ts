@@ -1,18 +1,26 @@
 import { randomUUID } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import type {
-  CreateTaskScheduleInput,
-  TaskSchedule,
-  TaskScheduleConcurrencyPolicy,
-  TaskScheduleRun,
-  TaskScheduleRunCompletedEvent,
-  TaskScheduleRunStartedEvent,
-  TaskScheduleTriggerResult,
-  UpdateTaskScheduleInput,
+import {
+  isTaskScheduleRuntimeEligible,
+  taskScheduleRuntimeCategory,
+  type CreateTaskScheduleInput,
+  type TaskSchedule,
+  type TaskScheduleConcurrencyPolicy,
+  type TaskScheduleRun,
+  type TaskScheduleRunCompletedEvent,
+  type TaskScheduleRunStartedEvent,
+  type TaskScheduleTriggerResult,
+  type UpdateTaskScheduleInput,
 } from "../shared/task-schedules";
 import { summarizeTaskOutput } from "../shared/runtime-output";
-import type { AgentRuntimeRun } from "../shared/agent-runtimes";
+import { redactSensitiveText } from "../shared/redaction";
+import {
+  runtimeIsolationInfo,
+  unattendedRuntimePreflight,
+  type AgentRuntimeDefinition,
+  type AgentRuntimeRun,
+} from "../shared/agent-runtimes";
 import {
   cancelAgentRuntimeTask,
   getAgentRuntimeRun,
@@ -24,6 +32,7 @@ import {
   saveRuntimeConversation,
 } from "./runtime-conversation-store";
 import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
+import { resolveAuthorizedWorkspaceId } from "./workspace-authority";
 
 const STORE_VERSION = 5;
 const MAX_SCHEDULES = 200;
@@ -41,6 +50,7 @@ const runCompletedListeners = new Set<
 const runStartedListeners = new Set<
   (event: TaskScheduleRunStartedEvent) => void
 >();
+const scheduleMutationChains = new Map<string, Promise<void>>();
 
 interface Store {
   version: number;
@@ -66,7 +76,16 @@ function policy(value: unknown): TaskScheduleConcurrencyPolicy {
 }
 
 function validSchedule(value: string): boolean {
-  return /^\d+[mh]$/i.test(value) || value.trim().split(/\s+/).length === 5;
+  if (/^\d+[mh]$/i.test(value)) return true;
+  const parts = value.trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+  return (
+    validCronPart(parts[0], 0, 59) &&
+    validCronPart(parts[1], 0, 23) &&
+    validCronPart(parts[2], 1, 31) &&
+    validCronPart(parts[3], 1, 12) &&
+    validCronPart(parts[4], 0, 7)
+  );
 }
 
 function normalizeSchedule(
@@ -134,6 +153,9 @@ function normalizeSchedule(
     ...(cleanText(item.workspace, 4096)
       ? { workspace: cleanText(item.workspace, 4096) }
       : {}),
+    ...(cleanText(item.workspaceId, 128)
+      ? { workspaceId: cleanText(item.workspaceId, 128) }
+      : {}),
     timeoutMs,
     enabled: item.enabled !== false,
     concurrencyPolicy: policy(item.concurrencyPolicy),
@@ -190,6 +212,30 @@ function resolvedProfile(profile?: string): string {
   return profile || getActiveProfileNameSync();
 }
 
+/** Serialize async schedule mutations for one Profile to prevent stale writes. */
+async function withScheduleMutation<T>(
+  profile: string | undefined,
+  mutation: () => Promise<T>,
+): Promise<T> {
+  const key = resolvedProfile(profile);
+  const previous = scheduleMutationChains.get(key) || Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const chain = previous.catch(() => undefined).then(() => current);
+  scheduleMutationChains.set(key, chain);
+  await previous.catch(() => undefined);
+  try {
+    return await mutation();
+  } finally {
+    release();
+    if (scheduleMutationChains.get(key) === chain) {
+      scheduleMutationChains.delete(key);
+    }
+  }
+}
+
 function createRunConversation(
   schedule: TaskSchedule,
   runId: string,
@@ -214,6 +260,7 @@ function createRunConversation(
     runtimeAvatar: runtime.avatar,
     activeRuntimeRunId,
     workspace: schedule.workspace,
+    workspaceId: schedule.workspaceId,
     accessMode: schedule.mode,
     messages: [
       {
@@ -282,6 +329,7 @@ function finishRuntimeConversation(
     runtimeSessionId: runtimeRun.sessionId || conversation.runtimeSessionId,
     activeRuntimeRunId: null,
     workspace: conversation.workspace,
+    workspaceId: conversation.workspaceId,
     accessMode: conversation.accessMode,
     messages: existingResult
       ? conversation.messages
@@ -318,82 +366,153 @@ function intervalMs(schedule: string): number | null {
   return Math.max(1, Number(match[1])) * multiplier;
 }
 
-function cronPartMatches(part: string, value: number): boolean {
-  if (part === "*") return true;
-  const step = /^\*\/(\d+)$/.exec(part);
-  if (step) return value % Number(step[1]) === 0;
-  return part.split(",").some((candidate) => Number(candidate) === value);
+function cronNumber(value: string, min: number, max: number): number | null {
+  if (!/^\d+$/.test(value)) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= min && number <= max
+    ? number
+    : null;
+}
+
+function validCronPart(part: string, min: number, max: number): boolean {
+  return part.split(",").every((item) => {
+    const stepMatch = /^(\*|\d+-\d+)\/(\d+)$/.exec(item);
+    const base = stepMatch ? stepMatch[1] : item;
+    if (stepMatch && Number(stepMatch[2]) < 1) return false;
+    if (base === "*") return true;
+    const range = /^(\d+)-(\d+)$/.exec(base);
+    if (range) {
+      const start = cronNumber(range[1], min, max);
+      const end = cronNumber(range[2], min, max);
+      return start !== null && end !== null && start <= end;
+    }
+    return cronNumber(base, min, max) !== null;
+  });
+}
+
+function cronPartMatches(
+  part: string,
+  value: number,
+  min: number,
+  max: number,
+): boolean {
+  const candidates = max === 7 && value === 0 ? [0, 7] : [value];
+  return candidates.some((candidate) =>
+    part.split(",").some((item) => {
+      const stepMatch = /^(\*|\d+-\d+)\/(\d+)$/.exec(item);
+      const base = stepMatch ? stepMatch[1] : item;
+      const step = stepMatch ? Number(stepMatch[2]) : 1;
+      if (base === "*") return (candidate - min) % step === 0;
+      const range = /^(\d+)-(\d+)$/.exec(base);
+      const start = range ? Number(range[1]) : Number(base);
+      const end = range ? Number(range[2]) : start;
+      return (
+        candidate >= start &&
+        candidate <= end &&
+        (candidate - start) % step === 0
+      );
+    }),
+  );
 }
 
 function cronMatches(schedule: string, now: Date): boolean {
   const parts = schedule.trim().split(/\s+/);
   if (parts.length !== 5) return false;
   return (
-    cronPartMatches(parts[0], now.getMinutes()) &&
-    cronPartMatches(parts[1], now.getHours()) &&
-    cronPartMatches(parts[2], now.getDate()) &&
-    cronPartMatches(parts[3], now.getMonth() + 1) &&
-    cronPartMatches(parts[4], now.getDay())
+    cronPartMatches(parts[0], now.getMinutes(), 0, 59) &&
+    cronPartMatches(parts[1], now.getHours(), 0, 23) &&
+    cronPartMatches(parts[2], now.getDate(), 1, 31) &&
+    cronPartMatches(parts[3], now.getMonth() + 1, 1, 12) &&
+    cronPartMatches(parts[4], now.getDay(), 0, 7)
   );
 }
 
-function isDue(schedule: TaskSchedule, now: number): boolean {
-  const interval = intervalMs(schedule.schedule);
-  if (interval)
-    return !schedule.lastDueAt || now - schedule.lastDueAt >= interval;
-  const minute = Math.floor(now / 60_000) * 60_000;
-  return (
-    schedule.lastDueAt !== minute &&
-    cronMatches(schedule.schedule, new Date(now))
-  );
+/**
+ * Cron expressions follow the desktop's local civil time. During a fall-back
+ * DST transition the same wall-clock minute occurs twice; it is one intended
+ * cron slot, not two opportunities to dispatch the same schedule.
+ */
+function cronLocalMinuteKey(timestamp: number): string {
+  const local = new Date(timestamp);
+  return [
+    local.getFullYear(),
+    local.getMonth(),
+    local.getDate(),
+    local.getHours(),
+    local.getMinutes(),
+  ].join(":");
 }
 
 function nextRunAt(schedule: TaskSchedule, now: number): number | undefined {
   const interval = intervalMs(schedule.schedule);
   if (interval) return (schedule.lastDueAt || now) + interval;
-  for (let offset = 1; offset <= 525_600; offset += 1) {
+  for (let offset = 1; offset <= 10 * 525_600; offset += 1) {
     const candidate = Math.floor(now / 60_000) * 60_000 + offset * 60_000;
     if (cronMatches(schedule.schedule, new Date(candidate))) return candidate;
   }
   return undefined;
 }
 
-function enabledLocalCliRuntimeIds(): Set<string> {
+function enabledScheduledRuntimeIds(): Set<string> {
   return new Set(
     listAgentRuntimes()
-      .filter(
-        (runtime) =>
-          runtime.enabled &&
-          runtime.location === "local" &&
-          runtime.config.transport === "cli",
-      )
+      .filter(isTaskScheduleRuntimeEligible)
       .map((runtime) => runtime.id),
   );
 }
 
-function isEnabledLocalCliRuntime(runtimeId: string): boolean {
-  return enabledLocalCliRuntimeIds().has(runtimeId);
+function scheduledRuntime(
+  runtimeId: string,
+): AgentRuntimeDefinition | undefined {
+  return listAgentRuntimes().find(
+    (runtime) =>
+      runtime.id === runtimeId && isTaskScheduleRuntimeEligible(runtime),
+  );
 }
 
-function requireLocalCliRuntime(runtimeId: string): void {
-  if (!isEnabledLocalCliRuntime(runtimeId)) {
-    throw new Error("Scheduled tasks require an enabled local CLI Runtime.");
+function requireScheduledRuntime(runtimeId: string): AgentRuntimeDefinition {
+  const runtime = scheduledRuntime(runtimeId);
+  if (!runtime) {
+    throw new Error(
+      "Scheduled tasks require an enabled local CLI, Web Agent, or remote Gateway v1 Runtime.",
+    );
   }
+  return runtime;
 }
 
+// @lat: [[task-schedules#Execution semantics]]
 async function startRun(
   schedule: TaskSchedule,
+  trigger: "manual" | "scheduled" | "missed",
   profile?: string,
+  dueAt?: number,
 ): Promise<AgentRuntimeRun> {
   const triggeredAt = Date.now();
   const scheduleRunId = `schedule-run-${randomUUID()}`;
-  const taskMode = schedule.mode === "auto" ? "safe_write" : schedule.mode;
+  const runtime = requireScheduledRuntime(schedule.runtimeId);
+  const webRuntime = taskScheduleRuntimeCategory(runtime) === "web";
+  const taskMode = webRuntime
+    ? "analysis"
+    : schedule.mode === "auto"
+      ? "safe_write"
+      : schedule.mode;
+  if (trigger !== "manual") {
+    const preflight = unattendedRuntimePreflight(
+      runtimeIsolationInfo(runtime, { mode: taskMode }),
+      { mode: taskMode, fullAccessConfirmed: false },
+    );
+    if (!preflight.allowed) throw new Error(preflight.warnings.join(" "));
+  }
   const runtimeRun = await startAgentRuntimeTask(schedule.runtimeId, {
     prompt: schedule.prompt,
     mode: taskMode,
     fullAccessConfirmed: taskMode === "full_access",
     conversation: true,
-    workspace: schedule.workspace,
+    ...(webRuntime
+      ? {}
+      : schedule.workspaceId
+        ? { workspaceId: schedule.workspaceId }
+        : { workspace: schedule.workspace }),
     timeoutMs: schedule.timeoutMs,
   });
   let conversationId: string | undefined;
@@ -415,6 +534,8 @@ async function startRun(
   appendRun(schedule, {
     id: scheduleRunId,
     triggeredAt,
+    trigger,
+    ...(dueAt === undefined ? {} : { dueAt }),
     status: runtimeRunStatus(runtimeRun),
     runtimeRunId: runtimeRun.id,
     ...(conversationId ? { conversationId } : {}),
@@ -426,6 +547,10 @@ async function startRun(
     scheduleName: schedule.name,
     runId: scheduleRunId,
     runtimeRunId: runtimeRun.id,
+    runtimeId: runtime.id,
+    runtimeName: runtime.name,
+    runtimeKind: runtime.kind,
+    runtimeAvatar: runtime.avatar,
     triggeredAt,
     ...(conversationId ? { conversationId } : {}),
   };
@@ -439,8 +564,9 @@ async function startRun(
 
 async function requestRun(
   schedule: TaskSchedule,
-  reason: "manual" | "scheduled",
+  reason: "manual" | "scheduled" | "missed",
   profile?: string,
+  dueAt?: number,
 ): Promise<AgentRuntimeRun | undefined> {
   const activeRunId = schedule.activeRuntimeRunId;
   if (activeRunId) {
@@ -448,8 +574,10 @@ async function requestRun(
       appendRun(schedule, {
         id: `schedule-run-${randomUUID()}`,
         triggeredAt: Date.now(),
+        trigger: reason,
+        ...(dueAt === undefined ? {} : { dueAt }),
         status: "skipped",
-        summary: `${reason === "manual" ? "Manual" : "Scheduled"} trigger skipped because a prior run is active.`,
+        summary: `${reason === "manual" ? "Manual" : reason === "missed" ? "Coalesced catch-up" : "Scheduled"} trigger skipped because a prior run is active.`,
       });
     } else if (schedule.concurrencyPolicy === "queue") {
       schedule.pendingRuns = Math.min(
@@ -466,14 +594,14 @@ async function requestRun(
     schedule.updatedAt = Date.now();
     return undefined;
   }
-  return startRun(schedule, profile);
+  return startRun(schedule, reason, profile, dueAt);
 }
 
 export function listTaskSchedules(profile?: string): TaskSchedule[] {
   return readStore(profile).schedules.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export function createTaskSchedule(
+function createTaskScheduleUnlocked(
   input: CreateTaskScheduleInput,
   profile?: string,
 ): TaskSchedule {
@@ -485,9 +613,22 @@ export function createTaskSchedule(
       "Schedule name, task prompt, and a 5-field Cron or interval schedule are required.",
     );
   }
-  requireLocalCliRuntime(input.runtimeId);
+  const runtime = requireScheduledRuntime(input.runtimeId);
+  const workspaceId = cleanText(input.workspaceId, 128);
   const workspace = cleanText(input.workspace, 4096);
-  if (input.mode === "full_access" && !workspace) {
+  const webRuntime = taskScheduleRuntimeCategory(runtime) === "web";
+  if (webRuntime && (workspace || workspaceId)) {
+    throw new Error("Web Agent schedules do not accept a project workspace.");
+  }
+  if (webRuntime && input.mode === "full_access") {
+    throw new Error("Web Agent schedules support analysis mode only.");
+  }
+  if (workspaceId && !resolveAuthorizedWorkspaceId(workspaceId)) {
+    throw new Error(
+      "Scheduled workspace capability is unavailable or no longer authorized.",
+    );
+  }
+  if (input.mode === "full_access" && !workspace && !workspaceId) {
     throw new Error(
       "Full access requires an explicitly selected project folder.",
     );
@@ -500,11 +641,13 @@ export function createTaskSchedule(
     schedule,
     prompt,
     runtimeId: input.runtimeId,
-    mode:
-      input.mode === "analysis" || input.mode === "full_access"
+    mode: webRuntime
+      ? "analysis"
+      : input.mode === "analysis" || input.mode === "full_access"
         ? input.mode
         : "auto",
     ...(workspace ? { workspace } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
     timeoutMs:
       typeof input.timeoutMs === "number"
         ? Math.max(1_000, Math.min(input.timeoutMs, 24 * 60 * 60_000))
@@ -523,7 +666,16 @@ export function createTaskSchedule(
   return value;
 }
 
-export function updateTaskSchedule(
+export async function createTaskSchedule(
+  input: CreateTaskScheduleInput,
+  profile?: string,
+): Promise<TaskSchedule> {
+  return withScheduleMutation(profile, async () =>
+    createTaskScheduleUnlocked(input, profile),
+  );
+}
+
+function updateTaskScheduleUnlocked(
   id: string,
   input: UpdateTaskScheduleInput,
   profile?: string,
@@ -536,7 +688,7 @@ export function updateTaskSchedule(
       "Schedule name, task prompt, and a 5-field Cron or interval schedule are required.",
     );
   }
-  requireLocalCliRuntime(input.runtimeId);
+  const runtime = requireScheduledRuntime(input.runtimeId);
   const store = readStore(profile);
   const schedule = store.schedules.find((item) => item.id === id);
   if (!schedule) throw new Error("Task schedule was not found.");
@@ -545,12 +697,26 @@ export function updateTaskSchedule(
       "Wait for the active run to finish before editing this schedule.",
     );
   }
+  const workspaceId = cleanText(input.workspaceId, 128);
   const workspace = cleanText(input.workspace, 4096);
-  const mode =
-    input.mode === "analysis" || input.mode === "full_access"
+  const webRuntime = taskScheduleRuntimeCategory(runtime) === "web";
+  if (webRuntime && (workspace || workspaceId)) {
+    throw new Error("Web Agent schedules do not accept a project workspace.");
+  }
+  if (webRuntime && input.mode === "full_access") {
+    throw new Error("Web Agent schedules support analysis mode only.");
+  }
+  const mode = webRuntime
+    ? "analysis"
+    : input.mode === "analysis" || input.mode === "full_access"
       ? input.mode
       : "auto";
-  if (mode === "full_access" && !workspace) {
+  if (workspaceId && !resolveAuthorizedWorkspaceId(workspaceId)) {
+    throw new Error(
+      "Scheduled workspace capability is unavailable or no longer authorized.",
+    );
+  }
+  if (mode === "full_access" && !workspace && !workspaceId) {
     throw new Error(
       "Full access requires an explicitly selected project folder.",
     );
@@ -577,11 +743,23 @@ export function updateTaskSchedule(
   });
   if (workspace) schedule.workspace = workspace;
   else delete schedule.workspace;
+  if (workspaceId) schedule.workspaceId = workspaceId;
+  else delete schedule.workspaceId;
   writeStore(store, profile);
   return schedule;
 }
 
-export function setTaskScheduleEnabled(
+export async function updateTaskSchedule(
+  id: string,
+  input: UpdateTaskScheduleInput,
+  profile?: string,
+): Promise<TaskSchedule> {
+  return withScheduleMutation(profile, async () =>
+    updateTaskScheduleUnlocked(id, input, profile),
+  );
+}
+
+function setTaskScheduleEnabledUnlocked(
   id: string,
   enabled: boolean,
   profile?: string,
@@ -589,14 +767,24 @@ export function setTaskScheduleEnabled(
   const store = readStore(profile);
   const schedule = store.schedules.find((item) => item.id === id);
   if (!schedule) throw new Error("Task schedule was not found.");
-  if (enabled) requireLocalCliRuntime(schedule.runtimeId);
+  if (enabled) requireScheduledRuntime(schedule.runtimeId);
   schedule.enabled = enabled;
   schedule.updatedAt = Date.now();
   writeStore(store, profile);
   return schedule;
 }
 
-export function deleteTaskSchedule(id: string, profile?: string): boolean {
+export async function setTaskScheduleEnabled(
+  id: string,
+  enabled: boolean,
+  profile?: string,
+): Promise<TaskSchedule> {
+  return withScheduleMutation(profile, async () =>
+    setTaskScheduleEnabledUnlocked(id, enabled, profile),
+  );
+}
+
+function deleteTaskScheduleUnlocked(id: string, profile?: string): boolean {
   const store = readStore(profile);
   const schedule = store.schedules.find((item) => item.id === id);
   if (!schedule) return false;
@@ -607,109 +795,170 @@ export function deleteTaskSchedule(id: string, profile?: string): boolean {
   return true;
 }
 
-export async function triggerTaskSchedule(
+export async function deleteTaskSchedule(
+  id: string,
+  profile?: string,
+): Promise<boolean> {
+  return withScheduleMutation(profile, async () =>
+    deleteTaskScheduleUnlocked(id, profile),
+  );
+}
+
+async function triggerTaskScheduleUnlocked(
   id: string,
   profile?: string,
 ): Promise<TaskScheduleTriggerResult> {
   const store = readStore(profile);
   const schedule = store.schedules.find((item) => item.id === id);
   if (!schedule) throw new Error("Task schedule was not found.");
-  requireLocalCliRuntime(schedule.runtimeId);
+  requireScheduledRuntime(schedule.runtimeId);
   const run = await requestRun(schedule, "manual", profile);
   writeStore(store, profile);
   return { schedule, ...(run ? { run } : {}) };
 }
 
-/** Reconciles direct Runtime runs and starts due local schedules. Exposed for tests. */
-export async function tickTaskSchedules(
+export async function triggerTaskSchedule(
+  id: string,
+  profile?: string,
+): Promise<TaskScheduleTriggerResult> {
+  return withScheduleMutation(profile, () =>
+    triggerTaskScheduleUnlocked(id, profile),
+  );
+}
+
+/** Reconciles direct Runtime runs and starts due schedules. Exposed for tests. */
+async function tickTaskSchedulesUnlocked(
   profile?: string,
   now = Date.now(),
 ): Promise<void> {
   const store = readStore(profile);
-  const eligibleRuntimeIds = enabledLocalCliRuntimeIds();
+  const eligibleRuntimeIds = enabledScheduledRuntimeIds();
   const completedEvents: TaskScheduleRunCompletedEvent[] = [];
   let changed = false;
   for (const schedule of store.schedules) {
-    if (schedule.activeRuntimeRunId) {
-      const runtimeRun = (await getAgentRuntimeRun(
-        schedule.activeRuntimeRunId,
-      )) || {
-        id: schedule.activeRuntimeRunId,
-        runtimeId: schedule.runtimeId,
-        status: "failed" as const,
-        startedAt:
-          schedule.runs.find(
-            (item) => item.runtimeRunId === schedule.activeRuntimeRunId,
-          )?.triggeredAt || schedule.updatedAt,
-        completedAt: Date.now(),
-        error: "桌面应用重启后无法恢复本机进程内运行；请从本对话重新执行任务。",
-        events: [],
-      };
-      if (runtimeRun.status !== "running") {
-        const run = schedule.runs.find(
-          (item) => item.runtimeRunId === runtimeRun.id,
-        );
-        const completedAt = runtimeRun.completedAt || Date.now();
-        if (run && !run.completedAt) {
-          run.status = runtimeRunStatus(runtimeRun);
-          run.completedAt = completedAt;
-          try {
-            run.summary = finishRuntimeConversation(
-              schedule,
-              run,
-              runtimeRun,
+    try {
+      if (schedule.activeRuntimeRunId) {
+        const runtimeRun = (await getAgentRuntimeRun(
+          schedule.activeRuntimeRunId,
+        )) || {
+          id: schedule.activeRuntimeRunId,
+          runtimeId: schedule.runtimeId,
+          status: "failed" as const,
+          startedAt:
+            schedule.runs.find(
+              (item) => item.runtimeRunId === schedule.activeRuntimeRunId,
+            )?.triggeredAt || schedule.updatedAt,
+          completedAt: Date.now(),
+          error:
+            "桌面应用重启后无法恢复本机进程内运行；请从本对话重新执行任务。",
+          events: [],
+        };
+        if (runtimeRun.status !== "running") {
+          const run = schedule.runs.find(
+            (item) => item.runtimeRunId === runtimeRun.id,
+          );
+          const completedAt = runtimeRun.completedAt || Date.now();
+          if (run && !run.completedAt) {
+            run.status = runtimeRunStatus(runtimeRun);
+            run.completedAt = completedAt;
+            try {
+              run.summary = finishRuntimeConversation(
+                schedule,
+                run,
+                runtimeRun,
+                completedAt,
+                profile,
+              )
+                .replace(/\s+/g, " ")
+                .slice(0, 500);
+            } catch (error) {
+              console.error(
+                "[TASK SCHEDULE] Failed to persist Runtime result conversation",
+                error,
+              );
+              run.summary = runtimeRun.error || runtimeRun.status;
+            }
+            completedEvents.push({
+              profile: resolvedProfile(profile),
+              scheduleId: schedule.id,
+              scheduleName: schedule.name,
+              runId: run.id,
+              status: run.status,
               completedAt,
-              profile,
-            )
-              .replace(/\s+/g, " ")
-              .slice(0, 500);
-          } catch (error) {
-            console.error(
-              "[TASK SCHEDULE] Failed to persist Runtime result conversation",
-              error,
-            );
-            run.summary = runtimeRun.error || runtimeRun.status;
+              conversationId: run.conversationId,
+              summary: run.summary,
+            });
           }
-          completedEvents.push({
-            profile: resolvedProfile(profile),
-            scheduleId: schedule.id,
-            scheduleName: schedule.name,
-            runId: run.id,
-            status: run.status,
-            completedAt,
-            conversationId: run.conversationId,
-            summary: run.summary,
-          });
+          schedule.activeRuntimeRunId = undefined;
+          schedule.updatedAt = completedAt;
+          changed = true;
         }
-        schedule.activeRuntimeRunId = undefined;
-        schedule.updatedAt = completedAt;
+      }
+      // Keep records for disabled, removed, or temporarily unavailable
+      // Runtimes intact without dispatching them.
+      if (!eligibleRuntimeIds.has(schedule.runtimeId)) continue;
+      if (
+        schedule.enabled &&
+        !schedule.activeRuntimeRunId &&
+        schedule.pendingRuns > 0
+      ) {
+        schedule.pendingRuns -= 1;
+        await startRun(schedule, "scheduled", profile);
         changed = true;
       }
-    }
-    // Keep legacy records intact, but never dispatch a remote or non-CLI
-    // Runtime after scheduled tasks have been narrowed to local CLI agents.
-    if (!eligibleRuntimeIds.has(schedule.runtimeId)) continue;
-    if (
-      schedule.enabled &&
-      !schedule.activeRuntimeRunId &&
-      schedule.pendingRuns > 0
-    ) {
-      schedule.pendingRuns -= 1;
-      await startRun(schedule, profile);
+      if (!schedule.enabled) continue;
+      // `nextRunAt` is the durable schedule cursor. If the desktop was asleep
+      // or restarted, an overdue cursor coalesces all missed periods into one
+      // explicit catch-up instead of replaying every missed minute.
+      const dueAt =
+        schedule.nextRunAt ||
+        nextRunAt(
+          schedule,
+          schedule.lastDueAt || schedule.createdAt || schedule.updatedAt,
+        );
+      if (dueAt === undefined || dueAt > now) continue;
+      const trigger =
+        dueAt < Math.floor(now / 60_000) * 60_000 ? "missed" : "scheduled";
+      if (
+        !intervalMs(schedule.schedule) &&
+        typeof schedule.lastDueAt === "number" &&
+        cronLocalMinuteKey(schedule.lastDueAt) === cronLocalMinuteKey(dueAt)
+      ) {
+        // The preceding local minute was already dispatched. This is normally
+        // reachable only during a DST fall-back hour, but is intentionally
+        // based on civil fields so it also survives a manual clock rollback.
+        schedule.lastDueAt = dueAt;
+        schedule.nextRunAt = nextRunAt(schedule, dueAt);
+        changed = true;
+        continue;
+      }
+      schedule.lastDueAt = intervalMs(schedule.schedule)
+        ? now
+        : Math.floor(now / 60_000) * 60_000;
+      schedule.nextRunAt = nextRunAt(schedule, now);
+      await requestRun(schedule, trigger, profile, dueAt);
       changed = true;
+    } catch (error) {
+      console.error(
+        `[TASK SCHEDULE] Tick failed for ${schedule.id}: ${redactSensitiveText(
+          error instanceof Error ? error.message : String(error),
+        )}`,
+      );
     }
-    if (!schedule.enabled || !isDue(schedule, now)) continue;
-    schedule.lastDueAt = intervalMs(schedule.schedule)
-      ? now
-      : Math.floor(now / 60_000) * 60_000;
-    schedule.nextRunAt = nextRunAt(schedule, now);
-    await requestRun(schedule, "scheduled", profile);
-    changed = true;
   }
   if (changed) writeStore(store, profile);
   for (const event of completedEvents) {
     for (const listener of runCompletedListeners) listener(event);
   }
+}
+
+export async function tickTaskSchedules(
+  profile?: string,
+  now = Date.now(),
+): Promise<void> {
+  return withScheduleMutation(profile, () =>
+    tickTaskSchedulesUnlocked(profile, now),
+  );
 }
 
 export function onTaskScheduleRunCompleted(
@@ -732,7 +981,13 @@ export function startTaskScheduleRunner(): void {
     if (ticking) return;
     ticking = true;
     void tickTaskSchedules()
-      .catch(() => undefined)
+      .catch((error) => {
+        console.error(
+          `[TASK SCHEDULE] Runner tick failed: ${redactSensitiveText(
+            error instanceof Error ? error.message : String(error),
+          )}`,
+        );
+      })
       .finally(() => {
         ticking = false;
       });

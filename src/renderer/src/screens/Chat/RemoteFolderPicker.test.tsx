@@ -26,7 +26,7 @@ describe("RemoteFolderPicker", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.defineProperty(window, "hermesAPI", {
+    Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: { readDirectory },
     });

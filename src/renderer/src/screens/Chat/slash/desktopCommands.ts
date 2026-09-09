@@ -102,7 +102,7 @@ const LOCAL_COMMANDS: ReadonlyArray<
   ["memory", "Show agent memory"],
   ["tools", "Show available toolsets"],
   ["skills", "Show installed skills"],
-  ["version", "Show Hermes version"],
+  ["version", "Show Hermes Agent Runtime version"],
   ["fast", "Toggle fast mode", true],
   ["usage", "Show token usage"],
 ];

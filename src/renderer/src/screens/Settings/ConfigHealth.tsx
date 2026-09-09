@@ -72,7 +72,7 @@ export function ConfigHealth({
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      const r = (await window.hermesAPI.getConfigHealth(profile)) as Report;
+      const r = (await window.agentsOneAPI.getConfigHealth(profile)) as Report;
       setReport(r);
       publishConfigHealthReport(r);
     } catch {
@@ -89,7 +89,7 @@ export function ConfigHealth({
   const rerun = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      const r = (await window.hermesAPI.rerunConfigHealth(profile)) as Report;
+      const r = (await window.agentsOneAPI.rerunConfigHealth(profile)) as Report;
       setReport(r);
       publishConfigHealthReport(r);
       setResults({});
@@ -102,7 +102,7 @@ export function ConfigHealth({
     async (issue: Issue): Promise<void> => {
       setFixingCode(issue.code);
       try {
-        const res = await window.hermesAPI.autofixConfigIssue(
+        const res = await window.agentsOneAPI.autofixConfigIssue(
           issue.code,
           profile,
           issue.context,
@@ -115,7 +115,7 @@ export function ConfigHealth({
         }));
         if (res.ok) {
           // Re-run so the issue disappears from the list when fixed
-          const r = (await window.hermesAPI.rerunConfigHealth(
+          const r = (await window.agentsOneAPI.rerunConfigHealth(
             profile,
           )) as Report;
           setReport(r);

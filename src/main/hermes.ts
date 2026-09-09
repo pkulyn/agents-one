@@ -6,14 +6,12 @@ import {
   writeFileSync,
   appendFileSync,
   unlinkSync,
-  rmSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   closeSync,
 } from "fs";
 import { join } from "path";
-import { homedir, tmpdir } from "os";
+import { homedir } from "os";
 import http from "http";
 import https from "https";
 import net from "net";
@@ -29,7 +27,9 @@ import {
   getApiServerKey,
   getConfigValue,
   getModelConfig,
+  invalidateSecretsCache,
   readEnv,
+  setEnvValue,
 } from "./config";
 import {
   pidIsAliveAs,
@@ -64,6 +64,7 @@ import {
   supportsHermesRunsTransport,
   type HermesApiCapabilities,
 } from "./run-stream";
+import { parseSseBlock, splitSseFrames } from "./sse-parser";
 import {
   gatewayCompletionSuffix,
   gatewayMessageCompleteText,
@@ -116,7 +117,7 @@ export function normaliseRemoteUrl(raw: string): string {
 }
 
 export function getApiUrl(profile?: string): string {
-  // The built-in Hermes connection is local-only (plan D5); remote agents go
+  // The built-in Hermes Agent Runtime connection is local-only (plan D5); remote agents go
   // through Gateway v1. Each profile's local gateway binds its own port so
   // they can run concurrently. Address the active (or explicitly requested)
   // profile's gateway rather than a fixed 8642 — that constant would always
@@ -235,178 +236,315 @@ function resolveRemoteApiKey(_url: string, apiKey?: string): string {
   return apiKey ?? "";
 }
 
-
-function audioExtensionForMime(mimeType: string): string {
-  const type = mimeType.split(";", 1)[0].trim().toLowerCase();
-  if (type === "audio/mp4") return ".m4a";
-  if (type === "audio/mpeg") return ".mp3";
-  if (type === "audio/ogg") return ".ogg";
-  if (type === "audio/wav" || type === "audio/x-wav") return ".wav";
-  if (type === "audio/flac") return ".flac";
-  if (type === "video/webm" || type === "audio/webm") return ".webm";
-  return ".webm";
-}
-
-function transcribeAudioViaLocalPython(
-  audio: Uint8Array,
-  mimeType: string,
-  profile?: string,
-): Promise<string> {
-  if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_REPO)) {
-    throw new Error(
-      "Voice input needs a local Hermes Agent install with speech-to-text support.",
-    );
-  }
-
-  const dir = mkdtempSync(join(tmpdir(), "hermes-desktop-stt-"));
-  const audioPath = join(dir, `speech${audioExtensionForMime(mimeType)}`);
-  writeFileSync(audioPath, Buffer.from(audio));
-
-  const script = [
-    "import json, sys",
-    "from tools.transcription_tools import transcribe_audio",
-    "result = transcribe_audio(sys.argv[1])",
-    "print(json.dumps(result))",
-  ].join("\n");
-
-  return new Promise((resolve, reject) => {
-    const proc = spawn(HERMES_PYTHON, ["-c", script, audioPath], {
-      cwd: HERMES_REPO,
-      env: tuiGatewayEnv(profile),
-      stdio: ["ignore", "pipe", "pipe"],
-      ...HIDDEN_SUBPROCESS_OPTIONS,
-    });
-
-    let stdout = "";
-    let stderr = "";
-    const cleanup = (): void => {
-      try {
-        unlinkSync(audioPath);
-      } catch {
-        // best effort
-      }
-      try {
-        rmSync(dir, { recursive: true, force: true });
-      } catch {
-        // best effort; the file cleanup above is the important part.
-      }
-    };
-
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf-8");
-    });
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf-8");
-    });
-    proc.on("error", (error) => {
-      cleanup();
-      reject(error);
-    });
-    proc.on("close", (code) => {
-      cleanup();
-      if (code !== 0) {
-        reject(
-          new Error(
-            `Local transcription failed (${code ?? "unknown"}). ${stderr.slice(
-              0,
-              200,
-            )}`.trim(),
-          ),
-        );
-        return;
-      }
-      const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
-      const jsonLine = lines[lines.length - 1] || "";
-      let result: {
-        success?: boolean;
-        transcript?: string;
-        text?: string;
-        error?: string;
-      };
-      try {
-        result = JSON.parse(jsonLine) as typeof result;
-      } catch {
-        reject(
-          new Error(
-            `Local transcription returned an invalid response. ${stdout
-              .slice(0, 200)
-              .trim()}`,
-          ),
-        );
-        return;
-      }
-      if (result.success === false) {
-        reject(new Error(result.error || "Local transcription failed."));
-        return;
-      }
-      resolve((result.transcript || result.text || "").trim());
-    });
-  });
-}
-
 /**
- * Transcribe a recorded audio clip through the Hermes API server.
- *
- * The Python server owns STT provider selection (`stt.provider`, local
- * faster-whisper, Groq, OpenAI, ElevenLabs, etc.). Keeping desktop voice input
- * on `/api/audio/transcribe` matches upstream and avoids assuming that the
- * active chat model endpoint also exposes Whisper-compatible routes.
+ * Transcribe a recorded audio clip through an OpenAI-compatible voice service.
  *
  * Throws with a user-readable message so the caller can surface it.
  */
+const MAX_TRANSCRIPTION_AUDIO_BYTES = 25 * 1024 * 1024;
+const VOICE_TRANSCRIPTION_TIMEOUT_MS = 90_000;
+const VOICE_ENABLED_ENV_KEY = "AGENTS_ONE_VOICE_ENABLED";
+const VOICE_URL_ENV_KEY = "AGENTS_ONE_VOICE_API_URL";
+const VOICE_API_KEY_ENV_KEY = "AGENTS_ONE_VOICE_API_KEY";
+const VOICE_TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
+const VOICE_SERVICE_TEST_TIMEOUT_MS = 10_000;
+
+export interface VoiceTranscriptionConfig {
+  url: string;
+  apiKey: string;
+}
+
+export interface VoiceInputPublicConfig {
+  enabled: boolean;
+  url: string;
+  hasApiKey: boolean;
+  configured: boolean;
+}
+
+export interface VoiceInputConfigUpdate {
+  enabled: boolean;
+  url: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+}
+
+export interface VoiceInputServiceTestResult {
+  ok: boolean;
+  message: string;
+  version?: string;
+  streamBackend?: string;
+}
+
+function voiceSettingEnabled(env: Record<string, string>): boolean {
+  const explicit = (env[VOICE_ENABLED_ENV_KEY] ?? process.env[VOICE_ENABLED_ENV_KEY] ?? "")
+    .trim()
+    .toLowerCase();
+  if (explicit) return explicit === "1" || explicit === "true";
+  // Preserve a prior explicit self-hosted endpoint, but never revive the old
+  // hard-coded Osaka endpoint for new/open-source installations.
+  return Boolean((env[VOICE_URL_ENV_KEY] ?? process.env[VOICE_URL_ENV_KEY] ?? "").trim());
+}
+
+function voiceUrlInput(env: Record<string, string>): string {
+  return (env[VOICE_URL_ENV_KEY] ?? process.env[VOICE_URL_ENV_KEY] ?? "").trim();
+}
+
+function normalizedVoiceBaseUrl(value: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error("语音服务地址无效，请填写 HTTP(S) 服务地址或 WS(S) 流地址。");
+  }
+  if (url.protocol === "ws:") {
+    url.protocol = "http:";
+  } else if (url.protocol === "wss:") {
+    url.protocol = "https:";
+  } else if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("语音服务地址必须使用 HTTP(S) 或 WS(S)。");
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error("语音服务地址不能包含账号、查询参数或片段。");
+  }
+  url.pathname = url.pathname.replace(/\/+$/, "");
+  // v1.4 documentation commonly gives the direct WebSocket stream endpoint.
+  // Accept it and derive the HTTP base used for health checks and streaming.
+  if (url.pathname.endsWith(`${VOICE_TRANSCRIPTION_PATH}/stream`)) {
+    url.pathname = url.pathname.slice(
+      0,
+      -`${VOICE_TRANSCRIPTION_PATH}/stream`.length,
+    );
+  }
+  if (url.pathname.endsWith(VOICE_TRANSCRIPTION_PATH)) {
+    url.pathname = url.pathname.slice(0, -VOICE_TRANSCRIPTION_PATH.length);
+  }
+  url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+  return url;
+}
+
+function transcriptionUrl(value: string): string {
+  const url = normalizedVoiceBaseUrl(value);
+  url.pathname = `${url.pathname.replace(/\/$/, "")}${VOICE_TRANSCRIPTION_PATH}`.replace(
+    /\/{2,}/g,
+    "/",
+  );
+  return url.toString();
+}
+
+function voiceApiKey(profile?: string): string {
+  // A profile value saved from the Settings UI must remain usable even when a
+  // command-based secrets provider is configured for other credentials. Keep
+  // the process-environment override, then fall back to profile/provider keys.
+  const profileEnv = readEnv(profile) || {};
+  return (
+    process.env[VOICE_API_KEY_ENV_KEY] ??
+    profileEnv[VOICE_API_KEY_ENV_KEY] ??
+    getSecret(VOICE_API_KEY_ENV_KEY, profile) ??
+    ""
+  ).trim();
+}
+
+export function getVoiceInputPublicConfig(profile?: string): VoiceInputPublicConfig {
+  const env = readEnv(profile) || {};
+  const rawUrl = voiceUrlInput(env);
+  let url = "";
+  if (rawUrl) {
+    try {
+      url = normalizedVoiceBaseUrl(rawUrl).toString().replace(/\/$/, "");
+    } catch {
+      // Keep the Settings page operable so a malformed saved value can be
+      // corrected; the stream itself will still reject that value safely.
+      url = rawUrl;
+    }
+  }
+  const enabled = voiceSettingEnabled(env);
+  return {
+    enabled,
+    url,
+    hasApiKey: Boolean(voiceApiKey(profile)),
+    configured: enabled && Boolean(rawUrl),
+  };
+}
+
+function assertVoiceApiKey(value: string): string {
+  const key = value.trim();
+  if (key.length > 4096 || /[\0\r\n]/.test(key)) {
+    throw new Error("语音服务 API Key 无效。");
+  }
+  return key;
+}
+
+/** Save only voice-specific, validated Profile settings; API key is never returned. */
+export function saveVoiceInputConfig(
+  input: VoiceInputConfigUpdate,
+  profile?: string,
+): VoiceInputPublicConfig {
+  if (!input || typeof input.enabled !== "boolean" || typeof input.url !== "string") {
+    throw new Error("语音服务设置无效。");
+  }
+  const rawUrl = input.url.trim();
+  if (input.enabled && !rawUrl) {
+    throw new Error("启用语音输入前请填写语音服务地址。");
+  }
+  const url = rawUrl ? normalizedVoiceBaseUrl(rawUrl).toString().replace(/\/$/, "") : "";
+  setEnvValue(VOICE_ENABLED_ENV_KEY, input.enabled ? "1" : "0", profile);
+  setEnvValue(VOICE_URL_ENV_KEY, url, profile);
+  if (input.clearApiKey === true) {
+    setEnvValue(VOICE_API_KEY_ENV_KEY, "", profile);
+  } else if (typeof input.apiKey === "string" && input.apiKey.trim()) {
+    setEnvValue(VOICE_API_KEY_ENV_KEY, assertVoiceApiKey(input.apiKey), profile);
+  }
+  invalidateSecretsCache();
+  return getVoiceInputPublicConfig(profile);
+}
+
+/** Performs a health-only service check; it never captures or uploads microphone audio. */
+export async function testVoiceInputService(
+  input: Pick<VoiceInputConfigUpdate, "url" | "apiKey">,
+  profile?: string,
+): Promise<VoiceInputServiceTestResult> {
+  const base = normalizedVoiceBaseUrl(input.url);
+  const healthUrl = new URL(base.toString());
+  healthUrl.pathname = `${healthUrl.pathname.replace(/\/$/, "")}/health`.replace(
+    /\/{2,}/g,
+    "/",
+  );
+  const apiKey =
+    typeof input.apiKey === "string"
+      ? assertVoiceApiKey(input.apiKey)
+      : voiceApiKey(profile);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), VOICE_SERVICE_TEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(healthUrl, {
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return { ok: false, message: `服务健康检查失败（HTTP ${response.status}）。` };
+    }
+    const body = (await response.json().catch(() => ({}))) as {
+      status?: unknown;
+      version?: unknown;
+      stream_backend?: unknown;
+    };
+    return {
+      ok: true,
+      message: "语音服务连接正常。",
+      version: typeof body.version === "string" ? body.version : undefined,
+      streamBackend:
+        typeof body.stream_backend === "string" ? body.stream_backend : undefined,
+    };
+  } catch (cause) {
+    const message = (cause as Error).name === "AbortError" ? "语音服务连接超时。" : (cause as Error).message;
+    return { ok: false, message: message || "无法连接语音服务。" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function getVoiceTranscriptionConfig(
+  profile?: string,
+): VoiceTranscriptionConfig {
+  const env = readEnv(profile) || {};
+  if (!voiceSettingEnabled(env)) {
+    throw new Error("语音输入尚未启用，请在设置中的“语音输入”完成服务接入。");
+  }
+  const configuredUrl = voiceUrlInput(env);
+  if (!configuredUrl) {
+    throw new Error("启用语音输入前请填写语音服务地址。");
+  }
+  return {
+    url: transcriptionUrl(configuredUrl),
+    apiKey: voiceApiKey(profile),
+  };
+}
+
+function audioFilename(mimeType: string): string {
+  const normalized = mimeType.toLowerCase();
+  if (normalized.includes("wav")) return "recording.wav";
+  if (normalized.includes("mpeg") || normalized.includes("mp3")) {
+    return "recording.mp3";
+  }
+  if (normalized.includes("mp4") || normalized.includes("m4a")) {
+    return "recording.m4a";
+  }
+  if (normalized.includes("ogg")) return "recording.ogg";
+  return "recording.webm";
+}
+
+async function transcribeAudioViaConfiguredService(
+  audio: Uint8Array,
+  mimeType: string,
+  config: VoiceTranscriptionConfig,
+): Promise<string> {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([Buffer.from(audio)], { type: mimeType }),
+    audioFilename(mimeType),
+  );
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    VOICE_TRANSCRIPTION_TIMEOUT_MS,
+  );
+  try {
+    const res = await fetch(config.url, {
+      method: "POST",
+      headers: config.apiKey
+        ? { Authorization: `Bearer ${config.apiKey}` }
+        : undefined,
+      body: form,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => "");
+      throw new Error(
+        `Voice service transcription failed (${res.status}). ${bodyText.slice(0, 200)}`.trim(),
+      );
+    }
+    const data = (await res.json().catch(() => null)) as {
+      text?: unknown;
+      transcript?: unknown;
+    } | null;
+    const text = data?.text ?? data?.transcript;
+    if (typeof text !== "string") {
+      throw new Error(
+        "Voice service returned an invalid transcription response.",
+      );
+    }
+    return text.trim();
+  } catch (cause) {
+    if ((cause as Error).name === "AbortError") {
+      throw new Error("Voice service transcription timed out.");
+    }
+    throw cause;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function transcribeAudio(
   audio: Uint8Array,
   mimeType: string,
   profile?: string,
 ): Promise<string> {
+  // @lat: [[voice-input#Main-process service routing]]
   const resolved = resolveProfile(profile);
-  if (!isRemoteMode()) {
-    const ready =
-      apiServerAvailable === true ||
-      (await isApiServerReady(resolved)) ||
-      (await startGatewayWithRecovery(resolved));
-    setApiCacheFor(resolved, ready);
-    if (!ready) {
-      throw new Error(
-        "Voice input needs the Hermes API server, but it is not running.",
-      );
-    }
+  if (!(audio instanceof Uint8Array) || audio.byteLength === 0) {
+    throw new Error("The recorded audio is empty.");
   }
-
-  const safeMimeType = mimeType || "audio/webm";
-  const body = {
-    data_url: `data:${safeMimeType};base64,${Buffer.from(audio).toString(
-      "base64",
-    )}`,
-    mime_type: safeMimeType,
-  };
-  const res = await fetch(`${getApiUrl(resolved)}/api/audio/transcribe`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getApiAuthHeaders(resolved),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const bodyText = await res.text().catch(() => "");
-    if (!isRemoteMode() && res.status === 404) {
-      return transcribeAudioViaLocalPython(audio, safeMimeType, resolved);
-    }
-    throw new Error(
-      `Transcription failed (${res.status}). ${bodyText.slice(0, 200)}`.trim(),
-    );
+  if (audio.byteLength > MAX_TRANSCRIPTION_AUDIO_BYTES) {
+    throw new Error("The recorded audio is larger than the 25 MB limit.");
   }
-  const data = (await res.json().catch(() => null)) as {
-    transcript?: string;
-    text?: string;
-  } | null;
-  if (!data) {
-    throw new Error(
-      "Transcription failed. The Hermes API returned an invalid response.",
-    );
-  }
-  return (data.transcript || data.text || "").trim();
+  const safeMimeType = mimeType?.trim() || "audio/webm";
+  const configuredVoice = getVoiceTranscriptionConfig(resolved);
+  return transcribeAudioViaConfiguredService(
+    audio,
+    safeMimeType,
+    configuredVoice,
+  );
 }
 
 interface ChatHandle {
@@ -489,7 +627,7 @@ async function waitForDashboardReady(
     if (await isDashboardReady(baseUrl, token)) return;
     await delay(500);
   }
-  throw new Error("Hermes dashboard gateway did not become ready");
+  throw new Error("Hermes Agent Runtime dashboard gateway did not become ready");
 }
 
 class TuiGatewayClient {
@@ -532,14 +670,14 @@ class TuiGatewayClient {
   ): Promise<T> {
     await this.start();
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error("Hermes dashboard gateway stream is not connected");
+      throw new Error("Hermes Agent Runtime dashboard gateway stream is not connected");
     }
 
     const id = `r${++this.nextId}`;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`Hermes gateway request timed out: ${method}`));
+        reject(new Error(`Hermes Agent Runtime gateway request timed out: ${method}`));
       }, timeoutMs);
       timer.unref?.();
       this.pending.set(id, {
@@ -581,7 +719,7 @@ class TuiGatewayClient {
   stop(): void {
     this.ws?.close();
     this.proc?.kill("SIGTERM");
-    this.rejectPending(new Error("Hermes dashboard gateway stream stopped"));
+    this.rejectPending(new Error("Hermes Agent Runtime dashboard gateway stream stopped"));
     this.reset();
   }
 
@@ -627,7 +765,7 @@ class TuiGatewayClient {
       proc.once("exit", (code, signal) => {
         reject(
           new Error(
-            `Hermes dashboard gateway exited before ready (${signal || code})`,
+            `Hermes Agent Runtime dashboard gateway exited before ready (${signal || code})`,
           ),
         );
       });
@@ -657,7 +795,7 @@ class TuiGatewayClient {
     proc.removeAllListeners("exit");
     proc.once("exit", (code, signal) => {
       const error = new Error(
-        `Hermes dashboard gateway exited (${signal || code})`,
+        `Hermes Agent Runtime dashboard gateway exited (${signal || code})`,
       );
       this.rejectPending(error);
       this.reset();
@@ -669,7 +807,7 @@ class TuiGatewayClient {
       const ws = new WebSocket(url);
       this.ws = ws;
       const timer = setTimeout(() => {
-        reject(new Error("Hermes dashboard gateway WebSocket timed out"));
+        reject(new Error("Hermes Agent Runtime dashboard gateway WebSocket timed out"));
         ws.close();
       }, 15_000);
       timer.unref?.();
@@ -685,7 +823,7 @@ class TuiGatewayClient {
       });
       ws.on("close", () => {
         if (this.ws !== ws) return;
-        const error = new Error("Hermes dashboard gateway WebSocket closed");
+        const error = new Error("Hermes Agent Runtime dashboard gateway WebSocket closed");
         this.rejectPending(error);
         this.reset();
       });
@@ -706,7 +844,7 @@ class TuiGatewayClient {
       clearTimeout(pending.timer);
       this.pending.delete(String(frame.id));
       if (frame.error) {
-        pending.reject(new Error(frame.error.message || "Hermes RPC failed"));
+        pending.reject(new Error(frame.error.message || "Hermes Agent Runtime RPC failed"));
       } else {
         pending.resolve(frame.result);
       }
@@ -771,7 +909,7 @@ function waitForGatewayEvent(
     let cleanup = (): void => undefined;
     const timer = setTimeout(() => {
       cleanup();
-      reject(new Error("Timed out waiting for Hermes gateway readiness"));
+      reject(new Error("Timed out waiting for Hermes Agent Runtime gateway readiness"));
     }, timeoutMs);
     timer.unref?.();
     cleanup = client.onEvent((event) => {
@@ -1457,39 +1595,29 @@ function sendMessageViaApi(
 
       /** Parse an SSE block which may contain `event:` and `data:` lines. */
       function processSseBlock(block: string): boolean {
-        let eventType = "";
-        let dataLine = "";
-        for (const line of block.split("\n")) {
-          if (line.startsWith("event: ")) {
-            eventType = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            dataLine = line.slice(6);
-          }
-        }
-        if (!dataLine) return false;
-        if (eventType) {
+        const parsed = parseSseBlock(block);
+        if (!parsed) return false;
+        if (parsed.eventType) {
           // Custom event (e.g. hermes.tool.progress) — never signals [DONE]
-          processCustomEvent(eventType, dataLine);
+          processCustomEvent(parsed.eventType, parsed.data);
           return false;
         }
-        return processSseData(dataLine);
+        return processSseData(parsed.data);
       }
 
       res.on("data", (chunk: Buffer) => {
         buffer += chunk.toString();
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() || "";
+        const parsed = splitSseFrames(buffer);
+        buffer = parsed.remainder;
 
-        for (const part of parts) {
+        for (const part of parsed.frames) {
           if (processSseBlock(part)) return;
         }
       });
 
       res.on("end", () => {
         if (buffer.trim()) {
-          for (const part of buffer.split("\n\n")) {
-            if (processSseBlock(part)) return;
-          }
+          if (processSseBlock(buffer)) return;
         }
         // Signal completion — even when no content was received
         if (!hasContent && !lastError) {
@@ -1511,9 +1639,7 @@ function sendMessageViaApi(
     finish(`API request failed: ${err.message}`);
   });
   req.on("timeout", () => {
-    finish(
-      "API request timed out. Check the remote Hermes gateway.",
-    );
+    finish("API request timed out. Check the remote Hermes Agent Runtime gateway.");
     req.destroy();
   });
 
@@ -1689,7 +1815,7 @@ function sendMessageViaRuns(
       const err =
         typeof raw.error === "string" && raw.error
           ? raw.error
-          : "Hermes run failed.";
+          : "Hermes Agent Runtime run failed.";
       if (!hasContent) {
         fallbackToChatCompletions();
         return;
@@ -1699,7 +1825,7 @@ function sendMessageViaRuns(
     }
 
     if (eventName === "run.cancelled") {
-      finish(hasContent ? undefined : "Hermes run was cancelled.");
+      finish(hasContent ? undefined : "Hermes Agent Runtime run was cancelled.");
       return;
     }
 
@@ -1731,9 +1857,9 @@ function sendMessageViaRuns(
         let buffer = "";
         res.on("data", (chunk: Buffer) => {
           buffer += chunk.toString();
-          const parts = buffer.split("\n\n");
-          buffer = parts.pop() || "";
-          for (const part of parts) {
+          const parsedFrames = splitSseFrames(buffer);
+          buffer = parsedFrames.remainder;
+          for (const part of parsedFrames.frames) {
             const parsed = parseRunSseBlock(part);
             if (!parsed || !parsed.data || parsed.data.startsWith(":")) {
               continue;
@@ -1895,7 +2021,7 @@ async function sendMessageViaTuiGateway(
     cleanup();
     client.stop();
     console.warn(
-      "[chat] Hermes gateway stream failed before output; falling back to API stream:",
+      "[chat] Hermes Agent Runtime gateway stream failed before output; falling back to API stream:",
       reason,
     );
     void sendMessageViaNonGatewayApi(
@@ -1963,7 +2089,7 @@ async function sendMessageViaTuiGateway(
       const error =
         typeof event.payload?.message === "string"
           ? event.payload.message
-          : "Hermes gateway stream reported an error.";
+          : "Hermes Agent Runtime gateway stream reported an error.";
       if (!hasGatewayOutput) {
         startApiFallback(error);
         return;
@@ -2010,7 +2136,7 @@ async function sendMessageViaTuiGateway(
           .request("session.interrupt", { session_id: activeSessionId }, 5_000)
           .catch(() => undefined);
         finish(
-          "Hermes requested clarify input, but the gateway provided no request_id to answer.",
+          "Hermes Agent Runtime requested clarify input, but the gateway provided no request_id to answer.",
         );
         return;
       }
@@ -2059,7 +2185,7 @@ async function sendMessageViaTuiGateway(
           .request("session.interrupt", { session_id: activeSessionId }, 5_000)
           .catch(() => undefined);
         finish(
-          `Hermes requested ${event.type.replace(".request", "")} input, but the gateway provided no request_id to answer.`,
+          `Hermes Agent Runtime requested ${event.type.replace(".request", "")} input, but the gateway provided no request_id to answer.`,
         );
         return;
       }
@@ -2137,7 +2263,7 @@ async function sendMessageViaTuiGateway(
     }
 
     if (!activeSessionId) {
-      throw new Error("Hermes gateway did not return a session id");
+      throw new Error("Hermes Agent Runtime gateway did not return a session id");
     }
 
     if (!hasSessionInfo) {
@@ -2539,8 +2665,8 @@ function sendMessageViaCli(
       const detail = stderrBuffer.trim();
       cb.onError(
         detail
-          ? `Hermes exited with code ${code}: ${detail}`
-          : `Hermes exited with code ${code}. Check your model configuration and API key.`,
+          ? `Hermes Agent Runtime exited with code ${code}: ${detail}`
+          : `Hermes Agent Runtime exited with code ${code}. Check your model configuration and API key.`,
       );
     }
   });
@@ -2651,7 +2777,7 @@ async function sendMessageViaBestApi(
       );
     } catch (error) {
       console.warn(
-        "[chat] Hermes gateway stream unavailable; falling back to API stream:",
+        "[chat] Hermes Agent Runtime gateway stream unavailable; falling back to API stream:",
         error instanceof Error ? error.message : String(error),
       );
     }
@@ -2964,14 +3090,14 @@ function invalidateApiCacheFor(profile?: string): void {
 function getGatewaySpawnError(): string | null {
   if (!existsSync(HERMES_PYTHON)) {
     return (
-      `Cannot start the gateway because the Hermes Python interpreter was not found at ${HERMES_PYTHON}. ` +
-      "Install or repair Hermes Agent, then try again."
+      `Cannot start the gateway because the Hermes Agent Runtime Python interpreter was not found at ${HERMES_PYTHON}. ` +
+      "Install or repair Hermes Agent Runtime, then try again."
     );
   }
   if (!existsSync(HERMES_REPO)) {
     return (
       `Cannot start the gateway because the hermes-agent repository was not found at ${HERMES_REPO}. ` +
-      "Install or repair Hermes Agent, then try again."
+      "Install or repair Hermes Agent Runtime, then try again."
     );
   }
   return null;
@@ -3085,7 +3211,7 @@ export function startGatewayDetailed(profile?: string): GatewayStartResult {
   // that pops a generic error dialog.  Refuse cleanly here.
   if (isRemoteMode()) {
     const error =
-      "The local gateway can only be started in local mode. Switch to local mode, or start the gateway on the remote Hermes host.";
+      "The local gateway can only be started in local mode. Switch to local mode, or start the gateway on the remote Hermes Agent Runtime host.";
     console.warn(
       "[gateway] startGateway() called in remote mode — refusing local spawn",
     );

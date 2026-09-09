@@ -13,12 +13,19 @@ import type { ChatToolEvent } from "../shared/chat-stream";
 import type { GpuPreferenceMode, GpuStatus } from "../shared/gpu";
 import type {
   AgentRuntimeDefinition,
+  AgentRuntimeDiagnostics,
   AgentRuntimeDraft,
   AgentRuntimeAppearance,
   AgentRuntimeProbe,
   AgentRuntimeRun,
   AgentRuntimeTaskInput,
 } from "../shared/agent-runtimes";
+import type {
+  RuntimeCommandCatalogSnapshot,
+  RuntimeCommandProgress,
+  RuntimeCommandRequest,
+  RuntimeCommandResult,
+} from "../shared/runtime-commands";
 import type {
   CreateTaskScheduleInput,
   TaskSchedule,
@@ -38,6 +45,11 @@ import type {
   AgentsOneBackupResult,
   AgentsOneRestoreResult,
 } from "../shared/agents-one-backup";
+import type { RuntimeSkillDescriptor } from "../shared/runtime-skills";
+import type { AgentRuntimeAdapterManifest } from "../shared/runtime-adapters";
+import type { ConnectPairingPreview } from "../shared/agents-one-connect";
+import type { TrayMenuAction, TrayMenuData } from "../shared/tray-menu";
+import type { TrayCompletionData } from "../shared/tray-completion";
 
 /**
  * Mirror of the renderer-side `CredentialPoolEntry` ambient type
@@ -97,7 +109,7 @@ const electronAPI = {
   },
 };
 
-const hermesAPI = {
+const agentsOneAPI = {
   // Installation
   checkInstall: (): Promise<{
     installed: boolean;
@@ -117,6 +129,24 @@ const hermesAPI = {
     state: "fresh" | "update" | "replace";
   }> => ipcRenderer.invoke("inspect-install-target"),
 
+  discoverHermesInstallations: (): Promise<
+    Array<{
+      home: string;
+      repoPath: string;
+      pythonPath: string;
+      scriptPath: string;
+      source: "active-home" | "environment" | "default-home" | "path";
+      valid: boolean;
+      executableAvailable: boolean;
+      configState: "configured" | "missing" | "invalid";
+      apiState: "unknown" | "healthy" | "unreachable" | "not-running";
+      version?: string;
+    }>
+  > => ipcRenderer.invoke("discover-hermes-installations"),
+
+  selectHermesHome: (): Promise<string | null> =>
+    ipcRenderer.invoke("select-hermes-home"),
+
   validateHermesHome: (dir: string): Promise<boolean> =>
     ipcRenderer.invoke("validate-hermes-home", dir),
 
@@ -124,6 +154,38 @@ const hermesAPI = {
     ipcRenderer.invoke("adopt-hermes-home", dir),
 
   quitApp: (): Promise<void> => ipcRenderer.invoke("quit-app"),
+  closeTrayComposer: (): void => ipcRenderer.send("tray-composer-close"),
+  resizeTrayComposer: (height: number): void =>
+    ipcRenderer.send("tray-composer-resize", height),
+  getTrayMenuData: (): Promise<TrayMenuData> =>
+    ipcRenderer.invoke("tray-menu-data"),
+  onTrayMenuData: (callback: (data: TrayMenuData) => void): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: TrayMenuData,
+    ): void => callback(data);
+    ipcRenderer.on("tray-menu-data-changed", handler);
+    return () => ipcRenderer.removeListener("tray-menu-data-changed", handler);
+  },
+  sendTrayMenuAction: (action: TrayMenuAction): void =>
+    ipcRenderer.send("tray-menu-action", action),
+  resizeTrayMenu: (width: number, height: number): void =>
+    ipcRenderer.send("tray-menu-resize", width, height),
+  getTrayCompletionData: (): Promise<TrayCompletionData | null> =>
+    ipcRenderer.invoke("tray-completion-data"),
+  onTrayCompletionData: (
+    callback: (data: TrayCompletionData) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: TrayCompletionData,
+    ): void => callback(data);
+    ipcRenderer.on("tray-completion-data-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("tray-completion-data-changed", handler);
+  },
+  openTrayCompletion: (): void => ipcRenderer.send("tray-completion-open"),
+  closeTrayCompletion: (): void => ipcRenderer.send("tray-completion-close"),
 
   getGpuStatus: (): Promise<GpuStatus> => ipcRenderer.invoke("get-gpu-status"),
 
@@ -183,6 +245,43 @@ const hermesAPI = {
 
   setEnv: (key: string, value: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("set-env", key, value, profile),
+
+  getVoiceInputConfig: (
+    profile?: string,
+  ): Promise<{
+    enabled: boolean;
+    url: string;
+    hasApiKey: boolean;
+    configured: boolean;
+  }> => ipcRenderer.invoke("get-voice-input-config", profile),
+
+  saveVoiceInputConfig: (
+    input: {
+      enabled: boolean;
+      url: string;
+      apiKey?: string;
+      clearApiKey?: boolean;
+    },
+    profile?: string,
+  ): Promise<{
+    enabled: boolean;
+    url: string;
+    hasApiKey: boolean;
+    configured: boolean;
+  }> => ipcRenderer.invoke("save-voice-input-config", input, profile),
+
+  testVoiceInputService: (
+    input: {
+      url: string;
+      apiKey?: string;
+    },
+    profile?: string,
+  ): Promise<{
+    ok: boolean;
+    message: string;
+    version?: string;
+    streamBackend?: string;
+  }> => ipcRenderer.invoke("test-voice-input-service", input, profile),
 
   validateChatReadiness: (
     profile?: string,
@@ -255,8 +354,69 @@ const hermesAPI = {
   isRemoteMode: (): Promise<boolean> => ipcRenderer.invoke("is-remote-mode"),
   isRemoteOnlyMode: (): Promise<boolean> =>
     ipcRenderer.invoke("is-remote-only-mode"),
+  createAgentsOneConnectPairing: (
+    runtimeId: string,
+    displayName: string,
+  ): Promise<{
+    sessionId: string;
+    pairingCode: string;
+    runtimeId: string;
+    displayName: string;
+    expiresAt: number;
+    connectEndpoint: string;
+    tunnelEndpoint: string;
+  }> =>
+    ipcRenderer.invoke(
+      "agents-one-connect-create-pairing",
+      runtimeId,
+      displayName,
+    ),
+  getAgentsOneConnectPairingStatus: (
+    sessionId: string,
+  ): Promise<{
+    sessionId: string;
+    runtimeId: string;
+    displayName: string;
+    state: "pending" | "paired" | "expired";
+    expiresAt: number;
+    deviceId?: string;
+  }> => ipcRenderer.invoke("agents-one-connect-pairing-status", sessionId),
+  completeAgentsOneConnectPairing: (
+    sessionId: string,
+    draft: AgentRuntimeDraft,
+  ): Promise<AgentRuntimeDefinition> =>
+    ipcRenderer.invoke("agents-one-connect-complete-pairing", sessionId, draft),
+  previewAgentsOneConnectPairingCode: (
+    pairingCode: string,
+    runtimeId?: string,
+  ): Promise<ConnectPairingPreview> =>
+    ipcRenderer.invoke(
+      "agents-one-connect-preview-pairing-code",
+      pairingCode,
+      runtimeId,
+    ),
+  completeAgentsOneConnectPairingPreview: (
+    sessionId: string,
+    draft: AgentRuntimeDraft,
+  ): Promise<AgentRuntimeDefinition> =>
+    ipcRenderer.invoke(
+      "agents-one-connect-complete-pairing-preview",
+      sessionId,
+      draft,
+    ),
+  claimAgentsOneConnectPairingCode: (
+    pairingCode: string,
+    draft: AgentRuntimeDraft,
+  ): Promise<AgentRuntimeDefinition> =>
+    ipcRenderer.invoke(
+      "agents-one-connect-claim-pairing-code",
+      pairingCode,
+      draft,
+    ),
   listAgentRuntimes: (): Promise<AgentRuntimeDefinition[]> =>
     ipcRenderer.invoke("list-agent-runtimes"),
+  listAgentRuntimeAdapters: (): Promise<AgentRuntimeAdapterManifest[]> =>
+    ipcRenderer.invoke("list-agent-runtime-adapters"),
   detectLocalCliPaths: (): Promise<Record<string, string | null>> =>
     ipcRenderer.invoke("detect-local-cli-paths"),
   getAgentRuntimeModelContextWindow: (
@@ -287,6 +447,8 @@ const hermesAPI = {
     id: string,
   ): Promise<{ required: boolean; configured: boolean }> =>
     ipcRenderer.invoke("get-agent-runtime-credential-status", id),
+  getAgentRuntimeDiagnostics: (id: string): Promise<AgentRuntimeDiagnostics> =>
+    ipcRenderer.invoke("get-agent-runtime-diagnostics", id),
   setAgentRuntimeBearerToken: (
     id: string,
     bearerToken: string,
@@ -308,15 +470,65 @@ const hermesAPI = {
     bearerToken?: string,
   ): Promise<AgentRuntimeProbe> =>
     ipcRenderer.invoke("probe-agent-runtime-draft", draft, bearerToken),
+  openWebAgentRuntime: (runtimeId: string): Promise<void> =>
+    ipcRenderer.invoke("open-web-agent-runtime", runtimeId),
+  clearWebAgentRuntimeLogin: (runtimeId: string): Promise<void> =>
+    ipcRenderer.invoke("clear-web-agent-runtime-login", runtimeId),
+  resumeWebAgentRuntimeRun: (runId: string): Promise<boolean> =>
+    ipcRenderer.invoke("resume-web-agent-runtime-run", runId),
   startAgentRuntimeTask: (
     runtimeId: string,
     input: AgentRuntimeTaskInput,
   ): Promise<AgentRuntimeRun> =>
     ipcRenderer.invoke("start-agent-runtime-task", runtimeId, input),
+  getAgentRuntimeCommandCatalog: (
+    runtimeId: string,
+    sessionId?: string,
+  ): Promise<RuntimeCommandCatalogSnapshot> =>
+    ipcRenderer.invoke(
+      "get-agent-runtime-command-catalog",
+      runtimeId,
+      sessionId,
+    ),
+  executeAgentRuntimeCommand: (
+    request: RuntimeCommandRequest,
+  ): Promise<RuntimeCommandResult> =>
+    ipcRenderer.invoke("execute-agent-runtime-command", request),
+  onAgentRuntimeCommandProgress: (
+    callback: (progress: RuntimeCommandProgress) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      progress: unknown,
+    ): void => callback(progress as RuntimeCommandProgress);
+    ipcRenderer.on("agent-runtime-command-progress", handler);
+    return () =>
+      ipcRenderer.removeListener("agent-runtime-command-progress", handler);
+  },
   getAgentRuntimeRun: (runId: string): Promise<AgentRuntimeRun | null> =>
     ipcRenderer.invoke("get-agent-runtime-run", runId),
   cancelAgentRuntimeTask: (runId: string): Promise<boolean> =>
     ipcRenderer.invoke("cancel-agent-runtime-task", runId),
+  retryAgentRuntimeArtifact: (
+    runId: string,
+    artifactId: string,
+  ): Promise<AgentRuntimeRun | null> =>
+    ipcRenderer.invoke("retry-agent-runtime-artifact", runId, artifactId),
+  openAgentRuntimeArtifact: (
+    runId: string,
+    artifactId: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("open-agent-runtime-artifact", runId, artifactId),
+  readAgentRuntimeArtifactImage: (
+    runId: string,
+    artifactId: string,
+  ): Promise<string | null> =>
+    ipcRenderer.invoke("read-agent-runtime-artifact-image", runId, artifactId),
+  saveAgentRuntimeArtifact: (
+    runId: string,
+    artifactId: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("save-agent-runtime-artifact", runId, artifactId),
   listTaskSchedules: (profile?: string): Promise<TaskSchedule[]> =>
     ipcRenderer.invoke("list-task-schedules", profile),
   createTaskSchedule: (
@@ -376,9 +588,7 @@ const hermesAPI = {
     ipcRenderer.invoke("set-connection-chat-transports"),
 
   onConnectionConfigChanged: (
-    callback: (config: {
-      mode: "local";
-    }) => void,
+    callback: (config: { mode: "local" }) => void,
   ): (() => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
@@ -407,6 +617,7 @@ const hermesAPI = {
     contextFolder?: string,
     runId?: string,
     modelOverride?: SessionModelOverride,
+    contextWorkspaceId?: string,
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -418,6 +629,7 @@ const hermesAPI = {
       contextFolder,
       runId,
       modelOverride,
+      contextWorkspaceId,
     ),
 
   abortChat: (runId?: string): Promise<void> =>
@@ -429,6 +641,39 @@ const hermesAPI = {
     profile?: string,
   ): Promise<string> =>
     ipcRenderer.invoke("transcribe-audio", audio, mimeType, profile),
+
+  startStreamingTranscription: (profile?: string): Promise<string> =>
+    ipcRenderer.invoke("start-streaming-transcription", profile),
+
+  sendStreamingAudio: (sessionId: string, audio: Uint8Array): Promise<void> =>
+    ipcRenderer.invoke("send-streaming-audio", sessionId, audio),
+
+  stopStreamingTranscription: (
+    sessionId: string,
+    captureAudit?: {
+      capturedChunks: number;
+      capturedBytes: number;
+      sendFailures: number;
+    },
+  ): Promise<void> =>
+    ipcRenderer.invoke("stop-streaming-transcription", sessionId, captureAudit),
+
+  onStreamingTranscriptionEvent: (
+    callback: (event: {
+      sessionId: string;
+      type: "final" | "error" | "ended";
+      text?: string;
+      message?: string;
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      streamEvent: Parameters<typeof callback>[0],
+    ): void => callback(streamEvent);
+    ipcRenderer.on("streaming-transcription-event", handler);
+    return () =>
+      ipcRenderer.removeListener("streaming-transcription-event", handler);
+  },
 
   getApiServerKeyStatus: (
     profile?: string,
@@ -698,6 +943,28 @@ const hermesAPI = {
     ipcRenderer.invoke("dashboard-status", profile),
   startDashboard: (profile?: string): Promise<DashboardStatus> =>
     ipcRenderer.invoke("start-dashboard", profile),
+  createDashboardWorkspaceSession: (
+    workspaceId: string,
+    profile?: string,
+    messages?: Array<{ role: "assistant" | "user"; content: string }>,
+  ) =>
+    ipcRenderer.invoke(
+      "create-dashboard-workspace-session",
+      workspaceId,
+      profile,
+      messages,
+    ),
+  setDashboardWorkspaceCwd: (
+    workspaceId: string,
+    sessionId: string,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke(
+      "set-dashboard-workspace-cwd",
+      workspaceId,
+      sessionId,
+      profile,
+    ),
   stopDashboard: (profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("stop-dashboard", profile),
 
@@ -769,15 +1036,26 @@ const hermesAPI = {
 
   getSessionContextFolder: (sessionId: string): Promise<string | null> =>
     ipcRenderer.invoke("get-session-context-folder", sessionId),
+  getSessionContextWorkspace: (sessionId: string) =>
+    ipcRenderer.invoke("get-session-context-workspace", sessionId),
 
   setSessionContextFolder: (
     sessionId: string,
     folder: string | null,
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-session-context-folder", sessionId, folder),
+  setSessionContextWorkspace: (
+    sessionId: string,
+    workspace: { workspaceId: string; name: string } | null,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-session-context-workspace", sessionId, workspace),
 
   listRecentSessionContextFolders: (limit?: number): Promise<string[]> =>
     ipcRenderer.invoke("list-recent-session-context-folders", limit),
+  listRecentSessionContextWorkspaces: (
+    limit?: number,
+  ): Promise<Array<{ workspaceId: string; name: string }>> =>
+    ipcRenderer.invoke("list-recent-session-context-workspaces", limit),
 
   getSessionModelOverride: (
     sessionId: string,
@@ -1010,6 +1288,21 @@ const hermesAPI = {
     ipcRenderer.invoke("update-runtime-conversation-title", id, title, profile),
   deleteRuntimeConversation: (id: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("delete-runtime-conversation", id, profile),
+  forkRuntimeConversation: (
+    parentId: string,
+    input: {
+      id: string;
+      forkedFromMessageId?: string;
+      branchLabel?: string;
+      branchSummary?: string;
+      implementation?: boolean;
+      worktreeId?: string;
+    },
+    profile?: string,
+  ): Promise<RuntimeConversation> =>
+    ipcRenderer.invoke("fork-runtime-conversation", parentId, input, profile),
+  listRuntimeSkills: (): Promise<RuntimeSkillDescriptor[]> =>
+    ipcRenderer.invoke("list-runtime-skills"),
   listQuickChats: (profile?: string): Promise<QuickChatConversation[]> =>
     ipcRenderer.invoke("list-quick-chats", profile),
   saveQuickChats: (
@@ -1245,6 +1538,17 @@ const hermesAPI = {
     return () => ipcRenderer.removeListener("menu-search-sessions", handler);
   },
 
+  onTrayOpenTask: (callback: (sessionId: string) => void): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      sessionId: unknown,
+    ): void => {
+      if (typeof sessionId === "string" && sessionId) callback(sessionId);
+    };
+    ipcRenderer.on("tray-open-task", handler);
+    return () => ipcRenderer.removeListener("tray-open-task", handler);
+  },
+
   // Cron Jobs
   listCronJobs: (
     includeDisabled?: boolean,
@@ -1315,32 +1619,82 @@ const hermesAPI = {
   createProjectFolder: (): Promise<string | null> =>
     ipcRenderer.invoke("create-project-folder"),
   listProjectFolders: () => ipcRenderer.invoke("list-project-folders"),
+  listProjectWorkspaces: () => ipcRenderer.invoke("list-project-workspaces"),
   registerProjectFolder: (folderPath: string) =>
     ipcRenderer.invoke("register-project-folder", folderPath),
+  registerProjectWorkspace: (folderPath: string) =>
+    ipcRenderer.invoke("register-project-workspace", folderPath),
   updateProjectFolder: (
     input: import("../shared/project-folders").UpdateProjectFolderInput,
   ) => ipcRenderer.invoke("update-project-folder", input),
+  updateProjectWorkspace: (
+    input: Pick<
+      import("../shared/project-folders").UpdateProjectFolderInput,
+      "id" | "name" | "pinned"
+    >,
+  ) => ipcRenderer.invoke("update-project-workspace", input),
   removeProjectFolder: (
     folderPath: string,
     profile?: string,
   ): Promise<boolean> =>
     ipcRenderer.invoke("remove-project-folder", folderPath, profile),
+  removeProjectWorkspace: (
+    workspaceId: string,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("remove-project-workspace", workspaceId, profile),
   listArchivedItems: (profile?: string) =>
     ipcRenderer.invoke("list-archived-items", profile),
   archiveItem: (
     input: import("../shared/archives").ArchiveItemInput,
     profile?: string,
   ) => ipcRenderer.invoke("archive-item", input, profile),
+  archiveProjectWorkspace: (workspaceId: string, profile?: string) =>
+    ipcRenderer.invoke("archive-project-workspace", workspaceId, profile),
   restoreArchivedItem: (id: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("restore-archived-item", id, profile),
   deleteArchivedItem: (id: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("delete-archived-item", id, profile),
   prepareProjectContext: (folderPath: string): Promise<Attachment | null> =>
     ipcRenderer.invoke("prepare-project-context", folderPath),
+  prepareProjectWorkspaceContext: (
+    workspaceId: string,
+  ): Promise<Attachment | null> =>
+    ipcRenderer.invoke("prepare-project-workspace-context", workspaceId),
   readDirectory: (
     dirPath: string,
   ): Promise<{ name: string; isDirectory: boolean }[] | null> =>
     ipcRenderer.invoke("read-directory", dirPath),
+  readWorkspaceDirectory: (
+    workspaceId: string,
+    relativePath = "",
+  ): Promise<{ name: string; isDirectory: boolean }[] | null> =>
+    ipcRenderer.invoke("read-workspace-directory", workspaceId, relativePath),
+  readWorkspaceFile: (
+    workspaceId: string,
+    relativePath: string,
+    maxBytes?: number,
+  ): Promise<{ content: string; truncated: boolean } | null> =>
+    ipcRenderer.invoke(
+      "read-workspace-file",
+      workspaceId,
+      relativePath,
+      maxBytes,
+    ),
+  readWorkspaceImage: (
+    workspaceId: string,
+    relativePath: string,
+  ): Promise<string | null> =>
+    ipcRenderer.invoke("read-workspace-image", workspaceId, relativePath),
+  openWorkspaceFile: (
+    workspaceId: string,
+    relativePath: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("open-workspace-file", workspaceId, relativePath),
+  openProjectWorkspace: (workspaceId: string): Promise<boolean> =>
+    ipcRenderer.invoke("open-project-workspace", workspaceId),
+  openWorkspaceTerminal: (workspaceId: string): Promise<boolean> =>
+    ipcRenderer.invoke("open-workspace-terminal", workspaceId),
   readFile: (
     filePath: string,
     maxBytes?: number,
@@ -1478,18 +1832,21 @@ const hermesAPI = {
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("registry-install", kind, item, profile),
 
-  // Log viewer
-  readLogs: (
+  // Agents One diagnostic log viewer
+  readDiagnostics: (
     logFile?: string,
     lines?: number,
   ): Promise<{ content: string; path: string }> =>
-    ipcRenderer.invoke("read-logs", logFile, lines),
+    ipcRenderer.invoke("read-agents-one-diagnostics", logFile, lines),
 };
 
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld("electron", electronAPI);
-    contextBridge.exposeInMainWorld("hermesAPI", hermesAPI);
+    contextBridge.exposeInMainWorld("agentsOneAPI", agentsOneAPI);
+    // Compatibility alias for older automation and renderer bundles. New
+    // consumers must use `agentsOneAPI`; remove this after a migration window.
+    contextBridge.exposeInMainWorld("hermesAPI", agentsOneAPI);
   } catch (error) {
     console.error(error);
   }
@@ -1497,5 +1854,7 @@ if (process.contextIsolated) {
   // @ts-ignore (define in dts)
   window.electron = electronAPI;
   // @ts-ignore (define in dts)
-  window.hermesAPI = hermesAPI;
+  window.agentsOneAPI = agentsOneAPI;
+  // @ts-ignore (legacy compatibility alias; defined in dts)
+  window.hermesAPI = agentsOneAPI;
 }

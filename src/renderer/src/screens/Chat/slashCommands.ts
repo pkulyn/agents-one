@@ -5,6 +5,12 @@ export interface SlashCommand {
   /** If true, the command is handled locally instead of sent to the backend */
   local?: boolean;
   takesArgs?: boolean;
+  /** Optional visible argument contract from the command catalogue. */
+  argumentHint?: string;
+  /** Optional Runtime command provenance for the shared composer palette. */
+  source?: "desktop" | "runtime" | "skill" | "plugin";
+  /** Runtime availability is rendered as metadata; it never controls routing. */
+  availability?: "idle" | "running" | "any";
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
@@ -100,7 +106,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "/update",
-    description: "Update Hermes to the latest version",
+    description: "Update the Hermes Agent Runtime to the latest version",
     category: "agent",
   },
   // Tools & capabilities
@@ -165,5 +171,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   { name: "/memory", description: "Show agent memory", category: "info" },
   { name: "/persona", description: "Show current persona", category: "info" },
-  { name: "/version", description: "Show Hermes version", category: "info" },
+  {
+    name: "/version",
+    description: "Show Hermes Agent Runtime version",
+    category: "info",
+  },
 ];

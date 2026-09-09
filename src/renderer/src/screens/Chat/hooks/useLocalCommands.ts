@@ -60,7 +60,7 @@ export function useLocalCommands({
           return true;
 
         case "/memory": {
-          const mem = await window.hermesAPI.readMemory(profile);
+          const mem = await window.agentsOneAPI.readMemory(profile);
           const lines: string[] = ["**Agent Memory**\n"];
           if (mem.memory.exists && mem.memory.content.trim()) {
             lines.push(mem.memory.content.trim());
@@ -75,7 +75,7 @@ export function useLocalCommands({
         }
 
         case "/tools": {
-          const tools = await window.hermesAPI.getToolsets(profile);
+          const tools = await window.agentsOneAPI.getToolsets(profile);
           if (!tools.length) {
             addAgentMessage(t("memory.noToolsetsFound"));
           } else {
@@ -91,7 +91,7 @@ export function useLocalCommands({
         }
 
         case "/skills": {
-          const skills = await window.hermesAPI.listInstalledSkills(profile);
+          const skills = await window.agentsOneAPI.listInstalledSkills(profile);
           if (!skills.length) {
             addAgentMessage("No skills installed.");
           } else {
@@ -104,7 +104,7 @@ export function useLocalCommands({
         }
 
         case "/persona": {
-          const soul = await window.hermesAPI.readSoul(profile);
+          const soul = await window.agentsOneAPI.readSoul(profile);
           addAgentMessage(
             soul.trim()
               ? `**Current Persona**\n\n${soul.trim()}`
@@ -115,17 +115,17 @@ export function useLocalCommands({
 
         case "/version": {
           const [hermesVer, appVer] = await Promise.all([
-            window.hermesAPI.getHermesVersion(),
-            window.hermesAPI.getAppVersion(),
+            window.agentsOneAPI.getHermesVersion(),
+            window.agentsOneAPI.getAppVersion(),
           ]);
           addAgentMessage(
-            `**Hermes Agent:** ${hermesVer || "unknown"}\n**Agents One:** v${appVer}`,
+            `**Hermes Agent Runtime:** ${hermesVer || "unknown"}\n**Agents One:** v${appVer}`,
           );
           return true;
         }
 
         case "/fast": {
-          const current = await window.hermesAPI.getConfig(
+          const current = await window.agentsOneAPI.getConfig(
             "agent.service_tier",
             profile,
           );

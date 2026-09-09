@@ -23,6 +23,11 @@ export interface Attachment {
   // Origin is the original file path for picker/drag-drop, or a staged
   // copy under %LOCALAPPDATA%/hermes/desktop-staging/<session>/ for paste.
   path?: string;
+  /** Opaque main-process capability for a Runtime-delivered artifact. */
+  runtimeArtifact?: {
+    runId: string;
+    artifactId: string;
+  };
 }
 
 /**

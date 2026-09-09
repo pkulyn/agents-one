@@ -3,6 +3,10 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("electron", () => ({
+  app: { setPath: vi.fn(), getPath: () => "C:\\temp" },
+}));
+
 let testHome: string;
 
 async function loadStore(): Promise<typeof import("../src/main/project-folders")> {
@@ -25,7 +29,10 @@ describe("project folder registry", () => {
     const store = await loadStore();
 
     const first = store.registerProjectFolder("D:/Projects/Alpha");
-    expect(first).toMatchObject({ name: "Alpha" });
+    expect(first).toMatchObject({
+      name: "Alpha",
+      id: expect.stringMatching(/^project-/),
+    });
 
     store.registerProjectFolder("D:/Projects/Beta");
     store.registerProjectFolder("D:/Projects/Alpha");
@@ -34,6 +41,31 @@ describe("project folder registry", () => {
     expect(folders).toHaveLength(2);
     expect(folders[0]).toMatchObject({ path: "D:\\Projects\\Alpha" });
     expect(folders[1]).toMatchObject({ path: "D:\\Projects\\Beta" });
+  });
+
+  it("resolves a stable opaque id without exposing a caller-supplied path", async () => {
+    const store = await loadStore();
+    const registered = store.registerProjectFolder("D:/Projects/Alpha");
+    expect(registered?.id).toBeTruthy();
+    expect(store.resolveProjectFolderPath(registered!.id!)).toBe(
+      "D:\\Projects\\Alpha",
+    );
+    expect(store.resolveProjectFolderPath("project-not-registered")).toBeNull();
+  });
+
+  it("lists renderer-safe project capabilities without local paths", async () => {
+    const store = await loadStore();
+    store.registerProjectFolder("D:/Projects/Alpha");
+
+    expect(store.listProjectWorkspaceCapabilities()).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^project-/),
+        name: "Alpha",
+      }),
+    ]);
+    expect(store.listProjectWorkspaceCapabilities()[0]).not.toHaveProperty(
+      "path",
+    );
   });
 
   it("removes only the registered project entry", async () => {
@@ -58,5 +90,23 @@ describe("project folder registry", () => {
       name: "核心项目",
       pinned: true,
     });
+  });
+
+  it("updates and removes a project by opaque id without requiring a path", async () => {
+    const store = await loadStore();
+    const registered = store.registerProjectFolder("D:/Projects/Alpha");
+    const id = registered?.id;
+    expect(id).toBeTruthy();
+
+    const updated = store.updateProjectFolder({
+      id,
+      name: "安全项目",
+      pinned: true,
+    });
+    expect(store.projectWorkspaceCapability(updated)).toEqual(
+      expect.objectContaining({ id, name: "安全项目", pinned: true }),
+    );
+    expect(store.removeProjectWorkspace(id!)).toBe(true);
+    expect(store.listProjectFolders()).toEqual([]);
   });
 });

@@ -2,9 +2,11 @@ import { createContext, useContext, useEffect, useState } from "react";
 import {
   DEFAULT_DARK_THEME,
   DEFAULT_LIGHT_THEME,
+  LEGACY_THEME_STORAGE_KEY,
   THEMES,
   THEME_STORAGE_KEY as STORAGE_KEY,
 } from "../constants";
+import { readMigratedStorageValue } from "../utils/brandMigration";
 
 /** "system" follows the OS preference; any other value is a theme id. */
 type Theme = "system" | string;
@@ -29,7 +31,8 @@ const ThemeContext = createContext<ThemeContextValue>({
 });
 
 const THEME_IDS = new Set(THEMES.map((t) => t.id));
-const RADIUS_STORAGE_KEY = "hermes-rounded";
+const RADIUS_STORAGE_KEY = "agents-one.rounded.v1";
+const LEGACY_RADIUS_STORAGE_KEY = "hermes-rounded";
 
 function getSystemTheme(): string {
   return window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -47,13 +50,20 @@ export function ThemeProvider({
   children: React.ReactNode;
 }): React.JSX.Element {
   const [theme, setThemeState] = useState<Theme>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = readMigratedStorageValue(
+      STORAGE_KEY,
+      LEGACY_THEME_STORAGE_KEY,
+    );
     if (stored === "system" || (stored && THEME_IDS.has(stored))) return stored;
     return DEFAULT_DARK_THEME;
   });
   const [resolved, setResolved] = useState<string>(() => resolve(theme));
   const [rounded, setRoundedState] = useState<boolean>(
-    () => localStorage.getItem(RADIUS_STORAGE_KEY) !== "false",
+    () =>
+      readMigratedStorageValue(
+        RADIUS_STORAGE_KEY,
+        LEGACY_RADIUS_STORAGE_KEY,
+      ) !== "false",
   );
 
   function setTheme(next: Theme): void {

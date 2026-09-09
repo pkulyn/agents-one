@@ -61,7 +61,7 @@ const AUTH_BAK = AUTH + ".nous-cards-bk";
     const TEST_KEY = `sk-nous-test-${Date.now()}`;
     const entries = await page.evaluate(
       async ({ label, key }) => {
-        return await window.hermesAPI.addCredentialPoolEntry(
+        return await window.agentsOneAPI.addCredentialPoolEntry(
           "nous",
           key,
           label,

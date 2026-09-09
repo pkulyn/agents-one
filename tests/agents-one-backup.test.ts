@@ -992,13 +992,17 @@ describe("Agents One backup round trip", { timeout: 30_000 }, () => {
     mkdirSync(dirname(snapshotPath), { recursive: true });
     writeFileSync(snapshotPath, "target data before restore");
 
-    await recoverInterruptedAgentsOneRestore(targetHome);
-
-    expect(readFileSync(existingDestination, "utf8")).toBe(
-      "target data before restore",
+    expect(() => recoverInterruptedAgentsOneRestore(targetHome)).toThrow(
+      /无法确认来源的文件/,
     );
-    expect(existsSync(introducedDestination)).toBe(false);
-    expect(existsSync(transactionRoot)).toBe(false);
+
+    // A path absent at transaction start might now belong to a new process
+    // or a user. Keep it and the journal for explicit recovery rather than
+    // deleting data whose identity cannot be proven.
+    expect(readFileSync(introducedDestination, "utf8")).toBe(
+      "partially introduced quick chat data",
+    );
+    expect(existsSync(transactionRoot)).toBe(true);
   });
 
   it("only cleans a committed restore journal left before process exit", async () => {

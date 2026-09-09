@@ -27,7 +27,7 @@ function App(): React.JSX.Element {
 
     try {
       setSplashStatus("正在准备工作区…");
-      await window.hermesAPI.getConnectionConfig();
+      await window.agentsOneAPI.getConnectionConfig();
     } catch (err) {
       // Agents One is a Runtime aggregator. A transient connection/config
       // read must never block the desktop shell behind a first-install page.

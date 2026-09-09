@@ -402,7 +402,7 @@ function Set-LabComfyUiBridge {
   $skillPath = Join-Path $SkillDir "SKILL.md"
   if (Test-Path $skillPath) {
     $text = Get-Content -LiteralPath $skillPath -Raw
-    $marker = "## Hermes One Remote Lab Bridge"
+    $marker = "## Agents One Remote Lab Bridge"
     if (!$text.Contains($marker)) {
       $note = @"
 $marker
@@ -413,7 +413,7 @@ container sets it to `http://host.docker.internal:49000`, AI Playground's
 bundled ComfyUI endpoint on the Windows host. This is not normal remote
 Hermes behavior.
 
-When you create a container-local copy for display in Hermes One, write it
+When you create a container-local copy for display in Agents One, write it
 under `/opt/data/images` and mention that path in the final answer, preferably
 as `MEDIA:/opt/data/images/<filename>.png`. Hermes Agent's dashboard media
 endpoint is intentionally restricted to the Hermes media roots.
@@ -512,7 +512,7 @@ function Configure-Desktop {
   $data["remoteChatTransport"] = "auto"
   $data["sshChatTransport"] = "auto"
   $data | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $DesktopConfig -Encoding UTF8
-  Write-Host "Hermes One sandbox desktop config now points to http://127.0.0.1:$Port in remote auto mode."
+  Write-Host "Agents One sandbox desktop config now points to http://127.0.0.1:$Port in remote auto mode."
 }
 
 switch ($Command) {

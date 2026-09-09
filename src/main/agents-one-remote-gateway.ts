@@ -5,6 +5,15 @@ import type {
   AgentRuntimeRun,
 } from "../shared/agent-runtimes";
 import { NO_AGENT_RUNTIME_CAPABILITIES } from "../shared/agent-runtimes";
+import type {
+  RuntimeCommandDescriptor,
+  RuntimeCompactionMetadata,
+  RuntimeCommandRequest,
+  RuntimeCommandResult,
+  RuntimeModelOption,
+} from "../shared/runtime-commands";
+import { redactSensitiveText } from "../shared/redaction";
+import { AGENTS_ONE_CONNECT_PROTOCOL_VERSION } from "../shared/agents-one-connect";
 import {
   AGENT_EVENT_STREAM_V1,
   parseAgentEventStreamEvents,
@@ -15,14 +24,23 @@ import {
   type AgentEventStreamSupport,
   type AgentEventStreamUsage,
 } from "../shared/agent-event-stream";
-import { request as httpRequest } from "http";
-import { request as httpsRequest } from "https";
-import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import WebSocket from "ws";
+
+const MAX_GATEWAY_JSON_RESPONSE_BYTES = 4 * 1024 * 1024;
+const MAX_GATEWAY_COMMAND_RESULT_TEXT_LENGTH = 4_000;
+const MAX_GATEWAY_COMMAND_PROMPT_LENGTH = 16_000;
+const MAX_GATEWAY_COMMAND_MODELS = 100;
 
 export interface AgentsOneRemoteGatewayConfig {
   endpoint: string;
+  /** Runtime route for a shared self-hosted Gateway; Connect uses connect.runtimeId. */
+  runtimeId?: string;
   timeoutMs?: number;
+  connect?: {
+    endpoint: string;
+    runtimeId: string;
+  };
 }
 
 export interface AgentsOneRemoteGatewayAuth {
@@ -33,6 +51,8 @@ export interface AgentsOneRemoteGatewayProbe {
   healthy: boolean;
   capabilities: AgentRuntimeCapabilities;
   message?: string;
+  gatewayProtocolVersion?: string;
+  hostVersion?: string;
 }
 
 export interface AgentsOneRemoteGatewayRunInput {
@@ -43,6 +63,10 @@ export interface AgentsOneRemoteGatewayRunInput {
   conversationId?: string;
   projectId?: string;
   text: string;
+  /** Optional session/request model override forwarded to the remote adapter. */
+  model?: string;
+  /** Stable desktop run identity used when a transient network retry repeats POST /runs. */
+  idempotencyKey?: string;
   artifactIds?: string[];
   workspaceRef?: string;
   timeoutSeconds: number;
@@ -65,8 +89,7 @@ export interface AgentsOneRemoteGatewayArtifact {
   expiresAt?: string;
 }
 
-export interface AgentsOneRemoteGatewayArtifactDownload
-  extends AgentsOneRemoteGatewayArtifact {
+export interface AgentsOneRemoteGatewayArtifactDownload extends AgentsOneRemoteGatewayArtifact {
   bytes: Buffer;
 }
 
@@ -75,97 +98,83 @@ export interface AgentsOneRemoteGatewayRun {
   status: AgentRuntimeRun["status"];
   output?: string;
   conversationId?: string;
+  /** Provider-native session identity used for subsequent ACP/RPC turns. */
+  sessionId?: string;
   error?: string;
   artifacts?: AgentRuntimeArtifact[];
+  requestedModel?: string;
   /** Optional structured trace emitted by an Event Stream v1 capable Gateway. */
   events?: AgentEventStreamEvent[];
   model?: AgentEventStreamModel;
+  actualModel?: AgentEventStreamModel;
   usage?: AgentEventStreamUsage;
+}
+
+export interface AgentsOneRemoteGatewayCommandCatalog {
+  commands: RuntimeCommandDescriptor[];
 }
 
 function endpointUrl(endpoint: string, path: string): string {
   return `${endpoint.replace(/\/+$/, "")}${path}`;
 }
 
-function isSelfSignedCertificateError(error: unknown): boolean {
-  const code =
-    error && typeof error === "object" && "code" in error
-      ? String((error as { code?: unknown }).code || "")
-      : "";
-  if (
-    code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
-    code === "SELF_SIGNED_CERT_IN_CHAIN"
-  ) {
-    return true;
+/** Native fetch trusts the operating system CA store. Never weaken that
+ * boundary for a public Gateway; loopback HTTP is test/dev-only. */
+export function assertAgentsOneRemoteGatewayEndpoint(endpoint: string): void {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new Error("统一 Gateway 地址无效。");
   }
-  return Boolean(
-    error &&
-      typeof error === "object" &&
-      "cause" in error &&
-      isSelfSignedCertificateError((error as { cause?: unknown }).cause),
-  );
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  const allowLoopback =
+    process.env.NODE_ENV === "test" ||
+    process.env.AGENTS_ONE_ALLOW_INSECURE_LOOPBACK === "1";
+  if (
+    url.protocol !== "https:" &&
+    !(allowLoopback && loopback && url.protocol === "http:")
+  ) {
+    throw new Error(
+      "统一 Gateway 必须使用受信任的 HTTPS；仅允许测试或显式开发开关下的本机 HTTP。",
+    );
+  }
 }
 
-async function requestJsonOnce(
-  config: AgentsOneRemoteGatewayConfig,
-  path: string,
-  auth?: AgentsOneRemoteGatewayAuth,
-  init?: { method?: "POST"; body?: unknown },
-  rejectUnauthorized?: boolean,
-): Promise<{ ok: boolean; status: number; body: unknown }> {
-  const url = new URL(endpointUrl(config.endpoint, path));
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Gateway 地址必须使用 HTTP 或 HTTPS。");
+async function readJsonResponse(response: Response): Promise<unknown> {
+  const advertisedLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(advertisedLength) &&
+    advertisedLength > MAX_GATEWAY_JSON_RESPONSE_BYTES
+  ) {
+    throw new Error("Gateway JSON 响应超过 4 MiB 上限。");
   }
-  const timeoutMs = Math.max(1_000, config.timeoutMs || 10_000);
-  const payload =
-    init?.body === undefined ? undefined : JSON.stringify(init.body);
-  return await new Promise((resolve, reject) => {
-    const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(
-      url,
-      {
-        method: init?.method || "GET",
-        headers: {
-          Accept: "application/json",
-          ...(payload
-            ? {
-                "Content-Type": "application/json",
-                "Content-Length": Buffer.byteLength(payload),
-              }
-            : {}),
-          ...(auth?.bearerToken
-            ? { Authorization: `Bearer ${auth.bearerToken}` }
-            : {}),
-        },
-        ...(url.protocol === "https:" && rejectUnauthorized === false
-          ? { rejectUnauthorized: false }
-          : {}),
-      },
-      (response) => {
-        const chunks: Buffer[] = [];
-        response.on("data", (chunk: Buffer) => chunks.push(chunk));
-        response.once("error", reject);
-        response.once("end", () => {
-          const status = response.statusCode || 0;
-          const text = Buffer.concat(chunks).toString("utf8");
-          let body: unknown = undefined;
-          try {
-            body = text ? JSON.parse(text) : undefined;
-          } catch {
-            resolve({ ok: false, status, body: undefined });
-            return;
-          }
-          resolve({ ok: status >= 200 && status < 300, status, body });
-        });
-      },
-    );
-    request.once("error", reject);
-    request.setTimeout(timeoutMs, () =>
-      request.destroy(new Error("Gateway 请求超时。")),
-    );
-    if (payload) request.write(payload);
-    request.end();
-  });
+  if (!response.body) return undefined;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_GATEWAY_JSON_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new Error("Gateway JSON 响应超过 4 MiB 上限。");
+    }
+    chunks.push(value);
+  }
+  if (!chunks.length) return undefined;
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return undefined;
+  }
 }
 
 async function requestJson(
@@ -174,44 +183,150 @@ async function requestJson(
   auth?: AgentsOneRemoteGatewayAuth,
   init?: { method?: "POST"; body?: unknown },
 ): Promise<{ ok: boolean; status: number; body: unknown }> {
-  try {
-    const response = await fetch(endpointUrl(config.endpoint, path), {
-      method: init?.method || "GET",
-      headers: {
-        Accept: "application/json",
-        ...(init?.body === undefined
-          ? {}
-          : { "Content-Type": "application/json" }),
-        ...(auth?.bearerToken
-          ? { Authorization: `Bearer ${auth.bearerToken}` }
-          : {}),
-      },
+  if (config.connect) {
+    return requestConnectJson(config, path, auth, init);
+  }
+  assertAgentsOneRemoteGatewayEndpoint(config.endpoint);
+  const response = await fetch(endpointUrl(config.endpoint, path), {
+    method: init?.method || "GET",
+    headers: {
+      Accept: "application/json",
       ...(init?.body === undefined
         ? {}
-        : { body: JSON.stringify(init.body) }),
-      signal: AbortSignal.timeout(
-        Math.max(1_000, config.timeoutMs || 10_000),
-      ),
-    });
-    let body: unknown = undefined;
-    try {
-      body = await response.json();
-    } catch {
-      body = undefined;
-    }
-    return { ok: response.ok, status: response.status, body };
-  } catch (error) {
-    // The endpoint is explicitly configured by the user. Retry only the
-    // self-signed-certificate case; hostname, protocol, and other TLS failures
-    // remain strict.
-    if (
-      config.endpoint.trim().toLowerCase().startsWith("https://") &&
-      isSelfSignedCertificateError(error)
-    ) {
-      return await requestJsonOnce(config, path, auth, init, false);
-    }
-    throw error;
+        : { "Content-Type": "application/json" }),
+      ...(auth?.bearerToken
+        ? { Authorization: `Bearer ${auth.bearerToken}` }
+        : {}),
+      ...(config.runtimeId
+        ? { "x-agents-one-runtime-id": config.runtimeId }
+        : {}),
+    },
+    ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+    signal: AbortSignal.timeout(Math.max(1_000, config.timeoutMs || 10_000)),
+  });
+  const body = await readJsonResponse(response);
+  return { ok: response.ok, status: response.status, body };
+}
+
+/**
+ * Gateway v1 over the managed Connect WebSocket tunnel. A short-lived
+ * desktop socket per request keeps the first implementation stateless while
+ * preserving the existing Gateway v1 request/response contract. Streaming
+ * events are forwarded by the service and may be added to the pending run
+ * layer later; the response body remains identical to direct HTTP Gateway v1.
+ */
+async function requestConnectJson(
+  config: AgentsOneRemoteGatewayConfig,
+  path: string,
+  auth?: AgentsOneRemoteGatewayAuth,
+  init?: { method?: "POST"; body?: unknown },
+): Promise<{ ok: boolean; status: number; body: unknown }> {
+  const connect = config.connect;
+  const gatewayToken = auth?.bearerToken?.trim();
+  if (!connect || !gatewayToken) {
+    throw new Error("Agents One Connect requires a Gateway token.");
   }
+  assertAgentsOneRemoteGatewayEndpoint(connect.endpoint);
+  const base = new URL(connect.endpoint);
+  const wsProtocol = base.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${wsProtocol}//${base.host}/connect/v1/tunnel`;
+  const timeoutMs = Math.max(1_000, config.timeoutMs || 10_000);
+  const requestId = `desktop-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(wsUrl);
+    let settled = false;
+    let ready = false;
+    const timer = setTimeout(() => {
+      finishReject(new Error("Agents One Connect tunnel timed out."));
+      socket.close();
+    }, timeoutMs);
+    const finishResolve = (value: {
+      ok: boolean;
+      status: number;
+      body: unknown;
+    }): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+      socket.close();
+    };
+    const finishReject = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+      socket.close();
+    };
+    socket.on("error", (error) =>
+      finishReject(error instanceof Error ? error : new Error(String(error))),
+    );
+    socket.on("close", () => {
+      if (!settled)
+        finishReject(new Error("Agents One Connect tunnel closed."));
+    });
+    socket.on("message", (raw) => {
+      try {
+        const frame = JSON.parse(raw.toString()) as Record<string, unknown>;
+        if (frame.type === "hello_ack") {
+          if (ready) return;
+          const handshakeError = object(frame.error);
+          const handshakeCode = string(handshakeError?.code);
+          if (frame.state === "incompatible" || frame.state === "disabled") {
+            const error = new Error(
+              string(handshakeError?.message) ||
+                (frame.state === "disabled"
+                  ? "远程 Runtime 已停用。"
+                  : "Agents One Connect 协议版本不兼容。"),
+            );
+            Object.assign(error, {
+              code:
+                handshakeCode ||
+                (frame.state === "disabled"
+                  ? "runtime_disabled"
+                  : "incompatible_version"),
+            });
+            finishReject(error);
+            return;
+          }
+          ready = true;
+          socket.send(
+            JSON.stringify({
+              type: "request",
+              requestId,
+              method: init?.method || "GET",
+              path,
+              ...(init?.body === undefined ? {} : { body: init.body }),
+            }),
+          );
+          return;
+        }
+        if (frame.type === "response" && frame.requestId === requestId) {
+          finishResolve({
+            ok:
+              frame.status === 200 ||
+              frame.status === 201 ||
+              frame.status === 202,
+            status: typeof frame.status === "number" ? frame.status : 500,
+            body: frame.body,
+          });
+        }
+      } catch (error) {
+        finishReject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+    socket.on("open", () => {
+      socket.send(
+        JSON.stringify({
+          type: "hello",
+          role: "desktop",
+          protocolVersion: AGENTS_ONE_CONNECT_PROTOCOL_VERSION,
+          runtimeId: connect.runtimeId,
+          gatewayToken,
+        }),
+      );
+    });
+  });
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -226,6 +341,124 @@ function bool(value: unknown): boolean {
 
 function string(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function safeGatewayCommandText(
+  value: unknown,
+  limit = MAX_GATEWAY_COMMAND_RESULT_TEXT_LENGTH,
+): string | undefined {
+  const text = string(value);
+  return text ? redactSensitiveText(text).slice(0, limit) : undefined;
+}
+
+function gatewayCommandModels(value: unknown): RuntimeModelOption[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value
+    .flatMap((raw) => {
+      const model = object(raw);
+      const id = safeGatewayCommandText(model?.id, 256);
+      if (!id || seen.has(id)) return [];
+      seen.add(id);
+      const displayName = safeGatewayCommandText(model?.displayName, 256);
+      const provider = safeGatewayCommandText(model?.provider, 128);
+      const efforts = Array.isArray(model?.reasoningEfforts)
+        ? model.reasoningEfforts
+            .flatMap((item) => safeGatewayCommandText(item, 64) ?? [])
+            .slice(0, 20)
+        : undefined;
+      return [
+        {
+          id,
+          ...(provider ? { provider } : {}),
+          ...(displayName ? { displayName } : {}),
+          ...(efforts?.length ? { reasoningEfforts: efforts } : {}),
+          ...(model?.isDefault === true ? { isDefault: true } : {}),
+        },
+      ];
+    })
+    .slice(0, MAX_GATEWAY_COMMAND_MODELS);
+}
+
+function gatewayCompactionMetadata(
+  value: unknown,
+): RuntimeCompactionMetadata | undefined {
+  const raw = object(value);
+  const trigger = string(raw?.trigger);
+  if (trigger !== "manual" && trigger !== "auto" && trigger !== "platform") {
+    return undefined;
+  }
+  const boundedTokenCount = (candidate: unknown): number | undefined =>
+    typeof candidate === "number" &&
+    Number.isFinite(candidate) &&
+    candidate >= 0 &&
+    candidate <= 10_000_000_000
+      ? Math.floor(candidate)
+      : undefined;
+  const tokensBefore = boundedTokenCount(raw?.tokensBefore);
+  const tokensAfter = boundedTokenCount(raw?.tokensAfter);
+  const summaryRef = safeGatewayCommandText(raw?.summaryRef, 256);
+  return {
+    trigger,
+    ...(tokensBefore !== undefined ? { tokensBefore } : {}),
+    ...(tokensAfter !== undefined ? { tokensAfter } : {}),
+    ...(summaryRef ? { summaryRef } : {}),
+  };
+}
+
+/** Validate and redact untrusted Remote Gateway command output before IPC. */
+function gatewayCommandResultFrom(value: unknown): RuntimeCommandResult {
+  const body = object(value);
+  const type = string(body?.type);
+  switch (type) {
+    case "handled": {
+      const statePatch = object(body?.statePatch);
+      const model = safeGatewayCommandText(statePatch?.model, 256);
+      const compacted = statePatch?.compacted === true;
+      const compaction = gatewayCompactionMetadata(statePatch?.compaction);
+      const message = safeGatewayCommandText(body?.message);
+      return {
+        type,
+        ...(message ? { message } : {}),
+        ...(model || compacted || compaction
+          ? {
+              statePatch: {
+                ...(model ? { model } : {}),
+                ...(compacted ? { compacted } : {}),
+                ...(compaction ? { compaction } : {}),
+              },
+            }
+          : {}),
+      };
+    }
+    case "needs-input": {
+      const input = string(body?.input);
+      if (input !== "model-picker" && input !== "confirmation") {
+        throw new Error("Gateway 返回了无效的命令输入请求。");
+      }
+      return { type, input, models: gatewayCommandModels(body?.models) };
+    }
+    case "send-prompt": {
+      const prompt = safeGatewayCommandText(
+        body?.prompt,
+        MAX_GATEWAY_COMMAND_PROMPT_LENGTH,
+      );
+      if (!prompt) throw new Error("Gateway 返回了空的命令提示词。");
+      return { type, prompt };
+    }
+    case "unsupported": {
+      const reason = safeGatewayCommandText(body?.reason);
+      if (!reason) throw new Error("Gateway 返回了无效的不支持说明。");
+      return { type, reason };
+    }
+    case "error": {
+      const message = safeGatewayCommandText(body?.message);
+      if (!message) throw new Error("Gateway 返回了无效的命令错误。");
+      return { type, message };
+    }
+    default:
+      throw new Error("Gateway 返回了未知的命令结果类型。");
+  }
 }
 
 function runStatus(value: unknown): AgentRuntimeRun["status"] | null {
@@ -392,9 +625,13 @@ function metadataCandidates(
   ].filter((value): value is Record<string, unknown> => Boolean(value));
 }
 
-function modelFromRoot(root: Record<string, unknown>): AgentEventStreamModel | undefined {
+function modelFromRoot(
+  root: Record<string, unknown>,
+): AgentEventStreamModel | undefined {
   for (const source of metadataCandidates(root)) {
     const model =
+      modelFrom(source.actualModel) ||
+      modelFrom(source.actual_model) ||
       modelFrom(source.model) ||
       modelFrom({
         id:
@@ -421,7 +658,9 @@ function modelFromRoot(root: Record<string, unknown>): AgentEventStreamModel | u
   return undefined;
 }
 
-function usageFromRoot(root: Record<string, unknown>): AgentEventStreamUsage | undefined {
+function usageFromRoot(
+  root: Record<string, unknown>,
+): AgentEventStreamUsage | undefined {
   for (const source of metadataCandidates(root)) {
     const usage =
       usageFrom(source.usage) ||
@@ -501,7 +740,8 @@ function errorMessageFrom(value: unknown): string | undefined {
   const detail = string(source.detail);
   const nested = errorMessageFrom(source.error);
   const parts = [code, message, detail, nested].filter(
-    (part, index, values): part is string => Boolean(part) && values.indexOf(part) === index,
+    (part, index, values): part is string =>
+      Boolean(part) && values.indexOf(part) === index,
   );
   return parts.length ? parts.join(": ") : undefined;
 }
@@ -522,7 +762,48 @@ function isGenericFailureText(value: string | undefined): boolean {
 /** Convert protocol error codes into a user-actionable runtime diagnosis. */
 export function explainAgentsOneRemoteGatewayError(error: unknown): string {
   const raw =
-    error instanceof Error ? error.message : errorMessageFrom(error) || String(error);
+    error instanceof Error
+      ? error.message
+      : errorMessageFrom(error) || String(error);
+  if (
+    /\bgateway_tls_untrusted\b|certificate|\bcert\b|self-signed|untrusted|unable to verify/i.test(
+      raw,
+    )
+  ) {
+    return "统一 Gateway 的 HTTPS 证书链不受信任（gateway_tls_untrusted）。请在远端部署完整证书链，并使用操作系统信任的 CA；不要关闭证书校验。";
+  }
+  if (
+    /\bprovider_auth_required\b|provider.*(?:login|auth|required)/i.test(raw)
+  ) {
+    return "远端 Provider 尚未登录或凭据不可用（provider_auth_required）。请在智能体所在主机完成 Provider 登录后重试。";
+  }
+  if (/\bincompatible_version\b|protocol.*incompatible/i.test(raw)) {
+    return "远程组件版本不兼容（incompatible_version）。请升级 Connect、Connector、Host 或 Provider Adapter 到相互支持的版本。";
+  }
+  if (/\bdevice_revoked\b/i.test(raw)) {
+    return "远程设备授权已撤销（device_revoked）。请在 Agents One 中重新完成配对。";
+  }
+  if (/\bruntime_not_registered\b/i.test(raw)) {
+    return "目标 Runtime 尚未在远端设备注册（runtime_not_registered）。请检查 Connector 的 Runtime 清单并重新发布。";
+  }
+  if (/\bruntime_disabled\b/i.test(raw)) {
+    return "目标 Runtime 已停用（runtime_disabled）。请在远端 Connector 启用该 Runtime 后重试。";
+  }
+  if (/\bruntime_offline\b/i.test(raw)) {
+    return "目标 Runtime 当前离线（runtime_offline）。请检查远端 Host/Adapter 状态；同一设备上的其他 Runtime 不受影响。";
+  }
+  if (/\badapter_unavailable\b/i.test(raw)) {
+    return "远端 Runtime Adapter 不可用（adapter_unavailable）。请检查 Host 是否安装并启用了受信任的 Adapter。";
+  }
+  if (/\bpermission_denied\b/i.test(raw)) {
+    return "远程请求被权限策略拒绝（permission_denied）。请检查 Runtime 授权、权限模式或 Workspace Grant。";
+  }
+  if (/\bworkspace_grant_expired\b/i.test(raw)) {
+    return "远程工作区授权已过期（workspace_grant_expired）。请重新选择并授权工作区后重试。";
+  }
+  if (/\brun_state_conflict\b|\bidempotency_conflict\b/i.test(raw)) {
+    return "远程运行状态或幂等键发生冲突（run_state_conflict）。请查询原 Run，不要重复执行。";
+  }
   if (/\brun[_ -]?not[_ -]?found\b|\brun not found\b/i.test(raw)) {
     return "当前远程运行已不存在（run_not_found）。这通常发生在 Relay 重启、热更新或清理了运行状态之后；为避免重复执行文件操作，请确认 Relay 已稳定后重新发送本条消息。";
   }
@@ -537,11 +818,15 @@ export function explainAgentsOneRemoteGatewayError(error: unknown): string {
 
 export function isAgentsOneRemoteGatewayRunNotFound(error: unknown): boolean {
   const raw =
-    error instanceof Error ? error.message : errorMessageFrom(error) || String(error);
+    error instanceof Error
+      ? error.message
+      : errorMessageFrom(error) || String(error);
   return /\brun[_ -]?not[_ -]?found\b|\brun not found\b/i.test(raw);
 }
 
-function eventFailureMessage(events: AgentEventStreamEvent[]): string | undefined {
+function eventFailureMessage(
+  events: AgentEventStreamEvent[],
+): string | undefined {
   for (const event of [...events].reverse()) {
     if (
       event.type !== "run.failed" &&
@@ -584,8 +869,7 @@ function runEnvelopeFrom(value: unknown): {
   if (!envelope) return { envelope: null, root: null };
   const data = object(envelope.data);
   const dataLooksLikeRun = Boolean(
-    data &&
-      (string(data.id) || string(data.runId)),
+    data && (string(data.id) || string(data.runId)),
   );
   const root =
     object(envelope.run) ||
@@ -607,38 +891,53 @@ function gatewayRunFrom(value: unknown): AgentsOneRemoteGatewayRun {
   );
   const output = outputFrom(root) || finalAssistantOutputFrom(events);
   const conversationId = string(root.conversationId);
+  const sessionId = string(root.sessionId) || string(root.session_id);
   const explicitError =
     errorMessageFrom(root.error) ||
     errorMessageFrom(root.failure) ||
     errorMessageFrom(root.details);
   const eventError = eventFailureMessage(events);
   const genericError =
-    explicitError?.toLowerCase() === status || isGenericFailureText(explicitError);
+    explicitError?.toLowerCase() === status ||
+    isGenericFailureText(explicitError);
   // Some adapters return `error: "failed"` without the actual cause. Prefer
   // the durable failed event, and always provide a useful diagnostic instead
   // of rendering a bare status word in the conversation.
   const message =
     status === "succeeded"
       ? undefined
-      : (genericError ? eventError : explicitError && explainAgentsOneRemoteGatewayError(explicitError)) ||
+      : (genericError
+          ? eventError
+          : explicitError &&
+            explainAgentsOneRemoteGatewayError(explicitError)) ||
         eventError ||
-        (status === "failed" ? "Gateway 运行失败，但未返回错误详情。" : undefined);
+        (status === "failed"
+          ? "Gateway 运行失败，但未返回错误详情。"
+          : undefined);
   const artifacts = mergeArtifacts(
     artifactsFrom(root.artifacts),
     artifactsFromEvents(events),
     artifactsFromOutput(output),
   );
-  const model = modelFromRoot(root) || latestEventModel(events);
+  // The run envelope often echoes the requested/default model. Terminal
+  // Event Stream events carry the model actually used after provider routing
+  // or fallback, so prefer that telemetry whenever it is available.
+  const model = latestEventModel(events) || modelFromRoot(root);
   const usage = usageFromRoot(root) || latestEventUsage(events);
+  const requestedModel =
+    string(root?.requestedModel) || string(root?.requested_model);
   return {
     id,
     status,
     ...(output ? { output } : {}),
     ...(conversationId ? { conversationId } : {}),
+    ...(sessionId ? { sessionId } : {}),
     ...(message ? { error: message } : {}),
     ...(artifacts ? { artifacts } : {}),
     ...(events.length ? { events } : {}),
     ...(model ? { model } : {}),
+    ...(model ? { actualModel: model } : {}),
+    ...(requestedModel ? { requestedModel } : {}),
     ...(usage ? { usage } : {}),
   };
 }
@@ -647,7 +946,11 @@ function eventStreamFrom(value: unknown): AgentEventStreamSupport | undefined {
   const source = object(value);
   if (!source || source.protocol !== AGENT_EVENT_STREAM_V1) return undefined;
   const transport = string(source.transport);
-  if (transport !== "sse" && transport !== "poll" && transport !== "websocket") {
+  if (
+    transport !== "sse" &&
+    transport !== "poll" &&
+    transport !== "websocket"
+  ) {
     return undefined;
   }
   return {
@@ -705,9 +1008,9 @@ function capabilitiesFrom(value: unknown): AgentRuntimeCapabilities | null {
     capabilities.eventStream || conversation?.eventStream,
   );
   const plugin = pluginFrom(root, capabilities);
-  const nestedWorkspaceGateway = object(
-    capabilities.outboundWorkspaceGateway,
-  );
+  const commands = object(capabilities.commands);
+  const compaction = string(capabilities.compaction);
+  const nestedWorkspaceGateway = object(capabilities.outboundWorkspaceGateway);
   // The original Workspace Gateway rollout exposed the feature as a flat
   // boolean plus sibling fields. Keep that shape compatible while remote
   // plugins move to the canonical nested capability object.
@@ -757,9 +1060,55 @@ function capabilitiesFrom(value: unknown): AgentRuntimeCapabilities | null {
     ),
     artifactUpload: bool(object(capabilities.artifacts)?.upload),
     workspaceAccess,
+    commands:
+      capabilities.commands === true ||
+      Boolean(commands?.catalog && commands?.execute),
+    modelSelection: bool(capabilities.modelSelection),
+    compaction:
+      compaction === "native" || compaction === "platform"
+        ? compaction
+        : "none",
     ...(eventStream ? { eventStream } : {}),
     ...(plugin ? { plugin } : {}),
   };
+}
+
+/** Fetch opaque Gateway command metadata; caller must normalize before display. */
+export async function getAgentsOneRemoteGatewayCommandCatalog(
+  config: AgentsOneRemoteGatewayConfig,
+  input: { requestId: string; runtimeId: string; conversationId?: string },
+  auth?: AgentsOneRemoteGatewayAuth,
+): Promise<AgentsOneRemoteGatewayCommandCatalog> {
+  const response = await requestJson(config, "/commands/catalog", auth, {
+    method: "POST",
+    body: input,
+  });
+  if (!response.ok) {
+    throw new Error(`Gateway 命令目录请求失败（HTTP ${response.status}）。`);
+  }
+  const body = object(response.body);
+  const commands = Array.isArray(body?.commands) ? body.commands : [];
+  return {
+    commands: commands
+      .filter(object)
+      .map((command) => command as unknown as RuntimeCommandDescriptor),
+  };
+}
+
+/** Execute exactly one idempotency-keyed Gateway control command. */
+export async function executeAgentsOneRemoteGatewayCommand(
+  config: AgentsOneRemoteGatewayConfig,
+  request: RuntimeCommandRequest & { requestId: string },
+  auth?: AgentsOneRemoteGatewayAuth,
+): Promise<RuntimeCommandResult> {
+  const response = await requestJson(config, "/commands/execute", auth, {
+    method: "POST",
+    body: request,
+  });
+  if (!response.ok) {
+    throw new Error(`Gateway 命令执行失败（HTTP ${response.status}）。`);
+  }
+  return gatewayCommandResultFrom(response.body);
 }
 
 /** Probe only the public v1 contract. It never exposes the endpoint token. */
@@ -803,12 +1152,31 @@ export async function probeAgentsOneRemoteGateway(
       healthy: true,
       capabilities,
       message: `统一 Gateway v1 已连接。${pluginMessage}`,
+      gatewayProtocolVersion: string(object(response.body)?.protocolVersion),
+      hostVersion:
+        string(object(object(response.body)?.host)?.version) ||
+        string(object(object(response.body)?.agent)?.version),
     };
-  } catch {
+  } catch (error) {
+    const errorText = [
+      error instanceof Error ? error.message : "",
+      error instanceof Error && error.cause instanceof Error
+        ? error.cause.message
+        : "",
+      error instanceof Error && error.cause && typeof error.cause === "object"
+        ? String((error.cause as { code?: unknown }).code || "")
+        : "",
+    ].join(" ");
+    const certificateFailure =
+      /certificate|\bcert\b|_cert|self-signed|untrusted|unable to verify/i.test(
+        errorText,
+      );
     return {
       healthy: false,
       capabilities: NO_AGENT_RUNTIME_CAPABILITIES,
-      message: "无法连接统一 Gateway；请检查地址、Relay 在线状态和网络。",
+      message: certificateFailure
+        ? "统一 Gateway 的 HTTPS 证书链不受信任；请为远端配置受信任证书。"
+        : "无法连接统一 Gateway；请检查地址、Relay 在线状态和网络。",
     };
   }
 }
@@ -829,8 +1197,10 @@ export async function startAgentsOneRemoteGatewayRun(
       mode,
       ...(input.conversationId ? { conversationId: input.conversationId } : {}),
       ...(input.projectId ? { projectId: input.projectId } : {}),
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
       input: {
         text: input.text,
+        ...(input.model ? { model: input.model } : {}),
         // Keep the stable route ID in the nested payload as well. The v1
         // field is top-level, but older remote adapters commonly inspect the
         // provider input object instead of the complete request envelope.
@@ -875,7 +1245,10 @@ function artifactFrom(value: unknown): AgentsOneRemoteGatewayArtifact {
     size,
     ...(string(artifact?.sha256) ? { sha256: string(artifact?.sha256) } : {}),
     ...(string(artifact?.expiresAt) || string(artifact?.expires_at)
-      ? { expiresAt: string(artifact?.expiresAt) || string(artifact?.expires_at) }
+      ? {
+          expiresAt:
+            string(artifact?.expiresAt) || string(artifact?.expires_at),
+        }
       : {}),
   };
 }
@@ -937,7 +1310,11 @@ function artifactContentBase64(value: unknown): string | undefined {
 }
 
 function decodeArtifactBytes(value: string): Buffer {
-  if (!value || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
+  if (
+    !value ||
+    value.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
+  ) {
     throw new Error("Gateway 返回的附件内容不是有效的 Base64。");
   }
   const bytes = Buffer.from(value, "base64");
@@ -952,7 +1329,11 @@ export async function getAgentsOneRemoteGatewayArtifact(
   artifactId: string,
   auth?: AgentsOneRemoteGatewayAuth,
 ): Promise<AgentsOneRemoteGatewayArtifactDownload> {
-  if (!artifactId || typeof artifactId !== "string" || artifactId.length > 256) {
+  if (
+    !artifactId ||
+    typeof artifactId !== "string" ||
+    artifactId.length > 256
+  ) {
     throw new Error("附件 id 无效。");
   }
   const response = await requestJson(
@@ -968,7 +1349,8 @@ export async function getAgentsOneRemoteGatewayArtifact(
   }
   const metadata = artifactFrom(response.body);
   const content = artifactContentBase64(response.body);
-  if (!content) throw new Error("Gateway 仅返回了附件元数据，未返回可下载内容。");
+  if (!content)
+    throw new Error("Gateway 仅返回了附件元数据，未返回可下载内容。");
   const bytes = decodeArtifactBytes(content);
   if (metadata.size > 0 && metadata.size !== bytes.length) {
     throw new Error("Gateway 附件大小校验失败。");

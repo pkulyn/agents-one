@@ -61,6 +61,11 @@ import type {
   TaskCollaborationAssignment,
   TaskCollaborationRecord,
 } from "../../../../shared/task-collaboration";
+import {
+  addMigratedEventListener,
+  dispatchAgentsOneEvent,
+  readMigratedStorageValue,
+} from "../../utils/brandMigration";
 
 type View =
   | "chat"
@@ -78,7 +83,8 @@ const PINNED_NAV_ITEMS: {
   { view: "agents", icon: Users, label: "智能体" },
 ];
 
-const SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
+const SIDEBAR_COLLAPSED_KEY = "agents-one.sidebar.collapsed.v1";
+const LEGACY_SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
 const DEFAULT_AGENT_RUNTIME_KEY = "agents-one.default-runtime-id.v1";
 
 function collaborationWorkspaceFromRecord(
@@ -87,6 +93,8 @@ function collaborationWorkspaceFromRecord(
   return {
     taskId: record.taskId,
     title: record.title,
+    projectWorkspaceId: record.projectWorkspaceId,
+    projectName: record.projectName,
     projectFolder: record.projectFolder,
     sourceRuntimeId: record.sourceRuntimeId,
     assignments: record.assignments,
@@ -193,7 +201,7 @@ function Layout(): React.JSX.Element {
   >({});
   useEffect(() => {
     let cancelled = false;
-    window.hermesAPI
+    window.agentsOneAPI
       .listProfiles()
       .then((list) => {
         if (cancelled) return;
@@ -211,18 +219,15 @@ function Layout(): React.JSX.Element {
   }, [activeProfile, view]);
 
   useEffect(() => {
-    const disposeStarted = window.hermesAPI.onTaskScheduleRunStarted?.(
+    const disposeStarted = window.agentsOneAPI.onTaskScheduleRunStarted?.(
       (event) => {
         if (event.profile !== activeProfile) return;
-        window.dispatchEvent(new Event("hermes-session-transcript-changed"));
-        toast.success(
-          `定时任务“${event.scheduleName}”已触发，智能体已开始接手并推进任务。`,
-        );
+        dispatchAgentsOneEvent("sessionTranscriptChanged");
       },
     );
-    const dispose = window.hermesAPI.onTaskScheduleRunCompleted?.((event) => {
+    const dispose = window.agentsOneAPI.onTaskScheduleRunCompleted?.((event) => {
       if (event.profile !== activeProfile) return;
-      window.dispatchEvent(new Event("hermes-session-transcript-changed"));
+      dispatchAgentsOneEvent("sessionTranscriptChanged");
       if (event.conversationId) {
         window.dispatchEvent(
           new CustomEvent("agents-one:runtime-conversation-updated", {
@@ -262,13 +267,13 @@ function Layout(): React.JSX.Element {
         return {
           name:
             builtinHermesRuntime.name ||
-            (run.profile === "default" ? "Hermes" : run.profile),
+            (run.profile === "default" ? "Agent" : run.profile),
           color: builtinHermesRuntime.color ?? profile.color,
           avatar: builtinHermesRuntime.avatar ?? profile.avatar,
         };
       }
       return {
-        name: run.profile === "default" ? "Hermes" : run.profile,
+        name: run.profile === "default" ? "Agent" : run.profile,
         ...profile,
       };
     },
@@ -278,7 +283,7 @@ function Layout(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     const loadRuntimeCatalog = (): void => {
-      window.hermesAPI
+      window.agentsOneAPI
         .listAgentRuntimes()
         .then((list) => {
           if (cancelled) return;
@@ -291,17 +296,17 @@ function Layout(): React.JSX.Element {
         });
     };
     loadRuntimeCatalog();
-    window.addEventListener("hermes-agent-runtime-changed", loadRuntimeCatalog);
+    const removeRuntimeChangedListener = addMigratedEventListener(
+      "runtimeChanged",
+      loadRuntimeCatalog,
+    );
     window.addEventListener(
       "agents-one:runtime-appearance-changed",
       loadRuntimeCatalog,
     );
     return () => {
       cancelled = true;
-      window.removeEventListener(
-        "hermes-agent-runtime-changed",
-        loadRuntimeCatalog,
-      );
+      removeRuntimeChangedListener();
       window.removeEventListener(
         "agents-one:runtime-appearance-changed",
         loadRuntimeCatalog,
@@ -330,7 +335,7 @@ function Layout(): React.JSX.Element {
       const run = runsRef.current.find((item) => item.runId === runId);
       const taskId = run?.collaboration?.persistedTaskId;
       if (!taskId) return;
-      void window.hermesAPI
+      void window.agentsOneAPI
         .linkTaskCollaboration({ taskId, ...link }, activeProfile)
         .then(() =>
           window.dispatchEvent(
@@ -369,7 +374,12 @@ function Layout(): React.JSX.Element {
   }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
-      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+      return (
+        readMigratedStorageValue(
+          SIDEBAR_COLLAPSED_KEY,
+          LEGACY_SIDEBAR_COLLAPSED_KEY,
+        ) === "true"
+      );
     } catch {
       return false;
     }
@@ -430,7 +440,7 @@ function Layout(): React.JSX.Element {
   // should reopen on that profile rather than always resetting to "default".
   useEffect(() => {
     let cancelled = false;
-    window.hermesAPI
+    window.agentsOneAPI
       .listProfiles()
       .then((profiles) => {
         if (cancelled) return;
@@ -466,24 +476,24 @@ function Layout(): React.JSX.Element {
     // Surface a startup upgrade button as soon as GitHub reports a newer
     // release. If auto-upgrade is enabled, electron-updater also downloads in
     // the background and this state advances to downloading/ready.
-    const cleanupAvailable = window.hermesAPI.onUpdateAvailable((info) => {
+    const cleanupAvailable = window.agentsOneAPI.onUpdateAvailable((info) => {
       setUpdateState("available");
       setUpdateVersion(info.version);
       setUpdateError(null);
     });
-    const cleanupProgress = window.hermesAPI.onUpdateDownloadProgress(
+    const cleanupProgress = window.agentsOneAPI.onUpdateDownloadProgress(
       (info) => {
         setUpdateState("downloading");
         setUpdatePercent(info.percent);
         setUpdateError(null);
       },
     );
-    const cleanupDownloaded = window.hermesAPI.onUpdateDownloaded(() => {
+    const cleanupDownloaded = window.agentsOneAPI.onUpdateDownloaded(() => {
       setUpdateState("ready");
       setUpdatePercent(null);
       setUpdateError(null);
     });
-    const cleanupError = window.hermesAPI.onUpdateError((message) => {
+    const cleanupError = window.agentsOneAPI.onUpdateError((message) => {
       setUpdateState("error");
       setUpdateError(message);
     });
@@ -498,7 +508,7 @@ function Layout(): React.JSX.Element {
   async function handleUpdate(): Promise<void> {
     if (updateState === "ready") {
       // The only user action: restart into the already-downloaded update.
-      await window.hermesAPI.installUpdate();
+      await window.agentsOneAPI.installUpdate();
     } else if (updateState === "available" || updateState === "error") {
       // Download the available update (or retry a failed auto-download).
       // Set downloading state immediately to prevent re-entrancy.
@@ -506,7 +516,7 @@ function Layout(): React.JSX.Element {
       setUpdatePercent(null);
       setUpdateError(null);
       try {
-        const ok = await window.hermesAPI.downloadUpdate();
+        const ok = await window.agentsOneAPI.downloadUpdate();
         if (!ok) setUpdateState("error");
         // On success, we wait for the onUpdateDownloaded callback to set "ready"
       } catch (err) {
@@ -558,7 +568,12 @@ function Layout(): React.JSX.Element {
   );
 
   const mintDefaultTaskRun = useCallback(
-    (folder?: string | null): ChatRun => {
+    (workspace?: {
+      workspaceId?: string;
+      name?: string;
+      legacyPath?: string;
+    } | null): ChatRun => {
+      const folder = workspace?.name || workspace?.legacyPath;
       if (!defaultRuntime || usesLegacyHermesChat(defaultRuntime)) {
         return mintRun(activeProfile, undefined, folder ?? undefined);
       }
@@ -568,6 +583,7 @@ function Layout(): React.JSX.Element {
         runtimeName: defaultRuntime.name,
         runtimeKind: defaultRuntime.kind,
         runtimeWorkspace: folder ?? undefined,
+        runtimeWorkspaceId: workspace?.workspaceId,
       });
     },
     [activeProfile, defaultRuntime],
@@ -626,8 +642,8 @@ function Layout(): React.JSX.Element {
       try {
         folder =
           mode === "new"
-            ? await window.hermesAPI.createProjectFolder()
-            : await window.hermesAPI.selectFolder({
+            ? await window.agentsOneAPI.createProjectFolder()
+            : await window.agentsOneAPI.selectFolder({
                 title: "选择现有项目文件夹",
                 buttonLabel: "使用此文件夹",
               });
@@ -638,12 +654,16 @@ function Layout(): React.JSX.Element {
         return;
       }
       if (!folder) return;
-      await window.hermesAPI.registerProjectFolder(folder);
+      const registered = await window.agentsOneAPI.registerProjectWorkspace(folder);
+      if (!registered) return;
       window.dispatchEvent(
         new CustomEvent("agents-one:project-folders-changed"),
       );
 
-      const run = mintDefaultTaskRun(folder);
+      const run = mintDefaultTaskRun({
+        workspaceId: registered.id,
+        name: registered.name,
+      });
       const next = openNewTaskRunTransition(runs, activeRunId, run);
       setRuns(next.runs);
       setActiveRunId(next.activeRunId);
@@ -653,8 +673,8 @@ function Layout(): React.JSX.Element {
   );
 
   const handleCreateProjectTask = useCallback(
-    (folder: string): void => {
-      const run = mintDefaultTaskRun(folder);
+    (workspace: { workspaceId: string; name: string }): void => {
+      const run = mintDefaultTaskRun(workspace);
       const next = openNewTaskRunTransition(runs, activeRunId, run);
       setRuns(next.runs);
       setActiveRunId(next.activeRunId);
@@ -669,7 +689,11 @@ function Layout(): React.JSX.Element {
         runId: task.runId,
         taskId: task.runtimeConversationId || task.sessionId || undefined,
         title: proposal?.title || task.title || "当前任务的协作方案",
-        projectFolder: task.runtimeWorkspace || task.contextFolder || null,
+        projectWorkspaceId: task.runtimeWorkspaceId || null,
+        projectName: task.runtimeWorkspaceId ? task.runtimeWorkspace || null : null,
+        projectFolder: task.runtimeWorkspaceId
+          ? null
+          : task.runtimeWorkspace || task.contextFolder || null,
         sourceRuntimeId: task.runtimeId,
         assignments: proposal?.assignments,
         message: proposal?.brief,
@@ -682,15 +706,25 @@ function Layout(): React.JSX.Element {
     async (
       task: ChatRun,
       proposal: TaskCollaborationProposal,
-      selectedProjectFolder?: string,
+      selectedProject?: {
+        workspaceId?: string;
+        name?: string;
+        legacyPath?: string;
+      },
     ) => {
       const taskId = task.runtimeConversationId || task.sessionId || task.runId;
       if (!task.runtimeId) return null;
-      const projectFolder =
-        selectedProjectFolder ||
-        task.runtimeWorkspace ||
-        task.contextFolder ||
-        undefined;
+      const projectWorkspaceId =
+        selectedProject?.workspaceId || task.runtimeWorkspaceId || undefined;
+      const projectName =
+        selectedProject?.name ||
+        (projectWorkspaceId ? task.runtimeWorkspace || undefined : undefined);
+      const projectFolder = projectWorkspaceId
+        ? undefined
+        : selectedProject?.legacyPath ||
+          task.runtimeWorkspace ||
+          task.contextFolder ||
+          undefined;
       const proposedAssignments = anchorTaskCollaborationCoordinator(
         proposal.assignments,
         task.runtimeId,
@@ -708,16 +742,18 @@ function Layout(): React.JSX.Element {
             assignment.workspaceAccess ||
             (assignedRuntime?.location === "local"
               ? ("local_direct" as const)
-              : projectFolder
+              : projectWorkspaceId || projectFolder
                 ? ("evidence_bundle" as const)
                 : undefined),
         };
       });
-      const record = await window.hermesAPI.saveTaskCollaboration(
+      const record = await window.agentsOneAPI.saveTaskCollaboration(
         {
           taskId,
           title: proposal.title || task.title || "当前任务的协作方案",
-          projectFolder,
+          ...(projectWorkspaceId
+            ? { projectWorkspaceId, projectName: projectName || "关联项目" }
+            : { projectFolder }),
           sourceRuntimeId: task.runtimeId,
           assignments,
           status: "active",
@@ -728,6 +764,12 @@ function Layout(): React.JSX.Element {
         patchRun(previous, task.runId, {
           collaboration: {
             assignments: record.assignments,
+            ...(record.projectWorkspaceId
+              ? {
+                  projectWorkspaceId: record.projectWorkspaceId,
+                  projectName: record.projectName,
+                }
+              : {}),
             ...(record.projectFolder
               ? { projectFolder: record.projectFolder }
               : {}),
@@ -740,6 +782,8 @@ function Layout(): React.JSX.Element {
       return {
         taskId: record.taskId,
         assignments: record.assignments,
+        projectWorkspaceId: record.projectWorkspaceId,
+        projectName: record.projectName,
         projectFolder: record.projectFolder,
       };
     },
@@ -751,11 +795,13 @@ function Layout(): React.JSX.Element {
       const draft = collaborationDraft;
       if (!draft) return;
       if (draft.taskId) {
-        void window.hermesAPI
+        void window.agentsOneAPI
           .saveTaskCollaboration(
             {
               taskId: draft.taskId,
               title: draft.title,
+              projectWorkspaceId: draft.projectWorkspaceId || undefined,
+              projectName: draft.projectName || undefined,
               projectFolder: draft.projectFolder || undefined,
               sourceRuntimeId: draft.sourceRuntimeId,
               assignments,
@@ -777,6 +823,12 @@ function Layout(): React.JSX.Element {
               patchRun(previous, live.runId, {
                 collaboration: {
                   assignments: record.assignments,
+                  ...(record.projectWorkspaceId
+                    ? {
+                        projectWorkspaceId: record.projectWorkspaceId,
+                        projectName: record.projectName,
+                      }
+                    : {}),
                   ...(record.projectFolder
                     ? { projectFolder: record.projectFolder }
                     : {}),
@@ -796,6 +848,8 @@ function Layout(): React.JSX.Element {
                     collaboration: {
                       taskId: record.taskId,
                       assignments: record.assignments,
+                      projectWorkspaceId: record.projectWorkspaceId,
+                      projectName: record.projectName,
                       projectFolder: record.projectFolder,
                     },
                   },
@@ -813,11 +867,13 @@ function Layout(): React.JSX.Element {
         // its stable UI run id before emitting the first message; later
         // conversation/session ids only link back to this parent record.
         const parentTaskId = draft.runId;
-        void window.hermesAPI
+        void window.agentsOneAPI
           .saveTaskCollaboration(
             {
               taskId: parentTaskId,
               title: draft.title,
+              projectWorkspaceId: draft.projectWorkspaceId || undefined,
+              projectName: draft.projectName || undefined,
               projectFolder: draft.projectFolder || undefined,
               sourceRuntimeId: draft.sourceRuntimeId,
               assignments,
@@ -830,6 +886,12 @@ function Layout(): React.JSX.Element {
               patchRun(previous, parentTaskId, {
                 collaboration: {
                   assignments: record.assignments,
+                  ...(record.projectWorkspaceId
+                    ? {
+                        projectWorkspaceId: record.projectWorkspaceId,
+                        projectName: record.projectName,
+                      }
+                    : {}),
                   ...(record.projectFolder
                     ? { projectFolder: record.projectFolder }
                     : {}),
@@ -853,6 +915,8 @@ function Layout(): React.JSX.Element {
                     collaboration: {
                       taskId: record.taskId,
                       assignments: record.assignments,
+                      projectWorkspaceId: record.projectWorkspaceId,
+                      projectName: record.projectName,
                       projectFolder: record.projectFolder,
                     },
                   },
@@ -876,11 +940,13 @@ function Layout(): React.JSX.Element {
       toast.error("请先向协调者发送首条任务说明，创建可恢复的协作任务。");
       return;
     }
-    void window.hermesAPI
+    void window.agentsOneAPI
       .saveTaskCollaboration(
         {
           taskId: workspace.taskId,
           title: workspace.title,
+          projectWorkspaceId: workspace.projectWorkspaceId || undefined,
+          projectName: workspace.projectName || undefined,
           projectFolder: workspace.projectFolder || undefined,
           sourceRuntimeId: workspace.sourceRuntimeId,
           assignments: workspace.assignments,
@@ -903,7 +969,7 @@ function Layout(): React.JSX.Element {
     const openWorkspace = (event: Event): void => {
       const taskId = (event as CustomEvent<string>).detail;
       if (!taskId || typeof taskId !== "string") return;
-      void window.hermesAPI
+      void window.agentsOneAPI
         .getTaskCollaboration(taskId, activeProfile)
         .then((record) => {
           if (record)
@@ -926,10 +992,10 @@ function Layout(): React.JSX.Element {
 
   // Listen for menu IPC events (Cmd+N, Cmd+K from app menu)
   useEffect(() => {
-    const cleanupNewChat = window.hermesAPI.onMenuNewChat(() => {
+    const cleanupNewChat = window.agentsOneAPI.onMenuNewChat(() => {
       handleNewTask();
     });
-    const cleanupSearch = window.hermesAPI.onMenuSearchSessions(() => {
+    const cleanupSearch = window.agentsOneAPI.onMenuSearchSessions(() => {
       setSessionsModalOpen(true);
     });
     return () => {
@@ -999,7 +1065,7 @@ function Layout(): React.JSX.Element {
   // open so the chat view is never empty.
   const handleCloseRun = useCallback(
     (runId: string) => {
-      window.hermesAPI.abortChat(runId);
+      window.agentsOneAPI.abortChat(runId);
       const idx = runs.findIndex((r) => r.runId === runId);
       const remaining = runs.filter((r) => r.runId !== runId);
       if (remaining.length === 0) {
@@ -1104,12 +1170,12 @@ function Layout(): React.JSX.Element {
       setResumingSessionId(sessionId);
       try {
         const runtimeConversation =
-          await window.hermesAPI.getRuntimeConversation(
+          await window.agentsOneAPI.getRuntimeConversation(
             sessionId,
             activeProfile,
           );
         if (runtimeConversation) {
-          const collaborationRecord = await window.hermesAPI
+          const collaborationRecord = await window.agentsOneAPI
             .listTaskCollaborations(activeProfile)
             .then((records) =>
               findTaskCollaborationForConversation(
@@ -1144,12 +1210,19 @@ function Layout(): React.JSX.Element {
             runtimeActiveRunId: runtimeConversation.activeRuntimeRunId,
             runtimeSeed: runtimeConversation.messages,
             runtimeWorkspace: runtimeConversation.workspace,
+            runtimeWorkspaceId: runtimeConversation.workspaceId,
             runtimeAccessMode: runtimeConversation.accessMode,
             sessionId: runtimeConversation.runtimeSessionId ?? null,
           });
           if (collaborationRecord) {
             run.collaboration = {
               assignments: collaborationRecord.assignments,
+              ...(collaborationRecord.projectWorkspaceId
+                ? {
+                    projectWorkspaceId: collaborationRecord.projectWorkspaceId,
+                    projectName: collaborationRecord.projectName,
+                  }
+                : {}),
               ...(collaborationRecord.projectFolder
                 ? { projectFolder: collaborationRecord.projectFolder }
                 : {}),
@@ -1164,7 +1237,7 @@ function Layout(): React.JSX.Element {
           goTo("chat");
           return;
         }
-        const items = (await window.hermesAPI.getSessionMessages(
+        const items = (await window.agentsOneAPI.getSessionMessages(
           sessionId,
         )) as DbHistoryItem[];
         const run = mintRun(activeProfile, dbItemsToChatMessages(items));
@@ -1198,6 +1271,13 @@ function Layout(): React.JSX.Element {
         "agents-one:open-runtime-conversation",
         handleOpenRuntimeConversation,
       );
+  }, [handleResumeSession]);
+
+  useEffect(() => {
+    const cleanup = window.agentsOneAPI.onTrayOpenTask((sessionId) => {
+      void handleResumeSession(sessionId);
+    });
+    return cleanup;
   }, [handleResumeSession]);
 
   const toggleSidebar = useCallback(() => {
@@ -1301,6 +1381,7 @@ function Layout(): React.JSX.Element {
                 void handleProjectFolderChoice(mode)
               }
               onCreateProjectTask={handleCreateProjectTask}
+              onCreateTask={handleNewTask}
             />
           </div>
         </div>
@@ -1399,11 +1480,15 @@ function Layout(): React.JSX.Element {
                   initialRuntimeSessionId={run.sessionId}
                   initialMessages={run.runtimeSeed}
                   initialWorkspace={run.runtimeWorkspace}
+                  initialWorkspaceId={run.runtimeWorkspaceId}
                   initialAccessMode={run.runtimeAccessMode}
                   collaboration={
                     run.collaboration
                       ? {
                           assignments: run.collaboration.assignments,
+                          projectWorkspaceId:
+                            run.collaboration.projectWorkspaceId,
+                          projectName: run.collaboration.projectName,
                           projectFolder: run.collaboration.projectFolder,
                           taskId: run.collaboration.persistedTaskId,
                         }
@@ -1413,11 +1498,11 @@ function Layout(): React.JSX.Element {
                   onRequestCollaboration={(proposal) =>
                     handleOpenTaskCollaboration(run, proposal)
                   }
-                  onStartCollaboration={(proposal, projectFolder) =>
+                  onStartCollaboration={(proposal, project) =>
                     handleAutoStartTaskCollaboration(
                       run,
                       proposal,
-                      projectFolder,
+                      project,
                     )
                   }
                   onLoadingChange={handleRunLoading}
@@ -1522,6 +1607,8 @@ function Layout(): React.JSX.Element {
                 runId: collaborationWorkspace.runId,
                 taskId: collaborationWorkspace.taskId,
                 title: collaborationWorkspace.title,
+                projectWorkspaceId: collaborationWorkspace.projectWorkspaceId,
+                projectName: collaborationWorkspace.projectName,
                 projectFolder: collaborationWorkspace.projectFolder,
                 sourceRuntimeId: collaborationWorkspace.sourceRuntimeId,
                 assignments: collaborationWorkspace.assignments,

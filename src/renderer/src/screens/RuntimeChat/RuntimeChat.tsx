@@ -1,8 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type UIEvent,
+} from "react";
 import { Bot, Globe } from "../../assets/icons";
-import { ChevronDown, ShieldCheck, Users, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Box,
+  Brain,
+  ChevronDown,
+  Cloud,
+  GitBranch,
+  Monitor,
+  ShieldCheck,
+  Users,
+  X,
+} from "lucide-react";
 import { WebPreviewPanel } from "../Chat/WebPreviewPanel";
 import { ChatInput, type ChatInputHandle } from "../Chat/ChatInput";
+import type { SlashCommand } from "../Chat/slashCommands";
 import type { ContextUsage } from "../Chat/ContextGauge";
 import { ContextFolderChip } from "../Chat/ContextFolderChip";
 import { WorktreePanel } from "../Chat/WorktreePanel";
@@ -19,13 +38,23 @@ import { TaskCollaborationArtifactPanel } from "../../components/TaskCollaborati
 import { TaskCollaborationTimeline } from "../../components/TaskCollaborationTimeline";
 import type { Attachment } from "../../../../shared/attachments";
 import type {
+  AgentRuntimeCapabilities,
   AgentRuntimeDefinition,
   AgentRuntimeRun,
 } from "../../../../shared/agent-runtimes";
+import { runtimeSteeringPlan } from "../../../../shared/agent-runtimes";
 import type {
+  RuntimeCommandDescriptor,
+  RuntimeCommandResult,
+  RuntimeModelOption,
+} from "../../../../shared/runtime-commands";
+import type { RuntimeSkillDescriptor } from "../../../../shared/runtime-skills";
+import type {
+  ConversationEntryMeta,
   RuntimeConversationExecution,
   RuntimeConversationMessage,
 } from "../../../../shared/runtime-conversations";
+import { isModelContextEntry } from "../../../../shared/runtime-conversations";
 import type { ChatMessage } from "../Chat/types";
 import type {
   TaskCollaborationAssignment,
@@ -46,6 +75,7 @@ import {
   type TaskCollaborationProposal,
 } from "../../../../shared/task-collaboration-proposals";
 import { summarizeTaskOutput } from "../Chat/runtimeOutput";
+import { dispatchAgentsOneEvent } from "../../utils/brandMigration";
 import {
   buildTaskCollaborationGraph,
   hasExplicitTaskCollaborationDependencies,
@@ -55,6 +85,9 @@ import {
 interface CollaborationLaunch {
   taskId?: string;
   assignments: TaskCollaborationAssignment[];
+  projectWorkspaceId?: string;
+  projectName?: string;
+  /** Legacy path for records created before capability migration. */
   projectFolder?: string;
   /** The coordinator already produced the visible proposal/plan turn. */
   initialCoordinatorHandoff?: string;
@@ -77,11 +110,14 @@ interface RuntimeChatProps {
   initialRuntimeSessionId?: string | null;
   initialMessages?: RuntimeConversationMessage[];
   initialWorkspace?: string;
+  initialWorkspaceId?: string;
   initialAccessMode?: "auto" | "analysis" | "full_access";
   collaboration?: {
     assignments: TaskCollaborationAssignment[];
     execution?: TaskCollaborationExecution;
     taskId?: string;
+    projectWorkspaceId?: string;
+    projectName?: string;
     projectFolder?: string;
   };
   runtimeCatalog?: Record<string, AgentRuntimeDefinition>;
@@ -94,7 +130,7 @@ interface RuntimeChatProps {
   /** Persists a validated proposal and returns the launch owned by this task. */
   onStartCollaboration?: (
     proposal: TaskCollaborationProposal,
-    projectFolder?: string,
+    project?: { workspaceId?: string; name?: string; legacyPath?: string },
   ) => Promise<CollaborationLaunch | null>;
 }
 
@@ -124,7 +160,25 @@ function newMessage(
   content: string,
   execution?: RuntimeConversationMessage["execution"],
 ): RuntimeConversationMessage {
-  return { id: newId(), role, content, createdAt: Date.now(), execution };
+  const meta: ConversationEntryMeta =
+    role === "user"
+      ? {
+          audience: ["model", "user"],
+          origin: "user" as const,
+          persistence: "durable" as const,
+        }
+      : role === "agent"
+        ? {
+            audience: ["model", "user", "audit"],
+            origin: "runtime" as const,
+            persistence: "durable" as const,
+          }
+        : {
+            audience: ["user", "audit"],
+            origin: "platform" as const,
+            persistence: "durable" as const,
+          };
+  return { id: newId(), role, content, createdAt: Date.now(), execution, meta };
 }
 
 function executionFromRun(
@@ -133,18 +187,39 @@ function executionFromRun(
   if (
     !run.events?.length &&
     !run.artifacts?.length &&
+    !run.actualModel &&
     !run.model &&
-    !run.usage
+    !run.usage &&
+    !run.isolation
   ) {
     return undefined;
   }
   return {
     runId: run.id,
     events: run.events || [],
+    startedAt: run.startedAt,
+    ...(run.completedAt ? { completedAt: run.completedAt } : {}),
     ...(run.artifacts?.length ? { artifacts: run.artifacts } : {}),
+    ...(run.actualModel ? { actualModel: run.actualModel } : {}),
     ...(run.model ? { model: run.model } : {}),
     ...(run.usage ? { usage: run.usage } : {}),
+    ...(run.isolation ? { isolation: run.isolation } : {}),
   };
+}
+
+function runtimeIsolationPresentation(
+  isolation: NonNullable<RuntimeConversationExecution["isolation"]>,
+): { label: string; icon: LucideIcon } {
+  switch (isolation.level) {
+    case "worktree":
+      return { label: "Worktree 分支", icon: GitBranch };
+    case "container":
+      return { label: "容器执行", icon: Box };
+    case "remote":
+      return { label: "远程执行", icon: Cloud };
+    case "host":
+      return { label: "本机执行", icon: Monitor };
+  }
 }
 
 /**
@@ -167,11 +242,41 @@ function mergeRuntimeRunObservation(
   return {
     ...(previous || {}),
     ...current,
+    // `userActionRequired` is a live control state, not an event history. Do
+    // not let a previous waiting snapshot keep the login banner visible after
+    // the main process has resumed the Run.
+    userActionRequired: current.userActionRequired,
     ...(events.length ? { events } : {}),
   };
 }
 
+function isGenericRuntimeFailureText(value: string): boolean {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[。.!！?？]+$/u, "");
+  return [
+    "failed",
+    "error",
+    "workspace operation failed",
+    "任务执行失败",
+  ].includes(normalized);
+}
+
 function responseText(run: AgentRuntimeRun): string {
+  const output = run.output?.trim() || "";
+  // A failed remote operation may still have a useful final explanation in
+  // `output`; a generic Gateway error must not hide that answer.
+  if (output && !isGenericRuntimeFailureText(output)) {
+    const summary = summarizeTaskOutput(output);
+    if (summary.finalText) return summary.finalText;
+    if (summary.hasStructuredEvents) {
+      return run.status === "succeeded"
+        ? "智能体本轮在工具或思考阶段结束，未提交最终答复。该任务未视为完成；请使用“继续”补充最终答复，或重新提交。"
+        : "智能体本轮没有返回可显示的最终答复。";
+    }
+    return output;
+  }
   if (run.error) {
     const error = run.error.trim();
     if (["failed", "error"].includes(error.toLowerCase())) {
@@ -179,18 +284,41 @@ function responseText(run: AgentRuntimeRun): string {
     }
     return error;
   }
-  const output = run.output?.trim() || "";
   if (!output) {
     return run.status === "failed"
       ? "任务执行失败，但智能体未返回详细错误。"
       : run.status;
   }
-  const summary = summarizeTaskOutput(output);
-  if (summary.finalText) return summary.finalText;
-  if (summary.hasStructuredEvents) {
-    return "智能体本轮没有返回可显示的最终答复，请继续提问或稍后重试。";
-  }
   return output;
+}
+
+function thinkingLevelLabel(level: string): string {
+  const labels: Record<string, string> = {
+    off: "关闭",
+    minimal: "极低",
+    low: "低",
+    medium: "中",
+    high: "高",
+    xhigh: "极高",
+    max: "最高",
+  };
+  return labels[level] || level;
+}
+
+/** Runtime artifacts may be legacy-shaped; collaboration never keeps a root path. */
+function relativeCollaborationArtifactPath(value?: string): string | undefined {
+  const candidate = value?.trim().replace(/\\/g, "/");
+  if (
+    !candidate ||
+    candidate.includes("\0") ||
+    candidate.startsWith("/") ||
+    /^[a-z]:\//i.test(candidate) ||
+    candidate.includes(":") ||
+    candidate.split("/").some((part) => part === "..")
+  ) {
+    return undefined;
+  }
+  return candidate.replace(/^\.\/+/, "") || undefined;
 }
 
 function promptWithTranscript(
@@ -200,7 +328,7 @@ function promptWithTranscript(
   if (history.length === 0) return prompt;
 
   const transcript = history
-    .filter((message) => message.role === "user" || message.role === "agent")
+    .filter(isModelContextEntry)
     .slice(-8)
     .map((message) => {
       const role = message.role === "user" ? "用户" : "智能体";
@@ -471,7 +599,9 @@ function collectRuntimeArtifacts(
       label:
         artifact.label ||
         (artifact.kind === "diff" ? "Git diff" : "项目工作目录"),
-      ...(artifact.path ? { path: artifact.path } : {}),
+      ...(relativeCollaborationArtifactPath(artifact.path)
+        ? { path: relativeCollaborationArtifactPath(artifact.path) }
+        : {}),
       ...(typeof artifact.size === "number" ? { size: artifact.size } : {}),
       ...(artifact.sha256 ? { sha256: artifact.sha256 } : {}),
       ...(artifact.sourceMachine
@@ -906,6 +1036,7 @@ export default function RuntimeChat({
   initialRuntimeSessionId = null,
   initialMessages = [],
   initialWorkspace,
+  initialWorkspaceId,
   initialAccessMode = "auto",
   collaboration,
   runtimeCatalog: providedRuntimeCatalog = {},
@@ -923,6 +1054,10 @@ export default function RuntimeChat({
   const unifiedRemoteGatewayRuntime =
     runtime.location === "remote" &&
     runtime.config.remoteGateway?.protocol === "agents-one-v1";
+  const webAgentRuntime =
+    runtime.kind === "web-agent" &&
+    runtime.config.agentTransport === "local-web" &&
+    Boolean(runtime.config.webAgent);
   const collaborationWriteRuntimeAvailable =
     Boolean(onStartCollaboration || collaboration) &&
     Object.values(runtimeCatalog).some(
@@ -936,11 +1071,82 @@ export default function RuntimeChat({
   const [messages, setMessages] =
     useState<RuntimeConversationMessage[]>(initialMessages);
   const [workspace, setWorkspace] = useState(initialWorkspace || "");
+  const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId || "");
   const [currentRunId, setCurrentRunId] = useState<string | null>(
     initialRuntimeRunId,
   );
   const [loading, setLoading] = useState(Boolean(initialRuntimeRunId));
+  const [runtimeCommands, setRuntimeCommands] = useState<
+    RuntimeCommandDescriptor[]
+  >([]);
+  const [selectedRuntimeModel, setSelectedRuntimeModel] = useState(
+    runtime.config.model?.trim() || "",
+  );
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [runtimeModels, setRuntimeModels] = useState<RuntimeModelOption[]>([]);
+  // Keep an uncommitted selection separate from the model actually forwarded
+  // to the Runtime. Closing the picker must never make the toolbar claim a
+  // model that was not applied successfully.
+  const [pendingRuntimeModel, setPendingRuntimeModel] = useState("");
+  const [modelCatalogLoading, setModelCatalogLoading] = useState(false);
+  const [modelSwitching, setModelSwitching] = useState(false);
+  const [thinkingPickerOpen, setThinkingPickerOpen] = useState(false);
+  const [runtimeThinkingLevels, setRuntimeThinkingLevels] = useState<string[]>(
+    [],
+  );
+  const [selectedRuntimeThinkingLevel, setSelectedRuntimeThinkingLevel] =
+    useState("");
+  const [pendingRuntimeThinkingLevel, setPendingRuntimeThinkingLevel] =
+    useState("");
+  const [thinkingCatalogLoading, setThinkingCatalogLoading] = useState(false);
+  const [thinkingSwitching, setThinkingSwitching] = useState(false);
+  const [skillsPanelOpen, setSkillsPanelOpen] = useState(false);
+  const [runtimeSkills, setRuntimeSkills] = useState<RuntimeSkillDescriptor[]>(
+    [],
+  );
+  const [pendingCompactCommand, setPendingCompactCommand] = useState<{
+    rawInput: string;
+    instructions: string;
+  } | null>(null);
+  // Web Agent's platform queue is deterministic; use it until the first
+  // probe resolves so a fast second message cannot hit the conservative
+  // `none` default and get rejected during the probe race.
+  const [steeringCapabilities, setSteeringCapabilities] = useState<
+    Pick<AgentRuntimeCapabilities, "steering" | "cancellation">
+  >(
+    webAgentRuntime
+      ? { steering: "follow_up", cancellation: true }
+      : { steering: "none", cancellation: false },
+  );
+  const [queuedFollowUp, setQueuedFollowUp] = useState<{
+    text: string;
+    attachments: Attachment[];
+  } | null>(null);
+  const [pendingCancelResume, setPendingCancelResume] = useState<{
+    text: string;
+    attachments: Attachment[];
+  } | null>(null);
   const [webPreviewUrl, setWebPreviewUrl] = useState("about:blank");
+
+  // Schedule records use opaque workspace capabilities. Resolve only the
+  // display name here so a scheduled conversation retains its project chip
+  // without reintroducing a local path into the renderer state.
+  useEffect(() => {
+    if (!workspaceId || workspace) return;
+    let cancelled = false;
+    void window.agentsOneAPI
+      .listProjectWorkspaces()
+      .then((workspaces) => {
+        const selected = workspaces.find((item) => item.id === workspaceId);
+        if (!cancelled && selected) setWorkspace(selected.name);
+      })
+      .catch(() => {
+        /* A removed project remains safely unlabelled. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace, workspaceId]);
   const [webPreviewVisible, setWebPreviewVisible] = useState(false);
   const [worktreeVisible, setWorktreeVisible] = useState(false);
   const [accessMode, setAccessMode] = useState<
@@ -948,6 +1154,12 @@ export default function RuntimeChat({
   >(initialAccessMode);
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [taskRun, setTaskRun] = useState<AgentRuntimeRun | null>(null);
+  const [retryingArtifactIds, setRetryingArtifactIds] = useState<
+    Record<string, boolean>
+  >({});
+  const [artifactRetryFeedback, setArtifactRetryFeedback] = useState<
+    Record<string, string>
+  >({});
   const [activeCollaborationRuntimeId, setActiveCollaborationRuntimeId] =
     useState<string | null>(null);
   const [activeCollaborationRuns, setActiveCollaborationRuns] = useState<
@@ -967,6 +1179,8 @@ export default function RuntimeChat({
   const [collaborationDashboardVisible, setCollaborationDashboardVisible] =
     useState(true);
   const cancelledRef = useRef(false);
+  const runtimeCommandInFlightRef = useRef(false);
+  const runtimeCommandRequestIdRef = useRef<string | null>(null);
   const pauseAssignmentRef = useRef<string | null>(null);
   const [interventionTarget, setInterventionTarget] = useState<{
     assignment: TaskCollaborationAssignment;
@@ -979,6 +1193,8 @@ export default function RuntimeChat({
   >("inherit");
   const [interventionRuntimeId, setInterventionRuntimeId] = useState("");
   const conversationIdRef = useRef<string | null>(initialConversationId);
+  /** Analysis branches never inherit write authority from their parent. */
+  const analysisBranchRef = useRef(false);
   const runtimeSessionIdRef = useRef<string | null>(initialRuntimeSessionId);
   const messagesRef = useRef<RuntimeConversationMessage[]>(initialMessages);
   const taskRunRef = useRef<AgentRuntimeRun | null>(null);
@@ -986,6 +1202,11 @@ export default function RuntimeChat({
     Record<string, ActiveCollaborationRun>
   >({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Follow live Runtime events until the user deliberately browses history.
+  // A ref avoids waiting for React state between a streamed event and its
+  // corresponding layout update.
+  const followingLatestRef = useRef(true);
+  const [followingLatest, setFollowingLatest] = useState(true);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const appearanceRuntime = runtimeCatalog[runtime.id] ?? runtime;
   const activeTraceRuntime =
@@ -993,17 +1214,118 @@ export default function RuntimeChat({
       ? runtimeCatalog[activeCollaborationRuntimeId] || appearanceRuntime
       : appearanceRuntime;
 
+  const runtimeSlashCommands = useMemo<SlashCommand[]>(() => {
+    const desktop: SlashCommand[] = [
+      {
+        name: "/new",
+        description: "新建当前 Runtime 对话",
+        category: "chat",
+        local: true,
+      },
+      {
+        name: "/clear",
+        description: "清空并新建当前 Runtime 对话",
+        category: "chat",
+        local: true,
+      },
+      {
+        name: "/branch",
+        description: "从当前对话创建只读分析分支",
+        category: "chat",
+        local: true,
+        takesArgs: true,
+        argumentHint: "可选分支名称",
+      },
+      {
+        name: "/skills",
+        description: "查看已发现 Skill 的来源与信任提示",
+        category: "chat",
+        local: true,
+      },
+    ];
+    const runtimeEntries = runtimeCommands
+      .filter(
+        (command) =>
+          command.target !== "desktop" &&
+          (command.availability === "any" ||
+            (command.availability === "running" && loading) ||
+            (command.availability === "idle" && !loading)),
+      )
+      .map<SlashCommand>((command) => ({
+        name: `/${command.name}`,
+        description: command.description,
+        category: command.target === "runtime-native" ? "tools" : "agent",
+        takesArgs: Boolean(command.argumentHint),
+        ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
+        source: command.source,
+        availability: command.availability,
+      }));
+    return [...desktop, ...runtimeEntries];
+  }, [loading, runtimeCommands]);
+  const modelCommandAvailable = runtimeCommands.some(
+    (command) => command.name === "model" && command.availability !== "running",
+  );
+  // Keep the current level visible while a task runs. The runtime only permits
+  // changing it when idle, but hiding the badge makes the active configuration
+  // look as if it has been lost.
+  const thinkingCommandAvailable =
+    (runtime.kind === "pi" &&
+      Boolean(
+        runtimeSessionIdRef.current ||
+        selectedRuntimeThinkingLevel ||
+        runtimeThinkingLevels.length,
+      )) ||
+    runtimeCommands.some((command) => command.name === "thinking");
+  // OpenCode ACP 1.x streams reasoning text but currently does not expose a
+  // session-level thinking/reasoning option. Keep that fact visible in the
+  // toolbar instead of silently omitting the control or inventing levels that
+  // the provider would ignore.
+  const openCodeAutomaticThinking =
+    runtime.kind === "opencode" && !thinkingCommandAvailable;
+  const thinkingControlDisabled =
+    loading ||
+    thinkingCatalogLoading ||
+    thinkingSwitching ||
+    openCodeAutomaticThinking;
+  const compactCommandAvailable = runtimeCommands.some(
+    (command) =>
+      command.name === "compact" &&
+      (command.availability === "any" ||
+        (command.availability === "idle" && !loading) ||
+        (command.availability === "running" && loading)),
+  );
+
+  const refreshRuntimeCommandCatalog = useCallback(async (): Promise<void> => {
+    if (typeof window.agentsOneAPI.getAgentRuntimeCommandCatalog !== "function") {
+      return;
+    }
+    try {
+      const snapshot = await window.agentsOneAPI.getAgentRuntimeCommandCatalog(
+        runtime.id,
+        runtimeSessionIdRef.current || undefined,
+      );
+      setRuntimeCommands(snapshot.commands);
+    } catch {
+      // The chat remains usable when optional command discovery fails.
+      setRuntimeCommands([]);
+    }
+  }, [runtime.id]);
+
+  useEffect(() => {
+    void refreshRuntimeCommandCatalog();
+  }, [currentRunId, refreshRuntimeCommandCatalog]);
+
   useEffect(() => {
     if (
       appearanceRuntime.avatar ||
       appearanceRuntime.kind !== "hermes" ||
-      typeof window.hermesAPI.listProfiles !== "function"
+      typeof window.agentsOneAPI.listProfiles !== "function"
     ) {
       setProfileAvatar(null);
       return;
     }
     let cancelled = false;
-    void window.hermesAPI
+    void window.agentsOneAPI
       .listProfiles()
       .then((profiles) => {
         if (cancelled) return;
@@ -1162,14 +1484,14 @@ export default function RuntimeChat({
 
   useEffect(() => {
     let cancelled = false;
-    if (!unifiedRemoteGatewayRuntime) {
+    if (!unifiedRemoteGatewayRuntime && !webAgentRuntime) {
       setRemoteArtifactsSupported(false);
       setRemoteWorkspaceSupported(false);
       return () => {
         cancelled = true;
       };
     }
-    void window.hermesAPI
+    void window.agentsOneAPI
       .probeAgentRuntime(runtime.id)
       .then((probe) => {
         if (!cancelled) {
@@ -1183,27 +1505,12 @@ export default function RuntimeChat({
             probe.state === "healthy" &&
             probe.capabilities.workspaceAccess;
           setRemoteWorkspaceSupported(workspaceAvailable);
-          if (
-            unifiedRemoteGatewayRuntime &&
-            !workspaceAvailable &&
-            !collaborationWriteRuntimeAvailable
-          ) {
-            setAccessMode("analysis");
-            setPermissionMenuOpen(false);
-          }
         }
       })
       .catch(() => {
         if (!cancelled) {
           setRemoteArtifactsSupported(false);
           setRemoteWorkspaceSupported(false);
-          if (
-            unifiedRemoteGatewayRuntime &&
-            !collaborationWriteRuntimeAvailable
-          ) {
-            setAccessMode("analysis");
-            setPermissionMenuOpen(false);
-          }
         }
       });
     return () => {
@@ -1214,13 +1521,71 @@ export default function RuntimeChat({
     runtime.id,
     runtime.kind,
     unifiedRemoteGatewayRuntime,
+    webAgentRuntime,
   ]);
 
+  // Control semantics come from a fresh Runtime probe, never from UI kind
+  // guesses. A failed probe deliberately falls back to "unsupported".
   useEffect(() => {
-    if (!active) return;
-    const container = scrollRef.current;
-    if (container) container.scrollTop = container.scrollHeight;
-  }, [active, loading, messages]);
+    let cancelled = false;
+    void window.agentsOneAPI
+      .probeAgentRuntime(runtime.id)
+      .then((probe) => {
+        if (!cancelled) {
+          setSteeringCapabilities({
+            steering: probe.capabilities.steering || "none",
+            cancellation: probe.capabilities.cancellation,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled)
+          setSteeringCapabilities({ steering: "none", cancellation: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runtime.id]);
+
+  const updateFollowingLatest = useCallback((following: boolean): void => {
+    if (followingLatestRef.current === following) return;
+    followingLatestRef.current = following;
+    setFollowingLatest(following);
+  }, []);
+
+  const scrollToLatest = useCallback(
+    (behavior: ScrollBehavior = "auto"): void => {
+      const container = scrollRef.current;
+      updateFollowingLatest(true);
+      if (!container) return;
+      if (typeof container.scrollTo === "function") {
+        container.scrollTo({ top: container.scrollHeight, behavior });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+    },
+    [updateFollowingLatest],
+  );
+
+  const handleMessageScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>): void => {
+      const container = event.currentTarget;
+      // Do not resume live-follow merely because the scrollbar is nearly at
+      // the end: a user who scrolled up a few pixels is still reading history.
+      const atLatest =
+        container.scrollHeight - container.scrollTop - container.clientHeight <=
+        8;
+      updateFollowingLatest(atLatest);
+    },
+    [updateFollowingLatest],
+  );
+
+  useEffect(() => {
+    if (!active || !followingLatestRef.current) return;
+    scrollToLatest();
+    // `nativeMessages` also changes for live thinking/tool events, before a
+    // Runtime turn is persisted into `messages`.
+  }, [active, nativeMessages, scrollToLatest]);
 
   // Runtime chats use the same markdown renderer as the native Chat screen.
   // Forward its link event to the shared split-screen web preview so remote
@@ -1257,7 +1622,7 @@ export default function RuntimeChat({
       ) {
         return;
       }
-      void window.hermesAPI
+      void window.agentsOneAPI
         .getRuntimeConversation(conversationId, profile)
         .then((conversation) => {
           if (
@@ -1269,6 +1634,9 @@ export default function RuntimeChat({
           }
           messagesRef.current = conversation.messages;
           setMessages(conversation.messages);
+          analysisBranchRef.current = Boolean(
+            conversation.branch?.parentConversationId,
+          );
           setAccessMode(conversation.accessMode || "auto");
           if (conversation.activeRuntimeRunId) {
             setCurrentRunId(
@@ -1332,7 +1700,7 @@ export default function RuntimeChat({
       const title =
         nextMessages.find((message) => message.role === "user")?.content ||
         runtime.name;
-      await window.hermesAPI.saveRuntimeConversation({
+      await window.agentsOneAPI.saveRuntimeConversation({
         profile,
         id,
         title,
@@ -1350,13 +1718,12 @@ export default function RuntimeChat({
         // This is local UI metadata used to keep the conversation under its
         // project. Runtime dispatch decides separately whether any workspace
         // content or grant may be shared with the selected agent.
-        workspace: workspace || undefined,
+        workspaceId: workspaceId || undefined,
+        ...(workspaceId ? {} : { workspace: workspace || undefined }),
         accessMode,
         messages: nextMessages,
       });
-      window.dispatchEvent(
-        new CustomEvent("hermes-session-transcript-changed"),
-      );
+      dispatchAgentsOneEvent("sessionTranscriptChanged");
       return id;
     },
     [
@@ -1367,6 +1734,7 @@ export default function RuntimeChat({
       runId,
       runtime,
       workspace,
+      workspaceId,
     ],
   );
 
@@ -1375,11 +1743,11 @@ export default function RuntimeChat({
       if (
         !taskId ||
         !conversationIdRef.current ||
-        typeof window.hermesAPI.linkTaskCollaboration !== "function"
+        typeof window.agentsOneAPI.linkTaskCollaboration !== "function"
       ) {
         return;
       }
-      await window.hermesAPI.linkTaskCollaboration(
+      await window.agentsOneAPI.linkTaskCollaboration(
         { taskId, conversationId: conversationIdRef.current },
         profile,
       );
@@ -1391,7 +1759,7 @@ export default function RuntimeChat({
   const pollRun = useCallback(
     async (runtimeRunId: string): Promise<void> => {
       while (!cancelledRef.current) {
-        const current = await window.hermesAPI.getAgentRuntimeRun(runtimeRunId);
+        const current = await window.agentsOneAPI.getAgentRuntimeRun(runtimeRunId);
         if (!current) {
           const nextMessages = [
             ...messagesRef.current,
@@ -1415,19 +1783,33 @@ export default function RuntimeChat({
         );
         taskRunRef.current = observed;
         setTaskRun(observed);
-        if (observed.sessionId) {
+        if (
+          observed.sessionId &&
+          observed.sessionId !== runtimeSessionIdRef.current
+        ) {
           runtimeSessionIdRef.current = observed.sessionId;
           onSessionIdChange?.(runId, observed.sessionId);
-          void persistConversation(messagesRef.current, {
-            runtimeSessionId: observed.sessionId,
-          });
+          // Serialize the session-id checkpoint before a terminal checkpoint.
+          // A fire-and-forget save here could finish after the terminal save
+          // below and resurrect activeRuntimeRunId, leaving Web Agent follow-up
+          // messages queued forever even though the first turn had completed.
+          try {
+            await persistConversation(messagesRef.current, {
+              runtimeSessionId: observed.sessionId,
+              activeRuntimeRunId: runtimeRunId,
+            });
+          } catch {
+            // Persistence must never block delivery of a terminal Runtime
+            // result. The terminal checkpoint below gets another chance to
+            // save the session together with the final answer.
+          }
         }
         if (observed.status === "running") {
           await new Promise((resolve) => setTimeout(resolve, 900));
           continue;
         }
         const persistedConversation = conversationIdRef.current
-          ? await window.hermesAPI.getRuntimeConversation(
+          ? await window.agentsOneAPI.getRuntimeConversation(
               conversationIdRef.current,
               profile,
             )
@@ -1496,18 +1878,34 @@ export default function RuntimeChat({
         ];
         messagesRef.current = nextMessages;
         setMessages(nextMessages);
-        await persistConversation(nextMessages, {
-          runtimeSessionId: observed.sessionId || runtimeSessionIdRef.current,
-          activeRuntimeRunId: null,
-        });
-        setLoading(false);
-        setCurrentRunId(null);
+        try {
+          await persistConversation(nextMessages, {
+            runtimeSessionId: observed.sessionId || runtimeSessionIdRef.current,
+            activeRuntimeRunId: null,
+          });
+        } catch {
+          const visibleMessages = [
+            ...nextMessages,
+            newMessage(
+              "system",
+              "答复已收到，但本地会话记录保存失败；本轮运行已正常结束。",
+            ),
+          ];
+          messagesRef.current = visibleMessages;
+          setMessages(visibleMessages);
+        } finally {
+          // A storage failure must not leave the composer in a permanent
+          // running state after the provider already completed successfully.
+          setLoading(false);
+          setCurrentRunId(null);
+        }
         if (parsedProposal && onStartCollaboration) {
           try {
-            const launch = await onStartCollaboration(
-              parsedProposal,
-              workspace || undefined,
-            );
+            const launch = await onStartCollaboration(parsedProposal, {
+              ...(workspaceId ? { workspaceId } : {}),
+              ...(workspace ? { name: workspace } : {}),
+              ...(!workspaceId && workspace ? { legacyPath: workspace } : {}),
+            });
             if (launch) {
               await linkCollaborationToConversation(launch.taskId);
               setCollaborationAssignments(launch.assignments);
@@ -1598,6 +1996,9 @@ export default function RuntimeChat({
       selectedWorkspace?: string,
       resume?: CollaborationResume,
     ): Promise<void> => {
+      // New conversations keep the selected project as an opaque capability.
+      // A raw path remains only as a read-only fallback for legacy records.
+      const selectedWorkspaceId = workspaceId || undefined;
       const dispatchableAssignments = launch.assignments.filter(
         (assignment) => assignment.runtimeId,
       );
@@ -1790,12 +2191,12 @@ export default function RuntimeChat({
         setCollaborationExecution(nextExecution);
         if (
           !launch.taskId ||
-          typeof window.hermesAPI.updateTaskCollaborationExecution !==
+          typeof window.agentsOneAPI.updateTaskCollaborationExecution !==
             "function"
         ) {
           return;
         }
-        await window.hermesAPI.updateTaskCollaborationExecution(
+        await window.agentsOneAPI.updateTaskCollaborationExecution(
           {
             taskId: launch.taskId,
             execution: nextExecution,
@@ -1865,10 +2266,16 @@ export default function RuntimeChat({
         );
         return;
       }
+      const projectWorkspaceId =
+        launch.projectWorkspaceId || selectedWorkspaceId;
+      // This is a display label for new records; only legacy records carry a
+      // path, and only the main process may resolve an opaque id to a path.
+      const projectFolder =
+        launch.projectName || launch.projectFolder || selectedWorkspace;
       const preflightIssues = collaborationWorkspacePreflight(
         configuredBase,
         runtimeCatalog,
-        launch.projectFolder || selectedWorkspace,
+        projectWorkspaceId ? projectFolder || "关联项目" : projectFolder,
       );
       if (preflightIssues.length) {
         const reason = preflightIssues.map((item) => item.reason).join("\n");
@@ -1900,7 +2307,6 @@ export default function RuntimeChat({
         );
         return;
       }
-      const projectFolder = launch.projectFolder || selectedWorkspace;
       const evidenceRecipients = configuredBase.filter((assignment) => {
         const assignedRuntime = assignment.runtimeId
           ? runtimeCatalog[assignment.runtimeId]
@@ -1913,9 +2319,11 @@ export default function RuntimeChat({
       let evidenceBundle: Attachment | undefined;
       if (evidenceRecipients.length > 0) {
         try {
-          const preparedEvidence = await window.hermesAPI.prepareProjectContext(
-            projectFolder!,
-          );
+          const preparedEvidence = projectWorkspaceId
+            ? await window.agentsOneAPI.prepareProjectWorkspaceContext(
+                projectWorkspaceId,
+              )
+            : await window.agentsOneAPI.prepareProjectContext(projectFolder!);
           if (!preparedEvidence) throw new Error("未能生成项目只读证据包。");
           evidenceBundle = preparedEvidence;
           recordTimeline("preflight", "已生成只读项目证据包", {
@@ -2061,7 +2469,7 @@ export default function RuntimeChat({
                 interventions,
               );
               try {
-                const started = await window.hermesAPI.startAgentRuntimeTask(
+                const started = await window.agentsOneAPI.startAgentRuntimeTask(
                   assignedRuntime.id,
                   {
                     prompt: collaborationRolePrompt(
@@ -2085,10 +2493,16 @@ export default function RuntimeChat({
                     fullAccessConfirmed: roleMode === "full_access",
                     workspace:
                       assignedRuntime.location === "local"
-                        ? selectedWorkspace || launch.projectFolder
+                        ? selectedWorkspaceId
+                          ? undefined
+                          : selectedWorkspace || launch.projectFolder
                         : assignment.workspaceAccess === "remote_mapping"
                           ? assignment.workspaceRef
                           : undefined,
+                    workspaceId:
+                      assignedRuntime.location === "local"
+                        ? selectedWorkspaceId
+                        : undefined,
                     workspaceRef:
                       assignedRuntime.location === "remote" &&
                       assignment.workspaceAccess === "remote_mapping"
@@ -2117,7 +2531,7 @@ export default function RuntimeChat({
                 });
                 let observed: AgentRuntimeRun | null = started;
                 while (!cancelledRef.current) {
-                  const current = await window.hermesAPI.getAgentRuntimeRun(
+                  const current = await window.agentsOneAPI.getAgentRuntimeRun(
                     started.id,
                   );
                   if (current) {
@@ -2434,7 +2848,7 @@ export default function RuntimeChat({
           interventions,
         );
         try {
-          const started = await window.hermesAPI.startAgentRuntimeTask(
+          const started = await window.agentsOneAPI.startAgentRuntimeTask(
             assignedRuntime.id,
             {
               prompt: collaborationRolePrompt(
@@ -2443,7 +2857,7 @@ export default function RuntimeChat({
                 runtimeCatalog,
                 assignment,
                 index,
-                launch.projectFolder || selectedWorkspace,
+                projectFolder,
                 roleRuns.slice(0, index),
                 interventions,
                 artifacts,
@@ -2453,10 +2867,16 @@ export default function RuntimeChat({
               fullAccessConfirmed: roleMode === "full_access",
               workspace:
                 assignedRuntime.location === "local"
-                  ? selectedWorkspace || launch.projectFolder
+                  ? selectedWorkspaceId
+                    ? undefined
+                    : selectedWorkspace || launch.projectFolder
                   : assignment.workspaceAccess === "remote_mapping"
                     ? assignment.workspaceRef
                     : undefined,
+              workspaceId:
+                assignedRuntime.location === "local"
+                  ? selectedWorkspaceId
+                  : undefined,
               workspaceRef:
                 assignedRuntime.location === "remote" &&
                 assignment.workspaceAccess === "remote_mapping"
@@ -2481,7 +2901,7 @@ export default function RuntimeChat({
 
           let completed: AgentRuntimeRun | null = null;
           while (!cancelledRef.current) {
-            const current = await window.hermesAPI.getAgentRuntimeRun(
+            const current = await window.agentsOneAPI.getAgentRuntimeRun(
               started.id,
             );
             if (current) {
@@ -2866,7 +3286,7 @@ export default function RuntimeChat({
         updatedAt: now,
       };
       setCollaborationExecution(nextExecution);
-      await window.hermesAPI.updateTaskCollaborationExecution(
+      await window.agentsOneAPI.updateTaskCollaborationExecution(
         { taskId: collaboration.taskId, execution: nextExecution },
         profile,
       );
@@ -2897,6 +3317,8 @@ export default function RuntimeChat({
           {
             taskId: collaboration.taskId,
             assignments: collaborationAssignments,
+            projectWorkspaceId: collaboration.projectWorkspaceId,
+            projectName: collaboration.projectName,
             projectFolder: collaboration.projectFolder,
           },
           workspace || undefined,
@@ -2943,7 +3365,7 @@ export default function RuntimeChat({
       )
         return;
       pauseAssignmentRef.current = assignmentId;
-      await window.hermesAPI.cancelAgentRuntimeTask(roleRun.runtimeRunId);
+      await window.agentsOneAPI.cancelAgentRuntimeTask(roleRun.runtimeRunId);
     },
     [collaborationExecution],
   );
@@ -2985,6 +3407,8 @@ export default function RuntimeChat({
         {
           taskId: collaboration.taskId,
           assignments: collaborationAssignments,
+          projectWorkspaceId: collaboration.projectWorkspaceId,
+          projectName: collaboration.projectName,
           projectFolder: collaboration.projectFolder,
         },
         workspace || undefined,
@@ -3084,7 +3508,7 @@ export default function RuntimeChat({
       ].slice(-250),
       updatedAt: now,
     };
-    await window.hermesAPI.saveTaskCollaboration(
+    await window.agentsOneAPI.saveTaskCollaboration(
       {
         taskId: collaboration.taskId,
         title:
@@ -3092,13 +3516,15 @@ export default function RuntimeChat({
             .find((item) => item.role === "user")
             ?.content.slice(0, 80) || "协作任务",
         projectFolder: collaboration.projectFolder,
+        projectWorkspaceId: collaboration.projectWorkspaceId,
+        projectName: collaboration.projectName,
         sourceRuntimeId: runtime.id,
         assignments: nextAssignments,
         status: "active",
       },
       profile,
     );
-    await window.hermesAPI.updateTaskCollaborationExecution(
+    await window.agentsOneAPI.updateTaskCollaborationExecution(
       { taskId: collaboration.taskId, execution: nextExecution },
       profile,
     );
@@ -3158,7 +3584,7 @@ export default function RuntimeChat({
         updatedAt: Date.now(),
       };
       try {
-        await window.hermesAPI.saveTaskCollaboration(
+        await window.agentsOneAPI.saveTaskCollaboration(
           {
             taskId: collaboration.taskId,
             title:
@@ -3166,6 +3592,8 @@ export default function RuntimeChat({
                 .find((item) => item.role === "user")
                 ?.content.slice(0, 80) || "协作任务",
             projectFolder: collaboration.projectFolder,
+            projectWorkspaceId: collaboration.projectWorkspaceId,
+            projectName: collaboration.projectName,
             sourceRuntimeId: runtime.id,
             assignments: nextAssignments,
             status: "active",
@@ -3185,6 +3613,8 @@ export default function RuntimeChat({
             taskId: collaboration.taskId,
             assignments: nextAssignments,
             projectFolder: collaboration.projectFolder,
+            projectWorkspaceId: collaboration.projectWorkspaceId,
+            projectName: collaboration.projectName,
           },
           workspace || undefined,
           { assignmentId: targetId, execution: nextExecution },
@@ -3220,12 +3650,12 @@ export default function RuntimeChat({
   useEffect(() => {
     if (
       !collaboration?.taskId ||
-      typeof window.hermesAPI.getTaskCollaboration !== "function"
+      typeof window.agentsOneAPI.getTaskCollaboration !== "function"
     )
       return;
     let disposed = false;
     const loadExecution = (): void => {
-      void window.hermesAPI
+      void window.agentsOneAPI
         .getTaskCollaboration(collaboration.taskId as string, profile)
         .then((record) => {
           if (!disposed && record?.execution)
@@ -3250,20 +3680,430 @@ export default function RuntimeChat({
     };
   }, [collaboration?.taskId, profile]);
 
+  function appendRuntimeControlMessage(
+    content: string,
+    audit?: NonNullable<RuntimeConversationMessage["controlAudit"]>,
+  ): void {
+    const message = newMessage("system", content);
+    if (audit) message.controlAudit = audit;
+    const nextMessages = [...messagesRef.current, message];
+    messagesRef.current = nextMessages;
+    setMessages(nextMessages);
+    void persistConversation(nextMessages).catch(() => undefined);
+  }
+
+  useEffect(() => {
+    if (typeof window.agentsOneAPI.onAgentRuntimeCommandProgress !== "function") {
+      return;
+    }
+    return window.agentsOneAPI.onAgentRuntimeCommandProgress((progress) => {
+      if (
+        !progress ||
+        progress.requestId !== runtimeCommandRequestIdRef.current ||
+        progress.runtimeId !== runtime.id ||
+        (progress.phase !== "started" && progress.phase !== "progress") ||
+        typeof progress.message !== "string" ||
+        !progress.message.trim()
+      ) {
+        return;
+      }
+      appendRuntimeControlMessage(progress.message.trim().slice(0, 1_000));
+    });
+  }, [runtime.id]);
+
+  function resetRuntimeConversation(): void {
+    const nextConversationId = newConversationId();
+    conversationIdRef.current = nextConversationId;
+    analysisBranchRef.current = false;
+    runtimeSessionIdRef.current = null;
+    taskRunRef.current = null;
+    setMessages([]);
+    messagesRef.current = [];
+    setTaskRun(null);
+    setCurrentRunId(null);
+    setSelectedRuntimeModel(runtime.config.model?.trim() || "");
+    setSelectedRuntimeThinkingLevel("");
+    onConversationIdChange?.(runId, nextConversationId);
+    onSessionIdChange?.(runId, null);
+    onTitleChange?.(runId, "新对话");
+  }
+
+  async function branchFromMessage(messageId: string): Promise<void> {
+    const parentId = conversationIdRef.current;
+    if (
+      !parentId ||
+      typeof window.agentsOneAPI.forkRuntimeConversation !== "function"
+    ) {
+      appendRuntimeControlMessage(
+        "请先发送并保存至少一条对话消息后再创建分支。",
+      );
+      return;
+    }
+    try {
+      // Persist a snapshot of the parent before creating the child.  Do not
+      // switch this RuntimeChat instance to the child: this instance owns the
+      // parent task tab and must remain an intact, independently persisted
+      // conversation.
+      await persistConversation(messagesRef.current);
+      const id = newConversationId();
+      const branch = await window.agentsOneAPI.forkRuntimeConversation(
+        parentId,
+        {
+          id,
+          forkedFromMessageId: messageId,
+          branchSummary: "从选定答复继续；仅保留用户可见消息与执行摘要。",
+        },
+        profile,
+      );
+      // Layout owns task tabs. Reusing its open-conversation event creates a
+      // new task tab for the branch while leaving the current parent tab and
+      // its post-branch history untouched.
+      window.dispatchEvent(
+        new CustomEvent("agents-one:open-runtime-conversation", {
+          detail: branch.id,
+        }),
+      );
+    } catch (error) {
+      appendRuntimeControlMessage(
+        error instanceof Error ? error.message : "创建会话分支失败。",
+      );
+    }
+  }
+
+  async function executeRuntimeSlashCommand(
+    rawInput: string,
+    attachments: Attachment[] = [],
+    options?: {
+      compactConfirmed?: boolean;
+      optimisticModel?: { previous: string };
+      optimisticThinking?: { previous: string };
+    },
+  ): Promise<void> {
+    const match = /^\s*\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(rawInput);
+    const name = match?.[1]?.trim().toLowerCase() || "";
+    const args = match?.[2]?.trim() || "";
+    if (runtimeCommandInFlightRef.current) {
+      // The toolbar trigger is intentionally a /model shortcut. A second
+      // click while its native catalogue is loading is harmless and should
+      // not leave an alarming control-plane message in the transcript.
+      if (
+        (name === "model" && (modelCatalogLoading || modelSwitching)) ||
+        (name === "thinking" && (thinkingCatalogLoading || thinkingSwitching))
+      ) {
+        return;
+      }
+      appendRuntimeControlMessage(
+        "上一条 Runtime 命令仍在执行；请勿重复提交。",
+      );
+      return;
+    }
+    const restoreRejectedInput = (): void => {
+      chatInputRef.current?.restore(rawInput, attachments);
+    };
+    const settleOptimisticModel = (accepted: boolean): void => {
+      if (!options?.optimisticModel) return;
+      if (!accepted) setSelectedRuntimeModel(options.optimisticModel.previous);
+      setModelSwitching(false);
+    };
+    const settleOptimisticThinking = (accepted: boolean): void => {
+      if (!options?.optimisticThinking) return;
+      if (!accepted)
+        setSelectedRuntimeThinkingLevel(options.optimisticThinking.previous);
+      setThinkingSwitching(false);
+    };
+    if (!name) {
+      appendRuntimeControlMessage("请输入完整的斜杠命令。");
+      restoreRejectedInput();
+      return;
+    }
+    if (name === "skills") {
+      try {
+        const skills = await window.agentsOneAPI.listRuntimeSkills();
+        setRuntimeSkills(skills);
+        setSkillsPanelOpen(true);
+      } catch {
+        appendRuntimeControlMessage(
+          "无法读取本地 Skill 元数据。未执行任何 Skill。 ",
+        );
+      }
+      return;
+    }
+    if (name === "new" || name === "clear") {
+      resetRuntimeConversation();
+      return;
+    }
+    if (name === "branch") {
+      const parentId = conversationIdRef.current;
+      if (
+        !parentId ||
+        typeof window.agentsOneAPI.forkRuntimeConversation !== "function"
+      ) {
+        appendRuntimeControlMessage(
+          "请先发送并保存至少一条对话消息后再创建分支。",
+        );
+        return;
+      }
+      try {
+        // Keep the current task as the immutable branch parent. The branch is
+        // opened in a new task tab below instead of replacing this tab.
+        await persistConversation(messagesRef.current);
+        const id = newConversationId();
+        const branch = await window.agentsOneAPI.forkRuntimeConversation(
+          parentId,
+          {
+            id,
+            ...(args ? { branchLabel: args } : {}),
+            branchSummary: "从当前对话继续；仅保留用户可见消息与执行摘要。",
+          },
+          profile,
+        );
+        window.dispatchEvent(
+          new CustomEvent("agents-one:open-runtime-conversation", {
+            detail: branch.id,
+          }),
+        );
+      } catch (error) {
+        appendRuntimeControlMessage(
+          error instanceof Error ? error.message : "创建会话分支失败。",
+        );
+      }
+      return;
+    }
+    const descriptor = runtimeCommands.find(
+      (command) => command.name === name || command.aliases?.includes(name),
+    );
+    const commandTarget =
+      descriptor?.target ||
+      (name === "model" ||
+      name === "thinking" ||
+      name === "compact" ||
+      name === "status" ||
+      name === "abort" ||
+      name === "stop"
+        ? "runtime-control"
+        : undefined);
+    const compactIsKnown =
+      name === "compact" &&
+      (Boolean(descriptor) ||
+        runtime.kind === "pi" ||
+        runtime.kind === "codex" ||
+        runtime.kind === "claude-code");
+    if (compactIsKnown && !options?.compactConfirmed) {
+      if (pendingCompactCommand) {
+        appendRuntimeControlMessage("已有一条上下文压缩正在等待确认。");
+        return;
+      }
+      setPendingCompactCommand({ rawInput, instructions: args });
+      return;
+    }
+    if (
+      attachments.length &&
+      descriptor &&
+      descriptor.supportsAttachments !== true
+    ) {
+      appendRuntimeControlMessage(`/${name} 不接受附件；输入内容已保留。`);
+      restoreRejectedInput();
+      return;
+    }
+    if (typeof window.agentsOneAPI.executeAgentRuntimeCommand !== "function") {
+      appendRuntimeControlMessage(
+        "当前应用版本尚未提供 Runtime 命令控制接口。",
+      );
+      restoreRejectedInput();
+      settleOptimisticModel(false);
+      return;
+    }
+    const requestId = `runtime-command-${crypto.randomUUID()}`;
+    const startedAt = Date.now();
+    const controlAudit = (
+      outcome: NonNullable<
+        RuntimeConversationMessage["controlAudit"]
+      >["outcome"],
+      compaction?: NonNullable<
+        RuntimeConversationMessage["controlAudit"]
+      >["compaction"],
+    ): NonNullable<RuntimeConversationMessage["controlAudit"]> => ({
+      requestId,
+      command: name,
+      runtimeId: runtime.id,
+      ...(commandTarget ? { target: commandTarget } : {}),
+      outcome,
+      ...(compaction ? { compaction } : {}),
+      startedAt,
+      completedAt: Date.now(),
+      createdAt: Date.now(),
+    });
+    runtimeCommandInFlightRef.current = true;
+    runtimeCommandRequestIdRef.current = requestId;
+    const loadingModelCatalog = name === "model" && !args;
+    const loadingThinkingCatalog = name === "thinking" && !args;
+    if (loadingModelCatalog) setModelCatalogLoading(true);
+    if (loadingThinkingCatalog) setThinkingCatalogLoading(true);
+    const finishRuntimeCommand = (): void => {
+      runtimeCommandInFlightRef.current = false;
+      runtimeCommandRequestIdRef.current = null;
+      if (loadingModelCatalog) setModelCatalogLoading(false);
+      if (loadingThinkingCatalog) setThinkingCatalogLoading(false);
+    };
+    let result: RuntimeCommandResult;
+    try {
+      result = await window.agentsOneAPI.executeAgentRuntimeCommand({
+        requestId,
+        runtimeId: runtime.id,
+        conversationId: conversationIdRef.current || undefined,
+        sessionId: runtimeSessionIdRef.current || undefined,
+        runId:
+          taskRunRef.current?.status === "running"
+            ? taskRunRef.current.id
+            : undefined,
+        name,
+        ...(args ? { args } : {}),
+      });
+    } catch (error) {
+      appendRuntimeControlMessage(
+        error instanceof Error ? error.message : "Runtime 命令执行失败。",
+        controlAudit("error"),
+      );
+      restoreRejectedInput();
+      settleOptimisticModel(false);
+      settleOptimisticThinking(false);
+      finishRuntimeCommand();
+      return;
+    }
+    if (result.type === "send-prompt") {
+      const expandedPrompt = result.prompt.trim();
+      if (!expandedPrompt) {
+        appendRuntimeControlMessage("Runtime 命令返回了空的提示模板。", {
+          ...controlAudit("error"),
+        });
+        restoreRejectedInput();
+      } else {
+        // A Runtime explicitly requested this expansion to become a normal
+        // turn. It may itself begin with `/`; do not parse it a second time.
+        await send(expandedPrompt, attachments, undefined, {
+          treatLeadingSlashAsPrompt: true,
+        });
+      }
+      finishRuntimeCommand();
+      return;
+    }
+    if (result.type === "needs-input") {
+      if (result.input === "model-picker") {
+        setRuntimeModels(result.models || []);
+        setPendingRuntimeModel(
+          selectedRuntimeModel.trim() ||
+            runtime.config.model?.trim() ||
+            result.models?.find((model) => model.isDefault)?.id ||
+            result.models?.[0]?.id ||
+            "",
+        );
+        setModelPickerOpen(true);
+        // The picker itself is the continuation UI. Do not write a durable,
+        // generic "waiting" message into the transcript: after a reload it
+        // would outlive the transient picker and look like a failed command.
+        finishRuntimeCommand();
+        return;
+      }
+      if (result.input === "thinking-picker") {
+        const levels = result.thinkingLevels || [];
+        const current = result.thinkingLevel || "";
+        setRuntimeThinkingLevels(levels);
+        setSelectedRuntimeThinkingLevel(current);
+        setPendingRuntimeThinkingLevel(
+          current || levels.find((level) => level !== "off") || levels[0] || "",
+        );
+        setThinkingPickerOpen(true);
+        finishRuntimeCommand();
+        return;
+      }
+      appendRuntimeControlMessage("该 Runtime 命令需要继续确认。", {
+        ...controlAudit("needs-input"),
+      });
+      settleOptimisticModel(false);
+      settleOptimisticThinking(false);
+      finishRuntimeCommand();
+      return;
+    }
+    if (result.type === "handled") {
+      if (result.statePatch?.model !== undefined) {
+        setSelectedRuntimeModel(result.statePatch.model);
+      }
+      if (result.statePatch?.thinkingLevel !== undefined) {
+        setSelectedRuntimeThinkingLevel(result.statePatch.thinkingLevel);
+      }
+      settleOptimisticModel(true);
+      settleOptimisticThinking(true);
+      if (result.message) {
+        appendRuntimeControlMessage(result.message, {
+          ...controlAudit("handled", result.statePatch?.compaction),
+        });
+      } else {
+        appendRuntimeControlMessage("Runtime 命令已完成。", {
+          ...controlAudit("handled", result.statePatch?.compaction),
+        });
+      }
+      void refreshRuntimeCommandCatalog();
+      finishRuntimeCommand();
+      return;
+    }
+    appendRuntimeControlMessage(
+      result.type === "unsupported" ? result.reason : result.message,
+      controlAudit(result.type),
+    );
+    restoreRejectedInput();
+    settleOptimisticModel(false);
+    settleOptimisticThinking(false);
+    finishRuntimeCommand();
+  }
+
   async function send(
     text: string,
     attachments: Attachment[] = [],
     collaborationLaunch?: CollaborationLaunch,
+    options?: { treatLeadingSlashAsPrompt?: boolean },
   ): Promise<void> {
     const prompt = text.trim();
-    if (!prompt || loading) return;
+    if (!prompt) return;
+    if (prompt.startsWith("/") && !options?.treatLeadingSlashAsPrompt) {
+      await executeRuntimeSlashCommand(prompt, attachments);
+      return;
+    }
+    if (loading) {
+      const plan = runtimeSteeringPlan(steeringCapabilities);
+      if (plan.kind === "follow_up") {
+        setQueuedFollowUp({ text: prompt, attachments });
+        appendRuntimeControlMessage(
+          "当前 Runtime 不支持中途纠偏；此消息会在本轮完成后作为跟进发送。",
+        );
+        return;
+      }
+      if (plan.kind === "cancel_resume") {
+        setPendingCancelResume({ text: prompt, attachments });
+        return;
+      }
+      chatInputRef.current?.restore(prompt, attachments);
+      appendRuntimeControlMessage(
+        "当前 Runtime 未声明运行中纠偏能力；消息已保留，未发送也未中断任务。",
+      );
+      return;
+    }
     const selectedWorkspace = workspace || undefined;
+    const hasSelectedWorkspace = Boolean(selectedWorkspace || workspaceId);
     const resolvedAccessMode =
       accessMode === "auto"
-        ? runtime.location === "local" || selectedWorkspace
-          ? "safe_write"
-          : "analysis"
+        ? runtime.kind === "opencode" && !hasSelectedWorkspace
+          ? "analysis"
+          : runtime.location === "local" || hasSelectedWorkspace
+            ? "safe_write"
+            : "analysis"
         : accessMode;
+    if (analysisBranchRef.current && resolvedAccessMode !== "analysis") {
+      chatInputRef.current?.restore(prompt, attachments);
+      appendRuntimeControlMessage(
+        "此分支是只读分析分支；写入任务必须先创建独立 worktree 的实现分支。消息未发送。",
+      );
+      return;
+    }
     cancelledRef.current = false;
     const nextMessages = [...messages, newMessage("user", prompt)];
     messagesRef.current = nextMessages;
@@ -3272,12 +4112,12 @@ export default function RuntimeChat({
     setActiveCollaborationRuntimeId(null);
     taskRunRef.current = null;
     onTitleChange?.(runId, prompt.slice(0, 48));
-    void persistConversation(nextMessages);
+    void persistConversation(nextMessages).catch(() => undefined);
     setLoading(true);
     try {
       if (
         resolvedAccessMode === "full_access" &&
-        !selectedWorkspace &&
+        !hasSelectedWorkspace &&
         !collaborationLaunch &&
         runtime.location === "local"
       ) {
@@ -3286,7 +4126,7 @@ export default function RuntimeChat({
           newMessage("system", "完全访问需要先选择一个项目目录。"),
         ];
         setMessages(failedMessages);
-        void persistConversation(failedMessages);
+        void persistConversation(failedMessages).catch(() => undefined);
         setLoading(false);
         return;
       }
@@ -3321,10 +4161,13 @@ export default function RuntimeChat({
           : undefined;
       if (explicitProposal) {
         if (onStartCollaboration) {
-          const launch = await onStartCollaboration(
-            explicitProposal,
-            selectedWorkspace,
-          );
+          const launch = await onStartCollaboration(explicitProposal, {
+            ...(workspaceId ? { workspaceId } : {}),
+            ...(selectedWorkspace ? { name: selectedWorkspace } : {}),
+            ...(!workspaceId && selectedWorkspace
+              ? { legacyPath: selectedWorkspace }
+              : {}),
+          });
           if (!launch) throw new Error("无法保存协作安排，请稍后重试。");
           await linkCollaborationToConversation(launch.taskId);
           setCollaborationAssignments(launch.assignments);
@@ -3362,17 +4205,20 @@ export default function RuntimeChat({
       const runtimePrompt = platformRules.length
         ? `${platformRules.join("\n\n")}\n\n当前用户请求：\n${basePrompt}`
         : basePrompt;
-      const run = await window.hermesAPI.startAgentRuntimeTask(runtime.id, {
+      const run = await window.agentsOneAPI.startAgentRuntimeTask(runtime.id, {
         prompt: runtimePrompt,
-        mode:
-          collaborationCandidates.length > 1 &&
-          resolvedAccessMode !== "analysis" &&
-          runtime.location === "remote" &&
-          unifiedRemoteGatewayRuntime &&
-          !remoteWorkspaceSupported
+        ...(selectedRuntimeModel ? { model: selectedRuntimeModel } : {}),
+        mode: webAgentRuntime
+          ? "analysis"
+          : collaborationCandidates.length > 1 &&
+              resolvedAccessMode !== "analysis" &&
+              runtime.location === "remote" &&
+              unifiedRemoteGatewayRuntime &&
+              !remoteWorkspaceSupported
             ? "analysis"
             : resolvedAccessMode,
         fullAccessConfirmed:
+          !webAgentRuntime &&
           resolvedAccessMode === "full_access" &&
           !(
             collaborationCandidates.length > 1 &&
@@ -3387,7 +4233,8 @@ export default function RuntimeChat({
         // safely resume. Send a bounded transcript instead, so a follow-up
         // keeps its context without leaving the run stuck in running.
         sessionId: resumableSessionId,
-        workspace: selectedWorkspace,
+        ...(!webAgentRuntime &&
+          (workspaceId ? { workspaceId } : { workspace: selectedWorkspace })),
         attachments,
       });
       taskRunRef.current = run;
@@ -3400,7 +4247,7 @@ export default function RuntimeChat({
         newMessage("system", (err as Error).message || "任务请求失败。"),
       ];
       setMessages(failedMessages);
-      void persistConversation(failedMessages);
+      void persistConversation(failedMessages).catch(() => undefined);
       setLoading(false);
       setCurrentRunId(null);
     }
@@ -3419,13 +4266,13 @@ export default function RuntimeChat({
     if (activeRunIds.length) {
       await Promise.all(
         activeRunIds.map((runId) =>
-          window.hermesAPI.cancelAgentRuntimeTask(runId),
+          window.agentsOneAPI.cancelAgentRuntimeTask(runId),
         ),
       );
     }
     if (currentRunId) {
       const cancelledRun =
-        await window.hermesAPI.getAgentRuntimeRun(currentRunId);
+        await window.agentsOneAPI.getAgentRuntimeRun(currentRunId);
       if (cancelledRun) {
         setTaskRun(cancelledRun);
       }
@@ -3437,16 +4284,34 @@ export default function RuntimeChat({
   }
 
   async function chooseWorkspace(): Promise<void> {
-    const selected = await window.hermesAPI.selectFolder();
-    if (selected) setWorkspace(selected);
+    const selected = await window.agentsOneAPI.selectFolder();
+    if (!selected) return;
+    const registered = await window.agentsOneAPI.registerProjectFolder(selected);
+    if (!registered) return;
+    // Older desktop/preload pairs returned only a path. Keep the capability
+    // migration backward-compatible during a rolling upgrade.
+    setWorkspace(registered.name || registered.path || selected);
+    setWorkspaceId(registered.id || "");
   }
 
   function clearWorkspace(): void {
     setWorkspace("");
+    setWorkspaceId("");
   }
 
-  function selectRecentWorkspace(path: string): void {
-    setWorkspace(path);
+  async function selectRecentWorkspace(path: string): Promise<void> {
+    const registered = await window.agentsOneAPI.registerProjectFolder(path);
+    if (!registered) return;
+    setWorkspace(registered.name || registered.path || path);
+    setWorkspaceId(registered.id || "");
+  }
+
+  function selectRecentWorkspaceCapability(workspace: {
+    workspaceId: string;
+    name: string;
+  }): void {
+    setWorkspace(workspace.name);
+    setWorkspaceId(workspace.workspaceId);
   }
 
   function toggleWorktreeVisible(): void {
@@ -3457,25 +4322,45 @@ export default function RuntimeChat({
     runtime.location === "local" &&
     (runtime.kind === "codex" ||
       runtime.kind === "claude-code" ||
-      runtime.kind === "pi");
+      runtime.kind === "pi" ||
+      runtime.kind === "opencode");
   // Remote runtimes receive a short-lived outbound workspace grant instead of
   // a local path. Gateway v1 advertises that support through its probe.
   const remoteWorkspaceGatewayRuntime =
     runtime.location === "remote" && remoteWorkspaceSupported;
-  const attachmentInputs = localFileInputs || remoteArtifactsSupported;
+  const attachmentInputs =
+    localFileInputs || remoteArtifactsSupported || webAgentRuntime;
   const accessControlAvailable =
     localFileInputs ||
+    unifiedRemoteGatewayRuntime ||
     remoteWorkspaceGatewayRuntime ||
     collaborationWriteRuntimeAvailable;
+  // Session-scoped /model overrides take precedence over the persisted Runtime
+  // default and are the same value forwarded to the next CLI/Gateway request.
   const configuredLocalModel =
-    runtime.location === "local" ? runtime.config.model?.trim() : undefined;
+    selectedRuntimeModel.trim() ||
+    (runtime.location === "local" ? runtime.config.model?.trim() : undefined);
   const lastReportedExecution = [...messages]
     .reverse()
     .find(
-      (message) => message.execution?.model || message.execution?.usage,
+      (message) =>
+        message.execution?.model ||
+        message.execution?.actualModel ||
+        message.execution?.usage ||
+        message.execution?.isolation,
     )?.execution;
-  const lastReportedModel = taskRun?.model || lastReportedExecution?.model;
+  const lastReportedModel =
+    taskRun?.actualModel ||
+    taskRun?.model ||
+    lastReportedExecution?.actualModel ||
+    lastReportedExecution?.model;
   const lastReportedUsage = taskRun?.usage || lastReportedExecution?.usage;
+  const lastReportedIsolation =
+    taskRun?.isolation || lastReportedExecution?.isolation;
+  const isolationBadge = lastReportedIsolation
+    ? runtimeIsolationPresentation(lastReportedIsolation)
+    : null;
+  const IsolationBadgeIcon = isolationBadge?.icon;
   const configuredModelParts = configuredLocalModel?.includes("/")
     ? configuredLocalModel.split("/")
     : [];
@@ -3487,7 +4372,8 @@ export default function RuntimeChat({
     lastReportedModel?.id?.trim() ||
     (configuredModelParts.length > 1
       ? configuredModelParts.slice(1).join("/").trim()
-      : configuredLocalModel || "");
+      : configuredLocalModel || "") ||
+    "";
   const [resolvedRuntimeContextWindow, setResolvedRuntimeContextWindow] =
     useState<number | null | undefined>(undefined);
 
@@ -3505,7 +4391,7 @@ export default function RuntimeChat({
     }
 
     setResolvedRuntimeContextWindow(undefined);
-    void window.hermesAPI
+    void window.agentsOneAPI
       .getAgentRuntimeModelContextWindow(
         runtime.id,
         runtimeModelProvider,
@@ -3529,12 +4415,17 @@ export default function RuntimeChat({
     runtimeModelProvider,
   ]);
 
+  const reportedModelLabel = [
+    lastReportedModel?.provider,
+    lastReportedModel?.id,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" / ");
+  // Once a Runtime reports the model it actually used, prefer that fact over
+  // a requested/configured value that the provider may have rejected or
+  // silently replaced with a fallback model.
   const runtimeModelLabel =
-    [lastReportedModel?.provider, lastReportedModel?.id]
-      .filter((value): value is string => Boolean(value))
-      .join(" / ") ||
-    configuredLocalModel ||
-    "未提供模型";
+    reportedModelLabel || configuredLocalModel || "未提供模型";
   const runtimeContextWindow =
     lastReportedUsage?.contextWindowTokens ??
     lastReportedModel?.contextWindowTokens ??
@@ -3552,6 +4443,70 @@ export default function RuntimeChat({
           window: runtimeContextWindow,
         }
       : null;
+  const unavailableRuntimeArtifacts = (taskRun?.artifacts || []).filter(
+    (artifact) => Boolean(artifact.id && artifact.unavailableReason),
+  );
+
+  const retryRuntimeArtifact = useCallback(
+    async (artifactId: string): Promise<void> => {
+      const activeRun = taskRunRef.current;
+      if (!activeRun?.id || retryingArtifactIds[artifactId]) return;
+      setRetryingArtifactIds((current) => ({ ...current, [artifactId]: true }));
+      setArtifactRetryFeedback((current) => {
+        const next = { ...current };
+        delete next[artifactId];
+        return next;
+      });
+      try {
+        const retried = await window.agentsOneAPI.retryAgentRuntimeArtifact(
+          activeRun.id,
+          artifactId,
+        );
+        if (!retried) {
+          throw new Error("当前运行已不可用，无法重新同步产物。");
+        }
+        const observed = mergeRuntimeRunObservation(activeRun, retried);
+        taskRunRef.current = observed;
+        setTaskRun(observed);
+        const execution = executionFromRun(observed);
+        const nextMessages = execution
+          ? messagesRef.current.map((message) =>
+              message.execution?.runId === observed.id
+                ? { ...message, execution }
+                : message,
+            )
+          : messagesRef.current;
+        if (nextMessages !== messagesRef.current) {
+          messagesRef.current = nextMessages;
+          setMessages(nextMessages);
+          await persistConversation(nextMessages, { activeRuntimeRunId: null });
+        }
+        const currentArtifact = observed.artifacts?.find(
+          (artifact) => artifact.id === artifactId,
+        );
+        setArtifactRetryFeedback((current) => ({
+          ...current,
+          [artifactId]: currentArtifact?.unavailableReason
+            ? currentArtifact.unavailableReason
+            : "产物已重新同步，可在本条回复的附件中打开。",
+        }));
+      } catch (error) {
+        setArtifactRetryFeedback((current) => ({
+          ...current,
+          [artifactId]:
+            error instanceof Error
+              ? error.message
+              : "重新同步产物失败，请稍后再试。",
+        }));
+      } finally {
+        setRetryingArtifactIds((current) => ({
+          ...current,
+          [artifactId]: false,
+        }));
+      }
+    },
+    [persistConversation, retryingArtifactIds],
+  );
   const handleSuggestion = useCallback((text: string) => {
     chatInputRef.current?.setText(text);
   }, []);
@@ -3623,6 +4578,13 @@ export default function RuntimeChat({
       );
   }, [runId, runCollaboration, send, workspace]);
 
+  useEffect(() => {
+    if (loading || !queuedFollowUp) return;
+    const followUp = queuedFollowUp;
+    setQueuedFollowUp(null);
+    void send(followUp.text, followUp.attachments);
+  }, [loading, queuedFollowUp]);
+
   return (
     <div className="runtime-chat chat-container" aria-hidden={!active}>
       <ConversationWorkspace
@@ -3634,151 +4596,546 @@ export default function RuntimeChat({
           />
         }
         composer={
-          <div className="chat-input-area">
-            <ChatInput
-              ref={chatInputRef}
-              isLoading={loading}
-              hasSession={Boolean(runtimeSessionIdRef.current)}
-              sessionId={conversationIdRef.current}
-              contextUsage={runtimeContextUsage}
-              attachmentsEnabled={attachmentInputs}
-              placeholder="输入消息...（Shift+Enter 换行）"
-              onSubmit={(text, attachments) => void send(text, attachments)}
-              onQuickAsk={() => undefined}
-              onAbort={() => void stop()}
-              slashCommands={[]}
-              toolbarExtras={
-                <>
-                  <ContextFolderChip
-                    contextFolder={workspace || null}
-                    show={localFileInputs || remoteWorkspaceGatewayRuntime}
-                    worktreeVisible={worktreeVisible}
-                    onPickFolder={() => void chooseWorkspace()}
-                    onClearFolder={clearWorkspace}
-                    onToggleWorktree={toggleWorktreeVisible}
-                    onSelectRecentFolder={selectRecentWorkspace}
-                  />
-                  {accessControlAvailable ? (
-                    <span className="runtime-permission-control">
-                      <button
-                        type="button"
-                        className="runtime-permission-trigger"
-                        aria-haspopup="menu"
-                        aria-expanded={permissionMenuOpen}
-                        aria-label="管理本轮任务权限"
-                        title="管理本轮任务权限"
-                        onClick={() => setPermissionMenuOpen((open) => !open)}
-                      >
-                        <ShieldCheck size={14} />
-                        <span className="runtime-permission-label">
-                          {accessMode === "auto"
-                            ? "自动"
-                            : accessMode === "analysis"
-                              ? "只读"
-                              : "完全访问"}
-                        </span>
-                        <ChevronDown size={13} />
-                      </button>
-                      {permissionMenuOpen ? (
-                        <span className="runtime-permission-menu" role="menu">
-                          <button
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={accessMode === "auto"}
-                            onClick={() => {
-                              setAccessMode("auto");
-                              setPermissionMenuOpen(false);
-                            }}
-                          >
-                            <strong>自动</strong>
-                            <small>可读写，无移动、删除文件权限</small>
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={accessMode === "analysis"}
-                            onClick={() => {
-                              setAccessMode("analysis");
-                              setPermissionMenuOpen(false);
-                            }}
-                          >
-                            <strong>只读</strong>
-                            <small>可查看项目和附件，不会修改文件</small>
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={accessMode === "full_access"}
-                            disabled={
-                              unifiedRemoteGatewayRuntime &&
-                              !remoteWorkspaceSupported &&
-                              !collaborationWriteRuntimeAvailable
-                            }
-                            title={
-                              unifiedRemoteGatewayRuntime &&
-                              !remoteWorkspaceSupported &&
-                              !collaborationWriteRuntimeAvailable
-                                ? "完成 Gateway v1 Workspace Grant 接入后开放"
-                                : undefined
-                            }
-                            onClick={() => {
-                              if (
-                                unifiedRemoteGatewayRuntime &&
-                                !remoteWorkspaceSupported &&
-                                !collaborationWriteRuntimeAvailable
-                              ) {
-                                return;
-                              }
-                              setAccessMode("full_access");
-                              setPermissionMenuOpen(false);
-                            }}
-                          >
-                            <strong>完全访问</strong>
-                            <small>
-                              {unifiedRemoteGatewayRuntime &&
-                              !remoteWorkspaceSupported
-                                ? "Workspace Grant 接入后开放"
-                                : "可创建、编辑、移动或删除项目文件"}
-                            </small>
-                          </button>
-                        </span>
-                      ) : null}
+          <div className="runtime-composer-shell">
+            {!followingLatest && messages.length ? (
+              <button
+                type="button"
+                className="runtime-scroll-to-latest"
+                onClick={() => scrollToLatest("smooth")}
+                aria-label="回到最新消息"
+                title="回到最新消息"
+              >
+                <ChevronDown size={17} aria-hidden="true" />
+                回到最新消息
+              </button>
+            ) : null}
+            <div className="chat-input-area">
+              {skillsPanelOpen ? (
+                <div
+                  className="runtime-model-picker"
+                  role="dialog"
+                  aria-label="已发现的 Skill"
+                >
+                  <strong>已发现的 Skill</strong>
+                  <p>
+                    仅显示元数据；Agents One 不会在主进程加载或执行这些 Skill。
+                  </p>
+                  {runtimeSkills.length ? (
+                    <ul>
+                      {runtimeSkills.map((skill) => (
+                        <li key={skill.id}>
+                          <strong>{skill.name}</strong>
+                          {skill.description ? `：${skill.description}` : ""}
+                          <small>
+                            {` ${skill.source} · ${skill.trust} · ${skill.executionBoundary}`}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>未发现可展示的 Skill。</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSkillsPanelOpen(false)}
+                  >
+                    关闭
+                  </button>
+                </div>
+              ) : null}
+              {modelPickerOpen ? (
+                <div
+                  className="runtime-model-picker runtime-model-picker--expanded"
+                  role="dialog"
+                  aria-label="选择当前会话模型"
+                >
+                  <div className="runtime-model-picker-heading">
+                    <span>
+                      <Bot size={15} /> 模型
                     </span>
+                    <small>仅作用于当前会话，不会修改默认配置</small>
+                  </div>
+                  <label className="runtime-model-picker-select">
+                    <select
+                      value={pendingRuntimeModel}
+                      aria-label="模型列表"
+                      onChange={(event) =>
+                        setPendingRuntimeModel(event.target.value)
+                      }
+                    >
+                      {selectedRuntimeModel &&
+                      !runtimeModels.some(
+                        (model) => model.id === selectedRuntimeModel,
+                      ) ? (
+                        <option value={selectedRuntimeModel}>
+                          {selectedRuntimeModel}（当前会话）
+                        </option>
+                      ) : null}
+                      {runtimeModels.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.displayName || model.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {!runtimeModels.length ? (
+                    <p className="runtime-model-picker-empty">
+                      当前 Runtime 没有返回可切换的模型。
+                    </p>
                   ) : null}
                   <button
-                    className="chat-model-trigger runtime-chat-model-trigger"
                     type="button"
-                    disabled
-                    aria-label={`模型：${runtimeModelLabel}`}
-                    title={
-                      runtimeModelLabel !== "未提供模型"
-                        ? `模型：${runtimeModelLabel}`
-                        : "远程智能体未提供模型元数据"
-                    }
+                    className="runtime-model-picker-confirm"
+                    disabled={!pendingRuntimeModel.trim()}
+                    onClick={() => {
+                      const model = pendingRuntimeModel.trim();
+                      if (!model) return;
+                      const previous = selectedRuntimeModel;
+                      setSelectedRuntimeModel(model);
+                      setModelSwitching(true);
+                      setModelPickerOpen(false);
+                      void executeRuntimeSlashCommand(`/model ${model}`, [], {
+                        optimisticModel: { previous },
+                      });
+                    }}
                   >
-                    <span className="chat-model-name" title={runtimeModelLabel}>
-                      {runtimeModelLabel}
-                    </span>
+                    确认切换
                   </button>
                   <button
                     type="button"
-                    className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}
-                    onClick={() => setWebPreviewVisible((visible) => !visible)}
-                    title={webPreviewVisible ? "隐藏网页预览" : "显示网页预览"}
-                    aria-label={
-                      webPreviewVisible ? "隐藏网页预览" : "显示网页预览"
+                    onClick={() => {
+                      setPendingRuntimeModel("");
+                      setModelPickerOpen(false);
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              ) : null}
+              {thinkingPickerOpen ? (
+                <div
+                  className="runtime-model-picker runtime-model-picker--expanded"
+                  role="dialog"
+                  aria-label="选择当前会话思考等级"
+                >
+                  <div className="runtime-model-picker-heading">
+                    <span>
+                      <Brain size={15} /> 思考等级
+                    </span>
+                    <small>仅显示当前 Pi 模型实际支持的等级</small>
+                  </div>
+                  <label className="runtime-model-picker-select">
+                    <select
+                      value={pendingRuntimeThinkingLevel}
+                      aria-label="思考等级列表"
+                      onChange={(event) =>
+                        setPendingRuntimeThinkingLevel(event.target.value)
+                      }
+                    >
+                      {runtimeThinkingLevels.map((level) => (
+                        <option key={level} value={level}>
+                          {thinkingLevelLabel(level)}（{level}）
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {!runtimeThinkingLevels.length ? (
+                    <p className="runtime-model-picker-empty">
+                      当前 Pi 模型未声明可切换的思考等级。
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="runtime-model-picker-confirm"
+                    disabled={!pendingRuntimeThinkingLevel.trim()}
+                    onClick={() => {
+                      const level = pendingRuntimeThinkingLevel.trim();
+                      if (!level) return;
+                      const previous = selectedRuntimeThinkingLevel;
+                      setSelectedRuntimeThinkingLevel(level);
+                      setThinkingSwitching(true);
+                      setThinkingPickerOpen(false);
+                      void executeRuntimeSlashCommand(
+                        `/thinking ${level}`,
+                        [],
+                        {
+                          optimisticThinking: { previous },
+                        },
+                      );
+                    }}
+                  >
+                    确认切换
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingRuntimeThinkingLevel("");
+                      setThinkingPickerOpen(false);
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              ) : null}
+              {pendingCompactCommand ? (
+                <div
+                  className="runtime-compact-confirmation"
+                  role="dialog"
+                  aria-label="确认压缩当前会话上下文"
+                >
+                  <strong>压缩当前会话上下文？</strong>
+                  <p>
+                    将调用当前 Runtime 的原生压缩能力，历史对话会被摘要替代。
+                  </p>
+                  {pendingCompactCommand.instructions ? (
+                    <p>保留重点：{pendingCompactCommand.instructions}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pending = pendingCompactCommand;
+                      setPendingCompactCommand(null);
+                      void executeRuntimeSlashCommand(pending.rawInput, [], {
+                        compactConfirmed: true,
+                      });
+                    }}
+                  >
+                    确认压缩
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      chatInputRef.current?.restore(
+                        pendingCompactCommand.rawInput,
+                        [],
+                      );
+                      setPendingCompactCommand(null);
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              ) : null}
+              {pendingCancelResume ? (
+                <div
+                  className="runtime-compact-confirmation"
+                  role="dialog"
+                  aria-label="确认停止并以新消息恢复"
+                >
+                  <strong>停止当前运行并以新消息恢复？</strong>
+                  <p>
+                    当前 Runtime
+                    不支持原生中途纠偏。确认后才会取消本轮，并以新消息继续原会话。
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pending = pendingCancelResume;
+                      setPendingCancelResume(null);
+                      setQueuedFollowUp(pending);
+                      void stop();
+                    }}
+                  >
+                    确认停止并继续
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      chatInputRef.current?.restore(
+                        pendingCancelResume.text,
+                        pendingCancelResume.attachments,
+                      );
+                      setPendingCancelResume(null);
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              ) : null}
+              {webAgentRuntime && taskRun?.userActionRequired ? (
+                <div
+                  className="runtime-compact-confirmation"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <strong>
+                    {runtime.config.webAgent?.provider === "chatgpt"
+                      ? "ChatGPT"
+                      : runtime.config.webAgent?.provider === "grok"
+                        ? "Grok"
+                        : "豆包"}
+                    需要你完成一项操作
+                  </strong>
+                  <p>{taskRun.userActionRequired.message}</p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void window.agentsOneAPI.openWebAgentRuntime?.(runtime.id)
                     }
                   >
-                    <Globe size={14} />
+                    打开
+                    {runtime.config.webAgent?.provider === "chatgpt"
+                      ? "ChatGPT"
+                      : runtime.config.webAgent?.provider === "grok"
+                        ? "Grok"
+                        : "豆包"}
+                    窗口
                   </button>
-                </>
-              }
-            />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const resume = window.agentsOneAPI.resumeWebAgentRuntimeRun;
+                      if (resume)
+                        void resume(taskRun.id).catch(() => undefined);
+                    }}
+                  >
+                    我已完成，继续
+                  </button>
+                </div>
+              ) : null}
+              <ChatInput
+                ref={chatInputRef}
+                isLoading={loading}
+                hasSession={Boolean(runtimeSessionIdRef.current)}
+                sessionId={conversationIdRef.current}
+                contextUsage={runtimeContextUsage}
+                onContextUsageClick={
+                  compactCommandAvailable
+                    ? () => void executeRuntimeSlashCommand("/compact")
+                    : undefined
+                }
+                attachmentsEnabled={attachmentInputs}
+                allowAttachmentsWhileLoading={webAgentRuntime}
+                placeholder="输入消息...（Shift+Enter 换行）"
+                onSubmit={(text, attachments) => void send(text, attachments)}
+                onQuickAsk={() => undefined}
+                onAbort={() => void stop()}
+                slashCommands={runtimeSlashCommands}
+                toolbarExtras={
+                  <>
+                    <ContextFolderChip
+                      contextFolder={workspace || null}
+                      show={localFileInputs || remoteWorkspaceGatewayRuntime}
+                      worktreeVisible={worktreeVisible}
+                      onPickFolder={() => void chooseWorkspace()}
+                      onClearFolder={clearWorkspace}
+                      onToggleWorktree={toggleWorktreeVisible}
+                      onSelectRecentWorkspace={selectRecentWorkspaceCapability}
+                      onSelectRecentFolder={selectRecentWorkspace}
+                    />
+                    {accessControlAvailable ? (
+                      <span className="runtime-permission-control">
+                        <button
+                          type="button"
+                          className="runtime-permission-trigger"
+                          aria-haspopup="menu"
+                          aria-expanded={permissionMenuOpen}
+                          aria-label="管理本轮任务权限"
+                          title="管理本轮任务权限"
+                          onClick={() => setPermissionMenuOpen((open) => !open)}
+                        >
+                          <ShieldCheck size={14} />
+                          <span className="runtime-permission-label">
+                            {accessMode === "auto"
+                              ? "自动"
+                              : accessMode === "analysis"
+                                ? "只读"
+                                : "完全访问"}
+                          </span>
+                          <ChevronDown size={13} />
+                        </button>
+                        {permissionMenuOpen ? (
+                          <span className="runtime-permission-menu" role="menu">
+                            <button
+                              type="button"
+                              role="menuitemradio"
+                              aria-checked={accessMode === "auto"}
+                              onClick={() => {
+                                setAccessMode("auto");
+                                setPermissionMenuOpen(false);
+                              }}
+                            >
+                              <strong>自动</strong>
+                              <small>可读写，无移动、删除文件权限</small>
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitemradio"
+                              aria-checked={accessMode === "analysis"}
+                              onClick={() => {
+                                setAccessMode("analysis");
+                                setPermissionMenuOpen(false);
+                              }}
+                            >
+                              <strong>只读</strong>
+                              <small>可查看项目和附件，不会修改文件</small>
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitemradio"
+                              aria-checked={accessMode === "full_access"}
+                              disabled={
+                                !localFileInputs &&
+                                !unifiedRemoteGatewayRuntime &&
+                                !collaborationWriteRuntimeAvailable
+                              }
+                              title={
+                                !localFileInputs &&
+                                !unifiedRemoteGatewayRuntime &&
+                                !collaborationWriteRuntimeAvailable
+                                  ? "当前 Runtime 未声明可用的写入权限"
+                                  : undefined
+                              }
+                              onClick={() => {
+                                if (
+                                  !localFileInputs &&
+                                  !unifiedRemoteGatewayRuntime &&
+                                  !collaborationWriteRuntimeAvailable
+                                ) {
+                                  return;
+                                }
+                                setAccessMode("full_access");
+                                setPermissionMenuOpen(false);
+                              }}
+                            >
+                              <strong>完全访问</strong>
+                              <small>
+                                {unifiedRemoteGatewayRuntime &&
+                                !remoteWorkspaceSupported
+                                  ? "远端主机完全访问；本机项目需另行授权"
+                                  : "可创建、编辑、移动或删除项目文件"}
+                              </small>
+                            </button>
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                    <button
+                      className="chat-model-trigger runtime-chat-model-trigger"
+                      type="button"
+                      disabled={
+                        !modelCommandAvailable ||
+                        modelCatalogLoading ||
+                        modelSwitching
+                      }
+                      onClick={() => void executeRuntimeSlashCommand("/model")}
+                      aria-label={
+                        modelCatalogLoading
+                          ? "正在读取可用模型"
+                          : modelSwitching
+                            ? `正在切换模型：${runtimeModelLabel}`
+                            : `模型：${runtimeModelLabel}`
+                      }
+                      title={
+                        modelCatalogLoading
+                          ? "正在读取当前 Runtime 的模型列表…"
+                          : modelSwitching
+                            ? `正在切换到模型：${runtimeModelLabel}…`
+                            : runtimeModelLabel !== "未提供模型"
+                              ? modelCommandAvailable
+                                ? `模型：${runtimeModelLabel}；点击切换当前会话模型`
+                                : `模型：${runtimeModelLabel}`
+                              : modelCommandAvailable
+                                ? "选择当前会话模型"
+                                : "远程智能体未提供模型元数据"
+                      }
+                    >
+                      <Bot size={14} aria-hidden="true" />
+                      <span className="runtime-toolbar-label">模型</span>
+                      <span
+                        className="chat-model-name"
+                        title={runtimeModelLabel}
+                      >
+                        {runtimeModelLabel}
+                      </span>
+                    </button>
+                    {thinkingCommandAvailable ? (
+                      <button
+                        className="chat-model-trigger runtime-chat-model-trigger"
+                        type="button"
+                        disabled={thinkingControlDisabled}
+                        onClick={() =>
+                          void executeRuntimeSlashCommand("/thinking")
+                        }
+                        aria-label={
+                          loading
+                            ? `思考等级：${selectedRuntimeThinkingLevel ? thinkingLevelLabel(selectedRuntimeThinkingLevel) : "自动"}；当前任务执行中，结束后可切换`
+                            : thinkingCatalogLoading
+                              ? "正在读取思考等级"
+                              : thinkingSwitching
+                                ? `正在切换思考等级：${thinkingLevelLabel(selectedRuntimeThinkingLevel)}`
+                                : `思考等级：${selectedRuntimeThinkingLevel ? thinkingLevelLabel(selectedRuntimeThinkingLevel) : "自动"}`
+                        }
+                        title={
+                          loading
+                            ? "当前任务正在执行；思考等级将在任务结束后可切换"
+                            : thinkingCatalogLoading
+                              ? "正在读取当前 Pi 模型支持的思考等级…"
+                              : thinkingSwitching
+                                ? "正在切换当前会话思考等级…"
+                                : `思考等级：由当前 ${runtime.name} 模型决定；点击查看或切换`
+                        }
+                      >
+                        <Brain size={14} aria-hidden="true" />
+                        <span className="runtime-toolbar-label">思考</span>
+                        <span className="chat-model-name">
+                          {selectedRuntimeThinkingLevel
+                            ? thinkingLevelLabel(selectedRuntimeThinkingLevel)
+                            : "自动"}
+                        </span>
+                      </button>
+                    ) : openCodeAutomaticThinking ? (
+                      <span
+                        className="chat-model-trigger runtime-chat-model-trigger runtime-chat-thinking-readonly"
+                        role="status"
+                        aria-label="思考等级：自动；OpenCode ACP 未提供可切换选项"
+                        title="OpenCode ACP 当前未声明可切换的思考等级，思考过程由当前模型自动决定。"
+                      >
+                        <Brain size={14} aria-hidden="true" />
+                        <span className="runtime-toolbar-label">思考</span>
+                        <span className="chat-model-name">自动</span>
+                      </span>
+                    ) : null}
+                    {lastReportedIsolation &&
+                    isolationBadge &&
+                    IsolationBadgeIcon ? (
+                      <span
+                        className="runtime-isolation-badge"
+                        title={lastReportedIsolation.summary}
+                        aria-label={`执行边界：${lastReportedIsolation.level}`}
+                      >
+                        <IsolationBadgeIcon size={13} aria-hidden="true" />
+                        {isolationBadge.label}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}
+                      onClick={() =>
+                        setWebPreviewVisible((visible) => !visible)
+                      }
+                      title={
+                        webPreviewVisible ? "隐藏网页预览" : "显示网页预览"
+                      }
+                      aria-label={
+                        webPreviewVisible ? "隐藏网页预览" : "显示网页预览"
+                      }
+                    >
+                      <Globe size={14} />
+                    </button>
+                  </>
+                }
+              />
+            </div>
           </div>
         }
       >
         <div className="chat-body">
-          <div className="chat-messages" ref={scrollRef}>
+          <div
+            className="chat-messages"
+            ref={scrollRef}
+            onScroll={handleMessageScroll}
+          >
             {collaboration && collaborationDashboardVisible ? (
               <aside
                 className="task-collaboration-dashboard"
@@ -4162,6 +5519,9 @@ export default function RuntimeChat({
                   onApprove={handleNativeApprove}
                   onDeny={handleNativeDeny}
                   onClarifyResolved={handleNativeClarifyResolved}
+                  onBranchFromMessage={(messageId) => {
+                    void branchFromMessage(messageId);
+                  }}
                 />
                 <RuntimeCollaborationProposalCards
                   messages={messages}
@@ -4170,11 +5530,57 @@ export default function RuntimeChat({
                   collaboration={collaboration}
                   onRequestCollaboration={onRequestCollaboration}
                 />
+                {unavailableRuntimeArtifacts.length ? (
+                  <aside
+                    className="runtime-artifact-retry-panel"
+                    aria-label="远程产物重新同步"
+                  >
+                    <strong>部分远程产物暂不可用</strong>
+                    <p>
+                      任务已完成；可单独重新同步下列产物，不会重新执行任务。
+                    </p>
+                    {unavailableRuntimeArtifacts.map((artifact, index) => {
+                      const artifactId = artifact.id!;
+                      const retrying = retryingArtifactIds[artifactId];
+                      return (
+                        <div
+                          className="runtime-artifact-retry-item"
+                          key={artifactId || `${artifact.label}-${index}`}
+                        >
+                          <span>
+                            <b>{artifact.label || "未命名产物"}</b>
+                            <small>
+                              {artifactRetryFeedback[artifactId] ||
+                                artifact.unavailableReason}
+                            </small>
+                          </span>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={retrying}
+                            onClick={() =>
+                              void retryRuntimeArtifact(artifactId)
+                            }
+                            aria-label={`重新同步产物 ${artifact.label || "未命名产物"}`}
+                          >
+                            {retrying ? "正在同步…" : "重新同步"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </aside>
+                ) : null}
               </>
             )}
           </div>
-          {workspace && worktreeVisible && localFileInputs ? (
-            <WorktreePanel folderPath={workspace} />
+          {(workspace || workspaceId) &&
+          worktreeVisible &&
+          (localFileInputs || remoteWorkspaceGatewayRuntime) ? (
+            <WorktreePanel
+              folderPath={workspace || undefined}
+              workspaceId={workspaceId || undefined}
+              folderLabel={workspaceId ? "已关联项目" : undefined}
+            />
           ) : null}
         </div>
       </ConversationWorkspace>

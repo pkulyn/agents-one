@@ -211,7 +211,7 @@ function isSafeRelativePath(input: string): boolean {
         part === "." ||
         part === ".." ||
         part.length > 255 ||
-        /[\u0001-\u001f]/.test(part) ||
+        /[\u0001-\u001f]/.test(part) || // eslint-disable-line no-control-regex -- reject control characters in archive paths
         /[. ]$/.test(part) ||
         WINDOWS_RESERVED_NAME_PATTERN.test(part),
     )
@@ -1975,7 +1975,15 @@ export function recoverInterruptedAgentsOneRestore(
     assertNoSymlinkedPathComponents(targetHome, path);
     const destination = resolveRestoreDestination(targetHome, path);
     if (!existing.has(path.toLowerCase())) {
-      rmSync(destination, { force: true });
+      // The path did not exist before the interrupted restore. It may be a
+      // partially restored file, but it may also have been created by a new
+      // process or user after the crash. Without a journaled post-write
+      // fingerprint, deleting it would destroy data we cannot identify.
+      if (existsSync(destination)) {
+        throw new Error(
+          `恢复中断后出现了无法确认来源的文件：${path}；为保护现有数据，未自动删除。`,
+        );
+      }
       continue;
     }
     assertNoSymlinkedPathComponents(transactionRoot, `snapshot/${path}`);

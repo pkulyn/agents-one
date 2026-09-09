@@ -62,6 +62,46 @@ function text(value: unknown, max = 4096): string | undefined {
   return cleaned || undefined;
 }
 
+/** Keep collaboration evidence portable and prevent local paths reappearing. */
+function relativeArtifactPath(value: unknown): string | undefined {
+  const candidate = text(value, 1_000)?.replace(/\\/g, "/");
+  if (
+    !candidate ||
+    candidate.includes("\0") ||
+    candidate.startsWith("/") ||
+    /^[a-z]:\//i.test(candidate) ||
+    candidate.includes(":") ||
+    candidate.split("/").some((part) => part === "..")
+  ) {
+    return undefined;
+  }
+  return candidate.replace(/^\.\/+/, "") || undefined;
+}
+
+/**
+ * IPC validates a new capability against the main-owned project registry. This
+ * storage layer enforces the durable half of the contract: when an id is
+ * present, a path is never written beside it.
+ */
+function projectReference(value: {
+  projectWorkspaceId?: unknown;
+  projectName?: unknown;
+  projectFolder?: unknown;
+}): Pick<
+  TaskCollaborationRecord,
+  "projectWorkspaceId" | "projectName" | "projectFolder"
+> {
+  const workspaceId = text(value.projectWorkspaceId, 128);
+  if (workspaceId) {
+    return {
+      projectWorkspaceId: workspaceId,
+      projectName: text(value.projectName, 160) || "关联项目",
+    };
+  }
+  const projectFolder = text(value.projectFolder);
+  return projectFolder ? { projectFolder } : {};
+}
+
 function assignments(value: unknown): TaskCollaborationAssignment[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -283,7 +323,7 @@ function artifacts(
     )
       continue;
     seen.add(id);
-    const path = text(raw.path, 1_000);
+    const path = relativeArtifactPath(raw.path);
     const sha256 = text(raw.sha256, 128);
     const sourceMachine = text(raw.sourceMachine, 240);
     const changeSummary = text(raw.changeSummary, 8_000);
@@ -489,7 +529,7 @@ function normalize(value: unknown): TaskCollaborationRecord | null {
     typeof record.createdAt === "number" ? record.createdAt : Date.now();
   const updatedAt =
     typeof record.updatedAt === "number" ? record.updatedAt : createdAt;
-  const projectFolder = text(record.projectFolder);
+  const project = projectReference(record);
   const sourceRuntimeId = text(record.sourceRuntimeId, 160);
   const conversationId = text(record.conversationId, 200);
   const sourceSessionId = text(record.sourceSessionId, 200);
@@ -508,7 +548,7 @@ function normalize(value: unknown): TaskCollaborationRecord | null {
   return {
     taskId,
     title,
-    ...(projectFolder ? { projectFolder } : {}),
+    ...project,
     ...(sourceRuntimeId ? { sourceRuntimeId } : {}),
     assignments: normalizedAssignments,
     status,
@@ -564,7 +604,13 @@ export function saveTaskCollaboration(
   const now = Date.now();
   const store = readStore(profile);
   const previous = store.records.find((item) => item.taskId === taskId);
-  const projectFolder = text(input.projectFolder);
+  const project = projectReference(input);
+  // Saving a legacy record without a new project selection must not erase its
+  // existing read-only binding. Once a valid capability is selected, discard
+  // the old path rather than keeping two competing authorities.
+  const preservedProject = project.projectWorkspaceId || project.projectFolder
+    ? project
+    : projectReference(previous || {});
   const sourceRuntimeId = text(input.sourceRuntimeId, 160);
   const status =
     input.status && STATUSES.has(input.status)
@@ -585,7 +631,7 @@ export function saveTaskCollaboration(
   const next: TaskCollaborationRecord = {
     taskId,
     title,
-    ...(projectFolder ? { projectFolder } : {}),
+    ...preservedProject,
     ...(sourceRuntimeId ? { sourceRuntimeId } : {}),
     assignments: nextAssignments,
     status,

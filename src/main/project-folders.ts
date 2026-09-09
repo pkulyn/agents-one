@@ -1,14 +1,19 @@
 import { existsSync, readFileSync } from "fs";
 import { basename, join, normalize } from "path";
+import { createHash } from "crypto";
 import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
-import type { ProjectFolderRecord, UpdateProjectFolderInput } from "../shared/project-folders";
+import type {
+  ProjectFolderRecord,
+  ProjectWorkspaceCapability,
+  UpdateProjectFolderInput,
+} from "../shared/project-folders";
 
 interface ProjectFolderStore {
   version: number;
   folders: ProjectFolderRecord[];
 }
 
-const STORE_VERSION = 1;
+const STORE_VERSION = 2;
 const MAX_FOLDERS = 100;
 
 function storePath(): string {
@@ -27,6 +32,14 @@ function folderName(path: string): string {
   return basename(path) || path;
 }
 
+/** Deterministic so old records gain an id without a risky write-on-read migration. */
+export function projectFolderIdForPath(path: string): string {
+  return `project-${createHash("sha256")
+    .update(process.platform === "win32" ? path.toLowerCase() : path)
+    .digest("hex")
+    .slice(0, 24)}`;
+}
+
 function isRecord(value: unknown): value is ProjectFolderRecord {
   if (!value || typeof value !== "object") return false;
   const record = value as ProjectFolderRecord;
@@ -36,7 +49,8 @@ function isRecord(value: unknown): value is ProjectFolderRecord {
     typeof record.name === "string" &&
     (record.pinned === undefined || typeof record.pinned === "boolean") &&
     typeof record.createdAt === "number" &&
-    typeof record.updatedAt === "number"
+    typeof record.updatedAt === "number" &&
+    (record.id === undefined || typeof record.id === "string")
   );
 }
 
@@ -50,7 +64,13 @@ function readStore(): ProjectFolderStore {
       Array.isArray((parsed as ProjectFolderStore).folders)
         ? (parsed as ProjectFolderStore).folders.filter(isRecord)
         : [];
-    return { version: STORE_VERSION, folders };
+    return {
+      version: STORE_VERSION,
+      folders: folders.map((folder) => ({
+        ...folder,
+        id: folder.id || projectFolderIdForPath(folder.path),
+      })),
+    };
   } catch {
     return { version: STORE_VERSION, folders: [] };
   }
@@ -70,6 +90,31 @@ export function listProjectFolders(): ProjectFolderRecord[] {
   return readStore().folders.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+/** Return project metadata that is safe to expose outside the main process. */
+export function listProjectWorkspaceCapabilities(): ProjectWorkspaceCapability[] {
+  return listProjectFolders().flatMap((folder) => {
+    const id = folder.id || projectFolderIdForPath(folder.path);
+    return [{
+      id,
+      name: folder.name,
+      ...(folder.pinned ? { pinned: true } : {}),
+      updatedAt: folder.updatedAt,
+    }];
+  });
+}
+
+export function projectWorkspaceCapability(
+  folder: ProjectFolderRecord | null,
+): ProjectWorkspaceCapability | null {
+  if (!folder) return null;
+  return {
+    id: folder.id || projectFolderIdForPath(folder.path),
+    name: folder.name,
+    ...(folder.pinned ? { pinned: true } : {}),
+    updatedAt: folder.updatedAt,
+  };
+}
+
 export function registerProjectFolder(path: string): ProjectFolderRecord | null {
   const normalized = cleanPath(path);
   if (!normalized) return null;
@@ -77,8 +122,13 @@ export function registerProjectFolder(path: string): ProjectFolderRecord | null 
   const store = readStore();
   const existing = store.folders.find((folder) => folder.path === normalized);
   const nextRecord: ProjectFolderRecord = existing
-    ? { ...existing, updatedAt: now }
+    ? {
+        ...existing,
+        id: existing.id || projectFolderIdForPath(normalized),
+        updatedAt: now,
+      }
     : {
+        id: projectFolderIdForPath(normalized),
         path: normalized,
         name: folderName(normalized),
         createdAt: now,
@@ -94,7 +144,9 @@ export function registerProjectFolder(path: string): ProjectFolderRecord | null 
 export function updateProjectFolder(
   input: UpdateProjectFolderInput,
 ): ProjectFolderRecord | null {
-  const normalized = cleanPath(input.path);
+  const normalized = cleanPath(
+    input.id ? resolveProjectFolderPath(input.id) || input.path : input.path,
+  );
   if (!normalized) return null;
   const store = readStore();
   const existing = store.folders.find((folder) => folder.path === normalized);
@@ -102,6 +154,7 @@ export function updateProjectFolder(
   const requestedName =
     typeof input.name === "string" ? input.name.trim().slice(0, 120) : "";
   const next: ProjectFolderRecord = {
+    id: existing?.id || projectFolderIdForPath(normalized),
     path: normalized,
     name: requestedName || existing?.name || folderName(normalized),
     ...(typeof input.pinned === "boolean"
@@ -116,6 +169,13 @@ export function updateProjectFolder(
   return next;
 }
 
+/** Resolve an opaque project id entirely in the main process. */
+export function resolveProjectFolderPath(id: string): string | null {
+  if (typeof id !== "string" || !id.trim()) return null;
+  const folder = readStore().folders.find((item) => item.id === id.trim());
+  return folder?.path || null;
+}
+
 /** Removes only the sidebar registration. Project files are never deleted. */
 export function removeProjectFolder(path: string): boolean {
   const normalized = cleanPath(path);
@@ -125,4 +185,10 @@ export function removeProjectFolder(path: string): boolean {
   if (next.length === current.length) return false;
   writeStore(next);
   return true;
+}
+
+/** Removes a registered project by opaque id, never exposing its path. */
+export function removeProjectWorkspace(id: string): boolean {
+  const path = resolveProjectFolderPath(id);
+  return path ? removeProjectFolder(path) : false;
 }

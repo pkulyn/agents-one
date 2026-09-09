@@ -6,6 +6,8 @@ import { useI18n } from "../../components/useI18n";
 
 interface FileViewerProps {
   filePath: string;
+  /** Opaque registered-project capability. When present filePath is relative. */
+  workspaceId?: string;
   onClose: () => void;
 }
 
@@ -163,6 +165,7 @@ function isBinaryFile(filename: string): boolean {
 
 export const FileViewer = memo(function FileViewer({
   filePath,
+  workspaceId,
   onClose,
 }: FileViewerProps): React.JSX.Element {
   const { t } = useI18n();
@@ -184,7 +187,9 @@ export const FileViewer = memo(function FileViewer({
     const loadFile = async (): Promise<void> => {
       // If image file, load as data URL
       if (isImageFile(filePath)) {
-        const imageData = await window.hermesAPI.readImageFile(filePath);
+        const imageData = workspaceId
+          ? await window.agentsOneAPI.readWorkspaceImage(workspaceId, filePath)
+          : await window.agentsOneAPI.readImageFile(filePath);
         if (cancelled) return;
         if (imageData === null) {
           setError(t("worktree.errorLoading"));
@@ -196,7 +201,9 @@ export const FileViewer = memo(function FileViewer({
       }
 
       // Otherwise load as text
-      const result = await window.hermesAPI.readFile(filePath, 102400);
+      const result = workspaceId
+        ? await window.agentsOneAPI.readWorkspaceFile(workspaceId, filePath, 102400)
+        : await window.agentsOneAPI.readFile(filePath, 102400);
       if (cancelled) return;
       if (result === null) {
         setError(t("worktree.errorLoading"));
@@ -211,7 +218,7 @@ export const FileViewer = memo(function FileViewer({
     return () => {
       cancelled = true;
     };
-  }, [filePath, t]);
+  }, [filePath, t, workspaceId]);
 
   // Apply syntax highlighting after content loads
   useEffect(() => {
@@ -256,7 +263,11 @@ export const FileViewer = memo(function FileViewer({
           <div className="file-viewer-actions">
             <button
               className="btn-ghost file-viewer-open"
-              onClick={() => window.hermesAPI.openFileInEditor(filePath)}
+              onClick={() =>
+                workspaceId
+                  ? window.agentsOneAPI.openWorkspaceFile(workspaceId, filePath)
+                  : window.agentsOneAPI.openFileInEditor(filePath)
+              }
               title={t("worktree.openInEditor")}
             >
               <ExternalLink size={14} />
