@@ -3,6 +3,11 @@ productName: Agents One
 directories:
   buildResources: build
 files:
+  # `out/` is ignored by Git, but it is the actual electron-vite runtime
+  # entrypoint and must be explicitly included in local/CI packages. Without
+  # this rule electron-builder can produce an Electron shell containing only
+  # `default_app.asar`, which silently runs stale or empty application code.
+  - out/**
   - "!**/.vscode/*"
   - "!src/*"
   - "!electron.vite.config.{js,ts,mjs,cjs}"
@@ -53,7 +58,7 @@ linux:
     - deb
     - rpm
   maintainer: electronjs.org
-  vendor: Nous Research
+  vendor: Agents One
   category: Utility
   synopsis: Self-improving AI assistant desktop app
   description: >-

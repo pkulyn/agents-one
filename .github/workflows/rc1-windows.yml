@@ -1,0 +1,80 @@
+name: RC1 Windows Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to validate"
+        required: true
+        default: "agents-one-slim-task-dialog"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc1-windows-${{ inputs.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Windows RC1 gates
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies and native modules
+        run: npm ci
+
+      - name: Verify Electron runtime
+        shell: pwsh
+        run: |
+          $electron = Get-Content node_modules/electron/package.json -Raw | ConvertFrom-Json
+          if ($electron.version -ne "43.4.1") { throw "Unexpected Electron version: $($electron.version)" }
+          if (-not (Test-Path node_modules/electron/dist/electron.exe)) { throw "Electron binary is missing" }
+          if (-not (Test-Path node_modules/better-sqlite3/build/Release/better_sqlite3.node)) { throw "better-sqlite3 native binary is missing" }
+          node_modules/.bin/electron.cmd --version
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint source and tests
+        run: npx eslint --no-cache --quiet src tests
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Full test suite (three consecutive runs)
+        shell: pwsh
+        run: |
+          1..3 | ForEach-Object {
+            Write-Host "=== Vitest run $_ of 3 ==="
+            npm test
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Production build
+        run: npm run build
+
+      - name: Windows package build
+        run: npm run build:win
+
+      - name: Upload Windows RC1 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agents-one-rc1-windows-${{ github.run_number }}
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml

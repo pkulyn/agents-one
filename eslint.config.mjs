@@ -11,6 +11,14 @@ export default defineConfig(
       "**/node_modules",
       "**/dist",
       "**/out",
+      "**/release",
+      "**/.cache/**",
+      "**/.sandbox/**",
+      "**/.agents-one/**",
+      "**/.agents-one-node_modules-interrupted-*/**",
+      "**/node_modules.upstream-junction-backup-*/**",
+      "**/.belt/**",
+      "**/tmp/**",
       ".claude/**",
       ".agents/**",
       "build/**",
@@ -59,6 +67,15 @@ export default defineConfig(
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+    },
+  },
+  {
+    // The remote Host, Connector, and Connect service are portable Node.js
+    // runtime packages. They intentionally use plain ESM JavaScript so the
+    // same artifacts can run outside the Electron TypeScript build.
+    files: ["**/*.mjs"],
+    rules: {
+      "@typescript-eslint/explicit-function-return-type": "off",
     },
   },
   {
