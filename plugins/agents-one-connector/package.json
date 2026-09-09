@@ -1,0 +1,19 @@
+{
+  "name": "@agents-one/connector-cli",
+  "version": "0.1.0",
+  "description": "Agents One Connector CLI for remote agent runtimes",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "agents-one-connector": "./bin/agents-one-connector.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

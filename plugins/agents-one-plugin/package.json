@@ -7,6 +7,8 @@
   "exports": {
     "./event-stream": "./src/event-stream.mjs",
     "./gateway": "./src/remote-gateway-plugin.mjs",
+    "./host": "./src/remote-cli-host.mjs",
+    "./opencode": "./src/adapters/opencode-acp.mjs",
     "./cli": "./src/cli-adapter-plugin.mjs",
     "./hermes": "./examples/hermes-or-hers-adapter.mjs"
   },

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
 import { Readable } from "node:stream";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { EventJournal, eventStreamCapability } from "../src/event-stream.mjs";
 import {
@@ -8,6 +11,8 @@ import {
 } from "../src/remote-gateway-plugin.mjs";
 import { createCliAdapter } from "../src/cli-adapter-plugin.mjs";
 import { createAgentsOneArtifactTool } from "../examples/hermes-or-hers-adapter.mjs";
+import { createRemoteCliHost } from "../src/remote-cli-host.mjs";
+import { createOpenCodeAcpAdapter } from "../src/adapters/opencode-acp.mjs";
 
 test("event journal redacts local paths and deduplicates stable provider IDs", () => {
   const journal = new EventJournal({ runId: "run_test" });
@@ -29,6 +34,21 @@ test("event journal redacts local paths and deduplicates stable provider IDs", (
   });
   assert.equal(journal.snapshot().length, 1);
   assert.match(journal.snapshot()[0].data.tool.outputSummary, /已脱敏/);
+});
+
+test("event journal keeps provider sequence monotonic after a restart or stale frame", () => {
+  const journal = new EventJournal({ runId: "run_sequence" });
+  journal.append({ id: "evt_10", type: "run.started", sequence: 10 });
+  journal.append({ id: "evt_2", type: "run.status", sequence: 2 });
+  journal.append({
+    id: "evt_auto",
+    type: "assistant.completed",
+    data: { text: "ok" },
+  });
+  assert.deepEqual(
+    journal.snapshot().map((event) => event.sequence),
+    [10, 11, 12],
+  );
 });
 
 test("event journal preserves safe artifact MIME and size metadata", () => {
@@ -190,6 +210,209 @@ test("remote gateway plugin exposes a v1 run with event snapshots", async () => 
     toolEvents: true,
   });
   await plugin.close();
+});
+
+test("remote gateway makes POST /runs idempotent and rejects conflicting reuse", async () => {
+  let starts = 0;
+  const plugin = createRemoteGatewayPlugin({
+    agent: { id: "fixture", kind: "custom" },
+    token: "test-token",
+    adapter: {
+      async startRun() {
+        starts += 1;
+        return { status: "running", vendorRunId: `vendor_${starts}` };
+      },
+    },
+  });
+  await plugin.listen(0);
+  const port = plugin.server.address().port;
+  const headers = {
+    authorization: "Bearer test-token",
+    "content-type": "application/json",
+    "idempotency-key": "desktop-run-1",
+  };
+  const body = JSON.stringify({ input: { text: "same" } });
+  const first = await fetch(`http://127.0.0.1:${port}/runs`, {
+    method: "POST",
+    headers,
+    body,
+  });
+  const firstRun = await first.json();
+  const retry = await fetch(`http://127.0.0.1:${port}/runs`, {
+    method: "POST",
+    headers,
+    body,
+  });
+  const retryRun = await retry.json();
+  assert.equal(first.status, 202);
+  assert.equal(retry.status, 202);
+  assert.equal(retryRun.id, firstRun.id);
+  assert.equal(starts, 1);
+
+  const conflict = await fetch(`http://127.0.0.1:${port}/runs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ input: { text: "different" } }),
+  });
+  assert.equal(conflict.status, 409);
+  assert.equal((await conflict.json()).error.code, "idempotency_conflict");
+  await plugin.close();
+});
+
+test("Remote CLI Host state reopens unfinished Runs as explicit reconciliation failures", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "agents-one-host-state-"));
+  const statePath = join(directory, "host-state.json");
+  const first = createRemoteCliHost({
+    token: "test-token",
+    statePath,
+    runtimes: [
+      {
+        runtimeId: "opencode-state",
+        displayName: "OpenCode",
+        adapter: {
+          async startRun() {
+            return { status: "running", vendorRunId: "vendor_state" };
+          },
+        },
+      },
+    ],
+  });
+  await first.listen(0);
+  const firstPort = first.server.address().port;
+  const headers = {
+    authorization: "Bearer test-token",
+    "content-type": "application/json",
+  };
+  const created = await fetch(`http://127.0.0.1:${firstPort}/runs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      runtimeId: "opencode-state",
+      input: { text: "hello" },
+    }),
+  });
+  const createdRun = await created.json();
+  await first.close();
+
+  const second = createRemoteCliHost({
+    token: "test-token",
+    statePath,
+    runtimes: [
+      {
+        runtimeId: "opencode-state",
+        displayName: "OpenCode",
+        adapter: {
+          async startRun() {
+            return { status: "running" };
+          },
+        },
+      },
+    ],
+  });
+  await second.listen(0);
+  const recovered = await fetch(
+    `http://127.0.0.1:${second.server.address().port}/runs/${createdRun.id}`,
+    { headers },
+  );
+  const recoveredRun = await recovered.json();
+  assert.equal(recoveredRun.status, "failed");
+  assert.match(
+    recoveredRun.error.message,
+    /host_restart_reconciliation_required/,
+  );
+  assert.equal(
+    recoveredRun.events.at(-1).data.code,
+    "host_restart_reconciliation_required",
+  );
+  await second.close();
+});
+
+test("Remote CLI Host reconciles a persisted Run through the Runtime adapter and keeps sequence", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "agents-one-host-reconcile-"));
+  const statePath = join(directory, "host-state.json");
+  const first = createRemoteCliHost({
+    token: "test-token",
+    statePath,
+    runtimes: [
+      {
+        runtimeId: "opencode-reconcile",
+        displayName: "OpenCode",
+        adapter: {
+          async startRun() {
+            return { status: "running", vendorRunId: "vendor_reconcile" };
+          },
+        },
+      },
+    ],
+  });
+  await first.listen(0);
+  const firstPort = first.server.address().port;
+  const headers = {
+    authorization: "Bearer test-token",
+    "content-type": "application/json",
+  };
+  const created = await fetch(`http://127.0.0.1:${firstPort}/runs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      runtimeId: "opencode-reconcile",
+      input: { text: "hello" },
+    }),
+  });
+  const createdRun = await created.json();
+  await first.close();
+
+  const second = createRemoteCliHost({
+    token: "test-token",
+    statePath,
+    runtimes: [
+      {
+        runtimeId: "opencode-reconcile",
+        displayName: "OpenCode",
+        adapter: {
+          async startRun() {
+            return { status: "running" };
+          },
+          async reconcileRun(vendorRunId, record) {
+            assert.equal(vendorRunId, "vendor_reconcile");
+            assert.equal(record.runtimeId, "opencode-reconcile");
+            return {
+              status: "succeeded",
+              sessionId: "session-reconciled",
+              output: "reconciled",
+              events: [
+                {
+                  id: "provider-reconciled",
+                  type: "assistant.completed",
+                  data: { text: "reconciled" },
+                },
+              ],
+            };
+          },
+        },
+      },
+    ],
+  });
+  await second.listen(0);
+  const recovered = await fetch(
+    `http://127.0.0.1:${second.server.address().port}/runs/${createdRun.id}`,
+    { headers },
+  );
+  const recoveredRun = await recovered.json();
+  assert.equal(recoveredRun.status, "succeeded");
+  assert.equal(recoveredRun.sessionId, "session-reconciled");
+  assert.equal(recoveredRun.output, "reconciled");
+  assert.deepEqual(
+    recoveredRun.events.map((event) => event.sequence),
+    [1, 2, 3],
+  );
+  assert.equal(
+    recoveredRun.events.some(
+      (event) => event.data?.code === "host_restart_reconciliation_required",
+    ),
+    false,
+  );
+  await second.close();
 });
 
 test("remote gateway appends provider events before terminal status events", async () => {
@@ -449,6 +672,63 @@ test("remote adapters can publish output artifacts without a separate artifact s
   await plugin.close();
 });
 
+test("Remote Gateway persists published Artifact bytes across Host restart", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "agents-one-host-artifacts-"));
+  const statePath = join(directory, "host-state.json");
+  const bytes = Buffer.from("durable artifact");
+  const first = createRemoteGatewayPlugin({
+    agent: { id: "fixture", kind: "custom" },
+    token: "test-token",
+    statePath,
+    adapter: {
+      async startRun(_input, { publishArtifact }) {
+        await publishArtifact({
+          id: "artifact_durable",
+          name: "durable.txt",
+          mime: "text/plain",
+          bytes,
+        });
+        return { status: "succeeded" };
+      },
+    },
+  });
+  await first.listen(0);
+  const firstPort = first.server.address().port;
+  const headers = {
+    authorization: "Bearer test-token",
+    "content-type": "application/json",
+  };
+  const created = await fetch(`http://127.0.0.1:${firstPort}/runs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ input: { text: "make artifact" } }),
+  });
+  assert.equal(created.status, 202);
+  await first.close();
+
+  const second = createRemoteGatewayPlugin({
+    agent: { id: "fixture", kind: "custom" },
+    token: "test-token",
+    statePath,
+    adapter: {
+      async startRun() {
+        return { status: "succeeded" };
+      },
+    },
+  });
+  await second.listen(0);
+  const downloaded = await fetch(
+    `http://127.0.0.1:${second.server.address().port}/artifacts/artifact_durable`,
+    { headers: { authorization: "Bearer test-token" } },
+  );
+  assert.equal(downloaded.status, 200);
+  assert.equal(
+    (await downloaded.json()).contentBase64,
+    bytes.toString("base64"),
+  );
+  await second.close();
+});
+
 test("Hermes connector artifact tool reads only through the connector callback", async () => {
   let readCount = 0;
   let published;
@@ -475,8 +755,7 @@ test("Hermes connector artifact tool reads only through the connector callback",
 });
 
 test("CLI adapter preserves JSONL records split across stream chunks", async () => {
-  const program =
-    'process.stdout.write("{\\\"type\\\":\\\"assistant.completed\\\",\\\"data\\\":{\\\"text\\\":\\\"完"); setTimeout(() => process.stdout.write("成。\\\"}}\\n"), 5);';
+  const program = String.raw`process.stdout.write('{"type":"assistant.completed","data":{"text":"完'); setTimeout(() => process.stdout.write('成。"}}\n'), 5);`;
   const adapter = createCliAdapter({
     command: process.execPath,
     args: ["-e", program],
@@ -489,4 +768,339 @@ test("CLI adapter preserves JSONL records split across stream chunks", async () 
       .length,
     1,
   );
+});
+
+test("Remote CLI Host routes multiple Runtime IDs through one Gateway", async () => {
+  const calls = [];
+  const adapter = (name) => ({
+    async startRun(input, { emit }) {
+      calls.push([name, input.runtimeId]);
+      emit({ type: "assistant.completed", data: { text: name } });
+      return { status: "succeeded" };
+    },
+  });
+  const host = createRemoteCliHost({
+    token: "host-token",
+    runtimes: [
+      {
+        runtimeId: "opencode-main",
+        displayName: "OpenCode",
+        kind: "opencode",
+        adapter: adapter("open"),
+      },
+      {
+        runtimeId: "pi-main",
+        displayName: "Pi",
+        kind: "pi",
+        adapter: adapter("pi"),
+      },
+    ],
+  });
+  await host.listen(0);
+  const port = host.server.address().port;
+  const headers = {
+    authorization: "Bearer host-token",
+    "content-type": "application/json",
+  };
+  const create = async (runtimeId) =>
+    fetch(`http://127.0.0.1:${port}/runs`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ runtimeId, input: { text: "hello" } }),
+    });
+  const first = await (await create("opencode-main")).json();
+  const second = await (await create("pi-main")).json();
+  assert.equal(first.runtimeId, "opencode-main");
+  assert.equal(second.runtimeId, "pi-main");
+  assert.deepEqual(calls, [
+    ["open", "opencode-main"],
+    ["pi", "pi-main"],
+  ]);
+  const capabilities = await (
+    await fetch(`http://127.0.0.1:${port}/capabilities`, { headers })
+  ).json();
+  assert.deepEqual(
+    capabilities.runtimes.map((item) => item.runtimeId),
+    ["opencode-main", "pi-main"],
+  );
+  await host.close();
+});
+
+test("Remote CLI Host enforces Adapter trust and per-Runtime concurrency", async () => {
+  const adapter = {
+    manifest: { adapterId: "opencode-acp", version: "0.1.2" },
+    async startRun() {
+      return { status: "running", vendorRunId: "vendor_limit" };
+    },
+  };
+  assert.throws(
+    () =>
+      createRemoteCliHost({
+        token: "host-token",
+        trustedAdapterIds: ["pi-rpc"],
+        requireAdapterManifest: true,
+        runtimes: [
+          {
+            runtimeId: "opencode-trust",
+            displayName: "OpenCode",
+            adapter,
+          },
+        ],
+      }),
+    /not trusted or registered/,
+  );
+  assert.throws(
+    () =>
+      createRemoteCliHost({
+        token: "host-token",
+        runtimes: [
+          {
+            runtimeId: "opencode-trust",
+            displayName: "OpenCode",
+            adapterId: "pi-rpc",
+            adapter,
+          },
+        ],
+      }),
+    /does not match its manifest/,
+  );
+
+  const host = createRemoteCliHost({
+    token: "host-token",
+    trustedAdapterIds: ["opencode-acp"],
+    requireAdapterManifest: true,
+    runtimes: [
+      {
+        runtimeId: "opencode-limit",
+        displayName: "OpenCode",
+        limits: { maxConcurrentRuns: 1 },
+        adapter,
+      },
+    ],
+  });
+  await host.listen(0);
+  const port = host.server.address().port;
+  const headers = {
+    authorization: "Bearer host-token",
+    "content-type": "application/json",
+  };
+  const body = JSON.stringify({
+    runtimeId: "opencode-limit",
+    input: { text: "hello" },
+  });
+  const first = await fetch(`http://127.0.0.1:${port}/runs`, {
+    method: "POST",
+    headers,
+    body,
+  });
+  const second = await fetch(`http://127.0.0.1:${port}/runs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      runtimeId: "opencode-limit",
+      input: { text: "second" },
+    }),
+  });
+  assert.equal(first.status, 202);
+  assert.equal(second.status, 429);
+  assert.equal((await second.json()).error.code, "run_limit_reached");
+  await host.close();
+});
+
+test("Remote CLI Host routes Artifact requests by Runtime ID", async () => {
+  const calls = [];
+  const adapter = (name) => ({
+    async startRun() {
+      return { status: "succeeded" };
+    },
+    async uploadArtifact(input, context) {
+      calls.push(["upload", name, context.runtimeId, input.name]);
+      return {
+        id: `artifact_${name}`,
+        name: input.name,
+        mime: input.mime,
+        size: input.size,
+        sha256: "a".repeat(64),
+      };
+    },
+    async getArtifact(id, context) {
+      calls.push(["download", name, context.runtimeId, id]);
+      return {
+        id,
+        name: `${name}.txt`,
+        mime: "text/plain",
+        size: 1,
+        sha256: "a".repeat(64),
+        contentBase64: Buffer.from(name).toString("base64"),
+      };
+    },
+  });
+  const host = createRemoteCliHost({
+    token: "host-token",
+    runtimes: [
+      {
+        runtimeId: "opencode-main",
+        displayName: "OpenCode",
+        adapter: adapter("open"),
+      },
+      {
+        runtimeId: "pi-main",
+        displayName: "Pi",
+        adapter: adapter("pi"),
+      },
+    ],
+  });
+  await host.listen(0);
+  const port = host.server.address().port;
+  const headers = {
+    authorization: "Bearer host-token",
+    "content-type": "application/json",
+  };
+  const upload = await fetch(`http://127.0.0.1:${port}/artifacts`, {
+    method: "POST",
+    headers: { ...headers, "x-agents-one-runtime-id": "pi-main" },
+    body: JSON.stringify({
+      name: "input.txt",
+      mime: "text/plain",
+      contentBase64: Buffer.from("hello").toString("base64"),
+    }),
+  });
+  assert.equal(upload.status, 201);
+  const download = await fetch(
+    `http://127.0.0.1:${port}/artifacts/artifact_open`,
+    {
+      headers: {
+        authorization: "Bearer host-token",
+        "x-agents-one-runtime-id": "opencode-main",
+      },
+    },
+  );
+  assert.equal(download.status, 200);
+  assert.deepEqual(calls, [
+    ["upload", "pi", "pi-main", "input.txt"],
+    ["download", "open", "opencode-main", "artifact_open"],
+  ]);
+  await host.close();
+});
+
+test("OpenCode ACP Remote Adapter keeps answer, thought, tool, model and artifacts separate", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "agents-one-remote-opencode-"));
+  const program = [
+    "const fs=require('node:fs');",
+    "const rl=require('node:readline').createInterface({input:process.stdin});",
+    "const send=(v)=>process.stdout.write(JSON.stringify(v)+'\\n');",
+    "rl.on('line',(line)=>{const m=JSON.parse(line);",
+    "if(m.method==='initialize')send({id:m.id,result:{protocolVersion:1,agentInfo:{name:'OpenCode',version:'remote-test'},agentCapabilities:{sessionCapabilities:{resume:true}},configOptions:[{id:'model',category:'model',currentValue:{provider:'deepseek',id:'deepseek-v4-flash'}}]}});",
+    "else if(m.method==='session/new'||m.method==='session/resume')send({id:m.id,result:{sessionId:'remote-session'}});",
+    "else if(m.method==='session/prompt'){fs.writeFileSync(process.cwd()+'/remote-output.txt','remote artifact');",
+    "send({method:'session/update',params:{sessionId:'remote-session',update:{sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'内部摘要'}}}});",
+    "send({method:'session/update',params:{sessionId:'remote-session',update:{sessionUpdate:'tool_call',toolCallId:'call-1',title:'read',kind:'read',rawInput:{path:'README.md'}}}});",
+    "send({method:'session/update',params:{sessionId:'remote-session',update:{sessionUpdate:'tool_call_update',toolCallId:'call-1',title:'read',status:'completed',content:[{type:'text',text:'ok'}]}}});",
+    "send({method:'session/update',params:{sessionId:'remote-session',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'远程答复'}}}});",
+    "send({id:m.id,result:{stopReason:'end_turn',usage:{inputTokens:3,outputTokens:2}}});}});",
+  ].join("");
+  const adapter = createOpenCodeAcpAdapter({
+    executablePath: process.execPath,
+    acpArgs: ["-e", program],
+    workspaceRoot: workspace,
+  });
+  const probe = await adapter.probe();
+  assert.equal(probe.healthy, true);
+  assert.equal(probe.protocolVersion, 1);
+  assert.equal(probe.manifest.runtimeVersion, "remote-test");
+  const host = createRemoteCliHost({
+    token: "host-token",
+    runtimes: [
+      {
+        runtimeId: "opencode-remote",
+        displayName: "OpenCode Remote",
+        kind: "opencode",
+        adapter,
+      },
+    ],
+  });
+  await host.listen(0);
+  const port = host.server.address().port;
+  const headers = {
+    authorization: "Bearer host-token",
+    "content-type": "application/json",
+  };
+  const response = await fetch(`http://127.0.0.1:${port}/runs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      runtimeId: "opencode-remote",
+      mode: "safe_write",
+      input: { text: "hello" },
+    }),
+  });
+  const created = await response.json();
+  let run = created;
+  for (
+    let attempt = 0;
+    attempt < 30 && run.status === "running";
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    run = await (
+      await fetch(`http://127.0.0.1:${port}/runs/${created.id}`, { headers })
+    ).json();
+  }
+  assert.equal(run.status, "succeeded");
+  assert.equal(run.output, "远程答复");
+  assert.equal(run.sessionId, "remote-session");
+  assert.deepEqual(run.model, {
+    provider: "deepseek",
+    id: "deepseek-v4-flash",
+  });
+  assert.deepEqual(run.usage, { inputTokens: 3, outputTokens: 2 });
+  assert.equal(
+    run.events.some(
+      (event) =>
+        event.type === "reasoning.summary" &&
+        event.data.reasoningSummary === "内部摘要",
+    ),
+    true,
+  );
+  assert.equal(
+    run.events.some(
+      (event) =>
+        event.type === "assistant.completed" && event.data.text === "远程答复",
+    ),
+    true,
+  );
+  assert.equal(
+    run.events.some((event) => event.type === "tool.completed"),
+    true,
+  );
+  assert.equal(
+    run.artifacts.some((artifact) => artifact.name === "remote-output.txt"),
+    true,
+  );
+
+  const continuedResponse = await fetch(`http://127.0.0.1:${port}/runs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      runtimeId: "opencode-remote",
+      conversationId: run.sessionId,
+      mode: "conversation",
+      input: { text: "continue" },
+    }),
+  });
+  const continued = await continuedResponse.json();
+  let continuedRun = continued;
+  for (
+    let attempt = 0;
+    attempt < 30 && continuedRun.status === "running";
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    continuedRun = await (
+      await fetch(`http://127.0.0.1:${port}/runs/${continued.id}`, { headers })
+    ).json();
+  }
+  assert.equal(continuedRun.status, "succeeded");
+  assert.equal(continuedRun.sessionId, "remote-session");
+  await host.close();
 });

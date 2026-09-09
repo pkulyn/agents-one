@@ -4,10 +4,11 @@
 
 ## 两类插件
 
-| 场景                              | 使用组件  | 安装位置                |
-| --------------------------------- | --------- | ----------------------- |
-| Hermes、OpenClaw、其他远程 Agent  | `gateway` | 远程 Agent/Relay 服务器 |
-| Codex、Claude Code、Pi 等本地 CLI | `cli`     | 运行 CLI 的本机         |
+| 场景                                        | 使用组件            | 安装位置                |
+| ------------------------------------------- | ------------------- | ----------------------- |
+| Hermes、OpenClaw、其他远程 Agent            | `gateway`           | 远程 Agent/Relay 服务器 |
+| Codex、Claude Code、Pi 等本地 CLI           | `cli`               | 运行 CLI 的本机         |
+| 多个远程 CLI Runtime（首个为 OpenCode ACP） | `host` + `opencode` | 远程 CLI 主机           |
 
 远程 Agent 对 Agents One 只暴露一个 Gateway 地址和一个 Token。CLI Adapter 不使用 Gateway Token，也不会通过远程服务转发本地命令。
 
@@ -15,8 +16,8 @@
 
 ```powershell
 cd plugins/agents-one-plugin
-D:\efunds\nodejs\node.exe ./bin/verify.mjs
-D:\efunds\nodejs\node.exe --test ./test/*.test.mjs
+node ./bin/verify.mjs
+node --test ./test/*.test.mjs
 ```
 
 ## 安装与升级
@@ -24,10 +25,10 @@ D:\efunds\nodejs\node.exe --test ./test/*.test.mjs
 预览阶段可直接从仓库安装或打包为 tarball：
 
 ```powershell
-cd D:\Agent Console\Agents-One\plugins\agents-one-plugin
-D:\efunds\nodejs\npm.cmd pack
+cd <repo>\plugins\agents-one-plugin
+npm.cmd pack
 # 在远程 Relay 或本地 CLI 的插件目录执行：
-D:\efunds\nodejs\npm.cmd install .\agents-one-plugin-sdk-0.1.2.tgz
+npm.cmd install .\agents-one-plugin-sdk-0.1.2.tgz
 ```
 
 `agents-one-plugin.manifest.json` 声明该包支持的协议与安全约束。升级插件后应重新执行 `agents-one-plugin-verify`、插件自身回归和目标智能体的真实对话/工具/工作区验收；只有破坏性协议变更才升级到 v2。
@@ -98,6 +99,45 @@ await plugin.listen(8787, "127.0.0.1");
 可从 `@agents-one/plugin-sdk/hermes` 导入 `createAgentsOneArtifactTool({ publishArtifact, readOutput })` 生成通用工具定义；`readOutput(path)` 必须由 Connector 实现，并拒绝本次运行受控输出目录之外的路径。
 
 使用反向代理或出站 Relay 将该服务安全暴露为 Gateway v1 地址。不要将 `AGENTS_ONE_GATEWAY_TOKEN` 写入项目文件或 Agent 提示词。
+
+## 通用 Remote CLI Host 与 OpenCode ACP
+
+公共底座不为每个 CLI 重复实现 Gateway、配对和 Relay。`host` 将多个 Runtime 注册到同一个 Gateway v1，并用请求中的 `runtimeId` 选择 Adapter；Connector 侧使用同一份多 Runtime 凭据和 `--runtime-adapters` 映射。
+
+```js
+import { createRemoteCliHost } from "@agents-one/plugin-sdk/host";
+import { createOpenCodeAcpAdapter } from "@agents-one/plugin-sdk/opencode";
+
+const host = createRemoteCliHost({
+  token: process.env.AGENTS_ONE_GATEWAY_TOKEN,
+  statePath: process.env.AGENTS_ONE_HOST_STATE,
+  runtimes: [
+    {
+      runtimeId: "opencode-main",
+      displayName: "OpenCode",
+      kind: "opencode",
+      adapterId: "opencode-acp",
+      adapterVersion: "0.1.0",
+      // 生产 Host 应只允许来自本地注册表且通过信任校验的 Adapter。
+      // requireAdapterManifest 会拒绝没有 manifest 的实现。
+      adapter: createOpenCodeAcpAdapter({
+        executablePath: "opencode",
+        workspaceRoot: process.env.AGENTS_ONE_WORKSPACE,
+        // 只把明确列入白名单的 Provider 环境变量传给子进程；
+        // 默认不会把 Host 的完整环境复制给 OpenCode。
+        allowedEnv: ["OPENAI_API_KEY"],
+      }),
+    },
+  ],
+  trustedAdapterIds: ["opencode-acp"],
+  requireAdapterManifest: true,
+});
+await host.listen(8787, "127.0.0.1");
+```
+
+Host 默认只监听 Loopback；`statePath` 可选，用于原子持久化 Run、幂等键、Provider sessionId 和事件快照。Host 重启时未完成 Run 会在下一次查询时进入终态对账：可恢复的 Adapter 可实现 `reconcileRun(vendorRunId, record, context)` 返回 Provider 终态/事件；无法恢复时会产生带 `host_restart_reconciliation_required` 的明确失败终态，不会伪造成功。公网暴露应由受信任的 HTTPS Gateway/反向代理承担，不能把 Loopback Host 直接绑定到公网。
+
+OpenCode Adapter 通过 ACP JSON-RPC 启动受控 CLI，保留真实模型与用量，分别上报 `assistant.*`、`reasoning.summary`、`tool.*` 和 `artifact.created`；它不会把最终答复写进思考事件，也不会接受未经 Host 配置的 Shell 命令或工作区路径。Pi、Codex、Claude Code 的远程 Adapter 复用该 Host 契约，按后续阶段单独交付。
 
 ## 本地 CLI Adapter
 
