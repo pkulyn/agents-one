@@ -1,6 +1,6 @@
-# 为 Hermes Desktop 做贡献
+# 为 Agents One 做贡献
 
-感谢你愿意为 Hermes Desktop 做出贡献。无论是修复 bug、添加新功能、完善文档，还是修正一个拼写错误，每一份贡献都很有价值。
+感谢你愿意为 Agents One 做出贡献。无论是修复 bug、添加新功能、完善文档，还是修正一个拼写错误，每一份贡献都很有价值。
 
 ## 语言
 
@@ -80,7 +80,7 @@
 ## 项目结构
 
 ```text
-src/main/                Electron 主进程、IPC 处理器、Hermes 集成
+src/main/                Electron 主进程、IPC 处理器、Runtime 集成
 src/preload/             安全的 renderer bridge
 src/renderer/src/        React 应用和 UI 组件
 resources/               应用图标和打包资源
@@ -96,8 +96,8 @@ build/                   打包配置资源
 
 ## 社区
 
-- 欢迎加入 [Nous Research Discord](https://discord.gg/NousResearch)，与其他贡献者交流。
-- 也可以查看 [文档](https://hermes-agent.nousresearch.com/docs/) 了解 Hermes 的整体工作方式。
+- 请通过 [GitHub Issues](https://github.com/pkulyn/agents-one/issues) 报告问题或提出功能建议。
+- 请阅读项目 README，了解当前架构、受支持的 Runtime 和开发流程。
 
 ## 许可证
 

@@ -1,6 +1,6 @@
 # Agents One 五阶段实施计划
 
-> 兼容说明：本文件保留原有路径，避免既有链接失效。项目与任务中心的最新可执行拆分见 [Agents One 项目与任务中心实施计划](./AGENTS_ONE_PROJECT_TASK_EXECUTION_PLAN.md)。
+> 本文记录五阶段实施路线；项目与任务中心的最新可执行拆分见 [Agents One 项目与任务中心实施计划](./AGENTS_ONE_PROJECT_TASK_EXECUTION_PLAN.md)。
 
 日期：2026-07-12
 

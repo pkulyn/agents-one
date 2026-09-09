@@ -108,7 +108,7 @@ Runtime API / CLI 输出
 
 ### 3.2 本次图表问题的准确根因
 
-Hers-2 返回的 `C:\Users\...\test-chart.png` 是办公电脑本机路径，不是远程路径。因此，本次测试不需要先引入远程 artifact 下载。
+Hers-2 返回的 `<workspace-root>\test-chart.png` 是办公电脑本机路径，不是远程路径。因此，本次测试不需要先引入远程 artifact 下载。
 
 本次图表未显示的直接原因是：
 
@@ -426,5 +426,5 @@ RuntimeChat 目前包含协作提案、角色面板、产物面板和人工介�
 - [Agents One Event Stream v1](./AGENT_EVENT_STREAM_V1.md)
 - [Agents One Event Stream 插件接入指南](./AGENT_EVENT_STREAM_PLUGIN_GUIDE.md)
 - [Agents One Remote Gateway v1](./AGENTS_ONE_REMOTE_GATEWAY_V1.md)
-- [Hers-2 Connector 更新指南](./HERS2_REMOTE_CONNECTOR_UPDATE_GUIDE.md)
+- Hers-2 定向 Connector 更新指南已转入受控私有归档；公开接入方式以通用 Plugin SDK 与 Connector 文档为准。
 - [Agents One 项目进展日志](./AGENTS_ONE_PROGRESS_LOG.md)

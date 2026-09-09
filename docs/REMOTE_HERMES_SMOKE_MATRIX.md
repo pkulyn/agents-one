@@ -20,7 +20,7 @@ This matrix records the current remote Hermes NAS acceptance result without stor
 
 ## Credential Compatibility
 
-The configured dashboard token was rejected by the current remote management API and WebSocket handshake, while the configured gateway API key was accepted on the same origin. Hermes Desktop Plus now applies this policy:
+The configured dashboard token was rejected by the current remote management API and WebSocket handshake, while the configured gateway API key was accepted on the same origin. Agents One now applies this policy:
 
 1. Use the dashboard token as the primary credential.
 2. Retry only HTTP 401/403 and WebSocket authentication failures with the gateway API key.
@@ -33,7 +33,7 @@ The configured dashboard token was rejected by the current remote management API
 - TypeScript typecheck passed.
 - Production build passed.
 - Live NAS probes passed for all entries above.
-- 2026-07-11 follow-up: the Gateway messaging management endpoint can return the dashboard HTML app shell instead of JSON on the current remote deployment. Hermes Desktop Plus now classifies that response as an unsupported remote management API and keeps the Gateway page read-only.
+- 2026-07-11 follow-up: the Gateway messaging management endpoint can return the dashboard HTML app shell instead of JSON on the current remote deployment. Agents One now classifies that response as an unsupported remote management API and keeps the Gateway page read-only.
 
 ## Remaining Limits
 

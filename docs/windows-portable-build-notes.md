@@ -6,20 +6,20 @@ This fork is developed on a locked-down corporate Windows machine without admini
 
 ## Baseline
 
-- Project: `D:\Agent Console\Agents-One`
+- Project: `<repo>`（任意普通用户可写目录，包括含空格路径）
 - Upstream base: `fathah/hermes-desktop` 0.7.3
-- Node: `D:\efunds\nodejs22\node.exe` v22.23.1
-- npm: `D:\efunds\nodejs22\npm.cmd` 11.11.1
+- Node: `<portable-node>\node.exe` v22.23.1
+- npm: `<portable-node>\npm.cmd` 11.11.1
 - Electron: 39.8.5
 - Native dependency: `better-sqlite3` 12.8.0
 
 Use Node 22 explicitly in each PowerShell session:
 
 ```powershell
-$env:PATH = "D:\efunds\nodejs22;$env:PATH"
+$env:PATH = "<portable-node>;$env:PATH"
 $env:NODE_OPTIONS = "--use-system-ca"
-$env:ELECTRON_CACHE = "D:\Agent Console\Agents-One\.cache\electron"
-$env:npm_config_cache = "D:\Agent Console\Agents-One\.cache\npm"
+$env:ELECTRON_CACHE = "$PWD\.cache\electron"
+$env:npm_config_cache = "$PWD\.cache\npm"
 ```
 
 ## Dependency install notes
@@ -41,13 +41,13 @@ Current local workaround:
 
 ## Verified commands
 
-Run from `D:\Agent Console\Agents-One`:
+Run from the repository root (`<repo>`):
 
 ```powershell
-$env:PATH = "D:\efunds\nodejs22;$env:PATH"
+$env:PATH = "<portable-node>;$env:PATH"
 $env:NODE_OPTIONS = "--use-system-ca"
-$env:ELECTRON_CACHE = "D:\Agent Console\Agents-One\.cache\electron"
-$env:npm_config_cache = "D:\Agent Console\Agents-One\.cache\npm"
+$env:ELECTRON_CACHE = "$PWD\.cache\electron"
+$env:npm_config_cache = "$PWD\.cache\npm"
 
 npm.cmd test
 npm.cmd run typecheck
@@ -77,7 +77,7 @@ No production runtime behavior was changed by these test adaptations.
 
 - `read-file` IPC now reads only the requested byte range with a 1 MB hard cap instead of reading the whole file before truncating.
 
-See `docs/security-audit-2026-07-09.md` for the current audit notes.
+The 2026-07-09 internal audit has been moved to controlled private archives. Current public security requirements and release gates are maintained in `docs/AGENTS_ONE_OPENSOURCE_RELEASE_READINESS_PRD_20260909.md`; the public disclosure policy will be published as `SECURITY.md` under OR-204/OR-602.
 
 ## Next integration work
 

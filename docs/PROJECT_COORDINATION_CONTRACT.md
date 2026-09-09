@@ -1,7 +1,7 @@
 # 项目协作控制面契约
 
 状态：**Phase 3 基础实现完成；Phase 4 联调与跨 Runtime 验收进行中**
-对应路线图：[Agents One 五阶段实施计划](./HERMES_ONE_FIVE_PHASE_PLAN.md) 的 Phase 3、4。
+对应路线图：[Agents One 五阶段实施计划](./AGENTS_ONE_FIVE_PHASE_PLAN.md) 的 Phase 3、4。
 前置条件：完成 Phase 2 的真实 OpenClaw Bridge 联调后才能开始实现。
 
 ## 目标与边界

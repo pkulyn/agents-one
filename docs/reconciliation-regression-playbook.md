@@ -23,7 +23,7 @@ desktop app:
 Run from the separate development worktree:
 
 ```powershell
-cd C:\Users\pmos6\Documents\Claude\Projects\Hermes-Desktop-reconcile
+cd <repo>
 
 npm run typecheck
 npm test -- --run tests/remote-sessions.test.ts tests/remote-metadata.test.ts tests/remote-models.test.ts tests/dashboard-chat-transport.test.ts tests/dashboard-event-adapter.test.ts tests/live-tool-events.test.ts tests/live-reasoning-events.test.ts tests/tool-activity-group-title.test.ts tests/reconcile-streamed-with-db.test.ts tests/session-history-mapping.test.ts tests/sessions-history-items.test.ts tests/sessions-decode-content.test.ts src/renderer/src/screens/Chat/mediaUtils.test.ts src/renderer/src/screens/Chat/hooks/useChatIPC.test.tsx tests/chat-messages.test.ts tests/session-continuation-store.test.ts tests/dashboard-remote.test.ts tests/dashboard-launch.test.ts tests/dashboard-gateway-client.test.ts tests/hermes-agent-compat.test.ts tests/run-stream.test.ts src/renderer/src/screens/Sessions/Sessions.test.tsx

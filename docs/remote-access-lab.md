@@ -38,7 +38,7 @@ touching the normal Agents One worktree, config, or database.
 Run from the separate development worktree:
 
 ```powershell
-cd C:\Users\pmos6\Documents\Claude\Projects\Hermes-Desktop-reconcile
+cd <repo>
 
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\remote-lab.ps1 init
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\remote-lab.ps1 up

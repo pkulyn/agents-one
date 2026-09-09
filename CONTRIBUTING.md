@@ -1,6 +1,6 @@
-# Contributing to Hermes Desktop
+# Contributing to Agents One
 
-Thanks for your interest in contributing to Hermes Desktop! Whether it's a bug fix, a new feature, improved docs, or just a typo — every contribution helps.
+Thanks for your interest in contributing to Agents One! Whether it's a bug fix, a new feature, improved docs, or just a typo — every contribution helps.
 
 ## Languages
 
@@ -80,7 +80,7 @@ Have an idea? [Open an issue](https://github.com/pkulyn/agents-one/issues/new) a
 ## Project Structure
 
 ```text
-src/main/                Electron main process, IPC handlers, Hermes integration
+src/main/                Electron main process, IPC handlers, Runtime integrations
 src/preload/             Secure renderer bridge
 src/renderer/src/        React app and UI components
 resources/               App icons and packaged assets
@@ -96,8 +96,8 @@ build/                   Packaging resources
 
 ## Community
 
-- Join the [Nous Research Discord](https://discord.gg/NousResearch) to chat with other contributors.
-- Check the [documentation](https://hermes-agent.nousresearch.com/docs/) for more context on how Hermes works.
+- Use [GitHub Issues](https://github.com/pkulyn/agents-one/issues) for bugs and feature requests.
+- Read the project README for the current architecture, supported Runtimes, and development workflow.
 
 ## License
 

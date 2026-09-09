@@ -1,10 +1,10 @@
-# Hermes Desktop Plus 多智能体集成执行方案
+# Agents One 多智能体集成执行方案
 
 日期：2026-07-10
 
 ## 目标
 
-将 Hermes Desktop Plus 演进为统一的 Agent Console：保留 Hermes Desktop 成熟的会话、设置、日志、工具和远程连接能力，同时以统一运行时协议接入远程 Hermes、远程或本地 OpenClaw、本地 Claude Code 和本地 Codex。
+将 Agents One 演进为统一的多智能体工作台：保留既有会话、设置、日志、工具和远程连接能力，同时以统一 Runtime 协议接入远程 Hermes Agent Runtime、远程或本地 OpenClaw、本地 Claude Code 和本地 Codex。
 
 本阶段不重建第二套桌面 UI，也不把某一个智能体当作其他智能体的隐式代理。所有运行时均通过明确的适配器接入，任务编排与实际执行分离。
 
@@ -32,7 +32,7 @@ Remote Hermes API    HTTP bridge or local     local CLI           local CLI
                      OpenClaw process
 ```
 
-Hermes Desktop Plus 负责保存非秘密配置、凭据引用、运行状态、任务记录、事件时间线和产物索引。凭据只保存在现有受保护配置位置，不进入日志、调试导出、测试 fixture 或 Git。
+Agents One 负责保存非秘密配置、凭据引用、运行状态、任务记录、事件时间线和产物索引。凭据只保存在现有受保护配置位置，不进入日志、调试导出、测试 fixture 或 Git。
 
 ## 统一运行时契约
 

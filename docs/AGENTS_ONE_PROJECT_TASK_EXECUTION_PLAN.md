@@ -2,7 +2,7 @@
 
 日期：2026-07-16  
 状态：**Iteration 0 ～ 5 已完成实现与验收；保留远程 Bridge 协议兼容整改项**  
-关联路线图：[Agents One 五阶段实施计划](./HERMES_ONE_FIVE_PHASE_PLAN.md)  
+关联路线图：[Agents One 五阶段实施计划](./AGENTS_ONE_FIVE_PHASE_PLAN.md)
 参考：Multica 的任务、项目、看板和实时事件设计仅作为产品/架构参考；Agents One 不复制其前端或服务端源码。
 
 ## 1. 目标与边界
