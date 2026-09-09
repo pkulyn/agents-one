@@ -4,6 +4,10 @@
 # Dependencies
 node_modules/
 
+# Local dependency recovery copies (never source-of-truth)
+/.agents-one-node_modules-interrupted-*/
+/node_modules.upstream-junction-backup-*/
+
 # Build output
 dist/
 out/
@@ -42,11 +46,16 @@ release/
 /*.bat
 /*.ps1
 .mcp.json
+/.codex/hooks.json
+/.claude/settings.local.json
+/skills-lock.json
 
 # Local Agents One dev artifacts
 .agents-one/
 .agents-one-*.log
+/.belt/
 
 # Local test artifacts
 agents-one-test.md
 Hers-2-Connector-Adaptation-Package-*.zip
+/tmp/
