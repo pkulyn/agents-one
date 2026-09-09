@@ -8,6 +8,19 @@ files:
   # this rule electron-builder can produce an Electron shell containing only
   # `default_app.asar`, which silently runs stale or empty application code.
   - out/**
+  # Git ignores do not constrain electron-builder. Explicitly exclude every
+  # machine-local recovery, sandbox and cache surface so a package can never
+  # absorb test credentials, browser state or dependency backups.
+  - "!**/.sandbox/**"
+  - "!**/.agents-one/**"
+  - "!**/.cache/**"
+  - "!**/.belt/**"
+  - "!**/tmp/**"
+  - "!**/dist/**"
+  - "!**/release/**"
+  - "!**/.agents-one-node_modules-interrupted-*/**"
+  - "!**/node_modules.upstream-junction-backup-*/**"
+  - "!**/*.log"
   - "!**/.vscode/*"
   - "!src/*"
   - "!electron.vite.config.{js,ts,mjs,cjs}"

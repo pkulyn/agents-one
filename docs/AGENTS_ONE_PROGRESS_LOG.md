@@ -1,5 +1,14 @@
 # Agents One 项目进展日志
 
+## 2026-09-10：OR-007 Git 全历史与本地产物安全审计完成
+
+- 工具与范围：使用经官方 SHA-256 清单核验的 Gitleaks 8.30.0，扫描 `--all --full-history` 的 866 个提交，以及 `out`、`build`、`.agents-one`、`.cache`、`.sandbox`、`tmp`、OR-001 权威快照、两个依赖备份和历史/修正后打包产物。包含候选值的 JSON 原始报告只保存在 `<private-security-audit-root>`，仓库仅提交脱敏结论。
+- Git 历史结论：发现 2 个 `generic-api-key` 命中，均为历史测试夹具中的显式假值，不是有效凭据；未发现需要撤销、轮换或从历史移除的真实秘密，因此不触发历史改写。
+- 本地状态边界：`.sandbox` 有 28 个候选命中，包含测试工作树假值及机器本地环境、会话/缓存材料；中断依赖备份有 52 个命中，全部位于第三方依赖源码、README 或测试样例；其余受检目录为 0。两类目录均已忽略、原地保留且禁止迁移/发布，没有删除或公开任何本地数据。
+- 打包风险与修复：历史 `dist/visual-fix-20260824` 的 3.8 GB `app.asar` 曾误纳入 `.sandbox`、`.cache`、`dist`、备份与环境/浏览器状态文件，已判定为禁止分发的本地污染产物。`electron-builder.yml` 现显式排除全部机器状态、缓存、恢复和日志目录，不再依赖 `.gitignore` 的间接行为。
+- 修正验证：`npm run build` 通过；新生成的 Windows unpacked 包经 Gitleaks 扫描为 0 命中。其 `app.asar` 共 17,078 项，仅含 `out`、运行依赖与 `package.json`，禁入路径为 0；解包后再次扫描仍为 0。完整证据和报告校验值见[全历史安全审计](./AGENTS_ONE_GIT_HISTORY_SECURITY_AUDIT_20260910.md)。
+- 处置与下一步：旧 `dist`、`.sandbox`、缓存和依赖备份继续作为本机私有/可重建材料隔离，OR-006 只能从固定 Git commit 干净克隆，禁止复制。OR-007 安全提交后须再扫描最终历史，随后按串行顺序建立 OR-005 带注释迁移恢复标签。
+
 ## 2026-09-10：OR-004 分支与远端模型校正完成（远端规则待仓库建立后应用）
 
 - 拓扑核验：`main...agents-one-slim-task-dialog` 为 `0/44`，merge-base 是旧 main tip `8a4268f`，因此全部 Agents One 工作可无合并提交地快进到本地 `main`，不存在双边分叉或冲突。
