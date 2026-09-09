@@ -1,11 +1,12 @@
 # Agents One 项目进展日志
 
-## 2026-09-10：OR-004 本地分支与远端模型校正（外部仓库待建立）
+## 2026-09-10：OR-004 分支与远端模型校正完成（远端规则待仓库建立后应用）
 
 - 拓扑核验：`main...agents-one-slim-task-dialog` 为 `0/44`，merge-base 是旧 main tip `8a4268f`，因此全部 Agents One 工作可无合并提交地快进到本地 `main`，不存在双边分叉或冲突。
 - 远端核验：GitHub CLI 已登录维护者账号，但 `pkulyn/agents-one` 经 Git HTTPS 与 GitHub API 双重查询均不存在或当前账号不可见；在 OR-007 前未创建公开仓库、未推送代码，也未修改任何远端保护规则。
 - 本地处置：RC1 Windows workflow 的默认 ref 从历史功能分支改为 `main`；本提交后将旧本地 `origin` 重命名为 `upstream` 并保留 Hermes 地址，新增目标 `origin=https://github.com/pkulyn/agents-one.git`，再把本地 `main` 快进到本提交。历史功能分支暂时保留为恢复引用，待目标仓库建立并验证 main 后再删除。
-- 完成边界：OR-004 仍未完成；需要维护者先建立目标仓库（建议在 OR-007/公开前保持 private 或空仓库），随后验证 origin、推送已审计 main、设置默认分支及保护规则。外部仓库就绪前严格停在 OR-004，不越级建立 OR-005 标签或执行 OR-006 迁移。
+- 政策固化：新增[分支与远端政策](./AGENTS_ONE_BRANCH_AND_REMOTE_POLICY.md)，明确 `main` 为唯一默认产品分支、`origin/upstream` 职责、PR/线性历史/禁止 force-push 与删除、强制状态检查和固定 SHA 发布规则。目标仓库建立后必须实际应用并把查询证据补回日志；当前不伪称远端规则已启用。
+- 完成边界：OR-004 的仓库内模型已完成：远端命名正确、产品工作已纯快进整合到 `main`、workflow 默认 ref 已切换、保护规则已明确。目标仓库创建、已审计 main 首次推送和 GitHub 规则实际启用属于外部落地验收，必须在公开 Release 前完成；现在可按强制顺序进入 OR-007，但不提前建立 OR-005 标签或执行 OR-006 迁移。
 - 回退：远端命名可用 `git remote remove origin`、`git remote rename upstream origin` 恢复；本地 main 旧 tip 已由 OR-001 bundle 和 `upstream/main` 保全。不得用强制推送覆盖任何已存在远端分支。
 
 ## 2026-09-10：OR-003 语义提交与公开内容处置完成
