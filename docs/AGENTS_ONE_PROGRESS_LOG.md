@@ -1,5 +1,12 @@
 # Agents One 项目进展日志
 
+## 2026-09-10：OR-1 自动化门禁恢复完成
+
+- 修复：preload API 测试切换到真实 `AgentsOneAPI`/`readDiagnostics` 契约；IPC 双向一致性扫描纳入托盘实际注册模块；两组配置审计测试显式隔离 Agents One 日志目录；托盘测试清除 10 个 `any`，语音 WebSocket 清除裸 `require()`；一个全量高负载下的冷模块加载用例使用专属 15 秒超时，业务断言未放宽。
+- 结果：固定提交 `0f10679447243f60513f5b4351f2cb86d4a06a1d` 上，原 82 项失败和 11 项 lint error 均归零。typecheck、209/209 测试文件（2,051 passed、9 skipped、0 failed）、`src tests plugins services` lint 0 error、production build 连续三轮全部通过。
+- 跳过项：6 项为 Windows 不执行的真实 POSIX `/bin/sh` command-provider 用例，归 OR-501 Linux CI lane；3 项为 `yaml-path.ts` 尚未实现的严格层级语义，归配置模块独立缺陷。Windows process-tree 实测在本机执行，不在 skip 内。完整证据见[OR-1 门禁恢复验收记录](./AGENTS_ONE_OR1_GATE_RECOVERY_AUDIT_20260910.md)。
+- 边界：OR-1 不修改用户配置、会话、Runtime、计划任务或凭据数据。下一步按 PRD 进入 OR-2 凭据、安全与隐私事实一致。
+
 ## 2026-09-10：OR-006 目录独立化完成
 
 - 迁移结果：从带注释恢复标签 `agents-one-pre-migration-20260910` 对应的固定提交 `564ef2ad30a9491bf8270418df0fe0b0a87a042b`，以非本地硬链接方式干净克隆到 `D:\Projects\Agents-One`；没有复制旧 `.git`、依赖、构建目录、缓存、沙箱、日志、`.env` 或用户数据。后续开发以新目录为唯一工作区，旧 `D:\Agent Console\Agents-One` 只读保留用于恢复。

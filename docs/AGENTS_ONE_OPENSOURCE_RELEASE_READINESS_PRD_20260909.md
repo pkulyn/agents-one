@@ -89,7 +89,7 @@ Agents One 的主要产品能力已经齐备：多 Runtime 接入、统一任务
 
 ## 6. 工作包与验收标准
 
-> 执行状态（2026-09-10）：**OR-001～OR-009 已全部完成，M0 仓库内与目录独立化范围收口**。OR-003 已形成五个可回退语义提交；OR-004 已将产品工作纯快进整合到本地 `main`，配置目标 `origin` 与 Hermes `upstream`，将 RC workflow 默认 ref 切至 `main`，并形成[分支与远端政策](./AGENTS_ONE_BRANCH_AND_REMOTE_POLICY.md)。OR-007 已完成全历史、本地状态、备份和修正后 Windows 包的脱敏扫描，结论见[全历史安全审计](./AGENTS_ONE_GIT_HISTORY_SECURITY_AUDIT_20260910.md)；无需改写历史。OR-005 使用带注释的 `agents-one-pre-migration-20260910` 标签固定迁移恢复基线，该标签不是 RC/Release。OR-006 已从该固定提交干净克隆到 `D:\Projects\Agents-One`，安装、测试、构建、标准打包、Windows 产物原生依赖与安全扫描证据见[目录独立化验收记录](./AGENTS_ONE_DIRECTORY_MIGRATION_AUDIT_20260910.md)；后续工作只在新目录推进，旧目录保留为只读恢复副本。目标 GitHub 目前不存在或当前账号不可见，因此首次推送与远端保护规则的实际应用仍是公开发布前外部验收项。下一阶段进入 OR-1 自动化门禁恢复。
+> 执行状态（2026-09-10）：**OR-0 与 OR-1 已完成**。OR-001～009 的仓库基线、安全审计、恢复标签和目录独立化证据见[目录独立化验收记录](./AGENTS_ONE_DIRECTORY_MIGRATION_AUDIT_20260910.md)与[全历史安全审计](./AGENTS_ONE_GIT_HISTORY_SECURITY_AUDIT_20260910.md)；后续工作只在 `D:\Projects\Agents-One` 推进，旧目录保留为只读恢复副本。OR-101～105 已在固定提交 `0f10679` 将既有 82 项测试失败和 11 项 ESLint error 归零，并连续三轮通过 typecheck、209/209 测试文件、完整 lint 与生产 build，详见[OR-1 门禁恢复验收记录](./AGENTS_ONE_OR1_GATE_RECOVERY_AUDIT_20260910.md)。目标 GitHub 目前不存在或当前账号不可见，因此首次推送与远端保护规则的实际应用仍是公开发布前外部验收项。下一阶段进入 OR-2 凭据、安全与隐私事实一致。
 
 ### OR-0：Git 基线与仓库卫生（P0）
 
