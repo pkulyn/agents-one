@@ -9,6 +9,8 @@
 
 </div>
 
+[简体中文](README.zh-CN.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Known issues](KNOWN_ISSUES.md) · [Changelog](CHANGELOG.md)
+
 Agents One is a desktop application that unifies **local CLI agents** (Pi, Codex, Claude Code) and **remote agents** (via the Remote Gateway v1 protocol) behind a single conversation surface — so you can chat, run tasks, schedule work, and manage projects without juggling terminals, dashboards, or per-agent web UIs.
 
 Every agent is registered as a **Runtime** with one connection config and one display model:
@@ -16,7 +18,7 @@ Every agent is registered as a **Runtime** with one connection config and one di
 - **Remote agents** — one Gateway v1 URL + one bearer token. Capabilities are negotiated over the protocol, not hard-coded per vendor.
 - **Local CLI agents** — an executable path on your machine. The app launches them directly with their native CLI semantics (models, tools, permissions, project instructions), and renders their event stream in the unified chat.
 
-> **Project status:** active development. Features may change. Please [open an issue](https://github.com/pkulyn/agents-one/issues) for bugs or ideas — contributions are welcome.
+> **Project status:** pre-release. No public Agents One Release has been published yet; the local Windows Alpha candidate is still awaiting remote CI, draft Release, and clean-machine acceptance. Features and stored-data formats may change. Contributions are welcome.
 
 ## Features
 
@@ -38,7 +40,7 @@ Every agent is registered as a **Runtime** with one connection config and one di
 
 ### Install
 
-The first public Alpha targets **Windows x64 only**. Download the installer or portable package from the [Releases](https://github.com/pkulyn/agents-one/releases) page and verify its SHA-256 value against `SHA256SUMS.txt`. The Alpha is unsigned, so Windows SmartScreen may warn on first launch — click **More info** → **Run anyway** only after verifying the checksum. Automatic updates are disabled in unsigned builds; macOS and Linux packages are not release artifacts for this Alpha.
+The first public Alpha will target **Windows x64 only**, but it has **not been published yet**. When the release-readiness gates pass, download the installer or portable package only from the [official Releases page](https://github.com/pkulyn/agents-one/releases) and verify it against `SHA256SUMS.txt`. The Alpha will be unsigned, so Windows SmartScreen may warn on first launch — proceed only after verifying the checksum. Automatic updates are disabled in unsigned builds; macOS and Linux packages are not release artifacts for this Alpha.
 
 ### Add your first agent
 
@@ -88,13 +90,20 @@ Create a project folder from the sidebar. New conversations can attach to it; th
 
 ## Data & privacy
 
+### Data locations
+
+- Desktop state uses Electron's `userData` directory (normally `%APPDATA%\Agents One` on Windows). Set `AGENTS_ONE_USER_DATA_DIR` before launch only when you intentionally need an isolated location.
+- User-selected project folders and local CLI runtime homes remain outside desktop state. The bundled Hermes runtime normally uses `%LOCALAPPDATA%\hermes` on Windows or `~/.hermes` elsewhere, unless `HERMES_HOME` or an in-app override selects another existing installation.
+- Agents One Connector stores its separate device state under `%APPDATA%\agents-one\connector` on Windows or `${XDG_CONFIG_HOME:-~/.config}/agents-one/connector` elsewhere.
+- Backups are created only at a location the user selects. See the boundaries below before moving or sharing one.
+
 - **Credential storage has explicit boundaries.** Remote Gateway tokens entered through the desktop are migrated from `.env` to Electron OS-backed protection after the secure backend becomes available. Windows Connector device tokens and private keys use current-user DPAPI; Connector files on other platforms use user-only permissions. Provider/API credentials may still come from `.env`, process environment variables, or a configured command-based secret provider. On Linux, if Electron reports the insecure `basic_text` fallback, Agents One keeps the legacy restricted-file path and shows a warning instead of claiming the value is OS-protected.
 - **Backups exclude credentials.** `.env`, account/credential files, tokens, API keys, SSH key paths, proxies, raw config, desktop protected-secret blobs, and Connector credential files are not exported. The backup format whitelists security config and merges it into the target, keeping the target machine's credentials.
 - **Backup** covers profiles, projects, tasks, conversations, collaboration records, SQLite state, memory, skills, attachments, and runtime inputs. Restore runs pre-flight checks, keeps a rollback snapshot, and survives crash mid-restore.
 - **Local CLI is not a remote.** Local runtimes keep their native capabilities; the desktop app only adds the workspace scope you choose, run records, and unified rendering.
 - **Web providers are default-off experiments.** When explicitly enabled, prompts and selected attachments are sent through the signed-in third-party webpage and the provider controls the account data. Agents One stores each provider/profile in a separate Chromium partition, blocks off-list navigation and browser permissions, and lets you stop all web tasks or clear the isolated login data. The project currently has no written automation permission from Doubao, OpenAI, or xAI; see the [provider compliance record](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md).
 
-See [SECURITY.md](SECURITY.md) for supported versions, private vulnerability reporting, and the trust-boundary model.
+See [SECURITY.md](SECURITY.md) for supported versions, private vulnerability reporting, and the trust-boundary model. Current release limitations are tracked in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 ## Screens
 

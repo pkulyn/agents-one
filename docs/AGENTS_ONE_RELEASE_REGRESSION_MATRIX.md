@@ -1,12 +1,12 @@
 # Agents One 发布前回归矩阵
 
-日期：2026-08-13
+初始日期：2026-08-13；当前状态更新：2026-09-10
 
-> **历史状态（2026-08-20）**：本文下半部分保留 2026-07 的远程 Hermes、OpenClaw、Project Center 等历史验收记录，不再代表当前产品形态。当前发布被冻结；新的阻断条件、五条 Runtime 黄金路径、调度/恢复/安全矩阵和 RC1 门槛以 [Agents One 稳定化与发布前详细开发计划](./AGENTS_ONE_STABILIZATION_PLAN_20260820.md) 为准。后续在 S5 阶段完成稳定化后，再把本文重写为当前版本的最终回归矩阵。
+> **当前状态（2026-09-10）**：自动门禁及 Windows Alpha 本地候选已按[开源发布收口 PRD](./AGENTS_ONE_OPENSOURCE_RELEASE_READINESS_PRD_20260909.md)收口：主工程 213/213 文件（2,071 passed、9 skipped）、子项目 38/38、格式/typecheck/lint/audit/build、NSIS/portable 打包和解包启动通过。目标 GitHub workflow、草稿 Release、干净机安装/升级/卸载/回滚及五条 Runtime 人工黄金路径仍未验收，因此发布结论仍为 No-Go。下文 2026-07/08 记录只用于历史追溯；与本段冲突的“当前”“冻结”或命令不得作为现行指令。
 
 本矩阵用于发布前验收。2026-08-06 起独立 Task Center、Project Center 与 Hermes Kanban 页面已退役，2026-08-13 起 Task Center 后台执行器也已退役；任务对话内多智能体协作是唯一交互式协作入口。下方 2026-07 历史验收记录仅用于追溯，不再作为当前界面入口说明。
 
-## 当前瘦身边界
+## 当前产品回归边界
 
 | 编号 | 场景               | 验收方式    | 通过标准                                                                                                                                   |
 | ---- | ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -63,7 +63,7 @@
 | W4   | Worktree 运维    | 自动 + 手工 | 当前 Runtime 受管 worktree 仍可作为执行产物使用；Task Center 退役不触碰历史 worktree。 |
 | W5   | 发布阻断条件     | 人工评审    | 无 P0/P1 安全问题、数据丢失问题或原工作区直接写入问题。                                |
 
-## 已执行的开发版验证（2026-07-16）
+## 历史开发版验证（2026-07-16）
 
 - 当前源码全量单元/组件回归：177 个测试文件通过，1778 个测试通过、13 个跳过。
 - 任务、项目、计划任务、网关重启、Preload API 与相关界面的针对性回归：8 个测试文件、200 个测试通过。
@@ -77,8 +77,8 @@
 - 智能体页自动探测已接入 Runtime，探测期间显示“检测中”，不再以“未检测”误导用户；连接设置中的 Dashboard 与对话传输说明已全部中文化。
 - 定时任务入口统一为“新建定时任务”，最近运行状态使用中文显示；创建表单可打开、取消且不污染现有任务数据。
 - UI 截图改用 Playwright 稳定采集通道，并在截图前等待 Electron GPU 合成稳定，避免 CDP 截图偶发黑块被误判为产品缺陷。
-- 先前曾在普通用户权限下成功执行 Windows 解包构建，证明工具链无需 Visual Studio 或管理员权限；该旧产物不是当前发布候选。本轮不生成或验证新的安装包、便携版或解包产物。
-- 全仓 ESLint 仍存在仓库既有的 CRLF 格式告警和少量历史规则问题，因此当前变更采用严格的“修改文件 lint”作为门槛，并已通过。发布前需要单独清理该历史基线，不能把其视为本轮功能回归失败。
+- 当时只在普通用户权限下执行了 Windows 解包构建；该产物不是当前发布候选。2026-09-10 的现行候选和证据见 OR-5 验收记录。
+- 当时全仓 ESLint/CRLF 尚未治理。2026-09-10 已建立全仓 Prettier 基线并将格式和 0-error lint 纳入 CI/release 阻断门禁。
 
 ## U5 补充体验验收（2026-07-17）
 
@@ -99,7 +99,7 @@
 - 聊天功能方向从完整任务页改为轻量浮窗；聊天内容可按需加入当前任务/对话。
 - Pi Agent CLI 作为自定义本地 Runtime 接入并完成连接测试；后续围绕连续对话、权限、工具过程展示继续优化。
 - 对话侧栏与输入工具栏继续调整：侧栏不压缩主对话区，入口按钮移到输入工具区，避免遮挡消息。
-- 发布包和便携版继续冻结；本阶段只验收开发版 UI、Runtime 接入和真实使用路径。
+- 2026-07-20 当时发布包和便携版处于冻结状态；该历史限制已由 2026-09-10 的 OR-5 候选打包策略取代。
 
 ## U5 补充体验验收（2026-07-22）
 
@@ -109,16 +109,19 @@
 - 用户实测截图确认 Pi Agent 读取文件流程基本达到预期，执行过程噪音显著减少。
 - 针对性自动回归通过：`tests/agent-runtimes.test.ts` 与 `src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx` 共 18 项通过；`npm.cmd run typecheck` 通过。
 
-## 待完成的发布前手工回放
+## 当前待完成的发布前手工回放
 
-当前开发版已由 Electron CDP 验收脚本完成核心页面回放。仍需由产品负责人继续进行 UI 人工体验验收；确认布局、文案和核心路径稳定后，再恢复发布包、安装包与便携版验证。
+自动化和本地 Windows 候选已恢复；仍需在目标 GitHub 与干净 Windows 普通用户环境执行 OR-507/OR-7：固定 SHA workflow、草稿 Release、NSIS/portable 安装与启动、五条 Runtime、计划任务、备份恢复、升级、卸载和回滚。完成前不得公开 Release。
 
-## 当前自动化命令
+## 当前自动化命令（2026-09-10）
 
 ```powershell
-npx.cmd vitest run tests/feature-slimming-boundaries.test.ts tests/task-schedules.test.ts tests/task-collaboration-store.test.ts src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx src/renderer/src/screens/Layout/TaskCollaborationDialog.test.tsx src/renderer/src/screens/Layout/TaskCollaborationWorkspace.test.tsx
+npm.cmd run format:check
 npm.cmd run typecheck
-npm.cmd run test:u5-ui
+npm.cmd run lint -- --no-cache --quiet
+npm.cmd run test:all
+npm.cmd audit --audit-level=high
+npm.cmd run build
 ```
 
-发布冻结期间不要执行 `build:unpack`、`build:win` 或其他安装包制作命令。
+Windows 候选只能通过固定 SHA 的发布门禁或等价本地命令生成；本地产物不是公开 Release，不得手工上传。远端验收流程见 [OR-5 验收记录](./AGENTS_ONE_OR5_WINDOWS_ALPHA_RELEASE_AUDIT_20260910.md)。

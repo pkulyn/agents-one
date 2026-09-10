@@ -1,11 +1,11 @@
 # Agents One 稳定化与发布前详细开发计划
 
 > 制定日期：2026-08-20
-> 状态：已确认，后续开发的当前权威计划
+> 状态：历史稳定化计划；当前权威执行入口已迁移至开源发布收口 PRD
 > 上游计划：[Agents One 开源前最终优化开发文档](./AGENTS_ONE_OPENSOURCE_PLAN.md)
 > 评测输入：[Agents-One 评测报告 v1.0](./Agents-One-评测报告_20260819_v1.0.md)
 
-> 2026-09-09 更新：本文档保留 S0–S5 的历史设计与验收依据；当前测试、依赖与仓库状态已变化，后续发布执行统一以 [Agents One 开源发布收口阶段 PRD](./AGENTS_ONE_OPENSOURCE_RELEASE_READINESS_PRD_20260909.md) 为准。
+> 2026-09-10 更新：本文档保留 S0–S5 的历史设计与验收依据，不再描述当前门禁状态。当前以 [Agents One 开源发布收口阶段 PRD](./AGENTS_ONE_OPENSOURCE_RELEASE_READINESS_PRD_20260909.md) 为唯一执行入口：OR-0～4 与 OR-500～506 已完成，全仓格式/typecheck/lint/test/audit/build 通过，Windows `v0.1.0-alpha.1` 本地候选已完成打包和启动冒烟；OR-507 远端草稿 Release 与 OR-7 干净机验收仍阻断公开发布。下文所有“当前”“进行中”“唯一阻塞”均是 2026-08-20 当时记录，不能覆盖该结论。
 
 ## 1. 决策与目标
 

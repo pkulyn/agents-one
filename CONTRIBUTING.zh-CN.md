@@ -6,12 +6,12 @@
 
 - 英文：`CONTRIBUTING.md`
 - 简体中文：`CONTRIBUTING.zh-CN.md`
-- 日本語：`CONTRIBUTING.ja-JP.md`
 
 ## 快速开始
 
 1. **Fork** 本仓库，并将你的 fork 克隆到本地。
-2. **安装依赖：**
+2. 安装 Node.js 22.12 或更高版本。企业 Windows 无管理员权限时，可使用官方 ZIP 便携版，解压到用户可写目录并加入用户级 `PATH`；无需系统服务、驱动、Visual Studio 或全局 npm 包。
+3. **严格按 lockfile 安装依赖：**
 
    ```bash
    npm run install:clean
@@ -20,7 +20,7 @@
    该入口严格使用 lockfile，显式安装 Electron，并同时验证 Node.js 与
    Electron 下的 SQLite，无需本机安装 C++ 编译工具链。
 
-3. **以开发模式启动应用：**
+4. **以开发模式启动应用：**
 
    ```bash
    npm run dev
@@ -36,11 +36,15 @@
 
 2. 完成你的改动。请保持提交聚焦，每个 commit 只做一类逻辑改动。
 
-3. 提交前先运行检查：
+3. 提交前运行与发布门禁一致的检查：
 
    ```bash
-   npm run lint
+   npm run format:check
    npm run typecheck
+   npm run lint -- --no-cache --quiet
+   npm run test:all
+   npm audit --audit-level=high
+   npm run build
    ```
 
 4. 使用 `npm run dev` 在本地测试改动，确保行为符合预期。
@@ -94,13 +98,16 @@ build/                   打包配置资源
 
 - 项目使用 TypeScript、React 和 Electron。
 - 运行 `npm run lint` 检查 lint 错误。
+- 运行 `npm run format:check` 检查仓库格式。
 - 运行 `npm run typecheck` 验证类型安全。
+- 运行 `npm run test:all` 验证桌面端和三个子项目。
 - 尽量遵循当前仓库现有模式和约定。
 
 ## 社区
 
 - 请通过 [GitHub Issues](https://github.com/pkulyn/agents-one/issues) 报告问题或提出功能建议。
 - 请阅读项目 README，了解当前架构、受支持的 Runtime 和开发流程。
+- 请遵守[行为准则](CODE_OF_CONDUCT.md)、[安全策略](SECURITY.md)和[当前发布限制](KNOWN_ISSUES.md)。
 
 ## 许可证
 

@@ -59,7 +59,9 @@
 
 ## 数据与安全边界
 
-- 本地数据位于 Hermes 兼容数据目录的 `desktop/` 下；品牌升级不会删除旧会话、任务或项目记录。
+- Agents One 桌面壳偏好和受保护密文位于 Electron `userData`（Windows 通常为 `%APPDATA%\Agents One`）；Hermes 兼容 Profile、会话和状态库位于 `HERMES_HOME`（Windows 默认优先 `%LOCALAPPDATA%\hermes`，其他系统默认 `~/.hermes`）。用户选择的项目目录保持在原位置，不会被复制进上述目录。
 - Renderer 不保存 Runtime 密钥。事件、错误文本和上下文摘要会经过脱敏和长度限制。
 - 不自动路由、不自动合并、不自动提交代码、不自动执行高风险系统操作。
-- Windows 普通用户可运行开发版和解包产物；本机构建关闭可执行文件资源编辑/签名，以避开企业设备的符号链接权限限制。对外发布时应在有代码签名权限的 CI 环境重新启用签名。
+- Windows 普通用户可运行开发版和解包产物；首个 Alpha 明确为未签名候选，自动更新关闭。后续只有在 CI 完成代码签名、发布源、升级和回滚验证后，才能启用构建时自动更新能力。
+
+当前没有公开 Release。本地生成的安装包、便携包和校验值只用于验证，不得手工上传；远端草稿 Release、干净机安装/升级/卸载/回滚和五条 Runtime 黄金路径全部通过后，才能按 [OR-5 验收记录](./AGENTS_ONE_OR5_WINDOWS_ALPHA_RELEASE_AUDIT_20260910.md)进入公开评审。

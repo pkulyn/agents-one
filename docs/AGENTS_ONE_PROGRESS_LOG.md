@@ -1,5 +1,14 @@
 # Agents One 项目进展日志
 
+## 2026-09-10：OR-6 开源文档与治理完成
+
+- 公开事实：README 中英文入口互链并明确尚无公开 Release、首发 Windows x64、未签名/校验值/无自动更新边界，以及 Electron `userData`、Hermes Runtime、Connector、项目与备份的数据位置。
+- 治理文件：新增 `CODE_OF_CONDUCT.md`、`CHANGELOG.md`、`KNOWN_ISSUES.md`、Bug/Feature Issue Forms、Issue 配置和 PR 模板；保留并复核 `SECURITY.md`，安全或行为问题使用私密入口，公开模板禁止凭据和私有数据。
+- 贡献路径：英中贡献指南删除不存在的日文入口，声明 Node.js ≥22.12 和企业 Windows 无管理员权限下的官方 ZIP/用户级 PATH 方案；提交前命令覆盖 clean install、format、typecheck、0-error lint、主/子项目测试、audit 和 build。
+- 状态一致性：稳定化计划降级为历史依据；回归矩阵增加 2026-09-10 当前基线，并把旧“发布冻结、格式未治理、不要打包”明确标为历史。Runbook 同步真实数据路径、未签名更新策略和远端验收边界。
+- 已知问题：AO-KNOWN-001～007 记录远端发布阻断、未签名、非 Windows 平台、网页 Provider 实验、9 项 skip、Linux keyring 和体积/覆盖率债务，每项包含退出标准。
+- 结论：OR-601～605 完成；本地可执行发布收口范围结束。OR-507 与 OR-7 仍需目标 GitHub 仓库、`release` Environment、Windows runner、草稿 Release、干净机安装/升级/卸载/回滚和真实 Runtime 人工回放，当前继续 No-Go。
+
 ## 2026-09-10：OR-5 Windows x64 Alpha 发布链路本地收口
 
 - 首发决策：公开 Alpha 仅面向 Windows x64，版本为 `v0.1.0-alpha.1`；44 个 Hermes 上游时代 `v*` tag 不推送到 Agents One 新公共仓库。README 中英文入口已同步平台、未签名、校验值和无自动更新边界。

@@ -89,7 +89,7 @@ Agents One 的主要产品能力已经齐备：多 Runtime 接入、统一任务
 
 ## 6. 工作包与验收标准
 
-> 执行状态（2026-09-10）：**OR-0～OR-4 已完成；OR-5 的 OR-500～506 已完成，OR-507 待远端草稿 Release 与干净机验证**。OR-001～009 的仓库基线、安全审计、恢复标签和目录独立化证据见[目录独立化验收记录](./AGENTS_ONE_DIRECTORY_MIGRATION_AUDIT_20260910.md)与[全历史安全审计](./AGENTS_ONE_GIT_HISTORY_SECURITY_AUDIT_20260910.md)；后续工作只在 `D:\Projects\Agents-One` 推进，旧目录保留为只读恢复副本。OR-101～105 已在固定提交 `0f10679` 将既有 82 项测试失败和 11 项 ESLint error 归零，并连续三轮通过 typecheck、209/209 测试文件、完整 lint 与生产 build，详见[OR-1 门禁恢复验收记录](./AGENTS_ONE_OR1_GATE_RECOVERY_AUDIT_20260910.md)。OR-201～205 已完成桌面 Remote Token 的操作系统保护、Windows Connector DPAPI、Linux 无安全后端提示、事实一致的 README/`SECURITY.md` 与安全失败路径回归，详见[OR-2 安全验收记录](./AGENTS_ONE_OR2_SECURITY_READINESS_AUDIT_20260910.md)。OR-301～304 已将内置网页 Provider 设为公开默认禁用，补齐逐 Provider 合规记录、显式风险确认、一键停用及隔离/退出回归，详见[OR-3 验收记录](./AGENTS_ONE_OR3_WEB_AGENT_COMPLIANCE_AUDIT_20260910.md)。OR-401～405 已删除无消费者依赖、将完整 npm audit 归零、验证最终 lockfile 干净安装、建立体积报告并把当前 38 项子项目测试纳入根级入口与 CI，详见[OR-4 验收记录](./AGENTS_ONE_OR4_DEPENDENCY_BUILD_AUDIT_20260910.md)。OR-500～506 已确定 Windows x64 Alpha、`v0.1.0-alpha.1` 新版本线、上游历史 tag 不推送、未签名构建禁用自动更新，并建立固定 SHA 的手动审批工作流，详见[OR-5 验收记录](./AGENTS_ONE_OR5_WINDOWS_ALPHA_RELEASE_AUDIT_20260910.md)。目标 GitHub 目前不存在或当前账号不可见，因此首次推送、远端保护规则、Private Vulnerability Reporting、`release` Environment 审批及 OR-507 草稿 Release 仍是公开发布前外部验收项；本地继续推进 OR-6 文档与治理。
+> 执行状态（2026-09-10）：**OR-0～OR-4、OR-500～506 与 OR-6 已完成；OR-507 待远端草稿 Release 与干净机验证**。OR-001～009 的仓库基线、安全审计、恢复标签和目录独立化证据见[目录独立化验收记录](./AGENTS_ONE_DIRECTORY_MIGRATION_AUDIT_20260910.md)与[全历史安全审计](./AGENTS_ONE_GIT_HISTORY_SECURITY_AUDIT_20260910.md)；后续工作只在 `D:\Projects\Agents-One` 推进，旧目录保留为只读恢复副本。OR-101～105 已在固定提交 `0f10679` 将既有 82 项测试失败和 11 项 ESLint error 归零，并连续三轮通过 typecheck、209/209 测试文件、完整 lint 与生产 build，详见[OR-1 门禁恢复验收记录](./AGENTS_ONE_OR1_GATE_RECOVERY_AUDIT_20260910.md)。OR-201～205 已完成桌面 Remote Token 的操作系统保护、Windows Connector DPAPI、Linux 无安全后端提示、事实一致的 README/`SECURITY.md` 与安全失败路径回归，详见[OR-2 安全验收记录](./AGENTS_ONE_OR2_SECURITY_READINESS_AUDIT_20260910.md)。OR-301～304 已将内置网页 Provider 设为公开默认禁用，补齐逐 Provider 合规记录、显式风险确认、一键停用及隔离/退出回归，详见[OR-3 验收记录](./AGENTS_ONE_OR3_WEB_AGENT_COMPLIANCE_AUDIT_20260910.md)。OR-401～405 已删除无消费者依赖、将完整 npm audit 归零、验证最终 lockfile 干净安装、建立体积报告并把当前 38 项子项目测试纳入根级入口与 CI，详见[OR-4 验收记录](./AGENTS_ONE_OR4_DEPENDENCY_BUILD_AUDIT_20260910.md)。OR-500～506 已确定 Windows x64 Alpha、`v0.1.0-alpha.1` 新版本线、上游历史 tag 不推送、未签名构建禁用自动更新，并建立固定 SHA 的手动审批工作流，详见[OR-5 验收记录](./AGENTS_ONE_OR5_WINDOWS_ALPHA_RELEASE_AUDIT_20260910.md)。OR-601～605 已完成双语公开入口、治理模板、贡献者快速路径、当前/历史计划同步及已知问题清单，详见[OR-6 验收记录](./AGENTS_ONE_OR6_OPEN_SOURCE_GOVERNANCE_AUDIT_20260910.md)。目标 GitHub 目前不存在或当前账号不可见，因此首次推送、远端保护规则、Private Vulnerability Reporting、`release` Environment 审批及 OR-507 草稿 Release 仍是公开发布前外部验收项；本地可执行范围已经收口，下一步是 OR-507/OR-7 外部验收。
 
 ### OR-0：Git 基线与仓库卫生（P0）
 
@@ -203,6 +203,8 @@ OR-0 的强制串行顺序为：**OR-001 → OR-002 → OR-008/009 → OR-003 �
 | OR-507 | 首次公开 Dry Run               | 先生成不公开/草稿 Release，验证安装、升级、卸载、回滚和资产命名，再允许公开                                                                                                                                                                                               |
 
 ### OR-6：开源文档与治理（P1，公开前完成）
+
+> 2026-09-10：OR-601～605 已通过。公开入口明确尚无 Release，治理文件/模板、双语贡献路径、已知问题清单、Runbook 与历史计划状态已同步；详见 OR-6 验收记录。
 
 | ID     | 任务                      | 验收标准                                                                                         |
 | ------ | ------------------------- | ------------------------------------------------------------------------------------------------ |

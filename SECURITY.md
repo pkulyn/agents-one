@@ -59,3 +59,5 @@ Backups use an allowlist and exclude `.env`, account/credential files, API keys,
 - Secrets deliberately pasted into conversations, tool output, arbitrary artifacts, or third-party websites.
 
 Out-of-scope reports may still lead to hardening changes, but they are not treated as Agents One vulnerabilities by default.
+
+For non-security participation standards, see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Publicly known release limitations are tracked separately in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
