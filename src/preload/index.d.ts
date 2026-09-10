@@ -1048,6 +1048,10 @@ interface AgentsOneAPI {
   downloadUpdate: () => Promise<boolean>;
   installUpdate: () => Promise<void>;
   getAppVersion: () => Promise<string>;
+  getDesktopUpdatePolicy: () => Promise<{
+    enabled: boolean;
+    reason: "development" | "portable" | "unsigned-build" | null;
+  }>;
   getAutoUpgradeEnabled: () => Promise<boolean>;
   setAutoUpgradeEnabled: (enabled: boolean) => Promise<boolean>;
   onUpdateAvailable: (

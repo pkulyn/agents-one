@@ -38,8 +38,12 @@ export function useSettingsData(profile?: string) {
   const [updateResultType, setUpdateResultType] = useState<
     "success" | "error" | null
   >(null);
-  const [autoUpgradeEnabled, setAutoUpgradeEnabled] = useState(true);
+  const [autoUpgradeEnabled, setAutoUpgradeEnabled] = useState(false);
   const [autoUpgradeSaved, setAutoUpgradeSaved] = useState(false);
+  const [desktopUpdatePolicy, setDesktopUpdatePolicy] = useState<{
+    enabled: boolean;
+    reason: "development" | "portable" | "unsigned-build" | null;
+  }>({ enabled: false, reason: "development" });
 
   // Connection mode (local-only — plan D5)
   const [connMode] = useState<"local">("local");
@@ -106,18 +110,21 @@ export function useSettingsData(profile?: string) {
     setHermesVersion(null);
 
     // Load fast config first (cached in main process)
-    const [aVersion, conn, keyStatus, autoUpgrade] = await Promise.all([
-      window.agentsOneAPI.getAppVersion(),
-      window.agentsOneAPI.getConnectionConfig(),
-      window.agentsOneAPI.getApiServerKeyStatus(profile),
-      window.agentsOneAPI.getAutoUpgradeEnabled(),
-    ]);
+    const [aVersion, conn, keyStatus, updatePolicy, autoUpgrade] =
+      await Promise.all([
+        window.agentsOneAPI.getAppVersion(),
+        window.agentsOneAPI.getConnectionConfig(),
+        window.agentsOneAPI.getApiServerKeyStatus(profile),
+        window.agentsOneAPI.getDesktopUpdatePolicy(),
+        window.agentsOneAPI.getAutoUpgradeEnabled(),
+      ]);
 
     if (requestId !== loadConfigRequestRef.current) return;
 
     const cacheKey = versionCacheKey(conn, profile);
     setAppVersion(aVersion);
     setApiServerKeyMissing(!keyStatus.hasKey);
+    setDesktopUpdatePolicy(updatePolicy);
     setAutoUpgradeEnabled(autoUpgrade);
     connLoaded.current = true;
 
@@ -198,6 +205,7 @@ export function useSettingsData(profile?: string) {
   }, []);
 
   async function checkDesktopUpdate(): Promise<void> {
+    if (!desktopUpdatePolicy.enabled) return;
     setDesktopUpdateState("checking");
     setDesktopUpdateError(null);
     try {
@@ -369,7 +377,8 @@ export function useSettingsData(profile?: string) {
 
         if (!window.confirm(confirmation)) return;
 
-        const result = await window.agentsOneAPI.restoreAgentsOneBackup(filePath);
+        const result =
+          await window.agentsOneAPI.restoreAgentsOneBackup(filePath);
         if (result.success) {
           const warningCount =
             typeof result.warningCount === "number"
@@ -478,6 +487,7 @@ export function useSettingsData(profile?: string) {
   }
 
   async function handleAutoUpgradeChange(enabled: boolean): Promise<void> {
+    if (!desktopUpdatePolicy.enabled) return;
     setAutoUpgradeEnabled(enabled);
     await window.agentsOneAPI.setAutoUpgradeEnabled(enabled);
     setAutoUpgradeSaved(true);
@@ -511,6 +521,7 @@ export function useSettingsData(profile?: string) {
     updateResultType,
     autoUpgradeEnabled,
     autoUpgradeSaved,
+    desktopUpdatePolicy,
     dumpOutput,
     dumpRunning,
     setDumpOutput,
@@ -561,7 +572,8 @@ export function useSettingsData(profile?: string) {
     httpProxyRef,
     saveHttpProxy,
     networkSaved,
-    setNetworkSaved,  };
+    setNetworkSaved,
+  };
 }
 
 export type SettingsData = ReturnType<typeof useSettingsData>;

@@ -1502,6 +1502,10 @@ const agentsOneAPI = {
   downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke("download-update"),
   installUpdate: (): Promise<void> => ipcRenderer.invoke("install-update"),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke("get-app-version"),
+  getDesktopUpdatePolicy: (): Promise<{
+    enabled: boolean;
+    reason: "development" | "portable" | "unsigned-build" | null;
+  }> => ipcRenderer.invoke("get-desktop-update-policy"),
   getAutoUpgradeEnabled: (): Promise<boolean> =>
     ipcRenderer.invoke("get-auto-upgrade-enabled"),
   setAutoUpgradeEnabled: (enabled: boolean): Promise<boolean> =>

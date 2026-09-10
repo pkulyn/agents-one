@@ -1,6 +1,6 @@
 {
   "name": "agents-one",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "Agents One — a desktop workspace for coordinating conversations, tasks and artifacts across multiple AI agents (Pi, Claude Code, Codex, Hermes, OpenClaw and any Gateway v1 remote agent)",
   "main": "./out/main/index.js",
   "author": "pkulyn",
@@ -18,6 +18,7 @@
   },
   "scripts": {
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "install:clean": "npm ci --ignore-scripts && node node_modules/electron/install.js && node scripts/verify-runtime-dependencies.mjs",
     "lint": "eslint --cache .",
     "test": "vitest run",
@@ -40,6 +41,7 @@
     "build": "npm run typecheck && electron-vite build",
     "size:report": "node scripts/report-bundle-sizes.mjs",
     "build:unpack": "npm run build && electron-builder --dir",
+    "package:win": "electron-builder --win nsis portable --x64 --publish never",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",

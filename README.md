@@ -5,7 +5,7 @@
 **A native desktop workspace for coordinating conversations, tasks, projects, and artifacts across multiple AI agents.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#install)
+[![Platform](https://img.shields.io/badge/Alpha-Windows%20x64-blue.svg)](#install)
 
 </div>
 
@@ -38,7 +38,7 @@ Every agent is registered as a **Runtime** with one connection config and one di
 
 ### Install
 
-Download the latest release from the [Releases](https://github.com/pkulyn/agents-one/releases) page. On first launch Windows SmartScreen may warn that the installer is unsigned — click **More info** → **Run anyway**.
+The first public Alpha targets **Windows x64 only**. Download the installer or portable package from the [Releases](https://github.com/pkulyn/agents-one/releases) page and verify its SHA-256 value against `SHA256SUMS.txt`. The Alpha is unsigned, so Windows SmartScreen may warn on first launch — click **More info** → **Run anyway** only after verifying the checksum. Automatic updates are disabled in unsigned builds; macOS and Linux packages are not release artifacts for this Alpha.
 
 ### Add your first agent
 
