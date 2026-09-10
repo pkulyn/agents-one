@@ -31,7 +31,7 @@ describe("Agents One Connect protocol core", () => {
     await expect(
       verifyPairingCode(
         material.session,
-        `${material.code.slice(0, 9)}A`,
+        `${material.code.slice(0, 9)}${material.code.endsWith("A") ? "B" : "A"}`,
         1_001,
       ),
     ).resolves.toBe(false);
