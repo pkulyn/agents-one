@@ -50,11 +50,103 @@ test("pair exchanges a one-time code and stores credentials without exposing the
   assert.equal(request.publicKey.length > 20, true);
   const metadata = JSON.parse(readFileSync(store.metadataPath, "utf8"));
   assert.equal(metadata.privateKeyPem, undefined);
-  assert.match(readFileSync(store.privateKeyPath, "utf8"), /PRIVATE KEY/);
-  if (process.platform !== "win32") {
+  const privateKeyFile = readFileSync(store.privateKeyPath, "utf8");
+  if (process.platform === "win32") {
+    assert.equal(privateKeyFile.includes("PRIVATE KEY"), false);
+    assert.equal(metadata.deviceToken, undefined);
+    assert.equal(
+      metadata.protectedDeviceToken.protection,
+      "dpapi-current-user",
+    );
+  } else {
+    assert.match(privateKeyFile, /PRIVATE KEY/);
     assert.equal(statSync(store.metadataPath).mode & 0o777, 0o600);
   }
   assert.equal(localConnectorStatus(store).paired, true);
+});
+
+test("Windows protects the device token, private key, and pending pairing state", () => {
+  const directory = mkdtempSync(join(tmpdir(), "agents-one-connector-win-"));
+  const protect = (value) =>
+    Buffer.from(`bound-user:${value}`, "utf8").toString("base64");
+  const unprotect = (value) => {
+    const decoded = Buffer.from(value, "base64").toString("utf8");
+    if (!decoded.startsWith("bound-user:")) throw new Error("wrong user");
+    return decoded.slice("bound-user:".length);
+  };
+  const store = createCredentialStore(directory, {
+    platform: "win32",
+    protect,
+    unprotect,
+  });
+  const credentials = {
+    connectEndpoint: "https://connect.example",
+    deviceId: "device_windows",
+    deviceToken: "fake-device-token",
+    publicKey: "fake-public-key",
+    runtimeId: "runtime-win",
+    displayName: "Runtime Windows",
+    runtimes: [{ runtimeId: "runtime-win", displayName: "Runtime Windows" }],
+    privateKeyPem:
+      "-----BEGIN PRIVATE KEY-----\nfake-private-key\n-----END PRIVATE KEY-----",
+  };
+  store.save(credentials);
+  store.savePending({
+    requestToken: "fake-request-token",
+    sessionId: "session_windows",
+    privateKeyPem: credentials.privateKeyPem,
+  });
+
+  const persisted = [
+    store.metadataPath,
+    store.privateKeyPath,
+    store.pendingPath,
+  ]
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
+  assert.equal(persisted.includes("fake-device-token"), false);
+  assert.equal(persisted.includes("fake-private-key"), false);
+  assert.equal(persisted.includes("fake-request-token"), false);
+  assert.equal(store.load().deviceToken, "fake-device-token");
+  assert.equal(store.loadPending().requestToken, "fake-request-token");
+});
+
+test("Windows migrates legacy plaintext credentials idempotently", () => {
+  const directory = mkdtempSync(join(tmpdir(), "agents-one-connector-legacy-"));
+  const protect = (value) => Buffer.from(value, "utf8").toString("base64");
+  const unprotect = (value) => Buffer.from(value, "base64").toString("utf8");
+  const legacy = createCredentialStore(directory, { platform: "linux" });
+  legacy.save({
+    connectEndpoint: "https://connect.example",
+    deviceId: "device_legacy",
+    deviceToken: "fake-legacy-token",
+    publicKey: "fake-public-key",
+    runtimeId: "runtime-legacy",
+    displayName: "Legacy Runtime",
+    runtimes: [{ runtimeId: "runtime-legacy", displayName: "Legacy Runtime" }],
+    privateKeyPem:
+      "-----BEGIN PRIVATE KEY-----\nfake-legacy-key\n-----END PRIVATE KEY-----",
+  });
+  const windowsStore = createCredentialStore(directory, {
+    platform: "win32",
+    protect,
+    unprotect,
+  });
+
+  assert.equal(windowsStore.load().deviceToken, "fake-legacy-token");
+  assert.equal(windowsStore.load().deviceToken, "fake-legacy-token");
+  assert.equal(
+    readFileSync(windowsStore.metadataPath, "utf8").includes(
+      "fake-legacy-token",
+    ),
+    false,
+  );
+  assert.equal(
+    readFileSync(windowsStore.privateKeyPath, "utf8").includes(
+      "fake-legacy-key",
+    ),
+    false,
+  );
 });
 
 test("revoke uses the device credential and marks local state revoked", async () => {
