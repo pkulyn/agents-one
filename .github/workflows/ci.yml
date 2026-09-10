@@ -36,6 +36,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Test subprojects
+        run: npm run test:subprojects
+
       # Lint is a release gate. Formatting warnings are tracked separately,
       # while every ESLint error must block a merge.
       - name: Lint
