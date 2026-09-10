@@ -14,8 +14,11 @@
 2. **安装依赖：**
 
    ```bash
-   npm install
+   npm run install:clean
    ```
+
+   该入口严格使用 lockfile，显式安装 Electron，并同时验证 Node.js 与
+   Electron 下的 SQLite，无需本机安装 C++ 编译工具链。
 
 3. **以开发模式启动应用：**
 

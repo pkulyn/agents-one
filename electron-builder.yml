@@ -2,6 +2,10 @@ appId: com.pkulyn.agents-one
 productName: Agents One
 directories:
   buildResources: build
+# `npm run install:clean` installs and verifies this platform's Electron
+# distribution. Reuse it instead of downloading and extracting a second copy
+# during packaging, which can be blocked by real-time scanners on Windows.
+electronDist: node_modules/electron/dist
 files:
   # `out/` is ignored by Git, but it is the actual electron-vite runtime
   # entrypoint and must be explicitly included in local/CI packages. Without
@@ -29,7 +33,7 @@ files:
   - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
 asarUnpack:
   - resources/**
-  - node_modules/better-sqlite3/build/Release/*.node
+  - node_modules/better-sqlite3/prebuilds/*.node
 win:
   executableName: agents-one
   icon: build/icon.ico

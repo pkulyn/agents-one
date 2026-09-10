@@ -1,6 +1,6 @@
 # Windows portable build notes
 
-Date: 2026-07-09
+Date: 2026-07-09（updated 2026-09-10）
 
 This fork is developed on a locked-down corporate Windows machine without administrator rights. Prefer portable tools and user-level environment variables.
 
@@ -8,10 +8,10 @@ This fork is developed on a locked-down corporate Windows machine without admini
 
 - Project: `<repo>`（任意普通用户可写目录，包括含空格路径）
 - Upstream base: `fathah/hermes-desktop` 0.7.3
-- Node: `<portable-node>\node.exe` v22.23.1
+- Node: `<portable-node>\node.exe` >=22.12.0（2026-09-10 clean-clone validation: 25.8.2）
 - npm: `<portable-node>\npm.cmd` 11.11.1
-- Electron: 39.8.5
-- Native dependency: `better-sqlite3` 12.8.0
+- Electron: 43.4.1
+- Native dependency: `better-sqlite3` 13.0.3
 
 Use Node 22 explicitly in each PowerShell session:
 
@@ -24,20 +24,17 @@ $env:npm_config_cache = "$PWD\.cache\npm"
 
 ## Dependency install notes
 
-`better-sqlite3` and Electron both need prebuilt binaries. This environment should not fall back to `node-gyp` because Visual Studio C++ Build Tools are not available.
+`better-sqlite3` and Electron both need prebuilt binaries. This environment must not fall back to `node-gyp` because Visual Studio C++ Build Tools are not available.
 
-Observed issue:
+Use the repository installer instead of plain `npm ci` or `npm install`:
 
-- Default GitHub release downloads may return a small HTML page titled `URL过滤`.
-- Electron GitHub downloads may fail checksum verification in this network.
-- A verified Electron 39.8.5 ZIP from `npmmirror.com` matched the expected SHA256 in `node_modules\electron\checksums.json`.
+```powershell
+npm.cmd run install:clean
+```
 
-Current local workaround:
+This command performs a lockfile install with dependency lifecycle scripts disabled, runs Electron's official installer explicitly, and then opens an in-memory SQLite database under both Node.js and Electron. The explicit flow avoids an upstream Windows npm behavior where `better-sqlite3` 13.0.3 can invoke `node-gyp` even though the package already contains platform prebuilds.
 
-- Keep all binary/cache artifacts under `.cache/`.
-- Verify Electron ZIP SHA256 before extracting.
-- Manually seed the npm `_prebuilds` cache for `better-sqlite3` if `prebuild-install` receives filtered HTML.
-- Do not commit `.cache/`.
+All binary/cache artifacts remain under ignored dependency or cache directories. Do not commit `.cache/` or `node_modules/`, and do not copy either directory between clones.
 
 ## Verified commands
 
@@ -49,6 +46,7 @@ $env:NODE_OPTIONS = "--use-system-ca"
 $env:ELECTRON_CACHE = "$PWD\.cache\electron"
 $env:npm_config_cache = "$PWD\.cache\npm"
 
+npm.cmd run install:clean
 npm.cmd test
 npm.cmd run typecheck
 npm.cmd run build

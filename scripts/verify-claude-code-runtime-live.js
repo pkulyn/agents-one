@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { attach } = require("./e2e-attach");
 
-const executable = process.env.CLAUDE_EXECUTABLE || "D:\\efunds\\nodejs\\claude.cmd";
+const executable = process.env.CLAUDE_EXECUTABLE;
 const workspace = process.env.CLAUDE_WORKSPACE || process.cwd();
 const timeoutMs = 120_000;
 
@@ -13,7 +13,10 @@ function assert(condition, message) {
 }
 
 async function main() {
-  assert(fs.existsSync(executable), "Claude Code executable was not found.");
+  assert(
+    executable && fs.existsSync(executable),
+    "Set CLAUDE_EXECUTABLE to an existing Claude Code executable.",
+  );
   const { browser, page } = await attach({ cdpUrl: "http://127.0.0.1:9223" });
   try {
     await page.waitForFunction(() => Boolean(window.agentsOneAPI), { timeout: 30_000 });

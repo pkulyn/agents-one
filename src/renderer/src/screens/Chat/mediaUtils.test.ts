@@ -26,7 +26,7 @@ describe("parseMediaTokens (issue #299)", () => {
   // ── Explicit MEDIA: tokens ─────────────────────────────
   it("extracts an explicit MEDIA: token (Windows path)", () => {
     const segs = parseMediaTokens(
-      "Here it is:\n\nMEDIA:C:\\Users\\pmos6\\cat.png",
+      "Here it is:\n\nMEDIA:C:\\Users\\tester\\cat.png",
     );
     expect(segs[0]).toEqual({
       type: "text",
@@ -36,17 +36,17 @@ describe("parseMediaTokens (issue #299)", () => {
     expect(segs[1]).toMatchObject({
       type: "media",
       source: "media-token",
-      token: { src: "C:\\Users\\pmos6\\cat.png", isImage: true, isUrl: false },
+      token: { src: "C:\\Users\\tester\\cat.png", isImage: true, isUrl: false },
     });
   });
 
   it("keeps explicit MEDIA protocol tokens renderable inside code blocks", () => {
     const segs = parseMediaTokens(
-      "```text\nMEDIA：C:\\Users\\pmos6\\chart.png\n```",
+      "```text\nMEDIA：C:\\Users\\tester\\chart.png\n```",
     );
     expect(media(segs)).toMatchObject({
       source: "media-token",
-      token: { src: "C:\\Users\\pmos6\\chart.png", isImage: true },
+      token: { src: "C:\\Users\\tester\\chart.png", isImage: true },
     });
   });
 
@@ -75,13 +75,13 @@ describe("parseMediaTokens (issue #299)", () => {
   // ── Whole-line bare paths ──────────────────────────────
   it("detects a whole-line bare absolute path (Windows, non-image)", () => {
     const segs = parseMediaTokens(
-      "Criei o PDF aqui:\n\nC:\\Users\\pmos6\\proverbios.pdf\n\nInclui 10.",
+      "Criei o PDF aqui:\n\nC:\\Users\\tester\\proverbios.pdf\n\nInclui 10.",
     );
     expect(media(segs)).toMatchObject({
       type: "media",
       source: "bare-path",
-      raw: "C:\\Users\\pmos6\\proverbios.pdf",
-      token: { src: "C:\\Users\\pmos6\\proverbios.pdf", isImage: false },
+      raw: "C:\\Users\\tester\\proverbios.pdf",
+      token: { src: "C:\\Users\\tester\\proverbios.pdf", isImage: false },
     });
   });
 
@@ -158,14 +158,14 @@ describe("parseMediaTokens (issue #299)", () => {
 
   it("detects a labelled Windows image path inside inline code", () => {
     const segs = parseMediaTokens(
-      "Done.\n\nFile: `C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`\nSize: 269,771 bytes",
+      "Done.\n\nFile: `C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`\nSize: 269,771 bytes",
     );
     expect(media(segs)).toMatchObject({
       type: "media",
       source: "bare-path",
-      raw: "`C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
+      raw: "`C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
       token: {
-        src: "C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
+        src: "C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
         isImage: true,
         isUrl: false,
       },
@@ -174,14 +174,14 @@ describe("parseMediaTokens (issue #299)", () => {
 
   it("detects a labelled Windows image path when the label is markdown-bold", () => {
     const segs = parseMediaTokens(
-      "Image generated successfully.\n\n**File:** `C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png` (345 KB)",
+      "Image generated successfully.\n\n**File:** `C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png` (345 KB)",
     );
     expect(media(segs)).toMatchObject({
       type: "media",
       source: "bare-path",
-      raw: "`C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
+      raw: "`C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
       token: {
-        src: "C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
+        src: "C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
         isImage: true,
         isUrl: false,
       },
@@ -202,27 +202,27 @@ describe("parseMediaTokens (issue #299)", () => {
   it("detects a generated artifact path in a folder-marked code span", () => {
     const folder = "\uD83D\uDCC1";
     const segs = parseMediaTokens(
-      `Done! Here's your image:\n\n${folder} \`C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png\` -- 293 KB`,
+      `Done! Here's your image:\n\n${folder} \`C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png\` -- 293 KB`,
     );
     expect(media(segs)).toMatchObject({
       type: "media",
       source: "bare-path",
-      raw: "`C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
+      raw: "`C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
       token: {
-        src: "C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
+        src: "C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
         isImage: true,
       },
     });
 
     const bold = parseMediaTokens(
-      `Done! Here's your image:\n\n${folder} **\`C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png\`** -- 293 KB`,
+      `Done! Here's your image:\n\n${folder} **\`C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png\`** -- 293 KB`,
     );
     expect(media(bold)).toMatchObject({
       type: "media",
       source: "bare-path",
-      raw: "`C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
+      raw: "`C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
       token: {
-        src: "C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
+        src: "C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
         isImage: true,
       },
     });
@@ -230,14 +230,14 @@ describe("parseMediaTokens (issue #299)", () => {
 
   it("detects a standalone generated artifact path in a code span", () => {
     const segs = parseMediaTokens(
-      "Done! Here's your image:\n\n**`C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`** (316 KB)\n\nGenerated using DreamShaper 8.",
+      "Done! Here's your image:\n\n**`C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`** (316 KB)\n\nGenerated using DreamShaper 8.",
     );
     expect(media(segs)).toMatchObject({
       type: "media",
       source: "bare-path",
-      raw: "`C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
+      raw: "`C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png`",
       token: {
-        src: "C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
+        src: "C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
         isImage: true,
       },
     });
@@ -292,7 +292,7 @@ describe("parseMediaTokens (issue #299)", () => {
 
   it("extracts a Windows path from a markdown image destination", () => {
     const content =
-      "![duck](C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png)";
+      "![duck](C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png)";
     const segs = parseMediaTokens(content);
 
     expect(media(segs)).toMatchObject({
@@ -300,7 +300,7 @@ describe("parseMediaTokens (issue #299)", () => {
       source: "bare-path",
       raw: content,
       token: {
-        src: "C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
+        src: "C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png",
         isImage: true,
       },
     });
@@ -308,7 +308,7 @@ describe("parseMediaTokens (issue #299)", () => {
 
   it("does not render the same image twice when markdown and file path repeat it", () => {
     const src =
-      "C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png";
+      "C:\\Users\\tester\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png";
     const segs = parseMediaTokens(
       `Here it is:\n![duck](${src})\nFile: \`${src}\``,
     );

@@ -13,8 +13,12 @@
   "bugs": {
     "url": "https://github.com/pkulyn/agents-one/issues"
   },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "format": "prettier --write .",
+    "install:clean": "npm ci --ignore-scripts && node node_modules/electron/install.js && node scripts/verify-runtime-dependencies.mjs",
     "lint": "eslint --cache .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -32,7 +36,6 @@
     "dev:fresh": "HERMES_HOME=$(mktemp -d -t hermes-fresh) electron-vite dev",
     "assets:brand": "node scripts/generate-brand-assets.mjs",
     "build": "npm run typecheck && electron-vite build",
-    "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
@@ -49,7 +52,7 @@
     "@react-three/fiber": "^9.5.0",
     "@types/highlight.js": "^9.12.4",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "13.0.3",
     "date-fns": "^4.4.0",
     "electron-updater": "^6.8.9",
     "ethers": "^6.17.0",

@@ -32,8 +32,7 @@ const { attach } = require("./e2e-attach");
 
 const DEFAULT_REMOTE_URL = "http://127.0.0.1:19080";
 const DEFAULT_REMOTE_MEDIA = "MEDIA:/opt/data/images/duck_bathtub.png";
-const DEFAULT_LOCAL_MEDIA =
-  "C:\\Users\\pmos6\\Documents\\AI-Playground\\media\\toy_duck_bathtub.png";
+const DEFAULT_LOCAL_MEDIA = path.join(process.cwd(), "resources", "icon.png");
 
 const DEFAULT_GOOD_MODEL = {
   provider: "openai-codex",

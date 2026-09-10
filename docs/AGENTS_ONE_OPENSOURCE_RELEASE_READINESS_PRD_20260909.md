@@ -138,7 +138,7 @@ OR-0 的强制串行顺序为：**OR-001 → OR-002 → OR-008/009 → OR-003 �
 5. 仅按明确清单迁移开发所需的本地配置。`.env`、Token、Cookie、私钥等敏感信息不得提交或批量复制；确需迁移时使用受保护存储流程并逐项核验。
 6. 将 `origin` 调整为 `pkulyn/agents-one`，原 Hermes 仓库配置为 `upstream`；确认 fetch/push URL、默认分支与保护规则。
 7. 清理活跃源码、脚本和文档中的开发机绝对路径。历史恢复记录可保留原始路径，但必须明确标注为历史示例；测试路径改用临时目录或平台无关夹具。
-8. 在新目录执行 `npm ci`、typecheck、全量 test、lint、生产 audit、build 和 Windows 打包；验证应用资源、版本和产物不引用旧目录。
+8. 在新目录执行 `npm run install:clean`（内部使用 lockfile 的 `npm ci --ignore-scripts`，显式安装 Electron 并验证 Node/Electron SQLite）、typecheck、全量 test、lint、生产 audit、build 和 Windows 打包；验证应用资源、版本和产物不引用旧目录。
 9. 验证 Runtime 工作目录、项目/任务归属、附件、定时任务、备份恢复和用户数据路径。已有配置引用旧源码目录时，只提示或逐项更新，不批量重写未知路径。
 10. 新目录通过 G0～G8 和 RC 回放前，旧目录保持只读且不再开发；通过后再由维护者决定归档或删除，删除不属于自动执行范围。
 
@@ -183,7 +183,7 @@ OR-0 的强制串行顺序为：**OR-001 → OR-002 → OR-008/009 → OR-003 �
 | --- | --- | --- |
 | OR-401 | 删除确认未使用的直接依赖 | 重点核查 `ethers`、Three.js 相关包、`react-file-icon`；删除前以导入扫描和构建为证据 |
 | OR-402 | 处置生产依赖漏洞 | `npm audit --omit=dev` 为 0 critical/0 high；moderate 必须修复或形成有期限、有人负责的风险接受记录 |
-| OR-403 | 验证锁文件可复现 | 干净目录执行 `npm ci` 成功；package/lock 一致；不依赖全局或开发机私有文件 |
+| OR-403 | 验证锁文件可复现 | 干净目录执行 `npm run install:clean` 成功；该入口必须基于 `npm ci` 与 lockfile，且不得要求系统级 C++ 工具链；package/lock 一致；不依赖全局或开发机私有文件 |
 | OR-404 | 建立产物体积基线 | 记录 main、renderer 主要 chunk 和 CSS 体积；本阶段不强制大重构，但新增回归需有解释 |
 | OR-405 | 统一子项目验证入口 | Plugin SDK、Connector、Connect Service 的 34 项测试进入根级脚本与 CI |
 
@@ -214,7 +214,7 @@ OR-0 的强制串行顺序为：**OR-001 → OR-002 → OR-008/009 → OR-003 �
 
 | ID | 任务 | 验收标准 |
 | --- | --- | --- |
-| OR-701 | 干净环境安装回放 | 从目标 GitHub commit 全新 clone，执行 `npm ci`、门禁与打包，不复用当前 node_modules/配置 |
+| OR-701 | 干净环境安装回放 | 从目标 GitHub commit 全新 clone，执行 `npm run install:clean`、门禁与打包，不复用当前 node_modules/配置 |
 | OR-702 | Runtime 黄金路径 | Hermes、本地 CLI、Gateway v1 至少各完成配置、probe、一次真实对话、取消/失败、重启恢复；其他首发 Runtime 按回归矩阵执行 |
 | OR-703 | 用户数据回放 | 项目/任务归属、历史、附件、定时任务、时区/休眠补偿、备份、验证、恢复与回滚均通过 |
 | OR-704 | 桌面体验回放 | Windows 首启、托盘、窄窗口、中英文、外链、下载、退出、崩溃恢复和卸载残留符合说明 |

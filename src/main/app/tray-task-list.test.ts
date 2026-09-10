@@ -42,7 +42,7 @@ describe("tray task list", () => {
   });
 
   it("keeps only the folder name and returns a separate right-side column", () => {
-    expect(trayProjectName("D:\\Agent Console\\Agents-One\\")).toBe(
+    expect(trayProjectName("C:\\workspace\\Agents-One\\")).toBe(
       "Agents-One",
     );
     expect(

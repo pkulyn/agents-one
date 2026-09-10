@@ -10,7 +10,7 @@ describe("upsertLiveToolEvent", () => {
     const next = upsertLiveToolEvent(
       [{ id: "u-1", role: "user", content: "make image" }],
       liveToolEventFromProgress(
-        "💻 python C:/Users/pmos6/AppData/Local/Temp/generate_duck_bathtub.py",
+        "💻 python C:/Users/tester/AppData/Local/Temp/generate_duck_bathtub.py",
       ),
     );
 
@@ -18,7 +18,7 @@ describe("upsertLiveToolEvent", () => {
     expect(next[1]).toMatchObject({
       kind: "tool_call",
       name: "terminal",
-      args: "python C:/Users/pmos6/AppData/Local/Temp/generate_duck_bathtub.py",
+      args: "python C:/Users/tester/AppData/Local/Temp/generate_duck_bathtub.py",
       status: "running",
     });
   });
@@ -151,7 +151,7 @@ describe("upsertLiveToolEvent", () => {
         role: "agent",
         callId: "call-terminal",
         name: "terminal",
-        args: "python C:/Users/pmos6/AppData/Local/Temp/generate_duck.py",
+        args: "python C:/Users/tester/AppData/Local/Temp/generate_duck.py",
         status: "running",
       },
     ];
@@ -166,7 +166,7 @@ describe("upsertLiveToolEvent", () => {
 
     expect(next[1]).toMatchObject({
       status: "completed",
-      args: "python C:/Users/pmos6/AppData/Local/Temp/generate_duck.py",
+      args: "python C:/Users/tester/AppData/Local/Temp/generate_duck.py",
     });
   });
 
