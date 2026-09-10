@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { createRequire } from "node:module";
 import {
   getVoiceTranscriptionConfig,
   type VoiceTranscriptionConfig,
@@ -10,7 +11,7 @@ const MAX_STREAM_CHUNK_BYTES = 256 * 1024;
 const MAX_AUDITED_FINALS = 200;
 const MAX_AUDITED_FINAL_TEXT_LENGTH = 2_000;
 
-type VoiceWebSocketRawData = string | Buffer | ArrayBuffer | Buffer[];
+type VoiceWebSocketRawData = Buffer | ArrayBuffer | Buffer[];
 
 interface VoiceWebSocket {
   readonly readyState: number;
@@ -37,10 +38,11 @@ interface VoiceWebSocketConstructor {
   readonly OPEN: number;
 }
 
-// `ws` is a runtime dependency without bundled TypeScript declarations in this
-// desktop build. Keep its narrow transport contract local rather than exposing
-// the package to renderer types.
-const VoiceWebSocket = require("ws") as VoiceWebSocketConstructor;
+// `ws` is CommonJS and intentionally external to the main-process bundle.
+// createRequire keeps that runtime boundary explicit without an untyped global
+// require call, while this narrow interface limits the API used here.
+const loadRuntimeDependency = createRequire(__filename);
+const VoiceWebSocket = loadRuntimeDependency("ws") as VoiceWebSocketConstructor;
 
 export type StreamingTranscriptionEvent =
   | { sessionId: string; type: "final"; text: string }

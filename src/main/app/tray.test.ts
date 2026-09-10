@@ -1,11 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrayCompletionData } from "../../shared/tray-completion";
 
+type MockFunction = ReturnType<typeof vi.fn>;
+type MockIpcCallback = (...args: unknown[]) => unknown;
+
+interface MockBrowserWindowLike {
+  options: Record<string, unknown>;
+  webContents: { send: MockFunction; setWindowOpenHandler: MockFunction };
+  hide: MockFunction;
+  loadFile: MockFunction;
+  showInactive: MockFunction;
+  emitReady(): void;
+  emitBlur(): void;
+  isVisible(): boolean;
+}
+
+interface MockTrayLike {
+  emit(event: string, ...args: unknown[]): void;
+}
+
 const mocks = vi.hoisted(() => ({
-  windows: [] as Array<any>,
-  trays: [] as Array<any>,
-  ipcListeners: new Map<string, (...args: any[]) => void>(),
-  ipcHandlers: new Map<string, (...args: any[]) => unknown>(),
+  windows: [] as MockBrowserWindowLike[],
+  trays: [] as MockTrayLike[],
+  ipcListeners: new Map<string, MockIpcCallback>(),
+  ipcHandlers: new Map<string, MockIpcCallback>(),
 }));
 
 vi.mock("electron", () => {
@@ -79,9 +97,9 @@ vi.mock("electron", () => {
   }
 
   class MockTray {
-    handlers = new Map<string, (...args: any[]) => void>();
+    handlers = new Map<string, MockIpcCallback>();
     setToolTip = vi.fn();
-    on = vi.fn((event: string, listener: (...args: any[]) => void) => {
+    on = vi.fn((event: string, listener: MockIpcCallback) => {
       this.handlers.set(event, listener);
       return this;
     });
@@ -91,7 +109,7 @@ vi.mock("electron", () => {
       mocks.trays.push(this);
     }
 
-    emit(event: string, ...args: any[]): void {
+    emit(event: string, ...args: unknown[]): void {
       this.handlers.get(event)?.(...args);
     }
     getBounds(): Electron.Rectangle {
@@ -113,13 +131,13 @@ vi.mock("electron", () => {
       })),
     },
     ipcMain: {
-      on: vi.fn((channel: string, listener: (...args: any[]) => void) => {
+      on: vi.fn((channel: string, listener: MockIpcCallback) => {
         mocks.ipcListeners.set(channel, listener);
       }),
       removeListener: vi.fn((channel: string) => {
         mocks.ipcListeners.delete(channel);
       }),
-      handle: vi.fn((channel: string, handler: (...args: any[]) => unknown) => {
+      handle: vi.fn((channel: string, handler: MockIpcCallback) => {
         mocks.ipcHandlers.set(channel, handler);
       }),
       removeHandler: vi.fn((channel: string) => {
@@ -163,7 +181,7 @@ describe("tray task completion", () => {
       tray.emit("click", {}, bounds);
       const composer = mocks.windows.find(
         (window) => window.options.title === "Agents One 快捷任务",
-      );
+      )!;
       tray.emit("click", {}, bounds);
       composer.emitReady();
       expect(composer.isVisible()).toBe(false);
@@ -179,7 +197,7 @@ describe("tray task completion", () => {
       tray.emit("right-click", {}, bounds);
       const taskMenu = mocks.windows.find(
         (window) => window.options.title === "Agents One 任务菜单",
-      );
+      )!;
       taskMenu.emitReady();
       expect(taskMenu.isVisible()).toBe(true);
 
@@ -204,7 +222,7 @@ describe("tray task completion", () => {
       webContents: { send: vi.fn() },
     };
     const controller = setupTray({
-      getMainWindow: () => mainWindow as any,
+      getMainWindow: () => mainWindow as unknown as Electron.BrowserWindow,
       getActiveChatTasks: () => [],
       getRunningTaskCount: () => 0,
       onQuitRequest: vi.fn(),
@@ -222,7 +240,7 @@ describe("tray task completion", () => {
     controller.showTaskCompletion(data);
     const notificationWindow = mocks.windows.find(
       (window) => window.options.title === "Agents One 任务状态",
-    );
+    )!;
     expect(notificationWindow).toBeDefined();
     expect(notificationWindow.options.focusable).toBe(false);
     expect(notificationWindow.loadFile).toHaveBeenCalledWith(

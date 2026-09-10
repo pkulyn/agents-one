@@ -75,6 +75,8 @@ describe("Runtime schedules", () => {
     rmSync(testHome, { recursive: true, force: true });
   });
 
+  // Cold-loading the Runtime module graph can exceed Vitest's 5 s default
+  // when the full suite runs many worker processes on Windows.
   it("keeps a queued trigger behind its active direct Runtime run", async () => {
     const { runtimes, schedules } = await loadModules();
     runtimes.saveAgentRuntime({
@@ -142,7 +144,7 @@ describe("Runtime schedules", () => {
         expect.objectContaining({ runtimeRunId: "runtime-run-2" }),
       ]),
     });
-  });
+  }, 15_000);
 
   it("serializes concurrent manual triggers so only one Runtime starts", async () => {
     const { runtimes, schedules } = await loadModules();

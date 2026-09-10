@@ -13,7 +13,7 @@ import { tmpdir } from "os";
  * Behavior contract:
  *  - Migration writes to .env (idempotent, additive only).
  *  - Original copy in config.yaml is left alone.
- *  - Logged to ~/.hermes/logs/config-fixes.log.
+ *  - Logged to the product-owned Agents One diagnostics directory.
  *  - If .env already has API_SERVER_KEY, the migration is a no-op
  *    (the .env value wins by precedence — the resolver would already
  *    have returned it).
@@ -22,12 +22,14 @@ import { tmpdir } from "os";
  */
 
 const TEST_DIR = join(tmpdir(), `hermes-test-migration-${Date.now()}`);
+const ORIGINAL_AGENTS_ONE_LOG_DIR = process.env.AGENTS_ONE_LOG_DIR;
 
 async function freshConfig(
   home: string,
 ): Promise<typeof import("../src/main/config")> {
   vi.resetModules();
   process.env.HERMES_HOME = home;
+  process.env.AGENTS_ONE_LOG_DIR = join(home, "logs");
   return await import("../src/main/config");
 }
 
@@ -37,6 +39,11 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.HERMES_HOME;
+  if (ORIGINAL_AGENTS_ONE_LOG_DIR === undefined) {
+    delete process.env.AGENTS_ONE_LOG_DIR;
+  } else {
+    process.env.AGENTS_ONE_LOG_DIR = ORIGINAL_AGENTS_ONE_LOG_DIR;
+  }
   vi.resetModules();
   rmSync(TEST_DIR, { recursive: true, force: true });
 });
@@ -120,7 +127,7 @@ describe("getApiServerKey migration (default profile)", () => {
     expect(envContent).not.toMatch(/sk-from-yaml/);
   });
 
-  it("writes a JSONL audit entry to ~/.hermes/logs/config-fixes.log", async () => {
+  it("writes a JSONL entry to the isolated config-fix audit log", async () => {
     writeFileSync(
       join(TEST_DIR, "config.yaml"),
       ["api_server:", "  token: sk-audit-trail-test", ""].join("\n"),

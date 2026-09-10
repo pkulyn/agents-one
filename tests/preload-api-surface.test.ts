@@ -10,7 +10,7 @@ const preloadTypes = readFileSync(
 );
 
 /**
- * Extract method names from the hermesAPI object in preload/index.ts.
+ * Extract method names from the agentsOneAPI object in preload/index.ts.
  * Matches lines like `  methodName: (...` or `  methodName: ()`.
  */
 function extractPreloadMethods(src: string): string[] {
@@ -24,12 +24,12 @@ function extractPreloadMethods(src: string): string[] {
 }
 
 /**
- * Extract method names from the HermesAPI interface in index.d.ts.
+ * Extract method names from the AgentsOneAPI interface in index.d.ts.
  */
 function extractTypeMethods(src: string): string[] {
   const methods: string[] = [];
-  // Match lines inside `interface HermesAPI { ... }`
-  const interfaceMatch = src.match(/interface\s+HermesAPI\s*\{([\s\S]*?)^\}/m);
+  // Match lines inside `interface AgentsOneAPI { ... }`.
+  const interfaceMatch = src.match(/interface\s+AgentsOneAPI\s*\{([\s\S]*?)^\}/m);
   if (!interfaceMatch) return [];
   const body = interfaceMatch[1];
   const re = /^\s{2}(\w+)\s*[:(]/gm;
@@ -90,8 +90,10 @@ describe("New APIs from v0.8/v0.9 features", () => {
   });
 
   it("has log viewer API", () => {
-    expect(preloadMethods).toContain("readLogs");
-    expect(typeMethods).toContain("readLogs");
+    expect(preloadMethods).toContain("readDiagnostics");
+    expect(typeMethods).toContain("readDiagnostics");
+    expect(preloadMethods).not.toContain("readLogs");
+    expect(typeMethods).not.toContain("readLogs");
   });
 
   it("has debug dump API", () => {
