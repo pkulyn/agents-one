@@ -1,5 +1,13 @@
 # Agents One 项目进展日志
 
+## 2026-09-10：OR-2 凭据、安全与隐私事实一致完成
+
+- 桌面秘密：Remote Gateway 主 Token 与独立工作区 Gateway Token 接入 Electron `safeStorage`。历史 `.env` 值按“加密、回读验证、原子落盘、再删除明文”幂等迁移，并保留上一代密文用于损坏回滚；进程注入和命令型 secrets provider 仍由外部管理，不复制到桌面存储。
+- 失败语义：Linux `basic_text` 不算安全后端，设置页明确警告并保留受限旧文件路径；已有密文遇到后端缺失、换用户或换机时标为不可读并要求重新授权，不误报为未配置。损坏密文、损坏 JSON、清理失败和上一代回滚均有假值测试。
+- Connector：Windows 设备 Token、Ed25519 私钥和待配对秘密改用当前用户 DPAPI；旧明文凭据首次读取后自动迁移。秘密通过标准输入传给 PowerShell/.NET，不进入命令行或错误输出；非 Windows 继续保持目录 `0700`、文件 `0600`。
+- 文档与响应：中英文 README 删除“所有 Secrets 都在受保护存储”的绝对承诺；新增 `SECURITY.md`，定义支持版本、私下报告入口、响应窗口和 Runtime/Gateway/Connector/WebView/更新/备份边界。目标 GitHub 创建后仍须实际启用 Private Vulnerability Reporting。
+- 验证：完整 lint 0 error，Node/Web typecheck 与生产 build 通过，Connector 8/8 通过；全量 Vitest 210/210 文件、2,057 passed、9 skipped、0 failed。首轮发现并修复一个随机配对码测试可能生成“未改变末位”的既有非确定性，未降低断言。详见[OR-2 安全验收记录](./AGENTS_ONE_OR2_SECURITY_READINESS_AUDIT_20260910.md)。下一步进入 OR-3 Web Agent 合规与默认边界。
+
 ## 2026-09-10：OR-1 自动化门禁恢复完成
 
 - 修复：preload API 测试切换到真实 `AgentsOneAPI`/`readDiagnostics` 契约；IPC 双向一致性扫描纳入托盘实际注册模块；两组配置审计测试显式隔离 Agents One 日志目录；托盘测试清除 10 个 `any`，语音 WebSocket 清除裸 `require()`；一个全量高负载下的冷模块加载用例使用专属 15 秒超时，业务断言未放宽。
