@@ -20,6 +20,7 @@ const RUN_ROOT = join(
 );
 const WIN_HOME = join(RUN_ROOT, "windows");
 const WSL_HOME = join(RUN_ROOT, "wsl-ubuntu-home");
+const ORIGINAL_AGENTS_ONE_LOG_DIR = process.env.AGENTS_ONE_LOG_DIR;
 
 function writeWindowsEnv(content: string): void {
   writeFileSync(join(WIN_HOME, ".env"), content);
@@ -44,6 +45,7 @@ async function freshHealth(): Promise<
     ],
   }));
   process.env.HERMES_HOME = WIN_HOME;
+  process.env.AGENTS_ONE_LOG_DIR = join(WIN_HOME, "logs");
   return await import("../src/main/config-health");
 }
 
@@ -54,6 +56,11 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.HERMES_HOME;
+  if (ORIGINAL_AGENTS_ONE_LOG_DIR === undefined) {
+    delete process.env.AGENTS_ONE_LOG_DIR;
+  } else {
+    process.env.AGENTS_ONE_LOG_DIR = ORIGINAL_AGENTS_ONE_LOG_DIR;
+  }
   vi.resetModules();
   vi.doUnmock("../src/main/wsl-detection");
   rmSync(RUN_ROOT, { recursive: true, force: true });
