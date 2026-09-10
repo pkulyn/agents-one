@@ -81,24 +81,27 @@ Create a project folder from the sidebar. New conversations can attach to it; th
 
 > Screenshots are captured from the current build.
 
-| | |
-|---|---|
+|                                                             |                                                         |
+| ----------------------------------------------------------- | ------------------------------------------------------- |
 | <img width="100%" alt="Agents" src="previews/agents.png" /> | <img width="100%" alt="Chat" src="previews/chat.png" /> |
 
 ## Data & privacy
 
-- **Secrets never leave protected storage.** `.env`, account/credential files, tokens, API keys, SSH key paths, proxies, and the raw config are never exported. The backup format whitelists security config and merges it into the target, keeping the target machine's credentials.
+- **Credential storage has explicit boundaries.** Remote Gateway tokens entered through the desktop are migrated from `.env` to Electron OS-backed protection after the secure backend becomes available. Windows Connector device tokens and private keys use current-user DPAPI; Connector files on other platforms use user-only permissions. Provider/API credentials may still come from `.env`, process environment variables, or a configured command-based secret provider. On Linux, if Electron reports the insecure `basic_text` fallback, Agents One keeps the legacy restricted-file path and shows a warning instead of claiming the value is OS-protected.
+- **Backups exclude credentials.** `.env`, account/credential files, tokens, API keys, SSH key paths, proxies, raw config, desktop protected-secret blobs, and Connector credential files are not exported. The backup format whitelists security config and merges it into the target, keeping the target machine's credentials.
 - **Backup** covers profiles, projects, tasks, conversations, collaboration records, SQLite state, memory, skills, attachments, and runtime inputs. Restore runs pre-flight checks, keeps a rollback snapshot, and survives crash mid-restore.
 - **Local CLI is not a remote.** Local runtimes keep their native capabilities; the desktop app only adds the workspace scope you choose, run records, and unified rendering.
 
+See [SECURITY.md](SECURITY.md) for supported versions, private vulnerability reporting, and the trust-boundary model.
+
 ## Screens
 
-| Screen | Description |
-|---|---|
-| **聊天 / Chat** | Unified streaming conversation with tools, artifacts, and runtime events |
-| **智能体 / Agents** | Runtime registry cards grouped by location, with probe health and capabilities |
-| **定时任务 / Schedules** | Schedule ordinary runtime conversations with cron-style triggers |
-| **设置 / Settings** | Appearance, language, data (backup/restore), archives, about, logs |
+| Screen                   | Description                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| **聊天 / Chat**          | Unified streaming conversation with tools, artifacts, and runtime events       |
+| **智能体 / Agents**      | Runtime registry cards grouped by location, with probe health and capabilities |
+| **定时任务 / Schedules** | Schedule ordinary runtime conversations with cron-style triggers               |
+| **设置 / Settings**      | Appearance, language, data (backup/restore), archives, about, logs             |
 
 ## Development
 
