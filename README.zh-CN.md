@@ -9,6 +9,8 @@
 
 </div>
 
+[English](README.md) · [贡献指南](CONTRIBUTING.zh-CN.md) · [安全策略](SECURITY.md) · [已知问题](KNOWN_ISSUES.md) · [变更日志](CHANGELOG.md)
+
 Agents One 是一款桌面应用，把**本地 CLI 智能体**（Pi、Codex、Claude Code）与**远程智能体**（通过 Remote Gateway v1 协议）统一到同一套对话界面背后——无需再在不同终端、Dashboard 或各家 Web 界面之间来回切换，即可完成对话、任务、定时任务与项目管理。
 
 每个智能体都注册为一个 **Runtime**，只有一套连接配置、一套展示模型：
@@ -16,7 +18,7 @@ Agents One 是一款桌面应用，把**本地 CLI 智能体**（Pi、Codex、Cl
 - **远程智能体** — 一个 Gateway v1 地址 + 一个 Bearer Token。能力通过协议协商获得，而不是按厂商硬编码。
 - **本地 CLI 智能体** — 本机可执行文件路径。应用直接以原生 CLI 语义启动它们（模型、工具、权限、项目指令），并把事件流渲染进统一对话。
 
-> **项目状态：** 活跃开发中，功能可能变化。如遇问题或有想法，请在 [Issues](https://github.com/pkulyn/agents-one/issues) 中提出——欢迎贡献代码。
+> **项目状态：** 尚未公开发布。Windows Alpha 本地候选仍需通过远端 CI、草稿 Release 和干净环境验收；功能及持久化数据格式仍可能变化。欢迎参与贡献。
 
 ## 功能特性
 
@@ -38,7 +40,7 @@ Agents One 是一款桌面应用，把**本地 CLI 智能体**（Pi、Codex、Cl
 
 ### 安装
 
-首个公开 Alpha **仅面向 Windows x64**。请从 [Releases](https://github.com/pkulyn/agents-one/releases) 页面下载安装包或便携包，并根据 `SHA256SUMS.txt` 核对 SHA-256。Alpha 尚未签名，首次启动时 Windows SmartScreen 可能告警；仅在校验值一致后点击 **更多信息** → **仍要运行**。未签名构建默认关闭自动更新；本次 Alpha 不发布 macOS/Linux 资产。
+首个公开 Alpha 将**仅面向 Windows x64**，但目前**尚未发布**。发布门禁全部通过后，请仅从[官方 Releases 页面](https://github.com/pkulyn/agents-one/releases)下载安装包或便携包，并根据 `SHA256SUMS.txt` 核对 SHA-256。Alpha 将不会签名，首次启动时 Windows SmartScreen 可能告警；仅在校验值一致后继续运行。未签名构建默认关闭自动更新；本次 Alpha 不发布 macOS/Linux 资产。
 
 ### 添加你的第一个智能体
 
@@ -88,13 +90,20 @@ Agents One 是一款桌面应用，把**本地 CLI 智能体**（Pi、Codex、Cl
 
 ## 数据与隐私
 
+### 数据路径
+
+- 桌面状态位于 Electron `userData` 目录（Windows 通常为 `%APPDATA%\Agents One`）。仅在确实需要隔离目录时，才应在启动前设置 `AGENTS_ONE_USER_DATA_DIR`。
+- 用户选择的项目目录和本地 CLI Runtime 数据不放入桌面状态。内置 Hermes Runtime 在 Windows 通常使用 `%LOCALAPPDATA%\hermes`，其他系统通常使用 `~/.hermes`；`HERMES_HOME` 或应用内已有安装覆盖项可指定其他位置。
+- Agents One Connector 的独立设备状态位于 Windows `%APPDATA%\agents-one\connector`，其他系统位于 `${XDG_CONFIG_HOME:-~/.config}/agents-one/connector`。
+- 备份只写入用户主动选择的位置；移动或分享前请先阅读下方凭据边界。
+
 - **凭据存储有明确边界。** 桌面端录入的 Remote Gateway Token 会在安全后端可用后从 `.env` 幂等迁移到 Electron 的操作系统级保护；Windows Connector 的设备 Token 与私钥使用当前用户 DPAPI，其他平台的 Connector 文件使用仅当前用户可访问的权限。Provider/API 凭据仍可能来自 `.env`、进程环境变量或已配置的命令型秘密提供器。Linux 若被 Electron 判定为不安全的 `basic_text` 回退，Agents One 会继续使用受限的旧文件路径并明确提示，不会宣称该值已受操作系统保护。
 - **备份排除凭据。** `.env`、账户/凭据文件、Token、API Key、SSH keyPath、代理、原始配置、桌面受保护密文及 Connector 凭据文件均不导出。备份格式对安全配置采用白名单并合并进目标配置，保留目标机凭据。
 - **备份**覆盖配置档案、项目、任务、对话、协作记录、SQLite 状态、记忆、技能、附件与 Runtime 输入。恢复先预检、保留回滚快照，且能在恢复中途崩溃时自动回滚。
 - **本地 CLI 不是远程。** 本地 Runtime 保留原生能力；桌面端只增加你明确选择的工作区范围、运行记录与统一渲染。
 - **网页 Provider 是默认关闭的实验功能。** 明确启用后，提示词和所选附件会通过已登录的第三方网页发送，账号数据由对应 Provider 处理。Agents One 为每个 Provider/Profile 使用独立 Chromium 分区，阻止白名单外导航和浏览器权限，并支持一键停止全部网页任务或清除隔离登录数据。项目目前未取得豆包、OpenAI 或 xAI 的书面自动化许可；详见[网页 Provider 合规记录](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md)。
 
-支持版本、漏洞私下报告方式与信任边界模型见 [SECURITY.md](SECURITY.md)。
+支持版本、漏洞私下报告方式与信任边界模型见 [SECURITY.md](SECURITY.md)；当前发布限制见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
 
 ## 界面一览
 

@@ -6,12 +6,12 @@ Thanks for your interest in contributing to Agents One! Whether it's a bug fix, 
 
 - English: `CONTRIBUTING.md`
 - 简体中文: `CONTRIBUTING.zh-CN.md`
-- 日本語: `CONTRIBUTING.ja-JP.md`
 
 ## Getting Started
 
 1. **Fork** the repository and clone your fork locally.
-2. **Install dependencies:**
+2. Install Node.js 22.12 or newer. On managed Windows machines without administrator access, use the official portable ZIP, extract it to a user-writable folder, and add that folder to the user-level `PATH`; no system service, driver, Visual Studio, or global npm package is required.
+3. **Install dependencies from the lockfile:**
 
    ```bash
    npm run install:clean
@@ -21,7 +21,7 @@ Thanks for your interest in contributing to Agents One! Whether it's a bug fix, 
    and verifies SQLite under both Node.js and Electron without requiring a local
    C++ build toolchain.
 
-3. **Start the app in development mode:**
+4. **Start the app in development mode:**
 
    ```bash
    npm run dev
@@ -37,11 +37,15 @@ Thanks for your interest in contributing to Agents One! Whether it's a bug fix, 
 
 2. Make your changes. Keep commits focused — one logical change per commit.
 
-3. Run checks before submitting:
+3. Run the same checks used by the release gate before submitting:
 
    ```bash
-   npm run lint
+   npm run format:check
    npm run typecheck
+   npm run lint -- --no-cache --quiet
+   npm run test:all
+   npm audit --audit-level=high
+   npm run build
    ```
 
 4. Test your changes locally with `npm run dev` to make sure everything works as expected.
@@ -95,13 +99,16 @@ build/                   Packaging resources
 
 - The project uses TypeScript, React, and Electron.
 - Run `npm run lint` to check for lint errors.
+- Run `npm run format:check` to verify repository formatting.
 - Run `npm run typecheck` to verify type safety.
+- Run `npm run test:all` to test the desktop and all three subprojects.
 - Follow existing patterns and conventions in the codebase.
 
 ## Community
 
 - Use [GitHub Issues](https://github.com/pkulyn/agents-one/issues) for bugs and feature requests.
 - Read the project README for the current architecture, supported Runtimes, and development workflow.
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md), [Security Policy](SECURITY.md), and [known release limitations](KNOWN_ISSUES.md).
 
 ## License
 
