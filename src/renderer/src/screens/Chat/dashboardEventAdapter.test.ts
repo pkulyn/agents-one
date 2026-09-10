@@ -205,7 +205,9 @@ describe("applyDashboardStreamEvent operational notices", () => {
       { messages: [], reasoningSegmentClosed: false },
       {
         type: "process.exit",
-        payload: { text: "Background process proc_1 completed (exit code 143)." },
+        payload: {
+          text: "Background process proc_1 completed (exit code 143).",
+        },
       },
       { now: 43 },
     );

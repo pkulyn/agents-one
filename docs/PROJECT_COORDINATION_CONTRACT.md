@@ -19,7 +19,12 @@ Agents One 是项目协作的确定性控制面，不是某个模型的代理外
 
 ```ts
 type CoordinatorKind = "runtime" | "human";
-type ProjectRole = "manager" | "implementer" | "tester" | "reviewer" | "acceptor";
+type ProjectRole =
+  | "manager"
+  | "implementer"
+  | "tester"
+  | "reviewer"
+  | "acceptor";
 type ProjectStatus = "draft" | "active" | "paused" | "completed" | "cancelled";
 type ProjectTaskStatus =
   | "blocked"
@@ -128,15 +133,15 @@ blocked -- dependencies accepted --> ready --> queued --> running
 
 控制面是唯一可提交状态转换的一方：
 
-| 转换 | 必须条件 |
-| --- | --- |
-| `blocked -> ready` | 所有依赖均为 `accepted`，项目为 `active`。 |
-| `ready -> queued` | 有有效 Runtime 分配，且 Runtime probe 显示 `taskDispatch`。 |
-| `queued -> running` | 控制面创建了对应的 Runtime run。 |
-| `running -> review_required` | 运行成功并产生需要人工/审查角色确认的产物。 |
+| 转换                                   | 必须条件                                                        |
+| -------------------------------------- | --------------------------------------------------------------- |
+| `blocked -> ready`                     | 所有依赖均为 `accepted`，项目为 `active`。                      |
+| `ready -> queued`                      | 有有效 Runtime 分配，且 Runtime probe 显示 `taskDispatch`。     |
+| `queued -> running`                    | 控制面创建了对应的 Runtime run。                                |
+| `running -> review_required`           | 运行成功并产生需要人工/审查角色确认的产物。                     |
 | `review_required -> accepted/rejected` | 具备 `acceptor` 角色的用户或获准 Runtime 提交带摘要的验收事件。 |
-| `rejected -> ready` | 保留拒绝理由与先前产物，新一轮运行必须获得新的 run ID。 |
-| 任意非终态 -> `cancelled` | 用户取消，或控制面按授权取消。 |
+| `rejected -> ready`                    | 保留拒绝理由与先前产物，新一轮运行必须获得新的 run ID。         |
+| 任意非终态 -> `cancelled`              | 用户取消，或控制面按授权取消。                                  |
 
 `succeeded` 不作为项目任务的终态；完成实现后应进入 `review_required` 或在明确无需审查的分析任务中由控制面转为 `accepted`。
 
@@ -146,12 +151,41 @@ blocked -- dependencies accepted --> ready --> queued --> running
 
 ```ts
 type CoordinatorCommand =
-  | { type: "propose_task"; projectId: string; title: string; requirement: string; acceptanceCriteria: string; dependencies?: string[] }
-  | { type: "propose_assignment"; taskId: string; runtimeId: string; role: ProjectRole; mode: "analysis" | "implementation"; workspace?: string }
-  | { type: "request_context"; taskId: string; artifactIds?: string[]; includeProjectSummary?: boolean }
+  | {
+      type: "propose_task";
+      projectId: string;
+      title: string;
+      requirement: string;
+      acceptanceCriteria: string;
+      dependencies?: string[];
+    }
+  | {
+      type: "propose_assignment";
+      taskId: string;
+      runtimeId: string;
+      role: ProjectRole;
+      mode: "analysis" | "implementation";
+      workspace?: string;
+    }
+  | {
+      type: "request_context";
+      taskId: string;
+      artifactIds?: string[];
+      includeProjectSummary?: boolean;
+    }
   | { type: "publish_progress"; taskId: string; summary: string }
-  | { type: "propose_review"; taskId: string; reviewerRuntimeId?: string; summary: string }
-  | { type: "propose_acceptance"; taskId: string; decision: "accepted" | "rejected"; summary: string };
+  | {
+      type: "propose_review";
+      taskId: string;
+      reviewerRuntimeId?: string;
+      summary: string;
+    }
+  | {
+      type: "propose_acceptance";
+      taskId: string;
+      decision: "accepted" | "rejected";
+      summary: string;
+    };
 ```
 
 控制面逐项校验：项目归属、当前状态、依赖、Runtime 存在且启用、`taskDispatch` 能力、工作区边界、角色授权、输入长度和秘密字段。校验失败只产生安全诊断事件，不执行副作用。

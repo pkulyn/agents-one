@@ -93,10 +93,7 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
                     className="active-session-chip-activity"
                     aria-label={`${agentLabel} 正在处理`}
                   >
-                    <Spinner
-                      className="active-session-chip-spinner"
-                      size={8}
-                    />
+                    <Spinner className="active-session-chip-spinner" size={8} />
                   </span>
                 ) : null}
               </span>

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildTaskCollaborationGraph, taskCollaborationDescendants } from "./task-collaboration-graph";
+import {
+  buildTaskCollaborationGraph,
+  taskCollaborationDescendants,
+} from "./task-collaboration-graph";
 
 describe("task collaboration graph", () => {
   it("keeps legacy assignments serial", () => {

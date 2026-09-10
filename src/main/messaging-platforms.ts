@@ -143,4 +143,3 @@ export function testDesktopMessagingPlatform(
   }
   return testMessagingPlatformStatus(platform);
 }
-

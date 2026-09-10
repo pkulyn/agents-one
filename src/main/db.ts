@@ -14,7 +14,9 @@ let cachedDbReadonly: boolean | null = null;
  * If the active profile database path or readonly status changes,
  * the old database connection is cleanly closed and a new one is established.
  */
-export function getDbConnection(readonly = true): BetterDatabase.Database | null {
+export function getDbConnection(
+  readonly = true,
+): BetterDatabase.Database | null {
   if (!readonly) assertAgentsOneWritesAllowed();
   const dbPath = activeStateDbPath();
   if (!existsSync(dbPath)) {
@@ -25,7 +27,10 @@ export function getDbConnection(readonly = true): BetterDatabase.Database | null
     try {
       mkdirSync(dirname(dbPath), { recursive: true });
     } catch (err) {
-      console.error(`[db] Failed to create database directory for ${dbPath}:`, err);
+      console.error(
+        `[db] Failed to create database directory for ${dbPath}:`,
+        err,
+      );
       closeDbConnection();
       return null;
     }

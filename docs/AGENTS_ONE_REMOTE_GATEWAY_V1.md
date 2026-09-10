@@ -154,11 +154,11 @@ Connector 模式是 Gateway v1 的推荐部署 Profile；公网静态 Gateway、
 
 远程智能体主机是否有域名，不是 Gateway v1 的硬性要求。真正需要稳定 HTTPS 入口的是 **Agents One 连接的 Gateway/Relay**。因此，服务器或个人电脑上的 Hers 可以没有域名、没有公网 IP；它通过 Connector 主动连接 Relay 即可。
 
-| Profile | Agents One 连接的地址 | 远端智能体主机要求 | 适用场景 | 默认级别 |
-| --- | --- | --- | --- | --- |
-| 托管 Relay | 有可信域名的 `https://<managed-relay>/agents-one/v1` | 只需出站访问 443；不需要公网 IP 或域名 | 普通用户、家庭电脑、企业桌面 | **推荐** |
-| 自托管 Relay | 用户自己域名下的 `https://<relay-domain>/agents-one/v1` | Connector 主机可在内网、CGNAT 或公网 | 企业、NAS、VPS、私有部署 | 推荐 |
-| 公网 IP 直连 | `https://<public-ip>/agents-one/v1` | Gateway 直接监听公网入口 | 专家用户、临时或已有证书环境 | 高级 |
+| Profile      | Agents One 连接的地址                                   | 远端智能体主机要求                     | 适用场景                     | 默认级别 |
+| ------------ | ------------------------------------------------------- | -------------------------------------- | ---------------------------- | -------- |
+| 托管 Relay   | 有可信域名的 `https://<managed-relay>/agents-one/v1`    | 只需出站访问 443；不需要公网 IP 或域名 | 普通用户、家庭电脑、企业桌面 | **推荐** |
+| 自托管 Relay | 用户自己域名下的 `https://<relay-domain>/agents-one/v1` | Connector 主机可在内网、CGNAT 或公网   | 企业、NAS、VPS、私有部署     | 推荐     |
+| 公网 IP 直连 | `https://<public-ip>/agents-one/v1`                     | Gateway 直接监听公网入口               | 专家用户、临时或已有证书环境 | 高级     |
 
 ### 5.5.1 托管 Relay（普通用户默认）
 
@@ -281,8 +281,7 @@ Herdr 的远程模式采用“远程主机运行持久会话服务器，本地�
 - **运维通道与业务通道分离**：未来可提供 SSH Bootstrap Profile，仅用于安装、更新、诊断 Connector；正式对话/任务仍走 Connect + Gateway v1，不把 SSH 当作默认业务数据通道。
 - **本地能力桥接**：Herdr 将剪贴板/图像通过受控桥接带到远端；Agents One 应继续使用 Artifact API 和 Workspace Grant，不能把 SSH 退化为任意端口、Shell 或文件代理。
 
-不直接采用 Herdr SSH 作为 Agents One 默认远程接入的原因：SSH 要求远端开放入站 SSH、管理用户密钥和 Host Key，移动网络/防火墙/CGNAT 场景仍需额外网络条件；它也不能自然提供 Connect 所需的多 Runtime 路由、设备撤销、账户绑定和结构化 Gateway v1 Artifact/Workspace Grant。SSH 适合作为高级 Profile 或安装维护通道，Agents One Connector + Connect WSS 仍是默认业务接入方式。
-6. Agents One 自动探测 `/capabilities`，显示 Hers 在线。用户不需要申请域名、配置 Nginx、开放端口或手工复制长 Token。
+不直接采用 Herdr SSH 作为 Agents One 默认远程接入的原因：SSH 要求远端开放入站 SSH、管理用户密钥和 Host Key，移动网络/防火墙/CGNAT 场景仍需额外网络条件；它也不能自然提供 Connect 所需的多 Runtime 路由、设备撤销、账户绑定和结构化 Gateway v1 Artifact/Workspace Grant。SSH 适合作为高级 Profile 或安装维护通道，Agents One Connector + Connect WSS 仍是默认业务接入方式。6. Agents One 自动探测 `/capabilities`，显示 Hers 在线。用户不需要申请域名、配置 Nginx、开放端口或手工复制长 Token。
 
 #### 5.7.3 安全与隐私边界
 

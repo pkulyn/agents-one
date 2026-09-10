@@ -1,10 +1,5 @@
 import { memo } from "react";
-import {
-  FolderSearch,
-  ListChecks,
-  PackageCheck,
-  Workflow,
-} from "lucide-react";
+import { FolderSearch, ListChecks, PackageCheck, Workflow } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import welcomeMark from "../../assets/agents-one-welcome.svg";
 

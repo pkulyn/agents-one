@@ -43,9 +43,7 @@ const { capturedRequests, makeMockRequest } = vi.hoisted(() => {
           // instead of hanging on the empty-stream probe.
           setImmediate(() => {
             handlers.data?.(
-              Buffer.from(
-                'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n',
-              ),
+              Buffer.from('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'),
             );
             handlers.data?.(Buffer.from("data: [DONE]\n\n"));
             handlers.end?.(undefined);
@@ -108,7 +106,6 @@ vi.mock("../src/main/config", () => ({
     mode: "local" as const,
   }),
 }));
-
 
 vi.mock("../src/main/utils", () => ({
   stripAnsi: (s: string) => s,

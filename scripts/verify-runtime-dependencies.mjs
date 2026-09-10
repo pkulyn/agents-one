@@ -8,7 +8,8 @@ function verifySqlite(label) {
   const db = new Database(":memory:");
   try {
     const row = db.prepare("select sqlite_version() as version").get();
-    if (!row?.version) throw new Error(`${label} did not return a SQLite version`);
+    if (!row?.version)
+      throw new Error(`${label} did not return a SQLite version`);
     return row.version;
   } finally {
     db.close();

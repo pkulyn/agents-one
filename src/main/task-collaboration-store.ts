@@ -138,7 +138,11 @@ function assignments(value: unknown): TaskCollaborationAssignment[] {
     );
     const rawDependsOn = (item as { dependsOn?: unknown }).dependsOn;
     const dependsOn = Array.isArray(rawDependsOn)
-      ? [...new Set(rawDependsOn.map((value) => text(value, 120)).filter(Boolean))]
+      ? [
+          ...new Set(
+            rawDependsOn.map((value) => text(value, 120)).filter(Boolean),
+          ),
+        ]
       : undefined;
     result.push({
       ...(id ? { id } : {}),
@@ -491,7 +495,9 @@ function execution(
     ? raw.activeAssignmentIds
         .map((value) => text(value, 160))
         .filter((value): value is string => Boolean(value))
-        .filter((value) => Boolean(resolvedAssignment(value, configuredAssignments)))
+        .filter((value) =>
+          Boolean(resolvedAssignment(value, configuredAssignments)),
+        )
     : [];
   const validActiveAssignmentId =
     activeAssignmentId &&
@@ -608,9 +614,10 @@ export function saveTaskCollaboration(
   // Saving a legacy record without a new project selection must not erase its
   // existing read-only binding. Once a valid capability is selected, discard
   // the old path rather than keeping two competing authorities.
-  const preservedProject = project.projectWorkspaceId || project.projectFolder
-    ? project
-    : projectReference(previous || {});
+  const preservedProject =
+    project.projectWorkspaceId || project.projectFolder
+      ? project
+      : projectReference(previous || {});
   const sourceRuntimeId = text(input.sourceRuntimeId, 160);
   const status =
     input.status && STATUSES.has(input.status)

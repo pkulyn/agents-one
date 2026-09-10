@@ -32,11 +32,11 @@ Connect 是官方运营的托管 Relay Profile。企业用户仍可替换为自�
 
 ### 2.1 组件职责
 
-| 组件 | 职责 | 明确不做 |
-| --- | --- | --- |
-| Connector | 访问本机 Loopback Gateway v1、生成设备密钥、主动 WSS、映射 Gateway v1 | 不监听公网、不提供 Shell、不保存桌面 Token |
-| Connect | 配对、设备注册/撤销、在线状态、按 Runtime 路由隧道帧 | 不做任意 TCP 转发、不猜测路径、不绕过 Grant |
-| Agents One | 创建配对会话、扫码确认、保存 Gateway Token、展示 Runtime 状态 | 不保存 Connector 私钥、不把 Token 放入对话 |
+| 组件       | 职责                                                                  | 明确不做                                    |
+| ---------- | --------------------------------------------------------------------- | ------------------------------------------- |
+| Connector  | 访问本机 Loopback Gateway v1、生成设备密钥、主动 WSS、映射 Gateway v1 | 不监听公网、不提供 Shell、不保存桌面 Token  |
+| Connect    | 配对、设备注册/撤销、在线状态、按 Runtime 路由隧道帧                  | 不做任意 TCP 转发、不猜测路径、不绕过 Grant |
+| Agents One | 创建配对会话、扫码确认、保存 Gateway Token、展示 Runtime 状态         | 不保存 Connector 私钥、不把 Token 放入对话  |
 
 ## 3. 配对与身份模型
 

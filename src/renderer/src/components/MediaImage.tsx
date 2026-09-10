@@ -194,8 +194,8 @@ export function DownloadChip({
               runtimeArtifact.artifactId,
             )
           : localFile
-          ? window.agentsOneAPI.openFileInEditor(token.src)
-          : window.agentsOneAPI.saveMediaFile(token.src, token.name)
+            ? window.agentsOneAPI.openFileInEditor(token.src)
+            : window.agentsOneAPI.saveMediaFile(token.src, token.name)
       }
       onContextMenu={
         runtimeArtifact
@@ -211,7 +211,11 @@ export function DownloadChip({
             : onContextMenu
       }
     >
-      {localFile || runtimeArtifact ? <FileText size={14} /> : <Download size={14} />}
+      {localFile || runtimeArtifact ? (
+        <FileText size={14} />
+      ) : (
+        <Download size={14} />
+      )}
       {token.name}
     </button>
   );

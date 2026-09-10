@@ -20,16 +20,19 @@ describe("SQLite compatibility backend", () => {
     dirs.push(dir);
     const db = new Database(join(dir, "state.db"));
     try {
-      db.exec("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT NOT NULL)");
+      db.exec(
+        "CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+      );
       const insert = db.prepare("INSERT INTO items (value) VALUES (?)");
       const tx = db.transaction((values: string[]) => {
         for (const value of values) insert.run(value);
       });
       tx(["one", "two"]);
 
-      expect(
-        db.prepare("SELECT value FROM items ORDER BY id").all(),
-      ).toEqual([{ value: "one" }, { value: "two" }]);
+      expect(db.prepare("SELECT value FROM items ORDER BY id").all()).toEqual([
+        { value: "one" },
+        { value: "two" },
+      ]);
     } finally {
       db.close();
     }

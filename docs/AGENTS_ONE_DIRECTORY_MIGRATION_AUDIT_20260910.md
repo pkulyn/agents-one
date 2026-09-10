@@ -24,16 +24,16 @@
 
 ## 3. 自动化验证
 
-| 检查 | 结果 |
-| --- | --- |
-| `npm run install:clean` | 通过，994 packages；宿主 Node/Electron SQLite 双探针通过 |
-| `npm run typecheck` | 通过 |
-| 迁移路径相关定向 Vitest | 9 个文件，187/187 通过 |
-| `npm run build` | 通过 |
-| `npm run build:unpack` | 通过，直接复用本地 Electron distribution |
-| 全量 Vitest | 205/209 文件通过；1,969 通过、82 失败、9 跳过；仍为 PRD 已登记的 4 个失败文件 |
-| ESLint 发布范围 | 仍为已登记的 11 errors（托盘测试 10、voice-stream 1），无新增 |
-| `npm audit --omit=dev --audit-level=high` | 仍为已登记的 6 项（2 high、4 moderate），无新增 |
+| 检查                                      | 结果                                                                          |
+| ----------------------------------------- | ----------------------------------------------------------------------------- |
+| `npm run install:clean`                   | 通过，994 packages；宿主 Node/Electron SQLite 双探针通过                      |
+| `npm run typecheck`                       | 通过                                                                          |
+| 迁移路径相关定向 Vitest                   | 9 个文件，187/187 通过                                                        |
+| `npm run build`                           | 通过                                                                          |
+| `npm run build:unpack`                    | 通过，直接复用本地 Electron distribution                                      |
+| 全量 Vitest                               | 205/209 文件通过；1,969 通过、82 失败、9 跳过；仍为 PRD 已登记的 4 个失败文件 |
+| ESLint 发布范围                           | 仍为已登记的 11 errors（托盘测试 10、voice-stream 1），无新增                 |
+| `npm audit --omit=dev --audit-level=high` | 仍为已登记的 6 项（2 high、4 moderate），无新增                               |
 
 全量验证没有把既有 OR-1/OR-4 缺口误报为迁移成功；这些缺口继续按 PRD 后续工作包修复。
 
@@ -44,11 +44,11 @@
 - 解包后的 ASAR、ASAR unpacked 内容及本轮工作 diff 的 Gitleaks 命中均为 0。
 - NSIS 与 portable 产物存放在私有验收目录 `D:\Agents-One-Recovery\OR-006-20260910-005925\windows-artifacts`，不提交仓库：
 
-| 文件 | 字节 | SHA-256 |
-| --- | ---: | --- |
-| `agents-one-0.1.0-setup.exe` | 212,417,864 | `9CE73F87E9645E87B7C1E1EA8D39327A5E04709C7F53A41099E5D7E769A86DB5` |
-| `agents-one-0.1.0-portable.exe` | 212,231,510 | `63A38F347E78EC8431D95CA3F7D23394A678C75226BC0A35F7A8CCD8965EA013` |
-| `agents-one-0.1.0-setup.exe.blockmap` | 224,339 | `830D9CEF71B4AE1DE34F84580C1177013E61BEE84FE9237625704AA11C7F0C73` |
+| 文件                                  |        字节 | SHA-256                                                            |
+| ------------------------------------- | ----------: | ------------------------------------------------------------------ |
+| `agents-one-0.1.0-setup.exe`          | 212,417,864 | `9CE73F87E9645E87B7C1E1EA8D39327A5E04709C7F53A41099E5D7E769A86DB5` |
+| `agents-one-0.1.0-portable.exe`       | 212,231,510 | `63A38F347E78EC8431D95CA3F7D23394A678C75226BC0A35F7A8CCD8965EA013` |
+| `agents-one-0.1.0-setup.exe.blockmap` |     224,339 | `830D9CEF71B4AE1DE34F84580C1177013E61BEE84FE9237625704AA11C7F0C73` |
 
 本地产物未签名，不作为公开 Release；代码签名仍按 PRD 的 CI/发布门禁执行。
 

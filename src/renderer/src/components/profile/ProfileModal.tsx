@@ -57,10 +57,7 @@ const PROFILE_SECTIONS: ReadonlyArray<{
   id: ProfileSection;
   labelKey: string;
   Icon: React.ComponentType<{ size?: number }>;
-}> = [
-  { id: "profile", labelKey: "agents.sectionProfile", Icon: User },
-];
-
+}> = [{ id: "profile", labelKey: "agents.sectionProfile", Icon: User }];
 
 /**
  * Global profile detail/appearance modal (80vw × 80vh). Opened from anywhere

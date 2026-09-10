@@ -10,7 +10,10 @@ import {
   Trash2,
 } from "lucide-react";
 import type { RuntimeConversationSummary } from "../../../../shared/runtime-conversations";
-import type { ArchivedItem, ArchiveItemKind } from "../../../../shared/archives";
+import type {
+  ArchivedItem,
+  ArchiveItemKind,
+} from "../../../../shared/archives";
 import { useI18n } from "../useI18n";
 
 interface ArchivedProjectTask {
@@ -43,7 +46,11 @@ async function collectPages<T>(
   return rows;
 }
 
-export default function ArchivePane({ profile }: { profile?: string }): React.JSX.Element {
+export default function ArchivePane({
+  profile,
+}: {
+  profile?: string;
+}): React.JSX.Element {
   const { t } = useI18n();
   const [items, setItems] = useState<ArchivedItem[]>([]);
   const [query, setQuery] = useState("");
@@ -96,24 +103,26 @@ export default function ArchivePane({ profile }: { profile?: string }): React.JS
   useEffect(() => {
     load();
     window.addEventListener("agents-one:archives-changed", load);
-    return () => window.removeEventListener("agents-one:archives-changed", load);
+    return () =>
+      window.removeEventListener("agents-one:archives-changed", load);
   }, [load]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    return items.filter((item) =>
-      (kind === "all" || item.kind === kind) &&
-      (!needle ||
-        `${item.title} ${item.projectPath || ""}`
-          .toLocaleLowerCase()
-          .includes(needle) ||
-        (item.kind === "project" &&
-          projectTasks.some(
-            (task) =>
-              normalizedProjectPath(task.projectPath) ===
-                normalizedProjectPath(item.targetId) &&
-              task.title.toLocaleLowerCase().includes(needle),
-          ))),
+    return items.filter(
+      (item) =>
+        (kind === "all" || item.kind === kind) &&
+        (!needle ||
+          `${item.title} ${item.projectPath || ""}`
+            .toLocaleLowerCase()
+            .includes(needle) ||
+          (item.kind === "project" &&
+            projectTasks.some(
+              (task) =>
+                normalizedProjectPath(task.projectPath) ===
+                  normalizedProjectPath(item.targetId) &&
+                task.title.toLocaleLowerCase().includes(needle),
+            ))),
     );
   }, [items, kind, projectTasks, query]);
 
@@ -142,17 +151,26 @@ export default function ArchivePane({ profile }: { profile?: string }): React.JS
   };
   const restore = async (item: ArchivedItem): Promise<void> => {
     setBusyId(item.id);
-    try { await window.agentsOneAPI.restoreArchivedItem(item.id, profile); changed(); }
-    finally { setBusyId(null); }
+    try {
+      await window.agentsOneAPI.restoreArchivedItem(item.id, profile);
+      changed();
+    } finally {
+      setBusyId(null);
+    }
   };
   const permanentlyDelete = async (item: ArchivedItem): Promise<void> => {
-    const warning = item.kind === "project"
-      ? t("settings.archives.deleteProjectConfirm")
-      : t("settings.archives.deleteTaskConfirm");
+    const warning =
+      item.kind === "project"
+        ? t("settings.archives.deleteProjectConfirm")
+        : t("settings.archives.deleteTaskConfirm");
     if (!window.confirm(warning)) return;
     setBusyId(item.id);
-    try { await window.agentsOneAPI.deleteArchivedItem(item.id, profile); changed(); }
-    finally { setBusyId(null); }
+    try {
+      await window.agentsOneAPI.deleteArchivedItem(item.id, profile);
+      changed();
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (
@@ -162,8 +180,20 @@ export default function ArchivePane({ profile }: { profile?: string }): React.JS
         <span>{t("settings.archives.hint")}</span>
       </div>
       <div className="settings-archive-toolbar">
-        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("settings.archives.search")} /></label>
-        <select value={kind} onChange={(event) => setKind(event.target.value as "all" | ArchiveItemKind)}>
+        <label>
+          <Search size={16} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("settings.archives.search")}
+          />
+        </label>
+        <select
+          value={kind}
+          onChange={(event) =>
+            setKind(event.target.value as "all" | ArchiveItemKind)
+          }
+        >
           <option value="all">{t("settings.archives.all")}</option>
           <option value="task">{t("settings.archives.tasks")}</option>
           <option value="project">{t("settings.archives.projects")}</option>
@@ -171,52 +201,101 @@ export default function ArchivePane({ profile }: { profile?: string }): React.JS
       </div>
       <div className="settings-archive-list">
         {filtered.length === 0 ? (
-          <div className="settings-archive-empty">{t("settings.archives.empty")}</div>
-        ) : filtered.map((item) => {
-          const projectOpen = expandedProjects.has(item.id);
-          const childTasks = item.kind === "project" ? tasksForProject(item) : [];
-          return (
-            <article className="settings-archive-item" key={item.id}>
-              <div className="settings-archive-item-main">
-                <span className="settings-archive-icon">{item.kind === "project" ? <Folder size={18} /> : <MessageSquare size={18} />}</span>
-                <div className="settings-archive-details"><strong>{item.title}</strong><small title={item.projectPath}>{item.projectPath || new Date(item.archivedAt).toLocaleString()}</small></div>
-                <div className="settings-archive-actions">
-                  <button className="btn btn-sm btn-secondary" disabled={busyId === item.id} onClick={() => void restore(item)}><ArchiveRestore size={14} />{t("settings.archives.restore")}</button>
-                  <button className="btn btn-sm btn-danger" disabled={busyId === item.id} onClick={() => void permanentlyDelete(item)}><Trash2 size={14} />{t("settings.archives.delete")}</button>
+          <div className="settings-archive-empty">
+            {t("settings.archives.empty")}
+          </div>
+        ) : (
+          filtered.map((item) => {
+            const projectOpen = expandedProjects.has(item.id);
+            const childTasks =
+              item.kind === "project" ? tasksForProject(item) : [];
+            return (
+              <article className="settings-archive-item" key={item.id}>
+                <div className="settings-archive-item-main">
+                  <span className="settings-archive-icon">
+                    {item.kind === "project" ? (
+                      <Folder size={18} />
+                    ) : (
+                      <MessageSquare size={18} />
+                    )}
+                  </span>
+                  <div className="settings-archive-details">
+                    <strong>{item.title}</strong>
+                    <small title={item.projectPath}>
+                      {item.projectPath ||
+                        new Date(item.archivedAt).toLocaleString()}
+                    </small>
+                  </div>
+                  <div className="settings-archive-actions">
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      disabled={busyId === item.id}
+                      onClick={() => void restore(item)}
+                    >
+                      <ArchiveRestore size={14} />
+                      {t("settings.archives.restore")}
+                    </button>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      disabled={busyId === item.id}
+                      onClick={() => void permanentlyDelete(item)}
+                    >
+                      <Trash2 size={14} />
+                      {t("settings.archives.delete")}
+                    </button>
+                  </div>
                 </div>
-              </div>
-              {item.kind === "project" ? (
-                <div className="settings-archive-project-tasks">
-                  <button
-                    type="button"
-                    className="settings-archive-project-toggle"
-                    aria-expanded={projectOpen}
-                    onClick={() => toggleProject(item.id)}
-                  >
-                    {projectOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    <span>{t("settings.archives.taskConversations")}</span>
-                    {!tasksLoading ? <small>{childTasks.length}</small> : null}
-                  </button>
-                  {projectOpen ? (
-                    <div className="settings-archive-project-task-list">
-                      {tasksLoading ? (
-                        <div className="settings-archive-project-task-empty"><LoaderCircle className="settings-spin" size={14} />{t("settings.archives.loadingTasks")}</div>
-                      ) : childTasks.length === 0 ? (
-                        <div className="settings-archive-project-task-empty">{t("settings.archives.noProjectTasks")}</div>
-                      ) : childTasks.map((task) => (
-                        <div className="settings-archive-project-task" key={task.id}>
-                          <MessageSquare size={13} />
-                          <span title={task.title}>{task.title}</span>
-                          <time>{new Date(task.updatedAt).toLocaleString()}</time>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </article>
-          );
-        })}
+                {item.kind === "project" ? (
+                  <div className="settings-archive-project-tasks">
+                    <button
+                      type="button"
+                      className="settings-archive-project-toggle"
+                      aria-expanded={projectOpen}
+                      onClick={() => toggleProject(item.id)}
+                    >
+                      {projectOpen ? (
+                        <ChevronDown size={14} />
+                      ) : (
+                        <ChevronRight size={14} />
+                      )}
+                      <span>{t("settings.archives.taskConversations")}</span>
+                      {!tasksLoading ? (
+                        <small>{childTasks.length}</small>
+                      ) : null}
+                    </button>
+                    {projectOpen ? (
+                      <div className="settings-archive-project-task-list">
+                        {tasksLoading ? (
+                          <div className="settings-archive-project-task-empty">
+                            <LoaderCircle className="settings-spin" size={14} />
+                            {t("settings.archives.loadingTasks")}
+                          </div>
+                        ) : childTasks.length === 0 ? (
+                          <div className="settings-archive-project-task-empty">
+                            {t("settings.archives.noProjectTasks")}
+                          </div>
+                        ) : (
+                          childTasks.map((task) => (
+                            <div
+                              className="settings-archive-project-task"
+                              key={task.id}
+                            >
+                              <MessageSquare size={13} />
+                              <span title={task.title}>{task.title}</span>
+                              <time>
+                                {new Date(task.updatedAt).toLocaleString()}
+                              </time>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })
+        )}
       </div>
     </div>
   );

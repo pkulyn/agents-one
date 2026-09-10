@@ -1033,7 +1033,10 @@ export function startAll(profile?: string): {
   // Start adapter
   const adapterOk = startAdapter();
   if (!adapterOk) {
-    return { success: false, error: "Failed to start Hermes Agent Runtime adapter" };
+    return {
+      success: false,
+      error: "Failed to start Hermes Agent Runtime adapter",
+    };
   }
 
   return { success: true };

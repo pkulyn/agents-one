@@ -90,14 +90,14 @@ that against an unrelated DB transcript. It keeps a per-runtime-session state:
 
 ```ts
 interface ClientSessionState {
-  storedSessionId: string | null
-  messages: ChatMessage[]
-  busy: boolean
-  awaitingResponse: boolean
-  streamId: string | null
-  sawAssistantPayload: boolean
-  interrupted: boolean
-  needsInput: boolean
+  storedSessionId: string | null;
+  messages: ChatMessage[];
+  busy: boolean;
+  awaitingResponse: boolean;
+  streamId: string | null;
+  sawAssistantPayload: boolean;
+  interrupted: boolean;
+  needsInput: boolean;
 }
 ```
 
@@ -107,7 +107,13 @@ Live events mutate the in-flight assistant message's ordered `parts[]`:
 type ChatMessagePart =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
-  | { type: "tool-call"; toolCallId: string; toolName: string; args: unknown; result?: unknown }
+  | {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+      result?: unknown;
+    };
 ```
 
 The key invariant is boundary flushing:
@@ -321,12 +327,12 @@ Main-process additions:
 
 ```ts
 interface DashboardConnection {
-  baseUrl: string
-  wsUrl: string
-  token: string
-  mode: "local" | "remote"
-  profile?: string
-  processPid?: number
+  baseUrl: string;
+  wsUrl: string;
+  token: string;
+  mode: "local" | "remote";
+  profile?: string;
+  processPid?: number;
 }
 ```
 
@@ -390,14 +396,35 @@ Renderer additions:
 ```ts
 type GatewayEvent =
   | { type: "message.start"; session_id?: string; payload?: unknown }
-  | { type: "message.delta"; session_id?: string; payload?: { text?: string; rendered?: string } }
-  | { type: "reasoning.delta"; session_id?: string; payload?: { text?: string } }
-  | { type: "reasoning.available"; session_id?: string; payload?: { text?: string } }
+  | {
+      type: "message.delta";
+      session_id?: string;
+      payload?: { text?: string; rendered?: string };
+    }
+  | {
+      type: "reasoning.delta";
+      session_id?: string;
+      payload?: { text?: string };
+    }
+  | {
+      type: "reasoning.available";
+      session_id?: string;
+      payload?: { text?: string };
+    }
   | { type: "tool.start"; session_id?: string; payload?: GatewayToolPayload }
   | { type: "tool.progress"; session_id?: string; payload?: GatewayToolPayload }
   | { type: "tool.complete"; session_id?: string; payload?: GatewayToolPayload }
-  | { type: "message.complete"; session_id?: string; payload?: { text?: string; rendered?: string; reasoning?: string; usage?: unknown } }
-  | { type: "error"; session_id?: string; payload?: { message?: string } }
+  | {
+      type: "message.complete";
+      session_id?: string;
+      payload?: {
+        text?: string;
+        rendered?: string;
+        reasoning?: string;
+        usage?: unknown;
+      };
+    }
+  | { type: "error"; session_id?: string; payload?: { message?: string } };
 ```
 
 - implement request/response calls:
@@ -434,17 +461,25 @@ Suggested internal model:
 type TimelinePart =
   | { type: "reasoning"; id: string; text: string; pending?: boolean }
   | { type: "text"; id: string; text: string; pending?: boolean }
-  | { type: "tool"; id: string; callId: string; name: string; args: string; result?: string; status: "running" | "completed" | "failed" }
-  | { type: "error"; id: string; error: string }
+  | {
+      type: "tool";
+      id: string;
+      callId: string;
+      name: string;
+      args: string;
+      result?: string;
+      status: "running" | "completed" | "failed";
+    }
+  | { type: "error"; id: string; error: string };
 
 interface ActiveTimelineTurn {
-  turnId: string
-  userMessageId: string
-  assistantMessageId: string
-  parts: TimelinePart[]
-  queuedText: string
-  queuedReasoning: string
-  interrupted: boolean
+  turnId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+  parts: TimelinePart[];
+  queuedText: string;
+  queuedReasoning: string;
+  interrupted: boolean;
 }
 ```
 
@@ -596,12 +631,12 @@ Shape:
 
 ```ts
 interface SessionOverlayEvent {
-  sessionId: string
-  turnId: string
-  afterUserId?: string
-  afterUserText: string
-  error: string
-  createdAt: number
+  sessionId: string;
+  turnId: string;
+  afterUserId?: string;
+  afterUserText: string;
+  error: string;
+  createdAt: number;
 }
 ```
 

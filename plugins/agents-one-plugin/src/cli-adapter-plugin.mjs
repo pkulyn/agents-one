@@ -14,7 +14,14 @@ function parseJsonLine(line) {
  * The caller owns vendor-specific arguments and event mapping, so no native
  * CLI feature is removed or reinterpreted by the plugin.
  */
-export function createCliAdapter({ command, args = [], cwd, env, mapEvent, maxDiagnostics = 200 }) {
+export function createCliAdapter({
+  command,
+  args = [],
+  cwd,
+  env,
+  mapEvent,
+  maxDiagnostics = 200,
+}) {
   if (!command) throw new Error("command is required.");
   if (typeof mapEvent !== "function") throw new Error("mapEvent is required.");
   return {
@@ -38,9 +45,14 @@ export function createCliAdapter({ command, args = [], cwd, env, mapEvent, maxDi
           rawLog.push({ source, line: sanitizeEventText(line, 4000) || "" });
           if (rawLog.length > maxDiagnostics) rawLog.shift();
           const mapped = mapEvent(parseJsonLine(line), { source, line });
-          for (const event of Array.isArray(mapped) ? mapped : mapped ? [mapped] : []) {
+          for (const event of Array.isArray(mapped)
+            ? mapped
+            : mapped
+              ? [mapped]
+              : []) {
             const persisted = journal.append(event);
-            if (persisted?.type === "assistant.completed") finalText = persisted.data?.text || finalText;
+            if (persisted?.type === "assistant.completed")
+              finalText = persisted.data?.text || finalText;
           }
         }
       };
@@ -59,18 +71,34 @@ export function createCliAdapter({ command, args = [], cwd, env, mapEvent, maxDi
           const line = pending[source];
           rawLog.push({ source, line: sanitizeEventText(line, 4000) || "" });
           const mapped = mapEvent(parseJsonLine(line), { source, line });
-          for (const event of Array.isArray(mapped) ? mapped : mapped ? [mapped] : []) {
+          for (const event of Array.isArray(mapped)
+            ? mapped
+            : mapped
+              ? [mapped]
+              : []) {
             const persisted = journal.append(event);
-            if (persisted?.type === "assistant.completed") finalText = persisted.data?.text || finalText;
+            if (persisted?.type === "assistant.completed")
+              finalText = persisted.data?.text || finalText;
           }
         }
       }
       if (exitCode !== 0) {
-        journal.append({ type: "run.failed", data: { summary: `CLI 退出，代码 ${exitCode}。` } });
+        journal.append({
+          type: "run.failed",
+          data: { summary: `CLI 退出，代码 ${exitCode}。` },
+        });
       } else {
-        journal.append({ type: "run.completed", data: { summary: "本地 CLI 已完成运行。" } });
+        journal.append({
+          type: "run.completed",
+          data: { summary: "本地 CLI 已完成运行。" },
+        });
       }
-      return { exitCode, output: finalText, events: journal.snapshot(), rawLog };
+      return {
+        exitCode,
+        output: finalText,
+        events: journal.snapshot(),
+        rawLog,
+      };
     },
   };
 }

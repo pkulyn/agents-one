@@ -18,13 +18,13 @@ git show --stat --oneline <commit>
 
 ## 2. 语义切片
 
-| 顺序 | Commit | 文件边界 | 文件数 | 验证与回退 |
-| --- | --- | --- | ---: | --- |
-| 1 | `7227256` `chore(repo): isolate local artifacts and curate developer assets` | `.gitignore`、`.prettierignore`，以及审计决定移除的第三方 skills、失效 Codex hook、陈旧 `skills-lock.json`；不含产品源码 | 12 | Git/Prettier/ESLint/Vitest 排除规则已验证；单独 `git revert 7227256` 可恢复 |
-| 2 | `a4d6691` `build(release): align dependencies packaging and CI baseline` | 2 个既有 workflow、RC1 Windows workflow、Electron Builder/Vite/ESLint 配置、根 package 与 lockfile | 8 | lockfile 根依赖与 package 一致，staged check 通过；依赖它的后续代码应先回退，再回退本提交 |
-| 3 | `10b80f8` `feat(extensions): add connector adapters and connect service` | Plugin SDK、Connector CLI、Connect Service 的实现、说明及同目录测试 | 25 | Plugin SDK 22/22、Connector 6/6、Connect Service 8/8 通过；可在桌面提交之后单独回退 |
-| 4 | `714632b` `feat(desktop): integrate unified agent workspace workflows` | `src/`、`tests/`、`scripts/` 与 `lat.md/` 中相互依赖的桌面功能、测试、脚本和架构说明 | 308 | typecheck 通过、定向测试 15/15、`lat check` 通过；全量测试的 82 个已知失败登记到 OR-101～103 |
-| 5 | 本文件所在提交 `docs(release): add open-source readiness plan and audit trail` | 根贡献指南、全部待提交公开文档、OR-008/009 审计、OR-003 清单，以及已判定不公开文档的删除 | 44 | 五份启动文档链接 0 缺失、绝对路径复扫仅保留审计事实说明、staged check 通过 |
+| 顺序 | Commit                                                                         | 文件边界                                                                                                                 | 文件数 | 验证与回退                                                                                   |
+| ---- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | -----: | -------------------------------------------------------------------------------------------- |
+| 1    | `7227256` `chore(repo): isolate local artifacts and curate developer assets`   | `.gitignore`、`.prettierignore`，以及审计决定移除的第三方 skills、失效 Codex hook、陈旧 `skills-lock.json`；不含产品源码 |     12 | Git/Prettier/ESLint/Vitest 排除规则已验证；单独 `git revert 7227256` 可恢复                  |
+| 2    | `a4d6691` `build(release): align dependencies packaging and CI baseline`       | 2 个既有 workflow、RC1 Windows workflow、Electron Builder/Vite/ESLint 配置、根 package 与 lockfile                       |      8 | lockfile 根依赖与 package 一致，staged check 通过；依赖它的后续代码应先回退，再回退本提交    |
+| 3    | `10b80f8` `feat(extensions): add connector adapters and connect service`       | Plugin SDK、Connector CLI、Connect Service 的实现、说明及同目录测试                                                      |     25 | Plugin SDK 22/22、Connector 6/6、Connect Service 8/8 通过；可在桌面提交之后单独回退          |
+| 4    | `714632b` `feat(desktop): integrate unified agent workspace workflows`         | `src/`、`tests/`、`scripts/` 与 `lat.md/` 中相互依赖的桌面功能、测试、脚本和架构说明                                     |    308 | typecheck 通过、定向测试 15/15、`lat check` 通过；全量测试的 82 个已知失败登记到 OR-101～103 |
+| 5    | 本文件所在提交 `docs(release): add open-source readiness plan and audit trail` | 根贡献指南、全部待提交公开文档、OR-008/009 审计、OR-003 清单，以及已判定不公开文档的删除                                 |     44 | 五份启动文档链接 0 缺失、绝对路径复扫仅保留审计事实说明、staged check 通过                   |
 
 第 4 个切片没有按 UI、Runtime、Web Agent、语音和托盘继续做文件级拆分，因为这些变更共同修改 `src/main/ipc/register.ts`、preload API、Runtime 注册表、共享 DTO 与 Renderer 消费者。仅按文件拆开会制造无法 typecheck 的中间提交；如需进一步拆分，必须进行逐 hunk 重构和逐提交构建，属于 OR-0 之外的高风险历史整理，不在本轮执行。
 

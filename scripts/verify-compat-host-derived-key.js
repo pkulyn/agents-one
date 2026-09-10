@@ -83,7 +83,9 @@ function restoreFile(file, snapshot) {
       .join("\n");
     if (envWithoutHostKey !== envBefore) {
       fs.writeFileSync(envFile, envWithoutHostKey);
-      console.log("[A2] Stripped pre-existing DEEPSEEK_API_KEY for observability");
+      console.log(
+        "[A2] Stripped pre-existing DEEPSEEK_API_KEY for observability",
+      );
     }
 
     // Phase B - append a custom provider entry to config.yaml.

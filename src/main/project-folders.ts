@@ -56,7 +56,8 @@ function isRecord(value: unknown): value is ProjectFolderRecord {
 
 function readStore(): ProjectFolderStore {
   try {
-    if (!existsSync(storePath())) return { version: STORE_VERSION, folders: [] };
+    if (!existsSync(storePath()))
+      return { version: STORE_VERSION, folders: [] };
     const parsed = JSON.parse(readFileSync(storePath(), "utf8")) as unknown;
     const folders =
       parsed &&
@@ -94,12 +95,14 @@ export function listProjectFolders(): ProjectFolderRecord[] {
 export function listProjectWorkspaceCapabilities(): ProjectWorkspaceCapability[] {
   return listProjectFolders().flatMap((folder) => {
     const id = folder.id || projectFolderIdForPath(folder.path);
-    return [{
-      id,
-      name: folder.name,
-      ...(folder.pinned ? { pinned: true } : {}),
-      updatedAt: folder.updatedAt,
-    }];
+    return [
+      {
+        id,
+        name: folder.name,
+        ...(folder.pinned ? { pinned: true } : {}),
+        updatedAt: folder.updatedAt,
+      },
+    ];
   });
 }
 
@@ -115,7 +118,9 @@ export function projectWorkspaceCapability(
   };
 }
 
-export function registerProjectFolder(path: string): ProjectFolderRecord | null {
+export function registerProjectFolder(
+  path: string,
+): ProjectFolderRecord | null {
   const normalized = cleanPath(path);
   if (!normalized) return null;
   const now = Date.now();
@@ -165,7 +170,10 @@ export function updateProjectFolder(
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
-  writeStore([next, ...store.folders.filter((folder) => folder.path !== normalized)]);
+  writeStore([
+    next,
+    ...store.folders.filter((folder) => folder.path !== normalized),
+  ]);
   return next;
 }
 

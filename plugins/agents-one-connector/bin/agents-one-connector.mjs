@@ -32,7 +32,9 @@ function args(argv) {
 }
 
 function usage() {
-  console.log(`Agents One Connector CLI\n\nCommands:\n  pair             Enter an Agents One generated code\n  request-pairing  Generate a code on the agent side\n  complete-pairing Finish an approved connector-first pairing\n  status           Show local pairing status (never prints credentials)\n  revoke           Revoke the paired device\n  runtimes         List local Runtime registrations\n  register         Register a Runtime from --runtime JSON\n  enable           Enable a Runtime\n  disable          Disable a Runtime\n  update           Update a Runtime from --patch JSON\n  remove           Remove a Runtime without removing device credentials\n  probe            Probe one Runtime through --runtime-adapters\n  publish          Publish the local Runtime list to Connect\n  run              Run the paired Connector with one or many Runtime adapters\n  diagnose         Check a Connect endpoint\n\nExamples:\n  agents-one-connector request-pairing --connect https://connect.example --runtime-id hers-home2 --name Hers\n  agents-one-connector run --runtime-adapters ./runtime-adapters.mjs`);
+  console.log(
+    `Agents One Connector CLI\n\nCommands:\n  pair             Enter an Agents One generated code\n  request-pairing  Generate a code on the agent side\n  complete-pairing Finish an approved connector-first pairing\n  status           Show local pairing status (never prints credentials)\n  revoke           Revoke the paired device\n  runtimes         List local Runtime registrations\n  register         Register a Runtime from --runtime JSON\n  enable           Enable a Runtime\n  disable          Disable a Runtime\n  update           Update a Runtime from --patch JSON\n  remove           Remove a Runtime without removing device credentials\n  probe            Probe one Runtime through --runtime-adapters\n  publish          Publish the local Runtime list to Connect\n  run              Run the paired Connector with one or many Runtime adapters\n  diagnose         Check a Connect endpoint\n\nExamples:\n  agents-one-connector request-pairing --connect https://connect.example --runtime-id hers-home2 --name Hers\n  agents-one-connector run --runtime-adapters ./runtime-adapters.mjs`,
+  );
 }
 
 function runtimeList(input) {
@@ -59,7 +61,7 @@ async function loadRuntimeAdapters(input) {
   if (!input["runtime-adapters"])
     throw new Error("This command requires --runtime-adapters <module path>.");
   const module = await import(
-    pathToFileURL(resolve(input["runtime-adapters"])).href,
+    pathToFileURL(resolve(input["runtime-adapters"])).href
   );
   const adapters = module.runtimeAdapters || module.default;
   if (!adapters || typeof adapters !== "object" || Array.isArray(adapters))
@@ -80,8 +82,12 @@ try {
         displayName: input.name || input["display-name"] || "Remote agent",
         runtimes: runtimeList(input),
       });
-      console.log(JSON.stringify({ status: "awaiting_desktop_code", ...result }, null, 2));
-      console.error("请将 pairingCode 输入 Agents One；批准后运行 complete-pairing。 ");
+      console.log(
+        JSON.stringify({ status: "awaiting_desktop_code", ...result }, null, 2),
+      );
+      console.error(
+        "请将 pairingCode 输入 Agents One；批准后运行 complete-pairing。 ",
+      );
       process.exit(0);
     }
     const result = await pairConnector({
@@ -99,8 +105,12 @@ try {
       displayName: input.name || input["display-name"] || "Remote agent",
       runtimes: runtimeList(input),
     });
-    console.log(JSON.stringify({ status: "awaiting_desktop_code", ...result }, null, 2));
-    console.error("请将 pairingCode 输入 Agents One 的‘输入接入校验码’；批准后运行 complete-pairing。 ");
+    console.log(
+      JSON.stringify({ status: "awaiting_desktop_code", ...result }, null, 2),
+    );
+    console.error(
+      "请将 pairingCode 输入 Agents One 的‘输入接入校验码’；批准后运行 complete-pairing。 ",
+    );
     if (input.wait === true || input.wait === "true") {
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, 2_000));
@@ -109,7 +119,8 @@ try {
           console.log(JSON.stringify(completed, null, 2));
           break;
         }
-        if (completed.state === "expired") throw new Error("Pairing code expired.");
+        if (completed.state === "expired")
+          throw new Error("Pairing code expired.");
       }
     }
   } else if (command === "complete-pairing") {
@@ -168,17 +179,32 @@ try {
     let onRequest;
     let runtimeAdapters;
     if (input["runtime-adapters"]) {
-      const adapterModule = await import(pathToFileURL(resolve(input["runtime-adapters"])).href);
+      const adapterModule = await import(
+        pathToFileURL(resolve(input["runtime-adapters"])).href
+      );
       runtimeAdapters = adapterModule.runtimeAdapters || adapterModule.default;
-      if (!runtimeAdapters || typeof runtimeAdapters !== "object" || Array.isArray(runtimeAdapters)) {
-        throw new Error("Runtime adapter module must export runtimeAdapters as an object.");
+      if (
+        !runtimeAdapters ||
+        typeof runtimeAdapters !== "object" ||
+        Array.isArray(runtimeAdapters)
+      ) {
+        throw new Error(
+          "Runtime adapter module must export runtimeAdapters as an object.",
+        );
       }
     } else {
-      if (!input.adapter) throw new Error("run requires --adapter <module path> or --runtime-adapters <module path>.");
-      const adapterModule = await import(pathToFileURL(resolve(input.adapter)).href);
+      if (!input.adapter)
+        throw new Error(
+          "run requires --adapter <module path> or --runtime-adapters <module path>.",
+        );
+      const adapterModule = await import(
+        pathToFileURL(resolve(input.adapter)).href
+      );
       onRequest = adapterModule.default || adapterModule.onRequest;
       if (typeof onRequest !== "function") {
-        throw new Error("Adapter module must export a default function or onRequest.");
+        throw new Error(
+          "Adapter module must export a default function or onRequest.",
+        );
       }
     }
     const controller = new AbortController();
@@ -189,7 +215,8 @@ try {
       onRequest,
       runtimeAdapters,
       signal: controller.signal,
-      onState: (state) => console.error(JSON.stringify({ connector: state.state })),
+      onState: (state) =>
+        console.error(JSON.stringify({ connector: state.state })),
     });
   } else if (command === "diagnose") {
     await diagnoseConnect(input.connect);
@@ -197,6 +224,8 @@ try {
     throw new Error(`Unknown command: ${command}`);
   }
 } catch (error) {
-  console.error(error instanceof Error ? error.message : "Connector command failed.");
+  console.error(
+    error instanceof Error ? error.message : "Connector command failed.",
+  );
   process.exitCode = 1;
 }

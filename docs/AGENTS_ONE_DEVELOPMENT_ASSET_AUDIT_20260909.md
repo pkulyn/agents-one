@@ -8,20 +8,20 @@
 
 项目仓库只保留直接服务 Agents One 设计意图和跨智能体开发流程的指令资产。通用第三方技能、不完整来源锁、失效或用户级工具配置不进入公开树。
 
-| 资产 | 决定 | 理由 |
-| --- | --- | --- |
-| `AGENTS.md` | 保留 | Agents One 变更安全、`lat.md` 与交付门禁的项目权威指令 |
-| `CLAUDE.md` | 保留 | Claude Code 的项目入口，与 AGENTS 主体一致且不含凭据 |
-| `.agents/skills/hermes-agent/` | 保留 | Hermes Runtime 上游架构参考，文件声明来源与 MIT 许可；仍服务当前 Hermes Runtime 维护 |
-| `.agents/skills/lat-md/` | 保留 | 本项目知识图谱编写规范，直接支撑强制 `lat` 工作流 |
-| `.claude/skills/hermes-agent/`、`.claude/skills/lat-md/` | 保留 | Claude Code 的发现目录；当前内容与 `.agents` 对应文件 SHA-256 完全一致 |
-| `.claude/settings.json` | 保留 | 仅注册 `lat hook claude UserPromptSubmit/Stop`；本地 `lat` CLI 明确支持这些 agent/event，不含机器路径或凭据 |
-| `.agents/skills/electron-pro/` | 移除 | 通用第三方技能，仓库文件没有完整许可证声明，不是 Agents One 构建或运行依赖 |
-| `.agents/skills/typescript-expert/` | 移除 | 通用社区技能及脚本/参考资料，缺少随附许可证，不是产品源码依赖 |
-| `.claude/skills/electron-pro`、`.claude/skills/typescript-expert` | 移除 | Git mode 为 symlink，但无管理员权限 Windows checkout 会退化为普通文本，且目标第三方 skills 已移除 |
-| `skills-lock.json` | 移除并忽略 | 列出 4 个第三方来源，其中 2 个在树中不存在，也不覆盖保留的 Hermes/lat skills；不能作为准确供应链锁 |
-| `.codex/hooks.json` | 移除并忽略 | 内容误调用 `lat hook claude`；当前 `lat hook` 只声明支持 `claude/cursor`，不能伪装成有效 Codex hook |
-| `.claude/settings.local.json` | 忽略 | 约定为用户/机器级 Claude 覆盖，不属于项目公共配置 |
+| 资产                                                              | 决定       | 理由                                                                                                        |
+| ----------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
+| `AGENTS.md`                                                       | 保留       | Agents One 变更安全、`lat.md` 与交付门禁的项目权威指令                                                      |
+| `CLAUDE.md`                                                       | 保留       | Claude Code 的项目入口，与 AGENTS 主体一致且不含凭据                                                        |
+| `.agents/skills/hermes-agent/`                                    | 保留       | Hermes Runtime 上游架构参考，文件声明来源与 MIT 许可；仍服务当前 Hermes Runtime 维护                        |
+| `.agents/skills/lat-md/`                                          | 保留       | 本项目知识图谱编写规范，直接支撑强制 `lat` 工作流                                                           |
+| `.claude/skills/hermes-agent/`、`.claude/skills/lat-md/`          | 保留       | Claude Code 的发现目录；当前内容与 `.agents` 对应文件 SHA-256 完全一致                                      |
+| `.claude/settings.json`                                           | 保留       | 仅注册 `lat hook claude UserPromptSubmit/Stop`；本地 `lat` CLI 明确支持这些 agent/event，不含机器路径或凭据 |
+| `.agents/skills/electron-pro/`                                    | 移除       | 通用第三方技能，仓库文件没有完整许可证声明，不是 Agents One 构建或运行依赖                                  |
+| `.agents/skills/typescript-expert/`                               | 移除       | 通用社区技能及脚本/参考资料，缺少随附许可证，不是产品源码依赖                                               |
+| `.claude/skills/electron-pro`、`.claude/skills/typescript-expert` | 移除       | Git mode 为 symlink，但无管理员权限 Windows checkout 会退化为普通文本，且目标第三方 skills 已移除           |
+| `skills-lock.json`                                                | 移除并忽略 | 列出 4 个第三方来源，其中 2 个在树中不存在，也不覆盖保留的 Hermes/lat skills；不能作为准确供应链锁          |
+| `.codex/hooks.json`                                               | 移除并忽略 | 内容误调用 `lat hook claude`；当前 `lat hook` 只声明支持 `claude/cursor`，不能伪装成有效 Codex hook         |
+| `.claude/settings.local.json`                                     | 忽略       | 约定为用户/机器级 Claude 覆盖，不属于项目公共配置                                                           |
 
 ## 2. 删除与恢复边界
 

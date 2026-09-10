@@ -1109,7 +1109,8 @@ export function useDashboardChatTransport({
         setIsLoading(false);
         if (!failed && dashboardShouldPersistLocalOverlays(connectionMode)) {
           const storedSessionId = storedSessionIdRef.current;
-          const recordContinuation = window.agentsOneAPI.recordSessionContinuation;
+          const recordContinuation =
+            window.agentsOneAPI.recordSessionContinuation;
           const transcript = dashboardContinuationItemsFromTranscript(
             messagesRef.current,
           );
@@ -1185,7 +1186,9 @@ export function useDashboardChatTransport({
       // Already known unavailable on this remote connection — fail fast so the
       // caller falls back to legacy without re-running the slow status+probe.
       if (dashboardUnavailableRef.current) {
-        throw new Error("Hermes Agent Runtime dashboard transport is unavailable");
+        throw new Error(
+          "Hermes Agent Runtime dashboard transport is unavailable",
+        );
       }
       if (connectingRef.current) return connectingRef.current;
 
@@ -1203,16 +1206,20 @@ export function useDashboardChatTransport({
         for (let attempt = 0; attempt < 3; attempt++) {
           const status = await window.agentsOneAPI.startDashboard(profile);
           if (clientGenerationRef.current !== generation) {
-            throw new Error("Hermes Agent Runtime dashboard connection was superseded");
+            throw new Error(
+              "Hermes Agent Runtime dashboard connection was superseded",
+            );
           }
           if (!status.running || !status.connection?.wsUrl) {
             // No dashboard on this remote (gateway-only install). Latch + notify
             // only in auto mode where we actually fall back to legacy.
             markDashboardUnavailableForFallback(
-              status.error || "Hermes Agent Runtime dashboard transport is unavailable",
+              status.error ||
+                "Hermes Agent Runtime dashboard transport is unavailable",
             );
             throw new Error(
-              status.error || "Hermes Agent Runtime dashboard transport is unavailable",
+              status.error ||
+                "Hermes Agent Runtime dashboard transport is unavailable",
             );
           }
           const client: DashboardGatewayClient = new DashboardGatewayClient({
@@ -1229,7 +1236,9 @@ export function useDashboardChatTransport({
             lastConnectErr = err;
             client.close();
             if (clientGenerationRef.current !== generation) {
-              throw new Error("Hermes Agent Runtime dashboard connection was superseded");
+              throw new Error(
+                "Hermes Agent Runtime dashboard connection was superseded",
+              );
             }
             // Transient connect failure while the dashboard IS up — back off and
             // retry (the tunnel may be re-establishing).
@@ -1238,7 +1247,9 @@ export function useDashboardChatTransport({
           }
           if (clientGenerationRef.current !== generation) {
             client.close();
-            throw new Error("Hermes Agent Runtime dashboard connection was superseded");
+            throw new Error(
+              "Hermes Agent Runtime dashboard connection was superseded",
+            );
           }
           clientRef.current = client;
           return client;
@@ -1255,9 +1266,9 @@ export function useDashboardChatTransport({
           markDashboardUnavailableForFallback(reason);
           throw new Error(reason);
         }
-        const err = new Error(
-          reason,
-        ) as Error & { dashboardWasReachable?: boolean };
+        const err = new Error(reason) as Error & {
+          dashboardWasReachable?: boolean;
+        };
         err.dashboardWasReachable = true;
         throw err;
       })();
@@ -1297,7 +1308,8 @@ export function useDashboardChatTransport({
           client,
           contextFolder,
           contextWorkspaceId,
-          createWorkspaceSession: window.agentsOneAPI.createDashboardWorkspaceSession,
+          createWorkspaceSession:
+            window.agentsOneAPI.createDashboardWorkspaceSession,
           excludeSeedUserId,
           forceCreate: options.forceCreate ?? false,
           messages: messagesRef.current,
@@ -1342,11 +1354,10 @@ export function useDashboardChatTransport({
               session_id: targetSessionId,
               cwd: contextFolder,
             });
-        await syncCwd
-          .catch((err) => {
-            lastSyncedCwdRef.current = null;
-            console.warn("Failed to sync dashboard CWD:", err);
-          });
+        await syncCwd.catch((err) => {
+          lastSyncedCwdRef.current = null;
+          console.warn("Failed to sync dashboard CWD:", err);
+        });
       }
 
       return targetSessionId;
@@ -1548,7 +1559,8 @@ export function useDashboardChatTransport({
         items: DesktopSessionContinuationItem[],
       ): Promise<void> => {
         const storedSessionId = storedSessionIdRef.current;
-        const recordContinuation = window.agentsOneAPI.recordSessionContinuation;
+        const recordContinuation =
+          window.agentsOneAPI.recordSessionContinuation;
         if (
           dashboardShouldPersistLocalOverlays(connectionMode) &&
           storedSessionId &&

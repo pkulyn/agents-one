@@ -30,10 +30,7 @@ export function placeInitialUserMessageBeforeAgentTrace(
 
   const firstBubble = messages[leadingHistoryCount];
   const kind = (firstBubble as { kind?: string }).kind;
-  if (
-    firstBubble.role !== "user" ||
-    (kind !== undefined && kind !== "user")
-  ) {
+  if (firstBubble.role !== "user" || (kind !== undefined && kind !== "user")) {
     return [...messages];
   }
 

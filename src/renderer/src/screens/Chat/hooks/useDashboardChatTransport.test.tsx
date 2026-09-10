@@ -458,7 +458,11 @@ describe("useDashboardChatTransport unavailable fallback (issue #667)", () => {
     const startDashboard = mockStartDashboard();
     const api: HarnessApi = {};
     render(
-      <Harness api={api} initialConnectionMode="remote" fallbackOnUnavailable />,
+      <Harness
+        api={api}
+        initialConnectionMode="remote"
+        fallbackOnUnavailable
+      />,
     );
 
     await act(async () => {

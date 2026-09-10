@@ -103,7 +103,9 @@ export async function prepareProjectContextAttachment(
       await file.close();
     }
     const snapshotBytes = buffer.subarray(0, bytesRead);
-    const snapshotSha256 = createHash("sha256").update(snapshotBytes).digest("hex");
+    const snapshotSha256 = createHash("sha256")
+      .update(snapshotBytes)
+      .digest("hex");
     let content = buffer.subarray(0, bytesRead).toString("utf8");
     if (info.size > bytesToRead) content += "\n[File truncated by Agents One]";
     // Do not use <file> wrappers here. Hermes' legacy attachment transport
@@ -128,7 +130,13 @@ export async function prepareProjectContextAttachment(
     `Included text files: ${included} of ${files.length}`,
     "",
   );
-  sections.splice(5, 0, "Evidence manifest (content sent in this snapshot):", ...manifestEntries, "");
+  sections.splice(
+    5,
+    0,
+    "Evidence manifest (content sent in this snapshot):",
+    ...manifestEntries,
+    "",
+  );
   const text = sections.join("\n");
   const size = Buffer.byteLength(text, "utf8");
   return {

@@ -473,9 +473,10 @@ export const LOCAL_PRESETS: LocalPreset[] = [
 // keeps the per-provider Models manager saving entries exactly the way the
 // Models screen / Providers tab would. Unknown keys fall back to a bare `custom`
 // route so any provider can still hold models.
-export function providerRouteForEnvKey(
-  envKey: string,
-): { provider: string; baseUrl: string } {
+export function providerRouteForEnvKey(envKey: string): {
+  provider: string;
+  baseUrl: string;
+} {
   // The setup array is a heterogeneous literal (not every entry carries
   // configProvider/baseUrl), so read it through a partial shape.
   type SetupRoute = {

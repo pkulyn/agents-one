@@ -45,15 +45,23 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
     `);
     if (snapshot.hasComposer) return { state: "ready" };
     if (snapshot.hasVerification) {
-      return { state: "verification_required", message: "ChatGPT 要求完成验证码或安全验证。" };
+      return {
+        state: "verification_required",
+        message: "ChatGPT 要求完成验证码或安全验证。",
+      };
     }
     if (snapshot.hasLogin) {
       return { state: "login_required", message: "请在应用内登录 ChatGPT。" };
     }
-    return { state: "unsupported", message: "未能安全识别 ChatGPT 聊天输入框。" };
+    return {
+      state: "unsupported",
+      message: "未能安全识别 ChatGPT 聊天输入框。",
+    };
   }
 
-  override async ensureChatReady(page: WebAgentPage): Promise<DoubaoLoginProbe> {
+  override async ensureChatReady(
+    page: WebAgentPage,
+  ): Promise<DoubaoLoginProbe> {
     // OAuth temporarily moves the same isolated window to auth.openai.com or
     // an identity provider. Preserve that page while the user is signing in;
     // navigating back to chatgpt.com here would reset the login form/spinner.
@@ -61,7 +69,11 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
       await page.navigate(this.chatUrl);
     }
     let result = await this.probeLogin(page);
-    for (let attempt = 0; result.state === "unsupported" && attempt < 24; attempt += 1) {
+    for (
+      let attempt = 0;
+      result.state === "unsupported" && attempt < 24;
+      attempt += 1
+    ) {
       await page.sleep(250);
       result = await this.probeLogin(page);
     }
@@ -99,14 +111,23 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
     `);
   }
 
-  override async ensureMode(page: WebAgentPage, preferred: Exclude<"chat" | "work", never> = "work"): Promise<DoubaoModeSelection> {
+  override async ensureMode(
+    page: WebAgentPage,
+    preferred: Exclude<"chat" | "work", never> = "work",
+  ): Promise<DoubaoModeSelection> {
     let state = await this.modeState(page);
-    for (let attempt = 0; state.mode === "unknown" && attempt < 12; attempt += 1) {
+    for (
+      let attempt = 0;
+      state.mode === "unknown" && attempt < 12;
+      attempt += 1
+    ) {
       await page.sleep(250);
       state = await this.modeState(page);
     }
-    if (preferred === "work" && state.mode === "work" && !state.workUnavailable) return { ...state, fallbackUsed: false };
-    if (preferred === "chat" && state.mode === "chat") return { ...state, fallbackUsed: false };
+    if (preferred === "work" && state.mode === "work" && !state.workUnavailable)
+      return { ...state, fallbackUsed: false };
+    if (preferred === "chat" && state.mode === "chat")
+      return { ...state, fallbackUsed: false };
     const clicked = await page.evaluate<boolean>(`((target) => {
       const visible = (element) => { const s = window.getComputedStyle(element); const r = element.getBoundingClientRect(); return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0; };
       const labels = [...document.querySelectorAll('button, [role="tab"], [role="button"], div, span')].filter(visible);
@@ -119,8 +140,14 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
       for (let attempt = 0; attempt < 16; attempt += 1) {
         await page.sleep(250);
         state = await this.modeState(page);
-        if (preferred === "work" && state.mode === "work" && !state.workUnavailable) return { ...state, fallbackUsed: false };
-        if (preferred === "chat" && state.mode === "chat") return { ...state, fallbackUsed: false };
+        if (
+          preferred === "work" &&
+          state.mode === "work" &&
+          !state.workUnavailable
+        )
+          return { ...state, fallbackUsed: false };
+        if (preferred === "chat" && state.mode === "chat")
+          return { ...state, fallbackUsed: false };
         if (preferred === "work" && state.workUnavailable) break;
       }
     }
@@ -128,11 +155,16 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
       const chat = await this.ensureMode(page, "chat");
       return { ...chat, fallbackUsed: true };
     }
-    if (preferred === "work") throw new Error("WEB_PAGE_UNSUPPORTED: 未能确认 ChatGPT 已切换到工作模式。");
+    if (preferred === "work")
+      throw new Error(
+        "WEB_PAGE_UNSUPPORTED: 未能确认 ChatGPT 已切换到工作模式。",
+      );
     return { ...state, fallbackUsed: false };
   }
 
-  override async createConversation(page: WebAgentPage): Promise<WebAgentConversationRef> {
+  override async createConversation(
+    page: WebAgentPage,
+  ): Promise<WebAgentConversationRef> {
     // Navigating to the root is deterministic and preserves the isolated login
     // partition; ChatGPT creates a concrete /c/{id} URL after the first send.
     await page.navigate(this.chatUrl);
@@ -150,13 +182,19 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
     return { url: page.url(), opaqueId: page.url() };
   }
 
-  override async resumeConversation(page: WebAgentPage, ref: WebAgentConversationRef): Promise<void> {
+  override async resumeConversation(
+    page: WebAgentPage,
+    ref: WebAgentConversationRef,
+  ): Promise<void> {
     if (ref.url && page.url() !== ref.url) await page.navigate(ref.url);
     const probe = await this.probeLogin(page);
     if (probe.state !== "ready") throw new Error(probe.message);
   }
 
-  override async uploadFiles(page: WebAgentPage, files: WebAgentStagedFile[]): Promise<void> {
+  override async uploadFiles(
+    page: WebAgentPage,
+    files: WebAgentStagedFile[],
+  ): Promise<void> {
     if (!files.length) return;
     if (page.dropFiles) {
       await page.dropFiles(files.map((file) => file.path));
@@ -170,18 +208,27 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
           return visible(input) || Boolean(input);
         })()
       `);
-      if (!found) throw new Error("WEB_UPLOAD_REJECTED: 未找到 ChatGPT 文件上传入口。");
-      await page.setInputFiles('input[data-agents-one-upload-target="true"]', files.map((file) => file.path));
+      if (!found)
+        throw new Error("WEB_UPLOAD_REJECTED: 未找到 ChatGPT 文件上传入口。");
+      await page.setInputFiles(
+        'input[data-agents-one-upload-target="true"]',
+        files.map((file) => file.path),
+      );
     }
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
-      const status = await page.evaluate<{ uploading: boolean; error: boolean; evidence: boolean }>(`
+      const status = await page.evaluate<{
+        uploading: boolean;
+        error: boolean;
+        evidence: boolean;
+      }>(`
         (() => {
           const text = String(document.body?.innerText || document.body?.textContent || '');
           return { uploading: /uploading|上传中|正在上传/i.test(text), error: /upload failed|上传失败|无法上传|file too large/i.test(text), evidence: Boolean(document.querySelector('[data-testid*="file"], [data-testid*="attachment"], [data-file-name]')) };
         })()
       `);
-      if (status.error) throw new Error("WEB_UPLOAD_REJECTED: ChatGPT 拒绝了附件上传。");
+      if (status.error)
+        throw new Error("WEB_UPLOAD_REJECTED: ChatGPT 拒绝了附件上传。");
       if (status.evidence && !status.uploading) return;
       await page.sleep(300);
     }
@@ -200,7 +247,9 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
       // single Chat fallback instead of surfacing a misleading receipt error.
       const state = await this.modeState(page);
       if (state.workUnavailable) {
-        throw new Error("WEB_WORK_MODE_UNAVAILABLE: ChatGPT 工作模式额度或次数不可用。");
+        throw new Error(
+          "WEB_WORK_MODE_UNAVAILABLE: ChatGPT 工作模式额度或次数不可用。",
+        );
       }
       throw error;
     }

@@ -7,7 +7,9 @@ import { processFiles, filesFromClipboard } from "./attachmentUtils";
 // simulate the paste path (no origin) by leaving getPathForFile empty
 // and routing through a fake stageAttachment.
 beforeEach(() => {
-  (window as unknown as { agentsOneAPI: Record<string, unknown> }).agentsOneAPI = {
+  (
+    window as unknown as { agentsOneAPI: Record<string, unknown> }
+  ).agentsOneAPI = {
     getPathForFile: vi.fn(() => ""),
     stageAttachment: vi.fn(
       async (sessionId: string, filename: string): Promise<string> =>
@@ -135,7 +137,9 @@ describe("processFiles", () => {
   });
 
   it("stages picker/drag-drop files instead of forwarding their origin path", async () => {
-    (window as unknown as { agentsOneAPI: Record<string, unknown> }).agentsOneAPI = {
+    (
+      window as unknown as { agentsOneAPI: Record<string, unknown> }
+    ).agentsOneAPI = {
       getPathForFile: vi.fn(() => "C:/Users/me/Downloads/doc.pdf"),
       stageAttachment: vi.fn(
         async (sessionId: string, filename: string): Promise<string> =>

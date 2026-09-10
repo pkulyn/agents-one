@@ -3,10 +3,17 @@ import { join } from "path";
 import type { ArchivedItem, ArchiveItemInput } from "../shared/archives";
 import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
 
-interface ArchiveStore { version: 1; items: ArchivedItem[] }
+interface ArchiveStore {
+  version: 1;
+  items: ArchivedItem[];
+}
 
 function storePath(profile?: string): string {
-  return join(profileHome(profile || getActiveProfileNameSync()), "desktop", "archives.json");
+  return join(
+    profileHome(profile || getActiveProfileNameSync()),
+    "desktop",
+    "archives.json",
+  );
 }
 
 function clean(value: unknown, max = 1024): string | undefined {
@@ -18,7 +25,9 @@ function clean(value: unknown, max = 1024): string | undefined {
 function readStore(profile?: string): ArchiveStore {
   try {
     if (!existsSync(storePath(profile))) return { version: 1, items: [] };
-    const parsed = JSON.parse(readFileSync(storePath(profile), "utf8")) as { items?: unknown };
+    const parsed = JSON.parse(readFileSync(storePath(profile), "utf8")) as {
+      items?: unknown;
+    };
     if (!Array.isArray(parsed.items)) return { version: 1, items: [] };
     const items = parsed.items.flatMap((raw): ArchivedItem[] => {
       if (!raw || typeof raw !== "object") return [];
@@ -26,14 +35,32 @@ function readStore(profile?: string): ArchiveStore {
       const id = clean(item.id, 120);
       const targetId = clean(item.targetId, 512);
       const title = clean(item.title, 240);
-      if (!id || !targetId || !title || (item.kind !== "task" && item.kind !== "project")) return [];
-      return [{
-        id, kind: item.kind, targetId, title,
-        ...(clean(item.projectPath) ? { projectPath: clean(item.projectPath) } : {}),
-        ...(clean(item.projectWorkspaceId, 128) ? { projectWorkspaceId: clean(item.projectWorkspaceId, 128) } : {}),
-        ...(clean(item.runtimeId, 160) ? { runtimeId: clean(item.runtimeId, 160) } : {}),
-        archivedAt: typeof item.archivedAt === "number" ? item.archivedAt : Date.now(),
-      }];
+      if (
+        !id ||
+        !targetId ||
+        !title ||
+        (item.kind !== "task" && item.kind !== "project")
+      )
+        return [];
+      return [
+        {
+          id,
+          kind: item.kind,
+          targetId,
+          title,
+          ...(clean(item.projectPath)
+            ? { projectPath: clean(item.projectPath) }
+            : {}),
+          ...(clean(item.projectWorkspaceId, 128)
+            ? { projectWorkspaceId: clean(item.projectWorkspaceId, 128) }
+            : {}),
+          ...(clean(item.runtimeId, 160)
+            ? { runtimeId: clean(item.runtimeId, 160) }
+            : {}),
+          archivedAt:
+            typeof item.archivedAt === "number" ? item.archivedAt : Date.now(),
+        },
+      ];
     });
     return { version: 1, items };
   } catch {
@@ -42,23 +69,38 @@ function readStore(profile?: string): ArchiveStore {
 }
 
 function writeStore(items: ArchivedItem[], profile?: string): void {
-  safeWriteFile(storePath(profile), JSON.stringify({ version: 1, items } satisfies ArchiveStore));
+  safeWriteFile(
+    storePath(profile),
+    JSON.stringify({ version: 1, items } satisfies ArchiveStore),
+  );
 }
 
 export function listArchivedItems(profile?: string): ArchivedItem[] {
   return readStore(profile).items.sort((a, b) => b.archivedAt - a.archivedAt);
 }
 
-export function archiveItem(input: ArchiveItemInput, profile?: string): ArchivedItem {
+export function archiveItem(
+  input: ArchiveItemInput,
+  profile?: string,
+): ArchivedItem {
   const targetId = clean(input.targetId, 512);
   const title = clean(input.title, 240);
   if (!targetId || !title) throw new Error("归档目标无效");
   const id = `${input.kind}:${targetId}`;
   const item: ArchivedItem = {
-    id, kind: input.kind, targetId, title,
-    ...(clean(input.projectPath) ? { projectPath: clean(input.projectPath) } : {}),
-    ...(clean(input.projectWorkspaceId, 128) ? { projectWorkspaceId: clean(input.projectWorkspaceId, 128) } : {}),
-    ...(clean(input.runtimeId, 160) ? { runtimeId: clean(input.runtimeId, 160) } : {}),
+    id,
+    kind: input.kind,
+    targetId,
+    title,
+    ...(clean(input.projectPath)
+      ? { projectPath: clean(input.projectPath) }
+      : {}),
+    ...(clean(input.projectWorkspaceId, 128)
+      ? { projectWorkspaceId: clean(input.projectWorkspaceId, 128) }
+      : {}),
+    ...(clean(input.runtimeId, 160)
+      ? { runtimeId: clean(input.runtimeId, 160) }
+      : {}),
     archivedAt: Date.now(),
   };
   const current = readStore(profile).items;
@@ -74,6 +116,9 @@ export function restoreArchivedItem(id: string, profile?: string): boolean {
   return true;
 }
 
-export function getArchivedItem(id: string, profile?: string): ArchivedItem | undefined {
+export function getArchivedItem(
+  id: string,
+  profile?: string,
+): ArchivedItem | undefined {
   return readStore(profile).items.find((item) => item.id === id);
 }

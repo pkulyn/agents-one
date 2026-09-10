@@ -53,15 +53,15 @@
 
 ## 4. 必须脱敏或泛化后才能公开
 
-| 文件/范围 | 当前问题 | OR-003 前必须完成 |
-| --- | --- | --- |
-| `docs/AGENTS_ONE_PROGRESS_LOG.md` | 含开发机路径、用户名、个人技能目录、私有恢复位置和少量具体本地数据描述 | 用户名改为 `<user>`，仓库/恢复/工作区改为语义占位符；保留必要哈希时不得同时暴露私人目录和数据细节 |
-| `docs/AGENTS_ONE_OPENSOURCE_RELEASE_READINESS_PRD_20260909.md` | OR-001 执行状态写有本机恢复绝对路径 | 公开版本只写 `<private-recovery-root>`；精确位置保留在仓库外的私有 `RECOVERY.md` |
-| `docs/windows-portable-build-notes.md` | 含固定 `D:\Agent Console` 和组织 Node 路径 | 改用 `<repo>`、`<portable-node>`、`$PWD` 或相对路径，并与最终 Node/npm 版本一致 |
-| `plugins/agents-one-plugin/README.zh-CN.md` | 安装命令含固定仓库和 Node/npm 路径 | 改为从插件目录运行的 `node`/`npm` 通用命令 |
-| `scripts/launch-agents-one.ps1`、`scripts/verify-claude-code-runtime-live.js` | 默认值包含开发机便携 Node/CLI 路径 | 改为参数、环境变量或 PATH 探测；没有显式输入时不得回落到维护者机器路径 |
-| `tests/agent-runtimes.test.ts`、`AgentRuntimesPane.test.tsx` | 夹具含开发机、用户名和 `Agent Console` 路径 | 改为 `<repo>` 语义对应的 `C:\workspace\agents-one`、`C:\Users\tester` 等稳定假值 |
-| 其他绝对路径命中 | 部分是平台行为测试或历史示例 | OR-006 逐条分类；行为测试可保留通用绝对假值，任何维护者真实路径必须替换 |
+| 文件/范围                                                                     | 当前问题                                                               | OR-003 前必须完成                                                                                 |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `docs/AGENTS_ONE_PROGRESS_LOG.md`                                             | 含开发机路径、用户名、个人技能目录、私有恢复位置和少量具体本地数据描述 | 用户名改为 `<user>`，仓库/恢复/工作区改为语义占位符；保留必要哈希时不得同时暴露私人目录和数据细节 |
+| `docs/AGENTS_ONE_OPENSOURCE_RELEASE_READINESS_PRD_20260909.md`                | OR-001 执行状态写有本机恢复绝对路径                                    | 公开版本只写 `<private-recovery-root>`；精确位置保留在仓库外的私有 `RECOVERY.md`                  |
+| `docs/windows-portable-build-notes.md`                                        | 含固定 `D:\Agent Console` 和组织 Node 路径                             | 改用 `<repo>`、`<portable-node>`、`$PWD` 或相对路径，并与最终 Node/npm 版本一致                   |
+| `plugins/agents-one-plugin/README.zh-CN.md`                                   | 安装命令含固定仓库和 Node/npm 路径                                     | 改为从插件目录运行的 `node`/`npm` 通用命令                                                        |
+| `scripts/launch-agents-one.ps1`、`scripts/verify-claude-code-runtime-live.js` | 默认值包含开发机便携 Node/CLI 路径                                     | 改为参数、环境变量或 PATH 探测；没有显式输入时不得回落到维护者机器路径                            |
+| `tests/agent-runtimes.test.ts`、`AgentRuntimesPane.test.tsx`                  | 夹具含开发机、用户名和 `Agent Console` 路径                            | 改为 `<repo>` 语义对应的 `C:\workspace\agents-one`、`C:\Users\tester` 等稳定假值                  |
+| 其他绝对路径命中                                                              | 部分是平台行为测试或历史示例                                           | OR-006 逐条分类；行为测试可保留通用绝对假值，任何维护者真实路径必须替换                           |
 
 电子邮件与 IPv4 命中也必须逐项分类：文档保留项只允许 RFC 5737 示例地址、回环/RFC1918 明确示例和 `example.com` 邮箱；真实端点、真实邮箱或可识别内部域名一律脱敏。
 
@@ -69,21 +69,21 @@
 
 以下文件已决定转入仓库外私有归档或在 OR-003 中提交删除。OR-001 权威快照已保留当前内容，因此当前审计阶段不直接删除；OR-003 必须精确暂存这些删除，且不得把私有归档复制回仓库：
 
-| 文件 | 决定依据 |
-| --- | --- |
-| `KANBAN_GAP_REPORT.md` | 对应已删除 Kanban/Task Center 方向，包含上游内部实现对照，不是当前产品能力 |
-| `PROFILE_MODAL_HANDOFF.md` | 旧分支交接稿，包含已删除 Wallet/旧 Profile 方向 |
-| `pr-comment.md` | 旧 PR 临时评论，涉及已删除 Office/GPU 修复，不是长期文档 |
-| `docs/SSH-TUNNEL-VPS.md` | SSH 模式已明确删除；文档含绝对路径、邮箱/IP 示例和已不存在页面 |
-| `docs/ssh-dashboard-transport.md` | 旧 SSH/legacy Dashboard 传输设计，与 Gateway v1 首发边界冲突 |
-| `docs/security-audit-2026-07-09.md` | 内部历史审计且部分安全陈述已被当前凭据事实推翻；公开安全说明由 OR-204/602 重建 |
-| `docs/AGENT_CONSOLE_DETAILED_TASK_PLAN.md` | 早期内部计划，仍以已删除管理页面和固定父目录环境为基线 |
-| `docs/U0_UI_BASELINE_AUDIT.md` | 内部视觉审计，引用未公开 `.sandbox` 截图和已删除页面 |
-| `docs/AGENTS_ONE_FEATURE_SLIMMING_RECOVERY.md` | 本机数据恢复记录，包含私人备份目录、用户目录和本地数据细节 |
-| `docs/HERS2_REMOTE_CONNECTOR_UPDATE_GUIDE.md` | 面向具体 Hers-2 环境的定向交接稿，含维护者机器命令 |
-| `docs/HERS_AGENTS_ONE_CONNECTOR_DEPLOYMENT_GUIDE_20260821.md` | 具体 Hers 部署交接资料；通用 Connector 能力由插件/Connector README 承担 |
-| `docs/HERS_AGENTS_ONE_PLUGIN_INSTALL.md` | 具体 Hers Relay 手工安装路径已被通用 Plugin SDK/Connector 文档取代 |
-| `docs/HERS_GATEWAY_V1_WORKSPACE_GRANT_ALIGNMENT.md` | 具体 Relay 对齐清单；稳定公开契约应只保留在通用 Gateway v1/Workspace Grant 文档 |
+| 文件                                                          | 决定依据                                                                        |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `KANBAN_GAP_REPORT.md`                                        | 对应已删除 Kanban/Task Center 方向，包含上游内部实现对照，不是当前产品能力      |
+| `PROFILE_MODAL_HANDOFF.md`                                    | 旧分支交接稿，包含已删除 Wallet/旧 Profile 方向                                 |
+| `pr-comment.md`                                               | 旧 PR 临时评论，涉及已删除 Office/GPU 修复，不是长期文档                        |
+| `docs/SSH-TUNNEL-VPS.md`                                      | SSH 模式已明确删除；文档含绝对路径、邮箱/IP 示例和已不存在页面                  |
+| `docs/ssh-dashboard-transport.md`                             | 旧 SSH/legacy Dashboard 传输设计，与 Gateway v1 首发边界冲突                    |
+| `docs/security-audit-2026-07-09.md`                           | 内部历史审计且部分安全陈述已被当前凭据事实推翻；公开安全说明由 OR-204/602 重建  |
+| `docs/AGENT_CONSOLE_DETAILED_TASK_PLAN.md`                    | 早期内部计划，仍以已删除管理页面和固定父目录环境为基线                          |
+| `docs/U0_UI_BASELINE_AUDIT.md`                                | 内部视觉审计，引用未公开 `.sandbox` 截图和已删除页面                            |
+| `docs/AGENTS_ONE_FEATURE_SLIMMING_RECOVERY.md`                | 本机数据恢复记录，包含私人备份目录、用户目录和本地数据细节                      |
+| `docs/HERS2_REMOTE_CONNECTOR_UPDATE_GUIDE.md`                 | 面向具体 Hers-2 环境的定向交接稿，含维护者机器命令                              |
+| `docs/HERS_AGENTS_ONE_CONNECTOR_DEPLOYMENT_GUIDE_20260821.md` | 具体 Hers 部署交接资料；通用 Connector 能力由插件/Connector README 承担         |
+| `docs/HERS_AGENTS_ONE_PLUGIN_INSTALL.md`                      | 具体 Hers Relay 手工安装路径已被通用 Plugin SDK/Connector 文档取代              |
+| `docs/HERS_GATEWAY_V1_WORKSPACE_GRANT_ALIGNMENT.md`           | 具体 Relay 对齐清单；稳定公开契约应只保留在通用 Gateway v1/Workspace Grant 文档 |
 
 `docs/remote-access-lab.md`、`scripts/remote-lab.ps1`、`scripts/ssh-lab.ps1` 与相关实验脚本仍被 `docs/reconciliation-regression-playbook.md` 的回归步骤直接引用，因此本轮作为历史兼容测试资产保留。后续若决定移除，必须先迁移或删除消费者并完成回归，不能只删脚本或实验说明导致门禁失效。
 

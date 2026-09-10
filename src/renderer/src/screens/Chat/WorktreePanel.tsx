@@ -268,7 +268,10 @@ export const WorktreePanel = memo(function WorktreePanel({
       />
       <div className="worktree-header">
         <Folder size={16} className="worktree-header-icon" />
-        <span className="worktree-header-title" title={folderLabel || folderPath}>
+        <span
+          className="worktree-header-title"
+          title={folderLabel || folderPath}
+        >
           {folderName}
         </span>
         <button

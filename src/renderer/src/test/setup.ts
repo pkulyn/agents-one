@@ -21,7 +21,8 @@ if (
         values.clear();
       },
       getItem: (key: string): string | null => values.get(key) ?? null,
-      key: (index: number): string | null => Array.from(values.keys())[index] ?? null,
+      key: (index: number): string | null =>
+        Array.from(values.keys())[index] ?? null,
       removeItem: (key: string): void => {
         values.delete(key);
       },

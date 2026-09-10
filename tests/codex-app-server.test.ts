@@ -12,7 +12,9 @@ class FakeChild extends EventEmitter {
   };
 
   private respond(frame: unknown): void {
-    queueMicrotask(() => this.stdout.emit("data", Buffer.from(`${JSON.stringify(frame)}\n`)));
+    queueMicrotask(() =>
+      this.stdout.emit("data", Buffer.from(`${JSON.stringify(frame)}\n`)),
+    );
   }
 
   private handleRequest(line: string): void {
@@ -81,7 +83,9 @@ describe("Codex App Server controls", () => {
   });
 
   it("reads the native model catalogue", async () => {
-    await expect(listCodexAppServerModels({ executablePath: "codex" })).resolves.toEqual([
+    await expect(
+      listCodexAppServerModels({ executablePath: "codex" }),
+    ).resolves.toEqual([
       {
         id: "gpt-test",
         displayName: "GPT Test",
@@ -93,8 +97,10 @@ describe("Codex App Server controls", () => {
   it("waits for the standard contextCompaction item lifecycle", async () => {
     const progress: string[] = [];
     await expect(
-      compactCodexAppServerThread({ executablePath: "codex" }, "thr_123", (message) =>
-        progress.push(message),
+      compactCodexAppServerThread(
+        { executablePath: "codex" },
+        "thr_123",
+        (message) => progress.push(message),
       ),
     ).resolves.toBeUndefined();
 
@@ -103,7 +109,10 @@ describe("Codex App Server controls", () => {
     );
     expect(requests).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ method: "thread/resume", params: { threadId: "thr_123" } }),
+        expect.objectContaining({
+          method: "thread/resume",
+          params: { threadId: "thr_123" },
+        }),
         expect.objectContaining({
           method: "thread/compact/start",
           params: { threadId: "thr_123" },

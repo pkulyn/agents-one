@@ -30,8 +30,12 @@ describe("remote project context", () => {
     expect(attachment.kind).toBe("text-file");
     expect(attachment.text).toContain("--- PROJECT FILE: README.md ---");
     expect(attachment.text).toContain("--- PROJECT FILE: src/index.ts ---");
-    expect(attachment.text).toContain("Evidence manifest (content sent in this snapshot):");
-    expect(attachment.text).toMatch(/README\.md \| \d+ bytes \| SHA-256: [a-f0-9]{64}/i);
+    expect(attachment.text).toContain(
+      "Evidence manifest (content sent in this snapshot):",
+    );
+    expect(attachment.text).toMatch(
+      /README\.md \| \d+ bytes \| SHA-256: [a-f0-9]{64}/i,
+    );
     expect(attachment.text).not.toMatch(/<\/?file\b/i);
     expect(attachment.text).not.toContain(root);
     expect(attachment.size).toBeLessThanOrEqual(256 * 1024);

@@ -109,7 +109,8 @@ function preferredTitle(
   cachedTitle?: string | null,
 ): string {
   if (!isPlaceholderSessionTitle(dbTitle)) return String(dbTitle).trim();
-  if (!isPlaceholderSessionTitle(cachedTitle)) return String(cachedTitle).trim();
+  if (!isPlaceholderSessionTitle(cachedTitle))
+    return String(cachedTitle).trim();
   return titleFromFirstUserMessage(db, sessionId);
 }
 
@@ -207,12 +208,7 @@ export function syncSessionCache(): CachedSession[] {
       if (existing) {
         existing.messageCount = row.message_count;
         if (row.model) existing.model = row.model;
-        existing.title = preferredTitle(
-          db,
-          row.id,
-          row.title,
-          existing.title,
-        );
+        existing.title = preferredTitle(db, row.id, row.title, existing.title);
         continue;
       }
 

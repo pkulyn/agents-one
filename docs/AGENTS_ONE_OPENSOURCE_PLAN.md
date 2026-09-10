@@ -18,18 +18,18 @@
 
 ## 1. 已确认的关键决策
 
-| # | 决策项 | 结论 |
-|---|--------|------|
-| D1 | 智能体接入统一方案 | **方案 A（Transport 主轴收敛）**；方案 C（Adapter 注册表）作为后续按需迭代方向 |
-| D2 | 远程接入 | 统一走 **Gateway v1**（单地址 + 单 Token + capabilities 自动探测）；协议已涵盖"能力协商而非类型分支" |
-| D3 | 本地接入 | `local-cli`（Pi/Claude Code/Codex，可执行文件路径，自动探测）+ `local-api`（内置 Hermes 本地 API，保留） |
-| D4 | Hermes SSH 模式 | **删除**。无公网 IP 场景由 Gateway v1 出站 Connector 模式覆盖 |
-| D5 | NAS Hermes/OpenClaw 旧兼容模式 | **不迁移，直接删除旧代码**。这两个智能体是测试用途；后续有需要时按 Gateway v1 协议重新接入 |
-| D6 | 上游遗留（云账号同步/钱包/社区） | **直接删除源码** |
-| D7 | 隐藏旧页面（Discover/Office/Providers/Skills/Memory/Soul/Tools/Gateway/Models/Sessions 等） | **全部删除界面**；Skills/Memory/Soul 的**数据备份保留**（数据备份 ≠ 管理界面） |
-| D8 | GitHub 仓库 | `pkulyn/agents-one` |
-| D9 | i18n 首发范围 | 只保留 **en + zh-CN**，删除其余 10 个 locale |
-| D10 | LICENSE | 保留 MIT，Copyright 改为 pkulyn |
+| #   | 决策项                                                                                      | 结论                                                                                                     |
+| --- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| D1  | 智能体接入统一方案                                                                          | **方案 A（Transport 主轴收敛）**；方案 C（Adapter 注册表）作为后续按需迭代方向                           |
+| D2  | 远程接入                                                                                    | 统一走 **Gateway v1**（单地址 + 单 Token + capabilities 自动探测）；协议已涵盖"能力协商而非类型分支"     |
+| D3  | 本地接入                                                                                    | `local-cli`（Pi/Claude Code/Codex，可执行文件路径，自动探测）+ `local-api`（内置 Hermes 本地 API，保留） |
+| D4  | Hermes SSH 模式                                                                             | **删除**。无公网 IP 场景由 Gateway v1 出站 Connector 模式覆盖                                            |
+| D5  | NAS Hermes/OpenClaw 旧兼容模式                                                              | **不迁移，直接删除旧代码**。这两个智能体是测试用途；后续有需要时按 Gateway v1 协议重新接入               |
+| D6  | 上游遗留（云账号同步/钱包/社区）                                                            | **直接删除源码**                                                                                         |
+| D7  | 隐藏旧页面（Discover/Office/Providers/Skills/Memory/Soul/Tools/Gateway/Models/Sessions 等） | **全部删除界面**；Skills/Memory/Soul 的**数据备份保留**（数据备份 ≠ 管理界面）                           |
+| D8  | GitHub 仓库                                                                                 | `pkulyn/agents-one`                                                                                      |
+| D9  | i18n 首发范围                                                                               | 只保留 **en + zh-CN**，删除其余 10 个 locale                                                             |
+| D10 | LICENSE                                                                                     | 保留 MIT，Copyright 改为 pkulyn                                                                          |
 
 ## 2. 智能体接入统一的最终形态
 
@@ -103,13 +103,13 @@ transport: "gateway-v1" | "local-cli" | "local-api";
 
 ## 5. 执行记录
 
-| 节点 | 状态 | 日期 | 备注 |
-|------|------|------|------|
-| 方案对齐与开发文档生成 | ✅ | 2026-08-14 | 用户确认方案 A + 全部 10 项决策 |
-| Phase 0 提交基线 | ✅ | 2026-08-14 | 8 个语义化 commit；标签 `agents-one-pre-opensource-baseline`；typecheck✅ test 203 文件/2010 通过/9 跳过 ✅ build✅ |
-| Phase 2 遗留清理 | ✅ 主体完成 | 2026-08-14 | ①孤儿屏狄删除✅ ②上游云/钱包/社区删除✅ ③Skills/Memory/Soul UI 删除✅ ④i18n 收敛 en+zh-CN✅ ⑤上游 hermesone/fathah 引用清理✅ ⑥分析器删除✅；深层主进程 IPC 清理（registry/messaging/tools）与 Phase 1 旧远程传输耦合，延后 |
-| Phase 3 开源准备 | 🔄 部分完成 | 2026-08-14 | 元数据（package.json/LICENSE/electron-builder/updater/CONTRIBUTING/删上游 changelog+README 变体）✅；README 重写待 Phase 1 完成后（需描述统一接入模型） |
-| Phase 1 接入统一 | ✅ 完成 | 2026-08-14 | 1.1 配置模型 `agentTransport`+推导 ✅（c414f23）；1.2 transport 分类器+start 守卫 ✅（e393d9a）；1.3 SSH 删除 ✅；1.4 旧远程模式删除 ✅；1.5 注册表单统一 ✅；1.6 Agents 卡片增强 ✅；1.7 定向+全量回归 ✅（全量 179 文件 1783 通过，typecheck/build/diff-check 全绿；修复 RuntimeChat 协作 flaky） |
-| Phase 3 开源准备 | ✅ 完成 | 2026-08-16 | 16 README 重写 ✅（README.md/zh-CN 描述统一接入模型、Gateway v1 与 Plugin SDK 指引、删除上游徽章/赞助/Ko-fi、替换为当前构建实拍截图）；18 硬编码路径清理 ✅（verify-hers-*.js 参数必填、测试个人用户名→tester、HERS_GATEWAY 文档命令示例改占位符）；20 lat.md 知识库同步 ✅（删除 5 个已删功能文档 + 修 sidebar-navigation/main-process/window-chrome 失效链接与过时章节；lat.md CLI 未安装，用本地脚本验证 253 链接 0 失效） |
-| 发布前稳定化 S0-S5 | 🔄 已规划 | 2026-08-20 | 发布冻结；详细范围、顺序和门槛见 `AGENTS_ONE_STABILIZATION_PLAN_20260820.md` |
-| Phase 4 / RC1 发布 | ⏸️ 暂停 | 2026-08-20 | 稳定化、依赖安全、三轮稳定测试、五条 Runtime 回放与 Windows 普通用户构建全部通过后恢复 |
+| 节点                   | 状态        | 日期       | 备注                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------- | ----------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 方案对齐与开发文档生成 | ✅          | 2026-08-14 | 用户确认方案 A + 全部 10 项决策                                                                                                                                                                                                                                                                                                                                                                                                |
+| Phase 0 提交基线       | ✅          | 2026-08-14 | 8 个语义化 commit；标签 `agents-one-pre-opensource-baseline`；typecheck✅ test 203 文件/2010 通过/9 跳过 ✅ build✅                                                                                                                                                                                                                                                                                                            |
+| Phase 2 遗留清理       | ✅ 主体完成 | 2026-08-14 | ①孤儿屏狄删除✅ ②上游云/钱包/社区删除✅ ③Skills/Memory/Soul UI 删除✅ ④i18n 收敛 en+zh-CN✅ ⑤上游 hermesone/fathah 引用清理✅ ⑥分析器删除✅；深层主进程 IPC 清理（registry/messaging/tools）与 Phase 1 旧远程传输耦合，延后                                                                                                                                                                                                    |
+| Phase 3 开源准备       | 🔄 部分完成 | 2026-08-14 | 元数据（package.json/LICENSE/electron-builder/updater/CONTRIBUTING/删上游 changelog+README 变体）✅；README 重写待 Phase 1 完成后（需描述统一接入模型）                                                                                                                                                                                                                                                                        |
+| Phase 1 接入统一       | ✅ 完成     | 2026-08-14 | 1.1 配置模型 `agentTransport`+推导 ✅（c414f23）；1.2 transport 分类器+start 守卫 ✅（e393d9a）；1.3 SSH 删除 ✅；1.4 旧远程模式删除 ✅；1.5 注册表单统一 ✅；1.6 Agents 卡片增强 ✅；1.7 定向+全量回归 ✅（全量 179 文件 1783 通过，typecheck/build/diff-check 全绿；修复 RuntimeChat 协作 flaky）                                                                                                                            |
+| Phase 3 开源准备       | ✅ 完成     | 2026-08-16 | 16 README 重写 ✅（README.md/zh-CN 描述统一接入模型、Gateway v1 与 Plugin SDK 指引、删除上游徽章/赞助/Ko-fi、替换为当前构建实拍截图）；18 硬编码路径清理 ✅（verify-hers-\*.js 参数必填、测试个人用户名→tester、HERS_GATEWAY 文档命令示例改占位符）；20 lat.md 知识库同步 ✅（删除 5 个已删功能文档 + 修 sidebar-navigation/main-process/window-chrome 失效链接与过时章节；lat.md CLI 未安装，用本地脚本验证 253 链接 0 失效） |
+| 发布前稳定化 S0-S5     | 🔄 已规划   | 2026-08-20 | 发布冻结；详细范围、顺序和门槛见 `AGENTS_ONE_STABILIZATION_PLAN_20260820.md`                                                                                                                                                                                                                                                                                                                                                   |
+| Phase 4 / RC1 发布     | ⏸️ 暂停     | 2026-08-20 | 稳定化、依赖安全、三轮稳定测试、五条 Runtime 回放与 Windows 普通用户构建全部通过后恢复                                                                                                                                                                                                                                                                                                                                         |

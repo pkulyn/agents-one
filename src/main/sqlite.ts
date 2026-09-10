@@ -27,7 +27,10 @@ class BuiltinStatement {
     ).apply(this.statement, params);
   }
 
-  run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint } {
+  run(...params: unknown[]): {
+    changes: number;
+    lastInsertRowid: number | bigint;
+  } {
     const result = (
       this.statement.run as unknown as (...values: unknown[]) => {
         changes: number | bigint;

@@ -6,17 +6,17 @@ This matrix records the current remote Hermes NAS acceptance result without stor
 
 ## Connection Result
 
-| Surface | Probe | Result | Console behavior |
-| --- | --- | --- | --- |
-| Gateway | `GET /health` | HTTP 200 | Remote legacy chat endpoint is healthy. |
-| Dashboard | `GET /api/status` | HTTP 200 | Remote management API is healthy. |
-| Sessions | `GET /api/sessions?limit=1` | HTTP 200 | Session list and history may use remote data. |
-| Models | `GET /api/model/options` | HTTP 200 | Remote model configuration may use dashboard APIs. |
-| Skills | `GET /api/skills` | HTTP 200 | Skills use the shared remote request client. |
-| Memory | `GET /api/memory` | HTTP 200 | Memory and user profile APIs are available. |
-| MCP | `GET /api/mcp/servers` | HTTP 200 | Remote MCP server management is available. |
-| Messaging | `GET /api/messaging/platforms` | HTTP 200 with HTML fallback on the current NAS dashboard | Desktop must treat this as "remote messaging management API unavailable" and render the Gateway catalog read-only instead of throwing an invalid-JSON error. |
-| Dashboard chat | WebSocket upgrade at `/api/ws` | Deployment-dependent | If unavailable through the NAS reverse proxy, chat must keep using the legacy remote API fallback. |
+| Surface        | Probe                          | Result                                                   | Console behavior                                                                                                                                             |
+| -------------- | ------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Gateway        | `GET /health`                  | HTTP 200                                                 | Remote legacy chat endpoint is healthy.                                                                                                                      |
+| Dashboard      | `GET /api/status`              | HTTP 200                                                 | Remote management API is healthy.                                                                                                                            |
+| Sessions       | `GET /api/sessions?limit=1`    | HTTP 200                                                 | Session list and history may use remote data.                                                                                                                |
+| Models         | `GET /api/model/options`       | HTTP 200                                                 | Remote model configuration may use dashboard APIs.                                                                                                           |
+| Skills         | `GET /api/skills`              | HTTP 200                                                 | Skills use the shared remote request client.                                                                                                                 |
+| Memory         | `GET /api/memory`              | HTTP 200                                                 | Memory and user profile APIs are available.                                                                                                                  |
+| MCP            | `GET /api/mcp/servers`         | HTTP 200                                                 | Remote MCP server management is available.                                                                                                                   |
+| Messaging      | `GET /api/messaging/platforms` | HTTP 200 with HTML fallback on the current NAS dashboard | Desktop must treat this as "remote messaging management API unavailable" and render the Gateway catalog read-only instead of throwing an invalid-JSON error. |
+| Dashboard chat | WebSocket upgrade at `/api/ws` | Deployment-dependent                                     | If unavailable through the NAS reverse proxy, chat must keep using the legacy remote API fallback.                                                           |
 
 ## Credential Compatibility
 

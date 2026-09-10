@@ -21,7 +21,8 @@ export default {
   noMemoryEntries: "暂无记忆条目。",
   noToolsetsFound: "未找到工具集。",
   addManuallyHint: "你也可以使用上面的按钮手动添加记忆。",
-  userProfileHint: "告诉 Agents One 关于你的信息 — 姓名、角色、偏好、沟通风格。",
+  userProfileHint:
+    "告诉 Agents One 关于你的信息 — 姓名、角色、偏好、沟通风格。",
   providersHint:
     "可插拔的记忆提供商为 Agents One 提供高级长期记忆。内置记忆（上方）始终与所选提供商一起激活。",
   providersHintActive: "当前激活: <strong>{{provider}}</strong>",

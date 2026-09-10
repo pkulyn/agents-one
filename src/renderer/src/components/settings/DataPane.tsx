@@ -73,7 +73,6 @@ export default function DataPane(): React.JSX.Element {
           </>
         )}
       </div>
-
     </div>
   );
 }

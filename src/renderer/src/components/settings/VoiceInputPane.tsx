@@ -45,9 +45,8 @@ export default function VoiceInputPane({
       if (typeof window.agentsOneAPI.getVoiceInputConfig !== "function") {
         throw new Error(bridgeUnavailableMessage(t));
       }
-      const config: VoiceInputConfig = await window.agentsOneAPI.getVoiceInputConfig(
-        profile,
-      );
+      const config: VoiceInputConfig =
+        await window.agentsOneAPI.getVoiceInputConfig(profile);
       setEnabled(config.enabled);
       setUrl(config.url);
       setHasApiKey(config.hasApiKey);
@@ -112,10 +111,13 @@ export default function VoiceInputPane({
       if (typeof window.agentsOneAPI.testVoiceInputService !== "function") {
         throw new Error(bridgeUnavailableMessage(t));
       }
-      const result = await window.agentsOneAPI.testVoiceInputService({
-        url,
-        apiKey: apiKey || undefined,
-      }, profile);
+      const result = await window.agentsOneAPI.testVoiceInputService(
+        {
+          url,
+          apiKey: apiKey || undefined,
+        },
+        profile,
+      );
       const details = [result.message, result.version, result.streamBackend]
         .filter((value): value is string => Boolean(value))
         .join(" · ");
@@ -157,7 +159,9 @@ export default function VoiceInputPane({
           />
           <span className="tools-toggle-track" />
         </label>
-        <div className="settings-field-hint">{t("settings.voice.enabledHint")}</div>
+        <div className="settings-field-hint">
+          {t("settings.voice.enabledHint")}
+        </div>
       </div>
 
       <div className="settings-field">
@@ -198,7 +202,9 @@ export default function VoiceInputPane({
           }
           autoComplete="new-password"
         />
-        <div className="settings-field-hint">{t("settings.voice.apiKeyHint")}</div>
+        <div className="settings-field-hint">
+          {t("settings.voice.apiKeyHint")}
+        </div>
         {hasApiKey && !clearApiKey && (
           <button
             type="button"
@@ -213,7 +219,9 @@ export default function VoiceInputPane({
           </button>
         )}
         {clearApiKey && (
-          <div className="settings-field-hint">{t("settings.voice.keyWillClear")}</div>
+          <div className="settings-field-hint">
+            {t("settings.voice.keyWillClear")}
+          </div>
         )}
       </div>
 
@@ -224,7 +232,11 @@ export default function VoiceInputPane({
           disabled={loading || saving}
           onClick={() => void save()}
         >
-          {saving ? <LoaderCircle className="settings-spinner" size={14} /> : <Mic size={14} />}
+          {saving ? (
+            <LoaderCircle className="settings-spinner" size={14} />
+          ) : (
+            <Mic size={14} />
+          )}
           {saving ? t("settings.voice.saving") : t("settings.save")}
         </button>
         <button
@@ -233,11 +245,14 @@ export default function VoiceInputPane({
           disabled={loading || testing || !url.trim()}
           onClick={() => void testConnection()}
         >
-          {testing ? <LoaderCircle className="settings-spinner" size={14} /> : <ShieldCheck size={14} />}
+          {testing ? (
+            <LoaderCircle className="settings-spinner" size={14} />
+          ) : (
+            <ShieldCheck size={14} />
+          )}
           {testing ? t("settings.voice.testing") : t("settings.voice.test")}
         </button>
       </div>
-
     </div>
   );
 }

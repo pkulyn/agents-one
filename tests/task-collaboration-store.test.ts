@@ -117,7 +117,12 @@ describe("task collaboration store", () => {
         activeAssignmentIds: ["a", "b", "unknown"],
         roleRuns: [
           { assignmentId: "a", role: "A", runtimeId: "pi", status: "running" },
-          { assignmentId: "b", role: "B", runtimeId: "codex", status: "pending" },
+          {
+            assignmentId: "b",
+            role: "B",
+            runtimeId: "codex",
+            status: "pending",
+          },
         ],
       },
     });

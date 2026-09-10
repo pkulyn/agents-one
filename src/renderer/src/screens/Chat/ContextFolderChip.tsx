@@ -11,7 +11,10 @@ interface ContextFolderChipProps {
   onPickFolder: () => void;
   onClearFolder: () => void;
   onToggleWorktree: () => void;
-  onSelectRecentWorkspace?: (workspace: { workspaceId: string; name: string }) => void;
+  onSelectRecentWorkspace?: (workspace: {
+    workspaceId: string;
+    name: string;
+  }) => void;
   /** Legacy callback kept only for old path-only session bindings. */
   onSelectRecentFolder?: (path: string) => void;
 }
@@ -80,7 +83,10 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   useEffect(() => {
     if (!isOpen) return;
     function handleClickOutside(e: MouseEvent): void {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setIsOpen(false);
       }
     }
@@ -109,46 +115,58 @@ export const ContextFolderChip = memo(function ContextFolderChip({
         ) : (
           <>
             {recentWorkspaces.map((workspace) => {
-            const isSelected = workspace.name === contextFolder;
-            return (
-              <button
-                key={workspace.workspaceId}
-                type="button"
-                className={`chat-ctxfolder-dropdown-item${
-                  isSelected ? " chat-ctxfolder-dropdown-item--active" : ""
-                }`}
-                onClick={() => {
-                  onSelectRecentWorkspace?.(workspace);
-                  setIsOpen(false);
-                }}
-                title={workspace.name}
-              >
-                <span className="chat-ctxfolder-dropdown-item-name">{workspace.name}</span>
-                {isSelected && <Check size={14} className="chat-ctxfolder-dropdown-item-check" />}
-              </button>
-            );
+              const isSelected = workspace.name === contextFolder;
+              return (
+                <button
+                  key={workspace.workspaceId}
+                  type="button"
+                  className={`chat-ctxfolder-dropdown-item${
+                    isSelected ? " chat-ctxfolder-dropdown-item--active" : ""
+                  }`}
+                  onClick={() => {
+                    onSelectRecentWorkspace?.(workspace);
+                    setIsOpen(false);
+                  }}
+                  title={workspace.name}
+                >
+                  <span className="chat-ctxfolder-dropdown-item-name">
+                    {workspace.name}
+                  </span>
+                  {isSelected && (
+                    <Check
+                      size={14}
+                      className="chat-ctxfolder-dropdown-item-check"
+                    />
+                  )}
+                </button>
+              );
             })}
             {recentFolders.map((path) => {
-            const isSelected = path === contextFolder;
-            return (
-              <button
-                key={path}
-                type="button"
-                className={`chat-ctxfolder-dropdown-item${
-                  isSelected ? " chat-ctxfolder-dropdown-item--active" : ""
-                }`}
-                onClick={() => {
-                  onSelectRecentFolder?.(path);
-                  setIsOpen(false);
-                }}
-                title={path}
-              >
-                <span className="chat-ctxfolder-dropdown-item-name">{folderName(path)}</span>
-                {isSelected && (
-                  <Check size={14} className="chat-ctxfolder-dropdown-item-check" />
-                )}
-              </button>
-            );
+              const isSelected = path === contextFolder;
+              return (
+                <button
+                  key={path}
+                  type="button"
+                  className={`chat-ctxfolder-dropdown-item${
+                    isSelected ? " chat-ctxfolder-dropdown-item--active" : ""
+                  }`}
+                  onClick={() => {
+                    onSelectRecentFolder?.(path);
+                    setIsOpen(false);
+                  }}
+                  title={path}
+                >
+                  <span className="chat-ctxfolder-dropdown-item-name">
+                    {folderName(path)}
+                  </span>
+                  {isSelected && (
+                    <Check
+                      size={14}
+                      className="chat-ctxfolder-dropdown-item-check"
+                    />
+                  )}
+                </button>
+              );
             })}
           </>
         )}

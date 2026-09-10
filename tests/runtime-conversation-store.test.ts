@@ -140,8 +140,9 @@ describe("runtime conversation store", () => {
       messages: [],
     });
 
-    expect(store.getRuntimeConversation("runtime-conv-workspace-id", "default"))
-      .toMatchObject({ workspaceId: "project-safe" });
+    expect(
+      store.getRuntimeConversation("runtime-conv-workspace-id", "default"),
+    ).toMatchObject({ workspaceId: "project-safe" });
   });
 
   it("unlinks runtime conversations when a project is removed", async () => {
@@ -160,8 +161,10 @@ describe("runtime conversation store", () => {
     expect(
       store.clearRuntimeConversationWorkspace("D:\\Projects\\Alpha", "default"),
     ).toBe(1);
-    expect(store.getRuntimeConversation("runtime-project-task", "default")?.workspace)
-      .toBeUndefined();
+    expect(
+      store.getRuntimeConversation("runtime-project-task", "default")
+        ?.workspace,
+    ).toBeUndefined();
   });
 
   it("renames and deletes conversations within the selected profile", async () => {

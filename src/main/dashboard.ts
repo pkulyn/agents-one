@@ -195,9 +195,7 @@ function requestJson(
 }
 
 function isAuthenticationFailure(error: unknown): boolean {
-  return (
-    error instanceof Error && /\b(401|403)(?::|\)|\s)/.test(error.message)
-  );
+  return error instanceof Error && /\b(401|403)(?::|\)|\s)/.test(error.message);
 }
 
 async function requestDashboardJson(
@@ -210,7 +208,11 @@ async function requestDashboardJson(
     return await requestJson(url, connection.token, timeoutMs);
   } catch (error) {
     const fallback = connection.fallbackToken;
-    if (fallback && fallback !== connection.token && isAuthenticationFailure(error)) {
+    if (
+      fallback &&
+      fallback !== connection.token &&
+      isAuthenticationFailure(error)
+    ) {
       return requestJson(url, fallback, timeoutMs);
     }
     throw error;
@@ -221,24 +223,32 @@ export function probeDashboardWebSocket(
   connection: DashboardConnection,
   timeoutMs = 2_000,
 ): Promise<void> {
-  return probeDashboardWebSocketWithToken(connection, connection.token, timeoutMs).catch(
-    (error) => {
-      const fallback = connection.fallbackToken;
-      if (fallback && fallback !== connection.token && isAuthenticationFailure(error)) {
-        return probeDashboardWebSocketWithToken(connection, fallback, timeoutMs).then(
-          () => {
-            // The renderer opens its own WebSocket from this connection object.
-            // Keep the successful fallback in memory so a passed main-process
-            // probe cannot be followed by a renderer connection with the stale
-            // dashboard token. Do not persist or expose the fallback separately.
-            connection.token = fallback;
-            connection.wsUrl = dashboardWsUrl(connection.baseUrl, fallback);
-          },
-        );
-      }
-      throw error;
-    },
-  );
+  return probeDashboardWebSocketWithToken(
+    connection,
+    connection.token,
+    timeoutMs,
+  ).catch((error) => {
+    const fallback = connection.fallbackToken;
+    if (
+      fallback &&
+      fallback !== connection.token &&
+      isAuthenticationFailure(error)
+    ) {
+      return probeDashboardWebSocketWithToken(
+        connection,
+        fallback,
+        timeoutMs,
+      ).then(() => {
+        // The renderer opens its own WebSocket from this connection object.
+        // Keep the successful fallback in memory so a passed main-process
+        // probe cannot be followed by a renderer connection with the stale
+        // dashboard token. Do not persist or expose the fallback separately.
+        connection.token = fallback;
+        connection.wsUrl = dashboardWsUrl(connection.baseUrl, fallback);
+      });
+    }
+    throw error;
+  });
 }
 
 function probeDashboardWebSocketWithToken(
@@ -319,7 +329,9 @@ async function waitForDashboardReady(
     lastError instanceof Error
       ? lastError.message
       : "dashboard did not respond";
-  throw new Error(`Timed out waiting for Hermes Agent Runtime dashboard: ${message}`);
+  throw new Error(
+    `Timed out waiting for Hermes Agent Runtime dashboard: ${message}`,
+  );
 }
 
 export async function getDashboardStatus(

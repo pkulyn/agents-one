@@ -33,13 +33,13 @@ Agents One 的产品定位保持为：
 
 核心分工如下：
 
-| 层级 | 主要责任 | 明确不负责 |
-| --- | --- | --- |
-| Agents One UI | 统一对话、运行控制、项目任务、协作、分支、产物 | 不解析或执行供应商私有工具 |
-| Agents One 控制面 | Runtime 能力、命令、会话、协作、证据和审计 | 不实现通用 LLM 工具循环 |
-| Runtime Adapter | 将统一命令翻译为原生调用，将原生事件翻译为统一事件 | 不承载产品业务状态 |
-| 原生 Runtime | 模型、工具、Skill、MCP、Extension、Provider、原生会话 | 不直接写 Agents One 数据库 |
-| 安全与数据底座 | Workspace、Worktree、容器、凭据、持久化、回滚 | 不把进程内提示框伪装成系统级隔离 |
+| 层级              | 主要责任                                              | 明确不负责                       |
+| ----------------- | ----------------------------------------------------- | -------------------------------- |
+| Agents One UI     | 统一对话、运行控制、项目任务、协作、分支、产物        | 不解析或执行供应商私有工具       |
+| Agents One 控制面 | Runtime 能力、命令、会话、协作、证据和审计            | 不实现通用 LLM 工具循环          |
+| Runtime Adapter   | 将统一命令翻译为原生调用，将原生事件翻译为统一事件    | 不承载产品业务状态               |
+| 原生 Runtime      | 模型、工具、Skill、MCP、Extension、Provider、原生会话 | 不直接写 Agents One 数据库       |
+| 安全与数据底座    | Workspace、Worktree、容器、凭据、持久化、回滚         | 不把进程内提示框伪装成系统级隔离 |
 
 ## 3. 总体目标
 
@@ -267,18 +267,18 @@ interface RuntimeControlCapabilities {
 
 按 Pi 当前 RPC/JSON 事件直接映射，不再主要依赖最终 message 反推过程：
 
-| Pi 事件 | Agents One 处理 |
-| --- | --- |
-| `message_update` | 临时 `assistant.delta`，按 content index 拼接，不逐条持久化 |
-| `message_end` | 权威 assistant/toolResult 消息 |
-| `tool_execution_start` | `tool.started` |
-| `tool_execution_update` | 同一 callId 的临时进度更新 |
-| `tool_execution_end` | `tool.completed` 或 `tool.failed` |
-| `queue_update` | 控制队列 UI 状态，不伪装成思考 |
-| `compaction_start/end` | 运行状态或审计记录 |
-| `auto_retry_start/end` | 运行状态或诊断记录 |
-| `extension_error` | 脱敏错误事件 |
-| `agent_settled` | Runtime Run 稳定终态 |
+| Pi 事件                 | Agents One 处理                                             |
+| ----------------------- | ----------------------------------------------------------- |
+| `message_update`        | 临时 `assistant.delta`，按 content index 拼接，不逐条持久化 |
+| `message_end`           | 权威 assistant/toolResult 消息                              |
+| `tool_execution_start`  | `tool.started`                                              |
+| `tool_execution_update` | 同一 callId 的临时进度更新                                  |
+| `tool_execution_end`    | `tool.completed` 或 `tool.failed`                           |
+| `queue_update`          | 控制队列 UI 状态，不伪装成思考                              |
+| `compaction_start/end`  | 运行状态或审计记录                                          |
+| `auto_retry_start/end`  | 运行状态或诊断记录                                          |
+| `extension_error`       | 脱敏错误事件                                                |
+| `agent_settled`         | Runtime Run 稳定终态                                        |
 
 Pi RPC 原生事件通常没有稳定事件 ID，Adapter 应使用 run-scoped sequence 生成本地稳定 ID；工具相关事件优先保留原生 toolCallId。
 
@@ -374,12 +374,12 @@ type RuntimeCommandResult =
 
 #### Runtime 原生接口映射
 
-| Runtime | 模型发现与切换 | 上下文压缩 | 命令发现 |
-| --- | --- | --- | --- |
-| Pi | RPC `get_available_models`、`set_model` | RPC `compact`，支持 `customInstructions` | RPC `get_commands`；内置 TUI-only 命令不直接转发 |
-| Codex | App Server `model/list`；`thread/start` 或 `turn/start.model` | `thread/compact/start`，监听 `contextCompaction` 生命周期 | Agents One 标准目录与 App Server capability 组合 |
-| Claude Code | Agent SDK `supportedModels()`、`setModel()` | 在同一 SDK session 执行受支持的 `/compact`，监听 `compact_boundary` | Agent SDK `supportedCommands()` |
-| Remote Gateway | `commands.catalog`、`commands.execute` 或等价控制接口 | capability 声明 `native`、`platform` 或 `none` | 连接握手后动态获取并缓存 |
+| Runtime        | 模型发现与切换                                                | 上下文压缩                                                          | 命令发现                                         |
+| -------------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
+| Pi             | RPC `get_available_models`、`set_model`                       | RPC `compact`，支持 `customInstructions`                            | RPC `get_commands`；内置 TUI-only 命令不直接转发 |
+| Codex          | App Server `model/list`；`thread/start` 或 `turn/start.model` | `thread/compact/start`，监听 `contextCompaction` 生命周期           | Agents One 标准目录与 App Server capability 组合 |
+| Claude Code    | Agent SDK `supportedModels()`、`setModel()`                   | 在同一 SDK session 执行受支持的 `/compact`，监听 `compact_boundary` | Agent SDK `supportedCommands()`                  |
+| Remote Gateway | `commands.catalog`、`commands.execute` 或等价控制接口         | capability 声明 `native`、`platform` 或 `none`                      | 连接握手后动态获取并缓存                         |
 
 实现时以 [Pi RPC](https://pi.dev/docs/latest/rpc)、[Codex App Server](https://learn.chatgpt.com/docs/app-server)、[Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/typescript) 和 [Claude SDK 斜杠命令](https://code.claude.com/docs/en/agent-sdk/slash-commands) 的当前正式契约为准，不通过伪终端键盘输入操作交互式 TUI。
 
@@ -494,12 +494,12 @@ interface ConversationBranchRef {
 
 为 Runtime Run 显示并记录真实执行边界：
 
-| 等级 | 含义 |
-| --- | --- |
-| Host | 使用启动用户权限直接执行 |
-| Worktree | Git 工作树隔离代码分支，但共享宿主系统和凭据 |
-| Container | 由容器、VM 或受管沙箱提供系统级隔离 |
-| Remote | 在远程 Runtime 环境执行，本地项目仅通过显式 Grant 或交接访问 |
+| 等级      | 含义                                                         |
+| --------- | ------------------------------------------------------------ |
+| Host      | 使用启动用户权限直接执行                                     |
+| Worktree  | Git 工作树隔离代码分支，但共享宿主系统和凭据                 |
+| Container | 由容器、VM 或受管沙箱提供系统级隔离                          |
+| Remote    | 在远程 Runtime 环境执行，本地项目仅通过显式 Grant 或交接访问 |
 
 #### 验收标准
 
@@ -719,54 +719,54 @@ Agents One 首版只发现和展示 Skill 元数据、来源、启用状态与�
 
 后续编程智能体应从下表中一次领取一个任务，不得跨多个高风险边界合并实施。
 
-| ID | 任务 | 依赖 | 主要范围 | 完成定义 |
-| --- | --- | --- | --- | --- |
-| AO-PI-00 | 采集 Pi RPC/JSON fixture | 无 | 测试、fixture | 成功/工具/失败/重试/abort 样本脱敏并可重复解析 |
-| AO-PI-01 | 定义 Runtime Control 类型 | AO-PI-00 | shared | 类型检查通过，现有行为不变 |
-| AO-CMD-00 | 定义命令目录、请求、结果与能力类型 | AO-PI-01 | shared | 四类命令 target、可用状态、冲突规则和结果联合类型测试通过 |
-| AO-CMD-01 | 共享 Chat/RuntimeChat 命令解析与面板 | AO-CMD-00 | renderer | RuntimeChat 输入 `/` 可展示测试目录，未知命令不进入 Prompt |
-| AO-PI-02 | 实现严格 JSONL RPC client | AO-PI-01 | main | 分帧、关联、错误、关闭测试通过 |
-| AO-PI-03 | 实现 Pi RPC 生命周期与控制方法 | AO-PI-02 | main | 启动、复用、回收、crash、fallback 及模型/压缩/目录 RPC 响应通过 |
-| AO-PI-04 | 映射 Pi 原生事件 | AO-PI-03 | main/shared | delta/tool/queue/retry/settled fixture 通过 |
-| AO-CMD-02 | 实现 Pi `/model`、`/compact` 和动态目录 | AO-PI-04, AO-CMD-01 | main/shared/renderer | 模型发现切换、压缩事件和 `get_commands` 真实通过 |
-| AO-PI-05 | 接入 RuntimeChat 控制 UI | AO-PI-04, AO-CMD-02 | renderer | 纠偏/跟进/停止/队列/命令组件与交互测试通过 |
-| AO-PI-06 | 完成 Pi 真实端到端验收 | AO-PI-05 | scripts/docs | 三轮对话、steer、follow-up、abort、model、compact、重启记录完成 |
-| AO-RC-01 | 推广跨 Runtime capability | AO-PI-06 | adapters/shared | Pi/Codex/Claude/Gateway 声明真实能力 |
-| AO-CMD-03 | 实现 Codex 原生命令映射 | AO-RC-01, AO-CMD-01 | main/shared | App Server 模型目录、逐轮切换和压缩通过 |
-| AO-CMD-04 | 实现 Claude Code 原生命令映射 | AO-RC-01, AO-CMD-01 | main/shared | SDK 模型、命令目录、压缩和事件通过 |
-| AO-CMD-05 | 实现远程命令能力协商 | AO-RC-01, AO-CMD-01 | gateway/shared | 新 Gateway 可执行命令，旧 Gateway 无回归 |
-| AO-RC-02 | 实现统一降级策略 | AO-CMD-03, AO-CMD-04, AO-CMD-05 | renderer/main | 所有不支持路径有明确行为和测试 |
-| AO-CM-01 | 增加会话条目 meta | AO-RC-02 | store/shared | 旧会话兼容，控制噪声不进模型上下文 |
-| AO-ST-01 | 增加会话树数据模型 | AO-CM-01 | store/shared | 可选字段、查询、删除和备份测试通过 |
-| AO-ST-02 | 实现会话树 UI | AO-ST-01 | renderer | 分支、切换、标签、重启恢复通过 |
-| AO-ST-03 | 实现型分支绑定 worktree | AO-ST-02 | main/renderer | 原工作区不被静默修改 |
-| AO-SEC-01 | 隔离等级事实模型 | AO-RC-02 | shared/main/UI | Host/Worktree/Container/Remote 与执行一致 |
-| AO-SK-01 | Skill 元数据与信任展示 | AO-RC-02 | main/UI | 不复制技能、不执行技能、不改变原生加载 |
+| ID        | 任务                                    | 依赖                            | 主要范围             | 完成定义                                                        |
+| --------- | --------------------------------------- | ------------------------------- | -------------------- | --------------------------------------------------------------- |
+| AO-PI-00  | 采集 Pi RPC/JSON fixture                | 无                              | 测试、fixture        | 成功/工具/失败/重试/abort 样本脱敏并可重复解析                  |
+| AO-PI-01  | 定义 Runtime Control 类型               | AO-PI-00                        | shared               | 类型检查通过，现有行为不变                                      |
+| AO-CMD-00 | 定义命令目录、请求、结果与能力类型      | AO-PI-01                        | shared               | 四类命令 target、可用状态、冲突规则和结果联合类型测试通过       |
+| AO-CMD-01 | 共享 Chat/RuntimeChat 命令解析与面板    | AO-CMD-00                       | renderer             | RuntimeChat 输入 `/` 可展示测试目录，未知命令不进入 Prompt      |
+| AO-PI-02  | 实现严格 JSONL RPC client               | AO-PI-01                        | main                 | 分帧、关联、错误、关闭测试通过                                  |
+| AO-PI-03  | 实现 Pi RPC 生命周期与控制方法          | AO-PI-02                        | main                 | 启动、复用、回收、crash、fallback 及模型/压缩/目录 RPC 响应通过 |
+| AO-PI-04  | 映射 Pi 原生事件                        | AO-PI-03                        | main/shared          | delta/tool/queue/retry/settled fixture 通过                     |
+| AO-CMD-02 | 实现 Pi `/model`、`/compact` 和动态目录 | AO-PI-04, AO-CMD-01             | main/shared/renderer | 模型发现切换、压缩事件和 `get_commands` 真实通过                |
+| AO-PI-05  | 接入 RuntimeChat 控制 UI                | AO-PI-04, AO-CMD-02             | renderer             | 纠偏/跟进/停止/队列/命令组件与交互测试通过                      |
+| AO-PI-06  | 完成 Pi 真实端到端验收                  | AO-PI-05                        | scripts/docs         | 三轮对话、steer、follow-up、abort、model、compact、重启记录完成 |
+| AO-RC-01  | 推广跨 Runtime capability               | AO-PI-06                        | adapters/shared      | Pi/Codex/Claude/Gateway 声明真实能力                            |
+| AO-CMD-03 | 实现 Codex 原生命令映射                 | AO-RC-01, AO-CMD-01             | main/shared          | App Server 模型目录、逐轮切换和压缩通过                         |
+| AO-CMD-04 | 实现 Claude Code 原生命令映射           | AO-RC-01, AO-CMD-01             | main/shared          | SDK 模型、命令目录、压缩和事件通过                              |
+| AO-CMD-05 | 实现远程命令能力协商                    | AO-RC-01, AO-CMD-01             | gateway/shared       | 新 Gateway 可执行命令，旧 Gateway 无回归                        |
+| AO-RC-02  | 实现统一降级策略                        | AO-CMD-03, AO-CMD-04, AO-CMD-05 | renderer/main        | 所有不支持路径有明确行为和测试                                  |
+| AO-CM-01  | 增加会话条目 meta                       | AO-RC-02                        | store/shared         | 旧会话兼容，控制噪声不进模型上下文                              |
+| AO-ST-01  | 增加会话树数据模型                      | AO-CM-01                        | store/shared         | 可选字段、查询、删除和备份测试通过                              |
+| AO-ST-02  | 实现会话树 UI                           | AO-ST-01                        | renderer             | 分支、切换、标签、重启恢复通过                                  |
+| AO-ST-03  | 实现型分支绑定 worktree                 | AO-ST-02                        | main/renderer        | 原工作区不被静默修改                                            |
+| AO-SEC-01 | 隔离等级事实模型                        | AO-RC-02                        | shared/main/UI       | Host/Worktree/Container/Remote 与执行一致                       |
+| AO-SK-01  | Skill 元数据与信任展示                  | AO-RC-02                        | main/UI              | 不复制技能、不执行技能、不改变原生加载                          |
 
 ## 10. 测试与验收矩阵
 
-| 场景 | 自动化验收 | 人工/真实验收 |
-| --- | --- | --- |
-| Pi RPC 握手 | 分帧、CRLF/LF、错误响应、超时 | 本机 Pi 0.84.2 成功启动 |
-| 连续对话 | 同 session 三轮上下文测试 | 追问前文并得到正确回答 |
-| Steering | 运行中入队与投递顺序测试 | 长工具任务中改变后续方向 |
-| Follow-up | 队列状态与 settled 顺序测试 | 本轮完成后自动处理追加要求 |
-| Abort | 状态机与进程树回收测试 | 停止后无残留进程、可继续新消息 |
-| 并行工具 | callId 配对、更新交错测试 | 工具卡进度和终态正确 |
-| Retry/Compaction | 不在 agent_end 提前完成 | 真实或 fixture 验证 settled 后完成 |
-| 命令目录 | 合并、别名冲突、恶意元数据、缓存失效测试 | 输入 `/` 只显示当前 Runtime 可用命令 |
-| `/model` | 模型目录、参数校验、会话作用域、忙碌状态测试 | Pi/Codex/Claude 切换后下一轮实际模型正确 |
-| `/compact` | 原生/平台/none、进度、失败、重复提交测试 | 压缩前后状态正确，不产生普通消息气泡 |
-| 未知命令 | 相似建议、附件守卫、禁止 Prompt fallback 测试 | `/unknown` 明确报错且 Runtime 未收到 Prompt |
-| 远程命令 | capability、requestId、超时、幂等和旧协议测试 | 新 Gateway 可执行，旧 Gateway 仍可正常对话 |
-| Fallback | RPC 失败转 print-json 测试 | 普通对话仍可完成并提示降级 |
-| 历史兼容 | 旧 RuntimeConversation fixture | 打开现有真实历史，无丢消息 |
-| 配置保护 | 未知键保留、Runtime ID 不变 | 保存并重启，名称头像和配置不变 |
-| 协作回归 | 现有 DAG/角色/验收套件 | 主智能体→实施→复核→终验流程 |
-| 会话树 | fork/切换/删除/备份恢复测试 | 两分支均可恢复和继续 |
-| Worktree | 分支路径、diff、取消测试 | 实现分支不改原工作区 |
-| 安全 | 脱敏、路径、环境、凭据测试 | Renderer/日志无 Token，隔离标签真实 |
-| UI | RuntimeChat、MessageList、输入区测试 | 1920×1080 与窄窗口实拍复核 |
+| 场景             | 自动化验收                                    | 人工/真实验收                               |
+| ---------------- | --------------------------------------------- | ------------------------------------------- |
+| Pi RPC 握手      | 分帧、CRLF/LF、错误响应、超时                 | 本机 Pi 0.84.2 成功启动                     |
+| 连续对话         | 同 session 三轮上下文测试                     | 追问前文并得到正确回答                      |
+| Steering         | 运行中入队与投递顺序测试                      | 长工具任务中改变后续方向                    |
+| Follow-up        | 队列状态与 settled 顺序测试                   | 本轮完成后自动处理追加要求                  |
+| Abort            | 状态机与进程树回收测试                        | 停止后无残留进程、可继续新消息              |
+| 并行工具         | callId 配对、更新交错测试                     | 工具卡进度和终态正确                        |
+| Retry/Compaction | 不在 agent_end 提前完成                       | 真实或 fixture 验证 settled 后完成          |
+| 命令目录         | 合并、别名冲突、恶意元数据、缓存失效测试      | 输入 `/` 只显示当前 Runtime 可用命令        |
+| `/model`         | 模型目录、参数校验、会话作用域、忙碌状态测试  | Pi/Codex/Claude 切换后下一轮实际模型正确    |
+| `/compact`       | 原生/平台/none、进度、失败、重复提交测试      | 压缩前后状态正确，不产生普通消息气泡        |
+| 未知命令         | 相似建议、附件守卫、禁止 Prompt fallback 测试 | `/unknown` 明确报错且 Runtime 未收到 Prompt |
+| 远程命令         | capability、requestId、超时、幂等和旧协议测试 | 新 Gateway 可执行，旧 Gateway 仍可正常对话  |
+| Fallback         | RPC 失败转 print-json 测试                    | 普通对话仍可完成并提示降级                  |
+| 历史兼容         | 旧 RuntimeConversation fixture                | 打开现有真实历史，无丢消息                  |
+| 配置保护         | 未知键保留、Runtime ID 不变                   | 保存并重启，名称头像和配置不变              |
+| 协作回归         | 现有 DAG/角色/验收套件                        | 主智能体→实施→复核→终验流程                 |
+| 会话树           | fork/切换/删除/备份恢复测试                   | 两分支均可恢复和继续                        |
+| Worktree         | 分支路径、diff、取消测试                      | 实现分支不改原工作区                        |
+| 安全             | 脱敏、路径、环境、凭据测试                    | Renderer/日志无 Token，隔离标签真实         |
+| UI               | RuntimeChat、MessageList、输入区测试          | 1920×1080 与窄窗口实拍复核                  |
 
 ## 11. 发布门槛
 

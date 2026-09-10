@@ -1,5 +1,10 @@
 import type { ChatToolEvent } from "../../../../shared/chat-stream";
-import type { ActiveTurn, ChatBubbleMessage, ChatMessage, SystemMessage } from "./types";
+import type {
+  ActiveTurn,
+  ChatBubbleMessage,
+  ChatMessage,
+  SystemMessage,
+} from "./types";
 
 export interface DashboardStreamEvent<T = unknown> {
   payload?: T;
@@ -135,7 +140,8 @@ const SYSTEM_EVENT_TYPES = new Set([
   "process.exit",
   "run.warning",
 ]);
-const SECRET_TEXT_RE = /((?:authorization|api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;]+)/gi;
+const SECRET_TEXT_RE =
+  /((?:authorization|api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;]+)/gi;
 
 function systemDetailFromPayload(payload: unknown): string {
   const detail = isRecord(payload)
@@ -145,8 +151,10 @@ function systemDetailFromPayload(payload: unknown): string {
 }
 
 function systemTitle(event: DashboardStreamEvent, detail: string): string {
-  if (/maximum number of tool-calling iterations/i.test(detail)) return "Tool-call limit reached";
-  if (/background process .* exit code 143|exit code 143/i.test(detail)) return "Background process stopped";
+  if (/maximum number of tool-calling iterations/i.test(detail))
+    return "Tool-call limit reached";
+  if (/background process .* exit code 143|exit code 143/i.test(detail))
+    return "Background process stopped";
   if (/websocket/i.test(detail)) return "Dashboard connection notice";
   return event.type.replace(/[._]/g, " ");
 }
@@ -693,7 +701,10 @@ export function applyDashboardStreamEvent(
 ): DashboardEventState {
   const now = options.now ?? Date.now();
   if (SYSTEM_EVENT_TYPES.has(event.type)) {
-    return { ...state, messages: appendSystemEvent(state.messages, event, now) };
+    return {
+      ...state,
+      messages: appendSystemEvent(state.messages, event, now),
+    };
   }
   switch (event.type) {
     case "message.start":

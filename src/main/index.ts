@@ -1,11 +1,5 @@
 import { app } from "electron";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  writeFileSync,
-} from "fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import { applyGpuPreferences, installGpuCrashGuard } from "./gpu-fallback";
 

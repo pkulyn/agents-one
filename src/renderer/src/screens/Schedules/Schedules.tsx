@@ -66,8 +66,7 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
   );
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [scheduleFilter, setScheduleFilter] =
-    useState<ScheduleFilter>("all");
+  const [scheduleFilter, setScheduleFilter] = useState<ScheduleFilter>("all");
 
   // Create form state
   const [newName, setNewName] = useState("");
@@ -136,9 +135,11 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
         if (event.profile === (profile || "default")) refresh();
       },
     );
-    const dispose = window.agentsOneAPI.onTaskScheduleRunCompleted?.((event) => {
-      if (event.profile === (profile || "default")) refresh();
-    });
+    const dispose = window.agentsOneAPI.onTaskScheduleRunCompleted?.(
+      (event) => {
+        if (event.profile === (profile || "default")) refresh();
+      },
+    );
     return () => {
       window.clearInterval(timer);
       disposeStarted?.();
@@ -248,7 +249,8 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
   async function chooseWorkspace(): Promise<void> {
     const selected = await window.agentsOneAPI.selectFolder();
     if (!selected) return;
-    const registered = await window.agentsOneAPI.registerProjectFolder(selected);
+    const registered =
+      await window.agentsOneAPI.registerProjectFolder(selected);
     if (registered) {
       setNewWorkspace(selected);
       setNewWorkspaceId(registered.id || "");
@@ -413,9 +415,13 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
         "0,6": "周末",
         "6,0": "周末",
       };
-      const label = weekdayLabel[weekday] ||
+      const label =
+        weekdayLabel[weekday] ||
         (/^[0-6](,[0-6])+$/.test(weekday)
-          ? weekday.split(",").map((value) => weekdayLabel[value]).join("、")
+          ? weekday
+              .split(",")
+              .map((value) => weekdayLabel[value])
+              .join("、")
           : "");
       if (label) return `每${label} ${time}`;
     }
@@ -439,7 +445,11 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
 
   function resultIcon(status: TaskScheduleRunStatus): React.JSX.Element {
     if (status === "succeeded") return <Check size={14} />;
-    if (status === "failed" || status === "timed_out" || status === "cancelled") {
+    if (
+      status === "failed" ||
+      status === "timed_out" ||
+      status === "cancelled"
+    ) {
       return <Alert size={14} />;
     }
     if (status === "running") return <Refresh size={14} />;
@@ -448,13 +458,19 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
 
   function latestRunNeedsAttention(schedule: TaskSchedule): boolean {
     const status = schedule.runs.at(-1)?.status;
-    return status === "failed" || status === "timed_out" || status === "cancelled";
+    return (
+      status === "failed" || status === "timed_out" || status === "cancelled"
+    );
   }
 
   function latestResultClass(schedule: TaskSchedule): string {
     const status = schedule.runs.at(-1)?.status;
     if (status === "succeeded") return "success";
-    if (status === "failed" || status === "timed_out" || status === "cancelled") {
+    if (
+      status === "failed" ||
+      status === "timed_out" ||
+      status === "cancelled"
+    ) {
       return "danger";
     }
     if (status === "running" || status === "queued") return "active";
@@ -1022,7 +1038,11 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
           </div>
         ) : (
           <div className="schedules-table-wrap">
-            <div className="schedules-table" role="table" aria-label="定时任务列表">
+            <div
+              className="schedules-table"
+              role="table"
+              aria-label="定时任务列表"
+            >
               <div className="schedules-table-header" role="row">
                 <span role="columnheader">任务信息</span>
                 <span role="columnheader">调度计划</span>
@@ -1033,80 +1053,105 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
                 <span role="columnheader">操作</span>
               </div>
               {visibleSchedules.map((schedule) => {
-              const latest = schedule.runs.at(-1);
-              const runtime = runtimes.find(
-                (item) => item.id === schedule.runtimeId,
-              );
-              const runtimeName = runtime?.name || schedule.runtimeId;
-              const runtimeCategory = runtime
-                ? taskScheduleRuntimeCategory(runtime)
-                : null;
-              const runtimeAvailable = runtime
-                ? isTaskScheduleRuntimeEligible(runtime)
-                : false;
-              return (
-                <div key={schedule.id} className="schedules-table-row" role="row">
-                  <div className="schedules-task-cell" role="cell">
-                    <div className="schedules-card-name">{schedule.name}</div>
-                    <div className="schedules-task-prompt">{schedule.prompt}</div>
-                  </div>
-                  <div className="schedules-plan-cell" role="cell">
-                    <span>{formatSchedule(schedule.schedule)}</span>
-                  </div>
-                  <div className="schedules-agent-cell" role="cell">
-                    <ProfileAvatar
-                      name={runtimeName}
-                      color={runtime?.color}
-                      avatar={runtime?.avatar}
-                      defaultLogo={false}
-                      size={32}
-                      className="schedules-agent-avatar"
-                    />
-                    <div className="schedules-agent-copy">
-                      <strong>{runtimeName}</strong>
-                      {runtimeCategory && <span>{RUNTIME_CATEGORY_LABEL[runtimeCategory]}</span>}
-                    </div>
-                  </div>
-                  <div className="schedules-time-cell" role="cell">
-                    {formatTime(
-                      schedule.nextRunAt
-                        ? new Date(schedule.nextRunAt).toISOString()
-                        : null,
-                    )}
-                    {schedule.activeRuntimeRunId && <span>正在执行</span>}
-                    {schedule.pendingRuns > 0 && <span>等待 {schedule.pendingRuns} 次</span>}
-                  </div>
-                  <div className="schedules-result-cell" role="cell">
-                    {latest ? (
-                      <div
-                        className={`schedules-result-row schedules-result-${latestResultClass(schedule)}`}
-                        aria-label={`最近结果：${SCHEDULE_RUN_STATUS_LABEL[latest.status]}`}
-                        title={latest.summary}
-                      >
-                        <span className="schedules-result-icon" aria-hidden="true">
-                          {resultIcon(latest.status)}
-                        </span>
-                        <div>
-                          <strong>{SCHEDULE_RUN_STATUS_LABEL[latest.status]}</strong>
-                          <span>{formatTime(new Date(latest.triggeredAt).toISOString())}</span>
-                          {formatRunDuration(latest) && (
-                            <small>{formatRunDuration(latest)}</small>
-                          )}
-                        </div>
+                const latest = schedule.runs.at(-1);
+                const runtime = runtimes.find(
+                  (item) => item.id === schedule.runtimeId,
+                );
+                const runtimeName = runtime?.name || schedule.runtimeId;
+                const runtimeCategory = runtime
+                  ? taskScheduleRuntimeCategory(runtime)
+                  : null;
+                const runtimeAvailable = runtime
+                  ? isTaskScheduleRuntimeEligible(runtime)
+                  : false;
+                return (
+                  <div
+                    key={schedule.id}
+                    className="schedules-table-row"
+                    role="row"
+                  >
+                    <div className="schedules-task-cell" role="cell">
+                      <div className="schedules-card-name">{schedule.name}</div>
+                      <div className="schedules-task-prompt">
+                        {schedule.prompt}
                       </div>
-                    ) : (
-                      <span className="schedules-result-muted">暂无执行记录</span>
-                    )}
-                  </div>
-                  <div className="schedules-state-cell" role="cell">
+                    </div>
+                    <div className="schedules-plan-cell" role="cell">
+                      <span>{formatSchedule(schedule.schedule)}</span>
+                    </div>
+                    <div className="schedules-agent-cell" role="cell">
+                      <ProfileAvatar
+                        name={runtimeName}
+                        color={runtime?.color}
+                        avatar={runtime?.avatar}
+                        defaultLogo={false}
+                        size={32}
+                        className="schedules-agent-avatar"
+                      />
+                      <div className="schedules-agent-copy">
+                        <strong>{runtimeName}</strong>
+                        {runtimeCategory && (
+                          <span>{RUNTIME_CATEGORY_LABEL[runtimeCategory]}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="schedules-time-cell" role="cell">
+                      {formatTime(
+                        schedule.nextRunAt
+                          ? new Date(schedule.nextRunAt).toISOString()
+                          : null,
+                      )}
+                      {schedule.activeRuntimeRunId && <span>正在执行</span>}
+                      {schedule.pendingRuns > 0 && (
+                        <span>等待 {schedule.pendingRuns} 次</span>
+                      )}
+                    </div>
+                    <div className="schedules-result-cell" role="cell">
+                      {latest ? (
+                        <div
+                          className={`schedules-result-row schedules-result-${latestResultClass(schedule)}`}
+                          aria-label={`最近结果：${SCHEDULE_RUN_STATUS_LABEL[latest.status]}`}
+                          title={latest.summary}
+                        >
+                          <span
+                            className="schedules-result-icon"
+                            aria-hidden="true"
+                          >
+                            {resultIcon(latest.status)}
+                          </span>
+                          <div>
+                            <strong>
+                              {SCHEDULE_RUN_STATUS_LABEL[latest.status]}
+                            </strong>
+                            <span>
+                              {formatTime(
+                                new Date(latest.triggeredAt).toISOString(),
+                              )}
+                            </span>
+                            {formatRunDuration(latest) && (
+                              <small>{formatRunDuration(latest)}</small>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="schedules-result-muted">
+                          暂无执行记录
+                        </span>
+                      )}
+                    </div>
+                    <div className="schedules-state-cell" role="cell">
                       <span
                         className={`schedules-badge schedules-badge-${schedule.enabled ? "active" : "paused"}`}
                       >
                         {schedule.enabled ? "已启用" : "已暂停"}
                       </span>
-                      {!runtimeAvailable && <span className="schedules-unavailable">智能体不可用</span>}
-                  </div>
-                  <div className="schedules-table-actions" role="cell">
+                      {!runtimeAvailable && (
+                        <span className="schedules-unavailable">
+                          智能体不可用
+                        </span>
+                      )}
+                    </div>
+                    <div className="schedules-table-actions" role="cell">
                       <button
                         className="btn-ghost schedules-action-btn"
                         type="button"
@@ -1181,10 +1226,10 @@ function Schedules({ profile }: SchedulesProps): React.JSX.Element {
                       >
                         <Trash size={14} />
                       </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
               {visibleSchedules.length === 0 && (
                 <div className="schedules-no-results">
                   没有符合当前搜索或筛选条件的任务

@@ -1046,7 +1046,9 @@ export async function runHermesUpdate(
   onProgress: (progress: InstallProgress) => void,
 ): Promise<void> {
   if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
-    throw new Error("Hermes Agent Runtime is not installed. Please install it first.");
+    throw new Error(
+      "Hermes Agent Runtime is not installed. Please install it first.",
+    );
   }
 
   let log = "";

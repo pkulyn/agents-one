@@ -57,6 +57,7 @@ Key tests can be described as sections in `lat.md/` files (e.g. `tests.md`). Add
 lat:
   require-code-mention: true
 ---
+
 # Tests
 
 Authentication and authorization test specifications.
@@ -66,9 +67,11 @@ Authentication and authorization test specifications.
 Verify credential validation and error handling for the login endpoint.
 
 ### Rejects expired tokens
+
 Tokens past their expiry timestamp are rejected with 401, even if otherwise valid.
 
 ### Handles missing password
+
 Login request without a password field returns 400 with a descriptive error.
 ```
 

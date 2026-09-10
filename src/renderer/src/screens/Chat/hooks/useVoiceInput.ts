@@ -34,7 +34,11 @@ function pcm16k(samples: Float32Array, sourceSampleRate: number): Uint8Array {
     const start = Math.floor(index * ratio);
     const end = Math.min(samples.length, Math.floor((index + 1) * ratio));
     let total = 0;
-    for (let sampleIndex = start; sampleIndex < Math.max(start + 1, end); sampleIndex += 1) {
+    for (
+      let sampleIndex = start;
+      sampleIndex < Math.max(start + 1, end);
+      sampleIndex += 1
+    ) {
       total += samples[sampleIndex] || 0;
     }
     const average = total / Math.max(1, end - start);
@@ -145,9 +149,12 @@ export function useVoiceInput(
     let stream: MediaStream | null = null;
     let sessionId: string | null = null;
     try {
-      const voiceConfig = await window.agentsOneAPI.getVoiceInputConfig(profile);
+      const voiceConfig =
+        await window.agentsOneAPI.getVoiceInputConfig(profile);
       if (!voiceConfig.enabled || !voiceConfig.configured) {
-        throw new Error("语音输入尚未配置，请在设置中的“语音输入”完成服务接入。");
+        throw new Error(
+          "语音输入尚未配置，请在设置中的“语音输入”完成服务接入。",
+        );
       }
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -161,9 +168,13 @@ export function useVoiceInput(
         return;
       }
 
-      sessionId = await window.agentsOneAPI.startStreamingTranscription(profile);
+      sessionId =
+        await window.agentsOneAPI.startStreamingTranscription(profile);
       if (disposedRef.current) {
-        await window.agentsOneAPI.stopStreamingTranscription(sessionId, captureAudit());
+        await window.agentsOneAPI.stopStreamingTranscription(
+          sessionId,
+          captureAudit(),
+        );
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
@@ -210,7 +221,10 @@ export function useVoiceInput(
       setRecording(true);
     } catch (cause) {
       if (sessionId) {
-        void window.agentsOneAPI.stopStreamingTranscription(sessionId, captureAudit());
+        void window.agentsOneAPI.stopStreamingTranscription(
+          sessionId,
+          captureAudit(),
+        );
       }
       sessionIdRef.current = null;
       stream?.getTracks().forEach((track) => track.stop());
@@ -219,7 +233,8 @@ export function useVoiceInput(
         setRecording(false);
         setTranscribing(false);
         setError(
-          (cause as Error).message || "无法启动实时语音输入，请检查麦克风和服务连接。",
+          (cause as Error).message ||
+            "无法启动实时语音输入，请检查麦克风和服务连接。",
         );
       }
     } finally {
@@ -234,13 +249,15 @@ export function useVoiceInput(
     setRecording(false);
     if (!sessionId) return;
     setTranscribing(true);
-    void window.agentsOneAPI.stopStreamingTranscription(sessionId, captureAudit()).catch((cause: Error) => {
-      if (!disposedRef.current) {
-        sessionIdRef.current = null;
-        setTranscribing(false);
-        setError(cause.message || "无法结束实时语音输入。");
-      }
-    });
+    void window.agentsOneAPI
+      .stopStreamingTranscription(sessionId, captureAudit())
+      .catch((cause: Error) => {
+        if (!disposedRef.current) {
+          sessionIdRef.current = null;
+          setTranscribing(false);
+          setError(cause.message || "无法结束实时语音输入。");
+        }
+      });
   }, [captureAudit, stopCapture]);
 
   const toggle = useCallback((): void => {
@@ -274,7 +291,10 @@ export function useVoiceInput(
       sessionIdRef.current = null;
       stopCapture();
       if (sessionId) {
-        void window.agentsOneAPI.stopStreamingTranscription(sessionId, captureAudit());
+        void window.agentsOneAPI.stopStreamingTranscription(
+          sessionId,
+          captureAudit(),
+        );
       }
     };
   }, [captureAudit, stopCapture]);
