@@ -1,5 +1,13 @@
 # Agents One 项目进展日志
 
+## 2026-09-10：OR-006 目录独立化完成
+
+- 迁移结果：从带注释恢复标签 `agents-one-pre-migration-20260910` 对应的固定提交 `564ef2ad30a9491bf8270418df0fe0b0a87a042b`，以非本地硬链接方式干净克隆到 `D:\Projects\Agents-One`；没有复制旧 `.git`、依赖、构建目录、缓存、沙箱、日志、`.env` 或用户数据。后续开发以新目录为唯一工作区，旧 `D:\Agent Console\Agents-One` 只读保留用于恢复。
+- 可移植性修正：清除活跃脚本/测试中的个人路径依赖；引入 `npm run install:clean` 和宿主 Node/Electron SQLite 双探针；`better-sqlite3` 固定为 13.0.3；CI 与发布工作流使用同一干净安装入口；electron-builder 复用已验证的本地 Electron distribution，标准 `npm run build:unpack` 在新目录通过。
+- 验证：`install:clean`、typecheck、生产构建和标准未安装版打包通过；路径相关定向测试 187/187 通过。全量测试仍为 205/209 文件、1,969 通过/82 失败/9 跳过，lint 仍为 11 errors，生产 audit 仍为 6 项（2 high/4 moderate），均与 PRD 已登记基线一致，无迁移新增回归。
+- 产物与安全：打包后 Electron 43.4.1/ABI 148 成功加载 SQLite 3.53.4；ASAR 16,913 条目，禁入目录和个人路径均为 0；ASAR、unpacked 内容与工作 diff 的 Gitleaks 命中均为 0。NSIS、portable 和 blockmap 的哈希、远端、回退与全部证据见[OR-006 目录独立化验收记录](./AGENTS_ONE_DIRECTORY_MIGRATION_AUDIT_20260910.md)。全部 refs 复扫仍只有 2 个既有测试假值，无需改写历史。
+- 遗留边界：目标 GitHub 仓库仍不存在或当前账号不可见，首次推送与保护规则属于公开发布前外部验收；本地产物未签名且不作为公开 Release。M0 的仓库内/目录独立化范围完成，下一步进入 OR-1 修复 82 项测试失败和 11 项 lint error。
+
 ## 2026-09-10：OR-005 迁移恢复基线标签建立
 
 - 前置条件：OR-003/004/007～009 已完成；OR-007 安全提交后的全部 refs 复扫仍只有 2 项既有测试假值，原始报告 SHA-256 与首次扫描一致；工作树干净且 `lat check` 通过。
