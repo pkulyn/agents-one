@@ -56,7 +56,8 @@ export function persistedTurnCompletionSignature(
     (message) =>
       isBubbleMessage(message) &&
       message.role === "user" &&
-      (message.id === activeTurn.userId || message.turnId === activeTurn.turnId),
+      (message.id === activeTurn.userId ||
+        message.turnId === activeTurn.turnId),
   );
   if (activeUserIndex < 0) return null;
 
@@ -201,7 +202,9 @@ export function useChatIPC({
           activeTurn,
         );
         setMessages((prev) => {
-          const next = reconcileAfterDbRefresh(prev, dbMessages, { activeTurn });
+          const next = reconcileAfterDbRefresh(prev, dbMessages, {
+            activeTurn,
+          });
           messagesRef.current = next;
           return next;
         });
@@ -258,47 +261,49 @@ export function useChatIPC({
       },
     );
 
-    const cleanupChunk = window.agentsOneAPI.onChatChunk((eventRunId, chunk) => {
-      if (!eventMatchesRun(eventRunId, runId)) return;
-      if (!activeTurnRef.current) return;
-      persistedCompletionRef.current = null;
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (
-          last &&
-          last.role === "agent" &&
-          isBubbleMessage(last) &&
-          !last.error
-        ) {
-          if (chunk === last.content) return prev;
-          const nextContent = chunk.startsWith(last.content)
-            ? chunk
-            : last.content + chunk;
+    const cleanupChunk = window.agentsOneAPI.onChatChunk(
+      (eventRunId, chunk) => {
+        if (!eventMatchesRun(eventRunId, runId)) return;
+        if (!activeTurnRef.current) return;
+        persistedCompletionRef.current = null;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (
+            last &&
+            last.role === "agent" &&
+            isBubbleMessage(last) &&
+            !last.error
+          ) {
+            if (chunk === last.content) return prev;
+            const nextContent = chunk.startsWith(last.content)
+              ? chunk
+              : last.content + chunk;
+            return [
+              ...prev.slice(0, -1),
+              {
+                ...last,
+                content: nextContent,
+                pending: true,
+                turnId: last.turnId || activeTurnRef.current?.turnId,
+              },
+            ];
+          }
+          if (!chunk || !chunk.trim()) return prev;
           return [
-            ...prev.slice(0, -1),
+            ...prev,
             {
-              ...last,
-              content: nextContent,
+              id: `agent-${Date.now()}`,
+              role: "agent",
+              content: chunk,
               pending: true,
-              turnId: last.turnId || activeTurnRef.current?.turnId,
+              ...(activeTurnRef.current?.turnId
+                ? { turnId: activeTurnRef.current.turnId }
+                : {}),
             },
           ];
-        }
-        if (!chunk || !chunk.trim()) return prev;
-        return [
-          ...prev,
-          {
-            id: `agent-${Date.now()}`,
-            role: "agent",
-            content: chunk,
-            pending: true,
-            ...(activeTurnRef.current?.turnId
-              ? { turnId: activeTurnRef.current.turnId }
-              : {}),
-          },
-        ];
-      });
-    });
+        });
+      },
+    );
 
     const cleanupReasoning = window.agentsOneAPI.onChatReasoningChunk(
       (eventRunId, chunk) => {
@@ -361,18 +366,20 @@ export function useChatIPC({
       },
     );
 
-    const cleanupError = window.agentsOneAPI.onChatError((eventRunId, error) => {
-      if (!eventMatchesRun(eventRunId, runId)) return;
-      reasoningSegmentClosedRef.current = false;
-      persistedCompletionRef.current = null;
-      stopDbPolling();
-      const activeTurn = activeTurnRef.current;
-      if (!activeTurn) return;
-      activeTurn.status = "failed";
-      setMessages((prev) => markActiveTurnFailed(prev, error, activeTurn));
-      setToolProgress(null);
-      setIsLoading(false);
-    });
+    const cleanupError = window.agentsOneAPI.onChatError(
+      (eventRunId, error) => {
+        if (!eventMatchesRun(eventRunId, runId)) return;
+        reasoningSegmentClosedRef.current = false;
+        persistedCompletionRef.current = null;
+        stopDbPolling();
+        const activeTurn = activeTurnRef.current;
+        if (!activeTurn) return;
+        activeTurn.status = "failed";
+        setMessages((prev) => markActiveTurnFailed(prev, error, activeTurn));
+        setToolProgress(null);
+        setIsLoading(false);
+      },
+    );
 
     const cleanupClarify = window.agentsOneAPI.onClarifyRequest(
       (eventRunId, req) => {

@@ -31,9 +31,9 @@ function ensureTable(db: Database.Database): void {
     );
   `);
   const columns = new Set(
-    (db.prepare(`PRAGMA table_info(${TABLE})`).all() as Array<{ name: string }>).map(
-      (column) => column.name,
-    ),
+    (
+      db.prepare(`PRAGMA table_info(${TABLE})`).all() as Array<{ name: string }>
+    ).map((column) => column.name),
   );
   if (!columns.has("workspace_id")) {
     db.exec(`ALTER TABLE ${TABLE} ADD COLUMN workspace_id TEXT`);
@@ -109,9 +109,8 @@ export function clearSessionContextFolderPath(folder: string): number {
   const db = getDbConnection(false);
   if (!db) return 0;
   ensureTable(db);
-  return db
-    .prepare(`DELETE FROM ${TABLE} WHERE folder_path = ?`)
-    .run(folder).changes;
+  return db.prepare(`DELETE FROM ${TABLE} WHERE folder_path = ?`).run(folder)
+    .changes;
 }
 
 /** Unlinks every native session from a removed opaque project capability. */
@@ -144,9 +143,9 @@ export function getSessionContextWorkspace(
   const db = getDbConnection(true);
   if (!db || !tableExists(db)) return null;
   const columns = new Set(
-    (db.prepare(`PRAGMA table_info(${TABLE})`).all() as Array<{ name: string }>).map(
-      (column) => column.name,
-    ),
+    (
+      db.prepare(`PRAGMA table_info(${TABLE})`).all() as Array<{ name: string }>
+    ).map((column) => column.name),
   );
   if (!columns.has("workspace_id") || !columns.has("folder_name")) {
     const legacyPath = getSessionContextFolder(sessionId);
@@ -163,7 +162,9 @@ export function getSessionContextWorkspace(
   if (row.workspace_id && row.folder_name) {
     return { workspaceId: row.workspace_id, name: row.folder_name };
   }
-  return row.folder_path ? { name: row.folder_path, legacyPath: row.folder_path } : null;
+  return row.folder_path
+    ? { name: row.folder_path, legacyPath: row.folder_path }
+    : null;
 }
 
 /**
@@ -196,9 +197,9 @@ export function getSessionContextWorkspaces(
   if (!db || !tableExists(db)) return result;
 
   const columns = new Set(
-    (db.prepare(`PRAGMA table_info(${TABLE})`).all() as Array<{ name: string }>).map(
-      (column) => column.name,
-    ),
+    (
+      db.prepare(`PRAGMA table_info(${TABLE})`).all() as Array<{ name: string }>
+    ).map((column) => column.name),
   );
   const hasCapabilities =
     columns.has("workspace_id") && columns.has("folder_name");
@@ -273,9 +274,9 @@ export function getRecentSessionContextWorkspaces(
   const db = getDbConnection(true);
   if (!db || !tableExists(db)) return [];
   const columns = new Set(
-    (db.prepare(`PRAGMA table_info(${TABLE})`).all() as Array<{ name: string }>).map(
-      (column) => column.name,
-    ),
+    (
+      db.prepare(`PRAGMA table_info(${TABLE})`).all() as Array<{ name: string }>
+    ).map((column) => column.name),
   );
   if (!columns.has("workspace_id") || !columns.has("folder_name")) return [];
   const rows = db

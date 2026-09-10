@@ -23,7 +23,8 @@ import { summarizeTaskOutput } from "../Chat/runtimeOutput";
 import { dispatchAgentsOneEvent } from "../../utils/brandMigration";
 
 const STORAGE_KEY = "agents-one.quick-chats.v1";
-const HIDDEN_TASK_SESSION_IDS_KEY = "agents-one.quick-chat.hidden-task-session-ids.v1";
+const HIDDEN_TASK_SESSION_IDS_KEY =
+  "agents-one.quick-chat.hidden-task-session-ids.v1";
 const MAX_QUICK_CHATS = 40;
 const MAX_MESSAGES_PER_CHAT = 80;
 const QUICK_CHAT_TIMEOUT_MS = 120_000;
@@ -93,10 +94,7 @@ function rememberHiddenTaskSessionId(sessionId?: string | null): void {
   }
 }
 
-function message(
-  role: QuickChatRole,
-  content: string,
-): QuickChatMessage {
+function message(role: QuickChatRole, content: string): QuickChatMessage {
   return { id: newId("quick-msg"), role, content, createdAt: Date.now() };
 }
 
@@ -105,14 +103,13 @@ function titleFrom(text: string): string {
   return singleLine.slice(0, 28) || "新聊天";
 }
 
-function buildPrompt(
-  chat: QuickChatConversation | null,
-  text: string,
-): string {
+function buildPrompt(chat: QuickChatConversation | null, text: string): string {
   const history = (chat?.messages || [])
     .filter((item) => item.role === "user" || item.role === "agent")
     .slice(-8)
-    .map((item) => `${item.role === "user" ? "用户" : "智能体"}：${item.content}`)
+    .map(
+      (item) => `${item.role === "user" ? "用户" : "智能体"}：${item.content}`,
+    )
     .join("\n\n")
     .slice(-8_000);
 
@@ -184,7 +181,11 @@ function QuickRuntimeAvatar({
       className="quick-chat-avatar"
       style={runtime?.color ? { background: runtime.color } : undefined}
     >
-      {runtime?.avatar ? <img src={runtime.avatar} alt="" /> : <Bot size={size} />}
+      {runtime?.avatar ? (
+        <img src={runtime.avatar} alt="" />
+      ) : (
+        <Bot size={size} />
+      )}
     </span>
   );
 }
@@ -240,7 +241,9 @@ export default function QuickChatPanel({
   useEffect(() => {
     if (loadedProfileRef.current !== profile) return;
     saveLegacyQuickChats(chats);
-    void window.agentsOneAPI.saveQuickChats(chats, profile).catch(() => undefined);
+    void window.agentsOneAPI
+      .saveQuickChats(chats, profile)
+      .catch(() => undefined);
   }, [chats, profile]);
 
   useEffect(() => {
@@ -326,7 +329,9 @@ export default function QuickChatPanel({
         ...patch,
         title:
           chat.title === "新聊天"
-            ? titleFrom(messages.find((item) => item.role === "user")?.content || "")
+            ? titleFrom(
+                messages.find((item) => item.role === "user")?.content || "",
+              )
             : chat.title,
         messages: messages.slice(-MAX_MESSAGES_PER_CHAT),
         updatedAt: Date.now(),
@@ -341,7 +346,9 @@ export default function QuickChatPanel({
     cancelledRef.current = true;
     if (currentRunId) {
       await Promise.all([
-        window.agentsOneAPI.cancelAgentRuntimeTask(currentRunId).catch(() => false),
+        window.agentsOneAPI
+          .cancelAgentRuntimeTask(currentRunId)
+          .catch(() => false),
         window.agentsOneAPI.abortChat(currentRunId).catch(() => undefined),
       ]);
     }
@@ -369,7 +376,10 @@ export default function QuickChatPanel({
         }
         const doneMessages = [
           ...baseMessages,
-          message(run.status === "succeeded" ? "agent" : "system", finalText(run)),
+          message(
+            run.status === "succeeded" ? "agent" : "system",
+            finalText(run),
+          ),
         ];
         updateChatMessages(chat, doneMessages, {
           runtimeSessionId: run.sessionId || chat.runtimeSessionId || null,
@@ -631,7 +641,9 @@ export default function QuickChatPanel({
             {activeChat?.title || "新聊天"}
           </span>
           <span className="quick-chat-title-sub">
-            {currentTaskTitle ? `当前任务：${currentTaskTitle}` : "可加入当前任务"}
+            {currentTaskTitle
+              ? `当前任务：${currentTaskTitle}`
+              : "可加入当前任务"}
           </span>
         </div>
         <div className="quick-chat-actions">

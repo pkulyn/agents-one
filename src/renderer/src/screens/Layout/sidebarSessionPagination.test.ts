@@ -12,7 +12,11 @@ describe("sidebar native-session pagination", () => {
     expect(first.hasMore).toBe(true);
     expect(first.nextOffset).toBe(30);
 
-    const last = consumeNativeSessionPage(["native-30", "native-31"], first.nextOffset, 30);
+    const last = consumeNativeSessionPage(
+      ["native-30", "native-31"],
+      first.nextOffset,
+      30,
+    );
     expect(last).toEqual({
       rows: ["native-30", "native-31"],
       hasMore: false,

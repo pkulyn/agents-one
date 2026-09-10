@@ -17856,15 +17856,41 @@ button.task-collaboration-inline-avatar:focus-visible {
   place-items: center;
   border-radius: 10px;
 }
-.schedules-summary-icon-total { color: var(--accent); background: var(--accent-bg); }
-.schedules-summary-icon-enabled { color: var(--success); background: var(--success-bg); }
-.schedules-summary-icon-paused { color: var(--warning); background: var(--warning-bg); }
-.schedules-summary-icon-attention { color: var(--error); background: var(--error-bg); }
+.schedules-summary-icon-total {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.schedules-summary-icon-enabled {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.schedules-summary-icon-paused {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+.schedules-summary-icon-attention {
+  color: var(--error);
+  background: var(--error-bg);
+}
 .schedules-summary-card span,
-.schedules-summary-card strong { display: block; }
-.schedules-summary-card span { color: var(--text-muted); font-size: 12px; }
-.schedules-summary-card strong { margin-top: 1px; color: var(--text-primary); font-size: 22px; line-height: 1.1; }
-.schedules-tools { display: flex; align-items: center; gap: 8px; }
+.schedules-summary-card strong {
+  display: block;
+}
+.schedules-summary-card span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.schedules-summary-card strong {
+  margin-top: 1px;
+  color: var(--text-primary);
+  font-size: 22px;
+  line-height: 1.1;
+}
+.schedules-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .schedules-search {
   display: flex;
   align-items: center;
@@ -17877,47 +17903,194 @@ button.task-collaboration-inline-avatar:focus-visible {
   background: var(--bg-primary);
   color: var(--text-muted);
 }
-.schedules-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
-.schedules-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 12px; }
-.schedules-search input::placeholder { color: var(--text-muted); }
-.schedules-filter { height: 32px; padding: 0 26px 0 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-primary); color: var(--text-secondary); font-size: 12px; }
-.schedules-table-wrap { overflow-x: auto; }
-.schedules-table { min-width: 840px; }
+.schedules-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+.schedules-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+.schedules-search input::placeholder {
+  color: var(--text-muted);
+}
+.schedules-filter {
+  height: 32px;
+  padding: 0 26px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.schedules-table-wrap {
+  overflow-x: auto;
+}
+.schedules-table {
+  min-width: 840px;
+}
 .schedules-table-header,
 .schedules-table-row {
   display: grid;
-  grid-template-columns: minmax(180px, 2.2fr) minmax(100px, 1.2fr) minmax(90px, 1.05fr) minmax(100px, 1fr) minmax(110px, 1.2fr) minmax(70px, .75fr) minmax(130px, 1.2fr);
+  grid-template-columns:
+    minmax(180px, 2.2fr) minmax(100px, 1.2fr) minmax(90px, 1.05fr)
+    minmax(100px, 1fr) minmax(110px, 1.2fr) minmax(70px, 0.75fr) minmax(
+      130px,
+      1.2fr
+    );
   column-gap: 12px;
   align-items: center;
 }
-.schedules-table-header { min-height: 42px; padding: 0 16px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 11px; font-weight: 600; }
-.schedules-table-row { min-height: 88px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-primary); transition: background var(--transition); }
-.schedules-table-row:last-of-type { border-bottom: 0; }
-.schedules-table-row:hover { background: var(--bg-elevated); }
-.schedules-task-cell, .schedules-plan-cell, .schedules-agent-cell, .schedules-time-cell, .schedules-result-cell, .schedules-state-cell { min-width: 0; }
-.schedules-task-prompt, .schedules-plan-cell span, .schedules-agent-cell span, .schedules-time-cell span, .schedules-result-cell span, .schedules-unavailable { display: block; margin-top: 4px; overflow: hidden; color: var(--text-muted); font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-.schedules-task-prompt { color: var(--text-secondary); }
-.schedules-plan-cell span { margin-top: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
-.schedules-agent-cell { display: flex; align-items: center; gap: 8px; }
-.schedules-agent-avatar { flex: 0 0 auto; border: 1px solid var(--border); }
-.schedules-agent-copy { min-width: 0; }
-.schedules-agent-cell strong, .schedules-time-cell { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
-.schedules-result-row { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
-.schedules-result-row > div { min-width: 0; }
-.schedules-result-row strong { display: block; font-size: 12px; }
-.schedules-result-row small { display: block; margin-top: 3px; color: var(--text-muted); font-size: 11px; line-height: 1.35; white-space: nowrap; }
-.schedules-result-icon { display: grid; flex: 0 0 auto; width: 17px; height: 17px; margin-top: 1px; place-items: center; border-radius: 50%; }
-.schedules-result-success { color: var(--success); }
-.schedules-result-success .schedules-result-icon { color: var(--success); background: var(--success-bg); }
-.schedules-result-danger { color: var(--error); }
-.schedules-result-danger .schedules-result-icon { color: var(--error); background: var(--error-bg); }
-.schedules-result-active { color: var(--accent); }
-.schedules-result-active .schedules-result-icon { color: var(--accent); background: var(--accent-bg); }
-.schedules-result-muted { color: var(--text-muted); font-size: 12px; }
-.schedules-unavailable { color: var(--error); }
-.schedules-table-actions { display: flex; align-items: center; gap: 2px; }
-.schedules-table-actions .schedules-action-btn { width: 26px; height: 26px; }
-.schedules-no-results { padding: 44px 20px; color: var(--text-muted); font-size: 13px; text-align: center; }
+.schedules-table-header {
+  min-height: 42px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.schedules-table-row {
+  min-height: 88px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+  transition: background var(--transition);
+}
+.schedules-table-row:last-of-type {
+  border-bottom: 0;
+}
+.schedules-table-row:hover {
+  background: var(--bg-elevated);
+}
+.schedules-task-cell,
+.schedules-plan-cell,
+.schedules-agent-cell,
+.schedules-time-cell,
+.schedules-result-cell,
+.schedules-state-cell {
+  min-width: 0;
+}
+.schedules-task-prompt,
+.schedules-plan-cell span,
+.schedules-agent-cell span,
+.schedules-time-cell span,
+.schedules-result-cell span,
+.schedules-unavailable {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schedules-task-prompt {
+  color: var(--text-secondary);
+}
+.schedules-plan-cell span {
+  margin-top: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.schedules-agent-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.schedules-agent-avatar {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+}
+.schedules-agent-copy {
+  min-width: 0;
+}
+.schedules-agent-cell strong,
+.schedules-time-cell {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.schedules-result-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+}
+.schedules-result-row > div {
+  min-width: 0;
+}
+.schedules-result-row strong {
+  display: block;
+  font-size: 12px;
+}
+.schedules-result-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.schedules-result-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  place-items: center;
+  border-radius: 50%;
+}
+.schedules-result-success {
+  color: var(--success);
+}
+.schedules-result-success .schedules-result-icon {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.schedules-result-danger {
+  color: var(--error);
+}
+.schedules-result-danger .schedules-result-icon {
+  color: var(--error);
+  background: var(--error-bg);
+}
+.schedules-result-active {
+  color: var(--accent);
+}
+.schedules-result-active .schedules-result-icon {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.schedules-result-muted {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.schedules-unavailable {
+  color: var(--error);
+}
+.schedules-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.schedules-table-actions .schedules-action-btn {
+  width: 26px;
+  height: 26px;
+}
+.schedules-no-results {
+  padding: 44px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
 
 @media (max-width: 720px) {
   .schedules-container {
@@ -17943,11 +18116,23 @@ button.task-collaboration-inline-avatar:focus-visible {
   .schedules-card-actions .schedules-badge {
     margin-right: auto;
   }
-  .schedules-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .schedules-summary-card { min-height: 66px; padding: 11px; }
-  .schedules-source-heading { align-items: flex-start; flex-direction: column; }
-  .schedules-tools { width: 100%; }
-  .schedules-search { width: 100%; }
+  .schedules-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .schedules-summary-card {
+    min-height: 66px;
+    padding: 11px;
+  }
+  .schedules-source-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .schedules-tools {
+    width: 100%;
+  }
+  .schedules-search {
+    width: 100%;
+  }
 }
 .project-coordinator {
   display: flex;
@@ -19403,8 +19588,7 @@ body.tray-completion-document {
 
 @media (prefers-reduced-motion: no-preference) {
   .tray-completion-card {
-    animation: tray-completion-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1)
-      both;
+    animation: tray-completion-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 }
 

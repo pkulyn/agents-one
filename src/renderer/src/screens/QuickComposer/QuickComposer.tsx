@@ -198,7 +198,8 @@ export default function QuickComposer(): React.JSX.Element {
 
   const applyProjectFolder = useCallback(
     async (path: string): Promise<void> => {
-      const registered = await window.agentsOneAPI.registerProjectWorkspace(path);
+      const registered =
+        await window.agentsOneAPI.registerProjectWorkspace(path);
       if (!registered) throw new Error("所选项目文件夹未获得主进程授权。");
       setContextFolder(registered.name);
       setContextWorkspaceId(registered.id);

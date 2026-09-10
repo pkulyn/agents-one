@@ -12,7 +12,9 @@ describe("placeInitialUserMessageBeforeAgentTrace", () => {
     ] as ChatMessage[];
 
     expect(
-      placeInitialUserMessageBeforeAgentTrace(messages).map((message) => message.id),
+      placeInitialUserMessageBeforeAgentTrace(messages).map(
+        (message) => message.id,
+      ),
     ).toEqual(["user", "reason", "tool", "answer"]);
   });
 
@@ -24,7 +26,9 @@ describe("placeInitialUserMessageBeforeAgentTrace", () => {
     ] as ChatMessage[];
 
     expect(
-      placeInitialUserMessageBeforeAgentTrace(messages).map((message) => message.id),
+      placeInitialUserMessageBeforeAgentTrace(messages).map(
+        (message) => message.id,
+      ),
     ).toEqual(["user", "reason", "answer"]);
   });
 });

@@ -59,9 +59,7 @@ describe("Claude Code runtime invocation", () => {
   it("keeps Claude Code skills, MCP, plugins, hooks and Bash in safe-write mode", () => {
     const args = claudeCodeExecArgs("safe_write", "update this safely");
     expect(args).toEqual(
-      expect.arrayContaining([
-        "--dangerously-skip-permissions",
-      ]),
+      expect.arrayContaining(["--dangerously-skip-permissions"]),
     );
     expect(args).not.toContain("--allowedTools");
     expect(args).not.toContain("--disallowedTools");

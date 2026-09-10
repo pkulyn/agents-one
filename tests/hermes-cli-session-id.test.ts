@@ -133,7 +133,10 @@ vi.mock("http", () => ({
             res.headers = {};
             cb?.(res);
             queueMicrotask(() => {
-              res.emit("data", Buffer.from(JSON.stringify({ run_id: "run-1" })));
+              res.emit(
+                "data",
+                Buffer.from(JSON.stringify({ run_id: "run-1" })),
+              );
               res.emit("end");
             });
             return;
@@ -341,7 +344,6 @@ vi.mock("../src/main/config", () => ({
   getApiServerKey: () => "",
   getConnectionConfig: () => ({ mode: "local" as const }),
 }));
-
 
 vi.mock("../src/main/utils", () => ({
   stripAnsi: (s: string) => s,

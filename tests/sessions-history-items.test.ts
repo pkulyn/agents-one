@@ -424,9 +424,9 @@ describe("expandRowsToHistory", () => {
     const merged = mergeStoredPromptImageAttachments(items, new Map());
 
     expect(merged[0]).toMatchObject({ kind: "user" });
-    expect((merged[0] as Extract<HistoryItem, { kind: "user" }>).content).toContain(
-      "C:\\Users\\tester\\image.png",
-    );
+    expect(
+      (merged[0] as Extract<HistoryItem, { kind: "user" }>).content,
+    ).toContain("C:\\Users\\tester\\image.png");
     expect("attachments" in merged[0]).toBe(false);
   });
 
@@ -494,7 +494,9 @@ describe("expandRowsToHistory", () => {
       const merged = mergeStoredPromptImageAttachments(items, new Map());
       const user = merged[0] as Extract<HistoryItem, { kind: "user" }>;
 
-      expect(user.content).toContain(`[You can examine it with vision_analyze using image_url: ${imagePath}]`);
+      expect(user.content).toContain(
+        `[You can examine it with vision_analyze using image_url: ${imagePath}]`,
+      );
       expect(user.attachments).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });

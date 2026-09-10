@@ -10,7 +10,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const chrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const resizeScript = resolve(root, "scripts/resize-brand-icon.ps1");
 const markPath = resolve(root, "src/renderer/src/assets/agents-one-mark.svg");
-const pngTargets = [resolve(root, "build/icon.png"), resolve(root, "resources/icon.png")];
+const pngTargets = [
+  resolve(root, "build/icon.png"),
+  resolve(root, "resources/icon.png"),
+];
 const icoTarget = resolve(root, "build/icon.ico");
 const iconSizes = [16, 20, 24, 32, 40, 48, 64, 128, 256];
 
@@ -73,7 +76,9 @@ try {
     })),
   );
   await writeFile(icoTarget, makeIco(images));
-  console.log(`Generated Agents One PNG assets and ${images.length}-size Windows ICO.`);
+  console.log(
+    `Generated Agents One PNG assets and ${images.length}-size Windows ICO.`,
+  );
 } finally {
   await rm(tempDir, { recursive: true, force: true });
 }

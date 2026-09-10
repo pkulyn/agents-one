@@ -1,6 +1,9 @@
 import { realpathSync, statSync } from "fs";
 import { isAbsolute, relative, resolve, sep } from "path";
-import { listProjectFolders, resolveProjectFolderPath } from "./project-folders";
+import {
+  listProjectFolders,
+  resolveProjectFolderPath,
+} from "./project-folders";
 
 /**
  * User-selected folders are short-lived desktop capabilities. Renderer code

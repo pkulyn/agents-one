@@ -32,7 +32,10 @@ afterEach(() => {
 });
 
 function makeRoot(name: string): string {
-  const root = join(tmpdir(), `agents-one-workspace-authority-${name}-${Date.now()}-${Math.random()}`);
+  const root = join(
+    tmpdir(),
+    `agents-one-workspace-authority-${name}-${Date.now()}-${Math.random()}`,
+  );
   mkdirSync(root, { recursive: true });
   roots.push(root);
   return root;
@@ -78,12 +81,16 @@ describe("workspace authority", () => {
 
   it("resolves a registered workspace by opaque id only when its root is still valid", () => {
     const root = makeRoot("registered-id");
-    listProjectFoldersMock.mockReturnValue([{ id: "project-safe", path: root }]);
+    listProjectFoldersMock.mockReturnValue([
+      { id: "project-safe", path: root },
+    ]);
     resolveProjectFolderPathMock.mockImplementation((id: string) =>
       id === "project-safe" ? root : null,
     );
 
-    expect(resolveAuthorizedWorkspaceId("project-safe")).toBe(root.toLowerCase());
+    expect(resolveAuthorizedWorkspaceId("project-safe")).toBe(
+      root.toLowerCase(),
+    );
     expect(resolveAuthorizedWorkspaceId("project-forged")).toBeNull();
   });
 
@@ -92,16 +99,30 @@ describe("workspace authority", () => {
     const file = join(root, "docs", "guide.md");
     mkdirSync(join(root, "docs"), { recursive: true });
     writeFileSync(file, "guide");
-    listProjectFoldersMock.mockReturnValue([{ id: "project-relative", path: root }]);
+    listProjectFoldersMock.mockReturnValue([
+      { id: "project-relative", path: root },
+    ]);
     resolveProjectFolderPathMock.mockImplementation((id: string) =>
       id === "project-relative" ? root : null,
     );
 
-    expect(resolveAuthorizedWorkspaceRelativePath("project-relative", "docs/guide.md"))
-      .toBe(file.toLowerCase());
-    expect(resolveAuthorizedWorkspaceRelativePath("project-relative", "../secret.txt"))
-      .toBeNull();
-    expect(resolveAuthorizedWorkspaceRelativePath("project-relative", "C:/secret.txt"))
-      .toBeNull();
+    expect(
+      resolveAuthorizedWorkspaceRelativePath(
+        "project-relative",
+        "docs/guide.md",
+      ),
+    ).toBe(file.toLowerCase());
+    expect(
+      resolveAuthorizedWorkspaceRelativePath(
+        "project-relative",
+        "../secret.txt",
+      ),
+    ).toBeNull();
+    expect(
+      resolveAuthorizedWorkspaceRelativePath(
+        "project-relative",
+        "C:/secret.txt",
+      ),
+    ).toBeNull();
   });
 });

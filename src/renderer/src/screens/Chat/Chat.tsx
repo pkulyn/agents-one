@@ -184,9 +184,9 @@ function Chat({
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [remoteMode, setRemoteMode] = useState(false);
-  const [connectionMode, setConnectionMode] = useState<
-    "local" | "remote"
-  >("local");
+  const [connectionMode, setConnectionMode] = useState<"local" | "remote">(
+    "local",
+  );
   const [chatTransportPreference, setChatTransportPreference] = useState<
     "auto" | "dashboard" | "legacy"
   >("auto");
@@ -225,7 +225,9 @@ function Chat({
     void (async () => {
       try {
         const workspace =
-          await window.agentsOneAPI.getSessionContextWorkspace(initialSessionId);
+          await window.agentsOneAPI.getSessionContextWorkspace(
+            initialSessionId,
+          );
         if (!cancelled && workspace) {
           setContextFolder(workspace.name);
           setContextWorkspaceId(workspace.workspaceId || null);
@@ -251,7 +253,10 @@ function Chat({
           workspaceId: contextWorkspaceId,
           name: contextFolder || "项目工作区",
         })
-      : window.agentsOneAPI.setSessionContextFolder(hermesSessionId, contextFolder);
+      : window.agentsOneAPI.setSessionContextFolder(
+          hermesSessionId,
+          contextFolder,
+        );
     void persist
       .then(() => {
         dispatchAgentsOneEvent("sessionContextFolderChanged", {
@@ -278,8 +283,10 @@ function Chat({
       (!contextFolder && !contextWorkspaceId) ||
       projectContextAttachment ||
       (!contextWorkspaceId &&
-        !(/^[a-zA-Z]:[\\/]/.test(contextFolder || "") ||
-          /^\\\\/.test(contextFolder || "")))
+        !(
+          /^[a-zA-Z]:[\\/]/.test(contextFolder || "") ||
+          /^\\\\/.test(contextFolder || "")
+        ))
     ) {
       return;
     }
@@ -350,12 +357,14 @@ function Chat({
       }
     };
     void loadConnectionConfig();
-    const unsubscribe = window.agentsOneAPI.onConnectionConfigChanged((conn) => {
-      setConnectionModeLoaded(true);
-      setConnectionMode(conn.mode);
-      setRemoteMode(conn.mode !== "local");
-      setChatTransportPreference("auto");
-    });
+    const unsubscribe = window.agentsOneAPI.onConnectionConfigChanged(
+      (conn) => {
+        setConnectionModeLoaded(true);
+        setConnectionMode(conn.mode);
+        setRemoteMode(conn.mode !== "local");
+        setChatTransportPreference("auto");
+      },
+    );
     return (): void => {
       cancelled = true;
       unsubscribe();
@@ -575,7 +584,9 @@ function Chat({
     return window.agentsOneAPI.onContextMenuCopyChat((format) => {
       const msgs = messagesRef.current;
       if (msgs.length === 0) return;
-      void window.agentsOneAPI.copyToClipboard(buildChatTranscript(msgs, format));
+      void window.agentsOneAPI.copyToClipboard(
+        buildChatTranscript(msgs, format),
+      );
     });
   }, [active]);
 
@@ -948,11 +959,15 @@ function Chat({
       const detail = (event as CustomEvent<unknown>).detail;
       if (!detail || typeof detail !== "object") return;
       const payload = detail as { runId?: unknown; content?: unknown };
-      if (payload.runId !== runId || typeof payload.content !== "string") return;
+      if (payload.runId !== runId || typeof payload.content !== "string")
+        return;
       const text = payload.content.trim();
       if (text) handleSubmitOrQueue(text, []);
     };
-    window.addEventListener("agents-one:submit-task-message", handleCollaborationSubmit);
+    window.addEventListener(
+      "agents-one:submit-task-message",
+      handleCollaborationSubmit,
+    );
     return () =>
       window.removeEventListener(
         "agents-one:submit-task-message",
@@ -962,7 +977,8 @@ function Chat({
 
   const applyContextFolder = useCallback(
     async (path: string) => {
-      const registered = await window.agentsOneAPI.registerProjectWorkspace(path);
+      const registered =
+        await window.agentsOneAPI.registerProjectWorkspace(path);
       if (!registered) {
         toast.error("所选项目文件夹未获得主进程授权。");
         return;
@@ -970,7 +986,9 @@ function Chat({
       if (remoteMode) {
         try {
           const attachment =
-            await window.agentsOneAPI.prepareProjectWorkspaceContext(registered.id);
+            await window.agentsOneAPI.prepareProjectWorkspaceContext(
+              registered.id,
+            );
           if (!attachment) throw new Error("无法读取所选文件夹");
           setProjectContextAttachment(attachment);
           sharedProjectContextRef.current = null;
@@ -1034,9 +1052,10 @@ function Chat({
   const handleSelectRecentWorkspace = useCallback(
     async (workspace: { workspaceId: string; name: string }) => {
       if (remoteMode) {
-        const attachment = await window.agentsOneAPI.prepareProjectWorkspaceContext(
-          workspace.workspaceId,
-        );
+        const attachment =
+          await window.agentsOneAPI.prepareProjectWorkspaceContext(
+            workspace.workspaceId,
+          );
         if (!attachment) {
           toast.error("所选项目文件夹已不可用或未获授权。");
           return;
@@ -1345,9 +1364,13 @@ function Chat({
 
           {(contextFolder || contextWorkspaceId) && worktreeVisible && (
             <WorktreePanel
-              folderPath={contextWorkspaceId ? undefined : contextFolder || undefined}
+              folderPath={
+                contextWorkspaceId ? undefined : contextFolder || undefined
+              }
               workspaceId={contextWorkspaceId || undefined}
-              folderLabel={contextWorkspaceId ? contextFolder || undefined : undefined}
+              folderLabel={
+                contextWorkspaceId ? contextFolder || undefined : undefined
+              }
             />
           )}
 

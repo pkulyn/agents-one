@@ -48,7 +48,6 @@ vi.mock("../src/main/config", () => ({
   setConfigValue: vi.fn(),
 }));
 
-
 vi.mock("../src/main/utils", () => ({
   stripAnsi: (s: string) => s,
   pidIsAliveAs: (pid: number) => aliveGatewayPids.has(pid),

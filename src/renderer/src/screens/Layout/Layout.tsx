@@ -67,10 +67,7 @@ import {
   readMigratedStorageValue,
 } from "../../utils/brandMigration";
 
-type View =
-  | "chat"
-  | "agents"
-  | "schedules";
+type View = "chat" | "agents" | "schedules";
 
 const PINNED_NAV_ITEMS: {
   view: View;
@@ -225,27 +222,31 @@ function Layout(): React.JSX.Element {
         dispatchAgentsOneEvent("sessionTranscriptChanged");
       },
     );
-    const dispose = window.agentsOneAPI.onTaskScheduleRunCompleted?.((event) => {
-      if (event.profile !== activeProfile) return;
-      dispatchAgentsOneEvent("sessionTranscriptChanged");
-      if (event.conversationId) {
-        window.dispatchEvent(
-          new CustomEvent("agents-one:runtime-conversation-updated", {
-            detail: {
-              profile: event.profile,
-              conversationId: event.conversationId,
-            },
-          }),
-        );
-      }
-      if (event.status === "succeeded") {
-        toast.success(
-          `定时任务“${event.scheduleName}”已完成，结果已写入对话。`,
-        );
-      } else {
-        toast.error(`定时任务“${event.scheduleName}”执行结束：${event.status}`);
-      }
-    });
+    const dispose = window.agentsOneAPI.onTaskScheduleRunCompleted?.(
+      (event) => {
+        if (event.profile !== activeProfile) return;
+        dispatchAgentsOneEvent("sessionTranscriptChanged");
+        if (event.conversationId) {
+          window.dispatchEvent(
+            new CustomEvent("agents-one:runtime-conversation-updated", {
+              detail: {
+                profile: event.profile,
+                conversationId: event.conversationId,
+              },
+            }),
+          );
+        }
+        if (event.status === "succeeded") {
+          toast.success(
+            `定时任务“${event.scheduleName}”已完成，结果已写入对话。`,
+          );
+        } else {
+          toast.error(
+            `定时任务“${event.scheduleName}”执行结束：${event.status}`,
+          );
+        }
+      },
+    );
     return () => {
       disposeStarted?.();
       dispose?.();
@@ -568,11 +569,13 @@ function Layout(): React.JSX.Element {
   );
 
   const mintDefaultTaskRun = useCallback(
-    (workspace?: {
-      workspaceId?: string;
-      name?: string;
-      legacyPath?: string;
-    } | null): ChatRun => {
+    (
+      workspace?: {
+        workspaceId?: string;
+        name?: string;
+        legacyPath?: string;
+      } | null,
+    ): ChatRun => {
       const folder = workspace?.name || workspace?.legacyPath;
       if (!defaultRuntime || usesLegacyHermesChat(defaultRuntime)) {
         return mintRun(activeProfile, undefined, folder ?? undefined);
@@ -654,7 +657,8 @@ function Layout(): React.JSX.Element {
         return;
       }
       if (!folder) return;
-      const registered = await window.agentsOneAPI.registerProjectWorkspace(folder);
+      const registered =
+        await window.agentsOneAPI.registerProjectWorkspace(folder);
       if (!registered) return;
       window.dispatchEvent(
         new CustomEvent("agents-one:project-folders-changed"),
@@ -690,7 +694,9 @@ function Layout(): React.JSX.Element {
         taskId: task.runtimeConversationId || task.sessionId || undefined,
         title: proposal?.title || task.title || "当前任务的协作方案",
         projectWorkspaceId: task.runtimeWorkspaceId || null,
-        projectName: task.runtimeWorkspaceId ? task.runtimeWorkspace || null : null,
+        projectName: task.runtimeWorkspaceId
+          ? task.runtimeWorkspace || null
+          : null,
         projectFolder: task.runtimeWorkspaceId
           ? null
           : task.runtimeWorkspace || task.contextFolder || null,
@@ -1499,11 +1505,7 @@ function Layout(): React.JSX.Element {
                     handleOpenTaskCollaboration(run, proposal)
                   }
                   onStartCollaboration={(proposal, project) =>
-                    handleAutoStartTaskCollaboration(
-                      run,
-                      proposal,
-                      project,
-                    )
+                    handleAutoStartTaskCollaboration(run, proposal, project)
                   }
                   onLoadingChange={handleRunLoading}
                   onSessionIdChange={handleRunSessionId}

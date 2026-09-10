@@ -114,12 +114,15 @@ describe("MediaImage lightbox", () => {
     );
 
     fireEvent.contextMenu(link!);
-    expect(window.agentsOneAPI.showFileMenu).toHaveBeenCalledWith(fileToken.src, {
-      open: "chat.fileMenu.open",
-      copyPath: "chat.fileMenu.copyPath",
-      copyContent: "chat.fileMenu.copyContent",
-      reveal: "chat.fileMenu.reveal",
-    });
+    expect(window.agentsOneAPI.showFileMenu).toHaveBeenCalledWith(
+      fileToken.src,
+      {
+        open: "chat.fileMenu.open",
+        copyPath: "chat.fileMenu.copyPath",
+        copyContent: "chat.fileMenu.copyContent",
+        reveal: "chat.fileMenu.reveal",
+      },
+    );
     expect(window.agentsOneAPI.saveMediaFile).not.toHaveBeenCalled();
   });
 });

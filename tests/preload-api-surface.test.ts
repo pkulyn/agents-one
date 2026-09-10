@@ -29,7 +29,9 @@ function extractPreloadMethods(src: string): string[] {
 function extractTypeMethods(src: string): string[] {
   const methods: string[] = [];
   // Match lines inside `interface AgentsOneAPI { ... }`.
-  const interfaceMatch = src.match(/interface\s+AgentsOneAPI\s*\{([\s\S]*?)^\}/m);
+  const interfaceMatch = src.match(
+    /interface\s+AgentsOneAPI\s*\{([\s\S]*?)^\}/m,
+  );
   if (!interfaceMatch) return [];
   const body = interfaceMatch[1];
   const re = /^\s{2}(\w+)\s*[:(]/gm;

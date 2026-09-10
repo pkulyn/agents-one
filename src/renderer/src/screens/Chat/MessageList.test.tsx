@@ -200,12 +200,18 @@ describe("MessageList runtime identity and activity markers", () => {
       />,
     );
 
-    expect(screen.getByText("2026年8月27日（星期四）09:05")).toBeInTheDocument();
+    expect(
+      screen.getByText("2026年8月27日（星期四）09:05"),
+    ).toBeInTheDocument();
     expect(screen.getByText("· 用时 13 分 56 秒")).toBeInTheDocument();
-    expect(screen.getByLabelText("从这条答复创建新对话分支")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("从这条答复创建新对话分支"),
+    ).toBeInTheDocument();
     expect(screen.getAllByLabelText("chat.copyMessage")).toHaveLength(1);
     fireEvent.click(screen.getByLabelText("从这条答复创建新对话分支"));
     expect(onBranchFromMessage).toHaveBeenCalledWith("reply");
-    expect(screen.queryByText("2026年8月27日（星期四）09:06")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("2026年8月27日（星期四）09:06"),
+    ).not.toBeInTheDocument();
   });
 });

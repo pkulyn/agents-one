@@ -5,13 +5,32 @@
 export function mapCliJsonlEvent(event) {
   if (!event?.id) return undefined;
   if (event.type === "reasoning.completed") {
-    return { id: event.id, type: "reasoning.summary", data: { reasoningSummary: event.summary } };
+    return {
+      id: event.id,
+      type: "reasoning.summary",
+      data: { reasoningSummary: event.summary },
+    };
   }
   if (event.type === "tool.completed") {
-    return { id: event.id, type: "tool.completed", data: { tool: { name: event.name, kind: event.kind || "tool", inputSummary: event.inputSummary, outputSummary: event.outputSummary } } };
+    return {
+      id: event.id,
+      type: "tool.completed",
+      data: {
+        tool: {
+          name: event.name,
+          kind: event.kind || "tool",
+          inputSummary: event.inputSummary,
+          outputSummary: event.outputSummary,
+        },
+      },
+    };
   }
   if (event.type === "assistant.completed") {
-    return { id: event.id, type: "assistant.completed", data: { text: event.text } };
+    return {
+      id: event.id,
+      type: "assistant.completed",
+      data: { text: event.text },
+    };
   }
   return undefined;
 }

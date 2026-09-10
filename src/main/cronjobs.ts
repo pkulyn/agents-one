@@ -4,11 +4,7 @@ import { join } from "path";
 import { execFile } from "child_process";
 import { HERMES_HOME, HERMES_PYTHON, hermesCliArgs } from "./installer";
 import { profileHome } from "./utils";
-import {
-  isRemoteMode,
-  getApiUrl,
-  getRemoteAuthHeader,
-} from "./hermes";
+import { isRemoteMode, getApiUrl, getRemoteAuthHeader } from "./hermes";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 
 export interface CronJob {

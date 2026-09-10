@@ -10,11 +10,7 @@ const desktopConfigPath = path.join(
   "hermes",
   "desktop.json",
 );
-const envPath = path.join(
-  process.env.LOCALAPPDATA || "",
-  "hermes",
-  ".env",
-);
+const envPath = path.join(process.env.LOCALAPPDATA || "", "hermes", ".env");
 
 function fail(message) {
   throw new Error(message);
@@ -155,8 +151,9 @@ function executeWorkspaceRequest(request) {
   try {
     const { normalized, target } = safeTarget(request.path);
     if (request.operation === "list") {
-      const entries = fs.readdirSync(target, { withFileTypes: true }).map(
-        (entry) => {
+      const entries = fs
+        .readdirSync(target, { withFileTypes: true })
+        .map((entry) => {
           const entryPath = path.join(target, entry.name);
           return {
             path: path.posix.join(
@@ -166,8 +163,7 @@ function executeWorkspaceRequest(request) {
             type: entry.isDirectory() ? "directory" : "file",
             ...(entry.isFile() ? { size: fs.statSync(entryPath).size } : {}),
           };
-        },
-      );
+        });
       return {
         requestId,
         status: "succeeded",
@@ -254,7 +250,8 @@ async function main() {
     parseEnv(fs.readFileSync(envPath, "utf8"))[tokenName];
   if (!token) fail("The protected Hers Gateway token is missing.");
   const rootStat = fs.statSync(workspaceRoot);
-  if (!rootStat.isDirectory()) fail("Verification workspace is not a directory.");
+  if (!rootStat.isDirectory())
+    fail("Verification workspace is not a directory.");
 
   const endpoint = runtime.config.endpoint;
   const capabilities = await requestJson(
@@ -263,9 +260,7 @@ async function main() {
     "GET",
     "capabilities",
   );
-  if (
-    capabilities?.capabilities?.outboundWorkspaceGateway?.enabled !== true
-  ) {
+  if (capabilities?.capabilities?.outboundWorkspaceGateway?.enabled !== true) {
     fail("Hers does not advertise outboundWorkspaceGateway.");
   }
 
@@ -408,7 +403,11 @@ async function main() {
     if (!output.includes("Agents One Gateway v1 E2E passed")) {
       fail("The E2E file content does not match the acceptance marker.");
     }
-    if (!operationCounts.list || !operationCounts.read || !operationCounts.write) {
+    if (
+      !operationCounts.list ||
+      !operationCounts.read ||
+      !operationCounts.write
+    ) {
       fail(
         `Incomplete operation coverage: ${JSON.stringify(operationCounts)}.`,
       );

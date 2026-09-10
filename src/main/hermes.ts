@@ -276,17 +276,27 @@ export interface VoiceInputServiceTestResult {
 }
 
 function voiceSettingEnabled(env: Record<string, string>): boolean {
-  const explicit = (env[VOICE_ENABLED_ENV_KEY] ?? process.env[VOICE_ENABLED_ENV_KEY] ?? "")
+  const explicit = (
+    env[VOICE_ENABLED_ENV_KEY] ??
+    process.env[VOICE_ENABLED_ENV_KEY] ??
+    ""
+  )
     .trim()
     .toLowerCase();
   if (explicit) return explicit === "1" || explicit === "true";
   // Preserve a prior explicit self-hosted endpoint, but never revive the old
   // hard-coded Osaka endpoint for new/open-source installations.
-  return Boolean((env[VOICE_URL_ENV_KEY] ?? process.env[VOICE_URL_ENV_KEY] ?? "").trim());
+  return Boolean(
+    (env[VOICE_URL_ENV_KEY] ?? process.env[VOICE_URL_ENV_KEY] ?? "").trim(),
+  );
 }
 
 function voiceUrlInput(env: Record<string, string>): string {
-  return (env[VOICE_URL_ENV_KEY] ?? process.env[VOICE_URL_ENV_KEY] ?? "").trim();
+  return (
+    env[VOICE_URL_ENV_KEY] ??
+    process.env[VOICE_URL_ENV_KEY] ??
+    ""
+  ).trim();
 }
 
 function normalizedVoiceBaseUrl(value: string): URL {
@@ -294,7 +304,9 @@ function normalizedVoiceBaseUrl(value: string): URL {
   try {
     url = new URL(value.trim());
   } catch {
-    throw new Error("语音服务地址无效，请填写 HTTP(S) 服务地址或 WS(S) 流地址。");
+    throw new Error(
+      "语音服务地址无效，请填写 HTTP(S) 服务地址或 WS(S) 流地址。",
+    );
   }
   if (url.protocol === "ws:") {
     url.protocol = "http:";
@@ -324,10 +336,11 @@ function normalizedVoiceBaseUrl(value: string): URL {
 
 function transcriptionUrl(value: string): string {
   const url = normalizedVoiceBaseUrl(value);
-  url.pathname = `${url.pathname.replace(/\/$/, "")}${VOICE_TRANSCRIPTION_PATH}`.replace(
-    /\/{2,}/g,
-    "/",
-  );
+  url.pathname =
+    `${url.pathname.replace(/\/$/, "")}${VOICE_TRANSCRIPTION_PATH}`.replace(
+      /\/{2,}/g,
+      "/",
+    );
   return url.toString();
 }
 
@@ -344,7 +357,9 @@ function voiceApiKey(profile?: string): string {
   ).trim();
 }
 
-export function getVoiceInputPublicConfig(profile?: string): VoiceInputPublicConfig {
+export function getVoiceInputPublicConfig(
+  profile?: string,
+): VoiceInputPublicConfig {
   const env = readEnv(profile) || {};
   const rawUrl = voiceUrlInput(env);
   let url = "";
@@ -379,20 +394,30 @@ export function saveVoiceInputConfig(
   input: VoiceInputConfigUpdate,
   profile?: string,
 ): VoiceInputPublicConfig {
-  if (!input || typeof input.enabled !== "boolean" || typeof input.url !== "string") {
+  if (
+    !input ||
+    typeof input.enabled !== "boolean" ||
+    typeof input.url !== "string"
+  ) {
     throw new Error("语音服务设置无效。");
   }
   const rawUrl = input.url.trim();
   if (input.enabled && !rawUrl) {
     throw new Error("启用语音输入前请填写语音服务地址。");
   }
-  const url = rawUrl ? normalizedVoiceBaseUrl(rawUrl).toString().replace(/\/$/, "") : "";
+  const url = rawUrl
+    ? normalizedVoiceBaseUrl(rawUrl).toString().replace(/\/$/, "")
+    : "";
   setEnvValue(VOICE_ENABLED_ENV_KEY, input.enabled ? "1" : "0", profile);
   setEnvValue(VOICE_URL_ENV_KEY, url, profile);
   if (input.clearApiKey === true) {
     setEnvValue(VOICE_API_KEY_ENV_KEY, "", profile);
   } else if (typeof input.apiKey === "string" && input.apiKey.trim()) {
-    setEnvValue(VOICE_API_KEY_ENV_KEY, assertVoiceApiKey(input.apiKey), profile);
+    setEnvValue(
+      VOICE_API_KEY_ENV_KEY,
+      assertVoiceApiKey(input.apiKey),
+      profile,
+    );
   }
   invalidateSecretsCache();
   return getVoiceInputPublicConfig(profile);
@@ -405,23 +430,27 @@ export async function testVoiceInputService(
 ): Promise<VoiceInputServiceTestResult> {
   const base = normalizedVoiceBaseUrl(input.url);
   const healthUrl = new URL(base.toString());
-  healthUrl.pathname = `${healthUrl.pathname.replace(/\/$/, "")}/health`.replace(
-    /\/{2,}/g,
-    "/",
-  );
+  healthUrl.pathname =
+    `${healthUrl.pathname.replace(/\/$/, "")}/health`.replace(/\/{2,}/g, "/");
   const apiKey =
     typeof input.apiKey === "string"
       ? assertVoiceApiKey(input.apiKey)
       : voiceApiKey(profile);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), VOICE_SERVICE_TEST_TIMEOUT_MS);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    VOICE_SERVICE_TEST_TIMEOUT_MS,
+  );
   try {
     const response = await fetch(healthUrl, {
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
       signal: controller.signal,
     });
     if (!response.ok) {
-      return { ok: false, message: `服务健康检查失败（HTTP ${response.status}）。` };
+      return {
+        ok: false,
+        message: `服务健康检查失败（HTTP ${response.status}）。`,
+      };
     }
     const body = (await response.json().catch(() => ({}))) as {
       status?: unknown;
@@ -433,10 +462,15 @@ export async function testVoiceInputService(
       message: "语音服务连接正常。",
       version: typeof body.version === "string" ? body.version : undefined,
       streamBackend:
-        typeof body.stream_backend === "string" ? body.stream_backend : undefined,
+        typeof body.stream_backend === "string"
+          ? body.stream_backend
+          : undefined,
     };
   } catch (cause) {
-    const message = (cause as Error).name === "AbortError" ? "语音服务连接超时。" : (cause as Error).message;
+    const message =
+      (cause as Error).name === "AbortError"
+        ? "语音服务连接超时。"
+        : (cause as Error).message;
     return { ok: false, message: message || "无法连接语音服务。" };
   } finally {
     clearTimeout(timeout);
@@ -627,7 +661,9 @@ async function waitForDashboardReady(
     if (await isDashboardReady(baseUrl, token)) return;
     await delay(500);
   }
-  throw new Error("Hermes Agent Runtime dashboard gateway did not become ready");
+  throw new Error(
+    "Hermes Agent Runtime dashboard gateway did not become ready",
+  );
 }
 
 class TuiGatewayClient {
@@ -670,14 +706,20 @@ class TuiGatewayClient {
   ): Promise<T> {
     await this.start();
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error("Hermes Agent Runtime dashboard gateway stream is not connected");
+      throw new Error(
+        "Hermes Agent Runtime dashboard gateway stream is not connected",
+      );
     }
 
     const id = `r${++this.nextId}`;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`Hermes Agent Runtime gateway request timed out: ${method}`));
+        reject(
+          new Error(
+            `Hermes Agent Runtime gateway request timed out: ${method}`,
+          ),
+        );
       }, timeoutMs);
       timer.unref?.();
       this.pending.set(id, {
@@ -719,7 +761,9 @@ class TuiGatewayClient {
   stop(): void {
     this.ws?.close();
     this.proc?.kill("SIGTERM");
-    this.rejectPending(new Error("Hermes Agent Runtime dashboard gateway stream stopped"));
+    this.rejectPending(
+      new Error("Hermes Agent Runtime dashboard gateway stream stopped"),
+    );
     this.reset();
   }
 
@@ -807,7 +851,11 @@ class TuiGatewayClient {
       const ws = new WebSocket(url);
       this.ws = ws;
       const timer = setTimeout(() => {
-        reject(new Error("Hermes Agent Runtime dashboard gateway WebSocket timed out"));
+        reject(
+          new Error(
+            "Hermes Agent Runtime dashboard gateway WebSocket timed out",
+          ),
+        );
         ws.close();
       }, 15_000);
       timer.unref?.();
@@ -823,7 +871,9 @@ class TuiGatewayClient {
       });
       ws.on("close", () => {
         if (this.ws !== ws) return;
-        const error = new Error("Hermes Agent Runtime dashboard gateway WebSocket closed");
+        const error = new Error(
+          "Hermes Agent Runtime dashboard gateway WebSocket closed",
+        );
         this.rejectPending(error);
         this.reset();
       });
@@ -844,7 +894,9 @@ class TuiGatewayClient {
       clearTimeout(pending.timer);
       this.pending.delete(String(frame.id));
       if (frame.error) {
-        pending.reject(new Error(frame.error.message || "Hermes Agent Runtime RPC failed"));
+        pending.reject(
+          new Error(frame.error.message || "Hermes Agent Runtime RPC failed"),
+        );
       } else {
         pending.resolve(frame.result);
       }
@@ -909,7 +961,11 @@ function waitForGatewayEvent(
     let cleanup = (): void => undefined;
     const timer = setTimeout(() => {
       cleanup();
-      reject(new Error("Timed out waiting for Hermes Agent Runtime gateway readiness"));
+      reject(
+        new Error(
+          "Timed out waiting for Hermes Agent Runtime gateway readiness",
+        ),
+      );
     }, timeoutMs);
     timer.unref?.();
     cleanup = client.onEvent((event) => {
@@ -1639,7 +1695,9 @@ function sendMessageViaApi(
     finish(`API request failed: ${err.message}`);
   });
   req.on("timeout", () => {
-    finish("API request timed out. Check the remote Hermes Agent Runtime gateway.");
+    finish(
+      "API request timed out. Check the remote Hermes Agent Runtime gateway.",
+    );
     req.destroy();
   });
 
@@ -1825,7 +1883,9 @@ function sendMessageViaRuns(
     }
 
     if (eventName === "run.cancelled") {
-      finish(hasContent ? undefined : "Hermes Agent Runtime run was cancelled.");
+      finish(
+        hasContent ? undefined : "Hermes Agent Runtime run was cancelled.",
+      );
       return;
     }
 
@@ -2263,7 +2323,9 @@ async function sendMessageViaTuiGateway(
     }
 
     if (!activeSessionId) {
-      throw new Error("Hermes Agent Runtime gateway did not return a session id");
+      throw new Error(
+        "Hermes Agent Runtime gateway did not return a session id",
+      );
     }
 
     if (!hasSessionInfo) {

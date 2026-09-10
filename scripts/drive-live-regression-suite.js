@@ -52,7 +52,9 @@ const DEAD_ROUTE_BASE_URL = "http://127.0.0.1:9/v1";
 
 function mediaPathForMode(mode) {
   if (mode === "local") return LOCAL_MEDIA;
-  return REMOTE_MEDIA.startsWith("MEDIA:") ? REMOTE_MEDIA.slice("MEDIA:".length) : REMOTE_MEDIA;
+  return REMOTE_MEDIA.startsWith("MEDIA:")
+    ? REMOTE_MEDIA.slice("MEDIA:".length)
+    : REMOTE_MEDIA;
 }
 
 function imageKey(image) {
@@ -86,7 +88,8 @@ function badRouteModel(mode, runId, suffix) {
   return {
     name: `Visual Bad ${mode} ${runId} ${suffix}`,
     provider: BAD_MODEL.provider || "custom",
-    model: `${BAD_MODEL.model || "visual-dead-route"}-${mode}-${runId}-${suffix}`.toLowerCase(),
+    model:
+      `${BAD_MODEL.model || "visual-dead-route"}-${mode}-${runId}-${suffix}`.toLowerCase(),
     baseUrl: BAD_MODEL.baseUrl || DEAD_ROUTE_BASE_URL,
   };
 }
@@ -97,7 +100,9 @@ function parseArgs(argv) {
     if (!raw.startsWith("--")) continue;
     const eq = raw.indexOf("=");
     const key = eq === -1 ? raw.slice(2) : raw.slice(2, eq);
-    const camelKey = key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+    const camelKey = key.replace(/-([a-z])/g, (_, letter) =>
+      letter.toUpperCase(),
+    );
     const value = eq === -1 ? true : raw.slice(eq + 1);
     if (eq === -1) {
       args[key] = true;
@@ -111,9 +116,10 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 const RUN_ID =
-  args.runId ||
-  new Date().toISOString().replace(/\D/g, "").slice(0, 14);
-const MODES = String(args.modes || process.env.HERMES_VISUAL_MODES || "local,remote,ssh")
+  args.runId || new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+const MODES = String(
+  args.modes || process.env.HERMES_VISUAL_MODES || "local,remote,ssh",
+)
   .split(",")
   .map((m) => m.trim())
   .filter(Boolean);
@@ -167,7 +173,10 @@ const PASTE_IMAGE = path.resolve(
   args.pasteImage ||
     process.env.HERMES_VISUAL_PASTE_IMAGE ||
     firstExisting([
-      path.join(os.tmpdir(), "codex-clipboard-bd73d905-fefb-4510-8e87-5bee9e0d7a22.png"),
+      path.join(
+        os.tmpdir(),
+        "codex-clipboard-bd73d905-fefb-4510-8e87-5bee9e0d7a22.png",
+      ),
       LOCAL_MEDIA,
       path.join(process.cwd(), "resources", "icon.png"),
     ]) ||
@@ -182,7 +191,8 @@ const TIMEOUTS = {
   restore: Number(args.restoreTimeout || 45_000),
 };
 
-let cachedRemoteToken = args.remoteToken || process.env.HERMES_REMOTE_TOKEN || "";
+let cachedRemoteToken =
+  args.remoteToken || process.env.HERMES_REMOTE_TOKEN || "";
 
 if (args.help) {
   console.log(`
@@ -232,7 +242,9 @@ function assert(condition, message, details = {}) {
 
 function includesAny(text, needles) {
   const haystack = String(text || "").toLowerCase();
-  return needles.some((needle) => haystack.includes(String(needle).toLowerCase()));
+  return needles.some((needle) =>
+    haystack.includes(String(needle).toLowerCase()),
+  );
 }
 
 function countOccurrences(text, needle) {
@@ -260,9 +272,13 @@ async function readRemoteDashboardToken() {
   });
   const html = await response.text();
   const match = /__HERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/.exec(html);
-  assert(match, "Remote dashboard token was not found in dashboard shell HTML", {
-    remoteUrl: REMOTE_URL,
-  });
+  assert(
+    match,
+    "Remote dashboard token was not found in dashboard shell HTML",
+    {
+      remoteUrl: REMOTE_URL,
+    },
+  );
   cachedRemoteToken = match[1];
   return cachedRemoteToken;
 }
@@ -285,7 +301,10 @@ async function screenshot(page, label) {
       fs.writeFileSync(file, Buffer.from(shot.data, "base64"));
       return file;
     } catch (cdpError) {
-      const diagnosticFile = path.join(OUTPUT_DIR, `${label}.screenshot-failed.txt`);
+      const diagnosticFile = path.join(
+        OUTPUT_DIR,
+        `${label}.screenshot-failed.txt`,
+      );
       const state = await getVisualState(page).catch((stateError) => ({
         body: `Could not collect visual state: ${stateError.stack || stateError.message}`,
       }));
@@ -304,7 +323,9 @@ async function screenshot(page, label) {
           state.body || "",
         ].join("\n"),
       );
-      console.warn(`[WARN] screenshot failed for ${label}; wrote ${diagnosticFile}`);
+      console.warn(
+        `[WARN] screenshot failed for ${label}; wrote ${diagnosticFile}`,
+      );
       return diagnosticFile;
     }
   }
@@ -315,15 +336,26 @@ async function getVisualState(page) {
     const isVisible = (el) => {
       if (!el) return false;
       const style = window.getComputedStyle(el);
-      if (style.visibility === "hidden" || style.display === "none") return false;
-      return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+      if (style.visibility === "hidden" || style.display === "none")
+        return false;
+      return !!(
+        el.offsetWidth ||
+        el.offsetHeight ||
+        el.getClientRects().length
+      );
     };
-    const userRows = Array.from(document.querySelectorAll(".chat-message-user")).filter(isVisible);
-    const agentRows = Array.from(document.querySelectorAll(".chat-message-agent")).filter(isVisible);
+    const userRows = Array.from(
+      document.querySelectorAll(".chat-message-user"),
+    ).filter(isVisible);
+    const agentRows = Array.from(
+      document.querySelectorAll(".chat-message-agent"),
+    ).filter(isVisible);
     const errorRows = Array.from(
       document.querySelectorAll(".chat-bubble-error,.chat-error-message"),
     ).filter(isVisible);
-    const bubbleImages = Array.from(document.querySelectorAll(".chat-bubble img"))
+    const bubbleImages = Array.from(
+      document.querySelectorAll(".chat-bubble img"),
+    )
       .filter(isVisible)
       .map((img) => ({
         src: img.currentSrc || img.getAttribute("src") || "",
@@ -333,7 +365,9 @@ async function getVisualState(page) {
       }))
       .filter((img) => img.width >= 40 && img.height >= 40);
     const attachmentPreviewImages = Array.from(
-      document.querySelectorAll(".chat-attachment-strip img,.attachment-chip-thumb img"),
+      document.querySelectorAll(
+        ".chat-attachment-strip img,.attachment-chip-thumb img",
+      ),
     )
       .filter(isVisible)
       .map((img) => ({
@@ -344,17 +378,25 @@ async function getVisualState(page) {
       }))
       .filter((img) => img.width >= 20 && img.height >= 20);
     const toolRows = Array.from(
-      document.querySelectorAll(".tool-activity-row,.tool-activity-group,[class*='tool']"),
+      document.querySelectorAll(
+        ".tool-activity-row,.tool-activity-group,[class*='tool']",
+      ),
     )
       .filter(isVisible)
       .map((el) => el.textContent || "");
     const thoughtRows = Array.from(
-      document.querySelectorAll(".thought-card,.thinking-card,[class*='thought']"),
+      document.querySelectorAll(
+        ".thought-card,.thinking-card,[class*='thought']",
+      ),
     )
       .filter(isVisible)
       .map((el) => el.textContent || "");
-    const lastSendButton = Array.from(document.querySelectorAll("button.chat-send-btn")).at(-1);
-    const lastModelButton = Array.from(document.querySelectorAll(".chat-model-name")).at(-1);
+    const lastSendButton = Array.from(
+      document.querySelectorAll("button.chat-send-btn"),
+    ).at(-1);
+    const lastModelButton = Array.from(
+      document.querySelectorAll(".chat-model-name"),
+    ).at(-1);
 
     return {
       title: document.querySelector(".chat-header-title")?.textContent || "",
@@ -372,13 +414,17 @@ async function getVisualState(page) {
       modelLabel: lastModelButton?.textContent || "",
       sendTitle: lastSendButton?.getAttribute("title") || "",
       sendDisabled: lastSendButton?.hasAttribute("disabled") || false,
-      sessionCards: Array.from(document.querySelectorAll(".sessions-card")).map((el) => ({
-        text: el.textContent || "",
-        active: el.classList.contains("sessions-card--active"),
-      })),
-      modelCards: Array.from(document.querySelectorAll(".models-card")).map((el) => ({
-        text: el.textContent || "",
-      })),
+      sessionCards: Array.from(document.querySelectorAll(".sessions-card")).map(
+        (el) => ({
+          text: el.textContent || "",
+          active: el.classList.contains("sessions-card--active"),
+        }),
+      ),
+      modelCards: Array.from(document.querySelectorAll(".models-card")).map(
+        (el) => ({
+          text: el.textContent || "",
+        }),
+      ),
     };
   });
 }
@@ -400,7 +446,10 @@ async function clickNav(page, label) {
     .first()
     .click({ timeout: 10_000 })
     .catch(async () => {
-      await page.getByText(label, { exact: true }).first().click({ timeout: 10_000 });
+      await page
+        .getByText(label, { exact: true })
+        .first()
+        .click({ timeout: 10_000 });
     });
   await sleep(700);
 }
@@ -424,7 +473,9 @@ async function openChat(page) {
 
 async function openSessions(page) {
   await clickNav(page, "Sessions");
-  await page.waitForSelector("input.sessions-searchbar-input", { timeout: 15_000 });
+  await page.waitForSelector("input.sessions-searchbar-input", {
+    timeout: 15_000,
+  });
 }
 
 async function openModels(page) {
@@ -438,7 +489,10 @@ async function newChat(page) {
   await chatInput(page).waitFor({ state: "visible", timeout: 15_000 });
   await waitForVisualState(
     page,
-    (state) => state.users.length === 0 && state.agents.length === 0 && state.errors.length === 0,
+    (state) =>
+      state.users.length === 0 &&
+      state.agents.length === 0 &&
+      state.errors.length === 0,
     TIMEOUTS.short,
     "new empty chat",
   );
@@ -446,22 +500,28 @@ async function newChat(page) {
 
 async function setConnectionMode(page, mode) {
   if (mode === "local") {
-    await renderer(page, () => window.agentsOneAPI.setConnectionConfig("local", "", ""));
+    await renderer(page, () =>
+      window.agentsOneAPI.setConnectionConfig("local", "", ""),
+    );
   } else if (mode === "remote") {
     const token = await readRemoteDashboardToken();
     await renderer(
       page,
-      ({ url, token }) => window.agentsOneAPI.setConnectionConfig("remote", url, token),
+      ({ url, token }) =>
+        window.agentsOneAPI.setConnectionConfig("remote", url, token),
       { url: REMOTE_URL, token },
     );
   } else if (mode === "ssh") {
     const token = await readRemoteDashboardToken();
     await renderer(
       page,
-      ({ url, token }) => window.agentsOneAPI.setConnectionConfig("remote", url, token),
+      ({ url, token }) =>
+        window.agentsOneAPI.setConnectionConfig("remote", url, token),
       { url: REMOTE_URL, token },
     );
-    const cfg = await renderer(page, () => window.agentsOneAPI.getConnectionConfig());
+    const cfg = await renderer(page, () =>
+      window.agentsOneAPI.getConnectionConfig(),
+    );
     await renderer(
       page,
       (ssh) =>
@@ -480,8 +540,12 @@ async function setConnectionMode(page, mode) {
   }
 
   await sleep(mode === "ssh" ? 5_000 : 2_500);
-  const cfg = await renderer(page, () => window.agentsOneAPI.getConnectionConfig());
-  assert(cfg.mode === mode, `Connection mode did not switch to ${mode}`, { cfg });
+  const cfg = await renderer(page, () =>
+    window.agentsOneAPI.getConnectionConfig(),
+  );
+  assert(cfg.mode === mode, `Connection mode did not switch to ${mode}`, {
+    cfg,
+  });
   return cfg;
 }
 
@@ -498,7 +562,9 @@ async function setModel(page, model) {
   const state = await getVisualState(page);
   if (!state.modelLabel.toLowerCase().includes(model.model.toLowerCase())) {
     await modelButton(page).click();
-    await page.waitForSelector(".chat-model-dropdown", { timeout: 15_000 }).catch(() => {});
+    await page
+      .waitForSelector(".chat-model-dropdown", { timeout: 15_000 })
+      .catch(() => {});
     await sleep(750);
     const pickerText = (await getVisualState(page)).body;
     assert(
@@ -539,7 +605,9 @@ async function sendPrompt(page, prompt, timeoutMs) {
 }
 
 async function sendPromptWithAttachment(page, prompt, imagePath, timeoutMs) {
-  assert(fs.existsSync(imagePath), "Pasted-image fixture does not exist", { imagePath });
+  assert(fs.existsSync(imagePath), "Pasted-image fixture does not exist", {
+    imagePath,
+  });
   await openChat(page);
   const baseline = await getVisualState(page);
   await page.locator("input[type=file]").last().setInputFiles(imagePath);
@@ -580,7 +648,9 @@ async function restoreBySearch(page, token) {
     await sleep(1_000);
   }
 
-  assert(cards.length > 0, "Sessions search found no matching session", { token });
+  assert(cards.length > 0, "Sessions search found no matching session", {
+    token,
+  });
   await page.locator(".sessions-card").first().click();
   await sleep(2_500);
   await openChat(page);
@@ -611,9 +681,11 @@ async function addConfiguredModel(page, model) {
 
 async function removeTemporaryModel(page, id) {
   if (!id) return;
-  await renderer(page, (modelId) => window.agentsOneAPI.removeModel(modelId), id).catch(
-    () => false,
-  );
+  await renderer(
+    page,
+    (modelId) => window.agentsOneAPI.removeModel(modelId),
+    id,
+  ).catch(() => false);
   await sleep(1_500);
 }
 
@@ -662,18 +734,26 @@ function assertNoDuplicates(restored, checks) {
       ? restored.agents.filter((row) => row.includes(check.agent)).length
       : 0;
     if (check.user) {
-      assert(userCount === 1, `Unexpected user message count for ${check.user}`, {
-        userCount,
-        restoredUsers: restored.users,
-        restoredUserText: restored.userText,
-      });
+      assert(
+        userCount === 1,
+        `Unexpected user message count for ${check.user}`,
+        {
+          userCount,
+          restoredUsers: restored.users,
+          restoredUserText: restored.userText,
+        },
+      );
     }
     if (check.agent) {
-      assert(agentCount === 1, `Unexpected assistant message count for ${check.agent}`, {
-        agentCount,
-        restoredAgents: restored.agents,
-        restoredAgentText: restored.agentText,
-      });
+      assert(
+        agentCount === 1,
+        `Unexpected assistant message count for ${check.agent}`,
+        {
+          agentCount,
+          restoredAgents: restored.agents,
+          restoredAgentText: restored.agentText,
+        },
+      );
     }
   }
 }
@@ -683,282 +763,293 @@ async function runMode(page, report, mode) {
   await setConnectionMode(page, mode);
   await setModel(page, GOOD_MODEL);
 
-  await runCase(report, mode, "normal prompt with valid model and session restore", async (caseId) => {
-    const token = `VIS_${modeRun}_NORMAL_OK`;
-    await newChat(page);
-    const live = await sendPrompt(
-      page,
-      `Visual regression ${mode} normal. Reply exactly ${token} and nothing else. Do not use tools.`,
-      TIMEOUTS.normal,
-    );
-    assert(live.agentText.includes(token), "Live assistant response missing token", {
-      agentText: live.agentText,
-      errorText: live.errorText,
-    });
-    const liveShot = await screenshot(page, `${caseId}-live`);
-    const restored = await restoreBySearch(page, token);
-    const restoreShot = await screenshot(page, `${caseId}-restore`);
-    assert(restored.agentText.includes(token), "Restored assistant response missing token");
-    assertNoDuplicates(restored, [{ user: token, agent: token }]);
-    return { token, liveShot, restoreShot };
-  });
-
-  await runCase(report, mode, "bad-good-bad-good in one session and session restore", async (caseId) => {
-    const base = `VIS_${modeRun}_ALT`;
-    const badModels = [];
-    await newChat(page);
-    try {
-      badModels.push(await addConfiguredModel(page, badRouteModel(mode, modeRun, "bad1")));
-      badModels.push(await addConfiguredModel(page, badRouteModel(mode, modeRun, "bad2")));
-
-      await setModel(page, badModels[0]);
-      const bad1 = await sendPrompt(
-        page,
-        `${base}_BAD1: Reply BAD_SHOULD_FAIL_1.`,
-        TIMEOUTS.normal,
-      );
-      assert(
-        bad1.errorText ||
-          includesAny(bad1.agentText, ["error", "failed", "connection", "refused", "unreachable"]),
-        "First bad-model leg did not visibly fail",
-        { agentText: bad1.agentText, errorText: bad1.errorText, badModel: badModels[0] },
-      );
-
-      await setModel(page, GOOD_MODEL);
-      const good1Token = `${base}_GOOD1_OK`;
-      const good1 = await sendPrompt(
-        page,
-        `${base}_GOOD1: Reply exactly ${good1Token} and nothing else. Do not use tools.`,
-        TIMEOUTS.normal,
-      );
-      assert(good1.agentText.includes(good1Token), "First recovery leg missing token");
-
-      await setModel(page, badModels[1]);
-      const bad2 = await sendPrompt(
-        page,
-        `${base}_BAD2: Reply BAD_SHOULD_FAIL_2.`,
-        TIMEOUTS.normal,
-      );
-      assert(
-        bad2.errorText ||
-          includesAny(bad2.agentText, ["error", "failed", "connection", "refused", "unreachable"]),
-        "Second bad-model leg did not visibly fail",
-        { agentText: bad2.agentText, errorText: bad2.errorText, badModel: badModels[1] },
-      );
-
-      await setModel(page, GOOD_MODEL);
-      const good2Token = `${base}_GOOD2_OK`;
-      const good2 = await sendPrompt(
-        page,
-        `${base}_GOOD2: Reply exactly ${good2Token} and nothing else. Do not use tools.`,
-        TIMEOUTS.normal,
-      );
-      assert(good2.agentText.includes(good2Token), "Second recovery leg missing token");
-
-      const liveShot = await screenshot(page, `${caseId}-live`);
-      const restored = await restoreBySearch(page, good2Token);
-      const restoreShot = await screenshot(page, `${caseId}-restore`);
-      const restoredText = `${restored.body}\n${restored.errorText}\n${restored.agentText}`;
-      assert(restored.userText.includes(`${base}_BAD1`), "Restored session missing BAD1 prompt");
-      assert(restored.userText.includes(`${base}_GOOD1`), "Restored session missing GOOD1 prompt");
-      assert(restored.userText.includes(`${base}_BAD2`), "Restored session missing BAD2 prompt");
-      assert(restored.userText.includes(`${base}_GOOD2`), "Restored session missing GOOD2 prompt");
-      assert(restored.agentText.includes(good1Token), "Restored session missing GOOD1 answer");
-      assert(restored.agentText.includes(good2Token), "Restored session missing GOOD2 answer");
-      assert(
-        includesAny(restoredText, ["error", "failed", "connection", "refused", "unreachable"]),
-        "Restored session missing bad-model errors",
-      );
-      assertNoDuplicates(restored, [
-        { user: `${base}_BAD1` },
-        { user: `${base}_GOOD1`, agent: good1Token },
-        { user: `${base}_BAD2` },
-        { user: `${base}_GOOD2`, agent: good2Token },
-      ]);
-      return { base, liveShot, restoreShot, badModels };
-    } finally {
-      for (const bad of badModels) {
-        await removeTemporaryModel(page, bad.id);
-      }
-      await setModel(page, GOOD_MODEL);
-    }
-  });
-
-  await runCase(report, mode, "add-remove models persistence and chat selector availability", async (caseId) => {
-    let added;
-    try {
-      added = await addTemporaryModel(page, mode, modeRun);
-      await openModels(page);
-      await waitForVisualState(
-        page,
-        (state) => state.body.includes(added.name) && state.body.includes(added.model),
-        TIMEOUTS.short,
-        "models page showing added model",
-      );
-      const modelsShot = await screenshot(page, `${caseId}-models-added`);
-
-      await openChat(page);
-      await modelButton(page).click();
-      const picker = await waitForVisualState(
-        page,
-        (state) => state.body.includes(added.model) || state.body.includes(added.name),
-        TIMEOUTS.short,
-        "chat selector showing added model",
-      );
-      await page.keyboard.press("Escape").catch(() => {});
-      const pickerShot = await screenshot(page, `${caseId}-picker-added`);
-
-      const opposite = mode === "local" ? "remote" : "local";
-      await setConnectionMode(page, opposite);
-      await setConnectionMode(page, mode);
-      const persisted = await renderer(page, (model) =>
-        window.agentsOneAPI
-          .listModels()
-          .then((rows) => rows.some((row) => row.model === model)),
-        added.model,
-      );
-      assert(persisted, "Added model was not persisted after mode switch", { added });
-
-      await removeTemporaryModel(page, added.id);
-      const removed = await renderer(page, (model) =>
-        window.agentsOneAPI
-          .listModels()
-          .then((rows) => !rows.some((row) => row.model === model)),
-        added.model,
-      );
-      assert(removed, "Removed model still appears in model library", { added });
-      await openModels(page);
-      const removedState = await getVisualState(page);
-      assert(!removedState.body.includes(added.model), "Removed model still visible in Models UI");
-      return { added, modelsShot, pickerShot, pickerExcerpt: picker.body.slice(0, 1_000) };
-    } finally {
-      if (added) await removeTemporaryModel(page, added.id);
-      await setModel(page, GOOD_MODEL);
-    }
-  });
-
-  await runCase(report, mode, "pasted image display in live prompt and restored session", async (caseId) => {
-    const token = `VIS_${modeRun}_PASTE`;
-    await setModel(page, GOOD_MODEL);
-    await newChat(page);
-    const live = await sendPromptWithAttachment(
-      page,
-      `${token}: what is this image? Answer in one sentence.`,
-      PASTE_IMAGE,
-      TIMEOUTS.image,
-    );
-    assert(live.userText.includes(token), "Live pasted-image prompt missing");
-    assert(live.bubbleImages.length > 0, "Live pasted-image bubble did not display image");
-    assert(live.agentText.trim().length > 0, "Live pasted-image response missing");
-    const liveShot = await screenshot(page, `${caseId}-live`);
-
-    const restored = await restoreBySearch(page, token);
-    const restoreShot = await screenshot(page, `${caseId}-restore`);
-    assert(restored.userText.includes(token), "Restored pasted-image prompt missing");
-    assert(restored.bubbleImages.length > 0, "Restored pasted-image bubble did not display image");
-    assert(
-      !restored.userText.includes("[The user attached an image"),
-      "Restored pasted-image prompt showed fallback text instead of attachment",
-    );
-    assertNoDuplicates(restored, [{ user: token }]);
-    return {
-      token,
-      liveShot,
-      restoreShot,
-      liveImages: live.bubbleImages.length,
-      restoredImages: restored.bubbleImages.length,
-    };
-  });
-
-  await runCase(report, mode, "same image markdown and file path renders once", async (caseId) => {
-    const token = `VIS_${modeRun}_IMAGE_DEDUPE`;
-    const mediaPath = mediaPathForMode(mode);
-    await setModel(page, GOOD_MODEL);
-    await newChat(page);
-    await sendPrompt(
-      page,
-      `${token}: Reply with exactly these three lines and no extra text. Do not use tools.\nHere it is:\n![Toy Duck](${mediaPath})\nFile: \`${mediaPath}\``,
-      TIMEOUTS.normal,
-    );
-    const live = await waitForVisualState(
-      page,
-      (state) => state.bubbleImages.length > 0 || state.errorText.trim().length > 0,
-      TIMEOUTS.image,
-      "duplicate image/path live media render",
-    );
-    assert(!live.errorText, "Duplicate image/path live response has an error", {
-      errorText: live.errorText,
-    });
-    assert(live.agentText.includes(mediaPath), "Live response did not include the requested path", {
-      mediaPath,
-      agentTail: live.agentText.slice(-1_500),
-    });
-    assert(live.bubbleImages.length > 0, "Live duplicate image/path response rendered no image", {
-      agentTail: live.agentText.slice(-1_500),
-    });
-    assertNoDuplicateRenderedImages(live, "Live duplicate image/path response");
-    const liveShot = await screenshot(page, `${caseId}-live`);
-
-    const restored = await restoreBySearch(page, token);
-    const restoreShot = await screenshot(page, `${caseId}-restore`);
-    assert(restored.userText.includes(token), "Restored duplicate image/path prompt missing");
-    assert(restored.bubbleImages.length > 0, "Restored duplicate image/path response rendered no image");
-    assertNoDuplicateRenderedImages(restored, "Restored duplicate image/path response");
-    assertNoDuplicates(restored, [{ user: token }]);
-    return {
-      token,
-      mediaPath,
-      liveShot,
-      restoreShot,
-      liveImages: live.bubbleImages.length,
-      restoredImages: restored.bubbleImages.length,
-    };
-  });
-
-  if (!args.skipGenerated) {
-    await runCase(report, mode, "generated image display in live prompt and restored session", async (caseId) => {
-      const token = `VIS_${modeRun}_GEN`;
-      await setModel(page, GOOD_MODEL);
+  await runCase(
+    report,
+    mode,
+    "normal prompt with valid model and session restore",
+    async (caseId) => {
+      const token = `VIS_${modeRun}_NORMAL_OK`;
       await newChat(page);
-      const remoteHint =
-        mode === "local"
-          ? "Use the local AI Playground / ComfyUI endpoint if needed."
-          : "Use host.docker.internal:49000 for AI Playground / ComfyUI if needed.";
-      await sendPrompt(
+      const live = await sendPrompt(
         page,
-        `${token}: Generate an image of a toy duck in a bathtub using AI Playground / ComfyUI. Do not ask clarification. ${remoteHint} Save it and include a markdown image link or file path to the generated PNG.`,
-        TIMEOUTS.generated,
+        `Visual regression ${mode} normal. Reply exactly ${token} and nothing else. Do not use tools.`,
+        TIMEOUTS.normal,
       );
-      const live = await waitForVisualState(
-        page,
-        (state) => state.bubbleImages.length > 0 || state.errorText.trim().length > 0,
-        TIMEOUTS.image,
-        "generated-image live media render",
-      );
-      const liveShot = await screenshot(page, `${caseId}-live`);
       assert(
-        live.bubbleImages.length > 0,
-        "Generated-image live response did not render an image in a chat bubble",
+        live.agentText.includes(token),
+        "Live assistant response missing token",
         {
-          agentTail: live.agentText.slice(-1_500),
+          agentText: live.agentText,
           errorText: live.errorText,
-          bubbleImages: live.bubbleImages,
         },
       );
-      assert(!live.errorText, "Generated-image live response has an error", {
-        errorText: live.errorText,
-      });
-      assertNoDuplicateRenderedImages(live, "Generated-image live response");
+      const liveShot = await screenshot(page, `${caseId}-live`);
+      const restored = await restoreBySearch(page, token);
+      const restoreShot = await screenshot(page, `${caseId}-restore`);
+      assert(
+        restored.agentText.includes(token),
+        "Restored assistant response missing token",
+      );
+      assertNoDuplicates(restored, [{ user: token, agent: token }]);
+      return { token, liveShot, restoreShot };
+    },
+  );
+
+  await runCase(
+    report,
+    mode,
+    "bad-good-bad-good in one session and session restore",
+    async (caseId) => {
+      const base = `VIS_${modeRun}_ALT`;
+      const badModels = [];
+      await newChat(page);
+      try {
+        badModels.push(
+          await addConfiguredModel(page, badRouteModel(mode, modeRun, "bad1")),
+        );
+        badModels.push(
+          await addConfiguredModel(page, badRouteModel(mode, modeRun, "bad2")),
+        );
+
+        await setModel(page, badModels[0]);
+        const bad1 = await sendPrompt(
+          page,
+          `${base}_BAD1: Reply BAD_SHOULD_FAIL_1.`,
+          TIMEOUTS.normal,
+        );
+        assert(
+          bad1.errorText ||
+            includesAny(bad1.agentText, [
+              "error",
+              "failed",
+              "connection",
+              "refused",
+              "unreachable",
+            ]),
+          "First bad-model leg did not visibly fail",
+          {
+            agentText: bad1.agentText,
+            errorText: bad1.errorText,
+            badModel: badModels[0],
+          },
+        );
+
+        await setModel(page, GOOD_MODEL);
+        const good1Token = `${base}_GOOD1_OK`;
+        const good1 = await sendPrompt(
+          page,
+          `${base}_GOOD1: Reply exactly ${good1Token} and nothing else. Do not use tools.`,
+          TIMEOUTS.normal,
+        );
+        assert(
+          good1.agentText.includes(good1Token),
+          "First recovery leg missing token",
+        );
+
+        await setModel(page, badModels[1]);
+        const bad2 = await sendPrompt(
+          page,
+          `${base}_BAD2: Reply BAD_SHOULD_FAIL_2.`,
+          TIMEOUTS.normal,
+        );
+        assert(
+          bad2.errorText ||
+            includesAny(bad2.agentText, [
+              "error",
+              "failed",
+              "connection",
+              "refused",
+              "unreachable",
+            ]),
+          "Second bad-model leg did not visibly fail",
+          {
+            agentText: bad2.agentText,
+            errorText: bad2.errorText,
+            badModel: badModels[1],
+          },
+        );
+
+        await setModel(page, GOOD_MODEL);
+        const good2Token = `${base}_GOOD2_OK`;
+        const good2 = await sendPrompt(
+          page,
+          `${base}_GOOD2: Reply exactly ${good2Token} and nothing else. Do not use tools.`,
+          TIMEOUTS.normal,
+        );
+        assert(
+          good2.agentText.includes(good2Token),
+          "Second recovery leg missing token",
+        );
+
+        const liveShot = await screenshot(page, `${caseId}-live`);
+        const restored = await restoreBySearch(page, good2Token);
+        const restoreShot = await screenshot(page, `${caseId}-restore`);
+        const restoredText = `${restored.body}\n${restored.errorText}\n${restored.agentText}`;
+        assert(
+          restored.userText.includes(`${base}_BAD1`),
+          "Restored session missing BAD1 prompt",
+        );
+        assert(
+          restored.userText.includes(`${base}_GOOD1`),
+          "Restored session missing GOOD1 prompt",
+        );
+        assert(
+          restored.userText.includes(`${base}_BAD2`),
+          "Restored session missing BAD2 prompt",
+        );
+        assert(
+          restored.userText.includes(`${base}_GOOD2`),
+          "Restored session missing GOOD2 prompt",
+        );
+        assert(
+          restored.agentText.includes(good1Token),
+          "Restored session missing GOOD1 answer",
+        );
+        assert(
+          restored.agentText.includes(good2Token),
+          "Restored session missing GOOD2 answer",
+        );
+        assert(
+          includesAny(restoredText, [
+            "error",
+            "failed",
+            "connection",
+            "refused",
+            "unreachable",
+          ]),
+          "Restored session missing bad-model errors",
+        );
+        assertNoDuplicates(restored, [
+          { user: `${base}_BAD1` },
+          { user: `${base}_GOOD1`, agent: good1Token },
+          { user: `${base}_BAD2` },
+          { user: `${base}_GOOD2`, agent: good2Token },
+        ]);
+        return { base, liveShot, restoreShot, badModels };
+      } finally {
+        for (const bad of badModels) {
+          await removeTemporaryModel(page, bad.id);
+        }
+        await setModel(page, GOOD_MODEL);
+      }
+    },
+  );
+
+  await runCase(
+    report,
+    mode,
+    "add-remove models persistence and chat selector availability",
+    async (caseId) => {
+      let added;
+      try {
+        added = await addTemporaryModel(page, mode, modeRun);
+        await openModels(page);
+        await waitForVisualState(
+          page,
+          (state) =>
+            state.body.includes(added.name) && state.body.includes(added.model),
+          TIMEOUTS.short,
+          "models page showing added model",
+        );
+        const modelsShot = await screenshot(page, `${caseId}-models-added`);
+
+        await openChat(page);
+        await modelButton(page).click();
+        const picker = await waitForVisualState(
+          page,
+          (state) =>
+            state.body.includes(added.model) || state.body.includes(added.name),
+          TIMEOUTS.short,
+          "chat selector showing added model",
+        );
+        await page.keyboard.press("Escape").catch(() => {});
+        const pickerShot = await screenshot(page, `${caseId}-picker-added`);
+
+        const opposite = mode === "local" ? "remote" : "local";
+        await setConnectionMode(page, opposite);
+        await setConnectionMode(page, mode);
+        const persisted = await renderer(
+          page,
+          (model) =>
+            window.agentsOneAPI
+              .listModels()
+              .then((rows) => rows.some((row) => row.model === model)),
+          added.model,
+        );
+        assert(persisted, "Added model was not persisted after mode switch", {
+          added,
+        });
+
+        await removeTemporaryModel(page, added.id);
+        const removed = await renderer(
+          page,
+          (model) =>
+            window.agentsOneAPI
+              .listModels()
+              .then((rows) => !rows.some((row) => row.model === model)),
+          added.model,
+        );
+        assert(removed, "Removed model still appears in model library", {
+          added,
+        });
+        await openModels(page);
+        const removedState = await getVisualState(page);
+        assert(
+          !removedState.body.includes(added.model),
+          "Removed model still visible in Models UI",
+        );
+        return {
+          added,
+          modelsShot,
+          pickerShot,
+          pickerExcerpt: picker.body.slice(0, 1_000),
+        };
+      } finally {
+        if (added) await removeTemporaryModel(page, added.id);
+        await setModel(page, GOOD_MODEL);
+      }
+    },
+  );
+
+  await runCase(
+    report,
+    mode,
+    "pasted image display in live prompt and restored session",
+    async (caseId) => {
+      const token = `VIS_${modeRun}_PASTE`;
+      await setModel(page, GOOD_MODEL);
+      await newChat(page);
+      const live = await sendPromptWithAttachment(
+        page,
+        `${token}: what is this image? Answer in one sentence.`,
+        PASTE_IMAGE,
+        TIMEOUTS.image,
+      );
+      assert(live.userText.includes(token), "Live pasted-image prompt missing");
+      assert(
+        live.bubbleImages.length > 0,
+        "Live pasted-image bubble did not display image",
+      );
+      assert(
+        live.agentText.trim().length > 0,
+        "Live pasted-image response missing",
+      );
+      const liveShot = await screenshot(page, `${caseId}-live`);
 
       const restored = await restoreBySearch(page, token);
       const restoreShot = await screenshot(page, `${caseId}-restore`);
-      assert(restored.userText.includes(token), "Restored generated-image prompt missing");
+      assert(
+        restored.userText.includes(token),
+        "Restored pasted-image prompt missing",
+      );
       assert(
         restored.bubbleImages.length > 0,
-        "Restored generated-image session did not render an image",
-        { agentTail: restored.agentText.slice(-1_500) },
+        "Restored pasted-image bubble did not display image",
       );
-      assertNoDuplicateRenderedImages(restored, "Restored generated-image response");
+      assert(
+        !restored.userText.includes("[The user attached an image"),
+        "Restored pasted-image prompt showed fallback text instead of attachment",
+      );
       assertNoDuplicates(restored, [{ user: token }]);
       return {
         token,
@@ -967,7 +1058,149 @@ async function runMode(page, report, mode) {
         liveImages: live.bubbleImages.length,
         restoredImages: restored.bubbleImages.length,
       };
-    });
+    },
+  );
+
+  await runCase(
+    report,
+    mode,
+    "same image markdown and file path renders once",
+    async (caseId) => {
+      const token = `VIS_${modeRun}_IMAGE_DEDUPE`;
+      const mediaPath = mediaPathForMode(mode);
+      await setModel(page, GOOD_MODEL);
+      await newChat(page);
+      await sendPrompt(
+        page,
+        `${token}: Reply with exactly these three lines and no extra text. Do not use tools.\nHere it is:\n![Toy Duck](${mediaPath})\nFile: \`${mediaPath}\``,
+        TIMEOUTS.normal,
+      );
+      const live = await waitForVisualState(
+        page,
+        (state) =>
+          state.bubbleImages.length > 0 || state.errorText.trim().length > 0,
+        TIMEOUTS.image,
+        "duplicate image/path live media render",
+      );
+      assert(
+        !live.errorText,
+        "Duplicate image/path live response has an error",
+        {
+          errorText: live.errorText,
+        },
+      );
+      assert(
+        live.agentText.includes(mediaPath),
+        "Live response did not include the requested path",
+        {
+          mediaPath,
+          agentTail: live.agentText.slice(-1_500),
+        },
+      );
+      assert(
+        live.bubbleImages.length > 0,
+        "Live duplicate image/path response rendered no image",
+        {
+          agentTail: live.agentText.slice(-1_500),
+        },
+      );
+      assertNoDuplicateRenderedImages(
+        live,
+        "Live duplicate image/path response",
+      );
+      const liveShot = await screenshot(page, `${caseId}-live`);
+
+      const restored = await restoreBySearch(page, token);
+      const restoreShot = await screenshot(page, `${caseId}-restore`);
+      assert(
+        restored.userText.includes(token),
+        "Restored duplicate image/path prompt missing",
+      );
+      assert(
+        restored.bubbleImages.length > 0,
+        "Restored duplicate image/path response rendered no image",
+      );
+      assertNoDuplicateRenderedImages(
+        restored,
+        "Restored duplicate image/path response",
+      );
+      assertNoDuplicates(restored, [{ user: token }]);
+      return {
+        token,
+        mediaPath,
+        liveShot,
+        restoreShot,
+        liveImages: live.bubbleImages.length,
+        restoredImages: restored.bubbleImages.length,
+      };
+    },
+  );
+
+  if (!args.skipGenerated) {
+    await runCase(
+      report,
+      mode,
+      "generated image display in live prompt and restored session",
+      async (caseId) => {
+        const token = `VIS_${modeRun}_GEN`;
+        await setModel(page, GOOD_MODEL);
+        await newChat(page);
+        const remoteHint =
+          mode === "local"
+            ? "Use the local AI Playground / ComfyUI endpoint if needed."
+            : "Use host.docker.internal:49000 for AI Playground / ComfyUI if needed.";
+        await sendPrompt(
+          page,
+          `${token}: Generate an image of a toy duck in a bathtub using AI Playground / ComfyUI. Do not ask clarification. ${remoteHint} Save it and include a markdown image link or file path to the generated PNG.`,
+          TIMEOUTS.generated,
+        );
+        const live = await waitForVisualState(
+          page,
+          (state) =>
+            state.bubbleImages.length > 0 || state.errorText.trim().length > 0,
+          TIMEOUTS.image,
+          "generated-image live media render",
+        );
+        const liveShot = await screenshot(page, `${caseId}-live`);
+        assert(
+          live.bubbleImages.length > 0,
+          "Generated-image live response did not render an image in a chat bubble",
+          {
+            agentTail: live.agentText.slice(-1_500),
+            errorText: live.errorText,
+            bubbleImages: live.bubbleImages,
+          },
+        );
+        assert(!live.errorText, "Generated-image live response has an error", {
+          errorText: live.errorText,
+        });
+        assertNoDuplicateRenderedImages(live, "Generated-image live response");
+
+        const restored = await restoreBySearch(page, token);
+        const restoreShot = await screenshot(page, `${caseId}-restore`);
+        assert(
+          restored.userText.includes(token),
+          "Restored generated-image prompt missing",
+        );
+        assert(
+          restored.bubbleImages.length > 0,
+          "Restored generated-image session did not render an image",
+          { agentTail: restored.agentText.slice(-1_500) },
+        );
+        assertNoDuplicateRenderedImages(
+          restored,
+          "Restored generated-image response",
+        );
+        assertNoDuplicates(restored, [{ user: token }]);
+        return {
+          token,
+          liveShot,
+          restoreShot,
+          liveImages: live.bubbleImages.length,
+          restoredImages: restored.bubbleImages.length,
+        };
+      },
+    );
   }
 }
 
@@ -1016,7 +1249,9 @@ async function runMode(page, report, mode) {
     assert(page.url(), "No renderer page attached");
     assert(await page.title(), "Renderer page has no title");
     assert(
-      await renderer(page, () => Boolean(window.agentsOneAPI && window.agentsOneAPI.sendMessage)),
+      await renderer(page, () =>
+        Boolean(window.agentsOneAPI && window.agentsOneAPI.sendMessage),
+      ),
       "Renderer hermesAPI is not available",
     );
     assert(

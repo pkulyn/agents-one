@@ -129,7 +129,11 @@ export class DashboardGatewayClient {
         } catch {
           // Best-effort teardown of the stalled socket.
         }
-        reject(new Error("Hermes Agent Runtime dashboard WebSocket connection timed out"));
+        reject(
+          new Error(
+            "Hermes Agent Runtime dashboard WebSocket connection timed out",
+          ),
+        );
       }, this.connectTimeoutMs);
 
       const failOpen = (event: Event): void => {
@@ -137,7 +141,11 @@ export class DashboardGatewayClient {
         settled = true;
         window.clearTimeout(timeout);
         if (this.socket === socket) this.socket = null;
-        reject(new Error(`Could not connect to Hermes Agent Runtime dashboard WebSocket`));
+        reject(
+          new Error(
+            `Could not connect to Hermes Agent Runtime dashboard WebSocket`,
+          ),
+        );
         this.options.onError?.(event);
       };
 
@@ -187,7 +195,11 @@ export class DashboardGatewayClient {
     return new Promise<T>((resolve, reject) => {
       const timeout = window.setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`Hermes Agent Runtime dashboard request timed out: ${method}`));
+        reject(
+          new Error(
+            `Hermes Agent Runtime dashboard request timed out: ${method}`,
+          ),
+        );
       }, this.requestTimeoutMs);
       this.pending.set(id, {
         resolve: (value: unknown) => resolve(value as T),
@@ -239,7 +251,8 @@ export class DashboardGatewayClient {
       const message =
         typeof response.error === "string"
           ? response.error
-          : response.error.message || "Hermes Agent Runtime dashboard request failed";
+          : response.error.message ||
+            "Hermes Agent Runtime dashboard request failed";
       pending.reject(new Error(message));
       return;
     }

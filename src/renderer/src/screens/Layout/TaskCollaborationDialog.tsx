@@ -217,7 +217,9 @@ export default function TaskCollaborationDialog({
             <span>
               <Folder size={15} /> 关联项目
             </span>
-              <strong title={draft.projectName || draft.projectFolder || undefined}>
+            <strong
+              title={draft.projectName || draft.projectFolder || undefined}
+            >
               {draft.projectName || projectName(draft.projectFolder)}
             </strong>
           </div>
@@ -408,8 +410,11 @@ export default function TaskCollaborationDialog({
             }}
           />
           <div className="task-collaboration-composer-tools">
-            <span title={draft.projectName || draft.projectFolder || "未关联项目"}>
-              <Folder size={16} /> {draft.projectName || projectName(draft.projectFolder)}
+            <span
+              title={draft.projectName || draft.projectFolder || "未关联项目"}
+            >
+              <Folder size={16} />{" "}
+              {draft.projectName || projectName(draft.projectFolder)}
             </span>
             <span>确认分工后，发送任务说明才会启动协作</span>
             <button

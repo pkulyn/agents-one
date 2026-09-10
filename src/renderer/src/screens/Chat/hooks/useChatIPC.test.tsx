@@ -1,10 +1,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef, useState } from "react";
-import {
-  persistedTurnCompletionSignature,
-  useChatIPC,
-} from "./useChatIPC";
+import { persistedTurnCompletionSignature, useChatIPC } from "./useChatIPC";
 import type { ActiveTurn, ChatMessage, UsageState } from "../types";
 
 type Callback<T extends unknown[]> = (...args: T) => void;

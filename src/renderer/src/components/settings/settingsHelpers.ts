@@ -70,4 +70,3 @@ export function setCachedVersion(cacheKey: string, version: string): void {
     /* ignore */
   }
 }
-

@@ -202,7 +202,11 @@ export const FileViewer = memo(function FileViewer({
 
       // Otherwise load as text
       const result = workspaceId
-        ? await window.agentsOneAPI.readWorkspaceFile(workspaceId, filePath, 102400)
+        ? await window.agentsOneAPI.readWorkspaceFile(
+            workspaceId,
+            filePath,
+            102400,
+          )
         : await window.agentsOneAPI.readFile(filePath, 102400);
       if (cancelled) return;
       if (result === null) {

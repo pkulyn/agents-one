@@ -17,7 +17,9 @@ afterEach(cleanup);
 
 function stubRespond(): ReturnType<typeof vi.fn> {
   const respondClarify = vi.fn().mockResolvedValue(true);
-  (window as unknown as { agentsOneAPI: unknown }).agentsOneAPI = { respondClarify };
+  (window as unknown as { agentsOneAPI: unknown }).agentsOneAPI = {
+    respondClarify,
+  };
   return respondClarify;
 }
 

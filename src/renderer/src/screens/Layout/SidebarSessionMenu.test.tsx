@@ -11,7 +11,13 @@ describe("SidebarSessionMenu", () => {
     render(
       <I18nProvider>
         <SidebarSessionMenu
-          target={{ id: "session-1", title: "任务", contextFolder: "D:\\work", x: 20, y: 20 }}
+          target={{
+            id: "session-1",
+            title: "任务",
+            contextFolder: "D:\\work",
+            x: 20,
+            y: 20,
+          }}
           isPinned={false}
           projects={[]}
           onClose={onClose}
@@ -26,7 +32,11 @@ describe("SidebarSessionMenu", () => {
         />
       </I18nProvider>,
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: /复制会话 ID|Copy conversation ID/ }));
+    fireEvent.click(
+      screen.getByRole("menuitem", {
+        name: /复制会话 ID|Copy conversation ID/,
+      }),
+    );
     expect(onCopySessionId).toHaveBeenCalled();
 
     // Remount because selecting an action closes the menu.
@@ -35,15 +45,32 @@ describe("SidebarSessionMenu", () => {
     render(
       <I18nProvider>
         <SidebarSessionMenu
-          target={{ id: "session-1", title: "任务", contextFolder: "D:\\work", x: 20, y: 20 }}
-          isPinned={false} projects={[]} onClose={onClose}
-          onTogglePin={() => {}} onRename={() => {}} onMoveToProject={() => {}}
-          onPickNewFolder={() => {}} onCopySessionId={() => {}} onReveal={onReveal}
-          onArchive={() => {}} onDelete={() => {}}
+          target={{
+            id: "session-1",
+            title: "任务",
+            contextFolder: "D:\\work",
+            x: 20,
+            y: 20,
+          }}
+          isPinned={false}
+          projects={[]}
+          onClose={onClose}
+          onTogglePin={() => {}}
+          onRename={() => {}}
+          onMoveToProject={() => {}}
+          onPickNewFolder={() => {}}
+          onCopySessionId={() => {}}
+          onReveal={onReveal}
+          onArchive={() => {}}
+          onDelete={() => {}}
         />
       </I18nProvider>,
     );
-    fireEvent.click(screen.getAllByRole("menuitem", { name: /资源管理器|File Explorer/ }).at(-1)!);
+    fireEvent.click(
+      screen
+        .getAllByRole("menuitem", { name: /资源管理器|File Explorer/ })
+        .at(-1)!,
+    );
     expect(onReveal).toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "Escape" });
   });

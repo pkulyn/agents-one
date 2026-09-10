@@ -1296,7 +1296,9 @@ export default function RuntimeChat({
   );
 
   const refreshRuntimeCommandCatalog = useCallback(async (): Promise<void> => {
-    if (typeof window.agentsOneAPI.getAgentRuntimeCommandCatalog !== "function") {
+    if (
+      typeof window.agentsOneAPI.getAgentRuntimeCommandCatalog !== "function"
+    ) {
       return;
     }
     try {
@@ -1759,7 +1761,8 @@ export default function RuntimeChat({
   const pollRun = useCallback(
     async (runtimeRunId: string): Promise<void> => {
       while (!cancelledRef.current) {
-        const current = await window.agentsOneAPI.getAgentRuntimeRun(runtimeRunId);
+        const current =
+          await window.agentsOneAPI.getAgentRuntimeRun(runtimeRunId);
         if (!current) {
           const nextMessages = [
             ...messagesRef.current,
@@ -3693,7 +3696,9 @@ export default function RuntimeChat({
   }
 
   useEffect(() => {
-    if (typeof window.agentsOneAPI.onAgentRuntimeCommandProgress !== "function") {
+    if (
+      typeof window.agentsOneAPI.onAgentRuntimeCommandProgress !== "function"
+    ) {
       return;
     }
     return window.agentsOneAPI.onAgentRuntimeCommandProgress((progress) => {
@@ -4286,7 +4291,8 @@ export default function RuntimeChat({
   async function chooseWorkspace(): Promise<void> {
     const selected = await window.agentsOneAPI.selectFolder();
     if (!selected) return;
-    const registered = await window.agentsOneAPI.registerProjectFolder(selected);
+    const registered =
+      await window.agentsOneAPI.registerProjectFolder(selected);
     if (!registered) return;
     // Older desktop/preload pairs returned only a path. Keep the capability
     // migration backward-compatible during a rolling upgrade.
@@ -4884,7 +4890,8 @@ export default function RuntimeChat({
                   <button
                     type="button"
                     onClick={() => {
-                      const resume = window.agentsOneAPI.resumeWebAgentRuntimeRun;
+                      const resume =
+                        window.agentsOneAPI.resumeWebAgentRuntimeRun;
                       if (resume)
                         void resume(taskRun.id).catch(() => undefined);
                     }}

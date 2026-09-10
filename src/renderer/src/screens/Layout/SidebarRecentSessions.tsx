@@ -104,10 +104,7 @@ interface RuntimeAppearance {
 
 function readStoredPinned(): Set<string> {
   try {
-    const raw = readMigratedStorageValue(
-      PINNED_IDS_KEY,
-      LEGACY_PINNED_IDS_KEY,
-    );
+    const raw = readMigratedStorageValue(PINNED_IDS_KEY, LEGACY_PINNED_IDS_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     return new Set(Array.isArray(parsed) ? parsed.filter(String) : []);
   } catch {
@@ -239,8 +236,7 @@ function sameSessions(a: RecentSession[], b: RecentSession[]): boolean {
       a[i].id !== b[i].id ||
       a[i].title !== b[i].title ||
       (a[i].contextFolder ?? null) !== (b[i].contextFolder ?? null) ||
-      (a[i].contextWorkspaceId ?? null) !==
-        (b[i].contextWorkspaceId ?? null) ||
+      (a[i].contextWorkspaceId ?? null) !== (b[i].contextWorkspaceId ?? null) ||
       (a[i].updatedAt ?? null) !== (b[i].updatedAt ?? null) ||
       (a[i].runtimeId ?? null) !== (b[i].runtimeId ?? null) ||
       (a[i].runtimeName ?? null) !== (b[i].runtimeName ?? null) ||
@@ -454,7 +450,10 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onCreateProjectFolder?: (mode: "new" | "existing") => void;
   /** Starts a normal task within a project folder. Collaboration is established
    * from inside an existing task only after an explicit user confirmation. */
-  onCreateProjectTask?: (workspace: { workspaceId: string; name: string }) => void;
+  onCreateProjectTask?: (workspace: {
+    workspaceId: string;
+    name: string;
+  }) => void;
   /** Opens a fresh task without changing its project association. */
   onCreateTask?: () => void;
 }): React.JSX.Element | null {
@@ -481,9 +480,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const [runtimeAppearances, setRuntimeAppearances] = useState<
     Record<string, RuntimeAppearance>
   >({});
-  const [projectWorkspaces, setProjectWorkspaces] = useState<ProjectWorkspaceCapability[]>(
-    [],
-  );
+  const [projectWorkspaces, setProjectWorkspaces] = useState<
+    ProjectWorkspaceCapability[]
+  >([]);
   const [projectFolders, setProjectFolders] = useState<ProjectFolderRecord[]>(
     [],
   );
@@ -542,7 +541,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       setProjectTaskMenuPath(null);
     };
     window.addEventListener("keydown", closeCreateMenusOnEscape);
-    return () => window.removeEventListener("keydown", closeCreateMenusOnEscape);
+    return () =>
+      window.removeEventListener("keydown", closeCreateMenusOnEscape);
   }, [projectMenuOpen, projectTaskMenuPath, taskMenuOpen]);
 
   const refreshRuntimeAppearances = useCallback((): void => {
@@ -992,13 +992,18 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       sessions.filter(
         (session) =>
           !archivedTaskIds.has(session.id) &&
-          !(session.contextWorkspaceId && archivedProjectIds.has(session.contextWorkspaceId)),
+          !(
+            session.contextWorkspaceId &&
+            archivedProjectIds.has(session.contextWorkspaceId)
+          ),
       ),
     [archivedProjectIds, archivedTaskIds, sessions],
   );
   const visibleProjectWorkspaces = useMemo(
     () =>
-      projectWorkspaces.filter((workspace) => !archivedProjectIds.has(workspace.id)),
+      projectWorkspaces.filter(
+        (workspace) => !archivedProjectIds.has(workspace.id),
+      ),
     [archivedProjectIds, projectWorkspaces],
   );
   const pinnedSessions = useMemo(
@@ -1077,7 +1082,10 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
 
   const archiveProject = useCallback(
     async (workspaceId: string): Promise<void> => {
-      await window.agentsOneAPI.archiveProjectWorkspace(workspaceId, activeProfile);
+      await window.agentsOneAPI.archiveProjectWorkspace(
+        workspaceId,
+        activeProfile,
+      );
       setProjectMenuTarget(null);
       refreshArchives();
       window.dispatchEvent(new Event("agents-one:archives-changed"));
@@ -1094,21 +1102,27 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             : workspace,
         ),
       );
-      await window.agentsOneAPI.updateProjectWorkspace({ id: workspaceId, pinned: !pinned });
+      await window.agentsOneAPI.updateProjectWorkspace({
+        id: workspaceId,
+        pinned: !pinned,
+      });
       refreshProjectFolders();
     },
     [refreshProjectFolders],
   );
 
-  const startProjectRename = useCallback((workspaceId: string, name: string): void => {
-    projectRenameCancelledRef.current = false;
-    setEditingProjectPath(workspaceId);
-    setEditingProjectName(name);
-    setTimeout(() => {
-      projectRenameInputRef.current?.focus();
-      projectRenameInputRef.current?.select();
-    }, 0);
-  }, []);
+  const startProjectRename = useCallback(
+    (workspaceId: string, name: string): void => {
+      projectRenameCancelledRef.current = false;
+      setEditingProjectPath(workspaceId);
+      setEditingProjectName(name);
+      setTimeout(() => {
+        projectRenameInputRef.current?.focus();
+        projectRenameInputRef.current?.select();
+      }, 0);
+    },
+    [],
+  );
 
   const cancelProjectRename = useCallback((): void => {
     setEditingProjectPath(null);
@@ -1141,7 +1155,10 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
 
   const removeProject = useCallback(
     async (workspaceId: string): Promise<void> => {
-      await window.agentsOneAPI.removeProjectWorkspace(workspaceId, activeProfile);
+      await window.agentsOneAPI.removeProjectWorkspace(
+        workspaceId,
+        activeProfile,
+      );
       setSessions((current) =>
         current.map((session) =>
           session.contextWorkspaceId === workspaceId
@@ -1210,7 +1227,11 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     async (id: string, workspace: SidebarMenuProject | null): Promise<void> => {
       const current = sessionsRef.current.find((s) => s.id === id);
       if (current?.runtimeId) return;
-      if ((current?.contextWorkspaceId ?? null) === (workspace?.workspaceId ?? null)) return;
+      if (
+        (current?.contextWorkspaceId ?? null) ===
+        (workspace?.workspaceId ?? null)
+      )
+        return;
       const previous = {
         contextFolder: current?.contextFolder ?? null,
         contextWorkspaceId: current?.contextWorkspaceId ?? null,
@@ -1229,7 +1250,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       try {
         const saved = await window.agentsOneAPI.setSessionContextWorkspace(
           id,
-          workspace ? { workspaceId: workspace.workspaceId, name: workspace.name } : null,
+          workspace
+            ? { workspaceId: workspace.workspaceId, name: workspace.name }
+            : null,
         );
         if (!saved) throw new Error("项目已不可用");
         // Other surfaces (chat view, Sessions screen) listen for this to
@@ -1238,9 +1261,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       } catch (err) {
         console.error("Failed to move session to project", id, err);
         setSessions((prev) =>
-          prev.map((s) =>
-            s.id === id ? { ...s, ...previous } : s,
-          ),
+          prev.map((s) => (s.id === id ? { ...s, ...previous } : s)),
         );
       }
     },
@@ -1252,8 +1273,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       try {
         const folder = await window.agentsOneAPI.selectFolder();
         if (folder) {
-          const registered = await window.agentsOneAPI.registerProjectWorkspace(folder);
-          if (registered) await handleMoveToProject(id, { workspaceId: registered.id, name: registered.name });
+          const registered =
+            await window.agentsOneAPI.registerProjectWorkspace(folder);
+          if (registered)
+            await handleMoveToProject(id, {
+              workspaceId: registered.id,
+              name: registered.name,
+            });
         }
       } catch (err) {
         console.error("Folder selection failed", err);
@@ -1275,7 +1301,10 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       });
       try {
         if (current?.runtimeId) {
-          await window.agentsOneAPI.deleteRuntimeConversation(id, activeProfile);
+          await window.agentsOneAPI.deleteRuntimeConversation(
+            id,
+            activeProfile,
+          );
         } else {
           await window.agentsOneAPI.deleteSession(id);
         }
@@ -1692,7 +1721,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                             <MoreHorizontal size={14} />
                           </button>
                           {projectTaskMenuPath === group.key &&
-                          onCreateProjectTask && workspaceId ? (
+                          onCreateProjectTask &&
+                          workspaceId ? (
                             <div
                               className="sidebar-project-task-create-menu"
                               role="menu"
@@ -1869,9 +1899,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               projectMenuTarget.name,
             )
           }
-          onArchive={() =>
-            void archiveProject(projectMenuTarget.workspaceId)
-          }
+          onArchive={() => void archiveProject(projectMenuTarget.workspaceId)}
           onRemove={() => void removeProject(projectMenuTarget.workspaceId)}
         />
       ) : null}

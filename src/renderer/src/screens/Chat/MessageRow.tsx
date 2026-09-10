@@ -60,9 +60,7 @@ function isValidEpochMs(ms: number): boolean {
 function formatBubbleTime(ms: number): string {
   try {
     const value = new Date(ms);
-    const weekday = ["日", "一", "二", "三", "四", "五", "六"][
-      value.getDay()
-    ];
+    const weekday = ["日", "一", "二", "三", "四", "五", "六"][value.getDay()];
     const hour = String(value.getHours()).padStart(2, "0");
     const minute = String(value.getMinutes()).padStart(2, "0");
     return `${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日（星期${weekday}）${hour}:${minute}`;

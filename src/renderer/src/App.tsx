@@ -31,7 +31,10 @@ function App(): React.JSX.Element {
     } catch (err) {
       // Agents One is a Runtime aggregator. A transient connection/config
       // read must never block the desktop shell behind a first-install page.
-      console.warn("Startup connection check failed; opening the workspace.", err);
+      console.warn(
+        "Startup connection check failed; opening the workspace.",
+        err,
+      );
     }
 
     setSplashStatus(undefined);
@@ -47,7 +50,6 @@ function App(): React.JSX.Element {
     void runStartup();
   }, [runStartup]);
 
-
   const handleSplashFinished = useCallback(() => {
     /* splash transition is driven by the install check, not a timer */
   }, []);
@@ -56,11 +58,11 @@ function App(): React.JSX.Element {
     switch (screen) {
       case "splash":
         return (
-            <SplashScreen
-              onFinished={handleSplashFinished}
-              status={splashStatus}
-            />
-          );
+          <SplashScreen
+            onFinished={handleSplashFinished}
+            status={splashStatus}
+          />
+        );
       case "main":
         return <Layout />;
     }

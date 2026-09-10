@@ -14,7 +14,12 @@ const { mockClose, mockDatabaseConstructor, mockExistsSync, mockMkdirSync } =
     });
     const mockExistsSync = vi.fn();
     const mockMkdirSync = vi.fn();
-    return { mockClose, mockDatabaseConstructor, mockExistsSync, mockMkdirSync };
+    return {
+      mockClose,
+      mockDatabaseConstructor,
+      mockExistsSync,
+      mockMkdirSync,
+    };
   });
 
 vi.mock("better-sqlite3", () => {

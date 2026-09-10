@@ -5,8 +5,7 @@ import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
 
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({
-    t: (key: string): string =>
-      key === "common.appName" ? "Agents One" : key,
+    t: (key: string): string => (key === "common.appName" ? "Agents One" : key),
   }),
 }));
 
@@ -94,10 +93,13 @@ describe("ProfileSwitcher", () => {
   });
 
   it("shows the selected default runtime", async () => {
-    installHermesAPI([profile("default", "卢姐")], [
-      runtime("hermes-remote", "Hermes", "hermes"),
-      runtime("codex", "Codex", "codex"),
-    ]);
+    installHermesAPI(
+      [profile("default", "卢姐")],
+      [
+        runtime("hermes-remote", "Hermes", "hermes"),
+        runtime("codex", "Codex", "codex"),
+      ],
+    );
 
     render(
       <ProfileSwitcher
@@ -115,10 +117,13 @@ describe("ProfileSwitcher", () => {
 
   it("lets the user choose a default runtime", async () => {
     const onDefaultRuntimeChange = vi.fn();
-    installHermesAPI([profile("default")], [
-      runtime("hermes-remote", "Hermes", "hermes"),
-      runtime("codex", "Codex", "codex"),
-    ]);
+    installHermesAPI(
+      [profile("default")],
+      [
+        runtime("hermes-remote", "Hermes", "hermes"),
+        runtime("codex", "Codex", "codex"),
+      ],
+    );
 
     render(
       <ProfileSwitcher

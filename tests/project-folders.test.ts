@@ -9,7 +9,9 @@ vi.mock("electron", () => ({
 
 let testHome: string;
 
-async function loadStore(): Promise<typeof import("../src/main/project-folders")> {
+async function loadStore(): Promise<
+  typeof import("../src/main/project-folders")
+> {
   vi.resetModules();
   vi.stubEnv("HERMES_HOME", testHome);
   return import("../src/main/project-folders");

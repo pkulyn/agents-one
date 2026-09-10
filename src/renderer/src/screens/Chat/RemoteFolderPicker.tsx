@@ -1,18 +1,5 @@
-import {
-  ChevronLeft,
-  ChevronRight,
-  Folder,
-  Loader,
-  X,
-} from "lucide-react";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { ChevronLeft, ChevronRight, Folder, Loader, X } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../components/useI18n";
 
 interface FileEntry {
@@ -74,29 +61,32 @@ export const RemoteFolderPicker = memo(function RemoteFolderPicker({
     [entries],
   );
 
-  const loadPath = useCallback(async (path: string) => {
-    const nextPath = path.trim() || "/";
-    setCurrentPath(nextPath);
-    setPathInput(nextPath);
-    setActiveIndex(0);
-    setLoading(true);
-    setError(null);
+  const loadPath = useCallback(
+    async (path: string) => {
+      const nextPath = path.trim() || "/";
+      setCurrentPath(nextPath);
+      setPathInput(nextPath);
+      setActiveIndex(0);
+      setLoading(true);
+      setError(null);
 
-    try {
-      const result = await window.agentsOneAPI.readDirectory(nextPath);
-      if (result === null) {
+      try {
+        const result = await window.agentsOneAPI.readDirectory(nextPath);
+        if (result === null) {
+          setEntries([]);
+          setError(t("chat.folderPicker.unavailable"));
+        } else {
+          setEntries(result);
+        }
+      } catch {
         setEntries([]);
         setError(t("chat.folderPicker.unavailable"));
-      } else {
-        setEntries(result);
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setEntries([]);
-      setError(t("chat.folderPicker.unavailable"));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+    },
+    [t],
+  );
 
   useEffect(() => {
     if (!open) return;

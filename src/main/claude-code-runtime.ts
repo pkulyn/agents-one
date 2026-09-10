@@ -1,7 +1,4 @@
-import {
-  spawn,
-  execFile as execFileCallback,
-} from "child_process";
+import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync } from "fs";
 import { promisify } from "util";
 import { delimiter, dirname, extname, join, relative, resolve } from "path";

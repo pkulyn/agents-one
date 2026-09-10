@@ -57,7 +57,8 @@ const BARE_PATH_EXT =
 // MEDIA: + optional whitespace + (quoted) | (bare non-whitespace run).
 // The full-width colon is accepted because some remote agents localize the
 // protocol marker while composing Chinese output.
-const MEDIA_RE = /MEDIA[：:][ \t]*(?:`([^`\n]+)`|"([^"\n]+)"|'([^'\n]+)'|(\S+))/g;
+const MEDIA_RE =
+  /MEDIA[：:][ \t]*(?:`([^`\n]+)`|"([^"\n]+)"|'([^'\n]+)'|(\S+))/g;
 
 // Markdown image syntax with a raw local/remote filesystem or direct image
 // destination.

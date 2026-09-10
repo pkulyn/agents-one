@@ -146,7 +146,9 @@ describe("run stream event mapping", () => {
 
   it("accepts no-space and multi-line SSE data fields", () => {
     expect(
-      parseRunSseBlock('event:message.delta\r\ndata:{"event":"message.\r\ndata:delta"}\r\n'),
+      parseRunSseBlock(
+        'event:message.delta\r\ndata:{"event":"message.\r\ndata:delta"}\r\n',
+      ),
     ).toEqual({
       eventType: "message.delta",
       data: '{"event":"message.\ndelta"}',

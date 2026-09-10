@@ -50,7 +50,9 @@ describe("VoiceInputPane", () => {
       "placeholder",
       "Configured (leave blank to retain the current key)",
     );
-    expect(screen.queryByText("Privacy and diagnostics")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Privacy and diagnostics"),
+    ).not.toBeInTheDocument();
   });
 
   it("tests a draft endpoint without saving it", async () => {

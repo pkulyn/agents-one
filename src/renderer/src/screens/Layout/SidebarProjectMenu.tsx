@@ -46,8 +46,14 @@ export default function SidebarProjectMenu({
     const width = element.offsetWidth || MENU_WIDTH;
     const height = element.offsetHeight;
     setPosition({
-      left: Math.max(MARGIN, Math.min(target.x, window.innerWidth - width - MARGIN)),
-      top: Math.max(MARGIN, Math.min(target.y, window.innerHeight - height - MARGIN)),
+      left: Math.max(
+        MARGIN,
+        Math.min(target.x, window.innerWidth - width - MARGIN),
+      ),
+      top: Math.max(
+        MARGIN,
+        Math.min(target.y, window.innerHeight - height - MARGIN),
+      ),
     });
   }, [target.x, target.y]);
 
@@ -99,22 +105,55 @@ export default function SidebarProjectMenu({
         >
           <div className="sidebar-session-menu-body">
             <div className="sidebar-session-menu-page">
-              <button type="button" role="menuitem" className="sidebar-session-menu-item" onClick={() => action(onTogglePin)}>
+              <button
+                type="button"
+                role="menuitem"
+                className="sidebar-session-menu-item"
+                onClick={() => action(onTogglePin)}
+              >
                 {target.pinned ? <PinOff size={15} /> : <Pin size={15} />}
-                <span>{target.pinned ? t("navigation.projectMenu.unpin") : t("navigation.projectMenu.pin")}</span>
+                <span>
+                  {target.pinned
+                    ? t("navigation.projectMenu.unpin")
+                    : t("navigation.projectMenu.pin")}
+                </span>
               </button>
-              <button type="button" role="menuitem" className="sidebar-session-menu-item" onClick={() => action(onReveal)}>
-                <FolderOpen size={15} /><span>{t("navigation.projectMenu.reveal")}</span>
+              <button
+                type="button"
+                role="menuitem"
+                className="sidebar-session-menu-item"
+                onClick={() => action(onReveal)}
+              >
+                <FolderOpen size={15} />
+                <span>{t("navigation.projectMenu.reveal")}</span>
               </button>
-              <button type="button" role="menuitem" className="sidebar-session-menu-item" onClick={() => action(onRename)}>
-                <Pencil size={15} /><span>{t("navigation.projectMenu.rename")}</span>
+              <button
+                type="button"
+                role="menuitem"
+                className="sidebar-session-menu-item"
+                onClick={() => action(onRename)}
+              >
+                <Pencil size={15} />
+                <span>{t("navigation.projectMenu.rename")}</span>
               </button>
               <div className="sidebar-session-menu-divider" />
-              <button type="button" role="menuitem" className="sidebar-session-menu-item" onClick={() => action(onArchive)}>
-                <Archive size={15} /><span>{t("navigation.projectMenu.archive")}</span>
+              <button
+                type="button"
+                role="menuitem"
+                className="sidebar-session-menu-item"
+                onClick={() => action(onArchive)}
+              >
+                <Archive size={15} />
+                <span>{t("navigation.projectMenu.archive")}</span>
               </button>
-              <button type="button" role="menuitem" className="sidebar-session-menu-item sidebar-session-menu-item--danger" onClick={() => action(onRemove)}>
-                <X size={15} /><span>{t("navigation.projectMenu.remove")}</span>
+              <button
+                type="button"
+                role="menuitem"
+                className="sidebar-session-menu-item sidebar-session-menu-item--danger"
+                onClick={() => action(onRemove)}
+              >
+                <X size={15} />
+                <span>{t("navigation.projectMenu.remove")}</span>
               </button>
             </div>
           </div>

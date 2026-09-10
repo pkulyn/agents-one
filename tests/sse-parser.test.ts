@@ -44,7 +44,9 @@ describe("parseSseBlock", () => {
 
   it("accepts CRLF, data without a space, and multi-line payloads", () => {
     expect(
-      parseSseBlock('event:hermes.tool.progress\r\ndata:{"tool":\r\ndata:"search"}\r\n'),
+      parseSseBlock(
+        'event:hermes.tool.progress\r\ndata:{"tool":\r\ndata:"search"}\r\n',
+      ),
     ).toEqual({
       eventType: "hermes.tool.progress",
       data: '{"tool":\n"search"}',

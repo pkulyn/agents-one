@@ -89,7 +89,9 @@ export function ConfigHealth({
   const rerun = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      const r = (await window.agentsOneAPI.rerunConfigHealth(profile)) as Report;
+      const r = (await window.agentsOneAPI.rerunConfigHealth(
+        profile,
+      )) as Report;
       setReport(r);
       publishConfigHealthReport(r);
       setResults({});

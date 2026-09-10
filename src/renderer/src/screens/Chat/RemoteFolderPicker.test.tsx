@@ -3,19 +3,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../components/useI18n", () => {
   const t = (key: string): string =>
-      ({
-        "chat.folderPicker.title": "选择工作目录",
-        "chat.folderPicker.path": "工作目录路径",
-        "chat.folderPicker.breadcrumbs": "当前路径",
-        "chat.folderPicker.parent": "返回上级目录",
-        "chat.folderPicker.open": "打开",
-        "chat.folderPicker.select": "选择文件夹",
-        "chat.folderPicker.empty": "此处没有文件夹",
-        "chat.folderPicker.unavailable":
-          "当前为远程 API 模式，无法浏览服务器目录。请输入服务器上的绝对路径，然后选择。",
-        "chat.worktree.loading": "正在加载",
-        "common.cancel": "取消",
-      })[key] || key;
+    ({
+      "chat.folderPicker.title": "选择工作目录",
+      "chat.folderPicker.path": "工作目录路径",
+      "chat.folderPicker.breadcrumbs": "当前路径",
+      "chat.folderPicker.parent": "返回上级目录",
+      "chat.folderPicker.open": "打开",
+      "chat.folderPicker.select": "选择文件夹",
+      "chat.folderPicker.empty": "此处没有文件夹",
+      "chat.folderPicker.unavailable":
+        "当前为远程 API 模式，无法浏览服务器目录。请输入服务器上的绝对路径，然后选择。",
+      "chat.worktree.loading": "正在加载",
+      "common.cancel": "取消",
+    })[key] || key;
   return { useI18n: () => ({ t }) };
 });
 

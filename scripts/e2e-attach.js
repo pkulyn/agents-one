@@ -27,8 +27,7 @@ const { chromium } = require("playwright");
  */
 async function attach(opts = {}) {
   const cdpUrl =
-    opts.cdpUrl ||
-    `http://127.0.0.1:${process.env.CDP_PORT || "9222"}`;
+    opts.cdpUrl || `http://127.0.0.1:${process.env.CDP_PORT || "9222"}`;
   const titleHint = opts.titleHint || null;
 
   const browser = await chromium.connectOverCDP(cdpUrl);
@@ -81,7 +80,8 @@ if (require.main === module) {
       const title = await page.title();
       const url = page.url();
       const sessionsCount = await page.evaluate(async () => {
-        if (!window.agentsOneAPI || !window.agentsOneAPI.listSessions) return null;
+        if (!window.agentsOneAPI || !window.agentsOneAPI.listSessions)
+          return null;
         try {
           const s = await window.agentsOneAPI.listSessions(5, 0);
           return Array.isArray(s) ? s.length : "unknown";
@@ -92,7 +92,9 @@ if (require.main === module) {
       console.log(`[attach OK]`);
       console.log(`  url:            ${url}`);
       console.log(`  title:          ${title}`);
-      console.log(`  agentsOneAPI:   ${sessionsCount === null ? "absent" : "present"}`);
+      console.log(
+        `  agentsOneAPI:   ${sessionsCount === null ? "absent" : "present"}`,
+      );
       console.log(`  listSessions(5): ${sessionsCount}`);
       await browser.close();
     })
