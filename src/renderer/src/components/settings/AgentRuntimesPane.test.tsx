@@ -5,6 +5,7 @@ import type {
   AgentRuntimeProbe,
 } from "../../../../shared/agent-runtimes";
 import { BUILTIN_AGENT_RUNTIME_ADAPTER_MANIFESTS } from "../../../../shared/runtime-adapters";
+import type { WebAgentPolicyStatus } from "../../../../shared/web-agent";
 import AgentRuntimesPane from "./AgentRuntimesPane";
 
 const capabilities = {
@@ -25,6 +26,11 @@ const capabilities = {
 function installHermesAPI(
   runtimes: AgentRuntimeDefinition[],
   detected: Record<string, string | null> = {},
+  initialWebPolicy: WebAgentPolicyStatus = {
+    available: true,
+    enabled: true,
+    killSwitchActive: false,
+  },
 ): {
   listAgentRuntimes: ReturnType<typeof vi.fn>;
   saveAgentRuntime: ReturnType<typeof vi.fn>;
@@ -42,8 +48,11 @@ function installHermesAPI(
   adoptHermesHome: ReturnType<typeof vi.fn>;
   relaunchApp: ReturnType<typeof vi.fn>;
   listAgentRuntimeAdapters: ReturnType<typeof vi.fn>;
+  getWebAgentPolicyStatus: ReturnType<typeof vi.fn>;
+  setWebAgentPolicyEnabled: ReturnType<typeof vi.fn>;
 } {
   let current = [...runtimes];
+  let webPolicy = { ...initialWebPolicy };
   const listAgentRuntimes = vi.fn(async () => current);
   const saveAgentRuntime = vi.fn(async (draft) => {
     const saved = { ...draft, managed: "user" as const };
@@ -138,6 +147,16 @@ function installHermesAPI(
         : manifest,
     ),
   );
+  const getWebAgentPolicyStatus = vi.fn(async () => webPolicy);
+  const setWebAgentPolicyEnabled = vi.fn(
+    async (enabled: boolean, acknowledgedRisk = false) => {
+      if (enabled && !acknowledgedRisk) {
+        throw new Error("启用网页 Provider 前必须确认实验性风险。");
+      }
+      webPolicy = { ...webPolicy, enabled };
+      return webPolicy;
+    },
+  );
 
   Object.defineProperty(window, "agentsOneAPI", {
     configurable: true,
@@ -163,6 +182,8 @@ function installHermesAPI(
       adoptHermesHome,
       relaunchApp,
       listAgentRuntimeAdapters,
+      getWebAgentPolicyStatus,
+      setWebAgentPolicyEnabled,
     },
   });
 
@@ -183,6 +204,8 @@ function installHermesAPI(
     adoptHermesHome,
     relaunchApp,
     listAgentRuntimeAdapters,
+    getWebAgentPolicyStatus,
+    setWebAgentPolicyEnabled,
   };
 }
 
@@ -341,6 +364,63 @@ describe("AgentRuntimesPane", () => {
     expect(
       screen.queryByRole("button", { name: "兼容模式" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps web providers unavailable in a public build", async () => {
+    installHermesAPI(
+      [],
+      {},
+      {
+        available: false,
+        enabled: false,
+        killSwitchActive: false,
+        reason: "公开构建默认关闭网页 Provider；当前没有第三方书面自动化许可。",
+      },
+    );
+    render(<AgentRuntimesPane />);
+
+    expect(
+      await screen.findByText(/公开构建默认关闭网页 Provider/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "接入" }));
+    expect(screen.getByText("网页智能体").closest("button")).toBeDisabled();
+  });
+
+  it("requires risk confirmation and supports one-click web provider disable", async () => {
+    const api = installHermesAPI(
+      [],
+      {},
+      {
+        available: true,
+        enabled: false,
+        killSwitchActive: false,
+      },
+    );
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AgentRuntimesPane />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "了解风险并启用" }),
+    );
+    await waitFor(() => {
+      expect(api.setWebAgentPolicyEnabled).toHaveBeenCalledWith(true, true);
+      expect(
+        screen.getByRole("button", { name: "一键停用网页 Provider" }),
+      ).toBeInTheDocument();
+    });
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "一键停用网页 Provider" }),
+    );
+    await waitFor(() => {
+      expect(api.setWebAgentPolicyEnabled).toHaveBeenLastCalledWith(
+        false,
+        false,
+      );
+      expect(screen.getByText(/活动网页任务和窗口已关闭/)).toBeInTheDocument();
+    });
+    confirmSpy.mockRestore();
   });
 
   it("shows a clear selection state, icon preview, and cancel action on step one", async () => {

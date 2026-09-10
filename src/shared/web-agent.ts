@@ -46,6 +46,15 @@ export interface WebAgentRuntimeSettings {
   enabled: boolean;
 }
 
+export interface WebAgentPolicyStatus {
+  /** Local development opt-in is present and the emergency disable is clear. */
+  available: boolean;
+  /** User explicitly accepted the experimental data/account-risk notice. */
+  enabled: boolean;
+  killSwitchActive: boolean;
+  reason?: string;
+}
+
 export interface WebAgentUserActionRequired {
   kind: "login" | "verification" | "confirmation" | "page_recovery";
   message: string;

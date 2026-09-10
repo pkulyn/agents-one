@@ -50,6 +50,7 @@ import type { AgentRuntimeAdapterManifest } from "../shared/runtime-adapters";
 import type { ConnectPairingPreview } from "../shared/agents-one-connect";
 import type { TrayMenuAction, TrayMenuData } from "../shared/tray-menu";
 import type { TrayCompletionData } from "../shared/tray-completion";
+import type { WebAgentPolicyStatus } from "../shared/web-agent";
 
 /**
  * Mirror of the renderer-side `CredentialPoolEntry` ambient type
@@ -484,6 +485,13 @@ const agentsOneAPI = {
     ipcRenderer.invoke("clear-web-agent-runtime-login", runtimeId),
   resumeWebAgentRuntimeRun: (runId: string): Promise<boolean> =>
     ipcRenderer.invoke("resume-web-agent-runtime-run", runId),
+  getWebAgentPolicyStatus: (): Promise<WebAgentPolicyStatus> =>
+    ipcRenderer.invoke("get-web-agent-policy-status"),
+  setWebAgentPolicyEnabled: (
+    enabled: boolean,
+    acknowledged?: boolean,
+  ): Promise<WebAgentPolicyStatus> =>
+    ipcRenderer.invoke("set-web-agent-policy-enabled", enabled, acknowledged),
   startAgentRuntimeTask: (
     runtimeId: string,
     input: AgentRuntimeTaskInput,

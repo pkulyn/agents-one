@@ -579,6 +579,12 @@ describe("agent runtime registry", () => {
         workspace: testHome,
       }),
     ).rejects.toThrow("不接受项目工作区");
+    await expect(
+      runtimes.startAgentRuntimeTask(saved.id, { prompt: "请直接回答" }),
+    ).resolves.toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("公开构建默认关闭网页 Provider"),
+    });
   });
 
   it("preserves forward-compatible Web Agent config while honoring the adapter switch", async () => {
