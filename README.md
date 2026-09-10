@@ -31,6 +31,7 @@ Every agent is registered as a **Runtime** with one connection config and one di
 - **Archive** — soft-archive tasks and projects without touching underlying messages or artifacts; browse, search, restore, or permanently delete.
 - **Backup & restore** — portable `*.agents-one-backup` archives with manifest + SHA-256 verification, credential-safe migration, pre-flight checks, and crash-safe rollback.
 - **Plugin SDK** — `plugins/agents-one-plugin` provides the event-stream contract, a Gateway host, and a CLI adapter so new vendors integrate without modifying the desktop app.
+- **Experimental web providers** — the built-in Doubao, ChatGPT, and Grok browser adapters remain disabled in public builds unless a developer exposes the local experiment switch and the user explicitly accepts the third-party data and account risks.
 - **i18n** — English and Simplified Chinese.
 
 ## Quick Start
@@ -91,6 +92,7 @@ Create a project folder from the sidebar. New conversations can attach to it; th
 - **Backups exclude credentials.** `.env`, account/credential files, tokens, API keys, SSH key paths, proxies, raw config, desktop protected-secret blobs, and Connector credential files are not exported. The backup format whitelists security config and merges it into the target, keeping the target machine's credentials.
 - **Backup** covers profiles, projects, tasks, conversations, collaboration records, SQLite state, memory, skills, attachments, and runtime inputs. Restore runs pre-flight checks, keeps a rollback snapshot, and survives crash mid-restore.
 - **Local CLI is not a remote.** Local runtimes keep their native capabilities; the desktop app only adds the workspace scope you choose, run records, and unified rendering.
+- **Web providers are default-off experiments.** When explicitly enabled, prompts and selected attachments are sent through the signed-in third-party webpage and the provider controls the account data. Agents One stores each provider/profile in a separate Chromium partition, blocks off-list navigation and browser permissions, and lets you stop all web tasks or clear the isolated login data. The project currently has no written automation permission from Doubao, OpenAI, or xAI; see the [provider compliance record](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md).
 
 See [SECURITY.md](SECURITY.md) for supported versions, private vulnerability reporting, and the trust-boundary model.
 
