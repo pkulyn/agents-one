@@ -89,7 +89,7 @@ Agents One 的主要产品能力已经齐备：多 Runtime 接入、统一任务
 
 ## 6. 工作包与验收标准
 
-> 执行状态（2026-09-10）：**OR-0、OR-1 与 OR-2 已完成**。OR-001～009 的仓库基线、安全审计、恢复标签和目录独立化证据见[目录独立化验收记录](./AGENTS_ONE_DIRECTORY_MIGRATION_AUDIT_20260910.md)与[全历史安全审计](./AGENTS_ONE_GIT_HISTORY_SECURITY_AUDIT_20260910.md)；后续工作只在 `D:\Projects\Agents-One` 推进，旧目录保留为只读恢复副本。OR-101～105 已在固定提交 `0f10679` 将既有 82 项测试失败和 11 项 ESLint error 归零，并连续三轮通过 typecheck、209/209 测试文件、完整 lint 与生产 build，详见[OR-1 门禁恢复验收记录](./AGENTS_ONE_OR1_GATE_RECOVERY_AUDIT_20260910.md)。OR-201～205 已完成桌面 Remote Token 的操作系统保护、Windows Connector DPAPI、Linux 无安全后端提示、事实一致的 README/`SECURITY.md` 与安全失败路径回归；全量测试现为 210/210 文件通过，详见[OR-2 安全验收记录](./AGENTS_ONE_OR2_SECURITY_READINESS_AUDIT_20260910.md)。目标 GitHub 目前不存在或当前账号不可见，因此首次推送、远端保护规则和 Private Vulnerability Reporting 的实际应用仍是公开发布前外部验收项。下一阶段进入 OR-3 Web Agent 合规与默认边界。
+> 执行状态（2026-09-10）：**OR-0、OR-1、OR-2 与 OR-3 已完成**。OR-001～009 的仓库基线、安全审计、恢复标签和目录独立化证据见[目录独立化验收记录](./AGENTS_ONE_DIRECTORY_MIGRATION_AUDIT_20260910.md)与[全历史安全审计](./AGENTS_ONE_GIT_HISTORY_SECURITY_AUDIT_20260910.md)；后续工作只在 `D:\Projects\Agents-One` 推进，旧目录保留为只读恢复副本。OR-101～105 已在固定提交 `0f10679` 将既有 82 项测试失败和 11 项 ESLint error 归零，并连续三轮通过 typecheck、209/209 测试文件、完整 lint 与生产 build，详见[OR-1 门禁恢复验收记录](./AGENTS_ONE_OR1_GATE_RECOVERY_AUDIT_20260910.md)。OR-201～205 已完成桌面 Remote Token 的操作系统保护、Windows Connector DPAPI、Linux 无安全后端提示、事实一致的 README/`SECURITY.md` 与安全失败路径回归，详见[OR-2 安全验收记录](./AGENTS_ONE_OR2_SECURITY_READINESS_AUDIT_20260910.md)。OR-301～304 已将内置网页 Provider 设为公开默认禁用，补齐逐 Provider 合规记录、显式风险确认、一键停用及隔离/退出回归；全量测试现为 212/212 文件通过，详见[OR-3 验收记录](./AGENTS_ONE_OR3_WEB_AGENT_COMPLIANCE_AUDIT_20260910.md)。目标 GitHub 目前不存在或当前账号不可见，因此首次推送、远端保护规则和 Private Vulnerability Reporting 的实际应用仍是公开发布前外部验收项。下一阶段进入 OR-4 依赖、锁文件与构建质量。
 
 ### OR-0：Git 基线与仓库卫生（P0）
 

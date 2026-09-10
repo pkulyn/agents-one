@@ -1,5 +1,13 @@
 # Agents One 项目进展日志
 
+## 2026-09-10：OR-3 Web Agent 合规与默认边界完成
+
+- 默认策略：内置豆包、ChatGPT、Grok Provider 在公开构建中默认不可用；登录窗口、健康探测、普通任务和计划任务均受同一主进程门禁约束。只有设置本地实验环境开关并由用户阅读风险后明确确认，才可执行网页自动化。
+- 合规记录：逐项核对 OpenAI、xAI 与豆包现行官方条款，记录版本/日期、限制、允许依据、负责人和发布决定。项目未取得三家书面自动化许可，因此全部 Provider 继续保持公开禁用；该判断是工程风险控制建议，不替代法律意见。
+- 风险与退出：设置页明确提示提示词、附件和网页账号的数据流及账号受限/封禁风险；一键停用会取消活动运行并销毁窗口，本机紧急开关可覆盖历史选择。当前不连接远端 kill-switch 或策略遥测，不采集 Cookie、Token、账号或提示词。
+- 隔离验证：新增 Controller 级测试，覆盖 Provider/Profile 分区、权限拒绝、弹窗与导航白名单、越界下载阻断以及登录数据/缓存清除；既有 OAuth、会话 URL、回复与下载夹具继续通过。
+- 验证：全量 Vitest 212/212 文件、2,067 passed、9 skipped、0 failed；Node/Web typecheck、全仓 lint（0 error）、生产 build、`lat check` 与 `git diff --check` 均通过。详见[OR-3 验收记录](./AGENTS_ONE_OR3_WEB_AGENT_COMPLIANCE_AUDIT_20260910.md)与[网页 Provider 合规记录](./AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md)。下一步进入 OR-4 依赖、锁文件与构建质量。
+
 ## 2026-09-10：OR-2 凭据、安全与隐私事实一致完成
 
 - 桌面秘密：Remote Gateway 主 Token 与独立工作区 Gateway Token 接入 Electron `safeStorage`。历史 `.env` 值按“加密、回读验证、原子落盘、再删除明文”幂等迁移，并保留上一代密文用于损坏回滚；进程注入和命令型 secrets provider 仍由外部管理，不复制到桌面存储。
