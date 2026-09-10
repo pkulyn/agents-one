@@ -9,8 +9,19 @@ const rendererPort = Number(
     0,
 );
 
+// Auto-update is a build-time capability, not a runtime environment switch.
+// Unsigned public Alpha builds leave this false. A future signed pipeline may
+// opt in only after its update source and rollback path have been verified.
+const signedAutoUpdateBuild =
+  process.env.AGENTS_ONE_SIGNED_AUTO_UPDATE_BUILD === "1";
+
 export default defineConfig({
   main: {
+    define: {
+      __AGENTS_ONE_SIGNED_AUTO_UPDATE_BUILD__: JSON.stringify(
+        signedAutoUpdateBuild,
+      ),
+    },
     build: {
       rollupOptions: {
         external: ["better-sqlite3"],
@@ -40,10 +51,6 @@ export default defineConfig({
       alias: {
         "@renderer": resolve("src/renderer/src"),
       },
-      // Ensure a single Three.js instance across our code, @react-three/fiber,
-      // drei and troika — multiple copies break `instanceof THREE.*` checks in
-      // the ported office agent renderer.
-      dedupe: ["three"],
     },
     plugins: [tailwindcss(), react()],
   },

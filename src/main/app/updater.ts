@@ -1,16 +1,21 @@
 import { app, ipcMain, type BrowserWindow } from "electron";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { AppUpdater } from "electron-updater";
 import { dirname, join } from "path";
 import { updaterLogger } from "../updater-log";
 
 interface UpdaterDeps {
   getMainWindow: () => BrowserWindow | null;
+}
+
+export type DesktopUpdatePolicyReason =
+  | "development"
+  | "portable"
+  | "unsigned-build";
+
+export interface DesktopUpdatePolicy {
+  enabled: boolean;
+  reason: DesktopUpdatePolicyReason | null;
 }
 
 let autoUpdaterInstance: AppUpdater | null = null;
@@ -22,16 +27,16 @@ function updatePreferencesPath(): string {
 function getAutoUpgradeEnabled(): boolean {
   const file = updatePreferencesPath();
   if (!existsSync(file)) {
-    return true;
+    return false;
   }
 
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8")) as {
       autoUpgrade?: unknown;
     };
-    return parsed.autoUpgrade !== false;
+    return parsed.autoUpgrade === true;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -42,9 +47,21 @@ function setAutoUpgradeEnabled(enabled: boolean): void {
 }
 
 export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
+  const policy = resolveDesktopUpdatePolicy({
+    isPackaged: app.isPackaged,
+    isPortable: !!process.env.PORTABLE_EXECUTABLE_DIR,
+    signedBuild:
+      typeof __AGENTS_ONE_SIGNED_AUTO_UPDATE_BUILD__ !== "undefined" &&
+      __AGENTS_ONE_SIGNED_AUTO_UPDATE_BUILD__,
+  });
+
   ipcMain.handle("get-app-version", () => app.getVersion());
-  ipcMain.handle("get-auto-upgrade-enabled", () => getAutoUpgradeEnabled());
+  ipcMain.handle("get-desktop-update-policy", () => policy);
+  ipcMain.handle("get-auto-upgrade-enabled", () =>
+    policy.enabled ? getAutoUpgradeEnabled() : false,
+  );
   ipcMain.handle("set-auto-upgrade-enabled", (_event, enabled: boolean) => {
+    if (!policy.enabled) return false;
     setAutoUpgradeEnabled(enabled);
     if (autoUpdaterInstance) {
       autoUpdaterInstance.autoDownload = enabled;
@@ -52,11 +69,10 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
     return true;
   });
 
-  const isPortableBuild = !!process.env.PORTABLE_EXECUTABLE_DIR;
-  if (!app.isPackaged || isPortableBuild) {
+  if (!policy.enabled) {
     autoUpdaterInstance = null;
     ipcMain.handle("check-for-updates", async () => null);
-    ipcMain.handle("download-update", () => true);
+    ipcMain.handle("download-update", () => false);
     ipcMain.handle("install-update", () => {});
     return;
   }
@@ -117,4 +133,19 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
   setTimeout(() => {
     autoUpdater.checkForUpdates().catch(() => {});
   }, 5000);
+}
+
+export function resolveDesktopUpdatePolicy({
+  isPackaged,
+  isPortable,
+  signedBuild,
+}: {
+  isPackaged: boolean;
+  isPortable: boolean;
+  signedBuild: boolean;
+}): DesktopUpdatePolicy {
+  if (!isPackaged) return { enabled: false, reason: "development" };
+  if (isPortable) return { enabled: false, reason: "portable" };
+  if (!signedBuild) return { enabled: false, reason: "unsigned-build" };
+  return { enabled: true, reason: null };
 }

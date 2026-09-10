@@ -35,8 +35,10 @@ export default {
     taskConversations: "Task conversations",
     loadingTasks: "Loading tasks…",
     noProjectTasks: "No task conversations in this project.",
-    deleteTaskConfirm: "Permanently delete this archived task and its conversation? This cannot be undone.",
-    deleteProjectConfirm: "Remove this archived project from Agents One? Files on disk will not be deleted.",
+    deleteTaskConfirm:
+      "Permanently delete this archived task and its conversation? This cannot be undone.",
+    deleteProjectConfirm:
+      "Remove this archived project from Agents One? Files on disk will not be deleted.",
   },
   agentSubtitle: "The local AI engine",
   desktopTitle: "Agents One Desktop",
@@ -176,6 +178,10 @@ export default {
   autoUpgradeDesktop: "Auto-upgrade desktop app",
   autoUpgradeDesktopHint:
     "Automatically download new Agents One releases from GitHub when the app starts. Turn this off to show the startup upgrade button without downloading until you click it.",
+  desktopUpdateUnsignedDisabled:
+    "Automatic updates are disabled in this unsigned Alpha build. Download future releases manually and verify their SHA-256 checksums.",
+  desktopUpdateUnavailable:
+    "Automatic updates are unavailable in development and portable builds.",
   runningDiagnosis: "Running diagnosis...",
   runDiagnosis: "Run Diagnosis",
   running: "Running...",
@@ -187,14 +193,16 @@ export default {
   modeLocal: "Local",
   modeRemote: "Remote",
   modeLocalHint: "Use the Hermes Agent Runtime installed on this device",
-  modeRemoteHint: "Connect to a Hermes Agent Runtime API on your network or cloud",
+  modeRemoteHint:
+    "Connect to a Hermes Agent Runtime API on your network or cloud",
   save: "Save",
   connectionMode: "Connection Mode",
   voice: {
     intro:
       "Connect a self-hosted or trusted OpenAI-compatible speech-to-text service. New installations are off by default and never contact a preset server.",
     enabled: "Enable voice",
-    enabledHint: "When off, the microphone never sends recordings to a voice service.",
+    enabledHint:
+      "When off, the microphone never sends recordings to a voice service.",
     url: "Voice service URL",
     urlPlaceholder: "https://voice.example.com/voice",
     urlHint:

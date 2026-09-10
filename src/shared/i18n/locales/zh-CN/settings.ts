@@ -171,6 +171,9 @@ export default {
   autoUpgradeDesktop: "自动更新桌面应用",
   autoUpgradeDesktopHint:
     "应用启动时自动从 GitHub 下载 Agents One 的新版本。关闭后，启动时会显示升级按钮，只有点击后才会下载。",
+  desktopUpdateUnsignedDisabled:
+    "此 Alpha 构建未签名，自动更新已禁用。后续版本请手动下载，并核对 SHA-256 校验值。",
+  desktopUpdateUnavailable: "开发版和便携版不提供自动更新。",
   runningDiagnosis: "正在运行…",
   runDiagnosis: "运行诊断",
   running: "运行中…",
@@ -213,7 +216,8 @@ export default {
 
   // 社区
   communityTitle: "社区",
-  communityHint: "加入 Discord 频道，提问、报告问题并与其他 Agents One 用户交流。",
+  communityHint:
+    "加入 Discord 频道，提问、报告问题并与其他 Agents One 用户交流。",
   joinDiscord: "加入 Discord 频道",
   communityLinksHint: "联系 Agents One 社区、获取帮助并了解最新动态。",
   linkWebsite: "网站",

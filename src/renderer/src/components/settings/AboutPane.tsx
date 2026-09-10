@@ -12,6 +12,7 @@ export default function AboutPane(): React.JSX.Element {
     appVersion,
     autoUpgradeEnabled,
     autoUpgradeSaved,
+    desktopUpdatePolicy,
     handleAutoUpgradeChange,
     desktopUpdateState,
     desktopUpdateVersion,
@@ -75,6 +76,7 @@ export default function AboutPane(): React.JSX.Element {
               percent={desktopUpdatePercent}
               onCheck={checkDesktopUpdate}
               onAct={handleDesktopUpdate}
+              disabled={!desktopUpdatePolicy.enabled}
             />
             {desktopUpdateState === "uptodate" && (
               <span className="settings-card-actions-note">
@@ -86,6 +88,16 @@ export default function AboutPane(): React.JSX.Element {
           {desktopUpdateError && (
             <div className="settings-hermes-result error">
               {desktopUpdateError}
+            </div>
+          )}
+
+          {!desktopUpdatePolicy.enabled && (
+            <div className="settings-hermes-result error">
+              {t(
+                desktopUpdatePolicy.reason === "unsigned-build"
+                  ? "settings.desktopUpdateUnsignedDisabled"
+                  : "settings.desktopUpdateUnavailable",
+              )}
             </div>
           )}
 
@@ -105,6 +117,7 @@ export default function AboutPane(): React.JSX.Element {
               <input
                 type="checkbox"
                 checked={autoUpgradeEnabled}
+                disabled={!desktopUpdatePolicy.enabled}
                 onChange={(e) => void handleAutoUpgradeChange(e.target.checked)}
               />
               <span className="tools-toggle-track" />
@@ -150,6 +163,7 @@ function DesktopUpdateButton({
   percent,
   onCheck,
   onAct,
+  disabled,
 }: {
   state:
     | "available"
@@ -163,6 +177,7 @@ function DesktopUpdateButton({
   percent: number | null;
   onCheck: () => void;
   onAct: () => void;
+  disabled: boolean;
 }): React.JSX.Element {
   const { t } = useI18n();
 
@@ -202,7 +217,7 @@ function DesktopUpdateButton({
   }
   // null, "uptodate", or "error" → offer a (re)check.
   return (
-    <button className="btn btn-secondary" onClick={onCheck}>
+    <button className="btn btn-secondary" onClick={onCheck} disabled={disabled}>
       <RefreshCw size={14} />
       {state === "error" ? t("settings.retry") : t("settings.checkForUpdates")}
     </button>

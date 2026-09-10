@@ -5,7 +5,7 @@
 **一个原生桌面工作区：在多个 AI 智能体之间协调对话、任务、项目与产物。**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#安装)
+[![Platform](https://img.shields.io/badge/Alpha-Windows%20x64-blue.svg)](#安装)
 
 </div>
 
@@ -38,7 +38,7 @@ Agents One 是一款桌面应用，把**本地 CLI 智能体**（Pi、Codex、Cl
 
 ### 安装
 
-从 [Releases](https://github.com/pkulyn/agents-one/releases) 页面下载最新版本。首次启动时 Windows SmartScreen 可能提示安装包未签名——点击 **更多信息** → **仍要运行**。
+首个公开 Alpha **仅面向 Windows x64**。请从 [Releases](https://github.com/pkulyn/agents-one/releases) 页面下载安装包或便携包，并根据 `SHA256SUMS.txt` 核对 SHA-256。Alpha 尚未签名，首次启动时 Windows SmartScreen 可能告警；仅在校验值一致后点击 **更多信息** → **仍要运行**。未签名构建默认关闭自动更新；本次 Alpha 不发布 macOS/Linux 资产。
 
 ### 添加你的第一个智能体
 

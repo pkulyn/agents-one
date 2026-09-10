@@ -10,6 +10,7 @@ function renderAbout(overrides: Partial<SettingsData> = {}): void {
     appVersion: "0.1.0",
     autoUpgradeEnabled: true,
     autoUpgradeSaved: false,
+    desktopUpdatePolicy: { enabled: true, reason: null },
     handleAutoUpgradeChange: vi.fn(),
     desktopUpdateState: null,
     desktopUpdateVersion: null,
@@ -48,5 +49,18 @@ describe("AboutPane", () => {
       screen.getByRole("button", { name: /检查更新|Check for updates/i }),
     );
     expect(checkDesktopUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("warns and disables update controls for an unsigned Alpha build", () => {
+    renderAbout({
+      autoUpgradeEnabled: false,
+      desktopUpdatePolicy: { enabled: false, reason: "unsigned-build" },
+    });
+
+    expect(screen.getByText(/未签名|unsigned Alpha/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /检查更新|Check for updates/i }),
+    ).toBeDisabled();
+    expect(screen.getByRole("checkbox")).toBeDisabled();
   });
 });
