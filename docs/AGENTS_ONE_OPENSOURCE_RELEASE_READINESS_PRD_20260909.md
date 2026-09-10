@@ -89,7 +89,7 @@ Agents One 的主要产品能力已经齐备：多 Runtime 接入、统一任务
 
 ## 6. 工作包与验收标准
 
-> 执行状态（2026-09-10）：**OR-0、OR-1、OR-2 与 OR-3 已完成**。OR-001～009 的仓库基线、安全审计、恢复标签和目录独立化证据见[目录独立化验收记录](./AGENTS_ONE_DIRECTORY_MIGRATION_AUDIT_20260910.md)与[全历史安全审计](./AGENTS_ONE_GIT_HISTORY_SECURITY_AUDIT_20260910.md)；后续工作只在 `D:\Projects\Agents-One` 推进，旧目录保留为只读恢复副本。OR-101～105 已在固定提交 `0f10679` 将既有 82 项测试失败和 11 项 ESLint error 归零，并连续三轮通过 typecheck、209/209 测试文件、完整 lint 与生产 build，详见[OR-1 门禁恢复验收记录](./AGENTS_ONE_OR1_GATE_RECOVERY_AUDIT_20260910.md)。OR-201～205 已完成桌面 Remote Token 的操作系统保护、Windows Connector DPAPI、Linux 无安全后端提示、事实一致的 README/`SECURITY.md` 与安全失败路径回归，详见[OR-2 安全验收记录](./AGENTS_ONE_OR2_SECURITY_READINESS_AUDIT_20260910.md)。OR-301～304 已将内置网页 Provider 设为公开默认禁用，补齐逐 Provider 合规记录、显式风险确认、一键停用及隔离/退出回归；全量测试现为 212/212 文件通过，详见[OR-3 验收记录](./AGENTS_ONE_OR3_WEB_AGENT_COMPLIANCE_AUDIT_20260910.md)。目标 GitHub 目前不存在或当前账号不可见，因此首次推送、远端保护规则和 Private Vulnerability Reporting 的实际应用仍是公开发布前外部验收项。下一阶段进入 OR-4 依赖、锁文件与构建质量。
+> 执行状态（2026-09-10）：**OR-0、OR-1、OR-2、OR-3 与 OR-4 已完成**。OR-001～009 的仓库基线、安全审计、恢复标签和目录独立化证据见[目录独立化验收记录](./AGENTS_ONE_DIRECTORY_MIGRATION_AUDIT_20260910.md)与[全历史安全审计](./AGENTS_ONE_GIT_HISTORY_SECURITY_AUDIT_20260910.md)；后续工作只在 `D:\Projects\Agents-One` 推进，旧目录保留为只读恢复副本。OR-101～105 已在固定提交 `0f10679` 将既有 82 项测试失败和 11 项 ESLint error 归零，并连续三轮通过 typecheck、209/209 测试文件、完整 lint 与生产 build，详见[OR-1 门禁恢复验收记录](./AGENTS_ONE_OR1_GATE_RECOVERY_AUDIT_20260910.md)。OR-201～205 已完成桌面 Remote Token 的操作系统保护、Windows Connector DPAPI、Linux 无安全后端提示、事实一致的 README/`SECURITY.md` 与安全失败路径回归，详见[OR-2 安全验收记录](./AGENTS_ONE_OR2_SECURITY_READINESS_AUDIT_20260910.md)。OR-301～304 已将内置网页 Provider 设为公开默认禁用，补齐逐 Provider 合规记录、显式风险确认、一键停用及隔离/退出回归，详见[OR-3 验收记录](./AGENTS_ONE_OR3_WEB_AGENT_COMPLIANCE_AUDIT_20260910.md)。OR-401～405 已删除无消费者依赖、将完整 npm audit 归零、验证最终 lockfile 干净安装、建立体积报告并把当前 38 项子项目测试纳入根级入口与 CI，详见[OR-4 验收记录](./AGENTS_ONE_OR4_DEPENDENCY_BUILD_AUDIT_20260910.md)。目标 GitHub 目前不存在或当前账号不可见，因此首次推送、远端保护规则和 Private Vulnerability Reporting 的实际应用仍是公开发布前外部验收项。下一阶段进入 OR-5 CI、打包与发布链路。
 
 ### OR-0：Git 基线与仓库卫生（P0）
 
@@ -185,7 +185,7 @@ OR-0 的强制串行顺序为：**OR-001 → OR-002 → OR-008/009 → OR-003 �
 | OR-402 | 处置生产依赖漏洞         | `npm audit --omit=dev` 为 0 critical/0 high；moderate 必须修复或形成有期限、有人负责的风险接受记录                                                         |
 | OR-403 | 验证锁文件可复现         | 干净目录执行 `npm run install:clean` 成功；该入口必须基于 `npm ci` 与 lockfile，且不得要求系统级 C++ 工具链；package/lock 一致；不依赖全局或开发机私有文件 |
 | OR-404 | 建立产物体积基线         | 记录 main、renderer 主要 chunk 和 CSS 体积；本阶段不强制大重构，但新增回归需有解释                                                                         |
-| OR-405 | 统一子项目验证入口       | Plugin SDK、Connector、Connect Service 的 34 项测试进入根级脚本与 CI                                                                                       |
+| OR-405 | 统一子项目验证入口       | Plugin SDK、Connector、Connect Service 的当前 38 项测试进入根级脚本与 CI                                                                                   |
 
 ### OR-5：CI、打包与发布链路（P0）
 

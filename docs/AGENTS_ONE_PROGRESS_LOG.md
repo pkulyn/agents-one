@@ -1,5 +1,14 @@
 # Agents One 项目进展日志
 
+## 2026-09-10：OR-4 依赖、锁文件与构建质量完成
+
+- 依赖清理：全库导入扫描确认 `ethers`、`@react-three/drei`、`@react-three/fiber`、`three`、`troika-three-text`、`react-file-icon` 与 `@types/three` 无代码消费者，已从 package/lock 删除；同时移除 30 行无消费者的旧文件图标 CSS。
+- 漏洞收口：初始生产审计 2 high/4 moderate；删除无用链并更新安全版传递依赖后，`npm audit` 完整开发/生产树为 0 vulnerability。Vitest/Vite 在同一主版本内升级到 4.1.11/7.3.6，esbuild 落锁为 0.28.2。
+- 可复现安装：使用最终 package/lock 在独立非硬链接临时克隆运行 `npm run install:clean`，932 个包安装、完整 audit、Node/Electron SQLite 3.53.4 双探针均通过，无系统 C++ 工具链；临时目录经边界校验后删除。
+- 子项目入口：根级新增 `test:subprojects`/`test:all`，Linux CI 纳入 Plugin SDK 22、Connector 8、Connect Service 8，共 38 项测试；PRD 原“34 项”已按当前发现数校正。
+- 体积基线：新增 `npm run size:report`。当前 main 1,366,779 bytes、preload 37,979 bytes、renderer 13,324,750 bytes；主要 Renderer JS 为 4,323,996 与 2,453,479 bytes，CSS 为 384,006 bytes，本阶段不做高风险拆包。
+- 验证：统一入口下主工程 212/212 文件、2,067 passed、9 skipped、0 failed，子项目 38/38；typecheck、0-error lint、生产 build、完整 audit、最终 lockfile 干净安装、`lat check` 与 `git diff --check` 均通过。详见[OR-4 验收记录](./AGENTS_ONE_OR4_DEPENDENCY_BUILD_AUDIT_20260910.md)。下一步进入 OR-5 CI、打包与发布链路。
+
 ## 2026-09-10：OR-3 Web Agent 合规与默认边界完成
 
 - 默认策略：内置豆包、ChatGPT、Grok Provider 在公开构建中默认不可用；登录窗口、健康探测、普通任务和计划任务均受同一主进程门禁约束。只有设置本地实验环境开关并由用户阅读风险后明确确认，才可执行网页自动化。
