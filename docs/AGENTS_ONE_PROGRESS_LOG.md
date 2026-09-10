@@ -1,5 +1,15 @@
 # Agents One 项目进展日志
 
+## 2026-09-10：OR-5 Windows x64 Alpha 发布链路本地收口
+
+- 首发决策：公开 Alpha 仅面向 Windows x64，版本为 `v0.1.0-alpha.1`；44 个 Hermes 上游时代 `v*` tag 不推送到 Agents One 新公共仓库。README 中英文入口已同步平台、未签名、校验值和无自动更新边界。
+- 发布隔离：`release.yml` 删除普通 `release` 分支 push，改为固定 ref/SHA 的手动工作流；默认只生成 14 天候选 artifact，只有显式 `publish_draft=true` 且通过 `release` Environment 才申请写权限并创建草稿 Release。`rc1-windows.yml` 复用同一门禁。
+- 门禁：新增全仓 `format:check`，以独立 `4ddb1db` 机械化提交建立 Prettier 基线；统一链路包含干净安装、lockfile/工作区不变校验、类型、零错误 lint、主测试、对话/配置路径测试、38 项子项目测试、完整 audit、build、Windows 打包、启动冒烟和 SHA-256。
+- 更新安全：未签名、便携和开发构建在主进程 fail-closed；只有编译时明确启用的签名非便携构建可以加载 `electron-updater`。设置页显示未签名警告并禁用更新控件，缺失或损坏偏好默认关闭。
+- 自动验证：全仓格式、Node/Web TypeScript、ESLint 0 error、完整 audit 0 vulnerability、生产 build 通过；主工程 213/213 文件、2,071 passed/9 skipped，子项目 38/38 passed。相关更新器/设置/preload/IPC 定向回归 226 项通过。
+- 本机候选：NSIS 197,320,347 字节、portable 197,133,974 字节；解包应用真实启动 12 秒并写入隔离 `userData`，Authenticode 为 `NotSigned`。详细 SHA-256 与证据见 `docs/AGENTS_ONE_OR5_WINDOWS_ALPHA_RELEASE_AUDIT_20260910.md`。
+- 未完成边界：目标 `pkulyn/agents-one` 仍不存在或当前账号不可见，因此未执行 GitHub Windows runner、Environment 审批、草稿 Release 及安装/升级/卸载/回滚验证。OR-500～506 已完成，OR-507 保持待验收；当前不得公开发布，本地转入 OR-6。
+
 ## 2026-09-10：OR-4 依赖、锁文件与构建质量完成
 
 - 依赖清理：全库导入扫描确认 `ethers`、`@react-three/drei`、`@react-three/fiber`、`three`、`troika-three-text`、`react-file-icon` 与 `@types/three` 无代码消费者，已从 package/lock 删除；同时移除 30 行无消费者的旧文件图标 CSS。
