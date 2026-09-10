@@ -205,6 +205,20 @@ export function setEnvValue(
   safeWriteFile(envFile, lines.join("\n"));
 }
 
+/** Remove one legacy plaintext entry without disturbing comments/other keys. */
+export function deleteEnvValue(key: string, profile?: string): void {
+  validateEnvEntry(key, "");
+  const { envFile } = profilePaths(profile);
+  invalidateCache(`env:${profile || "default"}`);
+  if (!existsSync(envFile)) return;
+  const matcher = new RegExp(`^#?\\s*${escapeRegex(key)}\\s*=`);
+  const content = readFileSync(envFile, "utf-8");
+  const lines = content
+    .split("\n")
+    .filter((line) => !matcher.test(line.trim()));
+  safeWriteFile(envFile, lines.join("\n"));
+}
+
 export function validateEnvEntry(key: string, value: string): void {
   if (!ENV_KEY_RE.test(key)) {
     throw new Error(

@@ -445,19 +445,27 @@ const agentsOneAPI = {
     ipcRenderer.invoke("remove-agent-runtime", id),
   getAgentRuntimeCredentialStatus: (
     id: string,
-  ): Promise<{ required: boolean; configured: boolean }> =>
-    ipcRenderer.invoke("get-agent-runtime-credential-status", id),
+  ): Promise<{
+    required: boolean;
+    configured: boolean;
+    storage?: {
+      protection: "os-protected" | "legacy-fallback" | "unavailable";
+      backend: string;
+      warning?: string;
+      unreadable?: boolean;
+    };
+  }> => ipcRenderer.invoke("get-agent-runtime-credential-status", id),
   getAgentRuntimeDiagnostics: (id: string): Promise<AgentRuntimeDiagnostics> =>
     ipcRenderer.invoke("get-agent-runtime-diagnostics", id),
   setAgentRuntimeBearerToken: (
     id: string,
     bearerToken: string,
-  ): Promise<{ configured: true }> =>
+  ): Promise<{ configured: true; storage?: { warning?: string } }> =>
     ipcRenderer.invoke("set-agent-runtime-bearer-token", id, bearerToken),
   setAgentRuntimeWorkspaceGatewayToken: (
     id: string,
     bearerToken: string,
-  ): Promise<{ configured: true }> =>
+  ): Promise<{ configured: true; storage?: { warning?: string } }> =>
     ipcRenderer.invoke(
       "set-agent-runtime-workspace-gateway-token",
       id,
