@@ -14,8 +14,12 @@ Thanks for your interest in contributing to Agents One! Whether it's a bug fix, 
 2. **Install dependencies:**
 
    ```bash
-   npm install
+   npm run install:clean
    ```
+
+   This reproducible installer uses the lockfile, installs Electron explicitly,
+   and verifies SQLite under both Node.js and Electron without requiring a local
+   C++ build toolchain.
 
 3. **Start the app in development mode:**
 

@@ -33,8 +33,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies and native modules
-        run: npm ci
+      - name: Install dependencies
+        run: npm run install:clean
 
       - name: Verify Electron runtime
         shell: pwsh
@@ -42,8 +42,10 @@ jobs:
           $electron = Get-Content node_modules/electron/package.json -Raw | ConvertFrom-Json
           if ($electron.version -ne "43.4.1") { throw "Unexpected Electron version: $($electron.version)" }
           if (-not (Test-Path node_modules/electron/dist/electron.exe)) { throw "Electron binary is missing" }
-          if (-not (Test-Path node_modules/better-sqlite3/build/Release/better_sqlite3.node)) { throw "better-sqlite3 native binary is missing" }
+          if (-not (Test-Path node_modules/better-sqlite3/prebuilds/win32-x64.node)) { throw "better-sqlite3 Windows x64 prebuilt binary is missing" }
           node_modules/.bin/electron.cmd --version
+          $env:ELECTRON_RUN_AS_NODE = "1"
+          node_modules/electron/dist/electron.exe -e "const Database=require('better-sqlite3');const db=new Database(':memory:');db.prepare('select 1').get();db.close()"
 
       - name: Typecheck
         run: npm run typecheck

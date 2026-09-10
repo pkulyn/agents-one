@@ -8,7 +8,7 @@ describe("sidebar project grouping", () => {
         {
           id: "legacy-task",
           title: "旧任务",
-          contextFolder: "D:\\pkulyn_vault",
+          contextFolder: "D:\\workspace\\vault",
           updatedAt: 1,
         },
         {
@@ -22,7 +22,7 @@ describe("sidebar project grouping", () => {
       [
         {
           id: "project-pkulyn",
-          path: "D:\\pkulyn_vault",
+          path: "D:\\workspace\\vault",
           name: "pkulyn_vault",
           createdAt: 1,
           updatedAt: 3,

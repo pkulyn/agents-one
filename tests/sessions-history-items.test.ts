@@ -415,7 +415,7 @@ describe("expandRowsToHistory", () => {
         content:
           "[The user attached an image but analysis failed.]\n" +
           "[You can examine it with vision_analyze using image_url:\n" +
-          "C:\\Users\\pmos6\\image.png]\n\n" +
+          "C:\\Users\\tester\\image.png]\n\n" +
           "what is this?",
         timestamp: 1,
       }),
@@ -425,7 +425,7 @@ describe("expandRowsToHistory", () => {
 
     expect(merged[0]).toMatchObject({ kind: "user" });
     expect((merged[0] as Extract<HistoryItem, { kind: "user" }>).content).toContain(
-      "C:\\Users\\pmos6\\image.png",
+      "C:\\Users\\tester\\image.png",
     );
     expect("attachments" in merged[0]).toBe(false);
   });

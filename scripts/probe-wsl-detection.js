@@ -1,12 +1,15 @@
 // Standalone probe — does Node's fs see \\wsl$\... paths?
 const fs = require("fs");
+const distro = process.env.WSL_PROBE_DISTRO || "Ubuntu";
+const user = process.env.WSL_PROBE_USER || "user";
+const home = `\\\\wsl$\\${distro}\\home\\${user}`;
 const tests = [
   "\\\\wsl$\\",
-  "\\\\wsl$\\Ubuntu-24.04",
-  "\\\\wsl$\\Ubuntu-24.04\\home",
-  "\\\\wsl$\\Ubuntu-24.04\\home\\pmos69",
-  "\\\\wsl$\\Ubuntu-24.04\\home\\pmos69\\.hermes",
-  "\\\\wsl$\\Ubuntu-24.04\\home\\pmos69\\.hermes\\.env",
+  `\\\\wsl$\\${distro}`,
+  `\\\\wsl$\\${distro}\\home`,
+  home,
+  `${home}\\.hermes`,
+  `${home}\\.hermes\\.env`,
 ];
 for (const p of tests) {
   try {

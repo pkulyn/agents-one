@@ -248,7 +248,7 @@ describe("listProfiles", () => {
     const err = new Error("Command failed");
     Object.assign(err, {
       stdout: Buffer.from(
-        "Error: Profile 'test2' already exists at C:\\Users\\pmos6\\AppData\\Local\\hermes\\profiles\\test2\n",
+        "Error: Profile 'test2' already exists at C:\\Users\\tester\\AppData\\Local\\hermes\\profiles\\test2\n",
       ),
       stderr: Buffer.from(""),
     });
@@ -260,7 +260,7 @@ describe("listProfiles", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe(
-      "Error: Profile 'test2' already exists at C:\\Users\\pmos6\\AppData\\Local\\hermes\\profiles\\test2",
+      "Error: Profile 'test2' already exists at C:\\Users\\tester\\AppData\\Local\\hermes\\profiles\\test2",
     );
   });
 

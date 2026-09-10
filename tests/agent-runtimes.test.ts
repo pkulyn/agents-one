@@ -2541,7 +2541,7 @@ describe("agent runtime registry", () => {
       location: "local",
       enabled: true,
       config: {
-        executablePath: "D:\\efunds\\nodejs\\claude.cmd",
+        executablePath: "D:\\portable-node\\claude.cmd",
         transport: "cli",
         workspace: testHome,
         timeoutMs: 10_000,
@@ -2608,7 +2608,7 @@ describe("agent runtime registry", () => {
     });
     expect(startClaudeCodeProcessMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        executablePath: "D:\\efunds\\nodejs\\claude.cmd",
+        executablePath: "D:\\portable-node\\claude.cmd",
       }),
       expect.objectContaining({ mode: "implementation", workspace: testHome }),
       expect.any(Function),
@@ -2906,7 +2906,7 @@ describe("agent runtime registry", () => {
         location: "local",
         enabled: true,
         config: {
-          executablePath: "D:\\efunds\\nodejs\\claude.cmd",
+          executablePath: "D:\\portable-node\\claude.cmd",
           transport: "cli",
           workspace: testHome,
           timeoutMs: 1_000,
@@ -3055,7 +3055,7 @@ describe("agent runtime registry", () => {
                   type: "toolCall",
                   name: "write",
                   arguments: {
-                    path: "D:/Agent Console/Agents-One/.sandbox/report.md",
+                    path: "C:/workspace/agents-one/.sandbox/report.md",
                     content: "# report",
                   },
                 },
@@ -3077,7 +3077,7 @@ describe("agent runtime registry", () => {
               content: [
                 {
                   type: "text",
-                  text: "Successfully wrote 8 bytes to D:/Agent Console/Agents-One/.sandbox/report.md",
+                  text: "Successfully wrote 8 bytes to C:/workspace/agents-one/.sandbox/report.md",
                 },
               ],
             },
@@ -3128,12 +3128,12 @@ describe("agent runtime registry", () => {
         expect.objectContaining({
           type: "tool_call",
           summary:
-            "Pi Agent 调用 write：D:/Agent Console/Agents-One/.sandbox/report.md",
+            "Pi Agent 调用 write：C:/workspace/agents-one/.sandbox/report.md",
           tool: expect.objectContaining({
             name: "write",
             kind: "tool",
             inputSummary: expect.stringContaining(
-              "D:/Agent Console/Agents-One/.sandbox/report.md",
+              "C:/workspace/agents-one/.sandbox/report.md",
             ),
           }),
         }),
@@ -3145,7 +3145,7 @@ describe("agent runtime registry", () => {
         expect.objectContaining({
           type: "tool_result",
           summary:
-            "Pi Agent write 结果：Successfully wrote 8 bytes to D:/Agent Console/Agents-One/.sandbox/report.md",
+            "Pi Agent write 结果：Successfully wrote 8 bytes to C:/workspace/agents-one/.sandbox/report.md",
           tool: expect.objectContaining({
             name: "write",
             outputSummary: expect.stringContaining(

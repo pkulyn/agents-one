@@ -7,7 +7,7 @@ const path = require("path");
 // For now, replicate the logic in plain JS to confirm the *approach*.
 
 const { execFileSync } = require("child_process");
-const { existsSync, statSync } = require("fs");
+const { existsSync, readdirSync, statSync } = require("fs");
 
 const WSL_EXE = "C:\\Windows\\System32\\wsl.exe";
 
@@ -37,14 +37,15 @@ for (const distro of listDistros()) {
   console.log(`Distro ${distro}:`);
   console.log("  homesRoot exists:", existsSync(homesRoot));
   if (!existsSync(homesRoot)) continue;
-  // Try the user we know is in WSL — pmos69
-  const known = `${homesRoot}\\pmos69\\.hermes`;
-  console.log(`  ${known} exists:`, existsSync(known));
-  if (existsSync(known)) {
-    console.log("  is dir:", statSync(known).isDirectory());
-    console.log("  contents:");
-    for (const f of require("fs").readdirSync(known)) {
-      console.log("    -", f);
+  for (const user of readdirSync(homesRoot)) {
+    const candidate = `${homesRoot}\\${user}\\.hermes`;
+    if (!existsSync(candidate)) continue;
+    console.log(`  ${candidate} exists: true`);
+    if (statSync(candidate).isDirectory()) {
+      console.log("  contents:");
+      for (const f of readdirSync(candidate)) {
+        console.log("    -", f);
+      }
     }
   }
 }

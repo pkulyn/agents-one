@@ -224,13 +224,13 @@ describe("buildUserContent", () => {
     const result = buildUserContent("summarize this", [
       pathRef(
         "report.pdf",
-        "C:/Users/pmos6/Downloads/report.pdf",
+        "C:/Users/tester/Downloads/report.pdf",
         "application/pdf",
       ),
     ]);
     expect(typeof result).toBe("string");
     expect(result).toBe(
-      "summarize this\n\n[Attached file: C:/Users/pmos6/Downloads/report.pdf]",
+      "summarize this\n\n[Attached file: C:/Users/tester/Downloads/report.pdf]",
     );
   });
 

@@ -32,10 +32,10 @@ const WSL_EXE = "C:\\Windows\\System32\\wsl.exe";
 export interface SiblingHermesHome {
   /** WSL distro name, e.g. "Ubuntu". */
   distro: string;
-  /** Linux user the home dir belongs to, e.g. "pmos6". */
+  /** Linux user the home dir belongs to, e.g. "alice". */
   user: string;
   /** UNC-style path to the .hermes directory on the WSL fs, e.g.
-   *  `\\wsl$\Ubuntu\home\pmos6\.hermes`. Always uses backslashes
+   *  `\\wsl$\Ubuntu\home\alice\.hermes`. Always uses backslashes
    *  because that's what UNC + Node `fs` expect on Windows. */
   hermesHome: string;
 }

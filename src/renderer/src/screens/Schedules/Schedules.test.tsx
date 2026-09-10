@@ -314,7 +314,7 @@ describe("Runtime schedules", () => {
     listProjectFolders.mockResolvedValueOnce([
       {
         id: "project-pkulyn",
-        path: "D:\\pkulyn_vault",
+        path: "D:\\workspace\\vault",
         name: "pkulyn_vault",
         createdAt: 1,
         updatedAt: 1,
@@ -327,7 +327,7 @@ describe("Runtime schedules", () => {
 
     expect(
       screen.getByPlaceholderText("留空进行普通对话；需要读写文件时再选择"),
-    ).toHaveValue("D:\\pkulyn_vault");
+    ).toHaveValue("D:\\workspace\\vault");
     expect(screen.getByRole("combobox", { name: "最长执行时长" })).toHaveValue(
       "7200000",
     );
@@ -336,7 +336,7 @@ describe("Runtime schedules", () => {
       expect(updateTaskSchedule).toHaveBeenCalledWith(
         "schedule-workspace",
         expect.objectContaining({
-          workspace: "D:\\pkulyn_vault",
+          workspace: "D:\\workspace\\vault",
           workspaceId: "project-pkulyn",
           timeoutMs: 7_200_000,
         }),
