@@ -274,6 +274,9 @@ export default function AgentRuntimesPane({
   const [workspaceGatewayToken, setWorkspaceGatewayToken] = useState("");
   const [credentialRevision, setCredentialRevision] = useState(0);
   const [credentialConfigured, setCredentialConfigured] = useState(false);
+  const [credentialStorageWarning, setCredentialStorageWarning] = useState<
+    string | null
+  >(null);
   const [draftProbe, setDraftProbe] = useState<AgentRuntimeProbe | null>(null);
   const [draftProbeKey, setDraftProbeKey] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] =
@@ -469,8 +472,10 @@ export default function AgentRuntimesPane({
       const status =
         await window.agentsOneAPI.getAgentRuntimeCredentialStatus(runtimeId);
       setCredentialConfigured(status.configured);
+      setCredentialStorageWarning(status.storage?.warning || null);
     } catch {
       setCredentialConfigured(false);
+      setCredentialStorageWarning(null);
     }
   }
 
@@ -766,10 +771,11 @@ export default function AgentRuntimesPane({
       return;
     }
     try {
-      const preview = await window.agentsOneAPI.previewAgentsOneConnectPairingCode(
-        code,
-        draft.id.trim() || undefined,
-      );
+      const preview =
+        await window.agentsOneAPI.previewAgentsOneConnectPairingCode(
+          code,
+          draft.id.trim() || undefined,
+        );
       setConnectorPairingPreview(preview);
       setFlash("已找到远端设备，请核对设备指纹和 Runtime 清单后确认接入。");
     } catch (err) {
@@ -993,7 +999,8 @@ export default function AgentRuntimesPane({
   }
 
   async function clearWebAgentLogin(): Promise<void> {
-    if (!selectedRuntime || !window.agentsOneAPI.clearWebAgentRuntimeLogin) return;
+    if (!selectedRuntime || !window.agentsOneAPI.clearWebAgentRuntimeLogin)
+      return;
     setBusy("remove");
     try {
       await window.agentsOneAPI.clearWebAgentRuntimeLogin(selectedRuntime.id);
@@ -1069,13 +1076,14 @@ export default function AgentRuntimesPane({
     if (!selectedRuntime || !bearerToken.trim()) return;
     setSavingCredential(true);
     try {
-      await window.agentsOneAPI.setAgentRuntimeBearerToken(
+      const result = await window.agentsOneAPI.setAgentRuntimeBearerToken(
         selectedRuntime.id,
         bearerToken,
       );
       setBearerToken("");
       setCredentialRevision(0);
       setCredentialConfigured(true);
+      setCredentialStorageWarning(result.storage?.warning || null);
       setFlash(`${credentialLabel}已保存。`);
     } catch (err) {
       setFlash((err as Error).message || "无法保存 Bridge 凭据。");
@@ -2029,6 +2037,11 @@ export default function AgentRuntimesPane({
                           <span className="settings-field-hint">
                             手动接入时填写；使用配对码成功后会自动安全保存。
                           </span>
+                          {credentialStorageWarning && (
+                            <span className="settings-field-hint">
+                              安全存储提示：{credentialStorageWarning}
+                            </span>
+                          )}
                         </label>
                         {selectedRuntime && (
                           <div className="settings-card-actions">

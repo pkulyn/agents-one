@@ -66,7 +66,16 @@ import {
 } from "./pi-runtime";
 import { randomUUID } from "crypto";
 import { getSecret } from "./secrets";
-import { invalidateSecretsCache, setEnvValue } from "./config";
+import {
+  deleteEnvValue,
+  invalidateSecretsCache,
+  readEnv,
+  setEnvValue,
+} from "./config";
+import {
+  desktopSecretStore,
+  type DesktopSecretStatus,
+} from "./desktop-secret-store";
 import { redactSensitiveText } from "../shared/redaction";
 import {
   MAX_REMOTE_WORKSPACE_TIMEOUT_MS,
@@ -1744,7 +1753,9 @@ function runtimeHermesConnectionFrom(
 ): NonNullable<AgentRuntimeConfig["hermes"]> | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) {
-    throw new Error("Hermes Agent Runtime connection configuration is invalid.");
+    throw new Error(
+      "Hermes Agent Runtime connection configuration is invalid.",
+    );
   }
   // Legacy SSH/remote modes were removed (plan D4/D5) — the unified remote
   // transport is Gateway v1. Old persisted modes are read as local; legacy
@@ -2232,9 +2243,8 @@ function runtimeAuth(
 ): { bearerToken?: string } | undefined {
   if (runtime.needsReauthorization) return undefined;
   if (isAgentsOneGatewayRuntime(runtime)) {
-    const token = (
-      getSecret(agentsOneGatewayTokenSecretKey(runtime.id)) || ""
-    ).trim();
+    const key = agentsOneGatewayTokenSecretKey(runtime.id);
+    const token = (readDesktopManagedRuntimeSecret(key) || "").trim();
     return token ? { bearerToken: token } : undefined;
   }
 
@@ -2244,18 +2254,54 @@ function runtimeAuth(
 export function getAgentRuntimeCredentialStatus(runtimeId: string): {
   required: boolean;
   configured: boolean;
+  storage?: DesktopSecretStatus;
 } {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!runtime) throw new Error("Runtime was not found.");
   if (!isAgentsOneGatewayRuntime(runtime)) {
     return { required: false, configured: false };
   }
+  const key = agentsOneGatewayTokenSecretKey(runtime.id);
+  const configuredValue = readDesktopManagedRuntimeSecret(key);
+  const storage = desktopSecretStore()?.status(key);
   return {
     required: true,
     configured:
-      runtime.needsReauthorization !== true &&
-      Boolean(getSecret(agentsOneGatewayTokenSecretKey(runtime.id))),
+      runtime.needsReauthorization !== true && Boolean(configuredValue),
+    ...(storage ? { storage } : {}),
   };
+}
+
+function readDesktopManagedRuntimeSecret(key: string): string | null {
+  const injected = process.env[key];
+  if (injected != null && injected !== "") return injected;
+  const store = desktopSecretStore();
+  if (!store) return getSecret(key);
+  const protectedOrLegacy = store.get(key, {
+    // Only migrate the legacy value that the desktop itself wrote to .env.
+    // Process-injected and command-provider values remain externally managed.
+    read: () => readEnv()[key] || null,
+    remove: () => {
+      deleteEnvValue(key);
+      invalidateSecretsCache();
+    },
+  });
+  return protectedOrLegacy || getSecret(key);
+}
+
+function writeDesktopManagedRuntimeSecret(
+  key: string,
+  value: string,
+): DesktopSecretStatus | undefined {
+  const store = desktopSecretStore();
+  if (!store || !store.protector.available) {
+    setEnvValue(key, value);
+    return store?.status(key);
+  }
+  return store.set(key, value, {
+    read: () => readEnv()[key] || null,
+    remove: () => deleteEnvValue(key),
+  });
 }
 
 function markRuntimeReauthorized(runtimeId: string): void {
@@ -2271,6 +2317,7 @@ export function setAgentRuntimeBearerToken(
   bearerToken: string,
 ): {
   configured: true;
+  storage?: DesktopSecretStatus;
 } {
   const runtime = remoteRuntimeForCredential(runtimeId);
   if (
@@ -2281,18 +2328,21 @@ export function setAgentRuntimeBearerToken(
   ) {
     throw new Error("Remote agent credential is invalid.");
   }
-  setEnvValue(agentsOneGatewayTokenSecretKey(runtime.id), bearerToken.trim());
+  const storage = writeDesktopManagedRuntimeSecret(
+    agentsOneGatewayTokenSecretKey(runtime.id),
+    bearerToken.trim(),
+  );
   markRuntimeReauthorized(runtimeId);
   invalidateSecretsCache();
   invalidateRuntimeCommandCatalog(runtimeId);
-  return { configured: true };
+  return { configured: true, ...(storage ? { storage } : {}) };
 }
 
 /** Stores the credential used only by a separately hosted workspace gateway. */
 export function setAgentRuntimeWorkspaceGatewayToken(
   runtimeId: string,
   bearerToken: string,
-): { configured: true } {
+): { configured: true; storage?: DesktopSecretStatus } {
   const runtime = remoteRuntimeForCredential(runtimeId);
   if (
     typeof bearerToken !== "string" ||
@@ -2302,10 +2352,13 @@ export function setAgentRuntimeWorkspaceGatewayToken(
   ) {
     throw new Error("Remote workspace gateway credential is invalid.");
   }
-  setEnvValue(workspaceGatewayTokenSecretKey(runtime.id), bearerToken.trim());
+  const storage = writeDesktopManagedRuntimeSecret(
+    workspaceGatewayTokenSecretKey(runtime.id),
+    bearerToken.trim(),
+  );
   invalidateSecretsCache();
   invalidateRuntimeCommandCatalog(runtimeId);
-  return { configured: true };
+  return { configured: true, ...(storage ? { storage } : {}) };
 }
 
 function remoteWorkspaceInstruction(
@@ -3992,7 +4045,9 @@ async function probeRuntimeDefinition(
       state: healthy ? "healthy" : "unreachable",
       capabilities: healthy ? capabilities : NO_AGENT_RUNTIME_CAPABILITIES,
       checkedAt,
-      ...(healthy ? {} : { message: "本地 Hermes Agent Runtime 健康检查失败。" }),
+      ...(healthy
+        ? {}
+        : { message: "本地 Hermes Agent Runtime 健康检查失败。" }),
     };
   }
 

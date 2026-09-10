@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, shell } from "electron";
+import { app, BrowserWindow, safeStorage, session, shell } from "electron";
 import { join } from "path";
 import { optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../../resources/icon.png?asset";
@@ -40,6 +40,10 @@ import {
   logApplicationDiagnostic,
   logErrorDiagnostic,
 } from "../agents-one-logs";
+import {
+  configureDesktopSecretStore,
+  DesktopSecretStore,
+} from "../desktop-secret-store";
 
 const APP_NAME =
   process.env.AGENTS_ONE_APP_NAME?.trim() ||
@@ -141,6 +145,33 @@ export function startMainProcess(): void {
   });
 
   app.whenReady().then(() => {
+    const backend =
+      process.platform === "linux"
+        ? safeStorage.getSelectedStorageBackend()
+        : process.platform === "win32"
+          ? "dpapi"
+          : "keychain";
+    const available =
+      safeStorage.isEncryptionAvailable() && backend !== "basic_text";
+    configureDesktopSecretStore(
+      new DesktopSecretStore(
+        join(app.getPath("userData"), "protected-secrets.json"),
+        {
+          available,
+          backend,
+          ...(available
+            ? {}
+            : {
+                warning:
+                  backend === "basic_text"
+                    ? "No Linux keyring is available; credentials remain in the legacy restricted file until a secure backend is configured."
+                    : "Operating-system credential protection is unavailable; credentials remain in the legacy restricted file.",
+              }),
+          encrypt: (value) => safeStorage.encryptString(value),
+          decrypt: (value) => safeStorage.decryptString(value),
+        },
+      ),
+    );
     // A durable restore journal is replayed before any window, scheduler or
     // writable database connection can observe a partially replaced snapshot.
     try {

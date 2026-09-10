@@ -359,18 +359,25 @@ interface AgentsOneAPI {
     appearance: AgentRuntimeAppearance,
   ) => Promise<AgentRuntimeDefinition>;
   removeAgentRuntime: (id: string) => Promise<boolean>;
-  getAgentRuntimeCredentialStatus: (
-    id: string,
-  ) => Promise<{ required: boolean; configured: boolean }>;
+  getAgentRuntimeCredentialStatus: (id: string) => Promise<{
+    required: boolean;
+    configured: boolean;
+    storage?: {
+      protection: "os-protected" | "legacy-fallback" | "unavailable";
+      backend: string;
+      warning?: string;
+      unreadable?: boolean;
+    };
+  }>;
   getAgentRuntimeDiagnostics: (id: string) => Promise<AgentRuntimeDiagnostics>;
   setAgentRuntimeBearerToken: (
     id: string,
     bearerToken: string,
-  ) => Promise<{ configured: true }>;
+  ) => Promise<{ configured: true; storage?: { warning?: string } }>;
   setAgentRuntimeWorkspaceGatewayToken: (
     id: string,
     bearerToken: string,
-  ) => Promise<{ configured: true }>;
+  ) => Promise<{ configured: true; storage?: { warning?: string } }>;
   probeAgentRuntime: (id: string) => Promise<AgentRuntimeProbe>;
   probeAgentRuntimeDraft: (
     draft: AgentRuntimeDraft,
