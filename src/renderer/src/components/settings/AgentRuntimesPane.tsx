@@ -33,6 +33,7 @@ import {
   type AgentRuntimeAdapterManifest,
 } from "../../../../shared/runtime-adapters";
 import { PROFILE_COLORS } from "../../../../shared/profileColors";
+import type { WebAgentPolicyStatus } from "../../../../shared/web-agent";
 import { dispatchAgentsOneEvent } from "../../utils/brandMigration";
 import { fileToAvatarDataUrl } from "../../utils/imageResize";
 import ConnectionPane from "./ConnectionPane";
@@ -284,6 +285,8 @@ export default function AgentRuntimesPane({
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   const [savingCredential, setSavingCredential] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  const [webAgentPolicy, setWebAgentPolicy] =
+    useState<WebAgentPolicyStatus | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   // PATH-detected local CLI executables (plan 1.5) — auto-fill the executable
   // path when the user starts a local CLI template.
@@ -332,6 +335,29 @@ export default function AgentRuntimesPane({
       .catch(() => {
         /* best-effort — detection is a convenience, not a requirement */
       });
+  }, []);
+
+  useEffect(() => {
+    if (!window.agentsOneAPI.getWebAgentPolicyStatus) {
+      setWebAgentPolicy({
+        available: false,
+        enabled: false,
+        killSwitchActive: false,
+        reason: "当前版本没有网页 Provider 安全策略接口。",
+      });
+      return;
+    }
+    window.agentsOneAPI
+      .getWebAgentPolicyStatus()
+      .then(setWebAgentPolicy)
+      .catch(() =>
+        setWebAgentPolicy({
+          available: false,
+          enabled: false,
+          killSwitchActive: false,
+          reason: "无法读取网页 Provider 安全策略。",
+        }),
+      );
   }, []);
 
   useEffect(() => {
@@ -1092,6 +1118,36 @@ export default function AgentRuntimesPane({
     }
   }
 
+  async function toggleWebAgentPolicy(): Promise<void> {
+    if (!webAgentPolicy?.available) return;
+    const enable = !webAgentPolicy.enabled;
+    if (
+      enable &&
+      !window.confirm(
+        "实验性网页 Provider 会把提示词和你选择的附件发送到第三方网页账号，网页自动化可能违反第三方条款并导致账号受限或封禁。当前项目未取得书面自动化许可。仅在你理解并自行承担这些风险时启用。",
+      )
+    ) {
+      return;
+    }
+    try {
+      const next = await window.agentsOneAPI.setWebAgentPolicyEnabled(
+        enable,
+        enable,
+      );
+      setWebAgentPolicy(next);
+      if (!next.enabled && newAgentType === "web") {
+        selectNewAgentType("remote");
+      }
+      setFlash(
+        next.enabled
+          ? "实验性网页 Provider 总开关已启用。"
+          : "网页 Provider 已停用，活动网页任务和窗口已关闭。",
+      );
+    } catch (error) {
+      setFlash((error as Error).message || "无法更新网页 Provider 总开关。");
+    }
+  }
+
   function updateConfig(
     key: keyof AgentRuntimeDraft["config"],
     value: string | number | boolean | undefined,
@@ -1331,6 +1387,30 @@ export default function AgentRuntimesPane({
         )}
 
         <div className="settings-card-body">
+          <section
+            className="settings-field-hint"
+            data-testid="web-agent-policy"
+          >
+            <strong>实验性网页 Provider（默认关闭）</strong>
+            <div>
+              提示词、所选附件和网页账号会交由第三方服务处理；自动化可能违反第三方条款并导致账号受限。当前未取得豆包、ChatGPT
+              或 Grok 的书面自动化许可。
+            </div>
+            {webAgentPolicy?.available ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                aria-pressed={webAgentPolicy.enabled}
+                onClick={() => void toggleWebAgentPolicy()}
+              >
+                {webAgentPolicy.enabled
+                  ? "一键停用网页 Provider"
+                  : "了解风险并启用"}
+              </button>
+            ) : (
+              <div>{webAgentPolicy?.reason || "正在读取安全策略…"}</div>
+            )}
+          </section>
           {selectedRuntime &&
             draft.location === "remote" &&
             usesUnifiedGateway && (
@@ -1424,6 +1504,7 @@ export default function AgentRuntimesPane({
                       type="button"
                       className={newAgentType === "web" ? "is-selected" : ""}
                       aria-pressed={newAgentType === "web"}
+                      disabled={!webAgentPolicy?.enabled}
                       onClick={() => selectNewAgentType("web")}
                     >
                       <span className="agent-onboarding-type-icon agent-onboarding-type-icon--web">

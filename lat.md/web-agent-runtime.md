@@ -4,6 +4,12 @@ Web Agent Runtime 是已落地的本地 Runtime：由 Agents One 托管隔离的
 
 完整产品范围、状态机、安全边界、测试和实施拆分见 `docs/AGENTS_ONE_WEB_AGENT_RUNTIME_PRD_20260828.md`。新增 Provider 必须通过独立适配器、隔离登录分区、域名白名单和 DOM 回归夹具接入。
 
+## Release policy
+
+公开构建默认关闭全部内置网页 Provider，且不得因探测、计划任务、历史 Runtime 配置或设置页加载而自动访问第三方网页。只有本地开发者显式设置 `AGENTS_ONE_ENABLE_EXPERIMENTAL_WEB_AGENTS=1` 后，用户才能在设置中阅读数据流、账号与封禁风险并确认启用；确认状态只记录启用值和时间，不记录网页凭据。
+
+`AGENTS_ONE_DISABLE_WEB_AGENTS=1` 是优先级更高的本机紧急停用开关。设置页的一键停用会取消活动网页任务并销毁全部 Provider 窗口；即使策略关闭，用户仍可删除 Runtime 或清除对应隔离分区的登录数据。当前不连接远端 kill-switch 或遥测服务，因此策略检查不会上传 Cookie、Token、提示词或账号信息。
+
 ## Runtime boundary
 
 该 Runtime 复用现有对话、附件暂存和事件展示，只新增 `local-web` 执行分派，不改变其他本地 CLI、Local API 或 Gateway v1 Runtime。

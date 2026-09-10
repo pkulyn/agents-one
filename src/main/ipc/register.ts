@@ -236,6 +236,8 @@ import {
   setAgentRuntimeWorkspaceGatewayToken,
   startAgentRuntimeTask,
   toRendererAgentRuntimeRun,
+  updateWebAgentPolicy,
+  webAgentPolicyStatus,
 } from "../agent-runtimes";
 import { getPiModelContextWindow } from "../pi-runtime";
 import type {
@@ -992,6 +994,12 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle("resume-web-agent-runtime-run", (_event, runId: string) =>
     resumeWebAgentRuntimeRun(runId),
+  );
+  ipcMain.handle("get-web-agent-policy-status", () => webAgentPolicyStatus());
+  ipcMain.handle(
+    "set-web-agent-policy-enabled",
+    (_event, enabled: boolean, acknowledged?: boolean) =>
+      updateWebAgentPolicy(enabled, acknowledged),
   );
   ipcMain.handle(
     "start-agent-runtime-task",

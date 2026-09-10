@@ -27,6 +27,7 @@ import type {
   AgentRuntimeTaskInput,
 } from "../shared/agent-runtimes";
 import type { ConnectPairingPreview } from "../shared/agents-one-connect";
+import type { WebAgentPolicyStatus } from "../shared/web-agent";
 import type {
   RuntimeCommandCatalogSnapshot,
   RuntimeCommandProgress,
@@ -386,6 +387,11 @@ interface AgentsOneAPI {
   openWebAgentRuntime: (runtimeId: string) => Promise<void>;
   clearWebAgentRuntimeLogin: (runtimeId: string) => Promise<void>;
   resumeWebAgentRuntimeRun: (runId: string) => Promise<boolean>;
+  getWebAgentPolicyStatus: () => Promise<WebAgentPolicyStatus>;
+  setWebAgentPolicyEnabled: (
+    enabled: boolean,
+    acknowledged?: boolean,
+  ) => Promise<WebAgentPolicyStatus>;
   startAgentRuntimeTask: (
     runtimeId: string,
     input: AgentRuntimeTaskInput,

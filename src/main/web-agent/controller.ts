@@ -279,6 +279,15 @@ export class WebAgentController {
     }
   }
 
+  /** Stop every browser-backed task and destroy all provider windows. */
+  async disableAll(): Promise<void> {
+    for (const runId of [...this.activeRuns.keys()]) await this.cancel(runId);
+    for (const page of this.pages.values()) {
+      if (!page.window.isDestroyed()) page.window.destroy();
+    }
+    this.pages.clear();
+  }
+
   async resume(runId: string): Promise<boolean> {
     const active = this.activeRuns.get(runId);
     if (!active?.resume) return false;

@@ -128,8 +128,15 @@ import {
   WEB_AGENT_PROVIDERS,
   normalizeWebAgentProfileId,
   type WebAgentProvider,
+  type WebAgentPolicyStatus,
   type WebAgentRuntimeSettings,
 } from "../shared/web-agent";
+import {
+  getWebAgentPolicyStatus,
+  setWebAgentPolicyEnabled,
+  webAgentDisabledMessage,
+  webAgentExecutionAllowed,
+} from "./web-agent/policy";
 import {
   isRemoteOpenCodeAcpV1Enabled,
   resolveRuntimeAdapter,
@@ -3787,6 +3794,7 @@ function webAgentRuntimeFor(runtimeId: string): AgentRuntimeDefinition {
 
 /** Open the isolated provider window for user login, verification, or review. */
 export async function openWebAgentRuntime(runtimeId: string): Promise<void> {
+  if (!webAgentExecutionAllowed()) throw new Error(webAgentDisabledMessage());
   const runtime = webAgentRuntimeFor(runtimeId);
   await webAgentController().open(runtime.config.webAgent!, runtime.id);
 }
@@ -3797,6 +3805,19 @@ export async function clearWebAgentRuntimeLogin(
 ): Promise<void> {
   const runtime = webAgentRuntimeFor(runtimeId);
   await webAgentController().clearLogin(runtime.config.webAgent!);
+}
+
+export function webAgentPolicyStatus(): WebAgentPolicyStatus {
+  return getWebAgentPolicyStatus();
+}
+
+export async function updateWebAgentPolicy(
+  enabled: boolean,
+  acknowledged = false,
+): Promise<WebAgentPolicyStatus> {
+  const status = setWebAgentPolicyEnabled(enabled, acknowledged);
+  if (!status.enabled) await webAgentController().disableAll();
+  return status;
 }
 
 /** Resume a paused Browser Runtime after the user completed an in-app action. */
@@ -3876,6 +3897,15 @@ async function probeRuntimeDefinition(
         capabilities: NO_AGENT_RUNTIME_CAPABILITIES,
         checkedAt,
         message: "网页智能体适配器已被禁用。",
+      };
+    }
+    if (!webAgentExecutionAllowed()) {
+      return {
+        runtimeId: runtime.id,
+        state: "unsupported",
+        capabilities: NO_AGENT_RUNTIME_CAPABILITIES,
+        checkedAt,
+        message: webAgentDisabledMessage(),
       };
     }
     const result = await webAgentController().probe(settings);
@@ -5009,6 +5039,11 @@ export async function startAgentRuntimeTask(
     if (!settings.enabled) {
       return finishRuntimeRun(record, "failed", {
         error: "网页智能体适配器已被禁用。",
+      });
+    }
+    if (!webAgentExecutionAllowed()) {
+      return finishRuntimeRun(record, "failed", {
+        error: webAgentDisabledMessage(),
       });
     }
     try {
