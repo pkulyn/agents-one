@@ -1,5 +1,15 @@
 # Agents One 项目进展日志
 
+## 2026-09-11：目标 GitHub 私有暂存仓库与远端门禁建立
+
+- 仓库建立：已由维护者账号创建私有暂存仓库 `https://github.com/pkulyn/agents-one`，`origin` 指向该仓库，默认分支为 `main`；首次人工推送只包含 `main`，未推送 44 个 Hermes 上游 `v*` tag，当前远端仍无 tag、无 GitHub Release。Dependabot 随后按仓库配置创建了独立更新分支/PR，不属于产品分支推送。
+- GitHub 权限边界：Issues 已启用、Wiki 已关闭，`release` Environment 已创建。当前 GitHub Free 私有仓库对 `main` branch protection 返回 403，对 Environment required reviewer 返回 422，Private Vulnerability Reporting 在私有状态返回 404；仓库保持私有且不创建 draft Release，以上三项须在转公开时先配置验证，或由维护者升级 GitHub Pro 后配置。
+- 远端首次回放发现并修复三项环境问题：Windows runner 的临时目录可能混用 8.3 短路径与长路径，交付物测试现比较 `realpath`；Linux runner 无法正确承载本项目的 Windows 路径语义，主 CI 已与声明首发平台统一为 `windows-latest`；Node 22 不向当前 Vite/Vitest 工具链暴露 `node:sqlite`，最低开发版本与 CI/Release 已统一为 Node 24。
+- 合并门禁补齐：普通 CI 除 clean install、格式、typecheck、主/子项目测试和 lint 外，新增完整依赖 audit 与生产 build。固定 SHA `7c56549508385213189a338b526d3a8a039e2638` 的 CI run `34564056533` 全绿。
+- 发布门禁通过：同一固定 SHA 的 Windows Alpha Release Gate run `34564064432` 在全新 GitHub runner 完成 clean install、lockfile/工作树不变校验、连续三轮完整自动门禁、NSIS/portable 打包、unpacked/portable 真实启动、四项资产校验清单和 artifact 上传；run 于 2026-09-11 13:26（Asia/Shanghai）完成，结论 `success`。
+- 候选 artifact：`agents-one-0.1.0-alpha.1-windows-x64-7c56549508385213189a338b526d3a8a039e2638`，391,179,002 字节，GitHub artifact digest `sha256:dbd1ebd7f954e4e59ec1e99c04fed04aa4b97eae1884174d9574494854beb94f`，保留至 2026-09-25。此次 `publish_draft=false`，未创建 tag/Release。
+- 当前结论：OR-701 的目标 GitHub clean checkout、安装、自动门禁与打包部分已通过，OR-705 的同 SHA 三轮自动验证已通过；OR-507 的 draft Release、安装/升级/卸载/回滚，以及 OR-702～704 和 OR-705 的独立干净 Windows 人工回放仍待完成，整体继续 No-Go。
+
 ## 2026-09-11：OR-7 固定 SHA 验收准备
 
 - 三轮门禁固化：Windows 发布工作流不再只运行一轮主测试，改为在同一 checkout、同一 lockfile 上连续三轮执行格式、Node/Web TypeScript、零错误 lint、主工程与三个子项目测试、完整 audit 和生产 build；任一步失败即停止，三轮后才允许打包与启动 smoke。
@@ -16,7 +26,7 @@
 
 - 公开事实：README 中英文入口互链并明确尚无公开 Release、首发 Windows x64、未签名/校验值/无自动更新边界，以及 Electron `userData`、Hermes Runtime、Connector、项目与备份的数据位置。
 - 治理文件：新增 `CODE_OF_CONDUCT.md`、`CHANGELOG.md`、`KNOWN_ISSUES.md`、Bug/Feature Issue Forms、Issue 配置和 PR 模板；保留并复核 `SECURITY.md`，安全或行为问题使用私密入口，公开模板禁止凭据和私有数据。
-- 贡献路径：英中贡献指南删除不存在的日文入口，声明 Node.js ≥22.12 和企业 Windows 无管理员权限下的官方 ZIP/用户级 PATH 方案；提交前命令覆盖 clean install、format、typecheck、0-error lint、主/子项目测试、audit 和 build。
+- 贡献路径：英中贡献指南删除不存在的日文入口；远端回放后最低开发版本校准为 Node.js ≥24，并保留企业 Windows 无管理员权限下的官方 ZIP/用户级 PATH 方案；提交前命令覆盖 clean install、format、typecheck、0-error lint、主/子项目测试、audit 和 build。
 - 状态一致性：稳定化计划降级为历史依据；回归矩阵增加 2026-09-10 当前基线，并把旧“发布冻结、格式未治理、不要打包”明确标为历史。Runbook 同步真实数据路径、未签名更新策略和远端验收边界。
 - 已知问题：AO-KNOWN-001～007 记录远端发布阻断、未签名、非 Windows 平台、网页 Provider 实验、9 项 skip、Linux keyring 和体积/覆盖率债务，每项包含退出标准。
 - 结论：OR-601～605 完成；本地可执行发布收口范围结束。OR-507 与 OR-7 仍需目标 GitHub 仓库、`release` Environment、Windows runner、草稿 Release、干净机安装/升级/卸载/回滚和真实 Runtime 人工回放，当前继续 No-Go。
