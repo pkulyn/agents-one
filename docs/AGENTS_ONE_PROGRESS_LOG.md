@@ -8,7 +8,9 @@
 - 合并门禁补齐：普通 CI 除 clean install、格式、typecheck、主/子项目测试和 lint 外，新增完整依赖 audit 与生产 build。固定 SHA `7c56549508385213189a338b526d3a8a039e2638` 的 CI run `34564056533` 全绿。
 - 发布门禁通过：同一固定 SHA 的 Windows Alpha Release Gate run `34564064432` 在全新 GitHub runner 完成 clean install、lockfile/工作树不变校验、连续三轮完整自动门禁、NSIS/portable 打包、unpacked/portable 真实启动、四项资产校验清单和 artifact 上传；run 于 2026-09-11 13:26（Asia/Shanghai）完成，结论 `success`。
 - 候选 artifact：`agents-one-0.1.0-alpha.1-windows-x64-7c56549508385213189a338b526d3a8a039e2638`，391,179,002 字节，GitHub artifact digest `sha256:dbd1ebd7f954e4e59ec1e99c04fed04aa4b97eae1884174d9574494854beb94f`，保留至 2026-09-25。此次 `publish_draft=false`，未创建 tag/Release。
-- 当前结论：OR-701 的目标 GitHub clean checkout、安装、自动门禁与打包部分已通过，OR-705 的同 SHA 三轮自动验证已通过；OR-507 的 draft Release、安装/升级/卸载/回滚，以及 OR-702～704 和 OR-705 的独立干净 Windows 人工回放仍待完成，整体继续 No-Go。
+- 下载制品复核：已从 run `34564064432` 下载候选 artifact，`SHA256SUMS.txt` 恰含 NSIS、portable、blockmap、`latest.yml` 四项，逐文件重算结果全部一致；`latest.yml` 与发布说明中的版本、架构、固定 SHA、未签名及禁用自动更新说明一致。两个 exe 的 Authenticode 均为 `NotSigned`。
+- 当前开发机隔离 smoke：portable 使用专用 `userData` 启动通过并清理至零残留；NSIS 静默安装后，卸载注册表 `DisplayVersion` 与 `resources/app.asar` 的包版本均为 `0.1.0-alpha.1`，安装版以隔离 `userData` 启动通过，随后卸载成功，卸载项、安装目录、测试进程与隔离数据均无残留，既有真实用户数据目录的存在性、根时间戳和文件数未变化。由于构建关闭 `signAndEditExecutable`，主 exe 的 PE `FileVersion` 为 Electron `43.4.1`，不得用它替代应用版本验收。
+- 当前结论：OR-701 的目标 GitHub clean checkout、自动门禁与打包部分已通过，OR-705 的同 SHA 三轮自动验证已通过；OR-507 的制品下载、校验、portable 启动及首次安装/启动/卸载已在当前开发机完成预检，但 draft Release、独立干净机、覆盖升级和上一版本回滚仍未完成。OR-702～704 及 OR-705 的独立干净 Windows 人工回放也仍待完成，整体继续 No-Go。
 
 ## 2026-09-11：OR-7 固定 SHA 验收准备
 

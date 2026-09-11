@@ -31,6 +31,19 @@
 
 三轮门禁证明同一源码与锁文件的连续稳定性；Windows 打包和启动 smoke 在三轮源码门禁全部通过后执行一次。不得把其他 commit 的历史绿色结果拼接为本候选结果。
 
+## 远端候选制品下载复核（当前开发机预检）
+
+2026-09-11 已从 run `34564064432` 下载完整候选 artifact 到仓库外隔离目录。`SHA256SUMS.txt` 恰含以下四项，逐文件复算均匹配；GitHub artifact 本身的 digest 见上方自动门禁证据。该步骤验证远端上传包可下载且内容自洽，但当前机器不是独立干净 Windows，不替代 OR-701～705 的独立人工回放。
+
+| 远端候选文件                                  |        字节 | SHA-256                                                            |
+| --------------------------------------------- | ----------: | ------------------------------------------------------------------ |
+| `agents-one-0.1.0-alpha.1-setup.exe`          | 195,544,478 | `9454dfca56ccbeb6e1f1b84690841f397c47e82e83f43fcbb8f62e1a13ed5630` |
+| `agents-one-0.1.0-alpha.1-portable.exe`       | 195,358,107 | `8093e747b67e6481f1cead0d8a12b15e2bc20a9e89ae3c754a69f1297a630122` |
+| `agents-one-0.1.0-alpha.1-setup.exe.blockmap` |     205,303 | `f3139dcd88ea7482048aa8016b3a8c72d09634e216692083633abdc773f324e2` |
+| `latest.yml`                                  |         373 | `b52f534bad90df2ea06adc0f4fdb297159dde3da8b251096a7dafdb36a824877` |
+
+portable 使用专用 `userData` 真实启动通过，停止后关联进程和隔离数据残留为 0。NSIS 首次安装后，卸载注册表 `DisplayVersion` 与 `resources/app.asar` 包版本均为 `0.1.0-alpha.1`；安装版以隔离 `userData` 启动通过，卸载后卸载项、安装目录、关联进程和隔离数据残留均为 0，测试前已存在的真实用户数据目录未变化。两个 exe 均为 `NotSigned`。由于当前构建关闭 `signAndEditExecutable`，安装版主 exe 的 PE `FileVersion` 为 Electron `43.4.1`；应用版本应以注册表和 `app.asar` 为验收依据。
+
 ## 本地预检记录（不替代远端验收）
 
 2026-09-11 在 `<independent-local-clone>` 对固定提交 `7bac448ddc3aa59164c022a6e9ad7a814c5568fb` 完成非硬链接独立克隆。克隆初始没有 `node_modules`、`.env`、Agents One 用户配置、沙箱、`dist` 或 `out`；`npm run install:clean` 安装 932 个包、audit 0，lockfile SHA-256 为 `3340c3ea1a0d0ed1aca836a97ea16cf23fe25089b8f24cec131fc02675929b97`，安装未修改 tracked 工作树。
@@ -52,14 +65,14 @@
 
 以下操作必须在普通用户权限、没有当前仓库 `node_modules`、没有开发机 Agents One 配置的独立 Windows 环境执行。测试账号、Token、Cookie、提示词、用户数据和原始日志不得提交到仓库；这里只记录脱敏结论和受控证据位置。
 
-| ID     | 场景             | 必验步骤                                                                                                     | 状态 / 证据                                       |
-| ------ | ---------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| OR-701 | 干净环境         | 从目标 GitHub 固定 SHA 全新 clone；clean install；三轮门禁；打包                                             | 自动部分通过：run `34564064432`；独立人工机待验收 |
-| OR-702 | Runtime 黄金路径 | Hermes、本地 CLI、Gateway v1 分别完成配置、probe、真实对话、取消/失败、重启恢复；其余首发 Runtime 按回归矩阵 | 待验收                                            |
-| OR-703 | 用户数据         | 项目/任务归属、历史、附件、定时任务、时区/休眠补偿、备份校验、恢复、失败回滚                                 | 待验收                                            |
-| OR-704 | 桌面体验         | NSIS 首启、portable、托盘、窄窗口、中英文、外链、下载、退出、崩溃恢复、卸载残留                              | 待验收                                            |
-| OR-705 | 稳定性           | 固定 SHA 三轮自动门禁 + 至少一轮独立干净机人工验收                                                           | 三轮自动通过；独立人工机待验收                    |
-| OR-706 | RC 标签          | 前述项目和 G0～G8 全绿后，才为同一 SHA 创建 RC tag                                                           | 禁止提前执行                                      |
+| ID     | 场景             | 必验步骤                                                                                                     | 状态 / 证据                                        |
+| ------ | ---------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| OR-701 | 干净环境         | 从目标 GitHub 固定 SHA 全新 clone；clean install；三轮门禁；打包                                             | 自动部分与远端制品下载校验通过；独立人工机待验收   |
+| OR-702 | Runtime 黄金路径 | Hermes、本地 CLI、Gateway v1 分别完成配置、probe、真实对话、取消/失败、重启恢复；其余首发 Runtime 按回归矩阵 | 待验收                                             |
+| OR-703 | 用户数据         | 项目/任务归属、历史、附件、定时任务、时区/休眠补偿、备份校验、恢复、失败回滚                                 | 待验收                                             |
+| OR-704 | 桌面体验         | NSIS 首启、portable、托盘、窄窗口、中英文、外链、下载、退出、崩溃恢复、卸载残留                              | 开发机安装/portable 启动与卸载预检通过；其余待验收 |
+| OR-705 | 稳定性           | 固定 SHA 三轮自动门禁 + 至少一轮独立干净机人工验收                                                           | 三轮自动通过；独立人工机待验收                     |
+| OR-706 | RC 标签          | 前述项目和 G0～G8 全绿后，才为同一 SHA 创建 RC tag                                                           | 禁止提前执行                                       |
 
 ## 发布闸门签字
 
@@ -77,9 +90,9 @@
 
 ## 安装、升级、回滚与发布检查
 
-- [ ] 从 draft Release 下载 NSIS、portable、`SHA256SUMS.txt` 和发布说明，并在运行前核验 SHA-256。
+- [ ] 从 draft Release 下载 NSIS、portable、`SHA256SUMS.txt` 和发布说明，并在运行前核验 SHA-256。（Actions artifact 下载与四文件复算已预检；draft Release 尚未创建。）
 - [ ] 记录 Windows 版本/架构、普通用户权限、安装路径和 SmartScreen 实际表现。
-- [ ] 验证首次安装、覆盖升级、退出后升级、卸载、重装和 portable 不相互污染。
+- [ ] 验证首次安装、覆盖升级、退出后升级、卸载、重装和 portable 不相互污染。（当前开发机已完成首次安装、隔离启动、卸载和 portable 隔离启动；覆盖升级、重装与旧版回滚待独立机。）
 - [ ] 验证未签名 Alpha 的自动更新入口保持禁用，文档、UI 与发布说明一致。
 - [ ] 在恢复前创建并验证备份；分别验证成功恢复、损坏备份拒绝、写入失败回滚和上一版本数据回退。
 - [ ] 确认卸载后仅保留文档明确声明的用户数据；由用户决定是否删除，不由安装器静默清理。
@@ -88,4 +101,4 @@
 
 ## 当前阻断
 
-目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。独立干净 Windows 的 Runtime、用户数据、桌面、安装/升级/卸载/回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。
+目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立；当前开发机已完成远端制品校验、首次安装/启动/卸载和 portable 启动预检。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。独立干净 Windows 的 Runtime、用户数据、完整桌面、覆盖升级与旧版回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。
