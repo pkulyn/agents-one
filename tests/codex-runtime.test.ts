@@ -32,6 +32,29 @@ describe("Codex runtime invocation", () => {
     ]);
   });
 
+  it("allows ordinary no-project conversations in the private non-Git runtime directory", () => {
+    expect(
+      codexExecArgs(
+        "D:\\private-runtime-chat",
+        "analysis",
+        "inspect this",
+        undefined,
+        [],
+        undefined,
+        true,
+      ),
+    ).toEqual([
+      "exec",
+      "--json",
+      "--skip-git-repo-check",
+      "--sandbox",
+      "read-only",
+      "--cd",
+      "D:\\private-runtime-chat",
+      "inspect this",
+    ]);
+  });
+
   it("permits writes only inside the already-isolated worktree", () => {
     expect(
       codexExecArgs("D:\\worktree", "implementation", "change this"),
