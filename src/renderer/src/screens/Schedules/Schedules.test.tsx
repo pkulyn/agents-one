@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const translate = vi.hoisted(
   () => (key: string, values?: Record<string, string>) =>
-    values?.n ? `${key}:${values.n}` : key,
+    values ? `${key}:${Object.values(values).join(":")}` : key,
 );
 
 vi.mock("../../components/useI18n", () => ({
@@ -189,25 +189,25 @@ describe("Runtime schedules", () => {
     ]);
     render(<Schedules profile="default" />);
     await screen.findByText("Nightly checks");
-    expect(screen.getByText("智能体任务")).toBeInTheDocument();
+    expect(screen.getByText("schedules.sourceTitle")).toBeInTheDocument();
     const remoteCard = screen
       .getByText("Remote research")
       .closest(".schedules-table-row");
     const webCard = screen
       .getByText("Web digest")
       .closest(".schedules-table-row");
-    expect(remoteCard).toHaveTextContent("远程智能体");
-    expect(webCard).toHaveTextContent("网页智能体");
+    expect(remoteCard).toHaveTextContent("schedules.categoryRemote");
+    expect(webCard).toHaveTextContent("schedules.categoryWeb");
     expect(listCronJobs).not.toHaveBeenCalled();
 
     const localCard = screen
       .getByText("Nightly checks")
       .closest(".schedules-table-row");
     expect(localCard).not.toBeNull();
-    expect(localCard).toHaveTextContent("本地智能体");
+    expect(localCard).toHaveTextContent("schedules.categoryLocal");
     fireEvent.click(
       within(localCard as HTMLElement).getByRole("button", {
-        name: "立即执行计划任务",
+        name: "schedules.runNowAction",
       }),
     );
     await waitFor(() =>
@@ -235,21 +235,25 @@ describe("Runtime schedules", () => {
       screen.getByPlaceholderText("schedules.promptPlaceholder"),
       { target: { value: "Summarize new findings." } },
     );
-    fireEvent.change(screen.getByRole("combobox", { name: "执行智能体" }), {
-      target: { value: "chatgpt-web" },
-    });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "schedules.runtime" }),
+      {
+        target: { value: "chatgpt-web" },
+      },
+    );
+    expect(screen.getByText("schedules.webRuntimeHint")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "网页智能体使用独立浏览器登录态执行，仅支持对话分析，不访问项目文件夹。",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByPlaceholderText("留空进行普通对话；需要读写文件时再选择"),
+      screen.queryByPlaceholderText("schedules.workspacePlaceholder"),
     ).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "文件访问" })).toBeNull();
-    fireEvent.change(screen.getByRole("combobox", { name: "并发策略" }), {
-      target: { value: "queue" },
-    });
+    expect(
+      screen.queryByRole("combobox", { name: "schedules.fileAccess" }),
+    ).toBeNull();
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "schedules.concurrency" }),
+      {
+        target: { value: "queue" },
+      },
+    );
     fireEvent.click(screen.getByRole("button", { name: "schedules.create" }));
 
     await waitFor(() =>
@@ -271,14 +275,16 @@ describe("Runtime schedules", () => {
   it("edits an existing schedule without inheriting an agent workspace", async () => {
     render(<Schedules profile="default" />);
     await screen.findByText("Nightly checks");
-    fireEvent.click(screen.getByRole("button", { name: "编辑计划任务" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "schedules.editAction" }),
+    );
     expect(
-      screen.getByRole("heading", { name: "编辑定时任务" }),
+      screen.getByRole("heading", { name: "schedules.editTask" }),
     ).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("schedules.namePlaceholder"), {
       target: { value: "Updated checks" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "schedules.save" }));
     await waitFor(() =>
       expect(updateTaskSchedule).toHaveBeenCalledWith(
         "schedule-1",
@@ -323,15 +329,17 @@ describe("Runtime schedules", () => {
 
     render(<Schedules profile="default" />);
     await screen.findByText("Project task");
-    fireEvent.click(screen.getByRole("button", { name: "编辑计划任务" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "schedules.editAction" }),
+    );
 
     expect(
-      screen.getByPlaceholderText("留空进行普通对话；需要读写文件时再选择"),
+      screen.getByPlaceholderText("schedules.workspacePlaceholder"),
     ).toHaveValue("D:\\workspace\\vault");
-    expect(screen.getByRole("combobox", { name: "最长执行时长" })).toHaveValue(
-      "7200000",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(
+      screen.getByRole("combobox", { name: "schedules.timeout" }),
+    ).toHaveValue("7200000");
+    fireEvent.click(screen.getByRole("button", { name: "schedules.save" }));
     await waitFor(() =>
       expect(updateTaskSchedule).toHaveBeenCalledWith(
         "schedule-workspace",
@@ -348,21 +356,25 @@ describe("Runtime schedules", () => {
   it("saves the explicit writable option as full access", async () => {
     render(<Schedules profile="default" />);
     await screen.findByText("Nightly checks");
-    fireEvent.click(screen.getByRole("button", { name: "编辑计划任务" }));
-    const access = screen.getByRole("combobox", { name: "文件访问" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "schedules.editAction" }),
+    );
+    const access = screen.getByRole("combobox", {
+      name: "schedules.fileAccess",
+    });
     expect(
       screen.getByRole("option", {
-        name: "完全访问：可创建、编辑、移动或删除项目文件",
+        name: "schedules.modeFullAccess",
       }),
     ).toBeInTheDocument();
     fireEvent.change(
-      screen.getByPlaceholderText("留空进行普通对话；需要读写文件时再选择"),
+      screen.getByPlaceholderText("schedules.workspacePlaceholder"),
       {
         target: { value: "D:\\selected-project" },
       },
     );
     fireEvent.change(access, { target: { value: "full_access" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: "schedules.save" }));
 
     await waitFor(() =>
       expect(updateTaskSchedule).toHaveBeenCalledWith(
@@ -407,8 +419,12 @@ describe("Runtime schedules", () => {
     window.addEventListener("agents-one:open-runtime-conversation", opened);
     render(<Schedules profile="default" />);
 
-    await screen.findByLabelText("最近结果：已完成");
-    fireEvent.click(screen.getByRole("button", { name: "打开最近执行对话" }));
+    await screen.findByLabelText(
+      "schedules.recentResult:schedules.statusSucceeded",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "schedules.openRecentAction" }),
+    );
     expect(opened).toHaveBeenCalledTimes(1);
     expect((opened.mock.calls[0][0] as CustomEvent).detail).toBe(
       "runtime-conv-schedule-1",
@@ -439,7 +455,7 @@ describe("Runtime schedules", () => {
     listTaskSchedules.mockResolvedValue([]);
     render(<Schedules profile="default" />);
 
-    await screen.findByText("还没有定时任务");
+    await screen.findByText("schedules.empty");
     expect(
       screen.getAllByRole("button", { name: "schedules.newTask" }),
     ).toHaveLength(1);

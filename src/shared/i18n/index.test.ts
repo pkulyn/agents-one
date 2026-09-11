@@ -40,4 +40,14 @@ describe("shared i18n", () => {
     expect(t("settings.archives.title", "zh-CN")).toBe("已归档的任务和项目");
     expect(t("settings.checkForUpdates", "zh-CN")).toBe("检查更新");
   });
+
+  it("translates the scheduled-task workflow in both locales", () => {
+    expect(t("schedules.sourceTitle", "en")).toBe("Agent Tasks");
+    expect(t("schedules.runtimeHint", "en")).toContain("remote Gateway");
+    expect(t("schedules.recentResult", "en", { status: "Completed" })).toBe(
+      "Latest result: Completed",
+    );
+    expect(t("schedules.sourceTitle", "zh-CN")).toBe("智能体任务");
+    expect(t("schedules.queuedCount", "zh-CN", { count: 2 })).toBe("等待 2 次");
+  });
 });
