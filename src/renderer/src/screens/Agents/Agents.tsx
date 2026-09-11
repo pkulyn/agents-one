@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { AppModal, AppModalTitle } from "../../components/modal/AppModal";
+import { useI18n } from "../../components/useI18n";
 import AgentRuntimesPane from "../../components/settings/AgentRuntimesPane";
 import {
   deriveAgentTransport,
@@ -29,16 +30,16 @@ const RUNTIME_LABELS: Record<string, string> = {
   pi: "Pi Agent CLI",
   opencode: "OpenCode",
   openclaw: "OpenClaw",
-  "web-agent": "网页智能体",
+  "web-agent": "agents.kindWebAgent",
 };
 
 // Unified access labels (plan 1.1 / 1.5): remote → Gateway v1, local CLI,
 // local API.
-const TRANSPORT_LABEL: Record<AgentRuntimeTransport, string> = {
+const TRANSPORT_LABEL_KEY: Record<AgentRuntimeTransport, string> = {
   "gateway-v1": "Gateway v1",
-  "local-cli": "本地 CLI",
-  "local-api": "本地 API",
-  "local-web": "内嵌网页",
+  "local-cli": "agents.transportLocalCli",
+  "local-api": "agents.transportLocalApi",
+  "local-web": "agents.transportLocalWeb",
 };
 
 type AgentSectionKey = "local" | "remote" | "web";
@@ -46,27 +47,27 @@ type AgentSectionKey = "local" | "remote" | "web";
 const AGENT_SECTION_META: Record<
   AgentSectionKey,
   {
-    title: string;
-    description: string;
+    titleKey: string;
+    descriptionKey: string;
     className: string;
     icon: typeof Terminal;
   }
 > = {
   local: {
-    title: "本地智能体",
-    description: "在当前电脑运行的智能体CLI或服务",
+    titleKey: "agents.sectionLocal",
+    descriptionKey: "agents.sectionLocalDescription",
     className: "local",
     icon: Terminal,
   },
   remote: {
-    title: "远程智能体",
-    description: "连接远端服务器或电脑上的智能体",
+    titleKey: "agents.sectionRemote",
+    descriptionKey: "agents.sectionRemoteDescription",
     className: "remote",
     icon: Cloud,
   },
   web: {
-    title: "网页智能体",
-    description: "在隔离浏览器中连接网页端智能体服务",
+    titleKey: "agents.sectionWeb",
+    descriptionKey: "agents.sectionWebDescription",
     className: "web",
     icon: Globe2,
   },
@@ -83,61 +84,71 @@ function sectionForRuntime(runtime: AgentRuntimeDefinition): AgentSectionKey {
   return runtime.location === "remote" ? "remote" : "local";
 }
 
-const HEALTH_LABEL: Record<AgentRuntimeProbe["state"], string> = {
-  healthy: "正常",
-  degraded: "受限",
-  unreachable: "不可达",
-  unsupported: "不支持",
-  unknown: "检测异常",
+const HEALTH_LABEL_KEY: Record<AgentRuntimeProbe["state"], string> = {
+  healthy: "agents.healthHealthy",
+  degraded: "agents.healthDegraded",
+  unreachable: "agents.healthUnreachable",
+  unsupported: "agents.healthUnsupported",
+  unknown: "agents.healthUnknown",
 };
 
-const RUNTIME_META_LABEL: Record<AgentRuntimeProbe["state"], string> = {
-  healthy: "可用",
-  degraded: "连接受限",
-  unreachable: "连接异常",
-  unsupported: "暂不支持",
-  unknown: "检测异常",
+const RUNTIME_META_LABEL_KEY: Record<AgentRuntimeProbe["state"], string> = {
+  healthy: "agents.metaHealthy",
+  degraded: "agents.metaDegraded",
+  unreachable: "agents.metaUnreachable",
+  unsupported: "agents.metaUnsupported",
+  unknown: "agents.metaUnknown",
 };
+
+type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 function webRuntimeHealthNotice(
   state: AgentRuntimeProbe["state"],
   message?: string,
+  t?: Translate,
 ): string | undefined {
   if (state === "healthy") return undefined;
   if (message?.trim()) return message;
   switch (state) {
     case "degraded":
-      return "网页会话需要登录或完成验证，请进入管理页处理。";
+      return t?.("agents.webLoginRequired");
     case "unsupported":
-      return "当前网页页面或适配器暂不支持，请进入管理页检查配置。";
+      return t?.("agents.webUnsupported");
     case "unreachable":
-      return "网页连接检测失败，请进入管理页检查网页会话。";
+      return t?.("agents.webUnreachable");
     case "unknown":
-      return "网页健康检测未完成，请稍后刷新或进入管理页检查。";
+      return t?.("agents.webUnknown");
   }
 }
 
-function runtimeConnectionHint(runtime: AgentRuntimeDefinition): string {
+function runtimeConnectionHint(
+  runtime: AgentRuntimeDefinition,
+  t: Translate,
+): string {
   const transport = deriveAgentTransport(runtime);
   if (transport === "gateway-v1") {
-    return runtime.config.endpoint?.trim() || "未配置地址";
+    return runtime.config.endpoint?.trim() || t("agents.addressNotConfigured");
   }
   if (transport === "local-cli") {
-    return runtime.config.executablePath?.trim() || "未配置可执行文件";
+    return (
+      runtime.config.executablePath?.trim() ||
+      t("agents.executableNotConfigured")
+    );
   }
   if (transport === "local-web") {
     return runtime.config.webAgent?.provider === "doubao"
-      ? "豆包隔离网页会话"
+      ? t("agents.doubaoWebSession")
       : runtime.config.webAgent?.provider === "chatgpt"
-        ? "ChatGPT 隔离网页会话"
+        ? t("agents.chatgptWebSession")
         : runtime.config.webAgent?.provider === "grok"
-          ? "Grok 隔离网页会话"
-          : "未配置网页 Provider";
+          ? t("agents.grokWebSession")
+          : t("agents.webProviderNotConfigured");
   }
-  return "本地 API（127.0.0.1）";
+  return t("agents.localApiLoopback");
 }
 
 function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
+  const { t } = useI18n();
   const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
   const [runtimeProbes, setRuntimeProbes] = useState<
     Record<string, AgentRuntimeProbe>
@@ -188,7 +199,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
               message:
                 error instanceof Error && error.message.trim()
                   ? error.message
-                  : "健康检测失败，请稍后重试。",
+                  : t("agents.healthCheckFailed"),
             },
           ] as const;
         }
@@ -211,7 +222,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [runtimes]);
+  }, [runtimes, t]);
 
   const groupedRuntimes: Record<AgentSectionKey, AgentRuntimeDefinition[]> = {
     local: [],
@@ -234,13 +245,13 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
     const isUnreachable = healthState === "unreachable";
     const webNotice =
       section === "web" && runtime.enabled && !isProbePending
-        ? webRuntimeHealthNotice(healthState, probe?.message)
+        ? webRuntimeHealthNotice(healthState, probe?.message, t)
         : undefined;
     const statusLabel = !runtime.enabled
-      ? "已停用"
+      ? t("agents.disabled")
       : isProbePending
-        ? "检测中"
-        : RUNTIME_META_LABEL[healthState];
+        ? t("agents.checking")
+        : t(RUNTIME_META_LABEL_KEY[healthState]);
     const statusTone =
       !runtime.enabled || isProbePending || healthState === "healthy"
         ? ""
@@ -267,8 +278,13 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
             <span className="agents-runtime-info">
               <strong>{runtime.name}</strong>
               <small>
-                {RUNTIME_LABELS[runtime.kind]} ·{" "}
-                {TRANSPORT_LABEL[deriveAgentTransport(runtime)]}
+                {runtime.kind === "web-agent"
+                  ? t(RUNTIME_LABELS[runtime.kind])
+                  : RUNTIME_LABELS[runtime.kind]}{" "}
+                ·{" "}
+                {deriveAgentTransport(runtime) === "gateway-v1"
+                  ? TRANSPORT_LABEL_KEY[deriveAgentTransport(runtime)]
+                  : t(TRANSPORT_LABEL_KEY[deriveAgentTransport(runtime)])}
               </small>
             </span>
           </div>
@@ -277,23 +293,23 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
             title={probe?.message}
           >
             {!runtime.enabled
-              ? "已停用"
+              ? t("agents.disabled")
               : isProbePending
-                ? "检测中"
-                : HEALTH_LABEL[healthState]}
+                ? t("agents.checking")
+                : t(HEALTH_LABEL_KEY[healthState])}
           </span>
         </div>
 
         <div className="agents-domain-card-connection">
           <span>
             {section === "web"
-              ? "会话"
+              ? t("agents.connectionSession")
               : section === "remote"
-                ? "网关"
-                : "路径"}
+                ? t("agents.connectionGateway")
+                : t("agents.connectionPath")}
           </span>
-          <strong title={runtimeConnectionHint(runtime)}>
-            {runtimeConnectionHint(runtime)}
+          <strong title={runtimeConnectionHint(runtime, t)}>
+            {runtimeConnectionHint(runtime, t)}
           </strong>
         </div>
 
@@ -304,9 +320,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
             }`}
           >
             <AlertTriangle size={14} aria-hidden="true" />
-            <span>
-              {webNotice || "连接检测失败，可进入管理页检查网关地址与凭据。"}
-            </span>
+            <span>{webNotice || t("agents.remoteConnectionFailed")}</span>
           </div>
         )}
 
@@ -314,13 +328,12 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
           <span className={`agents-runtime-meta${statusTone}`}>
             {statusLabel}
             {probe?.checkedAt
-              ? ` · 最近检测 ${new Date(probe.checkedAt).toLocaleTimeString(
-                  [],
-                  {
+              ? ` · ${t("agents.lastChecked", {
+                  time: new Date(probe.checkedAt).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
-                  },
-                )}`
+                  }),
+                })}`
               : ""}
           </span>
           <div className="agents-runtime-actions">
@@ -331,7 +344,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                 setManagerTarget({ mode: "manage", runtimeId: runtime.id })
               }
             >
-              管理
+              {t("agents.manage")}
             </button>
             <button
               type="button"
@@ -339,18 +352,17 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
               disabled={!isHealthy || !onChatWithRuntime || isProbePending}
               title={
                 !runtime.enabled
-                  ? "该智能体已停用"
+                  ? t("agents.disabledChatHint")
                   : isProbePending
-                    ? "正在检测连接，请稍候"
+                    ? t("agents.checkingChatHint")
                     : !isHealthy
-                      ? probe?.message ||
-                        "当前智能体未处于正常状态，暂时无法发起对话"
-                      : "发起对话"
+                      ? probe?.message || t("agents.unhealthyChatHint")
+                      : t("agents.startChatHint")
               }
               onClick={() => onChatWithRuntime?.(runtime)}
             >
               <ChatBubble size={13} />
-              对话
+              {t("agents.dashboardChat")}
             </button>
           </div>
         </div>
@@ -362,10 +374,12 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
     <div className="agents-container">
       <div className="agents-header">
         <div>
-          <h2 className="agents-title">智能体</h2>
+          <h2 className="agents-title">{t("agents.dashboardTitle")}</h2>
           <div className="agents-domain-summary">
-            <strong>{runtimes.length} 个智能体</strong>
-            <span>3 类接入方式</span>
+            <strong>
+              {t("agents.runtimeCount", { count: runtimes.length })}
+            </strong>
+            <span>{t("agents.accessTypeCount")}</span>
           </div>
         </div>
         <div className="agents-header-actions">
@@ -379,7 +393,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
               size={14}
               className={runtimeProbeLoading ? "settings-spin" : undefined}
             />
-            {runtimeProbeLoading ? "检测中" : "刷新"}
+            {runtimeProbeLoading ? t("agents.checking") : t("agents.refresh")}
           </button>
           <button
             className="btn btn-primary btn-sm"
@@ -387,7 +401,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
             onClick={() => setManagerTarget({ mode: "new" })}
           >
             <Plus size={14} />
-            新增智能体
+            {t("agents.addAgent")}
           </button>
         </div>
       </div>
@@ -398,7 +412,9 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
           const meta = AGENT_SECTION_META[section];
           const SectionIcon = meta.icon;
           const emptyLabel =
-            section === "web" ? "暂无网页智能体" : `暂无${meta.title}`;
+            section === "web"
+              ? t("agents.emptyWeb")
+              : t("agents.emptySection", { section: t(meta.titleKey) });
 
           return (
             <section
@@ -411,11 +427,13 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     <SectionIcon size={16} aria-hidden="true" />
                   </span>
                   <div>
-                    <h3>{meta.title}</h3>
-                    <small>{meta.description}</small>
+                    <h3>{t(meta.titleKey)}</h3>
+                    <small>{t(meta.descriptionKey)}</small>
                   </div>
                 </div>
-                <span className="agents-domain-count">{group.length} 个</span>
+                <span className="agents-domain-count">
+                  {t("agents.itemCount", { count: group.length })}
+                </span>
               </div>
               <div className="agents-domain-list">
                 {group.length > 0 ? (
@@ -423,7 +441,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                 ) : (
                   <div className="agents-domain-empty">
                     <span>{emptyLabel}</span>
-                    <small>点击右上角“新增智能体”开始接入</small>
+                    <small>{t("agents.emptyHint")}</small>
                   </div>
                 )}
               </div>
@@ -445,13 +463,15 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
             id="runtime-manager-title"
             className="agents-create-modal-title"
           >
-            {managerTarget?.mode === "new" ? "新增智能体" : "管理智能体"}
+            {managerTarget?.mode === "new"
+              ? t("agents.addAgent")
+              : t("agents.manageAgent")}
           </AppModalTitle>
           <button
             className="profile-modal-close"
             type="button"
             onClick={() => setManagerTarget(null)}
-            aria-label="关闭"
+            aria-label={t("agents.close")}
           >
             <X size={18} />
           </button>

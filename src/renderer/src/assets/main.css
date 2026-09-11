@@ -11031,7 +11031,7 @@ button.task-collaboration-inline-avatar:focus-visible {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .agents-domain-board {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -33,6 +33,9 @@ const locales = {
     timeout: "Maximum Run Time",
     concurrency: "Concurrency Policy",
     cancel: "Cancel",
+    agentsNav: "Agents",
+    agentsTitle: "Agents",
+    addAgent: "Add Agent",
   },
   "zh-CN": {
     nav: "定时任务",
@@ -42,18 +45,33 @@ const locales = {
     timeout: "最长执行时长",
     concurrency: "并发策略",
     cancel: "取消",
+    agentsNav: "智能体",
+    agentsTitle: "智能体",
+    addAgent: "新增智能体",
   },
 };
 
 async function assertNoOverflow(page, locale, viewport) {
-  const metrics = await page.evaluate(() => ({
-    width: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-  assert(
-    metrics.scrollWidth <= metrics.width + 1,
-    `${locale} ${viewport.width}x${viewport.height}: horizontal overflow`,
+  const metrics = await page.evaluate(() =>
+    ["html", "body", ".content", ".schedules-container", ".agents-container"]
+      .map((selector) => {
+        const element = document.querySelector(selector);
+        return element
+          ? {
+              selector,
+              width: element.clientWidth,
+              scrollWidth: element.scrollWidth,
+            }
+          : null;
+      })
+      .filter(Boolean),
   );
+  for (const metric of metrics) {
+    assert(
+      metric.scrollWidth <= metric.width + 1,
+      `${locale} ${viewport.width}x${viewport.height}: ${metric.selector} has horizontal overflow (${metric.scrollWidth} > ${metric.width})`,
+    );
+  }
 }
 
 async function main() {
@@ -120,6 +138,26 @@ async function main() {
       await modal
         .getByRole("button", { name: labels.cancel, exact: true })
         .click();
+
+      await page
+        .locator(".sidebar-nav-pinned")
+        .getByRole("button", { name: labels.agentsNav, exact: true })
+        .click();
+      await page
+        .locator(".agents-container")
+        .getByRole("heading", { name: labels.agentsTitle, exact: true })
+        .waitFor();
+      assert(
+        (await page
+          .locator(".agents-container")
+          .getByRole("button", { name: labels.addAgent, exact: true })
+          .count()) === 1,
+        `${locale}: add-agent action is missing or ambiguous`,
+      );
+      await assertNoOverflow(page, locale, { width: 768, height: 800 });
+      await page.screenshot({
+        path: path.join(outputDir, `${locale}-agents-768x800.png`),
+      });
     }
   } finally {
     await browser.close();
