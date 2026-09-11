@@ -50,7 +50,7 @@ jobs:
           }
 
       - name: Check out requested revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
@@ -80,7 +80,7 @@ jobs:
           Write-Host "package-lock.json SHA-256: $lockHash"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -159,7 +159,7 @@ jobs:
           ) | Set-Content dist/RELEASE_NOTES.md -Encoding utf8
 
       - name: Upload immutable Windows candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: agents-one-${{ steps.identity.outputs.version }}-windows-x64-${{ steps.identity.outputs.sha }}
           if-no-files-found: error
@@ -181,13 +181,13 @@ jobs:
       contents: write
     steps:
       - name: Download verified candidate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: agents-one-${{ needs.gate.outputs.version }}-windows-x64-${{ needs.gate.outputs.sha }}
           path: artifacts
 
       - name: Create draft GitHub Release at the verified SHA
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           draft: true
           prerelease: true
