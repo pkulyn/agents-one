@@ -18092,6 +18092,17 @@ button.task-collaboration-inline-avatar:focus-visible {
   text-align: center;
 }
 
+@media (max-width: 900px) {
+  .schedules-source-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .schedules-tools,
+  .schedules-search {
+    width: 100%;
+  }
+}
+
 @media (max-width: 720px) {
   .schedules-container {
     padding: 16px;
@@ -18122,16 +18133,6 @@ button.task-collaboration-inline-avatar:focus-visible {
   .schedules-summary-card {
     min-height: 66px;
     padding: 11px;
-  }
-  .schedules-source-heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .schedules-tools {
-    width: 100%;
-  }
-  .schedules-search {
-    width: 100%;
   }
 }
 .project-coordinator {
