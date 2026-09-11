@@ -7,6 +7,8 @@
 - 首次本地预检：固定提交 `070fc59ffea8d3ce18cefd612dbd10e95521f7f8` 从无依赖、无配置的非硬链接独立克隆完成 clean install，三轮均为主工程 213/213 文件、2,071 passed/9 skipped、子项目 38/38、audit 0、build 通过；NSIS/portable 生成，解包应用以隔离 `userData` 启动通过，两个 exe 均为 `NotSigned`。
 - 预检拦截：产物复核发现旧校验生成逻辑会把未上传的 `builder-debug.yml` 写进 `SHA256SUMS.txt`。该 SHA 因此拒绝作为候选；工作流改为严格要求并只校验 NSIS、portable、blockmap 与 `latest.yml` 四个实际发布文件，缺一即失败。修正后的新固定 SHA 必须重新回放。
 - 修正后复验：固定提交 `7fd0811688e365118dcedc0050875a96b766ef7a` 在第二个全新独立克隆再次完成 clean install 和连续三轮完整门禁；每轮均为主工程 213/213 文件、2,071 passed/9 skipped，子项目 38/38、audit 0、build 通过。随后同 SHA 生成 NSIS/portable，解包启动 smoke 通过，两个 exe 均为 `NotSigned`，四行校验清单不再包含 `builder-debug.yml`。本机宿主 Node 为 25.8.2，GitHub Node 22 lane 仍须远端验证。
+- 发布输入与资产 smoke 再收紧：固定提交 `7bac448ddc3aa59164c022a6e9ad7a814c5568fb` 移除 workflow 的 `main` 默认值，并在 checkout 前只接受完整 40 位十六进制 commit SHA，checkout 后再次校验解析 SHA；branch、tag、短 SHA 与注入形态输入均被拒绝。启动 smoke 从仅检查 `win-unpacked` 扩展为同时真实启动 portable，按唯一 `userData` 参数精确终止关联进程并清理 SFX 解压目录，不触碰其他 Agents One 会话。
+- 最终本地复验：`7bac448` 在第三个无依赖、无配置的独立克隆完成 clean install 和连续三轮完整门禁，每轮结果仍为主工程 213/213 文件、2,071 passed/9 skipped、子项目 38/38、audit 0、build 通过；同 SHA 的 unpacked 与 portable 双启动、严格四文件校验清单及 Authenticode 检查通过，smoke 进程和临时目录残留均为 0。该 SHA 取代 `7fd0811` 作为最新本地预检基线。
 - 当前边界：本地克隆不能替代 OR-701 指定的目标 GitHub clone，也不能替代 Windows Actions、draft Release 或独立干净机人工验收。结论继续 No-Go，禁止提前创建 OR-706 RC tag。
 
 ## 2026-09-10：OR-6 开源文档与治理完成

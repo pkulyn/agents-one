@@ -33,18 +33,18 @@
 
 ## 本地预检记录（不替代远端验收）
 
-2026-09-11 在 `<independent-local-clone>` 对固定提交 `7fd0811688e365118dcedc0050875a96b766ef7a` 完成非硬链接独立克隆。克隆初始没有 `node_modules`、`.env`、Agents One 用户配置、沙箱、`dist` 或 `out`；`npm run install:clean` 安装 932 个包、audit 0，lockfile SHA-256 为 `3340c3ea1a0d0ed1aca836a97ea16cf23fe25089b8f24cec131fc02675929b97`，安装未修改 tracked 工作树。
+2026-09-11 在 `<independent-local-clone>` 对固定提交 `7bac448ddc3aa59164c022a6e9ad7a814c5568fb` 完成非硬链接独立克隆。克隆初始没有 `node_modules`、`.env`、Agents One 用户配置、沙箱、`dist` 或 `out`；`npm run install:clean` 安装 932 个包、audit 0，lockfile SHA-256 为 `3340c3ea1a0d0ed1aca836a97ea16cf23fe25089b8f24cec131fc02675929b97`，安装未修改 tracked 工作树。
 
-同一 SHA 的三轮格式、typecheck、零错误 lint、主工程/子项目测试、完整 audit 与 build 全部通过。每轮主工程均为 213/213 文件、2,071 passed/9 skipped；三个子项目均为 22+8+8 passed。随后生成 Windows x64 包并通过解包应用隔离 `userData` 启动 smoke；本机宿主 Node 25.8.2，不替代 workflow 声明的 Node 22 runner 验收。
+同一 SHA 的三轮格式、typecheck、零错误 lint、主工程/子项目测试、完整 audit 与 build 全部通过。每轮主工程均为 213/213 文件、2,071 passed/9 skipped；三个子项目均为 22+8+8 passed。随后生成 Windows x64 包，分别真实启动 `win-unpacked` 与 portable 并写入各自隔离 `userData`；关联进程、隔离数据目录和 portable SFX 解压目录清理后残留均为 0。本机宿主 Node 25.8.2，不替代 workflow 声明的 Node 22 runner 验收。
 
 | 本地产物                                      |        字节 | SHA-256                                                            |
 | --------------------------------------------- | ----------: | ------------------------------------------------------------------ |
-| `agents-one-0.1.0-alpha.1-setup.exe`          | 197,320,349 | `d6f6ffc1e63250c5112396bbbf01c1453588d304c961c07262849c0650615c3d` |
-| `agents-one-0.1.0-alpha.1-portable.exe`       | 197,133,973 | `1af5a12d9adfaae9a277f5e605f6d4c06ada7e4984768cba054c2f38136fd7b3` |
-| `agents-one-0.1.0-alpha.1-setup.exe.blockmap` |     208,855 | `9072a2ff4090b0e5d2041860533195e5b629cc90d72dfaf2092d1c5a020fdde4` |
-| `latest.yml`                                  |         373 | `3d73b18cf35bc55bd088ed3c2693219391e1866e55c73f178ac8143983dd885c` |
+| `agents-one-0.1.0-alpha.1-setup.exe`          | 197,320,348 | `4cb68f56ec7a28f509ee51d972ec6bffd21c4f4a2c258d19393ea1155893e707` |
+| `agents-one-0.1.0-alpha.1-portable.exe`       | 197,133,977 | `853fdf57fc596ee65fdfb236c40d28206e932b4884274be0d94963983686304b` |
+| `agents-one-0.1.0-alpha.1-setup.exe.blockmap` |     208,854 | `c52e2495849c93819f7ac4746b663f6d83f2922fbf473494e2851402e8ddf164` |
+| `latest.yml`                                  |         373 | `5df876fb8ad1955c828b55b931e33b6dea6cf6aeae6a80d40e6fc8bb9748e011` |
 
-两个 exe 的 Authenticode 状态均为 `NotSigned`，符合当前未签名 Alpha 策略。这些文件仅为本机候选，不得上传或公开分发。首次预检还拦截了校验清单误含未上传 `builder-debug.yml` 的问题；上述 SHA 已采用修正后的严格四文件白名单复验。
+两个 exe 的 Authenticode 状态均为 `NotSigned`，符合当前未签名 Alpha 策略。这些文件仅为本机候选，不得上传或公开分发。先前预检拦截了校验清单误含未上传 `builder-debug.yml` 的问题；上述 SHA 已采用修正后的严格四文件白名单复验。发布 workflow 还会拒绝 branch、tag、短 SHA 或非十六进制输入，并在 checkout 后确认 HEAD 与请求的完整 SHA 完全一致。
 
 ## OR-7 干净 Windows 人工回放
 
