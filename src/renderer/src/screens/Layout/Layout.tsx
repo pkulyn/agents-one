@@ -72,12 +72,17 @@ type View = "chat" | "agents" | "schedules";
 const PINNED_NAV_ITEMS: {
   view: View;
   icon: LucideIcon;
-  label: string;
+  labelKey: "navigation.schedules" | "navigation.chat" | "navigation.agents";
   quickChat?: boolean;
 }[] = [
-  { view: "schedules", icon: Clock, label: "定时任务" },
-  { view: "chat", icon: ChatBubble, label: "聊天", quickChat: true },
-  { view: "agents", icon: Users, label: "智能体" },
+  { view: "schedules", icon: Clock, labelKey: "navigation.schedules" },
+  {
+    view: "chat",
+    icon: ChatBubble,
+    labelKey: "navigation.chat",
+    quickChat: true,
+  },
+  { view: "agents", icon: Users, labelKey: "navigation.agents" },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = "agents-one.sidebar.collapsed.v1";
@@ -1340,33 +1345,36 @@ function Layout(): React.JSX.Element {
           <button
             className="sidebar-nav-item sidebar-new-chat"
             onClick={handleNewTask}
-            title="新建任务"
-            aria-label="新建任务"
+            title={t("navigation.newTask")}
+            aria-label={t("navigation.newTask")}
           >
             <Plus size={16} />
-            <span className="sidebar-nav-label">新建任务</span>
+            <span className="sidebar-nav-label">{t("navigation.newTask")}</span>
           </button>
-          {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, label, quickChat }) => {
-            const active = quickChat ? quickChatOpen : view === v;
-            return (
-              <button
-                key={v}
-                className={`sidebar-nav-item ${active ? "active" : ""}`}
-                onClick={() => {
-                  if (quickChat) {
-                    handleNewChat();
-                    return;
-                  }
-                  goTo(v);
-                }}
-                title={label}
-                aria-label={label}
-              >
-                <Icon size={16} />
-                <span className="sidebar-nav-label">{label}</span>
-              </button>
-            );
-          })}
+          {PINNED_NAV_ITEMS.map(
+            ({ view: v, icon: Icon, labelKey, quickChat }) => {
+              const active = quickChat ? quickChatOpen : view === v;
+              const label = t(labelKey);
+              return (
+                <button
+                  key={v}
+                  className={`sidebar-nav-item ${active ? "active" : ""}`}
+                  onClick={() => {
+                    if (quickChat) {
+                      handleNewChat();
+                      return;
+                    }
+                    goTo(v);
+                  }}
+                  title={label}
+                  aria-label={label}
+                >
+                  <Icon size={16} />
+                  <span className="sidebar-nav-label">{label}</span>
+                </button>
+              );
+            },
+          )}
         </nav>
 
         <div className="sidebar-chat-section">
@@ -1382,7 +1390,7 @@ function Layout(): React.JSX.Element {
                 if (id === currentSessionId) handleNewTask();
               }}
               scrollRootRef={sidebarTaskScrollRef}
-              sectionLabel="任务"
+              sectionLabel={t("navigation.tasks")}
               onCreateProjectFolder={(mode) =>
                 void handleProjectFolderChoice(mode)
               }
