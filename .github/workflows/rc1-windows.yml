@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Immutable commit SHA or ref to validate"
+        description: "Full immutable 40-character commit SHA to validate"
         required: true
-        default: "main"
         type: string
 
 permissions:
