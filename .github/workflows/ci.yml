@@ -46,3 +46,9 @@ jobs:
       # while every ESLint error must block a merge.
       - name: Lint
         run: npm run lint
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Build
+        run: npm run build
