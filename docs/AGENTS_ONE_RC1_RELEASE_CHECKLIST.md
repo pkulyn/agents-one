@@ -65,14 +65,14 @@ portable 使用专用 `userData` 真实启动通过，停止后关联进程和�
 
 以下操作必须在普通用户权限、没有当前仓库 `node_modules`、没有开发机 Agents One 配置的独立 Windows 环境执行。测试账号、Token、Cookie、提示词、用户数据和原始日志不得提交到仓库；这里只记录脱敏结论和受控证据位置。
 
-| ID     | 场景             | 必验步骤                                                                                                     | 状态 / 证据                                        |
-| ------ | ---------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| OR-701 | 干净环境         | 从目标 GitHub 固定 SHA 全新 clone；clean install；三轮门禁；打包                                             | 自动部分与远端制品下载校验通过；独立人工机待验收   |
-| OR-702 | Runtime 黄金路径 | Hermes、本地 CLI、Gateway v1 分别完成配置、probe、真实对话、取消/失败、重启恢复；其余首发 Runtime 按回归矩阵 | Codex/Claude Code/Pi 通过；Hermes/Gateway 待验收   |
-| OR-703 | 用户数据         | 项目/任务归属、历史、附件、定时任务、时区/休眠补偿、备份校验、恢复、失败回滚                                 | 待验收                                             |
-| OR-704 | 桌面体验         | NSIS 首启、portable、托盘、窄窗口、中英文、外链、下载、退出、崩溃恢复、卸载残留                              | 开发机安装/portable 启动与卸载预检通过；其余待验收 |
-| OR-705 | 稳定性           | 固定 SHA 三轮自动门禁 + 至少一轮独立干净机人工验收                                                           | 三轮自动通过；独立人工机待验收                     |
-| OR-706 | RC 标签          | 前述项目和 G0～G8 全绿后，才为同一 SHA 创建 RC tag                                                           | 禁止提前执行                                       |
+| ID     | 场景             | 必验步骤                                                                                                     | 状态 / 证据                                      |
+| ------ | ---------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| OR-701 | 干净环境         | 从目标 GitHub 固定 SHA 全新 clone；clean install；三轮门禁；打包                                             | 自动部分与远端制品下载校验通过；独立人工机待验收 |
+| OR-702 | Runtime 黄金路径 | Hermes、本地 CLI、Gateway v1 分别完成配置、probe、真实对话、取消/失败、重启恢复；其余首发 Runtime 按回归矩阵 | Codex/Claude Code/Pi 通过；Hermes/Gateway 无环境 |
+| OR-703 | 用户数据         | 项目/任务归属、历史、附件、定时任务、时区/休眠补偿、备份校验、恢复、失败回滚                                 | 待验收                                           |
+| OR-704 | 桌面体验         | NSIS 首启、portable、托盘、窄窗口、中英文、外链、下载、退出、崩溃恢复、卸载残留                              | 中文核心页/窄窗通过；英文硬编码及其余路径待修复  |
+| OR-705 | 稳定性           | 固定 SHA 三轮自动门禁 + 至少一轮独立干净机人工验收                                                           | 三轮自动通过；独立人工机待验收                   |
+| OR-706 | RC 标签          | 前述项目和 G0～G8 全绿后，才为同一 SHA 创建 RC tag                                                           | 禁止提前执行                                     |
 
 ## 发布闸门签字
 
@@ -101,4 +101,4 @@ portable 使用专用 `userData` 真实启动通过，停止后关联进程和�
 
 ## 当前阻断
 
-目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立；当前开发机已完成远端制品校验、首次安装/启动/卸载、portable 启动及 Codex/Claude Code/Pi 黄金路径预检。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。Hermes、Gateway v1、独立干净 Windows 的用户数据、完整桌面、覆盖升级与旧版回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。
+目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立；当前开发机已完成远端制品校验、首次安装/启动/卸载、portable 启动、Codex/Claude Code/Pi 黄金路径及中文核心 UI/窄窗预检。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。英文 UI 仍有大范围硬编码中文；本机也没有 Hermes/Gateway v1 可执行配置。独立干净 Windows 的用户数据、完整桌面、覆盖升级与旧版回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。

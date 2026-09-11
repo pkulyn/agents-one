@@ -5,9 +5,12 @@
 - 真实回放发现 Codex 无项目普通对话会在应用私有非 Git 目录启动，但既有命令未传 `--skip-git-repo-check`，导致 probe 健康后首轮对话仍立即失败。提交 `0043bf7f1678536dfd2525a0179b3c5ce218f6c1` 仅在无显式项目时加入该参数；已补回归测试，显式项目、受管 worktree 与权限模式不变。
 - 当前开发机完整门禁通过：双 TypeScript、213/213 主工程测试文件（2,072 passed/9 skipped）、零错误 lint、生产依赖 audit 0、production build、格式、diff 与 `lat.md` 均通过。GitHub CI run `34577013104` 对同一 SHA 全绿。
 - Agents One 隔离实例中的本地 Runtime 真实验收通过：Codex `0.147.0`、Claude Code `2.1.233`、Pi `0.85.1` 均完成配置保存、healthy probe、真实只读对话和结构化事件终态；无效 CLI 正确得到 `unreachable/failed`，Codex 运行中取消正确得到 `cancelled`。应用重启后，三项 Runtime 定义均恢复并再次 probe 为 healthy；随后测试定义和隔离配置已清理。未记录回答正文、账户信息或凭据。
+- OR-704 中文核心 UI 自动回放通过：在全新隔离配置中检查对话、定时任务、新建表单、智能体、智能体编辑和设置页，1024×768 与 768×800 均无横向溢出，关键截图目视无明显遮挡或错位。既有脚本的计划任务 aria-label 已落后于当前产品文案，提交 `f2b9b22` 将断言同步为当前标签后通过。
+- OR-704 英文回放未通过：切换 English 后文档语言已为 `en`，但侧栏和计划任务等核心界面仍显示硬编码中文。排除测试和语言资源后，Renderer 有 29 个产品文件、约 1,133 行包含硬编码中文，主要集中于 RuntimeChat、AgentRuntimesPane、Schedules、Agents 与协作界面；双语 UI 必须作为 P1 收口，不能用局部 i18n 或中文截图替代。
+- OR-702 外部 Runtime 边界：本机标准 Hermes Home 中不存在可用 repo/venv/config/auth，真实配置也没有 `hermes-home` Gateway v1 Runtime；孤立的 Token 占位不得被猜测或复用。因此 Hermes 与 Gateway v1 当前无可执行环境，继续保持待验收。
 - 新候选远端门禁：固定 SHA `0043bf7f1678536dfd2525a0179b3c5ce218f6c1` 的 Windows Alpha Release Gate run `34577793216` 在 28m27s 内完成 clean checkout、依赖与工作树不变校验、连续三轮完整门禁、NSIS/portable 打包、双启动 smoke、校验清单及 artifact 上传，结论 `success`。`publish_draft=false`，草稿 Release job 正确跳过。
 - 新候选 artifact：`agents-one-0.1.0-alpha.1-windows-x64-0043bf7f1678536dfd2525a0179b3c5ce218f6c1`，391,178,899 字节，digest `sha256:6c24410cd7e70d12194eb0c359cf4f3210548faff855b7967c23697010e9ced0`，保留至 2026-09-25。下载后四项 SHA-256 全部匹配；portable 启动及 NSIS 首次安装、隔离启动、卸载通过，卸载后无注册表/安装目录/隔离数据残留，既有真实用户数据未变化。
-- 候选替代关系：`0043bf7` 取代 `7c56549`；后者只保留为发现 Codex 无项目对话缺陷前的历史自动门禁证据，不得用于 tag/Release。OR-702 的本地 CLI 子范围已通过；Hermes 与 Gateway v1，以及独立干净 Windows 的 Runtime、数据和完整桌面路径仍待验收，整体继续 No-Go。
+- 候选替代关系：`0043bf7` 取代 `7c56549`；后者只保留为发现 Codex 无项目对话缺陷前的历史自动门禁证据，不得用于 tag/Release。OR-702 的本地 CLI 子范围已通过；Hermes、Gateway v1、英文 UI，以及独立干净 Windows 的 Runtime、数据和完整桌面路径仍待验收，整体继续 No-Go。
 
 ## 2026-09-11：目标 GitHub 私有暂存仓库与远端门禁建立
 
