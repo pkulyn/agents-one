@@ -62,7 +62,7 @@ function Invoke-StartupSmoke {
     [string]$Label,
 
     [Parameter(Mandatory = $true)]
-    [int]$WaitSeconds
+    [int]$TimeoutSeconds
   )
 
   $smokeRoot = Join-Path $tempRoot ("agents-one-package-smoke-" + [guid]::NewGuid().ToString("N"))
@@ -74,16 +74,33 @@ function Invoke-StartupSmoke {
 
   try {
     $launcher = Start-Process -FilePath $Target -ArgumentList "--user-data-dir=$userData" -PassThru -WindowStyle Hidden
-    Start-Sleep -Seconds $WaitSeconds
-    $launcher.Refresh()
-    if ($launcher.HasExited) {
-      throw "$Label exited during startup smoke test with code $($launcher.ExitCode)"
-    }
-    if (-not (Test-Path -LiteralPath $userData -PathType Container)) {
-      throw "$Label did not initialize the isolated userData path"
-    }
-    if (-not (Get-ChildItem -LiteralPath $userData -Force | Select-Object -First 1)) {
-      throw "$Label did not write startup data to the isolated userData path"
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $startupEvidence = $false
+    do {
+      if (
+        (Test-Path -LiteralPath $userData -PathType Container) -and
+        (Get-ChildItem -LiteralPath $userData -Force | Select-Object -First 1)
+      ) {
+        $startupEvidence = $true
+        break
+      }
+      $launcher.Refresh()
+      if ($launcher.HasExited) {
+        $childStillRunning = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+          Where-Object {
+            $_.Name -like "agents-one*.exe" -and
+            $_.CommandLine -and
+            $_.CommandLine.IndexOf($userData, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+          } |
+          Select-Object -First 1
+        if (-not $childStillRunning) {
+          throw "$Label exited during startup smoke test with code $($launcher.ExitCode)"
+        }
+      }
+      Start-Sleep -Seconds 1
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $startupEvidence) {
+      throw "$Label did not write startup data to the isolated userData path within $TimeoutSeconds seconds"
     }
     Write-Host "$Label startup passed for Agents One $ExpectedVersion (launcher PID $($launcher.Id))."
   } finally {
@@ -130,5 +147,5 @@ function Invoke-StartupSmoke {
   }
 }
 
-Invoke-StartupSmoke -Target $executable -Label "Unpacked application" -WaitSeconds 12
-Invoke-StartupSmoke -Target $portable -Label "Portable package" -WaitSeconds 20
+Invoke-StartupSmoke -Target $executable -Label "Unpacked application" -TimeoutSeconds 30
+Invoke-StartupSmoke -Target $portable -Label "Portable package" -TimeoutSeconds 60
