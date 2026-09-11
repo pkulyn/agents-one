@@ -2,7 +2,7 @@
 
 初始日期：2026-08-13；当前状态更新：2026-09-11
 
-> **当前状态（2026-09-11）**：私有暂存仓库 `pkulyn/agents-one` 已建立，默认分支为 `main`。固定提交 `0043bf7f1678536dfd2525a0179b3c5ce218f6c1` 的 Windows CI run `34577013104` 全绿；Windows Alpha Release Gate run `34577793216` 从目标 GitHub clean checkout，在 Node 24 runner 完成 lockfile/工作树不变校验、连续三轮格式/typecheck/lint/主与子项目测试/audit/build、NSIS/portable 打包、双启动和候选 artifact 上传。本机下载校验、首次安装/启动/卸载、portable、Codex/Claude Code/Pi 黄金路径与中文核心 UI/窄窗预检通过；English 模式仍有大范围硬编码中文，本机也没有 Hermes/Gateway v1 可执行配置，用户数据、完整桌面及独立干净机仍待验收。当前远端无 tag、无 Release；GitHub Free 私有仓库暂不能启用 branch protection 与 Environment required reviewer，发布结论仍为 No-Go。下文 2026-07/08 记录只用于历史追溯；与本段冲突的“当前”“冻结”或命令不得作为现行指令。
+> **当前状态（2026-09-12）**：私有暂存仓库 `pkulyn/agents-one` 已建立，默认分支为 `main`。固定提交 `0043bf7f1678536dfd2525a0179b3c5ce218f6c1` 的 Windows CI run `34577013104` 全绿；Windows Alpha Release Gate run `34577793216` 从目标 GitHub clean checkout，在 Node 24 runner 完成 lockfile/工作树不变校验、连续三轮格式/typecheck/lint/主与子项目测试/audit/build、NSIS/portable 打包、双启动和候选 artifact 上传。本机下载校验、首次安装/启动/卸载、portable、Codex/Claude Code/Pi 黄金路径与中文核心 UI/窄窗预检通过；后续提交 `2a25e74`、`6247a2d` 已完成英文定时任务与智能体总览的 1024×768/768×800 自动和截图验收，但管理向导、Runtime Chat、轻量聊天、项目/任务空状态及协作界面仍待收口。本机也没有 Hermes/Gateway v1 可执行配置，用户数据、完整桌面及独立干净机仍待验收。当前远端无 tag、无 Release；GitHub Free 私有仓库暂不能启用 branch protection 与 Environment required reviewer，发布结论仍为 No-Go。下文 2026-07/08 记录只用于历史追溯；与本段冲突的“当前”“冻结”或命令不得作为现行指令。
 
 本矩阵用于发布前验收。2026-08-06 起独立 Task Center、Project Center 与 Hermes Kanban 页面已退役，2026-08-13 起 Task Center 后台执行器也已退役；任务对话内多智能体协作是唯一交互式协作入口。下方 2026-07 历史验收记录仅用于追溯，不再作为当前界面入口说明。
 

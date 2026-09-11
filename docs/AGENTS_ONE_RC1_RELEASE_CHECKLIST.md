@@ -70,7 +70,7 @@ portable 使用专用 `userData` 真实启动通过，停止后关联进程和�
 | OR-701 | 干净环境         | 从目标 GitHub 固定 SHA 全新 clone；clean install；三轮门禁；打包                                             | 自动部分与远端制品下载校验通过；独立人工机待验收 |
 | OR-702 | Runtime 黄金路径 | Hermes、本地 CLI、Gateway v1 分别完成配置、probe、真实对话、取消/失败、重启恢复；其余首发 Runtime 按回归矩阵 | Codex/Claude Code/Pi 通过；Hermes/Gateway 无环境 |
 | OR-703 | 用户数据         | 项目/任务归属、历史、附件、定时任务、时区/休眠补偿、备份校验、恢复、失败回滚                                 | 待验收                                           |
-| OR-704 | 桌面体验         | NSIS 首启、portable、托盘、窄窗口、中英文、外链、下载、退出、崩溃恢复、卸载残留                              | 中文核心页/窄窗通过；英文硬编码及其余路径待修复  |
+| OR-704 | 桌面体验         | NSIS 首启、portable、托盘、窄窗口、中英文、外链、下载、退出、崩溃恢复、卸载残留                              | 中文核心页通过；英文定时任务/智能体总览及窄窗通过，其余英文路径待修复 |
 | OR-705 | 稳定性           | 固定 SHA 三轮自动门禁 + 至少一轮独立干净机人工验收                                                           | 三轮自动通过；独立人工机待验收                   |
 | OR-706 | RC 标签          | 前述项目和 G0～G8 全绿后，才为同一 SHA 创建 RC tag                                                           | 禁止提前执行                                     |
 
@@ -101,4 +101,4 @@ portable 使用专用 `userData` 真实启动通过，停止后关联进程和�
 
 ## 当前阻断
 
-目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立；当前开发机已完成远端制品校验、首次安装/启动/卸载、portable 启动、Codex/Claude Code/Pi 黄金路径及中文核心 UI/窄窗预检。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。英文 UI 仍有大范围硬编码中文；本机也没有 Hermes/Gateway v1 可执行配置。独立干净 Windows 的用户数据、完整桌面、覆盖升级与旧版回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。
+目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立；当前开发机已完成远端制品校验、首次安装/启动/卸载、portable 启动、Codex/Claude Code/Pi 黄金路径及中文核心 UI/窄窗预检。定时任务与智能体总览已完成中英文 1024×768/768×800 自动和截图验收，但智能体管理/接入向导、Runtime Chat、轻量聊天、项目/任务空状态与协作界面仍有硬编码中文。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。本机也没有 Hermes/Gateway v1 可执行配置；独立干净 Windows 的用户数据、完整桌面、覆盖升级与旧版回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。
