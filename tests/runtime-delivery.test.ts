@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { realpath } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -38,6 +39,7 @@ describe("local Runtime delivery verification", () => {
         { role: "assistant", content: [{ type: "text", text: finalText }] },
       ],
     });
+    const canonicalTarget = await realpath(target);
 
     await expect(
       verifyLocalDeliveryArtifacts(structuredOutput, root),
@@ -45,7 +47,7 @@ describe("local Runtime delivery verification", () => {
       expect.objectContaining({
         kind: "file",
         label: "multi-agent-smoke-test.txt",
-        path: target,
+        path: canonicalTarget,
         sha256,
         sourceMachine: "本机工作区",
         changeSummary: "创建冒烟测试文件。",
