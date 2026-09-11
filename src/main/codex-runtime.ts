@@ -208,8 +208,10 @@ export function codexExecArgs(
   inputDirectory?: string,
   imagePaths: string[] = [],
   model?: string,
+  skipGitRepoCheck = false,
 ): string[] {
   const args = ["exec", "--json"];
+  if (skipGitRepoCheck) args.push("--skip-git-repo-check");
   if (mode === "full_access") {
     args.push("--dangerously-bypass-approvals-and-sandbox");
   } else {
@@ -303,6 +305,7 @@ export async function startCodexProcess(
     preparedInputs.directory,
     preparedInputs.imagePaths,
     config.model,
+    !workspace,
   );
   const child = spawn(invocation.command, [...invocation.prefix, ...args], {
     cwd,
