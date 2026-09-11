@@ -118,8 +118,19 @@ jobs:
       - name: Generate checksums and release notes
         shell: pwsh
         run: |
-          $releaseFiles = Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' } | Sort-Object Name
-          if (-not $releaseFiles) { throw "No release files found" }
+          $expectedNames = @(
+            "agents-one-${{ steps.identity.outputs.version }}-setup.exe",
+            "agents-one-${{ steps.identity.outputs.version }}-portable.exe",
+            "agents-one-${{ steps.identity.outputs.version }}-setup.exe.blockmap",
+            'latest.yml'
+          )
+          $releaseFiles = foreach ($name in $expectedNames) {
+            $path = Join-Path dist $name
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Expected release file is missing: $name"
+            }
+            Get-Item -LiteralPath $path
+          }
           $checksums = foreach ($file in $releaseFiles) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($file.Name)"
