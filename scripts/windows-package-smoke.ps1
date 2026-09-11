@@ -24,32 +24,111 @@ foreach ($required in @($executable, $appAsar, $setup, $portable)) {
 }
 
 $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
-$smokeRoot = Join-Path $tempRoot ("agents-one-package-smoke-" + [guid]::NewGuid().ToString("N"))
-$userData = Join-Path $smokeRoot "user-data"
-New-Item -ItemType Directory -Path $userData -Force | Out-Null
-$process = $null
 
-try {
-  $process = Start-Process -FilePath $executable -ArgumentList "--user-data-dir=$userData" -PassThru -WindowStyle Hidden
-  Start-Sleep -Seconds 12
-  $process.Refresh()
-  if ($process.HasExited) {
-    throw "Packaged Agents One exited during startup smoke test with code $($process.ExitCode)"
+function Remove-SmokeDirectory {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $resolved = [System.IO.Path]::GetFullPath($Path)
+  $normalizedTempRoot = $tempRoot.TrimEnd("\")
+  $parent = [System.IO.Path]::GetDirectoryName($resolved.TrimEnd("\"))
+  if (-not $parent.Equals($normalizedTempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to remove a smoke directory outside the direct temp root: $resolved"
   }
-  if (-not (Test-Path -LiteralPath $userData -PathType Container)) {
-    throw "Packaged Agents One did not initialize the isolated userData path"
+  if (-not (Test-Path -LiteralPath $resolved)) {
+    return
   }
-  if (-not (Get-ChildItem -LiteralPath $userData -Force | Select-Object -First 1)) {
-    throw "Packaged Agents One did not write startup data to the isolated userData path"
-  }
-  Write-Host "Packaged startup passed for Agents One $ExpectedVersion (PID $($process.Id))."
-} finally {
-  if ($process -and -not $process.HasExited) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    $process.WaitForExit(5000) | Out-Null
-  }
-  $resolvedSmoke = [System.IO.Path]::GetFullPath($smokeRoot)
-  if ($resolvedSmoke.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $resolvedSmoke)) {
-    Remove-Item -LiteralPath $resolvedSmoke -Recurse -Force
+  foreach ($attempt in 1..5) {
+    try {
+      Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction Stop
+      return
+    } catch {
+      if ($attempt -eq 5) {
+        throw
+      }
+      Start-Sleep -Seconds 1
+    }
   }
 }
+
+function Invoke-StartupSmoke {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Target,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Label,
+
+    [Parameter(Mandatory = $true)]
+    [int]$WaitSeconds
+  )
+
+  $smokeRoot = Join-Path $tempRoot ("agents-one-package-smoke-" + [guid]::NewGuid().ToString("N"))
+  $userData = Join-Path $smokeRoot "user-data"
+  New-Item -ItemType Directory -Path $userData -Force | Out-Null
+  $launcher = $null
+  $matchingProcesses = @()
+  $portableExtractionRoots = @()
+
+  try {
+    $launcher = Start-Process -FilePath $Target -ArgumentList "--user-data-dir=$userData" -PassThru -WindowStyle Hidden
+    Start-Sleep -Seconds $WaitSeconds
+    $launcher.Refresh()
+    if ($launcher.HasExited) {
+      throw "$Label exited during startup smoke test with code $($launcher.ExitCode)"
+    }
+    if (-not (Test-Path -LiteralPath $userData -PathType Container)) {
+      throw "$Label did not initialize the isolated userData path"
+    }
+    if (-not (Get-ChildItem -LiteralPath $userData -Force | Select-Object -First 1)) {
+      throw "$Label did not write startup data to the isolated userData path"
+    }
+    Write-Host "$Label startup passed for Agents One $ExpectedVersion (launcher PID $($launcher.Id))."
+  } finally {
+    # Portable packages extract and launch a child executable. Match only
+    # processes carrying this invocation's unique userData argument so an
+    # unrelated Agents One session can never be terminated by the smoke test.
+    try {
+      $matchingProcesses = @(
+        Get-CimInstance Win32_Process -ErrorAction Stop |
+          Where-Object {
+            $_.Name -like "agents-one*.exe" -and
+            $_.CommandLine -and
+            $_.CommandLine.IndexOf($userData, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+          }
+      )
+    } catch {
+      Write-Warning "Could not enumerate smoke-test child processes: $($_.Exception.Message)"
+    }
+    $portableExtractionRoots = @(
+      $matchingProcesses |
+        Where-Object { $_.Name -eq "agents-one.exe" -and $_.ExecutablePath } |
+        ForEach-Object { [System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($_.ExecutablePath)) } |
+        Where-Object {
+          [System.IO.Path]::GetDirectoryName($_.TrimEnd("\")).Equals(
+            $tempRoot.TrimEnd("\"),
+            [System.StringComparison]::OrdinalIgnoreCase
+          )
+        } |
+        Select-Object -Unique
+    )
+    foreach ($item in $matchingProcesses) {
+      Stop-Process -Id $item.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    if ($launcher -and -not $launcher.HasExited) {
+      Stop-Process -Id $launcher.Id -Force -ErrorAction SilentlyContinue
+    }
+    if ($launcher) {
+      $launcher.WaitForExit(5000) | Out-Null
+    }
+    foreach ($extractionRoot in $portableExtractionRoots) {
+      Remove-SmokeDirectory -Path $extractionRoot
+    }
+    Remove-SmokeDirectory -Path $smokeRoot
+  }
+}
+
+Invoke-StartupSmoke -Target $executable -Label "Unpacked application" -WaitSeconds 12
+Invoke-StartupSmoke -Target $portable -Label "Portable package" -WaitSeconds 20

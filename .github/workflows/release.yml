@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Immutable commit SHA or ref to validate"
+        description: "Full immutable 40-character commit SHA to validate"
         required: true
-        default: "main"
         type: string
       publish_draft:
         description: "Create a draft GitHub Release after the release environment approves"
@@ -35,11 +34,21 @@ jobs:
     name: Gate and package Windows x64
     runs-on: windows-latest
     timeout-minutes: 120
+    env:
+      AGENTS_ONE_REQUESTED_RELEASE_SHA: ${{ inputs.ref }}
     outputs:
       sha: ${{ steps.identity.outputs.sha }}
       tag: ${{ steps.identity.outputs.tag }}
       version: ${{ steps.identity.outputs.version }}
     steps:
+      - name: Require an immutable commit SHA
+        shell: pwsh
+        run: |
+          $requested = $env:AGENTS_ONE_REQUESTED_RELEASE_SHA.Trim()
+          if ($requested -notmatch '^[0-9a-fA-F]{40}$') {
+            throw 'Release validation requires a full 40-character commit SHA; branch names, tags, and abbreviated SHAs are rejected.'
+          }
+
       - name: Check out requested revision
         uses: actions/checkout@v4
         with:
@@ -50,7 +59,9 @@ jobs:
         id: identity
         shell: pwsh
         run: |
-          $sha = git rev-parse HEAD
+          $requested = $env:AGENTS_ONE_REQUESTED_RELEASE_SHA.Trim().ToLowerInvariant()
+          $sha = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($sha -ne $requested) { throw "Checkout resolved to $sha instead of requested SHA $requested" }
           $version = node -p "require('./package.json').version"
           $lockHash = (Get-FileHash package-lock.json -Algorithm SHA256).Hash.ToLowerInvariant()
           if (git status --porcelain) { throw "Checkout is not clean before validation" }
