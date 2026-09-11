@@ -124,7 +124,7 @@ async function main() {
 
     step("schedules");
     await openNav("定时任务", "schedules");
-    await page.getByLabel("本地 CLI 定时任务").waitFor({ timeout: 15_000 });
+    await page.getByLabel("智能体定时任务").waitFor({ timeout: 15_000 });
     assert(
       !(await page.getByLabel("远程 Hermes 定时任务").count()),
       "定时任务: remote Hermes management should be retired",
