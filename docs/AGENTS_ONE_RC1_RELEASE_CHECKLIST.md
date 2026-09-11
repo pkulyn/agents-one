@@ -31,6 +31,21 @@
 
 三轮门禁证明同一源码与锁文件的连续稳定性；Windows 打包和启动 smoke 在三轮源码门禁全部通过后执行一次。不得把其他 commit 的历史绿色结果拼接为本候选结果。
 
+## 本地预检记录（不替代远端验收）
+
+2026-09-11 在 `<independent-local-clone>` 对固定提交 `7fd0811688e365118dcedc0050875a96b766ef7a` 完成非硬链接独立克隆。克隆初始没有 `node_modules`、`.env`、Agents One 用户配置、沙箱、`dist` 或 `out`；`npm run install:clean` 安装 932 个包、audit 0，lockfile SHA-256 为 `3340c3ea1a0d0ed1aca836a97ea16cf23fe25089b8f24cec131fc02675929b97`，安装未修改 tracked 工作树。
+
+同一 SHA 的三轮格式、typecheck、零错误 lint、主工程/子项目测试、完整 audit 与 build 全部通过。每轮主工程均为 213/213 文件、2,071 passed/9 skipped；三个子项目均为 22+8+8 passed。随后生成 Windows x64 包并通过解包应用隔离 `userData` 启动 smoke；本机宿主 Node 25.8.2，不替代 workflow 声明的 Node 22 runner 验收。
+
+| 本地产物                                      |        字节 | SHA-256                                                            |
+| --------------------------------------------- | ----------: | ------------------------------------------------------------------ |
+| `agents-one-0.1.0-alpha.1-setup.exe`          | 197,320,349 | `d6f6ffc1e63250c5112396bbbf01c1453588d304c961c07262849c0650615c3d` |
+| `agents-one-0.1.0-alpha.1-portable.exe`       | 197,133,973 | `1af5a12d9adfaae9a277f5e605f6d4c06ada7e4984768cba054c2f38136fd7b3` |
+| `agents-one-0.1.0-alpha.1-setup.exe.blockmap` |     208,855 | `9072a2ff4090b0e5d2041860533195e5b629cc90d72dfaf2092d1c5a020fdde4` |
+| `latest.yml`                                  |         373 | `3d73b18cf35bc55bd088ed3c2693219391e1866e55c73f178ac8143983dd885c` |
+
+两个 exe 的 Authenticode 状态均为 `NotSigned`，符合当前未签名 Alpha 策略。这些文件仅为本机候选，不得上传或公开分发。首次预检还拦截了校验清单误含未上传 `builder-debug.yml` 的问题；上述 SHA 已采用修正后的严格四文件白名单复验。
+
 ## OR-7 干净 Windows 人工回放
 
 以下操作必须在普通用户权限、没有当前仓库 `node_modules`、没有开发机 Agents One 配置的独立 Windows 环境执行。测试账号、Token、Cookie、提示词、用户数据和原始日志不得提交到仓库；这里只记录脱敏结论和受控证据位置。
