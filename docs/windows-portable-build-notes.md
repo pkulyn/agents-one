@@ -8,12 +8,12 @@ This fork is developed on a locked-down corporate Windows machine without admini
 
 - Project: `<repo>`（任意普通用户可写目录，包括含空格路径）
 - Upstream base: `fathah/hermes-desktop` 0.7.3
-- Node: `<portable-node>\node.exe` >=22.12.0（2026-09-10 clean-clone validation: 25.8.2）
+- Node: `<portable-node>\node.exe` >=24.0.0（2026-09-10 clean-clone validation: 25.8.2）
 - npm: `<portable-node>\npm.cmd` 11.11.1
 - Electron: 43.4.1
 - Native dependency: `better-sqlite3` 13.0.3
 
-Use Node 22 explicitly in each PowerShell session:
+Use Node 24 or newer explicitly in each PowerShell session. Node 22 does not expose `node:sqlite` as a built-in module to the current Vite/Vitest toolchain:
 
 ```powershell
 $env:PATH = "<portable-node>;$env:PATH"

@@ -10,7 +10,7 @@
 ## 快速开始
 
 1. **Fork** 本仓库，并将你的 fork 克隆到本地。
-2. 安装 Node.js 22.12 或更高版本。企业 Windows 无管理员权限时，可使用官方 ZIP 便携版，解压到用户可写目录并加入用户级 `PATH`；无需系统服务、驱动、Visual Studio 或全局 npm 包。
+2. 安装 Node.js 24 或更高版本。企业 Windows 无管理员权限时，可使用官方 ZIP 便携版，解压到用户可写目录并加入用户级 `PATH`；无需系统服务、驱动、Visual Studio 或全局 npm 包。测试与数据库回退路径会导入内置 `node:sqlite` 模块，因此最低版本为 Node 24。
 3. **严格按 lockfile 安装依赖：**
 
    ```bash

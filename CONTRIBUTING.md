@@ -10,7 +10,7 @@ Thanks for your interest in contributing to Agents One! Whether it's a bug fix, 
 ## Getting Started
 
 1. **Fork** the repository and clone your fork locally.
-2. Install Node.js 22.12 or newer. On managed Windows machines without administrator access, use the official portable ZIP, extract it to a user-writable folder, and add that folder to the user-level `PATH`; no system service, driver, Visual Studio, or global npm package is required.
+2. Install Node.js 24 or newer. On managed Windows machines without administrator access, use the official portable ZIP, extract it to a user-writable folder, and add that folder to the user-level `PATH`; no system service, driver, Visual Studio, or global npm package is required. Node 24 is required because the test and fallback database path imports the built-in `node:sqlite` module.
 3. **Install dependencies from the lockfile:**
 
    ```bash
