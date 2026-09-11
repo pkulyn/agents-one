@@ -2,7 +2,7 @@
 
 初始日期：2026-08-13；当前状态更新：2026-09-11
 
-> **当前状态（2026-09-11）**：固定提交 `7bac448ddc3aa59164c022a6e9ad7a814c5568fb` 已在无依赖、无配置的独立本地克隆连续三轮通过自动门禁：每轮主工程 213/213 文件（2,071 passed、9 skipped）、子项目 38/38、格式/typecheck/lint/audit/build 全绿；同 SHA 的 NSIS/portable 打包、unpacked/portable 双启动、零 smoke 残留与严格四文件 SHA-256 清单也通过。发布 workflow 现只接受并复核完整 40 位 commit SHA。该证据只是本地预检；目标 GitHub workflow、草稿 Release、独立干净机安装/升级/卸载/回滚及 Runtime 人工黄金路径仍未验收，因此发布结论仍为 No-Go。下文 2026-07/08 记录只用于历史追溯；与本段冲突的“当前”“冻结”或命令不得作为现行指令。
+> **当前状态（2026-09-11）**：固定提交 `7bac448ddc3aa59164c022a6e9ad7a814c5568fb` 已在无依赖、无配置的独立本地克隆连续三轮通过自动门禁：每轮主工程 213/213 文件（2,071 passed、9 skipped）、子项目 38/38、格式/typecheck/lint/audit/build 全绿；同 SHA 的 NSIS/portable 打包、unpacked/portable 双启动、零 smoke 残留与严格四文件 SHA-256 清单也通过。后续提交 `2dcb45b` 将外部 GitHub Actions 全部固定到完整提交 SHA；发布 workflow 现只接受并复核完整 40 位候选 commit SHA。该证据只是本地预检，action 固定提交本身仍须目标 Windows runner 验证；目标 GitHub workflow、草稿 Release、独立干净机安装/升级/卸载/回滚及 Runtime 人工黄金路径仍未验收，因此发布结论仍为 No-Go。下文 2026-07/08 记录只用于历史追溯；与本段冲突的“当前”“冻结”或命令不得作为现行指令。
 
 本矩阵用于发布前验收。2026-08-06 起独立 Task Center、Project Center 与 Hermes Kanban 页面已退役，2026-08-13 起 Task Center 后台执行器也已退役；任务对话内多智能体协作是唯一交互式协作入口。下方 2026-07 历史验收记录仅用于追溯，不再作为当前界面入口说明。
 

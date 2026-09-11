@@ -46,6 +46,8 @@
 
 两个 exe 的 Authenticode 状态均为 `NotSigned`，符合当前未签名 Alpha 策略。这些文件仅为本机候选，不得上传或公开分发。先前预检拦截了校验清单误含未上传 `builder-debug.yml` 的问题；上述 SHA 已采用修正后的严格四文件白名单复验。发布 workflow 还会拒绝 branch、tag、短 SHA 或非十六进制输入，并在 checkout 后确认 HEAD 与请求的完整 SHA 完全一致。
 
+本地完整预检之后，提交 `2dcb45b9c1ad0af6728001188c5cf51a24bb11e7` 又将全部外部 GitHub Actions 固定到完整提交 SHA，并增加 GitHub Actions Dependabot 更新入口。该变更不改变应用源码或本地产物，但必须由目标仓库的 Windows runner 在最终候选 SHA 上验证，不能把 `7bac448` 的本地绿色结果直接登记为该后续提交的远端 Actions 结果。
+
 ## OR-7 干净 Windows 人工回放
 
 以下操作必须在普通用户权限、没有当前仓库 `node_modules`、没有开发机 Agents One 配置的独立 Windows 环境执行。测试账号、Token、Cookie、提示词、用户数据和原始日志不得提交到仓库；这里只记录脱敏结论和受控证据位置。
