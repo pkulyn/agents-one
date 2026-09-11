@@ -1,5 +1,11 @@
 # Agents One 项目进展日志
 
+## 2026-09-11：OR-7 固定 SHA 验收准备
+
+- 三轮门禁固化：Windows 发布工作流不再只运行一轮主测试，改为在同一 checkout、同一 lockfile 上连续三轮执行格式、Node/Web TypeScript、零错误 lint、主工程与三个子项目测试、完整 audit 和生产 build；任一步失败即停止，三轮后才允许打包与启动 smoke。
+- 验收载体：新增 `docs/AGENTS_ONE_RC1_RELEASE_CHECKLIST.md`，统一记录候选 SHA、Actions run、OR-701～706、G0～G8、Runtime/用户数据/桌面人工回放、安装升级回滚及维护者签字，不允许拼接其他提交的历史绿色结果。
+- 当前边界：本地将从本提交创建无依赖、无配置的独立克隆进行等价预检，但目标 GitHub 仍不可访问；本地克隆不能替代 OR-701 指定的目标 GitHub clone，也不能替代 Windows Actions、draft Release 或独立干净机人工验收。结论继续 No-Go，禁止提前创建 OR-706 RC tag。
+
 ## 2026-09-10：OR-6 开源文档与治理完成
 
 - 公开事实：README 中英文入口互链并明确尚无公开 Release、首发 Windows x64、未签名/校验值/无自动更新边界，以及 Electron `userData`、Hermes Runtime、Connector、项目与备份的数据位置。
