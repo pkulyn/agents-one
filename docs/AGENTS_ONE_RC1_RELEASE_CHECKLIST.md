@@ -8,10 +8,10 @@
 | ------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | 候选版本      | `0.1.0-alpha.1`                                                                                                           |
 | 目标 tag      | `v0.1.0-alpha.1`（仅在 OR-701～706 与 G0～G8 全部通过后创建）                                                             |
-| Commit SHA    | `7c56549508385213189a338b526d3a8a039e2638`（远端自动 Dry Run 候选，不是最终 RC tag 授权）                                 |
-| 工作流运行    | [Windows Alpha Release Gate #34564064432](https://github.com/pkulyn/agents-one/actions/runs/34564064432)；CI #34564056533 |
+| Commit SHA    | `0043bf7f1678536dfd2525a0179b3c5ce218f6c1`（当前远端自动 Dry Run 候选，不是最终 RC tag 授权）                             |
+| 工作流运行    | [Windows Alpha Release Gate #34577793216](https://github.com/pkulyn/agents-one/actions/runs/34577793216)；CI #34577013104 |
 | 验收人 / 日期 | 自动门禁：GitHub Actions / 2026-09-11；人工验收人待填写                                                                   |
-| 结论          | **No-Go**；远端自动门禁通过，OR-507 人工发布回放与 OR-702～706 尚未全部完成                                               |
+| 结论          | **No-Go**；远端自动门禁及 OR-702 本地 CLI 子范围通过，Hermes/Gateway、独立机与 OR-703～706 尚未完成                       |
 
 ## 自动门禁证据
 
@@ -19,28 +19,28 @@
 
 | 检查                           | Round 1  | Round 2 | Round 3 | 证据                                                                                                                |
 | ------------------------------ | -------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
-| `format:check`                 | 通过     | 通过    | 通过    | run `34564064432` step 8                                                                                            |
-| `typecheck`                    | 通过     | 通过    | 通过    | run `34564064432` step 8                                                                                            |
-| ESLint 0 errors                | 通过     | 通过    | 通过    | run `34564064432` step 8                                                                                            |
-| 主工程 + 三个子项目测试        | 通过     | 通过    | 通过    | run `34564064432` step 8；既有 9 项有据 skip                                                                        |
-| 完整依赖 audit                 | 通过     | 通过    | 通过    | run `34564064432` step 8                                                                                            |
-| production build               | 通过     | 通过    | 通过    | run `34564064432` step 8                                                                                            |
-| Windows NSIS + portable 打包   | 通过     | 不重复  | 不重复  | run `34564064432` step 9                                                                                            |
-| 解包应用 + portable 启动 smoke | 通过     | 不重复  | 不重复  | run `34564064432` step 10；隔离 `userData`                                                                          |
-| 资产 SHA-256                   | 通过生成 | 不适用  | 不适用  | step 11 `SHA256SUMS.txt`；artifact digest `sha256:dbd1ebd7f954e4e59ec1e99c04fed04aa4b97eae1884174d9574494854beb94f` |
+| `format:check`                 | 通过     | 通过    | 通过    | run `34577793216` step 8                                                                                            |
+| `typecheck`                    | 通过     | 通过    | 通过    | run `34577793216` step 8                                                                                            |
+| ESLint 0 errors                | 通过     | 通过    | 通过    | run `34577793216` step 8                                                                                            |
+| 主工程 + 三个子项目测试        | 通过     | 通过    | 通过    | run `34577793216` step 8；既有 9 项有据 skip                                                                        |
+| 完整依赖 audit                 | 通过     | 通过    | 通过    | run `34577793216` step 8                                                                                            |
+| production build               | 通过     | 通过    | 通过    | run `34577793216` step 8                                                                                            |
+| Windows NSIS + portable 打包   | 通过     | 不重复  | 不重复  | run `34577793216` step 9                                                                                            |
+| 解包应用 + portable 启动 smoke | 通过     | 不重复  | 不重复  | run `34577793216` step 10；隔离 `userData`                                                                          |
+| 资产 SHA-256                   | 通过生成 | 不适用  | 不适用  | step 11 `SHA256SUMS.txt`；artifact digest `sha256:6c24410cd7e70d12194eb0c359cf4f3210548faff855b7967c23697010e9ced0` |
 
 三轮门禁证明同一源码与锁文件的连续稳定性；Windows 打包和启动 smoke 在三轮源码门禁全部通过后执行一次。不得把其他 commit 的历史绿色结果拼接为本候选结果。
 
 ## 远端候选制品下载复核（当前开发机预检）
 
-2026-09-11 已从 run `34564064432` 下载完整候选 artifact 到仓库外隔离目录。`SHA256SUMS.txt` 恰含以下四项，逐文件复算均匹配；GitHub artifact 本身的 digest 见上方自动门禁证据。该步骤验证远端上传包可下载且内容自洽，但当前机器不是独立干净 Windows，不替代 OR-701～705 的独立人工回放。
+2026-09-11 已从 run `34577793216` 下载完整候选 artifact 到仓库外隔离目录。`SHA256SUMS.txt` 恰含以下四项，逐文件复算均匹配；GitHub artifact 本身的 digest 见上方自动门禁证据。该步骤验证远端上传包可下载且内容自洽，但当前机器不是独立干净 Windows，不替代 OR-701～705 的独立人工回放。
 
 | 远端候选文件                                  |        字节 | SHA-256                                                            |
 | --------------------------------------------- | ----------: | ------------------------------------------------------------------ |
-| `agents-one-0.1.0-alpha.1-setup.exe`          | 195,544,478 | `9454dfca56ccbeb6e1f1b84690841f397c47e82e83f43fcbb8f62e1a13ed5630` |
-| `agents-one-0.1.0-alpha.1-portable.exe`       | 195,358,107 | `8093e747b67e6481f1cead0d8a12b15e2bc20a9e89ae3c754a69f1297a630122` |
-| `agents-one-0.1.0-alpha.1-setup.exe.blockmap` |     205,303 | `f3139dcd88ea7482048aa8016b3a8c72d09634e216692083633abdc773f324e2` |
-| `latest.yml`                                  |         373 | `b52f534bad90df2ea06adc0f4fdb297159dde3da8b251096a7dafdb36a824877` |
+| `agents-one-0.1.0-alpha.1-setup.exe`          | 195,544,575 | `b5274a33e5447900d68ba1a8d8613854aa2fbcc1330abff5891356b7ac6fabc5` |
+| `agents-one-0.1.0-alpha.1-portable.exe`       | 195,358,202 | `8e432cf87be2ee6c5c165a389b73fe4fdd21d2c0a180ab34de82b93b30ca36bd` |
+| `agents-one-0.1.0-alpha.1-setup.exe.blockmap` |     204,989 | `28e25e1a78821a23e12e63269477a87dfde86d89e1e4ec04da5788159c0b173e` |
+| `latest.yml`                                  |         373 | `cc3a14ec49b979c167445c974d9b8cf550ceda708c333fcbe8ccf62d4d15288d` |
 
 portable 使用专用 `userData` 真实启动通过，停止后关联进程和隔离数据残留为 0。NSIS 首次安装后，卸载注册表 `DisplayVersion` 与 `resources/app.asar` 包版本均为 `0.1.0-alpha.1`；安装版以隔离 `userData` 启动通过，卸载后卸载项、安装目录、关联进程和隔离数据残留均为 0，测试前已存在的真实用户数据目录未变化。两个 exe 均为 `NotSigned`。由于当前构建关闭 `signAndEditExecutable`，安装版主 exe 的 PE `FileVersion` 为 Electron `43.4.1`；应用版本应以注册表和 `app.asar` 为验收依据。
 
@@ -68,7 +68,7 @@ portable 使用专用 `userData` 真实启动通过，停止后关联进程和�
 | ID     | 场景             | 必验步骤                                                                                                     | 状态 / 证据                                        |
 | ------ | ---------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
 | OR-701 | 干净环境         | 从目标 GitHub 固定 SHA 全新 clone；clean install；三轮门禁；打包                                             | 自动部分与远端制品下载校验通过；独立人工机待验收   |
-| OR-702 | Runtime 黄金路径 | Hermes、本地 CLI、Gateway v1 分别完成配置、probe、真实对话、取消/失败、重启恢复；其余首发 Runtime 按回归矩阵 | 待验收                                             |
+| OR-702 | Runtime 黄金路径 | Hermes、本地 CLI、Gateway v1 分别完成配置、probe、真实对话、取消/失败、重启恢复；其余首发 Runtime 按回归矩阵 | Codex/Claude Code/Pi 通过；Hermes/Gateway 待验收   |
 | OR-703 | 用户数据         | 项目/任务归属、历史、附件、定时任务、时区/休眠补偿、备份校验、恢复、失败回滚                                 | 待验收                                             |
 | OR-704 | 桌面体验         | NSIS 首启、portable、托盘、窄窗口、中英文、外链、下载、退出、崩溃恢复、卸载残留                              | 开发机安装/portable 启动与卸载预检通过；其余待验收 |
 | OR-705 | 稳定性           | 固定 SHA 三轮自动门禁 + 至少一轮独立干净机人工验收                                                           | 三轮自动通过；独立人工机待验收                     |
@@ -101,4 +101,4 @@ portable 使用专用 `userData` 真实启动通过，停止后关联进程和�
 
 ## 当前阻断
 
-目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立；当前开发机已完成远端制品校验、首次安装/启动/卸载和 portable 启动预检。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。独立干净 Windows 的 Runtime、用户数据、完整桌面、覆盖升级与旧版回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。
+目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立；当前开发机已完成远端制品校验、首次安装/启动/卸载、portable 启动及 Codex/Claude Code/Pi 黄金路径预检。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。Hermes、Gateway v1、独立干净 Windows 的用户数据、完整桌面、覆盖升级与旧版回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。

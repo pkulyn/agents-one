@@ -1,5 +1,14 @@
 # Agents One 项目进展日志
 
+## 2026-09-11：OR-702 本地 CLI 黄金路径与候选刷新
+
+- 真实回放发现 Codex 无项目普通对话会在应用私有非 Git 目录启动，但既有命令未传 `--skip-git-repo-check`，导致 probe 健康后首轮对话仍立即失败。提交 `0043bf7f1678536dfd2525a0179b3c5ce218f6c1` 仅在无显式项目时加入该参数；已补回归测试，显式项目、受管 worktree 与权限模式不变。
+- 当前开发机完整门禁通过：双 TypeScript、213/213 主工程测试文件（2,072 passed/9 skipped）、零错误 lint、生产依赖 audit 0、production build、格式、diff 与 `lat.md` 均通过。GitHub CI run `34577013104` 对同一 SHA 全绿。
+- Agents One 隔离实例中的本地 Runtime 真实验收通过：Codex `0.147.0`、Claude Code `2.1.233`、Pi `0.85.1` 均完成配置保存、healthy probe、真实只读对话和结构化事件终态；无效 CLI 正确得到 `unreachable/failed`，Codex 运行中取消正确得到 `cancelled`。应用重启后，三项 Runtime 定义均恢复并再次 probe 为 healthy；随后测试定义和隔离配置已清理。未记录回答正文、账户信息或凭据。
+- 新候选远端门禁：固定 SHA `0043bf7f1678536dfd2525a0179b3c5ce218f6c1` 的 Windows Alpha Release Gate run `34577793216` 在 28m27s 内完成 clean checkout、依赖与工作树不变校验、连续三轮完整门禁、NSIS/portable 打包、双启动 smoke、校验清单及 artifact 上传，结论 `success`。`publish_draft=false`，草稿 Release job 正确跳过。
+- 新候选 artifact：`agents-one-0.1.0-alpha.1-windows-x64-0043bf7f1678536dfd2525a0179b3c5ce218f6c1`，391,178,899 字节，digest `sha256:6c24410cd7e70d12194eb0c359cf4f3210548faff855b7967c23697010e9ced0`，保留至 2026-09-25。下载后四项 SHA-256 全部匹配；portable 启动及 NSIS 首次安装、隔离启动、卸载通过，卸载后无注册表/安装目录/隔离数据残留，既有真实用户数据未变化。
+- 候选替代关系：`0043bf7` 取代 `7c56549`；后者只保留为发现 Codex 无项目对话缺陷前的历史自动门禁证据，不得用于 tag/Release。OR-702 的本地 CLI 子范围已通过；Hermes 与 Gateway v1，以及独立干净 Windows 的 Runtime、数据和完整桌面路径仍待验收，整体继续 No-Go。
+
 ## 2026-09-11：目标 GitHub 私有暂存仓库与远端门禁建立
 
 - 仓库建立：已由维护者账号创建私有暂存仓库 `https://github.com/pkulyn/agents-one`，`origin` 指向该仓库，默认分支为 `main`；首次人工推送只包含 `main`，未推送 44 个 Hermes 上游 `v*` tag，当前远端仍无 tag、无 GitHub Release。Dependabot 随后按仓库配置创建了独立更新分支/PR，不属于产品分支推送。
