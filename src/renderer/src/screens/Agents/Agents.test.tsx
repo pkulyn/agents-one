@@ -1,5 +1,19 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const activeLocale = vi.hoisted(() => ({ value: "zh-CN" as "en" | "zh-CN" }));
+
+vi.mock("../../components/useI18n", async () => {
+  const { t } = await vi.importActual<typeof import("../../../../shared/i18n")>(
+    "../../../../shared/i18n",
+  );
+  return {
+    useI18n: () => ({
+      t: (key: string, options?: Record<string, unknown>) =>
+        t(key, activeLocale.value, options),
+    }),
+  };
+});
 
 import Agents from "./Agents";
 
@@ -23,6 +37,24 @@ function installHermesAPI(): {
 }
 
 describe("Agents", () => {
+  beforeEach(() => {
+    activeLocale.value = "zh-CN";
+  });
+
+  it("renders the agent dashboard in English", async () => {
+    activeLocale.value = "en";
+    installHermesAPI();
+    render(<Agents onChatWithRuntime={() => {}} />);
+
+    expect(
+      await screen.findByText(
+        "Agents, CLIs, or services running on this computer",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Remote Agents" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add Agent" })).toBeTruthy();
+  });
+
   it("uses the shared runtime-location descriptions for all three agent domains", async () => {
     installHermesAPI();
     render(<Agents onChatWithRuntime={() => {}} />);
