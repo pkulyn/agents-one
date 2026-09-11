@@ -1,5 +1,7 @@
 export default {
   chat: "Conversation",
+  newTask: "New Task",
+  tasks: "Tasks",
   newChat: "New Conversation",
   sessions: "Sessions",
   discover: "Discover",
