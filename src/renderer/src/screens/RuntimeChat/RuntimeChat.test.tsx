@@ -1076,6 +1076,41 @@ describe("RuntimeChat inputs and persistence", () => {
     ).toEqual([]);
   });
 
+  it("localizes collaboration preflight failures for English Runtime chats", () => {
+    const translateEnglish = (key: string, options?: Record<string, unknown>) =>
+      translate(key, "en", options);
+    const implementation = {
+      id: "implement",
+      role: "Implementation",
+      runtimeId: "pi-local",
+      responsibility: "Deliver the change",
+      workspaceAccess: "local_direct" as const,
+    };
+    const remoteEvidenceRole = {
+      id: "remote-review",
+      role: "Review",
+      runtimeId: "hermes-home2",
+      workspaceAccess: "evidence_bundle" as const,
+    };
+
+    expect(
+      collaborationPermissionPreflight(
+        [implementation],
+        "analysis",
+        [],
+        translateEnglish,
+      )[0]?.reason,
+    ).toContain("Full access");
+    expect(
+      collaborationWorkspacePreflight(
+        [remoteEvidenceRole],
+        { "hermes-home2": hers2Runtime },
+        undefined,
+        translateEnglish,
+      )[0]?.reason,
+    ).toContain("no linked local project folder");
+  });
+
   it("does not require a local project for work on a remote runtime's own device", () => {
     const assignment = {
       id: "remote-maintenance",

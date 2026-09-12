@@ -37,6 +37,7 @@ import { TaskCollaborationRolePanel } from "../../components/TaskCollaborationRo
 import { TaskCollaborationArtifactPanel } from "../../components/TaskCollaborationArtifactPanel";
 import { TaskCollaborationTimeline } from "../../components/TaskCollaborationTimeline";
 import { useI18n } from "../../components/useI18n";
+import { t as sharedTranslate } from "../../../../shared/i18n";
 import type { Attachment } from "../../../../shared/attachments";
 import type {
   AgentRuntimeCapabilities,
@@ -252,6 +253,16 @@ function mergeRuntimeRunObservation(
   };
 }
 
+function defaultTranslate(
+  key: string,
+  options?: Record<string, unknown>,
+): string {
+  // Exported parsing/preflight helpers retain their established Chinese
+  // contract when called outside a rendered chat. RuntimeChat passes its
+  // active UI translator explicitly for user-visible messages.
+  return sharedTranslate(key, "zh-CN", options);
+}
+
 function isGenericRuntimeFailureText(value: string): boolean {
   const normalized = value
     .trim()
@@ -410,18 +421,24 @@ function workspaceAccessLabel(
   assignment: TaskCollaborationAssignment,
   runtime?: AgentRuntimeDefinition,
   projectFolder?: string,
+  translate: (
+    key: string,
+    options?: Record<string, unknown>,
+  ) => string = defaultTranslate,
 ): string {
   switch (effectiveWorkspaceAccess(assignment, runtime, projectFolder)) {
     case "remote_mapping":
       return assignment.workspaceRef
-        ? `远程映射（${assignment.workspaceRef}）`
-        : "远程映射（未配置）";
+        ? translate("collaboration.protocol.remoteMapping", {
+            workspace: assignment.workspaceRef,
+          })
+        : translate("collaboration.protocol.remoteMappingUnconfigured");
     case "evidence_bundle":
-      return "只读证据包";
+      return translate("collaboration.dialog.evidenceBundle");
     case "runtime_native":
-      return "智能体所在设备";
+      return translate("collaboration.dialog.runtimeDevice");
     default:
-      return "本地直连";
+      return translate("collaboration.dialog.localDirect");
   }
 }
 
@@ -429,6 +446,10 @@ export function collaborationWorkspacePreflight(
   assignments: TaskCollaborationAssignment[],
   runtimes: Record<string, AgentRuntimeDefinition>,
   projectFolder: string | undefined,
+  translate: (
+    key: string,
+    options?: Record<string, unknown>,
+  ) => string = defaultTranslate,
 ): Array<{ assignment: TaskCollaborationAssignment; reason: string }> {
   return assignments.flatMap((assignment) => {
     const assigned = assignment.runtimeId
@@ -448,7 +469,12 @@ export function collaborationWorkspacePreflight(
       return [
         {
           assignment,
-          reason: `${assignment.role} 选择了“只读证据包”，但任务尚未关联本地项目文件夹。请选择项目后再启动协作。`,
+          reason: translate(
+            "collaboration.protocol.evidenceBundleNeedsProject",
+            {
+              role: assignment.role,
+            },
+          ),
         },
       ];
     }
@@ -458,7 +484,9 @@ export function collaborationWorkspacePreflight(
         : [
             {
               assignment,
-              reason: `${assignment.role} 是本地智能体，请使用“本地直连”读取项目目录。`,
+              reason: translate("collaboration.protocol.localNeedsDirect", {
+                role: assignment.role,
+              }),
             },
           ];
     }
@@ -469,7 +497,9 @@ export function collaborationWorkspacePreflight(
       return [
         {
           assignment,
-          reason: `${assignment.role} 选择了“远程映射”，但尚未填写远程目录、git 引用或共享工作区。`,
+          reason: translate("collaboration.protocol.remoteMappingRequired", {
+            role: assignment.role,
+          }),
         },
       ];
     }
@@ -477,7 +507,9 @@ export function collaborationWorkspacePreflight(
       return [
         {
           assignment,
-          reason: `${assignment.role} 是远程智能体，不能直接访问本机项目目录；请改为“远程映射”或“只读证据包”。`,
+          reason: translate("collaboration.protocol.remoteCannotUseLocal", {
+            role: assignment.role,
+          }),
         },
       ];
     }
@@ -486,7 +518,9 @@ export function collaborationWorkspacePreflight(
       return [
         {
           assignment,
-          reason: `${assignment.role} 需要实施交付，远程“只读证据包”不能写入本机项目；请改派本地智能体或配置远程映射。`,
+          reason: translate("collaboration.protocol.evidenceBundleReadOnly", {
+            role: assignment.role,
+          }),
         },
       ];
     }
@@ -522,6 +556,10 @@ export function collaborationPermissionPreflight(
   assignments: TaskCollaborationAssignment[],
   defaultAccessMode: "analysis" | "safe_write" | "full_access",
   interventions: TaskCollaborationIntervention[] = [],
+  translate: (
+    key: string,
+    options?: Record<string, unknown>,
+  ) => string = defaultTranslate,
 ): Array<{ assignment: TaskCollaborationAssignment; reason: string }> {
   return assignments.flatMap((assignment, index) => {
     if (
@@ -538,7 +576,9 @@ export function collaborationPermissionPreflight(
     return [
       {
         assignment,
-        reason: `${assignment.role} 是实施角色，但当前协作权限为“只读”，不能创建或修改文件。请将本轮权限切换为“自动”或“完全访问”后重新启动协作。`,
+        reason: translate("collaboration.protocol.implementationReadOnly", {
+          role: assignment.role,
+        }),
       },
     ];
   });
@@ -2253,6 +2293,7 @@ export default function RuntimeChat({
         configuredBase,
         collaborationAccessMode,
         interventions,
+        t,
       );
       if (permissionPreflightIssues.length) {
         const reason = permissionPreflightIssues
@@ -2304,6 +2345,7 @@ export default function RuntimeChat({
         projectWorkspaceId
           ? projectFolder || t("runtimeChat.collaborationRun.linkedProject")
           : projectFolder,
+        t,
       );
       if (preflightIssues.length) {
         const reason = preflightIssues.map((item) => item.reason).join("\n");
@@ -2420,6 +2462,7 @@ export default function RuntimeChat({
                   item,
                   item.runtimeId ? runtimeCatalog[item.runtimeId] : undefined,
                   projectFolder,
+                  t,
                 )}`,
             )
             .join("; "),
@@ -2499,6 +2542,7 @@ export default function RuntimeChat({
                   assignment,
                   assignedRuntime,
                   projectFolder,
+                  t,
                 )}`,
               },
             );
@@ -2935,6 +2979,7 @@ export default function RuntimeChat({
               assignment,
               assignedRuntime,
               projectFolder,
+              t,
             )}`,
           },
         );
