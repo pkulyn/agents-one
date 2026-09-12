@@ -91,7 +91,9 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
                 {run.loading ? (
                   <span
                     className="active-session-chip-activity"
-                    aria-label={`${agentLabel} 正在处理`}
+                    aria-label={t("navigation.shell.agentProcessing", {
+                      name: agentLabel,
+                    })}
                   >
                     <Spinner className="active-session-chip-spinner" size={8} />
                   </span>

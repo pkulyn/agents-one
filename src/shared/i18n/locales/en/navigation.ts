@@ -26,6 +26,21 @@ export default {
   showRecentSessions: "Show recent sessions",
   hideRecentSessions: "Hide recent sessions",
   showMore: "Show more",
+  shell: {
+    preparingWorkspace: "Preparing workspace…",
+    agentProcessing: "{{name}} is working",
+  },
+  profile: {
+    webAgent: "Web Agent",
+    local: "Local",
+    remote: "Remote",
+    defaultAgent: "Default agent",
+    connectAgent: "Connect an agent first",
+    selectDefault: "Select default agent",
+    default: "Default",
+    defaultAgentTitle: "Default agent: {{name}}",
+    runtimeMeta: "{{kind}} / {{location}}",
+  },
   sessionMenu: {
     options: "Options",
     pin: "Pin",

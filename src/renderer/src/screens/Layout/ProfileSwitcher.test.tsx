@@ -1,11 +1,17 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
+import { t as translate } from "../../../../shared/i18n";
+
+const i18nTestState = vi.hoisted(() => ({
+  locale: "zh-CN" as "en" | "zh-CN",
+}));
 
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({
-    t: (key: string): string => (key === "common.appName" ? "Agents One" : key),
+    t: (key: string, options?: Record<string, unknown>): string =>
+      translate(key, i18nTestState.locale, options),
   }),
 }));
 
@@ -76,6 +82,9 @@ function runtime(
 }
 
 describe("ProfileSwitcher", () => {
+  beforeEach(() => {
+    i18nTestState.locale = "zh-CN";
+  });
   it("shows the app name for an unrenamed default profile", async () => {
     installHermesAPI([profile("default")]);
 
@@ -145,5 +154,30 @@ describe("ProfileSwitcher", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Codex/ }));
 
     expect(onDefaultRuntimeChange).toHaveBeenCalledWith("codex");
+  });
+
+  it("renders default-agent controls in English", async () => {
+    i18nTestState.locale = "en";
+    installHermesAPI(
+      [profile("default")],
+      [runtime("hermes-remote", "Hermes", "hermes")],
+    );
+
+    render(
+      <ProfileSwitcher
+        activeProfile="default"
+        onSwitch={() => {}}
+        onManage={() => {}}
+        defaultRuntimeId="hermes-remote"
+      />,
+    );
+
+    const trigger = await screen.findByTitle("Default agent: Hermes");
+    fireEvent.click(trigger);
+    expect(screen.getByText("Select default agent")).toBeVisible();
+    expect(screen.getAllByText("Default").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Hermes Agent Runtime \/ Remote/).length,
+    ).toBeGreaterThan(0);
   });
 });

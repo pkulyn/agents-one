@@ -120,6 +120,8 @@ Reusable modals use a single animated shell so dialogs open and close consistent
 
 The sidebar footer keeps the profile switcher and an update affordance at the bottom, out of the conversation nav.
 
+The default-agent picker localizes its role/location metadata, selection labels, empty guidance, and trigger description while preserving configured Runtime names and availability. Active conversation chips use the same locale for their live-processing accessible label.
+
 [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] renders an update button (when a newer GitHub release is available) and [[src/renderer/src/screens/Layout/ProfileSwitcher.tsx#ProfileSwitcher]] in `.sidebar-footer`. The switcher's manage button opens the global settings modal (below), and the legacy footer actions for Providers/Gateway/Tools/Memory were removed with their screens (plan D5 cleanup); the icon-only rails are gone. When the sidebar is collapsed the footer stays a compact rail with no divider line above it.
 
 ## Settings modal

@@ -26,6 +26,21 @@ export default {
   showRecentSessions: "显示最近对话",
   hideRecentSessions: "隐藏最近对话",
   showMore: "显示更多",
+  shell: {
+    preparingWorkspace: "正在准备工作区…",
+    agentProcessing: "{{name}} 正在处理",
+  },
+  profile: {
+    webAgent: "网页智能体",
+    local: "本地",
+    remote: "远程",
+    defaultAgent: "默认智能体",
+    connectAgent: "请先接入智能体",
+    selectDefault: "选择默认智能体",
+    default: "默认",
+    defaultAgentTitle: "默认智能体：{{name}}",
+    runtimeMeta: "{{kind}} / {{location}}",
+  },
   sessionMenu: {
     options: "更多选项",
     pin: "固定",
