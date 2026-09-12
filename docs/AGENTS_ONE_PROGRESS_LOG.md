@@ -5,6 +5,7 @@
 - 英文 UI 收口继续推进：轻量对话、主对话入口和反馈、托盘、协作工作区/新建向导、Runtime Shell、项目/任务侧栏已改为按活动语言渲染；项目名称、任务标题、已配置 Runtime 名称等用户数据保持原文。侧栏本轮提交为 `2d9ebfe`，英文定向测试和 Web TypeScript 检查通过；剩余 RuntimeChat 的中文主要是兼容解析、协作协议与角色提示，须另作双语协议兼容切片，不能直接替换正则。
 - Layout 的计划任务结果 toast、项目文件夹选择器、快速对话转入任务提示及协作设置的成功/失败反馈已纳入 `collaboration.shell`。TaskCollaborationDialog/Workspace 定向回归 7/7、Web TypeScript、格式、`lat check` 与 `git diff --check` 通过。
 - OR-703 自动数据证据：`agents-one-backup`、`task-schedules`、`session-cache-sync`、`workspace-protection` 与 `sessions-history-items` 共 5 个隔离测试文件、76 项断言通过，覆盖备份/恢复、附件路径迁移、事务回滚、项目工作区、会话历史和计划任务存储。该结果不替代独立 Windows 的完整桌面、时区/休眠补偿和人工恢复回放。
+- OR-704 自动桌面证据：以隔离 `HERMES_HOME`、隔离 Electron userData 和回环 CDP 启动开发实例，`verify-schedules-i18n` 在 English/简体中文两种语言完成计划任务页、创建表单、智能体页、接入类型/基础信息/连接设置及已有智能体管理路径的双视口检查，生成 16 张无敏感数据截图；1024×768、768×800 自动溢出检查及连接页、创建表单截图抽样目视复核通过。实例与隔离数据已清理。该开发自动证据不替代独立 Windows 的安装包、托盘、外链、退出/崩溃恢复、卸载残留和人工验收。
 - GitHub Windows CI `34683699418` 暴露 Connector 测试在非交互服务账户下三次真实 DPAPI 调用均阻塞至原 15 秒超时，并非业务断言失败。生产调用超时提高到 60 秒；契约测试在 Windows CI 改用注入式保护器验证加密信封和失败边界，真实 DPAPI 回环移为显式 `npm --prefix plugins/agents-one-connector run test:dpapi` 交互 Windows 验收。当前开发机已实际通过该命令；CI 仍须以本次修复后的提交重新取得绿色证据。
 - GitHub CI `34686809637` 已在 `295386a` 完成并成功，覆盖 Connector DPAPI 稳定化、项目/任务侧栏和 Layout 本地化。该绿色结果是当前主线回归证据，不替代后续固定最终 SHA 的 Windows Alpha Release Gate、草稿 Release 和独立干净机验收。
 
