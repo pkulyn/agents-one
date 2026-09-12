@@ -6,12 +6,16 @@ import { useSettings } from "./SettingsDataContext";
 /** Log files selectable in the viewer, each with a representative icon. */
 const LOG_FILES: {
   file: string;
-  label: string;
+  labelKey: string;
   Icon: React.ComponentType<{ size?: number }>;
 }[] = [
-  { file: "application.log", label: "应用", Icon: Signal },
-  { file: "tasks.log", label: "任务", Icon: Bot },
-  { file: "errors.log", label: "错误", Icon: CircleAlert },
+  {
+    file: "application.log",
+    labelKey: "settings.applicationLog",
+    Icon: Signal,
+  },
+  { file: "tasks.log", labelKey: "settings.tasksLog", Icon: Bot },
+  { file: "errors.log", labelKey: "settings.errorsLog", Icon: CircleAlert },
 ];
 
 /** Agents One application / task / error diagnostic viewer. */
@@ -38,7 +42,7 @@ export default function LogsPane(): React.JSX.Element {
     <div className="settings-modal-pane">
       <div className="settings-field">
         <div className="settings-log-tabs">
-          {LOG_FILES.map(({ file, label, Icon }) => (
+          {LOG_FILES.map(({ file, labelKey, Icon }) => (
             <button
               key={file}
               className={`btn btn-sm ${logFile === file ? "btn-primary" : "btn-secondary"}`}
@@ -51,7 +55,7 @@ export default function LogsPane(): React.JSX.Element {
               }}
             >
               <Icon size={13} />
-              {label}
+              {t(labelKey)}
             </button>
           ))}
           <button className="btn btn-sm btn-secondary" onClick={loadLogs}>
