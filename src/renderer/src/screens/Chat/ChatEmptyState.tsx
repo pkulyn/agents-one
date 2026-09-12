@@ -4,30 +4,30 @@ import { useI18n } from "../../components/useI18n";
 import welcomeMark from "../../assets/agents-one-welcome.svg";
 
 interface Suggestion {
-  label: string;
-  text: string;
+  labelKey: string;
+  promptKey: string;
   Icon: typeof FolderSearch;
 }
 
 const SUGGESTIONS: Suggestion[] = [
   {
-    label: "分析项目",
-    text: "请分析当前项目的结构、关键模块和主要风险。",
+    labelKey: "chat.projectSuggestions.analyzeLabel",
+    promptKey: "chat.projectSuggestions.analyzePrompt",
     Icon: FolderSearch,
   },
   {
-    label: "拆解任务",
-    text: "请将这个需求拆解为可执行任务，并给出验收标准。",
+    labelKey: "chat.projectSuggestions.planLabel",
+    promptKey: "chat.projectSuggestions.planPrompt",
     Icon: ListChecks,
   },
   {
-    label: "协作规划",
-    text: "请为这个项目制定多智能体协作计划，明确分工和交接产物。",
+    labelKey: "chat.projectSuggestions.collaborateLabel",
+    promptKey: "chat.projectSuggestions.collaboratePrompt",
     Icon: Workflow,
   },
   {
-    label: "验收产物",
-    text: "请检查当前任务产物是否满足要求，并列出未完成项。",
+    labelKey: "chat.projectSuggestions.verifyLabel",
+    promptKey: "chat.projectSuggestions.verifyPrompt",
     Icon: PackageCheck,
   },
 ];
@@ -49,14 +49,14 @@ export const ChatEmptyState = memo(function ChatEmptyState({
       <div className="chat-empty-text">{t("chat.emptyTitle")}</div>
       <div className="chat-empty-hint">{t("chat.emptyHint")}</div>
       <div className="chat-empty-suggestions">
-        {SUGGESTIONS.map(({ label, text, Icon }) => (
+        {SUGGESTIONS.map(({ labelKey, promptKey, Icon }) => (
           <button
-            key={label}
+            key={labelKey}
             className="chat-suggestion"
-            onClick={() => onSelectSuggestion(text)}
+            onClick={() => onSelectSuggestion(t(promptKey))}
           >
             <Icon size={16} />
-            {label}
+            {t(labelKey)}
           </button>
         ))}
       </div>

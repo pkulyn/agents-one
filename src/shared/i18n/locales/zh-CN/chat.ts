@@ -52,6 +52,16 @@ export default {
   suggestionScript: "编写脚本",
   suggestionSchedule: "创建定时任务",
   suggestionAnalyze: "分析数据",
+  projectSuggestions: {
+    analyzeLabel: "分析项目",
+    analyzePrompt: "请分析当前项目的结构、关键模块和主要风险。",
+    planLabel: "拆解任务",
+    planPrompt: "请将这个需求拆解为可执行任务，并给出验收标准。",
+    collaborateLabel: "协作规划",
+    collaboratePrompt: "请为这个项目制定多智能体协作计划，明确分工和交接产物。",
+    verifyLabel: "验收产物",
+    verifyPrompt: "请检查当前任务产物是否满足要求，并列出未完成项。",
+  },
   approve: "批准",
   deny: "拒绝",
   newChat: "新对话 (Cmd+N)",
@@ -61,6 +71,7 @@ export default {
   contextFolderActive: "上下文文件夹：{{path}}",
   removeContextFolder: "移除上下文文件夹",
   attach: "上传文件",
+  attachUnsupportedByRuntime: "该智能体暂不支持文件输入",
   removeAttachment: "移除附件",
   attachmentCompressed: "已压缩",
   dropToAttach: "拖放文件以添加附件",
@@ -78,6 +89,12 @@ export default {
   contextUsed: "已使用 {{pct}}%（剩余 {{left}}%）",
   contextTokens: "已使用 {{used}} / {{total}} 个令牌",
   contextCache: "缓存命中率 {{pct}}%（读取 {{read}} / 写入 {{write}}）",
+  contextGauge: {
+    label: "{{usage}}，窗口 {{window}}",
+    compactLabel: "{{label}}；压缩当前会话上下文",
+    title: "上下文窗口 {{window}}，已使用 {{used}}",
+    compactHint: "{{title}}；点击压缩当前会话",
+  },
   dashboardUnavailableFallback:
     "当前连接不支持 Dashboard 对话，已切换到基础对话模式。智能体档案切换和对话历史功能会受到限制。",
   validation: {
@@ -165,6 +182,9 @@ export default {
     unavailable:
       "当前为远程 API 模式，无法浏览服务器目录。请输入服务器上的绝对路径，然后选择。",
   },
+  recentFolders: "最近使用",
+  noRecentFolders: "暂无最近文件夹",
+  chooseFolder: "选择文件夹…",
   showWorktree: "显示文件浏览器",
   hideWorktree: "隐藏文件浏览器",
   followUs: {

@@ -37,6 +37,20 @@ export default {
   suggestionScript: "Write a script",
   suggestionSchedule: "Create a scheduled task",
   suggestionAnalyze: "Analyze data",
+  projectSuggestions: {
+    analyzeLabel: "Analyze project",
+    analyzePrompt:
+      "Analyze the current project's structure, key modules, and main risks.",
+    planLabel: "Break down task",
+    planPrompt:
+      "Break this request into actionable tasks and define acceptance criteria.",
+    collaborateLabel: "Plan collaboration",
+    collaboratePrompt:
+      "Create a multi-agent collaboration plan for this project, including ownership and handoff artifacts.",
+    verifyLabel: "Verify deliverables",
+    verifyPrompt:
+      "Check whether the current task deliverables meet the requirements and list anything still missing.",
+  },
   approve: "Approve",
   deny: "Deny",
   clarify: {
@@ -59,6 +73,7 @@ export default {
   contextFolderActive: "Context folder: {{path}}",
   removeContextFolder: "Remove context folder",
   attach: "Attach files",
+  attachUnsupportedByRuntime: "This agent does not support file input yet",
   voiceInput: "Voice input",
   voiceStop: "Stop recording",
   voiceRecording: "Recording",
@@ -68,6 +83,12 @@ export default {
   contextUsed: "{{pct}}% used ({{left}}% left)",
   contextTokens: "{{used}} / {{total}} tokens used",
   contextCache: "Cache: {{pct}}% hit ({{read}} read / {{write}} write)",
+  contextGauge: {
+    label: "{{usage}}, window {{window}}",
+    compactLabel: "{{label}}; compact the current conversation context",
+    title: "Context window {{window}}, {{used}} used",
+    compactHint: "{{title}}; click to compact the current conversation",
+  },
   removeAttachment: "Remove attachment",
   attachmentCompressed: "compressed",
   dropToAttach: "Drop files to attach",
@@ -169,6 +190,9 @@ export default {
     unavailable:
       "This connection cannot list folders here. Enter the remote path and select it.",
   },
+  recentFolders: "Recently used",
+  noRecentFolders: "No recent folders",
+  chooseFolder: "Choose folder…",
   showWorktree: "Show file explorer",
   hideWorktree: "Hide file explorer",
   followUs: {
