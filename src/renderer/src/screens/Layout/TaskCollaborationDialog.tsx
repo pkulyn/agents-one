@@ -1,38 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bot, Folder, Plus, Send, Trash2, Users, X } from "lucide-react";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
-import type {
-  TaskCollaborationAssignment,
-  TaskCollaborationRole,
-} from "../../../../shared/task-collaboration";
+import type { TaskCollaborationAssignment } from "../../../../shared/task-collaboration";
 import { buildTaskCollaborationGraph } from "../../../../shared/task-collaboration-graph";
+import { t as translate, type AppLocale } from "../../../../shared/i18n";
+import { useI18n } from "../../components/useI18n";
 
-const DEFAULT_ROLES: Array<{
-  role: TaskCollaborationRole;
-  responsibility: string;
-  context: string;
-}> = [
-  {
-    role: "项目负责人",
-    responsibility: "拆分、协调、验收",
-    context: "全部",
-  },
-  {
-    role: "实施",
-    responsibility: "实施与交付",
-    context: "任务说明、项目文件",
-  },
-  {
-    role: "测试",
-    responsibility: "测试与复核",
-    context: "任务说明、产物",
-  },
-  {
-    role: "复核",
-    responsibility: "验收与建议",
-    context: "任务说明、产物",
-  },
-];
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+const DEFAULT_ROLE_KEYS = ["coordinator", "implementer", "tester"] as const;
 
 export interface CollaborationTaskDraft {
   runId?: string;
@@ -48,12 +23,16 @@ export interface CollaborationTaskDraft {
   message?: string;
 }
 
-function projectName(path?: string | null): string {
-  return path?.split(/[\\/]/).filter(Boolean).at(-1) || "未关联项目";
+function projectName(
+  path: string | null | undefined,
+  fallback: string,
+): string {
+  return path?.split(/[\\/]/).filter(Boolean).at(-1) || fallback;
 }
 
 function defaultAssignments(
   draft: CollaborationTaskDraft,
+  t: Translate,
 ): TaskCollaborationAssignment[] {
   if (draft.assignments?.length) {
     return draft.assignments.map((item) => ({
@@ -61,24 +40,33 @@ function defaultAssignments(
       id: item.id || crypto.randomUUID(),
     }));
   }
-  return DEFAULT_ROLES.slice(0, 3).map((definition) => {
+  return DEFAULT_ROLE_KEYS.map((key, index) => {
+    const prefix = `collaboration.dialog.defaultRoles.${key}`;
     return {
-      role: definition.role,
-      ...(definition.role === "项目负责人" && draft.sourceRuntimeId
+      role: t(`${prefix}.role`),
+      ...(index === 0 && draft.sourceRuntimeId
         ? {
             runtimeId: draft.sourceRuntimeId,
           }
         : {}),
       id: crypto.randomUUID(),
-      responsibility: definition.responsibility,
-      context: definition.context,
+      responsibility: t(`${prefix}.responsibility`),
+      context: t(`${prefix}.context`),
       workspaceAccess:
-        definition.role === "项目负责人" &&
-        (draft.projectWorkspaceId || draft.projectFolder)
+        index === 0 && (draft.projectWorkspaceId || draft.projectFolder)
           ? "evidence_bundle"
           : undefined,
     };
   });
+}
+
+function localizedDefaultAssignments(
+  draft: CollaborationTaskDraft,
+  locale: AppLocale,
+): TaskCollaborationAssignment[] {
+  return defaultAssignments(draft, (key, options) =>
+    translate(key, locale, options),
+  );
 }
 
 export default function TaskCollaborationDialog({
@@ -96,31 +84,35 @@ export default function TaskCollaborationDialog({
     message: string,
   ) => void;
 }): React.JSX.Element {
+  const { locale, t } = useI18n();
   const available = useMemo(
     () => runtimes.filter((runtime) => runtime.enabled),
     [runtimes],
   );
   const [assignments, setAssignments] = useState<TaskCollaborationAssignment[]>(
-    () => defaultAssignments(draft),
+    () => localizedDefaultAssignments(draft, locale),
   );
   const [message, setMessage] = useState(() => draft.message || "");
   const orchestrationError = useMemo(() => {
     const configured = assignments.filter(
       (item) => item.role.trim() && item.runtimeId,
     );
-    if (configured.length === 0) return "请至少为一个角色指定智能体。";
+    if (configured.length === 0)
+      return t("collaboration.dialog.assignAgentError");
     try {
       buildTaskCollaborationGraph(configured);
       return "";
     } catch (error) {
-      return error instanceof Error ? error.message : "协作依赖无效。";
+      return error instanceof Error
+        ? error.message
+        : t("collaboration.dialog.invalidDependencies");
     }
-  }, [assignments]);
+  }, [assignments, t]);
 
   useEffect(() => {
-    setAssignments(defaultAssignments(draft));
+    setAssignments(localizedDefaultAssignments(draft, locale));
     setMessage(draft.message || "");
-  }, [draft]);
+  }, [draft, locale]);
 
   const updateAssignment = (
     id: string | undefined,
@@ -138,9 +130,9 @@ export default function TaskCollaborationDialog({
       ...current,
       {
         id: crypto.randomUUID(),
-        role: "新角色",
+        role: t("collaboration.dialog.newRole"),
         responsibility: "",
-        context: "任务说明",
+        context: t("collaboration.dialog.taskContext"),
       },
     ]);
   };
@@ -197,15 +189,15 @@ export default function TaskCollaborationDialog({
         <header>
           <div>
             <h2 id="task-collaboration-title">
-              <Users size={20} /> 多智能体协作
+              <Users size={20} /> {t("collaboration.dialog.title")}
             </h2>
-            <p>{draft.title || "当前任务的协作方案"}</p>
+            <p>{draft.title || t("collaboration.dialog.planFallback")}</p>
           </div>
           <button
             type="button"
             className="icon-btn"
-            title="关闭"
-            aria-label="关闭"
+            title={t("collaboration.dialog.close")}
+            aria-label={t("collaboration.dialog.close")}
             onClick={onClose}
           >
             <X size={18} />
@@ -215,26 +207,30 @@ export default function TaskCollaborationDialog({
         <div className="task-collaboration-body">
           <div className="task-collaboration-project">
             <span>
-              <Folder size={15} /> 关联项目
+              <Folder size={15} /> {t("collaboration.dialog.linkedProject")}
             </span>
             <strong
               title={draft.projectName || draft.projectFolder || undefined}
             >
-              {draft.projectName || projectName(draft.projectFolder)}
+              {draft.projectName ||
+                projectName(
+                  draft.projectFolder,
+                  t("collaboration.dialog.noProject"),
+                )}
             </strong>
           </div>
 
           <section
             className="task-collaboration-role-table"
-            aria-label="协作角色设置"
+            aria-label={t("collaboration.dialog.roleSettings")}
           >
             <div className="task-collaboration-role-head" aria-hidden="true">
-              <span>角色</span>
-              <span>智能体</span>
-              <span>职责</span>
-              <span>共享上下文</span>
-              <span>前置角色</span>
-              <span>工作区访问</span>
+              <span>{t("collaboration.dialog.columns.role")}</span>
+              <span>{t("collaboration.dialog.columns.agent")}</span>
+              <span>{t("collaboration.dialog.columns.responsibility")}</span>
+              <span>{t("collaboration.dialog.columns.context")}</span>
+              <span>{t("collaboration.dialog.columns.dependencies")}</span>
+              <span>{t("collaboration.dialog.columns.workspace")}</span>
               <span />
             </div>
             {assignments.map((assignment) => {
@@ -247,7 +243,7 @@ export default function TaskCollaborationDialog({
                   key={assignment.id || assignment.role}
                 >
                   <input
-                    aria-label="角色"
+                    aria-label={t("collaboration.dialog.role")}
                     value={assignment.role}
                     onChange={(event) =>
                       updateAssignment(assignment.id, {
@@ -271,7 +267,11 @@ export default function TaskCollaborationDialog({
                       )}
                     </span>
                     <select
-                      aria-label={`${assignment.role || "协作角色"}智能体`}
+                      aria-label={t("collaboration.dialog.agentLabel", {
+                        role:
+                          assignment.role ||
+                          t("collaboration.dialog.roleFallback"),
+                      })}
                       value={assignment.runtimeId || ""}
                       onChange={(event) =>
                         updateAssignment(assignment.id, {
@@ -279,7 +279,9 @@ export default function TaskCollaborationDialog({
                         })
                       }
                     >
-                      <option value="">暂不指定</option>
+                      <option value="">
+                        {t("collaboration.dialog.leaveUnassigned")}
+                      </option>
                       {available.map((runtime) => (
                         <option value={runtime.id} key={runtime.id}>
                           {runtime.name}
@@ -288,7 +290,11 @@ export default function TaskCollaborationDialog({
                     </select>
                   </label>
                   <input
-                    aria-label={`${assignment.role || "协作角色"}职责`}
+                    aria-label={t("collaboration.dialog.responsibilityLabel", {
+                      role:
+                        assignment.role ||
+                        t("collaboration.dialog.roleFallback"),
+                    })}
                     value={assignment.responsibility || ""}
                     onChange={(event) =>
                       updateAssignment(assignment.id, {
@@ -297,7 +303,11 @@ export default function TaskCollaborationDialog({
                     }
                   />
                   <input
-                    aria-label={`${assignment.role || "协作角色"}共享上下文`}
+                    aria-label={t("collaboration.dialog.contextLabel", {
+                      role:
+                        assignment.role ||
+                        t("collaboration.dialog.roleFallback"),
+                    })}
                     value={assignment.context || ""}
                     onChange={(event) =>
                       updateAssignment(assignment.id, {
@@ -308,8 +318,12 @@ export default function TaskCollaborationDialog({
                   <select
                     multiple
                     className="task-collaboration-dependency-picker"
-                    aria-label={`${assignment.role || "协作角色"}前置角色`}
-                    title="可多选；不设置任何依赖时沿用列表串行，一旦设置依赖，无依赖角色将并行启动"
+                    aria-label={t("collaboration.dialog.dependenciesLabel", {
+                      role:
+                        assignment.role ||
+                        t("collaboration.dialog.roleFallback"),
+                    })}
+                    title={t("collaboration.dialog.dependenciesTitle")}
                     value={assignment.dependsOn || []}
                     onChange={(event) =>
                       updateAssignment(assignment.id, {
@@ -323,13 +337,18 @@ export default function TaskCollaborationDialog({
                       .filter((candidate) => candidate.id !== assignment.id)
                       .map((candidate) => (
                         <option key={candidate.id} value={candidate.id}>
-                          {candidate.role || "未命名角色"}
+                          {candidate.role ||
+                            t("collaboration.dialog.unnamedRole")}
                         </option>
                       ))}
                   </select>
                   <div className="task-collaboration-workspace-access">
                     <select
-                      aria-label={`${assignment.role || "协作角色"}工作区访问方式`}
+                      aria-label={t("collaboration.dialog.workspaceLabel", {
+                        role:
+                          assignment.role ||
+                          t("collaboration.dialog.roleFallback"),
+                      })}
                       value={workspaceAccessFor(assignment)}
                       onChange={(event) =>
                         updateAssignment(assignment.id, {
@@ -342,20 +361,37 @@ export default function TaskCollaborationDialog({
                       }
                     >
                       {selectedRuntime?.location !== "remote" ? (
-                        <option value="local_direct">本地直连</option>
+                        <option value="local_direct">
+                          {t("collaboration.dialog.localDirect")}
+                        </option>
                       ) : null}
                       {selectedRuntime?.location === "remote" ? (
-                        <option value="">智能体所在设备</option>
+                        <option value="">
+                          {t("collaboration.dialog.runtimeDevice")}
+                        </option>
                       ) : null}
                       {selectedRuntime?.location === "remote" ? (
-                        <option value="remote_mapping">远程映射</option>
+                        <option value="remote_mapping">
+                          {t("collaboration.dialog.remoteMapping")}
+                        </option>
                       ) : null}
-                      <option value="evidence_bundle">只读证据包</option>
+                      <option value="evidence_bundle">
+                        {t("collaboration.dialog.evidenceBundle")}
+                      </option>
                     </select>
                     {workspaceAccessFor(assignment) === "remote_mapping" ? (
                       <input
-                        aria-label={`${assignment.role || "协作角色"}远程工作区映射`}
-                        placeholder="远程目录、git: 引用或共享路径"
+                        aria-label={t(
+                          "collaboration.dialog.remoteMappingLabel",
+                          {
+                            role:
+                              assignment.role ||
+                              t("collaboration.dialog.roleFallback"),
+                          },
+                        )}
+                        placeholder={t(
+                          "collaboration.dialog.remoteMappingPlaceholder",
+                        )}
                         value={assignment.workspaceRef || ""}
                         onChange={(event) =>
                           updateAssignment(assignment.id, {
@@ -368,8 +404,8 @@ export default function TaskCollaborationDialog({
                   <button
                     type="button"
                     className="icon-btn task-collaboration-remove-role"
-                    title="移除角色"
-                    aria-label="移除角色"
+                    title={t("collaboration.dialog.removeRole")}
+                    aria-label={t("collaboration.dialog.removeRole")}
                     onClick={() => removeRole(assignment.id)}
                   >
                     <Trash2 size={15} />
@@ -379,7 +415,7 @@ export default function TaskCollaborationDialog({
             })}
           </section>
           <p className="task-collaboration-dag-hint">
-            前置角色支持多选：多个无依赖角色会并行执行，依赖多个分支的角色会在全部成功后汇合执行。完全不设置时保持原有串行顺序。
+            {t("collaboration.dialog.dagHint")}
           </p>
           {orchestrationError ? (
             <p className="task-collaboration-dag-error" role="alert">
@@ -391,15 +427,15 @@ export default function TaskCollaborationDialog({
             className="btn btn-secondary btn-sm task-collaboration-add-role"
             onClick={addRole}
           >
-            <Plus size={15} /> 添加角色
+            <Plus size={15} /> {t("collaboration.dialog.addRole")}
           </button>
         </div>
 
         <footer className="task-collaboration-composer">
           <textarea
             autoFocus
-            aria-label="任务说明"
-            placeholder="输入任务说明...（Shift+Enter 换行）"
+            aria-label={t("collaboration.dialog.taskBrief")}
+            placeholder={t("collaboration.dialog.taskBriefPlaceholder")}
             value={message}
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
@@ -411,19 +447,27 @@ export default function TaskCollaborationDialog({
           />
           <div className="task-collaboration-composer-tools">
             <span
-              title={draft.projectName || draft.projectFolder || "未关联项目"}
+              title={
+                draft.projectName ||
+                draft.projectFolder ||
+                t("collaboration.dialog.noProject")
+              }
             >
               <Folder size={16} />{" "}
-              {draft.projectName || projectName(draft.projectFolder)}
+              {draft.projectName ||
+                projectName(
+                  draft.projectFolder,
+                  t("collaboration.dialog.noProject"),
+                )}
             </span>
-            <span>确认分工后，发送任务说明才会启动协作</span>
+            <span>{t("collaboration.dialog.startHint")}</span>
             <button
               type="button"
               className="primary-btn"
               onClick={start}
               disabled={!message.trim() || Boolean(orchestrationError)}
             >
-              <Send size={16} /> 发送并启动
+              <Send size={16} /> {t("collaboration.dialog.sendAndStart")}
             </button>
           </div>
         </footer>

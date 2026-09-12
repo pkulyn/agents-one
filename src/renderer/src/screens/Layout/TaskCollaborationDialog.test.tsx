@@ -1,6 +1,20 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
+import { t as translate } from "../../../../shared/i18n";
+
+const i18nTestState = vi.hoisted(() => ({
+  locale: "zh-CN" as "en" | "zh-CN",
+}));
+
+vi.mock("../../components/useI18n", () => ({
+  useI18n: () => ({
+    locale: i18nTestState.locale,
+    t: (key: string, options?: Record<string, unknown>) =>
+      translate(key, i18nTestState.locale, options),
+  }),
+}));
+
 import TaskCollaborationDialog from "./TaskCollaborationDialog";
 
 function runtime(id: string, name: string): AgentRuntimeDefinition {
@@ -16,6 +30,10 @@ function runtime(id: string, name: string): AgentRuntimeDefinition {
 }
 
 describe("TaskCollaborationDialog", () => {
+  beforeEach(() => {
+    i18nTestState.locale = "zh-CN";
+  });
+
   it("keeps editable role rows and sends an explicit shared brief", () => {
     const onStart = vi.fn();
     render(
@@ -48,6 +66,40 @@ describe("TaskCollaborationDialog", () => {
         expect.objectContaining({ role: "实施", runtimeId: "codex" }),
       ]),
       "整理项目文档并给出验收结果",
+    );
+  });
+
+  it("creates new default assignments in English without rewriting draft data", () => {
+    i18nTestState.locale = "en";
+    const onStart = vi.fn();
+    render(
+      <TaskCollaborationDialog
+        draft={{
+          title: "发布检查",
+          sourceRuntimeId: "hermes",
+          message: "Review the release",
+        }}
+        runtimes={[runtime("hermes", "Hermes"), runtime("codex", "Codex")]}
+        onClose={() => {}}
+        onStart={onStart}
+      />,
+    );
+
+    expect(screen.getByText("Multi-agent collaboration")).toBeVisible();
+    expect(screen.getByText("发布检查")).toBeVisible();
+    expect(screen.getByDisplayValue("Project lead")).toBeVisible();
+    expect(screen.getByLabelText("Project lead agent")).toHaveValue("hermes");
+    fireEvent.change(screen.getByLabelText("Implementation agent"), {
+      target: { value: "codex" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send and start" }));
+
+    expect(onStart).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "Project lead", runtimeId: "hermes" }),
+        expect.objectContaining({ role: "Implementation", runtimeId: "codex" }),
+      ]),
+      "Review the release",
     );
   });
 
