@@ -966,6 +966,7 @@ function RuntimeCollaborationProposalCards({
   collaboration?: RuntimeChatProps["collaboration"];
   onRequestCollaboration?: (proposal?: TaskCollaborationProposal) => void;
 }): React.JSX.Element | null {
+  const { t } = useI18n();
   if (collaboration) return null;
   const proposals = messages.flatMap((message) => {
     if (message.role !== "agent") return [];
@@ -985,11 +986,11 @@ function RuntimeCollaborationProposalCards({
         <section
           key={id}
           className="task-collaboration-proposal"
-          aria-label="智能体协作建议"
+          aria-label={t("runtimeChat.proposal.aria")}
         >
           <div>
             <Users size={15} />
-            <strong>建议启用多智能体协作</strong>
+            <strong>{t("runtimeChat.proposal.title")}</strong>
           </div>
           {proposal.reason ? <p>{proposal.reason}</p> : null}
           <ul>
@@ -1013,7 +1014,7 @@ function RuntimeCollaborationProposalCards({
             className="btn btn-secondary btn-sm"
             onClick={() => onRequestCollaboration?.(proposal)}
           >
-            调整协作安排
+            {t("runtimeChat.proposal.adjust")}
           </button>
         </section>
       ))}
@@ -1214,27 +1215,27 @@ export default function RuntimeChat({
     const desktop: SlashCommand[] = [
       {
         name: "/new",
-        description: "新建当前 Runtime 对话",
+        description: t("runtimeChat.commands.new"),
         category: "chat",
         local: true,
       },
       {
         name: "/clear",
-        description: "清空并新建当前 Runtime 对话",
+        description: t("runtimeChat.commands.clear"),
         category: "chat",
         local: true,
       },
       {
         name: "/branch",
-        description: "从当前对话创建只读分析分支",
+        description: t("runtimeChat.commands.branch"),
         category: "chat",
         local: true,
         takesArgs: true,
-        argumentHint: "可选分支名称",
+        argumentHint: t("runtimeChat.commands.branchHint"),
       },
       {
         name: "/skills",
-        description: "查看已发现 Skill 的来源与信任提示",
+        description: t("runtimeChat.commands.skills"),
         category: "chat",
         local: true,
       },
@@ -1257,7 +1258,7 @@ export default function RuntimeChat({
         availability: command.availability,
       }));
     return [...desktop, ...runtimeEntries];
-  }, [loading, runtimeCommands]);
+  }, [loading, runtimeCommands, t]);
   const modelCommandAvailable = runtimeCommands.some(
     (command) => command.name === "model" && command.availability !== "running",
   );
@@ -1405,7 +1406,9 @@ export default function RuntimeChat({
                 id: `live:${active.run.id}:thinking`,
                 kind: "reasoning" as const,
                 role: "agent" as const,
-                text: `${liveRuntime.name} 正在思考并准备执行……`,
+                text: t("runtimeChat.progress.agentPreparing", {
+                  agent: liveRuntime.name,
+                }),
                 ...liveIdentity,
               },
               ...live,
@@ -1444,7 +1447,7 @@ export default function RuntimeChat({
             id: `live:${currentRunId}:thinking`,
             kind: "reasoning",
             role: "agent",
-            text: "正在思考并准备执行……",
+            text: t("runtimeChat.progress.preparing"),
             ...liveIdentity,
           },
           ...live,
@@ -1463,6 +1466,7 @@ export default function RuntimeChat({
     runtime.id,
     runtimeCatalog,
     taskRun,
+    t,
   ]);
 
   const handleNativeApprove = useCallback(() => undefined, []);
@@ -3726,7 +3730,7 @@ export default function RuntimeChat({
     setSelectedRuntimeThinkingLevel("");
     onConversationIdChange?.(runId, nextConversationId);
     onSessionIdChange?.(runId, null);
-    onTitleChange?.(runId, "新对话");
+    onTitleChange?.(runId, t("runtimeChat.feedback.newConversation"));
   }
 
   async function branchFromMessage(messageId: string): Promise<void> {
@@ -3736,7 +3740,7 @@ export default function RuntimeChat({
       typeof window.agentsOneAPI.forkRuntimeConversation !== "function"
     ) {
       appendRuntimeControlMessage(
-        "请先发送并保存至少一条对话消息后再创建分支。",
+        t("runtimeChat.feedback.branchRequiresMessage"),
       );
       return;
     }
@@ -3752,7 +3756,7 @@ export default function RuntimeChat({
         {
           id,
           forkedFromMessageId: messageId,
-          branchSummary: "从选定答复继续；仅保留用户可见消息与执行摘要。",
+          branchSummary: t("runtimeChat.feedback.branchFromReply"),
         },
         profile,
       );
@@ -3766,7 +3770,9 @@ export default function RuntimeChat({
       );
     } catch (error) {
       appendRuntimeControlMessage(
-        error instanceof Error ? error.message : "创建会话分支失败。",
+        error instanceof Error
+          ? error.message
+          : t("runtimeChat.feedback.branchFailed"),
       );
     }
   }
@@ -3793,9 +3799,7 @@ export default function RuntimeChat({
       ) {
         return;
       }
-      appendRuntimeControlMessage(
-        "上一条 Runtime 命令仍在执行；请勿重复提交。",
-      );
+      appendRuntimeControlMessage(t("runtimeChat.feedback.commandBusy"));
       return;
     }
     const restoreRejectedInput = (): void => {
@@ -3813,7 +3817,7 @@ export default function RuntimeChat({
       setThinkingSwitching(false);
     };
     if (!name) {
-      appendRuntimeControlMessage("请输入完整的斜杠命令。");
+      appendRuntimeControlMessage(t("runtimeChat.feedback.commandRequired"));
       restoreRejectedInput();
       return;
     }
@@ -3823,9 +3827,7 @@ export default function RuntimeChat({
         setRuntimeSkills(skills);
         setSkillsPanelOpen(true);
       } catch {
-        appendRuntimeControlMessage(
-          "无法读取本地 Skill 元数据。未执行任何 Skill。 ",
-        );
+        appendRuntimeControlMessage(t("runtimeChat.feedback.skillsLoadFailed"));
       }
       return;
     }
@@ -3840,7 +3842,7 @@ export default function RuntimeChat({
         typeof window.agentsOneAPI.forkRuntimeConversation !== "function"
       ) {
         appendRuntimeControlMessage(
-          "请先发送并保存至少一条对话消息后再创建分支。",
+          t("runtimeChat.feedback.branchRequiresMessage"),
         );
         return;
       }
@@ -3854,7 +3856,7 @@ export default function RuntimeChat({
           {
             id,
             ...(args ? { branchLabel: args } : {}),
-            branchSummary: "从当前对话继续；仅保留用户可见消息与执行摘要。",
+            branchSummary: t("runtimeChat.feedback.branchFromConversation"),
           },
           profile,
         );
@@ -3865,7 +3867,9 @@ export default function RuntimeChat({
         );
       } catch (error) {
         appendRuntimeControlMessage(
-          error instanceof Error ? error.message : "创建会话分支失败。",
+          error instanceof Error
+            ? error.message
+            : t("runtimeChat.feedback.branchFailed"),
         );
       }
       return;
@@ -3891,7 +3895,7 @@ export default function RuntimeChat({
         runtime.kind === "claude-code");
     if (compactIsKnown && !options?.compactConfirmed) {
       if (pendingCompactCommand) {
-        appendRuntimeControlMessage("已有一条上下文压缩正在等待确认。");
+        appendRuntimeControlMessage(t("runtimeChat.feedback.compactPending"));
         return;
       }
       setPendingCompactCommand({ rawInput, instructions: args });
@@ -3902,13 +3906,15 @@ export default function RuntimeChat({
       descriptor &&
       descriptor.supportsAttachments !== true
     ) {
-      appendRuntimeControlMessage(`/${name} 不接受附件；输入内容已保留。`);
+      appendRuntimeControlMessage(
+        t("runtimeChat.feedback.attachmentsRejected", { command: name }),
+      );
       restoreRejectedInput();
       return;
     }
     if (typeof window.agentsOneAPI.executeAgentRuntimeCommand !== "function") {
       appendRuntimeControlMessage(
-        "当前应用版本尚未提供 Runtime 命令控制接口。",
+        t("runtimeChat.feedback.commandApiUnavailable"),
       );
       restoreRejectedInput();
       settleOptimisticModel(false);
@@ -3962,7 +3968,9 @@ export default function RuntimeChat({
       });
     } catch (error) {
       appendRuntimeControlMessage(
-        error instanceof Error ? error.message : "Runtime 命令执行失败。",
+        error instanceof Error
+          ? error.message
+          : t("runtimeChat.feedback.commandFailed"),
         controlAudit("error"),
       );
       restoreRejectedInput();
@@ -3974,7 +3982,7 @@ export default function RuntimeChat({
     if (result.type === "send-prompt") {
       const expandedPrompt = result.prompt.trim();
       if (!expandedPrompt) {
-        appendRuntimeControlMessage("Runtime 命令返回了空的提示模板。", {
+        appendRuntimeControlMessage(t("runtimeChat.feedback.emptyPrompt"), {
           ...controlAudit("error"),
         });
         restoreRejectedInput();
@@ -4017,7 +4025,7 @@ export default function RuntimeChat({
         finishRuntimeCommand();
         return;
       }
-      appendRuntimeControlMessage("该 Runtime 命令需要继续确认。", {
+      appendRuntimeControlMessage(t("runtimeChat.feedback.commandNeedsInput"), {
         ...controlAudit("needs-input"),
       });
       settleOptimisticModel(false);
@@ -4039,7 +4047,7 @@ export default function RuntimeChat({
           ...controlAudit("handled", result.statePatch?.compaction),
         });
       } else {
-        appendRuntimeControlMessage("Runtime 命令已完成。", {
+        appendRuntimeControlMessage(t("runtimeChat.feedback.commandComplete"), {
           ...controlAudit("handled", result.statePatch?.compaction),
         });
       }
@@ -4073,9 +4081,7 @@ export default function RuntimeChat({
       const plan = runtimeSteeringPlan(steeringCapabilities);
       if (plan.kind === "follow_up") {
         setQueuedFollowUp({ text: prompt, attachments });
-        appendRuntimeControlMessage(
-          "当前 Runtime 不支持中途纠偏；此消息会在本轮完成后作为跟进发送。",
-        );
+        appendRuntimeControlMessage(t("runtimeChat.feedback.queuedFollowUp"));
         return;
       }
       if (plan.kind === "cancel_resume") {
@@ -4084,7 +4090,7 @@ export default function RuntimeChat({
       }
       chatInputRef.current?.restore(prompt, attachments);
       appendRuntimeControlMessage(
-        "当前 Runtime 未声明运行中纠偏能力；消息已保留，未发送也未中断任务。",
+        t("runtimeChat.feedback.steeringUnavailable"),
       );
       return;
     }
@@ -4100,9 +4106,7 @@ export default function RuntimeChat({
         : accessMode;
     if (analysisBranchRef.current && resolvedAccessMode !== "analysis") {
       chatInputRef.current?.restore(prompt, attachments);
-      appendRuntimeControlMessage(
-        "此分支是只读分析分支；写入任务必须先创建独立 worktree 的实现分支。消息未发送。",
-      );
+      appendRuntimeControlMessage(t("runtimeChat.feedback.readOnlyBranch"));
       return;
     }
     cancelledRef.current = false;
@@ -4124,7 +4128,10 @@ export default function RuntimeChat({
       ) {
         const failedMessages = [
           ...nextMessages,
-          newMessage("system", "完全访问需要先选择一个项目目录。"),
+          newMessage(
+            "system",
+            t("runtimeChat.feedback.fullAccessRequiresProject"),
+          ),
         ];
         setMessages(failedMessages);
         void persistConversation(failedMessages).catch(() => undefined);
@@ -4169,7 +4176,8 @@ export default function RuntimeChat({
               ? { legacyPath: selectedWorkspace }
               : {}),
           });
-          if (!launch) throw new Error("无法保存协作安排，请稍后重试。");
+          if (!launch)
+            throw new Error(t("runtimeChat.feedback.collaborationSaveFailed"));
           await linkCollaborationToConversation(launch.taskId);
           setCollaborationAssignments(launch.assignments);
           await runCollaboration(prompt, launch, selectedWorkspace);
@@ -4204,7 +4212,7 @@ export default function RuntimeChat({
           : undefined,
       ].filter((rule): rule is string => Boolean(rule));
       const runtimePrompt = platformRules.length
-        ? `${platformRules.join("\n\n")}\n\n当前用户请求：\n${basePrompt}`
+        ? `${platformRules.join("\n\n")}\n\n${t("runtimeChat.feedback.currentUserRequest", { prompt: basePrompt })}`
         : basePrompt;
       const run = await window.agentsOneAPI.startAgentRuntimeTask(runtime.id, {
         prompt: runtimePrompt,
@@ -4245,7 +4253,10 @@ export default function RuntimeChat({
     } catch (err) {
       const failedMessages = [
         ...nextMessages,
-        newMessage("system", (err as Error).message || "任务请求失败。"),
+        newMessage(
+          "system",
+          (err as Error).message || t("runtimeChat.feedback.taskFailed"),
+        ),
       ];
       setMessages(failedMessages);
       void persistConversation(failedMessages).catch(() => undefined);
