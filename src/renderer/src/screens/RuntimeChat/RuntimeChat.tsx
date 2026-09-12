@@ -5208,18 +5208,19 @@ export default function RuntimeChat({
             {collaboration && collaborationDashboardVisible ? (
               <aside
                 className="task-collaboration-dashboard"
-                aria-label="智能体协作看板"
+                aria-label={t("runtimeChat.collaboration.dashboardAria")}
               >
                 <header className="task-collaboration-dashboard-header">
                   <span>
-                    <Users size={15} /> 协作看板
+                    <Users size={15} />
+                    {t("runtimeChat.collaboration.dashboard")}
                   </span>
                   <button
                     type="button"
                     className="btn-ghost task-collaboration-dashboard-close"
                     onClick={() => setCollaborationDashboardVisible(false)}
-                    aria-label="隐藏协作看板"
-                    title="隐藏协作看板"
+                    aria-label={t("runtimeChat.collaboration.hideDashboard")}
+                    title={t("runtimeChat.collaboration.hideDashboard")}
                   >
                     <X size={15} />
                   </button>
@@ -5280,7 +5281,7 @@ export default function RuntimeChat({
                         );
                       openRoleDialogue(assignment, assignmentId);
                       setInterventionText(
-                        "请根据验收结论重新实施并发布完整交付物：路径、SHA-256、来源机器与变更摘要。",
+                        t("runtimeChat.collaboration.implementationGuidance"),
                       );
                       setInterventionShared(true);
                     }
@@ -5302,11 +5303,11 @@ export default function RuntimeChat({
                 type="button"
                 className="task-collaboration-dashboard-trigger"
                 onClick={() => setCollaborationDashboardVisible(true)}
-                aria-label="显示协作看板"
-                title="显示协作看板"
+                aria-label={t("runtimeChat.collaboration.showDashboard")}
+                title={t("runtimeChat.collaboration.showDashboard")}
               >
                 <Users size={16} />
-                <span>协作看板</span>
+                <span>{t("runtimeChat.collaboration.dashboard")}</span>
               </button>
             ) : null}
             {interventionTarget
@@ -5333,12 +5334,14 @@ export default function RuntimeChat({
                   return (
                     <aside
                       className="collaboration-intervention-drawer"
-                      aria-label="角色人工介入"
+                      aria-label={t("runtimeChat.collaboration.intervention")}
                     >
                       <header>
                         <div>
                           <strong>
-                            介入：{interventionTarget.assignment.role}
+                            {t("runtimeChat.collaboration.interveneRole", {
+                              role: interventionTarget.assignment.role,
+                            })}
                           </strong>
                           <span>
                             {runtimeCatalog[
@@ -5353,34 +5356,43 @@ export default function RuntimeChat({
                             setInterventionTarget(null);
                             setInterventionAccessMode("inherit");
                           }}
-                          aria-label="关闭人工介入"
+                          aria-label={t(
+                            "runtimeChat.collaboration.closeIntervention",
+                          )}
                         >
                           ×
                         </button>
                       </header>
                       <p className="collaboration-intervention-status">
-                        当前状态：
-                        {["running", "retrying"].includes(
-                          targetRun?.status || "",
-                        )
-                          ? "执行中"
-                          : targetRun?.status === "paused"
-                            ? "已暂停"
-                            : targetRun?.status === "waiting_for_user"
-                              ? "等待人工处理"
-                              : targetRun?.status === "succeeded"
-                                ? "已交接"
-                                : "待处理"}
+                        {t("runtimeChat.collaboration.currentStatus", {
+                          status: ["running", "retrying"].includes(
+                            targetRun?.status || "",
+                          )
+                            ? t("runtimeChat.collaboration.status.running")
+                            : targetRun?.status === "paused"
+                              ? t("runtimeChat.collaboration.status.paused")
+                              : targetRun?.status === "waiting_for_user"
+                                ? t("runtimeChat.collaboration.status.waiting")
+                                : targetRun?.status === "succeeded"
+                                  ? t(
+                                      "runtimeChat.collaboration.status.handedOff",
+                                    )
+                                  : t(
+                                      "runtimeChat.collaboration.status.pending",
+                                    ),
+                        })}
                       </p>
                       {priorInstructions.length ? (
                         <ol className="collaboration-intervention-history">
                           {priorInstructions.slice(-6).map((item) => (
                             <li key={item.id}>
                               <strong>
-                                你 ·{" "}
-                                {item.visibility === "shared"
-                                  ? "已共享"
-                                  : "仅本角色"}
+                                {t("runtimeChat.collaboration.you", {
+                                  visibility:
+                                    item.visibility === "shared"
+                                      ? t("runtimeChat.collaboration.shared")
+                                      : t("runtimeChat.collaboration.private"),
+                                })}
                               </strong>
                               <span>{item.content}</span>
                               {item.response ? (
@@ -5404,13 +5416,17 @@ export default function RuntimeChat({
                         onChange={(event) =>
                           setInterventionText(event.target.value)
                         }
-                        placeholder="说明需要修正的方向、可用资料或处理要求…"
-                        aria-label="给当前角色的人工指令"
+                        placeholder={t(
+                          "runtimeChat.collaboration.instructionPlaceholder",
+                        )}
+                        aria-label={t(
+                          "runtimeChat.collaboration.instructionLabel",
+                        )}
                         disabled={loading}
                       />
                       {roleCanModify(interventionTarget.assignment) ? (
                         <label className="collaboration-intervention-access">
-                          本角色权限
+                          {t("runtimeChat.collaboration.rolePermission")}
                           <select
                             value={interventionAccessMode}
                             onChange={(event) =>
@@ -5421,20 +5437,30 @@ export default function RuntimeChat({
                                   | "full_access",
                               )
                             }
-                            aria-label="本角色权限"
+                            aria-label={t(
+                              "runtimeChat.collaboration.rolePermission",
+                            )}
                           >
                             <option value="inherit">
-                              继承任务权限（当前：
-                              {accessMode === "auto"
-                                ? "自动"
-                                : accessMode === "full_access"
-                                  ? "完全访问"
-                                  : "只读"}
-                              ）
+                              {t(
+                                "runtimeChat.collaboration.inheritPermission",
+                                {
+                                  permission:
+                                    accessMode === "auto"
+                                      ? t("runtimeChat.permissions.auto")
+                                      : accessMode === "full_access"
+                                        ? t(
+                                            "runtimeChat.permissions.fullAccess",
+                                          )
+                                        : t("runtimeChat.permissions.readOnly"),
+                                },
+                              )}
                             </option>
-                            <option value="analysis">只读</option>
+                            <option value="analysis">
+                              {t("runtimeChat.permissions.readOnly")}
+                            </option>
                             <option value="full_access">
-                              完全访问（可创建、编辑，删除需确认）
+                              {t("runtimeChat.collaboration.fullAccessOption")}
                             </option>
                           </select>
                         </label>
@@ -5447,17 +5473,19 @@ export default function RuntimeChat({
                             setInterventionShared(event.target.checked)
                           }
                         />
-                        共享给协作组，供后续角色读取本轮问答
+                        {t("runtimeChat.collaboration.shareHint")}
                       </label>
                       <div className="collaboration-intervention-reassign">
                         <label>
-                          当前智能体
+                          {t("runtimeChat.collaboration.currentAgent")}
                           <select
                             value={interventionRuntimeId}
                             onChange={(event) =>
                               setInterventionRuntimeId(event.target.value)
                             }
-                            aria-label="改派当前角色"
+                            aria-label={t(
+                              "runtimeChat.collaboration.reassignRole",
+                            )}
                             disabled={loading}
                           >
                             {Object.values(runtimeCatalog)
@@ -5480,7 +5508,7 @@ export default function RuntimeChat({
                           }
                           onClick={() => void reassignInterventionRole()}
                         >
-                          改派当前角色
+                          {t("runtimeChat.collaboration.reassignRole")}
                         </button>
                       </div>
                       <footer>
@@ -5496,7 +5524,7 @@ export default function RuntimeChat({
                               )
                             }
                           >
-                            暂停此角色
+                            {t("runtimeChat.collaboration.pauseRole")}
                           </button>
                         ) : null}
                         <button
@@ -5505,7 +5533,7 @@ export default function RuntimeChat({
                           disabled={!interventionText.trim() || loading}
                           onClick={() => void persistIntervention(false)}
                         >
-                          保存指令
+                          {t("runtimeChat.collaboration.saveInstruction")}
                         </button>
                         <button
                           type="button"
@@ -5515,7 +5543,9 @@ export default function RuntimeChat({
                           }
                           onClick={() => void persistIntervention(true, true)}
                         >
-                          {loading ? "正在沟通…" : "发送给此智能体"}
+                          {loading
+                            ? t("runtimeChat.collaboration.communicating")
+                            : t("runtimeChat.collaboration.sendToAgent")}
                         </button>
                         {targetRun?.status === "succeeded" &&
                         collaborationExecution?.status === "paused" ? (
@@ -5525,13 +5555,13 @@ export default function RuntimeChat({
                             disabled={loading}
                             onClick={() => void continueAfterIntervention()}
                           >
-                            继续后续任务
+                            {t("runtimeChat.collaboration.continueTasks")}
                           </button>
                         ) : null}
                       </footer>
                       {!collaborationExecution?.brief ? (
                         <small>
-                          请先发送首条任务说明，平台才能安全恢复角色执行。
+                          {t("runtimeChat.collaboration.briefRequired")}
                         </small>
                       ) : null}
                     </aside>
@@ -5602,12 +5632,10 @@ export default function RuntimeChat({
                 {unavailableRuntimeArtifacts.length ? (
                   <aside
                     className="runtime-artifact-retry-panel"
-                    aria-label="远程产物重新同步"
+                    aria-label={t("runtimeChat.artifactRetry.label")}
                   >
-                    <strong>部分远程产物暂不可用</strong>
-                    <p>
-                      任务已完成；可单独重新同步下列产物，不会重新执行任务。
-                    </p>
+                    <strong>{t("runtimeChat.artifactRetry.title")}</strong>
+                    <p>{t("runtimeChat.artifactRetry.description")}</p>
                     {unavailableRuntimeArtifacts.map((artifact, index) => {
                       const artifactId = artifact.id!;
                       const retrying = retryingArtifactIds[artifactId];
@@ -5617,7 +5645,10 @@ export default function RuntimeChat({
                           key={artifactId || `${artifact.label}-${index}`}
                         >
                           <span>
-                            <b>{artifact.label || "未命名产物"}</b>
+                            <b>
+                              {artifact.label ||
+                                t("runtimeChat.artifactRetry.unnamed")}
+                            </b>
                             <small>
                               {artifactRetryFeedback[artifactId] ||
                                 artifact.unavailableReason}
@@ -5630,9 +5661,18 @@ export default function RuntimeChat({
                             onClick={() =>
                               void retryRuntimeArtifact(artifactId)
                             }
-                            aria-label={`重新同步产物 ${artifact.label || "未命名产物"}`}
+                            aria-label={t(
+                              "runtimeChat.artifactRetry.actionLabel",
+                              {
+                                name:
+                                  artifact.label ||
+                                  t("runtimeChat.artifactRetry.unnamed"),
+                              },
+                            )}
                           >
-                            {retrying ? "正在同步…" : "重新同步"}
+                            {retrying
+                              ? t("runtimeChat.artifactRetry.syncing")
+                              : t("runtimeChat.artifactRetry.retry")}
                           </button>
                         </div>
                       );
@@ -5648,7 +5688,9 @@ export default function RuntimeChat({
             <WorktreePanel
               folderPath={workspace || undefined}
               workspaceId={workspaceId || undefined}
-              folderLabel={workspaceId ? "已关联项目" : undefined}
+              folderLabel={
+                workspaceId ? t("runtimeChat.linkedProject") : undefined
+              }
             />
           ) : null}
         </div>
