@@ -243,11 +243,16 @@ function Layout(): React.JSX.Element {
         }
         if (event.status === "succeeded") {
           toast.success(
-            `定时任务“${event.scheduleName}”已完成，结果已写入对话。`,
+            t("collaboration.shell.scheduleSucceeded", {
+              name: event.scheduleName,
+            }),
           );
         } else {
           toast.error(
-            `定时任务“${event.scheduleName}”执行结束：${event.status}`,
+            t("collaboration.shell.scheduleFinished", {
+              name: event.scheduleName,
+              status: event.status,
+            }),
           );
         }
       },
@@ -256,7 +261,7 @@ function Layout(): React.JSX.Element {
       disposeStarted?.();
       dispose?.();
     };
-  }, [activeProfile]);
+  }, [activeProfile, t]);
 
   const getAppearance = useCallback(
     (run: ChatRun) => {
@@ -558,7 +563,7 @@ function Layout(): React.JSX.Element {
   const handleAddQuickChatToTask = useCallback(
     (content: string) => {
       if (!activeRunId) {
-        toast.error("请先打开一个任务。");
+        toast.error(t("collaboration.shell.openTaskFirst"));
         return;
       }
       window.dispatchEvent(
@@ -568,9 +573,9 @@ function Layout(): React.JSX.Element {
       );
       setQuickChatOpen(false);
       goTo("chat");
-      toast.success("已放入当前任务输入框。");
+      toast.success(t("collaboration.shell.addedToTask"));
     },
-    [activeRunId, goTo],
+    [activeRunId, goTo, t],
   );
 
   const mintDefaultTaskRun = useCallback(
@@ -652,12 +657,14 @@ function Layout(): React.JSX.Element {
           mode === "new"
             ? await window.agentsOneAPI.createProjectFolder()
             : await window.agentsOneAPI.selectFolder({
-                title: "选择现有项目文件夹",
-                buttonLabel: "使用此文件夹",
+                title: t("collaboration.shell.chooseExistingProjectFolder"),
+                buttonLabel: t("collaboration.shell.useThisFolder"),
               });
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : "无法创建项目文件夹",
+          error instanceof Error
+            ? error.message
+            : t("collaboration.shell.createProjectFolderFailed"),
         );
         return;
       }
@@ -678,7 +685,7 @@ function Layout(): React.JSX.Element {
       setActiveRunId(next.activeRunId);
       goTo("chat");
     },
-    [runs, activeRunId, goTo, mintDefaultTaskRun],
+    [runs, activeRunId, goTo, mintDefaultTaskRun, t],
   );
 
   const handleCreateProjectTask = useCallback(
@@ -697,7 +704,10 @@ function Layout(): React.JSX.Element {
       setCollaborationDraft({
         runId: task.runId,
         taskId: task.runtimeConversationId || task.sessionId || undefined,
-        title: proposal?.title || task.title || "当前任务的协作方案",
+        title:
+          proposal?.title ||
+          task.title ||
+          t("collaboration.shell.planFallback"),
         projectWorkspaceId: task.runtimeWorkspaceId || null,
         projectName: task.runtimeWorkspaceId
           ? task.runtimeWorkspace || null
@@ -710,7 +720,7 @@ function Layout(): React.JSX.Element {
         message: proposal?.brief,
       });
     },
-    [],
+    [t],
   );
 
   const handleAutoStartTaskCollaboration = useCallback(
@@ -761,9 +771,16 @@ function Layout(): React.JSX.Element {
       const record = await window.agentsOneAPI.saveTaskCollaboration(
         {
           taskId,
-          title: proposal.title || task.title || "当前任务的协作方案",
+          title:
+            proposal.title ||
+            task.title ||
+            t("collaboration.shell.planFallback"),
           ...(projectWorkspaceId
-            ? { projectWorkspaceId, projectName: projectName || "关联项目" }
+            ? {
+                projectWorkspaceId,
+                projectName:
+                  projectName || t("collaboration.shell.linkedProjectFallback"),
+              }
             : { projectFolder }),
           sourceRuntimeId: task.runtimeId,
           assignments,
@@ -798,7 +815,7 @@ function Layout(): React.JSX.Element {
         projectFolder: record.projectFolder,
       };
     },
-    [activeProfile, runtimeCatalog],
+    [activeProfile, runtimeCatalog, t],
   );
 
   const handleStartTaskCollaboration = useCallback(
@@ -827,7 +844,7 @@ function Layout(): React.JSX.Element {
             setCollaborationDraft(null);
             const live = findRunBySession(runs, record.taskId);
             if (!live) {
-              toast.success("协作设置已保存。请打开该任务后发送任务说明。");
+              toast.success(t("collaboration.shell.settingsSaved"));
               return;
             }
             setRuns((previous) =>
@@ -870,7 +887,9 @@ function Layout(): React.JSX.Element {
           })
           .catch((error) =>
             toast.error(
-              error instanceof Error ? error.message : "无法保存协作设置。",
+              error instanceof Error
+                ? error.message
+                : t("collaboration.shell.saveSettingsFailed"),
             ),
           );
       } else if (draft.runId) {
@@ -937,18 +956,20 @@ function Layout(): React.JSX.Element {
           })
           .catch((error) =>
             toast.error(
-              error instanceof Error ? error.message : "无法保存协作设置。",
+              error instanceof Error
+                ? error.message
+                : t("collaboration.shell.saveSettingsFailed"),
             ),
           );
       }
     },
-    [activeProfile, collaborationDraft, goTo, runs],
+    [activeProfile, collaborationDraft, goTo, runs, t],
   );
 
   const handleStartCollaboration = useCallback((): void => {
     const workspace = collaborationWorkspace;
     if (!workspace?.taskId) {
-      toast.error("请先向协调者发送首条任务说明，创建可恢复的协作任务。");
+      toast.error(t("collaboration.shell.sendBriefFirst"));
       return;
     }
     void window.agentsOneAPI
@@ -972,9 +993,13 @@ function Layout(): React.JSX.Element {
         );
       })
       .catch((error) =>
-        toast.error(error instanceof Error ? error.message : "无法启动协作。"),
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t("collaboration.shell.startFailed"),
+        ),
       );
-  }, [activeProfile, collaborationWorkspace]);
+  }, [activeProfile, collaborationWorkspace, t]);
 
   useEffect(() => {
     const openWorkspace = (event: Event): void => {
@@ -987,7 +1012,7 @@ function Layout(): React.JSX.Element {
             setCollaborationWorkspace(collaborationWorkspaceFromRecord(record));
         })
         .catch(() => {
-          toast.error("无法读取协作任务配置。 ");
+          toast.error(t("collaboration.shell.readSettingsFailed"));
         });
     };
     window.addEventListener(
@@ -999,7 +1024,7 @@ function Layout(): React.JSX.Element {
         "agents-one:open-task-collaboration",
         openWorkspace,
       );
-  }, [activeProfile]);
+  }, [activeProfile, t]);
 
   // Listen for menu IPC events (Cmd+N, Cmd+K from app menu)
   useEffect(() => {

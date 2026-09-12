@@ -146,4 +146,23 @@ export default {
       "Confirm the roles, then send the task brief to start collaboration",
     sendAndStart: "Send and start",
   },
+  shell: {
+    scheduleSucceeded:
+      'Scheduled task "{{name}}" completed. Its result is in the conversation.',
+    scheduleFinished: 'Scheduled task "{{name}}" finished: {{status}}',
+    openTaskFirst: "Open a task first.",
+    addedToTask: "Added to the current task input.",
+    chooseExistingProjectFolder: "Choose an existing project folder",
+    useThisFolder: "Use this folder",
+    createProjectFolderFailed: "Couldn't create the project folder.",
+    planFallback: "Collaboration plan for the current task",
+    linkedProjectFallback: "Linked project",
+    settingsSaved:
+      "Collaboration settings saved. Open the task and send its brief.",
+    saveSettingsFailed: "Couldn't save collaboration settings.",
+    sendBriefFirst:
+      "Send the coordinator the first task brief to create a recoverable collaboration task.",
+    startFailed: "Couldn't start collaboration.",
+    readSettingsFailed: "Couldn't read the collaboration task settings.",
+  },
 } as const;

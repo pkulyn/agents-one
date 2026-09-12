@@ -3,6 +3,7 @@
 ## 2026-09-12：英文 UI 收口与 Windows Connector 回归稳定化
 
 - 英文 UI 收口继续推进：轻量对话、主对话入口和反馈、托盘、协作工作区/新建向导、Runtime Shell、项目/任务侧栏已改为按活动语言渲染；项目名称、任务标题、已配置 Runtime 名称等用户数据保持原文。侧栏本轮提交为 `2d9ebfe`，英文定向测试和 Web TypeScript 检查通过；剩余 RuntimeChat 的中文主要是兼容解析、协作协议与角色提示，须另作双语协议兼容切片，不能直接替换正则。
+- Layout 的计划任务结果 toast、项目文件夹选择器、快速对话转入任务提示及协作设置的成功/失败反馈已纳入 `collaboration.shell`。TaskCollaborationDialog/Workspace 定向回归 7/7、Web TypeScript、格式、`lat check` 与 `git diff --check` 通过。
 - GitHub Windows CI `34683699418` 暴露 Connector 测试在非交互服务账户下三次真实 DPAPI 调用均阻塞至原 15 秒超时，并非业务断言失败。生产调用超时提高到 60 秒；契约测试在 Windows CI 改用注入式保护器验证加密信封和失败边界，真实 DPAPI 回环移为显式 `npm --prefix plugins/agents-one-connector run test:dpapi` 交互 Windows 验收。当前开发机已实际通过该命令；CI 仍须以本次修复后的提交重新取得绿色证据。
 
 ## 2026-09-11：OR-702 本地 CLI 黄金路径与候选刷新
