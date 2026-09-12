@@ -36,6 +36,7 @@ import { PROFILE_COLORS } from "../../../../shared/profileColors";
 import type { WebAgentPolicyStatus } from "../../../../shared/web-agent";
 import { dispatchAgentsOneEvent } from "../../utils/brandMigration";
 import { fileToAvatarDataUrl } from "../../utils/imageResize";
+import { useI18n } from "../useI18n";
 import ConnectionPane from "./ConnectionPane";
 import { SettingsDataContext } from "./SettingsDataContext";
 import { useSettingsData } from "./useSettingsData";
@@ -50,7 +51,7 @@ const KIND_LABELS: Record<string, string> = {
   pi: "Pi Agent CLI",
   opencode: "OpenCode",
   openclaw: "OpenClaw",
-  "web-agent": "网页智能体（实验性）",
+  "web-agent": "settings.runtimeManager.kindWebAgent",
 };
 
 const STANDARD_ADAPTER_FIELD_KEYS = new Set([
@@ -72,14 +73,23 @@ function HermesConnectionManager(): React.JSX.Element {
   );
 }
 
-function runtimeConnectionLabel(runtime: AgentRuntimeDefinition): string {
-  if (runtime.managed === "builtin") return "内置";
-  const profile = deriveAgentRuntimeConnectionProfile(runtime);
-  if (profile === "local") return "本地";
-  if (profile === "managed-connect") {
-    return runtime.config.connect?.runtimeId ? "已配对" : "待配对";
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+function runtimeConnectionLabel(
+  runtime: AgentRuntimeDefinition,
+  t: Translate,
+): string {
+  if (runtime.managed === "builtin") {
+    return t("settings.runtimeManager.connectionBuiltin");
   }
-  return "手动直连";
+  const profile = deriveAgentRuntimeConnectionProfile(runtime);
+  if (profile === "local") return t("settings.runtimeManager.connectionLocal");
+  if (profile === "managed-connect") {
+    return runtime.config.connect?.runtimeId
+      ? t("settings.runtimeManager.connectionPaired")
+      : t("settings.runtimeManager.connectionPairing");
+  }
+  return t("settings.runtimeManager.connectionDirect");
 }
 
 function runtimeTemplate(
@@ -87,6 +97,7 @@ function runtimeTemplate(
   detected: Record<string, string | null> = {},
   selectedManifest?: AgentRuntimeAdapterManifest,
   locationOverride?: AgentRuntimeLocation,
+  t?: Translate,
 ): AgentRuntimeDraft {
   const manifest = selectedManifest || manifestForRuntimeKind(kind);
   const metadata = manifest
@@ -99,7 +110,7 @@ function runtimeTemplate(
   if (kind === "web-agent") {
     return {
       id: "doubao-web",
-      name: "豆包网页版",
+      name: t?.("settings.runtimeManager.defaultDoubaoName") || "Doubao Web",
       kind,
       connectionProfile: "local",
       ...metadata,
@@ -172,8 +183,8 @@ function runtimeTemplate(
   };
 }
 
-function emptyDraft(): AgentRuntimeDraft {
-  return runtimeTemplate("hermes");
+function emptyDraft(t?: Translate): AgentRuntimeDraft {
+  return runtimeTemplate("hermes", {}, undefined, undefined, t);
 }
 
 function draftFromRuntime(runtime: AgentRuntimeDefinition): AgentRuntimeDraft {
@@ -206,32 +217,39 @@ function draftFromRuntime(runtime: AgentRuntimeDefinition): AgentRuntimeDraft {
   };
 }
 
-function healthLabel(probe?: AgentRuntimeProbe): string {
-  if (!probe) return "未检测";
-  return {
-    healthy: "健康",
-    degraded: "异常",
-    unreachable: "不可达",
-    unsupported: "不支持",
-    unknown: "未知",
+function healthLabel(
+  probe: AgentRuntimeProbe | undefined,
+  t: Translate,
+): string {
+  if (!probe) return t("settings.runtimeManager.healthUnchecked");
+  const keys = {
+    healthy: "settings.runtimeManager.healthHealthy",
+    degraded: "settings.runtimeManager.healthDegraded",
+    unreachable: "settings.runtimeManager.healthUnreachable",
+    unsupported: "settings.runtimeManager.healthUnsupported",
+    unknown: "settings.runtimeManager.healthUnknown",
   }[probe.state];
+  return t(keys);
 }
 
-function trueCapabilities(probe?: AgentRuntimeProbe): string[] {
+function trueCapabilities(
+  probe: AgentRuntimeProbe | undefined,
+  t: Translate,
+): string[] {
   if (!probe) return [];
   const labels: Record<string, string> = {
-    chat: "对话",
-    taskDispatch: "任务派发",
-    streaming: "流式反馈",
-    cancellation: "取消任务",
-    tools: "工具调用",
-    artifacts: "产物",
-    orchestration: "协作规划",
-    readOnlyPlanning: "只读规划",
+    chat: "settings.runtimeManager.capabilityChat",
+    taskDispatch: "settings.runtimeManager.capabilityTaskDispatch",
+    streaming: "settings.runtimeManager.capabilityStreaming",
+    cancellation: "settings.runtimeManager.capabilityCancellation",
+    tools: "settings.runtimeManager.capabilityTools",
+    artifacts: "settings.runtimeManager.capabilityArtifacts",
+    orchestration: "settings.runtimeManager.capabilityOrchestration",
+    readOnlyPlanning: "settings.runtimeManager.capabilityReadOnlyPlanning",
   };
   return Object.entries(probe.capabilities)
     .filter(([, enabled]) => enabled === true)
-    .map(([key]) => labels[key] || key);
+    .map(([key]) => (labels[key] ? t(labels[key]) : key));
 }
 
 interface AgentRuntimesPaneProps {
@@ -262,9 +280,10 @@ export default function AgentRuntimesPane({
   onChanged,
   onCancel,
 }: AgentRuntimesPaneProps = {}): React.JSX.Element {
+  const { t } = useI18n();
   const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<AgentRuntimeDraft>(() => emptyDraft());
+  const [draft, setDraft] = useState<AgentRuntimeDraft>(() => emptyDraft(t));
   const [probes, setProbes] = useState<Record<string, AgentRuntimeProbe>>({});
   const [probingRuntimeIds, setProbingRuntimeIds] = useState<string[]>([]);
   const [probeFailures, setProbeFailures] = useState<string[]>([]);
@@ -343,7 +362,7 @@ export default function AgentRuntimesPane({
         available: false,
         enabled: false,
         killSwitchActive: false,
-        reason: "当前版本没有网页 Provider 安全策略接口。",
+        reason: t("settings.runtimeManager.webPolicyUnavailable"),
       });
       return;
     }
@@ -355,10 +374,10 @@ export default function AgentRuntimesPane({
           available: false,
           enabled: false,
           killSwitchActive: false,
-          reason: "无法读取网页 Provider 安全策略。",
+          reason: t("settings.runtimeManager.webPolicyLoadFailed"),
         }),
       );
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!window.agentsOneAPI.listAgentRuntimeAdapters) return;
@@ -449,7 +468,9 @@ export default function AgentRuntimesPane({
   const supportsRemoteWorkspaceGateway =
     !isBuiltin && isRemoteConnection && usesUnifiedGateway;
   const credentialLabel = usesUnifiedGateway ? "Gateway Token" : "";
-  const credentialActionLabel = usesUnifiedGateway ? "保存 Gateway Token" : "";
+  const credentialActionLabel = usesUnifiedGateway
+    ? t("settings.runtimeManager.gatewayTokenSave")
+    : "";
   const draftConnectionKey = JSON.stringify({
     kind: draft.kind,
     location: draft.location,
@@ -527,11 +548,13 @@ export default function AgentRuntimesPane({
           ? draftFromRuntime(
               next.find((runtime) => runtime.id === nextSelected)!,
             )
-          : emptyDraft(),
+          : emptyDraft(t),
       );
       void probeEnabledRuntimes(next);
     } catch (err) {
-      setFlash((err as Error).message || "无法加载智能体接入配置。");
+      setFlash(
+        (err as Error).message || t("settings.runtimeManager.loadFailed"),
+      );
     } finally {
       setBusy(null);
     }
@@ -600,7 +623,7 @@ export default function AgentRuntimesPane({
 
   function startNewRuntime(): void {
     setSelectedId(null);
-    setDraft(emptyDraft());
+    setDraft(emptyDraft(t));
     setFlash(null);
     setBearerToken("");
     setWorkspaceGatewayToken("");
@@ -627,6 +650,7 @@ export default function AgentRuntimesPane({
         localCliPaths,
         undefined,
         type === "local" ? "local" : type === "remote" ? "remote" : undefined,
+        t,
       ),
     );
     setDraftProbe(null);
@@ -645,6 +669,7 @@ export default function AgentRuntimesPane({
         : newAgentType === "remote"
           ? "remote"
           : undefined,
+      t,
     );
     setDraft((current) => ({
       ...next,
@@ -664,7 +689,13 @@ export default function AgentRuntimesPane({
       selectedRuntime &&
       previous !== profile &&
       !window.confirm(
-        `确定将“${draft.name || selectedRuntime.name}”的远程接入方式切换为“${profile === "managed-connect" ? "校验码配对" : "自托管 Gateway"}”吗？现有接入凭据不会自动转换。`,
+        t("settings.runtimeManager.switchRemoteMethodConfirm", {
+          name: draft.name || selectedRuntime.name,
+          method:
+            profile === "managed-connect"
+              ? t("settings.runtimeManager.pairingMethod")
+              : t("settings.runtimeManager.selfHostedMethod"),
+        }),
       )
     ) {
       return;
@@ -691,10 +722,10 @@ export default function AgentRuntimesPane({
     source: "active-home" | "environment" | "default-home" | "path",
   ): string {
     return {
-      "active-home": "当前采用目录",
-      environment: "HERMES_HOME",
-      "default-home": "默认目录",
-      path: "PATH 可执行文件",
+      "active-home": t("settings.runtimeManager.discoveryActiveHome"),
+      environment: t("settings.runtimeManager.discoveryEnvironmentHome"),
+      "default-home": t("settings.runtimeManager.discoveryDefaultHome"),
+      path: t("settings.runtimeManager.discoveryPath"),
     }[source];
   }
 
@@ -702,9 +733,9 @@ export default function AgentRuntimesPane({
     state: "configured" | "missing" | "invalid",
   ): string {
     return {
-      configured: "配置已发现",
-      missing: "未发现配置",
-      invalid: "配置文件异常",
+      configured: t("settings.runtimeManager.configFound"),
+      missing: t("settings.runtimeManager.configMissing"),
+      invalid: t("settings.runtimeManager.configInvalid"),
     }[state];
   }
 
@@ -712,11 +743,11 @@ export default function AgentRuntimesPane({
     state: "unknown" | "healthy" | "unreachable" | "not-running" | "unrelated",
   ): string {
     return {
-      unknown: "API 未检查",
-      healthy: "本地 API 正常",
-      unreachable: "本地 API 不可达",
-      "not-running": "本地 API 未运行",
-      unrelated: "端口由其他进程占用",
+      unknown: t("settings.runtimeManager.apiUnchecked"),
+      healthy: t("settings.runtimeManager.apiHealthy"),
+      unreachable: t("settings.runtimeManager.apiUnreachable"),
+      "not-running": t("settings.runtimeManager.apiNotRunning"),
+      unrelated: t("settings.runtimeManager.apiUnrelated"),
     }[state];
   }
 
@@ -726,9 +757,7 @@ export default function AgentRuntimesPane({
     if (!home) return;
     const valid = await window.agentsOneAPI.validateHermesHome(home);
     if (!valid) {
-      setFlash(
-        "该目录不是可直接采用的 Hermes Agent Runtime 安装，未写入任何配置。",
-      );
+      setFlash(t("settings.runtimeManager.invalidHermesHome"));
       return;
     }
     setHermesCandidates((current) => [
@@ -745,7 +774,7 @@ export default function AgentRuntimesPane({
       },
       ...current.filter((candidate) => candidate.home !== home),
     ]);
-    setFlash("已校验 Hermes Agent Runtime 安装，请点击“使用此安装”。");
+    setFlash(t("settings.runtimeManager.hermesValidated"));
   }
 
   async function adoptHermesHome(home: string): Promise<void> {
@@ -753,28 +782,27 @@ export default function AgentRuntimesPane({
     try {
       const valid = await window.agentsOneAPI.validateHermesHome(home);
       if (!valid) {
-        setFlash("Hermes Agent Runtime 安装校验失败，当前配置未改变。");
+        setFlash(t("settings.runtimeManager.hermesValidationFailed"));
         return;
       }
       const adopted = await window.agentsOneAPI.adoptHermesHome(home);
       if (!adopted) {
-        setFlash("无法采用该 Hermes Agent Runtime 安装，当前配置未改变。");
+        setFlash(t("settings.runtimeManager.hermesAdoptionFailedUnchanged"));
         return;
       }
       const reloadNow = window.confirm(
-        "Hermes Agent Runtime 安装已采用。现在重载 Agents One 以立即生效吗？选择“否”将在下次启动时生效。",
+        t("settings.runtimeManager.hermesReloadConfirm"),
       );
       if (reloadNow) {
-        setFlash("Hermes Agent Runtime 安装已采用，正在重载 Agents One…");
+        setFlash(t("settings.runtimeManager.hermesReloading"));
         await window.agentsOneAPI.relaunchApp();
       } else {
-        setFlash(
-          "Hermes Agent Runtime 安装已采用，将在下次启动 Agents One 时生效。",
-        );
+        setFlash(t("settings.runtimeManager.hermesApplyNextLaunch"));
       }
     } catch (err) {
       setFlash(
-        (err as Error).message || "无法采用 Hermes Agent Runtime 安装。",
+        (err as Error).message ||
+          t("settings.runtimeManager.hermesAdoptionFailed"),
       );
     } finally {
       setHermesDiscoveryBusy(false);
@@ -782,18 +810,16 @@ export default function AgentRuntimesPane({
   }
 
   function runtimeKindLabel(kind: AgentRuntimeKind): string {
-    return (
+    const label =
       adapterManifests.find((manifest) => manifest.kinds.includes(kind))
-        ?.displayName ||
-      KIND_LABELS[kind] ||
-      kind
-    );
+        ?.displayName || KIND_LABELS[kind];
+    return label?.startsWith("settings.") ? t(label) : label || kind;
   }
 
   async function claimConnectorPairingCode(): Promise<void> {
     const code = connectorPairingCode.replace(/[\s-]/g, "").toUpperCase();
     if (!/^[A-Z2-9]{10}$/.test(code)) {
-      setFlash("接入校验码应为 10 位字母或数字。");
+      setFlash(t("settings.runtimeManager.invalidVerificationCode"));
       return;
     }
     try {
@@ -803,9 +829,12 @@ export default function AgentRuntimesPane({
           draft.id.trim() || undefined,
         );
       setConnectorPairingPreview(preview);
-      setFlash("已找到远端设备，请核对设备指纹和 Runtime 清单后确认接入。");
+      setFlash(t("settings.runtimeManager.pairingPreviewReady"));
     } catch (err) {
-      setFlash((err as Error).message || "接入校验码无效或已过期。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.pairingCodeInvalid"),
+      );
     }
   }
 
@@ -823,17 +852,20 @@ export default function AgentRuntimesPane({
         );
       setConnectorPairingCode("");
       setConnectorPairingPreview(null);
-      setFlash("已确认接入，远程智能体已保存。");
+      setFlash(t("settings.runtimeManager.pairingConfirmed"));
       await load(saved.id);
       onChanged?.();
     } catch (err) {
-      setFlash((err as Error).message || "配对确认失败，请重新输入校验码。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.pairingConfirmFailed"),
+      );
     }
   }
 
   async function startConnectPairing(): Promise<void> {
     if (!draft.id.trim() || !draft.name.trim()) {
-      setFlash("请先填写智能体 ID 和名称，再生成 Connect 配对码。");
+      setFlash(t("settings.runtimeManager.pairingIdentityRequired"));
       return;
     }
     try {
@@ -843,11 +875,12 @@ export default function AgentRuntimesPane({
       );
       setConnectPairing(session);
       setConnectPairingState("pending");
-      setFlash(
-        "配对码已生成。请在远端智能体安装 Agents One Connector CLI 后输入该码。",
-      );
+      setFlash(t("settings.runtimeManager.pairingGenerated"));
     } catch (err) {
-      setFlash((err as Error).message || "无法生成 Connect 配对码。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.pairingGenerateFailed"),
+      );
     }
   }
 
@@ -868,12 +901,15 @@ export default function AgentRuntimesPane({
           },
         );
         setConnectPairing(null);
-        setFlash("Connect 配对完成，远程智能体已保存。");
+        setFlash(t("settings.runtimeManager.connectPaired"));
         await load(saved.id);
         onChanged?.();
       }
     } catch (err) {
-      setFlash((err as Error).message || "无法读取 Connect 配对状态。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.pairingStatusFailed"),
+      );
     }
   }
 
@@ -925,11 +961,14 @@ export default function AgentRuntimesPane({
         );
         setWorkspaceGatewayToken("");
       }
-      setFlash("智能体接入配置已保存。");
+      setFlash(t("settings.runtimeManager.configurationSaved"));
       await load(saved.id);
       onChanged?.();
     } catch (err) {
-      setFlash((err as Error).message || "无法保存智能体接入配置。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.configurationSaveFailed"),
+      );
     } finally {
       setBusy(null);
     }
@@ -952,9 +991,12 @@ export default function AgentRuntimesPane({
       );
       setDraft(draftFromRuntime(saved));
       dispatchAgentsOneEvent("runtimeChanged");
-      setFlash("智能体显示信息已保存。");
+      setFlash(t("settings.runtimeManager.appearanceSaved"));
     } catch (err) {
-      setFlash((err as Error).message || "无法保存智能体显示信息。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.appearanceSaveFailed"),
+      );
     } finally {
       setBusy(null);
     }
@@ -967,7 +1009,9 @@ export default function AgentRuntimesPane({
       setDraft((current) => ({ ...current, avatar }));
       setFlash(null);
     } catch (err) {
-      setFlash((err as Error).message || "无法读取智能体图标。");
+      setFlash(
+        (err as Error).message || t("settings.runtimeManager.iconReadFailed"),
+      );
     }
   }
 
@@ -982,13 +1026,20 @@ export default function AgentRuntimesPane({
         setDraftProbeKey(draftConnectionKey);
       }
       setProbeFailures((current) => current.filter((id) => id !== runtimeId));
-      setFlash(probe.message || `检测结果：${healthLabel(probe)}`);
+      setFlash(
+        probe.message ||
+          t("settings.runtimeManager.probeResult", {
+            result: healthLabel(probe, t),
+          }),
+      );
     } catch (err) {
       if (runtimeId === selectedId) {
         setDraftProbe(null);
         setDraftProbeKey(null);
       }
-      setFlash((err as Error).message || "连接检测失败。");
+      setFlash(
+        (err as Error).message || t("settings.runtimeManager.probeFailed"),
+      );
     } finally {
       setBusy(null);
     }
@@ -1002,7 +1053,10 @@ export default function AgentRuntimesPane({
         await window.agentsOneAPI.getAgentRuntimeDiagnostics(runtimeId),
       );
     } catch (err) {
-      setFlash((err as Error).message || "无法读取智能体诊断信息。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.diagnosticsLoadFailed"),
+      );
       setDiagnostics(null);
     } finally {
       setDiagnosticsBusy(false);
@@ -1014,11 +1068,12 @@ export default function AgentRuntimesPane({
     setBusy("probe");
     try {
       await window.agentsOneAPI.openWebAgentRuntime(selectedRuntime.id);
-      setFlash(
-        "豆包窗口已在 Agents One 内打开。登录或验证完成后可返回此处重新检测。",
-      );
+      setFlash(t("settings.runtimeManager.webWindowOpened"));
     } catch (err) {
-      setFlash((err as Error).message || "无法打开豆包窗口。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.webWindowOpenFailed"),
+      );
     } finally {
       setBusy(null);
     }
@@ -1030,10 +1085,13 @@ export default function AgentRuntimesPane({
     setBusy("remove");
     try {
       await window.agentsOneAPI.clearWebAgentRuntimeLogin(selectedRuntime.id);
-      setFlash("已清除豆包本地登录数据；Runtime 配置仍保留。");
+      setFlash(t("settings.runtimeManager.webLoginCleared"));
       await probeRuntime(selectedRuntime.id);
     } catch (err) {
-      setFlash((err as Error).message || "无法清除豆包登录数据。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.webLoginClearFailed"),
+      );
     } finally {
       setBusy(null);
     }
@@ -1060,11 +1118,19 @@ export default function AgentRuntimesPane({
       );
       setDraftProbe(probe);
       setDraftProbeKey(draftConnectionKey);
-      setFlash(probe.message || `连接测试：${healthLabel(probe)}`);
+      setFlash(
+        probe.message ||
+          t("settings.runtimeManager.connectionTestResult", {
+            result: healthLabel(probe, t),
+          }),
+      );
     } catch (err) {
       setDraftProbe(null);
       setDraftProbeKey(null);
-      setFlash((err as Error).message || "连接测试失败。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.connectionTestFailed"),
+      );
     } finally {
       setBusy(null);
     }
@@ -1077,22 +1143,22 @@ export default function AgentRuntimesPane({
       const clearWebLogin =
         selectedRuntime.kind === "web-agent" &&
         Boolean(window.agentsOneAPI.clearWebAgentRuntimeLogin) &&
-        window.confirm(
-          "是否同时清除豆包网页登录数据？点击“取消”将只移除 Runtime 配置，保留登录态。",
-        );
+        window.confirm(t("settings.runtimeManager.removeWebLoginConfirm"));
       if (clearWebLogin) {
         await window.agentsOneAPI.clearWebAgentRuntimeLogin(selectedRuntime.id);
       }
       await window.agentsOneAPI.removeAgentRuntime(selectedRuntime.id);
       setFlash(
         clearWebLogin
-          ? "智能体接入配置和豆包网页登录数据已移除。"
-          : "智能体接入配置已移除。",
+          ? t("settings.runtimeManager.removedWithWebLogin")
+          : t("settings.runtimeManager.removed"),
       );
       await load();
       onChanged?.();
     } catch (err) {
-      setFlash((err as Error).message || "无法移除智能体接入配置。");
+      setFlash(
+        (err as Error).message || t("settings.runtimeManager.removeFailed"),
+      );
     } finally {
       setBusy(null);
     }
@@ -1110,9 +1176,16 @@ export default function AgentRuntimesPane({
       setCredentialRevision(0);
       setCredentialConfigured(true);
       setCredentialStorageWarning(result.storage?.warning || null);
-      setFlash(`${credentialLabel}已保存。`);
+      setFlash(
+        t("settings.runtimeManager.credentialSaved", {
+          label: credentialLabel,
+        }),
+      );
     } catch (err) {
-      setFlash((err as Error).message || "无法保存 Bridge 凭据。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.credentialSaveFailed"),
+      );
     } finally {
       setSavingCredential(false);
     }
@@ -1123,9 +1196,7 @@ export default function AgentRuntimesPane({
     const enable = !webAgentPolicy.enabled;
     if (
       enable &&
-      !window.confirm(
-        "实验性网页 Provider 会把提示词和你选择的附件发送到第三方网页账号，网页自动化可能违反第三方条款并导致账号受限或封禁。当前项目未取得书面自动化许可。仅在你理解并自行承担这些风险时启用。",
-      )
+      !window.confirm(t("settings.runtimeManager.webRiskConfirm"))
     ) {
       return;
     }
@@ -1140,11 +1211,14 @@ export default function AgentRuntimesPane({
       }
       setFlash(
         next.enabled
-          ? "实验性网页 Provider 总开关已启用。"
-          : "网页 Provider 已停用，活动网页任务和窗口已关闭。",
+          ? t("settings.runtimeManager.webPolicyEnabled")
+          : t("settings.runtimeManager.webPolicyDisabled"),
       );
     } catch (error) {
-      setFlash((error as Error).message || "无法更新网页 Provider 总开关。");
+      setFlash(
+        (error as Error).message ||
+          t("settings.runtimeManager.webPolicyUpdateFailed"),
+      );
     }
   }
 
@@ -1231,9 +1305,12 @@ export default function AgentRuntimesPane({
         workspaceGatewayToken,
       );
       setWorkspaceGatewayToken("");
-      setFlash("受控工作区网关 Token 已保存。");
+      setFlash(t("settings.runtimeManager.workspaceGatewayTokenSaved"));
     } catch (err) {
-      setFlash((err as Error).message || "无法保存受控工作区网关 Token。");
+      setFlash(
+        (err as Error).message ||
+          t("settings.runtimeManager.workspaceGatewayTokenSaveFailed"),
+      );
     } finally {
       setSavingCredential(false);
     }
@@ -1250,9 +1327,11 @@ export default function AgentRuntimesPane({
               <Bot size={19} />
             </span>
             <div className="settings-card-headtext">
-              <div className="settings-card-title">智能体接入</div>
+              <div className="settings-card-title">
+                {t("settings.runtimeManager.cardTitle")}
+              </div>
               <div className="settings-card-sub">
-                已接入、可用于对话和任务派发的智能体。
+                {t("settings.runtimeManager.cardHint")}
               </div>
             </div>
             <button
@@ -1260,22 +1339,22 @@ export default function AgentRuntimesPane({
               className="btn btn-sm btn-secondary"
               onClick={() => void load(selectedId || undefined)}
               disabled={busy === "load"}
-              title="刷新智能体"
+              title={t("settings.runtimeManager.refreshAgents")}
             >
               <RefreshCw
                 size={13}
                 className={busy === "load" ? "settings-spin" : undefined}
               />
-              刷新
+              {t("settings.runtimeManager.refresh")}
             </button>
             <button
               type="button"
               className="btn btn-sm btn-primary"
               onClick={startNewRuntime}
-              title="接入智能体"
+              title={t("settings.runtimeManager.connectAgent")}
             >
               <Plus size={13} />
-              接入
+              {t("settings.runtimeManager.connect")}
             </button>
           </header>
 
@@ -1300,8 +1379,10 @@ export default function AgentRuntimesPane({
                       </span>
                       <span className="agent-runtime-row-meta">
                         {runtimeKindLabel(runtime.kind)} /{" "}
-                        {runtime.location === "remote" ? "远程" : "本地"} ·{" "}
-                        {runtimeConnectionLabel(runtime)}
+                        {runtime.location === "remote"
+                          ? t("settings.runtimeManager.remote")
+                          : t("settings.runtimeManager.local")}{" "}
+                        · {runtimeConnectionLabel(runtime, t)}
                       </span>
                     </span>
                     <span
@@ -1314,20 +1395,24 @@ export default function AgentRuntimesPane({
                     >
                       {runtime.enabled
                         ? probing
-                          ? "检测中"
+                          ? t("settings.runtimeManager.checking")
                           : probeFailed
-                            ? "检测失败"
-                            : healthLabel(probe)
-                        : "已停用"}
+                            ? t("settings.runtimeManager.checkFailed")
+                            : healthLabel(probe, t)
+                        : t("settings.runtimeManager.disabled")}
                     </span>
                   </button>
                 );
               })}
               {runtimes.length === 0 && busy === "load" && (
-                <div className="agent-runtime-empty">正在加载智能体...</div>
+                <div className="agent-runtime-empty">
+                  {t("settings.runtimeManager.loading")}
+                </div>
               )}
               {runtimes.length === 0 && busy !== "load" && (
-                <div className="agent-runtime-empty">尚未接入智能体。</div>
+                <div className="agent-runtime-empty">
+                  {t("settings.runtimeManager.empty")}
+                </div>
               )}
             </div>
           </div>
@@ -1345,10 +1430,14 @@ export default function AgentRuntimesPane({
             </span>
             <div className="settings-card-headtext">
               <div className="settings-card-title">
-                {isNew ? "接入智能体" : draft.name || "智能体接入配置"}
+                {isNew
+                  ? t("settings.runtimeManager.connectAgent")
+                  : draft.name || t("settings.runtimeManager.configuration")}
               </div>
               <div className="settings-card-sub">
-                {isBuiltin ? "内置智能体" : "自定义智能体"}
+                {isBuiltin
+                  ? t("settings.runtimeManager.builtinAgent")
+                  : t("settings.runtimeManager.customAgent")}
               </div>
             </div>
             {selectedRuntime && (
@@ -1358,28 +1447,28 @@ export default function AgentRuntimesPane({
                   className="btn btn-sm btn-secondary"
                   onClick={() => void probeRuntime()}
                   disabled={busy === "probe" || !selectedRuntime.enabled}
-                  title="检测连接"
+                  title={t("settings.runtimeManager.checkConnection")}
                 >
                   {busy === "probe" ? (
                     <Loader2 size={13} className="settings-spin" />
                   ) : (
                     <RefreshCw size={13} />
                   )}
-                  检测
+                  {t("settings.runtimeManager.check")}
                 </button>
                 <button
                   type="button"
                   className="btn btn-sm btn-secondary"
                   onClick={() => void loadDiagnostics()}
                   disabled={diagnosticsBusy}
-                  title="查看分层诊断"
+                  title={t("settings.runtimeManager.viewDiagnostics")}
                 >
                   {diagnosticsBusy ? (
                     <Loader2 size={13} className="settings-spin" />
                   ) : (
                     <Signal size={13} />
                   )}
-                  诊断
+                  {t("settings.runtimeManager.diagnostics")}
                 </button>
               </>
             )}
@@ -1391,11 +1480,8 @@ export default function AgentRuntimesPane({
             className="settings-field-hint"
             data-testid="web-agent-policy"
           >
-            <strong>实验性网页 Provider（默认关闭）</strong>
-            <div>
-              提示词、所选附件和网页账号会交由第三方服务处理；自动化可能违反第三方条款并导致账号受限。当前未取得豆包、ChatGPT
-              或 Grok 的书面自动化许可。
-            </div>
+            <strong>{t("settings.runtimeManager.experimentalTitle")}</strong>
+            <div>{t("settings.runtimeManager.experimentalDescription")}</div>
             {webAgentPolicy?.available ? (
               <button
                 type="button"
@@ -1404,11 +1490,18 @@ export default function AgentRuntimesPane({
                 onClick={() => void toggleWebAgentPolicy()}
               >
                 {webAgentPolicy.enabled
-                  ? "一键停用网页 Provider"
-                  : "了解风险并启用"}
+                  ? t("settings.runtimeManager.disableWebProviders")
+                  : t("settings.runtimeManager.understandAndEnable")}
               </button>
             ) : (
-              <div>{webAgentPolicy?.reason || "正在读取安全策略…"}</div>
+              <div>
+                {webAgentPolicy?.reasonCode === "public-build-disabled"
+                  ? t("settings.runtimeManager.publicBuildWebDisabled")
+                  : webAgentPolicy?.reasonCode === "emergency-disabled"
+                    ? t("settings.runtimeManager.emergencyWebDisabled")
+                    : webAgentPolicy?.reason ||
+                      t("settings.runtimeManager.policyLoading")}
+              </div>
             )}
           </section>
           {selectedRuntime &&
@@ -1418,12 +1511,12 @@ export default function AgentRuntimesPane({
                 className="settings-field-hint agent-runtime-connection-summary"
                 data-testid="agent-runtime-connection-summary"
               >
-                接入来源：
+                {t("settings.runtimeManager.connectionSource")}
                 {remoteConnectionProfile === "managed-connect"
                   ? draft.config.connect?.runtimeId
-                    ? "校验码配对（已配对）"
-                    : "校验码配对（未完成）"
-                  : "自托管 Gateway（手动直连）"}
+                    ? t("settings.runtimeManager.pairedSource")
+                    : t("settings.runtimeManager.unpairedSource")
+                  : t("settings.runtimeManager.directSource")}
               </div>
             )}
           {draft.configurationIssue && (
@@ -1439,13 +1532,13 @@ export default function AgentRuntimesPane({
             <>
               <ol
                 className="agent-onboarding-steps"
-                aria-label="新增智能体步骤"
+                aria-label={t("settings.runtimeManager.onboardingSteps")}
               >
                 {(
                   [
-                    [1, "选择类型"],
-                    [2, "基础信息"],
-                    [3, "连接设置"],
+                    [1, t("settings.runtimeManager.stepType")],
+                    [2, t("settings.runtimeManager.stepBasics")],
+                    [3, t("settings.runtimeManager.stepConnection")],
                   ] as const
                 ).map(([step, label]) => (
                   <li
@@ -1470,8 +1563,10 @@ export default function AgentRuntimesPane({
                   aria-labelledby="agent-onboarding-type-title"
                 >
                   <div>
-                    <h3 id="agent-onboarding-type-title">选择要接入的智能体</h3>
-                    <p>根据运行位置选择，后续仅展示必要配置。</p>
+                    <h3 id="agent-onboarding-type-title">
+                      {t("settings.runtimeManager.chooseTypeTitle")}
+                    </h3>
+                    <p>{t("settings.runtimeManager.chooseTypeHint")}</p>
                   </div>
                   <div className="agent-onboarding-type-options">
                     <button
@@ -1483,8 +1578,10 @@ export default function AgentRuntimesPane({
                       <span className="agent-onboarding-type-icon agent-onboarding-type-icon--local">
                         <Terminal size={22} />
                       </span>
-                      <strong>本地智能体</strong>
-                      <small>在当前电脑运行的智能体CLI或服务</small>
+                      <strong>{t("settings.runtimeManager.localAgent")}</strong>
+                      <small>
+                        {t("settings.runtimeManager.localAgentDescription")}
+                      </small>
                       {newAgentType === "local" && <i aria-hidden="true">✓</i>}
                     </button>
                     <button
@@ -1496,8 +1593,12 @@ export default function AgentRuntimesPane({
                       <span className="agent-onboarding-type-icon agent-onboarding-type-icon--remote">
                         <Cloud size={22} />
                       </span>
-                      <strong>远程智能体</strong>
-                      <small>连接远端服务器或电脑上的智能体</small>
+                      <strong>
+                        {t("settings.runtimeManager.remoteAgent")}
+                      </strong>
+                      <small>
+                        {t("settings.runtimeManager.remoteAgentDescription")}
+                      </small>
                       {newAgentType === "remote" && <i aria-hidden="true">✓</i>}
                     </button>
                     <button
@@ -1510,28 +1611,32 @@ export default function AgentRuntimesPane({
                       <span className="agent-onboarding-type-icon agent-onboarding-type-icon--web">
                         <Globe2 size={22} />
                       </span>
-                      <strong>网页智能体</strong>
-                      <small>在隔离浏览器中连接网页端智能体服务</small>
+                      <strong>{t("settings.runtimeManager.webAgent")}</strong>
+                      <small>
+                        {t("settings.runtimeManager.webAgentDescription")}
+                      </small>
                       {newAgentType === "web" && <i aria-hidden="true">✓</i>}
                     </button>
                   </div>
                   <div className="agent-onboarding-preview">
-                    <strong>下一步将需要</strong>
+                    <strong>{t("settings.runtimeManager.nextRequires")}</strong>
                     <span className="agent-onboarding-preview-item">
                       <span className="agent-onboarding-preview-icon">
                         <UserRound size={16} aria-hidden="true" />
                       </span>
-                      基础信息：头像、名称、智能体 ID
+                      {t("settings.runtimeManager.basicsPreview")}
                     </span>
                     <span className="agent-onboarding-preview-item">
                       <span className="agent-onboarding-preview-icon">
                         <Link2 size={16} aria-hidden="true" />
                       </span>
                       {newAgentType === "local"
-                        ? "本地连接：可执行文件"
+                        ? t("settings.runtimeManager.localConnectionPreview")
                         : newAgentType === "web"
-                          ? "网页连接：Provider"
-                          : "远程连接：校验码配对或自托管 Gateway"}
+                          ? t("settings.runtimeManager.webConnectionPreview")
+                          : t(
+                              "settings.runtimeManager.remoteConnectionPreview",
+                            )}
                     </span>
                   </div>
                 </section>
@@ -1543,7 +1648,7 @@ export default function AgentRuntimesPane({
             <>
               <section
                 className="agent-runtime-appearance"
-                aria-label="智能体显示信息"
+                aria-label={t("settings.runtimeManager.displayInformation")}
               >
                 <input
                   ref={avatarInputRef}
@@ -1558,8 +1663,8 @@ export default function AgentRuntimesPane({
                   type="button"
                   className="agent-runtime-avatar"
                   onClick={() => avatarInputRef.current?.click()}
-                  title="更换智能体图标"
-                  aria-label="更换智能体图标"
+                  title={t("settings.runtimeManager.changeIcon")}
+                  aria-label={t("settings.runtimeManager.changeIcon")}
                 >
                   {draft.avatar ? (
                     <img src={draft.avatar} alt="" />
@@ -1569,7 +1674,7 @@ export default function AgentRuntimesPane({
                 </button>
                 <div
                   className="agent-runtime-appearance-colors"
-                  aria-label="智能体颜色"
+                  aria-label={t("settings.runtimeManager.agentColor")}
                 >
                   {PROFILE_COLORS.slice(0, 10).map((color) => (
                     <button
@@ -1593,16 +1698,18 @@ export default function AgentRuntimesPane({
                     disabled={busy === "appearance"}
                   >
                     <Save size={14} />
-                    保存显示信息
+                    {t("settings.runtimeManager.saveDisplayInformation")}
                   </button>
                 )}
               </section>
               <div className="agent-runtime-form-grid">
                 <label className="settings-field">
-                  <span className="settings-field-label">名称</span>
+                  <span className="settings-field-label">
+                    {t("settings.runtimeManager.name")}
+                  </span>
                   <input
                     className="input"
-                    aria-label="名称"
+                    aria-label={t("settings.runtimeManager.name")}
                     value={draft.name}
                     onChange={(event) =>
                       setDraft((current) => ({
@@ -1614,10 +1721,12 @@ export default function AgentRuntimesPane({
                 </label>
 
                 <label className="settings-field">
-                  <span className="settings-field-label">智能体 ID</span>
+                  <span className="settings-field-label">
+                    {t("settings.runtimeManager.agentId")}
+                  </span>
                   <input
                     className="input"
-                    aria-label="智能体 ID"
+                    aria-label={t("settings.runtimeManager.agentId")}
                     value={draft.id}
                     onChange={(event) =>
                       setDraft((current) => ({
@@ -1630,10 +1739,12 @@ export default function AgentRuntimesPane({
                 </label>
 
                 <label className="settings-field">
-                  <span className="settings-field-label">类型</span>
+                  <span className="settings-field-label">
+                    {t("settings.runtimeManager.type")}
+                  </span>
                   <select
                     className="input"
-                    aria-label="类型"
+                    aria-label={t("settings.runtimeManager.type")}
                     value={draft.kind}
                     onChange={(event) => {
                       const kind = event.target.value as AgentRuntimeKind;
@@ -1709,17 +1820,19 @@ export default function AgentRuntimesPane({
                   {isNew && (
                     <span className="settings-field-hint">
                       {manifestForDraft?.description ||
-                        "选择模板后仍可自定义名称、图标、连接参数和超时。"}
+                        t("settings.runtimeManager.templateHint")}
                     </span>
                   )}
                 </label>
 
                 {!isWebAgent && !isNew && (
                   <label className="settings-field">
-                    <span className="settings-field-label">连接方式</span>
+                    <span className="settings-field-label">
+                      {t("settings.runtimeManager.transport")}
+                    </span>
                     <select
                       className="input"
-                      aria-label="连接方式"
+                      aria-label={t("settings.runtimeManager.transport")}
                       value={draft.config.transport || "http"}
                       onChange={(event) =>
                         updateConfig(
@@ -1740,7 +1853,9 @@ export default function AgentRuntimesPane({
 
               {!isWebAgent && !isNew && (
                 <div className="settings-field">
-                  <label className="settings-field-label">位置</label>
+                  <label className="settings-field-label">
+                    {t("settings.runtimeManager.location")}
+                  </label>
                   <div className="settings-theme-options">
                     {(["remote", "local"] as AgentRuntimeLocation[]).map(
                       (location) => (
@@ -1765,15 +1880,16 @@ export default function AgentRuntimesPane({
                           // template (Hermes → remote Gateway, others → local CLI).
                           disabled={isBuiltin || isNew}
                         >
-                          {location === "remote" ? "远程" : "本地"}
+                          {location === "remote"
+                            ? t("settings.runtimeManager.remote")
+                            : t("settings.runtimeManager.local")}
                         </button>
                       ),
                     )}
                   </div>
                   {isNew && (
                     <span className="settings-field-hint">
-                      由模板决定：Hermes 可采用本机已有安装，其余为本地 CLI
-                      （可执行文件路径）。
+                      {t("settings.runtimeManager.templateLocationHint")}
                     </span>
                   )}
                 </div>
@@ -1785,18 +1901,16 @@ export default function AgentRuntimesPane({
             (isWebAgent ? (
               <div className="settings-field">
                 <span className="settings-field-label">
-                  网页智能体（实验性）
+                  {t("settings.runtimeManager.experimentalWebAgent")}
                 </span>
                 <span className="settings-field-hint">
-                  Agents One
-                  将在隔离浏览器会话中使用你的网页登录态。正常任务不打开外部浏览器；登录、验证码或页面确认时会在应用内接管。网页没有工作区或
-                  Shell 权限，仅能读取本轮明确添加的附件。
+                  {t("settings.runtimeManager.webAgentSecurityHint")}
                 </span>
                 <label className="settings-field">
                   <span className="settings-field-label">Provider</span>
                   <select
                     className="input"
-                    aria-label="网页 Provider"
+                    aria-label={t("settings.runtimeManager.webProvider")}
                     value={draft.config.webAgent?.provider || "doubao"}
                     onChange={(event) => {
                       const provider = event.target.value as
@@ -1812,10 +1926,10 @@ export default function AgentRuntimesPane({
                           : current.id,
                         name:
                           provider === "chatgpt"
-                            ? "ChatGPT 网页版"
+                            ? t("settings.runtimeManager.chatgptWebName")
                             : provider === "grok"
-                              ? "Grok 网页版"
-                              : "豆包网页版",
+                              ? t("settings.runtimeManager.grokWebName")
+                              : t("settings.runtimeManager.defaultDoubaoName"),
                         config: {
                           ...current.config,
                           webAgent: {
@@ -1832,27 +1946,33 @@ export default function AgentRuntimesPane({
                     }}
                     disabled={Boolean(selectedRuntime)}
                   >
-                    <option value="doubao">豆包</option>
+                    <option value="doubao">
+                      {t("settings.runtimeManager.doubao")}
+                    </option>
                     <option value="chatgpt">ChatGPT</option>
                     <option value="grok">Grok</option>
                   </select>
                 </label>
                 <span className="settings-field-hint">
-                  当前 Provider：
-                  {draft.config.webAgent?.provider === "chatgpt"
-                    ? "ChatGPT"
-                    : draft.config.webAgent?.provider === "grok"
-                      ? "Grok"
-                      : "豆包"}
-                  ；适配器版本：
-                  {draft.config.webAgent?.adapterVersion || "未知"}
-                  。网页兼容能力为实验性功能。
+                  {t("settings.runtimeManager.currentProvider", {
+                    provider:
+                      draft.config.webAgent?.provider === "chatgpt"
+                        ? "ChatGPT"
+                        : draft.config.webAgent?.provider === "grok"
+                          ? "Grok"
+                          : t("settings.runtimeManager.doubao"),
+                    version:
+                      draft.config.webAgent?.adapterVersion ||
+                      t("settings.runtimeManager.unknown"),
+                  })}
                 </span>
                 <label className="settings-field">
-                  <span className="settings-field-label">本地网页登录档案</span>
+                  <span className="settings-field-label">
+                    {t("settings.runtimeManager.webProfile")}
+                  </span>
                   <input
                     className="input"
-                    aria-label="本地网页登录档案"
+                    aria-label={t("settings.runtimeManager.webProfile")}
                     value={draft.config.webAgent?.profileId || "default"}
                     onChange={(event) =>
                       setDraft((current) => ({
@@ -1874,7 +1994,7 @@ export default function AgentRuntimesPane({
                     disabled={Boolean(selectedRuntime)}
                   />
                   <span className="settings-field-hint">
-                    用于隔离多个网页登录账号；不要填写手机号、邮箱或真实姓名。
+                    {t("settings.runtimeManager.webProfileHint")}
                   </span>
                 </label>
                 {selectedRuntime && (
@@ -1885,7 +2005,7 @@ export default function AgentRuntimesPane({
                       onClick={() => void openWebAgentWindow()}
                       disabled={busy === "probe"}
                     >
-                      打开网页窗口 / 登录
+                      {t("settings.runtimeManager.openWebLogin")}
                     </button>
                     <button
                       type="button"
@@ -1893,7 +2013,7 @@ export default function AgentRuntimesPane({
                       onClick={() => void clearWebAgentLogin()}
                       disabled={busy === "remove"}
                     >
-                      清除登录数据
+                      {t("settings.runtimeManager.clearWebLogin")}
                     </button>
                   </div>
                 )}
@@ -1902,16 +2022,17 @@ export default function AgentRuntimesPane({
               <>
                 {isNew && (
                   <div className="agent-onboarding-connection-note">
-                    <strong>选择远程接入方式</strong>
+                    <strong>
+                      {t("settings.runtimeManager.chooseRemoteMethod")}
+                    </strong>
                     <span>
-                      校验码配对和自托管 Gateway
-                      是两种独立的连接方式，请先选择其一。
+                      {t("settings.runtimeManager.chooseRemoteMethodHint")}
                     </span>
                   </div>
                 )}
                 <div
                   className="settings-theme-options"
-                  aria-label="远程接入方式"
+                  aria-label={t("settings.runtimeManager.remoteMethod")}
                 >
                   <button
                     type="button"
@@ -1921,7 +2042,7 @@ export default function AgentRuntimesPane({
                       selectRemoteConnectionProfile("managed-connect")
                     }
                   >
-                    校验码配对（推荐）
+                    {t("settings.runtimeManager.pairingRecommended")}
                   </button>
                   <button
                     type="button"
@@ -1933,27 +2054,31 @@ export default function AgentRuntimesPane({
                       selectRemoteConnectionProfile("self-hosted-gateway")
                     }
                   >
-                    自托管 Gateway（高级）
+                    {t("settings.runtimeManager.selfHostedAdvanced")}
                   </button>
                 </div>
 
                 {remoteConnectionProfile === "managed-connect" ? (
                   <div className="settings-field settings-field--connect-pairing">
-                    <span className="settings-field-label">校验码配对</span>
+                    <span className="settings-field-label">
+                      {t("settings.runtimeManager.verificationPairing")}
+                    </span>
                     <span className="settings-field-hint">
-                      远端运行 Agents One Connector 后生成 10
-                      位校验码。配对建立设备信任，不需要手动填写 Gateway 地址或
-                      Token。
+                      {t("settings.runtimeManager.verificationPairingHint")}
                     </span>
                     <div className="settings-card-actions">
                       <input
                         className="input"
-                        aria-label="输入接入校验码"
+                        aria-label={t(
+                          "settings.runtimeManager.enterVerificationCode",
+                        )}
                         value={connectorPairingCode}
                         onChange={(event) =>
                           setConnectorPairingCode(event.target.value)
                         }
-                        placeholder="输入 10 位校验码"
+                        placeholder={t(
+                          "settings.runtimeManager.verificationCodePlaceholder",
+                        )}
                         maxLength={12}
                       />
                       <button
@@ -1965,7 +2090,9 @@ export default function AgentRuntimesPane({
                           Boolean(connectorPairingPreview)
                         }
                       >
-                        {connectorPairingPreview ? "已查看设备" : "确认配对"}
+                        {connectorPairingPreview
+                          ? t("settings.runtimeManager.deviceReviewed")
+                          : t("settings.runtimeManager.confirmPairing")}
                       </button>
                     </div>
                     {connectorPairingPreview && (
@@ -1973,25 +2100,31 @@ export default function AgentRuntimesPane({
                         className="settings-field agent-runtime-pairing-preview"
                         data-testid="agent-runtime-pairing-preview"
                       >
-                        <strong>待确认远端设备</strong>
+                        <strong>
+                          {t("settings.runtimeManager.pendingDevice")}
+                        </strong>
                         <span className="settings-field-hint">
-                          设备名称：{connectorPairingPreview.displayName} ·
-                          Runtime：
-                          {connectorPairingPreview.runtimeId}
+                          {t("settings.runtimeManager.deviceAndRuntime", {
+                            name: connectorPairingPreview.displayName,
+                            runtime: connectorPairingPreview.runtimeId,
+                          })}
                         </span>
                         <span className="settings-field-hint">
-                          设备指纹摘要：
-                          {connectorPairingPreview.deviceFingerprint ||
-                            "未提供"}
+                          {t("settings.runtimeManager.deviceFingerprint", {
+                            fingerprint:
+                              connectorPairingPreview.deviceFingerprint ||
+                              t("settings.runtimeManager.notProvided"),
+                          })}
                         </span>
                         <span className="settings-field-hint">
-                          校验码有效期至：
-                          {new Date(
-                            connectorPairingPreview.expiresAt,
-                          ).toLocaleString()}
+                          {t("settings.runtimeManager.verificationExpires", {
+                            time: new Date(
+                              connectorPairingPreview.expiresAt,
+                            ).toLocaleString(),
+                          })}
                         </span>
                         <span className="settings-field-hint">
-                          远端 Runtime 与能力摘要：
+                          {t("settings.runtimeManager.remoteRuntimeSummary")}
                         </span>
                         <ul>
                           {(
@@ -2010,9 +2143,11 @@ export default function AgentRuntimesPane({
                                 ? ` · ${runtime.adapterId}`
                                 : ""}
                               {runtime.capabilityDigest
-                                ? " · 已声明能力指纹"
-                                : " · 未声明能力指纹"}
-                              {runtime.enabled === false ? " · 已停用" : ""}
+                                ? ` · ${t("settings.runtimeManager.capabilityDigestDeclared")}`
+                                : ` · ${t("settings.runtimeManager.capabilityDigestMissing")}`}
+                              {runtime.enabled === false
+                                ? ` · ${t("settings.runtimeManager.disabled")}`
+                                : ""}
                             </li>
                           ))}
                         </ul>
@@ -2022,7 +2157,7 @@ export default function AgentRuntimesPane({
                             className="btn btn-primary"
                             onClick={() => void confirmConnectorPairing()}
                           >
-                            确认接入
+                            {t("settings.runtimeManager.confirmConnection")}
                           </button>
                           <button
                             type="button"
@@ -2030,18 +2165,20 @@ export default function AgentRuntimesPane({
                             onClick={() => {
                               setConnectorPairingPreview(null);
                               setFlash(
-                                "已取消本次配对确认，校验码仍可重新查看。",
+                                t("settings.runtimeManager.pairingCancelled"),
                               );
                             }}
                           >
-                            取消
+                            {t("settings.runtimeManager.cancel")}
                           </button>
                         </div>
                       </div>
                     )}
                     <details className="agent-runtime-advanced">
-                      <summary>本机发起配对</summary>
-                      <p>仅当远程 Connector 需要由本机发起配对时使用。</p>
+                      <summary>
+                        {t("settings.runtimeManager.initiatePairingLocally")}
+                      </summary>
+                      <p>{t("settings.runtimeManager.initiatePairingHint")}</p>
                       <div className="settings-card-actions">
                         <button
                           type="button"
@@ -2049,7 +2186,7 @@ export default function AgentRuntimesPane({
                           onClick={() => void startConnectPairing()}
                           disabled={!draft.id.trim() || !draft.name.trim()}
                         >
-                          生成配对码
+                          {t("settings.runtimeManager.generatePairingCode")}
                         </button>
                         {connectPairing && (
                           <button
@@ -2058,19 +2195,21 @@ export default function AgentRuntimesPane({
                             onClick={() => void refreshConnectPairing()}
                           >
                             <RefreshCw size={14} />
-                            检查配对
+                            {t("settings.runtimeManager.checkPairing")}
                           </button>
                         )}
                       </div>
                       {connectPairing && (
                         <div className="settings-field-hint">
-                          配对码：<strong>{connectPairing.pairingCode}</strong>{" "}
-                          · 状态：
-                          {connectPairingState === "pending"
-                            ? "等待 Connector"
-                            : connectPairingState === "paired"
-                              ? "已配对"
-                              : "已过期"}
+                          {t("settings.runtimeManager.pairingSummary", {
+                            code: connectPairing.pairingCode,
+                            status:
+                              connectPairingState === "pending"
+                                ? t("settings.runtimeManager.waitingConnector")
+                                : connectPairingState === "paired"
+                                  ? t("settings.runtimeManager.paired")
+                                  : t("settings.runtimeManager.expired"),
+                          })}
                         </div>
                       )}
                     </details>
@@ -2078,11 +2217,13 @@ export default function AgentRuntimesPane({
                 ) : (
                   <>
                     <label className="settings-field">
-                      <span className="settings-field-label">Gateway 地址</span>
+                      <span className="settings-field-label">
+                        {t("settings.runtimeManager.gatewayAddress")}
+                      </span>
                       <input
                         className="input"
                         type="url"
-                        aria-label="Gateway 地址"
+                        aria-label={t("settings.runtimeManager.gatewayAddress")}
                         value={draft.config.endpoint || ""}
                         onChange={(event) =>
                           updateConfig("endpoint", event.target.value)
@@ -2091,8 +2232,7 @@ export default function AgentRuntimesPane({
                         disabled={isBuiltin}
                       />
                       <span className="settings-field-hint">
-                        自托管 Gateway v1 的 HTTPS 基础地址。此路径不会创建
-                        Connect 配对记录。
+                        {t("settings.runtimeManager.gatewayAddressHint")}
                       </span>
                     </label>
                     {requiresRemoteCredential && (
@@ -2112,15 +2252,19 @@ export default function AgentRuntimesPane({
                               setCredentialRevision((current) => current + 1);
                             }}
                             placeholder={
-                              credentialConfigured ? "已配置" : credentialLabel
+                              credentialConfigured
+                                ? t("settings.runtimeManager.configured")
+                                : credentialLabel
                             }
                           />
                           <span className="settings-field-hint">
-                            手动接入时填写；使用配对码成功后会自动安全保存。
+                            {t("settings.runtimeManager.credentialHint")}
                           </span>
                           {credentialStorageWarning && (
                             <span className="settings-field-hint">
-                              安全存储提示：{credentialStorageWarning}
+                              {t("settings.runtimeManager.secureStorageHint", {
+                                warning: credentialStorageWarning,
+                              })}
                             </span>
                           )}
                         </label>
@@ -2147,17 +2291,25 @@ export default function AgentRuntimesPane({
                 )}
                 {supportsRemoteWorkspaceGateway && !isNew && (
                   <details className="agent-runtime-advanced">
-                    <summary>高级设置（可选）</summary>
-                    <p>通常无需填写。仅在远程工作区网关独立部署时配置。</p>
+                    <summary>
+                      {t("settings.runtimeManager.advancedOptional")}
+                    </summary>
+                    <p>
+                      {t(
+                        "settings.runtimeManager.workspaceGatewayAdvancedHint",
+                      )}
+                    </p>
                     <div className="agent-runtime-form-grid agent-runtime-form-grid--compact">
                       <label className="settings-field">
                         <span className="settings-field-label">
-                          受控工作区网关地址
+                          {t("settings.runtimeManager.workspaceGatewayAddress")}
                         </span>
                         <input
                           className="input"
                           type="url"
-                          aria-label="受控工作区网关地址"
+                          aria-label={t(
+                            "settings.runtimeManager.workspaceGatewayAddress",
+                          )}
                           value={draft.config.workspaceGatewayEndpoint || ""}
                           onChange={(event) =>
                             updateConfig(
@@ -2165,16 +2317,17 @@ export default function AgentRuntimesPane({
                               event.target.value,
                             )
                           }
-                          placeholder="留空则使用服务地址下的 /workspace-gateway"
+                          placeholder={t(
+                            "settings.runtimeManager.workspaceGatewayPlaceholder",
+                          )}
                         />
                         <span className="settings-field-hint">
-                          远程部署独立时填写完整的
-                          https://host/workspace-gateway；通常可留空。
+                          {t("settings.runtimeManager.workspaceGatewayHint")}
                         </span>
                       </label>
                       <label className="settings-field">
                         <span className="settings-field-label">
-                          受控工作区网关 Token
+                          {t("settings.runtimeManager.workspaceGatewayToken")}
                         </span>
                         <input
                           className="input"
@@ -2184,7 +2337,9 @@ export default function AgentRuntimesPane({
                           onChange={(event) =>
                             setWorkspaceGatewayToken(event.target.value)
                           }
-                          placeholder="保存后仅存于受保护连接配置"
+                          placeholder={t(
+                            "settings.runtimeManager.protectedCredentialPlaceholder",
+                          )}
                         />
                         {selectedRuntime && (
                           <button
@@ -2196,7 +2351,9 @@ export default function AgentRuntimesPane({
                             }
                           >
                             <Save size={14} />
-                            保存网关 Token
+                            {t(
+                              "settings.runtimeManager.saveWorkspaceGatewayToken",
+                            )}
                           </button>
                         )}
                       </label>
@@ -2209,11 +2366,10 @@ export default function AgentRuntimesPane({
                 {isLocalHermesAdoption && (
                   <div className="settings-field agent-runtime-hermes-adoption">
                     <span className="settings-field-label">
-                      采用已有 Hermes Agent Runtime 安装
+                      {t("settings.runtimeManager.adoptHermesInstallation")}
                     </span>
                     <span className="settings-field-hint">
-                      Agents One 会只读发现本机安装；采用只保存 Hermes Home
-                      覆盖，不会重复下载或创建第二个 Hermes Runtime。
+                      {t("settings.runtimeManager.adoptHermesHint")}
                     </span>
                     <div className="settings-card-actions">
                       <button
@@ -2234,7 +2390,7 @@ export default function AgentRuntimesPane({
                         ) : (
                           <RefreshCw size={14} />
                         )}
-                        重新扫描
+                        {t("settings.runtimeManager.rescan")}
                       </button>
                       <button
                         type="button"
@@ -2242,13 +2398,12 @@ export default function AgentRuntimesPane({
                         onClick={() => void chooseHermesHome()}
                         disabled={hermesDiscoveryBusy}
                       >
-                        选择 Hermes Home
+                        {t("settings.runtimeManager.chooseHermesHome")}
                       </button>
                     </div>
                     {hermesCandidates.length === 0 && !hermesDiscoveryBusy && (
                       <span className="settings-field-hint">
-                        未发现可直接采用的安装，请选择 Hermes
-                        Home；无效目录不会写入配置。
+                        {t("settings.runtimeManager.noHermesInstallation")}
                       </span>
                     )}
                     {hermesCandidates.map((candidate) => (
@@ -2259,15 +2414,27 @@ export default function AgentRuntimesPane({
                         <strong>{candidate.home}</strong>
                         <span className="settings-field-hint">
                           {hermesDiscoverySourceLabel(candidate.source)} ·{" "}
-                          {candidate.valid ? "校验通过" : "校验失败"}
+                          {candidate.valid
+                            ? t("settings.runtimeManager.validationPassed")
+                            : t("settings.runtimeManager.validationFailed")}
                         </span>
                         <span className="settings-field-hint">
-                          版本：{candidate.version || "无法读取"} · 可执行文件：
-                          {candidate.executableAvailable ? "可用" : "缺失"}
+                          {t("settings.runtimeManager.versionAndExecutable", {
+                            version:
+                              candidate.version ||
+                              t("settings.runtimeManager.unreadable"),
+                            executable: candidate.executableAvailable
+                              ? t("settings.runtimeManager.available")
+                              : t("settings.runtimeManager.missing"),
+                          })}
                         </span>
                         <span className="settings-field-hint">
-                          配置：{hermesConfigStateLabel(candidate.configState)}{" "}
-                          · API：{hermesApiStateLabel(candidate.apiState)}
+                          {t("settings.runtimeManager.configState", {
+                            state: hermesConfigStateLabel(
+                              candidate.configState,
+                            ),
+                          })}{" "}
+                          · API: {hermesApiStateLabel(candidate.apiState)}
                         </span>
                         <button
                           type="button"
@@ -2275,7 +2442,7 @@ export default function AgentRuntimesPane({
                           onClick={() => void adoptHermesHome(candidate.home)}
                           disabled={!candidate.valid || hermesDiscoveryBusy}
                         >
-                          使用此安装
+                          {t("settings.runtimeManager.useInstallation")}
                         </button>
                       </div>
                     ))}
@@ -2284,10 +2451,12 @@ export default function AgentRuntimesPane({
                 {!isLocalHermesAdoption && (
                   <div className="agent-runtime-form-grid">
                     <label className="settings-field">
-                      <span className="settings-field-label">可执行文件</span>
+                      <span className="settings-field-label">
+                        {t("settings.runtimeManager.executable")}
+                      </span>
                       <input
                         className="input"
-                        aria-label="可执行文件"
+                        aria-label={t("settings.runtimeManager.executable")}
                         value={draft.config.executablePath || ""}
                         onChange={(event) =>
                           updateConfig("executablePath", event.target.value)
@@ -2304,44 +2473,54 @@ export default function AgentRuntimesPane({
                       />
                       <span className="settings-field-hint">
                         {isNew && localCliPaths[draft.kind]
-                          ? `已在 PATH 检测到：${localCliPaths[draft.kind]}`
+                          ? t("settings.runtimeManager.executableDetected", {
+                              path: localCliPaths[draft.kind],
+                            })
                           : isNew && draft.kind !== "hermes"
-                            ? "未在 PATH 检测到，请填写可执行文件完整路径。"
+                            ? t("settings.runtimeManager.executableNotDetected")
                             : manifestForDraft?.fields.find(
                                 (field) => field.key === "executablePath",
                               )?.help ||
-                              "可执行文件路径或命令名（自动检测优先）。"}
+                              t("settings.runtimeManager.executableHint")}
                       </span>
                     </label>
                     <label className="settings-field">
                       <span className="settings-field-label">
-                        检测工作区（可选）
+                        {t("settings.runtimeManager.probeWorkspace")}
                       </span>
                       <input
                         className="input"
-                        aria-label="检测工作区（可选）"
+                        aria-label={t("settings.runtimeManager.probeWorkspace")}
                         value={draft.config.workspace || ""}
                         onChange={(event) =>
                           updateConfig("workspace", event.target.value)
                         }
-                        placeholder="留空；项目目录在任务中按需选择"
+                        placeholder={t(
+                          "settings.runtimeManager.probeWorkspacePlaceholder",
+                        )}
                         disabled={isBuiltin}
                       />
                       <span className="settings-field-hint">
-                        仅用于连接检测，不会自动带入新对话或定时任务。
+                        {t("settings.runtimeManager.probeWorkspaceHint")}
                       </span>
                     </label>
                     {!isNew && (
                       <label className="settings-field">
-                        <span className="settings-field-label">模型覆盖</span>
+                        <span className="settings-field-label">
+                          {t("settings.runtimeManager.modelOverride")}
+                        </span>
                         <input
                           className="input"
-                          aria-label="模型覆盖"
+                          aria-label={t(
+                            "settings.runtimeManager.modelOverride",
+                          )}
                           value={draft.config.model || ""}
                           onChange={(event) =>
                             updateConfig("model", event.target.value)
                           }
-                          placeholder="留空使用 CLI 默认模型"
+                          placeholder={t(
+                            "settings.runtimeManager.modelOverridePlaceholder",
+                          )}
                           disabled={isBuiltin}
                         />
                       </label>
@@ -2384,7 +2563,9 @@ export default function AgentRuntimesPane({
                         }
                         disabled={isBuiltin}
                       >
-                        <option value="">请选择</option>
+                        <option value="">
+                          {t("settings.runtimeManager.select")}
+                        </option>
                         {(field.options || []).map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
@@ -2448,11 +2629,13 @@ export default function AgentRuntimesPane({
             <>
               <div className="agent-runtime-form-grid agent-runtime-form-grid--compact">
                 <label className="settings-field">
-                  <span className="settings-field-label">连接超时（秒）</span>
+                  <span className="settings-field-label">
+                    {t("settings.runtimeManager.timeoutSeconds")}
+                  </span>
                   <input
                     className="input"
                     type="number"
-                    aria-label="连接超时（秒）"
+                    aria-label={t("settings.runtimeManager.timeoutSeconds")}
                     min={1}
                     max={600}
                     step={1}
@@ -2471,7 +2654,7 @@ export default function AgentRuntimesPane({
                     disabled={isBuiltin}
                   />
                   <span className="settings-field-hint">
-                    连接检测或发起对话时，超过此时长未响应将提示连接异常。
+                    {t("settings.runtimeManager.timeoutHint")}
                   </span>
                 </label>
 
@@ -2488,20 +2671,19 @@ export default function AgentRuntimesPane({
                       }
                       disabled={isBuiltin}
                     />
-                    启用
+                    {t("settings.runtimeManager.enabled")}
                   </label>
                 )}
                 {draft.needsReauthorization && (
                   <div className="settings-field-hint">
-                    此远程智能体来自恢复且端点身份已变化。请先填写新的主凭据；在此之前无法启用或运行。
+                    {t("settings.runtimeManager.reauthorizationRequired")}
                   </div>
                 )}
               </div>
 
               {draft.kind === "pi" && (
                 <div className="settings-field-hint agent-runtime-pi-note">
-                  Pi
-                  按每个任务实际选择的项目目录和文件访问级别启动；未选择目录时不继承智能体配置中的工作区。
+                  Pi: {t("settings.runtimeManager.workspaceSelectionHint")}
                 </div>
               )}
 
@@ -2511,7 +2693,7 @@ export default function AgentRuntimesPane({
                     <span
                       className={`agent-runtime-status agent-runtime-status--${selectedProbe.state}`}
                     >
-                      {healthLabel(selectedProbe)}
+                      {healthLabel(selectedProbe, t)}
                     </span>
                     <span className="agent-runtime-probe-time">
                       {new Date(selectedProbe.checkedAt).toLocaleString()}
@@ -2524,17 +2706,17 @@ export default function AgentRuntimesPane({
                   )}
                   {selectedProbe.capabilities.plugin && (
                     <div className="settings-field-hint">
-                      已识别 Agents One 插件
+                      {t("settings.runtimeManager.pluginRecognized")}
                       {selectedProbe.capabilities.plugin.version
                         ? ` v${selectedProbe.capabilities.plugin.version}`
                         : ""}
                       {selectedProbe.capabilities.eventStream
-                        ? "，已声明细粒度事件流。"
-                        : "。"}
+                        ? t("settings.runtimeManager.granularEvents")
+                        : "."}
                     </div>
                   )}
                   <div className="agent-runtime-capabilities">
-                    {trueCapabilities(selectedProbe).map((capability) => (
+                    {trueCapabilities(selectedProbe, t).map((capability) => (
                       <span key={capability}>{capability}</span>
                     ))}
                   </div>
@@ -2548,19 +2730,28 @@ export default function AgentRuntimesPane({
                     data-testid="agent-runtime-diagnostics"
                   >
                     <div className="agent-runtime-probe-head">
-                      <strong>分层诊断</strong>
+                      <strong>
+                        {t("settings.runtimeManager.diagnosticsTitle")}
+                      </strong>
                       <span className="agent-runtime-probe-time">
                         {new Date(diagnostics.generatedAt).toLocaleString()}
                       </span>
                     </div>
                     <div className="settings-field-hint">
-                      Desktop：v{diagnostics.desktopVersion || "未知"} · Gateway
-                      v1：{diagnostics.gatewayProtocolVersion || "未知"}
+                      {t("settings.runtimeManager.desktopGatewayVersions", {
+                        desktop:
+                          diagnostics.desktopVersion ||
+                          t("settings.runtimeManager.unknown"),
+                        gateway:
+                          diagnostics.gatewayProtocolVersion ||
+                          t("settings.runtimeManager.unknown"),
+                      })}
                     </div>
                     <div className="settings-field-hint">
-                      连接：{diagnostics.connection.profile} ·{" "}
-                      {diagnostics.connection.state} · TLS{" "}
-                      {diagnostics.connection.tls}
+                      {t("settings.runtimeManager.connectionDiagnostic", {
+                        profile: diagnostics.connection.profile,
+                        transport: `${diagnostics.connection.state} · TLS ${diagnostics.connection.tls}`,
+                      })}
                       {diagnostics.connection.endpointHost && (
                         <>
                           {" · "}
@@ -2569,8 +2760,11 @@ export default function AgentRuntimesPane({
                       )}
                     </div>
                     <div className="settings-field-hint">
-                      设备：
-                      {diagnostics.connection.deviceId || "无（自托管/本地）"}
+                      {t("settings.runtimeManager.device", {
+                        device:
+                          diagnostics.connection.deviceId ||
+                          t("settings.runtimeManager.selfHostedOrLocal"),
+                      })}
                       {diagnostics.connection.connectorVersion && (
                         <>
                           {" "}
@@ -2579,63 +2773,77 @@ export default function AgentRuntimesPane({
                       )}
                       {diagnostics.connection.lastSeenAt && (
                         <>
-                          {" · 最近在线 "}
-                          {new Date(
-                            diagnostics.connection.lastSeenAt,
-                          ).toLocaleString()}
+                          {` · ${t("settings.runtimeManager.lastOnline", {
+                            time: new Date(
+                              diagnostics.connection.lastSeenAt,
+                            ).toLocaleString(),
+                          })}`}
                         </>
                       )}
                     </div>
                     <div className="settings-field-hint">
                       Host / Adapter：{diagnostics.host.state} ·{" "}
-                      {diagnostics.host.adapterId || "未声明"}
+                      {diagnostics.host.adapterId ||
+                        t("settings.runtimeManager.undeclared")}
                       {diagnostics.host.adapterVersion && (
                         <> v{diagnostics.host.adapterVersion}</>
                       )}
                       {diagnostics.host.plugin?.version && (
-                        <> · 插件 v{diagnostics.host.plugin.version}</>
+                        <>
+                          {` · ${t("settings.runtimeManager.pluginVersion", {
+                            version: diagnostics.host.plugin.version,
+                          })}`}
+                        </>
                       )}
                     </div>
                     <div className="settings-field-hint">
                       Provider：
                       {diagnostics.provider.authConfigured
-                        ? "凭据已配置"
-                        : "未配置桌面侧凭据"}
+                        ? t("settings.runtimeManager.credentialConfigured")
+                        : t("settings.runtimeManager.credentialNotConfigured")}
                       {diagnostics.provider.requestedModel && (
                         <>
-                          {" · 请求 "}
-                          {diagnostics.provider.requestedModel}
+                          {` · ${t("settings.runtimeManager.requestedModel", {
+                            model: diagnostics.provider.requestedModel,
+                          })}`}
                         </>
                       )}
                       {diagnostics.provider.actualModel && (
                         <>
-                          {" · 实际 "}
-                          {diagnostics.provider.actualModel.provider && (
-                            <>{diagnostics.provider.actualModel.provider}/</>
-                          )}
-                          {diagnostics.provider.actualModel.id || "未知"}
+                          {` · ${t("settings.runtimeManager.actualModel", {
+                            model: `${diagnostics.provider.actualModel.provider ? `${diagnostics.provider.actualModel.provider}/` : ""}${diagnostics.provider.actualModel.id || t("settings.runtimeManager.unknown")}`,
+                          })}`}
                         </>
                       )}
                     </div>
                     {diagnostics.connection.message && (
                       <div className="settings-field-hint">
-                        连接说明：{diagnostics.connection.message}
+                        {t("settings.runtimeManager.connectionMessage", {
+                          message: diagnostics.connection.message,
+                        })}
                       </div>
                     )}
                     {diagnostics.lastRun && (
                       <div className="settings-field-hint">
-                        最近运行：{diagnostics.lastRun.status} · 事件{" "}
-                        {diagnostics.lastRun.eventCount}
+                        {t("settings.runtimeManager.lastRun", {
+                          status: diagnostics.lastRun.status,
+                          events: diagnostics.lastRun.eventCount,
+                        })}
                         {diagnostics.lastRun.lastSequence !== undefined && (
                           <>
-                            {" · 序号 "}
-                            {diagnostics.lastRun.lastSequence}
+                            {` · ${t("settings.runtimeManager.sequence", {
+                              sequence: diagnostics.lastRun.lastSequence,
+                            })}`}
                           </>
                         )}
                         {diagnostics.lastRun.reconnectFailures > 0 && (
                           <>
-                            {" · 重连失败 "}
-                            {diagnostics.lastRun.reconnectFailures}
+                            {` · ${t(
+                              "settings.runtimeManager.reconnectFailures",
+                              {
+                                count: diagnostics.lastRun.reconnectFailures,
+                              },
+                            )}`}
                           </>
                         )}
                       </div>
@@ -2655,7 +2863,7 @@ export default function AgentRuntimesPane({
                       className="btn btn-secondary"
                       onClick={() => setNewAgentStep(1)}
                     >
-                      上一步
+                      {t("settings.runtimeManager.previous")}
                     </button>
                   )}
                   {isNew && newAgentStep === 1 && onCancel && (
@@ -2664,7 +2872,7 @@ export default function AgentRuntimesPane({
                       className="btn btn-secondary"
                       onClick={onCancel}
                     >
-                      取消
+                      {t("settings.runtimeManager.cancel")}
                     </button>
                   )}
                   <button
@@ -2672,7 +2880,7 @@ export default function AgentRuntimesPane({
                     className="btn btn-primary"
                     onClick={() => setNewAgentStep(newAgentStep === 1 ? 2 : 3)}
                   >
-                    下一步
+                    {t("settings.runtimeManager.next")}
                   </button>
                 </>
               ) : (
@@ -2683,7 +2891,7 @@ export default function AgentRuntimesPane({
                       className="btn btn-secondary"
                       onClick={() => setNewAgentStep(2)}
                     >
-                      上一步
+                      {t("settings.runtimeManager.previous")}
                     </button>
                   )}
                   {isNew && (
@@ -2707,7 +2915,7 @@ export default function AgentRuntimesPane({
                       ) : (
                         <RefreshCw size={14} />
                       )}
-                      连接测试
+                      {t("settings.runtimeManager.connectionTest")}
                     </button>
                   )}
                   <button
@@ -2723,7 +2931,9 @@ export default function AgentRuntimesPane({
                     ) : (
                       <Save size={14} />
                     )}
-                    {isNew ? "保存" : "保存更改"}
+                    {isNew
+                      ? t("settings.runtimeManager.save")
+                      : t("settings.runtimeManager.saveChanges")}
                   </button>
                   {selectedRuntime && (
                     <button
@@ -2733,7 +2943,7 @@ export default function AgentRuntimesPane({
                       disabled={busy === "remove"}
                     >
                       <Trash2 size={14} />
-                      移除
+                      {t("settings.runtimeManager.remove")}
                     </button>
                   )}
                 </>
@@ -2743,7 +2953,7 @@ export default function AgentRuntimesPane({
           {isBuiltin && embedded && (
             <div className="agent-runtime-hermes-connection">
               <div className="agent-runtime-hermes-connection-heading">
-                Hermes 连接
+                {t("settings.runtimeManager.hermesConnection")}
               </div>
               <HermesConnectionManager />
             </div>

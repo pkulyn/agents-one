@@ -29,11 +29,15 @@ export function getWebAgentPolicyStatus(): WebAgentPolicyStatus {
     killSwitchActive,
     ...(!localAccessAllowed
       ? {
+          reasonCode: "public-build-disabled" as const,
           reason:
             "公开构建默认关闭网页 Provider；当前没有第三方书面自动化许可。",
         }
       : killSwitchActive
-        ? { reason: "网页 Provider 已由本机紧急开关停用。" }
+        ? {
+            reasonCode: "emergency-disabled" as const,
+            reason: "网页 Provider 已由本机紧急开关停用。",
+          }
         : {}),
   };
 }

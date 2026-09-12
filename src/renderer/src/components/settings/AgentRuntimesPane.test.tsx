@@ -1,11 +1,26 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentRuntimeDefinition,
   AgentRuntimeProbe,
 } from "../../../../shared/agent-runtimes";
 import { BUILTIN_AGENT_RUNTIME_ADAPTER_MANIFESTS } from "../../../../shared/runtime-adapters";
 import type { WebAgentPolicyStatus } from "../../../../shared/web-agent";
+
+const activeLocale = vi.hoisted(() => ({ value: "zh-CN" as "en" | "zh-CN" }));
+
+vi.mock("../useI18n", async () => {
+  const { t } = await vi.importActual<typeof import("../../../../shared/i18n")>(
+    "../../../../shared/i18n",
+  );
+  return {
+    useI18n: () => ({
+      t: (key: string, options?: Record<string, unknown>) =>
+        t(key, activeLocale.value, options),
+    }),
+  };
+});
+
 import AgentRuntimesPane from "./AgentRuntimesPane";
 
 const capabilities = {
@@ -227,6 +242,23 @@ async function openNewAgentWizard(
 }
 
 describe("AgentRuntimesPane", () => {
+  beforeEach(() => {
+    activeLocale.value = "zh-CN";
+  });
+
+  it("renders the connection manager and onboarding wizard in English", async () => {
+    activeLocale.value = "en";
+    installHermesAPI([]);
+    render(<AgentRuntimesPane />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
+    expect(
+      screen.getByRole("heading", { name: "Choose the agent to connect" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Remote Agent")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+  });
+
   it("loads runtimes and probes the selected runtime", async () => {
     const api = installHermesAPI([
       {
@@ -374,6 +406,7 @@ describe("AgentRuntimesPane", () => {
         available: false,
         enabled: false,
         killSwitchActive: false,
+        reasonCode: "public-build-disabled",
         reason: "公开构建默认关闭网页 Provider；当前没有第三方书面自动化许可。",
       },
     );
