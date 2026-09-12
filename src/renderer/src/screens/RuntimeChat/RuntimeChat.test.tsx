@@ -4,6 +4,10 @@ import type { Attachment } from "../../../../shared/attachments";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
 import { t as translate } from "../../../../shared/i18n";
 
+const i18nTestState = vi.hoisted(() => ({
+  locale: "zh-CN" as "en" | "zh-CN",
+}));
+
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({
     t: (key: string, options?: Record<string, unknown>) => {
@@ -22,7 +26,7 @@ vi.mock("../../components/useI18n", () => ({
         "chat.worktree.emptyFolder": "文件夹为空",
         "chat.worktree.errorLoading": "无法读取文件夹",
       };
-      return labels[key] ?? translate(key, "zh-CN", options);
+      return labels[key] ?? translate(key, i18nTestState.locale, options);
     },
   }),
 }));
@@ -229,6 +233,7 @@ describe("RuntimeChat inputs and persistence", () => {
   const onAgentRuntimeCommandProgress = vi.fn();
 
   beforeEach(() => {
+    i18nTestState.locale = "zh-CN";
     // resetAllMocks also clears leftover mockResolvedValueOnce queues, which
     // would otherwise leak across tests and break order-dependent polling.
     vi.resetAllMocks();
@@ -345,6 +350,35 @@ describe("RuntimeChat inputs and persistence", () => {
         cancelAgentRuntimeTask: vi.fn(),
       },
     });
+  });
+
+  it("renders core Runtime controls in English", () => {
+    i18nTestState.locale = "en";
+
+    render(
+      <RuntimeChat
+        runId="runtime-english-controls"
+        runtime={openCodeRuntime}
+        profile="default"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Manage permissions for this task",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Model: Model unavailable" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", {
+        name: "Reasoning level: Auto; OpenCode ACP did not provide switchable options",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show web preview" }),
+    ).toBeInTheDocument();
   });
 
   it("routes a slash control through IPC without starting a normal Runtime task", async () => {

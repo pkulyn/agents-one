@@ -36,6 +36,7 @@ import {
 import { TaskCollaborationRolePanel } from "../../components/TaskCollaborationRolePanel";
 import { TaskCollaborationArtifactPanel } from "../../components/TaskCollaborationArtifactPanel";
 import { TaskCollaborationTimeline } from "../../components/TaskCollaborationTimeline";
+import { useI18n } from "../../components/useI18n";
 import type { Attachment } from "../../../../shared/attachments";
 import type {
   AgentRuntimeCapabilities,
@@ -209,16 +210,17 @@ function executionFromRun(
 
 function runtimeIsolationPresentation(
   isolation: NonNullable<RuntimeConversationExecution["isolation"]>,
+  t: (key: string) => string,
 ): { label: string; icon: LucideIcon } {
   switch (isolation.level) {
     case "worktree":
-      return { label: "Worktree 分支", icon: GitBranch };
+      return { label: t("runtimeChat.isolation.worktree"), icon: GitBranch };
     case "container":
-      return { label: "容器执行", icon: Box };
+      return { label: t("runtimeChat.isolation.container"), icon: Box };
     case "remote":
-      return { label: "远程执行", icon: Cloud };
+      return { label: t("runtimeChat.isolation.remote"), icon: Cloud };
     case "host":
-      return { label: "本机执行", icon: Monitor };
+      return { label: t("runtimeChat.isolation.host"), icon: Monitor };
   }
 }
 
@@ -292,17 +294,10 @@ function responseText(run: AgentRuntimeRun): string {
   return output;
 }
 
-function thinkingLevelLabel(level: string): string {
-  const labels: Record<string, string> = {
-    off: "关闭",
-    minimal: "极低",
-    low: "低",
-    medium: "中",
-    high: "高",
-    xhigh: "极高",
-    max: "最高",
-  };
-  return labels[level] || level;
+function thinkingLevelLabel(level: string, t: (key: string) => string): string {
+  const key = `runtimeChat.thinking.levels.${level}`;
+  const label = t(key);
+  return label === key ? level : label;
 }
 
 /** Runtime artifacts may be legacy-shaped; collaboration never keeps a root path. */
@@ -1047,6 +1042,7 @@ export default function RuntimeChat({
   onRequestCollaboration,
   onStartCollaboration,
 }: RuntimeChatProps): React.JSX.Element {
+  const { t } = useI18n();
   const runtimeCatalog = useMemo(
     () => ({ [runtime.id]: runtime, ...providedRuntimeCatalog }),
     [providedRuntimeCatalog, runtime],
@@ -4364,7 +4360,7 @@ export default function RuntimeChat({
   const lastReportedIsolation =
     taskRun?.isolation || lastReportedExecution?.isolation;
   const isolationBadge = lastReportedIsolation
-    ? runtimeIsolationPresentation(lastReportedIsolation)
+    ? runtimeIsolationPresentation(lastReportedIsolation, t)
     : null;
   const IsolationBadgeIcon = isolationBadge?.icon;
   const configuredModelParts = configuredLocalModel?.includes("/")
@@ -4431,7 +4427,9 @@ export default function RuntimeChat({
   // a requested/configured value that the provider may have rejected or
   // silently replaced with a fallback model.
   const runtimeModelLabel =
-    reportedModelLabel || configuredLocalModel || "未提供模型";
+    reportedModelLabel ||
+    configuredLocalModel ||
+    t("runtimeChat.model.unavailable");
   const runtimeContextWindow =
     lastReportedUsage?.contextWindowTokens ??
     lastReportedModel?.contextWindowTokens ??
@@ -4608,11 +4606,11 @@ export default function RuntimeChat({
                 type="button"
                 className="runtime-scroll-to-latest"
                 onClick={() => scrollToLatest("smooth")}
-                aria-label="回到最新消息"
-                title="回到最新消息"
+                aria-label={t("runtimeChat.scrollToLatest")}
+                title={t("runtimeChat.scrollToLatest")}
               >
                 <ChevronDown size={17} aria-hidden="true" />
-                回到最新消息
+                {t("runtimeChat.scrollToLatest")}
               </button>
             ) : null}
             <div className="chat-input-area">
@@ -4620,12 +4618,10 @@ export default function RuntimeChat({
                 <div
                   className="runtime-model-picker"
                   role="dialog"
-                  aria-label="已发现的 Skill"
+                  aria-label={t("runtimeChat.skills.title")}
                 >
-                  <strong>已发现的 Skill</strong>
-                  <p>
-                    仅显示元数据；Agents One 不会在主进程加载或执行这些 Skill。
-                  </p>
+                  <strong>{t("runtimeChat.skills.title")}</strong>
+                  <p>{t("runtimeChat.skills.note")}</p>
                   {runtimeSkills.length ? (
                     <ul>
                       {runtimeSkills.map((skill) => (
@@ -4639,13 +4635,13 @@ export default function RuntimeChat({
                       ))}
                     </ul>
                   ) : (
-                    <p>未发现可展示的 Skill。</p>
+                    <p>{t("runtimeChat.skills.empty")}</p>
                   )}
                   <button
                     type="button"
                     onClick={() => setSkillsPanelOpen(false)}
                   >
-                    关闭
+                    {t("runtimeChat.close")}
                   </button>
                 </div>
               ) : null}
@@ -4653,18 +4649,18 @@ export default function RuntimeChat({
                 <div
                   className="runtime-model-picker runtime-model-picker--expanded"
                   role="dialog"
-                  aria-label="选择当前会话模型"
+                  aria-label={t("runtimeChat.model.picker")}
                 >
                   <div className="runtime-model-picker-heading">
                     <span>
-                      <Bot size={15} /> 模型
+                      <Bot size={15} /> {t("runtimeChat.model.title")}
                     </span>
-                    <small>仅作用于当前会话，不会修改默认配置</small>
+                    <small>{t("runtimeChat.model.scope")}</small>
                   </div>
                   <label className="runtime-model-picker-select">
                     <select
                       value={pendingRuntimeModel}
-                      aria-label="模型列表"
+                      aria-label={t("runtimeChat.model.list")}
                       onChange={(event) =>
                         setPendingRuntimeModel(event.target.value)
                       }
@@ -4674,7 +4670,9 @@ export default function RuntimeChat({
                         (model) => model.id === selectedRuntimeModel,
                       ) ? (
                         <option value={selectedRuntimeModel}>
-                          {selectedRuntimeModel}（当前会话）
+                          {t("runtimeChat.model.current", {
+                            model: selectedRuntimeModel,
+                          })}
                         </option>
                       ) : null}
                       {runtimeModels.map((model) => (
@@ -4686,7 +4684,7 @@ export default function RuntimeChat({
                   </label>
                   {!runtimeModels.length ? (
                     <p className="runtime-model-picker-empty">
-                      当前 Runtime 没有返回可切换的模型。
+                      {t("runtimeChat.model.empty")}
                     </p>
                   ) : null}
                   <button
@@ -4705,7 +4703,7 @@ export default function RuntimeChat({
                       });
                     }}
                   >
-                    确认切换
+                    {t("runtimeChat.model.confirm")}
                   </button>
                   <button
                     type="button"
@@ -4714,7 +4712,7 @@ export default function RuntimeChat({
                       setModelPickerOpen(false);
                     }}
                   >
-                    取消
+                    {t("runtimeChat.cancel")}
                   </button>
                 </div>
               ) : null}
@@ -4722,32 +4720,35 @@ export default function RuntimeChat({
                 <div
                   className="runtime-model-picker runtime-model-picker--expanded"
                   role="dialog"
-                  aria-label="选择当前会话思考等级"
+                  aria-label={t("runtimeChat.thinking.picker")}
                 >
                   <div className="runtime-model-picker-heading">
                     <span>
-                      <Brain size={15} /> 思考等级
+                      <Brain size={15} /> {t("runtimeChat.thinking.title")}
                     </span>
-                    <small>仅显示当前 Pi 模型实际支持的等级</small>
+                    <small>{t("runtimeChat.thinking.scope")}</small>
                   </div>
                   <label className="runtime-model-picker-select">
                     <select
                       value={pendingRuntimeThinkingLevel}
-                      aria-label="思考等级列表"
+                      aria-label={t("runtimeChat.thinking.list")}
                       onChange={(event) =>
                         setPendingRuntimeThinkingLevel(event.target.value)
                       }
                     >
                       {runtimeThinkingLevels.map((level) => (
                         <option key={level} value={level}>
-                          {thinkingLevelLabel(level)}（{level}）
+                          {t("runtimeChat.thinking.option", {
+                            label: thinkingLevelLabel(level, t),
+                            level,
+                          })}
                         </option>
                       ))}
                     </select>
                   </label>
                   {!runtimeThinkingLevels.length ? (
                     <p className="runtime-model-picker-empty">
-                      当前 Pi 模型未声明可切换的思考等级。
+                      {t("runtimeChat.thinking.empty")}
                     </p>
                   ) : null}
                   <button
@@ -4770,7 +4771,7 @@ export default function RuntimeChat({
                       );
                     }}
                   >
-                    确认切换
+                    {t("runtimeChat.thinking.confirm")}
                   </button>
                   <button
                     type="button"
@@ -4779,7 +4780,7 @@ export default function RuntimeChat({
                       setThinkingPickerOpen(false);
                     }}
                   >
-                    取消
+                    {t("runtimeChat.cancel")}
                   </button>
                 </div>
               ) : null}
@@ -4787,14 +4788,16 @@ export default function RuntimeChat({
                 <div
                   className="runtime-compact-confirmation"
                   role="dialog"
-                  aria-label="确认压缩当前会话上下文"
+                  aria-label={t("runtimeChat.compact.dialog")}
                 >
-                  <strong>压缩当前会话上下文？</strong>
-                  <p>
-                    将调用当前 Runtime 的原生压缩能力，历史对话会被摘要替代。
-                  </p>
+                  <strong>{t("runtimeChat.compact.title")}</strong>
+                  <p>{t("runtimeChat.compact.description")}</p>
                   {pendingCompactCommand.instructions ? (
-                    <p>保留重点：{pendingCompactCommand.instructions}</p>
+                    <p>
+                      {t("runtimeChat.compact.focus", {
+                        instructions: pendingCompactCommand.instructions,
+                      })}
+                    </p>
                   ) : null}
                   <button
                     type="button"
@@ -4806,7 +4809,7 @@ export default function RuntimeChat({
                       });
                     }}
                   >
-                    确认压缩
+                    {t("runtimeChat.compact.confirm")}
                   </button>
                   <button
                     type="button"
@@ -4818,7 +4821,7 @@ export default function RuntimeChat({
                       setPendingCompactCommand(null);
                     }}
                   >
-                    取消
+                    {t("runtimeChat.cancel")}
                   </button>
                 </div>
               ) : null}
@@ -4826,13 +4829,10 @@ export default function RuntimeChat({
                 <div
                   className="runtime-compact-confirmation"
                   role="dialog"
-                  aria-label="确认停止并以新消息恢复"
+                  aria-label={t("runtimeChat.cancelResume.dialog")}
                 >
-                  <strong>停止当前运行并以新消息恢复？</strong>
-                  <p>
-                    当前 Runtime
-                    不支持原生中途纠偏。确认后才会取消本轮，并以新消息继续原会话。
-                  </p>
+                  <strong>{t("runtimeChat.cancelResume.title")}</strong>
+                  <p>{t("runtimeChat.cancelResume.description")}</p>
                   <button
                     type="button"
                     onClick={() => {
@@ -4842,7 +4842,7 @@ export default function RuntimeChat({
                       void stop();
                     }}
                   >
-                    确认停止并继续
+                    {t("runtimeChat.cancelResume.confirm")}
                   </button>
                   <button
                     type="button"
@@ -4854,7 +4854,7 @@ export default function RuntimeChat({
                       setPendingCancelResume(null);
                     }}
                   >
-                    取消
+                    {t("runtimeChat.cancel")}
                   </button>
                 </div>
               ) : null}
@@ -4865,12 +4865,14 @@ export default function RuntimeChat({
                   aria-live="polite"
                 >
                   <strong>
-                    {runtime.config.webAgent?.provider === "chatgpt"
-                      ? "ChatGPT"
-                      : runtime.config.webAgent?.provider === "grok"
-                        ? "Grok"
-                        : "豆包"}
-                    需要你完成一项操作
+                    {t("runtimeChat.webAction.required", {
+                      provider:
+                        runtime.config.webAgent?.provider === "chatgpt"
+                          ? "ChatGPT"
+                          : runtime.config.webAgent?.provider === "grok"
+                            ? "Grok"
+                            : "Doubao",
+                    })}
                   </strong>
                   <p>{taskRun.userActionRequired.message}</p>
                   <button
@@ -4879,13 +4881,14 @@ export default function RuntimeChat({
                       void window.agentsOneAPI.openWebAgentRuntime?.(runtime.id)
                     }
                   >
-                    打开
-                    {runtime.config.webAgent?.provider === "chatgpt"
-                      ? "ChatGPT"
-                      : runtime.config.webAgent?.provider === "grok"
-                        ? "Grok"
-                        : "豆包"}
-                    窗口
+                    {t("runtimeChat.webAction.open", {
+                      provider:
+                        runtime.config.webAgent?.provider === "chatgpt"
+                          ? "ChatGPT"
+                          : runtime.config.webAgent?.provider === "grok"
+                            ? "Grok"
+                            : "Doubao",
+                    })}
                   </button>
                   <button
                     type="button"
@@ -4896,7 +4899,7 @@ export default function RuntimeChat({
                         void resume(taskRun.id).catch(() => undefined);
                     }}
                   >
-                    我已完成，继续
+                    {t("runtimeChat.webAction.continue")}
                   </button>
                 </div>
               ) : null}
@@ -4913,7 +4916,7 @@ export default function RuntimeChat({
                 }
                 attachmentsEnabled={attachmentInputs}
                 allowAttachmentsWhileLoading={webAgentRuntime}
-                placeholder="输入消息...（Shift+Enter 换行）"
+                placeholder={t("chat.typeMessage")}
                 onSubmit={(text, attachments) => void send(text, attachments)}
                 onQuickAsk={() => undefined}
                 onAbort={() => void stop()}
@@ -4937,17 +4940,17 @@ export default function RuntimeChat({
                           className="runtime-permission-trigger"
                           aria-haspopup="menu"
                           aria-expanded={permissionMenuOpen}
-                          aria-label="管理本轮任务权限"
-                          title="管理本轮任务权限"
+                          aria-label={t("runtimeChat.permissions.manage")}
+                          title={t("runtimeChat.permissions.manage")}
                           onClick={() => setPermissionMenuOpen((open) => !open)}
                         >
                           <ShieldCheck size={14} />
                           <span className="runtime-permission-label">
                             {accessMode === "auto"
-                              ? "自动"
+                              ? t("runtimeChat.permissions.auto")
                               : accessMode === "analysis"
-                                ? "只读"
-                                : "完全访问"}
+                                ? t("runtimeChat.permissions.readOnly")
+                                : t("runtimeChat.permissions.fullAccess")}
                           </span>
                           <ChevronDown size={13} />
                         </button>
@@ -4962,8 +4965,12 @@ export default function RuntimeChat({
                                 setPermissionMenuOpen(false);
                               }}
                             >
-                              <strong>自动</strong>
-                              <small>可读写，无移动、删除文件权限</small>
+                              <strong>
+                                {t("runtimeChat.permissions.auto")}
+                              </strong>
+                              <small>
+                                {t("runtimeChat.permissions.autoHint")}
+                              </small>
                             </button>
                             <button
                               type="button"
@@ -4974,8 +4981,12 @@ export default function RuntimeChat({
                                 setPermissionMenuOpen(false);
                               }}
                             >
-                              <strong>只读</strong>
-                              <small>可查看项目和附件，不会修改文件</small>
+                              <strong>
+                                {t("runtimeChat.permissions.readOnly")}
+                              </strong>
+                              <small>
+                                {t("runtimeChat.permissions.readOnlyHint")}
+                              </small>
                             </button>
                             <button
                               type="button"
@@ -4990,7 +5001,7 @@ export default function RuntimeChat({
                                 !localFileInputs &&
                                 !unifiedRemoteGatewayRuntime &&
                                 !collaborationWriteRuntimeAvailable
-                                  ? "当前 Runtime 未声明可用的写入权限"
+                                  ? t("runtimeChat.permissions.unavailable")
                                   : undefined
                               }
                               onClick={() => {
@@ -5005,12 +5016,14 @@ export default function RuntimeChat({
                                 setPermissionMenuOpen(false);
                               }}
                             >
-                              <strong>完全访问</strong>
+                              <strong>
+                                {t("runtimeChat.permissions.fullAccess")}
+                              </strong>
                               <small>
                                 {unifiedRemoteGatewayRuntime &&
                                 !remoteWorkspaceSupported
-                                  ? "远端主机完全访问；本机项目需另行授权"
-                                  : "可创建、编辑、移动或删除项目文件"}
+                                  ? t("runtimeChat.permissions.remoteFullHint")
+                                  : t("runtimeChat.permissions.fullHint")}
                               </small>
                             </button>
                           </span>
@@ -5028,27 +5041,40 @@ export default function RuntimeChat({
                       onClick={() => void executeRuntimeSlashCommand("/model")}
                       aria-label={
                         modelCatalogLoading
-                          ? "正在读取可用模型"
+                          ? t("runtimeChat.model.loading")
                           : modelSwitching
-                            ? `正在切换模型：${runtimeModelLabel}`
-                            : `模型：${runtimeModelLabel}`
+                            ? t("runtimeChat.model.switching", {
+                                model: runtimeModelLabel,
+                              })
+                            : t("runtimeChat.model.label", {
+                                model: runtimeModelLabel,
+                              })
                       }
                       title={
                         modelCatalogLoading
-                          ? "正在读取当前 Runtime 的模型列表…"
+                          ? t("runtimeChat.model.loadingTitle")
                           : modelSwitching
-                            ? `正在切换到模型：${runtimeModelLabel}…`
-                            : runtimeModelLabel !== "未提供模型"
+                            ? t("runtimeChat.model.switchingTitle", {
+                                model: runtimeModelLabel,
+                              })
+                            : runtimeModelLabel !==
+                                t("runtimeChat.model.unavailable")
                               ? modelCommandAvailable
-                                ? `模型：${runtimeModelLabel}；点击切换当前会话模型`
-                                : `模型：${runtimeModelLabel}`
+                                ? t("runtimeChat.model.switchTitle", {
+                                    model: runtimeModelLabel,
+                                  })
+                                : t("runtimeChat.model.label", {
+                                    model: runtimeModelLabel,
+                                  })
                               : modelCommandAvailable
-                                ? "选择当前会话模型"
-                                : "远程智能体未提供模型元数据"
+                                ? t("runtimeChat.model.choose")
+                                : t("runtimeChat.model.noMetadata")
                       }
                     >
                       <Bot size={14} aria-hidden="true" />
-                      <span className="runtime-toolbar-label">模型</span>
+                      <span className="runtime-toolbar-label">
+                        {t("runtimeChat.model.title")}
+                      </span>
                       <span
                         className="chat-model-name"
                         title={runtimeModelLabel}
@@ -5066,41 +5092,71 @@ export default function RuntimeChat({
                         }
                         aria-label={
                           loading
-                            ? `思考等级：${selectedRuntimeThinkingLevel ? thinkingLevelLabel(selectedRuntimeThinkingLevel) : "自动"}；当前任务执行中，结束后可切换`
+                            ? t("runtimeChat.thinking.busyLabel", {
+                                level: selectedRuntimeThinkingLevel
+                                  ? thinkingLevelLabel(
+                                      selectedRuntimeThinkingLevel,
+                                      t,
+                                    )
+                                  : t("runtimeChat.thinking.auto"),
+                              })
                             : thinkingCatalogLoading
-                              ? "正在读取思考等级"
+                              ? t("runtimeChat.thinking.loading")
                               : thinkingSwitching
-                                ? `正在切换思考等级：${thinkingLevelLabel(selectedRuntimeThinkingLevel)}`
-                                : `思考等级：${selectedRuntimeThinkingLevel ? thinkingLevelLabel(selectedRuntimeThinkingLevel) : "自动"}`
+                                ? t("runtimeChat.thinking.switching", {
+                                    level: thinkingLevelLabel(
+                                      selectedRuntimeThinkingLevel,
+                                      t,
+                                    ),
+                                  })
+                                : t("runtimeChat.thinking.level", {
+                                    level: selectedRuntimeThinkingLevel
+                                      ? thinkingLevelLabel(
+                                          selectedRuntimeThinkingLevel,
+                                          t,
+                                        )
+                                      : t("runtimeChat.thinking.auto"),
+                                  })
                         }
                         title={
                           loading
-                            ? "当前任务正在执行；思考等级将在任务结束后可切换"
+                            ? t("runtimeChat.thinking.busyTitle")
                             : thinkingCatalogLoading
-                              ? "正在读取当前 Pi 模型支持的思考等级…"
+                              ? t("runtimeChat.thinking.loadingTitle")
                               : thinkingSwitching
-                                ? "正在切换当前会话思考等级…"
-                                : `思考等级：由当前 ${runtime.name} 模型决定；点击查看或切换`
+                                ? t("runtimeChat.thinking.switchingTitle")
+                                : t("runtimeChat.thinking.switchTitle", {
+                                    runtime: runtime.name,
+                                  })
                         }
                       >
                         <Brain size={14} aria-hidden="true" />
-                        <span className="runtime-toolbar-label">思考</span>
+                        <span className="runtime-toolbar-label">
+                          {t("runtimeChat.thinking.title")}
+                        </span>
                         <span className="chat-model-name">
                           {selectedRuntimeThinkingLevel
-                            ? thinkingLevelLabel(selectedRuntimeThinkingLevel)
-                            : "自动"}
+                            ? thinkingLevelLabel(
+                                selectedRuntimeThinkingLevel,
+                                t,
+                              )
+                            : t("runtimeChat.thinking.auto")}
                         </span>
                       </button>
                     ) : openCodeAutomaticThinking ? (
                       <span
                         className="chat-model-trigger runtime-chat-model-trigger runtime-chat-thinking-readonly"
                         role="status"
-                        aria-label="思考等级：自动；OpenCode ACP 未提供可切换选项"
-                        title="OpenCode ACP 当前未声明可切换的思考等级，思考过程由当前模型自动决定。"
+                        aria-label={t("runtimeChat.thinking.openCodeLabel")}
+                        title={t("runtimeChat.thinking.openCodeTitle")}
                       >
                         <Brain size={14} aria-hidden="true" />
-                        <span className="runtime-toolbar-label">思考</span>
-                        <span className="chat-model-name">自动</span>
+                        <span className="runtime-toolbar-label">
+                          {t("runtimeChat.thinking.title")}
+                        </span>
+                        <span className="chat-model-name">
+                          {t("runtimeChat.thinking.auto")}
+                        </span>
                       </span>
                     ) : null}
                     {lastReportedIsolation &&
@@ -5109,7 +5165,9 @@ export default function RuntimeChat({
                       <span
                         className="runtime-isolation-badge"
                         title={lastReportedIsolation.summary}
-                        aria-label={`执行边界：${lastReportedIsolation.level}`}
+                        aria-label={t("runtimeChat.isolation.boundary", {
+                          level: lastReportedIsolation.level,
+                        })}
                       >
                         <IsolationBadgeIcon size={13} aria-hidden="true" />
                         {isolationBadge.label}
@@ -5122,10 +5180,14 @@ export default function RuntimeChat({
                         setWebPreviewVisible((visible) => !visible)
                       }
                       title={
-                        webPreviewVisible ? "隐藏网页预览" : "显示网页预览"
+                        webPreviewVisible
+                          ? t("runtimeChat.webPreview.hide")
+                          : t("runtimeChat.webPreview.show")
                       }
                       aria-label={
-                        webPreviewVisible ? "隐藏网页预览" : "显示网页预览"
+                        webPreviewVisible
+                          ? t("runtimeChat.webPreview.hide")
+                          : t("runtimeChat.webPreview.show")
                       }
                     >
                       <Globe size={14} />
