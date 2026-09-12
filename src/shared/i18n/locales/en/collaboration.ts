@@ -165,4 +165,20 @@ export default {
     startFailed: "Couldn't start collaboration.",
     readSettingsFailed: "Couldn't read the collaboration task settings.",
   },
+  protocol: {
+    remoteMapping: "Remote mapping ({{workspace}})",
+    remoteMappingUnconfigured: "Remote mapping (not configured)",
+    evidenceBundleNeedsProject:
+      "{{role}} uses the read-only evidence bundle, but this task has no linked local project folder. Choose a project before starting collaboration.",
+    localNeedsDirect:
+      "{{role}} is a local agent. Use local direct access to read the project folder.",
+    remoteMappingRequired:
+      "{{role}} uses remote mapping, but no remote directory, git reference, or shared workspace was provided.",
+    remoteCannotUseLocal:
+      "{{role}} is a remote agent and cannot directly access the local project folder. Use remote mapping or the read-only evidence bundle.",
+    evidenceBundleReadOnly:
+      "{{role}} needs to deliver implementation, but a remote read-only evidence bundle cannot write to the local project. Assign a local agent or configure remote mapping.",
+    implementationReadOnly:
+      "{{role}} is an implementation role, but the collaboration is read-only and cannot create or modify files. Change this run to Auto or Full access before restarting collaboration.",
+  },
 } as const;

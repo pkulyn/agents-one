@@ -44,6 +44,8 @@ Lightweight conversations use the active application locale for controls, progre
 
 [[src/renderer/src/screens/Layout/QuickChatPanel.tsx]] translates both visible controls and platform-authored prompt scaffolding. Persisted untitled conversations from either supported locale remain recognizable, so switching languages does not prevent the first real user message from replacing a legacy `New chat`/`新聊天` title. [[src/renderer/src/screens/Layout/QuickChatPanel.test.tsx]] protects the English surface and English context handoff.
 
+Collaboration permission and workspace preflight failures are user-visible RuntimeChat system messages. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]] passes the active UI translator into those preflight helpers and into timeline workspace labels. Their exported fallback behavior remains Chinese for legacy/non-rendered callers; role-name matchers and structured collaboration markers remain bilingual compatibility logic rather than UI copy.
+
 ## Localized chat entry points
 
 The main conversation's empty-state actions and compact context controls use the active locale for both visible labels and platform-authored prompts.

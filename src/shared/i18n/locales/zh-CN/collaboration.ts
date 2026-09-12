@@ -159,4 +159,19 @@ export default {
     startFailed: "无法启动协作。",
     readSettingsFailed: "无法读取协作任务配置。",
   },
+  protocol: {
+    remoteMapping: "远程映射（{{workspace}}）",
+    remoteMappingUnconfigured: "远程映射（未配置）",
+    evidenceBundleNeedsProject:
+      "{{role}} 选择了“只读证据包”，但任务尚未关联本地项目文件夹。请选择项目后再启动协作。",
+    localNeedsDirect: "{{role}} 是本地智能体，请使用“本地直连”读取项目目录。",
+    remoteMappingRequired:
+      "{{role}} 选择了“远程映射”，但尚未填写远程目录、git 引用或共享工作区。",
+    remoteCannotUseLocal:
+      "{{role}} 是远程智能体，不能直接访问本机项目目录；请改为“远程映射”或“只读证据包”。",
+    evidenceBundleReadOnly:
+      "{{role}} 需要实施交付，远程“只读证据包”不能写入本机项目；请改派本地智能体或配置远程映射。",
+    implementationReadOnly:
+      "{{role}} 是实施角色，但当前协作权限为“只读”，不能创建或修改文件。请将本轮权限切换为“自动”或“完全访问”后重新启动协作。",
+  },
 } as const;
