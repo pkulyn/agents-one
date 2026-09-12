@@ -32,6 +32,7 @@ describe("Web Agent release policy", () => {
       available: false,
       enabled: false,
       killSwitchActive: false,
+      reasonCode: "public-build-disabled",
     });
     expect(() => policy.setWebAgentPolicyEnabled(true, true)).toThrow(
       /不允许启用/,
@@ -63,6 +64,7 @@ describe("Web Agent release policy", () => {
       available: false,
       enabled: false,
       killSwitchActive: true,
+      reasonCode: "emergency-disabled",
     });
     expect(() => policy.setWebAgentPolicyEnabled(true, true)).toThrow(
       /不允许启用/,

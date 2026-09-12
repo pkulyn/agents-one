@@ -52,6 +52,7 @@ export interface WebAgentPolicyStatus {
   /** User explicitly accepted the experimental data/account-risk notice. */
   enabled: boolean;
   killSwitchActive: boolean;
+  reasonCode?: "public-build-disabled" | "emergency-disabled";
   reason?: string;
 }
 

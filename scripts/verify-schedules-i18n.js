@@ -36,6 +36,15 @@ const locales = {
     agentsNav: "Agents",
     agentsTitle: "Agents",
     addAgent: "Add Agent",
+    chooseAgentType: "Choose the agent to connect",
+    next: "Next",
+    agentName: "Name",
+    remoteMethod: "Remote connection method",
+    close: "Close",
+    manage: "Manage",
+    executable: "Executable",
+    modelOverride: "Model Override",
+    saveChanges: "Save Changes",
   },
   "zh-CN": {
     nav: "定时任务",
@@ -48,6 +57,15 @@ const locales = {
     agentsNav: "智能体",
     agentsTitle: "智能体",
     addAgent: "新增智能体",
+    chooseAgentType: "选择要接入的智能体",
+    next: "下一步",
+    agentName: "名称",
+    remoteMethod: "远程接入方式",
+    close: "关闭",
+    manage: "管理",
+    executable: "可执行文件",
+    modelOverride: "模型覆盖",
+    saveChanges: "保存更改",
   },
 };
 
@@ -158,6 +176,68 @@ async function main() {
       await page.screenshot({
         path: path.join(outputDir, `${locale}-agents-768x800.png`),
       });
+
+      await page
+        .locator(".agents-container")
+        .getByRole("button", { name: labels.addAgent, exact: true })
+        .click();
+      const agentManager = page.getByRole("dialog");
+      await agentManager
+        .getByRole("heading", { name: labels.chooseAgentType, exact: true })
+        .waitFor();
+      await assertNoOverflow(page, locale, { width: 768, height: 800 });
+      await page.screenshot({
+        path: path.join(outputDir, `${locale}-agent-type-768x800.png`),
+      });
+
+      await agentManager
+        .getByRole("button", { name: labels.next, exact: true })
+        .click();
+      await agentManager
+        .getByLabel(labels.agentName, { exact: true })
+        .waitFor();
+      await page.screenshot({
+        path: path.join(outputDir, `${locale}-agent-basics-768x800.png`),
+      });
+
+      await agentManager
+        .getByRole("button", { name: labels.next, exact: true })
+        .click();
+      await agentManager
+        .getByLabel(labels.remoteMethod, { exact: true })
+        .waitFor();
+      await page.screenshot({
+        path: path.join(outputDir, `${locale}-agent-connection-768x800.png`),
+      });
+      await agentManager
+        .getByRole("button", { name: labels.close, exact: true })
+        .click();
+
+      const firstAgentCard = page.locator(".agents-domain-card").first();
+      if ((await firstAgentCard.count()) > 0) {
+        await firstAgentCard
+          .getByRole("button", { name: labels.manage, exact: true })
+          .click();
+        const existingManager = page.getByRole("dialog");
+        await existingManager
+          .getByLabel(labels.executable, { exact: true })
+          .waitFor();
+        await existingManager
+          .getByLabel(labels.modelOverride, { exact: true })
+          .waitFor();
+        assert(
+          (await existingManager
+            .getByRole("button", { name: labels.saveChanges, exact: true })
+            .count()) === 1,
+          `${locale}: existing-agent save action is missing or ambiguous`,
+        );
+        await page.screenshot({
+          path: path.join(outputDir, `${locale}-agent-manage-768x800.png`),
+        });
+        await existingManager
+          .getByRole("button", { name: labels.close, exact: true })
+          .click();
+      }
     }
   } finally {
     await browser.close();
