@@ -21,6 +21,7 @@ import { usesLegacyHermesChat } from "../Layout/chatRuns";
 import type { Attachment } from "../../../../shared/attachments";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
 import { addMigratedEventListener } from "../../utils/brandMigration";
+import { useI18n } from "../../components/useI18n";
 
 const DEFAULT_AGENT_RUNTIME_KEY = "agents-one.default-runtime-id.v1";
 
@@ -31,7 +32,6 @@ const RUNTIME_LABELS: Record<string, string> = {
   pi: "Pi Agent CLI",
   opencode: "OpenCode",
   openclaw: "OpenClaw",
-  "web-agent": "网页智能体",
 };
 
 function initialRuntimeId(): string | null {
@@ -73,6 +73,7 @@ function RuntimeAvatar({
 }
 
 export default function QuickComposer(): React.JSX.Element {
+  const { t } = useI18n();
   const shellRef = useRef<HTMLElement>(null);
   const inputRef = useRef<ChatInputHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,7 +105,8 @@ export default function QuickComposer(): React.JSX.Element {
       enabledRuntimes[0],
     [enabledRuntimes, selectedRuntimeId],
   );
-  const selectedRuntimeLabel = selectedRuntime?.name || "默认智能体";
+  const selectedRuntimeLabel =
+    selectedRuntime?.name || t("chat.quickComposer.defaultAgent");
   const voiceProfile =
     selectedRuntime?.kind === "hermes"
       ? selectedRuntime.config.agent || "default"
@@ -200,26 +202,31 @@ export default function QuickComposer(): React.JSX.Element {
     async (path: string): Promise<void> => {
       const registered =
         await window.agentsOneAPI.registerProjectWorkspace(path);
-      if (!registered) throw new Error("所选项目文件夹未获得主进程授权。");
+      if (!registered)
+        throw new Error(t("chat.quickComposer.workspaceUnauthorized"));
       setContextFolder(registered.name);
       setContextWorkspaceId(registered.id);
       setError(null);
     },
-    [],
+    [t],
   );
 
   const handlePickFolder = useCallback(async (): Promise<void> => {
     setAttachmentMenuOpen(false);
     try {
       const path = await window.agentsOneAPI.selectFolder({
-        title: "添加项目文件夹",
-        buttonLabel: "添加此项目",
+        title: t("chat.quickComposer.addProjectTitle"),
+        buttonLabel: t("chat.quickComposer.addProjectButton"),
       });
       if (path) await applyProjectFolder(path);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "无法添加项目文件夹。");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : t("chat.quickComposer.addProjectFailed"),
+      );
     }
-  }, [applyProjectFolder]);
+  }, [applyProjectFolder, t]);
 
   const handleFileInputChange = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
@@ -291,10 +298,14 @@ export default function QuickComposer(): React.JSX.Element {
           setIsSending(false);
           sendRunIdRef.current = null;
           runtimeRunIdRef.current = null;
-          setError(cause instanceof Error ? cause.message : "任务发送失败。");
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : t("chat.quickComposer.sendFailed"),
+          );
         });
     },
-    [contextFolder, contextWorkspaceId, isSending, selectedRuntime],
+    [contextFolder, contextWorkspaceId, isSending, selectedRuntime, t],
   );
 
   const handleAbort = useCallback((): void => {
@@ -331,15 +342,17 @@ export default function QuickComposer(): React.JSX.Element {
     <>
       <span
         className="tray-composer-drag-handle"
-        title="拖动快捷输入框"
-        aria-label="拖动快捷输入框"
+        title={t("chat.quickComposer.drag")}
+        aria-label={t("chat.quickComposer.drag")}
       >
         <GripVertical size={15} aria-hidden="true" />
       </span>
       <div className="tray-composer-agent" ref={agentMenuRef}>
         {agentMenuOpen && (
           <div className="tray-composer-agent-menu" role="menu">
-            <div className="tray-composer-menu-title">切换智能体</div>
+            <div className="tray-composer-menu-title">
+              {t("chat.quickComposer.switchAgent")}
+            </div>
             {enabledRuntimes.length ? (
               enabledRuntimes.map((runtime) => {
                 const selected = runtime.id === selectedRuntime?.id;
@@ -356,8 +369,16 @@ export default function QuickComposer(): React.JSX.Element {
                     <span className="tray-composer-agent-copy">
                       <strong>{runtime.name}</strong>
                       <small>
-                        {RUNTIME_LABELS[runtime.kind] || runtime.kind} ·{" "}
-                        {runtime.location === "local" ? "本地" : "远程"}
+                        {RUNTIME_LABELS[runtime.kind] ||
+                          (runtime.kind === "web-agent"
+                            ? t("chat.quickComposer.webAgent")
+                            : runtime.kind)}{" "}
+                        ·{" "}
+                        {t(
+                          runtime.location === "local"
+                            ? "chat.quickComposer.local"
+                            : "chat.quickComposer.remote",
+                        )}
                       </small>
                     </span>
                     {selected && <Check size={15} aria-hidden="true" />}
@@ -365,15 +386,21 @@ export default function QuickComposer(): React.JSX.Element {
                 );
               })
             ) : (
-              <div className="tray-composer-menu-empty">暂无可用智能体</div>
+              <div className="tray-composer-menu-empty">
+                {t("chat.quickComposer.noAgents")}
+              </div>
             )}
           </div>
         )}
         <button
           className={`tray-composer-agent-trigger${agentMenuOpen ? " is-open" : ""}`}
           type="button"
-          title={`当前智能体：${selectedRuntimeLabel}`}
-          aria-label={`当前智能体：${selectedRuntimeLabel}`}
+          title={t("chat.quickComposer.currentAgent", {
+            name: selectedRuntimeLabel,
+          })}
+          aria-label={t("chat.quickComposer.currentAgent", {
+            name: selectedRuntimeLabel,
+          })}
           aria-haspopup="menu"
           aria-expanded={agentMenuOpen}
           onClick={() => {
@@ -394,7 +421,9 @@ export default function QuickComposer(): React.JSX.Element {
       <div className="tray-composer-attachment" ref={attachmentMenuRef}>
         {attachmentMenuOpen && (
           <div className="tray-composer-attachment-menu" role="menu">
-            <div className="tray-composer-menu-title">添加</div>
+            <div className="tray-composer-menu-title">
+              {t("chat.quickComposer.add")}
+            </div>
             <button
               type="button"
               role="menuitem"
@@ -402,8 +431,8 @@ export default function QuickComposer(): React.JSX.Element {
             >
               <FileUp size={17} aria-hidden="true" />
               <span>
-                <strong>上传文件</strong>
-                <small>图片、文档或文本</small>
+                <strong>{t("chat.quickComposer.uploadFile")}</strong>
+                <small>{t("chat.quickComposer.uploadFileDescription")}</small>
               </span>
             </button>
             <button
@@ -413,8 +442,8 @@ export default function QuickComposer(): React.JSX.Element {
             >
               <FolderPlus size={17} aria-hidden="true" />
               <span>
-                <strong>添加项目文件夹</strong>
-                <small>作为任务工作区</small>
+                <strong>{t("chat.quickComposer.addProject")}</strong>
+                <small>{t("chat.quickComposer.addProjectDescription")}</small>
               </span>
             </button>
             {contextFolder && (
@@ -422,8 +451,8 @@ export default function QuickComposer(): React.JSX.Element {
                 <span title={contextFolder}>{contextFolder}</span>
                 <button
                   type="button"
-                  title="移除项目文件夹"
-                  aria-label="移除项目文件夹"
+                  title={t("chat.quickComposer.removeProject")}
+                  aria-label={t("chat.quickComposer.removeProject")}
                   onClick={() => {
                     setContextFolder(null);
                     setContextWorkspaceId(null);
@@ -440,10 +469,10 @@ export default function QuickComposer(): React.JSX.Element {
           type="button"
           title={
             contextFolder
-              ? `已添加项目：${contextFolder}`
-              : "添加文件或项目文件夹"
+              ? t("chat.quickComposer.projectAdded", { name: contextFolder })
+              : t("chat.quickComposer.addFileOrProject")
           }
-          aria-label="添加文件或项目文件夹"
+          aria-label={t("chat.quickComposer.addFileOrProject")}
           aria-haspopup="menu"
           aria-expanded={attachmentMenuOpen}
           disabled={isSending}
@@ -463,7 +492,7 @@ export default function QuickComposer(): React.JSX.Element {
     <main
       ref={shellRef}
       className={`tray-composer${agentMenuOpen ? " has-agent-menu" : ""}${attachmentMenuOpen ? " has-attachment-menu" : ""}`}
-      aria-label="Agents One 快捷任务"
+      aria-label={t("chat.quickComposer.taskLabel")}
     >
       <input
         ref={fileInputRef}
@@ -479,7 +508,9 @@ export default function QuickComposer(): React.JSX.Element {
         hasSession={false}
         attachmentsEnabled
         allowAttachmentsWhileLoading={false}
-        placeholder={`交给${selectedRuntimeLabel}…`}
+        placeholder={t("chat.quickComposer.placeholder", {
+          name: selectedRuntimeLabel,
+        })}
         profile={voiceProfile}
         leadingExtras={leadingExtras}
         toolbarExtras={toolbarExtras}

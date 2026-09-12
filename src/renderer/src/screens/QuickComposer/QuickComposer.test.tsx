@@ -1,13 +1,18 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
+import { t as translate } from "../../../../shared/i18n";
 
 const { voiceToggle } = vi.hoisted(() => ({ voiceToggle: vi.fn() }));
+const i18nTestState = vi.hoisted(() => ({
+  locale: "zh-CN" as "en" | "zh-CN",
+}));
 
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({
-    t: (key: string) => key,
-    locale: "zh-CN",
+    t: (key: string, options?: Record<string, unknown>) =>
+      translate(key, i18nTestState.locale, options),
+    locale: i18nTestState.locale,
     setLocale: vi.fn(),
   }),
 }));
@@ -62,6 +67,7 @@ describe("QuickComposer", () => {
     registerProjectWorkspace.mockReset();
     startAgentRuntimeTask.mockReset();
     voiceToggle.mockReset();
+    i18nTestState.locale = "zh-CN";
     Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
@@ -176,11 +182,34 @@ describe("QuickComposer", () => {
     render(<QuickComposer />);
 
     await screen.findByRole("button", { name: "当前智能体：默认智能体" });
-    expect(
-      screen.getByRole("button", { name: "chat.voiceInput" }),
-    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "语音输入" })).toBeVisible();
 
     fireEvent.keyDown(window, { key: "m", ctrlKey: true });
     expect(voiceToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the tray composer entry points in English", async () => {
+    i18nTestState.locale = "en";
+    render(<QuickComposer />);
+
+    const trigger = await screen.findByRole("button", {
+      name: "Current agent: 默认智能体",
+    });
+    expect(screen.getByLabelText("Agents One quick task")).toBeVisible();
+    expect(screen.getByPlaceholderText("Ask 默认智能体…")).toBeVisible();
+
+    fireEvent.click(trigger);
+    expect(screen.getByText("Switch agent")).toBeVisible();
+    expect(screen.getAllByText("Local", { exact: false })).toHaveLength(2);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add files or a project folder" }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: /Upload files/ }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("menuitem", { name: /Add project folder/ }),
+    ).toBeVisible();
   });
 });
