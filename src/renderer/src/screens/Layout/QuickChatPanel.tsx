@@ -21,6 +21,7 @@ import type {
 } from "../../../../shared/runtime-conversations";
 import { summarizeTaskOutput } from "../Chat/runtimeOutput";
 import { dispatchAgentsOneEvent } from "../../utils/brandMigration";
+import { useI18n } from "../../components/useI18n";
 
 const STORAGE_KEY = "agents-one.quick-chats.v1";
 const HIDDEN_TASK_SESSION_IDS_KEY =
@@ -30,6 +31,7 @@ const MAX_MESSAGES_PER_CHAT = 80;
 const QUICK_CHAT_TIMEOUT_MS = 120_000;
 
 type QuickChatRole = QuickChatMessage["role"];
+type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 interface QuickChatPanelProps {
   open: boolean;
@@ -98,26 +100,35 @@ function message(role: QuickChatRole, content: string): QuickChatMessage {
   return { id: newId("quick-msg"), role, content, createdAt: Date.now() };
 }
 
-function titleFrom(text: string): string {
+function titleFrom(text: string, t: Translate): string {
   const singleLine = text.replace(/\s+/g, " ").trim();
-  return singleLine.slice(0, 28) || "新聊天";
+  return singleLine.slice(0, 28) || t("chat.quickChat.newChat");
 }
 
-function buildPrompt(chat: QuickChatConversation | null, text: string): string {
+function buildPrompt(
+  chat: QuickChatConversation | null,
+  text: string,
+  t: Translate,
+): string {
   const history = (chat?.messages || [])
     .filter((item) => item.role === "user" || item.role === "agent")
     .slice(-8)
-    .map(
-      (item) => `${item.role === "user" ? "用户" : "智能体"}：${item.content}`,
+    .map((item) =>
+      t(
+        item.role === "user"
+          ? "chat.quickChat.historyUser"
+          : "chat.quickChat.historyAgent",
+        { content: item.content },
+      ),
     )
     .join("\n\n")
     .slice(-8_000);
 
   if (!history) return text;
   return [
-    "以下是本次轻量聊天的近期上下文，请据此继续回答。",
+    t("chat.quickChat.contextIntro"),
     history,
-    `当前用户消息：${text}`,
+    t("chat.quickChat.currentMessage", { text }),
   ].join("\n\n");
 }
 
@@ -133,40 +144,50 @@ function hermesHistory(
     }));
 }
 
-function finalText(run: AgentRuntimeRun): string {
+function finalText(run: AgentRuntimeRun, t: Translate): string {
   if (run.error) return run.error;
   const output = (run.output || "").trim();
-  if (!output) return run.status === "succeeded" ? "已完成。" : run.status;
+  if (!output)
+    return run.status === "succeeded"
+      ? t("chat.quickChat.completed")
+      : run.status;
   const summary = summarizeTaskOutput(output);
   if (summary.finalText) return summary.finalText;
   return summary.hasStructuredEvents
-    ? "智能体本轮没有返回可显示的最终答复，请继续提问或稍后重试。"
+    ? t("chat.quickChat.noFinalResponse")
     : output;
 }
 
-function eventText(run: AgentRuntimeRun | null): string {
+function eventText(run: AgentRuntimeRun | null, t: Translate): string {
   const latest = run?.events?.at(-1);
   if (latest?.summary) return latest.summary;
-  if (!run) return "正在提交给智能体...";
-  if (run.status === "running") return "智能体正在处理...";
-  return "正在整理结果...";
+  if (!run) return t("chat.quickChat.submitting");
+  if (run.status === "running") return t("chat.quickChat.processing");
+  return t("chat.quickChat.preparingResult");
 }
 
-function transcriptForTask(chat: QuickChatConversation): string {
+function transcriptForTask(chat: QuickChatConversation, t: Translate): string {
   const lines = chat.messages
     .filter((item) => item.role === "user" || item.role === "agent")
     .slice(-12)
     .map((item) => {
-      const who = item.role === "user" ? "我" : chat.runtimeName;
+      const who =
+        item.role === "user"
+          ? t("chat.quickChat.transcriptMe")
+          : chat.runtimeName;
       return `${who}: ${item.content}`;
     })
     .join("\n\n");
-  return `请参考这段轻量聊天，并结合当前任务继续处理：\n\n${lines}`;
+  return `${t("chat.quickChat.taskTranscriptIntro")}\n\n${lines}`;
 }
 
-function runtimeLabel(runtime: AgentRuntimeDefinition): string {
-  const location = runtime.location === "local" ? "本地" : "远程";
-  return `${runtime.name} / ${location}`;
+function runtimeLabel(runtime: AgentRuntimeDefinition, t: Translate): string {
+  const location = t(
+    runtime.location === "local"
+      ? "chat.quickChat.local"
+      : "chat.quickChat.remote",
+  );
+  return t("chat.quickChat.runtimeLabel", { name: runtime.name, location });
 }
 
 function QuickRuntimeAvatar({
@@ -199,6 +220,7 @@ export default function QuickChatPanel({
   onClose,
   onAddToTask,
 }: QuickChatPanelProps): React.JSX.Element | null {
+  const { t } = useI18n();
   const [chats, setChats] = useState<QuickChatConversation[]>(() =>
     loadQuickChats(),
   );
@@ -210,7 +232,9 @@ export default function QuickChatPanel({
   );
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState("正在提交给智能体...");
+  const [progress, setProgress] = useState(() =>
+    t("chat.quickChat.submitting"),
+  );
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -305,7 +329,7 @@ export default function QuickChatPanel({
     const now = Date.now();
     const chat: QuickChatConversation = {
       id: newId("quick-chat"),
-      title: "新聊天",
+      title: t("chat.quickChat.newChat"),
       runtimeId: runtime.id,
       runtimeName: runtime.name,
       runtimeSessionId: null,
@@ -316,7 +340,7 @@ export default function QuickChatPanel({
     upsertChat(chat);
     setSelectedRuntimeId(runtime.id);
     setHistoryOpen(false);
-  }, [runtimeOptions, selectedRuntime, upsertChat]);
+  }, [runtimeOptions, selectedRuntime, t, upsertChat]);
 
   const updateChatMessages = useCallback(
     (
@@ -327,19 +351,21 @@ export default function QuickChatPanel({
       const next: QuickChatConversation = {
         ...chat,
         ...patch,
-        title:
-          chat.title === "新聊天"
-            ? titleFrom(
-                messages.find((item) => item.role === "user")?.content || "",
-              )
-            : chat.title,
+        title: ["新聊天", "New chat", t("chat.quickChat.newChat")].includes(
+          chat.title,
+        )
+          ? titleFrom(
+              messages.find((item) => item.role === "user")?.content || "",
+              t,
+            )
+          : chat.title,
         messages: messages.slice(-MAX_MESSAGES_PER_CHAT),
         updatedAt: Date.now(),
       };
       upsertChat(next);
       return next;
     },
-    [upsertChat],
+    [t, upsertChat],
   );
 
   const stop = useCallback(async () => {
@@ -354,8 +380,8 @@ export default function QuickChatPanel({
     }
     setCurrentRunId(null);
     setLoading(false);
-    setProgress("已停止。");
-  }, [currentRunId]);
+    setProgress(t("chat.quickChat.stopped"));
+  }, [currentRunId, t]);
 
   const pollRun = useCallback(
     async (
@@ -369,7 +395,7 @@ export default function QuickChatPanel({
           await new Promise((resolve) => setTimeout(resolve, 800));
           continue;
         }
-        setProgress(eventText(run));
+        setProgress(eventText(run, t));
         if (run.status === "running") {
           await new Promise((resolve) => setTimeout(resolve, 900));
           continue;
@@ -378,7 +404,7 @@ export default function QuickChatPanel({
           ...baseMessages,
           message(
             run.status === "succeeded" ? "agent" : "system",
-            finalText(run),
+            finalText(run, t),
           ),
         ];
         updateChatMessages(chat, doneMessages, {
@@ -390,7 +416,7 @@ export default function QuickChatPanel({
         return;
       }
     },
-    [updateChatMessages],
+    [t, updateChatMessages],
   );
 
   const sendHermesMessage = useCallback(
@@ -458,7 +484,7 @@ export default function QuickChatPanel({
             ...current,
             messages: [
               ...current.messages,
-              message("system", "智能体没有返回可显示内容。"),
+              message("system", t("chat.quickChat.emptyResponse")),
             ].slice(-MAX_MESSAGES_PER_CHAT),
             updatedAt: Date.now(),
           }));
@@ -471,16 +497,18 @@ export default function QuickChatPanel({
       cleanup.push(
         window.agentsOneAPI.onChatChunk((eventRunId, chunk) => {
           if (eventRunId !== runId || !chunk) return;
-          setProgress(`${runtimeName} 正在回复...`);
+          setProgress(t("chat.quickChat.replying", { name: runtimeName }));
           appendAgentChunk(chunk);
         }),
         window.agentsOneAPI.onChatReasoningChunk((eventRunId) => {
           if (eventRunId !== runId) return;
-          setProgress(`${runtimeName} 正在思考...`);
+          setProgress(t("chat.quickChat.reasoning", { name: runtimeName }));
         }),
         window.agentsOneAPI.onChatToolProgress((eventRunId, tool) => {
           if (eventRunId !== runId) return;
-          setProgress(tool || `${runtimeName} 正在调用工具...`);
+          setProgress(
+            tool || t("chat.quickChat.usingTool", { name: runtimeName }),
+          );
         }),
         window.agentsOneAPI.onChatSessionStarted((eventRunId, sessionId) => {
           if (eventRunId !== runId) return;
@@ -504,7 +532,7 @@ export default function QuickChatPanel({
             ...current,
             messages: [
               ...current.messages,
-              message("system", error || "智能体聊天请求失败。"),
+              message("system", error || t("chat.quickChat.requestFailed")),
             ].slice(-MAX_MESSAGES_PER_CHAT),
             updatedAt: Date.now(),
           }));
@@ -515,7 +543,7 @@ export default function QuickChatPanel({
       );
 
       setCurrentRunId(runId);
-      setProgress(`正在提交给 ${runtimeName}...`);
+      setProgress(t("chat.quickChat.submittingTo", { name: runtimeName }));
       try {
         const result = await window.agentsOneAPI.sendMessage(
           text,
@@ -540,7 +568,9 @@ export default function QuickChatPanel({
             ...current.messages,
             message(
               "system",
-              error instanceof Error ? error.message : "智能体聊天请求失败。",
+              error instanceof Error
+                ? error.message
+                : t("chat.quickChat.requestFailed"),
             ),
           ].slice(-MAX_MESSAGES_PER_CHAT),
           updatedAt: Date.now(),
@@ -550,7 +580,7 @@ export default function QuickChatPanel({
         setProgress("");
       }
     },
-    [profile, updateChatById],
+    [profile, t, updateChatById],
   );
 
   const send = useCallback(async () => {
@@ -558,7 +588,7 @@ export default function QuickChatPanel({
     if (!text || loading) return;
     const runtime = selectedRuntime;
     if (!runtime) {
-      toast.error("请先选择一个可用智能体。");
+      toast.error(t("chat.quickChat.selectRuntimeError"));
       return;
     }
 
@@ -567,7 +597,7 @@ export default function QuickChatPanel({
       const now = Date.now();
       chat = {
         id: newId("quick-chat"),
-        title: titleFrom(text),
+        title: titleFrom(text, t),
         runtimeId: runtime.id,
         runtimeName: runtime.name,
         runtimeSessionId: null,
@@ -585,7 +615,7 @@ export default function QuickChatPanel({
     });
     setInput("");
     setLoading(true);
-    setProgress("正在提交给智能体...");
+    setProgress(t("chat.quickChat.submitting"));
     setHistoryOpen(false);
 
     try {
@@ -594,20 +624,22 @@ export default function QuickChatPanel({
         return;
       }
       const run = await window.agentsOneAPI.startAgentRuntimeTask(runtime.id, {
-        prompt: buildPrompt(chat, text),
+        prompt: buildPrompt(chat, text, t),
         mode: "analysis",
         sessionId: chat.runtimeSessionId || undefined,
         timeoutMs: QUICK_CHAT_TIMEOUT_MS,
       });
       setCurrentRunId(run.id);
-      setProgress(eventText(run));
+      setProgress(eventText(run, t));
       void pollRun(run.id, nextChat, nextMessages);
     } catch (error) {
       updateChatMessages(nextChat, [
         ...nextMessages,
         message(
           "system",
-          error instanceof Error ? error.message : "聊天请求失败。",
+          error instanceof Error
+            ? error.message
+            : t("chat.quickChat.chatRequestFailed"),
         ),
       ]);
       setLoading(false);
@@ -620,30 +652,34 @@ export default function QuickChatPanel({
     pollRun,
     selectedRuntime,
     sendHermesMessage,
+    t,
     updateChatMessages,
   ]);
 
   const addToTask = useCallback(() => {
     if (!activeChat || activeChat.messages.length === 0) {
-      toast.error("当前聊天还没有可加入任务的内容。");
+      toast.error(t("chat.quickChat.addToTaskEmpty"));
       return;
     }
-    onAddToTask(transcriptForTask(activeChat));
-  }, [activeChat, onAddToTask]);
+    onAddToTask(transcriptForTask(activeChat, t));
+  }, [activeChat, onAddToTask, t]);
 
   if (!open) return null;
 
   return (
-    <section className="quick-chat-panel" aria-label="轻量聊天">
+    <section
+      className="quick-chat-panel"
+      aria-label={t("chat.quickChat.panelLabel")}
+    >
       <header className="quick-chat-header">
         <div className="quick-chat-title">
           <span className="quick-chat-title-main">
-            {activeChat?.title || "新聊天"}
+            {activeChat?.title || t("chat.quickChat.newChat")}
           </span>
           <span className="quick-chat-title-sub">
             {currentTaskTitle
-              ? `当前任务：${currentTaskTitle}`
-              : "可加入当前任务"}
+              ? t("chat.quickChat.currentTask", { title: currentTaskTitle })
+              : t("chat.quickChat.canAddToTask")}
           </span>
         </div>
         <div className="quick-chat-actions">
@@ -651,8 +687,8 @@ export default function QuickChatPanel({
             type="button"
             className="quick-chat-icon-btn"
             onClick={startNewChat}
-            title="新聊天"
-            aria-label="新聊天"
+            title={t("chat.quickChat.newChat")}
+            aria-label={t("chat.quickChat.newChat")}
           >
             <Plus size={16} />
           </button>
@@ -660,8 +696,8 @@ export default function QuickChatPanel({
             type="button"
             className={`quick-chat-icon-btn ${historyOpen ? "active" : ""}`}
             onClick={() => setHistoryOpen((value) => !value)}
-            title="最近聊天"
-            aria-label="最近聊天"
+            title={t("chat.quickChat.recentChats")}
+            aria-label={t("chat.quickChat.recentChats")}
           >
             <History size={16} />
           </button>
@@ -669,8 +705,8 @@ export default function QuickChatPanel({
             type="button"
             className="quick-chat-icon-btn"
             onClick={addToTask}
-            title="加入当前任务"
-            aria-label="加入当前任务"
+            title={t("chat.quickChat.addToTask")}
+            aria-label={t("chat.quickChat.addToTask")}
           >
             <MessageSquarePlus size={16} />
           </button>
@@ -678,8 +714,8 @@ export default function QuickChatPanel({
             type="button"
             className="quick-chat-icon-btn"
             onClick={onClose}
-            title="关闭"
-            aria-label="关闭"
+            title={t("chat.quickChat.close")}
+            aria-label={t("chat.quickChat.close")}
           >
             <X size={16} />
           </button>
@@ -696,11 +732,11 @@ export default function QuickChatPanel({
             const existing = chats.find((chat) => chat.runtimeId === next);
             if (existing) setActiveChatId(existing.id);
           }}
-          aria-label="选择智能体"
+          aria-label={t("chat.quickChat.selectRuntime")}
         >
           {runtimeOptions.map((runtime) => (
             <option key={runtime.id} value={runtime.id}>
-              {runtimeLabel(runtime)}
+              {runtimeLabel(runtime, t)}
             </option>
           ))}
         </select>
@@ -709,7 +745,9 @@ export default function QuickChatPanel({
       {historyOpen && (
         <div className="quick-chat-history" role="list">
           {chats.length === 0 ? (
-            <div className="quick-chat-empty-history">暂无聊天记录</div>
+            <div className="quick-chat-empty-history">
+              {t("chat.quickChat.noHistory")}
+            </div>
           ) : (
             chats.map((chat) => (
               <button
@@ -736,11 +774,11 @@ export default function QuickChatPanel({
         {!activeChat || activeChat.messages.length === 0 ? (
           <div className="quick-chat-empty">
             <QuickRuntimeAvatar runtime={selectedRuntime} size={18} />
-            <strong>新聊天</strong>
-            <span>快速问答、临时讨论，需要时可加入当前任务。</span>
+            <strong>{t("chat.quickChat.newChat")}</strong>
+            <span>{t("chat.quickChat.emptyDescription")}</span>
             {chats.length > 0 && (
               <div className="quick-chat-recent">
-                <span>最近聊天</span>
+                <span>{t("chat.quickChat.recentChats")}</span>
                 {chats.slice(0, 3).map((chat) => (
                   <button
                     type="button"
@@ -775,7 +813,7 @@ export default function QuickChatPanel({
         {loading && (
           <div className="quick-chat-progress" role="status" aria-live="polite">
             <LoaderCircle size={15} />
-            <span>{progress || "智能体正在处理..."}</span>
+            <span>{progress || t("chat.quickChat.processing")}</span>
           </div>
         )}
       </div>
@@ -787,8 +825,10 @@ export default function QuickChatPanel({
           rows={1}
           placeholder={
             selectedRuntime
-              ? `给 ${selectedRuntime.name} 发送消息`
-              : "选择智能体后发送消息"
+              ? t("chat.quickChat.messagePlaceholder", {
+                  name: selectedRuntime.name,
+                })
+              : t("chat.quickChat.selectRuntimePlaceholder")
           }
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
@@ -804,8 +844,8 @@ export default function QuickChatPanel({
             type="button"
             className="quick-chat-send"
             onClick={() => void stop()}
-            title="停止"
-            aria-label="停止"
+            title={t("chat.quickChat.stop")}
+            aria-label={t("chat.quickChat.stop")}
           >
             <Square size={15} />
           </button>
@@ -815,8 +855,8 @@ export default function QuickChatPanel({
             className="quick-chat-send"
             onClick={() => void send()}
             disabled={!input.trim() || !selectedRuntime}
-            title="发送"
-            aria-label="发送"
+            title={t("chat.quickChat.send")}
+            aria-label={t("chat.quickChat.send")}
           >
             <Send size={16} />
           </button>
