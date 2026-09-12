@@ -1,0 +1,105 @@
+export default {
+  scrollToLatest: "Jump to latest message",
+  skills: {
+    title: "Discovered Skills",
+    note: "Metadata only. Agents One does not load or execute these Skills in the main process.",
+    empty: "No displayable Skills were found.",
+  },
+  close: "Close",
+  cancel: "Cancel",
+  model: {
+    picker: "Choose a model for this conversation",
+    title: "Model",
+    scope: "Applies only to this conversation and does not change defaults",
+    list: "Model list",
+    current: "{{model}} (current conversation)",
+    empty: "This Runtime did not return any switchable models.",
+    confirm: "Switch model",
+    unavailable: "Model unavailable",
+    loading: "Loading available models",
+    switching: "Switching model: {{model}}",
+    label: "Model: {{model}}",
+    loadingTitle: "Loading this Runtime's model list…",
+    switchingTitle: "Switching to model: {{model}}…",
+    switchTitle: "Model: {{model}}; click to switch the conversation model",
+    choose: "Choose a model for this conversation",
+    noMetadata: "The remote agent did not provide model metadata",
+  },
+  thinking: {
+    picker: "Choose a reasoning level for this conversation",
+    title: "Reasoning",
+    scope: "Only levels supported by the current Pi model are shown",
+    list: "Reasoning level list",
+    option: "{{label}} ({{level}})",
+    empty: "The current Pi model did not declare switchable reasoning levels.",
+    confirm: "Switch reasoning level",
+    auto: "Auto",
+    level: "Reasoning level: {{level}}",
+    busyLabel:
+      "Reasoning level: {{level}}; switch after the current task finishes",
+    loading: "Loading reasoning levels",
+    switching: "Switching reasoning level: {{level}}",
+    busyTitle:
+      "The current task is running. You can switch reasoning levels after it finishes.",
+    loadingTitle: "Loading reasoning levels supported by the current Pi model…",
+    switchingTitle: "Switching the conversation reasoning level…",
+    switchTitle:
+      "Reasoning is determined by the current {{runtime}} model; click to view or switch",
+    openCodeLabel:
+      "Reasoning level: Auto; OpenCode ACP did not provide switchable options",
+    openCodeTitle:
+      "OpenCode ACP did not declare switchable reasoning levels. The current model controls reasoning automatically.",
+    levels: {
+      off: "Off",
+      minimal: "Minimal",
+      low: "Low",
+      medium: "Medium",
+      high: "High",
+      xhigh: "Extra high",
+      max: "Maximum",
+    },
+  },
+  compact: {
+    dialog: "Confirm conversation context compaction",
+    title: "Compact this conversation's context?",
+    description:
+      "This calls the Runtime's native compaction feature and replaces conversation history with a summary.",
+    focus: "Keep focus on: {{instructions}}",
+    confirm: "Compact context",
+  },
+  cancelResume: {
+    dialog: "Confirm stop and resume with a new message",
+    title: "Stop the current run and resume with a new message?",
+    description:
+      "This Runtime does not support native mid-run steering. It will be cancelled only after confirmation, then the same conversation will continue with the new message.",
+    confirm: "Stop and continue",
+  },
+  webAction: {
+    required: "{{provider}} needs you to complete an action",
+    open: "Open {{provider}} window",
+    continue: "I've finished; continue",
+  },
+  permissions: {
+    manage: "Manage permissions for this task",
+    auto: "Auto",
+    readOnly: "Read only",
+    fullAccess: "Full access",
+    autoHint: "Can read and write, but cannot move or delete files",
+    readOnlyHint: "Can view the project and attachments without changing files",
+    unavailable: "This Runtime did not declare usable write permissions",
+    remoteFullHint:
+      "Full access on the remote host; local projects require separate authorization",
+    fullHint: "Can create, edit, move, or delete project files",
+  },
+  isolation: {
+    worktree: "Worktree branch",
+    container: "Container",
+    remote: "Remote execution",
+    host: "Local execution",
+    boundary: "Execution boundary: {{level}}",
+  },
+  webPreview: {
+    show: "Show web preview",
+    hide: "Hide web preview",
+  },
+} as const;

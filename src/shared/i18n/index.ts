@@ -23,6 +23,7 @@ import models_en from "./locales/en/models";
 import navigation_en from "./locales/en/navigation";
 import office_en from "./locales/en/office";
 import providers_en from "./locales/en/providers";
+import runtimeChat_en from "./locales/en/runtimeChat";
 import schedules_en from "./locales/en/schedules";
 import sessions_en from "./locales/en/sessions";
 import settings_en from "./locales/en/settings";
@@ -44,6 +45,7 @@ import models_zh from "./locales/zh-CN/models";
 import navigation_zh from "./locales/zh-CN/navigation";
 import office_zh from "./locales/zh-CN/office";
 import providers_zh from "./locales/zh-CN/providers";
+import runtimeChat_zh from "./locales/zh-CN/runtimeChat";
 import schedules_zh from "./locales/zh-CN/schedules";
 import sessions_zh from "./locales/zh-CN/sessions";
 import settings_zh from "./locales/zh-CN/settings";
@@ -71,6 +73,7 @@ export const resources = {
       navigation: navigation_en,
       office: office_en,
       providers: providers_en,
+      runtimeChat: runtimeChat_en,
       schedules: schedules_en,
       sessions: sessions_en,
       settings: settings_en,
@@ -96,6 +99,7 @@ export const resources = {
       navigation: navigation_zh,
       office: office_zh,
       providers: providers_zh,
+      runtimeChat: runtimeChat_zh,
       schedules: schedules_zh,
       sessions: sessions_zh,
       settings: settings_zh,
