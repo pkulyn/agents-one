@@ -27,6 +27,25 @@ export interface RuntimeChatMessageAdapterOptions {
   idPrefix?: string;
   /** Identity of the Runtime that produced a live or durable event trace. */
   agentIdentity?: ChatMessageAgentIdentity;
+  /** Localizes platform-authored fallback rows; Runtime-authored text is unchanged. */
+  translate?: (key: string, options?: Record<string, unknown>) => string;
+}
+
+const DEFAULT_PLATFORM_TEXT: Record<string, string> = {
+  "runtimeChat.events.noDetail": "运行时未提供详细信息。",
+  "runtimeChat.events.cancelled": "任务已取消",
+  "runtimeChat.events.traceUnavailable": "思考记录未上报",
+  "runtimeChat.events.toolsWithoutReasoning":
+    "该智能体的运行服务本轮提供了工具调用记录，但没有提供可展示的思考摘要。",
+  "runtimeChat.events.lifecycleOnly":
+    "该智能体的运行服务本轮只返回了生命周期和最终答复，没有提供可展示的思考摘要或工具调用事件。",
+};
+
+function platformText(
+  options: Pick<RuntimeChatMessageAdapterOptions, "translate">,
+  key: string,
+): string {
+  return options.translate?.(key) || DEFAULT_PLATFORM_TEXT[key] || key;
 }
 
 function identityForMessage(
@@ -124,11 +143,14 @@ function runtimeToolEvidence(event: AgentRuntimeEvent): RuntimeToolEvidence {
   };
 }
 
-function eventDetail(event: AgentRuntimeEvent): string {
+function eventDetail(
+  event: AgentRuntimeEvent,
+  options: Pick<RuntimeChatMessageAdapterOptions, "translate"> = {},
+): string {
   return (
     event.detail?.trim() ||
     normalizedSummary(event.summary) ||
-    "运行时未提供详细信息。"
+    platformText(options, "runtimeChat.events.noDetail")
   );
 }
 
@@ -207,7 +229,7 @@ function runtimeEventMessages(
   events: AgentRuntimeEvent[],
   options: Pick<
     RuntimeChatMessageAdapterOptions,
-    "live" | "idPrefix" | "agentIdentity"
+    "live" | "idPrefix" | "agentIdentity" | "translate"
   > = {},
 ): ChatMessage[] {
   const prefix = options.idPrefix || "runtime";
@@ -242,11 +264,11 @@ function runtimeEventMessages(
       const previous = messages.at(-1);
       if (
         previous?.kind === "reasoning" &&
-        isReasoningSnapshotOf(previous.text, eventDetail(event))
+        isReasoningSnapshotOf(previous.text, eventDetail(event, options))
       ) {
         previous.text =
-          eventDetail(event).length > previous.text.length
-            ? eventDetail(event)
+          eventDetail(event, options).length > previous.text.length
+            ? eventDetail(event, options)
             : previous.text;
         continue;
       }
@@ -254,7 +276,7 @@ function runtimeEventMessages(
         id,
         kind: "reasoning",
         role: "agent",
-        text: eventDetail(event),
+        text: eventDetail(event, options),
       };
       messages.push(withIdentity(message, options.agentIdentity));
       continue;
@@ -307,7 +329,7 @@ function runtimeEventMessages(
         role: "agent",
         callId,
         name: call && call.kind === "tool_call" ? call.name : evidence.name,
-        content: evidence.output || eventDetail(event),
+        content: evidence.output || eventDetail(event, options),
       };
       messages.push(withIdentity(result, options.agentIdentity));
       continue;
@@ -338,8 +360,8 @@ function runtimeEventMessages(
         id,
         kind: "system",
         role: "agent",
-        title: "任务已取消",
-        detail: eventDetail(event),
+        title: platformText(options, "runtimeChat.events.cancelled"),
+        detail: eventDetail(event, options),
       };
       messages.push(withIdentity(message, options.agentIdentity));
     }
@@ -425,10 +447,16 @@ export function runtimeConversationToChatMessages(
               id: `${message.id}:${message.execution.runId}:trace-unavailable`,
               kind: "system",
               role: "agent",
-              title: "思考记录未上报",
+              title: platformText(
+                options,
+                "runtimeChat.events.traceUnavailable",
+              ),
               detail: hasTools
-                ? "该智能体的运行服务本轮提供了工具调用记录，但没有提供可展示的思考摘要。"
-                : "该智能体的运行服务本轮只返回了生命周期和最终答复，没有提供可展示的思考摘要或工具调用事件。",
+                ? platformText(
+                    options,
+                    "runtimeChat.events.toolsWithoutReasoning",
+                  )
+                : platformText(options, "runtimeChat.events.lifecycleOnly"),
             },
             identityForMessage(message),
           ),
@@ -438,6 +466,7 @@ export function runtimeConversationToChatMessages(
         ...runtimeEventMessages(visibleEvents, {
           idPrefix: `${message.id}:${message.execution.runId}`,
           agentIdentity: identityForMessage(message),
+          translate: options.translate,
         }),
       );
     }
@@ -451,7 +480,7 @@ export function runtimeEventsToChatMessages(
   events: AgentRuntimeEvent[],
   options: Pick<
     RuntimeChatMessageAdapterOptions,
-    "live" | "idPrefix" | "agentIdentity"
+    "live" | "idPrefix" | "agentIdentity" | "translate"
   > = {},
 ): ChatMessage[] {
   return runtimeEventMessages(events, options);

@@ -48,6 +48,15 @@ export default {
     currentUserRequest: "当前用户请求：\n{{prompt}}",
     taskFailed: "任务请求失败。",
   },
+  events: {
+    noDetail: "运行时未提供详细信息。",
+    cancelled: "任务已取消",
+    traceUnavailable: "思考记录未上报",
+    toolsWithoutReasoning:
+      "该智能体的运行服务本轮提供了工具调用记录，但没有提供可展示的思考摘要。",
+    lifecycleOnly:
+      "该智能体的运行服务本轮只返回了生命周期和最终答复，没有提供可展示的思考摘要或工具调用事件。",
+  },
   close: "关闭",
   cancel: "取消",
   model: {

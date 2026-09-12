@@ -1380,6 +1380,7 @@ export default function RuntimeChat({
   const nativeMessages = useMemo(() => {
     const history = runtimeConversationToChatMessages(messages, {
       getAgentContent,
+      translate: t,
     });
     const parallelRuns = Object.values(activeCollaborationRuns);
     if (loading && parallelRuns.length) {
@@ -1398,6 +1399,7 @@ export default function RuntimeChat({
           live: true,
           idPrefix: `live:${active.run.id}`,
           agentIdentity: liveIdentity,
+          translate: t,
         });
         return live.some((message) => message.kind === "reasoning")
           ? live
@@ -1438,6 +1440,7 @@ export default function RuntimeChat({
       live: true,
       idPrefix: `live:${currentRunId}`,
       agentIdentity: liveIdentity,
+      translate: t,
     });
     const hasReasoning = live.some((message) => message.kind === "reasoning");
     const liveMessages: ChatMessage[] = hasReasoning

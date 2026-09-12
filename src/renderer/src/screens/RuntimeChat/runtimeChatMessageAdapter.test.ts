@@ -483,6 +483,25 @@ describe("runtimeChatMessageAdapter", () => {
     ]);
   });
 
+  it("localizes platform-authored event fallbacks without changing Runtime text", () => {
+    const labels: Record<string, string> = {
+      "runtimeChat.events.cancelled": "Task cancelled",
+      "runtimeChat.events.noDetail": "The Runtime did not provide details.",
+    };
+    const result = runtimeEventsToChatMessages(
+      [event("cancelled", "cancelled", "")],
+      { translate: (key) => labels[key] || key },
+    );
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "system",
+        title: "Task cancelled",
+        detail: "The Runtime did not provide details.",
+      }),
+    ]);
+  });
+
   it("extracts tool names from the flat summaries used by remote runtimes", () => {
     expect(toolNameFromRuntimeSummary("技能 session_search: recall NAS")).toBe(
       "session_search",
