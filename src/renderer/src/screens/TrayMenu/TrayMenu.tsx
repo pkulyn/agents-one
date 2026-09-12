@@ -5,6 +5,7 @@ import type {
   TrayMenuData,
   TrayMenuTask,
 } from "../../../../shared/tray-menu";
+import { useI18n } from "../../components/useI18n";
 import {
   TRAY_MENU_COLLAPSED_WIDTH,
   TRAY_MENU_EXPANDED_WIDTH,
@@ -43,6 +44,7 @@ function EmptyRow({
 }
 
 export default function TrayMenu(): React.JSX.Element {
+  const { t } = useI18n();
   const [data, setData] = useState<TrayMenuData>(EMPTY_DATA);
   const [moreExpanded, setMoreExpanded] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -96,36 +98,38 @@ export default function TrayMenu(): React.JSX.Element {
       {moreExpanded ? (
         <aside
           className="tray-task-menu-history-panel"
-          aria-label="更多已完成任务"
+          aria-label={t("tray.menu.moreCompleted")}
           onMouseEnter={() => setMoreExpanded(true)}
         >
           {data.more.length > 0 ? (
             data.more.map((task) => <TaskRow key={task.id} task={task} />)
           ) : (
-            <EmptyRow>暂无更多已完成任务</EmptyRow>
+            <EmptyRow>{t("tray.menu.noMoreCompleted")}</EmptyRow>
           )}
         </aside>
       ) : null}
 
-      <main className="tray-task-menu" aria-label="Agents One 任务菜单">
+      <main className="tray-task-menu" aria-label={t("tray.menu.label")}>
         <section
           className="tray-task-menu-section"
           aria-labelledby="tray-running-label"
         >
           <h2 id="tray-running-label" className="tray-task-menu-heading">
-            运行中的任务
+            {t("tray.menu.running")}
           </h2>
           {data.running.map((task) => (
             <TaskRow key={task.id} task={task} />
           ))}
           {data.running.length === 0 && unknownRunningCount === 0 ? (
-            <EmptyRow>暂无运行中的任务</EmptyRow>
+            <EmptyRow>{t("tray.menu.noRunning")}</EmptyRow>
           ) : null}
           {unknownRunningCount > 0 ? (
             <EmptyRow>
               {data.running.length === 0
-                ? `${unknownRunningCount} 个任务正在运行`
-                : `还有 ${unknownRunningCount} 个任务正在运行`}
+                ? t("tray.menu.runningCount", { count: unknownRunningCount })
+                : t("tray.menu.moreRunningCount", {
+                    count: unknownRunningCount,
+                  })}
             </EmptyRow>
           ) : null}
         </section>
@@ -135,12 +139,12 @@ export default function TrayMenu(): React.JSX.Element {
           aria-labelledby="tray-recent-label"
         >
           <h2 id="tray-recent-label" className="tray-task-menu-heading">
-            近期任务
+            {t("tray.menu.recent")}
           </h2>
           {data.recent.length > 0 ? (
             data.recent.map((task) => <TaskRow key={task.id} task={task} />)
           ) : (
-            <EmptyRow>暂无已完成任务</EmptyRow>
+            <EmptyRow>{t("tray.menu.noCompleted")}</EmptyRow>
           )}
           <button
             type="button"
@@ -151,19 +155,22 @@ export default function TrayMenu(): React.JSX.Element {
             onFocus={() => setMoreExpanded(true)}
             onClick={() => setMoreExpanded((value) => !value)}
           >
-            <span>更多</span>
+            <span>{t("tray.menu.more")}</span>
             <ChevronRight size={17} aria-hidden="true" />
           </button>
         </section>
 
-        <nav className="tray-task-menu-actions" aria-label="程序操作">
+        <nav
+          className="tray-task-menu-actions"
+          aria-label={t("tray.menu.appActions")}
+        >
           <button
             type="button"
             onClick={() =>
               window.agentsOneAPI.sendTrayMenuAction({ type: "new-task" })
             }
           >
-            新建任务
+            {t("tray.menu.newTask")}
           </button>
           <button
             type="button"
@@ -171,7 +178,7 @@ export default function TrayMenu(): React.JSX.Element {
               window.agentsOneAPI.sendTrayMenuAction({ type: "open-main" })
             }
           >
-            打开 Agents One
+            {t("tray.menu.openApp")}
           </button>
           <button
             type="button"
@@ -179,7 +186,7 @@ export default function TrayMenu(): React.JSX.Element {
               window.agentsOneAPI.sendTrayMenuAction({ type: "quit" })
             }
           >
-            退出程序
+            {t("tray.menu.quit")}
           </button>
         </nav>
       </main>

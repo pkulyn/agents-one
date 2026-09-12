@@ -62,6 +62,8 @@ The tray's left-click surface loads the regular renderer with `?tray=1`, which [
 
 Quick-composer controls, picker-dialog copy, platform error fallbacks, Runtime location labels, and accessible names follow the active application locale. Runtime names, project names, and provider errors remain unchanged user/provider data.
 
+The right-click task menu follows the same locale for section headings, empty/count states, flyout labels, and application actions. Persisted task titles and project names are never translated or rewritten.
+
 #### Task completion toast
 
 Every terminal task outcome raises one non-focusing, tray-anchored status card so background work remains visible without taking keyboard focus.
@@ -69,6 +71,8 @@ Every terminal task outcome raises one non-focusing, tray-anchored status card s
 [[src/main/agent-runtimes.ts#onAgentRuntimeRunFinished]] emits presentation-only terminal metadata after a Runtime run finishes; the event is process-local and does not add fields to persisted run, Runtime, or conversation records. [[src/main/app/start.ts#startMainProcess]] forwards successful, failed, cancelled and timed-out outcomes, resolves an existing Runtime conversation by its active run id when available, and passes bounded title/error detail, task id, Runtime identity and configured avatar to [[src/main/app/tray.ts#setupTray]]. Legacy Hermes chat uses the same in-memory path: explicit aborts produce one cancelled outcome, timeout-shaped errors are classified as timed out, other errors are failed, and a per-run guard prevents an abort's later error callback from raising a duplicate card. The previous native error notification is removed so one terminal outcome has one status surface. Task-schedule start events also carry the selected Runtime's display identity and raise a `scheduled_started` card after the tray controller exists; clicking it opens the newly created Runtime conversation when available, and the later Runtime terminal event still reports its final outcome.
 
 The tray controller loads `?trayCompletion=1` in a fixed transparent BrowserWindow, aligns it above the real tray bounds, and uses `showInactive()` with `focusable: false` so the card cannot steal keyboard focus. [[src/renderer/src/screens/TrayCompletionToast/TrayCompletionToast.tsx]] renders the approved Agents One header plus agent speech bubble and uses the same rainbow dawn-ring SVG as the app favicon; it must not fall back to the legacy yellow Hermes icon. The task avatar still falls back to a generic agent icon when no Runtime avatar is configured. Status combines icon, explicit text and semantic color rather than relying on color alone: purple/play for a scheduled start, green/check for success, red/cross for failure, grey/stop for cancellation and orange/clock for timeout. Failure and timeout cards include one compact reason line. All five statuses pause dismissal while hovered and otherwise close after 3 seconds. The full card opens the matched Runtime conversation when a task id exists; contexts without a durable conversation safely open the main window. IPC data/action handlers are sender-bound to the completion window, and shutdown removes the listener and destroys the window without changing user data.
+
+Status labels, platform summaries, dismissal hints, relative time, avatar alternatives, and the card action name follow the application locale. Task titles, Runtime names, and supplied failure details remain original execution data.
 
 ## Remote dashboard URL prefixes
 
