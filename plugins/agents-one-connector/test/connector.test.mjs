@@ -21,8 +21,27 @@ import { createConnectService } from "../../../services/agents-one-connect/src/s
 import loopbackGatewayAdapter from "../adapters/gateway-v1-loopback.mjs";
 import WebSocket from "ws";
 
+function protectForWindowsTest(value) {
+  return Buffer.from(`bound-user:${value}`, "utf8").toString("base64");
+}
+
+function unprotectForWindowsTest(value) {
+  const decoded = Buffer.from(value, "base64").toString("utf8");
+  if (!decoded.startsWith("bound-user:")) throw new Error("wrong user");
+  return decoded.slice("bound-user:".length);
+}
+
+function createTestCredentialStore(directory) {
+  return process.platform === "win32"
+    ? createCredentialStore(directory, {
+        protect: protectForWindowsTest,
+        unprotect: unprotectForWindowsTest,
+      })
+    : createCredentialStore(directory);
+}
+
 test("pair exchanges a one-time code and stores credentials without exposing the private key in metadata", async () => {
-  const store = createCredentialStore(
+  const store = createTestCredentialStore(
     mkdtempSync(join(tmpdir(), "agents-one-connector-")),
   );
   let request;
@@ -67,17 +86,10 @@ test("pair exchanges a one-time code and stores credentials without exposing the
 
 test("Windows protects the device token, private key, and pending pairing state", () => {
   const directory = mkdtempSync(join(tmpdir(), "agents-one-connector-win-"));
-  const protect = (value) =>
-    Buffer.from(`bound-user:${value}`, "utf8").toString("base64");
-  const unprotect = (value) => {
-    const decoded = Buffer.from(value, "base64").toString("utf8");
-    if (!decoded.startsWith("bound-user:")) throw new Error("wrong user");
-    return decoded.slice("bound-user:".length);
-  };
   const store = createCredentialStore(directory, {
     platform: "win32",
-    protect,
-    unprotect,
+    protect: protectForWindowsTest,
+    unprotect: unprotectForWindowsTest,
   });
   const credentials = {
     connectEndpoint: "https://connect.example",
@@ -150,7 +162,7 @@ test("Windows migrates legacy plaintext credentials idempotently", () => {
 });
 
 test("revoke uses the device credential and marks local state revoked", async () => {
-  const store = createCredentialStore(
+  const store = createTestCredentialStore(
     mkdtempSync(join(tmpdir(), "agents-one-connector-")),
   );
   await pairConnector({
@@ -183,7 +195,7 @@ test("revoke uses the device credential and marks local state revoked", async ()
 });
 
 test("manages multiple local Runtime registrations atomically and probes one Runtime", async () => {
-  const store = createCredentialStore(
+  const store = createTestCredentialStore(
     mkdtempSync(join(tmpdir(), "agents-one-connector-")),
   );
   await pairConnector({
@@ -232,7 +244,7 @@ test("connector-first pairing stores credentials after Agents One claims the cod
   const service = createConnectService();
   const address = await service.listen(0);
   const connectEndpoint = `http://127.0.0.1:${address.port}`;
-  const store = createCredentialStore(
+  const store = createTestCredentialStore(
     mkdtempSync(join(tmpdir(), "agents-one-connector-")),
   );
   const request = await requestConnectorPairing({
@@ -265,7 +277,7 @@ test("Connector opens the managed WSS tunnel and answers a Gateway v1 request", 
   const service = createConnectService();
   const address = await service.listen(0);
   const connectEndpoint = `http://127.0.0.1:${address.port}`;
-  const store = createCredentialStore(
+  const store = createTestCredentialStore(
     mkdtempSync(join(tmpdir(), "agents-one-connector-")),
   );
   const pairingResponse = await fetch(

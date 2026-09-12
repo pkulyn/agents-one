@@ -16,6 +16,10 @@ if ($env:AGENTS_ONE_DPAPI_OPERATION -eq 'protect') {
 `;
 
 const ENCODED_SCRIPT = Buffer.from(SCRIPT, "utf16le").toString("base64");
+// PowerShell can incur a one-time cold start while the user's DPAPI profile is
+// initialized. Keep this bounded, but do not turn a healthy slow start into a
+// credential-loss failure.
+export const DPAPI_TIMEOUT_MS = 60_000;
 
 function invoke(operation, input) {
   const result = spawnSync(
@@ -32,7 +36,7 @@ function invoke(operation, input) {
       input: Buffer.from(input).toString("base64"),
       encoding: "utf8",
       windowsHide: true,
-      timeout: 15_000,
+      timeout: DPAPI_TIMEOUT_MS,
       maxBuffer: 2 * 1024 * 1024,
     },
   );
