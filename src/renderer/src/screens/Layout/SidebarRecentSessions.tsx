@@ -1061,7 +1061,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         {
           kind: "task",
           targetId: session.id,
-          title: session.title || "未命名任务",
+          title: session.title || t("navigation.sidebar.unnamedTask"),
           ...(session.contextFolder && !session.contextWorkspaceId
             ? { projectPath: session.contextFolder }
             : {}),
@@ -1077,7 +1077,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       refreshArchives();
       window.dispatchEvent(new Event("agents-one:archives-changed"));
     },
-    [activeProfile, refreshArchives],
+    [activeProfile, refreshArchives, t],
   );
 
   const archiveProject = useCallback(
@@ -1254,7 +1254,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             ? { workspaceId: workspace.workspaceId, name: workspace.name }
             : null,
         );
-        if (!saved) throw new Error("项目已不可用");
+        if (!saved) throw new Error(t("navigation.sidebar.projectUnavailable"));
         // Other surfaces (chat view, Sessions screen) listen for this to
         // refresh their own grouping.
         dispatchAgentsOneEvent("sessionContextFolderChanged");
@@ -1265,7 +1265,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         );
       }
     },
-    [],
+    [t],
   );
 
   const handlePickNewFolder = useCallback(
@@ -1470,7 +1470,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             </span>
           )}
           {isCollaboration ? (
-            <span className="sidebar-recent-session-collaboration">协作</span>
+            <span className="sidebar-recent-session-collaboration">
+              {t("navigation.sidebar.collaboration")}
+            </span>
           ) : null}
           <span className="sidebar-recent-session-title">{title}</span>
         </span>
@@ -1561,8 +1563,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                 <button
                   type="button"
                   className="sidebar-recent-new-project"
-                  title="新建项目"
-                  aria-label="新建项目"
+                  title={t("navigation.sidebar.newProject")}
+                  aria-label={t("navigation.sidebar.newProject")}
                   aria-haspopup="menu"
                   aria-expanded={projectMenuOpen}
                   onClick={() => {
@@ -1585,7 +1587,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                     }}
                   >
                     <Plus size={15} />
-                    新建空白文件夹
+                    {t("navigation.sidebar.newEmptyFolder")}
                   </button>
                   <button
                     type="button"
@@ -1596,7 +1598,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                     }}
                   >
                     <Folder size={15} />
-                    使用现有文件夹
+                    {t("navigation.sidebar.useExistingFolder")}
                   </button>
                 </div>
               ) : null}
@@ -1609,7 +1611,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               <div className="sidebar-recent-collapse-inner">
                 {projectGroups.length === 0 ? (
                   <div className="sidebar-recent-empty">
-                    选择项目文件夹后，相关任务会显示在这里。
+                    {t("navigation.sidebar.projectsEmpty")}
                   </div>
                 ) : (
                   projectGroups.map((group) => {
@@ -1687,8 +1689,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                               type="button"
                               className="sidebar-recent-project-task-add"
                               data-create-project-task-trigger
-                              title={`在${group.name}中新建任务`}
-                              aria-label={`在${group.name}中新建任务`}
+                              title={t("navigation.sidebar.newTaskInProject", {
+                                project: group.name,
+                              })}
+                              aria-label={t(
+                                "navigation.sidebar.newTaskInProject",
+                                { project: group.name },
+                              )}
                               tabIndex={expanded && projectsOpen ? 0 : -1}
                               onClick={() =>
                                 setProjectTaskMenuPath((path) =>
@@ -1702,8 +1709,11 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                           <button
                             type="button"
                             className="sidebar-recent-project-task-add"
-                            title="项目操作"
-                            aria-label={`${group.name}项目操作`}
+                            title={t("navigation.sidebar.projectActions")}
+                            aria-label={t(
+                              "navigation.sidebar.projectActionsFor",
+                              { project: group.name },
+                            )}
                             onClick={(event) => {
                               const rect =
                                 event.currentTarget.getBoundingClientRect();
@@ -1739,7 +1749,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                                 }}
                               >
                                 <Plus size={14} />
-                                新建任务
+                                {t("navigation.newTask")}
                               </button>
                             </div>
                           ) : null}
@@ -1789,8 +1799,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               <button
                 type="button"
                 className="sidebar-recent-new-task"
-                title="新建任务"
-                aria-label="新建任务"
+                title={t("navigation.newTask")}
+                aria-label={t("navigation.newTask")}
                 aria-haspopup="menu"
                 aria-expanded={taskMenuOpen}
                 onClick={() => {
@@ -1816,7 +1826,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                   }}
                 >
                   <Plus size={15} />
-                  新建任务
+                  {t("navigation.newTask")}
                 </button>
               </div>
             ) : null}

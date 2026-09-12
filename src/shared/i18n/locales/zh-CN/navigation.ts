@@ -30,6 +30,18 @@ export default {
     preparingWorkspace: "正在准备工作区…",
     agentProcessing: "{{name}} 正在处理",
   },
+  sidebar: {
+    unnamedTask: "未命名任务",
+    projectUnavailable: "项目已不可用",
+    collaboration: "协作",
+    newProject: "新建项目",
+    newEmptyFolder: "新建空白文件夹",
+    useExistingFolder: "使用现有文件夹",
+    projectsEmpty: "选择项目文件夹后，相关任务会显示在这里。",
+    newTaskInProject: "在{{project}}中新建任务",
+    projectActions: "项目操作",
+    projectActionsFor: "{{project}}项目操作",
+  },
   profile: {
     webAgent: "网页智能体",
     local: "本地",

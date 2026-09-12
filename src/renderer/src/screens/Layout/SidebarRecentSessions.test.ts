@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { setLocale, t } from "../../../../shared/i18n";
 import { groupSessionsByWorkspace } from "./SidebarRecentSessions";
 
 describe("sidebar project grouping", () => {
@@ -41,5 +42,19 @@ describe("sidebar project grouping", () => {
         ]),
       }),
     ]);
+  });
+});
+
+describe("sidebar i18n", () => {
+  it("renders project and task controls in English", () => {
+    setLocale("en");
+    expect(t("navigation.sidebar.newProject")).toBe("New project");
+    expect(
+      t("navigation.sidebar.newTaskInProject", "en", { project: "alpha" }),
+    ).toBe("New task in alpha");
+    expect(
+      t("navigation.sidebar.projectActionsFor", "en", { project: "alpha" }),
+    ).toBe("Project actions for alpha");
+    setLocale("zh-CN");
   });
 });
