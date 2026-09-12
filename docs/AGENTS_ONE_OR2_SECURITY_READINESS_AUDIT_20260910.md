@@ -35,7 +35,8 @@ Windows 的 `device.json` 只保存公开元数据和受保护设备 Token 包�
 ## 4. 验证证据
 
 - `npm test`：210/210 测试文件通过，2,057 passed、9 skipped、0 failed，共 2,066 项。
-- `node --test plugins/agents-one-connector/test/connector.test.mjs`：8/8 通过；Windows 本机默认 DPAPI 路径真实执行。
+- `npm --prefix plugins/agents-one-connector run test`：Connector 契约回归通过；在 Windows CI 使用注入式保护器验证受保护包装与失败边界，避免 GitHub 非交互服务账户的 DPAPI profile 初始化阻塞污染传输回归。
+- `npm --prefix plugins/agents-one-connector run test:dpapi`：仅在真实交互 Windows 用户会话执行当前用户 DPAPI 加密/解密回环；该命令是发布前 Windows 手工验收项。生产调用保留 60 秒有界冷启动超时，且无论失败均不输出子进程错误或秘密。
 - `eslint --no-cache --quiet src tests plugins services`：0 errors。
 - `npm run typecheck`：Node/Web 均通过。
 - `npm run build`：main、preload、renderer 生产构建通过。

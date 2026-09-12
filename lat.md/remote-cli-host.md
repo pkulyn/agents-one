@@ -45,6 +45,14 @@ The desktop persists the primary and additional claimed Runtime descriptors sepa
 
 Tests cover the ACP boundary, event separation, metadata, Artifacts, and two-Runtime routing.
 
+Connector contract tests inject a deterministic Windows credential protector on
+Windows CI, so the non-interactive runner profile cannot make the transport
+suite flaky. The real current-user DPAPI round trip is a separate explicit
+interactive-Windows acceptance command: `npm --prefix
+plugins/agents-one-connector run test:dpapi`. The production protector remains
+bounded by `DPAPI_TIMEOUT_MS` (60 seconds) to tolerate a cold user-profile
+initialization without waiting indefinitely or exposing child-process output.
+
 Production rollout still requires real OpenCode versions, provider login, Windows/Linux, reconnect, and Connect E2E gates from the unified Runtime PRD.
 
 ## First-phase rollout gate
