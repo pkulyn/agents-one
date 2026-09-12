@@ -58,6 +58,15 @@ export default {
     currentUserRequest: "Current user request:\n{{prompt}}",
     taskFailed: "Task request failed.",
   },
+  events: {
+    noDetail: "The Runtime did not provide details.",
+    cancelled: "Task cancelled",
+    traceUnavailable: "Reasoning trace unavailable",
+    toolsWithoutReasoning:
+      "The agent Runtime reported tool calls for this turn but did not provide a displayable reasoning summary.",
+    lifecycleOnly:
+      "The agent Runtime returned only lifecycle events and a final response, without a displayable reasoning summary or tool-call events.",
+  },
   close: "Close",
   cancel: "Cancel",
   model: {
