@@ -31,6 +31,7 @@ import setup_en from "./locales/en/setup";
 import skills_en from "./locales/en/skills";
 import soul_en from "./locales/en/soul";
 import tools_en from "./locales/en/tools";
+import tray_en from "./locales/en/tray";
 import welcome_en from "./locales/en/welcome";
 import agents_zh from "./locales/zh-CN/agents";
 import chat_zh from "./locales/zh-CN/chat";
@@ -53,6 +54,7 @@ import setup_zh from "./locales/zh-CN/setup";
 import skills_zh from "./locales/zh-CN/skills";
 import soul_zh from "./locales/zh-CN/soul";
 import tools_zh from "./locales/zh-CN/tools";
+import tray_zh from "./locales/zh-CN/tray";
 import welcome_zh from "./locales/zh-CN/welcome";
 
 export const resources = {
@@ -81,6 +83,7 @@ export const resources = {
       skills: skills_en,
       soul: soul_en,
       tools: tools_en,
+      tray: tray_en,
       welcome: welcome_en,
     },
   },
@@ -107,6 +110,7 @@ export const resources = {
       skills: skills_zh,
       soul: soul_zh,
       tools: tools_zh,
+      tray: tray_zh,
       welcome: welcome_zh,
     },
   },

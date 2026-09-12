@@ -1,7 +1,20 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrayCompletionData } from "../../../../shared/tray-completion";
+import { t as translate } from "../../../../shared/i18n";
 import agentsOneMark from "../../assets/agents-one-mark.svg";
+
+const i18nTestState = vi.hoisted(() => ({
+  locale: "zh-CN" as "en" | "zh-CN",
+}));
+
+vi.mock("../../components/useI18n", () => ({
+  useI18n: () => ({
+    t: (key: string, options?: Record<string, unknown>) =>
+      translate(key, i18nTestState.locale, options),
+  }),
+}));
+
 import TrayCompletionToast from "./TrayCompletionToast";
 
 const notification: TrayCompletionData = {
@@ -32,10 +45,25 @@ describe("TrayCompletionToast", () => {
   }
 
   beforeEach(() => {
+    i18nTestState.locale = "zh-CN";
     vi.useFakeTimers();
     closeTrayCompletion.mockReset();
     openTrayCompletion.mockReset();
     installApi();
+  });
+
+  it("renders an English completion card while preserving task data", async () => {
+    i18nTestState.locale = "en";
+    const card = await renderToast();
+
+    expect(card).toHaveAccessibleName(
+      "Open completed a task: 整理本周项目进展",
+    );
+    expect(screen.getByText(/is complete\. View the result\./)).toBeVisible();
+    expect(screen.getByText("Just now")).toBeVisible();
+    expect(
+      screen.getByRole("img", { name: "Hermes agent avatar" }),
+    ).toHaveAttribute("src", notification.runtimeAvatar);
   });
 
   afterEach(() => {

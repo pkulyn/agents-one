@@ -1,6 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrayMenuData } from "../../../../shared/tray-menu";
+import { t as translate } from "../../../../shared/i18n";
+
+const i18nTestState = vi.hoisted(() => ({
+  locale: "zh-CN" as "en" | "zh-CN",
+}));
+
+vi.mock("../../components/useI18n", () => ({
+  useI18n: () => ({
+    t: (key: string, options?: Record<string, unknown>) =>
+      translate(key, i18nTestState.locale, options),
+  }),
+}));
+
 import TrayMenu from "./TrayMenu";
 
 const data: TrayMenuData = {
@@ -35,6 +48,7 @@ describe("TrayMenu", () => {
   const resizeTrayMenu = vi.fn();
 
   beforeEach(() => {
+    i18nTestState.locale = "zh-CN";
     sendTrayMenuAction.mockReset();
     resizeTrayMenu.mockReset();
     Object.defineProperty(window, "agentsOneAPI", {
@@ -46,6 +60,16 @@ describe("TrayMenu", () => {
         resizeTrayMenu,
       },
     });
+  });
+
+  it("renders menu controls in English without changing task titles", async () => {
+    i18nTestState.locale = "en";
+    render(<TrayMenu />);
+
+    expect(await screen.findByText("Recent tasks")).toBeVisible();
+    expect(screen.getByText("请帮我清理项目文件夹下的垃圾文件")).toBeVisible();
+    expect(screen.getByRole("button", { name: "More" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "New task" })).toBeVisible();
   });
 
   it("renders project names in a dedicated right-side column", async () => {

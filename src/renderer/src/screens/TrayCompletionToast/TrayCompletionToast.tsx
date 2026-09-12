@@ -5,10 +5,16 @@ import type {
   TrayCompletionData,
   TrayCompletionStatus,
 } from "../../../../shared/tray-completion";
+import { useI18n } from "../../components/useI18n";
 
 const AUTO_DISMISS_MS = 3_000;
 
-function statusCopy(data: TrayCompletionData): {
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+function statusCopy(
+  data: TrayCompletionData,
+  t: Translate,
+): {
   label: string;
   summary: string;
   hint: string;
@@ -16,35 +22,41 @@ function statusCopy(data: TrayCompletionData): {
   switch (data.status) {
     case "scheduled_started":
       return {
-        label: "定时任务已启动",
-        summary: `“${data.title}”已触发，正在执行。`,
-        hint: "点击打开任务 · 3 秒后收起",
+        label: t("tray.completion.scheduledStarted"),
+        summary: t("tray.completion.scheduledSummary", { title: data.title }),
+        hint: t("tray.completion.openHint"),
       };
     case "failed":
       return {
-        label: "执行失败",
-        summary: `“${data.title}”失败：${data.detail || "执行时发生错误。"}`,
-        hint: "点击查看详情 · 3 秒后收起",
+        label: t("tray.completion.failed"),
+        summary: t("tray.completion.failedSummary", {
+          title: data.title,
+          detail: data.detail || t("tray.completion.failedFallback"),
+        }),
+        hint: t("tray.completion.detailsHint"),
       };
     case "cancelled":
       return {
-        label: "任务已取消",
-        summary: `“${data.title}”执行已停止。`,
-        hint: "点击打开任务 · 3 秒后收起",
+        label: t("tray.completion.cancelled"),
+        summary: t("tray.completion.cancelledSummary", { title: data.title }),
+        hint: t("tray.completion.openHint"),
       };
     case "timed_out":
       return {
-        label: "执行超时",
+        label: t("tray.completion.timedOut"),
         summary: data.detail
-          ? `“${data.title}”：${data.detail}`
-          : `“${data.title}”已超过时间限制。`,
-        hint: "点击查看详情 · 3 秒后收起",
+          ? t("tray.completion.timedOutDetail", {
+              title: data.title,
+              detail: data.detail,
+            })
+          : t("tray.completion.timedOutSummary", { title: data.title }),
+        hint: t("tray.completion.detailsHint"),
       };
     default:
       return {
-        label: "完成了任务",
-        summary: `“${data.title}”已完成，可以查看结果了。`,
-        hint: "点击打开任务 · 3 秒后收起",
+        label: t("tray.completion.succeeded"),
+        summary: t("tray.completion.succeededSummary", { title: data.title }),
+        hint: t("tray.completion.openHint"),
       };
   }
 }
@@ -70,6 +82,7 @@ function StatusGlyph({
 
 // @lat: [[main-process#App Lifecycle#Notification-area tray and quick task composer#Task completion toast]]
 export default function TrayCompletionToast(): React.JSX.Element | null {
+  const { t } = useI18n();
   const [data, setData] = useState<TrayCompletionData | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -107,14 +120,17 @@ export default function TrayCompletionToast(): React.JSX.Element | null {
   }, [clearDismissTimer, data, startDismissTimer]);
 
   if (!data) return null;
-  const copy = statusCopy(data);
+  const copy = statusCopy(data, t);
 
   return (
     <div className="tray-completion-shell">
       <button
         type="button"
         className={`tray-completion-card tray-completion-card--${data.status}`}
-        aria-label={`打开${copy.label}：${data.title}`}
+        aria-label={t("tray.completion.openLabel", {
+          label: copy.label,
+          title: data.title,
+        })}
         onClick={() => window.agentsOneAPI.openTrayCompletion()}
         onMouseEnter={clearDismissTimer}
         onMouseLeave={startDismissTimer}
@@ -124,14 +140,16 @@ export default function TrayCompletionToast(): React.JSX.Element | null {
             <img src={agentsOneMark} alt="Agents One" />
             <strong>Agents One</strong>
           </span>
-          <span>刚刚</span>
+          <span>{t("tray.completion.justNow")}</span>
         </span>
         <span className="tray-completion-content">
           <span className="tray-completion-avatar">
             {data.runtimeAvatar ? (
               <img
                 src={data.runtimeAvatar}
-                alt={`${data.runtimeName} 智能体图标`}
+                alt={t("tray.completion.agentAvatar", {
+                  name: data.runtimeName,
+                })}
               />
             ) : (
               <Bot size={24} aria-hidden="true" />
