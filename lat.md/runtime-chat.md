@@ -38,6 +38,12 @@ Local Runtime model limits are resolved against the catalogue that owns the sele
 
 [[src/main/pi-runtime.ts#getPiModelContextWindow]] reads Pi's `models.json` custom-provider definitions and `models-store.json` refreshed provider catalogue without invoking a slow CLI subprocess or exposing stored credentials. [[src/main/ipc/register.ts]] then falls through to an exact Agents One model-library override and the native provider/config discovery path. A provider-reported Run value remains highest priority, and the renderer heuristic is used only when every authoritative source returns no value.
 
+## Quick chat locale boundary
+
+Lightweight conversations use the active application locale for controls, progress fallbacks, and the bounded context protocol passed to a Runtime while preserving provider-authored event summaries verbatim.
+
+[[src/renderer/src/screens/Layout/QuickChatPanel.tsx]] translates both visible controls and platform-authored prompt scaffolding. Persisted untitled conversations from either supported locale remain recognizable, so switching languages does not prevent the first real user message from replacing a legacy `New chat`/`新聊天` title. [[src/renderer/src/screens/Layout/QuickChatPanel.test.tsx]] protects the English surface and English context handoff.
+
 ## Collaboration proposal control turn
 
 An explicit multi-agent request must produce a platform-validated assignment before any implementation role performs workspace work, without making startup depend on a manual configuration dialog or a model completing hidden control syntax.
