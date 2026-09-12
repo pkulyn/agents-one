@@ -38,6 +38,8 @@ Only the known Projects and Task section toggles receive the `sidebar-recent-sec
 
 The Projects and Task headings each expose a trailing **+** create trigger. Project **+** opens the existing folder-choice card; Task **+** opens a matching card with **New task**, reusing Layout's normal fresh-task action. A project row exposes its own **+** for a new task in that project. Re-clicking a trigger or pressing Escape closes the corresponding card without changing project, task, or session data; Escape also clears focus from the exact trigger (including a project-row **+**) so its focus ring does not remain after dismissal.
 
+Project/task creation, collaboration badges, the empty-project hint, archive fallbacks, and accessible project-operation labels resolve through `navigation.sidebar`. Project names and task titles remain user data and are interpolated rather than translated.
+
 ## Row context menu
 
 Each sidebar session row exposes a ChatGPT-style options menu — Pin, Rename, Move to project, Open in File Explorer, Copy conversation ID, Archive, and Delete — opened from a hover-revealed `…` button or by right-clicking the row.

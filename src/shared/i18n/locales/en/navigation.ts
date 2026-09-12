@@ -30,6 +30,19 @@ export default {
     preparingWorkspace: "Preparing workspace…",
     agentProcessing: "{{name}} is working",
   },
+  sidebar: {
+    unnamedTask: "Untitled task",
+    projectUnavailable: "Project is no longer available",
+    collaboration: "Collaboration",
+    newProject: "New project",
+    newEmptyFolder: "New empty folder",
+    useExistingFolder: "Use existing folder",
+    projectsEmpty:
+      "Tasks related to a project appear here after you choose its folder.",
+    newTaskInProject: "New task in {{project}}",
+    projectActions: "Project actions",
+    projectActionsFor: "Project actions for {{project}}",
+  },
   profile: {
     webAgent: "Web Agent",
     local: "Local",
