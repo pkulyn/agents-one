@@ -102,4 +102,55 @@ export default {
     show: "Show web preview",
     hide: "Hide web preview",
   },
+  collaboration: {
+    dashboard: "Collaboration dashboard",
+    dashboardAria: "Agent collaboration dashboard",
+    showDashboard: "Show collaboration dashboard",
+    hideDashboard: "Hide collaboration dashboard",
+    implementationGuidance:
+      "Re-implement based on the acceptance result and publish a complete deliverable with its path, SHA-256, source machine, and change summary.",
+    intervention: "Role intervention",
+    interveneRole: "Intervene: {{role}}",
+    closeIntervention: "Close role intervention",
+    currentStatus: "Current status: {{status}}",
+    status: {
+      running: "Running",
+      paused: "Paused",
+      waiting: "Waiting for input",
+      handedOff: "Handed off",
+      pending: "Pending",
+    },
+    you: "You · {{visibility}}",
+    shared: "Shared",
+    private: "This role only",
+    instructionPlaceholder:
+      "Describe what to correct, available materials, or handling requirements…",
+    instructionLabel: "Instruction for the current role",
+    rolePermission: "Role permission",
+    inheritPermission: "Inherit task permission (current: {{permission}})",
+    fullAccessOption:
+      "Full access (create and edit; deletion requires confirmation)",
+    shareHint:
+      "Share with the collaboration so later roles can read this exchange",
+    currentAgent: "Current agent",
+    reassignRole: "Reassign current role",
+    pauseRole: "Pause this role",
+    saveInstruction: "Save instruction",
+    communicating: "Communicating…",
+    sendToAgent: "Send to this agent",
+    continueTasks: "Continue downstream tasks",
+    briefRequired:
+      "Send and save the initial task brief before the platform can safely resume this role.",
+  },
+  artifactRetry: {
+    label: "Resync remote artifacts",
+    title: "Some remote artifacts are temporarily unavailable",
+    description:
+      "The task has completed. You can resync these artifacts separately without rerunning it.",
+    unnamed: "Unnamed artifact",
+    actionLabel: "Resync artifact {{name}}",
+    syncing: "Syncing…",
+    retry: "Resync",
+  },
+  linkedProject: "Linked project",
 } as const;

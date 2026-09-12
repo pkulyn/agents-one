@@ -360,6 +360,28 @@ describe("RuntimeChat inputs and persistence", () => {
         runId="runtime-english-controls"
         runtime={openCodeRuntime}
         profile="default"
+        runtimeCatalog={{ [openCodeRuntime.id]: openCodeRuntime }}
+        collaboration={{
+          assignments: [
+            {
+              id: "implementation",
+              role: "Implementation",
+              runtimeId: openCodeRuntime.id,
+            },
+          ],
+          execution: {
+            status: "paused",
+            roleRuns: [
+              {
+                assignmentId: "implementation",
+                role: "Implementation",
+                runtimeId: openCodeRuntime.id,
+                status: "paused",
+              },
+            ],
+            updatedAt: Date.now(),
+          },
+        }}
       />,
     );
 
@@ -378,6 +400,18 @@ describe("RuntimeChat inputs and persistence", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Show web preview" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Agent collaboration dashboard"),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Talk to OpenCode (Implementation)",
+      }),
+    );
+    expect(screen.getByLabelText("Role intervention")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Instruction for the current role"),
     ).toBeInTheDocument();
   });
 
