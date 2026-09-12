@@ -4,6 +4,8 @@
 
 > **当前状态（2026-09-12）**：私有暂存仓库 `pkulyn/agents-one` 已建立，默认分支为 `main`。旧固定提交 `0043bf7f1678536dfd2525a0179b3c5ce218f6c1` 的 Windows CI run `34577013104` 与 Windows Alpha Release Gate run `34577793216` 已完成其候选范围的 clean checkout、三轮门禁、NSIS/portable 打包、双启动与 artifact 上传；最新主线 UI/Connector 回归的 CI `34686809637` 在 `295386a` 通过。本机下载校验、首次安装/启动/卸载、portable、Codex/Claude Code/Pi 黄金路径与中文核心 UI/窄窗预检通过；英文可见界面已覆盖管理向导、Runtime Chat、轻量聊天、项目/任务空状态及协作界面，剩余 RuntimeChat 中文为兼容解析和协作协议，须保持双语兼容后另行审计。隔离用户数据回归 76/76 已通过，但完整桌面及独立干净机仍待验收。本机也没有 Hermes/Gateway v1 可执行配置。当前远端无 tag、无 Release；GitHub Free 私有仓库暂不能启用 branch protection 与 Environment required reviewer，发布结论仍为 No-Go。下文 2026-07/08 记录只用于历史追溯；与本段冲突的“当前”“冻结”或命令不得作为现行指令。
 
+> **自动候选更新（2026-09-12）**：`c7c02470433350636ceca10cddc29afdec8bc3c5` 的 [CI #34690255112](https://github.com/pkulyn/agents-one/actions/runs/34690255112) 与 [Windows Alpha Release Gate #34690685224](https://github.com/pkulyn/agents-one/actions/runs/34690685224) 已成功；Release Gate 完成三轮门禁、Windows 包、双启动 smoke、四文件校验清单与候选 artifact 上传，且 `publish_draft=false`。该 SHA 是本次证据文档提交前的成功自动候选，不是 RC tag 或公开发布授权；文档提交后仍须为冻结最终 SHA 重跑 Gate。
+
 本矩阵用于发布前验收。2026-08-06 起独立 Task Center、Project Center 与 Hermes Kanban 页面已退役，2026-08-13 起 Task Center 后台执行器也已退役；任务对话内多智能体协作是唯一交互式协作入口。下方 2026-07 历史验收记录仅用于追溯，不再作为当前界面入口说明。
 
 ## 当前产品回归边界

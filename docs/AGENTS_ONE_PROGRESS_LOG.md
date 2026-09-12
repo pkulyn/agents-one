@@ -10,6 +10,7 @@
 - RuntimeChat 协议审计修正：协作权限/工作区预检原因和工作区标签实际会进入用户可见系统消息，已改为由活动 UI 语言翻译；English 定向断言覆盖只读实施权限和远程只读证据包缺项目两类失败。导出的兼容 helper 仍以中文为默认回退，历史中文角色/事件解析正则与发给 Runtime 的结构化协作协议未被直接替换。RuntimeChat 66/66、Web TypeScript、格式与 diff 检查通过。
 - GitHub Windows CI `34683699418` 暴露 Connector 测试在非交互服务账户下三次真实 DPAPI 调用均阻塞至原 15 秒超时，并非业务断言失败。生产调用超时提高到 60 秒；契约测试在 Windows CI 改用注入式保护器验证加密信封和失败边界，真实 DPAPI 回环移为显式 `npm --prefix plugins/agents-one-connector run test:dpapi` 交互 Windows 验收。当前开发机已实际通过该命令；CI 仍须以本次修复后的提交重新取得绿色证据。
 - GitHub CI `34686809637` 已在 `295386a` 完成并成功，覆盖 Connector DPAPI 稳定化、项目/任务侧栏和 Layout 本地化。该绿色结果是当前主线回归证据，不替代后续固定最终 SHA 的 Windows Alpha Release Gate、草稿 Release 和独立干净机验收。
+- GitHub CI `34690255112` 已在 `c7c02470433350636ceca10cddc29afdec8bc3c5` 完成并成功；同一 SHA 的 Windows Alpha Release Gate `34690685224` 于 2026-09-12 完成 clean checkout、依赖/工作树不变校验、连续三轮完整门禁、NSIS/portable 打包、双启动 smoke、校验清单及候选 artifact 上传。artifact 为 `agents-one-0.1.0-alpha.1-windows-x64-c7c02470433350636ceca10cddc29afdec8bc3c5`，大小 391,264,642 字节，GitHub digest `sha256:633e011ee28628535414a72bc372bae6fcc5e201f4bbac0fc6013eb6f1949316`，保留至 2026-09-26。`publish_draft=false`，未创建 tag 或 Release；该 SHA 是本记录更新前的最新自动候选，后续证据文档提交仍须固定并重跑最终候选 Gate。
 
 ## 2026-09-11：OR-702 本地 CLI 黄金路径与候选刷新
 
