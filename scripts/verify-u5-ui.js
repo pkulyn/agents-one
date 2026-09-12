@@ -102,10 +102,25 @@ async function main() {
   }
 
   try {
+    // The assertions below intentionally exercise the Chinese UI. A fresh
+    // isolated profile otherwise follows the system/default English locale,
+    // which would turn this acceptance check into a locale-dependent false
+    // negative. Persist the chosen test locale through the same public bridge
+    // used by the renderer, then reload so both processes agree on it.
+    const chineseLocaleApplied = await page.evaluate(async () => {
+      const setLocale = window.agentsOneAPI?.setLocale;
+      if (typeof setLocale !== "function") return false;
+      await setLocale("zh-CN");
+      localStorage.setItem("agents-one.locale.v1", "zh-CN");
+      return true;
+    });
+    assert(chineseLocaleApplied, "中文 UI 验收: locale bridge is unavailable");
+
     // A fresh renderer state keeps an interrupted prior CDP run or a hot reload
     // from leaving a dialog's aria-hidden/pointer-event guard behind.
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.locator(".sidebar-nav-pinned").waitFor();
+    await page.locator('html[lang="zh-CN"]').waitFor();
     await page.setViewportSize({ width: 1024, height: 768 });
 
     step("conversation");

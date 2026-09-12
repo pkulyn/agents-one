@@ -67,8 +67,9 @@ When the app uses a non-default CDP port on Windows PowerShell:
 $env:CDP_PORT=19232; npm.cmd run test:u5-ui
 ```
 
-The script checks the Chinese conversation, project, task, schedule, and
-agent-management surfaces at 1024x768 and 768x800. It also asserts that
+The script explicitly switches its isolated test profile to Chinese through
+the public locale bridge, then checks the Chinese conversation, project, task,
+schedule, and agent-management surfaces at 1024x768 and 768x800. It also asserts that
 the task board has no horizontal overflow and writes screenshots to
 `.sandbox/u5-final/automated-ui/`. This is a development UI gate only;
 it does not build an installer or portable package.
