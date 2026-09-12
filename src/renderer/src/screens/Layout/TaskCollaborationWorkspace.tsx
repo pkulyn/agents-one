@@ -13,12 +13,13 @@ import type {
   TaskCollaborationStatus,
 } from "../../../../shared/task-collaboration";
 import type { CollaborationTaskDraft } from "./TaskCollaborationDialog";
+import { useI18n } from "../../components/useI18n";
 
-const ROLES: Array<{ role: TaskCollaborationRole; label: string }> = [
-  { role: "coordinator", label: "协调者" },
-  { role: "implementer", label: "实施" },
-  { role: "tester", label: "测试" },
-  { role: "reviewer", label: "复核" },
+const ROLES: Array<{ role: TaskCollaborationRole; labelKey: string }> = [
+  { role: "coordinator", labelKey: "coordinator" },
+  { role: "implementer", labelKey: "implementer" },
+  { role: "tester", labelKey: "tester" },
+  { role: "reviewer", labelKey: "reviewer" },
 ];
 
 export interface CollaborationWorkspaceState extends CollaborationTaskDraft {
@@ -26,8 +27,11 @@ export interface CollaborationWorkspaceState extends CollaborationTaskDraft {
   status: "draft" | TaskCollaborationStatus;
 }
 
-function projectName(path?: string | null): string {
-  return path?.split(/[\\/]/).filter(Boolean).at(-1) || "未关联项目";
+function projectName(
+  path: string | null | undefined,
+  fallback: string,
+): string {
+  return path?.split(/[\\/]/).filter(Boolean).at(-1) || fallback;
 }
 
 export default function TaskCollaborationWorkspace({
@@ -45,6 +49,7 @@ export default function TaskCollaborationWorkspace({
   onStart: () => void;
   onOpenTask: () => void;
 }): React.JSX.Element {
+  const { t } = useI18n();
   const runtimeNames = new Map(
     runtimes.map((runtime) => [runtime.id, runtime.name]),
   );
@@ -70,12 +75,18 @@ export default function TaskCollaborationWorkspace({
         <header className="task-collaboration-workspace-header">
           <div>
             <span className="task-collaboration-eyebrow">
-              <Users size={15} /> 多智能体协作
+              <Users size={15} /> {t("collaboration.workspace.eyebrow")}
             </span>
             <h2 id="task-collaboration-workspace-title">
-              {state.title || "协作任务"}
+              {state.title || t("collaboration.workspace.taskFallback")}
             </h2>
-            <p>{state.projectName || projectName(state.projectFolder)}</p>
+            <p>
+              {state.projectName ||
+                projectName(
+                  state.projectFolder,
+                  t("collaboration.workspace.noProject"),
+                )}
+            </p>
           </div>
           <div className="task-collaboration-workspace-actions">
             <button
@@ -83,13 +94,13 @@ export default function TaskCollaborationWorkspace({
               className="btn btn-secondary btn-sm"
               onClick={onConfigure}
             >
-              <Settings2 size={15} /> 协作配置
+              <Settings2 size={15} /> {t("collaboration.workspace.configure")}
             </button>
             <button
               type="button"
               className="icon-btn"
-              title="关闭协作看板"
-              aria-label="关闭协作看板"
+              title={t("collaboration.workspace.close")}
+              aria-label={t("collaboration.workspace.close")}
               onClick={onClose}
             >
               <X size={18} />
@@ -100,36 +111,38 @@ export default function TaskCollaborationWorkspace({
         <div className="task-collaboration-workspace-body">
           <section
             className="task-collaboration-roles-board"
-            aria-label="协作角色"
+            aria-label={t("collaboration.workspace.roles")}
           >
             <div className="task-collaboration-section-heading">
-              <h3>协作角色</h3>
+              <h3>{t("collaboration.workspace.roles")}</h3>
               <span>
                 {isDraft
-                  ? "等待创建任务"
+                  ? t("collaboration.workspace.waitingCreate")
                   : isActive
-                    ? "协作进行中"
-                    : "等待启动"}
+                    ? t("collaboration.workspace.active")
+                    : t("collaboration.workspace.waitingStart")}
               </span>
             </div>
             <div className="task-collaboration-role-grid">
-              {ROLES.map(({ role, label }) => {
+              {ROLES.map(({ role, labelKey }) => {
                 const runtimeId = assignments.get(role);
                 const isCoordinator = role === "coordinator";
                 const status = !runtimeId
-                  ? "未指定"
+                  ? t("collaboration.workspace.unassignedStatus")
                   : isDraft
-                    ? "待创建"
+                    ? t("collaboration.workspace.pendingCreate")
                     : isCoordinator
-                      ? "等待任务说明"
-                      : "等待协调者分配";
+                      ? t("collaboration.workspace.waitingBrief")
+                      : t("collaboration.workspace.waitingCoordinator");
                 return (
                   <article key={role}>
-                    <span>{label}</span>
+                    <span>
+                      {t(`collaboration.workspace.roleLabels.${labelKey}`)}
+                    </span>
                     <strong>
                       {runtimeId
                         ? runtimeNames.get(runtimeId) || runtimeId
-                        : "暂不指定"}
+                        : t("collaboration.workspace.leaveUnassigned")}
                     </strong>
                     <small>{status}</small>
                   </article>
@@ -140,15 +153,15 @@ export default function TaskCollaborationWorkspace({
 
           <section
             className="task-collaboration-progress-board"
-            aria-label="协作进展"
+            aria-label={t("collaboration.workspace.progress")}
           >
             <div className="task-collaboration-section-heading">
-              <h3>协作进展</h3>
+              <h3>{t("collaboration.workspace.progress")}</h3>
             </div>
             <ol>
               <li className="done">
                 <CheckCircle2 size={16} />
-                <span>已保存协作分工</span>
+                <span>{t("collaboration.workspace.rolesSaved")}</span>
               </li>
               <li className={isDraft ? "current" : "done"}>
                 {isDraft ? (
@@ -157,16 +170,18 @@ export default function TaskCollaborationWorkspace({
                   <CheckCircle2 size={16} />
                 )}
                 <span>
-                  {isDraft ? "向协调者发送首条任务说明" : "协作已由用户启动"}
+                  {isDraft
+                    ? t("collaboration.workspace.sendFirstBrief")
+                    : t("collaboration.workspace.userStarted")}
                 </span>
               </li>
               <li className={isActive ? "current" : ""}>
                 <CircleDotDashed size={16} />
-                <span>协调者拆解任务并由你确认派发</span>
+                <span>{t("collaboration.workspace.coordinatorPlans")}</span>
               </li>
               <li>
                 <CircleDotDashed size={16} />
-                <span>实施、测试、复核按需执行与验收</span>
+                <span>{t("collaboration.workspace.executionFlow")}</span>
               </li>
             </ol>
           </section>
@@ -175,13 +190,13 @@ export default function TaskCollaborationWorkspace({
         <footer className="task-collaboration-workspace-footer">
           <p>
             {isDraft
-              ? "首条任务消息会建立可恢复的协作任务；配置和项目文件夹已保留。"
-              : "协作由主智能体在任务对话中自动推进；这里仅用于查看状态或人工调整。"}
+              ? t("collaboration.workspace.draftHint")
+              : t("collaboration.workspace.activeHint")}
           </p>
           <div>
             {!isDraft && !isActive ? (
               <button type="button" className="primary-btn" onClick={onStart}>
-                <Play size={16} /> 开始协作
+                <Play size={16} /> {t("collaboration.workspace.start")}
               </button>
             ) : null}
             <button
@@ -189,7 +204,9 @@ export default function TaskCollaborationWorkspace({
               className="btn btn-secondary"
               onClick={onOpenTask}
             >
-              {isDraft ? "打开协调者任务对话" : "打开任务对话"}
+              {isDraft
+                ? t("collaboration.workspace.openCoordinatorTask")
+                : t("collaboration.workspace.openTask")}
             </button>
           </div>
         </footer>
