@@ -10,6 +10,7 @@ import {
 import type { AppLocale } from "./types";
 import agents_en from "./locales/en/agents";
 import chat_en from "./locales/en/chat";
+import collaboration_en from "./locales/en/collaboration";
 import common_en from "./locales/en/common";
 import constants_en from "./locales/en/constants";
 import diagnose_en from "./locales/en/diagnose";
@@ -32,6 +33,7 @@ import tools_en from "./locales/en/tools";
 import welcome_en from "./locales/en/welcome";
 import agents_zh from "./locales/zh-CN/agents";
 import chat_zh from "./locales/zh-CN/chat";
+import collaboration_zh from "./locales/zh-CN/collaboration";
 import common_zh from "./locales/zh-CN/common";
 import constants_zh from "./locales/zh-CN/constants";
 import errors_zh from "./locales/zh-CN/errors";
@@ -56,6 +58,7 @@ export const resources = {
     translation: {
       agents: agents_en,
       chat: chat_en,
+      collaboration: collaboration_en,
       common: common_en,
       constants: constants_en,
       diagnose: diagnose_en,
@@ -82,6 +85,7 @@ export const resources = {
     translation: {
       agents: agents_zh,
       chat: chat_zh,
+      collaboration: collaboration_zh,
       common: common_zh,
       constants: constants_zh,
       errors: errors_zh,

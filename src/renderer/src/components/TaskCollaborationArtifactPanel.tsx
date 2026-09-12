@@ -8,11 +8,15 @@ import {
   FlaskConical,
 } from "lucide-react";
 import type { TaskCollaborationExecution } from "../../../shared/task-collaboration";
+import { useI18n } from "./useI18n";
 
 const KIND_META = {
-  file: { label: "文件", Icon: FileText },
-  code_diff: { label: "代码变更", Icon: FileCode2 },
-  test_result: { label: "测试结果", Icon: FlaskConical },
+  file: { labelKey: "collaboration.kind.file", Icon: FileText },
+  code_diff: { labelKey: "collaboration.kind.code_diff", Icon: FileCode2 },
+  test_result: {
+    labelKey: "collaboration.kind.test_result",
+    Icon: FlaskConical,
+  },
 } as const;
 
 export function TaskCollaborationArtifactPanel({
@@ -28,6 +32,7 @@ export function TaskCollaborationArtifactPanel({
   onReassignAcceptance?: (runtimeId: string) => void;
   acceptanceRuntimeOptions?: Array<{ id: string; name: string }>;
 }): React.JSX.Element | null {
+  const { t } = useI18n();
   const artifacts = execution?.artifacts || [];
   const deliveries = artifacts.filter(
     (artifact) => artifact.kind !== "test_result",
@@ -49,20 +54,23 @@ export function TaskCollaborationArtifactPanel({
   if (!artifacts.length && !acceptance) return null;
   const acceptanceLabel =
     acceptance?.status === "passed"
-      ? "验收通过"
+      ? t("collaboration.acceptance.passed")
       : acceptance?.status === "failed"
-        ? "验收不通过"
-        : "需人工复核";
+        ? t("collaboration.acceptance.failed")
+        : t("collaboration.acceptance.manual_review");
   return (
     <details className="task-collaboration-artifact-panel">
       <summary>
         <span>
-          <FileText size={15} /> 产物与验收
+          <FileText size={15} /> {t("collaboration.artifactsTitle")}
         </span>
         <small>
           {deliveries.length
-            ? `${deliveries.length} 项交付 · ${verification.length} 项验证`
-            : "尚无真实交付"}
+            ? t("collaboration.deliverySummary", {
+                deliveries: deliveries.length,
+                verification: verification.length,
+              })
+            : t("collaboration.noDeliveries")}
         </small>
         {acceptance ? (
           <b className={`task-collaboration-acceptance ${acceptance.status}`}>
@@ -78,20 +86,27 @@ export function TaskCollaborationArtifactPanel({
       </summary>
       <div className="task-collaboration-artifact-list">
         {artifacts.map((artifact, index) => {
-          const { Icon, label } = KIND_META[artifact.kind];
+          const { Icon, labelKey } = KIND_META[artifact.kind];
           return (
             <article key={artifact.id}>
               <Icon size={15} />
               <div>
                 <strong>
-                  产物 #{index + 1} · {label}
+                  {t("collaboration.artifact", {
+                    number: index + 1,
+                    kind: t(labelKey),
+                  })}
                 </strong>
                 <span>
                   {artifact.role} · {artifact.label}
                 </span>
                 {artifact.path ? <code>{artifact.path}</code> : null}
                 {artifact.sourceMachine ? (
-                  <small>来源：{artifact.sourceMachine}</small>
+                  <small>
+                    {t("collaboration.source", {
+                      source: artifact.sourceMachine,
+                    })}
+                  </small>
                 ) : null}
                 {artifact.sha256 ? (
                   <small>SHA-256：{artifact.sha256}</small>
@@ -113,23 +128,26 @@ export function TaskCollaborationArtifactPanel({
           <p>{acceptance.conclusion}</p>
           {acceptance.reviewedArtifactIds.length ? (
             <small>
-              依据：
-              {acceptance.reviewedArtifactIds
-                .map(
-                  (id) =>
-                    `#${artifacts.findIndex((item) => item.id === id) + 1}`,
-                )
-                .join("、")}
+              {t("collaboration.evidence", {
+                ids: acceptance.reviewedArtifactIds
+                  .map(
+                    (id) =>
+                      `#${artifacts.findIndex((item) => item.id === id) + 1}`,
+                  )
+                  .join(", "),
+              })}
             </small>
           ) : null}
           {acceptance.status !== "passed" ? (
             <div className="task-collaboration-recovery-actions">
               <button type="button" onClick={onReassignImplementation}>
-                重派实施
+                {t("collaboration.reassignImplementation")}
               </button>
               {acceptanceRuntimeOptions.length ? (
                 <label>
-                  <span className="sr-only">改派验收智能体</span>
+                  <span className="sr-only">
+                    {t("collaboration.reassignAcceptanceAgent")}
+                  </span>
                   <select
                     value={acceptanceRuntimeId}
                     onChange={(event) =>
@@ -149,12 +167,12 @@ export function TaskCollaborationArtifactPanel({
                       onReassignAcceptance?.(acceptanceRuntimeId)
                     }
                   >
-                    改派验收
+                    {t("collaboration.reassignAcceptance")}
                   </button>
                 </label>
               ) : null}
               <button type="button" onClick={onIntervene}>
-                介入并继续
+                {t("collaboration.interveneAndContinue")}
               </button>
             </div>
           ) : null}

@@ -11,6 +11,7 @@ import type {
   TaskCollaborationExecution,
   TaskCollaborationTimelineEvent,
 } from "../../../shared/task-collaboration";
+import { useI18n } from "./useI18n";
 
 const ICONS = {
   preflight: ShieldCheck,
@@ -24,6 +25,7 @@ const ICONS = {
 
 function derivedTimeline(
   execution: TaskCollaborationExecution,
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): TaskCollaborationTimelineEvent[] {
   const events = [...(execution.timeline || [])];
   if (events.length) return events;
@@ -32,7 +34,7 @@ function derivedTimeline(
       events.push({
         id: `${run.assignmentId}:started`,
         type: "started",
-        label: `${run.role} 已启动`,
+        label: t("collaboration.timeline.started", { role: run.role }),
         assignmentId: run.assignmentId,
         createdAt: run.startedAt,
       });
@@ -42,8 +44,8 @@ function derivedTimeline(
         type: run.status === "succeeded" ? "handoff" : "blocked",
         label:
           run.status === "succeeded"
-            ? `${run.role} 已交接`
-            : `${run.role} 等待处理`,
+            ? t("collaboration.timeline.handedOff", { role: run.role })
+            : t("collaboration.timeline.waiting", { role: run.role }),
         assignmentId: run.assignmentId,
         detail: run.error,
         createdAt: run.completedAt,
@@ -53,7 +55,9 @@ function derivedTimeline(
     events.push({
       id: `${artifact.id}:artifact`,
       type: "artifact",
-      label: `${artifact.role} 发布证据`,
+      label: t("collaboration.timeline.evidencePublished", {
+        role: artifact.role,
+      }),
       assignmentId: artifact.assignmentId,
       artifactId: artifact.id,
       detail: artifact.label,
@@ -64,7 +68,9 @@ function derivedTimeline(
       id: "acceptance",
       type: "acceptance",
       label:
-        execution.acceptance.status === "passed" ? "终验通过" : "终验待处理",
+        execution.acceptance.status === "passed"
+          ? t("collaboration.timeline.acceptancePassed")
+          : t("collaboration.timeline.acceptancePending"),
       assignmentId: execution.acceptance.assignmentId,
       detail: execution.acceptance.conclusion,
       createdAt: execution.acceptance.createdAt,
@@ -77,8 +83,9 @@ export function TaskCollaborationTimeline({
 }: {
   execution?: TaskCollaborationExecution;
 }): React.JSX.Element | null {
+  const { t } = useI18n();
   if (!execution) return null;
-  const events = derivedTimeline(execution)
+  const events = derivedTimeline(execution, t)
     .sort((a, b) => a.createdAt - b.createdAt)
     .slice(-80);
   if (!events.length) return null;
@@ -86,9 +93,9 @@ export function TaskCollaborationTimeline({
     <details className="task-collaboration-timeline-panel">
       <summary>
         <span>
-          <ListIcon /> 协作时间线
+          <ListIcon /> {t("collaboration.timelineTitle")}
         </span>
-        <small>{events.length} 项事件</small>
+        <small>{t("collaboration.eventCount", { count: events.length })}</small>
         <ChevronDown size={14} />
       </summary>
       <ol>

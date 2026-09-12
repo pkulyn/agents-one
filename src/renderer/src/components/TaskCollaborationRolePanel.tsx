@@ -5,6 +5,7 @@ import type {
   TaskCollaborationExecution,
   TaskCollaborationRoleRunStatus,
 } from "../../../shared/task-collaboration";
+import { useI18n } from "./useI18n";
 
 function agentFor(
   runtimes: Record<string, AgentRuntimeDefinition>,
@@ -27,22 +28,23 @@ export function TaskCollaborationRolePanel({
     assignmentId: string,
   ) => void;
 }): React.JSX.Element | null {
+  const { t } = useI18n();
   const configured = assignments.filter((assignment) => assignment.runtimeId);
   if (!configured.length) return null;
   const runByAssignmentId = new Map(
     (execution?.roleRuns ?? []).map((run) => [run.assignmentId, run]),
   );
   const statusLabel: Record<TaskCollaborationRoleRunStatus, string> = {
-    pending: "待执行",
-    running: "执行中",
-    succeeded: "已交接",
-    failed: "失败",
-    blocked: "已阻塞",
-    waiting_for_user: "等待人工处理",
-    paused: "已暂停",
-    retrying: "重试中",
-    needs_review: "需要复核",
-    cancelled: "已取消",
+    pending: t("collaboration.status.pending"),
+    running: t("collaboration.status.running"),
+    succeeded: t("collaboration.status.succeeded"),
+    failed: t("collaboration.status.failed"),
+    blocked: t("collaboration.status.blocked"),
+    waiting_for_user: t("collaboration.status.waiting_for_user"),
+    paused: t("collaboration.status.paused"),
+    retrying: t("collaboration.status.retrying"),
+    needs_review: t("collaboration.status.needs_review"),
+    cancelled: t("collaboration.status.cancelled"),
   };
   const statusClass: Record<TaskCollaborationRoleRunStatus, string> = {
     pending: "pending",
@@ -60,12 +62,12 @@ export function TaskCollaborationRolePanel({
     <details className="task-collaboration-inline-panel">
       <summary>
         <span>
-          <Users size={15} /> 协作分工
+          <Users size={15} /> {t("collaboration.title")}
         </span>
         <small>
           {execution?.status === "running"
-            ? "平台正在按角色交接"
-            : `${configured.length} 个角色`}
+            ? t("collaboration.handingOff")
+            : t("collaboration.roleCount", { count: configured.length })}
         </small>
         <ChevronDown size={14} />
       </summary>
@@ -93,8 +95,15 @@ export function TaskCollaborationRolePanel({
                     runtime?.color ? { background: runtime.color } : undefined
                   }
                   onClick={() => onIntervene(assignment, key)}
-                  aria-label={`与 ${runtime?.name || assignment.runtimeId || assignment.role}（${assignment.role}）沟通`}
-                  title={`与 ${runtime?.name || assignment.runtimeId || assignment.role} 沟通`}
+                  aria-label={t("collaboration.communicateWithRole", {
+                    agent:
+                      runtime?.name || assignment.runtimeId || assignment.role,
+                    role: assignment.role,
+                  })}
+                  title={t("collaboration.communicateWith", {
+                    agent:
+                      runtime?.name || assignment.runtimeId || assignment.role,
+                  })}
                 >
                   {avatar}
                 </button>
@@ -128,7 +137,7 @@ export function TaskCollaborationRolePanel({
                   className="task-collaboration-role-intervene"
                   onClick={() => onIntervene(assignment, key)}
                 >
-                  介入
+                  {t("collaboration.intervene")}
                 </button>
               ) : null}
               {assignment.context ? <em>{assignment.context}</em> : null}

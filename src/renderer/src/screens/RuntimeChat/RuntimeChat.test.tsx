@@ -2,10 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Attachment } from "../../../../shared/attachments";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
+import { t as translate } from "../../../../shared/i18n";
 
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({
-    t: (key: string) => {
+    t: (key: string, options?: Record<string, unknown>) => {
       const labels: Record<string, string> = {
         "chat.emptyTitle": "今天我可以帮你做什么？",
         "chat.emptyHint": "你可以让我写代码、回答问题、搜索网页等",
@@ -21,7 +22,7 @@ vi.mock("../../components/useI18n", () => ({
         "chat.worktree.emptyFolder": "文件夹为空",
         "chat.worktree.errorLoading": "无法读取文件夹",
       };
-      return labels[key] ?? key;
+      return labels[key] ?? translate(key, "zh-CN", options);
     },
   }),
 }));
