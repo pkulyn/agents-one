@@ -59,15 +59,26 @@ export const ContextGauge = memo(function ContextGauge({
       ? Math.min(100, Math.round((cacheReadTokens / used) * 100))
       : 0;
   const interactive = typeof onClick === "function";
-  const label = `${t("chat.contextUsed", { pct, left })}，窗口 ${fmtTokens(ctxWindow)}`;
+  const label = t("chat.contextGauge.label", {
+    usage: t("chat.contextUsed", { pct, left }),
+    window: fmtTokens(ctxWindow),
+  });
+  const title = t("chat.contextGauge.title", {
+    window: fmtTokens(ctxWindow),
+    used: fmtTokens(used),
+  });
 
   return (
     <div
       className={`chat-ctx-gauge${interactive ? " chat-ctx-gauge--interactive" : ""}`}
       tabIndex={0}
       role={interactive ? "button" : "img"}
-      aria-label={interactive ? `${label}；压缩当前会话上下文` : label}
-      title={`${`上下文窗口 ${fmtTokens(ctxWindow)}，已使用 ${fmtTokens(used)}`}${interactive ? "；点击压缩当前会话" : ""}`}
+      aria-label={
+        interactive ? t("chat.contextGauge.compactLabel", { label }) : label
+      }
+      title={
+        interactive ? t("chat.contextGauge.compactHint", { title }) : title
+      }
       {...(interactive
         ? {
             onClick,

@@ -816,12 +816,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 title={
                   attachmentsEnabled
                     ? t("chat.attach")
-                    : "该智能体暂不支持文件输入"
+                    : t("chat.attachUnsupportedByRuntime")
                 }
                 aria-label={
                   attachmentsEnabled
                     ? t("chat.attach")
-                    : "该智能体暂不支持文件输入"
+                    : t("chat.attachUnsupportedByRuntime")
                 }
                 type="button"
               >

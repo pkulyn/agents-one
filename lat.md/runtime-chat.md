@@ -44,6 +44,12 @@ Lightweight conversations use the active application locale for controls, progre
 
 [[src/renderer/src/screens/Layout/QuickChatPanel.tsx]] translates both visible controls and platform-authored prompt scaffolding. Persisted untitled conversations from either supported locale remain recognizable, so switching languages does not prevent the first real user message from replacing a legacy `New chat`/`新聊天` title. [[src/renderer/src/screens/Layout/QuickChatPanel.test.tsx]] protects the English surface and English context handoff.
 
+## Localized chat entry points
+
+The main conversation's empty-state actions and compact context controls use the active locale for both visible labels and platform-authored prompts.
+
+[[src/renderer/src/screens/Chat/ChatEmptyState.tsx]] forwards the localized suggestion prompt selected by the user rather than a fixed source-language string. [[src/renderer/src/screens/Chat/ContextGauge.tsx]] and [[src/renderer/src/screens/Chat/ChatInput.tsx]] also localize accessible context and attachment-capability descriptions without changing their actions or Runtime contracts.
+
 ## Collaboration proposal control turn
 
 An explicit multi-agent request must produce a platform-validated assignment before any implementation role performs workspace work, without making startup depend on a manual configuration dialog or a model completing hidden control syntax.

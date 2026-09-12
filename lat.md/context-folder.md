@@ -20,6 +20,8 @@ The context folder picker displays recently used project folders first, allowing
 
 [[src/renderer/src/screens/Chat/ContextFolderChip.tsx#ContextFolderChip]] presents a dropdown menu populated by [[src/main/session-context-folder-store.ts#getRecentSessionContextFolders]] via the `list-recent-session-context-folders` IPC channel, combining distinct database folder bindings with cached session paths.
 
+The dropdown's recent/empty/open-folder labels follow the application locale; stored workspace names and paths remain unchanged user data.
+
 ## Resizable tree panel
 
 The context-folder tree panel uses a compact header and can be resized from its left edge, mirroring the in-app browser panel.
