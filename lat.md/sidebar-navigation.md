@@ -40,6 +40,8 @@ The Projects and Task headings each expose a trailing **+** create trigger. Proj
 
 Project/task creation, collaboration badges, the empty-project hint, archive fallbacks, and accessible project-operation labels resolve through `navigation.sidebar`. Project names and task titles remain user data and are interpolated rather than translated.
 
+Layout-owned scheduled-task notices, project-folder picker labels, quick-chat-to-task notices, and collaboration setup failures resolve through `collaboration.shell`. Runtime names, schedule names, project names, and provider-authored errors remain user or provider data.
+
 ## Row context menu
 
 Each sidebar session row exposes a ChatGPT-style options menu — Pin, Rename, Move to project, Open in File Explorer, Copy conversation ID, Archive, and Delete — opened from a hover-revealed `…` button or by right-clicking the row.
