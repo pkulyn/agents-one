@@ -1,14 +1,26 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "./types";
+import { t as translate } from "../../../../shared/i18n";
+
+const i18nTestState = vi.hoisted(() => ({
+  locale: "zh-CN" as "en" | "zh-CN",
+}));
 
 vi.mock("../../components/useI18n", () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({
+    t: (key: string, options?: Record<string, unknown>) =>
+      translate(key, i18nTestState.locale, options),
+  }),
 }));
 
 import { MessageList } from "./MessageList";
 
 describe("MessageList runtime identity and activity markers", () => {
+  beforeEach(() => {
+    i18nTestState.locale = "zh-CN";
+  });
+
   it("keeps the configured avatar on thought rows without a separate platform activity logo", () => {
     const avatar = "data:image/png;base64,YXZhdGFy";
     const messages: ChatMessage[] = [
@@ -207,11 +219,43 @@ describe("MessageList runtime identity and activity markers", () => {
     expect(
       screen.getByLabelText("从这条答复创建新对话分支"),
     ).toBeInTheDocument();
-    expect(screen.getAllByLabelText("chat.copyMessage")).toHaveLength(1);
+    expect(screen.getAllByLabelText("复制消息")).toHaveLength(1);
     fireEvent.click(screen.getByLabelText("从这条答复创建新对话分支"));
     expect(onBranchFromMessage).toHaveBeenCalledWith("reply");
     expect(
       screen.queryByText("2026年8月27日（星期四）09:06"),
     ).not.toBeInTheDocument();
+  });
+
+  it("localizes message metadata in English", () => {
+    i18nTestState.locale = "en";
+    render(
+      <MessageList
+        messages={[
+          {
+            id: "english-reply",
+            kind: "assistant",
+            role: "agent",
+            content: "Done.",
+            timestamp: new Date(2026, 7, 27, 9, 5).getTime(),
+            runtimeMeta: { durationMs: 56_000 },
+          },
+        ]}
+        isLoading={false}
+        toolProgress={null}
+        onApprove={vi.fn()}
+        onDeny={vi.fn()}
+        onClarifyResolved={vi.fn()}
+        onBranchFromMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("8/27/2026 (Thursday) 09:05")).toBeVisible();
+    expect(screen.getByText("· 56 sec")).toBeVisible();
+    expect(
+      screen.getByLabelText(
+        "Create a new conversation branch from this response",
+      ),
+    ).toBeVisible();
   });
 });

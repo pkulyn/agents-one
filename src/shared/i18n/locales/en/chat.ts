@@ -166,6 +166,66 @@ export default {
   queuedAttachment: "{{count}} attachment(s)",
   queuedCancel: "Remove from queue",
   copyMessage: "Copy message",
+  message: {
+    weekdays: {
+      0: "Sunday",
+      1: "Monday",
+      2: "Tuesday",
+      3: "Wednesday",
+      4: "Thursday",
+      5: "Friday",
+      6: "Saturday",
+    },
+    timestamp: "{{month}}/{{day}}/{{year}} ({{weekday}}) {{hour}}:{{minute}}",
+    durationHours: "{{hours}} hr {{minutes}} min",
+    durationMinutes: "{{minutes}} min {{seconds}} sec",
+    durationSeconds: "{{seconds}} sec",
+    talkToAgent: "Talk to {{name}}",
+    branch: "Create a new conversation branch from this response",
+    elapsed: "· {{duration}}",
+  },
+  permissions: {
+    manage: "Manage permissions for this task",
+    readOnlyTitle:
+      "Hermes Agent Runtime currently uses read-only project context",
+    readOnly: "Read only",
+    readOnlyDescription: "Can read uploads and project snapshots",
+    fullAccess: "Full access",
+    gatewayRequired: "Available after migration to Gateway v1",
+  },
+  projectWorkspace: "Project workspace",
+  attachmentLimitProject:
+    "This message has reached the attachment limit. Remove a file before sharing the project folder.",
+  workspaceUnauthorized:
+    "The selected project folder was not authorized by the main process.",
+  workspaceReadFailed: "Could not read the selected project folder.",
+  workspaceUnavailable:
+    "The selected project folder is unavailable or no longer authorized.",
+  showWebPreview: "Show web preview",
+  hideWebPreview: "Hide web preview",
+  voiceErrors: {
+    transcription: "Voice transcription failed. Try again later.",
+    unsupported: "Real-time voice input is not supported in this environment.",
+    notConfigured:
+      "Voice input is not configured. Complete the service setup under Voice input in Settings.",
+    audioSend: "Could not send real-time voice audio.",
+    start:
+      "Could not start real-time voice input. Check the microphone and service connection.",
+    stop: "Could not stop real-time voice input.",
+  },
+  webPreview: {
+    resize: "Drag to resize",
+    back: "Back",
+    forward: "Forward",
+    reload: "Reload",
+    inspect: "Inspect element",
+    addressPlaceholder: "Search or enter web address...",
+    openExternal: "Open in system browser",
+    close: "Close",
+    loadError: "Page failed to load (error code {{code}}).",
+    loadErrorTitle: "Web preview failed to load",
+    retry: "Retry",
+  },
   worktree: {
     loading: "Loading",
     empty: "Folder is empty",

@@ -50,6 +50,8 @@ The main conversation's empty-state actions and compact context controls use the
 
 [[src/renderer/src/screens/Chat/ChatEmptyState.tsx]] forwards the localized suggestion prompt selected by the user rather than a fixed source-language string. [[src/renderer/src/screens/Chat/ContextGauge.tsx]] and [[src/renderer/src/screens/Chat/ChatInput.tsx]] also localize accessible context and attachment-capability descriptions without changing their actions or Runtime contracts.
 
+[[src/renderer/src/screens/Chat/MessageRow.tsx]] formats timestamps, elapsed time, avatar dialogue actions, and branch controls in the active locale. Provider-authored message content and errors remain unchanged.
+
 ## Collaboration proposal control turn
 
 An explicit multi-agent request must produce a platform-validated assignment before any implementation role performs workspace work, without making startup depend on a manual configuration dialog or a model completing hidden control syntax.

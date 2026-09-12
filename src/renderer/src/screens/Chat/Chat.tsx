@@ -251,7 +251,7 @@ function Chat({
     const persist = contextWorkspaceId
       ? window.agentsOneAPI.setSessionContextWorkspace(hermesSessionId, {
           workspaceId: contextWorkspaceId,
-          name: contextFolder || "项目工作区",
+          name: contextFolder || t("chat.projectWorkspace"),
         })
       : window.agentsOneAPI.setSessionContextFolder(
           hermesSessionId,
@@ -266,7 +266,7 @@ function Chat({
       .catch(() => {
         /* best-effort sidebar refresh signal */
       });
-  }, [hermesSessionId, contextFolder, contextWorkspaceId]);
+  }, [hermesSessionId, contextFolder, contextWorkspaceId, t]);
   // Whether the worktree panel is visible (only applies when contextFolder is set)
   // Default false so the panel doesn't open automatically and interfere with scrolling
   const [worktreeVisible, setWorktreeVisible] = useState<boolean>(false);
@@ -883,7 +883,7 @@ function Chat({
         sharedProjectContextRef.current !== projectContextKey
       ) {
         if (attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
-          toast.error("本次附件已达上限，请移除一个文件后再共享项目文件夹。");
+          toast.error(t("chat.attachmentLimitProject"));
           return;
         }
         outgoingAttachments = [...attachments, projectContextAttachment];
@@ -919,6 +919,7 @@ function Chat({
       isLoading,
       projectContextAttachment,
       remoteMode,
+      t,
     ],
   );
 
@@ -980,7 +981,7 @@ function Chat({
       const registered =
         await window.agentsOneAPI.registerProjectWorkspace(path);
       if (!registered) {
-        toast.error("所选项目文件夹未获得主进程授权。");
+        toast.error(t("chat.workspaceUnauthorized"));
         return;
       }
       if (remoteMode) {
@@ -989,12 +990,14 @@ function Chat({
             await window.agentsOneAPI.prepareProjectWorkspaceContext(
               registered.id,
             );
-          if (!attachment) throw new Error("无法读取所选文件夹");
+          if (!attachment) throw new Error(t("chat.workspaceReadFailed"));
           setProjectContextAttachment(attachment);
           sharedProjectContextRef.current = null;
         } catch (error) {
           toast.error(
-            error instanceof Error ? error.message : "无法读取所选项目文件夹。",
+            error instanceof Error
+              ? error.message
+              : t("chat.workspaceReadFailed"),
           );
           return;
         }
@@ -1005,7 +1008,7 @@ function Chat({
       setContextFolder(registered.name);
       setContextWorkspaceId(registered.id);
     },
-    [remoteMode],
+    [remoteMode, t],
   );
 
   const handlePickFolder = useCallback(async () => {
@@ -1057,7 +1060,7 @@ function Chat({
             workspace.workspaceId,
           );
         if (!attachment) {
-          toast.error("所选项目文件夹已不可用或未获授权。");
+          toast.error(t("chat.workspaceUnavailable"));
           return;
         }
         setProjectContextAttachment(attachment);
@@ -1068,7 +1071,7 @@ function Chat({
       setContextFolder(workspace.name);
       setContextWorkspaceId(workspace.workspaceId);
     },
-    [remoteMode],
+    [remoteMode, t],
   );
 
   const handleToggleWorktree = useCallback(() => {
@@ -1276,12 +1279,14 @@ function Chat({
                       className="runtime-permission-trigger"
                       aria-haspopup="menu"
                       aria-expanded={permissionMenuOpen}
-                      aria-label="管理本轮任务权限"
-                      title="Hermes Agent Runtime 当前使用只读项目上下文"
+                      aria-label={t("chat.permissions.manage")}
+                      title={t("chat.permissions.readOnlyTitle")}
                       onClick={() => setPermissionMenuOpen((open) => !open)}
                     >
                       <ShieldCheck size={14} />
-                      <span className="runtime-permission-label">只读</span>
+                      <span className="runtime-permission-label">
+                        {t("chat.permissions.readOnly")}
+                      </span>
                       <ChevronDown size={13} />
                     </button>
                     {permissionMenuOpen ? (
@@ -1292,18 +1297,20 @@ function Chat({
                           aria-checked
                           onClick={() => setPermissionMenuOpen(false)}
                         >
-                          <strong>只读</strong>
-                          <small>可读取上传内容和项目快照</small>
+                          <strong>{t("chat.permissions.readOnly")}</strong>
+                          <small>
+                            {t("chat.permissions.readOnlyDescription")}
+                          </small>
                         </button>
                         <button
                           type="button"
                           role="menuitemradio"
                           aria-checked={false}
                           disabled
-                          title="Hermes Agent Runtime 迁移到 Gateway v1 后开放"
+                          title={t("chat.permissions.gatewayRequired")}
                         >
-                          <strong>完全访问</strong>
-                          <small>迁移到 Gateway v1 后开放</small>
+                          <strong>{t("chat.permissions.fullAccess")}</strong>
+                          <small>{t("chat.permissions.gatewayRequired")}</small>
                         </button>
                       </span>
                     ) : null}
@@ -1322,7 +1329,11 @@ function Chat({
                     type="button"
                     className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}
                     onClick={() => setWebPreviewVisible((visible) => !visible)}
-                    title={webPreviewVisible ? "隐藏网页预览" : "显示网页预览"}
+                    title={
+                      webPreviewVisible
+                        ? t("chat.hideWebPreview")
+                        : t("chat.showWebPreview")
+                    }
                   >
                     <Globe size={14} />
                   </button>
