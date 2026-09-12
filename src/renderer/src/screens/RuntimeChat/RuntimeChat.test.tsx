@@ -1077,8 +1077,10 @@ describe("RuntimeChat inputs and persistence", () => {
   });
 
   it("localizes collaboration preflight failures for English Runtime chats", () => {
-    const translateEnglish = (key: string, options?: Record<string, unknown>) =>
-      translate(key, "en", options);
+    const translateEnglish = (
+      key: string,
+      options?: Record<string, unknown>,
+    ): string => translate(key, "en", options);
     const implementation = {
       id: "implement",
       role: "Implementation",
