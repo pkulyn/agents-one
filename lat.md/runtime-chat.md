@@ -102,6 +102,8 @@ Live DAG rendering is also wave-shaped rather than singular. [[src/renderer/src/
 
 [[src/renderer/src/screens/Layout/TaskCollaborationDialog.tsx]] exposes multi-select predecessor roles and rejects invalid graphs before dispatch. Proposal JSON may also carry stable `id` and `dependsOn` fields. Removing a role removes its id from remaining predecessor lists.
 
+New dialog defaults for role, responsibility, and shared context are created in the active application locale. Existing draft assignments remain authoritative and are copied without translation or rewriting when the dialog opens.
+
 [[src/renderer/src/screens/Layout/TaskCollaborationWorkspace.tsx]] presents the saved assignment and startup progress in the active locale while preserving Runtime names, project names, role assignments, and collaboration state as stored data.
 
 [[src/shared/task-collaboration-proposals.ts#anchorTaskCollaborationCoordinator]] anchors project-lead, planning/orchestration and acceptance assignments to the Runtime that owns the conversation. A proposal can still select other Runtimes for implementation and independent review, but it cannot silently replace the user's addressed lead with another agent. If the lead owns an explicit terminal acceptance node, that node is the final review and no duplicate synthetic lead pass is appended.
