@@ -28,12 +28,7 @@ const RUNTIME_LABELS: Record<string, string> = {
   pi: "Pi Agent CLI",
   opencode: "OpenCode",
   openclaw: "OpenClaw",
-  "web-agent": "网页智能体",
 };
-
-function locationLabel(location: "local" | "remote"): string {
-  return location === "local" ? "本地" : "远程";
-}
 
 /**
  * Sidebar footer control: shows the active profile and, on click, opens a
@@ -108,6 +103,19 @@ export default function ProfileSwitcher({
     runtimes.find((runtime) => runtime.enabled) ??
     runtimes[0];
   const label = defaultRuntime?.name || t("common.appName");
+  const runtimeMeta = (runtime: AgentRuntimeDefinition): string =>
+    t("navigation.profile.runtimeMeta", {
+      kind:
+        RUNTIME_LABELS[runtime.kind] ||
+        (runtime.kind === "web-agent"
+          ? t("navigation.profile.webAgent")
+          : runtime.kind),
+      location: t(
+        runtime.location === "local"
+          ? "navigation.profile.local"
+          : "navigation.profile.remote",
+      ),
+    });
 
   function handleDefaultRuntime(runtime: AgentRuntimeDefinition): void {
     setOpen(false);
@@ -155,19 +163,23 @@ export default function ProfileSwitcher({
             <span className="profile-menu-info">
               <span className="profile-menu-name">
                 {label}
-                <span className="profile-menu-tag">默认智能体</span>
+                <span className="profile-menu-tag">
+                  {t("navigation.profile.defaultAgent")}
+                </span>
               </span>
               <span className="profile-menu-meta">
                 {defaultRuntime
-                  ? `${RUNTIME_LABELS[defaultRuntime.kind]} / ${locationLabel(defaultRuntime.location)}`
-                  : "请先接入智能体"}
+                  ? runtimeMeta(defaultRuntime)
+                  : t("navigation.profile.connectAgent")}
               </span>
             </span>
           </div>
           {runtimes.length > 0 && (
             <>
               <div className="profile-menu-divider" />
-              <div className="profile-menu-section-label">选择默认智能体</div>
+              <div className="profile-menu-section-label">
+                {t("navigation.profile.selectDefault")}
+              </div>
               <div className="profile-menu-list">
                 {runtimes.map((runtime) => {
                   const selected = runtime.id === defaultRuntime?.id;
@@ -185,12 +197,13 @@ export default function ProfileSwitcher({
                         <span className="profile-menu-name">
                           {runtime.name}
                           {selected && (
-                            <span className="profile-menu-tag">默认</span>
+                            <span className="profile-menu-tag">
+                              {t("navigation.profile.default")}
+                            </span>
                           )}
                         </span>
                         <span className="profile-menu-meta">
-                          {RUNTIME_LABELS[runtime.kind]} /{" "}
-                          {locationLabel(runtime.location)}
+                          {runtimeMeta(runtime)}
                         </span>
                       </span>
                       {selected && (
@@ -219,7 +232,7 @@ export default function ProfileSwitcher({
       <button
         className={`profile-switcher-trigger ${open ? "open" : ""}`}
         onClick={() => setOpen((o) => !o)}
-        title={`默认智能体：${label}`}
+        title={t("navigation.profile.defaultAgentTitle", { name: label })}
         aria-haspopup="menu"
         aria-expanded={open}
       >

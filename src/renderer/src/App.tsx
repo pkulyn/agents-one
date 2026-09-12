@@ -7,6 +7,7 @@ import { SettingsModalProvider } from "./components/settings/SettingsModalProvid
 import ErrorBoundary from "./components/ErrorBoundary";
 import Layout from "./screens/Layout/Layout";
 import SplashScreen from "./screens/SplashScreen/SplashScreen";
+import { t as translate } from "../../shared/i18n";
 
 type Screen = "splash" | "main";
 
@@ -26,7 +27,7 @@ function App(): React.JSX.Element {
     const startedAt = Date.now();
 
     try {
-      setSplashStatus("正在准备工作区…");
+      setSplashStatus(translate("navigation.shell.preparingWorkspace"));
       await window.agentsOneAPI.getConnectionConfig();
     } catch (err) {
       // Agents One is a Runtime aggregator. A transient connection/config
