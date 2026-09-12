@@ -101,4 +101,4 @@ portable 使用专用 `userData` 真实启动通过，停止后关联进程和�
 
 ## 当前阻断
 
-目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立；当前开发机已完成远端制品校验、首次安装/启动/卸载、portable 启动、Codex/Claude Code/Pi 黄金路径及中文核心 UI/窄窗预检。定时任务与智能体总览已完成中英文 1024×768/768×800 自动和截图验收，但智能体管理/接入向导、Runtime Chat、轻量聊天、项目/任务空状态与协作界面仍有硬编码中文。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。本机也没有 Hermes/Gateway v1 可执行配置；独立干净 Windows 的用户数据、完整桌面、覆盖升级与旧版回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。
+目标私有暂存仓库、默认 `main`、固定 SHA clean checkout、Windows CI/Release Gate 与候选 artifact 已建立；当前开发机已完成远端制品校验、首次安装/启动/卸载、portable 启动、Codex/Claude Code/Pi 黄金路径及中文核心 UI/窄窗预检。定时任务、智能体总览、管理向导、Runtime Chat、轻量聊天、项目/任务空状态和协作界面的可见中英文路径已收口；RuntimeChat 剩余中文为历史兼容解析和协作协议，须在双语协议审计中处理。隔离底层用户数据回归 76/76 已通过。当前 GitHub Free 私有仓库不支持 `main` branch protection 和 Environment required reviewer，Private Vulnerability Reporting 也须在转公开后启用；因此尚不执行 `publish_draft=true`。本机也没有 Hermes/Gateway v1 可执行配置；独立干净 Windows 的完整用户数据/桌面、覆盖升级与旧版回滚人工回放仍未完成。本清单保持 No-Go，不创建 OR-706 RC tag，也不公开 Release。
