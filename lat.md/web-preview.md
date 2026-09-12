@@ -4,6 +4,8 @@ The chat screen can open a split-screen [[src/renderer/src/screens/Chat/WebPrevi
 
 It auto-opens when an in-app link is clicked or a web tool reports a URL, via the `web-preview:navigate` `CustomEvent` that [[src/renderer/src/screens/Chat/Chat.tsx]] listens for. Inspect mode injects a hover/click overlay into the page and feeds the picked element's pretty-printed HTML back into the chat input.
 
+Browser controls, address guidance, and load-error fallbacks follow the active application locale; URLs and Chromium-provided error descriptions remain unchanged.
+
 The panel's width is free-resizable: a drag handle on its left edge sets a `width` clamped between `MIN_PANEL_WIDTH` and `window.innerWidth - 360`, persisted to `localStorage` under `hermes:webPreviewWidth`. During a drag the webview's `pointer-events` are disabled so it doesn't swallow the move stream.
 
 ## Webview identification and HTTPS policy

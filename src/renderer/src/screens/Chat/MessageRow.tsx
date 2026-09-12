@@ -56,27 +56,40 @@ function isValidEpochMs(ms: number): boolean {
   );
 }
 
-/** A stable, full Chinese timestamp shown in each actual conversation bubble. */
-function formatBubbleTime(ms: number): string {
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+/** A stable, localized timestamp shown in each actual conversation bubble. */
+function formatBubbleTime(ms: number, t: Translate): string {
   try {
     const value = new Date(ms);
-    const weekday = ["日", "一", "二", "三", "四", "五", "六"][value.getDay()];
+    const weekday = t(`chat.message.weekdays.${value.getDay()}`);
     const hour = String(value.getHours()).padStart(2, "0");
     const minute = String(value.getMinutes()).padStart(2, "0");
-    return `${value.getFullYear()}年${value.getMonth() + 1}月${value.getDate()}日（星期${weekday}）${hour}:${minute}`;
+    return t("chat.message.timestamp", {
+      year: value.getFullYear(),
+      month: value.getMonth() + 1,
+      day: value.getDate(),
+      weekday,
+      hour,
+      minute,
+    });
   } catch {
     return "";
   }
 }
 
-function formatRuntimeDuration(durationMs: number): string {
+function formatRuntimeDuration(durationMs: number, t: Translate): string {
   const seconds = Math.max(0, Math.round(durationMs / 1000));
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const remainder = seconds % 60;
-  if (hours) return `${hours} 小时 ${minutes} 分`;
-  if (minutes) return `${minutes} 分 ${remainder} 秒`;
-  return `${remainder} 秒`;
+  if (hours) return t("chat.message.durationHours", { hours, minutes });
+  if (minutes)
+    return t("chat.message.durationMinutes", {
+      minutes,
+      seconds: remainder,
+    });
+  return t("chat.message.durationSeconds", { seconds: remainder });
 }
 
 function isChatBubbleMessage(msg: ChatMessage): msg is ChatBubbleMessage {
@@ -104,6 +117,7 @@ export const HermesAvatar = memo(function HermesAvatar({
   avatar?: string | null;
   onClick?: () => void;
 }): React.JSX.Element {
+  const { t } = useI18n();
   const className = `chat-avatar chat-avatar-agent chat-avatar-agent--identity${
     onClick ? " chat-avatar-agent--interactive" : ""
   }`;
@@ -117,7 +131,7 @@ export const HermesAvatar = memo(function HermesAvatar({
       style={{ width: size, height: size }}
       data-active={active || undefined}
       onClick={onClick}
-      aria-label={`与 ${name} 沟通`}
+      aria-label={t("chat.message.talkToAgent", { name })}
     >
       {content}
     </button>
@@ -272,7 +286,7 @@ export const MessageRow = memo(function MessageRow({
   const hasAttachments = !!msg.attachments && msg.attachments.length > 0;
   const epochMs = coerceToEpochMs(msg.timestamp);
   const isTimeValid = isValidEpochMs(epochMs);
-  const bubbleTime = isTimeValid ? formatBubbleTime(epochMs) : "";
+  const bubbleTime = isTimeValid ? formatBubbleTime(epochMs, t) : "";
   const showMessageChrome =
     !msg.isControlMessage && !isLoading && !msg.isSlashLoader;
   const canBranch =
@@ -354,8 +368,8 @@ export const MessageRow = memo(function MessageRow({
             type="button"
             className="chat-bubble-footer-action"
             onClick={() => onBranchFromMessage?.(msg.id)}
-            title="从这条答复创建新对话分支"
-            aria-label="从这条答复创建新对话分支"
+            title={t("chat.message.branch")}
+            aria-label={t("chat.message.branch")}
           >
             <GitBranch size={15} />
           </button>
@@ -371,7 +385,9 @@ export const MessageRow = memo(function MessageRow({
         ) : null}
         {msg.role === "agent" && msg.runtimeMeta?.durationMs !== undefined ? (
           <span className="chat-bubble-footer-duration">
-            · 用时 {formatRuntimeDuration(msg.runtimeMeta.durationMs)}
+            {t("chat.message.elapsed", {
+              duration: formatRuntimeDuration(msg.runtimeMeta.durationMs, t),
+            })}
           </span>
         ) : null}
         {msg.role === "user" && displayBubbleContent ? (

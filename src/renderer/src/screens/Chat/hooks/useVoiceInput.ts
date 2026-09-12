@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "../../../components/useI18n";
 
 const STREAM_SAMPLE_RATE = 16_000;
 
@@ -59,6 +60,7 @@ export function useVoiceInput(
   profile?: string,
 ): UseVoiceInput {
   // @lat: [[voice-input#Shared composer behavior]]
+  const { t } = useI18n();
   const [recording, setRecording] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [transcribing, setTranscribing] = useState(false);
@@ -125,7 +127,7 @@ export function useVoiceInput(
         stopCapture();
         setRecording(false);
         setTranscribing(false);
-        setError(event.message || "语音转写失败，请稍后重试。");
+        setError(event.message || t("chat.voiceErrors.transcription"));
         return;
       }
 
@@ -136,11 +138,11 @@ export function useVoiceInput(
       setTranscribing(false);
       publishTranscript(true);
     });
-  }, [publishTranscript, stopCapture]);
+  }, [publishTranscript, stopCapture, t]);
 
   const start = useCallback(async (): Promise<void> => {
     if (!supported) {
-      setError("当前环境不支持实时语音输入。");
+      setError(t("chat.voiceErrors.unsupported"));
       return;
     }
     if (startingRef.current) return;
@@ -152,9 +154,7 @@ export function useVoiceInput(
       const voiceConfig =
         await window.agentsOneAPI.getVoiceInputConfig(profile);
       if (!voiceConfig.enabled || !voiceConfig.configured) {
-        throw new Error(
-          "语音输入尚未配置，请在设置中的“语音输入”完成服务接入。",
-        );
+        throw new Error(t("chat.voiceErrors.notConfigured"));
       }
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -208,7 +208,7 @@ export function useVoiceInput(
           .catch((cause: Error) => {
             captureAuditRef.current.sendFailures += 1;
             if (!disposedRef.current) {
-              setError(cause.message || "实时语音音频发送失败。");
+              setError(cause.message || t("chat.voiceErrors.audioSend"));
             }
           });
       };
@@ -232,15 +232,12 @@ export function useVoiceInput(
       if (!disposedRef.current) {
         setRecording(false);
         setTranscribing(false);
-        setError(
-          (cause as Error).message ||
-            "无法启动实时语音输入，请检查麦克风和服务连接。",
-        );
+        setError((cause as Error).message || t("chat.voiceErrors.start"));
       }
     } finally {
       startingRef.current = false;
     }
-  }, [captureAudit, profile, stopCapture, supported]);
+  }, [captureAudit, profile, stopCapture, supported, t]);
 
   const stop = useCallback((): void => {
     const sessionId = sessionIdRef.current;
@@ -255,10 +252,10 @@ export function useVoiceInput(
         if (!disposedRef.current) {
           sessionIdRef.current = null;
           setTranscribing(false);
-          setError(cause.message || "无法结束实时语音输入。");
+          setError(cause.message || t("chat.voiceErrors.stop"));
         }
       });
-  }, [captureAudit, stopCapture]);
+  }, [captureAudit, stopCapture, t]);
 
   const toggle = useCallback((): void => {
     if (recording) {

@@ -8,6 +8,8 @@ The shared composer owns the microphone UI, so both native Hermes chat and every
 
 [[src/renderer/src/screens/Chat/ChatInput.tsx#ChatInput]] places the microphone directly to the right of the web-preview globe in the composer toolbar; click it or press `Ctrl+M` to start and stop. It snapshots the existing draft when recording starts. [[src/renderer/src/screens/Chat/hooks/useVoiceInput.ts#useVoiceInput]] converts microphone samples to 16kHz PCM and sends them continuously while Osaka ASR v1.4 returns only punctuated sentence-level final text after a natural pause. It appends each whole sentence to the draft, exposes an elapsed timer with no upper bound, and never auto-submits transcript text. Failures leave draft text and attachments intact.
 
+Provider error details are shown verbatim when present; platform-authored unsupported, configuration, start, transport, transcription, and stop fallbacks follow the active application locale.
+
 ## Main-process service routing
 
 The main process owns the transcription endpoint and optional Bearer credential so remote page code cannot read them.
