@@ -5,6 +5,59 @@ export default {
     note: "Metadata only. Agents One does not load or execute these Skills in the main process.",
     empty: "No displayable Skills were found.",
   },
+  proposal: {
+    aria: "Agent collaboration suggestion",
+    title: "Multi-agent collaboration suggested",
+    adjust: "Adjust collaboration plan",
+  },
+  commands: {
+    new: "Start a new Runtime conversation",
+    clear: "Clear and start a new Runtime conversation",
+    branch: "Create a read-only analysis branch from this conversation",
+    branchHint: "Optional branch name",
+    skills: "View the source and trust information for discovered Skills",
+  },
+  progress: {
+    preparing: "Thinking and preparing to execute…",
+    agentPreparing: "{{agent}} is thinking and preparing to execute…",
+  },
+  feedback: {
+    newConversation: "New conversation",
+    branchRequiresMessage:
+      "Send and save at least one conversation message before creating a branch.",
+    branchFromReply:
+      "Continue from the selected reply; retain only user-visible messages and execution summaries.",
+    branchFromConversation:
+      "Continue from this conversation; retain only user-visible messages and execution summaries.",
+    branchFailed: "Could not create the conversation branch.",
+    commandBusy:
+      "The previous Runtime command is still running. Do not submit it again.",
+    commandRequired: "Enter a complete slash command.",
+    skillsLoadFailed:
+      "Could not read local Skill metadata. No Skill was executed.",
+    compactPending:
+      "A context compaction request is already awaiting confirmation.",
+    attachmentsRejected:
+      "/{{command}} does not accept attachments. Your input was preserved.",
+    commandApiUnavailable:
+      "This app version does not provide the Runtime command control interface.",
+    commandFailed: "The Runtime command failed.",
+    emptyPrompt: "The Runtime command returned an empty prompt template.",
+    commandNeedsInput: "This Runtime command needs further confirmation.",
+    commandComplete: "Runtime command completed.",
+    queuedFollowUp:
+      "This Runtime does not support mid-run steering. The message will be sent as a follow-up after the current run finishes.",
+    steeringUnavailable:
+      "This Runtime did not declare mid-run steering support. The message was preserved without being sent or interrupting the task.",
+    readOnlyBranch:
+      "This is a read-only analysis branch. Writing requires a separate implementation branch with its own worktree. The message was not sent.",
+    fullAccessRequiresProject:
+      "Select a project folder before using full access.",
+    collaborationSaveFailed:
+      "Could not save the collaboration plan. Try again later.",
+    currentUserRequest: "Current user request:\n{{prompt}}",
+    taskFailed: "Task request failed.",
+  },
   close: "Close",
   cancel: "Cancel",
   model: {
