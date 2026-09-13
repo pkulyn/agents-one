@@ -36,11 +36,11 @@ vi.mock("./utils", async () => {
     ...actual,
     profilePaths: vi.fn((profile?: string) => ({
       home: "/fake/home/.hermes",
-      // Use a real checkout file so the config-existence gate stays true
-      // even when another test imports config-health before this fs mock is
-      // installed in the worker.
-      envFile: `${process.cwd()}/package.json`,
-      configFile: `${process.cwd()}/package.json`,
+      // The fs mock below deliberately treats these standard profile paths as
+      // existing, so config-health exercises its configured-gateway branch
+      // without depending on the checkout layout.
+      envFile: "/fake/home/.hermes/.env",
+      configFile: "/fake/home/.hermes/config.yaml",
       profile: profile || "default",
     })),
   };
