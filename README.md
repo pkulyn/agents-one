@@ -92,7 +92,7 @@ Create a project folder from the sidebar. New conversations can attach to it; th
 
 ### Data locations
 
-- Desktop state uses Electron's `userData` directory (normally `%APPDATA%\Agents One` on Windows). Set `AGENTS_ONE_USER_DATA_DIR` before launch only when you intentionally need an isolated location.
+- Desktop state uses Electron's `userData` directory (normally `%APPDATA%\Agents One` on Windows). Windows portable builds use `%LOCALAPPDATA%\agents-one-portable` by default so they do not share installed-build data or its single-instance lock. Set `AGENTS_ONE_USER_DATA_DIR` before launch only when you intentionally need a different isolated location.
 - User-selected project folders and local CLI runtime homes remain outside desktop state. The bundled Hermes runtime normally uses `%LOCALAPPDATA%\hermes` on Windows or `~/.hermes` elsewhere, unless `HERMES_HOME` or an in-app override selects another existing installation.
 - Agents One Connector stores its separate device state under `%APPDATA%\agents-one\connector` on Windows or `${XDG_CONFIG_HOME:-~/.config}/agents-one/connector` elsewhere.
 - Backups are created only at a location the user selects. See the boundaries below before moving or sharing one.
