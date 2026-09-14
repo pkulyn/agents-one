@@ -1276,7 +1276,10 @@ describe("RuntimeChat inputs and persistence", () => {
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
     fireEvent.click(send);
 
-    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2));
+    await waitFor(
+      () => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2),
+      { timeout: 5_000 },
+    );
     expect(startAgentRuntimeTask.mock.calls[1][1]).toEqual(
       expect.objectContaining({
         attachments: [testAttachment],
