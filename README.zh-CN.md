@@ -92,7 +92,7 @@ Agents One 是一款桌面应用，把**本地 CLI 智能体**（Pi、Codex、Cl
 
 ### 数据路径
 
-- 桌面状态位于 Electron `userData` 目录（Windows 通常为 `%APPDATA%\Agents One`）。仅在确实需要隔离目录时，才应在启动前设置 `AGENTS_ONE_USER_DATA_DIR`。
+- 桌面状态位于 Electron `userData` 目录（Windows 通常为 `%APPDATA%\Agents One`）。Windows portable 默认使用 `%LOCALAPPDATA%\agents-one-portable`，不与安装版共享数据或单实例锁；仅在确实需要另一隔离目录时，才应在启动前设置 `AGENTS_ONE_USER_DATA_DIR`。
 - 用户选择的项目目录和本地 CLI Runtime 数据不放入桌面状态。内置 Hermes Runtime 在 Windows 通常使用 `%LOCALAPPDATA%\hermes`，其他系统通常使用 `~/.hermes`；`HERMES_HOME` 或应用内已有安装覆盖项可指定其他位置。
 - Agents One Connector 的独立设备状态位于 Windows `%APPDATA%\agents-one\connector`，其他系统位于 `${XDG_CONFIG_HOME:-~/.config}/agents-one/connector`。
 - 备份只写入用户主动选择的位置；移动或分享前请先阅读下方凭据边界。
