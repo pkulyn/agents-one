@@ -23,6 +23,22 @@ export default defineConfig({
       ),
     },
     build: {
+      // electron-builder can omit JavaScript-only external packages from
+      // app.asar when its production-dependency collector sees a package's
+      // manifest but not its published output directory. Bundle the main
+      // process packages instead; keep better-sqlite3 external because it
+      // loads a native .node binary that is unpacked separately below.
+      externalizeDeps: {
+        exclude: [
+          "@anthropic-ai/claude-agent-sdk",
+          "@electron-toolkit/utils",
+          "electron-updater",
+          "i18next",
+          "tar",
+          "ws",
+          "yaml",
+        ],
+      },
       rollupOptions: {
         external: ["better-sqlite3"],
       },
