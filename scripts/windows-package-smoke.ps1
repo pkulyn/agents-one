@@ -76,12 +76,33 @@ function Invoke-StartupSmoke {
     $launcher = Start-Process -FilePath $Target -ArgumentList "--user-data-dir=$userData" -PassThru -WindowStyle Hidden
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $startupEvidence = $false
+    $rendererStarted = $false
     do {
       if (
         (Test-Path -LiteralPath $userData -PathType Container) -and
         (Get-ChildItem -LiteralPath $userData -Force | Select-Object -First 1)
       ) {
         $startupEvidence = $true
+      }
+      # Writing a Preferences file only proves that Electron created its
+      # profile. A main-process import failure can still leave a resident
+      # browser process with no BrowserWindow, tray, or renderer. Require a
+      # renderer process tied to this exact isolated invocation as well.
+      try {
+        $rendererStarted = $null -ne (
+          Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object {
+              $_.Name -like "agents-one*.exe" -and
+              $_.CommandLine -and
+              $_.CommandLine.IndexOf($userData, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+              $_.CommandLine -match "(?:^|\s)--type=renderer(?:\s|$)"
+            } |
+            Select-Object -First 1
+        )
+      } catch {
+        Write-Warning "Could not inspect renderer startup state: $($_.Exception.Message)"
+      }
+      if ($startupEvidence -and $rendererStarted) {
         break
       }
       $launcher.Refresh()
@@ -101,6 +122,9 @@ function Invoke-StartupSmoke {
     } while ([DateTime]::UtcNow -lt $deadline)
     if (-not $startupEvidence) {
       throw "$Label did not write startup data to the isolated userData path within $TimeoutSeconds seconds"
+    }
+    if (-not $rendererStarted) {
+      throw "$Label did not start a renderer process for the isolated userData path within $TimeoutSeconds seconds"
     }
     Write-Host "$Label startup passed for Agents One $ExpectedVersion (launcher PID $($launcher.Id))."
   } finally {
