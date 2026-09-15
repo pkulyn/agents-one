@@ -12,6 +12,9 @@ files:
   # this rule electron-builder can produce an Electron shell containing only
   # `default_app.asar`, which silently runs stale or empty application code.
   - out/**
+  # The main bundle resolves the notification-area image from this directory.
+  # Keep it explicit: `asarUnpack` only affects files already selected here.
+  - resources/**
   # Git ignores do not constrain electron-builder. Explicitly exclude every
   # machine-local recovery, sandbox and cache surface so a package can never
   # absorb test credentials, browser state or dependency backups.
