@@ -43,7 +43,9 @@ The desktop persists the primary and additional claimed Runtime descriptors sepa
 
 ## Verification
 
-Tests cover the ACP boundary, event separation, metadata, Artifacts, and two-Runtime routing.
+Tests cover the ACP boundary, event separation, metadata, Artifacts, multi-Runtime routing, and consecutive requests across the Connector tunnel.
+
+The Connector end-to-end case consumes a complete SSE snapshot and immediately creates another Run. This proves the prior request is removed from tunnel routing state and cannot poison the next request.
 
 Connector contract tests inject a deterministic Windows credential protector on
 Windows CI, so the non-interactive runner profile cannot make the transport
