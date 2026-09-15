@@ -98,7 +98,7 @@ Agents One 是一款桌面应用，把**本地 CLI 智能体**（Pi、Codex、Cl
 - 备份只写入用户主动选择的位置；移动或分享前请先阅读下方凭据边界。
 
 - **凭据存储有明确边界。** 桌面端录入的 Remote Gateway Token 会在安全后端可用后从 `.env` 幂等迁移到 Electron 的操作系统级保护；Windows Connector 的设备 Token 与私钥使用当前用户 DPAPI，其他平台的 Connector 文件使用仅当前用户可访问的权限。Provider/API 凭据仍可能来自 `.env`、进程环境变量或已配置的命令型秘密提供器。Linux 若被 Electron 判定为不安全的 `basic_text` 回退，Agents One 会继续使用受限的旧文件路径并明确提示，不会宣称该值已受操作系统保护。
-- **备份排除凭据。** `.env`、账户/凭据文件、Token、API Key、SSH keyPath、代理、原始配置、桌面受保护密文及 Connector 凭据文件均不导出。备份格式对安全配置采用白名单并合并进目标配置，保留目标机凭据。
+- **备份保护凭据边界。** 已知的 `.env`、账户/凭据文件、Token/API Key 字段、SSH keyPath、代理、原始配置、桌面受保护密文及 Connector 凭据文件均不导出；若技能文本疑似硬编码 Bearer/API 凭据，导出会停止，提示先迁移到受保护配置。对话、记忆、技能、附件等用户自建内容仍可能含敏感文本，必须按敏感数据保管。
 - **备份**覆盖配置档案、项目、任务、对话、协作记录、SQLite 状态、记忆、技能、附件与 Runtime 输入。恢复先预检、保留回滚快照，且能在恢复中途崩溃时自动回滚。
 - **本地 CLI 不是远程。** 本地 Runtime 保留原生能力；桌面端只增加你明确选择的工作区范围、运行记录与统一渲染。
 - **网页 Provider 是默认关闭的实验功能。** 明确启用后，提示词和所选附件会通过已登录的第三方网页发送，账号数据由对应 Provider 处理。Agents One 为每个 Provider/Profile 使用独立 Chromium 分区，阻止白名单外导航和浏览器权限，并支持一键停止全部网页任务或清除隔离登录数据。项目目前未取得豆包、OpenAI 或 xAI 的书面自动化许可；详见[网页 Provider 合规记录](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md)。

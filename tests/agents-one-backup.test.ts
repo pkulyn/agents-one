@@ -571,6 +571,36 @@ describe("Agents One desktop configuration sanitization", () => {
 });
 
 describe("Agents One backup round trip", { timeout: 30_000 }, () => {
+  it("rejects a skill that embeds a bearer credential without disclosing it", async () => {
+    const archivePath = join(testRoot, "skill-secret.agents-one-backup");
+    const credential = "live-test-token-1234567890-abcdef";
+    writeFixture(
+      "skills/remote-agent/SKILL.md",
+      `Use Authorization: Bearer ${credential} when calling the service.\n`,
+    );
+
+    const result = await exportAgentsOneBackupTo(archivePath, { sourceHome });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/技能文件.*硬编码凭据/),
+    });
+    expect(result.error).not.toContain(credential);
+    expect(existsSync(archivePath)).toBe(false);
+  });
+
+  it("allows skills that reference credentials through environment variables", async () => {
+    const archivePath = join(testRoot, "safe-skill.agents-one-backup");
+    writeFixture(
+      "skills/remote-agent/SKILL.md",
+      "Use Authorization: Bearer ${AGENTS_ONE_GATEWAY_TOKEN} at runtime.\n",
+    );
+
+    const result = await exportAgentsOneBackupTo(archivePath, { sourceHome });
+
+    expect(result, result.error).toMatchObject({ success: true });
+  });
+
   it("refuses to save a backup inside the Agents One data directory", async () => {
     const protectedPath = join(sourceHome, "desktop.json");
     const before = sha256(protectedPath);
@@ -1162,6 +1192,13 @@ describe("Agents One backup round trip", { timeout: 30_000 }, () => {
           "success" in result &&
           result.success === false),
     ).toBe(true);
+    const errorText =
+      result instanceof Error
+        ? result.message
+        : typeof result === "object" && result !== null && "error" in result
+          ? String(result.error)
+          : "";
+    expect(errorText).not.toMatch(/ENOTEMPTY|Directory not empty/i);
     expect(sha256(targetConversation)).toBe(before);
     expect(readFileSync(targetConversation, "utf8")).toBe(
       "current-target-data",

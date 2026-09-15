@@ -59,6 +59,8 @@ const RESTORE_JOURNAL_VERSION = 1;
 const PROFILE_NAME_PATTERN = /^[a-z0-9_][a-z0-9_-]{0,63}$/;
 const WINDOWS_RESERVED_NAME_PATTERN =
   /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+const EMBEDDED_SKILL_CREDENTIAL_PATTERN =
+  /(?:\bauthorization\b\s*[:=]\s*["']?)?\bbearer\s+[a-z0-9._~+/=-]{20,}|\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password)\b\s*[:=]\s*["']?[a-z0-9._~+/=-]{20,}/i;
 
 const ROOT_FILES = new Set([
   "desktop.json",
@@ -238,6 +240,21 @@ function sha256File(path: string): string {
   return hash.digest("hex");
 }
 
+function removeTemporaryTree(path: string): void {
+  if (!path) return;
+  try {
+    rmSync(path, {
+      recursive: true,
+      force: true,
+      maxRetries: process.platform === "win32" ? 3 : 0,
+      retryDelay: 100,
+    });
+  } catch {
+    // Cleanup must never replace the archive validation error shown to users.
+    // A later OS temp sweep can remove a directory still held by tar/AV briefly.
+  }
+}
+
 function isExcludedName(name: string): boolean {
   const normalized = name.toLowerCase();
   return (
@@ -316,6 +333,38 @@ function walkAllowedDirectory(
     } else if (entry.isFile()) {
       addRegularFile(root, absolutePath, files);
     }
+  }
+}
+
+function isSkillBackupPath(path: string): boolean {
+  return path.startsWith("skills/") || /^profiles\/[^/]+\/skills\//.test(path);
+}
+
+function assertSkillFileContainsNoEmbeddedCredential(
+  file: AgentsOneBackupFile,
+): void {
+  if (!isSkillBackupPath(file.path) || file.size === 0) return;
+  const descriptor = openSync(file.sourcePath, "r");
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  let carry = "";
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = readSync(descriptor, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      const chunk = buffer.subarray(0, bytesRead);
+      // Binary assets inside a skill are user content, not executable text.
+      if (chunk.includes(0)) return;
+      const text = carry + chunk.toString("utf8");
+      if (EMBEDDED_SKILL_CREDENTIAL_PATTERN.test(text)) {
+        throw new Error(
+          `技能文件疑似包含硬编码凭据，备份已取消：${file.path}。请将凭据迁移到受保护配置或 .env 后重试。`,
+        );
+      }
+      carry = text.slice(-512);
+    } while (bytesRead > 0);
+  } finally {
+    closeSync(descriptor);
   }
 }
 
@@ -931,6 +980,9 @@ function prepareBackup(root: string, appVersion: string): PreparedBackup {
         sha256: sha256File(portableConfig.sourcePath),
       });
     }
+    for (const file of sourceFiles) {
+      assertSkillFileContainsNoEmbeddedCredential(file);
+    }
     sourceFiles.sort((left, right) => left.path.localeCompare(right.path));
     if (sourceFiles.length === 0) {
       throw new Error("没有找到可备份的 Agents One 数据。");
@@ -1179,7 +1231,7 @@ async function extractArchiveSafely(archivePath: string): Promise<string> {
     });
     return extractionRoot;
   } catch (error) {
-    rmSync(extractionRoot, { recursive: true, force: true });
+    removeTemporaryTree(extractionRoot);
     throw error;
   }
 }
@@ -1783,7 +1835,7 @@ async function loadAndValidateArchive(
     validateManifestFiles(extractionRoot, manifest);
     return { extractionRoot, manifest };
   } catch (error) {
-    rmSync(extractionRoot, { recursive: true, force: true });
+    removeTemporaryTree(extractionRoot);
     throw error;
   }
 }
@@ -1807,8 +1859,7 @@ export async function inspectAgentsOneBackup(
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
-    if (extractionRoot)
-      rmSync(extractionRoot, { recursive: true, force: true });
+    removeTemporaryTree(extractionRoot);
   }
 }
 
@@ -2211,8 +2262,7 @@ async function restoreAgentsOneBackupUnlocked(
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
-    if (extractionRoot)
-      rmSync(extractionRoot, { recursive: true, force: true });
+    removeTemporaryTree(extractionRoot);
     if (transactionCommitted && transactionRoot) {
       rmSync(transactionRoot, { recursive: true, force: true });
     }
