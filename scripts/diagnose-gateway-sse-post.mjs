@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
 
 const baseUrl = (
   process.env.AGENTS_ONE_GATEWAY_URL ||
@@ -11,18 +12,19 @@ const token = (
   ""
 ).trim();
 const runtimeId = (process.env.AGENTS_ONE_GATEWAY_RUNTIME_ID || "").trim();
+const requestedContract = (
+  process.env.AGENTS_ONE_GATEWAY_CONTRACT || "auto"
+).trim();
+const hermesModel = (
+  process.env.AGENTS_ONE_GATEWAY_MODEL || "hermes-agent"
+).trim();
 
-if (!baseUrl || !token || !runtimeId) {
-  console.error(
-    "Set AGENTS_ONE_GATEWAY_URL, AGENTS_ONE_GATEWAY_TOKEN, and AGENTS_ONE_GATEWAY_RUNTIME_ID before running this diagnostic.",
-  );
-  process.exit(2);
+const CONTRACTS = new Set(["auto", "gateway-v1", "hermes-v1"]);
+
+function safeEndpointFrom(value) {
+  const url = new URL(value);
+  return `${url.origin}${url.pathname}`;
 }
-
-const safeEndpoint = (() => {
-  const value = new URL(baseUrl);
-  return `${value.origin}${value.pathname}`;
-})();
 
 function selectedHeaders(response) {
   return Object.fromEntries(
@@ -66,36 +68,62 @@ async function request(path, { method = "GET", body, close = false } = {}) {
   });
 }
 
-async function createRun(label, close) {
+function inferredContract() {
+  if (requestedContract !== "auto") return requestedContract;
+  const pathname = new URL(baseUrl).pathname.replace(/\/+$/, "");
+  return /(?:^|\/)agents-one\/v1$/i.test(pathname) ? "gateway-v1" : "hermes-v1";
+}
+
+function runBody(contract, label, idempotencyKey) {
+  if (contract === "hermes-v1") {
+    return {
+      model: hermesModel,
+      input: `Reply with exactly ${label}`,
+      session_id: `sse-post-diagnostic-${randomUUID()}`,
+    };
+  }
+  return {
+    runtimeId,
+    mode: "conversation",
+    idempotencyKey,
+    input: {
+      runtimeId,
+      text: `Reply with exactly ${label}`,
+    },
+  };
+}
+
+function runIdFrom(text) {
+  try {
+    const parsed = JSON.parse(text);
+    return typeof parsed?.id === "string"
+      ? parsed.id
+      : typeof parsed?.run_id === "string"
+        ? parsed.run_id
+        : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function createRun(label, close, contract) {
   const idempotencyKey = `sse-post-diagnostic-${randomUUID()}`;
   const evidence = await responseEvidence(
     await request("/runs", {
       method: "POST",
       close,
-      body: {
-        runtimeId,
-        mode: "conversation",
-        idempotencyKey,
-        input: {
-          runtimeId,
-          text: `Reply with exactly ${label}`,
-        },
-      },
+      body: runBody(contract, label, idempotencyKey),
     }),
   );
-  let runId;
-  try {
-    runId = JSON.parse(evidence.text)?.id;
-  } catch {
-    // The status and bounded metadata below are sufficient for a failure.
-  }
+  const runId = runIdFrom(evidence.text);
   return { evidence, runId };
 }
 
-async function runSequence(label, close) {
-  const first = await createRun(`${label}-ONE`, close);
+async function runSequence(label, close, contract) {
+  const first = await createRun(`${label}-ONE`, close, contract);
   const output = {
     mode: label,
+    contract,
     firstPost: {
       ...first.evidence,
       text: undefined,
@@ -113,7 +141,7 @@ async function runSequence(label, close) {
     hasSseFrames: /(?:^|\n)(?:id|event|data):/.test(events.text),
   };
 
-  const second = await createRun(`${label}-TWO`, close);
+  const second = await createRun(`${label}-TWO`, close, contract);
   output.secondPost = {
     ...second.evidence,
     text: undefined,
@@ -122,19 +150,38 @@ async function runSequence(label, close) {
   return output;
 }
 
-console.log(
-  JSON.stringify(
-    {
-      endpoint: safeEndpoint,
-      runtimeId,
-      tokenConfigured: true,
-      testedAt: new Date().toISOString(),
-      sequences: [
-        await runSequence("default-connection", false),
-        await runSequence("connection-close", true),
-      ],
-    },
-    null,
-    2,
-  ),
-);
+export async function runDiagnostic() {
+  if (!baseUrl || !token || !runtimeId) {
+    throw new Error(
+      "Set AGENTS_ONE_GATEWAY_URL, AGENTS_ONE_GATEWAY_TOKEN, and AGENTS_ONE_GATEWAY_RUNTIME_ID before running this diagnostic.",
+    );
+  }
+  if (!CONTRACTS.has(requestedContract)) {
+    throw new Error(
+      "AGENTS_ONE_GATEWAY_CONTRACT must be auto, gateway-v1, or hermes-v1.",
+    );
+  }
+  const contract = inferredContract();
+  return {
+    endpoint: safeEndpointFrom(baseUrl),
+    runtimeId,
+    tokenConfigured: true,
+    contract,
+    testedAt: new Date().toISOString(),
+    sequences: [
+      await runSequence("default-connection", false, contract),
+      await runSequence("connection-close", true, contract),
+    ],
+  };
+}
+
+const isMain =
+  process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+if (isMain) {
+  try {
+    console.log(JSON.stringify(await runDiagnostic(), null, 2));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 2;
+  }
+}

@@ -31,3 +31,5 @@ Gateway request decoding accepts Buffer, typed-array, and string chunks because 
 SDK tests protect capability truthfulness, terminal ordering, Workspace evidence, request-body compatibility, stable deduplication, artifacts, CLI stream framing, and isolation between a completed SSE response and the next Run request.
 
 `plugins/agents-one-plugin/test/plugin.test.mjs` covers successful and failed terminal refreshes, stable declared flags, relative Workspace metadata, unsafe-path removal, mixed string/Buffer bodies, Artifact round trips, JSONL records split across chunks, and a second `POST /runs` over an independent connection immediately after consuming `GET /runs/{id}/events`.
+
+The public diagnostic `scripts/diagnose-gateway-sse-post.mjs` selects the Agents One Gateway v1 object-input/`id` contract for `/agents-one/v1` endpoints and the native Hermes v1 string-input/`run_id` contract for `/v1` endpoints. Its regression server exercises both forms, preventing a request-shape mismatch from being misreported as an SSE or proxy failure.
