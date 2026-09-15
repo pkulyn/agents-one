@@ -11,10 +11,11 @@ $dist = (Resolve-Path -LiteralPath $DistDirectory).Path
 $unpacked = Join-Path $dist "win-unpacked"
 $executable = Join-Path $unpacked "agents-one.exe"
 $appAsar = Join-Path $unpacked "resources\app.asar"
+$trayIcon = Join-Path $unpacked "resources\app.asar.unpacked\resources\icon.png"
 $setup = Join-Path $dist "agents-one-$ExpectedVersion-setup.exe"
 $portable = Join-Path $dist "agents-one-$ExpectedVersion-portable.exe"
 
-foreach ($required in @($executable, $appAsar, $setup, $portable)) {
+foreach ($required in @($executable, $appAsar, $trayIcon, $setup, $portable)) {
   if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
     throw "Required Windows package resource is missing: $required"
   }
@@ -22,6 +23,30 @@ foreach ($required in @($executable, $appAsar, $setup, $portable)) {
     throw "Required Windows package resource is empty: $required"
   }
 }
+
+# A missing asset produces an empty Electron nativeImage without throwing, so
+# a process and NotifyIcon host may exist while Windows has no visible tray
+# icon. Verify both the PNG signature and non-zero image dimensions here.
+$trayIconBytes = [System.IO.File]::ReadAllBytes($trayIcon)
+$pngSignature = [byte[]](137, 80, 78, 71, 13, 10, 26, 10)
+if ($trayIconBytes.Length -lt 24) {
+  throw "Packaged tray image is too small to be a valid PNG: $trayIcon"
+}
+foreach ($index in 0..7) {
+  if ($trayIconBytes[$index] -ne $pngSignature[$index]) {
+    throw "Packaged tray image has an invalid PNG signature: $trayIcon"
+  }
+}
+$width = [System.Net.IPAddress]::NetworkToHostOrder(
+  [System.BitConverter]::ToInt32($trayIconBytes, 16)
+)
+$height = [System.Net.IPAddress]::NetworkToHostOrder(
+  [System.BitConverter]::ToInt32($trayIconBytes, 20)
+)
+if ($width -le 0 -or $height -le 0) {
+  throw "Packaged tray image has invalid dimensions ${width}x${height}: $trayIcon"
+}
+Write-Host "Packaged tray image passed (${width}x${height}, $($trayIconBytes.Length) bytes)."
 
 $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 
