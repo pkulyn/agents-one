@@ -2784,9 +2784,9 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 
 ## 2026-09-16：RC1 聚焦 Windows 验收复核与补丁
 
-- 独立机对固定 SHA `7c6385856496c2b952a342bd0d0bf0d6097b51fa`、Gate `34943258227` 和 artifact digest 完成一致性校验；portable 隔离、真实 Hermes 同会话连续四轮、中英文切换、标准 Markdown 渲染及内置备份导出通过。托盘资源已确认进入包内且 Tray 宿主存在，但锁屏无人值守会话无法目检图标、左/右键菜单和 Exit，仍须有人值守补验。
+- 独立机对固定 SHA `7c6385856496c2b952a342bd0d0bf0d6097b51fa`、Gate `34943258227` 和 artifact digest 完成一致性校验；portable 隔离、真实 Hermes 同会话连续四轮、中英文切换、标准 Markdown 渲染及内置备份导出通过。后续有人值守补验确认托盘图标实际可见且非空白/损坏，左键快捷入口、右键菜单和 Exit 完整进程退出均正常，托盘 P0 已通过。
 - SSE 诊断发现：原脚本固定使用 Agents One Gateway v1 的对象型 `input`/`id`，直接指向原生 Hermes `/v1` 时会因其字符串型 `input`/`run_id` 契约返回 400，不能据此归因为 SSE 或 nginx。脚本现按 endpoint/显式配置选择 `gateway-v1` 或 `hermes-v1`，两种契约均增加本地自动回归；独立机按 Hermes 契约复测 default 与 `Connection: close` 均为 202，桌面连续对话无 400。
 - 备份安全发现：独立机用户技能中硬编码的真实 Bearer Token 被当作技能正文收入备份。导出现在对技能文本执行高置信度硬编码凭据扫描，命中时取消导出且只报告文件路径，要求将值迁移到 `.env`/受保护配置；环境变量占位引用仍可正常备份。README 中“凭据排除”表述同步收窄为已知凭据存储/字段，并明确用户自建内容仍须按敏感数据保管。
 - 损坏包提示：Windows 临时目录清理失败不再覆盖原始归档校验错误；清理采用有限重试和 best-effort，损坏备份仍在触碰目标数据前拒绝。
 - OR-703 恢复仍未闭环：现场 Hermes Gateway 持有 `state.db-shm`，恢复与自动回滚均因 Windows 文件锁中断。下一轮必须先结束该测试 Gateway、确认 PID/API 已退出，再通过产品内置导入验证恢复与回滚；若仍失败再按产品缺陷处理。Markdown HTTP(S) 链接打开内置 Web Preview 是既有设计，不要求自动跳出默认浏览器；预览工具栏的“外部打开”另行验证。
-- 发布结论继续为 **No-Go**。RC1 Checklist 暂不更新为完成；需先产出包含上述补丁的新 Gate/artifact，并只补验托盘交互、修正后的真实契约诊断、内置恢复/回滚及 Web Preview 外部打开按钮。禁止 tag、Release 和公开仓库。
+- 发布结论继续为 **No-Go**。RC1 Checklist 暂不更新为完成；需先产出包含上述补丁的新 Gate/artifact，并只补验修正后的真实契约诊断、技能凭据阻断、内置恢复/回滚及 Web Preview 外部打开按钮。已经通过的托盘、portable 隔离、连续对话和语言切换不再重复。禁止 tag、Release 和公开仓库。
