@@ -2773,3 +2773,11 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 智能体总览：三类接入分区、健康状态、连接信息、空状态、操作与管理弹窗入口全部接入中英文词典；新增英文组件回归。截图复核发现并修复 768px 下远程/网页卡片内部横向滚动，验收脚本进一步检查 `html`、`body`、主内容和页面容器的嵌套溢出。
 - 验证：定时任务相关 18 项、智能体总览相关 19 项测试分别通过；Node/Web TypeScript、目标 ESLint、`lat check` 和 `git diff --check` 通过；真实隔离开发实例生成中英文各 4 张核心截图并通过自动检查。对应代码提交为 `2a25e74`、`6247a2d`。
 - 边界：英文 UI 的 P1 阻断尚未解除。智能体管理/接入向导、Runtime Chat、轻量聊天、项目/任务空状态与协作界面仍有硬编码中文；本轮截图中的侧栏项目空状态即为可见证据。继续保持 No-Go，不创建 tag 或 Release。
+
+## 2026-09-15：RC1 托盘资源与 SSE 后续请求诊断收口
+
+- 托盘根因：主进程产物仍从 `resources/icon.png` 创建通知区图标，但 electron-builder 的显式 `files` 清单只包含 `out/**`；`asarUnpack` 不会自动选择未进入清单的资源。旧包中该 PNG 确实缺失，Electron 仍可从空 `nativeImage` 创建 NotifyIcon 宿主，形成“关窗驻留但托盘无可见图标”。
+- 托盘修复：打包清单显式加入 `resources/**`；Windows package smoke 在启动前要求解包后的 PNG 存在、非空、签名正确且宽高大于零。旧包按预期被新门禁拦截；重新打包后资源为 512×512、45,992 bytes，解包版与 portable renderer 启动冒烟均通过。改动不涉及 Runtime、IPC、配置、历史或用户数据。
+- SSE 分层：Plugin Gateway 新增“独立连接读取完整 `/runs/{id}/events` 后立即创建第二个 Run”回归；Connect Service → WSS Connector → loopback Remote CLI Host 的端到端用例加入同一序列。Plugin SDK 23/23、Connector 10/10、Connect 8/8 全过，本机两层均未复现 HTTP 400。
+- 公网诊断：新增脱敏脚本 `scripts/diagnose-gateway-sse-post.mjs`，分别使用默认连接和 `Connection: close`，只输出状态码、响应体字节数、有限响应头及是否取得 Run/SSE，不输出 Token 或模型正文。当前开发机未配置真实 Gateway 地址/Token，公网 nginx/adapter 层不得虚构通过，留给独立验收机运行。
+- 本地门禁：Node/Web TypeScript、零错误 lint、主工程全量 Vitest、41 项子项目测试、生产构建、Windows NSIS/portable 打包、`lat check` 与 `git diff --check` 均通过。发布结论仍为 No-Go；新固定 SHA Gate 与独立机托盘、portable 隔离、连续对话、产品内置备份、语言和 Markdown 外链复验完成前，不创建 tag、Release 或公开仓库。
