@@ -377,7 +377,13 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
             ? { body: JSON.stringify(frame.body || {}) }
             : {}),
         });
-        return { status: response.status, body: await response.json() };
+        const contentType = response.headers.get("content-type") || "";
+        return {
+          status: response.status,
+          body: contentType.startsWith("text/event-stream")
+            ? await response.text()
+            : await response.json(),
+        };
       },
     },
   });
@@ -449,6 +455,48 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
     assert.ok(
       completed.events.some((event) => event.type === "assistant.completed"),
     );
+
+    desktop.send(
+      JSON.stringify({
+        type: "request",
+        requestId: "events-e2e",
+        method: "GET",
+        path: `/runs/${started.body.id}/events`,
+        runtimeId: runtime.runtimeId,
+      }),
+    );
+    const streamed = await withTimeout(
+      onceMessage(desktop),
+      "Gateway SSE snapshot",
+    );
+    assert.equal(streamed.status, 200);
+    assert.match(streamed.body, /event: assistant\.completed/);
+    assert.match(streamed.body, /event: run\.completed/);
+
+    desktop.send(
+      JSON.stringify({
+        type: "request",
+        requestId: "run-after-events-e2e",
+        method: "POST",
+        path: "/runs",
+        runtimeId: runtime.runtimeId,
+        body: {
+          runtimeId: runtime.runtimeId,
+          input: { text: "Continue after SSE" },
+        },
+      }),
+    );
+    const continued = await withTimeout(
+      onceMessage(desktop),
+      "Gateway run after SSE",
+    );
+    assert.equal(continued.status, 202);
+    const continuedCompleted = await waitForRun(
+      hostBase,
+      "host-e2e-token",
+      continued.body.id,
+    );
+    assert.equal(continuedCompleted.status, "succeeded");
   } finally {
     if (desktop) {
       await closeSocket(desktop);

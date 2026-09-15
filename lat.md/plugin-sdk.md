@@ -28,6 +28,6 @@ Gateway request decoding accepts Buffer, typed-array, and string chunks because 
 
 ## Regression coverage
 
-SDK tests protect capability truthfulness, terminal ordering, Workspace evidence, request-body compatibility, stable deduplication, artifacts, and CLI stream framing.
+SDK tests protect capability truthfulness, terminal ordering, Workspace evidence, request-body compatibility, stable deduplication, artifacts, CLI stream framing, and isolation between a completed SSE response and the next Run request.
 
-`plugins/agents-one-plugin/test/plugin.test.mjs` covers successful and failed terminal refreshes, stable declared flags, relative Workspace metadata, unsafe-path removal, mixed string/Buffer bodies, Artifact round trips, and JSONL records split across chunks.
+`plugins/agents-one-plugin/test/plugin.test.mjs` covers successful and failed terminal refreshes, stable declared flags, relative Workspace metadata, unsafe-path removal, mixed string/Buffer bodies, Artifact round trips, JSONL records split across chunks, and a second `POST /runs` over an independent connection immediately after consuming `GET /runs/{id}/events`.

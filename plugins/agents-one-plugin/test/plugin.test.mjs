@@ -212,6 +212,67 @@ test("remote gateway plugin exposes a v1 run with event snapshots", async () => 
   await plugin.close();
 });
 
+test("remote gateway accepts a second run after an SSE response on independent connections", async () => {
+  let starts = 0;
+  const plugin = createRemoteGatewayPlugin({
+    agent: { id: "fixture", kind: "custom" },
+    token: "test-token",
+    adapter: {
+      async startRun(_input, { emit }) {
+        starts += 1;
+        emit({
+          id: `evt_answer_${starts}`,
+          type: "assistant.completed",
+          data: { text: `answer ${starts}` },
+        });
+        return { status: "succeeded", vendorRunId: `vendor_${starts}` };
+      },
+    },
+  });
+  await plugin.listen(0);
+  const port = plugin.server.address().port;
+  const base = `http://127.0.0.1:${port}`;
+  const runBody = (text) =>
+    JSON.stringify({ mode: "conversation", input: { text } });
+  const postHeaders = {
+    authorization: "Bearer test-token",
+    connection: "close",
+    "content-type": "application/json",
+  };
+
+  const firstResponse = await fetch(`${base}/runs`, {
+    method: "POST",
+    headers: postHeaders,
+    body: runBody("first"),
+  });
+  assert.equal(firstResponse.status, 202);
+  const first = await firstResponse.json();
+
+  const eventsResponse = await fetch(`${base}/runs/${first.id}/events`, {
+    headers: {
+      authorization: "Bearer test-token",
+      connection: "close",
+    },
+  });
+  assert.equal(eventsResponse.status, 200);
+  assert.match(
+    eventsResponse.headers.get("content-type") || "",
+    /^text\/event-stream\b/,
+  );
+  const events = await eventsResponse.text();
+  assert.match(events, /event: assistant\.completed/);
+  assert.match(events, /event: run\.completed/);
+
+  const secondResponse = await fetch(`${base}/runs`, {
+    method: "POST",
+    headers: postHeaders,
+    body: runBody("second"),
+  });
+  assert.equal(secondResponse.status, 202, await secondResponse.text());
+  assert.equal(starts, 2);
+  await plugin.close();
+});
+
 test("remote gateway makes POST /runs idempotent and rejects conflicting reuse", async () => {
   let starts = 0;
   const plugin = createRemoteGatewayPlugin({
