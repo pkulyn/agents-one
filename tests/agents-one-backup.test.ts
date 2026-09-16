@@ -601,6 +601,58 @@ describe("Agents One backup round trip", { timeout: 30_000 }, () => {
     expect(result, result.error).toMatchObject({ success: true });
   });
 
+  it("keeps the event loop responsive while inspecting a large valid backup", async () => {
+    const archivePath = join(testRoot, "large-valid.agents-one-backup");
+    const database = new Database(join(sourceHome, "state.db"));
+    try {
+      database.exec(
+        "CREATE TABLE inspection_payload (id INTEGER PRIMARY KEY, content BLOB NOT NULL)",
+      );
+      database
+        .prepare(
+          "INSERT INTO inspection_payload (content) VALUES (zeroblob(?))",
+        )
+        .run(12 * 1024 * 1024);
+    } finally {
+      database.close();
+    }
+    writeFixture(
+      "desktop-staging/large-inspection/payload.bin",
+      Buffer.alloc(12 * 1024 * 1024, 0x5a),
+    );
+    for (let index = 0; index < 256; index += 1) {
+      writeFixture(
+        `desktop-staging/large-inspection/items/${index}.txt`,
+        `inspection-${index}`,
+      );
+    }
+    const exported = await exportAgentsOneBackupTo(archivePath, {
+      sourceHome,
+    });
+    expect(exported, exported.error).toMatchObject({ success: true });
+
+    let heartbeatCount = 0;
+    let maximumGapMs = 0;
+    let previousHeartbeat = Date.now();
+    const heartbeat = setInterval(() => {
+      const now = Date.now();
+      maximumGapMs = Math.max(maximumGapMs, now - previousHeartbeat);
+      previousHeartbeat = now;
+      heartbeatCount += 1;
+    }, 10);
+    try {
+      const inspection = await inspectAgentsOneBackup(archivePath, {
+        targetHome,
+      });
+      await new Promise((resolveTick) => setTimeout(resolveTick, 20));
+      expect(inspection).toMatchObject({ success: true });
+    } finally {
+      clearInterval(heartbeat);
+    }
+    expect(heartbeatCount).toBeGreaterThan(2);
+    expect(maximumGapMs).toBeLessThan(2_000);
+  }, 30_000);
+
   it("refuses to save a backup inside the Agents One data directory", async () => {
     const protectedPath = join(sourceHome, "desktop.json");
     const before = sha256(protectedPath);
