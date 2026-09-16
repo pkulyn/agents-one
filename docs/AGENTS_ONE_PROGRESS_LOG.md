@@ -2797,3 +2797,5 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 根因边界：tar 解包本身为异步，但解包后的逐文件 SHA-256、SQLite `quick_check` 和递归临时目录删除仍在 Electron 主线程使用同步调用。Windows Defender、文件数量和大数据库会放大阻塞，使 IPC/DevTools 无法及时调度，表现为 renderer 卡死。补丁不改备份格式、清单、哈希、SQLite、路径或凭据校验规则。
 - 修复：导入 inspection 改用流式异步 SHA-256；SQLite `quick_check` 放入 Node Worker 并设 120 秒上限；解包/校验临时目录改为异步有限重试清理，清理失败仍不得覆盖原始校验错误。新增 24 MB 混合 payload/SQLite、256 个文件的事件循环响应回归，要求 inspection 成功且主循环最大停顿低于两秒。
 - 验证：备份定向回归 21/21、全量主测试 215/215（2093 passed / 9 skipped）、Plugin SDK 23/23、Connector 10/10、Connect 8/8、Node/Web TypeScript、目标 lint、`lat check` 与生产构建均通过。仍需完成新固定 SHA Gate，并在独立机用原 108 MB 有效备份重试确认框、实际恢复、重启后数据核验和失败回滚；这些完成前不更新 RC1 Checklist，不创建 tag/Release，不公开仓库。
+- 首次新 Gate `35069996447` 固定到 `b043a9d7551f5ca7a374c5a425101e82969fa532`，在三轮门禁阶段因 `gateway-restart.test.ts` teardown 删除临时 Hermes repository 时遇到 Windows 瞬时 `EPERM` 而失败，打包和 artifact 上传未执行；失败与备份 inspection 生产补丁无关，但仍按门禁失败处理，不直接重跑同一候选。
+- Gateway 测试稳定化仅改测试清理：真实短生命周期子进程退出后，临时 home/repository 改用异步递归删除及 Windows 有界锁重试；持续锁仍会令测试失败，不掩盖真实进程泄漏。定向 10 轮 170/170、全量主测试 215/215（2093 passed / 9 skipped）、三个子项目 41/41、Node/Web TypeScript、目标 lint、`lat check` 与 `git diff --check` 通过。

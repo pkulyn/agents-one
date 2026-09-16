@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { rm } from "fs/promises";
 import { join } from "path";
 const {
   TEST_HOME,
@@ -169,8 +170,20 @@ describe("restartGatewayViaCli", () => {
     stopGateway("personal", true);
     stopHealthPolling();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    rmSync(TEST_HOME, { recursive: true, force: true });
-    rmSync(TEST_REPO, { recursive: true, force: true });
+    await Promise.all([
+      rm(TEST_HOME, {
+        recursive: true,
+        force: true,
+        maxRetries: process.platform === "win32" ? 8 : 0,
+        retryDelay: 100,
+      }),
+      rm(TEST_REPO, {
+        recursive: true,
+        force: true,
+        maxRetries: process.platform === "win32" ? 8 : 0,
+        retryDelay: 100,
+      }),
+    ]);
   });
 
   it("uses the hermes gateway restart command with the profile env", async () => {

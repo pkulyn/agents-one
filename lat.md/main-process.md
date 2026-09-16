@@ -40,6 +40,8 @@ Lifecycle code owns Electron windows, global app events, and shutdown cleanup.
 
 Normal shutdown is a quiescing transition, not a best-effort synchronous cleanup. [[src/main/app/start.ts]] first closes admission for new Runtime tasks, stops and waits for schedule ticks, aborts legacy active requests, and awaits [[src/main/agent-runtimes.ts#cancelAllAgentRuntimeTasks]] before closing temporary media, dashboards, and SQLite. The `before-quit` event is prevented until this ordering completes, avoiding a normal app exit racing a local CLI process that can still write its workspace. The same Runtime quiet gate is applied before backup restore replaces profile data in [[src/main/ipc/register.ts#registerIpcHandlers]].
 
+Gateway restart tests launch real short-lived child processes with a temporary repository as their working directory. Their teardown uses asynchronous recursive removal with bounded Windows lock retries, so a just-exited process cannot turn a successful behavioral assertion into a transient `EPERM`, while a persistent process leak still fails the suite.
+
 [[src/main/app/start.ts]] supports the `AGENTS_ONE_OPEN_DEVTOOLS=1` diagnostic launch path so packaged builds can expose renderer console errors when startup fails before the UI paints; the former variable remains a temporary compatibility fallback.
 
 The packaged renderer keeps its meta CSP aligned with the production response CSP so file-backed startup assets load consistently from `file://` before the main-process header can help.
