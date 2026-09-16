@@ -2790,3 +2790,10 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 损坏包提示：Windows 临时目录清理失败不再覆盖原始归档校验错误；清理采用有限重试和 best-effort，损坏备份仍在触碰目标数据前拒绝。
 - OR-703 恢复仍未闭环：现场 Hermes Gateway 持有 `state.db-shm`，恢复与自动回滚均因 Windows 文件锁中断。下一轮必须先结束该测试 Gateway、确认 PID/API 已退出，再通过产品内置导入验证恢复与回滚；若仍失败再按产品缺陷处理。Markdown HTTP(S) 链接打开内置 Web Preview 是既有设计，不要求自动跳出默认浏览器；预览工具栏的“外部打开”另行验证。
 - 发布结论继续为 **No-Go**。RC1 Checklist 暂不更新为完成；需先产出包含上述补丁的新 Gate/artifact，并只补验修正后的真实契约诊断、技能凭据阻断、内置恢复/回滚及 Web Preview 外部打开按钮。已经通过的托盘、portable 隔离、连续对话和语言切换不再重复。禁止 tag、Release 和公开仓库。
+
+## 2026-09-16：OR-703 大备份 inspection 主进程卡顿修复
+
+- 独立机使用约 108 MB、968 条目的有效内置备份三次复现：选择文件后恢复确认框不出现，CDP 调用超时且等待三分钟不恢复；损坏包能快速拒绝，目标数据未被改写。该结果维持 No-Go。报告的候选基线仍引用旧 `7c63858` artifact，与其中的 `15472c3` 修复候选描述不一致，最终归档前须更正，但不影响三次稳定复现的阻断判断。
+- 根因边界：tar 解包本身为异步，但解包后的逐文件 SHA-256、SQLite `quick_check` 和递归临时目录删除仍在 Electron 主线程使用同步调用。Windows Defender、文件数量和大数据库会放大阻塞，使 IPC/DevTools 无法及时调度，表现为 renderer 卡死。补丁不改备份格式、清单、哈希、SQLite、路径或凭据校验规则。
+- 修复：导入 inspection 改用流式异步 SHA-256；SQLite `quick_check` 放入 Node Worker 并设 120 秒上限；解包/校验临时目录改为异步有限重试清理，清理失败仍不得覆盖原始校验错误。新增 24 MB 混合 payload/SQLite、256 个文件的事件循环响应回归，要求 inspection 成功且主循环最大停顿低于两秒。
+- 验证：备份定向回归 21/21、全量主测试 215/215（2093 passed / 9 skipped）、Plugin SDK 23/23、Connector 10/10、Connect 8/8、Node/Web TypeScript、目标 lint、`lat check` 与生产构建均通过。仍需完成新固定 SHA Gate，并在独立机用原 108 MB 有效备份重试确认框、实际恢复、重启后数据核验和失败回滚；这些完成前不更新 RC1 Checklist，不创建 tag/Release，不公开仓库。
