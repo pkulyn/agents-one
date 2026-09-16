@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "crypto";
 import {
   closeSync,
   copyFileSync,
+  createReadStream,
   existsSync,
   fsyncSync,
   lstatSync,
@@ -18,6 +19,7 @@ import {
   statSync,
   writeFileSync,
 } from "fs";
+import { rm as removeAsync } from "fs/promises";
 import { tmpdir } from "os";
 import {
   basename,
@@ -31,6 +33,7 @@ import {
 import * as tar from "tar";
 import type { ReadEntry } from "tar";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { Worker } from "worker_threads";
 import { HERMES_HOME } from "./installer";
 import Database from "./sqlite";
 import type {
@@ -240,10 +243,17 @@ function sha256File(path: string): string {
   return hash.digest("hex");
 }
 
-function removeTemporaryTree(path: string): void {
+async function sha256FileAsync(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  const stream = createReadStream(path);
+  for await (const chunk of stream) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+async function removeTemporaryTree(path: string): Promise<void> {
   if (!path) return;
   try {
-    rmSync(path, {
+    await removeAsync(path, {
       recursive: true,
       force: true,
       maxRetries: process.platform === "win32" ? 3 : 0,
@@ -918,6 +928,69 @@ function assertValidSqliteDatabase(path: string, label: string): void {
   }
 }
 
+function assertValidSqliteDatabaseAsync(
+  path: string,
+  label: string,
+): Promise<void> {
+  if (!hasSqliteHeader(path)) {
+    return Promise.reject(new Error(`${label} 不是有效的 SQLite 数据库。`));
+  }
+  return new Promise((resolveCheck, rejectCheck) => {
+    const worker = new Worker(
+      `
+        const { parentPort, workerData } = require("node:worker_threads");
+        const { DatabaseSync } = require("node:sqlite");
+        try {
+          const database = new DatabaseSync(workerData.path, { readOnly: true });
+          try {
+            const rows = database.prepare("PRAGMA quick_check").all();
+            const ok = rows.some((row) => Object.values(row).includes("ok"));
+            parentPort.postMessage({ ok });
+          } finally {
+            database.close();
+          }
+        } catch (error) {
+          parentPort.postMessage({
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      `,
+      { eval: true, workerData: { path } },
+    );
+    let settled = false;
+    const finish = (error?: Error): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      void worker.terminate();
+      if (error) rejectCheck(error);
+      else resolveCheck();
+    };
+    const timeout = setTimeout(
+      () => finish(new Error(`${label} 的 SQLite 完整性检查超时。`)),
+      120_000,
+    );
+    worker.once("message", (result: { ok?: boolean; error?: string }) => {
+      finish(
+        result.ok
+          ? undefined
+          : new Error(
+              result.error
+                ? `${label} 未通过 SQLite 完整性检查：${result.error}`
+                : `${label} 未通过 SQLite 完整性检查。`,
+            ),
+      );
+    });
+    worker.once("error", (error) => finish(error));
+    worker.once("exit", (code) => {
+      if (!settled && code !== 0) {
+        finish(new Error(`${label} 的 SQLite 完整性检查进程异常退出。`));
+      }
+    });
+  });
+}
+
 function stageBackupFile(
   sourcePath: string,
   destination: string,
@@ -1133,7 +1206,7 @@ async function exportAgentsOneBackupUnlocked(
       [MANIFEST_FILE, PAYLOAD_DIR],
     );
     const verified = await loadAndValidateArchive(temporaryArchive);
-    rmSync(verified.extractionRoot, { recursive: true, force: true });
+    await removeTemporaryTree(verified.extractionRoot);
     replaceArchiveAtomically(temporaryArchive, destination);
     return { success: true, path: destination };
   } catch (error) {
@@ -1144,7 +1217,7 @@ async function exportAgentsOneBackupUnlocked(
     };
   } finally {
     if (prepared) {
-      rmSync(prepared.temporaryRoot, { recursive: true, force: true });
+      await removeTemporaryTree(prepared.temporaryRoot);
     }
   }
 }
@@ -1231,7 +1304,7 @@ async function extractArchiveSafely(archivePath: string): Promise<string> {
     });
     return extractionRoot;
   } catch (error) {
-    removeTemporaryTree(extractionRoot);
+    await removeTemporaryTree(extractionRoot);
     throw error;
   }
 }
@@ -1302,10 +1375,10 @@ function parseManifest(extractionRoot: string): AgentsOneBackupManifest {
   return manifest as AgentsOneBackupManifest;
 }
 
-function validateManifestFiles(
+async function validateManifestFiles(
   extractionRoot: string,
   manifest: AgentsOneBackupManifest,
-): void {
+): Promise<void> {
   const paths = new Set<string>();
   const profiles = new Set(manifest.profiles);
   let totalBytes = 0;
@@ -1344,13 +1417,13 @@ function validateManifestFiles(
     const info = statSync(path);
     if (
       info.size !== file.size ||
-      sha256File(path) !== file.sha256.toLowerCase()
+      (await sha256FileAsync(path)) !== file.sha256.toLowerCase()
     ) {
       throw new Error(`备份完整性校验失败：${file.path}`);
     }
     validateCoreJsonStore(path, file.path);
     if (isProfileStateDatabasePath(file.path)) {
-      assertValidSqliteDatabase(path, file.path);
+      await assertValidSqliteDatabaseAsync(path, file.path);
     }
     if (file.path === "desktop.json" || file.path === "models.json") {
       let parsed: unknown;
@@ -1832,10 +1905,10 @@ async function loadAndValidateArchive(
   const extractionRoot = await extractArchiveSafely(archive);
   try {
     const manifest = parseManifest(extractionRoot);
-    validateManifestFiles(extractionRoot, manifest);
+    await validateManifestFiles(extractionRoot, manifest);
     return { extractionRoot, manifest };
   } catch (error) {
-    removeTemporaryTree(extractionRoot);
+    await removeTemporaryTree(extractionRoot);
     throw error;
   }
 }
@@ -1859,7 +1932,7 @@ export async function inspectAgentsOneBackup(
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
-    removeTemporaryTree(extractionRoot);
+    await removeTemporaryTree(extractionRoot);
   }
 }
 
@@ -2262,7 +2335,7 @@ async function restoreAgentsOneBackupUnlocked(
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
-    removeTemporaryTree(extractionRoot);
+    await removeTemporaryTree(extractionRoot);
     if (transactionCommitted && transactionRoot) {
       rmSync(transactionRoot, { recursive: true, force: true });
     }

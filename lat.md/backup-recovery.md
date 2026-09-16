@@ -10,7 +10,7 @@ Agents One owns a portable, versioned backup path for moving desktop configurati
 
 SQLite files are staged with `VACUUM INTO` so committed WAL data is captured in one portable database. Export pauses the local scheduler, rejects active chat or Runtime work, closes the desktop database, stages all source files, creates the archive beside the chosen destination, validates that archive through the same import path, and only then atomically replaces an older backup.
 
-Import treats the archive as untrusted input. It rejects oversized archives, unsafe tar entry types, path traversal, Windows device/ADS names, duplicate paths, undeclared payload files, invalid manifests, hash mismatches, malformed core JSON stores, unsafe portable configuration, and invalid SQLite databases before the target data directory is changed.
+Import treats the archive as untrusted input. It rejects oversized archives, unsafe tar entry types, path traversal, Windows device/ADS names, duplicate paths, undeclared payload files, invalid manifests, hash mismatches, malformed core JSON stores, unsafe portable configuration, and invalid SQLite databases before the target data directory is changed. Inspection streams file hashes, runs SQLite `quick_check` in a worker, and removes its extraction tree asynchronously, keeping the Electron main loop responsive for large valid archives without weakening validation.
 
 ## Rollback-safe restore
 
