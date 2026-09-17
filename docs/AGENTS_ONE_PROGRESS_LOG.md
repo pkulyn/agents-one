@@ -2800,3 +2800,11 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 首次新 Gate `35069996447` 固定到 `b043a9d7551f5ca7a374c5a425101e82969fa532`，在三轮门禁阶段因 `gateway-restart.test.ts` teardown 删除临时 Hermes repository 时遇到 Windows 瞬时 `EPERM` 而失败，打包和 artifact 上传未执行；失败与备份 inspection 生产补丁无关，但仍按门禁失败处理，不直接重跑同一候选。
 - Gateway 测试稳定化仅改测试清理：真实短生命周期子进程退出后，临时 home/repository 改用异步递归删除及 Windows 有界锁重试；持续锁仍会令测试失败，不掩盖真实进程泄漏。定向 10 轮 170/170、全量主测试 215/215（2093 passed / 9 skipped）、三个子项目 41/41、Node/Web TypeScript、目标 lint、`lat check` 与 `git diff --check` 通过。
 - 修复后固定 SHA `8c4e5ce589b335bbbc045b42b0641b3b0a8fe2e5` 的 Windows Alpha Release Gate `35071585581` 成功：clean checkout、依赖/工作树不变、连续三轮完整门禁、NSIS/portable 打包、托盘资源与双启动 smoke、校验清单及 artifact 上传均通过。artifact `agents-one-0.1.0-alpha.1-windows-x64-8c4e5ce589b335bbbc045b42b0641b3b0a8fe2e5` 为 392,125,376 bytes，GitHub digest `sha256:c20d54634a0ef473c21f6dcc204baed417509a2fa36c29c3892b752a52b4d06f`，保留至 2026-09-30 08:25:44 UTC；`publish_draft=false`，未创建 tag 或 Release。独立机仍只补验 OR-703，不重复已通过范围。
+
+## 2026-09-18：OR-703 独立 Windows 最终验收通过
+
+- 候选身份：独立机以 ZIP 大小、GitHub digest、内部四文件校验和、安装器及安装后 `app.asar` 哈希链确认实际运行固定 SHA `8c4e5ce589b335bbbc045b42b0641b3b0a8fe2e5` 的 Gate `35071585581` artifact。最终脱敏报告为 `AGENTS_ONE_RC1_OR703_FINAL_ACCEPTANCE_8C4E5CE.md`，报告 SHA-256 `DB073537CAFB05CB001BCE6EC0F96DBC28814C9D64D295E859C30AD713F4C374`；原始证据留在独立机外部 evidence 目录，不提交仓库。
+- inspection 稳定性：Windows 重启后首次启动冷态及两个全新进程热态，共三轮通过真实系统文件对话框检查同一 108,237,289-byte 有效备份，确认框分别在 19.4s、19.5s、8.0s 出现；窗口与 CDP 同时无响应时长均为 0，历史 277～366s 卡顿未复现。历史异常发生在 Gateway/Desktop/Connector 强杀后数据库仍锁定的并发现场，不作为干净 inspection 路径。
+- 恢复与数据：停止受控 Gateway 后，产品内置恢复完成；项目、OpenCode/Hermes 对话、附件和已暂停计划任务在 UI 可见，完全退出全部进程并手动重启后仍持久存在。损坏包在确认前以归档校验错误拒绝且数据零触碰。
+- 回滚与中断恢复：受控单文件 ACL 写失败在 5 秒内完成即时回滚，事务清理、目标未变且其余数据完整；有效无歧义 `prepared` journal 在启动时自动恢复 snapshot、删除事务并进入 `app.ready`。含无法确认来源新文件的歧义事务按设计 fail-closed 并保留救援数据，单列为安全保护通过，不冒充自动自愈。
+- 判定：OR-703 与固定 SHA 的 OR-705 独立稳定性范围转为 **Go**；批准豁免需修改系统时区的时区/休眠人工场景。RC1 总体仍为 **No-Go**，G7 仅部分通过，待 OR-702 Runtime、OR-704 剩余桌面路径及其他 G0～G8 签字闭环；继续禁止 tag、Release 和公开仓库。
