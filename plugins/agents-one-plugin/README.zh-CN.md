@@ -28,7 +28,7 @@ node --test ./test/*.test.mjs
 cd <repo>\plugins\agents-one-plugin
 npm.cmd pack
 # 在远程 Relay 或本地 CLI 的插件目录执行：
-npm.cmd install .\agents-one-plugin-sdk-0.1.2.tgz
+npm.cmd install .\agents-one-plugin-sdk-0.1.3.tgz
 ```
 
 `agents-one-plugin.manifest.json` 声明该包支持的协议与安全约束。升级插件后应重新执行 `agents-one-plugin-verify`、插件自身回归和目标智能体的真实对话/工具/工作区验收；只有破坏性协议变更才升级到 v2。
@@ -41,6 +41,7 @@ import { createRemoteGatewayPlugin } from "@agents-one/plugin-sdk/gateway";
 const plugin = createRemoteGatewayPlugin({
   agent: { id: "hers-home", kind: "hermes", displayName: "Hers" },
   token: process.env.AGENTS_ONE_GATEWAY_TOKEN,
+  statePath: process.env.AGENTS_ONE_HOST_STATE,
   adapter: {
     capabilities: {
       eventStream: {
@@ -98,7 +99,7 @@ await plugin.listen(8787, "127.0.0.1");
 
 可从 `@agents-one/plugin-sdk/hermes` 导入 `createAgentsOneArtifactTool({ publishArtifact, readOutput })` 生成通用工具定义；`readOutput(path)` 必须由 Connector 实现，并拒绝本次运行受控输出目录之外的路径。
 
-使用反向代理或出站 Relay 将该服务安全暴露为 Gateway v1 地址。不要将 `AGENTS_ONE_GATEWAY_TOKEN` 写入项目文件或 Agent 提示词。
+使用反向代理或出站 Relay 将该服务安全暴露为 Gateway v1 地址。不要将 `AGENTS_ONE_GATEWAY_TOKEN` 写入项目文件或 Agent 提示词。用于生产或发布验收的 Gateway 必须给 `statePath` 传入稳定、可写且不含凭据的绝对路径；未配置时 Run journal 只存在于内存，进程重启后无法满足“不丢 Run”的 Gateway v1 门禁。
 
 ## 通用 Remote CLI Host 与 OpenCode ACP
 
@@ -135,7 +136,7 @@ const host = createRemoteCliHost({
 await host.listen(8787, "127.0.0.1");
 ```
 
-Host 默认只监听 Loopback；`statePath` 可选，用于原子持久化 Run、幂等键、Provider sessionId 和事件快照。Host 重启时未完成 Run 会在下一次查询时进入终态对账：可恢复的 Adapter 可实现 `reconcileRun(vendorRunId, record, context)` 返回 Provider 终态/事件；无法恢复时会产生带 `host_restart_reconciliation_required` 的明确失败终态，不会伪造成功。公网暴露应由受信任的 HTTPS Gateway/反向代理承担，不能把 Loopback Host 直接绑定到公网。
+Host 默认只监听 Loopback；`statePath` 用于原子持久化 Run、幂等键、Provider sessionId 和事件快照，本地开发可省略，但生产和发布验收必须配置。Host 重启时未完成 Run 会在下一次查询时进入终态对账：可恢复的 Adapter 可实现 `reconcileRun(vendorRunId, record, context)` 返回 Provider 终态/事件；无法恢复时会产生带 `host_restart_reconciliation_required` 的明确失败终态，不会伪造成功。公网暴露应由受信任的 HTTPS Gateway/反向代理承担，不能把 Loopback Host 直接绑定到公网。
 
 OpenCode Adapter 通过 ACP JSON-RPC 启动受控 CLI，保留真实模型与用量，分别上报 `assistant.*`、`reasoning.summary`、`tool.*` 和 `artifact.created`；它不会把最终答复写进思考事件，也不会接受未经 Host 配置的 Shell 命令或工作区路径。Pi、Codex、Claude Code 的远程 Adapter 复用该 Host 契约，按后续阶段单独交付。
 
@@ -169,4 +170,5 @@ CLI Adapter 只以参数数组启动进程，不调用 Shell，也不替换 CLI 
 - 若需要桌面端显示远端生成的图片/文件，适配器可实现 `getArtifact(artifactId, context)`，或使用运行上下文的 `publishArtifact`；SDK 会暴露 `GET /artifacts/{artifactId}`，返回元数据及 `contentBase64`。
 - SDK v0.1.2 支持通过 `startRun` 上下文中的 `publishArtifact({ name, mime, bytes })` 发布输出文件；它会自动计算 SHA-256、登记运行产物、写入 `artifact.created` 并提供下载接口。Connector 仍须把该回调接入远端智能体的真实工具系统。
 - SDK v0.1.2 只声明 Adapter 在 `capabilities.eventStream` 中明确启用的增强能力，并在追加 provider 事件后再生成 `run.completed` / `run.failed`；Adapter 不再需要直接操作 `record.journal` 或拦截 `/capabilities`。
+- SDK v0.1.3 支持按数字 sequence 或稳定事件 ID 解释 `Last-Event-ID`，SSE 重连只返回游标之后的事件。升级时应删除 Connector 自定义的 SSE 路由，并在生产服务中配置 `statePath`。
 - 为显示真实模型和上下文占用，适配器应在 `getRun` 或事件的 `data.model`、`data.usage` 中返回 `model_name`/`modelId`、`context_window_tokens`、`context_used` 等真实字段，不要猜测或伪造。
