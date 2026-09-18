@@ -110,6 +110,17 @@ describe("chat run profile transitions", () => {
         managed: "builtin",
         config: {},
       }),
+    ).toBe(false);
+    expect(
+      usesLegacyHermesChat({
+        id: "hermes-local",
+        name: "Hermes",
+        kind: "hermes",
+        location: "local",
+        enabled: true,
+        managed: "builtin",
+        config: {},
+      }),
     ).toBe(true);
   });
 

@@ -57,7 +57,11 @@ export interface ChatRun {
  * runtime id so dispatch and persistence cannot fall back to another agent.
  */
 export function usesLegacyHermesChat(runtime: AgentRuntimeDefinition): boolean {
-  return runtime.kind === "hermes" && runtime.managed === "builtin";
+  return (
+    runtime.kind === "hermes" &&
+    runtime.managed === "builtin" &&
+    runtime.location === "local"
+  );
 }
 
 /** A blank chat that can be reassigned to another profile without losing work. */
