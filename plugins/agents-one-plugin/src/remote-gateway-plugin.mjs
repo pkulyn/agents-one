@@ -16,7 +16,7 @@ import {
 } from "./event-stream.mjs";
 
 export const AGENTS_ONE_PLUGIN_ID = "agents-one-plugin-sdk";
-export const AGENTS_ONE_PLUGIN_VERSION = "0.1.2";
+export const AGENTS_ONE_PLUGIN_VERSION = "0.1.3";
 
 function json(response, status, payload) {
   response.writeHead(status, {
@@ -30,6 +30,17 @@ function error(response, status, code, message) {
     error: { code, message, retryable: status >= 500 },
     requestId: `req_${randomUUID()}`,
   });
+}
+
+function eventCursor(request, url, journal) {
+  const raw =
+    request.headers["last-event-id"] ?? url.searchParams.get("afterSequence");
+  if (typeof raw !== "string" || !raw.trim()) return 0;
+  const numeric = Number(raw);
+  if (Number.isSafeInteger(numeric) && numeric >= 0) return numeric;
+  return (
+    journal.snapshot().find((event) => event.id === raw.trim())?.sequence || 0
+  );
 }
 
 export async function readJsonBody(request, maxBytes = 512 * 1024) {
@@ -830,7 +841,7 @@ export function createRemoteGatewayPlugin({
       }
       await refresh(record);
       if (request.method === "GET" && match[2] === "events") {
-        const after = Number(url.searchParams.get("afterSequence") || 0);
+        const after = eventCursor(request, url, record.journal);
         response.writeHead(200, {
           "content-type": "text/event-stream; charset=utf-8",
           "cache-control": "no-cache",

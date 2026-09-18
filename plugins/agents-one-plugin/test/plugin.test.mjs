@@ -200,7 +200,7 @@ test("remote gateway plugin exposes a v1 run with event snapshots", async () => 
   );
   assert.deepEqual(capabilityBody.plugin, {
     id: "agents-one-plugin-sdk",
-    version: "0.1.2",
+    version: "0.1.3",
     kind: "remote-gateway",
   });
   assert.deepEqual(capabilityBody.capabilities.eventStream, {
@@ -270,6 +270,60 @@ test("remote gateway accepts a second run after an SSE response on independent c
   });
   assert.equal(secondResponse.status, 202, await secondResponse.text());
   assert.equal(starts, 2);
+  await plugin.close();
+});
+
+test("remote gateway resumes SSE after numeric or stable Last-Event-ID cursors", async () => {
+  const plugin = createRemoteGatewayPlugin({
+    agent: { id: "fixture", kind: "custom" },
+    token: "test-token",
+    adapter: {
+      async startRun(_input, { emit }) {
+        emit({
+          id: "evt_one",
+          type: "tool.started",
+          data: { tool: "one" },
+        });
+        emit({
+          id: "evt_two",
+          type: "tool.completed",
+          data: { tool: "one" },
+        });
+        emit({
+          id: "evt_three",
+          type: "assistant.completed",
+          data: { text: "done" },
+        });
+        return { status: "succeeded", vendorRunId: "vendor_resume" };
+      },
+    },
+  });
+  await plugin.listen(0);
+  const base = `http://127.0.0.1:${plugin.server.address().port}`;
+  const headers = { authorization: "Bearer test-token" };
+  const createdResponse = await fetch(`${base}/runs`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ input: { text: "resume" } }),
+  });
+  const created = await createdResponse.json();
+
+  const numeric = await fetch(`${base}/runs/${created.id}/events`, {
+    headers: { ...headers, "last-event-id": "2" },
+  });
+  const numericBody = await numeric.text();
+  assert.doesNotMatch(numericBody, /"sequence":1/);
+  assert.doesNotMatch(numericBody, /"sequence":2/);
+  assert.match(numericBody, /"sequence":3/);
+  assert.match(numericBody, /"sequence":4/);
+
+  const stable = await fetch(`${base}/runs/${created.id}/events`, {
+    headers: { ...headers, "last-event-id": "evt_two" },
+  });
+  const stableBody = await stable.text();
+  assert.doesNotMatch(stableBody, /"sequence":3/);
+  assert.doesNotMatch(stableBody, /"sequence":2/);
+  assert.match(stableBody, /"sequence":4/);
   await plugin.close();
 });
 
