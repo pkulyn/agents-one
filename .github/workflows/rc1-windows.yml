@@ -8,12 +8,16 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
-
 jobs:
   validate:
     name: Reuse Windows Alpha release gate
+    # The reusable workflow contains a conditional draft-release job that
+    # requests contents: write. GitHub validates the maximum nested permission
+    # before evaluating publish_draft, so the caller must expose that ceiling.
+    # The called gate job still restricts itself to contents: read, and this
+    # validation wrapper always disables the draft-release job below.
+    permissions:
+      contents: write
     uses: ./.github/workflows/release.yml
     with:
       ref: ${{ inputs.ref }}
