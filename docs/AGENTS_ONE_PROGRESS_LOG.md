@@ -2808,3 +2808,12 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - 恢复与数据：停止受控 Gateway 后，产品内置恢复完成；项目、OpenCode/Hermes 对话、附件和已暂停计划任务在 UI 可见，完全退出全部进程并手动重启后仍持久存在。损坏包在确认前以归档校验错误拒绝且数据零触碰。
 - 回滚与中断恢复：受控单文件 ACL 写失败在 5 秒内完成即时回滚，事务清理、目标未变且其余数据完整；有效无歧义 `prepared` journal 在启动时自动恢复 snapshot、删除事务并进入 `app.ready`。含无法确认来源新文件的歧义事务按设计 fail-closed 并保留救援数据，单列为安全保护通过，不冒充自动自愈。
 - 判定：OR-703 与固定 SHA 的 OR-705 独立稳定性范围转为 **Go**；批准豁免需修改系统时区的时区/休眠人工场景。RC1 总体仍为 **No-Go**，G7 仅部分通过，待 OR-702 Runtime、OR-704 剩余桌面路径及其他 G0～G8 签字闭环；继续禁止 tag、Release 和公开仓库。
+
+## 2026-09-18：OR-702 缺陷归属核验与 Plugin SDK 0.1.3
+
+- 输入证据：独立机缺陷单 `AGENTS_ONE_RC1_OR702_DEFECT_TICKETS_8C4E5CE.md`，SHA-256 `202FE40DD2667BBAFAC621CDBF15AA9ED8DD6A227023B06FA36AB76CFB291FAC`。固定候选 `8c4e5ce` 上 OR-702 为 No-Go，OR-704 报告结论为 Go；本轮不据缺陷摘要提前改写 RC1 Checklist。
+- 桌面路由：缺陷单把远程对话静默失败归因于本地模型 readiness，但正常用户 Runtime 的 `RuntimeChat` 并不调用该校验。确认到的真实防线缺口是 `usesLegacyHermesChat` 只检查 `kind/managed`，可能把带旧内置标记的远程 Hermes 送入 legacy profile chat。现严格限定为 `kind=hermes + managed=builtin + location=local`；所有远程 Runtime 均保留 runtimeId 并走 Gateway v1，定向路由回归 18/18 通过。
+- SSE 契约：SDK 0.1.3 支持把数字 sequence 或稳定事件 ID 形式的 `Last-Event-ID` 转为 EventJournal 游标，只返回后续事件；新增自动回归后 Plugin SDK 24/24 通过。已有“SSE 完整读取后独立连接立即创建下一 Run”回归继续通过，因此验收服务器的 HTTP 400 无法在仓库 SDK 复现，必须升级服务器插件、删除自定义 SSE 路由后分层复验，不在桌面端用盲目重试掩盖协议错误。
+- Host 重启：SDK 已有 `statePath` 原子持久化和 `host_restart_reconciliation_required` 回归。现场 404 表明土豆云 adapter 未启用该能力或仍使用自定义内存 journal，属于远端部署阻断；README 与 SDK 接入标准现明确生产/发布验收必须配置稳定、可写且不含凭据的 `statePath`。升级后旧 Run 必须可查询为 Provider 对账结果或确定性失败，不得返回 404。
+- 插件发布物：`plugins/agents-one-plugin/agents-one-plugin-sdk-0.1.3.tgz`，31,947 bytes，SHA-256 `D656CEB024E9E1DB70628D7BEB41D1E59955AB60E939335467BC7AFF4A5305F1`；包内 `package.json` 与 manifest 均为 0.1.3。仍需远端维护者安装该包、配置 `AGENTS_ONE_HOST_STATE`、重启 adapter，并执行 OR-702 聚焦复验；在真实 Gateway 复验和新桌面 Gate 完成前，RC1 保持 No-Go。
+- 验证：主工程全量 215/215 文件（2,093 passed / 9 skipped）、Runtime/路由定向 138/138、Plugin SDK 24/24、Connector 10/10、Connect 8/8、Node/Web TypeScript、目标 ESLint、格式检查、生产构建、`lat check` 与 `git diff --check` 均通过。首次串行总命令因外层 120 秒执行上限被中止，随后逐段以明确退出码重跑并全部通过，不把被中止轮次登记为成功。

@@ -2,6 +2,8 @@
 
 Runtime conversations reuse the native chat message union so every agent gets the same reasoning, tool, attachment, and media presentation without exposing control-plane noise as conversation content.
 
+Only the built-in **local** Hermes Runtime may enter the legacy profile-chat renderer. Every remote Runtime, including a Hermes definition carrying an old built-in marker, stays on `RuntimeChat` and dispatches through its registered Gateway v1 runtime ID; it must never be blocked by local model readiness validation.
+
 ## Event presentation boundary
 
 The renderer adapts durable runtime events without changing their stored records or main-process contracts.
