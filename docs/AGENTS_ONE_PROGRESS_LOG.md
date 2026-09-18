@@ -2817,3 +2817,11 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - Host 重启：SDK 已有 `statePath` 原子持久化和 `host_restart_reconciliation_required` 回归。现场 404 表明土豆云 adapter 未启用该能力或仍使用自定义内存 journal，属于远端部署阻断；README 与 SDK 接入标准现明确生产/发布验收必须配置稳定、可写且不含凭据的 `statePath`。升级后旧 Run 必须可查询为 Provider 对账结果或确定性失败，不得返回 404。
 - 插件发布物：`plugins/agents-one-plugin/agents-one-plugin-sdk-0.1.3.tgz`，31,947 bytes，SHA-256 `D656CEB024E9E1DB70628D7BEB41D1E59955AB60E939335467BC7AFF4A5305F1`；包内 `package.json` 与 manifest 均为 0.1.3。仍需远端维护者安装该包、配置 `AGENTS_ONE_HOST_STATE`、重启 adapter，并执行 OR-702 聚焦复验；在真实 Gateway 复验和新桌面 Gate 完成前，RC1 保持 No-Go。
 - 验证：主工程全量 215/215 文件（2,093 passed / 9 skipped）、Runtime/路由定向 138/138、Plugin SDK 24/24、Connector 10/10、Connect 8/8、Node/Web TypeScript、目标 ESLint、格式检查、生产构建、`lat check` 与 `git diff --check` 均通过。首次串行总命令因外层 120 秒执行上限被中止，随后逐段以明确退出码重跑并全部通过，不把被中止轮次登记为成功。
+
+## 2026-09-19：固定候选 Gate、artifact 清理与最终仓库闸门审计
+
+- 固定应用候选 `521503af9abf7ec99a1258193d8f816b5f435030` 的 Windows Alpha Release Gate `35307657941` 在 Attempt 5 再次通过 clean checkout、不可变身份/lockfile、连续三轮自动门禁、Windows 打包、包体 smoke 和校验和生成；唯一失败仍为 GitHub artifact 配额。GitHub 明确提示删除后的用量每 6–12 小时重算，配额恢复前不再盲目重复完整 Gate。
+- GitHub 中 11 个历史 artifact 已全部删除，API 当前返回 0 项；最后删除的 `8c4e5ce` artifact ID 为 `10437172828`，云端删除不可直接恢复。删除前已下载到仓库外 `D:\Agent Console\_release-artifact-archive\8c4e5ce`，六个文件存在且四项发布文件 SHA-256 与内部清单一致。
+- RC1 wrapper 的旧 run `35307619401` 在 job 创建前 `startup_failure`。根因是调用方 `contents: read` 低于可复用工作流条件式 draft Release job 的 `contents: write` 权限上限。提交 `988de40` 只在调用 job 暴露该上限；实际 Gate 仍只读，wrapper 固定 `publish_draft=false`。验证 run `35372730737` 已成功创建嵌套 job并进入 Node 设置，随后主动取消，避免配额重算前重复完整 Gate。
+- Gitleaks 8.30.0 对全部 refs 的 957 个提交复扫仍仅命中两个已知测试假值；仓库位于独立目录，origin/upstream/default branch 正确，远端无 tag/Release。公开治理文件齐全，Prettier 与正式 `lat check` 通过。
+- 本轮审计判定：G0、G8 可通过；G5、G6 的仓库内实现通过，但 PVR、branch protection、Environment reviewer 与新 artifact 仍待转公开/配额恢复后闭环。遵循既定顺序，暂不提前改 RC1 Checklist。完整证据见 [RC1 最终仓库闸门审计](./AGENTS_ONE_RC1_FINAL_REPOSITORY_GATES_AUDIT_20260919.md)。RC1 总体继续 No-Go，禁止 tag、Release 和公开仓库。
