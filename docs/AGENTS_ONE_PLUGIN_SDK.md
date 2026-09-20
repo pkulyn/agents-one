@@ -1,6 +1,6 @@
 # Agents One Plugin SDK 规划与接入标准
 
-状态：**预览实现（0.1.3）**
+状态：**预览实现（0.1.4）**
 
 日期：2026-08-10
 
@@ -71,6 +71,10 @@ node --test .\test\*.test.mjs
 ### 0.1.3
 
 该补丁版补齐 SSE 断线续传：`Last-Event-ID` 可传数字 sequence，也可传 SDK 已发布的稳定事件 ID，Gateway 只重放游标之后的事件。生产或发布验收实例必须配置稳定的 `statePath`，以原子持久化 Run、幂等键、Provider sessionId 与事件快照；仅内存运行的开发实例不得宣称通过 Host 重启门禁。Connector 升级时应删除自定义 `/runs/{id}/events` 路由，直接使用 SDK 路由，避免 SSE 响应状态污染下一次 Run 请求。
+
+### 0.1.4
+
+该补丁版移除 SSE 响应中显式的 `Connection: keep-alive` hop-by-hop 头，由 Node 与反向代理按请求语义管理连接；同时声明 `Cache-Control: no-cache, no-transform` 与 `X-Accel-Buffering: no`。自动回归通过连接池反向代理覆盖默认连接、`Connection: close`、SSE 后连续创建三个 Run，以及五次 `Last-Event-ID` 恢复。
 
 ### 0.1.2
 

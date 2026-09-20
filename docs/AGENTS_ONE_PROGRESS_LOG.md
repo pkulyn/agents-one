@@ -1,5 +1,14 @@
 # Agents One 项目进展日志
 
+## 2026-09-20：候选 521503a No-Go 与 Plugin SDK 0.1.4 修复
+
+- 独立验收总报告 `AGENTS_ONE_RC1_MASTER_ACCEPTANCE_521503A.md`（SHA-256 `8728598C8920F983440D304A24594B66865568C11983B59EC1820393B039411D`）确认固定应用候选 `521503af9abf7ec99a1258193d8f816b5f435030` 为 **No-Go**：OR-702 C2 在公网 nginx 路径中稳定复现完整读取 SSE 后下一次 `POST /runs` 返回空响应体 HTTP 400；直连 adapter 正常，C1/C4/C5/C6 通过，C3 的事件游标功能通过但连续重连受同一 400 污染。该候选没有成功上传 artifact，因此 OR-702 Windows 与 OR-704 保持 Blocked；不得据历史 artifact 推断通过。
+- 根因边界：Plugin SDK 0.1.3 的 SSE 响应显式写入 hop-by-hop `Connection: keep-alive`，可能与 nginx 上游连接语义冲突并污染后续复用请求。现有“独立连接”回归把请求固定为 `Connection: close`，但未断言响应头或模拟反向代理连接池，因而没有覆盖公网故障条件。
+- SDK 0.1.4 移除显式 `Connection` 响应头，由 Node 与反向代理协商连接生命周期；同时使用 `Cache-Control: no-cache, no-transform` 与 `X-Accel-Buffering: no`。新增单 socket 连接池反向代理回归，覆盖默认连接及 `Connection: close` 两种模式下，完整读取 SSE 后连续三个 `POST /runs` 均为 202；另连续五次交替使用数字 sequence 与稳定事件 ID 执行 `Last-Event-ID` 恢复，均返回 200。旧实现先稳定触发新增断言失败，修复后 Plugin SDK 24/24 通过。
+- 插件发布物：`plugins/agents-one-plugin/agents-one-plugin-sdk-0.1.4.tgz`，32,766 bytes，SHA-256 `7E754D5A21E8B5D83383EED0F63BC910B81E6FD14CF49F7B0AD3FC858F9C6D94`；包内 `package.json`、manifest 与 `/capabilities` 版本均为 0.1.4。下一步只在备份并保留 0.1.3 回退包的前提下升级远端 adapter，聚焦复验 C2/C3/C6；三项通过后才生成新应用候选并运行 Windows Gate/artifact。
+- 本地验证：Node 25.8.2 下格式、Node/Web TypeScript、零错误 lint（既有 9 warnings）、Plugin SDK 24/24、Connector 10/10、Connect 8/8、生产依赖 audit 0 与生产 build 通过。主工程全量两次均为 214/215 文件通过，只在既有 `agents-one-backup` 大文件事件循环响应性用例超过 30 秒；该文件定向 21/21 通过且目标用例耗时 8.9 秒。此负载敏感波动不归因为 SSE 补丁，也不登记为完整门禁通过，后续由 GitHub Node 24 clean runner 判定。当前环境仍未安装/暴露 `lat` 命令，已更新 `lat.md/plugin-sdk.md` 并通过格式及 `git diff --check`，但不得虚构 `lat check` 通过。
+- 当前 RC1 结论继续 **No-Go**。本轮仅更新进展日志，不提前把 `AGENTS_ONE_RC1_RELEASE_CHECKLIST.md` 改为通过；继续禁止 tag、Release 与公开仓库。
+
 ## 2026-09-12：英文 UI 收口与 Windows Connector 回归稳定化
 
 - 英文 UI 收口继续推进：轻量对话、主对话入口和反馈、托盘、协作工作区/新建向导、Runtime Shell、项目/任务侧栏已改为按活动语言渲染；项目名称、任务标题、已配置 Runtime 名称等用户数据保持原文。侧栏本轮提交为 `2d9ebfe`，英文定向测试和 Web TypeScript 检查通过；剩余 RuntimeChat 的中文主要是兼容解析、协作协议与角色提示，须另作双语协议兼容切片，不能直接替换正则。

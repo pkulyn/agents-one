@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
+import {
+  Agent as HttpAgent,
+  createServer as createHttpServer,
+  request as httpRequest,
+} from "node:http";
 import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +18,48 @@ import { createCliAdapter } from "../src/cli-adapter-plugin.mjs";
 import { createAgentsOneArtifactTool } from "../examples/hermes-or-hers-adapter.mjs";
 import { createRemoteCliHost } from "../src/remote-cli-host.mjs";
 import { createOpenCodeAcpAdapter } from "../src/adapters/opencode-acp.mjs";
+
+async function createPoolingReverseProxy(upstreamPort) {
+  const agent = new HttpAgent({ keepAlive: true, maxSockets: 1 });
+  const sockets = new Set();
+  const server = createHttpServer((request, response) => {
+    const headers = { ...request.headers };
+    delete headers.host;
+    const upstream = httpRequest(
+      {
+        hostname: "127.0.0.1",
+        port: upstreamPort,
+        method: request.method,
+        path: request.url,
+        headers,
+        agent,
+      },
+      (upstreamResponse) => {
+        response.writeHead(upstreamResponse.statusCode || 502, {
+          ...upstreamResponse.headers,
+        });
+        upstreamResponse.pipe(response);
+      },
+    );
+    upstream.on("socket", (socket) => sockets.add(socket));
+    upstream.on("error", (cause) => {
+      response.writeHead(502, { "content-type": "text/plain" });
+      response.end(cause instanceof Error ? cause.message : String(cause));
+    });
+    request.pipe(upstream);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return {
+    base: `http://127.0.0.1:${server.address().port}`,
+    socketCount: () => sockets.size,
+    async close() {
+      await new Promise((resolve, reject) =>
+        server.close((cause) => (cause ? reject(cause) : resolve())),
+      );
+      agent.destroy();
+    },
+  };
+}
 
 test("event journal redacts local paths and deduplicates stable provider IDs", () => {
   const journal = new EventJournal({ runId: "run_test" });
@@ -200,7 +247,7 @@ test("remote gateway plugin exposes a v1 run with event snapshots", async () => 
   );
   assert.deepEqual(capabilityBody.plugin, {
     id: "agents-one-plugin-sdk",
-    version: "0.1.3",
+    version: "0.1.4",
     kind: "remote-gateway",
   });
   assert.deepEqual(capabilityBody.capabilities.eventStream, {
@@ -212,7 +259,7 @@ test("remote gateway plugin exposes a v1 run with event snapshots", async () => 
   await plugin.close();
 });
 
-test("remote gateway accepts a second run after an SSE response on independent connections", async () => {
+test("remote gateway accepts three runs after SSE through a pooling reverse proxy", async () => {
   let starts = 0;
   const plugin = createRemoteGatewayPlugin({
     agent: { id: "fixture", kind: "custom" },
@@ -231,46 +278,59 @@ test("remote gateway accepts a second run after an SSE response on independent c
   });
   await plugin.listen(0);
   const port = plugin.server.address().port;
-  const base = `http://127.0.0.1:${port}`;
+  const proxy = await createPoolingReverseProxy(port);
   const runBody = (text) =>
     JSON.stringify({ mode: "conversation", input: { text } });
-  const postHeaders = {
-    authorization: "Bearer test-token",
-    connection: "close",
-    "content-type": "application/json",
-  };
+  try {
+    for (const connection of [undefined, "close"]) {
+      const headers = {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+        ...(connection ? { connection } : {}),
+      };
+      const seedResponse = await fetch(`${proxy.base}/runs`, {
+        method: "POST",
+        headers,
+        body: runBody(`${connection || "default"}-seed`),
+      });
+      assert.equal(seedResponse.status, 202);
+      let current = await seedResponse.json();
 
-  const firstResponse = await fetch(`${base}/runs`, {
-    method: "POST",
-    headers: postHeaders,
-    body: runBody("first"),
-  });
-  assert.equal(firstResponse.status, 202);
-  const first = await firstResponse.json();
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const eventsResponse = await fetch(
+          `${proxy.base}/runs/${current.id}/events`,
+          { headers },
+        );
+        assert.equal(eventsResponse.status, 200);
+        assert.match(
+          eventsResponse.headers.get("content-type") || "",
+          /^text\/event-stream\b/,
+        );
+        if (connection === "close") {
+          assert.notEqual(
+            eventsResponse.headers.get("connection"),
+            "keep-alive",
+          );
+        }
+        const events = await eventsResponse.text();
+        assert.match(events, /event: assistant\.completed/);
+        assert.match(events, /event: run\.completed/);
 
-  const eventsResponse = await fetch(`${base}/runs/${first.id}/events`, {
-    headers: {
-      authorization: "Bearer test-token",
-      connection: "close",
-    },
-  });
-  assert.equal(eventsResponse.status, 200);
-  assert.match(
-    eventsResponse.headers.get("content-type") || "",
-    /^text\/event-stream\b/,
-  );
-  const events = await eventsResponse.text();
-  assert.match(events, /event: assistant\.completed/);
-  assert.match(events, /event: run\.completed/);
-
-  const secondResponse = await fetch(`${base}/runs`, {
-    method: "POST",
-    headers: postHeaders,
-    body: runBody("second"),
-  });
-  assert.equal(secondResponse.status, 202, await secondResponse.text());
-  assert.equal(starts, 2);
-  await plugin.close();
+        const nextResponse = await fetch(`${proxy.base}/runs`, {
+          method: "POST",
+          headers,
+          body: runBody(`${connection || "default"}-${attempt}`),
+        });
+        assert.equal(nextResponse.status, 202);
+        current = await nextResponse.json();
+      }
+    }
+    assert.equal(starts, 8);
+    assert.ok(proxy.socketCount() < starts);
+  } finally {
+    await proxy.close();
+    await plugin.close();
+  }
 });
 
 test("remote gateway resumes SSE after numeric or stable Last-Event-ID cursors", async () => {
@@ -324,6 +384,21 @@ test("remote gateway resumes SSE after numeric or stable Last-Event-ID cursors",
   assert.doesNotMatch(stableBody, /"sequence":3/);
   assert.doesNotMatch(stableBody, /"sequence":2/);
   assert.match(stableBody, /"sequence":4/);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const resumed = await fetch(`${base}/runs/${created.id}/events`, {
+      headers: {
+        ...headers,
+        "last-event-id": attempt % 2 === 0 ? "2" : "evt_two",
+        ...(attempt % 2 === 0 ? {} : { connection: "close" }),
+      },
+    });
+    assert.equal(resumed.status, 200, await resumed.text());
+    assert.match(
+      resumed.headers.get("content-type") || "",
+      /^text\/event-stream\b/,
+    );
+  }
   await plugin.close();
 });
 

@@ -16,7 +16,7 @@ import {
 } from "./event-stream.mjs";
 
 export const AGENTS_ONE_PLUGIN_ID = "agents-one-plugin-sdk";
-export const AGENTS_ONE_PLUGIN_VERSION = "0.1.3";
+export const AGENTS_ONE_PLUGIN_VERSION = "0.1.4";
 
 function json(response, status, payload) {
   response.writeHead(status, {
@@ -844,8 +844,8 @@ export function createRemoteGatewayPlugin({
         const after = eventCursor(request, url, record.journal);
         response.writeHead(200, {
           "content-type": "text/event-stream; charset=utf-8",
-          "cache-control": "no-cache",
-          connection: "keep-alive",
+          "cache-control": "no-cache, no-transform",
+          "x-accel-buffering": "no",
         });
         for (const event of record.journal.after(after)) {
           response.write(
