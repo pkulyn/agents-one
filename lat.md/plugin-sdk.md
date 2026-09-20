@@ -26,12 +26,18 @@ Gateway request decoding accepts Buffer, typed-array, and string chunks because 
 
 `readJsonBody` normalizes every chunk to a Buffer before concatenation and JSON parsing, preventing string chunks from crashing `Buffer.concat`.
 
+## Proxy-safe SSE responses
+
+SSE responses leave hop-by-hop connection negotiation to Node and the reverse proxy, preventing a completed event stream from poisoning the next pooled Gateway request.
+
+`plugins/agents-one-plugin/src/remote-gateway-plugin.mjs` does not emit an explicit `Connection` response header. It disables intermediary transformation and nginx buffering while allowing incoming `Connection: close` and ordinary HTTP/1.1 requests to keep their native socket semantics.
+
 ## Regression coverage
 
-SDK tests protect capability truthfulness, terminal ordering, Workspace evidence, request-body compatibility, stable deduplication, artifacts, CLI stream framing, and isolation between a completed SSE response and the next Run request.
+SDK tests protect capability truthfulness, terminal ordering, Workspace evidence, request-body compatibility, stable deduplication, artifacts, CLI stream framing, and isolation between a completed SSE response and the next Run request through a pooling reverse proxy.
 
-`plugins/agents-one-plugin/test/plugin.test.mjs` covers successful and failed terminal refreshes, stable declared flags, relative Workspace metadata, unsafe-path removal, mixed string/Buffer bodies, Artifact round trips, JSONL records split across chunks, and a second `POST /runs` over an independent connection immediately after consuming `GET /runs/{id}/events`.
+`plugins/agents-one-plugin/test/plugin.test.mjs` covers successful and failed terminal refreshes, stable declared flags, relative Workspace metadata, unsafe-path removal, mixed string/Buffer bodies, Artifact round trips, JSONL records split across chunks, and three consecutive `POST /runs` requests after consuming SSE through a one-socket reverse-proxy pool in both default and `Connection: close` modes.
 
-SSE resume accepts either a numeric sequence or a previously emitted stable event ID in `Last-Event-ID`; only later journal entries are replayed. Production and release-acceptance Gateway deployments must also provide a durable `statePath`. Without it, the SDK remains suitable only for ephemeral development because a process restart cannot reconcile an in-memory Run.
+SSE resume accepts either a numeric sequence or a previously emitted stable event ID in `Last-Event-ID`; only later journal entries are replayed. Five alternating numeric/stable reconnects protect against proxy-state pollution and intermittent HTTP 400 responses. Production and release-acceptance Gateway deployments must also provide a durable `statePath`. Without it, the SDK remains suitable only for ephemeral development because a process restart cannot reconcile an in-memory Run.
 
 The public diagnostic `scripts/diagnose-gateway-sse-post.mjs` selects the Agents One Gateway v1 object-input/`id` contract for `/agents-one/v1` endpoints and the native Hermes v1 string-input/`run_id` contract for `/v1` endpoints. Its regression server exercises both forms, preventing a request-shape mismatch from being misreported as an SSE or proxy failure.
