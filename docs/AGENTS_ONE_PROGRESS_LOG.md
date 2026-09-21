@@ -1,5 +1,12 @@
 # Agents One 项目进展日志
 
+## 2026-09-21：Plugin SDK 0.1.4 公网聚焦验收通过
+
+- 独立验收报告 `AGENTS_ONE_RC1_OR702_SDK014_FOCUSED_ACCEPTANCE_AAC4722.md`（13,373 bytes，SHA-256 `90478803719FEA706EDEF305A817953E7239806D1F30689D47B4E558C165580C`）以全新 clone 固定到 `aac4722bd41b3d9b38165aee8c65d77a3358ab8b`，工作树干净；SDK 0.1.4 tgz 的 32,766 bytes、SHA-256 `7E754D5A21E8B5D83383EED0F63BC910B81E6FD14CF49F7B0AD3FC858F9C6D94`、包内 package/manifest 版本均匹配。远端 adapter 已在私有备份后从 0.1.3 升级到 0.1.4，`plugin-adapter.mjs`、Runtime 身份和稳定 `statePath` 未改，服务及 `/capabilities` 正常，无回滚。
+- OR-702 C2 关闭：正式公网 nginx 入口下，默认连接与显式 `Connection: close` 两组均完成完整 SSE 后连续三个 `POST /runs`，两组均为 3/3 返回 202，不再出现空响应体 400 或交替失败。诊断脚本首次 close 组曾因两个真实 running 记录占满 `maxConcurrentRuns=2` 返回一次明确 JSON 429；查询遗留 Run 触发持久化对账并释放正常额度后，脚本两组均为 202/200/202。该 429 是受控并发限制，不是连接复用回归，也未被静默重试掩盖。
+- OR-702 C3/C6 通过：无游标、数字 sequence、稳定事件 ID 与终态游标均按契约返回；五次交替 `Last-Event-ID` 重连全部 200、序列单调且无重复。运行中 Host 重启后原 Run 返回 200 failed 与 `host_restart_reconciliation_required`/`run.failed`，不再 404；重启后新 Run 为 202→succeeded，持久化状态文件 mode 600 且无非终态残留。
+- 证据 JSON、远端 journal 与报告完成凭证/私钥/模型正文扫描，均无泄漏。由此 SDK 0.1.4 的 OR-702 服务端聚焦范围转为 **Go**，上一候选 `521503a` 的 C2 P0 已验证关闭。RC1 总体仍为 **No-Go**：必须先冻结包含本记录的新候选 SHA、取得该 SHA 的 Windows Gate artifact，再由独立 Windows 只补验 OR-702 桌面范围与 OR-704 尚未签字项；本轮仍不更新 RC1 Checklist，不创建 tag/Release，不公开仓库。
+
 ## 2026-09-20：候选 521503a No-Go 与 Plugin SDK 0.1.4 修复
 
 - 独立验收总报告 `AGENTS_ONE_RC1_MASTER_ACCEPTANCE_521503A.md`（SHA-256 `8728598C8920F983440D304A24594B66865568C11983B59EC1820393B039411D`）确认固定应用候选 `521503af9abf7ec99a1258193d8f816b5f435030` 为 **No-Go**：OR-702 C2 在公网 nginx 路径中稳定复现完整读取 SSE 后下一次 `POST /runs` 返回空响应体 HTTP 400；直连 adapter 正常，C1/C4/C5/C6 通过，C3 的事件游标功能通过但连续重连受同一 400 污染。该候选没有成功上传 artifact，因此 OR-702 Windows 与 OR-704 保持 Blocked；不得据历史 artifact 推断通过。
