@@ -2841,3 +2841,10 @@ Hermes 任务对话在窗口顶部能显示头像和任务标题，但 Pi、Code
 - RC1 wrapper 的旧 run `35307619401` 在 job 创建前 `startup_failure`。根因是调用方 `contents: read` 低于可复用工作流条件式 draft Release job 的 `contents: write` 权限上限。提交 `988de40` 只在调用 job 暴露该上限；实际 Gate 仍只读，wrapper 固定 `publish_draft=false`。验证 run `35372730737` 已成功创建嵌套 job并进入 Node 设置，随后主动取消，避免配额重算前重复完整 Gate。
 - Gitleaks 8.30.0 对全部 refs 的 957 个提交复扫仍仅命中两个已知测试假值；仓库位于独立目录，origin/upstream/default branch 正确，远端无 tag/Release。公开治理文件齐全，Prettier 与正式 `lat check` 通过。
 - 本轮审计判定：G0、G8 可通过；G5、G6 的仓库内实现通过，但 PVR、branch protection、Environment reviewer 与新 artifact 仍待转公开/配额恢复后闭环。遵循既定顺序，暂不提前改 RC1 Checklist。完整证据见 [RC1 最终仓库闸门审计](./AGENTS_ONE_RC1_FINAL_REPOSITORY_GATES_AUDIT_20260919.md)。RC1 总体继续 No-Go，禁止 tag、Release 和公开仓库。
+
+## 2026-09-22：Gateway 凭据错误分类修复
+
+- 独立 Windows 对固定 SHA `731dbffd1bb9907bf2741264417ab165485aae78` 的 D4 验收确认：Gateway 对错误或缺失 Token 正确返回 HTTP 401 / `unauthorized`，Main 也已归一为不含凭据的“Gateway Token 无效或无权访问”，但智能体列表把所有远程 `unreachable` 状态覆盖成通用网络/地址提示，误导用户排查方向。
+- 变更边界严格限制在 Renderer 的远程 Runtime 诊断展示：卡片优先显示 Main 已脱敏的 probe message，无安全原因时才使用通用回退；不修改 Runtime schema、凭据存储、IPC、探测请求、持久化配置、会话或历史。回退只需恢复单行展示逻辑。
+- 自动回归覆盖两层：Gateway 401/403 必须生成固定脱敏凭据错误且不得包含响应体中的 Token；智能体列表必须显示该原因、保持“连接异常”并禁用对话，不得再退化为通用网络提示。RC1 仍为 No-Go，待形成新固定 SHA、D1/D4 定向复验和正式 artifact 闭环。
+- 验证：Remote Gateway 与智能体列表定向回归 39/39、Node/Web TypeScript、零错误 ESLint、Prettier、生产 build、`lat check` 与 `git diff --check` 全部通过。

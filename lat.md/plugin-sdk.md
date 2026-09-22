@@ -34,7 +34,7 @@ SSE responses leave hop-by-hop connection negotiation to Node and the reverse pr
 
 ## Regression coverage
 
-SDK tests protect capability truthfulness, terminal ordering, Workspace evidence, request-body compatibility, stable deduplication, artifacts, CLI stream framing, and isolation between a completed SSE response and the next Run request through a pooling reverse proxy.
+SDK tests protect capability truthfulness, terminal ordering, Workspace evidence, body compatibility, stable deduplication, artifacts, CLI framing, and isolation between completed SSE responses and later Run requests through a pooled reverse proxy.
 
 `plugins/agents-one-plugin/test/plugin.test.mjs` covers successful and failed terminal refreshes, stable declared flags, relative Workspace metadata, unsafe-path removal, mixed string/Buffer bodies, Artifact round trips, JSONL records split across chunks, and three consecutive `POST /runs` requests after consuming SSE through a one-socket reverse-proxy pool in both default and `Connection: close` modes.
 
