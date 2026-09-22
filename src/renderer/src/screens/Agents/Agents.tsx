@@ -320,7 +320,11 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
             }`}
           >
             <AlertTriangle size={14} aria-hidden="true" />
-            <span>{webNotice || t("agents.remoteConnectionFailed")}</span>
+            <span>
+              {webNotice ||
+                probe?.message ||
+                t("agents.remoteConnectionFailed")}
+            </span>
           </div>
         )}
 
