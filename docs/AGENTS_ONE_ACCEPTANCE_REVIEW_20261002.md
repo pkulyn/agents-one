@@ -72,3 +72,5 @@
 - SDK 升为 0.1.5。现有远端 0.1.4 需由维护者升级并保留 statePath，再做真实 Connector 验收；本轮不凭附件中的授权转述操作生产服务。
 - 新候选从原 7dfcb50 取独立工作树，仅纳入本轮功能修复、SDK 包和验收文档。主工作区既有 UI、许可证、README 等未提交改动不自动进入此候选。固定身份及 GitHub Gate 结果随后写入候选清单。
 - `efcba08` 的 PR CI `36909405756` 全部通过，Windows Gate `36909292678` 前两轮通过、第三轮在既有 Gateway 附件持久化测试失败，未打包/上传。日志末次调用来自另一 Pi 会话，生产保存函数保留各自 Runtime 身份；该测试错误地以全局最后一次调用推断当前对话完成。修正为等待唯一测试对话的终态 checkpoint，保持 Runtime/双消息断言并增加 active Run 清空检查；不改 Renderer 生产代码。新候选必须从头重跑三轮，不能合并旧 run 的 Pass。
+- 最终候选 `f4ecde936f2df2570261e812c872828f30fa3c6f` 已通过新 Gate `36912267125` 的完整三轮、打包、启动 smoke 与上传；每轮主测试 2100 passed/9 skipped、SDK 27 passed、其他子项目 17 passed/1 平台 skip，audit 0。其 PR CI `36912216661` 也已通过。
+- 本轮已重新下载新 artifact `11188917424` 并验证 393,005,013 bytes、ZIP SHA-256 `4c2b215ef6368e89a1c3bc8c407cd8622d2e61d4dd4ea81a0d2886ce8cce34cb`、四文件 SHA-256、latest.yml SHA512 与 RELEASE_NOTES SHA；完整身份在 [候选清单](./AGENTS_ONE_CONTEXT_FIX_CANDIDATE_20261002.md)。这仅完成新候选自动化/制品门禁，原矩阵的必验缺口仍须按 [复测提示词](./AGENTS_ONE_WINDOWS_RETEST_PROMPT_20261002.md) 闭环；发布仍 No-Go。

@@ -7,6 +7,9 @@
 - 诊断脚本已复现 SSE 后不查询 Run 终态导致并发槽位 429，改为每轮查询终态后再发下一轮。先失败的回归覆盖上述问题，修复后定向 68/68、SDK 27/27、类型检查和生产构建通过；SDK 升到 0.1.5，真实远端升级与四轮续接仍待复验。
 - 从原 7dfcb50 创建独立候选工作树，准备固定 SHA 的新 Gate。现有 UI、README、许可证及其他未提交工作保留在主工作区；未改用户 Runtime 配置或历史文件。补验优先级为四轮/重启续接、桌面取消、调度对照、真实恢复写失败、干净电脑及跨版本回退；暂不改 tag、Release、仓库可见性或生产 Host。
 - 首次修复候选 `efcba08` 的 PR CI `36909405756` 全通过，Gate `36909292678` 前两轮通过、第三轮在附件持久化测试的全局最后调用断言失败，未打包/上传。已把该测试改为等待自身唯一对话的终态保存，保留 Runtime/消息断言并加验 active Run 清空，RuntimeChat 66/66；仅改测试同步，不改 Renderer 生产行为。新 SHA 将从头重跑全部三轮。
+- 最终固定候选 `f4ecde936f2df2570261e812c872828f30fa3c6f` 在 [Gate 36912267125](https://github.com/pkulyn/agents-one/actions/runs/36912267125) 从头三轮全通过：每轮 215 主测试文件、2100 passed/9 skipped；SDK 27 passed，其他子项目 17 passed/1 平台 skip；格式、类型、lint、audit 0、build、打包与启动 smoke 均通过。PR #6 为草稿；F4 的 PR CI `36912216661` 也已通过。
+- [新 Windows artifact 11188917424](https://github.com/pkulyn/agents-one/actions/runs/36912267125/artifacts/11188917424) 为 393,005,013 bytes，ZIP SHA-256 `4c2b215ef6368e89a1c3bc8c407cd8622d2e61d4dd4ea81a0d2886ce8cce34cb`；本轮已重新下载并复算 ZIP、内部四文件 SHA-256、latest.yml SHA512 和 RELEASE_NOTES 构建 SHA，全部一致。UTC 到期 `2026-10-15T19:34:44Z`，北京 10 月 16 日 03:34。
+- [候选身份与完整文件哈希](./AGENTS_ONE_CONTEXT_FIX_CANDIDATE_20261002.md)、[复测提示词](./AGENTS_ONE_WINDOWS_RETEST_PROMPT_20261002.md) 已补齐。SDK 0.1.5 tarball 35,418 bytes、SHA-256 `aa910c7f5c9cf5133e1f7559a12e9de295e89eacebb4f703581b5e9c16d56c06`，解包后 27/27。发布仍 No-Go；新包真实四轮/重启续接、取消、调度对照、真实恢复失败和跨版本回退须继续独立验收。
 
 ## 2026-09-21：Plugin SDK 0.1.4 公网聚焦验收通过
 
