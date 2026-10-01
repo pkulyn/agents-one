@@ -119,6 +119,34 @@ async function createRun(label, close, contract) {
   return { evidence, runId };
 }
 
+async function reconcileRun(runId, close) {
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    const evidence = await responseEvidence(
+      await request(`/runs/${encodeURIComponent(runId)}`, { close }),
+    );
+    let status;
+    try {
+      status = JSON.parse(evidence.text)?.status;
+    } catch {
+      /* Evidence remains bounded metadata. */
+    }
+    const terminal = [
+      "succeeded",
+      "completed",
+      "failed",
+      "cancelled",
+      "canceled",
+      "timed_out",
+    ].includes(status);
+    if (terminal || evidence.status >= 400) {
+      return { ...evidence, text: undefined, runStatus: status, terminal };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return { terminal: false, timedOut: true };
+}
+
 async function runSequence(label, close, contract) {
   const first = await createRun(`${label}-ONE`, close, contract);
   const output = {
@@ -140,6 +168,10 @@ async function runSequence(label, close, contract) {
     text: undefined,
     hasSseFrames: /(?:^|\n)(?:id|event|data):/.test(events.text),
   };
+  // Consuming SSE alone does not necessarily refresh the SDK's durable Run.
+  // Reconcile every Run before another POST so diagnostics release quota slots.
+  output.firstRun = await reconcileRun(first.runId, close);
+  if (!output.firstRun.terminal) return output;
 
   const second = await createRun(`${label}-TWO`, close, contract);
   output.secondPost = {
@@ -147,6 +179,19 @@ async function runSequence(label, close, contract) {
     text: undefined,
     hasRunId: Boolean(second.runId),
   };
+  if (second.runId) {
+    const secondEvents = await responseEvidence(
+      await request(`/runs/${encodeURIComponent(second.runId)}/events`, {
+        close,
+      }),
+    );
+    output.secondEvents = {
+      ...secondEvents,
+      text: undefined,
+      hasSseFrames: /(?:^|\n)(?:id|event|data):/.test(secondEvents.text),
+    };
+    output.secondRun = await reconcileRun(second.runId, close);
+  }
   return output;
 }
 

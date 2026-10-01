@@ -41,3 +41,21 @@ SDK tests protect capability truthfulness, terminal ordering, Workspace evidence
 SSE resume accepts either a numeric sequence or a previously emitted stable event ID in `Last-Event-ID`; only later journal entries are replayed. Five alternating numeric/stable reconnects protect against proxy-state pollution and intermittent HTTP 400 responses. Production and release-acceptance Gateway deployments must also provide a durable `statePath`. Without it, the SDK remains suitable only for ephemeral development because a process restart cannot reconcile an in-memory Run.
 
 The public diagnostic `scripts/diagnose-gateway-sse-post.mjs` selects the Agents One Gateway v1 object-input/`id` contract for `/agents-one/v1` endpoints and the native Hermes v1 string-input/`run_id` contract for `/v1` endpoints. Its regression server exercises both forms, preventing a request-shape mismatch from being misreported as an SSE or proxy failure.
+
+## Conversation and provider identities
+
+Gateway conversation identity is stable from the first adapter request; provider session identity remains separate and is recovered from durable Runs within the same Runtime.
+
+The SDK passes the generated or supplied conversationId to `adapter.startRun`, preserving the original request fingerprint for idempotency. Follow-up requests receive the latest provider sessionId for that conversation from the persisted Run journal. Older clients that saved a provider ID can resolve that alias within the same Runtime, without rewriting history. Desktop Gateway runs retain conversationId before sessionId so later requests continue using the canonical Gateway identity. `test/conversation.test.mjs` covers first-turn binding, retry idempotency, process restart, Runtime isolation and legacy aliases; `tests/agent-runtimes.test.ts` covers four dispatches with distinct Gateway/provider identities.
+
+## ACP continuation and replay
+
+OpenCode restores existing native sessions using advertised ACP v1 capabilities and suppresses loaded history so previous answers do not appear as new output.
+
+Local and remote adapters accept object or boolean `resume` capabilities, prefer `session/resume`, and otherwise use `session/load` when `loadSession` is true. An empty restore result retains the requested native sessionId. Missing capabilities or restore errors fail explicitly without creating another session. `tests/opencode-acp.test.ts` and `test/opencode-continuation.test.mjs` protect capability variants, empty responses, replay suppression and restoration failure. Controlled protocol regressions do not replace real Runtime conversations against the fixed candidate.
+
+## Diagnostic terminal reconciliation
+
+The SSE diagnostic refreshes every Run to a terminal state before starting another request, preventing the diagnostic itself from exhausting concurrency slots.
+
+`scripts/diagnose-gateway-sse-post.mjs` consumes both event streams and polls each Run with a bounded deadline. `tests/gateway-sse-diagnostic.test.ts` uses one active slot released only by GET reconciliation for both supported contracts, so missing reconciliation fails the regression.

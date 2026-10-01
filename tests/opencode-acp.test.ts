@@ -68,7 +68,116 @@ function toolAcpScript(): string {
   ].join("");
 }
 
+function continuationAcpScript(
+  capabilities: unknown,
+  failRestore = false,
+): string {
+  return [
+    "const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});",
+    "const send=(x)=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',...x})+'\\n');",
+    `const capabilities=${JSON.stringify(capabilities)},failRestore=${JSON.stringify(failRestore)};`,
+    "rl.on('line',(line)=>{const m=JSON.parse(line);fs.appendFileSync(process.cwd()+'/requests.jsonl',line+'\\n');",
+    "if(m.method==='initialize')send({id:m.id,result:{protocolVersion:1,agentCapabilities:capabilities}});",
+    "else if(m.method==='session/new')send({id:m.id,result:{sessionId:'new-empty-session'}});",
+    "else if(m.method==='session/load'||m.method==='session/resume'){if(failRestore){send({id:m.id,error:{code:-32000,message:'session not found'}});return;}if(m.method==='session/load')send({method:'session/update',params:{sessionId:m.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'OLD-REPLAY'}}}});send({id:m.id,result:{}});}",
+    "else if(m.method==='session/prompt'){send({method:'session/update',params:{sessionId:m.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'CURRENT-ANSWER'}}}});send({id:m.id,result:{stopReason:'end_turn'}});}",
+    "});",
+  ].join("");
+}
+
 describe("OpenCode ACP adapter", () => {
+  it.each([
+    [{ sessionCapabilities: { resume: {} } }, "session/resume"],
+    [{ sessionCapabilities: { resume: true } }, "session/resume"],
+    [{ loadSession: true }, "session/load"],
+  ])(
+    "restores the provider session for capabilities %j without replaying old answers",
+    async (capabilities, method) => {
+      const workspace = mkdtempSync(
+        join(tmpdir(), "opencode-acp-continuation-"),
+      );
+      try {
+        const output: string[] = [];
+        const started = await startOpenCodeProcess(
+          {
+            executablePath: process.execPath,
+            acpArgs: ["-e", continuationAcpScript(capabilities)],
+          },
+          {
+            prompt: "follow up",
+            mode: "analysis",
+            workspace,
+            sessionId: "persisted-session",
+          },
+          (chunk) => output.push(chunk),
+          () => undefined,
+        );
+        const result = await started.completion;
+        expect(result).toMatchObject({
+          sessionId: "persisted-session",
+          output: "CURRENT-ANSWER",
+        });
+        expect(result.error).toBeUndefined();
+        expect(output.join("")).toBe("CURRENT-ANSWER");
+        const requests = readFileSync(join(workspace, "requests.jsonl"), "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        expect(requests.map((request) => request.method)).toEqual([
+          "initialize",
+          method,
+          "session/prompt",
+        ]);
+        expect(requests[1].params.sessionId).toBe("persisted-session");
+        expect(requests[2].params.sessionId).toBe("persisted-session");
+      } finally {
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "does not silently create a fresh session when continuation fails (restore=%s)",
+    async (supportsRestore) => {
+      const workspace = mkdtempSync(
+        join(tmpdir(), "opencode-acp-restore-failure-"),
+      );
+      try {
+        const started = await startOpenCodeProcess(
+          {
+            executablePath: process.execPath,
+            acpArgs: [
+              "-e",
+              continuationAcpScript(
+                supportsRestore ? { loadSession: true } : {},
+                true,
+              ),
+            ],
+          },
+          {
+            prompt: "follow up",
+            mode: "analysis",
+            workspace,
+            sessionId: "persisted-session",
+          },
+          () => undefined,
+          () => undefined,
+        );
+        const result = await started.completion;
+        expect(result.error).toBeTruthy();
+        expect(result.output).toBe("");
+        const requests = readFileSync(
+          join(workspace, "requests.jsonl"),
+          "utf8",
+        );
+        expect(requests).not.toContain("session/new");
+        expect(requests).not.toContain("session/prompt");
+      } finally {
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("resolves Windows npm shims without using a shell", () => {
     const shim = join("C:", "Tools", "opencode.cmd");
     expect(

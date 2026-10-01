@@ -1,6 +1,6 @@
 # Agents One Plugin SDK 规划与接入标准
 
-状态：**预览实现（0.1.4）**
+状态：**预览实现（0.1.5；新增续接修复待真实 Connector 复验）**
 
 日期：2026-08-10
 
@@ -75,6 +75,12 @@ node --test .\test\*.test.mjs
 ### 0.1.4
 
 该补丁版移除 SSE 响应中显式的 `Connection: keep-alive` hop-by-hop 头，由 Node 与反向代理按请求语义管理连接；同时声明 `Cache-Control: no-cache, no-transform` 与 `X-Accel-Buffering: no`。自动回归通过连接池反向代理覆盖默认连接、`Connection: close`、SSE 后连续创建三个 Run，以及五次 `Last-Event-ID` 恢复。
+
+### 0.1.5
+
+该补丁版让首轮 `adapter.startRun` 接收 Gateway 已确定的 `conversationId`，后续根据同 Runtime、同 conversationId 的持久化 Run 传入独立 Provider `sessionId`。旧客户端曾保存的 Provider ID 可在同 Runtime 内解析为已有 Gateway 对话，不改写历史记录。原始请求的幂等 fingerprint 不变。
+
+OpenCode ACP 兼容对象或布尔形式的 resume 能力与 `loadSession`；恢复可返回空对象，仍保留请求的原生 sessionId。加载期间旧历史通知不拼入本轮答复，恢复失败明确报错。契约依据 [ACP v1 session setup](https://agentclientprotocol.com/protocol/v1/session-setup)。新包需由远端维护者升级并保留原 `statePath`，真实 Connector 的会话续接仍须独立复测。
 
 ### 0.1.2
 
