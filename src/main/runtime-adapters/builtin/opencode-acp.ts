@@ -156,6 +156,7 @@ class OpenCodeAcpClient {
   private nextId = 1;
   private readonly pending = new Map<string, PendingRequest>();
   private sessionId: string | undefined;
+  private replayingHistory = false;
   private closed = false;
 
   constructor(
@@ -194,7 +195,7 @@ class OpenCodeAcpClient {
     const method = typeof json.method === "string" ? json.method : "";
     const params = isRecord(json.params) ? json.params : {};
     if (method === "session/update") {
-      this.options.onUpdate(params);
+      if (!this.replayingHistory) this.options.onUpdate(params);
       return;
     }
     if ((typeof id === "number" || typeof id === "string") && method) {
@@ -323,26 +324,48 @@ class OpenCodeAcpClient {
       ? capabilities.sessionCapabilities
       : {};
     let result: unknown;
-    if (requestedSessionId && sessionCapabilities.resume === true) {
+    const canResume =
+      sessionCapabilities.resume === true ||
+      isRecord(sessionCapabilities.resume);
+    if (requestedSessionId && canResume) {
       result = await this.request("session/resume", {
         sessionId: requestedSessionId,
         cwd,
         mcpServers: [],
       });
+    } else if (requestedSessionId && capabilities.loadSession === true) {
+      this.replayingHistory = true;
+      try {
+        result = await this.request("session/load", {
+          sessionId: requestedSessionId,
+          cwd,
+          mcpServers: [],
+        });
+      } finally {
+        this.replayingHistory = false;
+      }
+    } else if (requestedSessionId) {
+      throw new Error(
+        "OpenCode ACP 当前版本不支持恢复已有 session，未创建新会话。",
+      );
     } else {
       result = await this.request("session/new", { cwd, mcpServers: [] });
     }
+    // ACP load/resume replies may contain only configuration, or be empty.
+    // The requested provider identity remains authoritative for continuation.
+    const sessionId =
+      requestedSessionId || (isRecord(result) ? result.sessionId : undefined);
     if (
       !isRecord(result) ||
-      typeof result.sessionId !== "string" ||
-      !result.sessionId.trim()
+      typeof sessionId !== "string" ||
+      !sessionId.trim()
     ) {
       throw new Error("OpenCode ACP 未返回有效 sessionId。");
     }
-    this.sessionId = result.sessionId;
+    this.sessionId = sessionId;
     const model = modelFromConfigOptions(result.configOptions);
     return {
-      sessionId: result.sessionId,
+      sessionId,
       ...(model ? { model } : {}),
     };
   }

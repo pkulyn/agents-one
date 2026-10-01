@@ -4191,8 +4191,8 @@ function applyAgentsOneRemoteGatewayRun(
       record.run = {
         ...record.run,
         sessionId:
-          remoteRun.sessionId ??
           remoteRun.conversationId ??
+          remoteRun.sessionId ??
           record.run.sessionId,
         model: mergedModel,
         usage: mergedUsage,
@@ -4201,7 +4201,7 @@ function applyAgentsOneRemoteGatewayRun(
     }
     return finishRuntimeRun(record, "failed", {
       sessionId:
-        remoteRun.sessionId ?? remoteRun.conversationId ?? record.run.sessionId,
+        remoteRun.conversationId ?? remoteRun.sessionId ?? record.run.sessionId,
       error:
         "Gateway 已报告运行完成，但未返回 assistant.completed 或最终答复。请让插件先持久化 assistant.completed（data.text），并在终态快照中保留 output。",
       model: mergedModel,
@@ -4216,8 +4216,8 @@ function applyAgentsOneRemoteGatewayRun(
       return finishRuntimeRun(record, "timed_out", {
         output: remoteRun.output ?? finalOutput ?? record.run.output,
         sessionId:
-          remoteRun.sessionId ??
           remoteRun.conversationId ??
+          remoteRun.sessionId ??
           record.run.sessionId,
         error:
           remoteRun.error ||
@@ -4243,8 +4243,8 @@ function applyAgentsOneRemoteGatewayRun(
       return finishRuntimeRun(record, "failed", {
         output: remoteRun.output ?? finalOutput ?? record.run.output,
         sessionId:
-          remoteRun.sessionId ??
           remoteRun.conversationId ??
+          remoteRun.sessionId ??
           record.run.sessionId,
         error:
           "远程智能体未发起受控工作区操作，也未交付可验证的媒体或产物，不能将本轮标记为完成。请检查 Relay 是否已把 workspaceRef 注册为真实的 workspace_gateway 工具。",
@@ -4256,7 +4256,7 @@ function applyAgentsOneRemoteGatewayRun(
     return finishRuntimeRun(record, remoteRun.status, {
       output: remoteRun.output ?? finalOutput ?? record.run.output,
       sessionId:
-        remoteRun.sessionId ?? remoteRun.conversationId ?? record.run.sessionId,
+        remoteRun.conversationId ?? remoteRun.sessionId ?? record.run.sessionId,
       error: remoteRun.error ?? record.run.error,
       artifacts: remoteRun.artifacts,
       model: mergedModel,
@@ -4268,7 +4268,7 @@ function applyAgentsOneRemoteGatewayRun(
     status: remoteRun.status,
     output: remoteRun.output ?? finalOutput ?? record.run.output,
     sessionId:
-      remoteRun.sessionId ?? remoteRun.conversationId ?? record.run.sessionId,
+      remoteRun.conversationId ?? remoteRun.sessionId ?? record.run.sessionId,
     error: remoteRun.error ?? record.run.error,
     model: mergedModel,
     usage: mergedUsage,
@@ -4992,10 +4992,12 @@ export async function startAgentRuntimeTask(
           runtimeId: runtime.id,
           idempotencyKey: id,
           // A chat must stay a Gateway conversation from its first turn. The
-          // first request has no remote session id yet, but still needs the
-          // structured reasoning/tool event stream used by later turns.
+          // The first request creates a Gateway conversation identity and
+          // uses the same structured event stream as subsequent turns.
           mode: task.conversation || task.sessionId ? "conversation" : "task",
-          conversationId: task.sessionId,
+          conversationId:
+            task.sessionId ||
+            (task.conversation ? `conversation_${randomUUID()}` : undefined),
           text: dispatchPrompt,
           model: task.model,
           artifactIds,

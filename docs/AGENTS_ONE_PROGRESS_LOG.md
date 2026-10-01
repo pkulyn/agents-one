@@ -1,5 +1,12 @@
 # Agents One 项目进展日志
 
+## 2026-10-02：独立 Windows 验收复核与多轮上下文修复
+
+- 收到报告、CSV 和证据 ZIP，复算原始哈希并逐字节核对 ZIP 同名副本；已目检桌面和托盘截图。`7dfcb50` 结论纠正为“部分完成 / No-Go”，T03 的 P1 Fail 与必验未决项不能概括成 Test-level Pass。详见 [复核记录](./AGENTS_ONE_ACCEPTANCE_REVIEW_20261002.md)。
+- 两个根因：Gateway 首轮只把 conversationId 写入 Run、未传 Adapter，桌面又优先保存 Provider ID；OpenCode 对标准 resume 对象/loadSession 及空恢复响应不兼容。已修复身份传递、持久化映射、旧 ID 别名、ACP 恢复与历史回放抑制，恢复失败不再静默创建新会话。
+- 诊断脚本已复现 SSE 后不查询 Run 终态导致并发槽位 429，改为每轮查询终态后再发下一轮。先失败的回归覆盖上述问题，修复后定向 68/68、SDK 27/27、类型检查和生产构建通过；SDK 升到 0.1.5，真实远端升级与四轮续接仍待复验。
+- 从原 7dfcb50 创建独立候选工作树，准备固定 SHA 的新 Gate。现有 UI、README、许可证及其他未提交工作保留在主工作区；未改用户 Runtime 配置或历史文件。补验优先级为四轮/重启续接、桌面取消、调度对照、真实恢复写失败、干净电脑及跨版本回退；暂不改 tag、Release、仓库可见性或生产 Host。
+
 ## 2026-09-21：Plugin SDK 0.1.4 公网聚焦验收通过
 
 - 独立验收报告 `AGENTS_ONE_RC1_OR702_SDK014_FOCUSED_ACCEPTANCE_AAC4722.md`（13,373 bytes，SHA-256 `90478803719FEA706EDEF305A817953E7239806D1F30689D47B4E558C165580C`）以全新 clone 固定到 `aac4722bd41b3d9b38165aee8c65d77a3358ab8b`，工作树干净；SDK 0.1.4 tgz 的 32,766 bytes、SHA-256 `7E754D5A21E8B5D83383EED0F63BC910B81E6FD14CF49F7B0AD3FC858F9C6D94`、包内 package/manifest 版本均匹配。远端 adapter 已在私有备份后从 0.1.3 升级到 0.1.4，`plugin-adapter.mjs`、Runtime 身份和稳定 `statePath` 未改，服务及 `/capabilities` 正常，无回滚。
