@@ -7,3 +7,9 @@ Desktop updates are a build-time capability. Unsigned Windows Alpha builds disab
 [[src/main/app/updater.ts#setupUpdater]] always registers the version and policy IPC surfaces. When policy denies updates, check/download/install handlers are inert and the updater module is never loaded. [[src/renderer/src/components/settings/AboutPane.tsx#AboutPane]] disables the update controls and shows an unsigned-build or unavailable-build warning.
 
 The release source metadata in `electron-builder.yml` points to `pkulyn/agents-one`, but the Alpha workflow always packages with `--publish never`. Enabling in-app updates later requires a signed release pipeline, verified update metadata/source, an installation-and-upgrade dry run, and a tested rollback path before setting the build-time flag.
+
+## Immutable candidate dependency gate
+
+Every rebuilt Windows candidate uses a fixed commit and its lockfile, and must pass the current dependency audit before packaging or artifact upload.
+
+A previously passing candidate can fail a later rebuild when new advisories affect its locked dependencies. Compatible dependency fixes create a new candidate SHA; they do not change the original candidate or waive the release gate. The Windows clean runner repeats all three gate rounds and packaged-app smoke checks before uploading that candidate. Artifact upload alone does not approve RC1 or publish a Release. See the [storage-quota retry and dependency recovery evidence](../docs/AGENTS_ONE_WINDOWS_CANDIDATE_UPLOAD_20261001.md).
