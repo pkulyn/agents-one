@@ -22,4 +22,12 @@
 
 依赖修复限于锁文件内 15 个已存在的包条目：Electron `43.4.1 → 43.7.7`；brace-expansion `1.1.18 → 1.1.21`、`2.1.4 → 2.1.7`、`5.0.9 → 5.0.12`；undici `6.28.0 → 6.29.0`、`7.29.0 → 7.30.0`；fast-uri `3.1.7 → 3.1.8`；ip-address `10.5.0 → 10.7.2`。没有引入新依赖或修改应用源代码，均满足既有版本范围。锁文件审计现在为 0 vulnerabilities。
 
-新候选 Windows Gate 尚待验证。RC1 总体结论继续 No-Go；此记录不更新 RC1 Checklist，也不代替独立 Windows 的 OR-702/OR-704 人工验收。
+新候选 `7dfcb50d10e9098331a27d0e133012d028f703b5` 的 [Windows Gate 36844292900](https://github.com/pkulyn/agents-one/actions/runs/36844292900) 于北京时间 10 月 1 日 18:04 完成并成功。三轮格式、类型、lint、主工程与子项目测试、依赖审计和生产构建全部通过；每轮主工程为 215/215 文件通过，audit 均为 0 vulnerabilities。Windows x64 安装版和便携版打包、包体 smoke、校验和生成及 artifact 上传均通过；草稿 Release job 因 `publish_draft=false` 跳过。
+
+- Artifact：`11153244191`，`agents-one-0.1.0-alpha.1-windows-x64-7dfcb50d10e9098331a27d0e133012d028f703b5`。
+- [下载候选 ZIP](https://github.com/pkulyn/agents-one/actions/runs/36844292900/artifacts/11153244191)：393,005,490 bytes；GitHub 返回 `expired=false`。
+- ZIP SHA-256：`86df19e232a8112cb241c005a79f58756dcf3acfceee341d579bb7667642314c`。
+- 保留 14 天，API 到期时间为 `2026-10-15T10:03:00Z`（北京时间 10 月 15 日 18:03）。ZIP 包含安装版、便携版、blockmap、latest.yml、SHA256SUMS.txt 和 RELEASE_NOTES.md。
+- GitHub run 的 `head_sha` 是工作流所在 main 的 `a247147…`；实际 checkout、门禁和 artifact 名称对应输入候选 `7dfcb50…`，不能用工作流的 head SHA 替代发布候选身份。
+
+此次真实上传确认 Artifact storage quota 拦截已经解除。依赖修复保留在独立分支，尚未合并 main。RC1 总体结论继续 No-Go；此记录不更新 RC1 Checklist，也不代替独立 Windows 的 OR-702/OR-704 人工验收。
