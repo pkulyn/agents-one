@@ -124,6 +124,8 @@ OpenCode tool rows are provider evidence, not generic activity placeholders. ACP
 
 Adapter tests protect both the quiet transcript and the actual artifact output path.
 
+Gateway attachment persistence waits for the tested conversation's terminal checkpoint, asserting its unique conversation ID, Runtime, user/agent messages and cleared active Run. Independent asynchronous conversations may save in any order, so the test does not infer persistence from rendered text or a global last-call ordering.
+
 [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.test.ts]] verifies that error, artifact, and workspace-authorization lifecycle notices are omitted while genuine reasoning and hydrated image artifacts remain. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx]] protects progressive collaboration events, terminal snapshot merging, avatar-triggered pause, repeated target-only guided turns, shared response context, session reuse, explicit downstream resume, collaboration consent, remote-native workspace semantics, and model-label continuity; MessageList and file-component tests protect per-agent identity, avatar routing, quiet typing state, and local artifact actions.
 
 The DAG regression holds two sibling Runtime runs open, asserts both Runtime identities and running states are simultaneously visible, and confirms the join is not dispatched until both siblings succeed. Shared graph tests additionally protect coordinator anchoring, legacy serial compatibility, parallel layers, multi-input joins, descendants, missing dependencies and cycle rejection.
