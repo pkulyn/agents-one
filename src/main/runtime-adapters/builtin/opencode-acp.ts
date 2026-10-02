@@ -30,6 +30,8 @@ import { protectWorkspaceFromRemoval } from "../../workspace-protection";
 
 const MAX_OUTPUT = 512 * 1024;
 const MAX_RPC_TIMEOUT_MS = 30_000;
+const DEFAULT_PROMPT_TIMEOUT_MS = 300_000;
+const CANCEL_COMPLETION_GRACE_MS = 5_000;
 const MAX_WORKSPACE_FILES = 2_000;
 const MAX_HASHED_FILE_BYTES = 8 * 1024 * 1024;
 const IGNORED_WORKSPACE_DIRECTORIES = new Set([
@@ -370,12 +372,19 @@ class OpenCodeAcpClient {
     };
   }
 
-  async prompt(prompt: string): Promise<JsonRecord> {
+  async prompt(
+    prompt: string,
+    timeoutMs = DEFAULT_PROMPT_TIMEOUT_MS,
+  ): Promise<JsonRecord> {
     if (!this.sessionId) throw new Error("OpenCode ACP session 尚未创建。");
-    const result = await this.request("session/prompt", {
-      sessionId: this.sessionId,
-      prompt: [{ type: "text", text: prompt }],
-    });
+    const result = await this.request(
+      "session/prompt",
+      {
+        sessionId: this.sessionId,
+        prompt: [{ type: "text", text: prompt }],
+      },
+      timeoutMs,
+    );
     return isRecord(result) ? result : {};
   }
 
@@ -934,7 +943,7 @@ export async function startOpenCodeProcess(
         onMetadata?.({ model });
       }
       const prompt = openCodePrompt(input.prompt);
-      const response = await client!.prompt(prompt);
+      const response = await client!.prompt(prompt, config.timeoutMs);
       const stopReason = text(response.stopReason);
       const responseUsage = usageFromOpenCodeValue(response);
       if (responseUsage) {
@@ -1007,6 +1016,24 @@ export async function startOpenCodeProcess(
     cancel: async () => {
       cancelRequested = true;
       client!.cancelSession();
+      // ACP acknowledges cancellation through the original prompt response.
+      // Let native tools settle before terminating their session process.
+      if (sessionId && !turnCompleted) {
+        let cancellationTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            completion.then(() => undefined),
+            new Promise<void>((resolve) => {
+              cancellationTimer = setTimeout(
+                resolve,
+                CANCEL_COMPLETION_GRACE_MS,
+              );
+            }),
+          ]);
+        } finally {
+          if (cancellationTimer) clearTimeout(cancellationTimer);
+        }
+      }
       await process.cancel();
       await completion;
     },

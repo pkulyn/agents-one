@@ -59,3 +59,23 @@ Local and remote adapters accept object or boolean `resume` capabilities, prefer
 The SSE diagnostic refreshes every Run to a terminal state before starting another request, preventing the diagnostic itself from exhausting concurrency slots.
 
 `scripts/diagnose-gateway-sse-post.mjs` consumes both event streams and polls each Run with a bounded deadline. `tests/gateway-sse-diagnostic.test.ts` uses one active slot released only by GET reconciliation for both supported contracts, so missing reconciliation fails the regression.
+
+## ACP turn deadlines
+
+Local ACP turns require a task deadline distinct from the handshake deadline, and cancellation must allow the native agent to finish stopping tools before its process is cleaned up.
+
+### Long prompt completion
+
+A real ACP child takes more than thirty seconds to finish a prompt within the Runtime deadline; the caller must receive the complete response instead of a handshake timeout.
+
+### Cancellation preserves continuation
+
+A real ACP child acknowledges tool cancellation after a delay and persists its state; the next process restores the same native session and successfully responds, detecting premature process termination.
+
+### Configured deadline remains bounded
+
+A short configured Runtime deadline aborts a longer prompt after successful initialization, ensuring the extended default cannot bypass the user's task limit.
+
+### Unresponsive cancellation cleanup
+
+An ACP child that ignores cancellation is forcibly cleaned up after a bounded grace window, ensuring graceful cancellation cannot indefinitely block the desktop or leave its process running.
