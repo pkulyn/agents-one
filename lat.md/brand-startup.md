@@ -22,6 +22,24 @@ The expanded sidebar selects `agents-one-wordmark.svg` on light themes and `agen
 
 `src/renderer/src/assets/agents-one-wordmark.svg` is the dark-text persistent-navigation variant. `src/renderer/src/assets/agents-one-splash.svg` is the white-text startup variant. The standalone `src/renderer/src/assets/agents-one-mark.svg` remains valid for icon-only contexts such as About and window chrome.
 
+## Windows executable icon
+
+Windows shortcuts and taskbar entries must resolve the rainbow-ring icon embedded in the packaged executable, even when unsigned builds disable the standard resource-edit and signing helper.
+
+`applyWindowsExecutableIcon` in `scripts/after-pack-windows-icon.mjs` runs after packaging and uses the locked `resedit` dependency to embed the existing multi-size ICO in JavaScript. An icon edit failure aborts packaging. It changes only the new output executable, preserving non-icon PE resources and leaving Runtime settings, window identity, installed applications and Windows icon caches untouched.
+
+### Embedded icon frames
+
+A real Electron exe copy starts with the default atom; after the hook, an independent PE reader verifies every brand ICO frame in its primary group and unchanged non-icon resources, detecting omitted editing, missing sizes or damaged metadata.
+
+### Other platform isolation
+
+The Windows-only resource hook must return without accessing package paths or starting a resource editor for other platforms.
+
+### Output path boundary
+
+An executable name that resolves outside the package output must be rejected before resource editing, preventing a packaging error from changing another file.
+
 ## Legacy product-brand migration
 
 Agents One removes the former desktop product identity while preserving Hermes Agent as an optional Runtime and keeping user preferences recoverable across upgrades.

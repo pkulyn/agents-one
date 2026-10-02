@@ -8,6 +8,10 @@ The local ACP adapter separates the thirty-second handshake deadline from the Ru
 
 Sixteen distinct automated ACP cases passed, including long prompts, delayed cancellation acknowledgement, configured deadlines and forced cleanup. Node and renderer typechecks and the local production build passed. A real OpenCode 1.18.27 check completed a controlled long task in about seventy seconds, cancelled a subsequent tool turn, then recalled a fresh random phrase without tools in the same native session. These checks exercise the actual desktop adapter; they do not claim a new packaged UI or clean-machine acceptance.
 
+## Windows desktop and taskbar icon
+
+An afterPack hook embeds the existing nine-size rainbow-ring ICO into the Windows main executable while preserving other PE resources and the unsigned-build policy. Three focused tests and a local unpacked package passed; the native Windows Shell extracted the rainbow ring from the resulting executable. Previously installed binaries and cached pinned items require a new installation or shortcut refresh before they reflect the fix.
+
 ## Remote Hermes limitation
 
 Remote Hermes conversation recall and restart continuation failed in the existing independent candidate test. Its deployed Connector and Hermes version are currently unavailable for inspection, so this integration remains experimental and is not certified to preserve multi-turn context.
