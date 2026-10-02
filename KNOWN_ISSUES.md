@@ -24,3 +24,13 @@ The latest independent Windows assessment supersedes claims of completion for th
 The private repository has successful Windows workflow/artifact evidence, but overall release remains No-Go. AO-KNOWN-001 stays open for remaining clean-machine acceptance, repository protection and release approvals; its original workflow-not-executed wording is historical.
 
 Do not put credentials, private logs, or exploit details in a public issue. Use [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
+## 2026-10-03 source preparation update
+
+This update separates development source readiness from acceptance of a new Windows binary. Existing passing paths remain useful within their tested scope.
+
+- AO-KNOWN-008: replacement candidate F4 has positive local four-turn and desktop restart evidence. Remote Hermes still fails controlled recall and remains experimental until the actual Connector/session contract is fixed and verified; SDK 0.1.5 alone does not prove native transcript continuation.
+- AO-KNOWN-010: the local ACP source now uses a Runtime prompt deadline and bounded cancellation acknowledgement. Sixteen automated cases and a real OpenCode 1.18.27 long-task/cancel/same-session recall check passed. The original F4 package does not include this patch, and no replacement installer has been qualified.
+- AO-KNOWN-009 and AO-KNOWN-001 retain the remaining binary acceptance and repository governance gaps. Source publication, under the stated license and known limitations, requires a separate maintainer decision; it does not close these binary release gates.
+
+See [Alpha source status](docs/AGENTS_ONE_ALPHA_SOURCE_STATUS_20261003.md) for the concrete scope, license and remote limitation.

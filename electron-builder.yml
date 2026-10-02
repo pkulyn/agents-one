@@ -37,6 +37,15 @@ files:
 asarUnpack:
   - resources/**
   - node_modules/better-sqlite3/prebuilds/*.node
+extraResources:
+  - from: LICENSE
+    to: notices/LICENSE
+  - from: COMMERCIAL_EVALUATION_PERMISSION.md
+    to: notices/COMMERCIAL_EVALUATION_PERMISSION.md
+  - from: THIRD_PARTY_NOTICES.md
+    to: notices/THIRD_PARTY_NOTICES.md
+  - from: assets/readme/OFL-Oxanium.txt
+    to: notices/OFL-Oxanium.txt
 win:
   executableName: agents-one
   icon: build/icon.ico
