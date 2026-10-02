@@ -85,7 +85,148 @@ function continuationAcpScript(
   ].join("");
 }
 
+function lifecycleAcpScript(delayMs: number, ignoresCancel = false): string {
+  return [
+    "const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});",
+    "const send=(x)=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',...x})+'\\n');",
+    `const delayMs=${delayMs},ignoresCancel=${ignoresCancel};let promptId,timer;`,
+    "rl.on('line',line=>{const m=JSON.parse(line);",
+    "if(m.method==='initialize')send({id:m.id,result:{protocolVersion:1,agentCapabilities:{sessionCapabilities:{resume:{}}}}});",
+    "else if(m.method==='session/new')send({id:m.id,result:{sessionId:'lifecycle-session'}});",
+    "else if(m.method==='session/resume')send({id:m.id,result:{}});",
+    "else if(m.method==='session/prompt'){promptId=m.id;fs.writeFileSync('prompt-started.txt','started');if(m.params.prompt[0].text.endsWith('\\nlong')){timer=setTimeout(()=>{send({method:'session/update',params:{sessionId:'lifecycle-session',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'LONG-TURN-OK'}}}});send({id:m.id,result:{stopReason:'end_turn'}})},delayMs)}else{send({method:'session/update',params:{sessionId:m.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:fs.existsSync('cancel-ack.txt')?'SAME-SESSION-OK':'UNFINISHED-CANCEL'}}}});send({id:m.id,result:{stopReason:'end_turn'}})}}",
+    "else if(m.method==='session/cancel'&&!ignoresCancel){clearTimeout(timer);setTimeout(()=>{fs.writeFileSync('cancel-ack.txt','tool stopped');send({id:promptId,result:{stopReason:'cancelled'}})},1500)}",
+    "});",
+  ].join("");
+}
+
 describe("OpenCode ACP adapter", () => {
+  // @lat: [[plugin-sdk#ACP turn deadlines#Configured deadline remains bounded]]
+  it("enforces the configured prompt deadline independently of initialization", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "opencode-acp-deadline-"));
+    try {
+      const started = await startOpenCodeProcess(
+        {
+          executablePath: process.execPath,
+          acpArgs: ["-e", lifecycleAcpScript(5_000)],
+          timeoutMs: 100,
+        },
+        { prompt: "long", mode: "analysis", workspace },
+        () => undefined,
+        () => undefined,
+      );
+      const result = await started.completion;
+      expect(result).toMatchObject({
+        sessionId: "lifecycle-session",
+        error: "OpenCode ACP 请求超时：session/prompt",
+      });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  // @lat: [[plugin-sdk#ACP turn deadlines#Unresponsive cancellation cleanup]]
+  it("forces cleanup when an unresponsive agent ignores cancellation", async () => {
+    const workspace = mkdtempSync(
+      join(tmpdir(), "opencode-acp-cancel-fallback-"),
+    );
+    try {
+      const started = await startOpenCodeProcess(
+        {
+          executablePath: process.execPath,
+          acpArgs: ["-e", lifecycleAcpScript(60_000, true)],
+          timeoutMs: 70_000,
+        },
+        { prompt: "long", mode: "analysis", workspace },
+        () => undefined,
+        () => undefined,
+      );
+      await expect
+        .poll(() => {
+          try {
+            return readFileSync(join(workspace, "prompt-started.txt"), "utf8");
+          } catch {
+            return "";
+          }
+        })
+        .toBe("started");
+      await started.cancel();
+      await expect(started.completion).resolves.toMatchObject({
+        sessionId: "lifecycle-session",
+        error: expect.any(String),
+      });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  // @lat: [[plugin-sdk#ACP turn deadlines#Long prompt completion]]
+  it("allows a prompt longer than the handshake deadline within the Runtime timeout", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "opencode-acp-long-turn-"));
+    try {
+      const started = await startOpenCodeProcess(
+        {
+          executablePath: process.execPath,
+          acpArgs: ["-e", lifecycleAcpScript(32_000)],
+          timeoutMs: 40_000,
+        },
+        { prompt: "long", mode: "analysis", workspace },
+        () => undefined,
+        () => undefined,
+      );
+      const result = await started.completion;
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe("LONG-TURN-OK");
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  }, 45_000);
+
+  // @lat: [[plugin-sdk#ACP turn deadlines#Cancellation preserves continuation]]
+  it("waits for tool cancellation acknowledgement before restoring the same session", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "opencode-acp-cancel-drain-"));
+    try {
+      const config = {
+        executablePath: process.execPath,
+        acpArgs: ["-e", lifecycleAcpScript(60_000)],
+        timeoutMs: 70_000,
+      };
+      const started = await startOpenCodeProcess(
+        config,
+        { prompt: "long", mode: "analysis", workspace },
+        () => undefined,
+        () => undefined,
+      );
+      await expect
+        .poll(() => {
+          try {
+            return readFileSync(join(workspace, "prompt-started.txt"), "utf8");
+          } catch {
+            return "";
+          }
+        })
+        .toBe("started");
+      const sessionId = started.sessionId;
+      await started.cancel();
+      const cancelled = await started.completion;
+      expect(cancelled.error).toBeUndefined();
+      expect(readFileSync(join(workspace, "cancel-ack.txt"), "utf8")).toBe(
+        "tool stopped",
+      );
+      const next = await startOpenCodeProcess(
+        config,
+        { prompt: "follow up", mode: "analysis", workspace, sessionId },
+        () => undefined,
+        () => undefined,
+      );
+      const result = await next.completion;
+      expect(result).toMatchObject({ sessionId, output: "SAME-SESSION-OK" });
+      expect(result.error).toBeUndefined();
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     [{ sessionCapabilities: { resume: {} } }, "session/resume"],
     [{ sessionCapabilities: { resume: true } }, "session/resume"],
