@@ -1,14 +1,14 @@
 # Agents One
 
 <p align="center">
-  <img src="assets/readme/hero.svg" width="100%" alt="Agents One connects local CLI and remote agents to one desktop conversation workspace" />
+  <img src="assets/readme/hero.svg" width="100%" alt="Agents One manages and coordinates heterogeneous local and remote agents" />
 </p>
 
 <p align="center">
   <a href="README.zh-CN.md">简体中文</a> · <a href="#see-it-in-action">Preview</a> · <a href="#get-started">Get started</a> · <a href="#development">Develop</a> · <a href="#license">License</a>
 </p>
 
-**One native desktop workspace for conversations, tasks, projects, and artifacts across AI agents.** Connect Pi, Codex, and Claude Code as local CLIs, or bring in remote agents through Gateway v1. Keep each agent's native tools and permissions while working from one conversation surface.
+**A management and collaboration platform for heterogeneous AI agents, bringing conversations, tasks, collaboration, and artifacts together.** Connect Pi, Codex, Claude Code, OpenCode, and other local agents, or bring in remote agents through Gateway. Keep each agent's native tools and permissions while working from one conversation surface.
 
 > **Pre-release · Windows x64 Alpha candidate.** No public Agents One release has been published yet. The current candidate is still behind release and clean-machine acceptance gates. Features and stored-data formats may change. Follow [Releases](https://github.com/pkulyn/agents-one/releases) for the first published build.
 
@@ -50,7 +50,7 @@ Screenshots show development builds; labels and layout may change before release
 
 ### Local power, one shared surface
 
-Agents One starts local CLIs as native processes. Pi, Codex, and Claude Code keep their own models, tools, project instructions, and permission modes. For remote agents, Gateway v1 uses a URL and bearer token, negotiates capabilities, and grants workspace access only for a bounded run. Both routes feed the same conversation experience.
+Agents One starts local CLIs as native processes. Pi, Codex, Claude Code, and OpenCode keep their own models, tools, project instructions, and permission modes. For remote agents, Gateway v1 uses a URL and bearer token, negotiates capabilities, and grants workspace access only for a bounded run. Both routes feed the same conversation experience.
 
 The [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) lets additional agents implement this contract without changing the desktop app. The [event stream](docs/AGENT_EVENT_STREAM_V1.md) carries tool activity, artifacts, and handoffs; the [Gateway protocol](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md) covers remote runs and workspace grants.
 
@@ -63,7 +63,7 @@ The first public package is planned for **Windows x64**. Download only from the 
 ### Add an agent
 
 1. Open **Agents** and choose **Add agent**.
-2. For a local CLI, select Pi, Codex, or Claude Code. Agents One scans `PATH` and pre-fills the executable path when found.
+2. For a local agent, select Pi, Codex, Claude Code, or OpenCode. Set the executable path requested by the adapter.
 3. For a remote agent, enter its Gateway v1 URL and bearer token.
 4. Save and probe the connection, then open **Chat** to start a conversation or task.
 
