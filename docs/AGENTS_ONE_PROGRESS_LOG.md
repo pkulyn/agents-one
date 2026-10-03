@@ -1,5 +1,13 @@
 # Agents One 项目进展日志
 
+## 2026-10-03：MIT 开源与移动、Mac 后续规划
+
+- 用户确认将有权授权的 Agents One 原创贡献改为 MIT，并要求推进源码公开。独立源码候选改动根 LICENSE、双语 README/贡献指南、根及三个子项目 package 元数据/许可、包内 notices；保留上游 hermes-desktop MIT 与 Oxanium OFL，移除现行非商用内部评估补充许可。未改 Runtime 注册、用户配置、历史、IPC 或生产 Host。
+- 新增 [手机与 macOS 开发 PRD](./AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md)：先公共移动协议和独立设备授权，再 Android、iOS、HarmonyOS 5+ 原生端、macOS 桌面版；鸿蒙技术探针和 iOS Mac/Xcode 准备前置。旧桌面本地历史默认不上传，移动端不直接启动桌面 CLI。
+- 源码公开与 Windows 正式制品验收分开；远程 Hermes 多轮/重启续接保持实验性，旧 F4 包体仍 No-Go。当前变更先在隔离候选审查和运行普通 PR CI，再核对远端 main 与公开设置；不借用旧包测试结论。
+- 隔离候选的 Node/Web 类型检查、SDK 27、Connector 10、Connect 8 项测试、变更文件格式检查、`lat check` 与 diff 检查通过；三个子项目的 `npm pack --dry-run` 均包含 MIT LICENSE。没有重写已验收的 SDK 0.1.5 历史 tgz。
+- 公开前只读扫描当前仓库列出的 104 次 GitHub Actions 运行：101 次有可下载日志，3 次无日志；收紧误把 `task-` 子串识别为密钥的规则后，未发现 GitHub/OpenAI/Bearer 凭据或私钥格式命中。重复邮箱已存在于受审计源码，Windows 用户路径属于测试/Runner 标识，不是当前用户名。扫描脚本和原始日志不进入仓库；既有 Gitleaks 全历史及固定源码树审计证据继续有效。
+
 ## 2026-10-02：独立 Windows 验收复核与多轮上下文修复
 
 - 收到报告、CSV 和证据 ZIP，复算原始哈希并逐字节核对 ZIP 同名副本；已目检桌面和托盘截图。`7dfcb50` 结论纠正为“部分完成 / No-Go”，T03 的 P1 Fail 与必验未决项不能概括成 Test-level Pass。详见 [复核记录](./AGENTS_ONE_ACCEPTANCE_REVIEW_20261002.md)。
