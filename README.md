@@ -12,7 +12,7 @@
 
 > **Pre-release · Windows x64 Alpha candidate.** No public Agents One release has been published yet. The current candidate is still behind release and clean-machine acceptance gates. Features and stored-data formats may change. Follow [Releases](https://github.com/pkulyn/agents-one/releases) for the first published build.
 
-**Development source status:** local OpenCode long tasks and cancellation followed by same-session recall have passed targeted checks. Remote Hermes multi-turn and restart recall remain experimental. See the [Alpha source status](docs/AGENTS_ONE_ALPHA_SOURCE_STATUS_20261003.md) and [known issues](KNOWN_ISSUES.md); source publication does not certify a stable installer.
+**Alpha source:** the repository is public under MIT. There is no accepted installer Release yet, and remote Hermes conversation recall remains experimental. See [known issues](KNOWN_ISSUES.md).
 
 ## See it in action
 
@@ -73,7 +73,7 @@ Create a **Project** to attach conversations to a folder. That folder becomes th
 
 Desktop state lives in Electron `userData` (normally `%APPDATA%\Agents One` on Windows); portable builds use `%LOCALAPPDATA%\agents-one-portable` by default. User-selected project folders and local CLI homes stay outside that desktop state. Backups omit known credentials and protected secrets, but user-authored chats, memories, skills, and attachments can still contain sensitive information.
 
-The built-in Doubao, ChatGPT, and Grok browser adapters are **default-off experiments** in public builds. Enabling them sends selected prompts and attachments through the signed-in provider webpage. See the [provider compliance record](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md), [security policy](SECURITY.md), and [known issues](KNOWN_ISSUES.md) for the current boundaries and limitations.
+The built-in Doubao, ChatGPT, and Grok browser adapters are **default-off experiments** in public builds. Enabling them sends selected prompts and attachments through the signed-in provider webpage. See the [security policy](SECURITY.md), and [known issues](KNOWN_ISSUES.md) for the current boundaries and limitations.
 
 ## Development
 
@@ -86,9 +86,7 @@ npm.cmd run typecheck
 npm.cmd test
 ```
 
-See the [contribution guide](CONTRIBUTING.md) for the full checks and the [runbook](docs/AGENTS_ONE_RUNBOOK.md) for release operations. Changes are tracked in the [changelog](CHANGELOG.md).
-
-The [mobile and macOS development PRD](docs/AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md) defines the planned shared contract and platform order: Android, iOS, native HarmonyOS, then macOS desktop. These are development plans, not published apps.
+See the [contribution guide](CONTRIBUTING.md) for the full checks and the [runbook](docs/AGENTS_ONE_RUNBOOK.md) for usage and troubleshooting. Changes are tracked in the [changelog](CHANGELOG.md).
 
 ## License
 
