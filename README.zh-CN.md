@@ -88,10 +88,10 @@ npm.cmd test
 
 完整检查流程见[贡献指南](CONTRIBUTING.zh-CN.md)，发布运维见[运行手册](docs/AGENTS_ONE_RUNBOOK.md)，版本变化见[变更日志](CHANGELOG.md)。
 
+[手机端与 macOS 开发 PRD](docs/AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md)明确公共协议及 Android、iOS、原生鸿蒙、macOS 桌面端的开发顺序；这些是后续计划，尚非已发布应用。
+
 ## 许可协议
 
-本仓库中 Agents One 原创贡献采用 [PolyForm Noncommercial License 1.0.0](LICENSE)。个人或组织可在协议允许的**非商业用途**下研究、使用、修改和分享；该协议不授予商用权利。继承自 `hermes-desktop` 的部分继续遵循原 MIT 条款，声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。此前已依据 MIT 条款获得的副本，其既有授权继续有效。
+本仓库中 Agents One 的原创贡献采用 [MIT License](LICENSE)。保留版权与许可声明即可使用、修改、分发及商用。贡献者保留其自身版权，并且只能提交有权按 MIT 授权的内容。
 
-商业机构可依据[商业机构内部评估补充许可](COMMERCIAL_EVALUATION_PERMISSION.md)**不限时**在机构内部评估和研究，包括内部测试、原型验证及为此所需的修改；该许可不允许生产使用、对外分发，或将换皮产品用于商业推广。超出上述授权范围的使用需另行取得相关权利人的书面许可。
-
-由于限制商用，本项目应称为**源码可见、限制商用的软件**，不属于 OSI 定义的开源软件。生产使用或对外商用需另行取得相关著作权人的许可。
+继承自 `hermes-desktop` 的部分保留上游作者原有的 MIT 声明，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。第三方依赖和素材仍遵循各自协议；Oxanium 字体衍生字标的声明及字体协议也从该文件链接。代码许可不授予冒充 Agents One 项目或维护者身份的权利。

@@ -111,5 +111,4 @@ build/                   打包配置资源
 
 ## 许可证
 
-向 Agents One 提交原创内容，即表示你同意将该内容按 [PolyForm Noncommercial License 1.0.0](LICENSE) 授权。请标明引入的第三方内容并保留其原有协议及声明；继承自 `hermes-desktop` 的部分继续遵循 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 中的 MIT 条款。
-你同时同意将原创贡献按[商业机构内部评估补充许可](COMMERCIAL_EVALUATION_PERMISSION.md)授权。请仅提交你有权按这两份文件授权的内容。
+向 Agents One 提交原创内容，即表示你同意将该贡献按 [MIT License](LICENSE) 授权，同时保留你自己的版权。请仅提交有权按 MIT 授权的内容；引入第三方内容时标明来源并保留原有协议及声明。继承自 `hermes-desktop` 的部分继续保留 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 中上游作者的 MIT 声明。

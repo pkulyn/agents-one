@@ -1,6 +1,6 @@
 # Agents One Alpha source status
 
-This source candidate is intended for development and community review. It is not a signed or stable binary release; repository publication remains a maintainer decision.
+This MIT-licensed source candidate is intended for development and community review. It is not a signed or stable binary release; repository visibility and the published commit must be checked independently of installer acceptance.
 
 ## Local OpenCode verification
 
@@ -22,11 +22,11 @@ SDK 0.1.5 exposes `sessionId`; absence of a different field named `providerSessi
 
 The candidate includes the existing continuation fixes, the local ACP deadline and cancellation patch, and repository documentation and license notices. Unrelated uncommitted desktop UI, tray, web Provider and website work are outside this candidate.
 
-The prepared license for licensor-owned contributions is PolyForm Noncommercial 1.0.0 with the separate commercial organization internal evaluation permission. Inherited MIT notices and third-party notices remain present. This is source-available software with commercial restrictions, rather than an OSI-defined open-source license. Historical copies retain the terms under which they were received; publication does not erase earlier grants.
+The licensor-owned Agents One contributions in this candidate are offered under MIT. The inherited hermes-desktop author's MIT notice and the Oxanium font license remain in THIRD_PARTY_NOTICES.md and its linked font notice. Third-party dependencies and assets keep their own terms. The former noncommercial evaluation permission has been removed from the current source and package notice list; historical copies retain the terms under which they were received.
 
-Reference terms: [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) and the [Open Source Definition](https://opensource.org/osd). These references explain the terminology; they do not extend the rights stated in the project notices.
+The [mobile and macOS PRD](AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md) defines future work, not available applications or accepted release assets.
 
-The source publication decision is separate from binary acceptance. No new installer, tag, public Release or stable-runtime claim is included in this preparation. GitHub Actions were not triggered by these local checks.
+The source publication decision is separate from binary acceptance. No new installer, tag, public Release or stable-runtime claim is included in this preparation.
 
 ## 后续边界
 

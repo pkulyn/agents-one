@@ -112,5 +112,4 @@ build/                   Packaging resources
 
 ## License
 
-By contributing original material to Agents One, you agree to offer that material under the [PolyForm Noncommercial License 1.0.0](LICENSE). Please identify any third-party material and retain its existing license and notices; inherited `hermes-desktop` material keeps its MIT terms in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-You also agree to grant the [Commercial Organization Evaluation Permission](COMMERCIAL_EVALUATION_PERMISSION.md) for your original contribution. Only contribute material for which you have the rights to grant both permissions.
+By contributing original material to Agents One, you agree to license that contribution under the [MIT License](LICENSE) while retaining your own copyright. Only contribute material you have the right to license under MIT. Identify any third-party material and retain its existing license and notices; inherited `hermes-desktop` material keeps its original author's MIT notice in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
