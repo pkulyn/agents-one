@@ -6,6 +6,8 @@ The repository homepage introduces Agents One through its actual desktop experie
 
 The English and Chinese homepages follow the same sequence and use actual product visuals to explain Agents One.
 
+The hero and introduction describe heterogeneous agent management and collaboration, with conversations, tasks, collaboration and artifacts; local agent examples include Pi, Codex, Claude Code and OpenCode alongside remote Gateway agents.
+
 `README.md` and `README.zh-CN.md` share the order of product promise, development-build proof, core workflow, first-use path, trust boundaries, and license. Their SVG heroes reuse the Dawn Ring wordmark and depict local and remote agents converging on one workspace. The full original startup image and the existing chat screenshot provide visual proof; UI details may change before release.
 
 ## MIT license and inherited notices
