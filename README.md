@@ -1,14 +1,14 @@
 # Agents One
 
 <p align="center">
-  <img src="assets/readme/hero.svg" width="100%" alt="Agents One manages and coordinates heterogeneous local and remote agents" />
+  <img src="assets/readme/hero.svg" width="100%" alt="Agents One manages and coordinates local and remote AI agents" />
 </p>
 
 <p align="center">
   <a href="README.zh-CN.md">简体中文</a> · <a href="#see-it-in-action">Preview</a> · <a href="#get-started">Get started</a> · <a href="#development">Develop</a> · <a href="#license">License</a>
 </p>
 
-**A management and collaboration platform for heterogeneous AI agents, bringing conversations, tasks, collaboration, and artifacts together.** Connect Pi, Codex, Claude Code, OpenCode, and other local agents, or bring in remote agents through Gateway. Keep each agent's native tools and permissions while working from one conversation surface.
+**An AI agent management and collaboration platform.** Connect Pi, Codex, Claude Code, OpenCode, and other local agents, as well as remote agents through Gateway, to manage conversations, tasks, collaboration, and artifacts in one place. Each agent keeps its native tools and permissions while you work from one conversation surface.
 
 > **Pre-release · Windows x64 Alpha candidate.** No public Agents One release has been published yet. The current candidate is still behind release and clean-machine acceptance gates. Features and stored-data formats may change. Follow [Releases](https://github.com/pkulyn/agents-one/releases) for the first published build.
 

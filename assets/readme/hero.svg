@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" role="img" aria-labelledby="title desc">
   <title id="title">Agents One — one conversation surface for every agent</title>
-  <desc id="desc">Agents One is a management and collaboration platform for heterogeneous local and remote Gateway agents.</desc>
+  <desc id="desc">Agents One is a management and collaboration platform for local AI agents and remote agents connected through Gateway.</desc>
   <defs>
     <linearGradient id="dawn" x1="406" y1="42" x2="500" y2="136" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#45AAFF"/>
@@ -16,7 +16,7 @@
   </defs>
   <rect width="1200" height="340" rx="24" fill="url(#panel)"/>
   <path d="M742 42V298" stroke="#28465A" stroke-width="1"/>
-  <text x="60" y="49" fill="#83AFC6" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16" letter-spacing=".6">HETEROGENEOUS AGENT MANAGEMENT &amp; COLLABORATION PLATFORM</text>
+  <text x="60" y="49" fill="#83AFC6" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="18" letter-spacing=".6">AI AGENT MANAGEMENT &amp; COLLABORATION PLATFORM</text>
   <!-- The official Oxanium wordmark paths and Dawn Ring are reused from agents-one-splash.svg. -->
   <g id="wordmark" transform="translate(48 29)">
     <path d="M18 27 223 690H443L648 27L630 0H510L468 140H198L156 0H36ZM237 270H429L341 560H325ZM740 168V522Q740 690 908 690H1197L1264 638V560H914Q884 560 884 530V160Q884 130 914 130H1140V290H1008V420H1284V0H908Q740 0 740 168ZM1430 0V690H1902V560H1574V420H1872V290H1574V130H1902V0ZM2036 0V690H2192L2466 237V690H2610V0H2454L2180 453V0Z M2718 560V690H3282V560H3072V0H2928V560ZM3360 52V130H3670Q3700 130 3700 160V232Q3700 261 3675 265L3480 305Q3360 329 3360 466V522Q3360 690 3528 690H3757L3824 638V560H3534Q3504 560 3504 530V465Q3504 437 3529 432L3724 393Q3844 369 3844 232V168Q3844 0 3676 0H3427Z" fill="#F5F7FA" transform="translate(15 124) scale(.1 -.1)"/>

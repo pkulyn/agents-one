@@ -1,14 +1,14 @@
 # Agents One
 
 <p align="center">
-  <img src="assets/readme/hero.zh-CN.svg" width="100%" alt="Agents One 异构智能体管理与协作平台，连接本地与远程智能体" />
+  <img src="assets/readme/hero.zh-CN.svg" width="100%" alt="Agents One AI 智能体管理与协作平台，连接本地与远程智能体" />
 </p>
 
 <p align="center">
   <a href="README.md">English</a> · <a href="#产品一览">界面预览</a> · <a href="#快速开始">快速开始</a> · <a href="#参与开发">参与开发</a> · <a href="#许可协议">许可协议</a>
 </p>
 
-**异构智能体管理与协作平台，串联多个 AI 智能体的对话、任务、协作与产物。** 将 Pi、Codex、Claude Code、OpenCode 等作为本地智能体接入，也可以通过 Gateway 接入远程智能体。每个智能体保留自己的工具与权限，而你的工作集中在同一个对话界面。
+**AI 智能体管理与协作平台。** 统一接入 Pi、Codex、Claude Code、OpenCode 等本地智能体，以及通过 Gateway 连接的远程智能体，集中管理对话、任务、协作与产物。每个智能体保留自己的工具与权限，而你的工作集中在同一个对话界面。
 
 > **预发布 · Windows x64 Alpha 候选。** Agents One 尚无公开 Release；当前候选仍需通过发布门禁与干净环境验收。功能及持久化数据格式可能变化。首个公开版本请关注 [Releases 页面](https://github.com/pkulyn/agents-one/releases)。
 
