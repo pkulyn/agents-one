@@ -1,14 +1,14 @@
 # Agents One
 
 <p align="center">
-  <img src="assets/readme/hero.zh-CN.svg" width="100%" alt="Agents One 将本地 CLI 与远程智能体汇入同一个桌面对话工作空间" />
+  <img src="assets/readme/hero.zh-CN.svg" width="100%" alt="Agents One 异构智能体管理与协作平台，连接本地与远程智能体" />
 </p>
 
 <p align="center">
   <a href="README.md">English</a> · <a href="#产品一览">界面预览</a> · <a href="#快速开始">快速开始</a> · <a href="#参与开发">参与开发</a> · <a href="#许可协议">许可协议</a>
 </p>
 
-**一个原生桌面工作空间，串联多个 AI 智能体的对话、任务、项目与产物。** 将 Pi、Codex、Claude Code 作为本地 CLI 接入，也可以通过 Gateway v1 接入远程智能体。每个智能体保留自己的工具与权限，而你的工作集中在同一个对话界面。
+**异构智能体管理与协作平台，串联多个 AI 智能体的对话、任务、协作与产物。** 将 Pi、Codex、Claude Code、OpenCode 等作为本地智能体接入，也可以通过 Gateway 接入远程智能体。每个智能体保留自己的工具与权限，而你的工作集中在同一个对话界面。
 
 > **预发布 · Windows x64 Alpha 候选。** Agents One 尚无公开 Release；当前候选仍需通过发布门禁与干净环境验收。功能及持久化数据格式可能变化。首个公开版本请关注 [Releases 页面](https://github.com/pkulyn/agents-one/releases)。
 
@@ -50,7 +50,7 @@
 
 ### 保留原生能力，汇入统一界面
 
-Agents One 以原生进程启动本地 CLI。Pi、Codex、Claude Code 保留自己的模型、工具、项目指令与权限模式。远程智能体通过一个 Gateway v1 地址和 Bearer Token 接入，按协议协商能力，工作区访问只在有边界的运行期间授权。两条路径最终都进入同一套对话体验。
+Agents One 以原生进程启动本地 CLI。Pi、Codex、Claude Code、OpenCode 等本地智能体保留自己的模型、工具、项目指令与权限模式。远程智能体通过一个 Gateway v1 地址和 Bearer Token 接入，按协议协商能力，工作区访问只在有边界的运行期间授权。两条路径最终都进入同一套对话体验。
 
 [插件 SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) 允许新智能体实现统一契约，无需改动桌面端。[事件流协议](docs/AGENT_EVENT_STREAM_V1.md)承载工具过程、产物与交接；[Gateway 协议](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md)负责远程运行与工作区授权。
 
@@ -63,7 +63,7 @@ Agents One 以原生进程启动本地 CLI。Pi、Codex、Claude Code 保留自�
 ### 添加智能体
 
 1. 打开**智能体**，点击**新增智能体**。
-2. 本地 CLI 可选 Pi、Codex 或 Claude Code；应用找到 `PATH` 中的可执行文件后会预填路径。
+2. 本地智能体可选 Pi、Codex、Claude Code 或 OpenCode；按提示选择或填写可执行文件路径。
 3. 远程智能体填写 Gateway v1 地址与 Bearer Token。
 4. 保存并探测连接，再进入**聊天**开始对话或任务。
 
