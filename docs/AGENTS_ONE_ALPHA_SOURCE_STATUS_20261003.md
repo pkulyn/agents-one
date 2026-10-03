@@ -1,6 +1,6 @@
 # Agents One Alpha source status
 
-This MIT-licensed source candidate is intended for development and community review. It is not a signed or stable binary release; repository visibility and the published commit must be checked independently of installer acceptance.
+The MIT-licensed Alpha source is publicly available for development and community review at the repository's `main` branch. It is not a signed or stable binary release; the published source commit must be checked independently of installer acceptance.
 
 ## Local OpenCode verification
 
@@ -20,13 +20,13 @@ SDK 0.1.5 exposes `sessionId`; absence of a different field named `providerSessi
 
 ## Scope and license
 
-The candidate includes the existing continuation fixes, the local ACP deadline and cancellation patch, and repository documentation and license notices. Unrelated uncommitted desktop UI, tray, web Provider and website work are outside this candidate.
+The published source includes the continuation fixes, the local ACP deadline and cancellation patch, and repository documentation and license notices. Unrelated uncommitted desktop UI, tray, web Provider and website work were outside the publication candidate.
 
-The licensor-owned Agents One contributions in this candidate are offered under MIT. The inherited hermes-desktop author's MIT notice and the Oxanium font license remain in THIRD_PARTY_NOTICES.md and its linked font notice. Third-party dependencies and assets keep their own terms. The former noncommercial evaluation permission has been removed from the current source and package notice list; historical copies retain the terms under which they were received.
+The licensor-owned Agents One contributions are offered under MIT. The inherited hermes-desktop author's MIT notice and the Oxanium font license remain in THIRD_PARTY_NOTICES.md and its linked font notice. Third-party dependencies and assets keep their own terms. The former noncommercial evaluation permission has been removed from the current source and package notice list; historical copies retain the terms under which they were received.
 
 The [mobile and macOS PRD](AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md) defines future work, not available applications or accepted release assets.
 
-The source publication decision is separate from binary acceptance. No new installer, tag, public Release or stable-runtime claim is included in this preparation.
+Source publication is separate from binary acceptance. No new installer, tag, public Release or stable-runtime claim is included in this publication.
 
 ## 后续边界
 
