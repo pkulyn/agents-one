@@ -7,6 +7,7 @@
 - 源码公开与 Windows 正式制品验收分开；远程 Hermes 多轮/重启续接保持实验性，旧 F4 包体仍 No-Go。当前变更先在隔离候选审查和运行普通 PR CI，再核对远端 main 与公开设置；不借用旧包测试结论。
 - 隔离候选的 Node/Web 类型检查、SDK 27、Connector 10、Connect 8 项测试、变更文件格式检查、`lat check` 与 diff 检查通过；三个子项目的 `npm pack --dry-run` 均包含 MIT LICENSE。没有重写已验收的 SDK 0.1.5 历史 tgz。
 - 公开前只读扫描当前仓库列出的 104 次 GitHub Actions 运行：101 次有可下载日志，3 次无日志；收紧误把 `task-` 子串识别为密钥的规则后，未发现 GitHub/OpenAI/Bearer 凭据或私钥格式命中。重复邮箱已存在于受审计源码，Windows 用户路径属于测试/Runner 标识，不是当前用户名。扫描脚本和原始日志不进入仓库；既有 Gitleaks 全历史及固定源码树审计证据继续有效。
+- PR #6 的 2026-10-03 CI 全套测试、子项目测试、格式、类型和 lint 通过，但全图 `npm audit` 因当日新增公告失败。锁文件已在允许版本内修复 Electron、brace-expansion、undici、ip-address、fast-uri；剩余 GHSA-ch52-4w7c-c8xp 只经开发用 electron-builder 链引入，npm 注册表当前无已修复的 http-cache-semantics 版本。CI 改为生产依赖零 high/critical，并在全图审计中仅对该公告及其已知构建链作精确例外；其他新 high/critical 继续失败。待上游发布修复后移除例外，源码公开前须重跑完整 PR CI。
 
 ## 2026-10-02：独立 Windows 验收复核与多轮上下文修复
 

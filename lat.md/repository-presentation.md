@@ -21,3 +21,9 @@ The root `LICENSE` covers licensor-owned Agents One contributions. `THIRD_PARTY_
 Publishing development source and certifying a Windows installer are separate decisions with explicit evidence and known integration limits.
 
 Both READMEs link the Alpha source status and known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The source status does not claim a replacement packaged UI, signed installer, or stable binary release.
+
+## Dependency audit gate
+
+CI blocks new high or critical advisories and records one narrow exception for an unpatched development-only builder dependency.
+
+The gate checks production dependencies independently, then checks the full graph. It accepts only GHSA-ch52-4w7c-c8xp through the known electron-builder chain while the registry has no patched http-cache-semantics version. A new advisory, affected package, or production path fails the gate. Remove the exception when upstream releases a fix.

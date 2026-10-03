@@ -24,6 +24,7 @@
     "test": "vitest run",
     "test:subprojects": "npm test --prefix plugins/agents-one-plugin && npm test --prefix plugins/agents-one-connector && npm test --prefix services/agents-one-connect",
     "test:all": "npm test && npm run test:subprojects",
+    "audit:ci": "node scripts/check-dependency-audit.mjs",
     "test:coverage": "vitest run --coverage",
     "test:sandbox": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hermes-sandbox.ps1 test",
     "test:live-visual": "node scripts/drive-live-regression-suite.js",
