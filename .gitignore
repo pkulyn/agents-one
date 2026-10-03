@@ -59,3 +59,20 @@ release/
 agents-one-test.md
 Hers-2-Connector-Adaptation-Package-*.zip
 /tmp/
+
+# Public documentation is opt-in; internal records stay local.
+/docs/*
+!/docs/README.md
+!/docs/AGENTS_ONE_PLUGIN_SDK.md
+!/docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md
+!/docs/AGENT_EVENT_STREAM_V1.md
+!/docs/AGENT_EVENT_STREAM_PLUGIN_GUIDE.md
+!/docs/AGENTS_ONE_VOICE_INPUT.md
+!/docs/AGENTS_ONE_CHANGE_SAFETY_PROTOCOL.md
+!/docs/AGENTS_ONE_RUNBOOK.md
+/lat.md/mobile-mac-roadmap.md
+/.agents/
+/.claude/
+/Development.md
+/memory.md
+/design/

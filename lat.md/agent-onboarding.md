@@ -14,7 +14,7 @@
 
 远程接入先选择校验码配对或自托管 Gateway，两种信任模型使用独立表单、状态和诊断语义。
 
-校验码配对是普通用户的推荐路径，由 Agents One Connect 管理一次性短码、设备身份和 Connector 隧道。自托管 Gateway 是高级路径，由用户填写 HTTPS Gateway v1 地址和 Token；未经过 Connect 的直连 Runtime 只能显示“手动直连”，不得显示“已配对”。完整产品范围见 `docs/AGENTS_ONE_UNIFIED_RUNTIME_ACCESS_PRD_20260905.md`。
+校验码配对是普通用户的推荐路径，由 Agents One Connect 管理一次性短码、设备身份和 Connector 隧道。自托管 Gateway 是高级路径，由用户填写 HTTPS Gateway v1 地址和 Token；未经过 Connect 的直连 Runtime 只能显示“手动直连”，不得显示“已配对”。公共远程协议见 `docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md`。
 
 Connector-first 配对现在先做无凭据预览：展示设备指纹摘要、Runtime/能力元数据和过期时间，用户确认后才消费校验码并分发隔离 Token。取消预览不会创建本地 Runtime；预览不得返回任何 Token 或私钥。
 
