@@ -1,131 +1,97 @@
-<div align="center">
-
 # Agents One
 
-**A native desktop workspace for coordinating conversations, tasks, projects, and artifacts across multiple AI agents.**
+<p align="center">
+  <img src="assets/readme/hero.svg" width="100%" alt="Agents One connects local CLI and remote agents to one desktop conversation workspace" />
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Alpha-Windows%20x64-blue.svg)](#install)
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a> · <a href="#see-it-in-action">Preview</a> · <a href="#get-started">Get started</a> · <a href="#development">Develop</a> · <a href="#license">License</a>
+</p>
 
-</div>
+**One native desktop workspace for conversations, tasks, projects, and artifacts across AI agents.** Connect Pi, Codex, and Claude Code as local CLIs, or bring in remote agents through Gateway v1. Keep each agent's native tools and permissions while working from one conversation surface.
 
-[简体中文](README.zh-CN.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Known issues](KNOWN_ISSUES.md) · [Changelog](CHANGELOG.md)
+> **Pre-release · Windows x64 Alpha candidate.** No public Agents One release has been published yet. The current candidate is still behind release and clean-machine acceptance gates. Features and stored-data formats may change. Follow [Releases](https://github.com/pkulyn/agents-one/releases) for the first published build.
 
-Agents One is a desktop application that unifies **local CLI agents** (Pi, Codex, Claude Code) and **remote agents** (via the Remote Gateway v1 protocol) behind a single conversation surface — so you can chat, run tasks, schedule work, and manage projects without juggling terminals, dashboards, or per-agent web UIs.
+**Development source status:** local OpenCode long tasks and cancellation followed by same-session recall have passed targeted checks. Remote Hermes multi-turn and restart recall remain experimental. See the [Alpha source status](docs/AGENTS_ONE_ALPHA_SOURCE_STATUS_20261003.md) and [known issues](KNOWN_ISSUES.md); source publication does not certify a stable installer.
 
-Every agent is registered as a **Runtime** with one connection config and one display model:
+## See it in action
 
-- **Remote agents** — one Gateway v1 URL + one bearer token. Capabilities are negotiated over the protocol, not hard-coded per vendor.
-- **Local CLI agents** — an executable path on your machine. The app launches them directly with their native CLI semantics (models, tools, permissions, project instructions), and renders their event stream in the unified chat.
+The opening scene of the current app carries the Agents One Dawn Ring identity:
 
-> **Project status:** pre-release. No public Agents One Release has been published yet; the local Windows Alpha candidate is still awaiting remote CI, draft Release, and clean-machine acceptance. Features and stored-data formats may change. Contributions are welcome.
+<p align="center">
+  <img src="assets/readme/startup.png" width="100%" alt="Agents One startup scene: a robot hand and a fully visible human hand meet behind the Dawn Ring wordmark" />
+</p>
 
-## Features
+The product itself is a conversation workspace. Chat stays central, with projects, scheduled work, and agent selection close at hand.
 
-- **Unified conversation shell** — streaming chat with tool-call cards, thinking summaries, artifacts, cancel/timeout/retry, and native CLI terminal fallback. Hermes and every registered Runtime render through the same adapter-based message model.
-- **Agent registry** — add, probe, enable/disable, and remove runtimes. Health and capability badges (chat / task dispatch / tools / artifacts / workspace) come from real probes.
-- **Local CLI runtimes** — Pi, Codex, Claude Code discovered on PATH and launched as native CLI processes (argument arrays, no shell wrapping, disposable Git worktrees, native permission modes preserved).
-- **Remote Gateway v1** — one URL + one token per remote agent; capability negotiation, run lifecycle, artifact exchange, and short-lived workspace grants instead of per-vendor API keys.
-- **Projects** — folder-scoped containers that group sessions and tasks; safe workspace protection (`safe_write`) prevents out-of-scope writes.
-- **Tasks & schedules** — conversations double as tasks; scheduled jobs create ordinary runtime conversations at the due time (no hidden execution layer).
-- **Multi-agent collaboration** — explicit role assignment (coordinator/implementer/reviewer) with a role timeline and evidence gates; structured handoffs, not raw shared context.
-- **Sessions** — searchable, date-grouped history with resume; a Quick Chat panel that is persisted per profile.
-- **Archive** — soft-archive tasks and projects without touching underlying messages or artifacts; browse, search, restore, or permanently delete.
-- **Backup & restore** — portable `*.agents-one-backup` archives with manifest + SHA-256 verification, credential-safe migration, pre-flight checks, and crash-safe rollback.
-- **Plugin SDK** — `plugins/agents-one-plugin` provides the event-stream contract, a Gateway host, and a CLI adapter so new vendors integrate without modifying the desktop app.
-- **Experimental web providers** — the built-in Doubao, ChatGPT, and Grok browser adapters remain disabled in public builds unless a developer exposes the local experiment switch and the user explicitly accepts the third-party data and account risks.
-- **i18n** — English and Simplified Chinese.
+<p align="center">
+  <img src="previews/chat.png" width="100%" alt="Agents One desktop chat with project navigation and task actions" />
+</p>
 
-## Quick Start
+<details>
+<summary>View the agent registry</summary>
 
-### Install
+<p align="center">
+  <img src="previews/agents.png" width="100%" alt="Agents One agent registry showing local runtimes and their health state" />
+</p>
 
-The first public Alpha will target **Windows x64 only**, but it has **not been published yet**. When the release-readiness gates pass, download the installer or portable package only from the [official Releases page](https://github.com/pkulyn/agents-one/releases) and verify it against `SHA256SUMS.txt`. The Alpha will be unsigned, so Windows SmartScreen may warn on first launch — proceed only after verifying the checksum. Automatic updates are disabled in unsigned builds; macOS and Linux packages are not release artifacts for this Alpha.
+</details>
 
-### Add your first agent
+Screenshots show development builds; labels and layout may change before release.
 
-1. Open **Agents** (sidebar → 智能体).
-2. Click **Add agent**.
-3. Choose the agent type:
-   - **Remote agent** (e.g. Hermes, OpenClaw, any Gateway v1 implementation) — enter the Gateway URL and a bearer token.
-   - **Local CLI** (Pi, Codex, Claude Code) — the app scans PATH and pre-fills the executable path for you.
-4. Save and probe. The runtime health pill and capability badges update from the probe result.
-5. Open **Chat** and start a conversation, or create a **task** from the dialog.
+## What comes together
 
-### Set up a project
+| Your work                  | What Agents One adds                                                                                                                         |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Conversations**          | Streaming responses, tool activity, artifacts, retry and cancel controls, searchable history, and a native terminal fallback for CLI output. |
+| **Agents**                 | One registry for local CLI runtimes and remote Gateway v1 agents, with health probes and capability badges based on reported behavior.       |
+| **Projects & tasks**       | Folder-scoped workspaces, conversations that also serve as tasks, scheduled runs, archives, and structured multi-agent handoffs.             |
+| **Ownership of your data** | Portable backup and restore with integrity checks, credential exclusions, and rollback safeguards.                                           |
 
-Create a project folder from the sidebar. New conversations can attach to it; the project becomes the workspace scope for local CLI runtimes and workspace-granted remote agents.
+### Local power, one shared surface
 
-## How it works
+Agents One starts local CLIs as native processes. Pi, Codex, and Claude Code keep their own models, tools, project instructions, and permission modes. For remote agents, Gateway v1 uses a URL and bearer token, negotiates capabilities, and grants workspace access only for a bounded run. Both routes feed the same conversation experience.
 
-```text
-       user
-        │
-        ▼
-  Agents One desktop
-  ├─ Agent registry  →  one connection config per runtime
-  ├─ Conversation shell →  adapter-based unified message model
-  ├─ Schedules / projects / archive / backup
-        │
-        ├──▶ local CLI runtime (Pi / Codex / Claude Code)
-        │         native process, native permissions, event stream → chat
-        │
-        └──▶ remote agent (Gateway v1)
-                  one URL + one token, capability negotiation,
-                  run lifecycle, artifacts, workspace grants
-```
+The [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) lets additional agents implement this contract without changing the desktop app. The [event stream](docs/AGENT_EVENT_STREAM_V1.md) carries tool activity, artifacts, and handoffs; the [Gateway protocol](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md) covers remote runs and workspace grants.
 
-- **Runtime Adapter contract** — `probe`, `start`, `get`, `cancel`, events, artifacts. Every runtime is represented uniformly at the orchestration layer without lossy translation: unstructured native output is still viewable in the raw record.
-- **Remote Gateway v1** — the outer protocol for cross-machine access. Token is bound to a single remote agent and limited scopes; workspace access is a short-lived grant, never a standing file server. See [docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md).
-- **Agent Event Stream v1** — the internal event language for thinking summaries, tools, skills, MCP, artifacts, and handoffs. See [docs/AGENT_EVENT_STREAM_V1.md](docs/AGENT_EVENT_STREAM_V1.md).
-- **Plugin SDK** — `plugins/agents-one-plugin` hosts a Gateway and a CLI adapter so a new agent can expose the unified contract without touching the desktop app. See [docs/AGENTS_ONE_PLUGIN_SDK.md](docs/AGENTS_ONE_PLUGIN_SDK.md).
+## Get started
 
-## Preview
+### Install when the Alpha is published
 
-> Screenshots are captured from the current build.
+The first public package is planned for **Windows x64**. Download only from the [official Releases page](https://github.com/pkulyn/agents-one/releases) and compare the package SHA-256 with `SHA256SUMS.txt`. The Alpha is expected to be unsigned, so Windows SmartScreen may warn on first launch. Automatic updates are disabled for unsigned builds. macOS and Linux packages are outside this first release.
 
-|                                                             |                                                         |
-| ----------------------------------------------------------- | ------------------------------------------------------- |
-| <img width="100%" alt="Agents" src="previews/agents.png" /> | <img width="100%" alt="Chat" src="previews/chat.png" /> |
+### Add an agent
 
-## Data & privacy
+1. Open **Agents** and choose **Add agent**.
+2. For a local CLI, select Pi, Codex, or Claude Code. Agents One scans `PATH` and pre-fills the executable path when found.
+3. For a remote agent, enter its Gateway v1 URL and bearer token.
+4. Save and probe the connection, then open **Chat** to start a conversation or task.
 
-### Data locations
+Create a **Project** to attach conversations to a folder. That folder becomes the workspace scope for local CLI runs and remote runs with an explicit workspace grant.
 
-- Desktop state uses Electron's `userData` directory (normally `%APPDATA%\Agents One` on Windows). Windows portable builds use `%LOCALAPPDATA%\agents-one-portable` by default so they do not share installed-build data or its single-instance lock. Set `AGENTS_ONE_USER_DATA_DIR` before launch only when you intentionally need a different isolated location.
-- User-selected project folders and local CLI runtime homes remain outside desktop state. The bundled Hermes runtime normally uses `%LOCALAPPDATA%\hermes` on Windows or `~/.hermes` elsewhere, unless `HERMES_HOME` or an in-app override selects another existing installation.
-- Agents One Connector stores its separate device state under `%APPDATA%\agents-one\connector` on Windows or `${XDG_CONFIG_HOME:-~/.config}/agents-one/connector` elsewhere.
-- Backups are created only at a location the user selects. See the boundaries below before moving or sharing one.
+## Data and trust boundaries
 
-- **Credential storage has explicit boundaries.** Remote Gateway tokens entered through the desktop are migrated from `.env` to Electron OS-backed protection after the secure backend becomes available. Windows Connector device tokens and private keys use current-user DPAPI; Connector files on other platforms use user-only permissions. Provider/API credentials may still come from `.env`, process environment variables, or a configured command-based secret provider. On Linux, if Electron reports the insecure `basic_text` fallback, Agents One keeps the legacy restricted-file path and shows a warning instead of claiming the value is OS-protected.
-- **Backups protect credential boundaries.** Known `.env`, account/credential files, token/API-key fields, SSH key paths, proxies, raw config, desktop protected-secret blobs, and Connector credential files are not exported. Export stops if a skill text file appears to embed a Bearer/API credential, so it can be moved to protected configuration first. Chats, memories, skills, attachments, and other user-authored content may still contain sensitive text and must be handled accordingly.
-- **Backup** covers profiles, projects, tasks, conversations, collaboration records, SQLite state, memory, skills, attachments, and runtime inputs. Restore runs pre-flight checks, keeps a rollback snapshot, and survives crash mid-restore.
-- **Local CLI is not a remote.** Local runtimes keep their native capabilities; the desktop app only adds the workspace scope you choose, run records, and unified rendering.
-- **Web providers are default-off experiments.** When explicitly enabled, prompts and selected attachments are sent through the signed-in third-party webpage and the provider controls the account data. Agents One stores each provider/profile in a separate Chromium partition, blocks off-list navigation and browser permissions, and lets you stop all web tasks or clear the isolated login data. The project currently has no written automation permission from Doubao, OpenAI, or xAI; see the [provider compliance record](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md).
+Desktop state lives in Electron `userData` (normally `%APPDATA%\Agents One` on Windows); portable builds use `%LOCALAPPDATA%\agents-one-portable` by default. User-selected project folders and local CLI homes stay outside that desktop state. Backups omit known credentials and protected secrets, but user-authored chats, memories, skills, and attachments can still contain sensitive information.
 
-See [SECURITY.md](SECURITY.md) for supported versions, private vulnerability reporting, and the trust-boundary model. Current release limitations are tracked in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
-
-## Screens
-
-| Screen                   | Description                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------ |
-| **聊天 / Chat**          | Unified streaming conversation with tools, artifacts, and runtime events       |
-| **智能体 / Agents**      | Runtime registry cards grouped by location, with probe health and capabilities |
-| **定时任务 / Schedules** | Schedule ordinary runtime conversations with cron-style triggers               |
-| **设置 / Settings**      | Appearance, language, data (backup/restore), archives, about, logs             |
+The built-in Doubao, ChatGPT, and Grok browser adapters are **default-off experiments** in public builds. Enabling them sends selected prompts and attachments through the signed-in provider webpage. See the [provider compliance record](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md), [security policy](SECURITY.md), and [known issues](KNOWN_ISSUES.md) for the current boundaries and limitations.
 
 ## Development
 
+Node.js **24 or newer** is required. From the repository root on Windows:
+
 ```powershell
-npm.cmd install
-npm.cmd run dev       # start the app in dev mode
-npm.cmd run typecheck # TypeScript check
-npm.cmd test          # vitest suite
-npm.cmd run build     # typecheck + production build
+npm.cmd run install:clean
+npm.cmd run dev
+npm.cmd run typecheck
+npm.cmd test
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and [docs/AGENTS_ONE_RUNBOOK.md](docs/AGENTS_ONE_RUNBOOK.md) for operations.
+See the [contribution guide](CONTRIBUTING.md) for the full checks and the [runbook](docs/AGENTS_ONE_RUNBOOK.md) for release operations. Changes are tracked in the [changelog](CHANGELOG.md).
+
+The [mobile and macOS development PRD](docs/AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md) defines the planned shared contract and platform order: Android, iOS, native HarmonyOS, then macOS desktop. These are development plans, not published apps.
 
 ## License
 
-[MIT](LICENSE)
+Original Agents One contributions in this repository are offered under the [MIT License](LICENSE). MIT permits use, modification, distribution, and commercial use when the copyright and license notice is retained. Contributors keep their own copyright and submit only material they can license under MIT.
+
+The inherited `hermes-desktop` material retains its original author's MIT notice in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Third-party dependencies and assets retain their respective terms; the Oxanium-derived wordmark notice and font license are also linked there. This code license does not grant rights to impersonate the Agents One project or its maintainers.

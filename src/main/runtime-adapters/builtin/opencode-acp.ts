@@ -30,6 +30,8 @@ import { protectWorkspaceFromRemoval } from "../../workspace-protection";
 
 const MAX_OUTPUT = 512 * 1024;
 const MAX_RPC_TIMEOUT_MS = 30_000;
+const DEFAULT_PROMPT_TIMEOUT_MS = 300_000;
+const CANCEL_COMPLETION_GRACE_MS = 5_000;
 const MAX_WORKSPACE_FILES = 2_000;
 const MAX_HASHED_FILE_BYTES = 8 * 1024 * 1024;
 const IGNORED_WORKSPACE_DIRECTORIES = new Set([
@@ -156,6 +158,7 @@ class OpenCodeAcpClient {
   private nextId = 1;
   private readonly pending = new Map<string, PendingRequest>();
   private sessionId: string | undefined;
+  private replayingHistory = false;
   private closed = false;
 
   constructor(
@@ -194,7 +197,7 @@ class OpenCodeAcpClient {
     const method = typeof json.method === "string" ? json.method : "";
     const params = isRecord(json.params) ? json.params : {};
     if (method === "session/update") {
-      this.options.onUpdate(params);
+      if (!this.replayingHistory) this.options.onUpdate(params);
       return;
     }
     if ((typeof id === "number" || typeof id === "string") && method) {
@@ -323,36 +326,65 @@ class OpenCodeAcpClient {
       ? capabilities.sessionCapabilities
       : {};
     let result: unknown;
-    if (requestedSessionId && sessionCapabilities.resume === true) {
+    const canResume =
+      sessionCapabilities.resume === true ||
+      isRecord(sessionCapabilities.resume);
+    if (requestedSessionId && canResume) {
       result = await this.request("session/resume", {
         sessionId: requestedSessionId,
         cwd,
         mcpServers: [],
       });
+    } else if (requestedSessionId && capabilities.loadSession === true) {
+      this.replayingHistory = true;
+      try {
+        result = await this.request("session/load", {
+          sessionId: requestedSessionId,
+          cwd,
+          mcpServers: [],
+        });
+      } finally {
+        this.replayingHistory = false;
+      }
+    } else if (requestedSessionId) {
+      throw new Error(
+        "OpenCode ACP 当前版本不支持恢复已有 session，未创建新会话。",
+      );
     } else {
       result = await this.request("session/new", { cwd, mcpServers: [] });
     }
+    // ACP load/resume replies may contain only configuration, or be empty.
+    // The requested provider identity remains authoritative for continuation.
+    const sessionId =
+      requestedSessionId || (isRecord(result) ? result.sessionId : undefined);
     if (
       !isRecord(result) ||
-      typeof result.sessionId !== "string" ||
-      !result.sessionId.trim()
+      typeof sessionId !== "string" ||
+      !sessionId.trim()
     ) {
       throw new Error("OpenCode ACP 未返回有效 sessionId。");
     }
-    this.sessionId = result.sessionId;
+    this.sessionId = sessionId;
     const model = modelFromConfigOptions(result.configOptions);
     return {
-      sessionId: result.sessionId,
+      sessionId,
       ...(model ? { model } : {}),
     };
   }
 
-  async prompt(prompt: string): Promise<JsonRecord> {
+  async prompt(
+    prompt: string,
+    timeoutMs = DEFAULT_PROMPT_TIMEOUT_MS,
+  ): Promise<JsonRecord> {
     if (!this.sessionId) throw new Error("OpenCode ACP session 尚未创建。");
-    const result = await this.request("session/prompt", {
-      sessionId: this.sessionId,
-      prompt: [{ type: "text", text: prompt }],
-    });
+    const result = await this.request(
+      "session/prompt",
+      {
+        sessionId: this.sessionId,
+        prompt: [{ type: "text", text: prompt }],
+      },
+      timeoutMs,
+    );
     return isRecord(result) ? result : {};
   }
 
@@ -911,7 +943,7 @@ export async function startOpenCodeProcess(
         onMetadata?.({ model });
       }
       const prompt = openCodePrompt(input.prompt);
-      const response = await client!.prompt(prompt);
+      const response = await client!.prompt(prompt, config.timeoutMs);
       const stopReason = text(response.stopReason);
       const responseUsage = usageFromOpenCodeValue(response);
       if (responseUsage) {
@@ -984,6 +1016,24 @@ export async function startOpenCodeProcess(
     cancel: async () => {
       cancelRequested = true;
       client!.cancelSession();
+      // ACP acknowledges cancellation through the original prompt response.
+      // Let native tools settle before terminating their session process.
+      if (sessionId && !turnCompleted) {
+        let cancellationTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            completion.then(() => undefined),
+            new Promise<void>((resolve) => {
+              cancellationTimer = setTimeout(
+                resolve,
+                CANCEL_COMPLETION_GRACE_MS,
+              );
+            }),
+          ]);
+        } finally {
+          if (cancellationTimer) clearTimeout(cancellationTimer);
+        }
+      }
       await process.cancel();
       await completion;
     },

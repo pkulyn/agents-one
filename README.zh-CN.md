@@ -1,131 +1,97 @@
-<div align="center">
-
 # Agents One
 
-**一个原生桌面工作区：在多个 AI 智能体之间协调对话、任务、项目与产物。**
+<p align="center">
+  <img src="assets/readme/hero.zh-CN.svg" width="100%" alt="Agents One 将本地 CLI 与远程智能体汇入同一个桌面对话工作空间" />
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Alpha-Windows%20x64-blue.svg)](#安装)
+<p align="center">
+  <a href="README.md">English</a> · <a href="#产品一览">界面预览</a> · <a href="#快速开始">快速开始</a> · <a href="#参与开发">参与开发</a> · <a href="#许可协议">许可协议</a>
+</p>
 
-</div>
+**一个原生桌面工作空间，串联多个 AI 智能体的对话、任务、项目与产物。** 将 Pi、Codex、Claude Code 作为本地 CLI 接入，也可以通过 Gateway v1 接入远程智能体。每个智能体保留自己的工具与权限，而你的工作集中在同一个对话界面。
 
-[English](README.md) · [贡献指南](CONTRIBUTING.zh-CN.md) · [安全策略](SECURITY.md) · [已知问题](KNOWN_ISSUES.md) · [变更日志](CHANGELOG.md)
+> **预发布 · Windows x64 Alpha 候选。** Agents One 尚无公开 Release；当前候选仍需通过发布门禁与干净环境验收。功能及持久化数据格式可能变化。首个公开版本请关注 [Releases 页面](https://github.com/pkulyn/agents-one/releases)。
 
-Agents One 是一款桌面应用，把**本地 CLI 智能体**（Pi、Codex、Claude Code）与**远程智能体**（通过 Remote Gateway v1 协议）统一到同一套对话界面背后——无需再在不同终端、Dashboard 或各家 Web 界面之间来回切换，即可完成对话、任务、定时任务与项目管理。
+**开发源码状态：**本地 OpenCode 长任务及取消后同会话回忆已通过定向验证；远程 Hermes 多轮记忆与重启续接仍为实验性路径。详情见 [Alpha 源码状态](docs/AGENTS_ONE_ALPHA_SOURCE_STATUS_20261003.md)与[已知问题](KNOWN_ISSUES.md)。公开源码不代表稳定安装包已经发布。
 
-每个智能体都注册为一个 **Runtime**，只有一套连接配置、一套展示模型：
+## 产品一览
 
-- **远程智能体** — 一个 Gateway v1 地址 + 一个 Bearer Token。能力通过协议协商获得，而不是按厂商硬编码。
-- **本地 CLI 智能体** — 本机可执行文件路径。应用直接以原生 CLI 语义启动它们（模型、工具、权限、项目指令），并把事件流渲染进统一对话。
+当前版本的启动画面使用 Agents One 的 Dawn Ring 品牌标识：
 
-> **项目状态：** 尚未公开发布。Windows Alpha 本地候选仍需通过远端 CI、草稿 Release 和干净环境验收；功能及持久化数据格式仍可能变化。欢迎参与贡献。
+<p align="center">
+  <img src="assets/readme/startup.png" width="100%" alt="Agents One 完整启动画面：机械手与完整可见的人手在 Dawn Ring 字标后相接" />
+</p>
 
-## 功能特性
+真正的工作发生在对话里：项目、定时任务与智能体入口围绕对话组织。
 
-- **统一对话壳** — 流式聊天，支持工具调用卡片、思考摘要、产物、取消/超时/重试，以及原生 CLI 终端回退。Hermes 与所有已注册 Runtime 都通过同一套基于适配器的消息模型渲染。
-- **智能体注册表** — 添加、探测、启停、移除 Runtime。健康状态与能力徽章（对话 / 任务派发 / 工具 / 产物 / 工作区）来自真实探测结果。
-- **本地 CLI Runtime** — 自动在 PATH 中探测 Pi、Codex、Claude Code 并以原生 CLI 进程启动（参数数组、不包 shell、一次性 Git worktree、保留原生权限模式）。
-- **远程 Gateway v1** — 每个远程智能体一个 URL + 一个 Token；能力协商、运行生命周期、产物交换与短时工作区授权，取代各家私有 API Key。
-- **项目** — 以文件夹为作用域的容器，归组会话与任务；`safe_write` 工作区保护阻止越界写入。
-- **任务与定时任务** — 对话即任务；定时任务到点后创建并启动一条普通 Runtime 对话（没有隐藏的执行层）。
-- **多智能体协作** — 显式角色分配（协调者 / 实现 / 审查）配角色时间线与证据闸门；结构化交接，而非共享原始上下文。
-- **会话管理** — 可搜索、按日期分组的会话历史与续接；Quick Chat 面板按 Profile 持久化。
-- **归档** — 软归档任务与项目，不动底层消息或产物；可浏览、搜索、恢复或永久删除。
-- **备份与恢复** — 可移植的 `*.agents-one-backup` 归档，含清单 + SHA-256 校验、凭据安全迁移、预检与崩溃安全回滚。
-- **插件 SDK** — `plugins/agents-one-plugin` 提供事件流契约、Gateway 宿主与 CLI 适配器，新智能体无需改动桌面端即可接入。
-- **实验性网页 Provider** — 内置豆包、ChatGPT 和 Grok 浏览器适配器在公开构建中默认关闭；只有开发者开放本地实验开关且用户明确接受第三方数据与账号风险后才可使用。
-- **国际化** — 简体中文与英文。
+<p align="center">
+  <img src="previews/chat.png" width="100%" alt="Agents One 桌面对话界面，包含项目导航和任务入口" />
+</p>
+
+<details>
+<summary>查看智能体注册表</summary>
+
+<p align="center">
+  <img src="previews/agents.png" width="100%" alt="Agents One 智能体注册表，展示本地 Runtime 与健康状态" />
+</p>
+
+</details>
+
+截图来自开发构建，正式发布前文案与布局可能调整。
+
+## 核心体验
+
+| 工作内容       | Agents One 提供什么                                                             |
+| -------------- | ------------------------------------------------------------------------------- |
+| **对话**       | 流式回复、工具过程、产物、重试与取消、可搜索历史，以及 CLI 原始输出的终端回退。 |
+| **智能体**     | 本地 CLI 与远程 Gateway v1 共用一个注册表；健康探测和能力徽章来自实际探测结果。 |
+| **项目与任务** | 以文件夹限定工作区，让对话成为任务；支持定时运行、归档和结构化多智能体交接。    |
+| **数据自主**   | 可移植备份与恢复，包含完整性校验、凭据排除和回滚保护。                          |
+
+### 保留原生能力，汇入统一界面
+
+Agents One 以原生进程启动本地 CLI。Pi、Codex、Claude Code 保留自己的模型、工具、项目指令与权限模式。远程智能体通过一个 Gateway v1 地址和 Bearer Token 接入，按协议协商能力，工作区访问只在有边界的运行期间授权。两条路径最终都进入同一套对话体验。
+
+[插件 SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) 允许新智能体实现统一契约，无需改动桌面端。[事件流协议](docs/AGENT_EVENT_STREAM_V1.md)承载工具过程、产物与交接；[Gateway 协议](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md)负责远程运行与工作区授权。
 
 ## 快速开始
 
-### 安装
+### Alpha 发布后安装
 
-首个公开 Alpha 将**仅面向 Windows x64**，但目前**尚未发布**。发布门禁全部通过后，请仅从[官方 Releases 页面](https://github.com/pkulyn/agents-one/releases)下载安装包或便携包，并根据 `SHA256SUMS.txt` 核对 SHA-256。Alpha 将不会签名，首次启动时 Windows SmartScreen 可能告警；仅在校验值一致后继续运行。未签名构建默认关闭自动更新；本次 Alpha 不发布 macOS/Linux 资产。
+首个公开安装包计划仅面向 **Windows x64**。请从[官方 Releases 页面](https://github.com/pkulyn/agents-one/releases)下载，并用 `SHA256SUMS.txt` 核对 SHA-256。Alpha 预计不带代码签名，Windows SmartScreen 首次启动可能提示风险；未签名构建默认关闭自动更新。首版不提供 macOS / Linux 发布资产。
 
-### 添加你的第一个智能体
+### 添加智能体
 
-1. 打开 **智能体**（侧边栏 → Agents）。
-2. 点击 **添加智能体**。
-3. 选择智能体类型：
-   - **远程智能体**（如 Hermes、OpenClaw 或任意 Gateway v1 实现）— 填写 Gateway 地址与 Bearer Token。
-   - **本地 CLI**（Pi、Codex、Claude Code）— 应用会自动扫描 PATH 并预填可执行文件路径。
-4. 保存并探测。运行健康胶囊与能力徽章随探测结果更新。
-5. 打开 **聊天** 开始对话，或在对话框创建 **任务**。
+1. 打开**智能体**，点击**新增智能体**。
+2. 本地 CLI 可选 Pi、Codex 或 Claude Code；应用找到 `PATH` 中的可执行文件后会预填路径。
+3. 远程智能体填写 Gateway v1 地址与 Bearer Token。
+4. 保存并探测连接，再进入**聊天**开始对话或任务。
 
-### 创建项目
+创建**项目**后，可将对话关联到项目文件夹。该文件夹就是本地 CLI 运行，以及获得明确工作区授权的远程运行的工作区边界。
 
-从侧边栏创建项目文件夹。新对话可关联到项目；项目成为本地 CLI Runtime 与已授权远程智能体的工作区边界。
+## 数据与信任边界
 
-## 工作原理
+桌面状态存放于 Electron `userData`（Windows 通常为 `%APPDATA%\Agents One`）；便携版默认使用 `%LOCALAPPDATA%\agents-one-portable`。用户选择的项目目录和本地 CLI 数据位于桌面状态之外。备份排除已知凭据与受保护密文，但用户编写的对话、记忆、技能和附件仍可能含敏感信息。
 
-```text
-        用户
-          │
-          ▼
-    Agents One 桌面端
-    ├─ 智能体注册表 → 每个 Runtime 一套连接配置
-    ├─ 统一对话壳   → 基于适配器的统一消息模型
-    ├─ 定时任务 / 项目 / 归档 / 备份
-          │
-          ├──▶ 本地 CLI Runtime（Pi / Codex / Claude Code）
-          │        原生进程、原生权限，事件流 → 对话
-          │
-          └──▶ 远程智能体（Gateway v1）
-                   一个 URL + 一个 Token，能力协商，
-                   运行生命周期、产物、工作区授权
-```
+内置的豆包、ChatGPT 和 Grok 浏览器适配器在公开构建中是**默认关闭的实验功能**。启用后，选定的提示词和附件会通过已登录的第三方网页发送。当前边界与限制见[网页 Provider 合规记录](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md)、[安全策略](SECURITY.md)和[已知问题](KNOWN_ISSUES.md)。
 
-- **Runtime Adapter 契约** — `probe`、`start`、`get`、`cancel`、事件、产物。每个 Runtime 在编排层统一表示且不损失信息：无法结构化呈现的原生输出仍可在“原始记录”中查看。
-- **Remote Gateway v1** — 跨机访问的外层协议。Token 绑定单个远程智能体与有限 scope；工作区访问是短时授权，不是常驻文件服务器。详见 [docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md)。
-- **Agent Event Stream v1** — 思考摘要、工具、技能、MCP、产物与交接的统一事件语言。详见 [docs/AGENT_EVENT_STREAM_V1.md](docs/AGENT_EVENT_STREAM_V1.md)。
-- **插件 SDK** — `plugins/agents-one-plugin` 提供 Gateway 宿主与 CLI 适配器，新智能体无需改动桌面端即可接入统一契约。详见 [docs/AGENTS_ONE_PLUGIN_SDK.md](docs/AGENTS_ONE_PLUGIN_SDK.md)。
+## 参与开发
 
-## 界面预览
-
-> 截图为当前构建版本实拍。
-
-|                                                             |                                                         |
-| ----------------------------------------------------------- | ------------------------------------------------------- |
-| <img width="100%" alt="智能体" src="previews/agents.png" /> | <img width="100%" alt="聊天" src="previews/chat.png" /> |
-
-## 数据与隐私
-
-### 数据路径
-
-- 桌面状态位于 Electron `userData` 目录（Windows 通常为 `%APPDATA%\Agents One`）。Windows portable 默认使用 `%LOCALAPPDATA%\agents-one-portable`，不与安装版共享数据或单实例锁；仅在确实需要另一隔离目录时，才应在启动前设置 `AGENTS_ONE_USER_DATA_DIR`。
-- 用户选择的项目目录和本地 CLI Runtime 数据不放入桌面状态。内置 Hermes Runtime 在 Windows 通常使用 `%LOCALAPPDATA%\hermes`，其他系统通常使用 `~/.hermes`；`HERMES_HOME` 或应用内已有安装覆盖项可指定其他位置。
-- Agents One Connector 的独立设备状态位于 Windows `%APPDATA%\agents-one\connector`，其他系统位于 `${XDG_CONFIG_HOME:-~/.config}/agents-one/connector`。
-- 备份只写入用户主动选择的位置；移动或分享前请先阅读下方凭据边界。
-
-- **凭据存储有明确边界。** 桌面端录入的 Remote Gateway Token 会在安全后端可用后从 `.env` 幂等迁移到 Electron 的操作系统级保护；Windows Connector 的设备 Token 与私钥使用当前用户 DPAPI，其他平台的 Connector 文件使用仅当前用户可访问的权限。Provider/API 凭据仍可能来自 `.env`、进程环境变量或已配置的命令型秘密提供器。Linux 若被 Electron 判定为不安全的 `basic_text` 回退，Agents One 会继续使用受限的旧文件路径并明确提示，不会宣称该值已受操作系统保护。
-- **备份保护凭据边界。** 已知的 `.env`、账户/凭据文件、Token/API Key 字段、SSH keyPath、代理、原始配置、桌面受保护密文及 Connector 凭据文件均不导出；若技能文本疑似硬编码 Bearer/API 凭据，导出会停止，提示先迁移到受保护配置。对话、记忆、技能、附件等用户自建内容仍可能含敏感文本，必须按敏感数据保管。
-- **备份**覆盖配置档案、项目、任务、对话、协作记录、SQLite 状态、记忆、技能、附件与 Runtime 输入。恢复先预检、保留回滚快照，且能在恢复中途崩溃时自动回滚。
-- **本地 CLI 不是远程。** 本地 Runtime 保留原生能力；桌面端只增加你明确选择的工作区范围、运行记录与统一渲染。
-- **网页 Provider 是默认关闭的实验功能。** 明确启用后，提示词和所选附件会通过已登录的第三方网页发送，账号数据由对应 Provider 处理。Agents One 为每个 Provider/Profile 使用独立 Chromium 分区，阻止白名单外导航和浏览器权限，并支持一键停止全部网页任务或清除隔离登录数据。项目目前未取得豆包、OpenAI 或 xAI 的书面自动化许可；详见[网页 Provider 合规记录](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md)。
-
-支持版本、漏洞私下报告方式与信任边界模型见 [SECURITY.md](SECURITY.md)；当前发布限制见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)。
-
-## 界面一览
-
-| 界面                     | 说明                                             |
-| ------------------------ | ------------------------------------------------ |
-| **聊天 / Chat**          | 统一流式对话，含工具、产物与 Runtime 事件        |
-| **智能体 / Agents**      | 按本地/远程分组的 Runtime 卡片，含探测健康与能力 |
-| **定时任务 / Schedules** | 以 cron 触发定时创建普通 Runtime 对话            |
-| **设置 / Settings**      | 外观、语言、数据（备份/恢复）、归档、关于、日志  |
-
-## 开发
+需要 Node.js **24 或更新版本**。在 Windows 仓库根目录运行：
 
 ```powershell
-npm.cmd install
-npm.cmd run dev       # 开发模式启动
-npm.cmd run typecheck # TypeScript 检查
-npm.cmd test          # vitest 测试
-npm.cmd run build     # typecheck + 生产构建
+npm.cmd run install:clean
+npm.cmd run dev
+npm.cmd run typecheck
+npm.cmd test
 ```
 
-贡献流程见 [CONTRIBUTING.md](CONTRIBUTING.md)，运维说明见 [docs/AGENTS_ONE_RUNBOOK.md](docs/AGENTS_ONE_RUNBOOK.md)。
+完整检查流程见[贡献指南](CONTRIBUTING.zh-CN.md)，发布运维见[运行手册](docs/AGENTS_ONE_RUNBOOK.md)，版本变化见[变更日志](CHANGELOG.md)。
 
-## 许可证
+[手机端与 macOS 开发 PRD](docs/AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md)明确公共协议及 Android、iOS、原生鸿蒙、macOS 桌面端的开发顺序；这些是后续计划，尚非已发布应用。
 
-[MIT](LICENSE)
+## 许可协议
+
+本仓库中 Agents One 的原创贡献采用 [MIT License](LICENSE)。保留版权与许可声明即可使用、修改、分发及商用。贡献者保留其自身版权，并且只能提交有权按 MIT 授权的内容。
+
+继承自 `hermes-desktop` 的部分保留上游作者原有的 MIT 声明，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。第三方依赖和素材仍遵循各自协议；Oxanium 字体衍生字标的声明及字体协议也从该文件链接。代码许可不授予冒充 Agents One 项目或维护者身份的权利。

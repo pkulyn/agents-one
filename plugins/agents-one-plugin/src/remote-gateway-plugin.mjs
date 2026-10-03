@@ -16,7 +16,7 @@ import {
 } from "./event-stream.mjs";
 
 export const AGENTS_ONE_PLUGIN_ID = "agents-one-plugin-sdk";
-export const AGENTS_ONE_PLUGIN_VERSION = "0.1.4";
+export const AGENTS_ONE_PLUGIN_VERSION = "0.1.5";
 
 function json(response, status, payload) {
   response.writeHead(status, {
@@ -724,11 +724,25 @@ export function createRemoteGatewayPlugin({
           );
         }
         const id = `run_${randomUUID()}`;
+        // Older desktop clients used a provider session ID as conversationId.
+        // Resolve that alias only within the same Runtime, without rewriting
+        // historical records or changing the incoming idempotency fingerprint.
+        const legacyConversation =
+          input.conversationId &&
+          [...runs.values()]
+            .reverse()
+            .find(
+              (candidate) =>
+                candidate.runtimeId === requestedRuntimeId &&
+                candidate.sessionId === input.conversationId,
+            );
         const record = {
           id,
           status: "queued",
           conversationId:
-            input.conversationId || `conversation_${randomUUID()}`,
+            legacyConversation?.conversationId ||
+            input.conversationId ||
+            `conversation_${randomUUID()}`,
           runtimeId:
             typeof input.runtimeId === "string"
               ? input.runtimeId
@@ -769,7 +783,29 @@ export function createRemoteGatewayPlugin({
         // full request body. The top-level field remains backward compatible.
         let started;
         try {
-          started = await adapter.startRun(input, {
+          // Bind the adapter's first turn to the exact identity returned by
+          // the Gateway. Keep provider session IDs separate from this ID,
+          // including after the durable Gateway journal is reopened.
+          const previous = [...runs.values()]
+            .reverse()
+            .find(
+              (candidate) =>
+                candidate !== record &&
+                candidate.runtimeId === runtimeId &&
+                candidate.conversationId === record.conversationId &&
+                typeof candidate.sessionId === "string" &&
+                candidate.sessionId,
+            );
+          const adapterInput = {
+            ...input,
+            conversationId: record.conversationId,
+            ...(previous?.sessionId &&
+            !input.sessionId &&
+            !input.input?.sessionId
+              ? { sessionId: previous.sessionId }
+              : {}),
+          };
+          started = await adapter.startRun(adapterInput, {
             runId: id,
             emit,
             runtimeId,
