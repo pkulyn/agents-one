@@ -8,6 +8,8 @@
 - 隔离候选的 Node/Web 类型检查、SDK 27、Connector 10、Connect 8 项测试、变更文件格式检查、`lat check` 与 diff 检查通过；三个子项目的 `npm pack --dry-run` 均包含 MIT LICENSE。没有重写已验收的 SDK 0.1.5 历史 tgz。
 - 公开前只读扫描当前仓库列出的 104 次 GitHub Actions 运行：101 次有可下载日志，3 次无日志；收紧误把 `task-` 子串识别为密钥的规则后，未发现 GitHub/OpenAI/Bearer 凭据或私钥格式命中。重复邮箱已存在于受审计源码，Windows 用户路径属于测试/Runner 标识，不是当前用户名。扫描脚本和原始日志不进入仓库；既有 Gitleaks 全历史及固定源码树审计证据继续有效。
 - PR #6 的 2026-10-03 CI 全套测试、子项目测试、格式、类型和 lint 通过，但全图 `npm audit` 因当日新增公告失败。锁文件已在允许版本内修复 Electron、brace-expansion、undici、ip-address、fast-uri；剩余 GHSA-ch52-4w7c-c8xp 只经开发用 electron-builder 链引入，npm 注册表当前无已修复的 http-cache-semantics 版本。CI 改为生产依赖零 high/critical，并在全图审计中仅对该公告及其已知构建链作精确例外；其他新 high/critical 继续失败。待上游发布修复后移除例外，源码公开前须重跑完整 PR CI。
+- PR #6 最终提交 `4ade4ce18124e29d8976d4270ab3094cbb21e563` 的 [CI 37104325251](https://github.com/pkulyn/agents-one/actions/runs/37104325251) 全通过：干净安装、格式、类型、主测试、三个子项目测试、lint、审计门禁和构建。已以合并提交 `986265cbb59f5ef926f66f08a32729eed88f1d4a` 进入 `main`，MIT 和移动/Mac PRD 均在远端默认分支。
+- 仓库 `pkulyn/agents-one` 已转为公开，匿名 HTTP 访问返回 200，GitHub 识别 MIT；已启用并回读私密漏洞报告、漏洞提醒、Dependabot 安全更新、密钥扫描和 push protection。`main` 已保护：PR、最新分支、`check`、管理员约束、讨论解决、线性历史，禁止强推/删除。仅有一名维护者，审批人数暂为 0，待引入第二位维护者后升至至少 1；正式受保护 tag 和公开 Release 仍未启动。Windows 安装包仍 No-Go。
 
 ## 2026-10-02：独立 Windows 验收复核与多轮上下文修复
 
