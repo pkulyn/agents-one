@@ -12,7 +12,7 @@
 
 > **预发布 · Windows x64 Alpha 候选。** Agents One 尚无公开 Release；当前候选仍需通过发布门禁与干净环境验收。功能及持久化数据格式可能变化。首个公开版本请关注 [Releases 页面](https://github.com/pkulyn/agents-one/releases)。
 
-**开发源码状态：**本地 OpenCode 长任务及取消后同会话回忆已通过定向验证；远程 Hermes 多轮记忆与重启续接仍为实验性路径。详情见 [Alpha 源码状态](docs/AGENTS_ONE_ALPHA_SOURCE_STATUS_20261003.md)与[已知问题](KNOWN_ISSUES.md)。公开源码不代表稳定安装包已经发布。
+**Alpha 源码：**仓库已按 MIT 公开，目前没有正式安装包 Release；远程 Hermes 多轮记忆与重启续接仍为实验性功能。详见[已知问题](KNOWN_ISSUES.md)。
 
 ## 产品一览
 
@@ -73,7 +73,7 @@ Agents One 以原生进程启动本地 CLI。Pi、Codex、Claude Code 保留自�
 
 桌面状态存放于 Electron `userData`（Windows 通常为 `%APPDATA%\Agents One`）；便携版默认使用 `%LOCALAPPDATA%\agents-one-portable`。用户选择的项目目录和本地 CLI 数据位于桌面状态之外。备份排除已知凭据与受保护密文，但用户编写的对话、记忆、技能和附件仍可能含敏感信息。
 
-内置的豆包、ChatGPT 和 Grok 浏览器适配器在公开构建中是**默认关闭的实验功能**。启用后，选定的提示词和附件会通过已登录的第三方网页发送。当前边界与限制见[网页 Provider 合规记录](docs/AGENTS_ONE_WEB_PROVIDER_COMPLIANCE_20260910.md)、[安全策略](SECURITY.md)和[已知问题](KNOWN_ISSUES.md)。
+内置的豆包、ChatGPT 和 Grok 浏览器适配器在公开构建中是**默认关闭的实验功能**。启用后，选定的提示词和附件会通过已登录的第三方网页发送。当前边界与限制见[安全策略](SECURITY.md)和[已知问题](KNOWN_ISSUES.md)。
 
 ## 参与开发
 
@@ -86,9 +86,7 @@ npm.cmd run typecheck
 npm.cmd test
 ```
 
-完整检查流程见[贡献指南](CONTRIBUTING.zh-CN.md)，发布运维见[运行手册](docs/AGENTS_ONE_RUNBOOK.md)，版本变化见[变更日志](CHANGELOG.md)。
-
-[手机端与 macOS 开发 PRD](docs/AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md)明确公共协议及 Android、iOS、原生鸿蒙、macOS 桌面端的开发顺序；这些是后续计划，尚非已发布应用。
+完整检查流程见[贡献指南](CONTRIBUTING.zh-CN.md)，使用与排障见[运行手册](docs/AGENTS_ONE_RUNBOOK.md)，版本变化见[变更日志](CHANGELOG.md)。
 
 ## 许可协议
 

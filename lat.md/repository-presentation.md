@@ -20,10 +20,16 @@ The root `LICENSE` covers licensor-owned Agents One contributions. `THIRD_PARTY_
 
 Publishing development source and certifying a Windows installer are separate decisions with explicit evidence and known integration limits.
 
-Both READMEs link the Alpha source status and known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The source status does not claim a replacement packaged UI, signed installer, or stable binary release.
+Both READMEs link the public known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The public README does not claim a replacement packaged UI, signed installer, or stable binary release.
 
 ## Dependency audit gate
 
 CI blocks new high or critical advisories and records one narrow exception for an unpatched development-only builder dependency.
 
 The gate checks production dependencies independently, then checks the full graph. It accepts only GHSA-ch52-4w7c-c8xp through the known electron-builder chain while the registry has no patched http-cache-semantics version. A new advisory, affected package, or production path fails the gate. Remove the exception when upstream releases a fix.
+
+## Public documentation boundary
+
+Public documentation covers supported usage, integration contracts and safe contributions; internal requirements, future plans and development evidence remain private.
+
+`docs/` uses a default-deny Git ignore policy. `.github/public-documents.json` explicitly lists permitted Markdown and documentation files; `scripts/check-public-documents.mjs` validates the tracked tree in CI. Local skills, agent settings and internal planning records are excluded. Necessary architecture and test specifications remain linked to source through lat.

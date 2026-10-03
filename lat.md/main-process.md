@@ -88,9 +88,9 @@ Remote mode can point `RemoteDashboardUrl` at a reverse-proxied base such as `ht
 
 Agents One uses a capability-driven Runtime registry without changing Hermes Agent Runtime Dashboard or legacy-chat fallback semantics.
 
-The planned contract, task ownership, and acceptance gates are recorded in `docs/AGENTS_ONE_FIVE_PHASE_PLAN.md`; historical task decomposition remains in `docs/MULTI_AGENT_EXECUTION_PLAN.md` and `docs/MULTI_AGENT_TODOLIST.md`. Agents One owns the durable control plane, while the user selects a project coordinator Runtime rather than hard-coding Hermes as the only manager. Implementation must add explicit adapters rather than treating Claw3D's read-only OpenClaw board as a task-dispatch API.
+Agents One owns the durable control plane, while the user selects a project coordinator Runtime. Authorization and persisted task ownership stay inside the desktop boundary.
 
-The current remote Hermes acceptance matrix is documented in `docs/REMOTE_HERMES_SMOKE_MATRIX.md`; it records the supported management APIs and the same-origin credential fallback used when a stale dashboard token is rejected by a NAS reverse proxy.
+Remote Hermes transcript continuation remains experimental; the public support boundary is recorded in `KNOWN_ISSUES.md`.
 
 All remote dashboard management requests must preserve a reverse-proxy path prefix such as `/hermes-dashboard` (the old `remote-sessions.ts` dashboard API was removed with the legacy remote transport — plan D5; remote agents now go through Gateway v1).
 

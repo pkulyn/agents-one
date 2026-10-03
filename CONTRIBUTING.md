@@ -113,3 +113,7 @@ build/                   Packaging resources
 ## License
 
 By contributing original material to Agents One, you agree to license that contribution under the [MIT License](LICENSE) while retaining your own copyright. Only contribute material you have the right to license under MIT. Identify any third-party material and retain its existing license and notices; inherited `hermes-desktop` material keeps its original author's MIT notice in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Public documentation scope
+
+Publish only usage, integration and necessary contribution/architecture documentation. Keep PRDs, future platform plans, progress logs, test evidence, internal audits and local agent settings outside the repository. New public documents require explicit maintainer approval and an update to `.github/public-documents.json`. Run `npm run docs:check` before submitting; do not force-add ignored internal files.

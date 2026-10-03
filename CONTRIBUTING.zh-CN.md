@@ -112,3 +112,7 @@ build/                   打包配置资源
 ## 许可证
 
 向 Agents One 提交原创内容，即表示你同意将该贡献按 [MIT License](LICENSE) 授权，同时保留你自己的版权。请仅提交有权按 MIT 授权的内容；引入第三方内容时标明来源并保留原有协议及声明。继承自 `hermes-desktop` 的部分继续保留 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 中上游作者的 MIT 声明。
+
+## 公开文档范围
+
+公开仓库只收录使用说明、接入协议和必要的贡献/架构文档。PRD、未来平台计划、进度日志、测评证据、内部审计和本地智能体配置保存在仓库外，不随代码提交。新增公开文档须由维护者明确批准，并更新 `.github/public-documents.json`；提交前运行 `npm run docs:check`。不要使用强制添加绕过忽略规则。
