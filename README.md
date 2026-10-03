@@ -88,10 +88,10 @@ npm.cmd test
 
 See the [contribution guide](CONTRIBUTING.md) for the full checks and the [runbook](docs/AGENTS_ONE_RUNBOOK.md) for release operations. Changes are tracked in the [changelog](CHANGELOG.md).
 
+The [mobile and macOS development PRD](docs/AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md) defines the planned shared contract and platform order: Android, iOS, native HarmonyOS, then macOS desktop. These are development plans, not published apps.
+
 ## License
 
-Original Agents One contributions in this repository are offered under the [PolyForm Noncommercial License 1.0.0](LICENSE). Individuals and organizations may study, use, modify, and share them for permitted **noncommercial purposes**; commercial use is not granted by that license. The inherited `hermes-desktop` material keeps its original MIT terms and notice in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Existing MIT grants for earlier copies remain valid.
+Original Agents One contributions in this repository are offered under the [MIT License](LICENSE). MIT permits use, modification, distribution, and commercial use when the copyright and license notice is retained. Contributors keep their own copyright and submit only material they can license under MIT.
 
-Commercial organizations may conduct **unlimited-duration internal evaluation and research** under the [Commercial Organization Evaluation Permission](COMMERCIAL_EVALUATION_PERMISSION.md). It permits internal tests and prototypes, including modifications, but does not permit production use, external distribution, or marketing a rebranded product. A separate written license is required for uses outside these grants.
-
-Because commercial use is restricted, this is **source-available software**, not OSI-defined open source. Production or external commercial use requires separate permission from the relevant copyright holders.
+The inherited `hermes-desktop` material retains its original author's MIT notice in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Third-party dependencies and assets retain their respective terms; the Oxanium-derived wordmark notice and font license are also linked there. This code license does not grant rights to impersonate the Agents One project or its maintainers.

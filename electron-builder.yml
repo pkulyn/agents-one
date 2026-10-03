@@ -41,8 +41,6 @@ asarUnpack:
 extraResources:
   - from: LICENSE
     to: notices/LICENSE
-  - from: COMMERCIAL_EVALUATION_PERMISSION.md
-    to: notices/COMMERCIAL_EVALUATION_PERMISSION.md
   - from: THIRD_PARTY_NOTICES.md
     to: notices/THIRD_PARTY_NOTICES.md
   - from: assets/readme/OFL-Oxanium.txt
