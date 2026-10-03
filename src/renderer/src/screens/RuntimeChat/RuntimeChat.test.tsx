@@ -1136,6 +1136,7 @@ describe("RuntimeChat inputs and persistence", () => {
         runId="chat-openclaw"
         runtime={gatewayRuntime}
         profile="default"
+        initialConversationId="gateway-attachments-conversation"
       />,
     );
 
@@ -1158,14 +1159,20 @@ describe("RuntimeChat inputs and persistence", () => {
       ),
     );
     await screen.findByText("输入已读取。");
-    expect(saveRuntimeConversation).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        runtimeId: "hermes-gateway",
-        messages: expect.arrayContaining([
-          expect.objectContaining({ role: "user", content: "检查输入" }),
-          expect.objectContaining({ role: "agent", content: "输入已读取。" }),
-        ]),
-      }),
+    // Wait for this conversation's terminal persistence checkpoint; separate
+    // asynchronous chats may finish their saves in a different order.
+    await waitFor(() =>
+      expect(saveRuntimeConversation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "gateway-attachments-conversation",
+          runtimeId: "hermes-gateway",
+          activeRuntimeRunId: null,
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: "user", content: "检查输入" }),
+            expect.objectContaining({ role: "agent", content: "输入已读取。" }),
+          ]),
+        }),
+      ),
     );
   });
 

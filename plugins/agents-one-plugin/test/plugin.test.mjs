@@ -247,7 +247,7 @@ test("remote gateway plugin exposes a v1 run with event snapshots", async () => 
   );
   assert.deepEqual(capabilityBody.plugin, {
     id: "agents-one-plugin-sdk",
-    version: "0.1.4",
+    version: "0.1.5",
     kind: "remote-gateway",
   });
   assert.deepEqual(capabilityBody.capabilities.eventStream, {

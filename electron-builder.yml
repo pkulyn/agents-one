@@ -6,6 +6,7 @@ directories:
 # distribution. Reuse it instead of downloading and extracting a second copy
 # during packaging, which can be blocked by real-time scanners on Windows.
 electronDist: node_modules/electron/dist
+afterPack: scripts/after-pack-windows-icon.mjs
 files:
   # `out/` is ignored by Git, but it is the actual electron-vite runtime
   # entrypoint and must be explicitly included in local/CI packages. Without
@@ -37,12 +38,19 @@ files:
 asarUnpack:
   - resources/**
   - node_modules/better-sqlite3/prebuilds/*.node
+extraResources:
+  - from: LICENSE
+    to: notices/LICENSE
+  - from: THIRD_PARTY_NOTICES.md
+    to: notices/THIRD_PARTY_NOTICES.md
+  - from: assets/readme/OFL-Oxanium.txt
+    to: notices/OFL-Oxanium.txt
 win:
   executableName: agents-one
   icon: build/icon.ico
-  # Corporate Windows users often lack the symlink privilege needed to unpack
-  # electron-builder's resource-edit/sign helper. Keep local packaging portable;
-  # production signing can be enabled in a dedicated CI signing environment.
+  # Keep helper unpacking optional for ordinary Windows users. The afterPack
+  # hook embeds the brand icon with the locked JavaScript resource editor;
+  # signing can be enabled separately in a dedicated signing environment.
   signAndEditExecutable: false
   target:
     - nsis

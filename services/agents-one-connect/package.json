@@ -2,6 +2,7 @@
   "name": "@agents-one/connect-service",
   "version": "0.1.0",
   "description": "Agents One Connect pairing and Gateway v1 WebSocket tunnel service",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "engines": {

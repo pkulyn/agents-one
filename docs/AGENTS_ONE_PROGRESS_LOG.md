@@ -1,5 +1,25 @@
 # Agents One 项目进展日志
 
+## 2026-10-03：MIT 开源与移动、Mac 后续规划
+
+- 用户确认将有权授权的 Agents One 原创贡献改为 MIT，并要求推进源码公开。独立源码候选改动根 LICENSE、双语 README/贡献指南、根及三个子项目 package 元数据/许可、包内 notices；保留上游 hermes-desktop MIT 与 Oxanium OFL，移除现行非商用内部评估补充许可。未改 Runtime 注册、用户配置、历史、IPC 或生产 Host。
+- 新增 [手机与 macOS 开发 PRD](./AGENTS_ONE_MOBILE_MAC_DEVELOPMENT_PRD_20261003.md)：先公共移动协议和独立设备授权，再 Android、iOS、HarmonyOS 5+ 原生端、macOS 桌面版；鸿蒙技术探针和 iOS Mac/Xcode 准备前置。旧桌面本地历史默认不上传，移动端不直接启动桌面 CLI。
+- 源码公开与 Windows 正式制品验收分开；远程 Hermes 多轮/重启续接保持实验性，旧 F4 包体仍 No-Go。当前变更先在隔离候选审查和运行普通 PR CI，再核对远端 main 与公开设置；不借用旧包测试结论。
+- 隔离候选的 Node/Web 类型检查、SDK 27、Connector 10、Connect 8 项测试、变更文件格式检查、`lat check` 与 diff 检查通过；三个子项目的 `npm pack --dry-run` 均包含 MIT LICENSE。没有重写已验收的 SDK 0.1.5 历史 tgz。
+- 公开前只读扫描当前仓库列出的 104 次 GitHub Actions 运行：101 次有可下载日志，3 次无日志；收紧误把 `task-` 子串识别为密钥的规则后，未发现 GitHub/OpenAI/Bearer 凭据或私钥格式命中。重复邮箱已存在于受审计源码，Windows 用户路径属于测试/Runner 标识，不是当前用户名。扫描脚本和原始日志不进入仓库；既有 Gitleaks 全历史及固定源码树审计证据继续有效。
+- PR #6 的 2026-10-03 CI 全套测试、子项目测试、格式、类型和 lint 通过，但全图 `npm audit` 因当日新增公告失败。锁文件已在允许版本内修复 Electron、brace-expansion、undici、ip-address、fast-uri；剩余 GHSA-ch52-4w7c-c8xp 只经开发用 electron-builder 链引入，npm 注册表当前无已修复的 http-cache-semantics 版本。CI 改为生产依赖零 high/critical，并在全图审计中仅对该公告及其已知构建链作精确例外；其他新 high/critical 继续失败。待上游发布修复后移除例外，源码公开前须重跑完整 PR CI。
+
+## 2026-10-02：独立 Windows 验收复核与多轮上下文修复
+
+- 收到报告、CSV 和证据 ZIP，复算原始哈希并逐字节核对 ZIP 同名副本；已目检桌面和托盘截图。`7dfcb50` 结论纠正为“部分完成 / No-Go”，T03 的 P1 Fail 与必验未决项不能概括成 Test-level Pass。详见 [复核记录](./AGENTS_ONE_ACCEPTANCE_REVIEW_20261002.md)。
+- 两个根因：Gateway 首轮只把 conversationId 写入 Run、未传 Adapter，桌面又优先保存 Provider ID；OpenCode 对标准 resume 对象/loadSession 及空恢复响应不兼容。已修复身份传递、持久化映射、旧 ID 别名、ACP 恢复与历史回放抑制，恢复失败不再静默创建新会话。
+- 诊断脚本已复现 SSE 后不查询 Run 终态导致并发槽位 429，改为每轮查询终态后再发下一轮。先失败的回归覆盖上述问题，修复后定向 68/68、SDK 27/27、类型检查和生产构建通过；SDK 升到 0.1.5，真实远端升级与四轮续接仍待复验。
+- 从原 7dfcb50 创建独立候选工作树，准备固定 SHA 的新 Gate。现有 UI、README、许可证及其他未提交工作保留在主工作区；未改用户 Runtime 配置或历史文件。补验优先级为四轮/重启续接、桌面取消、调度对照、真实恢复写失败、干净电脑及跨版本回退；暂不改 tag、Release、仓库可见性或生产 Host。
+- 首次修复候选 `efcba08` 的 PR CI `36909405756` 全通过，Gate `36909292678` 前两轮通过、第三轮在附件持久化测试的全局最后调用断言失败，未打包/上传。已把该测试改为等待自身唯一对话的终态保存，保留 Runtime/消息断言并加验 active Run 清空，RuntimeChat 66/66；仅改测试同步，不改 Renderer 生产行为。新 SHA 将从头重跑全部三轮。
+- 最终固定候选 `f4ecde936f2df2570261e812c872828f30fa3c6f` 在 [Gate 36912267125](https://github.com/pkulyn/agents-one/actions/runs/36912267125) 从头三轮全通过：每轮 215 主测试文件、2100 passed/9 skipped；SDK 27 passed，其他子项目 17 passed/1 平台 skip；格式、类型、lint、audit 0、build、打包与启动 smoke 均通过。PR #6 为草稿；F4 的 PR CI `36912216661` 也已通过。
+- [新 Windows artifact 11188917424](https://github.com/pkulyn/agents-one/actions/runs/36912267125/artifacts/11188917424) 为 393,005,013 bytes，ZIP SHA-256 `4c2b215ef6368e89a1c3bc8c407cd8622d2e61d4dd4ea81a0d2886ce8cce34cb`；本轮已重新下载并复算 ZIP、内部四文件 SHA-256、latest.yml SHA512 和 RELEASE_NOTES 构建 SHA，全部一致。UTC 到期 `2026-10-15T19:34:44Z`，北京 10 月 16 日 03:34。
+- [候选身份与完整文件哈希](./AGENTS_ONE_CONTEXT_FIX_CANDIDATE_20261002.md)、[复测提示词](./AGENTS_ONE_WINDOWS_RETEST_PROMPT_20261002.md) 已补齐。SDK 0.1.5 tarball 35,418 bytes、SHA-256 `aa910c7f5c9cf5133e1f7559a12e9de295e89eacebb4f703581b5e9c16d56c06`，解包后 27/27。发布仍 No-Go；新包真实四轮/重启续接、取消、调度对照、真实恢复失败和跨版本回退须继续独立验收。
+
 ## 2026-09-21：Plugin SDK 0.1.4 公网聚焦验收通过
 
 - 独立验收报告 `AGENTS_ONE_RC1_OR702_SDK014_FOCUSED_ACCEPTANCE_AAC4722.md`（13,373 bytes，SHA-256 `90478803719FEA706EDEF305A817953E7239806D1F30689D47B4E558C165580C`）以全新 clone 固定到 `aac4722bd41b3d9b38165aee8c65d77a3358ab8b`，工作树干净；SDK 0.1.4 tgz 的 32,766 bytes、SHA-256 `7E754D5A21E8B5D83383EED0F63BC910B81E6FD14CF49F7B0AD3FC858F9C6D94`、包内 package/manifest 版本均匹配。远端 adapter 已在私有备份后从 0.1.3 升级到 0.1.4，`plugin-adapter.mjs`、Runtime 身份和稳定 `statePath` 未改，服务及 `/capabilities` 正常，无回滚。

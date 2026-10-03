@@ -111,4 +111,4 @@ build/                   打包配置资源
 
 ## 许可证
 
-通过提交贡献，即表示你同意你的贡献将按照 [MIT License](LICENSE) 授权。
+向 Agents One 提交原创内容，即表示你同意将该贡献按 [MIT License](LICENSE) 授权，同时保留你自己的版权。请仅提交有权按 MIT 授权的内容；引入第三方内容时标明来源并保留原有协议及声明。继承自 `hermes-desktop` 的部分继续保留 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 中上游作者的 MIT 声明。

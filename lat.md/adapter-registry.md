@@ -18,6 +18,10 @@ OpenCode assistant chunks are already delivered through the ACP adapter's `onOut
 
 ## Manifest-driven configuration
 
+Runtime fields are derived from manifests while native session restoration preserves existing conversation identity.
+
+OpenCode ACP continuation accepts standard `resume` objects and `loadSession`; restoring an existing ID can return an empty object. Loaded history notifications are ignored during restoration, and unsupported or failed restoration produces an error rather than a new conversation. The Gateway and native identity boundary is described in [[plugin-sdk#Conversation and provider identities]] and [[plugin-sdk#ACP continuation and replay]].
+
 Preload exposes serializable manifests; the Runtime form renders declared non-secret fields and stores bounded future values in `adapterOptions`.
 
 ## Compatibility and quarantine

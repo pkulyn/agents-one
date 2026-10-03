@@ -28,7 +28,7 @@ node --test ./test/*.test.mjs
 cd <repo>\plugins\agents-one-plugin
 npm.cmd pack
 # 在远程 Relay 或本地 CLI 的插件目录执行：
-npm.cmd install .\agents-one-plugin-sdk-0.1.4.tgz
+npm.cmd install .\agents-one-plugin-sdk-0.1.5.tgz
 ```
 
 `agents-one-plugin.manifest.json` 声明该包支持的协议与安全约束。升级插件后应重新执行 `agents-one-plugin-verify`、插件自身回归和目标智能体的真实对话/工具/工作区验收；只有破坏性协议变更才升级到 v2。
@@ -170,5 +170,5 @@ CLI Adapter 只以参数数组启动进程，不调用 Shell，也不替换 CLI 
 - 若需要桌面端显示远端生成的图片/文件，适配器可实现 `getArtifact(artifactId, context)`，或使用运行上下文的 `publishArtifact`；SDK 会暴露 `GET /artifacts/{artifactId}`，返回元数据及 `contentBase64`。
 - SDK v0.1.2 支持通过 `startRun` 上下文中的 `publishArtifact({ name, mime, bytes })` 发布输出文件；它会自动计算 SHA-256、登记运行产物、写入 `artifact.created` 并提供下载接口。Connector 仍须把该回调接入远端智能体的真实工具系统。
 - SDK v0.1.2 只声明 Adapter 在 `capabilities.eventStream` 中明确启用的增强能力，并在追加 provider 事件后再生成 `run.completed` / `run.failed`；Adapter 不再需要直接操作 `record.journal` 或拦截 `/capabilities`。
-- SDK v0.1.4 支持按数字 sequence 或稳定事件 ID 解释 `Last-Event-ID`，SSE 重连只返回游标之后的事件；SSE 响应不再写入 hop-by-hop `Connection` 头，由 Node 和反向代理协商连接复用。升级时应删除 Connector 自定义的 SSE 路由，并在生产服务中配置 `statePath`。
+- SDK v0.1.5 延续数字 sequence 或稳定事件 ID 的 SSE 恢复和代理连接兼容；首轮即向 Adapter 传递 Gateway conversationId，持久化 Run 记录用于后续恢复 Provider sessionId。两种身份须分开，不能把 Gateway ID 当成 OpenCode ACP sessionId。OpenCode 优先使用 `session/resume`，也兼容 `loadSession` 和空恢复响应，加载历史不重复输出旧消息。远端维护者需升级 SDK、保留 `statePath` 并重启自身服务，再复测真实四轮和重启续接；桌面更新不会自动升级远端插件。
 - 为显示真实模型和上下文占用，适配器应在 `getRun` 或事件的 `data.model`、`data.usage` 中返回 `model_name`/`modelId`、`context_window_tokens`、`context_used` 等真实字段，不要猜测或伪造。

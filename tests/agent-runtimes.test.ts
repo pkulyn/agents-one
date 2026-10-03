@@ -1478,7 +1478,7 @@ describe("agent runtime registry", () => {
       expect(run).toMatchObject({
         runtimeId: "hers-family",
         status: "succeeded",
-        sessionId: "hers-provider-session-1",
+        sessionId: "hers-conversation-1",
         output: "Hers 已收到并完成测试。",
       });
       expect(run.events).not.toEqual(
@@ -1500,9 +1500,41 @@ describe("agent runtime registry", () => {
       );
       const requestBody = JSON.parse(
         String(fetchMock.mock.calls[0]?.[1]?.body),
-      ) as { mode?: string; execution?: { timeoutSeconds?: number } };
+      ) as {
+        mode?: string;
+        conversationId?: string;
+        execution?: { timeoutSeconds?: number };
+      };
       expect(requestBody.mode).toBe("conversation");
+      expect(requestBody.conversationId).toMatch(
+        /^conversation_[a-f0-9-]{36}$/,
+      );
       expect(requestBody.execution?.timeoutSeconds).toBe(1800);
+      for (let turn = 2; turn <= 4; turn += 1) {
+        fetchMock.mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              id: `remote-run-hers-${turn}`,
+              status: "succeeded",
+              conversationId: "hers-conversation-1",
+              sessionId: "hers-provider-session-1",
+              output: `answer-${turn}`,
+            }),
+            { status: 202, headers: { "content-type": "application/json" } },
+          ),
+        );
+        const next = await runtimes.startAgentRuntimeTask("hers-family", {
+          prompt: `follow up ${turn}`,
+          mode: "analysis",
+          conversation: true,
+          sessionId: run.sessionId,
+        });
+        expect(next.sessionId).toBe("hers-conversation-1");
+        const sent = JSON.parse(
+          String(fetchMock.mock.calls[turn - 1]?.[1]?.body),
+        );
+        expect(sent.conversationId).toBe("hers-conversation-1");
+      }
     } finally {
       fetchMock.mockRestore();
     }

@@ -112,4 +112,4 @@ build/                   Packaging resources
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing original material to Agents One, you agree to license that contribution under the [MIT License](LICENSE) while retaining your own copyright. Only contribute material you have the right to license under MIT. Identify any third-party material and retain its existing license and notices; inherited `hermes-desktop` material keeps its original author's MIT notice in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
