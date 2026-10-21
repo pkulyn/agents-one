@@ -29,18 +29,14 @@ describe("Web Agent release policy", () => {
   it("keeps public builds disabled by default", async () => {
     const policy = await policyModule();
     expect(policy.getWebAgentPolicyStatus()).toMatchObject({
-      available: false,
+      available: true,
       enabled: false,
       killSwitchActive: false,
-      reasonCode: "public-build-disabled",
     });
-    expect(() => policy.setWebAgentPolicyEnabled(true, true)).toThrow(
-      /不允许启用/,
-    );
+    expect(policy.webAgentExecutionAllowed()).toBe(false);
   });
 
-  it("requires explicit acknowledgement before local experimental opt-in", async () => {
-    vi.stubEnv("AGENTS_ONE_ENABLE_EXPERIMENTAL_WEB_AGENTS", "1");
+  it("requires explicit acknowledgement without a developer environment variable", async () => {
     const policy = await policyModule();
     expect(policy.getWebAgentPolicyStatus()).toMatchObject({
       available: true,
@@ -52,6 +48,36 @@ describe("Web Agent release policy", () => {
     expect(policy.setWebAgentPolicyEnabled(true, true)).toMatchObject({
       available: true,
       enabled: true,
+    });
+  });
+
+  it("preserves unrelated config and policy fields across enable, reload and disable", async () => {
+    const policy = await policyModule();
+    const { readDesktopConfig, writeDesktopConfig } =
+      await import("../src/main/config");
+    const before = readDesktopConfig();
+    writeDesktopConfig({
+      ...before,
+      futureSetting: { retained: true },
+      experimentalWebAgents: { enabled: false, futurePolicy: "keep" },
+    });
+    expect(policy.webAgentExecutionAllowed()).toBe(false);
+    policy.setWebAgentPolicyEnabled(true, true);
+    expect(readDesktopConfig()).toMatchObject({
+      futureSetting: { retained: true },
+      experimentalWebAgents: {
+        futurePolicy: "keep",
+        enabled: true,
+        acknowledgedAt: expect.any(Number),
+      },
+    });
+    const reloaded = await policyModule();
+    expect(reloaded.webAgentExecutionAllowed()).toBe(true);
+    reloaded.setWebAgentPolicyEnabled(false);
+    expect(reloaded.webAgentExecutionAllowed()).toBe(false);
+    expect(readDesktopConfig()).toMatchObject({
+      futureSetting: { retained: true },
+      experimentalWebAgents: { futurePolicy: "keep", enabled: false },
     });
   });
 
