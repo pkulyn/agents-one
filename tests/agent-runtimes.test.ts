@@ -1923,7 +1923,7 @@ describe("agent runtime registry", () => {
               id: "artifact-brief",
               name: "brief.txt",
               mime: "text/plain",
-              size: 5,
+              size: Number(body.size),
             }),
             { status: 201 },
           );
@@ -1955,6 +1955,14 @@ describe("agent runtime registry", () => {
         "hers-attachments",
         "attachment-token",
       );
+      const attachmentBytes = Buffer.alloc(1024 * 1024, 0x61);
+      const { stageAttachment } =
+        await import("../src/main/attachment-staging");
+      const stagedPath = stageAttachment(
+        "large-upload-regression",
+        "brief.txt",
+        attachmentBytes.toString("base64"),
+      );
 
       const run = await runtimes.startAgentRuntimeTask("hers-attachments", {
         prompt: "请读取附件。",
@@ -1962,11 +1970,11 @@ describe("agent runtime registry", () => {
         attachments: [
           {
             id: "brief-1",
-            kind: "text-file",
+            kind: "path-ref",
             name: "brief.txt",
             mime: "text/plain",
-            size: 5,
-            text: "hello",
+            size: attachmentBytes.length,
+            path: stagedPath,
           },
         ],
       });
@@ -1975,9 +1983,20 @@ describe("agent runtime registry", () => {
         status: "succeeded",
         output: "附件已读取。",
         inputArtifacts: [
-          expect.objectContaining({ name: "brief.txt", size: 5 }),
+          expect.objectContaining({
+            name: "brief.txt",
+            size: attachmentBytes.length,
+          }),
         ],
       });
+      const uploadRequest = requests.find((request) =>
+        request.url.endsWith("/artifacts"),
+      );
+      expect(uploadRequest?.body.contentBase64).toEqual(expect.any(String));
+      expect(uploadRequest?.body).not.toHaveProperty("content_base64");
+      expect(
+        Buffer.byteLength(JSON.stringify(uploadRequest?.body || {})),
+      ).toBeLessThan(1.5 * 1024 * 1024);
       const runRequest = requests.find((request) =>
         request.url.endsWith("/runs"),
       );

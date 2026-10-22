@@ -18,6 +18,8 @@ const PAIRING_TTL_MS = 5 * 60 * 1000;
 const PAIRING_ATTEMPT_WINDOW_MS = 60 * 1000;
 const PAIRING_MAX_ATTEMPTS = 8;
 const MAX_BODY_BYTES = 256 * 1024;
+const MAX_TUNNEL_FRAME_BYTES = 16 * 1024 * 1024;
+const MAX_STANDARD_TUNNEL_REQUEST_BYTES = 4 * 1024 * 1024;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MAX_PENDING_REQUESTS_PER_DEVICE = 128;
 const MAX_PENDING_REQUESTS_PER_RUNTIME = 32;
@@ -1136,7 +1138,7 @@ export function createConnectService({
 
   const wss = new WebSocketServer({
     noServer: true,
-    maxPayload: 4 * 1024 * 1024,
+    maxPayload: MAX_TUNNEL_FRAME_BYTES,
   });
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url || "/", "http://connect.local");
@@ -1280,7 +1282,24 @@ export function createConnectService({
     socket.on("message", (raw) => {
       if (!identity) return;
       try {
+        const rawBytes = Buffer.isBuffer(raw)
+          ? raw.length
+          : Buffer.byteLength(String(raw));
         let frame = tunnelFrame(JSON.parse(raw.toString("utf8")));
+        if (
+          rawBytes > MAX_STANDARD_TUNNEL_REQUEST_BYTES &&
+          frame.type === "request" &&
+          !(frame.method === "POST" && frame.path === "/artifacts")
+        ) {
+          sendSocketError(
+            socket,
+            frame.requestId,
+            413,
+            "request_body_too_large",
+            "Only artifact uploads may exceed the standard tunnel request limit.",
+          );
+          return;
+        }
         if (frame.type === "heartbeat") {
           identity.device.lastSeenAt = now();
           sendSocket(socket, { type: "heartbeat_ack", at: now() });

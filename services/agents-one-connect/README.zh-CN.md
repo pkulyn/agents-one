@@ -8,6 +8,8 @@
 - Desktop/Connector 双端 WSS hello；
 - Gateway v1 request/response/event 隧道路由。
 
+隧道普通请求帧限制为 4 MiB；`POST /artifacts` 与其响应可使用最大 16 MiB 的 WebSocket 帧，以承载 10 MiB 附件的 Base64 请求体。部署大附件支持时需同时升级此 Connect 服务和远端 Gateway 插件。
+
 启动：
 
 ```powershell
