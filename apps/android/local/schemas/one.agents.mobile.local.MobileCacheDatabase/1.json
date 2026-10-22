@@ -1,0 +1,181 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "54b951d1bfd775d933138a714e466010",
+    "entities": [
+      {
+        "tableName": "cache_namespaces",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`namespaceId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `authorizationRevision` TEXT NOT NULL, PRIMARY KEY(`namespaceId`))",
+        "fields": [
+          {
+            "fieldPath": "namespaceId",
+            "columnName": "namespaceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "authorizationRevision",
+            "columnName": "authorizationRevision",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "namespaceId"
+          ]
+        }
+      },
+      {
+        "tableName": "encrypted_cache_entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`namespaceId` TEXT NOT NULL, `resourceKind` TEXT NOT NULL, `resourceId` TEXT NOT NULL, `revision` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `retentionClass` TEXT NOT NULL, `encryptedPayload` BLOB NOT NULL, PRIMARY KEY(`namespaceId`, `resourceKind`, `resourceId`), FOREIGN KEY(`namespaceId`) REFERENCES `cache_namespaces`(`namespaceId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "namespaceId",
+            "columnName": "namespaceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resourceKind",
+            "columnName": "resourceKind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resourceId",
+            "columnName": "resourceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retentionClass",
+            "columnName": "retentionClass",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encryptedPayload",
+            "columnName": "encryptedPayload",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "namespaceId",
+            "resourceKind",
+            "resourceId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_encrypted_cache_entries_namespaceId_resourceKind_updatedAt",
+            "unique": false,
+            "columnNames": [
+              "namespaceId",
+              "resourceKind",
+              "updatedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_encrypted_cache_entries_namespaceId_resourceKind_updatedAt` ON `${TABLE_NAME}` (`namespaceId`, `resourceKind`, `updatedAt`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "cache_namespaces",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "namespaceId"
+            ],
+            "referencedColumns": [
+              "namespaceId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "encrypted_sync_cursors",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`namespaceId` TEXT NOT NULL, `feedId` TEXT NOT NULL, `revision` TEXT NOT NULL, `encryptedCursor` BLOB NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`namespaceId`, `feedId`), FOREIGN KEY(`namespaceId`) REFERENCES `cache_namespaces`(`namespaceId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "namespaceId",
+            "columnName": "namespaceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "feedId",
+            "columnName": "feedId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encryptedCursor",
+            "columnName": "encryptedCursor",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "namespaceId",
+            "feedId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "cache_namespaces",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "namespaceId"
+            ],
+            "referencedColumns": [
+              "namespaceId"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '54b951d1bfd775d933138a714e466010')"
+    ]
+  }
+}

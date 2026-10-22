@@ -62,18 +62,18 @@ class RunCancellationUiTest {
         val client = Client(); connect(client)
         val started = CountDownLatch(1); val release = CountDownLatch(1)
         client.block = { started.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
-        ui.onNodeWithTag("run-cancel-run-1").performClick(); waitFor { started.count == 0L }
-        ui.onNodeWithTag("run-cancel-run-1").assertIsNotEnabled(); ui.onNodeWithTag("run-cancel-other-run").assertDoesNotExist()
+        ui.onNodeWithTag("composer-action").performClick(); waitFor { started.count == 0L }
+        ui.onNodeWithTag("composer-action").assertIsNotEnabled(); ui.onNodeWithTag("run-cancel-other-run").assertDoesNotExist()
         release.countDown(); waitFor { !model.state.value.busy }
         assertEquals(listOf(listOf("runs", "run-1", "cancel")), client.writes.toList())
         assertEquals("applied", model.state.value.operations.single().status); assertTrue(model.state.value.runs.all { it.status == "running" }); assertNull(model.state.value.error)
     }
     // @lat: [[mobile-data#Mobile data#Android Run cancellation admission and receipt identity]]
     @Test fun missingScopeAndForeignReceiptCannotConfirmCancellation() {
-        val denied = Client(false); connect(denied); ui.onNodeWithTag("run-cancel-run-1").assertDoesNotExist()
+        val denied = Client(false); connect(denied); ui.onNodeWithTag("composer-action").assertDoesNotExist()
         perform { model.cancelRun("run-1") }; assertTrue(denied.writes.isEmpty()); assertEquals("scope_denied", model.state.value.error)
         perform { model.forget() }; val wrong = Client(); wrong.wrongRef = true; connect(wrong)
-        ui.onNodeWithTag("run-cancel-run-1").performClick(); waitFor { !model.state.value.busy }
+        ui.onNodeWithTag("composer-action").performClick(); waitFor { !model.state.value.busy }
         assertEquals("protocol_incompatible", model.state.value.error); assertTrue(model.state.value.operations.isEmpty()); assertTrue(model.state.value.runs.all { it.status == "running" })
     }
 }

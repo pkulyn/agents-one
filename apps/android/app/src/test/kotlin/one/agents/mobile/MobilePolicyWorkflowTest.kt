@@ -25,6 +25,11 @@ class MobilePolicyWorkflowTest {
     private val conversation = Conversation("original-conversation", "runtime_conversation", "New mobile task", "original-runtime", projectId = "original-project", pinned = false, archived = false, revision = "1", lastMessageSeq = "0", lastReadMessageSeq = "0", activity = "idle", activeRunIds = emptyList(), createdAt = "2026-10-07T00:00:00Z", updatedAt = "2026-10-07T00:00:00Z", allowedActions = listOf("read", "advance"))
     private data class Write(val binding: OwnerBinding, val suffix: List<String>, val body: JsonObject?, val revision: String?, val method: String)
     private inner class Client : MobileControlClient("https://owner.example", { "fake-token" }) {
+        override fun currentDevice(): JsonElement = throw java.io.IOException("No synthetic device label")
+        var creationGate: java.util.concurrent.CountDownLatch? = null
+        val creationEntered = java.util.concurrent.CountDownLatch(1)
+        var snapshotGate: java.util.concurrent.CountDownLatch? = null
+        val snapshotEntered = java.util.concurrent.CountDownLatch(1)
         var catalogPolicies = listOf(policy)
         val writes = CopyOnWriteArrayList<Write>(); var created = false
         var rejected = false
@@ -40,11 +45,12 @@ class MobilePolicyWorkflowTest {
             listOf("conversations") -> Json.encodeToJsonElement(ConversationPage(if (created) listOf(conversation) else emptyList(), null, "1"))
             listOf("conversations", conversation.id) -> Json.encodeToJsonElement(conversation)
             listOf("conversations", conversation.id, "messages") -> Json.encodeToJsonElement(MessagePage(emptyList(), false, "messages", "1"))
-            listOf("snapshots") -> Json.encodeToJsonElement(Snapshot(listOf(conversation), emptyList(), emptyList(), "snapshot", "1", "epoch-1", null))
+            listOf("snapshots") -> { snapshotEntered.countDown(); snapshotGate?.await(5, java.util.concurrent.TimeUnit.SECONDS); Json.encodeToJsonElement(Snapshot(listOf(conversation), emptyList(), emptyList(), "snapshot", "1", "epoch-1", null)) }
             else -> { if (suffix == listOf("operations") && query["clientMutationId"] != null) lookupCount++; Json.parseToJsonElement("""{"items":[],"nextCursor":null,"snapshotRevision":"1"}""") }
         }
         override fun write(binding: OwnerBinding, suffix: List<String>, body: JsonObject?, mutationId: String, revision: String?, method: String): JsonElement {
             writes.add(Write(binding, suffix, body, revision, method)); val creation = suffix == listOf("conversations")
+            if(creation) { creationEntered.countDown(); creationGate?.await(5, java.util.concurrent.TimeUnit.SECONDS) }
             if (!creation && rejectTurn) return Json.encodeToJsonElement(OperationReceipt("turn-rejected", mutationId, "phone-1", "createTurn", ResourceRef("conversation", conversation.id), "rejected", error = MobileError("policy_denied", "Synthetic denial", false, "turn-test"), createdAt = "2026-10-07T00:00:00Z", updatedAt = "2026-10-07T00:00:00Z"))
             if (uncertain) throw java.io.IOException("private network failure message")
             if (rejected) return Json.encodeToJsonElement(OperationReceipt("operation-rejected",mutationId,"phone-1","createConversation",ResourceRef("conversation",conversation.id),"rejected",error=MobileError("policy_denied","private owner failure details",false,"create-original-52"),createdAt="2026-10-07T00:00:00Z",updatedAt="2026-10-07T00:00:00Z"))
@@ -72,13 +78,48 @@ class MobilePolicyWorkflowTest {
         return model
     }
     private fun waitForFailure(condition: () -> Boolean)=ui.waitUntil(10000){Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50));condition()}
+    // @lat: [[mobile-data#Mobile data#Creation navigates before network acceptance]]
+    @Test fun creationShowsOriginalInputBeforeSlowReceiptWithoutInventingConversation() {
+        val client = Client(); client.creationGate = java.util.concurrent.CountDownLatch(1)
+        val model = connect(client)
+        var closed = false
+        try {
+            ui.runOnUiThread { model.createConversation("Original title", "Original instruction", policy) { closed = true } }
+            waitForFailure { client.creationEntered.count == 0L }
+            check(closed && model.state.value.creationVisible && model.state.value.creation?.prompt == "Original instruction")
+            check(model.state.value.selected == null && client.writes.size == 1 && !client.created)
+            ui.onNodeWithText("Original instruction").assertExists()
+        } finally { client.creationGate!!.countDown() }
+        waitForFailure { !model.state.value.busy && model.state.value.selected?.id == conversation.id }
+        check(client.writes.size == 2 && !model.state.value.creationVisible)
+    }
+
+    // @lat: [[mobile-data#Mobile data#First prompt survives slow initial snapshot]]
+    @Test fun originalPromptVisibleWhileFirstRunSnapshotIsDelayed() {
+        val client = Client(); val model = connect(client)
+        client.snapshotGate = java.util.concurrent.CountDownLatch(1)
+        try {
+            ui.runOnUiThread { model.createConversation("Original title", "Immediate original goal", policy) }
+            waitForFailure { model.state.value.selected?.id == conversation.id && client.snapshotEntered.count == 0L }
+            check(model.state.value.pendingMessages.single().text == "Immediate original goal")
+            ui.onNodeWithText("Immediate original goal").assertExists()
+            ui.onNodeWithText("Start a conversation when Owner is ready").assertDoesNotExist()
+            check(client.writes.size == 1)
+        } finally { client.snapshotGate!!.countDown() }
+        waitForFailure { !model.state.value.busy }
+        check(client.writes.size == 2)
+    }
+
     // @lat: [[mobile-data#Mobile data#First prompt failure preserves original conversation]]
     @Test fun initialTurnFailureKeepsDraftAndRetryTargetsTheCreatedConversation() {
         val client = Client().apply { rejectTurn = true }; val model = connect(client)
         ui.runOnUiThread { model.createConversation("", "Keep my original goal", policy) }
         waitForFailure { !model.state.value.busy && model.state.value.error != null }
         check(client.writes.size == 2 && client.writes.first().body?.get("title")?.jsonPrimitive?.content == "Keep my original goal")
-        check(model.state.value.selected?.id == conversation.id && model.state.value.composerDraft == "Keep my original goal")
+        val failed = model.state.value.pendingMessages.single { it.text == "Keep my original goal" }
+        check(model.state.value.selected?.id == conversation.id && failed.delivery == "failed" && model.state.value.composerDraft.isEmpty())
+        ui.runOnUiThread { model.restorePendingMessage(failed.id) }
+        check(model.state.value.composerDraft == "Keep my original goal" && model.state.value.pendingMessages.none { it.id == failed.id })
         client.rejectTurn = false
         ui.runOnUiThread { model.advance(model.state.value.composerDraft, policy) { model.composerDraft("") } }
         waitForFailure { !model.state.value.busy && client.writes.size == 3 }
@@ -97,7 +138,7 @@ class MobilePolicyWorkflowTest {
         ui.onNodeWithTag("continuation-mode").performClick()
         ui.onNodeWithTag("task-agent").assertIsNotEnabled()
         ui.onNodeWithTag("task-project").assertIsNotEnabled()
-        ui.onNodeWithTag("task-mode").performScrollTo().performClick(); ui.onNodeWithText("Execute in project").performClick()
+        ui.onNodeWithTag("task-mode").performScrollTo().performClick(); ui.onAllNodesWithText("Automatic").onLast().performClick()
         ui.onNodeWithText("Close").performClick()
         ui.onNodeWithText("Continue the conversation").performTextInput("Preserved mode draft")
         client.catalogPolicies = listOf(analysis, execution.copy(id = "desktop-task-refreshed"))
@@ -109,7 +150,7 @@ class MobilePolicyWorkflowTest {
         ui.onNodeWithText("Preserved mode draft").assertExists()
         ui.onNodeWithContentDescription("Send").assertIsNotEnabled()
         ui.onNodeWithTag("continuation-mode").performClick()
-        ui.onNodeWithTag("task-mode").performScrollTo().performClick(); ui.onAllNodesWithText("Conversation and analysis").onLast().performClick()
+        ui.onNodeWithTag("task-mode").performScrollTo().performClick(); ui.onAllNodesWithText("Read only").onLast().performClick()
         ui.onNodeWithText("Close").performClick()
         ui.onNodeWithContentDescription("Send").assertIsEnabled()
         check(client.writes.isEmpty())
@@ -118,13 +159,13 @@ class MobilePolicyWorkflowTest {
     @Test fun rejectedCreateReceiptShowsSafeInlineFeedbackAndRetainsOriginalPolicyDraft(){
         val client=Client();client.rejected=true;val model=connectForFailure(client)
         ui.onNodeWithText("Create and send task").performClick();waitForFailure { !model.state.value.busy && model.state.value.error=="policy_denied" }
-        ui.onNode(hasText(ui.activity.getString(R.string.error_policy_denied)) and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
-        ui.onNode(hasText("Request ID: create-original-52") and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
-        ui.onNodeWithText("Preserved create draft").assertExists()
+        ui.onNodeWithText(ui.activity.getString(R.string.error_policy_denied)).assertExists()
+        ui.onNodeWithText("Request ID: create-original-52").assertExists()
+        check(model.state.value.creation?.title == "Preserved create draft" && model.state.value.creationVisible)
         ui.onNodeWithText("private owner failure details").assertDoesNotExist()
         check(client.writes.size==1 && !client.created && model.state.value.conversations.isEmpty())
         check(model.state.value.operations.single().status=="rejected")
-        client.rejected=false;ui.onNodeWithText("Create and send task").performClick();waitForFailure { !model.state.value.busy && client.writes.size==3 }
+        client.rejected=false;ui.onNodeWithText("Retry").performClick();waitForFailure { !model.state.value.busy && client.writes.size==3 }
         check(client.writes.take(2).map {it.body}.distinct().size==1)
         check(client.writes.last().body?.get("executionPolicyId")?.jsonPrimitive?.content==policy.id)
         check(model.state.value.conversations.isEmpty())
@@ -134,10 +175,10 @@ class MobilePolicyWorkflowTest {
     @Test fun uncertainCreateKeepsDraftAndUserRetryOnlyLooksUpOriginalReceipt(){
         val client=Client();client.uncertain=true;val model=connectForFailure(client)
         ui.onNodeWithText("Create and send task").performClick();waitForFailure { !model.state.value.busy && model.state.value.error=="reconciliation_required" }
-        ui.onNode(hasText(ui.activity.getString(R.string.error_reconciliation_required)) and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText(ui.activity.getString(R.string.error_reconciliation_required)).assertExists()
         ui.onNodeWithText("Preserved create draft").assertExists()
         check(client.writes.size==1 && client.lookupCount==1 && !client.created)
-        ui.onNodeWithText("Create and send task").performClick();waitForFailure { !model.state.value.busy && client.lookupCount==2 }
+        ui.onNodeWithText("Retry").performClick();waitForFailure { !model.state.value.busy && client.lookupCount==2 }
         check(client.writes.size==1 && model.state.value.error=="reconciliation_required")
         ui.onNodeWithText("Preserved create draft").assertExists()
         ui.onNodeWithText("private network failure message").assertDoesNotExist()
@@ -166,8 +207,8 @@ class MobilePolicyWorkflowTest {
         check(create.binding == OwnerBinding("owner-1", "space-1") && create.suffix == listOf("conversations") && create.method == "POST" && create.revision == null)
         check(create.body?.get("executionPolicyId")?.jsonPrimitive?.content == policy.id && create.body?.get("runtimeId")?.jsonPrimitive?.content == policy.runtimeId && create.body?.get("projectId")?.jsonPrimitive?.content == policy.projectId)
         check(model.state.value.conversations.isEmpty())
-        perform { model.refresh() }; perform { model.openConversation(model.state.value.conversations.single()) }
-        ui.onNodeWithText("Read-only analysis").assertIsDisplayed()
+        ui.runOnUiThread { model.refresh() }; waitFor { !model.state.value.busy && model.state.value.conversations.isNotEmpty() }; ui.runOnUiThread { model.openConversation(model.state.value.conversations.single()) }; waitFor { !model.state.value.busy && model.state.value.selected?.id == conversation.id }
+        ui.onNodeWithText("Read only").assertExists()
         ui.onNodeWithText("Continue the conversation").performTextInput("Next original task step")
         ui.onNodeWithContentDescription("Send").performClick(); waitFor { !model.state.value.busy && client.writes.size == 3 }
         val advance = client.writes.last()

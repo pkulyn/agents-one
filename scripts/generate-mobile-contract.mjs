@@ -197,6 +197,27 @@ const fixtures = {
       .filter(([, spec]) => spec.enum)
       .map(([name, spec]) => [name, spec.enum]),
   ),
+  compatibility: {
+    legacyBootstrap: sample(schemas.Bootstrap),
+    syncBootstrap: {
+      ...sample(schemas.Bootstrap),
+      snapshotRevision: "17",
+      protocolFeatures: ["owner.sync-window.v1", "message.client-echo.v1"],
+    },
+    legacyUserMessage: sample(schemas.Message),
+    echoedUserMessage: {
+      ...sample(schemas.Message),
+      clientMessageId: "mobile-message-001",
+    },
+    createTurnWithEcho: {
+      text: "fixture prompt",
+      clientMessageId: "mobile-message-001",
+      executionPolicyId: "inspect-1",
+      projectId: null,
+      clientMutationId: "mutation-001",
+    },
+    filteredEventSequences: ["4", "9"],
+  },
 };
 // A real 2px PNG fixture also permits clients to verify the read identity and bytes.
 const avatarBase64 =

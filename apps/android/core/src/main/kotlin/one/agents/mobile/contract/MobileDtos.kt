@@ -59,7 +59,8 @@ data class OwnerSpace(
     val schedulerTimeZone: String,
     val capabilities: List<String>,
     val limits: Limits,
-    val dataEpoch: String
+    val dataEpoch: String,
+    val platform: String? = null
 )
 
 @Serializable
@@ -71,7 +72,9 @@ data class Bootstrap(
     val dataEpoch: String,
     val capabilities: List<String>,
     val limits: Limits,
-    val snapshotCursor: String
+    val snapshotCursor: String,
+    val snapshotRevision: String? = null,
+    val protocolFeatures: List<String>? = null
 )
 
 @Serializable
@@ -84,7 +87,8 @@ data class Runtime(
     val healthy: Boolean,
     val capabilities: List<String>,
     val allowedActions: List<String>,
-    val restrictionReason: String? = null
+    val restrictionReason: String? = null,
+    val model: String? = null
 )
 
 @Serializable
@@ -135,12 +139,15 @@ data class Conversation(
     val createdAt: String,
     val updatedAt: String,
     val allowedActions: List<String>,
-    val restrictionReason: String? = null
+    val restrictionReason: String? = null,
+    val model: String? = null,
+    val accessMode: String? = null
 )
 
 @Serializable
 data class Message(
     val id: String?,
+    val clientMessageId: String? = null,
     val conversationId: String,
     val messageSeq: String,
     val messageRevision: String? = null,
@@ -375,6 +382,7 @@ typealias ResourceDeletion = JsonObject
 @Serializable
 data class MessageUpsert(
     val id: String?,
+    val clientMessageId: String? = null,
     val conversationId: String,
     val messageSeq: String,
     val messageRevision: String,

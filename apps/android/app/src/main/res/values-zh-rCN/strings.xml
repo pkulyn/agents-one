@@ -4,9 +4,7 @@
     <string name="task_mode">执行权限</string>
     <string name="task_analysis">对话与分析</string>
     <string name="task_execute">在项目中执行</string>
-    <string name="task_auto">自动</string>
-    <string name="task_full_access">完全访问</string>
-    <string name="task_permission_hint">默认使用自动权限；完全访问需主动选择。</string>
+    <string name="task_permission_hint">使用该智能体在电脑端的现有权限。项目执行需要绑定项目。</string>
     <string name="task_selection_unavailable">当前组合不可用，请重新选择智能体、项目或模式。</string>
     <string name="policy_runtime_unavailable">智能体不可用</string>
     <string name="policy_project">项目：%1$s</string>
@@ -128,6 +126,7 @@
     <string name="offline">离线</string>
     <string name="operations">最近操作</string>
     <string name="accepted_hint">已接收表示 Owner 收到请求，请查看操作回执确认是否完成。</string>
+    <string name="receipt_refresh_failed">回执状态暂时无法刷新，请重试。</string>
     <string name="disconnect">忘记此连接</string>
     <string name="revoke">撤销本机权限</string>
     <string name="demo">用示例数据预览界面</string>
@@ -211,7 +210,7 @@
     <string name="options_expanded">已展开</string>
     <string name="options_collapsed">已收起</string>
     <string name="interval_input">使用间隔输入</string>
-    <string name="choose_owner_space">选择 Owner 与空间</string>
+    <string name="choose_owner_space">切换运行设备</string>
     <string name="current_space">空间：%1$s</string>
     <string name="source_owner_id">Owner ID：%1$s</string>
     <string name="selected_source">当前来源</string>
@@ -236,7 +235,7 @@
     <string name="error_request_id">请求编号：%1$s</string>
     <string name="c_search_conversations">搜索对话或任务</string>
     <string name="c_search_schedules">搜索定时任务</string>
-    <string name="c_recent">最近更新 · 个人空间</string>
+    <string name="c_recent">最近更新</string>
     <string name="c_personal_space">个人空间</string>
     <string name="c_create_send">新建并发送任务</string>
     <string name="c_next_order">按下次运行排序</string>
@@ -249,9 +248,9 @@
     <string name="c_device_permission">本设备权限</string>
     <string name="c_paired_device">已配对电脑</string>
     <string name="c_privacy">存储与隐私</string>
-    <string name="c_no_tasks">手机不存任务</string>
+    <string name="c_no_tasks">加密缓存内容</string>
     <string name="c_preferences">偏好</string>
-    <string name="c_privacy_body">对话、任务和定时计划保存在电脑端或服务器。手机仅保存连接凭据和偏好；展示数据及未发送草稿只在内存中。下载文件只有在你主动导出时才保存到所选位置。</string>
+    <string name="c_privacy_body">电脑端或服务器仍是任务数据的权威来源。最近查看的对话和定时任务会加密保存在本机，以便离线阅读；未发送草稿仍只在内存中。下载文件仅在主动导出时保存。</string>
     <string name="c_all">全部</string>
     <string name="c_paired">已配对</string>
     <string name="c_you">你</string>
@@ -273,4 +272,20 @@
     <string name="run_kind_mcp">MCP</string>
     <string name="run_kind_terminal">终端</string>
     <string name="run_kind_workspace">工作区</string>
+    <string name="cache_copy_saved">正在显示本机保存的内容，并与 Owner 核对</string>
+    <string name="cache_unavailable">本机加密缓存不可用；仅显示在线读取的数据</string>
+    <string name="cache_loading">正在与 Owner 核对…</string>
+    <string name="owner_offline_read_only">本地记录 · 离线只读</string>
+    <string name="owner_offline_notice">桌面端离线 · 可查看已保存内容</string>
+    <string name="ui_projects">项目</string>
+    <string name="ui_permission_auto">自动</string>
+    <string name="ui_permission_readonly">只读</string>
+    <string name="ui_permission_full">完全访问</string>
+    <string name="ui_thinking">思考</string>
+    <string name="ui_tools_count">%1$d 次工具调用</string>
+    <string name="ui_stop">停止</string>
+    <string name="ui_default_model">默认模型</string>
+    <string name="ui_system_unknown">系统信息未提供</string>
+    <string name="ui_computer_name">电脑名称</string>
+    <string name="error_sync_temporarily_unavailable">暂时无法刷新，请稍后重试。</string>
 </resources>

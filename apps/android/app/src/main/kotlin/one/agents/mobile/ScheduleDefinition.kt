@@ -18,7 +18,7 @@ import one.agents.mobile.contract.ScheduleSummary
         val policy = state.policies.find { it.id == schedule.executionPolicyId && it.runtimeId == schedule.runtimeId && it.projectId == schedule.projectId }
         if (policy == null) Text(stringResource(R.string.schedule_policy_not_provided), style = MaterialTheme.typography.bodySmall)
         else {
-            Text(stringResource(when (policy.mode) { "inspect" -> R.string.policy_inspect; "project_write" -> R.string.policy_project_write; "desktop_analysis" -> R.string.task_analysis; "desktop_execute" -> R.string.task_execute; "desktop_auto" -> R.string.task_auto; "desktop_full_access" -> R.string.task_full_access; else -> R.string.policy_unavailable }))
+            Text(stringResource(when (policy.mode) { "inspect" -> R.string.policy_inspect; "project_write" -> R.string.policy_project_write; "desktop_analysis" -> R.string.task_analysis; "desktop_execute" -> R.string.task_execute; else -> R.string.policy_unavailable }))
             if (policy.enforced && policy.unattendedApproved) Text(stringResource(R.string.policy_unattended), style = MaterialTheme.typography.bodySmall)
             if (!policy.enforced) Text(translatedError("unverified_policy"), style = MaterialTheme.typography.bodySmall)
             policy.restrictionReason?.let { Text(translatedError(it), style = MaterialTheme.typography.bodySmall) }

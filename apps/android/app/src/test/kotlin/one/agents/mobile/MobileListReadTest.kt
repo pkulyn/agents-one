@@ -3,10 +3,12 @@ package one.agents.mobile
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.*
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import kotlinx.serialization.json.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import one.agents.mobile.contract.*
+import one.agents.mobile.local.CachePayloadCipher
 import one.agents.mobile.net.*
 import org.junit.Before
 import org.junit.Rule
@@ -22,6 +24,25 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w360dp-h640dp")
 class MobileListReadTest {
+    private class TestCacheCipher(private val key: javax.crypto.SecretKey) : CachePayloadCipher {
+        private val random = java.security.SecureRandom()
+        override fun hasNamespaceKey(namespaceId: String) = true
+        override fun encrypt(namespaceId: String, plaintext: ByteArray, associatedData: ByteArray): ByteArray {
+            val iv = ByteArray(12).also(random::nextBytes)
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key, javax.crypto.spec.GCMParameterSpec(128, iv))
+            cipher.updateAAD(associatedData)
+            return iv + cipher.doFinal(plaintext)
+        }
+        override fun decrypt(namespaceId: String, envelope: ByteArray, associatedData: ByteArray): ByteArray {
+            require(envelope.size >= 28)
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.GCMParameterSpec(128, envelope.copyOfRange(0, 12)))
+            cipher.updateAAD(associatedData)
+            return cipher.doFinal(envelope.copyOfRange(12, envelope.size))
+        }
+        override fun deleteNamespaceKey(namespaceId: String) = Unit
+    }
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
     private lateinit var model: MobileViewModel
     private val limits = Limits(100, 50000, 262144, 86400000, 7, 100000, 300000)
@@ -34,10 +55,12 @@ class MobileListReadTest {
     private fun execution(id: String, scheduleId: String = "initial-schedule") = ScheduleExecution(id, scheduleId, "scheduled", triggeredAt = "2026-10-05T00:00:00Z", status = "succeeded", runtimeRunId = "native-$id", conversationId = "result-$id", summary = "Original scheduled summary")
     private fun history(ids: List<String>, cursor: String? = null, revision: String = "history-1", scheduleId: String = "initial-schedule") = Json.encodeToJsonElement(ScheduleExecutionPage(ids.map { execution(it, scheduleId) }, cursor, revision))
     private val resultMessages = Json.parseToJsonElement("""{"items":[{"id":"native-message","conversationId":"result-e1","messageSeq":"1","kind":"assistant","content":"Original scheduled result body","visibleToUser":true,"createdAt":"2026-10-05T00:01:00Z"}],"hasMoreBefore":false,"snapshotCursor":"cursor-1","snapshotRevision":"1"}""")
-    private fun messagePage(sequences: List<String>, more: Boolean = false, cursor: String = "message-cursor", revision: String = "1", conversationId: String = "initial") = Json.encodeToJsonElement(MessagePage(sequences.map { Message("message-$it", conversationId, it, kind = "assistant", content = "Original body $it", visibleToUser = true, createdAt = "2026-10-05T00:00:00Z") }, more, cursor, revision))
+    private fun messagePage(sequences: List<String>, more: Boolean = false, cursor: String = "message-cursor", revision: String = "1", conversationId: String = "initial") = Json.encodeToJsonElement(MessagePage(sequences.map { Message(id = "message-$it", conversationId = conversationId, messageSeq = it, kind = "assistant", content = "Original body $it", visibleToUser = true, createdAt = "2026-10-05T00:00:00Z") }, more, cursor, revision))
     private data class Request(val method: String, val suffix: List<String>, val query: Map<String, String> = emptyMap(), val body: JsonObject? = null)
     private inner class Client : MobileControlClient("https://owner.example", { null }) {
         val calls = CopyOnWriteArrayList<Request>()
+        var revokeCalls = 0
+        var handleListOwners: (() -> JsonElement)? = null
         var capabilities = listOf("conversation:read", "schedule:read")
         var bootstrapOwnerId = "owner-1"
         var handleRead: ((List<String>, Map<String, String>) -> JsonElement?)? = null
@@ -45,6 +68,8 @@ class MobileListReadTest {
         var handleMarkRead: ((String, String) -> JsonElement)? = null
         var handleAvatar: ((OwnerBinding, String, String) -> RuntimeAvatarBytes)? = null
         override fun runtimeAvatar(binding: OwnerBinding, runtimeId: String, avatarId: String): RuntimeAvatarBytes = handleAvatar?.invoke(binding, runtimeId, avatarId) ?: error("Unexpected avatar request")
+        override fun currentDevice(): JsonElement = throw java.io.IOException("Device label unavailable in synthetic offline fixture")
+        override fun listOwners(): JsonElement = handleListOwners?.invoke() ?: error("Unexpected Owner directory request")
         var handleRefresh: ((JsonObject) -> JsonElement)? = null
         override fun refreshCredential(body: JsonObject): JsonElement = handleRefresh?.invoke(body) ?: error("Unexpected credential refresh")
         override fun streamEvents(binding: OwnerBinding, cursor: String?, lastEventId: String?, consume: (StreamEvent) -> Unit, failed: (MobileApiException) -> Unit, opened: () -> Unit): MobileEventSubscription { opened(); return MobileEventSubscription {} }
@@ -70,9 +95,213 @@ class MobileListReadTest {
             calls.add(Request(method, suffix, body = body))
             error("Unexpected business mutation in read navigation")
         }
+        override fun revokeDevice() { revokeCalls++ }
     }
     @Before fun reset() {
         ui.runOnUiThread { model = ViewModelProvider(ui.activity)[MobileViewModel::class.java]; model.forget(); model.language("en") }
+    }
+    // @lat: [[mobile-data#Mobile data#Android cache-first offline restoration]]
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun coldStartupRendersEncryptedOwnerPagesBeforeOfflineOwnerDirectoryCompletes() {
+        val application = ui.activity.application
+        val endpoint = "https://127.0.0.1:1"
+        val key = javax.crypto.spec.SecretKeySpec(ByteArray(32) { it.toByte() }, "AES")
+        val preferences = DevicePreferences(application) { key }
+        val credentials = Credentials("opt010-cache-device", "cached-access", "2099-01-01T00:00:00Z", "cached-refresh", "2099-01-01T00:00:00Z", "7")
+        val owner = owner(listOf("conversation:read", "conversation:manage", "schedule:read"))
+        preferences.saveCredentials(credentials, endpoint)
+        preferences.saveLastOwnerContext(owner, credentials.grantRevision, credentials)
+
+        val testCipher = TestCacheCipher(key)
+        val repository = MobileCacheRepository(application, testCipher)
+        val namespace = repository.namespace(endpoint, owner.ownerId, owner.spaceId, credentials.deviceId, credentials.grantRevision)
+        val selection = MobileListSelection()
+        fun filters(schedules: Boolean) = selection.arguments(schedules).toSortedMap().map { (name, value) -> name to value.toString() }
+        val cachedConversation = conversation("cached-conversation").copy(allowedActions = listOf("read", "manage"))
+        val cachedConversationPage = Json.encodeToJsonElement(ConversationPage(listOf(cachedConversation), null, "snapshot-1"))
+        kotlinx.coroutines.runBlocking {
+            listOf(false to cachedConversationPage, true to schedules(listOf("cached-schedule"))).forEach { (isSchedule, payload) ->
+                val section = if (isSchedule) "schedules" else "conversations"
+                val key = repository.pageKey(namespace, owner.dataEpoch, section, "", filters(isSchedule), null)
+                val objectValue = payload.jsonObject
+                val revision = objectValue["snapshotRevision"]!!.jsonPrimitive.content
+                val sequence = objectValue["snapshotCursor"]?.jsonPrimitive?.contentOrNull ?: revision
+                val next = objectValue["nextCursor"]?.let { if (it === JsonNull) null else it.jsonPrimitive.contentOrNull }
+                repository.writePage(namespace, credentials.grantRevision, key, payload, revision, sequence, next, System.currentTimeMillis())
+            }
+        }
+        val cachedMessagePage = messagePage(listOf("1", "2"), conversationId = "cached-conversation")
+        val conversationDetailKey = repository.pageKey(namespace, owner.dataEpoch, "conversation-detail", "cached-conversation", emptyList(), null, one.agents.mobile.local.CacheResourceKind.MESSAGE)
+        val conversationBundle = buildJsonObject {
+            put("detail", Json.encodeToJsonElement(cachedConversation))
+            put("messagePage", cachedMessagePage)
+            put("snapshotCursor", "message-cursor")
+            put("snapshotRevision", "1")
+            put("nextCursor", JsonNull)
+        }
+        kotlinx.coroutines.runBlocking {
+            repository.writePage(namespace, credentials.grantRevision, conversationDetailKey, conversationBundle, "1", "message-cursor", null, System.currentTimeMillis())
+        }
+
+        val cachedSchedule = scheduleDetail("cached-schedule")
+        val scheduleDetailKey = repository.pageKey(namespace, owner.dataEpoch, "schedule-detail", "cached-schedule", emptyList(), null, one.agents.mobile.local.CacheResourceKind.SCHEDULE)
+        val scheduleBundle = buildJsonObject {
+            put("detail", cachedSchedule)
+            put("snapshotCursor", "9")
+            put("snapshotRevision", "9")
+            put("nextCursor", JsonNull)
+        }
+        kotlinx.coroutines.runBlocking {
+            repository.writePage(namespace, credentials.grantRevision, scheduleDetailKey, scheduleBundle, "9", "9", null, System.currentTimeMillis())
+        }
+
+        val avatarPng = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP8XKD4n4GBgYGJAQoAJzoChzU5gKEAAAAASUVORK5CYII=")
+        fun avatarHash(prefix: ByteArray = byteArrayOf()) = java.security.MessageDigest.getInstance("SHA-256").apply { update(prefix); update(avatarPng) }.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+        val avatarId = "ava-" + avatarHash("image/png\u0000".toByteArray())
+        val cachedRuntime = Runtime("runtime-1", "Original avatar agent", "local", avatar = avatarId, healthy = true, capabilities = emptyList(), allowedActions = listOf("read", "advance"))
+        val avatar = RuntimeAvatar(avatarId, cachedRuntime.id, "image/png", avatarPng.size.toLong(), avatarHash(), java.util.Base64.getEncoder().encodeToString(avatarPng))
+        // @lat: [[mobile-data#Mobile data#Android authorized offline avatar copies]]
+        kotlinx.coroutines.runBlocking {
+            listOf("runtime-directory" to JsonArray(listOf(Json.encodeToJsonElement(cachedRuntime))), "avatar-" + cachedRuntime.id + "-" + avatarId to JsonArray(listOf(Json.encodeToJsonElement(avatar)))).forEach { (section, items) ->
+                val kind = if(section.startsWith("avatar-")) one.agents.mobile.local.CacheResourceKind.PRIVATE_AVATAR else one.agents.mobile.local.CacheResourceKind.DIRECTORY_ENTRY
+                val key = repository.pageKey(namespace, owner.dataEpoch, section, "", emptyList(), null, kind)
+                val payload = buildJsonObject { put("items", items); put("snapshotRevision", "0"); put("snapshotCursor", "0"); put("nextCursor", JsonNull) }
+                repository.writePage(namespace, credentials.grantRevision, key, payload, "0", "0", null, System.currentTimeMillis())
+            }
+        }
+
+        repository.close()
+        val requestStarted = CountDownLatch(1)
+        val releaseRequest = CountDownLatch(1)
+        val offlineClient = Client().also { client ->
+            client.handleListOwners = {
+                requestStarted.countDown()
+                check(releaseRequest.await(10, TimeUnit.SECONDS))
+                throw java.io.IOException("simulated offline Owner")
+            }
+        }
+        val store = ViewModelStore()
+        val offlineModel = MobileViewModel(application, preferences, { _, _ -> offlineClient }) { app -> MobileCacheRepository(app, testCipher) }
+        store.put("offline-cache-test", offlineModel)
+        try {
+            ui.waitUntil(10000) {
+                Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                requestStarted.count == 0L && offlineModel.state.value.conversations.any { it.id == "cached-conversation" } &&
+                    offlineModel.state.value.schedules.any { it.id == "cached-schedule" }
+            }
+            val loading = offlineModel.state.value
+            check(loading.ownerCacheOnly && loading.busy && loading.ownerDataRefreshing)
+            check(loading.owner?.online == false && loading.owner?.executionAvailable == false)
+            check(loading.conversationCacheStale && loading.scheduleCacheStale)
+            check(loading.conversations.single().id == "cached-conversation" && loading.schedules.single().id == "cached-schedule")
+
+            releaseRequest.countDown()
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !offlineModel.state.value.busy && !offlineModel.state.value.ownerDataRefreshing }
+            val offline = offlineModel.state.value
+            check(offline.ownerCacheOnly && offline.paired && offline.error == null)
+            check(offline.conversations.single().id == "cached-conversation" && offline.schedules.single().id == "cached-schedule")
+            check(offlineModel.state.value.runtimes.single().id == cachedRuntime.id)
+            check(offlineModel.state.value.runtimes.single().allowedActions == listOf("read"))
+            val offlineAvatar = kotlinx.coroutines.runBlocking { offlineModel.loadRuntimeAvatar(offlineModel.state.value.runtimes.single()) }
+            check(offlineAvatar != null && offlineAvatar.width == 2 && offlineAvatar.getPixel(0,0) == android.graphics.Color.rgb(243,112,33))
+
+
+            ui.runOnUiThread { offlineModel.openConversation(offline.conversations.single()) }
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !offlineModel.state.value.busy && !offlineModel.state.value.openingDetail }
+            check(offlineModel.state.value.selected?.id == "cached-conversation")
+            check(offlineModel.state.value.messages.map { it.content } == listOf("Original body 1", "Original body 2"))
+
+            val offlinePolicy = ExecutionPolicy("offline-policy", "runtime-1", mode = "inspect", enforced = true, unattendedApproved = false, allowedActions = listOf("create", "advance"))
+            val callsBeforeConversationWrites = offlineClient.calls.size
+            ui.runOnUiThread { offlineModel.advance("offline continuation", offlinePolicy) }
+            ui.waitUntil(10000) {
+                Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                !offlineModel.state.value.busy && offlineModel.state.value.pendingMessages.any { it.text == "offline continuation" && it.delivery == "failed" }
+            }
+            ui.runOnUiThread { offlineModel.createConversation("offline create", "offline first prompt", offlinePolicy) }
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !offlineModel.state.value.busy }
+            val selectedForManagement = offlineModel.state.value.selected ?: error("Cached conversation was not selected")
+            ui.runOnUiThread { offlineModel.manageConversation(selectedForManagement, "pinned", true) }
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !offlineModel.state.value.busy }
+            ui.runOnUiThread { offlineModel.renameConversation(selectedForManagement, "offline rename") }
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !offlineModel.state.value.busy }
+            check(offlineClient.calls.drop(callsBeforeConversationWrites).none { it.method in setOf("POST", "PATCH", "DELETE") })
+
+            ui.runOnUiThread { offlineModel.openSchedule(offline.schedules.single()) }
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !offlineModel.state.value.busy && !offlineModel.state.value.openingDetail }
+            check(offlineModel.state.value.viewedSchedule?.id == "cached-schedule")
+            check(offlineModel.state.value.viewedSchedule?.revision == "9")
+
+            val readsBeforeMutationAttempts = offlineClient.calls.size
+            ui.runOnUiThread { offlineModel.scheduleAction(offline.schedules.single(), "pause") }
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !offlineModel.state.value.busy }
+            ui.runOnUiThread { offlineModel.revoke() }
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !offlineModel.state.value.busy }
+            check(offlineClient.revokeCalls == 0)
+            check(offlineClient.calls.drop(readsBeforeMutationAttempts).none { it.method in setOf("POST", "PATCH", "DELETE") })
+            check(offlineClient.calls.none { it.suffix == listOf("conversations", "cached-conversation") || it.suffix == listOf("conversations", "cached-conversation", "messages") || it.suffix == listOf("schedules", "cached-schedule") })
+
+            val ownerListStarted = CountDownLatch(1)
+            val releaseOwnerList = CountDownLatch(1)
+            val removedOwnerClient = Client().also { client ->
+                client.handleListOwners = {
+                    ownerListStarted.countDown()
+                    check(releaseOwnerList.await(10, TimeUnit.SECONDS))
+                    Json.parseToJsonElement("""{"items":[],"nextCursor":null,"snapshotRevision":"2"}""")
+                }
+            }
+            val removedOwnerStore = ViewModelStore()
+            val removedOwnerModel = MobileViewModel(application, preferences, { _, _ -> removedOwnerClient }) { app -> MobileCacheRepository(app, testCipher) }
+            removedOwnerStore.put("removed-owner-cache-test", removedOwnerModel)
+            try {
+                ui.waitUntil(10000) {
+                    Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                    ownerListStarted.count == 0L && removedOwnerModel.state.value.conversations.any { it.id == "cached-conversation" }
+                }
+                check(removedOwnerModel.state.value.ownerCacheOnly)
+                releaseOwnerList.countDown()
+                ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !removedOwnerModel.state.value.busy && !removedOwnerModel.state.value.ownerDataRefreshing }
+                check(removedOwnerModel.state.value.owner == null && !removedOwnerModel.state.value.ownerCacheOnly)
+                check(removedOwnerModel.state.value.conversations.isEmpty() && removedOwnerModel.state.value.schedules.isEmpty())
+                check(removedOwnerModel.state.value.runtimes.isEmpty())
+                check(preferences.lastOwnerContext(credentials) == null)
+            } finally {
+                releaseOwnerList.countDown()
+                removedOwnerStore.clear()
+            }
+
+            val retainedCacheRepository = MobileCacheRepository(application, testCipher)
+            try {
+                val retainedConversationKey = retainedCacheRepository.pageKey(namespace, owner.dataEpoch, "conversations", "", filters(false), null)
+                check(kotlinx.coroutines.runBlocking { retainedCacheRepository.readPage(namespace, retainedConversationKey) } != null)
+            } finally {
+                retainedCacheRepository.close()
+            }
+
+            preferences.saveCredentials(credentials, endpoint)
+            preferences.saveLastOwnerContext(owner, credentials.grantRevision, credentials)
+            check(preferences.lastOwnerContext(credentials) != null)
+            val changedCredentials = credentials.copy(grantRevision = "8")
+            preferences.saveCredentials(changedCredentials, endpoint)
+            check(preferences.lastOwnerContext(changedCredentials) == null)
+            val grantChangedClient = Client().also { client ->
+                client.handleListOwners = { Json.parseToJsonElement("""{"items":[],"nextCursor":null,"snapshotRevision":"3"}""") }
+            }
+            val grantChangedStore = ViewModelStore()
+            val grantChangedModel = MobileViewModel(application, preferences, { _, _ -> grantChangedClient }) { app -> MobileCacheRepository(app, testCipher) }
+            grantChangedStore.put("changed-grant-cache-test", grantChangedModel)
+            try {
+                check(!grantChangedModel.state.value.ownerCacheOnly)
+                check(grantChangedModel.state.value.conversations.isEmpty() && grantChangedModel.state.value.schedules.isEmpty())
+                ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !grantChangedModel.state.value.busy }
+                check(grantChangedModel.state.value.owner == null && grantChangedModel.state.value.conversations.isEmpty() && grantChangedModel.state.value.schedules.isEmpty())
+            } finally {
+                grantChangedStore.clear()
+            }
+        } finally {
+            releaseRequest.countDown()
+            store.clear()
+        }
     }
     private fun avatarClient(): Client = Client().also { client ->
         client.handleRead = { suffix, _ -> if (suffix == listOf("runtimes")) Json.encodeToJsonElement(RuntimePage(listOf(Runtime("runtime-1", "Original agent", "local", avatar = "ava-original", color = "#F37021", healthy = true, capabilities = emptyList(), allowedActions = listOf("read"))), null, "1")) else null }
@@ -88,7 +317,7 @@ class MobileListReadTest {
         }
         connect(client)
         check(model.state.value.runtimes.single().avatar == "ava-original")
-        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50)); ui.onAllNodesWithTag("runtime-avatar-image", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        try { ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50)); ui.onAllNodesWithTag("runtime-avatar-image", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() } } catch (error: androidx.compose.ui.test.ComposeTimeoutException) { error("Avatar not shown: requests=${requests.size}, ownerOnline=${model.state.value.owner?.online}, ownerCacheOnly=${model.state.value.ownerCacheOnly}, error=${model.state.value.error}, conversations=${model.state.value.conversations.size}") }
         check(requests.single() == listOf(OwnerBinding("owner-1","space-1"), "runtime-1", "ava-original"))
         check(model.state.value.error == null && !model.state.value.busy)
         ui.onNodeWithTag("runtime-avatar-image", useUnmergedTree = true).assertIsDisplayed()
@@ -219,7 +448,7 @@ class MobileListReadTest {
             conversations(listOf(if (body["cursor"] == null) "old" else "more"), if (body["cursor"] == null) "old-cursor" else null)
         }
         connect(client); perform { model.search("original", false) }; perform { model.selectListFilters(MobileListSelection("p1"), false) }
-        check(model.state.value.conversationSelection == MobileListSelection() && model.state.value.conversationQuery == "original" && model.state.value.conversationCursor == "old-cursor")
+        check(model.state.value.conversationSelection == MobileListSelection() && model.state.value.conversationQuery == "original" && model.state.value.conversationCursor == "old-cursor") { "selection=${model.state.value.conversationSelection}, query=${model.state.value.conversationQuery}, cursor=${model.state.value.conversationCursor}, error=${model.state.value.conversationError}" }
         perform { model.more(false) }
         check(client.calls.last().body!!["projectId"] == null && client.calls.last().body!!["query"]!!.jsonPrimitive.content == "original")
         client.handleRead = { suffix, _ -> if (suffix == listOf("projects")) throw MobileApiException("owner_offline", 503) else null }
@@ -246,16 +475,21 @@ class MobileListReadTest {
         check(model.state.value.conversationSelection == MobileListSelection() && model.state.value.scheduleSelection == MobileListSelection())
         check(model.state.value.conversationQuery.isEmpty() && model.state.value.scheduleQuery.isEmpty())
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Viewport read boundary]]
-    @Test fun readBoundaryTracksVisibleViewportInsteadOfLatestFetchedMessage() {
+    // @lat: [[mobile-data#Mobile data#Android visible message read boundary]]
+    @Test fun readBoundaryAdvancesToVisibleLatestMessageAndScrollingBackDoesNotRewindIt() {
         val client = messageClient { messagePage((1..100).map { it.toString() }) }
         connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
-        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); client.calls.any { it.suffix.last() == "read" } }
-        val initial = client.calls.filter { it.suffix.last() == "read" }.last().body!!["lastReadMessageSeq"]!!.jsonPrimitive.content.toInt()
-        check(initial in 1..30)
+        ui.waitUntil(10000) {
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            model.state.value.selected?.lastReadMessageSeq == "100" &&
+                runCatching { ui.onNodeWithText("Original body 100").assertIsDisplayed() }.isSuccess
+        }
+        val acknowledged = model.state.value.selected!!.lastReadMessageSeq
+        check(acknowledged == "100")
+        check(client.calls.filter { it.suffix.last() == "read" }.any { it.body?.get("lastReadMessageSeq")?.jsonPrimitive?.content == acknowledged })
         ui.onNodeWithTag("conversation-messages").performScrollToIndex(60)
-        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); model.state.value.selected!!.lastReadMessageSeq.toInt() > 60 }
-        check(model.state.value.selected!!.lastReadMessageSeq.toInt() < 100)
+        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); runCatching { ui.onNodeWithText("Original body 100").assertDoesNotExist() }.isSuccess }
+        check(model.state.value.selected!!.lastReadMessageSeq == acknowledged)
     }
     // @lat: [[mobile-mac-roadmap#Native preview checks#Read failure and explicit retry]]
     @Test fun readFailureRetainsAuthorityAndDoesNotLoopUntilRetry() {
@@ -326,7 +560,7 @@ class MobileListReadTest {
     }
     // @lat: [[mobile-mac-roadmap#Native preview checks#Hidden read boundary rejection]]
     @Test fun hiddenLoadedMessagesCannotBecomeReadBoundaries() {
-        val client = messageClient { Json.encodeToJsonElement(MessagePage(listOf(Message("hidden", "initial", "99", kind = "assistant", content = "Private", visibleToUser = false, createdAt = "2026-10-05T00:00:00Z")), false, "cursor", "1")) }
+        val client = messageClient { Json.encodeToJsonElement(MessagePage(listOf(Message(id = "hidden", conversationId = "initial", messageSeq = "99", kind = "assistant", content = "Private", visibleToUser = false, createdAt = "2026-10-05T00:00:00Z")), false, "cursor", "1")) }
         connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
         ui.runOnUiThread { model.acknowledgeVisible("initial", listOf("99")) }
         ui.waitForIdle(); check(client.calls.none { it.suffix.last() == "read" })
@@ -342,7 +576,7 @@ class MobileListReadTest {
     }
     private fun perform(block: () -> Unit) {
         ui.runOnUiThread(block)
-        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy }
+        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy && !model.state.value.ownerDataRefreshing }
     }
     private fun connect(client: Client) {
         // Test-only reflection avoids bypass hooks or replacement credential storage in the app.
@@ -463,7 +697,7 @@ class MobileListReadTest {
             conversations(listOf(if (body["cursor"] == null) "old" else "more"), if (body["cursor"] == null) "old-cursor" else null)
         }
         connect(client); perform { model.search("good", false) }; perform { model.search("bad", false) }; perform { model.more(false) }
-        check(client.calls.last().body?.get("query")?.jsonPrimitive?.content == "good")
+        check(client.calls.last().body?.get("query")?.jsonPrimitive?.content == "good") { "lastRequest=${client.calls.last()}" }
         perform { model.search("   ", false) }
         check(client.calls.last().method == "GET" && client.calls.last().query.isEmpty())
         check(model.state.value.conversationQuery.isEmpty())
@@ -475,7 +709,7 @@ class MobileListReadTest {
         connect(client)
         check(model.state.value.conversations.map { it.id } == listOf("initial"))
         check(model.state.value.scheduleError == "requires_owner_action")
-        check(model.state.value.error == "requires_owner_action")
+        check(model.state.value.error == "sync_temporarily_unavailable")
         check(client.calls.none { it.suffix == listOf("schedules") || it.suffix == listOf("execution-policies") })
         ui.onNodeWithContentDescription("New conversation").assertDoesNotExist()
         val before = client.calls.size; perform { model.search("plan", true) }
@@ -508,7 +742,7 @@ class MobileListReadTest {
         client.handleRead = { suffix, _ -> if (suffix == listOf("schedules")) throw MobileApiException("revoked", 403) else null }
         connect(client)
         check(model.state.value.owner == null && model.state.value.conversations.isEmpty())
-        check(model.state.value.error == "revoked" && !model.state.value.busy)
+        check(model.state.value.error == "revoked" && !model.state.value.busy) { "error=${model.state.value.error}, busy=${model.state.value.busy}, owner=${model.state.value.owner}" }
     }
     // @lat: [[mobile-mac-roadmap#Native preview checks#Nullable message identity display]]
     @Test fun nullableMessageIdsRenderSeparateOriginalSequences() {
@@ -686,6 +920,8 @@ class MobileListReadTest {
             else -> error("Unexpected cursor")
         } }
         connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
+        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); model.state.value.hasOlderMessages && model.state.value.messages.size == 50 }
+        ui.onNodeWithTag("conversation-messages").performScrollToIndex(0)
         ui.onNodeWithText("Load earlier messages").assertIsDisplayed().performClick()
         ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy }
         perform { model.olderMessages() }
@@ -759,4 +995,70 @@ class MobileListReadTest {
         ui.onNodeWithContentDescription("Back").performClick()
         check(model.state.value.selected == null && model.state.value.scheduleExecutions.single().id == "e1" && model.state.value.messageCursor == null)
     }
+
+    private fun projectListClient(): Client = Client().apply {
+        handleRead = { suffix, query -> when (suffix) {
+            listOf("projects") -> Json.encodeToJsonElement(ProjectPage(listOf(Project("project-test", "test", emptyList())), null, "1"))
+            listOf("conversations") -> {
+                val projectRows = (1..3).map { conversation("project-task-$it").copy(projectId = "project-test") }
+                val rows = if (query["projectId"] == "project-test") projectRows else projectRows + listOf(conversation("home-task-1"), conversation("home-task-2"))
+                Json.encodeToJsonElement(ConversationPage(rows, null, "1"))
+            }
+            else -> when {
+                suffix.size == 2 && suffix.first() == "conversations" -> Json.encodeToJsonElement(conversation(suffix[1]).copy(projectId = "project-test"))
+                suffix.size == 3 && suffix.last() == "messages" -> Json.encodeToJsonElement(MessagePage(emptyList(), false, "detail-page", "1"))
+                else -> null
+            }
+        } }
+    }
+    // @lat: [[mobile-data#Mobile data#Android conversation and project category isolation]]
+    @Test fun standaloneConversationCategoryExcludesOriginalProjectTasks() {
+        connect(projectListClient())
+        ui.onNodeWithText("home-task-1").assertExists()
+        ui.onNodeWithText("project-task-1").assertDoesNotExist()
+        check(model.state.value.conversations.count { it.projectId != null } == 3)
+        ui.onNodeWithTag("category:projects").performClick()
+        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy }
+        ui.onNodeWithTag("project-group:project-test").performClick()
+        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy && model.state.value.conversationSelection.projectId == "project-test" }
+        ui.onNodeWithText("project-task-1").assertExists()
+        ui.onNodeWithText("home-task-1").assertDoesNotExist()
+    }
+    // @lat: [[mobile-data#Mobile data#Android bottom navigation restores standalone conversations]]
+    @Test fun returningFromSchedulesAndAccountAfterProjectReadRestoresStandaloneList() {
+        connect(projectListClient())
+        for (destination in listOf("Schedules", "Account")) {
+            ui.onNodeWithTag("category:projects").performClick()
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy }
+            ui.onNodeWithTag("project-group:project-test").performClick()
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy && model.state.value.conversationSelection.projectId == "project-test" }
+            ui.onAllNodesWithText(destination).onLast().performClick()
+            ui.onAllNodesWithText("Conversations").onLast().performClick()
+            ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy }
+            ui.onNodeWithText("home-task-1").assertExists()
+            ui.onNodeWithText("project-task-1").assertDoesNotExist()
+            check(model.state.value.conversationSelection == MobileListSelection())
+        }
+    }
+
+
+    // @lat: [[mobile-data#Mobile data#Android project detail retains its category on back]]
+    @Test fun openingProjectTaskAndBackKeepsItsGroupBeforeBottomNavigation() {
+        connect(projectListClient())
+        ui.onNodeWithTag("category:projects").performClick()
+        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy }
+        ui.onNodeWithTag("project-group:project-test").performClick()
+        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy && model.state.value.conversationSelection.projectId == "project-test" }
+        ui.onNodeWithText("project-task-1").performClick()
+        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy && model.state.value.selected?.id == "project-task-1" }
+        ui.onNodeWithContentDescription("Back").performClick()
+        ui.onNodeWithTag("project-group:project-test").assertExists()
+        ui.onNodeWithText("project-task-1").assertExists()
+        ui.onAllNodesWithText("Account").onLast().performClick()
+        ui.onAllNodesWithText("Conversations").onLast().performClick()
+        ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy }
+        ui.onNodeWithText("home-task-1").assertExists()
+        ui.onNodeWithText("project-task-1").assertDoesNotExist()
+    }
+
 }

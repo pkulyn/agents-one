@@ -64,21 +64,21 @@ Schedule及列表DTO可选recentExecution对象从同一原计划快照提供最
 
 正式 Connect 当前设备凭证绑定单一 Owner/space，目录返回该授权项且 nextCursor:null，非作用域查询被拒绝。多来源控件宿主测试验证客户端来源隔离，不代表同一凭证在正式服务跨 Owner 授权；不能据通用 Page 包装推断正式目录有分页。
 
-## Android source full identity selection
+## Android status header preserves brand
 
-验证同名 Owner、同 Owner 不同空间和重复目录项仍按原完整身份选择且不重复。
+The read-only status header keeps the Agents One brand even when several devices share a label; exact source selection remains in the account device picker.
 
-## Android source busy and uncertain status
+## Android status header handles connection loss
 
-验证忙时不能打开来源选择，同步失败显示待确认而非在线，原明确离线状态可见。
+Busy state never makes connection status interactive; an Owner connection failure replaces the online indicator with the compact offline state.
 
-## Android source missing and directory failure
+## Android status header with missing source
 
-验证未配对和示例模式不造来源，已配对的目录读取失败显示就地错误而非空列表成功提示。
+Unpaired and demo screens do not invent a connected Owner; a paired device with no selected source cannot claim that the Owner is online.
 
-## Android source Chinese and long labels
+## Android status header with long computer names
 
-验证中文来源/空间/状态以及长原名称的窄屏刷新和关闭动作可用。
+Long computer names do not replace the Agents One brand or introduce header dropdown actions, including in the Chinese layout.
 
 ## Android real source change clears old list binding
 
@@ -2053,3 +2053,169 @@ Manrope字形随包提供，中文按设计规范使用系统回退。语言/外
 The 2026-10-15 Android UI refinement preserves C R02 styling, static Agents One branding, collapsed project navigation, enabled/paused schedules, device labels, explicit permission choices, encrypted offline avatars and compact original Run activity.
 
 The cumulative implementation is built in the mobile-sync-p0 worktree because this checkout contains an older Android synchronization baseline. Release evidence and compatibility instructions remain private. Actual cloud deployment, APK installation and current desktop resource loading are separate acceptance gates; source or package builds do not establish those gates.
+
+## Android visible message read boundary
+
+验证只有当前对话中实际展示给用户的消息才能推进已读位置；初次滚到最新可见消息后，向上回看不能让已读位置倒退。
+
+
+## Android event drain independent from user actions
+
+前台任务动作处于 busy 且详情读取挂起时，已到达的合法事件仍按序验证并立即更新对应可见状态，动作结束后不补发重复业务请求。
+
+
+## Android derived reads are single flight and coalesced
+
+多个筛选变化在一个慢速 Owner 查询期间合并为一次尾随读取；单飞工作器不阻塞 SSE 消费，查询使用发起时的查询与筛选条件并核对连接代际。
+
+`MobileViewModel.refreshEventSearches` 承担回执、对话筛选和计划筛选的派生读取，dirty 修订号阻止读取期间的新变化被清除。
+
+
+## Android receipt trailing refresh and scoped failures
+
+回执继续遵守 30 秒最小刷新间隔；节流窗口内的最后一次 dirty 会被定时唤醒，普通查询失败只写入对应查询错误并退避重试，不能关闭健康事件流。
+
+
+## Android bounded event overflow recovery
+
+事件队列容量保持 32；超过容量会使当前流进入有退避的快照恢复，再从恢复高水位开启新流，不丢弃权限检查、不误报为 Owner 离线，也不创建无界内存队列。
+
+
+## Android cache-first offline restoration
+
+Android restores only encrypted pages under the last validated endpoint, device, Owner, space, data epoch, and grant namespace before attempting credential refresh; an unreachable Owner leaves those pages visibly offline and read-only.
+
+The Robolectric ViewModel integration test verifies cached conversation and schedule details restore from encrypted Room, cache-only conversation creation/continuation/pinning/renaming and schedule mutation/revocation attempts do not reach the Owner client, a confirmed missing Owner clears the display pointer while preserving encrypted rows, and a changed grant revision does not restore the old namespace.
+
+The last Owner pointer is AES-GCM protected and its AAD binds endpoint, device ID, and grant revision. Cache-only state strips execution capabilities and rejects writes. A confirmed authentication failure, changed grant revision, or Owner no longer listed clears the display pointer without deleting other user preferences or desktop-authoritative records. Startup cache reads precede network refresh so a transient outage does not hide previously authorized pages.
+
+
+## Android first-page backpressure recovery
+
+A transient initial list failure retains the authorized copy and retries with capped backoff even for an unrestricted list and without a new event.
+
+The healthy stream and other sections remain usable; success persists the page and clears its error and stale marker.
+
+
+## Android clean C task navigation
+
+C列表使用静态品牌与连接状态、线式搜索及键盘提交；项目是默认折叠的原项目目录，展开沿用原项目筛选及冻结分页。定时启用/暂停按原enabled字段分类，保留原运行状态，不改计划。
+
+
+## Android authorized offline avatar copies
+
+原Runtime与项目目录及验证头像在既有加密Room授权namespace中保存。读取绑定endpoint、设备、grant、Owner、space、epoch和原内容标识；离线只读目录不授予执行权限，未知图保持原名称占位。
+
+
+## Android compact activity and composer stop
+
+思考与工具用可展开图标行展示已公开进度，只有运行图标动画。空草稿时同一发送按钮取消当前有cancel权限的原Run；有草稿时保留文本，不并发重派或把回执假作终态。
+
+
+## Android full access never defaults
+
+Full access must be explicitly selected and never supplies an automatic default. A no-project choice requires a matching current Owner policy.
+
+The Owner must publish and reauthorize that policy for each operation; missing or stale policies prevent admission.
+
+
+## Per turn activity precedes original response
+
+Android inserts each Run disclosure before its original assistant reply using run or turn identity, preserving message sequences and rendering each Run once.
+
+
+## Legacy activity chronological fallback
+
+Legacy replies without a Run link use the published Run start time; an explicitly linked reply from another Run is not reused as a fallback anchor.
+
+
+## Pending input precedes live activity
+
+Local pending user input keeps its own identity and appears before the live activity that follows it; reconciliation still uses the original message receipt contract.
+
+
+## Creation navigates before network acceptance
+
+Submitting a new conversation immediately shows the original input in a local submission view. Only an applied Owner receipt supplies conversation identity; failures retain the original input and unknown writes only reconcile their original key.
+
+
+## Android temporary read failure recovery
+
+A read-only requires_owner_action HTTP 5xx is temporary refresh failure, not approval or proof that the Owner is offline. Observation retries with existing backoff while retaining Run progress and never submitting business mutations.
+
+
+## Android genuine Owner restriction preservation
+
+An explicit Owner restriction with HTTP 403 remains actionable and does not become a transient retry loop. Authentication, policy and protocol failures retain their original handling.
+
+
+## Android current Run read feedback recovery
+
+A fresh accepted Run event for the selected conversation clears only its temporary read failure. Unrelated or stale events cannot clear another conversation error or suppress a genuine restriction.
+
+
+## Android auxiliary read conflicts keep healthy events
+
+Read-only revision_conflict/409 responses use bounded section retries while healthy SSE continues consuming task progress. Existing receipts and Run identities remain intact; no business mutation is replayed.
+
+
+## Android snapshot conflict bounded recovery
+
+Snapshot recovery retains original content on concurrent revision conflict and retries with bounded backoff, accepting one consistent snapshot anchor before resuming events. Genuine Owner restrictions remain terminal.
+
+
+## First prompt survives slow initial snapshot
+
+新建会话受理后，在首次详情发布前登记同一条本地待提交消息，运行快照延迟不能产生空白等待页；首次 Turn 仍使用原创建回执和版本，只提交一次。
+
+
+## Actual model qualified catalog display
+
+Android 优先显示实际模型；仅在配置模型的尾部标识完全一致时补充已知供应商前缀，不以其他模型或智能体名称猜测供应商。
+
+
+## Android task creation without a project
+
+新建对话和定时任务默认选择当前目录中可执行的“无项目·自动”策略。目录刷新时按相同策略身份与运行时、项目、模式绑定重新取对象；没有 Owner 授权策略时保持禁用，不能伪造权限。
+
+
+## Android single offline notice
+
+Owner 离线时，在页面顶部只显示一条简短提示；缓存列表与详情可继续阅读。连接类同步错误不重复显示请求编号和操作横幅，非连接类错误及原诊断记录仍保留。
+
+## Mobile sync protocol evolution
+
+Optional protocol features preserve v1 readers while making sync recovery and exact user-message echo explicit before durable Android caching is enabled.
+
+### Optional feature negotiation and legacy fallback
+
+Bootstrap protocol feature IDs are separate from authorization scopes; clients ignore unknown IDs and use new fields only when the current Owner advertises the relevant feature.
+
+### Snapshot anchors and filtered event gaps
+
+Snapshot high-water and opaque cursor identify one Owner cut; filtered space event sequences may jump, while revisions, tombstones and cursor recovery prevent gaps or stale replay.
+
+### Exact client message echo identity
+
+A client message ID correlates one optimistic user row across its request, canonical Owner message and event; it remains separate from the operation idempotency key.
+
+### Cross-platform schema fixture compatibility
+
+Generated schema fixtures cover old and feature-aware v1 payloads so the TypeScript validator rejects malformed fields without requiring optional fields from legacy Owners.
+
+### Legacy Kotlin reader compatibility
+
+The Android decoder accepts legacy DTOs and ignores newly added optional response fields while preserving message and operation identities separately.
+
+
+## Android conversation and project category isolation
+
+The standalone conversation category shows only unarchived conversations without a project; project tasks remain under their original expandable project and are never rewritten or deleted.
+
+## Android bottom navigation restores standalone conversations
+
+Returning from schedules or account selects standalone conversations and restores their matching list instead of relabeling the last project page. Detail back navigation retains its original category.
+
+## Android project detail retains its category on back
+
+Opening an original project task and returning preserves the expanded project group; a subsequent bottom-navigation return to conversations resets to the standalone list.

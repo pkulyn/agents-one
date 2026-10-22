@@ -16,23 +16,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import one.agents.mobile.contract.OwnerSpace
 
+internal fun ownerConnectionError(code: String): Boolean = code == "owner_offline" || code == "owner_unavailable"
+internal fun ownerOffline(state: MobileState): Boolean = state.owner != null &&
+    (state.ownerCacheOnly || state.owner.online == false || state.syncError?.let(::ownerConnectionError) == true || state.error?.let(::ownerConnectionError) == true)
+
 // @lat: [[mobile-data#Mobile data#Android visible original Owner and space]]
 @Composable internal fun OwnerSpaceSelector(state: MobileState, select: (OwnerSpace) -> Unit, refresh: () -> Unit) {
     if (state.demo || (state.owner == null && !state.paired && state.owners.isEmpty())) return
     val current = state.owner
     var open by remember(current?.ownerId, current?.spaceId, current?.dataEpoch) { mutableStateOf(false) }
     val sources = (listOfNotNull(current) + state.owners).distinctBy { it.ownerId to it.spaceId }
-    TextButton(onClick = { open = true }, enabled = !state.busy,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp).testTag("owner-space-selector")) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         DawnRing()
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(current?.label ?: stringResource(R.string.choose_owner_space), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-            current?.let { Text(if (it.spaceId == "primary-space") stringResource(R.string.c_personal_space) else stringResource(R.string.current_space, it.spaceId), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
-        Text("• ", style = MaterialTheme.typography.labelMedium)
-        Text(stringResource(when { state.syncError != null || state.error == "owner_offline" -> R.string.connection_status_unknown; current == null -> R.string.no_source_selected; current.online -> R.string.online; else -> R.string.offline }), style = MaterialTheme.typography.labelMedium)
-        Icon(Icons.Outlined.ArrowDropDown, stringResource(R.string.choose_owner_space), Modifier.padding(start = 8.dp))
+        Text("Agents One", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium.copy(fontFamily = CFont), color = MaterialTheme.colorScheme.onSurface)
+        Text("• " + stringResource(when { ownerOffline(state) -> R.string.offline; state.syncError != null -> R.string.connection_status_unknown; current == null -> R.string.no_source_selected; current.online -> R.string.online; else -> R.string.offline }), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
     }
     if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(stringResource(R.string.choose_owner_space)) },
         text = {

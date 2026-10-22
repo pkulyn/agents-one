@@ -76,3 +76,15 @@ internal fun cTypography(language: String): Typography {
                 focusedIndicatorColor = COrange, unfocusedIndicatorColor = MaterialTheme.colorScheme.outlineVariant))
     }
 }
+
+@Composable internal fun CCategoryTabs(items: List<Pair<String, String>>, selected: String, choose: (String) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        items.forEach { (id, label) ->
+            Column(Modifier.clickable { choose(id) }.padding(vertical = 6.dp).testTag("category:" + id)) {
+                Text(label, style = MaterialTheme.typography.labelLarge, color = if(id == selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.width(24.dp).height(2.dp).background(if(id == selected) COrange else Color.Transparent))
+            }
+        }
+    }
+}

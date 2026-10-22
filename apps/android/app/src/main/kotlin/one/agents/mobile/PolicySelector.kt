@@ -15,7 +15,18 @@ import one.agents.mobile.contract.ExecutionPolicy
 internal fun policyCatalogAvailable(policy: ExecutionPolicy, state: MobileState): Boolean = policy.enforced &&
     state.runtimes.any { it.id == policy.runtimeId } && (policy.projectId == null || state.projects.any { it.id == policy.projectId }) && policy.mode in setOf("inspect", "project_write", "desktop_analysis", "desktop_execute", "desktop_auto", "desktop_full_access")
 
-internal fun currentPolicySelection(candidates: List<ExecutionPolicy>, choice: ExecutionPolicy?, state: MobileState): ExecutionPolicy? = choice?.takeIf { it in candidates && policyCatalogAvailable(it, state) }
+internal fun permissionLabel(mode: String?): Int = when(mode) { "desktop_analysis", "inspect" -> R.string.ui_permission_readonly; "desktop_full_access" -> R.string.ui_permission_full; else -> R.string.ui_permission_auto }
+internal fun defaultTaskPolicy(candidates: List<ExecutionPolicy>, state: MobileState): ExecutionPolicy? =
+    candidates.firstOrNull { it.projectId == null && it.mode == "desktop_auto" && policyCatalogAvailable(it, state) }
+        ?: candidates.firstOrNull { it.mode == "desktop_auto" && policyCatalogAvailable(it, state) }
+        ?: candidates.firstOrNull { it.mode == "desktop_execute" && policyCatalogAvailable(it, state) }
+        ?: candidates.firstOrNull { it.mode != "desktop_full_access" && policyCatalogAvailable(it, state) }
+
+internal fun currentPolicySelection(candidates: List<ExecutionPolicy>, choice: ExecutionPolicy?, state: MobileState): ExecutionPolicy? =
+    choice?.let { selected -> candidates.firstOrNull {
+        it.id == selected.id && it.runtimeId == selected.runtimeId && it.projectId == selected.projectId &&
+            it.mode == selected.mode && policyCatalogAvailable(it, state)
+    } }
 
 @Composable internal fun PolicySelector(policies: List<ExecutionPolicy>, state: MobileState, selection: ExecutionPolicy?, select: (ExecutionPolicy?) -> Unit) {
     val desktopChoices = policies.filter { it.id.startsWith("desktop-task-") }
@@ -43,37 +54,28 @@ internal fun currentPolicySelection(candidates: List<ExecutionPolicy>, choice: E
 
 @Composable private fun DesktopTaskSelector(policies: List<ExecutionPolicy>, state: MobileState, selection: ExecutionPolicy?, select: (ExecutionPolicy?) -> Unit) {
     val binding = listOf(state.owner?.ownerId, state.owner?.spaceId, state.owner?.dataEpoch, state.selected?.id, state.selectedSchedule?.id)
-    var runtimeId by remember(binding) { mutableStateOf(selection?.runtimeId ?: state.selected?.runtimeId) }
+    var runtimeId by remember(binding) { mutableStateOf(selection?.runtimeId ?: state.selected?.runtimeId ?: policies.firstOrNull { policyCatalogAvailable(it, state) }?.runtimeId) }
     var projectId by remember(binding) { mutableStateOf(selection?.projectId ?: state.selected?.projectId) }
-    var mode by remember(binding) { mutableStateOf(selection?.mode ?: "desktop_auto") }
-    fun choose(runtime: String?, project: String?, selectedMode: String) {
-        runtimeId = runtime; projectId = project; mode = selectedMode
-        select(policies.firstOrNull { it.runtimeId == runtime && it.projectId == project && it.mode == selectedMode && policyCatalogAvailable(it, state) })
+    fun modeName(value: String?) = when(value) { "desktop_analysis", "inspect" -> "analysis"; "desktop_full_access" -> "full_access"; else -> "auto" }
+    var mode by remember(binding) { mutableStateOf(if(selection == null) "auto" else modeName(selection.mode)) }
+    fun candidate(runtime: String?, project: String?, permission: String): ExecutionPolicy? {
+        val available = policies.filter { it.runtimeId == runtime && it.projectId == project && policyCatalogAvailable(it, state) }
+        return when(permission) { "full_access" -> available.firstOrNull { it.mode == "desktop_full_access" }; "analysis" -> available.firstOrNull { it.mode in setOf("desktop_analysis", "inspect") }; else -> available.firstOrNull { it.mode == "desktop_auto" } ?: available.firstOrNull { it.mode == "desktop_execute" } }
     }
+    fun choose(runtime: String?, project: String?, permission: String) { runtimeId = runtime; projectId = project; mode = permission; select(candidate(runtime, project, permission)) }
+    LaunchedEffect(binding, policies, state.runtimes, state.projects) { if(selection == null) select(candidate(runtimeId, projectId, mode)) }
     TaskChoice(stringResource(R.string.task_agent), state.runtimes.find { it.id == runtimeId }?.name ?: stringResource(R.string.task_choose_agent), state.busy || state.selected != null, "task-agent") { close ->
-        state.runtimes.forEach { runtime ->
-            DropdownMenuItem(text = { Text(runtime.name) }, enabled = policies.any { it.runtimeId == runtime.id && policyCatalogAvailable(it, state) },
-                onClick = { choose(runtime.id, projectId, mode); close() })
-        }
+        state.runtimes.forEach { runtime -> DropdownMenuItem(text = { Text(runtime.name) }, enabled = policies.any { it.runtimeId == runtime.id && policyCatalogAvailable(it, state) }, onClick = { choose(runtime.id, projectId, mode); close() }) }
     }
-    TaskChoice(stringResource(R.string.filter_project), if (projectId == null) stringResource(R.string.no_project) else state.projects.find { it.id == projectId }?.name ?: stringResource(R.string.project_unavailable), state.busy || state.selected != null, "task-project") { close ->
+    TaskChoice(stringResource(R.string.filter_project), if(projectId == null) stringResource(R.string.no_project) else state.projects.find { it.id == projectId }?.name ?: stringResource(R.string.project_unavailable), state.busy || state.selected != null, "task-project") { close ->
         DropdownMenuItem(text = { Text(stringResource(R.string.no_project)) }, onClick = { choose(runtimeId, null, mode); close() })
         state.projects.forEach { project -> DropdownMenuItem(text = { Text(project.name) }, onClick = { choose(runtimeId, project.id, mode); close() }) }
     }
-    val modeLabel = when (mode) {
-        "desktop_analysis", "inspect" -> R.string.task_analysis
-        "desktop_full_access" -> R.string.task_full_access
-        "desktop_execute", "project_write" -> R.string.task_execute
-        else -> R.string.task_auto
+    TaskChoice(stringResource(R.string.task_mode), stringResource(when(mode) { "analysis" -> R.string.ui_permission_readonly; "full_access" -> R.string.ui_permission_full; else -> R.string.ui_permission_auto }), state.busy, "task-mode") { close ->
+        listOf("auto" to R.string.ui_permission_auto, "analysis" to R.string.ui_permission_readonly, "full_access" to R.string.ui_permission_full).forEach { (value, label) -> DropdownMenuItem(text = { Text(stringResource(label)) }, enabled = candidate(runtimeId, projectId, value) != null, onClick = { choose(runtimeId, projectId, value); close() }) }
     }
-    TaskChoice(stringResource(R.string.task_mode), stringResource(modeLabel), state.busy, "task-mode") { close ->
-        listOf("desktop_analysis" to R.string.task_analysis, "desktop_auto" to R.string.task_auto, "desktop_full_access" to R.string.task_full_access).forEach { (value, label) ->
-            DropdownMenuItem(text = { Text(stringResource(label)) }, enabled = runtimeId != null && policies.any { it.runtimeId == runtimeId && it.projectId == projectId && it.mode == value && policyCatalogAvailable(it, state) },
-                onClick = { choose(runtimeId, projectId, value); close() })
-        }
-    }
-    Text(stringResource(R.string.task_permission_hint), style = MaterialTheme.typography.bodySmall)
-    if (runtimeId != null && selection == null) Text(stringResource(R.string.task_selection_unavailable), color = MaterialTheme.colorScheme.error)
+    if(runtimeId != null && selection == null) Text(stringResource(R.string.task_selection_unavailable), color = MaterialTheme.colorScheme.error)
+
 }
 
 @Composable private fun TaskChoice(label: String, value: String, busy: Boolean, tag: String, options: @Composable ColumnScope.(close: () -> Unit) -> Unit) {

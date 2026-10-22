@@ -175,6 +175,7 @@ open class MobileControlClient(
     open fun exchangeClaim(id: String, proof: String, mutationId: String): JsonElement = request("POST", listOf("pairing", "claims", checkId(id), "exchange"), JsonObject(emptyMap()), headers = mapOf("Authorization" to "Bearer $proof", "X-Client-Mutation-Id" to checkId(mutationId), "Idempotency-Key" to mutationId), authenticated = false)
     open fun refreshCredential(body: JsonObject): JsonElement = request("POST", listOf("auth", "refresh"), body, authenticated = false)
     open fun listOwners(): JsonElement = request("GET", listOf("owners"))
+    open fun currentDevice(): JsonElement = request("GET", listOf("devices", "self"))
     open fun revokeDevice() { request("DELETE", listOf("devices", "self")) }
     open fun close() { http.dispatcher.cancelAll(); http.connectionPool.evictAll() }
 

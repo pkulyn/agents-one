@@ -35,6 +35,30 @@
     },
     {
       "error": {
+        "code": "unverified_policy",
+        "message": "unverified_policy",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "policy_revoked",
+        "message": "policy_revoked",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "profile_inactive",
+        "message": "profile_inactive",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
         "code": "resource_not_found",
         "message": "resource_not_found",
         "retryable": false,
@@ -978,6 +1002,127 @@
       "schedule_execution",
       "artifact",
       "permission"
+    ]
+  },
+  "compatibility": {
+    "legacyBootstrap": {
+      "protocolVersion": "fixture-value",
+      "ownerSpace": {
+        "ownerId": "fixture-value",
+        "spaceId": "fixture-value",
+        "label": "fixture-value",
+        "ownerType": "desktop",
+        "online": false,
+        "executionAvailable": false,
+        "schedulerOnline": false,
+        "schedulerTimeZone": "Asia/Shanghai",
+        "capabilities": [
+          "conversation:read"
+        ],
+        "limits": {
+          "maxPageSize": 1,
+          "maxTextCharacters": 1,
+          "maxRequestBytes": 1,
+          "maxTimeoutMs": 1000,
+          "eventRetentionDays": 1,
+          "eventRetentionCount": 1,
+          "snapshotTtlMs": 1
+        },
+        "dataEpoch": "fixture-value"
+      },
+      "grantRevision": "9007199254740993",
+      "serverTime": "2026-10-04T03:00:00Z",
+      "dataEpoch": "fixture-value",
+      "capabilities": [
+        "conversation:read"
+      ],
+      "limits": {
+        "maxPageSize": 1,
+        "maxTextCharacters": 1,
+        "maxRequestBytes": 1,
+        "maxTimeoutMs": 1000,
+        "eventRetentionDays": 1,
+        "eventRetentionCount": 1,
+        "snapshotTtlMs": 1
+      },
+      "snapshotCursor": "fixture-value"
+    },
+    "syncBootstrap": {
+      "protocolVersion": "fixture-value",
+      "ownerSpace": {
+        "ownerId": "fixture-value",
+        "spaceId": "fixture-value",
+        "label": "fixture-value",
+        "ownerType": "desktop",
+        "online": false,
+        "executionAvailable": false,
+        "schedulerOnline": false,
+        "schedulerTimeZone": "Asia/Shanghai",
+        "capabilities": [
+          "conversation:read"
+        ],
+        "limits": {
+          "maxPageSize": 1,
+          "maxTextCharacters": 1,
+          "maxRequestBytes": 1,
+          "maxTimeoutMs": 1000,
+          "eventRetentionDays": 1,
+          "eventRetentionCount": 1,
+          "snapshotTtlMs": 1
+        },
+        "dataEpoch": "fixture-value"
+      },
+      "grantRevision": "9007199254740993",
+      "serverTime": "2026-10-04T03:00:00Z",
+      "dataEpoch": "fixture-value",
+      "capabilities": [
+        "conversation:read"
+      ],
+      "limits": {
+        "maxPageSize": 1,
+        "maxTextCharacters": 1,
+        "maxRequestBytes": 1,
+        "maxTimeoutMs": 1000,
+        "eventRetentionDays": 1,
+        "eventRetentionCount": 1,
+        "snapshotTtlMs": 1
+      },
+      "snapshotCursor": "fixture-value",
+      "snapshotRevision": "17",
+      "protocolFeatures": [
+        "owner.sync-window.v1",
+        "message.client-echo.v1"
+      ]
+    },
+    "legacyUserMessage": {
+      "id": "fixture-value",
+      "conversationId": "fixture-value",
+      "messageSeq": "9007199254740993",
+      "kind": "user",
+      "content": "fixture-value",
+      "visibleToUser": false,
+      "createdAt": "2026-10-04T03:00:00Z"
+    },
+    "echoedUserMessage": {
+      "id": "fixture-value",
+      "conversationId": "fixture-value",
+      "messageSeq": "9007199254740993",
+      "kind": "user",
+      "content": "fixture-value",
+      "visibleToUser": false,
+      "createdAt": "2026-10-04T03:00:00Z",
+      "clientMessageId": "mobile-message-001"
+    },
+    "createTurnWithEcho": {
+      "text": "fixture prompt",
+      "clientMessageId": "mobile-message-001",
+      "executionPolicyId": "inspect-1",
+      "projectId": null,
+      "clientMutationId": "mutation-001"
+    },
+    "filteredEventSequences": [
+      "4",
+      "9"
     ]
   }
 }

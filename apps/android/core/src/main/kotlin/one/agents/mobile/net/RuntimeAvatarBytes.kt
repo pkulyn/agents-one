@@ -10,7 +10,7 @@ import one.agents.mobile.contract.validateMobileSchema
 
 data class RuntimeAvatarBytes(val mime: String, val bytes: ByteArray)
 
-internal fun verifyRuntimeAvatar(raw: JsonElement, runtimeId: String, avatarId: String): RuntimeAvatarBytes {
+fun verifyRuntimeAvatar(raw: JsonElement, runtimeId: String, avatarId: String): RuntimeAvatarBytes {
     try {
         validateMobileSchema("RuntimeAvatar", raw)
         val value = Json.decodeFromJsonElement<RuntimeAvatar>(raw)

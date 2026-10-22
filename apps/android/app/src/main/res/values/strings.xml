@@ -1,12 +1,10 @@
 <resources>
     <string name="task_agent">Agent</string>
     <string name="task_choose_agent">Choose an agent</string>
-    <string name="task_mode">Execution permission</string>
+    <string name="task_mode">Execution permissions</string>
     <string name="task_analysis">Conversation and analysis</string>
     <string name="task_execute">Execute in project</string>
-    <string name="task_auto">Automatic</string>
-    <string name="task_full_access">Full access</string>
-    <string name="task_permission_hint">Automatic is selected by default. Full access is an explicit choice.</string>
+    <string name="task_permission_hint">Uses this agent’s existing desktop permissions. Project execution requires a project.</string>
     <string name="task_selection_unavailable">This selection is unavailable. Choose another agent, project or mode.</string>
     <string name="policy_runtime_unavailable">Agent unavailable</string>
     <string name="policy_project">Project: %1$s</string>
@@ -128,6 +126,7 @@
     <string name="offline">Offline</string>
     <string name="operations">Recent operations</string>
     <string name="accepted_hint">Accepted means received by the Owner. Check the receipt for completion.</string>
+    <string name="receipt_refresh_failed">Receipt status could not be refreshed. Try again.</string>
     <string name="disconnect">Forget this connection</string>
     <string name="revoke">Revoke this device</string>
     <string name="demo">Preview with sample data</string>
@@ -211,7 +210,7 @@
     <string name="options_expanded">Expanded</string>
     <string name="options_collapsed">Collapsed</string>
     <string name="interval_input">Use interval input</string>
-    <string name="choose_owner_space">Choose Owner and space</string>
+    <string name="choose_owner_space">Switch execution device</string>
     <string name="current_space">Space: %1$s</string>
     <string name="source_owner_id">Owner ID: %1$s</string>
     <string name="selected_source">Current source</string>
@@ -236,7 +235,7 @@
     <string name="error_request_id">Request ID: %1$s</string>
     <string name="c_search_conversations">Search conversations or tasks</string>
     <string name="c_search_schedules">Search schedules</string>
-    <string name="c_recent">Recently updated · Personal space</string>
+    <string name="c_recent">Recently updated</string>
     <string name="c_personal_space">Personal space</string>
     <string name="c_create_send">Create and send task</string>
     <string name="c_next_order">Next scheduled run</string>
@@ -249,9 +248,9 @@
     <string name="c_device_permission">This device access</string>
     <string name="c_paired_device">Paired desktop</string>
     <string name="c_privacy">Storage and privacy</string>
-    <string name="c_no_tasks">No tasks stored on phone</string>
+    <string name="c_no_tasks">Encrypted task copy</string>
     <string name="c_preferences">Preferences</string>
-    <string name="c_privacy_body">Conversations, tasks and schedules are saved on your desktop or server. This app stores connection credentials and preferences. Displayed task data and unsent drafts remain in memory; downloaded files are saved only when you explicitly export them.</string>
+    <string name="c_privacy_body">Your desktop or server remains authoritative. Recently viewed conversations and schedules are kept in encrypted local storage for offline reading. Unsent drafts remain in memory. Downloads are saved only when you export them.</string>
     <string name="c_all">All</string>
     <string name="c_paired">Paired</string>
     <string name="c_you">You</string>
@@ -273,4 +272,20 @@
     <string name="run_kind_mcp">MCP</string>
     <string name="run_kind_terminal">Terminal</string>
     <string name="run_kind_workspace">Workspace</string>
+    <string name="cache_copy_saved">Showing the saved copy while checking with Owner.</string>
+    <string name="cache_unavailable">Encrypted on-device cache is unavailable; only online data is shown.</string>
+    <string name="cache_loading">Checking with Owner…</string>
+    <string name="owner_offline_read_only">Local records · Offline, read only</string>
+    <string name="owner_offline_notice">Desktop offline · Saved content is available</string>
+    <string name="ui_projects">Projects</string>
+    <string name="ui_permission_auto">Automatic</string>
+    <string name="ui_permission_readonly">Read only</string>
+    <string name="ui_permission_full">Full access</string>
+    <string name="ui_thinking">Thinking</string>
+    <string name="ui_tools_count">%1$d tools called</string>
+    <string name="ui_stop">Stop</string>
+    <string name="ui_default_model">Default model</string>
+    <string name="ui_system_unknown">System not provided</string>
+    <string name="ui_computer_name">Computer name</string>
+    <string name="error_sync_temporarily_unavailable">Refresh is temporarily unavailable. Please retry shortly.</string>
 </resources>

@@ -62,7 +62,7 @@ class MobileScheduleEditorWorkflowTest {
     private fun connect(client:Client){ui.runOnUiThread{
         fun field(name:String,value:Any){MobileViewModel::class.java.getDeclaredField(name).apply{isAccessible=true}.set(model,value)}
         field("client",client);field("token","fake-token");field("credentials",Credentials("phone-1","fake-token","2099-01-01T00:00:00Z","fake-refresh","2099-01-01T00:00:00Z","1"));model.selectOwner(owner)
-    };waitFor{!model.state.value.busy&&model.state.value.owner!=null}
+    };waitFor{!model.state.value.busy&&!model.state.value.ownerDataRefreshing&&model.state.value.owner!=null}
         check(model.state.value.error==null){"Bootstrap failed: ${model.state.value.error}; reads=${client.reads}; runtimes=${model.state.value.runtimes.size}; policies=${model.state.value.policies.size}"}
         ui.onAllNodesWithText("Schedules").onLast().performClick()
     }
@@ -99,6 +99,7 @@ class MobileScheduleEditorWorkflowTest {
     // @lat: [[mobile-data#Mobile data#Android advanced edit conflict preserves original draft]]
     @Test fun realEditRetainsOriginalCronAndRevisionAndShowsConflictInsideDialog(){
         val client=Client().apply{editing=true};connect(client)
+        ui.onNodeWithTag("schedule-row:original-plan").performScrollTo().performClick();waitFor{!model.state.value.busy&&model.state.value.viewedSchedule!=null}
         ui.onNodeWithText("Edit").performScrollTo().assertIsDisplayed().performClick();waitFor{!model.state.value.busy&&(model.state.value.selectedSchedule!=null||model.state.value.error!=null)}
         check(model.state.value.error==null){"Edit failed: ${model.state.value.error}; reads=${client.reads}"}
         ui.onNodeWithText("Timeout in seconds").assertDoesNotExist()
@@ -169,10 +170,10 @@ class MobileScheduleEditorWorkflowTest {
         ui.activityRule.scenario.recreate()
         check(ui.activity.resources.configuration.fontScale==2f)
         val client=Client();client.editing=true
-        client.listActions=listOf("read","edit","pause","trigger")
+        client.listActions=listOf("read","edit","pause","trigger");client.detail=original.copy(allowedActions=client.listActions)
         connect(client);ui.runOnUiThread{model.language(language)};waitFor{model.state.value.language==language}
         val labels=if(language=="zh-CN")listOf("编辑","暂停计划","立即运行一次") else listOf("Edit","Pause schedule","Run once")
-        if(language=="en") ui.onNodeWithText("Search schedules").performTextInput("Unsubmitted search draft")
+        ui.onNodeWithTag("schedule-row:original-plan").performScrollTo().performClick();waitFor{!model.state.value.busy&&model.state.value.viewedSchedule!=null}
         val density=ui.activity.resources.displayMetrics.density
         check(ui.onNode(hasScrollToIndexAction()).fetchSemanticsNode().boundsInRoot.height >= 48*density) { "Schedule viewport too short for a touch target" }
         labels.forEach {label->
@@ -186,11 +187,7 @@ class MobileScheduleEditorWorkflowTest {
             println("native-action-layout label=$label metrics=${layouts.map { listOf(it.size, it.multiParagraph.width, it.multiParagraph.height, it.lineCount) }}")
             check(layouts.size==1 && layouts.single().let { layout -> layout.lineCount <= 2 && layout.multiParagraph.height <= layout.size.height + 1f && (0 until layout.lineCount).all { line -> !layout.isLineEllipsized(line) && layout.getLineRight(line) <= layout.size.width + 1f && layout.getLineLeft(line) >= -1f } }){"$label text clipped at 200%: layouts=${layouts.size}, metrics=${layouts.map { listOf(it.size, it.didOverflowWidth, it.didOverflowHeight, it.lineCount, it.layoutInput.constraints) }}"}
         }
-        if(language=="en") {
-            ui.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
-            ui.onNodeWithText("Unsubmitted search draft").assertIsDisplayed()
-            check(model.state.value.scheduleQuery.isEmpty() && client.previews.isEmpty())
-        }
+        check(model.state.value.scheduleQuery.isEmpty() && client.previews.isEmpty())
         ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(labels.last()) and hasClickAction())
         ui.onNode(hasText(labels.last()) and hasClickAction()).performScrollTo().performTouchInput{click()}
         ui.onNode(hasText(if(language=="zh-CN")"确认" else "Confirm") and hasAnyAncestor(isDialog())).assertIsDisplayed()

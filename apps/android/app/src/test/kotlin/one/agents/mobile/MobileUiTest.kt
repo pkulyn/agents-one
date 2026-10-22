@@ -83,11 +83,11 @@ class MobileUiTest {
     @Test fun sampleSearchFiltersAndClearingRestoresWithoutOwner() {
         ui.runOnUiThread { ViewModelProvider(ui.activity)[MobileViewModel::class.java].demo() }
         ui.onNodeWithTag("list-search").performTextInput("本周")
-        ui.onNodeWithContentDescription("Search").assertIsEnabled().performClick()
+        ui.onNodeWithTag("list-search").performImeAction()
         ui.onNodeWithText("本周项目进度").assertIsDisplayed()
         ui.onNodeWithText("移动端实施契约").assertDoesNotExist()
         ui.onNodeWithTag("list-search").performTextClearance()
-        ui.onNodeWithContentDescription("Search").performClick()
+        ui.onNodeWithTag("list-search").performImeAction()
         ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("移动端实施契约"))
         ui.onNodeWithText("移动端实施契约").assertIsDisplayed()
         ui.runOnUiThread { check(ViewModelProvider(ui.activity)[MobileViewModel::class.java].state.value.error == null) }

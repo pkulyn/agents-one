@@ -53,7 +53,7 @@ class MobileConversationManagementTest {
     }
     @Before fun reset() { ui.runOnUiThread { model = ViewModelProvider(ui.activity)[MobileViewModel::class.java]; model.forget(); model.language("en") } }
     private fun waitFor(condition: () -> Boolean) = ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50)); condition() }
-    private fun perform(block: () -> Unit) { ui.runOnUiThread(block); waitFor { !model.state.value.busy } }
+    private fun perform(block: () -> Unit) { ui.runOnUiThread(block); waitFor { !model.state.value.busy && !model.state.value.ownerDataRefreshing } }
     private fun connect(client: Client) {
         ui.runOnUiThread {
             fun field(name: String, value: Any) { MobileViewModel::class.java.getDeclaredField(name).apply { isAccessible = true }.set(model, value) }
