@@ -5,6 +5,7 @@ import {
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promisify } from "util";
+import { StringDecoder } from "node:string_decoder";
 import { homedir } from "os";
 import { delimiter, dirname, extname, join, relative, resolve } from "path";
 import { createHash, randomUUID } from "crypto";
@@ -152,6 +153,31 @@ function redact(value: string): string {
   return value.replace(SECRET_VALUE, "$1[redacted]");
 }
 
+/** Binary input echoes are not output and must not evict the final JSON frame. */
+// @lat: [[runtime-chat#Pi attachment output retention]]
+export function piOutputFrame(line: string): string {
+  try {
+    const frame = JSON.parse(line);
+    if (frame.type === "agent_end" && Array.isArray(frame.messages)) {
+      frame.messages = frame.messages.filter(
+        (message: unknown) => record(message) && message.role === "assistant",
+      );
+    }
+    return JSON.stringify(frame, (_key, value) => {
+      if (record(value) && value.type === "image") {
+        return {
+          type: "image",
+          mimeType: value.mimeType,
+          data: "[input omitted]",
+        };
+      }
+      return value;
+    });
+  } catch {
+    return line;
+  }
+}
+
 function appendCapped(current: string, next: string): string {
   const merged = `${current}${redact(next)}`;
   return merged.length <= MAX_OUTPUT ? merged : merged.slice(-MAX_OUTPUT);
@@ -209,7 +235,12 @@ function configuredProbeWorkspace(config: PiRuntimeConfig): string | undefined {
 }
 
 function safeWorktreePath(profile: string | undefined, id: string): string {
-  const root = resolve(agentsOneProfileHome(profile), "desktop", "worktrees", "pi");
+  const root = resolve(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "worktrees",
+    "pi",
+  );
   const target = resolve(root, id);
   if (relative(root, target).startsWith(".."))
     throw new Error("Invalid worktree path.");
@@ -224,7 +255,12 @@ function sessionsRoot(profile?: string): string {
 }
 
 function conversationCwd(profile?: string): string {
-  const root = resolve(agentsOneProfileHome(profile), "desktop", "runtime-chat", "pi");
+  const root = resolve(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "runtime-chat",
+    "pi",
+  );
   mkdirSync(root, { recursive: true });
   return root;
 }
@@ -833,7 +869,11 @@ function piReadOnlyExtension(
 ): string {
   const source = piReadOnlyExtensionSource(mode);
   const digest = createHash("sha256").update(source).digest("hex").slice(0, 16);
-  const directory = resolve(agentsOneProfileHome(profile), "desktop", "pi-permissions");
+  const directory = resolve(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "pi-permissions",
+  );
   mkdirSync(directory, { recursive: true });
   const file = join(directory, `read-only-${digest}.mjs`);
   // Generated code is Main-owned and contains no provider/user configuration.
@@ -918,7 +958,23 @@ export async function startPiProcess(
     output = appendCapped(output, safe);
     onOutput(safe);
   };
-  child.stdout?.on("data", (data: Buffer) => recordOutput(data.toString()));
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  const consume = (value: string): void => {
+    pending += value;
+    let newline = pending.indexOf("\n");
+    while (newline >= 0) {
+      recordOutput(piOutputFrame(pending.slice(0, newline)) + "\n");
+      pending = pending.slice(newline + 1);
+      newline = pending.indexOf("\n");
+    }
+  };
+  child.stdout?.on("data", (data: Buffer) => consume(decoder.write(data)));
+  child.stdout?.on("end", () => {
+    consume(decoder.end());
+    if (pending) recordOutput(piOutputFrame(pending) + "\n");
+    pending = "";
+  });
   child.stderr?.on("data", (data: Buffer) => recordOutput(data.toString()));
 
   const completion = new Promise<PiProcessResult>((resolveResult) => {

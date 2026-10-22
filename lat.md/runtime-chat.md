@@ -221,3 +221,19 @@ OpenCode reports its native session ID immediately after creation or restore, be
 OpenCode inherits an enabled Windows manual proxy in its child process when no explicit CLI proxy is set, preventing direct-connection timeouts on systems whose desktop networking already uses a proxy.
 
 [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeProxyEnvironment]] preserves explicit proxy and bypass variables and existing permission settings. A bounded read-only HKCU query supplies manual proxy routes for OpenCode probes and tasks; provider files, Windows settings and other runtimes are untouched. Loopback bypass keeps ACP and local model endpoints reachable. Tests cover disabled, invalid, protocol-specific and explicitly overridden settings.
+
+## Pi attachment output retention
+
+Pi input image echoes must never evict a completed assistant answer from the bounded Runtime output.
+
+[[src/main/pi-runtime.ts#piOutputFrame]] removes image payloads from JSONL output and retains assistant messages in the terminal agent_end snapshot. UTF-8 decoding and complete-line framing happen before redaction, buffering and Main callbacks, preserving parseable final messages across process chunks. The original staged input remains intact; binary data is input evidence rather than conversation output. [[tests/pi-attachment-output.test.ts]] reproduces a multi-megabyte terminal echo and split Chinese UTF-8 bytes through a real subprocess and validates the same final-answer summary used by chat.
+
+## OpenCode attachment transport
+
+OpenCode receives each explicitly attached file through ACP content blocks backed by validated per-task copies, on both new and resumed sessions.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] reuses input staging and sends images as image blocks, UTF-8 text as embedded resources, and documents as file resource links. A manifest names only staged copies and the native reader can open those exact files. Main retains input hashes and metadata on the Run without publishing inputs as output artifacts or changing workspace permissions. ACP process fixtures verify contents from staged paths; the Main regression checks dispatch, completion, input evidence and durable reply rendering.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeWindowsEnvironment]] normalizes launcher-escaped Windows path variables only in the child environment and supplies standard executable suffixes if PATHEXT is absent. Explicit suffixes, proxy settings, permissions and unrelated environment values remain intact; provider and OS configuration are not rewritten.
+
+When OpenCode has no explicit shell override, [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeShellEnvironment]] probes the installed Windows shell with a bounded no-profile command. A bundled pwsh that aborts on unsupported CET is skipped in favor of a working Windows PowerShell or Git Bash. The choice is process-local, preserves an explicit SHELL, and leaves tool permission checks intact.
