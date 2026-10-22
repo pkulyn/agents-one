@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
+import { agentsOneProfileHome } from "./agents-one-data-root";
+import { getActiveProfileNameSync, safeWriteFile } from "./utils";
 import type {
   AgentRuntimeEvent,
   AgentRuntimeEventType,
@@ -46,9 +47,10 @@ const RUNTIME_EVENT_TYPES = new Set<AgentRuntimeEventType>([
   "timed_out",
 ]);
 
+// @lat: [[runtime-chat#Profile-scoped conversation history storage]]
 function storeFilePath(profile?: string): string {
   return join(
-    profileHome(profile || getActiveProfileNameSync()),
+    agentsOneProfileHome(profile || getActiveProfileNameSync()),
     "desktop",
     "runtime-conversations.json",
   );
@@ -56,7 +58,7 @@ function storeFilePath(profile?: string): string {
 
 function quickChatStoreFilePath(profile?: string): string {
   return join(
-    profileHome(profile || getActiveProfileNameSync()),
+    agentsOneProfileHome(profile || getActiveProfileNameSync()),
     "desktop",
     "quick-chats.json",
   );
