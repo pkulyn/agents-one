@@ -24,6 +24,8 @@ The native sidebar scrollbar is hidden to avoid layout shifts. [[src/renderer/sr
 
 Workspace-linked conversations are grouped under project rows so repository chats stay together without hiding ordinary chats.
 
+Project ids are grouping keys; the visible label comes from the registered project name. [[src/main/project-folders.ts#listProjectWorkspaceCapabilities]] reads the registry below the app-owned profile directory resolved by [[src/main/agents-one-data-root.ts#agentsOneProfileHome]]. If that file is absent, the old Hermes-root registry remains a read-only fallback; edits write to the app-owned profile file and leave the legacy file intact. A missing capability list therefore must not require changing project ids or conversation records.
+
 [[src/main/session-cache.ts#syncSessionCache]] attaches each row's context folder in one batched [[src/main/session-context-folder-store.ts#getSessionContextFolders]] read and persists `contextFolder` into the `sessions.json` cache. [[src/main/session-cache.ts#listCachedSessions]] stays a DB-free cache read — it returns the persisted `contextFolder` without re-querying the store. The sidebar groups rows with a `contextFolder` under a Projects section by folder basename, while rows without one remain under Chats.
 
 When [[src/renderer/src/screens/Chat/Chat.tsx#Chat]] saves a session context folder, it emits a renderer event that [[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] uses to force-refresh the cache. This keeps project grouping visible immediately after a workspace is linked.
