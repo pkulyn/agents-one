@@ -99,8 +99,8 @@ class MobileScheduleEditorWorkflowTest {
     // @lat: [[mobile-data#Mobile data#Android advanced edit conflict preserves original draft]]
     @Test fun realEditRetainsOriginalCronAndRevisionAndShowsConflictInsideDialog(){
         val client=Client().apply{editing=true};connect(client)
-        ui.onNodeWithTag("schedule-row:original-plan").performScrollTo().performClick();waitFor{!model.state.value.busy&&model.state.value.viewedSchedule!=null}
-        ui.onNodeWithText("Edit").performScrollTo().assertIsDisplayed().performClick();waitFor{!model.state.value.busy&&(model.state.value.selectedSchedule!=null||model.state.value.error!=null)}
+        ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("schedule-row:original-plan"));ui.onNodeWithTag("schedule-row:original-plan").performClick();waitFor{!model.state.value.busy&&model.state.value.viewedSchedule!=null}
+        ui.onNodeWithTag("schedule-history").performScrollToNode(hasText("Edit"));ui.onNodeWithText("Edit").assertIsDisplayed().performClick();waitFor{!model.state.value.busy&&(model.state.value.selectedSchedule!=null||model.state.value.error!=null)}
         check(model.state.value.error==null){"Edit failed: ${model.state.value.error}; reads=${client.reads}"}
         ui.onNodeWithText("Timeout in seconds").assertDoesNotExist()
         ui.onNodeWithText("Advanced options").performScrollTo().performClick()
@@ -173,7 +173,7 @@ class MobileScheduleEditorWorkflowTest {
         client.listActions=listOf("read","edit","pause","trigger");client.detail=original.copy(allowedActions=client.listActions)
         connect(client);ui.runOnUiThread{model.language(language)};waitFor{model.state.value.language==language}
         val labels=if(language=="zh-CN")listOf("编辑","暂停计划","立即运行一次") else listOf("Edit","Pause schedule","Run once")
-        ui.onNodeWithTag("schedule-row:original-plan").performScrollTo().performClick();waitFor{!model.state.value.busy&&model.state.value.viewedSchedule!=null}
+        ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("schedule-row:original-plan"));ui.onNodeWithTag("schedule-row:original-plan").performClick();waitFor{!model.state.value.busy&&model.state.value.viewedSchedule!=null}
         val density=ui.activity.resources.displayMetrics.density
         check(ui.onNode(hasScrollToIndexAction()).fetchSemanticsNode().boundsInRoot.height >= 48*density) { "Schedule viewport too short for a touch target" }
         labels.forEach {label->

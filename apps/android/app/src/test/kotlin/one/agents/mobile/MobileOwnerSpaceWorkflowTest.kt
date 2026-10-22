@@ -77,7 +77,7 @@ class MobileOwnerSpaceWorkflowTest {
         check(client.reads.drop(latest).all{it.binding==binding(third)})
         check(client.reads.drop(latest).filter{it.suffix==listOf("conversations")||it.suffix==listOf("schedules")}.all{it.query.isEmpty()})
         check(model.state.value.conversations.single().id=="conversation-owner-b-space-a"&&model.state.value.schedules.single().id=="schedule-owner-b-space-a")
-        check(model.state.value.owner?.spaceId == "space-a");ui.onAllNodesWithText("Schedules").onLast().performClick();ui.onNodeWithText("Original owner-b/space-a plan").assertIsDisplayed()
+        check(model.state.value.owner?.spaceId == "space-a");ui.onAllNodesWithText("Schedules").onLast().performClick();ui.onNodeWithTag("category:paused").performClick();ui.onNodeWithText("Original owner-b/space-a plan").assertIsDisplayed()
     }
     // @lat: [[mobile-data#Mobile data#Android failed source selection retains original authority]]
     @Test fun failedBootstrapDoesNotChangeHeaderOrReplaceOriginalRecords(){
