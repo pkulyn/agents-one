@@ -5,4 +5,7 @@ dependencyResolutionManagement {
 }
 rootProject.name = "AgentsOneAndroid"
 include(":core")
-if (!providers.gradleProperty("coreOnly").isPresent) include(":app")
+if (!providers.gradleProperty("coreOnly").isPresent) {
+    include(":app")
+    include(":local")
+}

@@ -54,30 +54,30 @@ class MobileOwnerSpaceWorkflowTest {
     }
     @Before fun reset(){ui.runOnUiThread{model=ViewModelProvider(ui.activity)[MobileViewModel::class.java];model.forget();model.language("en")}}
     private fun waitFor(condition:()->Boolean)=ui.waitUntil(10000){Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50));condition()}
-    private fun perform(block:()->Unit){ui.runOnUiThread(block);waitFor{!model.state.value.busy}}
+    private fun perform(block:()->Unit){ui.runOnUiThread(block);waitFor{!model.state.value.busy && !model.state.value.ownerDataRefreshing}}
     private fun connect(client:Client){ui.runOnUiThread{
         fun field(name:String,value:Any){MobileViewModel::class.java.getDeclaredField(name).apply{isAccessible=true}.set(model,value)}
         field("client",client);field("token","fake-token");field("credentials",Credentials("phone-1","fake-token","2099-01-01T00:00:00Z","fake-refresh","2099-01-01T00:00:00Z","1"))
     };perform{model.selectOwner(first)};perform{model.refreshConnection()};check(model.state.value.error==null&&model.state.value.owners.size==3)}
-    private fun choose(source:OwnerSpace){ui.onNodeWithTag("owner-space-selector").performClick();ui.onNodeWithTag("owner-space:${source.ownerId}:${source.spaceId}").performScrollTo().performClick()}
+    private fun choose(source:OwnerSpace){ui.onAllNodesWithText("Account").onLast().performClick();ui.onNodeWithText("Switch execution device").performScrollTo().performClick();ui.onNodeWithTag("owner-space:${source.ownerId}:${source.spaceId}").performScrollTo().performClick()}
     // @lat: [[mobile-data#Mobile data#Android real source change clears old list binding]]
     @Test fun actualListSelectorSwitchesSpaceAndSameNameOwnerWithOriginalBoundReads(){
         val client=Client();connect(client)
         perform{model.selectListFilters(MobileListSelection(state="active"),false)}
         perform{model.selectListFilters(MobileListSelection(state="paused"),true)}
         perform{model.search("Original query",false)}
-        ui.onNodeWithText("Space: space-a").assertIsDisplayed()
-        choose(second);waitFor{!model.state.value.busy&&model.state.value.owner?.spaceId=="space-b"}
+        check(model.state.value.owner?.spaceId == "space-a")
+        choose(second);waitFor{!model.state.value.busy&&!model.state.value.ownerDataRefreshing&&model.state.value.owner?.spaceId=="space-b"}
         check(model.state.value.conversationSelection==MobileListSelection()&&model.state.value.scheduleSelection==MobileListSelection()&&model.state.value.conversationQuery.isEmpty())
         check(model.state.value.conversations.single().id=="conversation-owner-a-space-b"&&model.state.value.schedules.single().id=="schedule-owner-a-space-b")
-        ui.onNodeWithText("Space: space-b").assertIsDisplayed()
-        ui.onAllNodesWithText("Schedules").onLast().performClick();ui.onNodeWithText("Space: space-b").assertIsDisplayed()
+        check(model.state.value.owner?.spaceId == "space-b")
+        ui.onAllNodesWithText("Schedules").onLast().performClick();check(model.state.value.owner?.spaceId == "space-b")
         choose(third);waitFor{!model.state.value.busy&&model.state.value.owner?.ownerId=="owner-b"}
         val latest=client.reads.indexOfLast{it.suffix==listOf("bootstrap")}
         check(client.reads.drop(latest).all{it.binding==binding(third)})
         check(client.reads.drop(latest).filter{it.suffix==listOf("conversations")||it.suffix==listOf("schedules")}.all{it.query.isEmpty()})
         check(model.state.value.conversations.single().id=="conversation-owner-b-space-a"&&model.state.value.schedules.single().id=="schedule-owner-b-space-a")
-        ui.onNodeWithText("Space: space-a").assertIsDisplayed();ui.onNodeWithText("Original owner-b/space-a plan").assertIsDisplayed()
+        check(model.state.value.owner?.spaceId == "space-a");ui.onAllNodesWithText("Schedules").onLast().performClick();ui.onNodeWithText("Original owner-b/space-a plan").assertIsDisplayed()
     }
     // @lat: [[mobile-data#Mobile data#Android failed source selection retains original authority]]
     @Test fun failedBootstrapDoesNotChangeHeaderOrReplaceOriginalRecords(){
@@ -85,7 +85,7 @@ class MobileOwnerSpaceWorkflowTest {
         val originalConversations=model.state.value.conversations;val originalSchedules=model.state.value.schedules
         choose(second);waitFor{!model.state.value.busy&&model.state.value.error=="owner_offline"}
         check(model.state.value.owner==first&&model.state.value.conversations==originalConversations&&model.state.value.schedules==originalSchedules)
-        ui.onNodeWithText("Space: space-a").assertIsDisplayed();ui.onNodeWithText("Space: space-b").assertDoesNotExist()
+        check(model.state.value.owner?.spaceId == "space-a");ui.onNodeWithTag("owner-space-selector").assertDoesNotExist()
         check(client.reads.last()==Read(binding(second),listOf("bootstrap"),emptyMap()))
     }
 }

@@ -11,8 +11,8 @@ android {
         applicationId = "one.agents.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.1.4-dev"
+        versionCode = 13
+        versionName = "0.1.12-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
@@ -37,6 +37,7 @@ android {
 }
 dependencies {
     implementation(project(":core"))
+    implementation(project(":local"))
     implementation(platform("androidx.compose:compose-bom:2025.12.01"))
     implementation("androidx.activity:activity-compose:1.12.2")
     implementation("androidx.compose.material3:material3")

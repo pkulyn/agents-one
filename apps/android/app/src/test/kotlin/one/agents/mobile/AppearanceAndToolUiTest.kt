@@ -44,31 +44,31 @@ class AppearanceAndToolUiTest {
     }
     // @lat: [[mobile-data#Mobile data#Android tool summary transient expansion]]
     @Test fun toolIsCollapsedKeepsFullUpdatedBodyWhenExpandedAndResetsForNewSource() {
-        val row = mutableStateOf(Message("tool-1", "conversation-1", "1", messageRevision = "1", kind = "tool_summary", content = "Original **完整摘要** END", visibleToUser = true, createdAt = "2026-10-07T00:00:00Z"))
+        val row = mutableStateOf(Message(id = "tool-1", conversationId = "conversation-1", messageSeq = "1", messageRevision = "1", kind = "tool_summary", content = "Original **完整摘要** END", visibleToUser = true, createdAt = "2026-10-07T00:00:00Z"))
         val epoch = mutableStateOf("owner-1\u0000space-1\u0000epoch-1")
         ui.setContent { MaterialTheme { MessageBody(row.value, epoch.value) } }
         ui.onNodeWithText("Original 完整摘要 END").assertDoesNotExist()
-        ui.onNodeWithText("Show tool summary").performClick()
+        ui.onNodeWithText("Tool activity").performClick()
         ui.waitUntil(5_000) { ui.onAllNodesWithText("Original 完整摘要 END").fetchSemanticsNodes().isNotEmpty() }
         ui.runOnIdle { row.value = row.value.copy(content = "Updated **完整摘要** FINAL", messageRevision = "2") }
         ui.waitUntil(5_000) { ui.onAllNodesWithText("Updated 完整摘要 FINAL").fetchSemanticsNodes().isNotEmpty() }
-        ui.onNodeWithText("Hide tool summary").performClick()
+        ui.onNodeWithText("Tool activity").performClick()
         ui.onNodeWithText("Updated 完整摘要 FINAL").assertDoesNotExist()
-        ui.onNodeWithText("Show tool summary").performClick()
+        ui.onNodeWithText("Tool activity").performClick()
         ui.runOnIdle { epoch.value = "owner-2\u0000space-1\u0000epoch-1" }
-        ui.onNodeWithText("Show tool summary").assertIsDisplayed()
+        ui.onNodeWithText("Tool activity").assertIsDisplayed()
         ui.onNodeWithText("Updated 完整摘要 FINAL").assertDoesNotExist()
     }
     // @lat: [[mobile-data#Mobile data#Android Chinese tool and appearance labels]]
     @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun chineseControlsHaveTranslatedAppearanceAndToolActions() {
         ui.setContent { MaterialTheme { Column {
             AppearanceSelector("system") {}
-            MessageBody(Message("tool-1", "conversation-1", "1", messageRevision = "1", kind = "tool_summary", content = "原工具正文", visibleToUser = true, createdAt = "2026-10-07T00:00:00Z"), "epoch-1")
+            MessageBody(Message(id = "tool-1", conversationId = "conversation-1", messageSeq = "1", messageRevision = "1", kind = "tool_summary", content = "原工具正文", visibleToUser = true, createdAt = "2026-10-07T00:00:00Z"), "epoch-1")
         } } }
         ui.onNodeWithText("跟随系统").assertIsDisplayed()
         ui.onNodeWithText("浅色").assertIsDisplayed(); ui.onNodeWithText("深色").assertIsDisplayed()
-        ui.onNodeWithText("展开工具摘要").performClick()
+        ui.onNodeWithText("工具活动").performClick()
         ui.waitUntil(5_000) { ui.onAllNodesWithText("原工具正文").fetchSemanticsNodes().isNotEmpty() }
-        ui.onNodeWithText("收起工具摘要").assertIsDisplayed()
+        ui.onNodeWithText("工具活动").assertIsDisplayed()
     }
 }

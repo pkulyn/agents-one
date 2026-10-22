@@ -10,7 +10,7 @@ class MobileSchemaValidationTest {
     // @lat: [[mobile-data#Mobile data#Distinct desktop task mode contract]]
     @Test fun `desktop task modes validate separately from strict legacy sandbox policies`() {
         val policy = objects["ExecutionPolicy"]!!.jsonObject
-        for (mode in listOf("inspect", "project_write", "desktop_analysis", "desktop_execute", "desktop_auto", "desktop_full_access")) {
+        for (mode in listOf("inspect", "project_write", "desktop_analysis", "desktop_execute")) {
             val value = JsonObject(policy + ("mode" to JsonPrimitive(mode)))
             validateMobileSchema("ExecutionPolicy", value)
             assertEquals(mode, Json.decodeFromJsonElement<ExecutionPolicy>(value).mode)

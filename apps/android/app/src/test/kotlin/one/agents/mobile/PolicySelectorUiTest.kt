@@ -21,27 +21,69 @@ class PolicySelectorUiTest {
     private val policy = ExecutionPolicy("opaque-policy", "original-runtime", "original-project", "inspect", true, false, listOf("create", "advance"))
     private fun catalog(row: ExecutionPolicy = policy) = MobileState(runtimes = listOf(Runtime("original-runtime", "Original agent", "local", healthy = true, capabilities = emptyList(), allowedActions = listOf("read", "create"))), projects = listOf(Project("original-project", "Original project", listOf(row.id))), policies = listOf(row))
     private fun taskChoices() = listOf(
-        policy.copy(id = "desktop-task-analysis", projectId = null, mode = "desktop_analysis", unattendedApproved = true),
         policy.copy(id = "desktop-task-auto", projectId = null, mode = "desktop_auto", unattendedApproved = true),
-        policy.copy(id = "desktop-task-full", projectId = null, mode = "desktop_full_access", unattendedApproved = false, allowedActions = listOf("create", "advance")),
-        policy.copy(id = "desktop-task-project-analysis", mode = "desktop_analysis", unattendedApproved = true),
         policy.copy(id = "desktop-task-project-auto", mode = "desktop_auto", unattendedApproved = true),
-        policy.copy(id = "desktop-task-project-full", mode = "desktop_full_access", unattendedApproved = false, allowedActions = listOf("create", "advance")),
+        policy.copy(id = "desktop-task-project-analysis", mode = "desktop_analysis", unattendedApproved = true),
     )
+
+    // @lat: [[mobile-data#Mobile data#Android task creation without a project]]
+    @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun noProjectRemainsSubmittableForConversationAndSchedule() {
+        val noProject = policy.copy(id = "desktop-task-no-project", projectId = null, mode = "desktop_auto", unattendedApproved = true, allowedActions = listOf("create", "advance", "trigger"))
+        val withProject = noProject.copy(id = "desktop-task-with-project", projectId = "original-project")
+        val policies = listOf(withProject, noProject)
+        val state = catalog().copy(policies = policies)
+        assertSame(noProject, defaultTaskPolicy(policies, state).takeIf { it?.projectId == null })
+        val choice = mutableStateOf<ExecutionPolicy?>(withProject)
+        ui.setContent { MaterialTheme { Column {
+            val eligible = state.policies.filter { it.enforced && "create" in it.allowedActions && "advance" in it.allowedActions }
+            val current = currentPolicySelection(eligible, choice.value, state)
+            PolicySelector(eligible, state, current) { choice.value = it }
+            Button(onClick = {}, enabled = current != null) { Text("Create") }
+        } } }
+        ui.onNodeWithTag("task-project").performClick()
+        ui.onNodeWithText("无项目", useUnmergedTree = true).performClick()
+        assertSame(noProject, choice.value)
+        ui.onNodeWithText("Create").assertIsEnabled()
+        assertSame(noProject, currentPolicySelection(policies.filter { "trigger" in it.allowedActions }, choice.value, state))
+    }
+
+    @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun changingAgentThenRemovingProjectSelectsThatAgentsNoProjectPolicy() {
+        val initial = policy.copy(id = "desktop-task-original-project", mode = "desktop_auto", unattendedApproved = true)
+        val pi = policy.copy(id = "desktop-task-pi-no-project", runtimeId = "pi-runtime", projectId = null, mode = "desktop_auto", unattendedApproved = true)
+        val policies = listOf(initial, pi)
+        val state = catalog().copy(policies = policies, runtimes = catalog().runtimes + Runtime("pi-runtime", "Pi", "local", healthy = true, capabilities = emptyList(), allowedActions = listOf("read", "create")))
+        val choice = mutableStateOf<ExecutionPolicy?>(initial)
+        ui.setContent { MaterialTheme { Column {
+            val current = currentPolicySelection(policies, choice.value, state)
+            PolicySelector(policies, state, current) { choice.value = it }
+            Button(onClick = {}, enabled = current != null) { Text("Create") }
+        } } }
+        ui.onNodeWithTag("task-agent").performClick(); ui.onNodeWithText("Pi").performClick()
+        ui.onNodeWithTag("task-project").performClick(); ui.onNodeWithText("无项目", useUnmergedTree = true).performClick()
+        assertSame(pi, choice.value)
+        ui.onNodeWithText("Create").assertIsEnabled()
+    }
+    @Test fun sameBoundNoProjectPolicyUsesRefreshedCatalogObject() {
+        val old = policy.copy(id = "desktop-task-no-project", projectId = null, mode = "desktop_auto", unattendedApproved = true, allowedActions = listOf("create", "advance"))
+        val refreshed = old.copy(allowedActions = listOf("create", "advance", "trigger"))
+        val state = catalog().copy(policies = listOf(refreshed))
+        assertSame(refreshed, currentPolicySelection(state.policies, old, state))
+        assertNull(currentPolicySelection(listOf(refreshed.copy(runtimeId = "other-runtime")), old, state))
+    }
 
     // @lat: [[mobile-data#Mobile data#Android independent desktop task choices]]
     @Test fun choosesAgentProjectAndModeIndependentlyUsingOriginalCatalogObject() {
         val policies = taskChoices(); val state = catalog().copy(policies = policies)
         val choice = mutableStateOf<ExecutionPolicy?>(null)
         ui.setContent { MaterialTheme { Column { PolicySelector(policies, state, choice.value) { choice.value = it } } } }
-        ui.onNodeWithTag("task-agent").performClick(); ui.onNodeWithText("Original agent").performClick()
-        assertSame(policies[1], choice.value)
+        ui.onNodeWithTag("task-agent").performClick(); ui.onAllNodesWithText("Original agent").onLast().performClick()
+        assertSame(policies[0], choice.value)
         ui.onNodeWithTag("task-project").performClick(); ui.onNodeWithText("Original project").performClick()
-        assertSame(policies[4], choice.value)
-        ui.onNodeWithTag("task-mode").performClick(); ui.onNodeWithText("Full access").performClick()
-        assertSame(policies[5], choice.value)
-        ui.onNodeWithText("desktop-task-project-full").assertDoesNotExist()
-        ui.onNodeWithText("Full access").assertIsDisplayed()
+        assertSame(policies[1], choice.value)
+        ui.onNodeWithTag("task-mode").performClick(); ui.onNodeWithText("Read only").performClick()
+        assertSame(policies[2], choice.value)
+        ui.onNodeWithText("desktop-task-project-analysis").assertDoesNotExist()
+        ui.onNodeWithText("Read only").assertIsDisplayed()
     }
 
     // @lat: [[mobile-data#Mobile data#Android task choice invalidation and recovery]]
@@ -53,14 +95,23 @@ class PolicySelectorUiTest {
             PolicySelector(policies, state.value, current) { choice.value = it }
             Button(onClick = {}, enabled = current != null) { Text("Apply") }
         } } }
-        ui.onNodeWithText("自动").assertIsDisplayed(); ui.onNodeWithText("Apply").assertIsEnabled()
+        ui.onNodeWithText("只读").assertIsDisplayed(); ui.onNodeWithText("Apply").assertIsEnabled()
         ui.runOnIdle { state.value = state.value.copy(projects = emptyList()) }
         ui.onNodeWithText("Apply").assertIsNotEnabled()
         ui.onNodeWithTag("task-project").performClick(); ui.onNodeWithText("无项目", useUnmergedTree = true).performClick()
         assertNull(choice.value)
-        ui.onNodeWithTag("task-mode").performClick(); ui.onNodeWithText("对话与分析").performClick()
+        ui.onNodeWithTag("task-mode").performClick(); ui.onNodeWithText("自动").performClick()
         assertSame(policies[0], choice.value); ui.onNodeWithText("Apply").assertIsEnabled()
     }
+    // @lat: [[mobile-data#Mobile data#Android full access never defaults]]
+    @Test fun fullAccessRequiresExplicitChoiceAndNeverBecomesDefault() {
+        val full = policy.copy(id = "desktop-task-full", mode = "desktop_full_access")
+        assertNull(defaultTaskPolicy(listOf(full), catalog(full)))
+        val automatic = policy.copy(id = "desktop-task-auto", mode = "desktop_auto")
+        assertSame(automatic, defaultTaskPolicy(listOf(full, automatic), catalog().copy(policies = listOf(full, automatic))))
+        assertFalse(policyCatalogAvailable(full, catalog(full).copy(projects = emptyList())))
+    }
+
     // @lat: [[mobile-data#Mobile data#Android readable policy original identity]]
     @Test fun englishPolicyShowsOriginalNamesAndModeWhileSelectingOriginalObject() {
         var choice: ExecutionPolicy? = null

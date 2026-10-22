@@ -68,14 +68,47 @@ class CVisualUiTest {
             val flow = MobileViewModel::class.java.getDeclaredField("mutable").apply { isAccessible = true }.get(model) as kotlinx.coroutines.flow.MutableStateFlow<MobileState>
             val conversation = flow.value.conversations.first().copy(allowedActions = listOf("read", "advance", "manage"))
             flow.value = flow.value.copy(selected = conversation, messages = listOf(
-                one.agents.mobile.contract.Message("visual-user", conversation.id, "1", kind = "user", content = "请梳理本周项目进度，列出下一步。", visibleToUser = true, createdAt = "2026-10-08T08:00:00Z"),
-                one.agents.mobile.contract.Message("visual-assistant", conversation.id, "2", kind = "assistant", content = "## 本周进度\n\n- 对话与定时任务已接入桌面。\n- 下一步进行跨网络真机验证。", visibleToUser = true, createdAt = "2026-10-08T08:01:00Z")
+                one.agents.mobile.contract.Message(id = "visual-user", conversationId = conversation.id, messageSeq = "1", kind = "user", content = "请梳理本周项目进度，列出下一步。", visibleToUser = true, createdAt = "2026-10-08T08:00:00Z"),
+                one.agents.mobile.contract.Message(id = "visual-assistant", conversationId = conversation.id, messageSeq = "2", kind = "assistant", content = "## 本周进度\n\n- 对话与定时任务已接入桌面。\n- 下一步进行跨网络真机验证。", visibleToUser = true, createdAt = "2026-10-08T08:01:00Z")
             ))
             model.composerDraft("继续检查连接恢复流程")
         }
+        ui.waitUntil(5_000) {
+            ui.onAllNodesWithText("## 本周进度", substring = true).fetchSemanticsNodes().isEmpty() &&
+                ui.onAllNodesWithText("本周进度", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        ui.onNodeWithText("• 对话与定时任务已接入桌面。", substring = true).assertExists()
         capture("conversation-detail")
         ui.runOnUiThread { ViewModelProvider(ui.activity)[MobileViewModel::class.java].language("zh-CN") }
         capture("conversation-detail-zh")
+        ui.runOnUiThread {
+            val model = ViewModelProvider(ui.activity)[MobileViewModel::class.java]
+            @Suppress("UNCHECKED_CAST")
+            val flow = MobileViewModel::class.java.getDeclaredField("mutable").apply { isAccessible = true }.get(model) as kotlinx.coroutines.flow.MutableStateFlow<MobileState>
+            val conversation = flow.value.selected!!
+            val createdAt = "2026-10-08T08:02:00Z"
+            val run = one.agents.mobile.contract.Run(
+                runId = "visual-run", turnId = "visual-turn", conversationId = conversation.id,
+                runtimeId = conversation.runtimeId, status = "running", startedAt = createdAt,
+                lastRunEventSeq = "2", artifacts = emptyList(),
+                activity = listOf(
+                    one.agents.mobile.contract.RunActivity("visual-progress", "progress", "正在核对项目内容", createdAt),
+                    one.agents.mobile.contract.RunActivity("visual-tool", "tool_call", "", createdAt, toolName = "rg", toolKind = "terminal")
+                ),
+                allowedActions = listOf("cancel")
+            )
+            flow.value = flow.value.copy(selected = conversation.copy(activeRunIds = listOf(run.runId)), runs = listOf(run))
+        }
+        ui.onNodeWithText("正在核对项目内容").assertDoesNotExist()
+        ui.onNodeWithText("思考").performClick()
+        ui.onNodeWithText("1 次工具调用").performClick()
+        ui.onNodeWithText("正在核对项目内容").assertExists()
+        ui.onNodeWithText("rg").assertExists()
+        ui.onNodeWithText("当前对话正在运行，请等待完成或停止后再发送。", substring = true).assertDoesNotExist()
+        ui.onNodeWithText("执行状态").assertDoesNotExist()
+        ui.onNodeWithText("停止当前运行").assertDoesNotExist()
+        ui.onNodeWithContentDescription("发送").assertIsNotEnabled()
+        capture("conversation-detail-running-zh")
         ui.runOnUiThread { val model = ViewModelProvider(ui.activity)[MobileViewModel::class.java]; model.back() }
         capture("conversations-zh")
         ui.runOnUiThread { ViewModelProvider(ui.activity)[MobileViewModel::class.java].appearance("dark") }
