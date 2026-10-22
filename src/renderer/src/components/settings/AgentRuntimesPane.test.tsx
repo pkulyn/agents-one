@@ -398,62 +398,169 @@ describe("AgentRuntimesPane", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps web providers unavailable in a public build", async () => {
-    installHermesAPI(
+  // @lat: [[agent-onboarding#Agent Onboarding#Web agent opt-in]]
+  it("allows web onboarding while off, then enables configuration and saves without losing the draft", async () => {
+    const api = installHermesAPI(
+      [],
+      {},
+      { available: true, enabled: false, killSwitchActive: false },
+    );
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AgentRuntimesPane startNew embedded />);
+    await waitFor(() => expect(api.getWebAgentPolicyStatus).toHaveBeenCalled());
+    expect(
+      screen.queryByText("实验性网页 Provider（默认关闭）"),
+    ).not.toBeInTheDocument();
+    const web = screen.getByText("网页智能体").closest("button")!;
+    expect(web).toBeEnabled();
+    fireEvent.click(web);
+    expect(web).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.change(screen.getByLabelText("智能体 ID"), {
+      target: { value: "my-web-agent" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    const toggle = screen.getByRole("switch", { name: "网页智能体（实验性）" });
+    expect(toggle).toHaveAttribute("data-desktop-feature", "web-agent-opt-in");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByLabelText("网页 Provider")).not.toBeInTheDocument();
+    expect(api.setWebAgentPolicyEnabled).not.toHaveBeenCalled();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
+    expect(api.setWebAgentPolicyEnabled).toHaveBeenCalledWith(true, true);
+    fireEvent.change(screen.getByLabelText("网页 Provider"), {
+      target: { value: "grok" },
+    });
+    fireEvent.change(screen.getByLabelText("本地网页登录档案"), {
+      target: { value: "my-profile" },
+    });
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(toggle).toHaveAttribute("aria-checked", "false"),
+    );
+    expect(screen.queryByLabelText("网页 Provider")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/实验性网页 Provider 总开关已启用/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上一步" })).toBeInTheDocument();
+    fireEvent.click(toggle);
+    await screen.findByLabelText("网页 Provider");
+    expect(screen.getByLabelText("网页 Provider")).toHaveValue("grok");
+    expect(screen.getByLabelText("本地网页登录档案")).toHaveValue("my-profile");
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(api.saveAgentRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "my-web-agent",
+          kind: "web-agent",
+          config: expect.objectContaining({
+            webAgent: expect.objectContaining({
+              provider: "grok",
+              profileId: "my-profile",
+            }),
+          }),
+        }),
+      ),
+    );
+    confirmSpy.mockRestore();
+  });
+
+  it("keeps the web draft off when confirmation is cancelled or enabling fails", async () => {
+    const api = installHermesAPI(
+      [],
+      {},
+      { available: true, enabled: false, killSwitchActive: false },
+    );
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<AgentRuntimesPane />);
+    await openNewAgentWizard("web");
+    const toggle = screen.getByRole("switch", { name: "网页智能体（实验性）" });
+    fireEvent.click(toggle);
+    expect(api.setWebAgentPolicyEnabled).not.toHaveBeenCalled();
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    confirmSpy.mockReturnValue(true);
+    api.setWebAgentPolicyEnabled.mockRejectedValueOnce(
+      new Error("配置写入失败"),
+    );
+    fireEvent.click(toggle);
+    await screen.findByText("配置写入失败");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByLabelText("网页 Provider")).not.toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it("keeps the web type selectable during emergency disable but blocks configuration", async () => {
+    const api = installHermesAPI(
       [],
       {},
       {
         available: false,
         enabled: false,
-        killSwitchActive: false,
-        reasonCode: "public-build-disabled",
-        reason: "公开构建默认关闭网页 Provider；当前没有第三方书面自动化许可。",
+        killSwitchActive: true,
+        reasonCode: "emergency-disabled",
       },
     );
     render(<AgentRuntimesPane />);
-
+    await openNewAgentWizard("web");
     expect(
-      await screen.findByText(/公开构建默认关闭网页 Provider/),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "接入" }));
-    expect(screen.getByText("网页智能体").closest("button")).toBeDisabled();
+      screen.getByRole("switch", { name: "网页智能体（实验性）" }),
+    ).toBeDisabled();
+    expect(screen.queryByLabelText("网页 Provider")).not.toBeInTheDocument();
+    expect(api.setWebAgentPolicyEnabled).not.toHaveBeenCalled();
   });
 
-  it("requires risk confirmation and supports one-click web provider disable", async () => {
-    const api = installHermesAPI(
-      [],
-      {},
-      {
-        available: true,
-        enabled: false,
-        killSwitchActive: false,
+  it("shows the saved policy only inside web management and leaves local management free of the banner", async () => {
+    const runtime: AgentRuntimeDefinition = {
+      id: "saved-web",
+      name: "Saved Web",
+      kind: "web-agent",
+      location: "local",
+      enabled: true,
+      managed: "user",
+      config: {
+        agentTransport: "local-web",
+        webAgent: {
+          provider: "doubao",
+          profileId: "saved-profile",
+          adapterVersion: "1.0.0",
+          enabled: true,
+        },
       },
+    };
+    installHermesAPI([runtime]);
+    const view = render(
+      <AgentRuntimesPane embedded initialRuntimeId="saved-web" />,
     );
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(<AgentRuntimesPane />);
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "了解风险并启用" }),
+    expect(
+      await screen.findByRole("switch", { name: "网页智能体（实验性）" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByLabelText("本地网页登录档案")).toHaveValue(
+      "saved-profile",
     );
-    await waitFor(() => {
-      expect(api.setWebAgentPolicyEnabled).toHaveBeenCalledWith(true, true);
-      expect(
-        screen.getByRole("button", { name: "一键停用网页 Provider" }),
-      ).toBeInTheDocument();
-    });
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "一键停用网页 Provider" }),
+    expect(
+      screen.queryByText("实验性网页 Provider（默认关闭）"),
+    ).not.toBeInTheDocument();
+    view.unmount();
+    installHermesAPI([
+      {
+        ...runtime,
+        id: "codex-local",
+        name: "Codex",
+        kind: "codex",
+        config: { transport: "cli", executablePath: "codex" },
+      },
+    ]);
+    render(<AgentRuntimesPane embedded initialRuntimeId="codex-local" />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("名称")).toHaveValue("Codex"),
     );
-    await waitFor(() => {
-      expect(api.setWebAgentPolicyEnabled).toHaveBeenLastCalledWith(
-        false,
-        false,
-      );
-      expect(screen.getByText(/活动网页任务和窗口已关闭/)).toBeInTheDocument();
-    });
-    confirmSpy.mockRestore();
+    expect(
+      screen.queryByRole("switch", { name: "网页智能体（实验性）" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("web-agent-policy")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("实验性网页 Provider（默认关闭）"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a clear selection state, icon preview, and cancel action on step one", async () => {

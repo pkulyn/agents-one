@@ -1,3 +1,5 @@
+import { manageMobileConnection } from "../mobile-connection";
+import { registerMobileExecutionPolicyIpc } from "../mobile-control/execution-management-ipc";
 import {
   app,
   shell,
@@ -203,6 +205,7 @@ import {
   listRuntimeConversations,
   saveQuickChats,
   saveRuntimeConversation,
+  onRuntimeConversationChanged,
   updateRuntimeConversationTitle,
   clearRuntimeConversationWorkspace,
   clearRuntimeConversationWorkspaceId,
@@ -526,7 +529,23 @@ function resolveLibraryModelEntry(
   return matches.find((m) => norm(m.baseUrl) === target) ?? matches[0];
 }
 
+let unsubscribeConversationChanges: (() => void) | undefined;
 export function registerIpcHandlers(context: IpcContext): void {
+  unsubscribeConversationChanges?.();
+  unsubscribeConversationChanges = onRuntimeConversationChanged((change) => {
+    const window = context.getMainWindow();
+    if (window && !window.isDestroyed() && !window.webContents.isDestroyed())
+      window.webContents.send("runtime-conversation-changed", change);
+  });
+  ipcMain.handle("mobile-connection-manage", (event, profile, command) => {
+    if (
+      event.sender !== context.getMainWindow()?.webContents ||
+      event.senderFrame !== event.sender.mainFrame
+    )
+      throw Error("scope_denied");
+    return manageMobileConnection(profile, command);
+  });
+  registerMobileExecutionPolicyIpc(context.getMainWindow);
   const {
     activeRuns,
     getMainWindow,
@@ -2021,8 +2040,11 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     "save-runtime-conversation",
-    (_event, input: SaveRuntimeConversationInput) =>
-      saveRuntimeConversation(input),
+    (_event, input: SaveRuntimeConversationInput) => {
+      if (Object.hasOwn(input, "activeRuntimeRunOwner"))
+        throw Error("scope_denied");
+      return saveRuntimeConversation(input);
+    },
   );
 
   ipcMain.handle(

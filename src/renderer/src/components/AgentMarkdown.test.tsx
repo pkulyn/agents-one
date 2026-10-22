@@ -46,6 +46,21 @@ async function renderHighlighted(
 }
 
 describe("AgentMarkdown", () => {
+  it("renders extracted GFM tables as separate rows and columns", () => {
+    const markdown = [
+      "| 公司 | 日期 | 主要进展 |",
+      "| --- | --- | --- |",
+      "| OpenAI | 9 月 22 日 | 发布新模型 |",
+      "| Anthropic | 9 月 23 日 | 披露研究 |",
+    ].join("\n");
+    const { container } = render(<AgentMarkdown>{markdown}</AgentMarkdown>);
+
+    expect(container.querySelectorAll("table")).toHaveLength(1);
+    expect(container.querySelectorAll("tr")).toHaveLength(3);
+    expect(container.querySelectorAll("th")).toHaveLength(3);
+    expect(container.querySelectorAll("tbody td")).toHaveLength(6);
+  });
+
   it("renders box-drawing tree diagrams as plain text, even with the highlighter loaded", async () => {
     // Control first: prove highlighting works in this environment, and leave
     // the highlighter module loaded so the tree block below would use Prism

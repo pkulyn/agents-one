@@ -483,9 +483,13 @@ function toolSummary(event: AgentEventStreamEvent): string {
 export function agentEventTimelineEntry(
   event: AgentEventStreamEvent,
 ): AgentEventTimelineEntry | undefined {
+  const reasoningText =
+    event.data?.reasoningSummary ||
+    event.data?.summary ||
+    (event.type === "reasoning.summary" ? event.data?.text : undefined);
   const summary =
     event.type === "reasoning.summary"
-      ? event.data?.reasoningSummary || event.data?.summary
+      ? reasoningText
       : event.type.startsWith("tool.") || event.type.startsWith("workspace.")
         ? toolSummary(event)
         : event.type === "artifact.created"
@@ -515,7 +519,11 @@ export function agentEventTimelineEntry(
                   ? "message"
                   : "progress";
   const detail =
-    event.data?.detail || event.data?.error || event.data?.code || undefined;
+    (event.type === "reasoning.summary" ? reasoningText : undefined) ||
+    event.data?.detail ||
+    event.data?.error ||
+    event.data?.code ||
+    undefined;
   return {
     id: `provider-event-${event.id}`,
     type,

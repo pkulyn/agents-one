@@ -1,6 +1,7 @@
+import { retainRuntimeEvents } from "../shared/runtime-event-retention";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
+import { getActiveProfileNameSync, agentsOneProfileHome, safeWriteFile } from "./utils";
 import type {
   AgentRuntimeEvent,
   AgentRuntimeEventType,
@@ -8,6 +9,7 @@ import type {
 } from "../shared/agent-runtimes";
 import type {
   RuntimeConversation,
+  RuntimeConversationChange,
   RuntimeConversationMessage,
   RuntimeConversationSummary,
   ConversationBranchRef,
@@ -21,11 +23,12 @@ interface RuntimeConversationData {
   conversations: RuntimeConversation[];
 }
 
-const MAX_TITLE_LENGTH = 120;
+const MAX_TITLE_LENGTH = 160;
 const MAX_MESSAGE_LENGTH = 200_000;
 const MAX_MESSAGES = 500;
 const MAX_EXECUTION_EVENTS = 80;
 const MAX_EVENT_SUMMARY_LENGTH = 800;
+const MAX_EVENT_DETAIL_LENGTH = 16_000;
 const MAX_AVATAR_DATA_URL_LENGTH = 700_000;
 const MAX_WORKSPACE_LENGTH = 4096;
 const MAX_QUICK_CHATS = 40;
@@ -47,7 +50,7 @@ const RUNTIME_EVENT_TYPES = new Set<AgentRuntimeEventType>([
 
 function storeFilePath(profile?: string): string {
   return join(
-    profileHome(profile || getActiveProfileNameSync()),
+    agentsOneProfileHome(profile || getActiveProfileNameSync()),
     "desktop",
     "runtime-conversations.json",
   );
@@ -55,13 +58,19 @@ function storeFilePath(profile?: string): string {
 
 function quickChatStoreFilePath(profile?: string): string {
   return join(
-    profileHome(profile || getActiveProfileNameSync()),
+    agentsOneProfileHome(profile || getActiveProfileNameSync()),
     "desktop",
     "quick-chats.json",
   );
 }
 
-function readStore(profile?: string): RuntimeConversationData {
+interface HistoryReadOptions {
+  fullHistory?: boolean;
+}
+function readStore(
+  profile?: string,
+  options: HistoryReadOptions = {},
+): RuntimeConversationData {
   const file = storeFilePath(profile);
   try {
     if (!existsSync(file)) return { conversations: [] };
@@ -71,7 +80,7 @@ function readStore(profile?: string): RuntimeConversationData {
     return {
       conversations: Array.isArray(parsed.conversations)
         ? parsed.conversations
-            .map(normalizeConversation)
+            .map((value) => normalizeConversation(value, options))
             .filter((item): item is RuntimeConversation => Boolean(item))
         : [],
     };
@@ -84,7 +93,246 @@ function writeStore(
   profile: string | undefined,
   data: RuntimeConversationData,
 ): void {
-  safeWriteFile(storeFilePath(profile), JSON.stringify(data));
+  writeHistoryStore(
+    storeFilePath(profile),
+    "conversations",
+    data.conversations,
+    profile,
+  );
+}
+
+type JsonRecord = Record<string, unknown>;
+const CONVERSATION_KEYS = [
+  "id",
+  "title",
+  "revision",
+  "pinned",
+  "archived",
+  "createdAt",
+  "updatedAt",
+  "runtimeId",
+  "runtimeName",
+  "runtimeKind",
+  "runtimeLocation",
+  "runtimeColor",
+  "runtimeAvatar",
+  "runtimeSessionId",
+  "activeRuntimeRunId",
+  "activeRuntimeRunOwner",
+  "workspace",
+  "workspaceId",
+  "accessMode",
+  "branch",
+  "messageCount",
+  "messages",
+  "profile",
+  "expectedRevision",
+];
+const QUICK_KEYS = [
+  "id",
+  "title",
+  "revision",
+  "pinned",
+  "archived",
+  "runtimeId",
+  "runtimeName",
+  "runtimeSessionId",
+  "createdAt",
+  "updatedAt",
+  "messages",
+];
+const MESSAGE_KEYS = [
+  "id",
+  "role",
+  "content",
+  "attachments",
+  "createdAt",
+  "agentRuntimeId",
+  "agentName",
+  "agentAvatar",
+  "agentColor",
+  "collaborationRole",
+  "collaborationAssignmentId",
+  "execution",
+  "controlAudit",
+  "meta",
+];
+const EXECUTION_KEYS = [
+  "runId",
+  "events",
+  "startedAt",
+  "completedAt",
+  "artifacts",
+  "actualModel",
+  "model",
+  "usage",
+  "isolation",
+];
+function record(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : {};
+}
+function unknownFields(value: unknown, known: string[]): JsonRecord {
+  return Object.fromEntries(
+    Object.entries(record(value)).filter(([key]) => !known.includes(key)),
+  );
+}
+function revision(value: unknown): string {
+  return typeof value === "string" && /^(0|[1-9][0-9]{0,63})$/.test(value)
+    ? value
+    : "1";
+}
+function assertRevision(current: string | undefined, expected?: string): void {
+  if (
+    expected !== undefined &&
+    (!/^(0|[1-9][0-9]{0,63})$/.test(expected) || expected !== revision(current))
+  )
+    throw Object.assign(Error("revision_conflict"), {
+      code: "revision_conflict",
+      status: 409,
+      currentRevision: revision(current),
+    });
+}
+export type { RuntimeConversationChange } from "../shared/runtime-conversations";
+const changeListeners = new Set<(change: RuntimeConversationChange) => void>();
+export function onRuntimeConversationChanged(
+  listener: (change: RuntimeConversationChange) => void,
+): () => void {
+  changeListeners.add(listener);
+  return () => {
+    changeListeners.delete(listener);
+  };
+}
+function notify(change: RuntimeConversationChange): void {
+  for (const listener of changeListeners) {
+    try {
+      listener(change);
+    } catch {
+      /* A committed write cannot be undone by a notification consumer. */
+    }
+  }
+}
+function rawHistory(file: string, collection: string): JsonRecord {
+  if (!existsSync(file)) return { [collection]: [] };
+  try {
+    const value: unknown = JSON.parse(readFileSync(file, "utf8"));
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      !Array.isArray(record(value)[collection])
+    )
+      throw Error();
+    return value as JsonRecord;
+  } catch {
+    throw Error("conversation_storage_invalid");
+  }
+}
+function mergeMessages(
+  prior: unknown,
+  next: Array<RuntimeConversationMessage | QuickChatMessage>,
+): unknown[] {
+  const remaining = new Map(
+    next.map((message) => [message.id, message] as const),
+  );
+  const merged = (Array.isArray(prior) ? prior : []).map((value) => {
+    const raw = record(value);
+    const changed =
+      typeof raw.id === "string" ? remaining.get(raw.id) : undefined;
+    if (!changed) return value;
+    remaining.delete(changed.id);
+    const result: JsonRecord = {
+      ...unknownFields(raw, MESSAGE_KEYS),
+      ...changed,
+    };
+    if ("execution" in changed && changed.execution)
+      result.execution = {
+        ...unknownFields(raw.execution, EXECUTION_KEYS),
+        ...changed.execution,
+      };
+    return result;
+  });
+  return [...merged, ...remaining.values()];
+}
+/** A single synchronous commit is shared by desktop and mobile mutation callers. */
+function writeHistoryStore(
+  file: string,
+  collection: "conversations" | "chats",
+  rows: RuntimeConversation[] | QuickChatConversation[],
+  profile?: string,
+): void {
+  const raw = rawHistory(file, collection);
+  const originals = raw[collection] as unknown[];
+  const normalize = (
+    value: unknown,
+  ): RuntimeConversation | QuickChatConversation | null =>
+    collection === "conversations"
+      ? normalizeConversation(value, { fullHistory: true })
+      : normalizeQuickChat(value, { fullHistory: true });
+  const keys = collection === "conversations" ? CONVERSATION_KEYS : QUICK_KEYS;
+  const changes: RuntimeConversationChange[] = [];
+  const ids = new Set(rows.map((row) => row.id));
+  const changedRows = rows.map((row) => {
+    const prior = originals.find((value) => record(value).id === row.id);
+    const merged: JsonRecord = {
+      ...unknownFields(prior, keys),
+      ...row,
+      messages: mergeMessages(record(prior).messages, row.messages),
+    };
+    if (collection === "conversations")
+      merged.messageCount = (merged.messages as unknown[]).length;
+    const oldView = normalize(prior),
+      newView = normalize(merged);
+    const content = (view: unknown): string => {
+      const { revision: unusedRevision, ...fields } = record(view);
+      void unusedRevision;
+      return JSON.stringify(fields);
+    };
+    const changed = !oldView || content(oldView) !== content(newView);
+    const next = !oldView
+      ? "1"
+      : changed
+        ? String(BigInt(revision(oldView.revision)) + 1n)
+        : revision(oldView.revision);
+    if (next.length > 64) throw Error("revision_overflow");
+    merged.revision = next;
+    row.revision = next;
+    if (changed)
+      changes.push({
+        profile: profile || getActiveProfileNameSync(),
+        conversationId: row.id,
+        revision: next,
+        kind:
+          collection === "conversations"
+            ? "runtime_conversation"
+            : "quick_chat",
+      });
+    return merged;
+  });
+  // Unsupported legacy records are kept byte-equivalent as JSON values, not silently discarded.
+  const unsupported = originals.filter(
+    (value) => !normalize(value) && !ids.has(String(record(value).id)),
+  );
+  for (const value of originals) {
+    const prior = normalize(value);
+    if (prior && !ids.has(prior.id))
+      changes.push({
+        profile: profile || getActiveProfileNameSync(),
+        conversationId: prior.id,
+        revision: String(BigInt(revision(prior.revision)) + 1n),
+        kind:
+          collection === "conversations"
+            ? "runtime_conversation"
+            : "quick_chat",
+        deleted: true,
+      });
+  }
+  safeWriteFile(
+    file,
+    JSON.stringify({ ...raw, [collection]: [...changedRows, ...unsupported] }),
+  );
+  for (const change of changes) notify(change);
 }
 
 function cleanText(value: unknown, fallback = ""): string {
@@ -118,6 +366,7 @@ function cleanRuntimeEvent(value: unknown): AgentRuntimeEvent | null {
   const record = value as Partial<AgentRuntimeEvent>;
   if (!record.type || !RUNTIME_EVENT_TYPES.has(record.type)) return null;
   const summary = cleanText(record.summary).slice(0, MAX_EVENT_SUMMARY_LENGTH);
+  const detail = cleanText(record.detail).slice(0, MAX_EVENT_DETAIL_LENGTH);
   if (!summary) return null;
   const tool =
     record.tool && typeof record.tool === "object" ? record.tool : undefined;
@@ -129,10 +378,54 @@ function cleanRuntimeEvent(value: unknown): AgentRuntimeEvent | null {
       typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
         ? record.createdAt
         : Date.now(),
-    ...(cleanText(record.detail) ? { detail: cleanText(record.detail) } : {}),
+    ...(detail ? { detail } : {}),
     ...(cleanText(record.code) ? { code: cleanText(record.code) } : {}),
     ...(tool ? { tool } : {}),
   };
+}
+
+function cleanMessageAttachments(
+  value: unknown,
+): NonNullable<RuntimeConversationMessage["attachments"]> {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 10).flatMap((item, index) => {
+    const source = record(item);
+    const kind = source.kind;
+    const name = cleanText(source.name).slice(0, 512);
+    if (
+      !name ||
+      (kind !== "image" && kind !== "text-file" && kind !== "path-ref")
+    ) {
+      return [];
+    }
+    const id = cleanText(source.id).slice(0, 160) || `attachment-${index + 1}`;
+    const size =
+      typeof source.size === "number" && Number.isFinite(source.size)
+        ? Math.min(
+            Number.MAX_SAFE_INTEGER,
+            Math.max(0, Math.floor(source.size)),
+          )
+        : 0;
+    const originalSize =
+      typeof source.originalSize === "number" &&
+      Number.isFinite(source.originalSize)
+        ? Math.min(
+            Number.MAX_SAFE_INTEGER,
+            Math.max(0, Math.floor(source.originalSize)),
+          )
+        : undefined;
+    return [
+      {
+        id,
+        kind,
+        name,
+        mime:
+          cleanText(source.mime).slice(0, 256) || "application/octet-stream",
+        size,
+        ...(originalSize !== undefined ? { originalSize } : {}),
+      },
+    ];
+  });
 }
 
 function cleanExecution(
@@ -142,10 +435,12 @@ function cleanExecution(
   const record = value as NonNullable<RuntimeConversationMessage["execution"]>;
   const runId = cleanText(record?.runId);
   const events = Array.isArray(record?.events)
-    ? record.events
-        .map(cleanRuntimeEvent)
-        .filter((item): item is AgentRuntimeEvent => Boolean(item))
-        .slice(-MAX_EXECUTION_EVENTS)
+    ? retainRuntimeEvents(
+        record.events
+          .map(cleanRuntimeEvent)
+          .filter((item): item is AgentRuntimeEvent => Boolean(item)),
+        MAX_EXECUTION_EVENTS,
+      )
     : [];
   if (!runId) return undefined;
   const artifacts = Array.isArray(record?.artifacts)
@@ -155,16 +450,8 @@ function cleanExecution(
         return typeof label === "string" && label.trim().length > 0;
       })
     : [];
-  if (
-    events.length === 0 &&
-    artifacts.length === 0 &&
-    !record.actualModel &&
-    !record.model &&
-    !record.usage &&
-    !record.isolation
-  ) {
-    return undefined;
-  }
+  // The native identity is durable evidence even when a provider reports no
+  // timeline or artifacts; dropping it breaks final-message idempotency.
   return {
     runId,
     events,
@@ -296,6 +583,9 @@ function cleanMessage(value: unknown): RuntimeConversationMessage | null {
         ? record.createdAt
         : Date.now(),
   };
+  const attachments =
+    role === "user" ? cleanMessageAttachments(record.attachments) : [];
+  if (attachments.length) message.attachments = attachments;
   // Collaboration replies need their original runtime identity after a restart.
   // Do not reconstruct this from the parent conversation's runtime: one task
   // can contain turns from several independently configured agents.
@@ -321,7 +611,10 @@ function cleanMessage(value: unknown): RuntimeConversationMessage | null {
   return message;
 }
 
-function normalizeConversation(value: unknown): RuntimeConversation | null {
+function normalizeConversation(
+  value: unknown,
+  options: HistoryReadOptions = {},
+): RuntimeConversation | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Partial<RuntimeConversation>;
   const id = cleanText(record.id);
@@ -335,7 +628,7 @@ function normalizeConversation(value: unknown): RuntimeConversation | null {
     ? record.messages
         .map(cleanMessage)
         .filter((item): item is RuntimeConversationMessage => Boolean(item))
-        .slice(-MAX_MESSAGES)
+        .slice(options.fullHistory ? 0 : -MAX_MESSAGES)
     : [];
   const now = Date.now();
   const createdAt =
@@ -348,6 +641,9 @@ function normalizeConversation(value: unknown): RuntimeConversation | null {
       : messages.at(-1)?.createdAt || createdAt;
   return {
     id,
+    revision: revision(record.revision),
+    pinned: record.pinned === true,
+    archived: record.archived === true,
     title:
       cleanText(record.title, titleFromMessages(messages)).slice(
         0,
@@ -363,6 +659,10 @@ function normalizeConversation(value: unknown): RuntimeConversation | null {
     runtimeAvatar: cleanRuntimeAvatar(record.runtimeAvatar),
     runtimeSessionId: cleanText(record.runtimeSessionId) || undefined,
     activeRuntimeRunId: cleanText(record.activeRuntimeRunId) || undefined,
+    activeRuntimeRunOwner:
+      record.activeRuntimeRunId && record.activeRuntimeRunOwner === "main"
+        ? "main"
+        : undefined,
     workspace:
       cleanText(record.workspace).slice(0, MAX_WORKSPACE_LENGTH) || undefined,
     workspaceId: cleanText(record.workspaceId).slice(0, 128) || undefined,
@@ -390,6 +690,9 @@ function summaryFromConversation(
 ): RuntimeConversationSummary {
   return {
     id: conversation.id,
+    revision: conversation.revision,
+    pinned: conversation.pinned,
+    archived: conversation.archived,
     title: conversation.title,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
@@ -401,6 +704,7 @@ function summaryFromConversation(
     runtimeAvatar: conversation.runtimeAvatar,
     runtimeSessionId: conversation.runtimeSessionId,
     activeRuntimeRunId: conversation.activeRuntimeRunId,
+    activeRuntimeRunOwner: conversation.activeRuntimeRunOwner,
     workspace: conversation.workspace,
     workspaceId: conversation.workspaceId,
     accessMode: conversation.accessMode,
@@ -423,11 +727,20 @@ export function listRuntimeConversations(
 export function getRuntimeConversation(
   id: string,
   profile?: string,
+  options: HistoryReadOptions = {},
 ): RuntimeConversation | null {
   if (!id) return null;
   return (
-    readStore(profile).conversations.find((item) => item.id === id) ?? null
+    readStore(profile, options).conversations.find((item) => item.id === id) ??
+    null
   );
+}
+
+/** Owner-only full read. Does not rewrite legacy records or alter the desktop view window. */
+export function listFullRuntimeConversations(
+  profile: string,
+): RuntimeConversation[] {
+  return readStore(profile, { fullHistory: true }).conversations;
 }
 
 export function saveRuntimeConversation(
@@ -437,18 +750,34 @@ export function saveRuntimeConversation(
   const now = Date.now();
   const messages = input.messages
     .map(cleanMessage)
-    .filter((item): item is RuntimeConversationMessage => Boolean(item))
-    .slice(-MAX_MESSAGES);
+    .filter((item): item is RuntimeConversationMessage => Boolean(item));
   const previous = existing.conversations.find((item) => item.id === input.id);
-  const conversation = normalizeConversation({
-    ...previous,
-    ...input,
-    title: input.title || titleFromMessages(messages),
-    createdAt: previous?.createdAt ?? messages[0]?.createdAt ?? now,
-    updatedAt: messages.at(-1)?.createdAt ?? now,
-    messageCount: messages.length,
-    messages,
-  });
+  if (input.expectedRevision !== undefined && !previous)
+    throw Object.assign(Error("resource_not_found"), {
+      code: "resource_not_found",
+      status: 404,
+    });
+  assertRevision(previous?.revision, input.expectedRevision);
+  if (
+    previous?.activeRuntimeRunOwner === "main" &&
+    input.activeRuntimeRunOwner === undefined
+  )
+    throw Object.assign(Error("run_active"), {
+      code: "run_active",
+      status: 409,
+    });
+  const conversation = normalizeConversation(
+    {
+      ...previous,
+      ...input,
+      title: input.title || titleFromMessages(messages),
+      createdAt: previous?.createdAt ?? messages[0]?.createdAt ?? now,
+      updatedAt: messages.at(-1)?.createdAt ?? now,
+      messageCount: messages.length,
+      messages,
+    },
+    { fullHistory: true },
+  );
   if (!conversation) {
     throw new Error("Invalid runtime conversation.");
   }
@@ -458,6 +787,168 @@ export function saveRuntimeConversation(
   ].sort((a, b) => b.updatedAt - a.updatedAt);
   writeStore(input.profile, { conversations: next });
   return conversation;
+}
+
+/** Claims an already-saved desktop turn without duplicating its user message. */
+export function claimRuntimeConversationRun(
+  id: string,
+  expectedRevision: string,
+  runId: string,
+  binding: {
+    runtimeId: string;
+    sessionId?: string;
+    workspaceId?: string;
+    workspace?: string;
+    workspaceMetadataOnly?: boolean;
+  },
+  profile?: string,
+): RuntimeConversation {
+  if (
+    !id ||
+    !runId ||
+    typeof expectedRevision !== "string" ||
+    !/^[1-9]\d*$/.test(expectedRevision)
+  )
+    throw Object.assign(Error("invalid_input"), {
+      code: "invalid_input",
+      status: 422,
+    });
+  const value = getRuntimeConversation(id, profile, { fullHistory: true });
+  if (!value)
+    throw Object.assign(Error("resource_not_found"), {
+      code: "resource_not_found",
+      status: 404,
+    });
+  assertRevision(value.revision, expectedRevision);
+  if (value.activeRuntimeRunId)
+    throw Object.assign(Error("run_active"), {
+      code: "run_active",
+      status: 409,
+    });
+  if (
+    value.runtimeId !== binding.runtimeId ||
+    value.runtimeSessionId !== binding.sessionId ||
+    (!binding.workspaceMetadataOnly &&
+      (value.workspaceId !== binding.workspaceId ||
+        (!value.workspaceId && value.workspace !== binding.workspace))) ||
+    value.messages.at(-1)?.role !== "user"
+  )
+    throw Object.assign(Error("revision_conflict"), {
+      code: "revision_conflict",
+      status: 409,
+    });
+  // @lat: [[mobile-data#Mobile data#Desktop dispatch claim]]
+  return saveRuntimeConversation({
+    ...value,
+    profile,
+    expectedRevision,
+    activeRuntimeRunId: runId,
+  });
+}
+
+/** Main-owned admission: no asynchronous gap between version/Run checks and commit. */
+export function beginRuntimeConversationTurn(
+  id: string,
+  expectedRevision: string,
+  runId: string,
+  message: RuntimeConversationMessage,
+  profile: string,
+): RuntimeConversation {
+  const value = getRuntimeConversation(id, profile, { fullHistory: true });
+  if (!value)
+    throw Object.assign(Error("resource_not_found"), {
+      code: "resource_not_found",
+      status: 404,
+    });
+  assertRevision(value.revision, expectedRevision);
+  if (value.activeRuntimeRunId)
+    throw Object.assign(Error("run_active"), {
+      code: "run_active",
+      status: 409,
+    });
+  if (
+    !runId ||
+    message.role !== "user" ||
+    !cleanMessage(message) ||
+    value.messages.some((item) => item.id === message.id)
+  )
+    throw Object.assign(Error("invalid_input"), {
+      code: "invalid_input",
+      status: 422,
+    });
+  // @lat: [[mobile-data#Mobile data#Original turn admission]]
+  return saveRuntimeConversation({
+    ...value,
+    profile,
+    expectedRevision,
+    activeRuntimeRunId: runId,
+    activeRuntimeRunOwner: "main",
+    messages: [...value.messages, message],
+  });
+}
+
+/** Final replies merge into today's original record, never an old admission snapshot. */
+export function completeRuntimeConversationTurn(
+  id: string,
+  runId: string,
+  message: RuntimeConversationMessage,
+  sessionId: string | undefined,
+  profile: string,
+): RuntimeConversation {
+  if (
+    typeof message.content !== "string" ||
+    message.content.length > MAX_MESSAGE_LENGTH
+  )
+    throw Object.assign(Error("reconciliation_required"), {
+      code: "reconciliation_required",
+      status: 409,
+    });
+  const value = getRuntimeConversation(id, profile, { fullHistory: true });
+  if (!value)
+    throw Object.assign(Error("resource_not_found"), {
+      code: "resource_not_found",
+      status: 404,
+    });
+  const existing = value.messages.find(
+    (item) => item.execution?.runId === runId,
+  );
+  if (existing) {
+    if (
+      existing.id !== message.id ||
+      existing.role !== message.role ||
+      existing.content !== message.content.trim() ||
+      (sessionId !== undefined && value.runtimeSessionId !== sessionId)
+    )
+      throw Object.assign(Error("reconciliation_required"), {
+        code: "reconciliation_required",
+        status: 409,
+      });
+    return value;
+  }
+  if (
+    value.activeRuntimeRunId !== runId ||
+    (sessionId !== undefined &&
+      value.runtimeSessionId !== undefined &&
+      value.runtimeSessionId !== sessionId) ||
+    message.execution?.runId !== runId ||
+    message.role === "user" ||
+    !cleanMessage(message) ||
+    value.messages.some((item) => item.id === message.id)
+  )
+    throw Object.assign(Error("reconciliation_required"), {
+      code: "reconciliation_required",
+      status: 409,
+    });
+  // @lat: [[mobile-data#Mobile data#Current original result commit]]
+  return saveRuntimeConversation({
+    ...value,
+    profile,
+    expectedRevision: value.revision ?? "1",
+    runtimeSessionId: sessionId || value.runtimeSessionId,
+    activeRuntimeRunId: null,
+    activeRuntimeRunOwner: null,
+    messages: [...value.messages, message],
+  });
 }
 
 /**
@@ -529,7 +1020,10 @@ function normalizeQuickChatMessage(value: unknown): QuickChatMessage | null {
   };
 }
 
-function normalizeQuickChat(value: unknown): QuickChatConversation | null {
+function normalizeQuickChat(
+  value: unknown,
+  options: HistoryReadOptions = {},
+): QuickChatConversation | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Partial<QuickChatConversation>;
   const id = cleanText(record.id).slice(0, 160);
@@ -540,7 +1034,7 @@ function normalizeQuickChat(value: unknown): QuickChatConversation | null {
     ? record.messages
         .map(normalizeQuickChatMessage)
         .filter((item): item is QuickChatMessage => Boolean(item))
-        .slice(-MAX_QUICK_CHAT_MESSAGES)
+        .slice(options.fullHistory ? 0 : -MAX_QUICK_CHAT_MESSAGES)
     : [];
   const now = Date.now();
   const createdAt =
@@ -553,6 +1047,9 @@ function normalizeQuickChat(value: unknown): QuickChatConversation | null {
       : messages.at(-1)?.createdAt || createdAt;
   return {
     id,
+    revision: revision(record.revision),
+    pinned: record.pinned === true,
+    archived: record.archived === true,
     title:
       cleanText(record.title, titleFromMessages(messages)).slice(
         0,
@@ -567,7 +1064,10 @@ function normalizeQuickChat(value: unknown): QuickChatConversation | null {
   };
 }
 
-export function listQuickChats(profile?: string): QuickChatConversation[] {
+export function listQuickChats(
+  profile?: string,
+  options: HistoryReadOptions = {},
+): QuickChatConversation[] {
   try {
     const file = quickChatStoreFilePath(profile);
     if (!existsSync(file)) return [];
@@ -576,10 +1076,10 @@ export function listQuickChats(profile?: string): QuickChatConversation[] {
     };
     return Array.isArray(parsed.chats)
       ? parsed.chats
-          .map(normalizeQuickChat)
+          .map((value) => normalizeQuickChat(value, options))
           .filter((item): item is QuickChatConversation => Boolean(item))
           .sort((left, right) => right.updatedAt - left.updatedAt)
-          .slice(0, MAX_QUICK_CHATS)
+          .slice(0, options.fullHistory ? undefined : MAX_QUICK_CHATS)
       : [];
   } catch {
     return [];
@@ -592,19 +1092,22 @@ export function saveQuickChats(
 ): QuickChatConversation[] {
   if (!Array.isArray(chats)) throw new Error("Quick Chat history is invalid.");
   const normalized = chats
-    .map(normalizeQuickChat)
+    .map((value) => normalizeQuickChat(value, { fullHistory: true }))
     .filter((item): item is QuickChatConversation => Boolean(item))
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-    .slice(0, MAX_QUICK_CHATS);
-  writeStoreFile(quickChatStoreFilePath(profile), {
-    version: 1,
-    chats: normalized,
-  });
-  return normalized;
-}
-
-function writeStoreFile(path: string, value: unknown): void {
-  safeWriteFile(path, JSON.stringify(value));
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+  const incomingIds = new Set(normalized.map((chat) => chat.id));
+  const outsideView = listQuickChats(profile, { fullHistory: true })
+    .slice(MAX_QUICK_CHATS)
+    .filter((chat) => !incomingIds.has(chat.id));
+  writeHistoryStore(
+    quickChatStoreFilePath(profile),
+    "chats",
+    [...normalized, ...outsideView],
+    profile,
+  );
+  return normalized
+    .slice(0, MAX_QUICK_CHATS)
+    .map((chat) => normalizeQuickChat(chat)!);
 }
 
 export function updateRuntimeConversationTitle(
@@ -621,6 +1124,108 @@ export function updateRuntimeConversationTitle(
   );
   conversation.updatedAt = Date.now();
   writeStore(profile, data);
+}
+
+export interface RuntimeConversationPatch {
+  title?: string;
+  pinned?: boolean;
+  archived?: boolean;
+  workspaceId?: string | null;
+}
+function patchRecord<T extends RuntimeConversation | QuickChatConversation>(
+  value: T,
+  patch: RuntimeConversationPatch,
+  expectedRevision: string,
+): T {
+  assertRevision(value.revision, expectedRevision);
+  if (
+    !patch ||
+    Object.keys(patch).some(
+      (key) => !["title", "pinned", "archived", "workspaceId"].includes(key),
+    ) ||
+    !Object.keys(patch).length
+  )
+    throw Error("invalid_input");
+  if (patch.title !== undefined) {
+    if (
+      typeof patch.title !== "string" ||
+      !patch.title.trim() ||
+      Array.from(patch.title).length > MAX_TITLE_LENGTH
+    )
+      throw Error("invalid_input");
+    value.title = patch.title.trim();
+  }
+  for (const key of ["pinned", "archived"] as const) {
+    if (patch[key] !== undefined) {
+      if (typeof patch[key] !== "boolean") throw Error("invalid_input");
+      value[key] = patch[key];
+    }
+  }
+  if (Object.hasOwn(patch, "workspaceId")) {
+    if (!("runtimeKind" in value))
+      throw Object.assign(Error("requires_owner_action"), {
+        code: "requires_owner_action",
+        status: 403,
+      });
+    if (
+      patch.workspaceId !== null &&
+      (typeof patch.workspaceId !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(patch.workspaceId) ||
+        patch.workspaceId.includes(".."))
+    )
+      throw Error("invalid_input");
+    if (value.workspaceId !== (patch.workspaceId || undefined)) {
+      if (value.activeRuntimeRunId)
+        throw Object.assign(Error("run_active"), {
+          code: "run_active",
+          status: 409,
+        });
+      if (value.runtimeSessionId)
+        throw Object.assign(Error("project_binding_conflict"), {
+          code: "project_binding_conflict",
+          status: 409,
+        });
+      value.workspaceId = patch.workspaceId || undefined;
+      value.workspace = undefined;
+    }
+  }
+  value.updatedAt = Date.now();
+  return value;
+}
+/** Atomic compare-and-patch; no awaiting occurs between version check and commit. */
+export function patchRuntimeConversation(
+  id: string,
+  patch: RuntimeConversationPatch,
+  expectedRevision: string,
+  profile?: string,
+): RuntimeConversation {
+  const data = readStore(profile);
+  const value = data.conversations.find((item) => item.id === id);
+  if (!value)
+    throw Object.assign(Error("resource_not_found"), {
+      code: "resource_not_found",
+      status: 404,
+    });
+  patchRecord(value, patch, expectedRevision);
+  writeStore(profile, data);
+  return value;
+}
+export function patchQuickChat(
+  id: string,
+  patch: RuntimeConversationPatch,
+  expectedRevision: string,
+  profile?: string,
+): QuickChatConversation {
+  const chats = listQuickChats(profile, { fullHistory: true });
+  const value = chats.find((item) => item.id === id);
+  if (!value)
+    throw Object.assign(Error("resource_not_found"), {
+      code: "resource_not_found",
+      status: 404,
+    });
+  patchRecord(value, patch, expectedRevision);
+  writeHistoryStore(quickChatStoreFilePath(profile), "chats", chats, profile);
+  return value;
 }
 
 /** Moves Runtime conversations out of a removed project but preserves them. */

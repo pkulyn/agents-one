@@ -177,6 +177,8 @@ async function createPersistentSession(
         ? { pathToClaudeCodeExecutable: controlExecutablePath(config) }
         : {}),
       includePartialMessages: true,
+      permissionMode: "plan",
+      disallowedTools: ["Edit", "Write", "NotebookEdit", "Bash"],
     },
   });
   let sessionId: string | undefined;

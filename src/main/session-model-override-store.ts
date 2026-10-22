@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { SessionModelOverride } from "../shared/model-override";
-import { getDbConnection } from "./db";
+import { getDesktopDbConnection as getDbConnection } from "./db";
 
 /**
  * Desktop-owned, per-session store for the model/provider chosen from the

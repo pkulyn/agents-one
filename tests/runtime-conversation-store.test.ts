@@ -14,10 +14,92 @@ async function loadStore(): Promise<
 > {
   vi.resetModules();
   vi.stubEnv("HERMES_HOME", testHome);
+  vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
   return import("../src/main/runtime-conversation-store");
 }
 
 describe("runtime conversation store", () => {
+  // @lat: [[runtime-chat#Runtime Chat Rendering#Bounded execution trace retention]]
+  it("keeps reasoning and tools when a long answer is saved and reloaded", async () => {
+    const store = await loadStore();
+    const evidence = [
+      {
+        id: "thought",
+        type: "progress" as const,
+        summary: "先读取资料。",
+        createdAt: 1,
+      },
+      {
+        id: "call",
+        type: "tool_call" as const,
+        summary: "读取资料",
+        createdAt: 2,
+        tool: { name: "read", callId: "read-1", inputSummary: "brief.md" },
+      },
+      {
+        id: "result",
+        type: "tool_result" as const,
+        summary: "资料已读取",
+        detail: "source text",
+        createdAt: 3,
+        tool: { name: "read", callId: "read-1", outputSummary: "source text" },
+      },
+    ];
+    const fragments = Array.from({ length: 240 }, (_, i) => ({
+      id: `fragment-${i}`,
+      type: "message" as const,
+      summary: `答复片段${i}`,
+      createdAt: i + 4,
+    }));
+    const completed = {
+      id: "done",
+      type: "completed" as const,
+      summary: "任务执行完成。",
+      createdAt: 250,
+    };
+    store.saveRuntimeConversation({
+      id: "opencode-long-answer",
+      title: "长答复",
+      runtimeId: "opencode-local",
+      runtimeName: "OpenCode",
+      runtimeKind: "opencode",
+      runtimeLocation: "local",
+      messages: [
+        {
+          id: "reply",
+          role: "agent",
+          content: "# 完整答复\n\n- 保留记录",
+          createdAt: 250,
+          execution: {
+            runId: "long-run",
+            events: [...evidence, ...fragments, completed],
+          },
+        },
+      ],
+    });
+    const restored = store.getRuntimeConversation("opencode-long-answer")!;
+    const events = restored.messages[0].execution!.events;
+    expect(events).toHaveLength(80);
+    expect(events.slice(0, 3)).toEqual(evidence);
+    expect(events.at(-1)).toEqual(completed);
+    const { runtimeConversationToChatMessages } =
+      await import("../src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter");
+    expect(runtimeConversationToChatMessages(restored.messages)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "reasoning", text: "先读取资料。" }),
+        expect.objectContaining({ kind: "tool_call", name: "Read File" }),
+        expect.objectContaining({
+          kind: "tool_result",
+          content: "source text",
+        }),
+        expect.objectContaining({
+          kind: "assistant",
+          content: "# 完整答复\n\n- 保留记录",
+        }),
+      ]),
+    );
+  });
+
   beforeEach(() => {
     testHome = mkdtempSync(join(tmpdir(), "hermes-runtime-conversations-"));
   });

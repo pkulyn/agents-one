@@ -8,7 +8,7 @@ import {
   lstatSync,
 } from "fs";
 import { isAbsolute, join, relative, resolve, sep } from "path";
-import { HERMES_HOME } from "./installer";
+import { agentsOneDataRoot } from "./agents-one-data-root";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 /**
@@ -17,13 +17,13 @@ import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
  * sends attachment bytes here, then passes only this controlled path.
  *
  * Layout:
- *   %LOCALAPPDATA%/hermes/desktop-staging/<sessionId>/<filename>
+ *   <Agents One userData>/data/desktop-staging/<sessionId>/<filename>
  *
  * Files persist across desktop restarts so the agent can re-read them
  * on session resume.  Per-session subdirs are cleaned up when the
  * session is deleted.
  */
-const STAGING_ROOT = join(HERMES_HOME, "desktop-staging");
+const STAGING_ROOT = join(agentsOneDataRoot(), "desktop-staging");
 const MAX_STAGED_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const MAX_STAGED_SESSION_BYTES = 100 * 1024 * 1024;
 const MAX_STAGED_TOTAL_BYTES = 1024 * 1024 * 1024;

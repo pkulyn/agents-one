@@ -28,6 +28,7 @@ describe("Codex runtime invocation", () => {
       "read-only",
       "--cd",
       "D:\\repo",
+      "--",
       "inspect this",
     ]);
   });
@@ -51,6 +52,7 @@ describe("Codex runtime invocation", () => {
       "read-only",
       "--cd",
       "D:\\private-runtime-chat",
+      "--",
       "inspect this",
     ]);
   });
@@ -96,6 +98,7 @@ describe("Codex runtime invocation", () => {
       "D:\\inputs\\task-1",
       "--image",
       "D:\\inputs\\task-1\\diagram.png",
+      "--",
       "inspect the supplied files",
     ]);
   });
@@ -117,6 +120,71 @@ describe("Codex runtime invocation", () => {
 
   it("keeps a normal executable invocation shell-free", () => {
     expect(codexInvocation("codex")).toEqual({ command: "codex", prefix: [] });
+  });
+
+  // @lat: [[mobile-data#Mobile data#Codex original thread continuation]]
+  it("resumes the explicit original thread with permissions and cwd on the parent command", () => {
+    expect(
+      codexExecArgs(
+        "D:\\repo",
+        "analysis",
+        "Continue this task",
+        undefined,
+        [],
+        undefined,
+        false,
+        "original-thread-id",
+      ),
+    ).toEqual([
+      "exec",
+      "--json",
+      "--sandbox",
+      "read-only",
+      "--cd",
+      "D:\\repo",
+      "resume",
+      "--json",
+      "--",
+      "original-thread-id",
+      "Continue this task",
+    ]);
+  });
+
+  // @lat: [[mobile-data#Mobile data#Codex continuation argument boundary]]
+  it("places resumed images on the resume command and prevents prompt or session option injection", () => {
+    const args = codexExecArgs(
+      "D:\\repo",
+      "analysis",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "D:\\inputs",
+      ["D:\\inputs\\diagram.png"],
+      "selected-model",
+      false,
+      "--last",
+    );
+    expect(args).toEqual([
+      "exec",
+      "--json",
+      "--sandbox",
+      "read-only",
+      "--cd",
+      "D:\\repo",
+      "--add-dir",
+      "D:\\inputs",
+      "--model",
+      "selected-model",
+      "resume",
+      "--json",
+      "--image",
+      "D:\\inputs\\diagram.png",
+      "--",
+      "--last",
+      "--dangerously-bypass-approvals-and-sandbox",
+    ]);
+    expect(codexExecArgs("D:\\repo", "analysis", "--help").slice(-2)).toEqual([
+      "--",
+      "--help",
+    ]);
   });
 
   it("unwraps the Windows npm .cmd shim without enabling a shell", () => {

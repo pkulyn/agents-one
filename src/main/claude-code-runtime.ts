@@ -1,9 +1,10 @@
+import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync } from "fs";
 import { promisify } from "util";
 import { delimiter, dirname, extname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
-import { profileHome } from "./utils";
+import { agentsOneProfileHome } from "./utils";
 import { prepareRuntimeInputs } from "./runtime-inputs";
 import { protectWorkspaceFromRemoval } from "./workspace-protection";
 import { terminateProcessTree } from "./process-control";
@@ -314,7 +315,7 @@ function configuredProbeWorkspace(
 
 function conversationCwd(profile?: string): string {
   const root = join(
-    profileHome(profile),
+    agentsOneProfileHome(profile),
     "desktop",
     "runtime-chat",
     "claude-code",
@@ -325,7 +326,7 @@ function conversationCwd(profile?: string): string {
 
 function safeWorktreePath(profile: string | undefined, id: string): string {
   const root = resolve(
-    profileHome(profile),
+    agentsOneProfileHome(profile),
     "desktop",
     "worktrees",
     "claude-code",
@@ -579,6 +580,9 @@ export async function startClaudeCodeProcess(
         ...(worktreePath ? { worktreePath } : {}),
         ...(diffSummary ? { diffSummary } : {}),
         artifacts,
+        ...(restoredFiles.length
+          ? { error: runtimeRemovalBlockedMessage(restoredFiles) }
+          : {}),
         inputArtifacts: preparedInputs.artifacts,
       });
     });

@@ -1,4 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type {
+  MobileWriteRecoveryCommand,
+  MobileWriteRecoveryStatus,
+} from "../shared/mobile-write-recovery";
+import type {
+  MobileConnectionCommand,
+  MobileConnectionResult,
+} from "../shared/mobile-connection";
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
 import type { SessionModelOverride } from "../shared/model-override";
@@ -111,6 +119,21 @@ const electronAPI = {
 };
 
 const agentsOneAPI = {
+  manageMobileWriteRecovery: (
+    profile: string | undefined,
+    command: MobileWriteRecoveryCommand,
+  ): Promise<MobileWriteRecoveryStatus> =>
+    ipcRenderer.invoke("mobile-write-recovery", profile, command),
+  manageMobileExecutionPolicies: (
+    profile: string | undefined,
+    command: MobileExecutionManagementCommand,
+  ): Promise<MobileExecutionManagementResult> =>
+    ipcRenderer.invoke("mobile-execution-manage", profile, command),
+  manageMobileConnection: (
+    profile: string | undefined,
+    command: MobileConnectionCommand,
+  ): Promise<MobileConnectionResult> =>
+    ipcRenderer.invoke("mobile-connection-manage", profile, command),
   // Installation
   checkInstall: (): Promise<{
     installed: boolean;
@@ -158,6 +181,25 @@ const agentsOneAPI = {
   closeTrayComposer: (): void => ipcRenderer.send("tray-composer-close"),
   resizeTrayComposer: (height: number): void =>
     ipcRenderer.send("tray-composer-resize", height),
+  startTrayRuntimeTask: (
+    runtimeId: string,
+    input: Pick<
+      AgentRuntimeTaskInput,
+      "prompt" | "attachments" | "workspaceId"
+    >,
+  ): Promise<AgentRuntimeRun> =>
+    ipcRenderer.invoke("tray-composer-start-runtime-task", runtimeId, input),
+  onTrayRuntimeConversationChanged: (
+    callback: (change: { profile: string; conversationId: string }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      change: { profile: string; conversationId: string },
+    ): void => callback(change);
+    ipcRenderer.on("tray-runtime-conversation-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("tray-runtime-conversation-changed", handler);
+  },
   getTrayMenuData: (): Promise<TrayMenuData> =>
     ipcRenderer.invoke("tray-menu-data"),
   onTrayMenuData: (callback: (data: TrayMenuData) => void): (() => void) => {
@@ -1292,6 +1334,20 @@ const agentsOneAPI = {
     profile?: string,
   ): Promise<RuntimeConversation | null> =>
     ipcRenderer.invoke("get-runtime-conversation", id, profile),
+  onRuntimeConversationChanged: (
+    callback: (
+      change: import("../shared/runtime-conversations").RuntimeConversationChange,
+    ) => void,
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      change: import("../shared/runtime-conversations").RuntimeConversationChange,
+    ): void => callback(change);
+    ipcRenderer.on("runtime-conversation-changed", listener);
+    return () => {
+      ipcRenderer.removeListener("runtime-conversation-changed", listener);
+    };
+  },
   saveRuntimeConversation: (
     input: SaveRuntimeConversationInput,
   ): Promise<RuntimeConversation> =>
@@ -1878,3 +1934,7 @@ if (process.contextIsolated) {
   // @ts-ignore (legacy compatibility alias; defined in dts)
   window.hermesAPI = agentsOneAPI;
 }
+import type {
+  MobileExecutionManagementCommand,
+  MobileExecutionManagementResult,
+} from "../shared/mobile-execution-management";

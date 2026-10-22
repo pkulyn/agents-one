@@ -8,6 +8,7 @@ import {
   piChildEnvironment,
   piExecArgs,
   piInvocation,
+  piReadOnlyExtensionSource,
   piOutputError,
   piRpcArgs,
 } from "../src/main/pi-runtime";
@@ -97,7 +98,7 @@ describe("Pi Agent CLI runtime invocation", () => {
     );
   });
 
-  it("keeps unscoped conversations tool-free and noninteractive", () => {
+  it("keeps unscoped read-only conversations able to read and query", () => {
     expect(
       piExecArgs("analysis", "inspect this", "pi-session-1", "D:\\sessions"),
     ).toEqual([
@@ -108,7 +109,8 @@ describe("Pi Agent CLI runtime invocation", () => {
       "D:\\sessions",
       "--session-id",
       "pi-session-1",
-      "--no-tools",
+      "--tools",
+      "read,grep,find,ls,tool_search,codemode",
       "inspect this",
     ]);
   });
@@ -137,7 +139,7 @@ describe("Pi Agent CLI runtime invocation", () => {
       true,
     );
     expect(args).toContain("--tools");
-    expect(args).toContain("read,grep,find,ls");
+    expect(args).toContain("read,grep,find,ls,tool_search,codemode");
     expect(args).not.toContain("--no-tools");
   });
 
@@ -329,5 +331,98 @@ describe("Pi Agent CLI runtime invocation", () => {
         }),
       ),
     ).toBe("Pi Agent 本轮在工具或思考阶段结束，未返回最终答复。");
+  });
+});
+
+describe("Pi read-only native permission hook", () => {
+  // @lat: [[runtime-chat#Pi read-only tool boundary]]
+  it("allows readers and annotated queries but blocks direct and nested mutation tools", () => {
+    let handler: (event: {
+      toolName: string;
+      parentToolCallId?: string;
+    }) => { block: boolean; reason: string } | undefined;
+    const install = new Function(
+      piReadOnlyExtensionSource().replace(
+        "export default function agentsOneReadOnly",
+        "return function agentsOneReadOnly",
+      ),
+    )();
+    install({
+      on: (_event: string, callback: typeof handler) => {
+        handler = callback;
+      },
+      getAllTools: () => [
+        { name: "mcp__search", annotations: { readOnlyHint: true } },
+        {
+          name: "mcp__delete",
+          annotations: { readOnlyHint: false, destructiveHint: true },
+        },
+        { name: "unknown_extension" },
+      ],
+    });
+    for (const toolName of [
+      "read",
+      "grep",
+      "find",
+      "ls",
+      "tool_search",
+      "codemode",
+      "mcp__search",
+    ]) {
+      expect(handler!({ toolName })).toBeUndefined();
+    }
+    for (const toolName of [
+      "write",
+      "edit",
+      "bash",
+      "powershell",
+      "mcp__delete",
+      "unknown_extension",
+    ]) {
+      const denied = handler!({
+        toolName,
+        parentToolCallId: "codemode/nested",
+      });
+      expect(denied).toMatchObject({ block: true });
+      expect(denied?.reason).toContain(toolName);
+      expect(denied?.reason).toContain("只读");
+      expect(denied?.reason).toContain("移动或删除需切换为完全访问");
+    }
+  });
+  it("blocks automatic deletion and movement before execution while keeping reads and edits enabled", () => {
+    let handler!: (event: {
+      toolName: string;
+      input: Record<string, unknown>;
+    }) => { block: boolean; reason: string } | undefined;
+    const install = new Function(
+      piReadOnlyExtensionSource("safe_write").replace(
+        "export default function agentsOneReadOnly",
+        "return function agentsOneReadOnly",
+      ),
+    )();
+    install({
+      on: (_event: string, callback: typeof handler) => {
+        handler = callback;
+      },
+    });
+    for (const toolName of ["read", "write", "edit"])
+      expect(handler({ toolName, input: {} })).toBeUndefined();
+    expect(
+      handler({ toolName: "bash", input: { command: "git status" } }),
+    ).toBeUndefined();
+    for (const event of [
+      { toolName: "bash", input: { command: "rm original.txt" } },
+      {
+        toolName: "powershell",
+        input: { command: "Remove-Item -LiteralPath original.txt" },
+      },
+      { toolName: "mcp__delete_file", input: { path: "original.txt" } },
+      { toolName: "mcp__file_operation", input: { operation: "move" } },
+    ]) {
+      expect(handler(event)).toMatchObject({
+        block: true,
+        reason: expect.stringContaining("完全访问"),
+      });
+    }
   });
 });

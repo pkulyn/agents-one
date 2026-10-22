@@ -566,6 +566,7 @@ describe("Agents One Remote Gateway run contract", () => {
       contentBase64?: string;
     };
     expect(body.contentBase64).toBe(Buffer.from("hello").toString("base64"));
+    expect(body).not.toHaveProperty("content_base64");
   });
 
   it("downloads and verifies a remote artifact without exposing a remote path", async () => {

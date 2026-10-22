@@ -18,6 +18,40 @@ OpenCode's ACP tool trace is structured rather than a plain text progress line. 
 
 The live typing bubble keeps only the neutral three-dot activity animation. [[src/renderer/src/screens/Chat/MessageList.tsx#MessageList]] no longer adds a separate rotating Agents One logo because that mark did not identify the responding Runtime or expose actionable state.
 
+## OpenCode streamed Markdown and trace retention
+
+OpenCode ACP answer and thought deltas preserve every space and newline so headings, lists, paragraphs and code indentation survive token boundaries.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#agentTextDelta]] reads text content without trimming. Answer fragments flow through the output callback and produce only one message status event per turn, preventing a long answer from evicting earlier thought/tool evidence from the existing bounded Runtime and archived execution histories. Tool evidence and provider metadata keep their existing normalization.
+
+[[tests/agent-runtimes.test.ts]] streams more than 200 unique answer deltas, then saves and reloads the execution and checks that reasoning and named tool rows remain alongside the original Markdown. [[tests/opencode-acp.test.ts]] also checks whitespace-only deltas in the live output callback. Existing histories are not rewritten.
+
+## Bounded execution trace retention
+
+Answer-fragment events must not evict reasoning, tools or terminal evidence when a Runtime answer becomes a durable transcript.
+
+[[src/shared/runtime-event-retention.ts#retainRuntimeEvents]] removes older message fragments before applying the existing chronological tail limit. Main uses it for both local and Gateway event appends; conversation storage uses the same policy for execution serialization. The 200-event Run and 80-event archive limits remain bounded, and process-only overflow keeps the previous tail behavior. Stored replies remain the authoritative answer text. The actual installed desktop bundle must carry both this retention policy and the OpenCode delta fix; validating a newer checkout alone does not update a separately packaged candidate.
+
+[[tests/runtime-conversation-store.test.ts]] verifies that a trace followed by 240 answer fragments still renders reasoning and paired tools after save and reload. [[src/shared/runtime-event-retention.test.ts]] protects repeated live truncation and evidence-only overflow ordering.
+
+## Remote reasoning and sent attachments
+
+RuntimeChat keeps remote reasoning text and the files that accompanied each user turn visible in the saved transcript.
+
+[[src/shared/agent-event-stream.ts#agentEventTimelineEntry]] maps the complete Gateway `reasoning.summary` text into a bounded detail field, including older Hers events that carry the thought in `data.text`. [[src/main/agent-runtimes.ts]] retains up to 16,000 characters of event detail, and [[src/main/runtime-conversation-store.ts#cleanRuntimeEvent]] preserves that detail when the conversation is reopened.
+
+[[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]] copies only attachment identity, type, name, and size into the user message. [[src/main/runtime-conversation-store.ts#cleanMessageAttachments]] validates and persists those display fields while excluding file contents, image data, and local paths. [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.ts#runtimeConversationMessage]] passes them to the same [[src/renderer/src/components/AttachmentChip.tsx#AttachmentChip]] used by the composer. A fixed 180-by-64-pixel card shows an image thumbnail when available or a type icon otherwise, plus a truncated filename.
+
+[[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.test.ts]] verifies transcript mapping, and [[src/main/runtime-conversation-store.test.ts]] verifies safe metadata persistence and full reasoning-detail round trips.
+
+## OpenCode historical trace recovery
+
+A fixed adapter cannot recreate evidence already evicted from an old execution, but a verified native OpenCode session export can supply the original reasoning and tool records for a targeted repair.
+
+Recovery matches each native assistant turn through its parent user ID, original run time bounds and exact final-answer text after whitespace normalization. Verified native parts pass through [[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] for the existing bounded, redacted event shape. Repeated answer-fragment events are replaced by one status event so restored reasoning and tools fit the persisted execution limit.
+
+Before writing, recovery saves a private backup and uses the existing [[src/main/runtime-conversation-store.ts#saveRuntimeConversation]] revision check. Only the matched reply execution events change; message identities, user/assistant text, model metadata and other conversations remain intact. The desktop must be validated through its actual IPC dispatch and visible original chat, because an isolated adapter check does not prove that a running Main process has loaded a new build.
+
 ## Pi model transport failures
 
 Pi may emit assistant messages with `stopReason=error` and still exit with status code `0`. [[src/main/pi-runtime.ts#piOutputError]] makes a terminal structured model error fail the Runtime Run instead of producing an empty-success fallback in chat.
@@ -124,6 +158,66 @@ OpenCode tool rows are provider evidence, not generic activity placeholders. ACP
 
 Adapter tests protect both the quiet transcript and the actual artifact output path.
 
+Gateway attachment persistence waits for the tested conversation's terminal checkpoint, asserting its unique conversation ID, Runtime, user/agent messages and cleared active Run. Independent asynchronous conversations may save in any order, so the test does not infer persistence from rendered text or a global last-call ordering.
+
 [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.test.ts]] verifies that error, artifact, and workspace-authorization lifecycle notices are omitted while genuine reasoning and hydrated image artifacts remain. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx]] protects progressive collaboration events, terminal snapshot merging, avatar-triggered pause, repeated target-only guided turns, shared response context, session reuse, explicit downstream resume, collaboration consent, remote-native workspace semantics, and model-label continuity; MessageList and file-component tests protect per-agent identity, avatar routing, quiet typing state, and local artifact actions.
 
 The DAG regression holds two sibling Runtime runs open, asserts both Runtime identities and running states are simultaneously visible, and confirms the join is not dispatched until both siblings succeed. Shared graph tests additionally protect coordinator anchoring, legacy serial compatibility, parallel layers, multi-input joins, descendants, missing dependencies and cycle rejection.
+
+## Pi read-only tool boundary
+
+Pi read-only conversations retain file readers and query tools even without a selected project; a native tool-call hook blocks mutations rather than disabling every tool.
+
+[[src/main/pi-runtime.ts#piExecArgs]] declares read, grep, find, ls, tool_search and codemode. The generated [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] runs in Pi itself and checks direct and nested tool calls; automatic runs also block explicit removal/move tools and recognized removal shell commands before execution. Built-in readers and orchestration are allowed; other tools require a readOnlyHint annotation. Unknown or mutating tools return an actionable denial to the model instead of silently disappearing. Unrestricted shell execution is unavailable in read-only mode.
+
+MCP tools remain callable through Pi 1.x discovery and codemode, subject to the same hook after registration. This preserves declared read-only queries without exposing unannotated mutations. Global agent instructions load normally, but instructed memory reads still require an actual tool call. User-selected projects determine project context; the fallback chat directory does not inherit a terminal project directory.
+
+## Automatic permission defaults
+
+New full-chat, tray and quick-chat conversations default to automatic permission while existing explicit selections and transport-specific authority remain intact.
+
+[[src/shared/runtime-permissions.ts#automaticRuntimeTaskMode]] resolves automatic to safe_write for native and Gateway runtimes, including unscoped OpenCode conversations; browser agents retain their analysis-only capability. The mode reflects executable capability; a browser agent never gains local filesystem tools. Explicit mobile inspection policies and read-only analysis branches retain their enforced authority.
+
+Mobile desktop-task policies use the same automatic mode at Owner dispatch. [[src/main/mobile-control/execution-coordinator.ts#MobileExecutionCoordinator#checkApproval]] permits a projectless automatic write only for the generated desktop-task policy; legacy project-write approvals stay project-bound. Full access is dispatched only when the current generated policy carries explicit confirmation, including on continued turns.
+
+[[src/main/app/tray-runtime-task.ts#startTrayRuntimeTask]] persists auto instead of the former implicit analysis selection, and quick chat uses the same resolver. Main resolves omitted task modes at dispatch without rewriting saved conversations or provider configuration.
+
+## Permission conflict feedback
+
+Every dispatched task receives its effective permission and instructions to name blocked operations and the permission required before attempting unsupported work.
+
+[[src/shared/runtime-permissions.ts#runtimePermissionInstruction]] distinguishes read-only, automatic safe-write, isolated implementation and full access. Read-only permits queries but no creation or mutation; automatic permits creation/editing but prohibits removing or moving original files. A deletion request under automatic must explain the restriction and request full access, rather than ending with a promise to execute.
+
+Main adds this context for local and Gateway task dispatch. Pi native denial results carry the blocked tool and required permission back to the model, including nested calls. If safe-write restoration catches removed originals, [[src/shared/runtime-permissions.ts#runtimeRemovalBlockedMessage]] makes local adapters report an actionable failure even when the provider exits successfully; restoration text must not disappear behind a structured final answer.
+
+## Pi reasoning preview boundary
+
+Pi reasoning keeps a short progress summary and a separate bounded detail so long thoughts remain readable in live chat and after durable reload.
+
+[[src/main/agent-runtimes.ts#appendOutputEvent]] preserves original whitespace in Pi thinking detail instead of reducing the entire thought to 520 preview characters. Growing snapshots with identical clipped summaries update one progress event, and shorter later snapshots cannot replace longer detail. Existing redaction and event-detail bounds still apply.
+
+[[tests/agent-runtimes.test.ts]] streams snapshots past the preview boundary, verifies a single complete thought, saves/reloads the execution and checks the renderer's reasoning content. Earlier truncated conversation events are not rewritten automatically; their native Pi JSONL remains available for targeted recovery.
+
+## Cross-runtime native permission enforcement
+
+All native adapters apply the same read-only, automatic and full-access business rules through their available tool and sandbox controls.
+
+Codex retains its native read-only or workspace-write sandbox. Claude CLI analysis uses plan mode; conversational Claude SDK analysis explicitly selects plan mode and disables mutation/shell tools. OpenCode applies per-process permission overrides for edit, bash and task so native defaults cannot auto-approve these requests; ACP then permits declared read/search/fetch operations in analysis, edit in automatic, and delete/move only in full access. Rejected requests produce visible permission-denied events and actionable terminal errors.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodePermissionEnvironment]] preserves unrelated inherited environment settings without writing provider config. [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodePermissionDenial]] decides the ACP operation boundary. [[tests/opencode-acp.test.ts]] exercises actual request/response exchanges for read, search, edit, delete and move across modes. Automatic no longer silently downgrades a native or Gateway conversation to read-only just because no desktop project was selected. Browser and remote adapters remain constrained by the capabilities and authority their service actually provides.
+
+## ACP agent request identity preservation
+
+ACP permission and error replies retain the original numeric or string ID, including zero and numeric strings. Coercion can leave permitted tools waiting; permission decisions and session identity stay unchanged.
+
+## ACP turn session and deadline metadata
+
+OpenCode reports its native session ID immediately after creation or restore, before a prompt completes. The task timeout overrides the runtime fallback deadline so both layers enforce the same turn budget.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] publishes session metadata before prompting; [[src/main/agent-runtimes.ts#startAgentRuntimeTask]] records it while running, retaining continuation after cancellation or timeout. The process fixture checks both shorter and longer task deadlines, including servers without model metadata.
+
+## OpenCode Windows system proxy inheritance
+
+OpenCode inherits an enabled Windows manual proxy in its child process when no explicit CLI proxy is set, preventing direct-connection timeouts on systems whose desktop networking already uses a proxy.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeProxyEnvironment]] preserves explicit proxy and bypass variables and existing permission settings. A bounded read-only HKCU query supplies manual proxy routes for OpenCode probes and tasks; provider files, Windows settings and other runtimes are untouched. Loopback bypass keeps ACP and local model endpoints reachable. Tests cover disabled, invalid, protocol-specific and explicitly overridden settings.

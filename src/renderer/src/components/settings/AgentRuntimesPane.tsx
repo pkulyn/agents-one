@@ -306,6 +306,8 @@ export default function AgentRuntimesPane({
   const [flash, setFlash] = useState<string | null>(null);
   const [webAgentPolicy, setWebAgentPolicy] =
     useState<WebAgentPolicyStatus | null>(null);
+  const [webPolicyBusy, setWebPolicyBusy] = useState(false);
+  const [webPolicyError, setWebPolicyError] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   // PATH-detected local CLI executables (plan 1.5) — auto-fill the executable
   // path when the user starts a local CLI template.
@@ -1192,7 +1194,7 @@ export default function AgentRuntimesPane({
   }
 
   async function toggleWebAgentPolicy(): Promise<void> {
-    if (!webAgentPolicy?.available) return;
+    if (!webAgentPolicy?.available || webPolicyBusy) return;
     const enable = !webAgentPolicy.enabled;
     if (
       enable &&
@@ -1200,25 +1202,21 @@ export default function AgentRuntimesPane({
     ) {
       return;
     }
+    setWebPolicyError(null);
+    setWebPolicyBusy(true);
     try {
       const next = await window.agentsOneAPI.setWebAgentPolicyEnabled(
         enable,
         enable,
       );
       setWebAgentPolicy(next);
-      if (!next.enabled && newAgentType === "web") {
-        selectNewAgentType("remote");
-      }
-      setFlash(
-        next.enabled
-          ? t("settings.runtimeManager.webPolicyEnabled")
-          : t("settings.runtimeManager.webPolicyDisabled"),
-      );
     } catch (error) {
-      setFlash(
+      setWebPolicyError(
         (error as Error).message ||
           t("settings.runtimeManager.webPolicyUpdateFailed"),
       );
+    } finally {
+      setWebPolicyBusy(false);
     }
   }
 
@@ -1476,34 +1474,6 @@ export default function AgentRuntimesPane({
         )}
 
         <div className="settings-card-body">
-          <section
-            className="settings-field-hint"
-            data-testid="web-agent-policy"
-          >
-            <strong>{t("settings.runtimeManager.experimentalTitle")}</strong>
-            <div>{t("settings.runtimeManager.experimentalDescription")}</div>
-            {webAgentPolicy?.available ? (
-              <button
-                type="button"
-                className="btn btn-sm btn-secondary"
-                aria-pressed={webAgentPolicy.enabled}
-                onClick={() => void toggleWebAgentPolicy()}
-              >
-                {webAgentPolicy.enabled
-                  ? t("settings.runtimeManager.disableWebProviders")
-                  : t("settings.runtimeManager.understandAndEnable")}
-              </button>
-            ) : (
-              <div>
-                {webAgentPolicy?.reasonCode === "public-build-disabled"
-                  ? t("settings.runtimeManager.publicBuildWebDisabled")
-                  : webAgentPolicy?.reasonCode === "emergency-disabled"
-                    ? t("settings.runtimeManager.emergencyWebDisabled")
-                    : webAgentPolicy?.reason ||
-                      t("settings.runtimeManager.policyLoading")}
-              </div>
-            )}
-          </section>
           {selectedRuntime &&
             draft.location === "remote" &&
             usesUnifiedGateway && (
@@ -1605,7 +1575,6 @@ export default function AgentRuntimesPane({
                       type="button"
                       className={newAgentType === "web" ? "is-selected" : ""}
                       aria-pressed={newAgentType === "web"}
-                      disabled={!webAgentPolicy?.enabled}
                       onClick={() => selectNewAgentType("web")}
                     >
                       <span className="agent-onboarding-type-icon agent-onboarding-type-icon--web">
@@ -1900,122 +1869,162 @@ export default function AgentRuntimesPane({
           {(!isNew || newAgentStep === 3) &&
             (isWebAgent ? (
               <div className="settings-field">
-                <span className="settings-field-label">
-                  {t("settings.runtimeManager.experimentalWebAgent")}
-                </span>
-                <span className="settings-field-hint">
-                  {t("settings.runtimeManager.webAgentSecurityHint")}
-                </span>
-                <label className="settings-field">
-                  <span className="settings-field-label">Provider</span>
-                  <select
-                    className="input"
-                    aria-label={t("settings.runtimeManager.webProvider")}
-                    value={draft.config.webAgent?.provider || "doubao"}
-                    onChange={(event) => {
-                      const provider = event.target.value as
-                        | "doubao"
-                        | "chatgpt"
-                        | "grok";
-                      setDraft((current) => ({
-                        ...current,
-                        id: ["doubao-web", "chatgpt-web", "grok-web"].includes(
-                          current.id,
-                        )
-                          ? `${provider}-web`
-                          : current.id,
-                        name:
-                          provider === "chatgpt"
-                            ? t("settings.runtimeManager.chatgptWebName")
-                            : provider === "grok"
-                              ? t("settings.runtimeManager.grokWebName")
-                              : t("settings.runtimeManager.defaultDoubaoName"),
-                        config: {
-                          ...current.config,
-                          webAgent: {
-                            provider,
-                            profileId:
-                              current.config.webAgent?.profileId || "default",
-                            adapterVersion:
-                              current.config.webAgent?.adapterVersion ||
-                              "1.0.0",
-                            enabled: current.config.webAgent?.enabled !== false,
-                          },
-                        },
-                      }));
-                    }}
-                    disabled={Boolean(selectedRuntime)}
-                  >
-                    <option value="doubao">
-                      {t("settings.runtimeManager.doubao")}
-                    </option>
-                    <option value="chatgpt">ChatGPT</option>
-                    <option value="grok">Grok</option>
-                  </select>
-                </label>
-                <span className="settings-field-hint">
-                  {t("settings.runtimeManager.currentProvider", {
-                    provider:
-                      draft.config.webAgent?.provider === "chatgpt"
-                        ? "ChatGPT"
-                        : draft.config.webAgent?.provider === "grok"
-                          ? "Grok"
-                          : t("settings.runtimeManager.doubao"),
-                    version:
-                      draft.config.webAgent?.adapterVersion ||
-                      t("settings.runtimeManager.unknown"),
-                  })}
-                </span>
-                <label className="settings-field">
+                <div className="settings-toggle-row">
                   <span className="settings-field-label">
-                    {t("settings.runtimeManager.webProfile")}
+                    {t("settings.runtimeManager.experimentalWebAgent")}
                   </span>
-                  <input
-                    className="input"
-                    aria-label={t("settings.runtimeManager.webProfile")}
-                    value={draft.config.webAgent?.profileId || "default"}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        config: {
-                          ...current.config,
-                          webAgent: {
-                            provider:
-                              current.config.webAgent?.provider || "doubao",
-                            profileId: event.target.value,
-                            adapterVersion:
-                              current.config.webAgent?.adapterVersion ||
-                              "1.0.0",
-                            enabled: true,
-                          },
-                        },
-                      }))
-                    }
-                    disabled={Boolean(selectedRuntime)}
-                  />
+                  <label className="tools-toggle">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      data-desktop-feature="web-agent-opt-in"
+                      aria-label={t(
+                        "settings.runtimeManager.experimentalWebAgent",
+                      )}
+                      aria-checked={webAgentPolicy?.enabled === true}
+                      checked={webAgentPolicy?.enabled === true}
+                      disabled={!webAgentPolicy?.available || webPolicyBusy}
+                      onChange={() => void toggleWebAgentPolicy()}
+                    />
+                    <span className="tools-toggle-track" />
+                  </label>
+                </div>
+                {webPolicyError && (
+                  <span className="settings-field-hint" role="alert">
+                    {webPolicyError}
+                  </span>
+                )}
+                {webAgentPolicy && !webAgentPolicy.available && (
                   <span className="settings-field-hint">
-                    {t("settings.runtimeManager.webProfileHint")}
+                    {webAgentPolicy.reasonCode === "emergency-disabled"
+                      ? t("settings.runtimeManager.emergencyWebDisabled")
+                      : webAgentPolicy.reason ||
+                        t("settings.runtimeManager.webPolicyUnavailable")}
                   </span>
-                </label>
-                {selectedRuntime && (
-                  <div className="settings-card-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => void openWebAgentWindow()}
-                      disabled={busy === "probe"}
-                    >
-                      {t("settings.runtimeManager.openWebLogin")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => void clearWebAgentLogin()}
-                      disabled={busy === "remove"}
-                    >
-                      {t("settings.runtimeManager.clearWebLogin")}
-                    </button>
-                  </div>
+                )}
+                {webAgentPolicy?.enabled && (
+                  <>
+                    <span className="settings-field-hint">
+                      {t("settings.runtimeManager.webAgentSecurityHint")}
+                    </span>
+                    <label className="settings-field">
+                      <span className="settings-field-label">Provider</span>
+                      <select
+                        className="input"
+                        aria-label={t("settings.runtimeManager.webProvider")}
+                        value={draft.config.webAgent?.provider || "doubao"}
+                        onChange={(event) => {
+                          const provider = event.target.value as
+                            | "doubao"
+                            | "chatgpt"
+                            | "grok";
+                          setDraft((current) => ({
+                            ...current,
+                            id: [
+                              "doubao-web",
+                              "chatgpt-web",
+                              "grok-web",
+                            ].includes(current.id)
+                              ? `${provider}-web`
+                              : current.id,
+                            name:
+                              provider === "chatgpt"
+                                ? t("settings.runtimeManager.chatgptWebName")
+                                : provider === "grok"
+                                  ? t("settings.runtimeManager.grokWebName")
+                                  : t(
+                                      "settings.runtimeManager.defaultDoubaoName",
+                                    ),
+                            config: {
+                              ...current.config,
+                              webAgent: {
+                                provider,
+                                profileId:
+                                  current.config.webAgent?.profileId ||
+                                  "default",
+                                adapterVersion:
+                                  current.config.webAgent?.adapterVersion ||
+                                  "1.0.0",
+                                enabled:
+                                  current.config.webAgent?.enabled !== false,
+                              },
+                            },
+                          }));
+                        }}
+                        disabled={Boolean(selectedRuntime)}
+                      >
+                        <option value="doubao">
+                          {t("settings.runtimeManager.doubao")}
+                        </option>
+                        <option value="chatgpt">ChatGPT</option>
+                        <option value="grok">Grok</option>
+                      </select>
+                    </label>
+                    <span className="settings-field-hint">
+                      {t("settings.runtimeManager.currentProvider", {
+                        provider:
+                          draft.config.webAgent?.provider === "chatgpt"
+                            ? "ChatGPT"
+                            : draft.config.webAgent?.provider === "grok"
+                              ? "Grok"
+                              : t("settings.runtimeManager.doubao"),
+                        version:
+                          draft.config.webAgent?.adapterVersion ||
+                          t("settings.runtimeManager.unknown"),
+                      })}
+                    </span>
+                    <label className="settings-field">
+                      <span className="settings-field-label">
+                        {t("settings.runtimeManager.webProfile")}
+                      </span>
+                      <input
+                        className="input"
+                        aria-label={t("settings.runtimeManager.webProfile")}
+                        value={draft.config.webAgent?.profileId || "default"}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            config: {
+                              ...current.config,
+                              webAgent: {
+                                provider:
+                                  current.config.webAgent?.provider || "doubao",
+                                profileId: event.target.value,
+                                adapterVersion:
+                                  current.config.webAgent?.adapterVersion ||
+                                  "1.0.0",
+                                enabled: true,
+                              },
+                            },
+                          }))
+                        }
+                        disabled={Boolean(selectedRuntime)}
+                      />
+                      <span className="settings-field-hint">
+                        {t("settings.runtimeManager.webProfileHint")}
+                      </span>
+                    </label>
+                    {selectedRuntime && (
+                      <div className="settings-card-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => void openWebAgentWindow()}
+                          disabled={busy === "probe"}
+                        >
+                          {t("settings.runtimeManager.openWebLogin")}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => void clearWebAgentLogin()}
+                          disabled={busy === "remove"}
+                        >
+                          {t("settings.runtimeManager.clearWebLogin")}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             ) : isRemoteConnection ? (
@@ -2901,6 +2910,7 @@ export default function AgentRuntimesPane({
                       onClick={() => void probeDraft()}
                       disabled={
                         busy === "probe" ||
+                        (isWebAgent && !webAgentPolicy?.enabled) ||
                         isLocalHermesAdoption ||
                         !draft.id.trim() ||
                         !draft.name.trim() ||

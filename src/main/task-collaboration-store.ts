@@ -16,7 +16,7 @@ import {
   type LinkTaskCollaborationInput,
   type UpdateTaskCollaborationExecutionInput,
 } from "../shared/task-collaboration";
-import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
+import { getActiveProfileNameSync, agentsOneProfileHome, safeWriteFile } from "./utils";
 
 interface CollaborationStore {
   version: 1;
@@ -50,7 +50,7 @@ const ROLE_RUN_STATUSES = new Set<TaskCollaborationRoleRunStatus>([
 
 function storePath(profile?: string): string {
   return join(
-    profileHome(profile || getActiveProfileNameSync()),
+    agentsOneProfileHome(profile || getActiveProfileNameSync()),
     "desktop",
     "task-collaborations.json",
   );

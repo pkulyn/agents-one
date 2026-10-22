@@ -9,7 +9,7 @@ import {
 } from "fs";
 import { dirname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
-import { profileHome } from "./utils";
+import { agentsOneProfileHome } from "./utils";
 
 const MAX_PROTECTED_FILES = 20_000;
 const MAX_PROTECTED_BYTES = 1024 * 1024 * 1024;
@@ -50,7 +50,7 @@ export function protectWorkspaceFromRemoval(
 ): WorkspaceProtection {
   const root = resolve(workspace);
   const backupRoot = resolve(
-    backupBase || profileHome(profile),
+    backupBase || agentsOneProfileHome(profile),
     "desktop",
     "safe-write-backups",
     randomUUID(),

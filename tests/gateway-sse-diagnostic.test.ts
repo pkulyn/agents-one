@@ -59,13 +59,30 @@ describe("Gateway SSE diagnostic", () => {
     async ({ prefix, contract, idKey }) => {
       const bodies: Record<string, unknown>[] = [];
       let nextRun = 0;
+      let activeRun: string | undefined;
+      let reconciledRuns = 0;
       const server = createServer(
         async (request: IncomingMessage, response: ServerResponse) => {
           if (request.method === "POST" && request.url === `${prefix}/runs`) {
+            if (activeRun) {
+              response.writeHead(429).end();
+              return;
+            }
             bodies.push(await readBody(request));
             nextRun += 1;
+            activeRun = `run-${nextRun}`;
             response.writeHead(202, { "content-type": "application/json" });
             response.end(JSON.stringify({ [idKey]: `run-${nextRun}` }));
+            return;
+          }
+          if (
+            request.method === "GET" &&
+            request.url === `${prefix}/runs/${activeRun}`
+          ) {
+            reconciledRuns += 1;
+            activeRun = undefined;
+            response.writeHead(200, { "content-type": "application/json" });
+            response.end(JSON.stringify({ status: "succeeded" }));
             return;
           }
           if (
@@ -94,6 +111,7 @@ describe("Gateway SSE diagnostic", () => {
         });
         expect(result.contract).toBe(contract);
         expect(bodies).toHaveLength(4);
+        expect(reconciledRuns).toBe(4);
         if (contract === "hermes-v1") {
           expect(bodies.every((body) => typeof body.input === "string")).toBe(
             true,

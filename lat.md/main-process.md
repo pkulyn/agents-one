@@ -38,6 +38,14 @@ Lifecycle code owns Electron windows, global app events, and shutdown cleanup.
 
 [[src/main/app/start.ts#startMainProcess]] registers crash logging, IPC handlers, updater handlers, Electron ready/activate/window-all-closed/before-quit events, CSP headers, security hardening, and the main BrowserWindow.
 
+### Agents One data ownership
+
+Agents One durable desktop state follows Electron `userData` under `data/`; Hermes native state remains under the optional Hermes home.
+
+[[src/main/agents-one-data-root.ts#agentsOneDataRoot]] resolves the app-owned root and profile homes. Before the window, scheduler, or mobile Owner starts, [[src/main/app/start.ts#startMainProcess]] runs [[src/main/agents-one-data-migration.ts#migrateLegacyAgentsOneData]] to copy legacy desktop files and split `desktop_*` SQLite tables from Hermes `state.db` into Agents One `desktop.db`. The migration verifies staged copies and switches the new root atomically, preserving the original Hermes database and legacy files. Runtime/Quick Chat history, projects, schedules, staged attachments, profile metadata, caches, and no-workspace Runtime directories belong to Agents One; native Hermes sessions, configuration, credentials, memory and skills remain optional Hermes data. [[src/main/agents-one-data-root.ts#agentsOneProfileHome]] places every desktop profile under `data/profiles/<profile>/`, including explicit `data/profiles/default/`; this is distinct from Hermes [[src/main/utils.ts#profileHome]], where the default profile maps to Hermes home. Runtime and Quick Chat conversation readers and writers must share the Agents One profile home through [[src/main/runtime-conversation-store.ts#storeFilePath]], so records remain visible even when Hermes home is relocated.
+
+Pi, Codex, Claude Code and OpenCode use a selected project directory only when the task carries an explicit workspace. With no project, each local process `cwd` is an Agents One per-profile runtime directory under `data/profiles/<profile>/desktop/runtime-chat/`; [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeConversationWorkspace]] provides OpenCode's directory. Profile setup's workspace detection is a probe and does not select the cwd or silently bind the conversation to a project.
+
 Normal shutdown is a quiescing transition, not a best-effort synchronous cleanup. [[src/main/app/start.ts]] first closes admission for new Runtime tasks, stops and waits for schedule ticks, aborts legacy active requests, and awaits [[src/main/agent-runtimes.ts#cancelAllAgentRuntimeTasks]] before closing temporary media, dashboards, and SQLite. The `before-quit` event is prevented until this ordering completes, avoiding a normal app exit racing a local CLI process that can still write its workspace. The same Runtime quiet gate is applied before backup restore replaces profile data in [[src/main/ipc/register.ts#registerIpcHandlers]].
 
 Gateway restart tests launch real short-lived child processes with a temporary repository as their working directory. Their teardown uses asynchronous recursive removal with bounded Windows lock retries, so a just-exited process cannot turn a successful behavioral assertion into a transient `EPERM`, while a persistent process leak still fails the suite.
@@ -67,6 +75,12 @@ The tray's left-click surface loads the regular renderer with `?tray=1`, which [
 Quick-composer controls, picker-dialog copy, platform error fallbacks, Runtime location labels, and accessible names follow the active application locale. Runtime names, project names, and provider errors remain unchanged user/provider data.
 
 The right-click task menu follows the same locale for section headings, empty/count states, flyout labels, and application actions. Persisted task titles and project names are never translated or rewritten.
+
+#### Durable quick tasks
+
+The tray quick composer must create the same durable Runtime conversation as the main chat before it closes, then keep saving the terminal reply while its window is gone.
+
+[[src/main/app/tray-runtime-task.ts#startTrayRuntimeTask]] starts the selected Runtime under the active profile and records the user prompt with its run id in the existing conversation store. The tray-only IPC accepts only its own composer window. [[src/main/app/tray-runtime-task.ts#watchTrayRuntimeTask]] continues polling in the main process, including remote Gateway runs that need polling, and [[src/main/app/tray-runtime-task.ts#finishTrayRuntimeTask]] appends one final reply or failure with the web session id and execution timeline. The main window receives a narrow conversation-change event so the sidebar and any open task refresh immediately. A failed initial save cancels the dispatched run; a repeat terminal observation does not duplicate the result. The tray menu and completion card open this persisted conversation.
 
 #### Task completion toast
 

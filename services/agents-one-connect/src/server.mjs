@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createMobileControlService } from "./mobile-control.mjs";
 import { createServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import {
@@ -9,7 +10,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 
 const PROTOCOL_VERSION = "1.1";
@@ -18,6 +19,8 @@ const PAIRING_TTL_MS = 5 * 60 * 1000;
 const PAIRING_ATTEMPT_WINDOW_MS = 60 * 1000;
 const PAIRING_MAX_ATTEMPTS = 8;
 const MAX_BODY_BYTES = 256 * 1024;
+const MAX_TUNNEL_FRAME_BYTES = 16 * 1024 * 1024;
+const MAX_STANDARD_TUNNEL_REQUEST_BYTES = 4 * 1024 * 1024;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MAX_PENDING_REQUESTS_PER_DEVICE = 128;
 const MAX_PENDING_REQUESTS_PER_RUNTIME = 32;
@@ -298,7 +301,12 @@ export function createConnectService({
    * public deployment should either provide these or terminate TLS in a
    * trusted reverse proxy. */
   tls,
+  mobile,
 } = {}) {
+  if (storagePath && mobile?.storagePath && resolve(storagePath).toLowerCase() === resolve(mobile.storagePath).toLowerCase()) {
+    throw new Error("Mobile authorization state must be separate from Gateway state.");
+  }
+  const mobileControl = createMobileControlService(mobile);
   const pairings = new Map();
   const devices = new Map();
   const runtimes = new Map();
@@ -417,6 +425,7 @@ export function createConnectService({
   const requestHandler = async (req, res) => {
     const url = new URL(req.url || "/", "http://connect.local");
     try {
+      if (await mobileControl.handle(req, res, url)) return;
       if (req.method === "GET" && url.pathname === "/connect/v1/health") {
         json(res, 200, { status: "ok", protocolVersion: PROTOCOL_VERSION });
         return;
@@ -1136,9 +1145,10 @@ export function createConnectService({
 
   const wss = new WebSocketServer({
     noServer: true,
-    maxPayload: 4 * 1024 * 1024,
+    maxPayload: MAX_TUNNEL_FRAME_BYTES,
   });
   server.on("upgrade", (req, socket, head) => {
+    if (mobileControl.upgrade(req, socket, head)) return;
     const url = new URL(req.url || "/", "http://connect.local");
     if (url.pathname !== "/connect/v1/tunnel") {
       socket.destroy();
@@ -1280,7 +1290,12 @@ export function createConnectService({
     socket.on("message", (raw) => {
       if (!identity) return;
       try {
+        const rawBytes = Buffer.isBuffer(raw) ? raw.length : Buffer.byteLength(String(raw));
         let frame = tunnelFrame(JSON.parse(raw.toString("utf8")));
+        if (rawBytes > MAX_STANDARD_TUNNEL_REQUEST_BYTES && frame.type === "request" && !(frame.method === "POST" && frame.path === "/artifacts")) {
+          sendSocketError(socket, frame.requestId, 413, "request_body_too_large", "Only artifact uploads may exceed the standard tunnel request limit.");
+          return;
+        }
         if (frame.type === "heartbeat") {
           identity.device.lastSeenAt = now();
           sendSocket(socket, { type: "heartbeat_ack", at: now() });
@@ -1403,6 +1418,7 @@ export function createConnectService({
       return server.address();
     },
     async close() {
+      await mobileControl.close();
       persistState();
       for (const device of devices.values()) {
         closeSocket(device.socket, 1001, "service stopping");

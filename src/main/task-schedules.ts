@@ -20,25 +20,29 @@ import {
   unattendedRuntimePreflight,
   type AgentRuntimeDefinition,
   type AgentRuntimeRun,
+  type AgentRuntimeTaskInput,
 } from "../shared/agent-runtimes";
 import {
   cancelAgentRuntimeTask,
   getAgentRuntimeRun,
   listAgentRuntimes,
   startAgentRuntimeTask,
+  requestAgentRuntimeTaskCancellation,
 } from "./agent-runtimes";
 import {
   getRuntimeConversation,
   saveRuntimeConversation,
 } from "./runtime-conversation-store";
-import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
+import { getActiveProfileNameSync, agentsOneProfileHome, safeWriteFile } from "./utils";
 import { resolveAuthorizedWorkspaceId } from "./workspace-authority";
+import { isAgentsOneRestoreWriteLocked } from "./restore-write-lock";
 
 const STORE_VERSION = 5;
 const MAX_SCHEDULES = 200;
 const MAX_SCHEDULE_RUNS = 100;
 const MAX_PENDING_RUNS = 20;
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
+export const DEFAULT_TASK_SCHEDULE_TIMEOUT_MS = DEFAULT_TIMEOUT_MS;
 const RUNNER_INTERVAL_MS = 5_000;
 const LEGACY_TASK_CENTER_RECOVERY_MESSAGE =
   "旧版 Task Center 执行引擎已退役，无法恢复此次运行；请重新触发计划任务。";
@@ -59,7 +63,7 @@ interface Store {
 
 function storePath(profile?: string): string {
   return join(
-    profileHome(profile || getActiveProfileNameSync()),
+    agentsOneProfileHome(profile || getActiveProfileNameSync()),
     "desktop",
     "task-schedules.json",
   );
@@ -91,6 +95,7 @@ function validSchedule(value: string): boolean {
 function normalizeSchedule(
   value: unknown,
   sourceVersion = STORE_VERSION,
+  fullHistory = false,
 ): TaskSchedule | null {
   if (!value || typeof value !== "object") return null;
   const item = value as Partial<TaskSchedule>;
@@ -139,12 +144,19 @@ function normalizeSchedule(
           }
           return normalized;
         })
-        .slice(-MAX_SCHEDULE_RUNS)
+        .slice(fullHistory ? 0 : -MAX_SCHEDULE_RUNS)
     : [];
   // `activeTaskCenterTaskId` is intentionally not returned. It belonged to
   // the retired engine and must never block or dispatch a current schedule.
   return {
     id,
+    revision: scheduleRevision(item.revision),
+    ...(Object.hasOwn(item, "mobileExecutionPolicyId")
+      ? { mobileExecutionPolicyId: item.mobileExecutionPolicyId }
+      : {}),
+    ...(item.mobileRecoveryRequired === true
+      ? { mobileRecoveryRequired: true }
+      : {}),
     name,
     schedule,
     prompt,
@@ -178,34 +190,207 @@ function normalizeSchedule(
   };
 }
 
-function readStore(profile?: string): Store {
+function readStore(
+  profile?: string,
+  fullHistory = false,
+  strict = false,
+): Store {
   try {
     const path = storePath(profile);
     if (!existsSync(path)) return { version: STORE_VERSION, schedules: [] };
     const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<Store>;
+    if (
+      fullHistory &&
+      (!raw ||
+        !Array.isArray(raw.schedules) ||
+        (strict &&
+          raw.schedules.some(
+            (item) =>
+              !normalizeSchedule(
+                item,
+                typeof raw.version === "number" ? raw.version : 1,
+                true,
+              ) ||
+              !Array.isArray(item.runs) ||
+              item.runs.some(
+                (run) => !run || typeof run !== "object" || !run.id,
+              ),
+          )))
+    )
+      throw Error("schedule_storage_invalid");
     const sourceVersion = typeof raw.version === "number" ? raw.version : 1;
     return {
       version: STORE_VERSION,
       schedules: Array.isArray(raw.schedules)
         ? raw.schedules
-            .map((item) => normalizeSchedule(item, sourceVersion))
+            .map((item) => normalizeSchedule(item, sourceVersion, fullHistory))
             .filter((item): item is TaskSchedule => Boolean(item))
-            .slice(0, MAX_SCHEDULES)
         : [],
     };
   } catch {
+    if (fullHistory)
+      throw Object.assign(Error("schedule_storage_invalid"), {
+        code: "requires_owner_action",
+        status: 409,
+      });
     return { version: STORE_VERSION, schedules: [] };
   }
 }
 
 function writeStore(store: Store, profile?: string): void {
+  const file = storePath(profile);
+  let original: Record<string, unknown> = { schedules: [] };
+  if (existsSync(file)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed) ||
+        !Array.isArray((parsed as Record<string, unknown>).schedules)
+      )
+        throw Error();
+      original = parsed as Record<string, unknown>;
+    } catch {
+      throw Object.assign(Error("schedule_storage_invalid"), {
+        code: "requires_owner_action",
+        status: 409,
+      });
+    }
+  }
+  const record = (value: unknown): Record<string, unknown> =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const rawSchedules = original.schedules as unknown[];
+  const sourceVersion =
+    typeof original.version === "number" ? original.version : 1;
+  const changes: TaskScheduleChange[] = [];
+  const rows = store.schedules.map((schedule) => {
+    const prior = record(
+      rawSchedules.find((value) => record(value).id === schedule.id),
+    );
+    const remaining = new Map(
+      schedule.runs.map((run) => [run.id, run] as const),
+    );
+    const runs = (Array.isArray(prior.runs) ? prior.runs : []).map((run) => {
+      const existing = record(run),
+        next = remaining.get(String(existing.id));
+      if (!next) return run;
+      remaining.delete(next.id);
+      const mergedRun = { ...existing, ...next };
+      if (!next.mobileFinalCheckpoint) delete mergedRun.mobileFinalCheckpoint;
+      return mergedRun;
+    });
+    const merged = {
+      ...prior,
+      ...schedule,
+      runs: [...runs, ...remaining.values()],
+    };
+    // Workspace removal is explicit; an omitted known key is not an unknown extension.
+    if (!schedule.workspace) delete merged.workspace;
+    if (!schedule.workspaceId) delete merged.workspaceId;
+    if (!schedule.activeRuntimeRunId) delete merged.activeRuntimeRunId;
+    if (!schedule.mobileRecoveryRequired) delete merged.mobileRecoveryRequired;
+    delete (merged as Record<string, unknown>).activeTaskCenterTaskId;
+    const before = normalizeSchedule(prior, sourceVersion, true);
+    const after = normalizeSchedule(merged, STORE_VERSION, true);
+    const fingerprint = (value: TaskSchedule | null): string => {
+      if (!value) return "";
+      const { revision: ignored, ...rest } = value;
+      void ignored;
+      return JSON.stringify(rest);
+    };
+    const changed = !before || fingerprint(before) !== fingerprint(after);
+    const revision = before
+      ? changed
+        ? String(BigInt(scheduleRevision(before.revision)) + 1n)
+        : scheduleRevision(before.revision)
+      : "1";
+    if (revision.length > 64) throw Error("schedule_revision_overflow");
+    schedule.revision = revision;
+    merged.revision = revision;
+    if (changed)
+      changes.push({
+        profile: resolvedProfile(profile),
+        scheduleId: schedule.id,
+        revision,
+      });
+    return merged;
+  });
+  for (const raw of rawSchedules) {
+    const before = normalizeSchedule(raw, sourceVersion, true);
+    if (before && !rows.some((row) => row.id === before.id))
+      changes.push({
+        profile: resolvedProfile(profile),
+        scheduleId: before.id,
+        revision: scheduleRevision(before.revision),
+        deleted: true,
+      });
+  }
+  const unsupported = rawSchedules.filter(
+    (value) =>
+      !normalizeSchedule(value, sourceVersion, true) &&
+      !rows.some((row) => row.id === record(value).id),
+  );
   safeWriteFile(
-    storePath(profile),
+    file,
     JSON.stringify({
+      ...original,
       version: STORE_VERSION,
-      schedules: store.schedules.slice(0, MAX_SCHEDULES),
+      schedules: [...rows, ...unsupported],
     }),
   );
+  for (const change of changes)
+    for (const listener of scheduleChangeListeners) {
+      try {
+        listener(change);
+      } catch {
+        /* Commit succeeded independently of consumers. */
+      }
+    }
+}
+
+function scheduleRevision(value: unknown): string {
+  return typeof value === "string" && /^(0|[1-9][0-9]{0,63})$/.test(value)
+    ? value
+    : "1";
+}
+export interface TaskScheduleChange {
+  profile: string;
+  scheduleId: string;
+  revision: string;
+  deleted?: boolean;
+}
+const scheduleChangeListeners = new Set<(value: TaskScheduleChange) => void>();
+export function onTaskScheduleChanged(
+  listener: (value: TaskScheduleChange) => void,
+): () => void {
+  scheduleChangeListeners.add(listener);
+  return () => {
+    scheduleChangeListeners.delete(listener);
+  };
+}
+function assertScheduleRevision(
+  id: string,
+  expected: string | undefined,
+  profile?: string,
+): void {
+  if (expected === undefined) return;
+  const value = readStore(profile).schedules.find(
+    (schedule) => schedule.id === id,
+  );
+  if (!value)
+    throw Object.assign(Error("resource_not_found"), {
+      code: "resource_not_found",
+      status: 404,
+    });
+  if (scheduleRevision(value.revision) !== expected)
+    throw Object.assign(Error("revision_conflict"), {
+      code: "revision_conflict",
+      status: 409,
+      currentRevision: scheduleRevision(value.revision),
+    });
 }
 
 function resolvedProfile(profile?: string): string {
@@ -247,7 +432,27 @@ function createRunConversation(
     (item) => item.id === schedule.runtimeId,
   );
   if (!runtime) return undefined;
-  const conversationId = `runtime-conv-schedule-${randomUUID()}`;
+  const conversationId = Object.hasOwn(schedule, "mobileExecutionPolicyId")
+    ? `runtime-conv-${runId}`
+    : `runtime-conv-schedule-${randomUUID()}`;
+  if (Object.hasOwn(schedule, "mobileExecutionPolicyId")) {
+    const existing = getRuntimeConversation(
+      conversationId,
+      resolvedProfile(profile),
+    );
+    if (existing) {
+      if (
+        existing.runtimeId !== runtime.id ||
+        !existing.messages.some(
+          (message) =>
+            message.id === `${runId}-user` &&
+            message.content === schedule.prompt,
+        )
+      )
+        throw Error("Schedule result conversation identity is invalid.");
+      return existing.id;
+    }
+  }
   saveRuntimeConversation({
     profile: resolvedProfile(profile),
     id: conversationId,
@@ -304,13 +509,21 @@ function finishRuntimeConversation(
       profile,
       runtimeRun.id,
     );
-  if (!conversationId) return runtimeRunMessage(runtimeRun);
+  if (!conversationId) {
+    if (Object.hasOwn(schedule, "mobileExecutionPolicyId"))
+      throw Error("Schedule result conversation is unavailable.");
+    return runtimeRunMessage(runtimeRun);
+  }
   run.conversationId = conversationId;
   const conversation = getRuntimeConversation(
     conversationId,
     resolvedProfile(profile),
   );
-  if (!conversation) return runtimeRunMessage(runtimeRun);
+  if (!conversation) {
+    if (Object.hasOwn(schedule, "mobileExecutionPolicyId"))
+      throw Error("Schedule result conversation is missing.");
+    return runtimeRunMessage(runtimeRun);
+  }
 
   const existingResult = conversation.messages.find(
     (message) => message.execution?.runId === runtimeRun.id,
@@ -453,6 +666,62 @@ function nextRunAt(schedule: TaskSchedule, now: number): number | undefined {
   return undefined;
 }
 
+/** Calculation only: uses the same local civil clock as the running desktop scheduler. */
+export function previewTaskSchedule(
+  expression: string,
+  now = Date.now(),
+): {
+  normalizedExpression: string;
+  schedulerTimeZone: string;
+  nextOccurrences: string[];
+} {
+  const normalizedExpression = expression
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  const interval = intervalMs(normalizedExpression);
+  if (
+    !Number.isFinite(now) ||
+    !validSchedule(normalizedExpression) ||
+    (interval !== null &&
+      (!Number.isSafeInteger(interval) ||
+        !/^[1-9]\d*[mh]$/.test(normalizedExpression)))
+  )
+    throw Object.assign(Error("invalid_schedule"), {
+      code: "invalid_request",
+      status: 400,
+    });
+  const nextOccurrences: string[] = [];
+  const seen = new Set<string>();
+  let cursor = now;
+  while (nextOccurrences.length < 5) {
+    const next = nextRunAt(
+      { schedule: normalizedExpression, lastDueAt: cursor } as TaskSchedule,
+      cursor,
+    );
+    if (
+      next === undefined ||
+      !Number.isFinite(next) ||
+      next <= cursor ||
+      Math.abs(next) > 8.64e15
+    )
+      throw Object.assign(Error("invalid_schedule"), {
+        code: "invalid_request",
+        status: 400,
+      });
+    cursor = next;
+    const key = interval ? String(next) : cronLocalMinuteKey(next);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    nextOccurrences.push(new Date(next).toISOString());
+  }
+  return {
+    normalizedExpression,
+    schedulerTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    nextOccurrences,
+  };
+}
+
 function enabledScheduledRuntimeIds(): Set<string> {
   return new Set(
     listAgentRuntimes()
@@ -486,10 +755,16 @@ async function startRun(
   trigger: "manual" | "scheduled" | "missed",
   profile?: string,
   dueAt?: number,
+  admission?: { persist: () => void; consume: () => void },
 ): Promise<AgentRuntimeRun> {
   const triggeredAt = Date.now();
   const scheduleRunId = `schedule-run-${randomUUID()}`;
   const runtime = requireScheduledRuntime(schedule.runtimeId);
+  const mobile = Object.hasOwn(schedule, "mobileExecutionPolicyId")
+    ? (
+        await import("./mobile-control/schedule-execution")
+      ).authorizeOriginalMobileSchedule(schedule, resolvedProfile(profile))
+    : undefined;
   const webRuntime = taskScheduleRuntimeCategory(runtime) === "web";
   const taskMode = webRuntime
     ? "analysis"
@@ -503,7 +778,7 @@ async function startRun(
     );
     if (!preflight.allowed) throw new Error(preflight.warnings.join(" "));
   }
-  const runtimeRun = await startAgentRuntimeTask(schedule.runtimeId, {
+  const task: AgentRuntimeTaskInput = {
     prompt: schedule.prompt,
     mode: taskMode,
     fullAccessConfirmed: taskMode === "full_access",
@@ -514,8 +789,63 @@ async function startRun(
         ? { workspaceId: schedule.workspaceId }
         : { workspace: schedule.workspace }),
     timeoutMs: schedule.timeoutMs,
-  });
+  };
   let conversationId: string | undefined;
+  let preparedId: string | undefined;
+  const prepare = (prepared: Readonly<AgentRuntimeRun>): void => {
+    if (
+      !admission ||
+      preparedId ||
+      !prepared.id ||
+      prepared.runtimeId !== schedule.runtimeId
+    )
+      throw Error("Schedule pre-dispatch admission is invalid.");
+    const original = structuredClone(schedule);
+    try {
+      schedule.activeRuntimeRunId = prepared.id;
+      appendRun(schedule, {
+        id: scheduleRunId,
+        triggeredAt,
+        trigger,
+        ...(dueAt === undefined ? {} : { dueAt }),
+        status: "queued",
+        runtimeRunId: prepared.id,
+        mobileDispatchState: "prepared",
+      });
+      admission.consume();
+      schedule.updatedAt = Date.now();
+      admission.persist();
+      preparedId = prepared.id;
+    } catch (error) {
+      for (const key of Object.keys(schedule))
+        if (!Object.hasOwn(original, key))
+          Reflect.deleteProperty(schedule, key);
+      Object.assign(schedule, original);
+      throw error;
+    }
+  };
+  let runtimeRun: AgentRuntimeRun;
+  try {
+    runtimeRun = mobile
+      ? await mobile.backend.start(
+          schedule.runtimeId,
+          { ...task, ...mobile.task, timeoutMs: schedule.timeoutMs },
+          { ...mobile.dispatchOptions, persistBeforeDispatch: prepare },
+        )
+      : await startAgentRuntimeTask(schedule.runtimeId, task);
+    if (mobile && (!preparedId || runtimeRun.id !== preparedId))
+      throw Error("Schedule native admission evidence is missing.");
+  } catch (error) {
+    if (preparedId) {
+      schedule.mobileRecoveryRequired = true;
+      const run = schedule.runs.find((item) => item.id === scheduleRunId)!;
+      run.mobileDispatchState = "reconciliation_required";
+      run.summary =
+        "Execution state is unknown; desktop reconciliation is required. No automatic retry.";
+      admission!.persist();
+    }
+    throw error;
+  }
   try {
     conversationId = createRunConversation(
       schedule,
@@ -531,7 +861,7 @@ async function startRun(
     );
   }
   schedule.activeRuntimeRunId = runtimeRun.id;
-  appendRun(schedule, {
+  const observedRun: TaskScheduleRun = {
     id: scheduleRunId,
     triggeredAt,
     trigger,
@@ -539,7 +869,14 @@ async function startRun(
     status: runtimeRunStatus(runtimeRun),
     runtimeRunId: runtimeRun.id,
     ...(conversationId ? { conversationId } : {}),
-  });
+    ...(mobile ? { mobileDispatchState: "observed" as const } : {}),
+  };
+  if (mobile)
+    Object.assign(
+      schedule.runs.find((item) => item.id === scheduleRunId)!,
+      observedRun,
+    );
+  else appendRun(schedule, observedRun);
   schedule.updatedAt = Date.now();
   const event: TaskScheduleRunStartedEvent = {
     profile: resolvedProfile(profile),
@@ -567,9 +904,27 @@ async function requestRun(
   reason: "manual" | "scheduled" | "missed",
   profile?: string,
   dueAt?: number,
+  admission?: { persist: () => void; consume: () => void },
 ): Promise<AgentRuntimeRun | undefined> {
+  if (schedule.mobileRecoveryRequired)
+    throw Object.assign(Error("reconciliation_required"), {
+      code: "reconciliation_required",
+      status: 409,
+    });
+  if (Object.hasOwn(schedule, "mobileExecutionPolicyId"))
+    (
+      await import("./mobile-control/schedule-execution")
+    ).authorizeOriginalMobileSchedule(schedule, resolvedProfile(profile));
   const activeRunId = schedule.activeRuntimeRunId;
   if (activeRunId) {
+    if (
+      schedule.concurrencyPolicy !== "skip" &&
+      schedule.pendingRuns >= MAX_PENDING_RUNS
+    )
+      throw Object.assign(Error("queue_full"), {
+        code: "queue_full",
+        status: 409,
+      });
     if (schedule.concurrencyPolicy === "skip") {
       appendRun(schedule, {
         id: `schedule-run-${randomUUID()}`,
@@ -585,7 +940,11 @@ async function requestRun(
         schedule.pendingRuns + 1,
       );
     } else {
-      await cancelAgentRuntimeTask(activeRunId);
+      if (!(await cancelAgentRuntimeTask(activeRunId)))
+        throw Object.assign(Error("requires_owner_action"), {
+          code: "requires_owner_action",
+          status: 409,
+        });
       schedule.pendingRuns = Math.min(
         MAX_PENDING_RUNS,
         schedule.pendingRuns + 1,
@@ -594,17 +953,30 @@ async function requestRun(
     schedule.updatedAt = Date.now();
     return undefined;
   }
-  return startRun(schedule, reason, profile, dueAt);
+  return startRun(schedule, reason, profile, dueAt, admission);
 }
 
 export function listTaskSchedules(profile?: string): TaskSchedule[] {
   return readStore(profile).schedules.sort((a, b) => b.updatedAt - a.updatedAt);
 }
+export function listFullTaskSchedules(
+  profile: string,
+  strict = false,
+): TaskSchedule[] {
+  const rows = readStore(profile, true, strict).schedules;
+  if (new Set(rows.map((row) => row.id)).size !== rows.length)
+    throw Object.assign(Error("schedule_storage_invalid"), {
+      code: "requires_owner_action",
+      status: 409,
+    });
+  return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+}
 
-function createTaskScheduleUnlocked(
+async function createTaskScheduleUnlocked(
   input: CreateTaskScheduleInput,
   profile?: string,
-): TaskSchedule {
+  beforeWrite?: (schedule: TaskSchedule) => void | Promise<void>,
+): Promise<TaskSchedule> {
   const name = cleanText(input?.name, 160);
   const schedule = cleanText(input?.schedule, 128);
   const prompt = cleanText(input?.prompt, 50_000);
@@ -635,6 +1007,11 @@ function createTaskScheduleUnlocked(
   }
   const now = Date.now();
   const store = readStore(profile);
+  if (store.schedules.length >= MAX_SCHEDULES)
+    throw Object.assign(Error("rate_limited"), {
+      code: "rate_limited",
+      status: 429,
+    });
   const value: TaskSchedule = {
     id: `schedule-${randomUUID()}`,
     name,
@@ -662,6 +1039,7 @@ function createTaskScheduleUnlocked(
     updatedAt: now,
   };
   store.schedules.unshift(value);
+  await beforeWrite?.(value);
   writeStore(store, profile);
   return value;
 }
@@ -675,11 +1053,12 @@ export async function createTaskSchedule(
   );
 }
 
-function updateTaskScheduleUnlocked(
+async function updateTaskScheduleUnlocked(
   id: string,
   input: UpdateTaskScheduleInput,
   profile?: string,
-): TaskSchedule {
+  beforeWrite?: (schedule: TaskSchedule) => void | Promise<void>,
+): Promise<TaskSchedule> {
   const name = cleanText(input?.name, 160);
   const scheduleValue = cleanText(input?.schedule, 128);
   const prompt = cleanText(input?.prompt, 50_000);
@@ -722,6 +1101,7 @@ function updateTaskScheduleUnlocked(
     );
   }
   const now = Date.now();
+  const expressionChanged = schedule.schedule !== scheduleValue;
   Object.assign(schedule, {
     name,
     schedule: scheduleValue,
@@ -734,17 +1114,22 @@ function updateTaskScheduleUnlocked(
         : schedule.timeoutMs,
     concurrencyPolicy: policy(input.concurrencyPolicy),
     enabled: input.enabled ?? schedule.enabled,
-    lastDueAt: now,
-    nextRunAt: nextRunAt(
-      { ...schedule, schedule: scheduleValue, lastDueAt: now },
-      now,
-    ),
+    ...(expressionChanged
+      ? {
+          lastDueAt: now,
+          nextRunAt: nextRunAt(
+            { ...schedule, schedule: scheduleValue, lastDueAt: now },
+            now,
+          ),
+        }
+      : {}),
     updatedAt: now,
   });
   if (workspace) schedule.workspace = workspace;
   else delete schedule.workspace;
   if (workspaceId) schedule.workspaceId = workspaceId;
   else delete schedule.workspaceId;
+  await beforeWrite?.(schedule);
   writeStore(store, profile);
   return schedule;
 }
@@ -753,10 +1138,12 @@ export async function updateTaskSchedule(
   id: string,
   input: UpdateTaskScheduleInput,
   profile?: string,
+  expectedRevision?: string,
 ): Promise<TaskSchedule> {
-  return withScheduleMutation(profile, async () =>
-    updateTaskScheduleUnlocked(id, input, profile),
-  );
+  return withScheduleMutation(profile, async () => {
+    assertScheduleRevision(id, expectedRevision, profile);
+    return updateTaskScheduleUnlocked(id, input, profile);
+  });
 }
 
 function setTaskScheduleEnabledUnlocked(
@@ -778,10 +1165,12 @@ export async function setTaskScheduleEnabled(
   id: string,
   enabled: boolean,
   profile?: string,
+  expectedRevision?: string,
 ): Promise<TaskSchedule> {
-  return withScheduleMutation(profile, async () =>
-    setTaskScheduleEnabledUnlocked(id, enabled, profile),
-  );
+  return withScheduleMutation(profile, async () => {
+    assertScheduleRevision(id, expectedRevision, profile);
+    return setTaskScheduleEnabledUnlocked(id, enabled, profile);
+  });
 }
 
 function deleteTaskScheduleUnlocked(id: string, profile?: string): boolean {
@@ -798,10 +1187,22 @@ function deleteTaskScheduleUnlocked(id: string, profile?: string): boolean {
 export async function deleteTaskSchedule(
   id: string,
   profile?: string,
+  expectedRevision?: string,
 ): Promise<boolean> {
-  return withScheduleMutation(profile, async () =>
-    deleteTaskScheduleUnlocked(id, profile),
-  );
+  return withScheduleMutation(profile, async () => {
+    assertScheduleRevision(id, expectedRevision, profile);
+    if (expectedRevision !== undefined) {
+      const value = readStore(profile).schedules.find(
+        (schedule) => schedule.id === id,
+      )!;
+      if (value.enabled || value.activeRuntimeRunId || value.pendingRuns)
+        throw Object.assign(Error("run_active"), {
+          code: "run_active",
+          status: 409,
+        });
+    }
+    return deleteTaskScheduleUnlocked(id, profile);
+  });
 }
 
 async function triggerTaskScheduleUnlocked(
@@ -812,7 +1213,10 @@ async function triggerTaskScheduleUnlocked(
   const schedule = store.schedules.find((item) => item.id === id);
   if (!schedule) throw new Error("Task schedule was not found.");
   requireScheduledRuntime(schedule.runtimeId);
-  const run = await requestRun(schedule, "manual", profile);
+  const run = await requestRun(schedule, "manual", profile, undefined, {
+    persist: () => writeStore(store, profile),
+    consume: () => undefined,
+  });
   writeStore(store, profile);
   return { schedule, ...(run ? { run } : {}) };
 }
@@ -820,10 +1224,314 @@ async function triggerTaskScheduleUnlocked(
 export async function triggerTaskSchedule(
   id: string,
   profile?: string,
+  expectedRevision?: string,
 ): Promise<TaskScheduleTriggerResult> {
-  return withScheduleMutation(profile, () =>
-    triggerTaskScheduleUnlocked(id, profile),
-  );
+  return withScheduleMutation(profile, () => {
+    assertScheduleRevision(id, expectedRevision, profile);
+    return triggerTaskScheduleUnlocked(id, profile);
+  });
+}
+
+/** Mobile/desktop control cancels only the active run; pending work is a separate action. */
+export async function cancelTaskScheduleActiveRun(
+  id: string,
+  profile: string,
+  expectedRevision: string,
+): Promise<{ schedule: TaskSchedule; runId?: string }> {
+  return withScheduleMutation(profile, async () => {
+    assertScheduleRevision(id, expectedRevision, profile);
+    const schedule = readStore(profile).schedules.find(
+      (value) => value.id === id,
+    )!;
+    const runId = schedule.activeRuntimeRunId;
+    if (runId && !(await cancelAgentRuntimeTask(runId)))
+      throw Object.assign(Error("requires_owner_action"), {
+        code: "requires_owner_action",
+        status: 409,
+      });
+    // The existing runner retains ownership of terminal reconciliation and final persistence.
+    return { schedule, ...(runId ? { runId } : {}) };
+  });
+}
+/** Only a verified original Runtime acknowledgement can construct this rejection. */
+export class TaskScheduleCancellationRejectedError extends Error {
+  readonly code = "requires_owner_action";
+  readonly status = 409;
+  constructor() {
+    super("requires_owner_action");
+  }
+}
+
+/** Native Run ownership is checked inside the original scheduler lock before external control. */
+export async function cancelMobileTaskScheduleRun(
+  runId: string,
+  profile: string,
+  guard: () => void,
+  accept: () => void | Promise<void>,
+): Promise<{
+  scheduleId: string;
+  runId: string;
+  cancellationRequested: boolean;
+  alreadyTerminal: boolean;
+}> {
+  return withScheduleMutation(profile, async () => {
+    guard();
+    const rows = listFullTaskSchedules(profile, true);
+    const matches = rows.filter(
+      (row) =>
+        row.activeRuntimeRunId === runId ||
+        row.runs.some((run) => run.runtimeRunId === runId),
+    );
+    if (!matches.length)
+      throw Object.assign(Error("resource_not_found"), {
+        code: "resource_not_found",
+        status: 404,
+      });
+    const schedule = matches[0];
+    const executions = schedule.runs.filter(
+      (run) => run.runtimeRunId === runId,
+    );
+    if (
+      matches.length !== 1 ||
+      executions.length !== 1 ||
+      new Set(schedule.runs.map((run) => run.id)).size !== schedule.runs.length
+    )
+      throw Object.assign(Error("requires_owner_action"), {
+        code: "requires_owner_action",
+        status: 409,
+      });
+    const active = schedule.activeRuntimeRunId === runId;
+    if (!active && ["queued", "running"].includes(executions[0].status))
+      throw Object.assign(Error("requires_owner_action"), {
+        code: "requires_owner_action",
+        status: 409,
+      });
+    guard();
+    await accept();
+    guard();
+    if (!active)
+      return {
+        scheduleId: schedule.id,
+        runId,
+        cancellationRequested: false,
+        alreadyTerminal: true,
+      };
+    const acknowledgement = await requestAgentRuntimeTaskCancellation(runId);
+    if (
+      acknowledgement.uncertain ||
+      !acknowledgement.run ||
+      acknowledgement.run.id !== runId ||
+      acknowledgement.run.runtimeId !== schedule.runtimeId
+    )
+      throw Object.assign(Error("reconciliation_required"), {
+        code: "reconciliation_required",
+        status: 409,
+      });
+    if (!acknowledgement.accepted)
+      throw new TaskScheduleCancellationRejectedError();
+    // Runtime acknowledgement is separate from runner terminal reconciliation and queue control.
+    return {
+      scheduleId: schedule.id,
+      runId,
+      cancellationRequested: true,
+      alreadyTerminal: acknowledgement.run.status !== "running",
+    };
+  });
+}
+
+export async function discardTaskSchedulePending(
+  id: string,
+  profile: string,
+  expectedRevision: string,
+): Promise<{ schedule: TaskSchedule; discardedCount: number }> {
+  return withScheduleMutation(profile, async () => {
+    assertScheduleRevision(id, expectedRevision, profile);
+    const store = readStore(profile),
+      schedule = store.schedules.find((value) => value.id === id)!;
+    if (schedule.enabled)
+      throw Object.assign(Error("run_active"), {
+        code: "run_active",
+        status: 409,
+      });
+    const discardedCount = schedule.pendingRuns;
+    if (discardedCount) {
+      schedule.pendingRuns = 0;
+      schedule.updatedAt = Date.now();
+      writeStore(store, profile);
+    }
+    return { schedule, discardedCount };
+  });
+}
+
+/** Definition admission and the original write execute under the original runner lock. */
+export async function writeMobileTaskSchedule(
+  action: "create" | "edit",
+  id: string | undefined,
+  profile: string,
+  expectedRevision: string | undefined,
+  prepare: (original?: TaskSchedule) => {
+    input: CreateTaskScheduleInput;
+    policyId: string;
+  } | Promise<{ input: CreateTaskScheduleInput; policyId: string }>,
+  guard: () => void,
+  accept: (id: string) => void | Promise<void>,
+): Promise<{ scheduleId: string; revision: string }> {
+  return withScheduleMutation(profile, async () => {
+    guard();
+    const rows = listFullTaskSchedules(profile, true);
+    if (
+      rows.some(
+        (row) =>
+          new Set(row.runs.map((run) => run.id)).size !== row.runs.length,
+      )
+    )
+      throw Object.assign(Error("requires_owner_action"), {
+        code: "requires_owner_action",
+        status: 409,
+      });
+    const original =
+      action === "edit" ? rows.find((row) => row.id === id) : undefined;
+    if (action === "edit") {
+      assertScheduleRevision(id!, expectedRevision, profile);
+      if (!expectedRevision)
+        throw Object.assign(Error("revision_required"), {
+          code: "revision_required",
+          status: 428,
+        });
+    }
+    const prepared = await prepare(original);
+    const beforeWrite = async (schedule: TaskSchedule): Promise<void> => {
+      schedule.mobileExecutionPolicyId = prepared.policyId;
+      guard();
+      await accept(schedule.id);
+      guard();
+    };
+    const schedule =
+      action === "create"
+        ? await createTaskScheduleUnlocked(prepared.input, profile, beforeWrite)
+        : await updateTaskScheduleUnlocked(id!, prepared.input, profile, beforeWrite);
+    return {
+      scheduleId: schedule.id,
+      revision: scheduleRevision(schedule.revision),
+    };
+  });
+}
+
+export type MobileTaskScheduleControl =
+  | "pause"
+  | "discard-pending"
+  | "delete"
+  | "resume"
+  | "trigger";
+
+/** Admission and write share the original runner lock; executing actions require Owner authority. */
+export async function controlMobileTaskSchedule(
+  id: string,
+  action: MobileTaskScheduleControl,
+  profile: string,
+  expectedRevision: string,
+  guard: () => void,
+  accept: () => void | Promise<void>,
+  authorize?: (schedule: TaskSchedule) => void,
+): Promise<{ scheduleId: string; revision?: string; discardedCount?: number }> {
+  return withScheduleMutation(profile, async () => {
+    guard();
+    const store = readStore(profile, true, true);
+    if (
+      new Set(store.schedules.map((row) => row.id)).size !==
+        store.schedules.length ||
+      store.schedules.some(
+        (row) =>
+          new Set(row.runs.map((run) => run.id)).size !== row.runs.length,
+      )
+    )
+      throw Object.assign(Error("requires_owner_action"), {
+        code: "requires_owner_action",
+        status: 409,
+      });
+    const schedule = store.schedules.find((row) => row.id === id);
+    if (!schedule)
+      throw Object.assign(Error("resource_not_found"), {
+        code: "resource_not_found",
+        status: 404,
+      });
+    if (scheduleRevision(schedule.revision) !== expectedRevision)
+      throw Object.assign(Error("revision_conflict"), {
+        code: "revision_conflict",
+        status: 409,
+      });
+    if (
+      !["pause", "discard-pending", "delete", "resume", "trigger"].includes(
+        action,
+      )
+    )
+      throw Object.assign(Error("requires_owner_action"), {
+        code: "requires_owner_action",
+        status: 403,
+      });
+    if (
+      (action === "discard-pending" || action === "delete") &&
+      (schedule.enabled ||
+        (action === "delete" &&
+          (schedule.activeRuntimeRunId || schedule.pendingRuns)))
+    )
+      throw Object.assign(Error("run_active"), {
+        code: "run_active",
+        status: 409,
+      });
+    const executing = action === "resume" || action === "trigger";
+    if (executing) {
+      if (schedule.mobileRecoveryRequired)
+        throw Object.assign(Error("reconciliation_required"), {
+          code: "reconciliation_required",
+          status: 409,
+        });
+      if (!authorize)
+        throw Object.assign(Error("unverified_policy"), {
+          code: "unverified_policy",
+          status: 403,
+        });
+      requireScheduledRuntime(schedule.runtimeId);
+      authorize(schedule);
+    }
+    guard();
+    await accept(); // Durable Owner intent exists before the original definition changes.
+    guard();
+    if (executing) authorize!(schedule);
+    const result: {
+      scheduleId: string;
+      revision?: string;
+      discardedCount?: number;
+    } = { scheduleId: id };
+    let changed = false;
+    if (action === "delete") {
+      store.schedules = store.schedules.filter((row) => row.id !== id);
+      changed = true;
+    } else if (action === "pause") {
+      changed = schedule.enabled;
+      schedule.enabled = false;
+    } else if (action === "resume") {
+      changed = !schedule.enabled;
+      schedule.enabled = true;
+    } else if (action === "trigger") {
+      await requestRun(schedule, "manual", profile, undefined, {
+        persist: () => writeStore(store, profile),
+        consume: () => undefined,
+      });
+      changed = true;
+    } else {
+      result.discardedCount = schedule.pendingRuns;
+      changed = schedule.pendingRuns !== 0;
+      schedule.pendingRuns = 0;
+    }
+    if (changed) {
+      schedule.updatedAt = Date.now();
+      writeStore(store, profile);
+    }
+    if (action !== "delete")
+      result.revision = scheduleRevision(schedule.revision);
+    return result;
+  });
 }
 
 /** Reconciles direct Runtime runs and starts due schedules. Exposed for tests. */
@@ -838,9 +1546,49 @@ async function tickTaskSchedulesUnlocked(
   for (const schedule of store.schedules) {
     try {
       if (schedule.activeRuntimeRunId) {
-        const runtimeRun = (await getAgentRuntimeRun(
-          schedule.activeRuntimeRunId,
-        )) || {
+        let completedEvent: TaskScheduleRunCompletedEvent | undefined;
+        const mobile = Object.hasOwn(schedule, "mobileExecutionPolicyId");
+        const active = schedule.runs.find(
+          (item) => item.runtimeRunId === schedule.activeRuntimeRunId,
+        );
+        const checkpoint = mobile ? active?.mobileFinalCheckpoint : undefined;
+        if (
+          checkpoint &&
+          (checkpoint.id !== schedule.activeRuntimeRunId ||
+            checkpoint.runtimeId !== schedule.runtimeId ||
+            !["succeeded", "failed", "cancelled", "timed_out"].includes(
+              checkpoint.status,
+            ) ||
+            !Number.isFinite(checkpoint.completedAt) ||
+            !Array.isArray(checkpoint.events))
+        )
+          throw Error("Schedule result checkpoint is invalid.");
+        const observed =
+          checkpoint || (await getAgentRuntimeRun(schedule.activeRuntimeRunId));
+        if (
+          mobile &&
+          observed &&
+          (observed.id !== schedule.activeRuntimeRunId ||
+            observed.runtimeId !== schedule.runtimeId)
+        )
+          throw Error("Schedule native run identity is invalid.");
+        if (!observed && Object.hasOwn(schedule, "mobileExecutionPolicyId")) {
+          if (!schedule.mobileRecoveryRequired) {
+            schedule.mobileRecoveryRequired = true;
+            const run = schedule.runs.find(
+              (item) => item.runtimeRunId === schedule.activeRuntimeRunId,
+            );
+            if (run) {
+              run.mobileDispatchState = "reconciliation_required";
+              run.summary =
+                "Execution state is unknown; desktop reconciliation is required. No automatic retry.";
+            }
+            schedule.updatedAt = Date.now();
+            changed = true;
+          }
+          continue;
+        }
+        const runtimeRun = observed || {
           id: schedule.activeRuntimeRunId,
           runtimeId: schedule.runtimeId,
           status: "failed" as const,
@@ -859,8 +1607,15 @@ async function tickTaskSchedulesUnlocked(
           );
           const completedAt = runtimeRun.completedAt || Date.now();
           if (run && !run.completedAt) {
-            run.status = runtimeRunStatus(runtimeRun);
-            run.completedAt = completedAt;
+            if (mobile && !checkpoint) {
+              run.mobileFinalCheckpoint = structuredClone({
+                ...runtimeRun,
+                completedAt,
+              });
+              run.mobileDispatchState = "final_pending";
+              schedule.mobileRecoveryRequired = true;
+              writeStore(store, profile);
+            }
             try {
               run.summary = finishRuntimeConversation(
                 schedule,
@@ -876,9 +1631,22 @@ async function tickTaskSchedulesUnlocked(
                 "[TASK SCHEDULE] Failed to persist Runtime result conversation",
                 error,
               );
+              if (mobile) {
+                run.summary =
+                  "Execution finished; saving its result requires desktop reconciliation. No automatic retry of execution.";
+                schedule.mobileRecoveryRequired = true;
+                changed = true;
+                continue;
+              }
               run.summary = runtimeRun.error || runtimeRun.status;
             }
-            completedEvents.push({
+            run.status = runtimeRunStatus(runtimeRun);
+            run.completedAt = completedAt;
+            if (mobile) {
+              run.mobileDispatchState = "observed";
+              delete run.mobileFinalCheckpoint;
+            }
+            completedEvent = {
               profile: resolvedProfile(profile),
               scheduleId: schedule.id,
               scheduleName: schedule.name,
@@ -887,23 +1655,36 @@ async function tickTaskSchedulesUnlocked(
               completedAt,
               conversationId: run.conversationId,
               summary: run.summary,
-            });
+            };
           }
           schedule.activeRuntimeRunId = undefined;
+          delete schedule.mobileRecoveryRequired;
           schedule.updatedAt = completedAt;
+          if (mobile) writeStore(store, profile);
+          if (completedEvent) completedEvents.push(completedEvent);
           changed = true;
         }
       }
       // Keep records for disabled, removed, or temporarily unavailable
       // Runtimes intact without dispatching them.
-      if (!eligibleRuntimeIds.has(schedule.runtimeId)) continue;
+      if (
+        schedule.mobileRecoveryRequired ||
+        !eligibleRuntimeIds.has(schedule.runtimeId)
+      )
+        continue;
       if (
         schedule.enabled &&
         !schedule.activeRuntimeRunId &&
         schedule.pendingRuns > 0
       ) {
-        schedule.pendingRuns -= 1;
-        await startRun(schedule, "scheduled", profile);
+        const mobile = Object.hasOwn(schedule, "mobileExecutionPolicyId");
+        await startRun(schedule, "scheduled", profile, undefined, {
+          persist: () => writeStore(store, profile),
+          consume: () => {
+            schedule.pendingRuns -= 1;
+          },
+        });
+        if (!mobile) schedule.pendingRuns -= 1;
         changed = true;
       }
       if (!schedule.enabled) continue;
@@ -932,11 +1713,18 @@ async function tickTaskSchedulesUnlocked(
         changed = true;
         continue;
       }
-      schedule.lastDueAt = intervalMs(schedule.schedule)
-        ? now
-        : Math.floor(now / 60_000) * 60_000;
-      schedule.nextRunAt = nextRunAt(schedule, now);
-      await requestRun(schedule, trigger, profile, dueAt);
+      const consume = (): void => {
+        schedule.lastDueAt = intervalMs(schedule.schedule)
+          ? now
+          : Math.floor(now / 60_000) * 60_000;
+        schedule.nextRunAt = nextRunAt(schedule, now);
+      };
+      const run = await requestRun(schedule, trigger, profile, dueAt, {
+        persist: () => writeStore(store, profile),
+        consume,
+      });
+      if (!run || !Object.hasOwn(schedule, "mobileExecutionPolicyId"))
+        consume();
       changed = true;
     } catch (error) {
       console.error(
@@ -994,6 +1782,15 @@ export function startTaskScheduleRunner(): void {
   };
   runner = setInterval(run, RUNNER_INTERVAL_MS);
   run();
+}
+
+/** Reports the original runner lifecycle, independently of per-plan authorization. */
+export function isTaskScheduleRunnerOnline(profile: string): boolean {
+  return (
+    Boolean(runner) &&
+    getActiveProfileNameSync() === profile &&
+    !isAgentsOneRestoreWriteLocked()
+  );
 }
 
 export function stopTaskScheduleRunner(): void {

@@ -1,13 +1,13 @@
 import type Database from "better-sqlite3";
 import { existsSync, readFileSync } from "fs";
-import { dirname, join } from "path";
+import { join } from "path";
 import type { Attachment } from "../shared/attachments";
 import type {
   DesktopSessionContinuationItem,
   DesktopSessionLocalError,
 } from "../shared/session-continuation";
-import { getDbConnection } from "./db";
-import { activeStateDbPath, safeWriteFile } from "./utils";
+import { getDesktopDbConnection as getDbConnection } from "./db";
+import { agentsOneProfileHome, getActiveProfileNameSync, safeWriteFile } from "./utils";
 import type { HistoryItem } from "./sessions";
 
 const TABLE = "desktop_session_continuations";
@@ -35,7 +35,7 @@ export interface LocalContinuationEntry {
 }
 
 function fallbackFilePath(): string {
-  return join(dirname(activeStateDbPath()), "desktop", "session-overlays.json");
+  return join(agentsOneProfileHome(getActiveProfileNameSync()), "desktop", "session-overlays.json");
 }
 
 function readFallbackContinuations(): FallbackContinuationData {

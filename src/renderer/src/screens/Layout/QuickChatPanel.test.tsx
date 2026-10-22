@@ -98,6 +98,10 @@ describe("QuickChatPanel", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    expect(startAgentRuntimeTask.mock.calls[0][1]).toMatchObject({
+      mode: "safe_write",
+      conversation: true,
+    });
     expect(startAgentRuntimeTask.mock.calls[0][1].prompt).toContain(
       "Here is the recent context from this quick chat.",
     );

@@ -8,7 +8,10 @@ import { stopAllDashboards } from "../dashboard";
 import { cleanupTempMediaFiles } from "../media";
 import { closeDbConnection } from "../db";
 import { recoverInterruptedAgentsOneRestore } from "../agents-one-backup";
+import { migrateLegacyAgentsOneData } from "../agents-one-data-migration";
+import { HERMES_HOME } from "../installer";
 import { isAgentsOneRestoreWriteLocked } from "../restore-write-lock";
+import { startDesktopMobileOwner } from "../mobile-control/desktop-owner";
 import {
   hardenAttachedWebContents,
   hardenWebviewPreferences,
@@ -64,9 +67,12 @@ let shutdownInProgress: Promise<void> | null = null;
 let shutdownComplete = false;
 let quitRequested = false;
 let trayController: TrayController | null = null;
+let stopMobileOwner: (() => void) | undefined;
 
 async function gracefulMainProcessShutdown(): Promise<void> {
   logApplicationDiagnostic("app.shutdown.started");
+  stopMobileOwner?.();
+  stopMobileOwner = undefined;
   stopAcceptingAgentRuntimeTasks();
   stopHealthPolling();
   stopTaskScheduleRunner();
@@ -175,9 +181,13 @@ export function startMainProcess(): void {
     // A durable restore journal is replayed before any window, scheduler or
     // writable database connection can observe a partially replaced snapshot.
     try {
-      if (recoverInterruptedAgentsOneRestore()) {
+      if (recoverInterruptedAgentsOneRestore(HERMES_HOME)) {
         console.warn("[BACKUP] Recovered an interrupted Agents One restore.");
         logApplicationDiagnostic("backup.restore-recovered");
+      }
+      if (recoverInterruptedAgentsOneRestore()) {
+        console.warn("[BACKUP] Recovered an interrupted Agents One data restore.");
+        logApplicationDiagnostic("backup.data-restore-recovered");
       }
     } catch (error) {
       console.error("[BACKUP] Failed to recover interrupted restore", error);
@@ -185,7 +195,20 @@ export function startMainProcess(): void {
       app.exit(1);
       return;
     }
+    try {
+      if (migrateLegacyAgentsOneData({ legacyHermesHome: HERMES_HOME })) {
+        logApplicationDiagnostic("data.migrated-from-hermes-home");
+      }
+    } catch (error) {
+      console.error("[DATA] Failed to migrate Agents One data", error);
+      logErrorDiagnostic("data.migration-failed", error);
+      app.exit(1);
+      return;
+    }
     logApplicationDiagnostic("app.ready");
+    stopMobileOwner = startDesktopMobileOwner(() => {
+      logApplicationDiagnostic("mobile.owner.unavailable");
+    });
     app.on("browser-window-created", (_, window) => {
       optimizer.watchWindowShortcuts(window);
     });

@@ -49,7 +49,8 @@ vi.mock("../src/main/config", () => ({
   setConfigValue: vi.fn(),
 }));
 
-vi.mock("../src/main/utils", () => ({
+vi.mock("../src/main/utils", () => {
+  const mocked = {
   stripAnsi: (s: string) => s,
   pidIsAliveAs: (pid: number) => aliveGatewayPids.has(pid),
   getActiveProfileNameSync: () => "default",
@@ -66,7 +67,9 @@ vi.mock("../src/main/utils", () => ({
       authFile: join(home, "auth.json"),
     };
   },
-}));
+};
+  return { ...mocked, agentsOneProfileHome: mocked.profileHome };
+});
 
 vi.mock("../src/main/models", () => ({
   readModels: () => [],
