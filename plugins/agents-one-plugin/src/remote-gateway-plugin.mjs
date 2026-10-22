@@ -16,7 +16,8 @@ import {
 } from "./event-stream.mjs";
 
 export const AGENTS_ONE_PLUGIN_ID = "agents-one-plugin-sdk";
-export const AGENTS_ONE_PLUGIN_VERSION = "0.1.5";
+export const AGENTS_ONE_PLUGIN_VERSION = "0.1.6";
+const MAX_ARTIFACT_UPLOAD_REQUEST_BYTES = 16 * 1024 * 1024;
 
 function json(response, status, payload) {
   response.writeHead(status, {
@@ -53,7 +54,12 @@ export async function readJsonBody(request, maxBytes = 512 * 1024) {
         ? Buffer.from(part)
         : Buffer.from(String(part), "utf8");
     size += buffer.length;
-    if (size > maxBytes) throw new Error("Request body is too large.");
+    if (size > maxBytes) {
+      const cause = new Error("Request body is too large.");
+      cause.status = 413;
+      cause.code = "request_body_too_large";
+      throw cause;
+    }
     parts.push(buffer);
   }
   const text = Buffer.concat(parts).toString("utf8");
@@ -555,7 +561,10 @@ export function createRemoteGatewayPlugin({
             "Artifact upload is unsupported.",
           );
         }
-        const input = await readJsonBody(request);
+        const input = await readJsonBody(
+          request,
+          MAX_ARTIFACT_UPLOAD_REQUEST_BYTES,
+        );
         const contentBase64 =
           typeof input.contentBase64 === "string"
             ? input.contentBase64

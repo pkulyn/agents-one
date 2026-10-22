@@ -24,6 +24,12 @@ Durable Workspace events retain only safe operation metadata and Grant-relative 
 
 Gateway request decoding accepts Buffer, typed-array, and string chunks because Connector and proxy implementations do not all expose Node HTTP bodies in the same representation.
 
+### Artifact upload size
+
+Desktop uploads accept up to 10 MiB of raw attachment data. Gateway and Connect reserve 16 MiB for the encoded upload request.
+
+Only Gateway `POST /artifacts` gets a 16 MiB JSON body limit; other Gateway routes retain their 512 KiB limit. Connect accepts matching artifact frames and keeps ordinary request frames at 4 MiB.
+
 `readJsonBody` normalizes every chunk to a Buffer before concatenation and JSON parsing, preventing string chunks from crashing `Buffer.concat`.
 
 ## Proxy-safe SSE responses

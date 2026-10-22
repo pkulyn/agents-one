@@ -1,6 +1,6 @@
 # Agents One Plugin SDK 接入指南
 
-状态：**预览实现（0.1.5；新增续接修复待真实 Connector 复验）**
+状态：**预览实现（0.1.6；附件上传上限修复待真实 Connector 复验）**
 
 ## 目标
 
@@ -79,6 +79,10 @@ node --test .\test\*.test.mjs
 该补丁版让首轮 `adapter.startRun` 接收 Gateway 已确定的 `conversationId`，后续根据同 Runtime、同 conversationId 的持久化 Run 传入独立 Provider `sessionId`。旧客户端曾保存的 Provider ID 可在同 Runtime 内解析为已有 Gateway 对话，不改写历史记录。原始请求的幂等 fingerprint 不变。
 
 OpenCode ACP 兼容对象或布尔形式的 resume 能力与 `loadSession`；恢复可返回空对象，仍保留请求的原生 sessionId。加载期间旧历史通知不拼入本轮答复，恢复失败明确报错。契约依据 [ACP v1 session setup](https://agentclientprotocol.com/protocol/v1/session-setup)。新包需由远端维护者升级并保留原 `statePath`，真实 Connector 的会话续接仍须独立复测。
+
+### 0.1.6
+
+远程附件上传现在为 `POST /artifacts` 单独允许 16 MiB JSON 请求，以容纳桌面端最多 10 MiB 的附件及 Base64 编码；Connect WebSocket 隧道支持对应帧，同时普通请求仍限制在 4 MiB。远端维护者需升级 Gateway 插件和 Connect 服务并重启，再分别验证直连与配对隧道上传。
 
 ### 0.1.2
 
