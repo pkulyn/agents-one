@@ -1148,6 +1148,8 @@ describe("RuntimeChat inputs and persistence", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
 
+    await screen.findByText("brief.txt");
+
     await waitFor(() =>
       expect(startAgentRuntimeTask).toHaveBeenCalledWith(
         "hermes-gateway",
@@ -1168,7 +1170,17 @@ describe("RuntimeChat inputs and persistence", () => {
           runtimeId: "hermes-gateway",
           activeRuntimeRunId: null,
           messages: expect.arrayContaining([
-            expect.objectContaining({ role: "user", content: "检查输入" }),
+            expect.objectContaining({
+              role: "user",
+              content: "检查输入",
+              attachments: [
+                expect.objectContaining({
+                  id: "attachment-1",
+                  name: "brief.txt",
+                  kind: "text-file",
+                }),
+              ],
+            }),
             expect.objectContaining({ role: "agent", content: "输入已读取。" }),
           ]),
         }),

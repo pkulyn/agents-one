@@ -4,6 +4,7 @@ import type {
   AgentRuntimeKind,
   RuntimeIsolationInfo,
 } from "./agent-runtimes";
+import type { Attachment } from "./attachments";
 import type {
   AgentEventStreamModel,
   AgentEventStreamUsage,
@@ -49,6 +50,11 @@ export interface RuntimeConversationMessage {
   role: "user" | "agent" | "system";
   content: string;
   createdAt: number;
+  /** Safe display metadata for files attached to a user message. */
+  attachments?: Pick<
+    Attachment,
+    "id" | "kind" | "name" | "mime" | "size" | "originalSize"
+  >[];
   /** Attribution for replies dispatched by a collaboration task. */
   agentRuntimeId?: string;
   agentName?: string;

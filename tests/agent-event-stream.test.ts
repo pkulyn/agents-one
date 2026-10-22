@@ -50,6 +50,27 @@ describe("Agent Event Stream v1", () => {
     });
   });
 
+  it("uses the complete Gateway reasoning text when only data.text is present", () => {
+    const reasoning = Array.from(
+      { length: 300 },
+      (_, index) => `第 ${index + 1} 段：逐项核对任务上下文并保留推理细节。`,
+    ).join("\n");
+    const [event] = parseAgentEventStreamEvents([
+      {
+        id: "hers-reasoning-text-only",
+        type: "reasoning.summary",
+        createdAt: 1,
+        data: { text: reasoning },
+      },
+    ]);
+
+    expect(agentEventTimelineEntry(event!)).toMatchObject({
+      type: "progress",
+      summary: reasoning,
+      detail: reasoning,
+    });
+  });
+
   it("does not persist transient assistant deltas as timeline records", () => {
     const [event] = parseAgentEventStreamEvents([
       {
