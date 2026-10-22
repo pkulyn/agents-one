@@ -16,12 +16,15 @@ vi.mock("../src/main/installer", () => ({
   HERMES_HOME: TEST_HOME,
 }));
 
-vi.mock("../src/main/utils", () => ({
+vi.mock("../src/main/utils", () => {
+  const mocked = {
   profileHome: (profile?: string) =>
     profile && profile !== "default"
       ? join(TEST_HOME, "profiles", profile)
       : TEST_HOME,
-}));
+};
+  return { ...mocked, agentsOneProfileHome: mocked.profileHome };
+});
 
 import { readLocalGatewayPlatformStates } from "../src/main/messaging-platforms";
 

@@ -1,4 +1,6 @@
+import mobile from "./mobileConnection";
 export default {
+  mobile,
   title: "设置",
   sections: {
     hermesAgent: "Hermes Agent Runtime",

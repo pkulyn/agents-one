@@ -247,7 +247,7 @@ test("remote gateway plugin exposes a v1 run with event snapshots", async () => 
   );
   assert.deepEqual(capabilityBody.plugin, {
     id: "agents-one-plugin-sdk",
-    version: "0.1.4",
+    version: "0.1.6",
     kind: "remote-gateway",
   });
   assert.deepEqual(capabilityBody.capabilities.eventStream, {
@@ -769,6 +769,23 @@ test("remote gateway plugin exposes and accepts Artifact API uploads", async () 
   assert.equal(uploadResponse.status, 201);
   assert.equal((await uploadResponse.json()).id, "artifact_fixture");
   assert.equal(uploaded.bytes.toString("utf8"), "hello");
+
+  const largeBytes = Buffer.alloc(1024 * 1024, 0x61);
+  const largeUploadResponse = await fetch(
+    `http://127.0.0.1:${port}/artifacts`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        name: "large-brief.txt",
+        mime: "text/plain",
+        contentBase64: largeBytes.toString("base64"),
+      }),
+    },
+  );
+  assert.equal(largeUploadResponse.status, 201);
+  assert.equal(uploaded.bytes.length, largeBytes.length);
+  assert.deepEqual(uploaded.bytes, largeBytes);
   await plugin.close();
 });
 

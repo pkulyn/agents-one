@@ -1,6 +1,12 @@
 // @vitest-environment node
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +15,7 @@ const state = vi.hoisted(() => ({ root: "" }));
 
 vi.mock("./utils", () => ({
   getActiveProfileNameSync: () => "default",
-  profileHome: (profile: string) => join(state.root, profile),
+  agentsOneProfileHome: (profile: string) => join(state.root, profile),
   safeWriteFile: (path: string, content: string) => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content, "utf8");
@@ -269,6 +275,105 @@ describe("runtime conversation store", () => {
         ],
       },
     });
+  });
+
+  it("stores user attachment display metadata without file payloads or paths", async () => {
+    const store = await import("./runtime-conversation-store");
+    const saved = store.saveRuntimeConversation({
+      id: "user-attachments",
+      title: "附件消息",
+      runtimeId: "hers-2",
+      runtimeName: "Hers-2",
+      runtimeKind: "hermes",
+      runtimeLocation: "remote",
+      messages: [
+        {
+          id: "user-1",
+          role: "user",
+          content: "请查看附件。",
+          createdAt: 1,
+          attachments: [
+            {
+              id: "image-1",
+              kind: "image",
+              name: "diagram.png",
+              mime: "image/png",
+              size: 512,
+              dataUrl: "data:image/png;base64,private-image-payload",
+            } as never,
+            {
+              id: "document-1",
+              kind: "path-ref",
+              name: "notes.pdf",
+              mime: "application/pdf",
+              size: 1024,
+              path: "C:\\private\\notes.pdf",
+            } as never,
+          ],
+        },
+      ],
+    });
+
+    const persisted = readFileSync(
+      join(state.root, "default", "desktop", "runtime-conversations.json"),
+      "utf8",
+    );
+    expect(saved.messages[0]?.attachments).toEqual([
+      {
+        id: "image-1",
+        kind: "image",
+        name: "diagram.png",
+        mime: "image/png",
+        size: 512,
+      },
+      {
+        id: "document-1",
+        kind: "path-ref",
+        name: "notes.pdf",
+        mime: "application/pdf",
+        size: 1024,
+      },
+    ]);
+    expect(persisted).not.toContain("private-image-payload");
+    expect(persisted).not.toContain("C:\\\\private");
+  });
+
+  it("keeps a long multi-line reasoning detail through archive serialization", async () => {
+    const store = await import("./runtime-conversation-store");
+    const reasoning = Array.from(
+      { length: 80 },
+      (_, index) => `第 ${index + 1} 段：检查并保留完整的远程思考记录。`,
+    ).join("\n");
+    const saved = store.saveRuntimeConversation({
+      id: "long-reasoning",
+      title: "长思考记录",
+      runtimeId: "hers-2",
+      runtimeName: "Hers-2",
+      runtimeKind: "hermes",
+      runtimeLocation: "remote",
+      messages: [
+        {
+          id: "reply",
+          role: "agent",
+          content: "已完成。",
+          createdAt: 2,
+          execution: {
+            runId: "run-long-reasoning",
+            events: [
+              {
+                id: "reasoning-1",
+                type: "progress",
+                summary: reasoning.slice(0, 1_000),
+                detail: reasoning,
+                createdAt: 2,
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(saved.messages[0]?.execution?.events[0]?.detail).toBe(reasoning);
   });
 
   it("persists and clears a background conversation's active Runtime run", async () => {

@@ -360,10 +360,18 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
   const hostAddress = host.server.address();
   assert.equal(typeof hostAddress?.port, "number");
   const hostBase = `http://127.0.0.1:${hostAddress.port}`;
+  let relayedArtifact;
   const connectorTunnel = openConnectorTunnel({
     store,
     runtimeAdapters: {
       [runtime.runtimeId]: async (frame) => {
+        if (frame.path === "/artifacts") {
+          relayedArtifact = frame.body;
+          return {
+            status: 201,
+            body: { id: "artifact-large-e2e", size: frame.body.size },
+          };
+        }
         const response = await fetch(`${hostBase}${frame.path}`, {
           method: frame.method,
           headers: {
@@ -423,6 +431,32 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
     );
     assert.equal(capabilities.status, 200);
     assert.equal(capabilities.body.runtimes[0].runtimeId, runtime.runtimeId);
+
+    const largeArtifactBytes = Buffer.alloc(3 * 1024 * 1024, 0x61);
+    const largeArtifactBase64 = largeArtifactBytes.toString("base64");
+    desktop.send(
+      JSON.stringify({
+        type: "request",
+        requestId: "large-artifact-upload-e2e",
+        method: "POST",
+        path: "/artifacts",
+        runtimeId: runtime.runtimeId,
+        body: {
+          name: "large-brief.txt",
+          mime: "text/plain",
+          size: largeArtifactBytes.length,
+          contentBase64: largeArtifactBase64,
+        },
+      }),
+    );
+    const largeArtifactResponse = await withTimeout(
+      onceMessage(desktop),
+      "Large artifact upload",
+    );
+    assert.equal(largeArtifactResponse.status, 201);
+    assert.equal(largeArtifactResponse.body.id, "artifact-large-e2e");
+    assert.equal(relayedArtifact.size, largeArtifactBytes.length);
+    assert.equal(relayedArtifact.contentBase64, largeArtifactBase64);
 
     desktop.send(
       JSON.stringify({

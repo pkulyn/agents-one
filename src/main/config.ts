@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { randomBytes } from "crypto";
 import { join } from "path";
-import { HERMES_HOME, expectedEnvKeyForModel } from "./installer";
+import { expectedEnvKeyForModel } from "./installer";
+import { agentsOneDataRoot } from "./agents-one-data-root";
 import {
   escapeRegex,
   getActiveProfileNameSync,
@@ -47,7 +48,7 @@ export interface PublicConnectionConfig {
 // Lazy getter — avoids circular dependency with installer.ts
 // (HERMES_HOME may not be assigned yet when this module first loads)
 function desktopConfigFile(): string {
-  return join(HERMES_HOME, "desktop.json");
+  return join(agentsOneDataRoot(), "desktop.json");
 }
 
 export function readDesktopConfig(): Record<string, unknown> {
@@ -62,8 +63,8 @@ export function readDesktopConfig(): Record<string, unknown> {
 
 export function writeDesktopConfig(data: Record<string, unknown>): void {
   assertAgentsOneWritesAllowed();
-  if (!existsSync(HERMES_HOME)) {
-    mkdirSync(HERMES_HOME, { recursive: true });
+  if (!existsSync(agentsOneDataRoot())) {
+    mkdirSync(agentsOneDataRoot(), { recursive: true });
   }
   writeFileSync(desktopConfigFile(), JSON.stringify(data, null, 2), "utf-8");
 }

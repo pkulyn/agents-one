@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   existsSync,
   mkdirSync,
@@ -22,6 +22,12 @@ import {
   restoreAgentsOneBackupFrom,
   sanitizeDesktopConfig,
 } from "../src/main/agents-one-backup";
+import {
+  MOBILE_DATA_GENERATION_PATH,
+  readMobileDataGeneration,
+  mobileOwnerLedgerPath,
+} from "../src/main/mobile-control/data-generation";
+import { MobileOwnerLedger } from "../src/main/mobile-control/owner-ledger";
 
 let testRoot: string;
 let sourceHome: string;
@@ -35,6 +41,29 @@ function writeFixture(relativePath: string, value: string | Buffer): void {
 
 function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+}
+async function rewriteBackupPayloadPath(
+  source: string,
+  target: string,
+  previous: string,
+  next: string,
+): Promise<void> {
+  const root = mkdtempSync(join(testRoot, "rewrite-path-"));
+  await tar.extract({ cwd: root, file: source });
+  const from = join(root, "payload", previous),
+    to = join(root, "payload", next);
+  mkdirSync(dirname(to), { recursive: true });
+  writeFileSync(to, readFileSync(from));
+  rmSync(from);
+  const file = join(root, "manifest.json"),
+    manifest = readJson(file) as unknown as TestBackupManifest,
+    entry = manifest.files.find((row) => row.path === previous)!;
+  entry.path = next;
+  writeFileSync(file, JSON.stringify(manifest));
+  await tar.create({ cwd: root, file: target, gzip: true, portable: true }, [
+    "manifest.json",
+    "payload",
+  ]);
 }
 
 function sha256(path: string): string {
@@ -570,6 +599,45 @@ describe("Agents One desktop configuration sanitization", () => {
   });
 });
 
+describe("Agents One owned-data backup", { timeout: 30_000 }, () => {
+  // @lat: [[tests#Agents One data migration#Restores legacy backup into owned data]]
+  it("imports v1 desktop data into the new layout without copying native Hermes state", async () => {
+    const archive = join(testRoot, "legacy-to-owned.agents-one-backup");
+    const exported = await exportAgentsOneBackupTo(archive, { sourceHome });
+    expect(exported.success).toBe(true);
+    writeFileSync(join(targetHome, "migration-v1.json"), JSON.stringify({ version: 1 }));
+    const inspection = await inspectAgentsOneBackup(archive, { targetHome });
+    expect(inspection.success).toBe(true);
+    const restored = await restoreAgentsOneBackupFrom(archive, { targetHome });
+    expect(restored.success).toBe(true);
+    expect(readJson(join(targetHome, "profiles", "default", "desktop", "project-folders.json"))).toBeTruthy();
+    expect(existsSync(join(targetHome, "state.db"))).toBe(false);
+    expect(existsSync(join(targetHome, "profiles", "default", "state.db"))).toBe(false);
+    expect(existsSync(join(targetHome, "profiles", "default", "desktop.db"))).toBe(true);
+  });
+
+  // @lat: [[tests#Agents One data migration#Round trips owned-data backup]]
+  it("exports and restores a v2 archive from the Agents One data root", async () => {
+    const owned = join(testRoot, "owned-source");
+    const restoredRoot = join(testRoot, "owned-target");
+    mkdirSync(join(owned, "profiles", "default", "desktop"), { recursive: true });
+    mkdirSync(restoredRoot);
+    writeFileSync(join(owned, "migration-v1.json"), JSON.stringify({ version: 1 }));
+    writeFileSync(join(restoredRoot, "migration-v1.json"), JSON.stringify({ version: 1 }));
+    writeFileSync(join(owned, "desktop.json"), JSON.stringify({ locale: "zh-CN", futureSetting: true }));
+    writeFileSync(join(owned, "profiles", "default", "desktop", "runtime-conversations.json"), JSON.stringify({ version: 1, conversations: [] }));
+    const db = new Database(join(owned, "profiles", "default", "desktop.db"));
+    db.exec("CREATE TABLE desktop_session_continuations (session_id TEXT PRIMARY KEY, prefix_json TEXT NOT NULL); INSERT INTO desktop_session_continuations VALUES ('old', '[]')");
+    db.close();
+    const archive = join(testRoot, "owned-v2.agents-one-backup");
+    expect((await exportAgentsOneBackupTo(archive, { sourceHome: owned })).success).toBe(true);
+    expect((await restoreAgentsOneBackupFrom(archive, { targetHome: restoredRoot })).success).toBe(true);
+    expect(existsSync(join(restoredRoot, "profiles", "default", "desktop.db"))).toBe(true);
+    expect(readJson(join(restoredRoot, "desktop.json"))).toMatchObject({ locale: "zh-CN", futureSetting: true });
+    expect(existsSync(join(restoredRoot, "state.db"))).toBe(false);
+  });
+});
+
 describe("Agents One backup round trip", { timeout: 30_000 }, () => {
   it("rejects a skill that embeds a bearer credential without disclosing it", async () => {
     const archivePath = join(testRoot, "skill-secret.agents-one-backup");
@@ -950,6 +1018,177 @@ describe("Agents One backup round trip", { timeout: 30_000 }, () => {
     expect(readOverlayContent(targetHome)).toBe(originalContent);
     expect(existsSync(expectedPath)).toBe(true);
     expect(readFileSync(expectedPath)).toEqual(Buffer.from("image-fixture"));
+  });
+
+  // @lat: [[mobile-data#Mobile data#Restore excludes portable mobile authority and rotates epochs]]
+  it("excludes mobile authority from real backups and transactionally rotates only restored profile generations", async () => {
+    const generation = randomUUID(),
+      marker = JSON.stringify({ version: 1, generation });
+    for (const home of [sourceHome, targetHome]) {
+      mkdirSync(join(home, "desktop", "mobile-control"), { recursive: true });
+      writeFileSync(join(home, MOBILE_DATA_GENERATION_PATH), marker);
+      writeFileSync(
+        join(home, "desktop", "mobile-control", "owner-local.json"),
+        "local private ledger",
+      );
+      writeFileSync(
+        join(home, "desktop", "mobile-execution-policies.json"),
+        "local native approval",
+      );
+    }
+    const targetOnly = join(targetHome, "profiles", "target-only");
+    mkdirSync(join(targetOnly, "desktop", "mobile-control"), {
+      recursive: true,
+    });
+    writeFileSync(join(targetOnly, MOBILE_DATA_GENERATION_PATH), marker);
+    const originalLedgerPath = mobileOwnerLedgerPath(
+        targetHome,
+        "owner-1",
+        "space-1",
+        generation,
+      ),
+      oldLedger = new MobileOwnerLedger(
+        originalLedgerPath,
+        "owner-1",
+        "space-1",
+      ),
+      cursor = oldLedger.cursor("phone-1", "1");
+    const ledgerBytes = readFileSync(originalLedgerPath, "utf8"),
+      archive = join(testRoot, "mobile-generations.agents-one-backup");
+    const exported = await exportAgentsOneBackupTo(archive, { sourceHome });
+    expect(exported, exported.error).toMatchObject({ success: true });
+    expect(
+      collectAgentsOneBackupFiles(sourceHome)
+        .map((file) => file.path)
+        .some(
+          (path) =>
+            path.includes("mobile-control") ||
+            path.endsWith("mobile-execution-policies.json"),
+        ),
+    ).toBe(false);
+    const restored = await restoreAgentsOneBackupFrom(archive, { targetHome });
+    expect(restored, restored.error).toMatchObject({ success: true });
+    const current = readMobileDataGeneration(targetHome),
+      research = readMobileDataGeneration(
+        join(targetHome, "profiles", "research"),
+      );
+    expect(current).not.toBe(generation);
+    expect(research).not.toBe("legacy");
+    expect(current).not.toBe(research);
+    expect(readMobileDataGeneration(targetOnly)).toBe(generation);
+    expect(readFileSync(originalLedgerPath, "utf8")).toBe(ledgerBytes);
+    expect(
+      readFileSync(
+        join(targetHome, "desktop", "mobile-execution-policies.json"),
+        "utf8",
+      ),
+    ).toBe("local native approval");
+    expect(
+      readFileSync(join(sourceHome, MOBILE_DATA_GENERATION_PATH), "utf8"),
+    ).toBe(marker);
+    const next = new MobileOwnerLedger(
+      mobileOwnerLedgerPath(targetHome, "owner-1", "space-1", current),
+      "owner-1",
+      "space-1",
+    );
+    expect(next.dataEpoch).not.toBe(oldLedger.dataEpoch);
+    expect(() => next.parseCursor(cursor, "phone-1", "1")).toThrow(
+      "cursor_expired",
+    );
+    expect(next.executionEntries()).toEqual([]);
+  });
+
+  // @lat: [[mobile-data#Mobile data#Restore marker journal rollback identity]]
+  it("rolls back owned generation markers and refuses to remove changed or unproven newly introduced markers", () => {
+    const path = MOBILE_DATA_GENERATION_PATH,
+      destination = join(targetHome, path),
+      old = JSON.stringify({ version: 1, generation: randomUUID() }),
+      next = JSON.stringify({ version: 1, generation: randomUUID() });
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, next);
+    let transaction = writeRestoreTransactionFixture(
+      "prepared",
+      [path],
+      [path],
+    );
+    const snapshot = join(transaction, "snapshot", path);
+    mkdirSync(dirname(snapshot), { recursive: true });
+    writeFileSync(snapshot, old);
+    expect(recoverInterruptedAgentsOneRestore(targetHome)).toBe(true);
+    expect(readFileSync(destination, "utf8")).toBe(old);
+    writeFileSync(destination, next);
+    transaction = writeRestoreTransactionFixture("prepared", [path], []);
+    const journal = join(transaction, "journal.json");
+    const row = readJson(journal);
+    row.mobileGenerationHashes = {
+      [path]: createHash("sha256").update(next).digest("hex"),
+    };
+    writeFileSync(journal, JSON.stringify(row));
+    expect(recoverInterruptedAgentsOneRestore(targetHome)).toBe(true);
+    expect(existsSync(destination)).toBe(false);
+    writeFileSync(destination, old);
+    transaction = writeRestoreTransactionFixture("prepared", [path], []);
+    writeFileSync(
+      join(transaction, "journal.json"),
+      JSON.stringify({
+        ...readJson(join(transaction, "journal.json")),
+        mobileGenerationHashes: {
+          [path]: createHash("sha256").update(next).digest("hex"),
+        },
+      }),
+    );
+    expect(() => recoverInterruptedAgentsOneRestore(targetHome)).toThrow(
+      /无法确认来源/,
+    );
+    expect(readFileSync(destination, "utf8")).toBe(old);
+  });
+
+  // @lat: [[mobile-data#Mobile data#Committed restore generation preservation]]
+  it("keeps committed generation and rejects forged authority and marker journal paths", async () => {
+    const destination = join(targetHome, MOBILE_DATA_GENERATION_PATH),
+      marker = JSON.stringify({ version: 1, generation: randomUUID() });
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, marker);
+    writeRestoreTransactionFixture(
+      "committed",
+      [MOBILE_DATA_GENERATION_PATH],
+      [],
+    );
+    expect(recoverInterruptedAgentsOneRestore(targetHome)).toBe(false);
+    expect(readFileSync(destination, "utf8")).toBe(marker);
+    const transaction = writeRestoreTransactionFixture(
+        "prepared",
+        [MOBILE_DATA_GENERATION_PATH],
+        [],
+      ),
+      journal = join(transaction, "journal.json");
+    writeFileSync(
+      journal,
+      JSON.stringify({
+        ...readJson(journal),
+        mobileGenerationHashes: {
+          "desktop/runtime-conversations.json": "0".repeat(64),
+        },
+      }),
+    );
+    expect(() => recoverInterruptedAgentsOneRestore(targetHome)).toThrow(
+      /无效手机世代/,
+    );
+    rmSync(transaction, { recursive: true, force: true });
+    const archive = join(testRoot, "marker-forgery.agents-one-backup"),
+      invalid = join(testRoot, "forged-marker.agents-one-backup");
+    expect(
+      (await exportAgentsOneBackupTo(archive, { sourceHome })).success,
+    ).toBe(true);
+    await rewriteBackupPayloadPath(
+      archive,
+      invalid,
+      "desktop/runtime-conversations.json",
+      MOBILE_DATA_GENERATION_PATH,
+    );
+    expect(
+      (await inspectAgentsOneBackup(invalid, { targetHome })).success,
+    ).toBe(false);
   });
 
   it("restores managed data as a snapshot while preserving credentials and unrelated files", async () => {

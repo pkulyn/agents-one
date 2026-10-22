@@ -2,6 +2,8 @@ import { resolve } from "path";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { buildSync } from "esbuild";
+import { createDesktopSourceReceipt } from "./scripts/desktop-source-receipt.mjs";
 
 const rendererPort = Number(
   process.env.AGENTS_ONE_RENDERER_PORT ||
@@ -17,6 +19,48 @@ const signedAutoUpdateBuild =
 
 export default defineConfig({
   main: {
+    plugins: [
+      {
+        name: "agents-one-mobile-workers",
+        generateBundle() {
+          if (process.env.AGENTS_ONE_RELEASE_BUILD === "1") {
+            this.emitFile({
+              type: "asset",
+              fileName: "desktop-source-receipt.json",
+              source: JSON.stringify(createDesktopSourceReceipt(process.cwd())),
+            });
+          }
+          for (const [entry, fileName] of [
+            [
+              "src/main/mobile-control/project-text-write-worker.ts",
+              "project-text-write-worker.cjs",
+            ],
+            [
+              "src/main/mobile-control/owner-ledger-worker.ts",
+              "mobile-owner-ledger-worker.cjs",
+            ],
+            [
+              "src/main/mobile-control/owner-tunnel-worker.ts",
+              "mobile-owner-tunnel-worker.cjs",
+            ],
+          ]) {
+            const bundle = buildSync({
+              entryPoints: [resolve(entry)],
+              bundle: true,
+              platform: "node",
+              format: "cjs",
+              external: ["electron", "bufferutil", "utf-8-validate"],
+              write: false,
+            });
+            this.emitFile({
+              type: "asset",
+              fileName,
+              source: bundle.outputFiles[0].text,
+            });
+          }
+        },
+      },
+    ],
     define: {
       __AGENTS_ONE_SIGNED_AUTO_UPDATE_BUILD__: JSON.stringify(
         signedAutoUpdateBuild,
@@ -40,7 +84,9 @@ export default defineConfig({
         ],
       },
       rollupOptions: {
-        external: ["better-sqlite3"],
+        // ws catches missing optional native accelerators and uses its
+        // JavaScript implementation. Keep those requires inside ws's try/catch.
+        external: ["better-sqlite3", "bufferutil", "utf-8-validate"],
       },
     },
   },

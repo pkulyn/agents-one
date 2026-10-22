@@ -160,8 +160,10 @@ export default {
     auto: "Auto",
     readOnly: "Read only",
     fullAccess: "Full access",
-    autoHint: "Can read and write, but cannot move or delete files",
-    readOnlyHint: "Can view the project and attachments without changing files",
+    autoHint:
+      "Default: read, query, create and edit; cannot move or delete existing files",
+    readOnlyHint:
+      "Can use read, search and query tools; cannot create, edit, move or delete files",
     unavailable: "This Runtime did not declare usable write permissions",
     remoteFullHint:
       "Full access on the remote host; local projects require separate authorization",

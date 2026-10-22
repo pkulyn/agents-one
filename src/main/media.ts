@@ -24,7 +24,7 @@ import { BrowserWindow, dialog } from "electron";
 import { listProjectFolders } from "./project-folders";
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
-const TEMP_MEDIA_DIR = join(tmpdir(), "hermes-desktop-media");
+const TEMP_MEDIA_DIR = join(tmpdir(), "agents-one-media");
 const TEMP_MEDIA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TEMP_MEDIA_MAX_FILES = 100;
 

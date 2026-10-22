@@ -36,6 +36,11 @@ const tls =
     : undefined;
 const service = createConnectService({
   tls,
+  mobile: process.env.CONNECT_MOBILE_OWNERS_FILE ? {
+    owners: JSON.parse(readFileSync(process.env.CONNECT_MOBILE_OWNERS_FILE, "utf8")),
+    storagePath: process.env.CONNECT_MOBILE_STATE_FILE,
+    stateKey: process.env.CONNECT_MOBILE_STATE_KEY,
+  } : undefined,
   storagePath: process.env.CONNECT_STATE_FILE?.trim() || undefined,
   logger: (cause) => console.error("connect request failed", cause),
 });

@@ -78,6 +78,14 @@ export interface TaskScheduleRun {
   conversationId?: string;
   completedAt?: number;
   summary?: string;
+  /** Main-owned durable admission; never a caller-supplied execution permission. */
+  mobileDispatchState?:
+    | "prepared"
+    | "observed"
+    | "reconciliation_required"
+    | "final_pending";
+  /** Temporary Main result evidence, removed only after original history commits. */
+  mobileFinalCheckpoint?: AgentRuntimeRun;
 }
 
 export interface TaskScheduleRunCompletedEvent {
@@ -108,6 +116,12 @@ export interface TaskScheduleRunStartedEvent {
 /** A desktop schedule that launches an eligible Runtime conversation. */
 export interface TaskSchedule {
   id: string;
+  /** Embedded version shared by desktop edits, scheduler ticks and mobile control. */
+  revision?: string;
+  /** Owner policy binding retained by desktop edits and rechecked by the original runner. */
+  mobileExecutionPolicyId?: string;
+  /** An admitted native run lost evidence; retain it and block further dispatch. */
+  mobileRecoveryRequired?: boolean;
   name: string;
   schedule: string;
   prompt: string;

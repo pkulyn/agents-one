@@ -4,7 +4,7 @@ import { isImageMime } from "../shared/attachments";
 import { isAutomationSessionSource } from "../shared/session-list";
 import { clearStagedAttachments } from "./attachment-staging";
 import { removeSessionFromCache } from "./session-cache";
-import { getDbConnection } from "./db";
+import { getDbConnection, getDesktopDbConnection } from "./db";
 import {
   attachmentFromLocalVisionImagePath,
   deletePromptImageAttachmentsForSession,
@@ -767,10 +767,11 @@ export function applySessionLocalOverlays(
         loadPromptImageAttachments(db, sessionId),
       )
     : items;
-  const continuation = loadSessionContinuationItemsForSession(sessionId, db);
+  const continuation = loadSessionContinuationItemsForSession(sessionId);
   const base = mergeSessionContinuationWithCanonical(continuation, canonical);
-  return db
-    ? mergeSessionLocalErrors(base, loadSessionLocalErrors(db, sessionId))
+  const desktopDb = getDesktopDbConnection(true);
+  return desktopDb
+    ? mergeSessionLocalErrors(base, loadSessionLocalErrors(desktopDb, sessionId))
     : base;
 }
 
@@ -814,8 +815,6 @@ function deleteSessionRows(
   db: BetterDatabase.Database,
   sessionId: string,
 ): number {
-  deletePromptImageAttachmentsForSession(db, sessionId);
-  deleteSessionContinuationForSession(db, sessionId);
   // Unlink any child sessions first. better-sqlite3 enables
   // PRAGMA foreign_keys=ON by default, so deleting a parent while a child
   // still references it via parent_session_id throws "FOREIGN KEY constraint
@@ -828,14 +827,21 @@ function deleteSessionRows(
       "UPDATE sessions SET parent_session_id = NULL WHERE parent_session_id = ?",
     ).run(sessionId);
   }
-  deleteSessionContextFolderForSession(db, sessionId);
-  deleteSessionModelOverrideForSession(db, sessionId);
   db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
   const result = db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
   return result.changes;
 }
 
 function cleanupDeletedSession(sessionId: string): void {
+  const desktopDb = getDesktopDbConnection(false);
+  if (desktopDb) {
+    desktopDb.transaction(() => {
+      deletePromptImageAttachmentsForSession(desktopDb, sessionId);
+      deleteSessionContinuationForSession(desktopDb, sessionId);
+      deleteSessionContextFolderForSession(desktopDb, sessionId);
+      deleteSessionModelOverrideForSession(desktopDb, sessionId);
+    })();
+  }
   clearStagedAttachments(sessionId);
   removeSessionFromCache(sessionId);
 }

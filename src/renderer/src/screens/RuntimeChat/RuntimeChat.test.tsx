@@ -275,7 +275,13 @@ describe("RuntimeChat inputs and persistence", () => {
     retryAgentRuntimeArtifact.mockResolvedValue(null);
     getAgentRuntimeModelContextWindow.mockResolvedValue(null);
     getRuntimeConversation.mockResolvedValue(null);
-    saveRuntimeConversation.mockResolvedValue(undefined);
+    saveRuntimeConversation.mockImplementation(async (input) => ({
+      ...input,
+      revision: String(BigInt(input.expectedRevision || "0") + 1n),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messageCount: input.messages.length,
+    }));
     forkRuntimeConversation.mockResolvedValue({ id: "branch-conversation" });
     saveTaskCollaboration.mockResolvedValue(undefined);
     updateTaskCollaborationExecution.mockResolvedValue(undefined);
@@ -350,6 +356,103 @@ describe("RuntimeChat inputs and persistence", () => {
         cancelAgentRuntimeTask: vi.fn(),
       },
     });
+  });
+
+  // @lat: [[mobile-data#Mobile data#Desktop dispatch waits for checkpoint]]
+  it("does not dispatch a Runtime task before its original user message has been saved", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    saveRuntimeConversation.mockImplementation(async (input) => {
+      await gate;
+      return {
+        ...input,
+        revision: "1",
+        createdAt: 1,
+        updatedAt: 2,
+        messageCount: input.messages.length,
+      };
+    });
+    render(
+      <RuntimeChat
+        runId="checkpoint-before-dispatch"
+        runtime={openCodeRuntime}
+        profile="default"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await waitFor(() =>
+      expect(saveRuntimeConversation).toHaveBeenCalledTimes(1),
+    );
+    expect(startAgentRuntimeTask).not.toHaveBeenCalled();
+    release();
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+  });
+
+  // @lat: [[mobile-data#Mobile data#Desktop observes Main owned results]]
+  it("shows a Main-owned reply only after original storage commits and never writes a second final reply", async () => {
+    let original = {
+      id: "main-owned-conversation",
+      revision: "2",
+      title: "Original mobile task",
+      runtimeId: openCodeRuntime.id,
+      runtimeName: openCodeRuntime.name,
+      runtimeKind: openCodeRuntime.kind,
+      runtimeLocation: "local",
+      createdAt: 1,
+      updatedAt: 2,
+      messages: [] as Array<Record<string, unknown>>,
+      messageCount: 0,
+      activeRuntimeRunId: "main-owned-run" as string | undefined,
+      activeRuntimeRunOwner: "main" as "main" | undefined,
+    };
+    getRuntimeConversation.mockImplementation(async () => original);
+    getAgentRuntimeRun.mockResolvedValue({
+      id: "main-owned-run",
+      runtimeId: openCodeRuntime.id,
+      status: "succeeded",
+      startedAt: 1,
+      output: "Uncommitted provider final",
+    });
+    const view = render(
+      <RuntimeChat
+        runId="main-owned-observer"
+        runtime={openCodeRuntime}
+        profile="default"
+        initialConversationId="main-owned-conversation"
+        initialRuntimeRunId="main-owned-run"
+      />,
+    );
+    await waitFor(() => expect(getAgentRuntimeRun).toHaveBeenCalled());
+    expect(
+      screen.queryByText("Uncommitted provider final"),
+    ).not.toBeInTheDocument();
+    expect(saveRuntimeConversation).not.toHaveBeenCalled();
+    original = {
+      ...original,
+      revision: "3",
+      activeRuntimeRunId: undefined,
+      activeRuntimeRunOwner: undefined,
+      messages: [
+        {
+          id: "main-owned-run-result",
+          role: "agent",
+          content: "Committed Main reply",
+          createdAt: 3,
+          execution: { runId: "main-owned-run", events: [] },
+        },
+      ],
+      messageCount: 1,
+    };
+    window.dispatchEvent(
+      new CustomEvent("agents-one:runtime-conversation-updated", {
+        detail: { profile: "default", conversationId: original.id },
+      }),
+    );
+    expect(await screen.findByText("Committed Main reply")).toBeInTheDocument();
+    expect(saveRuntimeConversation).not.toHaveBeenCalled();
+    view.unmount();
   });
 
   it("renders core Runtime controls in English", () => {
@@ -1136,6 +1239,7 @@ describe("RuntimeChat inputs and persistence", () => {
         runId="chat-openclaw"
         runtime={gatewayRuntime}
         profile="default"
+        initialConversationId="gateway-attachments-conversation"
       />,
     );
 
@@ -1147,25 +1251,43 @@ describe("RuntimeChat inputs and persistence", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
 
+    await screen.findByText("brief.txt");
+
     await waitFor(() =>
       expect(startAgentRuntimeTask).toHaveBeenCalledWith(
         "hermes-gateway",
         expect.objectContaining({
           prompt: expect.stringContaining("当前用户请求：\n检查输入"),
-          mode: "analysis",
+          mode: "safe_write",
           attachments: [testAttachment],
         }),
       ),
     );
     await screen.findByText("输入已读取。");
-    expect(saveRuntimeConversation).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        runtimeId: "hermes-gateway",
-        messages: expect.arrayContaining([
-          expect.objectContaining({ role: "user", content: "检查输入" }),
-          expect.objectContaining({ role: "agent", content: "输入已读取。" }),
-        ]),
-      }),
+    // Wait for this conversation's terminal persistence checkpoint; separate
+    // asynchronous chats may finish their saves in a different order.
+    await waitFor(() =>
+      expect(saveRuntimeConversation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "gateway-attachments-conversation",
+          runtimeId: "hermes-gateway",
+          activeRuntimeRunId: null,
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              role: "user",
+              content: "检查输入",
+              attachments: [
+                expect.objectContaining({
+                  id: "attachment-1",
+                  name: "brief.txt",
+                  kind: "text-file",
+                }),
+              ],
+            }),
+            expect.objectContaining({ role: "agent", content: "输入已读取。" }),
+          ]),
+        }),
+      ),
     );
   });
 
@@ -1317,6 +1439,13 @@ describe("RuntimeChat inputs and persistence", () => {
       ) {
         throw new Error("storage unavailable");
       }
+      return {
+        ...input,
+        revision: String(BigInt(input.expectedRevision || "0") + 1n),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messageCount: input.messages.length,
+      };
     });
 
     render(
@@ -1336,8 +1465,11 @@ describe("RuntimeChat inputs and persistence", () => {
       ),
     ).toBeInTheDocument();
 
+    // The composer is released, but another external turn must wait until the
+    // prior reply and next user message can actually be committed.
     fireEvent.click(send);
-    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(saveRuntimeConversation).toHaveBeenCalled());
+    expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1);
   });
 
   it("retries an unavailable remote artifact without rerunning the task", async () => {
@@ -1552,7 +1684,7 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(screen.getByText("自动")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "管理本轮任务权限" }));
     expect(
-      screen.getByText("可读写，无移动、删除文件权限"),
+      screen.getByText("默认权限，可读取、查询、创建和编辑；不可移动或删除原有文件"),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitemradio", { name: /自动/ }));
     fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
@@ -1570,7 +1702,7 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
-  it("keeps a workspace-less OpenCode greeting read-only and persists the transcript", async () => {
+  it("keeps a workspace-less OpenCode greeting automatic and persists the transcript", async () => {
     startAgentRuntimeTask.mockResolvedValue({
       id: "run-opencode-dialogue",
       runtimeId: "opencode-local",
@@ -1601,7 +1733,7 @@ describe("RuntimeChat inputs and persistence", () => {
       expect(startAgentRuntimeTask).toHaveBeenCalledWith(
         "opencode-local",
         expect.objectContaining({
-          mode: "analysis",
+          mode: "safe_write",
           workspace: undefined,
         }),
       ),
@@ -1827,6 +1959,42 @@ describe("RuntimeChat inputs and persistence", () => {
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
     expect(screen.getByText("ark / glm-5.2")).toBeInTheDocument();
     expect(screen.queryByText("未提供模型")).not.toBeInTheDocument();
+  });
+
+  it("prioritizes a permission denial over a misleading provider success reply", async () => {
+    const answer = "我已经删除了目标文件。";
+    startAgentRuntimeTask.mockResolvedValueOnce({
+      id: "run-remote-answer-with-error",
+      runtimeId: "hermes-home2",
+      status: "running",
+      output: "",
+      startedAt: Date.now(),
+    });
+    getAgentRuntimeRun.mockResolvedValueOnce({
+      id: "run-remote-answer-with-error",
+      runtimeId: "hermes-home2",
+      status: "failed",
+      output: answer,
+      error: "[Agents One 权限不足] 当前自动权限不允许删除，请切换为完全访问。",
+      startedAt: Date.now(),
+      completedAt: Date.now(),
+      events: [],
+    });
+
+    render(
+      <RuntimeChat
+        runId="chat-remote-answer-with-error"
+        runtime={hers2Runtime}
+        profile="default"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+
+    await screen.findByText(
+      "[Agents One 权限不足] 当前自动权限不允许删除，请切换为完全访问。",
+    );
+    expect(screen.queryByText(answer)).not.toBeInTheDocument();
   });
 
   it("keeps a remote final answer out of the thinking group when the operation also failed", async () => {

@@ -1,12 +1,24 @@
+import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, mkdirSync } from "fs";
 import { promisify } from "util";
 import { dirname, extname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
-import { profileHome } from "./utils";
+import { agentsOneProfileHome } from "./utils";
 import { prepareRuntimeInputs } from "./runtime-inputs";
 import { protectWorkspaceFromRemoval } from "./workspace-protection";
 import { terminateProcessTree } from "./process-control";
+import {
+  prepareCodexMobileContext,
+  type CodexMobileContext,
+} from "./mobile-control/codex-mobile-context";
+import { createCodexProjectWriteRunner } from "./mobile-control/codex-project-write-context";
+import { readCodexMobileConfiguration } from "./mobile-control/codex-effective-config";
+import {
+  captureCodexInspectionIdentity,
+  assertReviewedCodexInspectionNative,
+  assertCodexInspectionIdentity,
+} from "./mobile-control/codex-invocation-identity";
 import type {
   AgentRuntimeArtifact,
   AgentRuntimeTaskInput,
@@ -124,6 +136,34 @@ export function codexThreadIdFromOutput(output: string): string | undefined {
   return undefined;
 }
 
+/** Capture provider identity before the bounded output tail drops its first event. */
+class CodexThreadTracker {
+  id?: string;
+  private pending = "";
+  private discardLine = false;
+  push(chunk: string): void {
+    if (this.id) return;
+    const lines = `${this.pending}${chunk}`.split(/\r?\n/);
+    this.pending = lines.pop() || "";
+    for (const line of lines) {
+      if (this.discardLine) {
+        this.discardLine = false;
+        continue;
+      }
+      // A thread identity event is small. Never retain an unbounded tool/body line.
+      if (line.length <= 16_384) this.id = codexThreadIdFromOutput(line);
+      if (this.id) {
+        this.pending = "";
+        return;
+      }
+    }
+    if (this.pending.length > 16_384) {
+      this.pending = "";
+      this.discardLine = true;
+    }
+  }
+}
+
 async function command(
   invocation: CodexInvocation,
   args: string[],
@@ -178,13 +218,13 @@ function configuredProbeWorkspace(
 }
 
 function conversationCwd(profile?: string): string {
-  const root = join(profileHome(profile), "desktop", "runtime-chat", "codex");
+  const root = join(agentsOneProfileHome(profile), "desktop", "runtime-chat", "codex");
   mkdirSync(root, { recursive: true });
   return root;
 }
 
 function worktreeRoot(profile?: string): string {
-  return join(profileHome(profile), "desktop", "worktrees", "codex");
+  return join(agentsOneProfileHome(profile), "desktop", "worktrees", "codex");
 }
 
 function safeWorktreePath(profile: string | undefined, id: string): string {
@@ -209,6 +249,7 @@ export function codexExecArgs(
   imagePaths: string[] = [],
   model?: string,
   skipGitRepoCheck = false,
+  sessionId?: string,
 ): string[] {
   const args = ["exec", "--json"];
   if (skipGitRepoCheck) args.push("--skip-git-repo-check");
@@ -222,9 +263,19 @@ export function codexExecArgs(
   }
   args.push("--cd", cwd);
   if (inputDirectory) args.push("--add-dir", inputDirectory);
-  for (const image of imagePaths) args.push("--image", image);
-  if (model?.trim()) args.push("--model", model.trim());
-  args.push(prompt);
+  const continuation = sessionId?.trim();
+  if (continuation) {
+    if (model?.trim()) args.push("--model", model.trim());
+    // --sandbox/--cd/--add-dir belong to exec, while resumed images belong to
+    // resume. Never select --last: this turn must advance its original thread.
+    args.push("resume", "--json");
+    for (const image of imagePaths) args.push("--image", image);
+    args.push("--", continuation, prompt);
+  } else {
+    for (const image of imagePaths) args.push("--image", image);
+    if (model?.trim()) args.push("--model", model.trim());
+    args.push("--", prompt);
+  }
   return args;
 }
 
@@ -259,15 +310,115 @@ export async function startCodexProcess(
   config: CodexRuntimeConfig,
   input: AgentRuntimeTaskInput,
   onOutput: (chunk: string) => void,
+  options?: {
+    mobileInspection?: true;
+    projectInspectionGuard?: () => void;
+    configurationGuard?: (configurationHash: string) => void;
+    projectWrite?: {
+      runId: string;
+      workerPath: string;
+      workerSha256?: string;
+      assertWritesAllowed(): void;
+    };
+  },
 ): Promise<StartedCodexProcess> {
   const mode = input.mode || "analysis";
-  const invocation = codexInvocation(executable(config));
+  const mobileWrite = options?.projectWrite;
+  const mobileExecution = Boolean(options?.mobileInspection || mobileWrite);
+  if (
+    mobileWrite &&
+    (options?.mobileInspection ||
+      mode !== "safe_write" ||
+      !options.projectInspectionGuard ||
+      !options.configurationGuard)
+  )
+    throw Error("Mobile project write requires fixed Run and Main authority.");
+  if (options?.mobileInspection && mode !== "analysis")
+    throw new Error("Mobile inspection requires analysis mode.");
+  if (options?.configurationGuard && !mobileExecution)
+    throw new Error("Configuration authority requires mobile inspection.");
+  const assertConfiguration = (configurationHash: string): void => {
+    if (!options?.configurationGuard) return;
+    try {
+      const result: unknown = options.configurationGuard(configurationHash);
+      if (result instanceof Promise) void result.catch(() => undefined);
+      if (result !== undefined) throw Error();
+    } catch {
+      throw new Error(
+        "Mobile Codex approved configuration is unavailable or changed.",
+      );
+    }
+  };
+  let invocation = codexInvocation(executable(config));
   const workspace = requestedWorkspace(config, input);
+  if (mobileWrite && !workspace)
+    throw Error("Mobile project write requires a fixed project.");
   if ((mode === "implementation" || mode === "full_access") && !workspace) {
     throw new Error("Codex file tasks require a task-specific project folder.");
   }
 
   let cwd = workspace || conversationCwd(input.profile);
+  const environment = mobileExecution ? childEnvironment() : undefined;
+  const identity = mobileExecution
+    ? captureCodexInspectionIdentity(executable(config), cwd, environment!)
+    : undefined;
+  if (identity) {
+    assertReviewedCodexInspectionNative(identity);
+    invocation = codexInvocation(identity.nativePath);
+  }
+  const mobileConfiguration = mobileExecution
+    ? await readCodexMobileConfiguration(
+        { ...config, executablePath: identity!.nativePath },
+        cwd,
+        environment!,
+      )
+    : undefined;
+  if (mobileConfiguration)
+    assertConfiguration(mobileConfiguration.configurationHash);
+  if (identity)
+    assertCodexInspectionIdentity(
+      identity,
+      executable(config),
+      cwd,
+      childEnvironment(),
+    );
+  const projectWriter = mobileWrite
+    ? createCodexProjectWriteRunner({
+        profile: input.profile,
+        runId: mobileWrite.runId,
+        projectId: input.workspaceId,
+        workspace: workspace!,
+        executablePath: executable(config),
+        workerPath: mobileWrite.workerPath,
+        workerSha256: mobileWrite.workerSha256,
+        assertWritesAllowed: mobileWrite.assertWritesAllowed,
+        authorize: () => {
+          mobileWrite.assertWritesAllowed();
+          if (!mobileContext)
+            throw Error("Mobile project write context is unavailable.");
+          mobileContext.assertCurrent();
+          assertConfiguration(mobileConfiguration!.configurationHash);
+          assertCodexInspectionIdentity(
+            identity!,
+            executable(config),
+            cwd,
+            childEnvironment(),
+          );
+        },
+      })
+    : undefined;
+  const mobileContext: CodexMobileContext | undefined = mobileExecution
+    ? await prepareCodexMobileContext({
+        model: mobileConfiguration!.model,
+        profile: input.profile,
+        environment: environment!,
+        ...(projectWriter ? { projectWriter } : {}),
+        ...(workspace ? { workspace } : {}),
+        ...(options?.projectInspectionGuard
+          ? { projectGuard: options.projectInspectionGuard }
+          : {}),
+      })
+    : undefined;
   let worktreePath: string | undefined;
   if (mode === "implementation") {
     const root = await gitRoot(workspace as string);
@@ -287,124 +438,161 @@ export async function startCodexProcess(
     cwd = worktreePath;
   }
 
-  const preparedInputs = prepareRuntimeInputs(
-    input.profile,
-    input.attachments,
-    `codex-${randomUUID()}`,
-  );
-  const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
-  const workspaceProtection =
-    mode === "safe_write" && workspace
-      ? protectWorkspaceFromRemoval(workspace, input.profile)
-      : undefined;
+  try {
+    const preparedInputs = prepareRuntimeInputs(
+      input.profile,
+      input.attachments,
+      `codex-${randomUUID()}`,
+    );
+    const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
+    const workspaceProtection =
+      mode === "safe_write" && workspace && !mobileWrite
+        ? protectWorkspaceFromRemoval(workspace, input.profile)
+        : undefined;
 
-  const args = codexExecArgs(
-    cwd,
-    mode,
-    runtimePrompt,
-    preparedInputs.directory,
-    preparedInputs.imagePaths,
-    config.model,
-    !workspace,
-  );
-  const child = spawn(invocation.command, [...invocation.prefix, ...args], {
-    cwd,
-    env: childEnvironment(),
-    shell: false,
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let output = "";
-  child.stdout?.on("data", (data: Buffer) => {
-    const chunk = redact(data.toString());
-    output = appendCapped(output, chunk);
-    onOutput(chunk);
-  });
-  child.stderr?.on("data", (data: Buffer) => {
-    const chunk = redact(data.toString());
-    output = appendCapped(output, chunk);
-    onOutput(chunk);
-  });
-
-  const completion = new Promise<CodexProcessResult>((resolveResult) => {
-    child.once("error", (error) => {
-      workspaceProtection?.restoreAndDispose();
-      resolveResult({
-        output,
-        error: redact(error.message),
-        worktreePath,
-        artifacts: worktreePath
-          ? [
-              {
-                kind: "worktree",
-                label: "Isolated worktree",
-                path: worktreePath,
-              },
-            ]
-          : [],
-        inputArtifacts: preparedInputs.artifacts,
-      });
+    const args = codexExecArgs(
+      cwd,
+      mobileWrite ? "analysis" : mode,
+      runtimePrompt,
+      preparedInputs.directory,
+      preparedInputs.imagePaths,
+      mobileConfiguration?.model ?? config.model,
+      !workspace,
+      input.sessionId,
+    );
+    if (mobileExecution)
+      args.splice(1, 0, ...mobileContext!.args, ...mobileConfiguration!.args);
+    mobileContext?.assertCurrent();
+    if (mobileConfiguration)
+      assertConfiguration(mobileConfiguration.configurationHash);
+    if (identity)
+      assertCodexInspectionIdentity(
+        identity,
+        executable(config),
+        cwd,
+        childEnvironment(),
+      );
+    const child = spawn(invocation.command, [...invocation.prefix, ...args], {
+      cwd,
+      env: mobileContext?.environment ?? environment ?? childEnvironment(),
+      shell: false,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    child.once("close", async (code) => {
-      const restoredFiles = workspaceProtection?.restoreAndDispose() || [];
-      let diffSummary: string | undefined;
-      let diff: string | undefined;
-      if (worktreePath) {
-        try {
-          diffSummary = await command({ command: "git", prefix: [] }, [
-            "-C",
-            worktreePath,
-            "diff",
-            "--stat",
-          ]);
-          diff = await command({ command: "git", prefix: [] }, [
-            "-C",
-            worktreePath,
-            "diff",
-            "--no-ext-diff",
-          ]);
-        } catch {
-          // Preserve the Codex output even when the diff inspection fails.
+    let output = "";
+    // @lat: [[mobile-data#Mobile data#Codex long output session identity]]
+    const thread = new CodexThreadTracker();
+    child.stdout?.on("data", (data: Buffer) => {
+      const chunk = redact(data.toString());
+      thread.push(chunk);
+      output = appendCapped(output, chunk);
+      onOutput(chunk);
+    });
+    child.stderr?.on("data", (data: Buffer) => {
+      const chunk = redact(data.toString());
+      output = appendCapped(output, chunk);
+      onOutput(chunk);
+    });
+
+    const completion = new Promise<CodexProcessResult>((resolveResult) => {
+      child.once("error", async (error) => {
+        await mobileContext?.dispose();
+        workspaceProtection?.restoreAndDispose();
+        resolveResult({
+          output,
+          error: redact(error.message),
+          worktreePath,
+          artifacts: worktreePath
+            ? [
+                {
+                  kind: "worktree",
+                  label: "Isolated worktree",
+                  path: worktreePath,
+                },
+              ]
+            : (projectWriter?.artifacts() ?? []),
+          inputArtifacts: preparedInputs.artifacts,
+        });
+      });
+      child.once("close", async (code) => {
+        await mobileContext?.dispose();
+        thread.push("\n");
+        const requestedSessionId = input.sessionId?.trim();
+        const mismatchedSession = Boolean(
+          requestedSessionId && thread.id && thread.id !== requestedSessionId,
+        );
+        const restoredFiles = workspaceProtection?.restoreAndDispose() || [];
+        let diffSummary: string | undefined;
+        let diff: string | undefined;
+        if (worktreePath) {
+          try {
+            diffSummary = await command({ command: "git", prefix: [] }, [
+              "-C",
+              worktreePath,
+              "diff",
+              "--stat",
+            ]);
+            diff = await command({ command: "git", prefix: [] }, [
+              "-C",
+              worktreePath,
+              "diff",
+              "--no-ext-diff",
+            ]);
+          } catch {
+            // Preserve the Codex output even when the diff inspection fails.
+          }
         }
-      }
-      const artifacts: AgentRuntimeArtifact[] = [];
-      if (worktreePath)
-        artifacts.push({
-          kind: "worktree",
-          label: "Isolated worktree",
-          path: worktreePath,
+        const artifacts: AgentRuntimeArtifact[] =
+          projectWriter?.artifacts() ?? [];
+        if (worktreePath)
+          artifacts.push({
+            kind: "worktree",
+            label: "Isolated worktree",
+            path: worktreePath,
+          });
+        if (diff)
+          artifacts.push({
+            kind: "diff",
+            label: "Git diff",
+            content: diff.slice(0, MAX_OUTPUT),
+          });
+        resolveResult({
+          output: restoredFiles.length
+            ? `${output}\n[Agents One] 已阻止移动或删除 ${restoredFiles.length} 个原有文件。`
+            : output,
+          ...(!mismatchedSession && (thread.id || requestedSessionId)
+            ? { sessionId: thread.id || requestedSessionId }
+            : {}),
+          ...(mismatchedSession
+            ? {
+                error:
+                  "Codex reported a different resumed session; verify it on the desktop before continuing.",
+              }
+            : code === 0
+              ? {}
+              : { error: `Codex exited with code ${code ?? "unknown"}.` }),
+          ...(worktreePath ? { worktreePath } : {}),
+          ...(diffSummary ? { diffSummary } : {}),
+          artifacts,
+          ...(restoredFiles.length
+            ? { error: runtimeRemovalBlockedMessage(restoredFiles) }
+            : {}),
+          inputArtifacts: preparedInputs.artifacts,
         });
-      if (diff)
-        artifacts.push({
-          kind: "diff",
-          label: "Git diff",
-          content: diff.slice(0, MAX_OUTPUT),
-        });
-      resolveResult({
-        output: restoredFiles.length
-          ? `${output}\n[Agents One] 已阻止移动或删除 ${restoredFiles.length} 个原有文件。`
-          : output,
-        ...(codexThreadIdFromOutput(output)
-          ? { sessionId: codexThreadIdFromOutput(output) }
-          : {}),
-        ...(code === 0
-          ? {}
-          : { error: `Codex exited with code ${code ?? "unknown"}.` }),
-        ...(worktreePath ? { worktreePath } : {}),
-        ...(diffSummary ? { diffSummary } : {}),
-        artifacts,
-        inputArtifacts: preparedInputs.artifacts,
       });
     });
-  });
 
-  return {
-    worktreePath,
-    inputArtifacts: preparedInputs.artifacts,
-    cancel: async () => {
-      await terminateProcessTree(child);
-      await completion;
-    },
-    completion,
-  };
+    return {
+      worktreePath,
+      inputArtifacts: preparedInputs.artifacts,
+      cancel: async () => {
+        await terminateProcessTree(child);
+        await completion;
+      },
+      completion,
+    };
+  } catch (error) {
+    await mobileContext?.dispose();
+    throw error;
+  }
 }

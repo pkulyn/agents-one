@@ -1,3 +1,4 @@
+import { automaticRuntimeTaskMode } from "../../../../shared/runtime-permissions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
@@ -625,7 +626,8 @@ export default function QuickChatPanel({
       }
       const run = await window.agentsOneAPI.startAgentRuntimeTask(runtime.id, {
         prompt: buildPrompt(chat, text, t),
-        mode: "analysis",
+        mode: automaticRuntimeTaskMode(runtime),
+        conversation: true,
         sessionId: chat.runtimeSessionId || undefined,
         timeoutMs: QUICK_CHAT_TIMEOUT_MS,
       });

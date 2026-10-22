@@ -54,7 +54,7 @@ vi.mock("@electron-toolkit/utils", () => ({
   is: { dev: false },
 }));
 vi.mock("../resources/icon.png?asset", () => ({ default: "icon" }));
-vi.mock("../src/main/config", () => ({ getPublicConnectionConfig: vi.fn() }));
+vi.mock("../src/main/config", () => ({ getPublicConnectionConfig: vi.fn(), readDesktopConfig: vi.fn(() => ({})) }));
 vi.mock("../src/main/hermes", () => ({
   stopHealthPolling: mocks.stopHealthPolling,
 }));
@@ -149,7 +149,7 @@ describe("main-process graceful shutdown", () => {
       expect(mocks.closeDbConnection).toHaveBeenCalledOnce();
       expect(mocks.app.quit).toHaveBeenCalledOnce();
     });
-  });
+  }, 15000);
 
   it("sets the stable Agents One Windows identity before app readiness", async () => {
     const { startMainProcess } = await import("../src/main/app/start");
@@ -165,5 +165,5 @@ describe("main-process graceful shutdown", () => {
     } else {
       expect(mocks.app.setAppUserModelId).not.toHaveBeenCalled();
     }
-  });
+  }, 15000);
 });

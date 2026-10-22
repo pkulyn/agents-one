@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   trays: [] as MockTrayLike[],
   ipcListeners: new Map<string, MockIpcCallback>(),
   ipcHandlers: new Map<string, MockIpcCallback>(),
+  startQuickTask: vi.fn(),
+  watchQuickTask: vi.fn(),
 }));
 
 vi.mock("electron", () => {
@@ -154,6 +156,10 @@ vi.mock("../runtime-conversation-store", () => ({
   listRuntimeConversations: vi.fn(() => []),
 }));
 vi.mock("../project-folders", () => ({ listProjectFolders: vi.fn(() => []) }));
+vi.mock("./tray-runtime-task", () => ({
+  startTrayRuntimeTask: mocks.startQuickTask,
+  watchTrayRuntimeTask: mocks.watchQuickTask,
+}));
 
 describe("tray task completion", () => {
   beforeEach(() => {
@@ -162,6 +168,59 @@ describe("tray task completion", () => {
     mocks.ipcListeners.clear();
     mocks.ipcHandlers.clear();
     vi.clearAllMocks();
+  });
+
+  it("accepts quick tasks only from the composer and refreshes the main task list", async () => {
+    const { setupTray } = await import("./tray");
+    const mainWindow = {
+      isDestroyed: () => false,
+      webContents: { send: vi.fn() },
+    };
+    const controller = setupTray({
+      getMainWindow: () => mainWindow as never,
+      getActiveChatTasks: () => [],
+      getRunningTaskCount: () => 0,
+      onQuitRequest: vi.fn(),
+    });
+    mocks.trays[0].emit(
+      "click",
+      {},
+      {
+        x: 1160,
+        y: 760,
+        width: 24,
+        height: 24,
+      },
+    );
+    const composer = mocks.windows.find(
+      (window) => window.options.title === "Agents One 快捷任务",
+    )!;
+    const handler = mocks.ipcHandlers.get("tray-composer-start-runtime-task")!;
+    await expect(
+      handler({ sender: {} }, "chatgpt-web", { prompt: "测试" }),
+    ).rejects.toThrow("sender was not recognized");
+    expect(mocks.startQuickTask).not.toHaveBeenCalled();
+
+    const task = {
+      profile: "default",
+      conversationId: "runtime-conv-tray-1",
+      run: { id: "run-1", status: "running" },
+    };
+    mocks.startQuickTask.mockResolvedValueOnce(task);
+    await expect(
+      handler({ sender: composer.webContents }, "chatgpt-web", {
+        prompt: "测试",
+      }),
+    ).resolves.toEqual(task.run);
+    expect(mocks.watchQuickTask).toHaveBeenCalledWith(
+      task,
+      expect.any(Function),
+    );
+    expect(mainWindow.webContents.send).toHaveBeenCalledWith(
+      "tray-runtime-conversation-changed",
+      { profile: task.profile, conversationId: task.conversationId },
+    );
+    controller.destroy();
   });
 
   // @lat: [[main-process#App Lifecycle#Notification-area tray and quick task composer]]

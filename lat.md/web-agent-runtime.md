@@ -6,7 +6,7 @@ Web Agent Runtime 是已落地的本地 Runtime：由 Agents One 托管隔离的
 
 ## Release policy
 
-公开构建默认关闭全部内置网页 Provider，且不得因探测、计划任务、历史 Runtime 配置或设置页加载而自动访问第三方网页。只有本地开发者显式设置 `AGENTS_ONE_ENABLE_EXPERIMENTAL_WEB_AGENTS=1` 后，用户才能在设置中阅读数据流、账号与封禁风险并确认启用；确认状态只记录启用值和时间，不记录网页凭据。
+全部内置网页 Provider 默认关闭，且不得因探测、计划任务、历史 Runtime 配置或设置页加载而自动访问第三方网页。用户可在网页智能体配置区显式确认开启，无需开发环境变量；策略仅新增启用值和确认时间，不记录网页凭据并保留未知配置字段。
 
 `AGENTS_ONE_DISABLE_WEB_AGENTS=1` 是优先级更高的本机紧急停用开关。设置页的一键停用会取消活动网页任务并销毁全部 Provider 窗口；即使策略关闭，用户仍可删除 Runtime 或清除对应隔离分区的登录数据。当前不连接远端 kill-switch 或遥测服务，因此策略检查不会上传 Cookie、Token、提示词或账号信息。
 
@@ -27,6 +27,48 @@ Provider 适配器分别负责登录探测、会话恢复、附件上传、提�
 豆包新会话在冷加载时允许最多 15 秒挂载编辑器和模式控件；可信发送点击只有在页面明确证明草稿仍完整保留、没有对应用户消息或生成状态且发送控件仍可用时，才允许一次同页 DOM 恢复提交。
 
 [[src/main/web-agent/providers/doubao.ts#DoubaoProviderAdapter#createConversation]] 在进入模式选择前完成新会话页面健康确认，避免把慢挂载误报为模式不支持。[[src/main/web-agent/providers/doubao.ts#DoubaoProviderAdapter#sendPrompt]] 保留完整提交回执门禁；恢复动作不因网络错误、慢回执或未知页面结构触发，并且每轮最多执行一次。
+
+## ChatGPT login hydration
+
+ChatGPT 登录跳转完成后，输入框可能晚于页面导航挂载；适配器在同一隔离页面上等待最多 30 秒，再判定页面结构不受支持。
+
+[[src/main/web-agent/providers/chatgpt.ts#ChatGPTProviderAdapter#ensureChatReady]] 只在输入框尚未识别时继续轮询，登录或验证状态仍立即交给用户处理。超过等待窗口仍没有可见输入框时保持失败关闭，不猜测提交目标。
+
+## ChatGPT mode confirmation
+
+ChatGPT 新会话发送前必须通过可见的 Chat/Work 控件确认选中模式；侧栏或页面文案不能作为模式证据。
+
+[[src/main/web-agent/providers/chatgpt.ts#ChatGPTProviderAdapter#modeState]] 识别按钮、标签页或单选控件上的选中语义，包括 `aria-pressed`，并检查嵌套标签。[[src/main/web-agent/providers/chatgpt.ts#ChatGPTProviderAdapter#ensureMode]] 点击后再次核对状态；无法确认时停止发送，只有明确的 Work 额度或可用性提示才允许切换到 Chat。
+
+## ChatGPT submit receipt
+
+ChatGPT Work 的多段输入必须按渲染出的段落文本确认，并使用当前编辑器所属表单的发送控件；仅在网页给出用户消息、清空草稿或其他明确回执后才认定已发送。
+
+[[src/main/web-agent/providers/doubao.ts#DoubaoProviderAdapter#sendPrompt]] 对 contenteditable 优先读取 `innerText`，保留段落分隔；`textContent` 会把相邻 `<p>` 直接拼接，误判已写入的草稿。当前 ChatGPT Work 发送按钮为编辑器表单内的 `button[type="submit"][aria-label="发送"]`；旧标签仍可兼容。确认失败不自动重发，避免重复提交。
+
+## ChatGPT response container
+
+新版 ChatGPT Work 将助手正文放在 `data-markdown-text-style="assistant-message"` 节点中；回复观察必须识别该明确属性，避免网页已完成但任务一直等待。
+
+[[src/main/web-agent/providers/doubao.ts#DoubaoProviderAdapter#readResponse]] 将此节点纳入可见助手候选，仍复用原有 Markdown 提取、最后一条回复选择、提交前快照对比和完成判断。侧栏文字与用户输入不作为助手回复。
+
+## ChatGPT completion evidence
+
+新版 ChatGPT Work 会先显示计划或短句，再继续搜索与撰写；只有网页的回复状态明确显示完成，才能把当前助手正文作为最终答复保存。
+
+[[src/main/web-agent/providers/chatgpt.ts#ChatGPTProviderAdapter#readResponse]] 对新版助手正文读取 `aria-live="polite"` 的完成状态；缺少完成回执时继续观察，避免 1.2 秒文字稳定窗口截断长简报。旧版消息容器沿用既有稳定判定。
+
+## ChatGPT full-page retry
+
+ChatGPT 已接收提示词后若整页会话加载失败，回复观察只点击网页自带“重试”一次，并等待原会话回复，不再次提交提示词。
+
+[[src/main/web-agent/providers/chatgpt.ts#ChatGPTProviderAdapter#readResponse]] 仅在整页错误文案、可见重试按钮及无输入框同时成立时恢复；重复错误返回 Provider 错误，避免无人值守任务一直等待。
+
+## Response table preservation
+
+ChatGPT 的回复表格必须在网页提取时保留行列结构，并转成 Renderer 已支持的 GFM 表格，避免不同单元格的文字连成一段。
+
+[[src/main/web-agent/providers/doubao.ts#DoubaoProviderAdapter#readResponse]] 只将语义 `<table>` 的单元格序列化为 Markdown；列内的强调和可用链接继续保留，文字中的竖线转义。其他 Provider 的普通段落和列表沿用原逻辑。
 
 ## Grok adapter
 

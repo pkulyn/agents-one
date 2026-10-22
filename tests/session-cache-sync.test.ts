@@ -25,7 +25,8 @@ vi.mock("../src/main/installer", () => ({
   getEnhancedPath: () => process.env.PATH || "",
 }));
 
-vi.mock("../src/main/utils", () => ({
+vi.mock("../src/main/utils", () => {
+  const mocked = {
   activeStateDbPath: () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require("path");
@@ -41,7 +42,9 @@ vi.mock("../src/main/utils", () => ({
     fs.mkdirSync(nodePath.dirname(path), { recursive: true });
     fs.writeFileSync(path, data, "utf-8");
   },
-}));
+};
+  return { ...mocked, agentsOneProfileHome: mocked.profileHome };
+});
 
 // Stub the i18n + locale modules so the cache code doesn't need the
 // renderer-side translation files at test time.

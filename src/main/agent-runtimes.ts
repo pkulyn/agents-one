@@ -1,4 +1,10 @@
 import {
+  automaticRuntimeTaskMode,
+  withRuntimePermissionContext,
+} from "../shared/runtime-permissions";
+import { retainRuntimeEvents } from "../shared/runtime-event-retention";
+import { claimRuntimeConversationRun } from "./runtime-conversation-store";
+import {
   NO_AGENT_RUNTIME_CAPABILITIES,
   deriveAgentTransport,
   deriveAgentRuntimeConnectionProfile,
@@ -165,7 +171,7 @@ const MAX_GATEWAY_ARTIFACT_RETRY_ATTEMPTS = 3;
 const MAX_RETAINED_RUNS = 100;
 const MAX_RUNTIME_EVENTS = 200;
 const MAX_RUNTIME_EVENT_SUMMARY_LENGTH = 1_000;
-const MAX_RUNTIME_EVENT_DETAIL_LENGTH = 8_000;
+const MAX_RUNTIME_EVENT_DETAIL_LENGTH = 16_000;
 const WORKSPACE_GATEWAY_TOKEN_SECRET_PREFIX = "HERMES_WORKSPACE_GATEWAY_";
 const AGENTS_ONE_GATEWAY_TOKEN_SECRET_PREFIX = "AGENTS_ONE_GATEWAY_";
 const REMOTE_WORKSPACE_POLL_INTERVAL_MS = 500;
@@ -196,6 +202,8 @@ interface RuntimeRunRecord {
   timeout?: NodeJS.Timeout;
   abortHandle?: () => void;
   cancelRequested: boolean;
+  /** Only this executor defers cancellation during Native preparation until cleanup is verified. */
+  controlledProjectWrite?: true;
   taskTimeoutMs: number;
   terminationStatus?: "cancelled" | "timed_out";
   codex?: {
@@ -447,7 +455,7 @@ function isProgressSnapshotOf(left: string, right: string): boolean {
   // Pi emits cumulative thinking snapshots. Its first frame is often just a
   // one- or two-character prefix (for example "用户"); treating that as a
   // separate event visibly splits a single reasoning chain in the UI.
-  if (!a || !b || a === b) return false;
+  if (!a || !b) return false;
   return a.startsWith(b) || b.startsWith(a);
 }
 
@@ -650,7 +658,14 @@ function appendRuntimeEvent(
             ? cleanSummary
             : next[absoluteIndex].summary,
         createdAt: Date.now(),
-        ...(detail ? { detail } : {}),
+        ...(detail
+          ? {
+              detail:
+                detail.length >= (next[absoluteIndex].detail?.length || 0)
+                  ? detail
+                  : next[absoluteIndex].detail,
+            }
+          : {}),
         ...(code ? { code } : {}),
         ...(tool ? { tool } : {}),
       };
@@ -658,18 +673,21 @@ function appendRuntimeEvent(
       return;
     }
   }
-  const next: AgentRuntimeEvent[] = [
-    ...current,
-    {
-      id: `runtime-event-${randomUUID()}`,
-      type,
-      summary: cleanSummary,
-      createdAt: Date.now(),
-      ...(detail ? { detail } : {}),
-      ...(code ? { code } : {}),
-      ...(tool ? { tool } : {}),
-    },
-  ].slice(-MAX_RUNTIME_EVENTS);
+  const next = retainRuntimeEvents(
+    [
+      ...current,
+      {
+        id: `runtime-event-${randomUUID()}`,
+        type,
+        summary: cleanSummary,
+        createdAt: Date.now(),
+        ...(detail ? { detail } : {}),
+        ...(code ? { code } : {}),
+        ...(tool ? { tool } : {}),
+      },
+    ],
+    MAX_RUNTIME_EVENTS,
+  );
   record.run = { ...record.run, events: next };
 }
 
@@ -734,7 +752,7 @@ function appendProviderRuntimeEvent(
   }
   record.run = {
     ...record.run,
-    events: [...current, incoming].slice(-MAX_RUNTIME_EVENTS),
+    events: retainRuntimeEvents([...current, incoming], MAX_RUNTIME_EVENTS),
   };
   return true;
 }
@@ -1508,9 +1526,11 @@ function appendOutputEvent(
                 },
               );
             } else if (item.type === "thinking") {
-              const thought = compactText(piText(item));
-              if (thought) {
-                appendRuntimeEvent(record, "progress", thought);
+              const thought = piText(item);
+              if (thought.trim()) {
+                appendRuntimeEvent(record, "progress", compactText(thought), {
+                  detail: thought,
+                });
               }
             }
           }
@@ -4191,8 +4211,8 @@ function applyAgentsOneRemoteGatewayRun(
       record.run = {
         ...record.run,
         sessionId:
-          remoteRun.sessionId ??
           remoteRun.conversationId ??
+          remoteRun.sessionId ??
           record.run.sessionId,
         model: mergedModel,
         usage: mergedUsage,
@@ -4201,7 +4221,7 @@ function applyAgentsOneRemoteGatewayRun(
     }
     return finishRuntimeRun(record, "failed", {
       sessionId:
-        remoteRun.sessionId ?? remoteRun.conversationId ?? record.run.sessionId,
+        remoteRun.conversationId ?? remoteRun.sessionId ?? record.run.sessionId,
       error:
         "Gateway 已报告运行完成，但未返回 assistant.completed 或最终答复。请让插件先持久化 assistant.completed（data.text），并在终态快照中保留 output。",
       model: mergedModel,
@@ -4216,8 +4236,8 @@ function applyAgentsOneRemoteGatewayRun(
       return finishRuntimeRun(record, "timed_out", {
         output: remoteRun.output ?? finalOutput ?? record.run.output,
         sessionId:
-          remoteRun.sessionId ??
           remoteRun.conversationId ??
+          remoteRun.sessionId ??
           record.run.sessionId,
         error:
           remoteRun.error ||
@@ -4243,8 +4263,8 @@ function applyAgentsOneRemoteGatewayRun(
       return finishRuntimeRun(record, "failed", {
         output: remoteRun.output ?? finalOutput ?? record.run.output,
         sessionId:
-          remoteRun.sessionId ??
           remoteRun.conversationId ??
+          remoteRun.sessionId ??
           record.run.sessionId,
         error:
           "远程智能体未发起受控工作区操作，也未交付可验证的媒体或产物，不能将本轮标记为完成。请检查 Relay 是否已把 workspaceRef 注册为真实的 workspace_gateway 工具。",
@@ -4256,7 +4276,7 @@ function applyAgentsOneRemoteGatewayRun(
     return finishRuntimeRun(record, remoteRun.status, {
       output: remoteRun.output ?? finalOutput ?? record.run.output,
       sessionId:
-        remoteRun.sessionId ?? remoteRun.conversationId ?? record.run.sessionId,
+        remoteRun.conversationId ?? remoteRun.sessionId ?? record.run.sessionId,
       error: remoteRun.error ?? record.run.error,
       artifacts: remoteRun.artifacts,
       model: mergedModel,
@@ -4268,7 +4288,7 @@ function applyAgentsOneRemoteGatewayRun(
     status: remoteRun.status,
     output: remoteRun.output ?? finalOutput ?? record.run.output,
     sessionId:
-      remoteRun.sessionId ?? remoteRun.conversationId ?? record.run.sessionId,
+      remoteRun.conversationId ?? remoteRun.sessionId ?? record.run.sessionId,
     error: remoteRun.error ?? record.run.error,
     model: mergedModel,
     usage: mergedUsage,
@@ -4654,9 +4674,34 @@ export function workspaceGrantExpiresAt(
   );
 }
 
+/** Main-only persistence boundary; never supplied through IPC or a task body. */
+export interface AgentRuntimeDispatchOptions {
+  /** Main-owned only; not accepted from task input or IPC. */
+  codexMobileInspection?: true;
+  /** Main-only controlled write executor; Run ID is allocated here, never supplied by IPC. */
+  codexMobileProjectWrite?: true;
+  /** Worker byte identity from current Main policy proof, never from task JSON. */
+  codexMobileProjectWriteWorkerHash?: string;
+  /** Main policy-bound live project authority; never accepted from IPC or task JSON. */
+  codexMobileProjectGuard?: () => void;
+  /** Main approval binding, checked against a fresh original configuration RPC. */
+  codexMobileConfigurationGuard?: (configurationHash: string) => void;
+  /**
+   * Persist the control intent and original user message using the allocated
+   * native Run ID. This must finish synchronously or throw before any Adapter,
+   * workspace Grant, process, or HTTP dispatch. The snapshot is detached from
+   * registry state. This hook alone is not a cross-file transaction or recovery
+   * coordinator; the caller owns accepted receipts and crash reconciliation.
+   */
+  persistBeforeDispatch?: (
+    preparedRun: Readonly<AgentRuntimeRun>,
+  ) => void | Promise<void>;
+}
+
 export async function startAgentRuntimeTask(
   runtimeId: string,
   input: AgentRuntimeTaskInput,
+  options?: AgentRuntimeDispatchOptions,
 ): Promise<AgentRuntimeRun> {
   if (!runtimeTaskAdmissionOpen) {
     throw new Error(
@@ -4666,6 +4711,35 @@ export async function startAgentRuntimeTask(
   assertAgentsOneWritesAllowed();
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!runtime) throw new Error("Runtime was not found.");
+  const mobileExecution =
+    options?.codexMobileInspection || options?.codexMobileProjectWrite;
+  if (options?.codexMobileProjectGuard && !mobileExecution)
+    throw new Error("Project inspection authority requires mobile inspection.");
+  if (options?.codexMobileConfigurationGuard && !mobileExecution)
+    throw new Error("Configuration authority requires mobile inspection.");
+  if (
+    options?.codexMobileInspection &&
+    (runtime.kind !== "codex" ||
+      runtime.location !== "local" ||
+      deriveAgentTransport(runtime) !== "local-cli" ||
+      input.mode !== "analysis")
+  )
+    throw new Error("Mobile inspection requires the Codex analysis executor.");
+  if (
+    options?.codexMobileProjectWrite &&
+    (options.codexMobileInspection ||
+      runtime.kind !== "codex" ||
+      runtime.location !== "local" ||
+      deriveAgentTransport(runtime) !== "local-cli" ||
+      input.mode !== "safe_write" ||
+      !options.codexMobileProjectGuard ||
+      !options.codexMobileConfigurationGuard ||
+      !/^[a-f0-9]{64}$/.test(options.codexMobileProjectWriteWorkerHash ?? "") ||
+      !input.workspaceId)
+  )
+    throw Error(
+      "Mobile project write requires the Codex fixed-project executor.",
+    );
   if (runtime.configurationIssue) {
     throw new Error(
       `${runtime.configurationIssue.message} 当前 Runtime 已暂停执行。`,
@@ -4691,7 +4765,15 @@ export async function startAgentRuntimeTask(
   }
 
   const validatedTask = validatedTaskInput(
-    input,
+    {
+      ...input,
+      mode:
+        input.mode ??
+        automaticRuntimeTaskMode(
+          runtime,
+          Boolean(input.workspace || input.workspaceId || input.workspaceRef),
+        ),
+    },
     isGatewayTransport(runtime)
       ? DEFAULT_GATEWAY_TASK_TIMEOUT_MS
       : DEFAULT_TASK_TIMEOUT_MS,
@@ -4750,8 +4832,35 @@ export async function startAgentRuntimeTask(
       ...(task.profile ? { profile: task.profile } : {}),
     },
     cancelRequested: false,
+    ...(options?.codexMobileProjectWrite
+      ? { controlledProjectWrite: true as const }
+      : {}),
     taskTimeoutMs: task.timeoutMs,
   };
+  // @lat: [[mobile-data#Mobile data#Execution persistence before dispatch]]
+  // No external dispatch or started event occurs until this persistence barrier settles.
+  // A rejected barrier must not become an in-memory running task.
+  if (input.conversationContext) {
+    if (options?.persistBeforeDispatch)
+      throw new Error("Conflicting conversation persistence owners.");
+    const claimed = claimRuntimeConversationRun(
+      input.conversationContext.id,
+      input.conversationContext.expectedRevision,
+      id,
+      {
+        runtimeId,
+        sessionId: task.sessionId,
+        workspaceId: input.workspaceId?.trim() || undefined,
+        workspace: input.workspace?.trim() || undefined,
+        workspaceMetadataOnly: isLocalWebTransport(runtime),
+      },
+      task.profile,
+    );
+    record.run.conversationRevision = claimed.revision ?? "1";
+  }
+  // The Owner may persist through a utility-process RPC. Do not announce or
+  // dispatch this run until that durable admission barrier has completed.
+  await options?.persistBeforeDispatch?.(structuredClone(record.run));
   appendRuntimeEvent(record, "started", "任务已开始执行。");
   rememberRuntimeRun(record);
   // Do not record the prompt, output, workspace path or provider payloads.
@@ -4766,7 +4875,7 @@ export async function startAgentRuntimeTask(
     hasWorkspace: Boolean(task.workspace),
   });
 
-  let dispatchPrompt = task.prompt;
+  let dispatchPrompt = withRuntimePermissionContext(task.prompt, task.mode);
   let dispatchWorkspaceRef = task.workspaceRef;
   const unifiedGatewayRuntime = isAgentsOneGatewayRuntime(runtime);
   if (
@@ -4847,7 +4956,7 @@ export async function startAgentRuntimeTask(
       record.workspaceGateway = { gateway, stopped: false, failures: 0 };
       startWorkspaceGatewayPolling(record);
       dispatchWorkspaceRef = `desktop-gateway:${grant.id}`;
-      dispatchPrompt = `${task.prompt}\n\n${remoteWorkspaceInstruction(
+      dispatchPrompt = `${dispatchPrompt}\n\n${remoteWorkspaceInstruction(
         grant.id,
         permission,
       )}`;
@@ -4864,7 +4973,7 @@ export async function startAgentRuntimeTask(
       : "read";
   if (task.workspace && unifiedGatewayRuntime && !dispatchWorkspaceRef) {
     gatewayPermission = "read";
-    dispatchPrompt = `${task.prompt}\n\n[Agents One 工作区状态]\n当前任务已在桌面端关联本地项目，但本轮尚未建立 Workspace Grant。本地项目路径与文件内容未发送给你。你可以继续处理普通对话；如果请求依赖本地文件，请明确说明需要用户启用受控工作区授权。`;
+    dispatchPrompt = `${dispatchPrompt}\n\n[Agents One 工作区状态]\n当前任务已在桌面端关联本地项目，但本轮尚未建立 Workspace Grant。本地项目路径与文件内容未发送给你。你可以继续处理普通对话；如果请求依赖本地文件，请明确说明需要用户启用受控工作区授权。`;
   }
 
   if (runtime.kind === "opencode" && runtime.location === "local") {
@@ -4878,7 +4987,7 @@ export async function startAgentRuntimeTask(
           workspace: runtime.config.workspace,
           timeoutMs: runtime.config.timeoutMs,
         },
-        task,
+        { ...task, prompt: dispatchPrompt },
         (chunk) => {
           if (record.run.status !== "running") return;
           appendOutputEvent(record, "opencode", chunk);
@@ -4897,6 +5006,9 @@ export async function startAgentRuntimeTask(
         },
         (metadata) => {
           if (record.run.status !== "running") return;
+          if (metadata.sessionId) {
+            record.run = { ...record.run, sessionId: metadata.sessionId };
+          }
           appendLocalRuntimeMetadata(record, metadata);
         },
       );
@@ -4992,10 +5104,12 @@ export async function startAgentRuntimeTask(
           runtimeId: runtime.id,
           idempotencyKey: id,
           // A chat must stay a Gateway conversation from its first turn. The
-          // first request has no remote session id yet, but still needs the
-          // structured reasoning/tool event stream used by later turns.
+          // The first request creates a Gateway conversation identity and
+          // uses the same structured event stream as subsequent turns.
           mode: task.conversation || task.sessionId ? "conversation" : "task",
-          conversationId: task.sessionId,
+          conversationId:
+            task.sessionId ||
+            (task.conversation ? `conversation_${randomUUID()}` : undefined),
           text: dispatchPrompt,
           model: task.model,
           artifactIds,
@@ -5054,7 +5168,7 @@ export async function startAgentRuntimeTask(
           settings,
           profile: task.profile,
           sessionId: task.sessionId,
-          prompt: task.prompt,
+          prompt: dispatchPrompt,
           attachments: task.attachments,
           timeoutMs: task.timeoutMs,
         },
@@ -5122,7 +5236,7 @@ export async function startAgentRuntimeTask(
           model: task.model?.trim() || runtime.config.model,
           timeoutMs: runtime.config.timeoutMs,
         },
-        task,
+        { ...task, prompt: dispatchPrompt },
         (chunk) => {
           if (record.run.status !== "running") return;
           appendOutputEvent(record, "codex", chunk);
@@ -5131,8 +5245,64 @@ export async function startAgentRuntimeTask(
             output: `${record.run.output ?? ""}${chunk}`.slice(-512 * 1024),
           };
         },
+        ...(mobileExecution
+          ? ([
+              {
+                ...(options?.codexMobileInspection
+                  ? { mobileInspection: true as const }
+                  : {}),
+                ...(options?.codexMobileProjectWrite
+                  ? {
+                      projectWrite: {
+                        runId: record.run.id,
+                        workerPath: join(
+                          __dirname,
+                          "project-text-write-worker.cjs",
+                        ),
+                        workerSha256:
+                          options.codexMobileProjectWriteWorkerHash!,
+                        assertWritesAllowed: assertAgentsOneWritesAllowed,
+                      },
+                    }
+                  : {}),
+                ...(options?.codexMobileConfigurationGuard
+                  ? {
+                      configurationGuard: options.codexMobileConfigurationGuard,
+                    }
+                  : {}),
+                ...(options?.codexMobileProjectGuard
+                  ? {
+                      projectInspectionGuard: options.codexMobileProjectWrite
+                        ? () => {
+                            if (
+                              record.run.status !== "running" ||
+                              record.terminationStatus ||
+                              record.cancelRequested
+                            )
+                              throw Error(
+                                "Mobile project write Run is no longer active.",
+                              );
+                            return options.codexMobileProjectGuard!();
+                          }
+                        : options.codexMobileProjectGuard,
+                    }
+                  : {}),
+              },
+            ] as const)
+          : ([] as const)),
       );
       record.codex = { cancel: codex.cancel };
+      if (options?.codexMobileProjectWrite && record.terminationStatus) {
+        await codex.cancel();
+        const result = await codex.completion;
+        if (result.artifacts.length)
+          record.run = { ...record.run, artifacts: result.artifacts };
+        return finishRuntimeRun(
+          record,
+          record.terminationStatus,
+          localRuntimeTerminationDetails(record, record.terminationStatus),
+        );
+      }
       if (codex.inputArtifacts.length) {
         record.run = { ...record.run, inputArtifacts: codex.inputArtifacts };
       }
@@ -5148,6 +5318,8 @@ export async function startAgentRuntimeTask(
       }, task.timeoutMs);
       void codex.completion.then(async (result) => {
         if (record.run.status !== "running") return;
+        if (record.controlledProjectWrite && result.artifacts.length)
+          record.run = { ...record.run, artifacts: result.artifacts };
         if (record.terminationStatus) {
           finishRuntimeRun(
             record,
@@ -5184,9 +5356,15 @@ export async function startAgentRuntimeTask(
       });
       return { ...record.run };
     } catch (error) {
-      return finishRuntimeRun(record, "failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      return finishRuntimeRun(
+        record,
+        options?.codexMobileProjectWrite
+          ? (record.terminationStatus ?? "failed")
+          : "failed",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
   }
 
@@ -5206,7 +5384,7 @@ export async function startAgentRuntimeTask(
             workspace: task.workspace,
             timeoutMs: runtime.config.timeoutMs,
           },
-          task,
+          { ...task, prompt: dispatchPrompt },
           (message) => {
             if (record.run.status !== "running") return;
             const chunk = `${JSON.stringify(message)}\n`;
@@ -5261,7 +5439,7 @@ export async function startAgentRuntimeTask(
           model: task.model?.trim() || runtime.config.model,
           timeoutMs: runtime.config.timeoutMs,
         },
-        task,
+        { ...task, prompt: dispatchPrompt },
         (chunk) => {
           if (record.run.status !== "running") return;
           appendOutputEvent(record, "claude-code", chunk);
@@ -5342,7 +5520,7 @@ export async function startAgentRuntimeTask(
           model: task.model?.trim() || runtime.config.model,
           timeoutMs: runtime.config.timeoutMs,
         },
-        task,
+        { ...task, prompt: dispatchPrompt },
         (chunk) => {
           if (record.run.status !== "running") return;
           appendOutputEvent(record, "pi", chunk);
@@ -5672,12 +5850,38 @@ export async function cancelAgentRuntimeTask(runId: string): Promise<boolean> {
     record.opencode
   )
     return terminateLocalRuntime(record, "cancelled");
+  if (record.controlledProjectWrite) {
+    record.terminationStatus = "cancelled";
+    return false;
+  }
   record.abortHandle?.();
   finishRuntimeRun(record, "cancelled", {
     output: record.run.output,
     error: "Runtime task was cancelled.",
   });
   return true;
+}
+
+/** Main control callers distinguish a pending Gateway acknowledgement from a rejected request. */
+export async function requestAgentRuntimeTaskCancellation(
+  runId: string,
+): Promise<{
+  accepted: boolean;
+  run: AgentRuntimeRun | null;
+  uncertain?: boolean;
+}> {
+  const record = runtimeRuns.get(runId);
+  if (!record) return { accepted: false, run: null };
+  if (record.run.status !== "running")
+    return { accepted: true, run: structuredClone(record.run) };
+  const stopped = await cancelAgentRuntimeTask(runId);
+  const accepted =
+    stopped || record.cancelRequested || record.run.status !== "running";
+  return {
+    accepted,
+    ...(!accepted && record.remoteGateway ? { uncertain: true } : {}),
+    run: structuredClone(record.run),
+  };
 }
 
 /** Stop every in-process Runtime task before replacing portable user data. */

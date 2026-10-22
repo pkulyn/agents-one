@@ -7,6 +7,7 @@ import {
   Languages,
   Mic,
   Palette,
+  Smartphone,
   X,
 } from "lucide-react";
 import { useI18n } from "../useI18n";
@@ -20,6 +21,7 @@ import AboutPane from "./AboutPane";
 import LogsPane from "./LogsPane";
 import ArchivePane from "./ArchivePane";
 import VoiceInputPane from "./VoiceInputPane";
+import MobileConnectionPane from "./MobileConnectionPane";
 
 export type SettingsSection =
   | "appearance"
@@ -28,7 +30,8 @@ export type SettingsSection =
   | "about"
   | "logs"
   | "archives"
-  | "voice";
+  | "voice"
+  | "mobile";
 
 type NavGroup = "general";
 
@@ -39,6 +42,12 @@ const SETTINGS_NAV: ReadonlyArray<{
   labelKey: string;
   Icon: React.ComponentType<{ size?: number }>;
 }> = [
+  {
+    group: "general",
+    id: "mobile",
+    labelKey: "settings.mobile.title",
+    Icon: Smartphone,
+  },
   {
     group: "general",
     id: "appearance",
@@ -161,6 +170,9 @@ export default function SettingsModal({
                 <button
                   key={s.id}
                   type="button"
+                  data-desktop-feature={
+                    s.id === "mobile" ? "mobile-owner-settings" : undefined
+                  }
                   className={`settings-modal-nav-item ${
                     section === s.id ? "active" : ""
                   }`}
@@ -181,6 +193,12 @@ export default function SettingsModal({
             {section === "data" && <DataPane />}
             {section === "archives" && <ArchivePane profile={profile} />}
             {section === "voice" && <VoiceInputPane profile={profile} />}
+            {section === "mobile" && (
+              <MobileConnectionPane
+                key={profile || "default"}
+                profile={profile}
+              />
+            )}
             {section === "about" && <AboutPane />}
             {section === "logs" && <LogsPane />}
           </SettingsDataContext.Provider>

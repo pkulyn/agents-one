@@ -16,7 +16,8 @@ import {
 } from "./event-stream.mjs";
 
 export const AGENTS_ONE_PLUGIN_ID = "agents-one-plugin-sdk";
-export const AGENTS_ONE_PLUGIN_VERSION = "0.1.4";
+export const AGENTS_ONE_PLUGIN_VERSION = "0.1.6";
+const MAX_ARTIFACT_UPLOAD_REQUEST_BYTES = 16 * 1024 * 1024;
 
 function json(response, status, payload) {
   response.writeHead(status, {
@@ -53,7 +54,12 @@ export async function readJsonBody(request, maxBytes = 512 * 1024) {
         ? Buffer.from(part)
         : Buffer.from(String(part), "utf8");
     size += buffer.length;
-    if (size > maxBytes) throw new Error("Request body is too large.");
+    if (size > maxBytes) {
+      const cause = new Error("Request body is too large.");
+      cause.status = 413;
+      cause.code = "request_body_too_large";
+      throw cause;
+    }
     parts.push(buffer);
   }
   const text = Buffer.concat(parts).toString("utf8");
@@ -555,7 +561,10 @@ export function createRemoteGatewayPlugin({
             "Artifact upload is unsupported.",
           );
         }
-        const input = await readJsonBody(request);
+        const input = await readJsonBody(
+          request,
+          MAX_ARTIFACT_UPLOAD_REQUEST_BYTES,
+        );
         const contentBase64 =
           typeof input.contentBase64 === "string"
             ? input.contentBase64
@@ -724,11 +733,25 @@ export function createRemoteGatewayPlugin({
           );
         }
         const id = `run_${randomUUID()}`;
+        // Older desktop clients used a provider session ID as conversationId.
+        // Resolve that alias only within the same Runtime, without rewriting
+        // historical records or changing the incoming idempotency fingerprint.
+        const legacyConversation =
+          input.conversationId &&
+          [...runs.values()]
+            .reverse()
+            .find(
+              (candidate) =>
+                candidate.runtimeId === requestedRuntimeId &&
+                candidate.sessionId === input.conversationId,
+            );
         const record = {
           id,
           status: "queued",
           conversationId:
-            input.conversationId || `conversation_${randomUUID()}`,
+            legacyConversation?.conversationId ||
+            input.conversationId ||
+            `conversation_${randomUUID()}`,
           runtimeId:
             typeof input.runtimeId === "string"
               ? input.runtimeId
@@ -769,7 +792,29 @@ export function createRemoteGatewayPlugin({
         // full request body. The top-level field remains backward compatible.
         let started;
         try {
-          started = await adapter.startRun(input, {
+          // Bind the adapter's first turn to the exact identity returned by
+          // the Gateway. Keep provider session IDs separate from this ID,
+          // including after the durable Gateway journal is reopened.
+          const previous = [...runs.values()]
+            .reverse()
+            .find(
+              (candidate) =>
+                candidate !== record &&
+                candidate.runtimeId === runtimeId &&
+                candidate.conversationId === record.conversationId &&
+                typeof candidate.sessionId === "string" &&
+                candidate.sessionId,
+            );
+          const adapterInput = {
+            ...input,
+            conversationId: record.conversationId,
+            ...(previous?.sessionId &&
+            !input.sessionId &&
+            !input.input?.sessionId
+              ? { sessionId: previous.sessionId }
+              : {}),
+          };
+          started = await adapter.startRun(adapterInput, {
             runId: id,
             emit,
             runtimeId,

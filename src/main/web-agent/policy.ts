@@ -3,10 +3,6 @@ import type { WebAgentPolicyStatus } from "../../shared/web-agent";
 
 const POLICY_KEY = "experimentalWebAgents";
 
-function localExperimentalAccessAllowed(): boolean {
-  return process.env.AGENTS_ONE_ENABLE_EXPERIMENTAL_WEB_AGENTS === "1";
-}
-
 function emergencyDisableActive(): boolean {
   return process.env.AGENTS_ONE_DISABLE_WEB_AGENTS === "1";
 }
@@ -14,8 +10,7 @@ function emergencyDisableActive(): boolean {
 // @lat: [[web-agent-runtime#Release policy]]
 export function getWebAgentPolicyStatus(): WebAgentPolicyStatus {
   const killSwitchActive = emergencyDisableActive();
-  const localAccessAllowed = localExperimentalAccessAllowed();
-  const available = localAccessAllowed && !killSwitchActive;
+  const available = !killSwitchActive;
   const config = readDesktopConfig();
   const policy = config[POLICY_KEY];
   const optedIn =
@@ -27,18 +22,12 @@ export function getWebAgentPolicyStatus(): WebAgentPolicyStatus {
     available,
     enabled: available && Boolean(optedIn),
     killSwitchActive,
-    ...(!localAccessAllowed
+    ...(killSwitchActive
       ? {
-          reasonCode: "public-build-disabled" as const,
-          reason:
-            "公开构建默认关闭网页 Provider；当前没有第三方书面自动化许可。",
+          reasonCode: "emergency-disabled" as const,
+          reason: "网页 Provider 已由本机紧急开关停用。",
         }
-      : killSwitchActive
-        ? {
-            reasonCode: "emergency-disabled" as const,
-            reason: "网页 Provider 已由本机紧急开关停用。",
-          }
-        : {}),
+      : {}),
   };
 }
 
@@ -46,19 +35,18 @@ export function setWebAgentPolicyEnabled(
   enabled: boolean,
   acknowledged = false,
 ): WebAgentPolicyStatus {
-  if (
-    enabled &&
-    (!localExperimentalAccessAllowed() || emergencyDisableActive())
-  ) {
+  if (enabled && emergencyDisableActive()) {
     throw new Error("当前构建不允许启用实验性网页 Provider。");
   }
   if (enabled && !acknowledged) {
     throw new Error("启用前必须确认第三方数据流、账号与封禁风险。");
   }
   const config = readDesktopConfig();
+  const previous = config[POLICY_KEY];
+  const preserved = previous && typeof previous === "object" ? previous : {};
   config[POLICY_KEY] = enabled
-    ? { enabled: true, acknowledgedAt: Date.now() }
-    : { enabled: false };
+    ? { ...preserved, enabled: true, acknowledgedAt: Date.now() }
+    : { ...preserved, enabled: false };
   writeDesktopConfig(config);
   return getWebAgentPolicyStatus();
 }

@@ -244,6 +244,7 @@ class AcpClient {
     this.nextId = 1;
     this.pending = new Map();
     this.sessionId = undefined;
+    this.replayingHistory = false;
     this.closed = false;
     this.lines = createInterface({ input: child.stdout });
     this.lines.on("line", (line) => {
@@ -283,7 +284,7 @@ class AcpClient {
       return;
     }
     if (message.method === "session/update") {
-      this.onUpdate(record(message.params));
+      if (!this.replayingHistory) this.onUpdate(record(message.params));
       return;
     }
     if (message.id !== undefined && typeof message.method === "string") {
@@ -378,23 +379,37 @@ class AcpClient {
 
   async newSession(cwd, requestedSessionId) {
     const init = await this.initialize();
-    const caps = record(record(init.agentCapabilities).sessionCapabilities);
-    if (requestedSessionId && caps.resume !== true) {
+    const agentCaps = record(init.agentCapabilities);
+    const caps = record(agentCaps.sessionCapabilities);
+    const canResume =
+      caps.resume === true ||
+      (caps.resume &&
+        typeof caps.resume === "object" &&
+        !Array.isArray(caps.resume));
+    if (requestedSessionId && !canResume && agentCaps.loadSession !== true) {
       throw new Error("OpenCode ACP 当前版本不支持恢复已有 session。");
     }
     const method =
-      requestedSessionId && caps.resume === true
+      requestedSessionId && canResume
         ? "session/resume"
-        : "session/new";
-    const params =
-      requestedSessionId && caps.resume === true
-        ? { sessionId: requestedSessionId, cwd, mcpServers: [] }
-        : { cwd, mcpServers: [] };
-    const result = record(await this.request(method, params));
-    if (typeof result.sessionId !== "string" || !result.sessionId.trim())
+        : requestedSessionId
+          ? "session/load"
+          : "session/new";
+    const params = requestedSessionId
+      ? { sessionId: requestedSessionId, cwd, mcpServers: [] }
+      : { cwd, mcpServers: [] };
+    this.replayingHistory = method === "session/load";
+    let result;
+    try {
+      result = record(await this.request(method, params));
+    } finally {
+      this.replayingHistory = false;
+    }
+    const sessionId = requestedSessionId || result.sessionId;
+    if (typeof sessionId !== "string" || !sessionId.trim())
       throw new Error("OpenCode ACP 未返回有效 sessionId。");
-    this.sessionId = result.sessionId;
-    return { sessionId: result.sessionId, init, result };
+    this.sessionId = sessionId;
+    return { sessionId, init, result };
   }
 
   prompt(value) {
@@ -596,7 +611,7 @@ async function executeRun(run, input, context, options) {
     const before = snapshot(cwd, maxWorkspaceFiles);
     const session = await run.client.newSession(
       cwd,
-      input.sessionId || input.input?.sessionId || input.conversationId,
+      input.sessionId || input.input?.sessionId,
     );
     run.sessionId = session.sessionId;
     run.model =
@@ -722,7 +737,14 @@ export function createOpenCodeAcpAdapter(options = {}) {
         );
         capabilities.sessions = {
           ...capabilities.sessions,
-          resume: sessionCapabilities.resume === true,
+          resume:
+            sessionCapabilities.resume === true ||
+            Boolean(
+              sessionCapabilities.resume &&
+              typeof sessionCapabilities.resume === "object" &&
+              !Array.isArray(sessionCapabilities.resume),
+            ) ||
+            record(init.agentCapabilities).loadSession === true,
         };
         return {
           healthy: true,

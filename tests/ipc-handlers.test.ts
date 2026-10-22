@@ -11,6 +11,7 @@ const indexSrc = [
   "src/main/ipc/register.ts",
   "src/main/app/updater.ts",
   "src/main/app/tray.ts",
+  "src/main/mobile-control/execution-management-ipc.ts",
 ]
   .map((p) => readFileSync(join(ROOT, p), "utf-8"))
   .join("\n");

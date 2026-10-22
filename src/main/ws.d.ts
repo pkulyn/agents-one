@@ -5,12 +5,15 @@ declare module "ws" {
     static readonly OPEN: number;
 
     readonly readyState: number;
+    readonly bufferedAmount: number;
 
     constructor(
       address: string,
       options?: {
         headers?: Record<string, string>;
         rejectUnauthorized?: boolean;
+        maxPayload?: number;
+        followRedirects?: boolean;
       },
     );
 
@@ -20,7 +23,7 @@ declare module "ws" {
     on(event: "message", listener: (data: Data) => void): this;
     on(event: "open", listener: () => void): this;
     removeAllListeners(): this;
-    send(data: string): void;
+    send(data: string, callback?: (error?: Error) => void): void;
     terminate(): void;
   }
 }

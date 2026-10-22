@@ -1,10 +1,14 @@
+import {
+  runtimeRemovalBlockedMessage,
+  isRuntimeRemovalOperation,
+} from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
-import { existsSync, mkdirSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promisify } from "util";
 import { homedir } from "os";
 import { delimiter, dirname, extname, join, relative, resolve } from "path";
-import { randomUUID } from "crypto";
-import { profileHome } from "./utils";
+import { createHash, randomUUID } from "crypto";
+import { agentsOneProfileHome } from "./utils";
 import { prepareRuntimeInputs } from "./runtime-inputs";
 import { protectWorkspaceFromRemoval } from "./workspace-protection";
 import { terminateProcessTree } from "./process-control";
@@ -205,7 +209,7 @@ function configuredProbeWorkspace(config: PiRuntimeConfig): string | undefined {
 }
 
 function safeWorktreePath(profile: string | undefined, id: string): string {
-  const root = resolve(profileHome(profile), "desktop", "worktrees", "pi");
+  const root = resolve(agentsOneProfileHome(profile), "desktop", "worktrees", "pi");
   const target = resolve(root, id);
   if (relative(root, target).startsWith(".."))
     throw new Error("Invalid worktree path.");
@@ -214,13 +218,13 @@ function safeWorktreePath(profile: string | undefined, id: string): string {
 }
 
 function sessionsRoot(profile?: string): string {
-  const root = resolve(profileHome(profile), "desktop", "pi-sessions");
+  const root = resolve(agentsOneProfileHome(profile), "desktop", "pi-sessions");
   mkdirSync(root, { recursive: true });
   return root;
 }
 
 function conversationCwd(profile?: string): string {
-  const root = resolve(profileHome(profile), "desktop", "runtime-chat", "pi");
+  const root = resolve(agentsOneProfileHome(profile), "desktop", "runtime-chat", "pi");
   mkdirSync(root, { recursive: true });
   return root;
 }
@@ -468,9 +472,8 @@ export function piOutputError(output: string): string | undefined {
 }
 
 /**
- * Pure, regression-tested Pi invocation. Analysis can use a small read-only
- * tool allowlist inside an explicitly selected workspace. It never receives
- * write, edit, or shell access outside an isolated implementation worktree.
+ * Read-only runs retain file readers and query orchestration. A native Pi
+ * extension guards every actual call, including nested MCP/codemode calls.
  */
 export function piExecArgs(
   mode: "analysis" | "safe_write" | "implementation" | "full_access",
@@ -478,7 +481,7 @@ export function piExecArgs(
   sessionId: string,
   sessionDirectory: string,
   inputPaths: string[] = [],
-  allowReadTools = false,
+  _allowReadTools = false,
   model?: string,
 ): string[] {
   const args = [
@@ -494,11 +497,7 @@ export function piExecArgs(
   // tools, skills, extensions, MCP adapters, packages and project context.
   // Only a user-selected read-only run narrows the available tools.
   if (mode === "analysis") {
-    if (allowReadTools) {
-      args.push("--tools", "read,grep,find,ls");
-    } else {
-      args.push("--no-tools");
-    }
+    args.push("--tools", "read,grep,find,ls,tool_search,codemode");
   }
   if (model?.trim()) args.push("--model", model.trim());
   // Pi expands only these staged copies before the run. It never receives the
@@ -799,6 +798,49 @@ export async function probePiRuntime(
   }
 }
 
+/** Native Pi hook: every nested tool call receives the same check. */
+// @lat: [[runtime-chat#Pi read-only tool boundary]]
+export function piReadOnlyExtensionSource(
+  mode: "analysis" | "safe_write" = "analysis",
+): string {
+  return `const isRemoval = ${isRuntimeRemovalOperation.toString()};
+export default function agentsOneReadOnly(pi) {
+  const readers = new Set(["read", "grep", "find", "ls"]);
+  const orchestration = new Set(["tool_search", "codemode"]);
+  pi.on("tool_call", (event) => {
+    const name = event.toolName;
+    if (${JSON.stringify(mode)} === "safe_write") {
+      if (!isRemoval(name, event.input)) return;
+      return { block: true, reason: "[Agents One 权限不足] 当前为自动权限，已阻止工具 " + name + " 的移动或删除操作；如需执行，请切换为完全访问。" };
+    }
+    if (readers.has(name) || orchestration.has(name)) return;
+    const tool = pi.getAllTools().find((candidate) => candidate.name === name);
+    if (tool?.annotations?.readOnlyHint === true) return;
+    return {
+      block: true,
+      reason: "[Agents One 权限不足] 当前权限为只读，已阻止工具 " + name +
+        "：该工具未声明为只读查询，可能修改数据。读取/搜索/查询仍可执行。" +
+        "若任务需要创建或编辑，请提示用户切换为自动；移动或删除需切换为完全访问。不要声称该操作已完成。",
+    };
+  });
+}
+`;
+}
+
+function piReadOnlyExtension(
+  profile: string | undefined,
+  mode: "analysis" | "safe_write",
+): string {
+  const source = piReadOnlyExtensionSource(mode);
+  const digest = createHash("sha256").update(source).digest("hex").slice(0, 16);
+  const directory = resolve(agentsOneProfileHome(profile), "desktop", "pi-permissions");
+  mkdirSync(directory, { recursive: true });
+  const file = join(directory, `read-only-${digest}.mjs`);
+  // Generated code is Main-owned and contains no provider/user configuration.
+  writeFileSync(file, source, "utf-8");
+  return file;
+}
+
 export async function startPiProcess(
   config: PiRuntimeConfig,
   input: AgentRuntimeTaskInput,
@@ -848,6 +890,9 @@ export async function startPiProcess(
     invocation.command,
     [
       ...invocation.prefix,
+      ...(mode === "analysis" || mode === "safe_write"
+        ? ["--extension", piReadOnlyExtension(input.profile, mode)]
+        : []),
       ...piExecArgs(
         mode,
         runtimePrompt,
@@ -944,6 +989,9 @@ export async function startPiProcess(
         ...(worktreePath ? { worktreePath } : {}),
         ...(diffSummary ? { diffSummary } : {}),
         artifacts,
+        ...(restoredFiles.length
+          ? { error: runtimeRemovalBlockedMessage(restoredFiles) }
+          : {}),
         inputArtifacts: preparedInputs.artifacts,
         sessionId,
       });

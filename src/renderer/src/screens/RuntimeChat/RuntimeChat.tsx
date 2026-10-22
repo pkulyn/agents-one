@@ -1,4 +1,8 @@
 import {
+  automaticRuntimeTaskMode,
+  isRuntimePermissionFailure,
+} from "../../../../shared/runtime-permissions";
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -33,6 +37,7 @@ import {
   runtimeConversationToChatMessages,
   runtimeEventsToChatMessages,
 } from "./runtimeChatMessageAdapter";
+import { RuntimeConversationWriter } from "./runtimeConversationWriter";
 import { TaskCollaborationRolePanel } from "../../components/TaskCollaborationRolePanel";
 import { TaskCollaborationArtifactPanel } from "../../components/TaskCollaborationArtifactPanel";
 import { TaskCollaborationTimeline } from "../../components/TaskCollaborationTimeline";
@@ -54,6 +59,7 @@ import type { RuntimeSkillDescriptor } from "../../../../shared/runtime-skills";
 import type {
   ConversationEntryMeta,
   RuntimeConversationExecution,
+  RuntimeConversation,
   RuntimeConversationMessage,
 } from "../../../../shared/runtime-conversations";
 import { isModelContextEntry } from "../../../../shared/runtime-conversations";
@@ -280,6 +286,7 @@ function responseText(
   run: AgentRuntimeRun,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
+  if (isRuntimePermissionFailure(run.error)) return run.error!;
   const output = run.output?.trim() || "";
   // A failed remote operation may still have a useful final explanation in
   // `output`; a generic Gateway error must not hide that answer.
@@ -1240,6 +1247,21 @@ export default function RuntimeChat({
   >("inherit");
   const [interventionRuntimeId, setInterventionRuntimeId] = useState("");
   const conversationIdRef = useRef<string | null>(initialConversationId);
+  const mainOwnedRunIdsRef = useRef(new Set<string>());
+  const mainObserverAliveRef = useRef(true);
+  useEffect(() => {
+    mainObserverAliveRef.current = true;
+    return () => {
+      mainObserverAliveRef.current = false;
+    };
+  }, []);
+  const conversationWriterRef = useRef<RuntimeConversationWriter | null>(null);
+  if (!conversationWriterRef.current)
+    conversationWriterRef.current = new RuntimeConversationWriter(
+      (id, ownerProfile) =>
+        window.agentsOneAPI.getRuntimeConversation(id, ownerProfile),
+      (input) => window.agentsOneAPI.saveRuntimeConversation(input),
+    );
   /** Analysis branches never inherit write authority from their parent. */
   const analysisBranchRef = useRef(false);
   const runtimeSessionIdRef = useRef<string | null>(initialRuntimeSessionId);
@@ -1687,12 +1709,21 @@ export default function RuntimeChat({
           ) {
             return;
           }
+          if (!conversationWriterRef.current!.observe(conversation, profile))
+            return;
+          if (
+            conversation.activeRuntimeRunOwner === "main" &&
+            conversation.activeRuntimeRunId
+          )
+            mainOwnedRunIdsRef.current.add(conversation.activeRuntimeRunId);
           messagesRef.current = conversation.messages;
           setMessages(conversation.messages);
           analysisBranchRef.current = Boolean(
             conversation.branch?.parentConversationId,
           );
           setAccessMode(conversation.accessMode || "auto");
+          setWorkspaceId(conversation.workspaceId || "");
+          setWorkspace(conversation.workspace || "");
           if (conversation.activeRuntimeRunId) {
             setCurrentRunId(
               (current) => current || conversation.activeRuntimeRunId || null,
@@ -1741,7 +1772,7 @@ export default function RuntimeChat({
         runtimeSessionId?: string | null;
         activeRuntimeRunId?: string | null;
       } = {},
-    ): Promise<string> => {
+    ): Promise<RuntimeConversation> => {
       const id = conversationIdRef.current || newConversationId();
       if (conversationIdRef.current !== id) {
         conversationIdRef.current = id;
@@ -1755,9 +1786,10 @@ export default function RuntimeChat({
       const title =
         nextMessages.find((message) => message.role === "user")?.content ||
         runtime.name;
-      await window.agentsOneAPI.saveRuntimeConversation({
+      const saved = await conversationWriterRef.current!.save({
         profile,
         id,
+        ...(initialConversationId === id ? { expectedRevision: "1" } : {}),
         title,
         runtimeId: runtime.id,
         runtimeName: runtime.name,
@@ -1779,7 +1811,7 @@ export default function RuntimeChat({
         messages: nextMessages,
       });
       dispatchAgentsOneEvent("sessionTranscriptChanged");
-      return id;
+      return saved;
     },
     [
       accessMode,
@@ -1787,6 +1819,7 @@ export default function RuntimeChat({
       onConversationIdChange,
       profile,
       runId,
+      initialConversationId,
       runtime,
       workspace,
       workspaceId,
@@ -1813,7 +1846,61 @@ export default function RuntimeChat({
 
   const pollRun = useCallback(
     async (runtimeRunId: string): Promise<void> => {
+      if (
+        conversationIdRef.current &&
+        !mainOwnedRunIdsRef.current.has(runtimeRunId)
+      ) {
+        const original = await window.agentsOneAPI.getRuntimeConversation(
+          conversationIdRef.current,
+          profile,
+        );
+        if (
+          original?.activeRuntimeRunOwner === "main" &&
+          original.activeRuntimeRunId === runtimeRunId
+        )
+          mainOwnedRunIdsRef.current.add(runtimeRunId);
+      }
       while (!cancelledRef.current) {
+        if (
+          !mainObserverAliveRef.current &&
+          mainOwnedRunIdsRef.current.has(runtimeRunId)
+        )
+          return;
+        if (
+          mainOwnedRunIdsRef.current.has(runtimeRunId) &&
+          conversationIdRef.current
+        ) {
+          const original = await window.agentsOneAPI.getRuntimeConversation(
+            conversationIdRef.current,
+            profile,
+          );
+          if (
+            original &&
+            conversationWriterRef.current!.observe(original, profile)
+          ) {
+            messagesRef.current = original.messages;
+            setMessages(original.messages);
+            if (original.runtimeSessionId)
+              runtimeSessionIdRef.current = original.runtimeSessionId;
+          }
+          if (original && original.activeRuntimeRunId !== runtimeRunId) {
+            setLoading(false);
+            setCurrentRunId(null);
+            return;
+          }
+          const observed =
+            await window.agentsOneAPI.getAgentRuntimeRun(runtimeRunId);
+          if (!observed) {
+            setLoading(false);
+            setCurrentRunId(null);
+            return;
+          }
+          taskRunRef.current = observed;
+          setTaskRun(observed);
+          // Main owns both the checkpoint and terminal commit, including storage retries.
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          continue;
+        }
         const current =
           await window.agentsOneAPI.getAgentRuntimeRun(runtimeRunId);
         if (!current) {
@@ -2285,9 +2372,7 @@ export default function RuntimeChat({
       }
       const collaborationAccessMode =
         accessMode === "auto"
-          ? runtime.location === "local" || selectedWorkspace
-            ? "safe_write"
-            : "analysis"
+          ? automaticRuntimeTaskMode(runtime, Boolean(selectedWorkspace))
           : accessMode;
       const permissionPreflightIssues = collaborationPermissionPreflight(
         configuredBase,
@@ -4319,11 +4404,7 @@ export default function RuntimeChat({
     const hasSelectedWorkspace = Boolean(selectedWorkspace || workspaceId);
     const resolvedAccessMode =
       accessMode === "auto"
-        ? runtime.kind === "opencode" && !hasSelectedWorkspace
-          ? "analysis"
-          : runtime.location === "local" || hasSelectedWorkspace
-            ? "safe_write"
-            : "analysis"
+        ? automaticRuntimeTaskMode(runtime, hasSelectedWorkspace)
         : accessMode;
     if (analysisBranchRef.current && resolvedAccessMode !== "analysis") {
       chatInputRef.current?.restore(prompt, attachments);
@@ -4331,16 +4412,34 @@ export default function RuntimeChat({
       return;
     }
     cancelledRef.current = false;
-    const nextMessages = [...messages, newMessage("user", prompt)];
+    const displayAttachments = attachments.map(
+      ({ id, kind, name, mime, size, originalSize }) => ({
+        id,
+        kind,
+        name,
+        mime,
+        size,
+        ...(originalSize !== undefined ? { originalSize } : {}),
+      }),
+    );
+    const nextMessages = [
+      ...messages,
+      {
+        ...newMessage("user", prompt),
+        ...(displayAttachments.length
+          ? { attachments: displayAttachments }
+          : {}),
+      },
+    ];
     messagesRef.current = nextMessages;
     setMessages(nextMessages);
     setTaskRun(null);
     setActiveCollaborationRuntimeId(null);
     taskRunRef.current = null;
     onTitleChange?.(runId, prompt.slice(0, 48));
-    void persistConversation(nextMessages).catch(() => undefined);
     setLoading(true);
     try {
+      const checkpoint = await persistConversation(nextMessages);
       if (
         resolvedAccessMode === "full_access" &&
         !hasSelectedWorkspace &&
@@ -4437,6 +4536,11 @@ export default function RuntimeChat({
         : basePrompt;
       const run = await window.agentsOneAPI.startAgentRuntimeTask(runtime.id, {
         prompt: runtimePrompt,
+        profile,
+        conversationContext: {
+          id: checkpoint.id,
+          expectedRevision: checkpoint.revision ?? "1",
+        },
         ...(selectedRuntimeModel ? { model: selectedRuntimeModel } : {}),
         mode: webAgentRuntime
           ? "analysis"
@@ -4468,6 +4572,15 @@ export default function RuntimeChat({
         attachments,
       });
       taskRunRef.current = run;
+      if (run.conversationRevision)
+        conversationWriterRef.current!.observe(
+          {
+            ...checkpoint,
+            revision: run.conversationRevision,
+            activeRuntimeRunId: run.id,
+          },
+          profile,
+        );
       setTaskRun(run);
       setCurrentRunId(run.id);
       void pollRun(run.id);

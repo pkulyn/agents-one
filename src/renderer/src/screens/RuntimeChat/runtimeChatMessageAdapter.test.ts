@@ -75,6 +75,42 @@ describe("runtimeChatMessageAdapter", () => {
     expect(result[1]).toMatchObject({ isControlMessage: true });
   });
 
+  it("keeps safe user attachment metadata on the sent chat bubble", () => {
+    const result = runtimeConversationToChatMessages([
+      {
+        id: "user-with-files",
+        role: "user",
+        content: "请查看这些附件。",
+        createdAt: 1,
+        attachments: [
+          {
+            id: "image-1",
+            kind: "image",
+            name: "diagram.png",
+            mime: "image/png",
+            size: 512,
+          },
+          {
+            id: "document-1",
+            kind: "path-ref",
+            name: "notes.pdf",
+            mime: "application/pdf",
+            size: 1024,
+          },
+        ],
+      },
+    ]);
+
+    expect(result[0]).toMatchObject({
+      kind: "user",
+      content: "请查看这些附件。",
+      attachments: [
+        expect.objectContaining({ id: "image-1", name: "diagram.png" }),
+        expect.objectContaining({ id: "document-1", name: "notes.pdf" }),
+      ],
+    });
+  });
+
   it("maps runtime reasoning and tool events to native history rows", () => {
     const messages: RuntimeConversationMessage[] = [
       {

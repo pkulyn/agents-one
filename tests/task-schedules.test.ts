@@ -44,6 +44,7 @@ async function loadModules(): Promise<{
 }> {
   vi.resetModules();
   vi.stubEnv("HERMES_HOME", testHome);
+  vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
   return {
     runtimes: await import("../src/main/agent-runtimes"),
     schedules: await import("../src/main/task-schedules"),
@@ -52,6 +53,31 @@ async function loadModules(): Promise<{
 }
 
 describe("Runtime schedules", () => {
+  // @lat: [[mobile-data#Mobile data#Original scheduler lifecycle status]]
+  it("reports the actual runner lifecycle only for the active unlocked profile", async () => {
+    const { schedules } = await loadModules();
+    const utils = await import("../src/main/utils");
+    const lock = await import("../src/main/restore-write-lock");
+    const profile = utils.getActiveProfileNameSync();
+    expect(schedules.isTaskScheduleRunnerOnline(profile)).toBe(false);
+    schedules.startTaskScheduleRunner();
+    try {
+      expect(schedules.isTaskScheduleRunnerOnline(profile)).toBe(true);
+      expect(schedules.isTaskScheduleRunnerOnline("another-profile")).toBe(
+        false,
+      );
+      lock.beginAgentsOneRestoreWriteLock();
+      try {
+        expect(schedules.isTaskScheduleRunnerOnline(profile)).toBe(false);
+      } finally {
+        lock.endAgentsOneTemporaryWriteLock();
+      }
+      expect(schedules.isTaskScheduleRunnerOnline(profile)).toBe(true);
+    } finally {
+      expect(await schedules.stopTaskScheduleRunnerAndWait()).toBe(true);
+    }
+    expect(schedules.isTaskScheduleRunnerOnline(profile)).toBe(false);
+  });
   beforeEach(() => {
     testHome = mkdtempSync(join(tmpdir(), "agents-one-schedules-"));
     startAgentRuntimeTaskMock.mockReset();
@@ -269,7 +295,7 @@ describe("Runtime schedules", () => {
     });
     const now = Math.floor(Date.now() / 60_000) * 60_000;
     const overdueAt = now - 5 * 60_000;
-    const path = join(testHome, "desktop", "task-schedules.json");
+    const path = join(testHome, "data", "profiles", "default", "desktop", "task-schedules.json");
     const store = JSON.parse(readFileSync(path, "utf8"));
     store.schedules[0].lastDueAt = now - 10 * 60_000;
     store.schedules[0].nextRunAt = overdueAt;
@@ -322,7 +348,7 @@ describe("Runtime schedules", () => {
       runtimeId: "pi-local",
     });
     const now = Math.floor(Date.now() / 60_000) * 60_000;
-    const path = join(testHome, "desktop", "task-schedules.json");
+    const path = join(testHome, "data", "profiles", "default", "desktop", "task-schedules.json");
     const store = JSON.parse(readFileSync(path, "utf8"));
     store.schedules[0].lastDueAt = now;
     store.schedules[0].nextRunAt = now;
@@ -361,7 +387,7 @@ describe("Runtime schedules", () => {
       runtimeId: "pi-local",
     });
     const now = Math.floor(Date.now() / 60_000) * 60_000;
-    const path = join(testHome, "desktop", "task-schedules.json");
+    const path = join(testHome, "data", "profiles", "default", "desktop", "task-schedules.json");
     const store = JSON.parse(readFileSync(path, "utf8"));
     for (const item of store.schedules) item.nextRunAt = now;
     writeFileSync(path, JSON.stringify(store));
@@ -637,7 +663,7 @@ describe("Runtime schedules", () => {
   it("migrates legacy implicit read-only schedules to automatic access", async () => {
     const { schedules } = await loadModules();
     const now = Date.now();
-    const desktopDir = join(testHome, "desktop");
+    const desktopDir = join(testHome, "data", "profiles", "default", "desktop");
     mkdirSync(desktopDir, { recursive: true });
     writeFileSync(
       join(desktopDir, "task-schedules.json"),
@@ -668,7 +694,7 @@ describe("Runtime schedules", () => {
   it("migrates the legacy writable mode to explicit full access", async () => {
     const { schedules } = await loadModules();
     const now = Date.now();
-    const desktopDir = join(testHome, "desktop");
+    const desktopDir = join(testHome, "data", "profiles", "default", "desktop");
     mkdirSync(desktopDir, { recursive: true });
     writeFileSync(
       join(desktopDir, "task-schedules.json"),
@@ -876,7 +902,7 @@ describe("Runtime schedules", () => {
       config: { transport: "cli", workspace: testHome },
     });
     const now = Date.now();
-    const desktopDir = join(testHome, "desktop");
+    const desktopDir = join(testHome, "data", "profiles", "default", "desktop");
     mkdirSync(desktopDir, { recursive: true });
     const frozenArchive = '{"frozen":"legacy-task-center"}';
     writeFileSync(join(desktopDir, "task-center.json"), frozenArchive);
@@ -955,7 +981,7 @@ describe("Runtime schedules", () => {
       },
     });
     const now = Date.now();
-    const desktopDir = join(testHome, "desktop");
+    const desktopDir = join(testHome, "data", "profiles", "default", "desktop");
     mkdirSync(desktopDir, { recursive: true });
     writeFileSync(
       join(desktopDir, "task-schedules.json"),

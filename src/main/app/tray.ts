@@ -5,6 +5,12 @@ import icon from "../../../resources/icon.png?asset";
 import { listCachedSessions } from "../session-cache";
 import { listRuntimeConversations } from "../runtime-conversation-store";
 import { listProjectFolders } from "../project-folders";
+import {
+  startTrayRuntimeTask,
+  watchTrayRuntimeTask,
+  type TrayRuntimeConversationChange,
+} from "./tray-runtime-task";
+import type { AgentRuntimeTaskInput } from "../../shared/agent-runtimes";
 import type {
   TrayMenuAction,
   TrayMenuData,
@@ -709,6 +715,36 @@ export function setupTray({
   };
   ipcMain.on("tray-composer-close", handleQuickComposerClose);
   ipcMain.on("tray-composer-resize", handleQuickComposerResize);
+  const notifyQuickTaskChanged = (
+    change: TrayRuntimeConversationChange,
+  ): void => {
+    const window = getMainWindow();
+    if (window && !window.isDestroyed()) {
+      window.webContents.send("tray-runtime-conversation-changed", change);
+    }
+  };
+  ipcMain.handle(
+    "tray-composer-start-runtime-task",
+    async (
+      event,
+      runtimeId: string,
+      input: Pick<
+        AgentRuntimeTaskInput,
+        "prompt" | "attachments" | "workspaceId"
+      >,
+    ) => {
+      if (!quickComposer || event.sender !== quickComposer.webContents) {
+        throw new Error("Quick task sender was not recognized.");
+      }
+      const task = await startTrayRuntimeTask(runtimeId, input);
+      notifyQuickTaskChanged({
+        profile: task.profile,
+        conversationId: task.conversationId,
+      });
+      watchTrayRuntimeTask(task, notifyQuickTaskChanged);
+      return task.run;
+    },
+  );
   ipcMain.handle("tray-menu-data", (event) =>
     trayMenuWindow && event.sender === trayMenuWindow.webContents
       ? currentTrayMenuData
@@ -752,6 +788,7 @@ export function setupTray({
     destroy: () => {
       ipcMain.removeListener("tray-composer-close", handleQuickComposerClose);
       ipcMain.removeListener("tray-composer-resize", handleQuickComposerResize);
+      ipcMain.removeHandler("tray-composer-start-runtime-task");
       ipcMain.removeHandler("tray-menu-data");
       ipcMain.removeListener("tray-menu-action", handleTrayMenuAction);
       ipcMain.removeListener("tray-menu-resize", handleTrayMenuResize);

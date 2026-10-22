@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { getDbConnection } from "./db";
+import { getDesktopDbConnection as getDbConnection } from "./db";
 
 /**
  * Desktop-owned, per-session store for the working folder the user links to a

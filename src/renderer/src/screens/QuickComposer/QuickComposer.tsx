@@ -260,10 +260,8 @@ export default function QuickComposer(): React.JSX.Element {
       const request =
         selectedRuntime && !usesLegacyHermesChat(selectedRuntime)
           ? window.agentsOneAPI
-              .startAgentRuntimeTask(selectedRuntime.id, {
+              .startTrayRuntimeTask(selectedRuntime.id, {
                 prompt: text,
-                mode: "analysis",
-                conversation: true,
                 ...(contextWorkspaceId
                   ? { workspaceId: contextWorkspaceId }
                   : {}),

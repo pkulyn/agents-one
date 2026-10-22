@@ -297,6 +297,8 @@ export interface AgentRuntimeTaskInput {
   model?: string;
   profile?: string;
   sessionId?: string;
+  /** Desktop original-record checkpoint; consumed by Main before dispatch. */
+  conversationContext?: { id: string; expectedRevision: string };
   /** The caller is a conversational chat even before the remote session exists. */
   conversation?: boolean;
   /** Files selected explicitly for this task. The main process stages copies
@@ -381,6 +383,8 @@ export interface AgentRuntimeEvent {
 }
 
 export interface AgentRuntimeRun {
+  /** Revision committed by Main's desktop conversation claim. */
+  conversationRevision?: string;
   id: string;
   runtimeId: string;
   status: "running" | "succeeded" | "failed" | "cancelled" | "timed_out";

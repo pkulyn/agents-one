@@ -9,6 +9,8 @@ import {
   writeFileSync,
 } from "fs";
 import { HERMES_HOME } from "./installer";
+import { agentsOneDataRoot } from "./agents-one-data-root";
+export { agentsOneProfileHome } from "./agents-one-data-root";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 const PROFILE_NAME_RE = /^[a-z0-9_][a-z0-9_-]{0,63}$/;
@@ -174,17 +176,15 @@ export function pidIsAliveAs(
   );
 }
 
-/**
- * Read the active profile name from ~/.hermes/active_profile. Returns "default"
- * when the file is missing, empty, or unreadable. Shared sync helper used by
- * installer.ts and config.ts; profiles.ts's async wrapper delegates here.
- */
+/** The selected Agents One workspace profile is owned by the desktop app. */
 export function getActiveProfileNameSync(): string {
   try {
-    const activeFile = join(HERMES_HOME, "active_profile");
+    const activeFile = join(agentsOneDataRoot(), "active_profile");
     if (!existsSync(activeFile)) return "default";
     const name = readFileSync(activeFile, "utf-8").trim();
-    return name || "default";
+    return name === "default" || isValidNamedProfileName(name)
+      ? name
+      : "default";
   } catch {
     return "default";
   }

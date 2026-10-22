@@ -345,7 +345,8 @@ vi.mock("../src/main/config", () => ({
   getConnectionConfig: () => ({ mode: "local" as const }),
 }));
 
-vi.mock("../src/main/utils", () => ({
+vi.mock("../src/main/utils", () => {
+  const mocked = {
   stripAnsi: (s: string) => s,
   pidIsAliveAs: () => false,
   getActiveProfileNameSync: () => "default",
@@ -357,7 +358,9 @@ vi.mock("../src/main/utils", () => ({
     envFile: `${TEST_HOME}/.env`,
     configFile: `${TEST_HOME}/config.yaml`,
   }),
-}));
+};
+  return { ...mocked, agentsOneProfileHome: mocked.profileHome };
+});
 
 vi.mock("../src/main/models", () => ({
   readModels: () => [],
