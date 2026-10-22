@@ -2,6 +2,12 @@
 
 Runtime conversations reuse the native chat message union so every agent gets the same reasoning, tool, attachment, and media presentation without exposing control-plane noise as conversation content.
 
+## Profile-scoped conversation history storage
+
+Runtime conversation history lives under the app-owned data directory, including `data/profiles/default/desktop/runtime-conversations.json` for the default profile.
+
+[[src/main/runtime-conversation-store.ts#storeFilePath]] resolves desktop history through [[src/main/agents-one-data-root.ts#agentsOneProfileHome]]. The legacy Hermes `profileHome("default")` points to the Hermes root and can make the sidebar appear empty even while the app-owned records remain intact. The same profile resolver is used for quick-chat storage.
+
 Only the built-in **local** Hermes Runtime may enter the legacy profile-chat renderer. Every remote Runtime, including a Hermes definition carrying an old built-in marker, stays on `RuntimeChat` and dispatches through its registered Gateway v1 runtime ID; it must never be blocked by local model readiness validation.
 
 ## Event presentation boundary

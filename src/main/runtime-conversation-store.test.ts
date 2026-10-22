@@ -15,11 +15,15 @@ const state = vi.hoisted(() => ({ root: "" }));
 
 vi.mock("./utils", () => ({
   getActiveProfileNameSync: () => "default",
-  profileHome: (profile: string) => join(state.root, profile),
   safeWriteFile: (path: string, content: string) => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content, "utf8");
   },
+}));
+
+vi.mock("./agents-one-data-root", () => ({
+  agentsOneProfileHome: (profile: string) =>
+    join(state.root, "data", "profiles", profile),
 }));
 
 describe("runtime conversation store", () => {
@@ -32,6 +36,44 @@ describe("runtime conversation store", () => {
 
   afterEach(() => {
     rmSync(state.root, { recursive: true, force: true });
+  });
+
+  // @lat: [[runtime-chat#Profile-scoped conversation history storage]]
+  it("stores and lists default-profile history from the app-owned profile directory", async () => {
+    const store = await import("./runtime-conversation-store");
+    store.saveRuntimeConversation({
+      id: "default-profile-history",
+      title: "Default profile history",
+      runtimeId: "pi",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+      runtimeLocation: "local",
+      messages: [
+        {
+          id: "user-message",
+          role: "user",
+          content: "Existing conversation",
+          createdAt: 1,
+        },
+      ],
+    });
+
+    expect(
+      readFileSync(
+        join(
+          state.root,
+          "data",
+          "profiles",
+          "default",
+          "desktop",
+          "runtime-conversations.json",
+        ),
+        "utf8",
+      ),
+    ).toContain("default-profile-history");
+    expect(
+      store.listRuntimeConversations("default").map(({ id }) => id),
+    ).toContain("default-profile-history");
   });
 
   it("keeps entry audience metadata and branch links without migrating old messages", async () => {
@@ -373,7 +415,14 @@ describe("runtime conversation store", () => {
       ],
     });
     const persisted = readFileSync(
-      join(state.root, "default", "desktop", "runtime-conversations.json"),
+      join(
+        state.root,
+        "data",
+        "profiles",
+        "default",
+        "desktop",
+        "runtime-conversations.json",
+      ),
       "utf8",
     );
 
