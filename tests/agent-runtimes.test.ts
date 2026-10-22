@@ -1540,6 +1540,69 @@ describe("agent runtime registry", () => {
     }
   });
 
+  it("preserves full reasoning text returned by a Hers Gateway event", async () => {
+    const reasoning = Array.from(
+      { length: 500 },
+      (_, index) => `第 ${index + 1} 段：逐项核对任务上下文并保留推理细节。`,
+    ).join("\n");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "remote-run-hers-reasoning",
+          status: "succeeded",
+          output: "Hers 已完成分析。",
+          events: [
+            {
+              id: "evt-hers-reasoning",
+              sequence: 1,
+              type: "reasoning.summary",
+              data: { text: reasoning },
+            },
+            {
+              id: "evt-hers-answer",
+              sequence: 2,
+              type: "assistant.completed",
+              data: { text: "Hers 已完成分析。" },
+            },
+          ],
+        }),
+        { status: 202, headers: { "content-type": "application/json" } },
+      ),
+    );
+    try {
+      const { runtimes } = await loadModules();
+      runtimes.saveAgentRuntime({
+        id: "hers-reasoning",
+        name: "Hers",
+        kind: "hermes",
+        location: "remote",
+        enabled: true,
+        config: {
+          endpoint: "https://family-relay.example/agents-one/v1",
+          remoteGateway: { protocol: "agents-one-v1" },
+          transport: "http",
+          timeoutMs: 10_000,
+        },
+      });
+      runtimes.setAgentRuntimeBearerToken("hers-reasoning", "hers-token");
+
+      const run = await runtimes.startAgentRuntimeTask("hers-reasoning", {
+        prompt: "请完整保留思考记录。",
+        mode: "analysis",
+        conversation: true,
+      });
+
+      expect(run.status).toBe("succeeded");
+      expect(run.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "progress", detail: reasoning }),
+        ]),
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("forwards full-access permission to a configured Agents One Gateway", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(

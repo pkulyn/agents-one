@@ -19,6 +19,42 @@ describe("AttachmentChip local file actions", () => {
     });
   });
 
+  it("uses the same fixed attachment card structure for images and documents", () => {
+    const image: Attachment = {
+      id: "image-1",
+      kind: "image",
+      name: "diagram.png",
+      mime: "image/png",
+      size: 512,
+      dataUrl: "data:image/png;base64,aW1hZ2U=",
+    };
+    const document: Attachment = {
+      id: "document-1",
+      kind: "path-ref",
+      name: "notes.pdf",
+      mime: "application/pdf",
+      size: 1024,
+    };
+    const { container } = render(
+      <>
+        <AttachmentChip attachment={image} />
+        <AttachmentChip attachment={document} />
+      </>,
+    );
+
+    const cards = container.querySelectorAll(".attachment-chip");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toHaveClass("attachment-chip-image");
+    expect(cards[1]).toHaveClass("attachment-chip-path-ref");
+    expect(
+      Array.from(cards).every((card) =>
+        card.querySelector(".attachment-chip-body"),
+      ),
+    ).toBe(true);
+    expect(cards[0]?.querySelector(".attachment-chip-thumb")).toBeTruthy();
+    expect(cards[1]?.querySelector(".attachment-chip-icon")).toBeTruthy();
+  });
+
   it("opens a Runtime artifact through its opaque capability", () => {
     const attachment: Attachment = {
       id: "runtime-artifact-report-1",

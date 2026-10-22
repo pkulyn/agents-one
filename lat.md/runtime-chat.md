@@ -129,3 +129,13 @@ Gateway attachment persistence waits for the tested conversation's terminal chec
 [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.test.ts]] verifies that error, artifact, and workspace-authorization lifecycle notices are omitted while genuine reasoning and hydrated image artifacts remain. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx]] protects progressive collaboration events, terminal snapshot merging, avatar-triggered pause, repeated target-only guided turns, shared response context, session reuse, explicit downstream resume, collaboration consent, remote-native workspace semantics, and model-label continuity; MessageList and file-component tests protect per-agent identity, avatar routing, quiet typing state, and local artifact actions.
 
 The DAG regression holds two sibling Runtime runs open, asserts both Runtime identities and running states are simultaneously visible, and confirms the join is not dispatched until both siblings succeed. Shared graph tests additionally protect coordinator anchoring, legacy serial compatibility, parallel layers, multi-input joins, descendants, missing dependencies and cycle rejection.
+
+## Remote reasoning and sent attachments
+
+RuntimeChat keeps remote reasoning text and the files that accompanied each user turn visible in the saved transcript.
+
+[[src/shared/agent-event-stream.ts#agentEventTimelineEntry]] maps the complete Gateway `reasoning.summary` text into a bounded detail field, including older Hers events that carry the thought in `data.text`. [[src/main/agent-runtimes.ts]] retains up to 16,000 characters of event detail, and [[src/main/runtime-conversation-store.ts#cleanRuntimeEvent]] preserves that detail when the conversation is reopened.
+
+[[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]] copies only attachment identity, type, name, and size into the user message. [[src/main/runtime-conversation-store.ts#cleanMessageAttachments]] validates and persists those display fields while excluding file contents, image data, and local paths. [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.ts#runtimeConversationMessage]] passes them to the same [[src/renderer/src/components/AttachmentChip.tsx#AttachmentChip]] used by the composer. A fixed 180-by-64-pixel card shows an image thumbnail when available or a type icon otherwise, plus a truncated filename.
+
+[[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.test.ts]] verifies transcript mapping, and [[src/main/runtime-conversation-store.test.ts]] verifies safe metadata persistence and full reasoning-detail round trips.

@@ -1,4 +1,4 @@
-import { Download, FileText, X } from "lucide-react";
+import { Download, FileText, Image as ImageIcon, X } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { Attachment } from "../../../shared/attachments";
@@ -59,45 +59,58 @@ export function AttachmentChip({
       ? `${attachment.name} (${formatSize(attachment.originalSize)} -> ${formatSize(attachment.size)}, ${t("chat.attachmentCompressed")})`
       : `${attachment.name} (${formatSize(attachment.size)})`);
 
+  const media =
+    isImage && attachment.dataUrl ? (
+      <img className="attachment-chip-thumb" src={attachment.dataUrl} alt="" />
+    ) : (
+      <span className="attachment-chip-icon" aria-hidden="true">
+        {isImage ? <ImageIcon size={18} /> : <FileText size={18} />}
+      </span>
+    );
+  const name = <span className="attachment-chip-name">{attachment.name}</span>;
+  const body =
+    isImage && attachment.dataUrl ? (
+      <button
+        type="button"
+        className="attachment-chip-body attachment-chip-body--action"
+        onClick={previewImage}
+        onContextMenu={showImageMenu}
+        aria-label={attachment.name}
+      >
+        {media}
+        {name}
+      </button>
+    ) : localFilePath || runtimeArtifact ? (
+      <button
+        type="button"
+        className="attachment-chip-body attachment-chip-body--action"
+        onClick={() =>
+          runtimeArtifact
+            ? window.agentsOneAPI.openAgentRuntimeArtifact(
+                runtimeArtifact.runId,
+                runtimeArtifact.artifactId,
+              )
+            : window.agentsOneAPI.openFileInEditor(localFilePath!)
+        }
+        {...(localFilePath ? { onContextMenu: showFileMenu } : {})}
+      >
+        {media}
+        {name}
+      </button>
+    ) : (
+      <div className="attachment-chip-body">
+        {media}
+        {name}
+      </div>
+    );
+
   return (
     <>
       <div
         className={`attachment-chip attachment-chip-${attachment.kind}`}
         title={tooltip}
       >
-        {isImage && attachment.dataUrl ? (
-          <button
-            type="button"
-            className="attachment-chip-thumb"
-            onClick={previewImage}
-            onContextMenu={showImageMenu}
-            aria-label={attachment.name}
-          >
-            <img src={attachment.dataUrl} alt={attachment.name} />
-          </button>
-        ) : localFilePath || runtimeArtifact ? (
-          <button
-            type="button"
-            className="attachment-chip-file attachment-chip-file--action"
-            onClick={() =>
-              runtimeArtifact
-                ? window.agentsOneAPI.openAgentRuntimeArtifact(
-                    runtimeArtifact.runId,
-                    runtimeArtifact.artifactId,
-                  )
-                : window.agentsOneAPI.openFileInEditor(localFilePath!)
-            }
-            {...(localFilePath ? { onContextMenu: showFileMenu } : {})}
-          >
-            <FileText size={14} />
-            <span className="attachment-chip-name">{attachment.name}</span>
-          </button>
-        ) : (
-          <div className="attachment-chip-file">
-            <FileText size={14} />
-            <span className="attachment-chip-name">{attachment.name}</span>
-          </div>
-        )}
+        {body}
         {onRemove && (
           <button
             type="button"

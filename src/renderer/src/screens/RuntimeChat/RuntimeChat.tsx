@@ -4331,7 +4331,25 @@ export default function RuntimeChat({
       return;
     }
     cancelledRef.current = false;
-    const nextMessages = [...messages, newMessage("user", prompt)];
+    const displayAttachments = attachments.map(
+      ({ id, kind, name, mime, size, originalSize }) => ({
+        id,
+        kind,
+        name,
+        mime,
+        size,
+        ...(originalSize !== undefined ? { originalSize } : {}),
+      }),
+    );
+    const nextMessages = [
+      ...messages,
+      {
+        ...newMessage("user", prompt),
+        ...(displayAttachments.length
+          ? { attachments: displayAttachments }
+          : {}),
+      },
+    ];
     messagesRef.current = nextMessages;
     setMessages(nextMessages);
     setTaskRun(null);

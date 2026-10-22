@@ -26,6 +26,7 @@ const MAX_MESSAGE_LENGTH = 200_000;
 const MAX_MESSAGES = 500;
 const MAX_EXECUTION_EVENTS = 80;
 const MAX_EVENT_SUMMARY_LENGTH = 800;
+const MAX_EVENT_DETAIL_LENGTH = 16_000;
 const MAX_AVATAR_DATA_URL_LENGTH = 700_000;
 const MAX_WORKSPACE_LENGTH = 4096;
 const MAX_QUICK_CHATS = 40;
@@ -121,6 +122,7 @@ function cleanRuntimeEvent(value: unknown): AgentRuntimeEvent | null {
   if (!summary) return null;
   const tool =
     record.tool && typeof record.tool === "object" ? record.tool : undefined;
+  const detail = cleanText(record.detail).slice(0, MAX_EVENT_DETAIL_LENGTH);
   return {
     id: cleanText(record.id, `event-${Date.now()}`),
     type: record.type,
@@ -129,10 +131,50 @@ function cleanRuntimeEvent(value: unknown): AgentRuntimeEvent | null {
       typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
         ? record.createdAt
         : Date.now(),
-    ...(cleanText(record.detail) ? { detail: cleanText(record.detail) } : {}),
+    ...(detail ? { detail } : {}),
     ...(cleanText(record.code) ? { code: cleanText(record.code) } : {}),
     ...(tool ? { tool } : {}),
   };
+}
+
+function cleanMessageAttachments(
+  value: unknown,
+): RuntimeConversationMessage["attachments"] {
+  if (!Array.isArray(value)) return undefined;
+  return value.slice(0, 10).flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const id = cleanText(record.id).slice(0, 160);
+    const name = cleanText(record.name).slice(0, 512);
+    const mime = cleanText(record.mime).slice(0, 160);
+    const kind = record.kind;
+    const size = record.size;
+    if (
+      !id ||
+      !name ||
+      !mime ||
+      (kind !== "image" && kind !== "text-file" && kind !== "path-ref") ||
+      typeof size !== "number" ||
+      !Number.isFinite(size) ||
+      size < 0
+    )
+      return [];
+    const originalSize = record.originalSize;
+    return [
+      {
+        id,
+        kind,
+        name,
+        mime,
+        size,
+        ...(typeof originalSize === "number" &&
+        Number.isFinite(originalSize) &&
+        originalSize >= size
+          ? { originalSize }
+          : {}),
+      },
+    ];
+  });
 }
 
 function cleanExecution(
@@ -296,6 +338,10 @@ function cleanMessage(value: unknown): RuntimeConversationMessage | null {
         ? record.createdAt
         : Date.now(),
   };
+  if (role === "user") {
+    const attachments = cleanMessageAttachments(record.attachments);
+    if (attachments?.length) message.attachments = attachments;
+  }
   // Collaboration replies need their original runtime identity after a restart.
   // Do not reconstruct this from the parent conversation's runtime: one task
   // can contain turns from several independently configured agents.
