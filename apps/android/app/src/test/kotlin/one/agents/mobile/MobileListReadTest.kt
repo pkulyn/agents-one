@@ -304,7 +304,7 @@ class MobileListReadTest {
         }
     }
     private fun avatarClient(): Client = Client().also { client ->
-        client.handleRead = { suffix, _ -> if (suffix == listOf("runtimes")) Json.encodeToJsonElement(RuntimePage(listOf(Runtime("runtime-1", "Original agent", "local", avatar = "ava-original", color = "#F37021", healthy = true, capabilities = emptyList(), allowedActions = listOf("read"))), null, "1")) else null }
+        client.handleRead = { suffix, _ -> if (suffix == listOf("runtimes")) Json.encodeToJsonElement(RuntimePage(listOf(Runtime("runtime-1", "Original agent", "local", avatar = "ava-1b4d3cd3392295481b6e62e72f15318c53f82fba43616f651d62fe062bcf5708", color = "#F37021", healthy = true, capabilities = emptyList(), allowedActions = listOf("read"))), null, "1")) else null }
         ui.runOnUiThread { MobileViewModel::class.java.getDeclaredField("credentials").apply { isAccessible = true }.set(model, Credentials("phone-1", "test-token", "2099-01-01T00:00:00Z", "test-refresh", "2099-01-01T00:00:00Z", "1")) }
     }
     // @lat: [[mobile-data#Mobile data#Android avatar real list original runtime binding]]
@@ -316,9 +316,9 @@ class MobileListReadTest {
             RuntimeAvatarBytes("image/png", java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP8XKD4n4GBgYGJAQoAJzoChzU5gKEAAAAASUVORK5CYII="))
         }
         connect(client)
-        check(model.state.value.runtimes.single().avatar == "ava-original")
+        check(model.state.value.runtimes.single().avatar == "ava-1b4d3cd3392295481b6e62e72f15318c53f82fba43616f651d62fe062bcf5708")
         try { ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50)); ui.onAllNodesWithTag("runtime-avatar-image", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() } } catch (error: androidx.compose.ui.test.ComposeTimeoutException) { error("Avatar not shown: requests=${requests.size}, ownerOnline=${model.state.value.owner?.online}, ownerCacheOnly=${model.state.value.ownerCacheOnly}, error=${model.state.value.error}, conversations=${model.state.value.conversations.size}") }
-        check(requests.single() == listOf(OwnerBinding("owner-1","space-1"), "runtime-1", "ava-original"))
+        check(requests.single() == listOf(OwnerBinding("owner-1","space-1"), "runtime-1", "ava-1b4d3cd3392295481b6e62e72f15318c53f82fba43616f651d62fe062bcf5708"))
         check(model.state.value.error == null && !model.state.value.busy)
         ui.onNodeWithTag("runtime-avatar-image", useUnmergedTree = true).assertIsDisplayed()
     }
