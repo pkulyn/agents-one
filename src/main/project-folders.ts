@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { basename, join, normalize } from "path";
 import { createHash } from "crypto";
+import { agentsOneProfileHome } from "./agents-one-data-root";
 import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
 import type {
   ProjectFolderRecord,
@@ -17,6 +18,15 @@ const STORE_VERSION = 2;
 const MAX_FOLDERS = 100;
 
 function storePath(): string {
+  return join(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    "desktop",
+    "project-folders.json",
+  );
+}
+
+/** Older default-profile releases kept this desktop registry under Hermes. */
+function legacyStorePath(): string {
   return join(
     profileHome(getActiveProfileNameSync()),
     "desktop",
@@ -56,9 +66,12 @@ function isRecord(value: unknown): value is ProjectFolderRecord {
 
 function readStore(): ProjectFolderStore {
   try {
-    if (!existsSync(storePath()))
-      return { version: STORE_VERSION, folders: [] };
-    const parsed = JSON.parse(readFileSync(storePath(), "utf8")) as unknown;
+    const currentPath = storePath();
+    const sourcePath = existsSync(currentPath)
+      ? currentPath
+      : legacyStorePath();
+    if (!existsSync(sourcePath)) return { version: STORE_VERSION, folders: [] };
+    const parsed = JSON.parse(readFileSync(sourcePath, "utf8")) as unknown;
     const folders =
       parsed &&
       typeof parsed === "object" &&
