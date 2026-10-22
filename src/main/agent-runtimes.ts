@@ -5013,6 +5013,9 @@ export async function startAgentRuntimeTask(
         },
       );
       record.opencode = { cancel: opencode.cancel };
+      if (opencode.inputArtifacts.length) {
+        record.run = { ...record.run, inputArtifacts: opencode.inputArtifacts };
+      }
       if (opencode.sessionId) {
         record.run = { ...record.run, sessionId: opencode.sessionId };
       }
@@ -5035,6 +5038,9 @@ export async function startAgentRuntimeTask(
         }
         finishRuntimeRun(record, result.error ? "failed" : "succeeded", {
           output: result.output,
+          ...(result.inputArtifacts.length
+            ? { inputArtifacts: result.inputArtifacts }
+            : {}),
           ...(result.sessionId ? { sessionId: result.sessionId } : {}),
           ...(result.error ? { error: result.error } : {}),
           ...(result.diffSummary ? { diffSummary: result.diffSummary } : {}),
