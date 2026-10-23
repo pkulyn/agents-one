@@ -1,5 +1,9 @@
+import {
+  RuntimeMenuItems,
+  runtimeDescription,
+} from "../../components/RuntimeMenu";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bot, Check, ChevronDown, Settings } from "../../assets/icons";
+import { Bot, ChevronDown, Settings } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
 import { addMigratedEventListener } from "../../utils/brandMigration";
@@ -20,15 +24,6 @@ interface ProfileSwitcherProps {
   /** Render as an icon-only sidebar footer affordance. */
   compact?: boolean;
 }
-
-const RUNTIME_LABELS: Record<string, string> = {
-  hermes: "Hermes Agent Runtime",
-  codex: "Codex",
-  "claude-code": "Claude Code",
-  pi: "Pi Agent CLI",
-  opencode: "OpenCode",
-  openclaw: "OpenClaw",
-};
 
 /**
  * Sidebar footer control: shows the active profile and, on click, opens a
@@ -104,18 +99,7 @@ export default function ProfileSwitcher({
     runtimes[0];
   const label = defaultRuntime?.name || t("common.appName");
   const runtimeMeta = (runtime: AgentRuntimeDefinition): string =>
-    t("navigation.profile.runtimeMeta", {
-      kind:
-        RUNTIME_LABELS[runtime.kind] ||
-        (runtime.kind === "web-agent"
-          ? t("navigation.profile.webAgent")
-          : runtime.kind),
-      location: t(
-        runtime.location === "local"
-          ? "navigation.profile.local"
-          : "navigation.profile.remote",
-      ),
-    });
+    runtimeDescription(runtime, t);
 
   function handleDefaultRuntime(runtime: AgentRuntimeDefinition): void {
     setOpen(false);
@@ -180,39 +164,11 @@ export default function ProfileSwitcher({
               <div className="profile-menu-section-label">
                 {t("navigation.profile.selectDefault")}
               </div>
-              <div className="profile-menu-list">
-                {runtimes.map((runtime) => {
-                  const selected = runtime.id === defaultRuntime?.id;
-                  return (
-                    <button
-                      key={runtime.id}
-                      className={`profile-menu-item ${selected ? "active" : ""}`}
-                      role="menuitemradio"
-                      aria-checked={selected}
-                      disabled={!runtime.enabled}
-                      onClick={() => handleDefaultRuntime(runtime)}
-                    >
-                      {renderRuntimeAvatar(runtime, 20)}
-                      <span className="profile-menu-info">
-                        <span className="profile-menu-name">
-                          {runtime.name}
-                          {selected && (
-                            <span className="profile-menu-tag">
-                              {t("navigation.profile.default")}
-                            </span>
-                          )}
-                        </span>
-                        <span className="profile-menu-meta">
-                          {runtimeMeta(runtime)}
-                        </span>
-                      </span>
-                      {selected && (
-                        <Check className="profile-menu-check" size={14} />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <RuntimeMenuItems
+                runtimes={runtimes}
+                selectedId={defaultRuntime?.id}
+                onSelect={handleDefaultRuntime}
+              />
             </>
           )}
           <button

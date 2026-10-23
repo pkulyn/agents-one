@@ -175,9 +175,9 @@ describe("ProfileSwitcher", () => {
     const trigger = await screen.findByTitle("Default agent: Hermes");
     fireEvent.click(trigger);
     expect(screen.getByText("Select default agent")).toBeVisible();
-    expect(screen.getAllByText("Default").length).toBeGreaterThan(0);
+    expect(screen.getByRole("menuitemradio", { checked: true })).toBeVisible();
     expect(
-      screen.getAllByText(/Hermes Agent Runtime \/ Remote/).length,
+      screen.getAllByText(/Hermes Agent \/ Remote/).length,
     ).toBeGreaterThan(0);
   });
 });

@@ -1974,7 +1974,7 @@ body {
 }
 
 .sidebar-recent-session.project-child {
-  padding-left: 28px;
+  padding-left: 10px;
 }
 
 .sidebar-recent-session-dot {
@@ -1995,9 +1995,9 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 17px;
-  height: 17px;
-  flex: 0 0 17px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--accent-subtle);
@@ -2861,6 +2861,40 @@ body {
 
 .profile-menu-item:hover {
   background: var(--bg-tertiary);
+}
+
+.profile-menu-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.runtime-sort-row {
+  cursor: grab;
+}
+
+.quick-chat-runtime-trigger {
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.quick-chat-runtime-menu {
+  position: absolute;
+  top: 100%;
+  inset-inline: 10px;
+  z-index: 210;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  box-shadow: 0 8px 24px #0003;
+}
+
+.quick-chat-runtime-trigger .profile-menu-name {
+  flex: 1;
+}
+
+.runtime-sort-row > .profile-menu-item {
+  cursor: grab;
 }
 
 .profile-menu-item.active {
@@ -5226,6 +5260,14 @@ body {
 
 .chat-input-toolbar-spacer {
   flex: 1;
+}
+
+.chat-input-toolbar
+  :is(.chat-meta-chip, .chat-model-trigger, .runtime-permission-trigger) {
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+  padding-block: 0;
 }
 
 /* Thin separator between the icon buttons and the picker chips. */
@@ -11368,9 +11410,11 @@ button.task-collaboration-inline-avatar:focus-visible {
   gap: 4px;
   flex: 0 1 auto;
   min-width: 0;
-  padding: 3px 6px;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   background: var(--bg-secondary);
   font-size: 11px;
@@ -18526,28 +18570,13 @@ button.task-collaboration-inline-avatar:focus-visible {
 }
 
 .quick-chat-agent-row {
+  position: relative;
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
-}
-
-.quick-chat-agent-row select {
-  min-width: 0;
-  height: 36px;
-  padding: 0 10px;
-  color: var(--text-primary);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-bright);
-  border-radius: var(--radius-sm);
-  font: 500 14px/1.35 var(--font-sans);
-  outline: none;
-}
-
-.quick-chat-agent-row select:focus {
-  border-color: var(--border-focus);
 }
 
 .quick-chat-avatar {

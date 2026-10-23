@@ -44,12 +44,6 @@ const SETTINGS_NAV: ReadonlyArray<{
 }> = [
   {
     group: "general",
-    id: "mobile",
-    labelKey: "settings.mobile.title",
-    Icon: Smartphone,
-  },
-  {
-    group: "general",
     id: "appearance",
     labelKey: "settings.nav.appearance",
     Icon: Palette,
@@ -71,6 +65,12 @@ const SETTINGS_NAV: ReadonlyArray<{
     id: "data",
     labelKey: "settings.nav.data",
     Icon: Database,
+  },
+  {
+    group: "general",
+    id: "mobile",
+    labelKey: "settings.mobile.title",
+    Icon: Smartphone,
   },
   {
     group: "general",
