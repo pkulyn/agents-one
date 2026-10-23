@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -5,12 +6,15 @@ import {
   readFileSync,
   readdirSync,
 } from "node:fs";
-import { createHash } from "node:crypto";
-import { extname, dirname, join, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
+import { prepareRuntimeInputs } from "../../runtime-inputs";
+import { extname, dirname, join, relative, resolve, win32 } from "node:path";
 import type {
   AgentRuntimeCapabilities,
   AgentRuntimeTaskInput,
   AgentRuntimeArtifact,
+  RuntimeInputArtifact,
 } from "../../../shared/agent-runtimes";
 import {
   normalizeAgentEventStreamModel,
@@ -373,7 +377,7 @@ class OpenCodeAcpClient {
   }
 
   async prompt(
-    prompt: string,
+    prompt: JsonRecord[],
     timeoutMs = DEFAULT_PROMPT_TIMEOUT_MS,
   ): Promise<JsonRecord> {
     if (!this.sessionId) throw new Error("OpenCode ACP session 尚未创建。");
@@ -381,7 +385,7 @@ class OpenCodeAcpClient {
       "session/prompt",
       {
         sessionId: this.sessionId,
-        prompt: [{ type: "text", text: prompt }],
+        prompt,
       },
       timeoutMs,
     );
@@ -785,6 +789,7 @@ export async function probeOpenCodeRuntime(
     process = startLocalProcess({
       command: invocation.command,
       args: [...invocation.prefix, ...openCodeArgs(config)],
+    env: await openCodeShellEnvironment(openCodeWindowsEnvironment({ ...globalThis.process.env })),
       cwd: workspace,
       onLine: (line) => {
         if (line.json !== undefined) client?.handleLine(line.json);
@@ -821,7 +826,98 @@ export async function probeOpenCodeRuntime(
   }
 }
 
+/** Repair launcher-escaped paths only in the OpenCode child environment. */
+export function openCodeWindowsEnvironment(
+  source: NodeJS.ProcessEnv,
+  platform = process.platform,
+): NodeJS.ProcessEnv {
+  const result = { ...source };
+  if (platform !== "win32") return result;
+  for (const key of Object.keys(result)) {
+    const value = result[key];
+    if (!value) continue;
+    if (key.toLowerCase() === "path") {
+      result[key] = value
+        .split(";")
+        .map((part) => (part ? win32.normalize(part) : part))
+        .join(";");
+    } else if (/^(systemroot|windir|comspec|temp|tmp)$/i.test(key)) {
+      result[key] = win32.normalize(value);
+    }
+  }
+  if (
+    !Object.keys(result).some(
+      (key) => key.toLowerCase() === "pathext" && result[key],
+    )
+  ) {
+    result.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+  }
+  return result;
+}
+
+/** Validate the native Windows shell before model tools start using it. */
+export async function openCodeShellEnvironment(
+  source: NodeJS.ProcessEnv,
+  platform = process.platform,
+  fileExists: (path: string) => boolean = existsSync,
+  probe: (
+    path: string,
+    args: string[],
+    env: NodeJS.ProcessEnv,
+  ) => Promise<boolean> = (path, args, env) =>
+    new Promise((resolveProbe) => {
+      execFile(
+        path,
+        args,
+        {
+          env,
+          windowsHide: true,
+          shell: false,
+          timeout: 3000,
+          maxBuffer: 4096,
+        },
+        (error, stdout) =>
+          resolveProbe(!error && stdout.trim() === "agents-one-shell-ok"),
+      );
+    }),
+): Promise<NodeJS.ProcessEnv> {
+  if (platform !== "win32" || source.SHELL?.trim()) return source;
+  const directories = (source.PATH || source.Path || "")
+    .split(";")
+    .filter(Boolean);
+  const find = (name: string): string | undefined =>
+    directories.map((directory) => join(directory, name)).find(fileExists);
+  const root = source.SystemRoot || source.SYSTEMROOT || source.WINDIR;
+  const candidates = [
+    find("pwsh.exe"),
+    find("powershell.exe"),
+    root
+      ? join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+      : undefined,
+    source.OPENCODE_GIT_BASH_PATH,
+    ...directories.map((directory) => join(directory, "..", "bin", "bash.exe")),
+  ];
+  for (const candidate of new Set(
+    candidates.filter((path): path is string =>
+      Boolean(path && fileExists(path)),
+    ),
+  )) {
+    const args = /bash\.exe$/i.test(candidate)
+      ? ["--noprofile", "--norc", "-c", "printf agents-one-shell-ok"]
+      : [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "Write-Output 'agents-one-shell-ok'",
+        ];
+    if (await probe(candidate, args, source))
+      return { ...source, SHELL: candidate };
+  }
+  return source;
+}
+
 export interface OpenCodeProcessResult {
+  inputArtifacts: RuntimeInputArtifact[];
   output: string;
   error?: string;
   sessionId?: string;
@@ -832,6 +928,7 @@ export interface OpenCodeProcessResult {
 }
 
 export interface StartedOpenCodeProcess {
+  inputArtifacts: RuntimeInputArtifact[];
   sessionId?: string;
   model?: AgentEventStreamModel;
   usage?: AgentEventStreamUsage;
@@ -864,6 +961,40 @@ export async function startOpenCodeProcess(
   const invocation = opencodeInvocation(
     configuredExecutable(config.executablePath),
   );
+  const preparedInputs = prepareRuntimeInputs(
+    input.profile,
+    input.attachments,
+    `opencode-${randomUUID()}`,
+  );
+  const promptBlocks: JsonRecord[] = [
+    {
+      type: "text",
+      text: openCodePrompt(input.prompt + preparedInputs.promptContext),
+    },
+    ...preparedInputs.files.map(({ artifact, path }): JsonRecord => {
+      if (artifact.kind === "image")
+        return {
+          type: "image",
+          mimeType: artifact.mime,
+          data: readFileSync(path).toString("base64"),
+        };
+      if (artifact.kind === "text")
+        return {
+          type: "resource",
+          resource: {
+            uri: pathToFileURL(path).href,
+            mimeType: artifact.mime,
+            text: readFileSync(path, "utf8"),
+          },
+        };
+      return {
+        type: "resource_link",
+        uri: pathToFileURL(path).href,
+        name: artifact.name,
+        mimeType: artifact.mime,
+      };
+    }),
+  ];
   const process = startLocalProcess({
     command: invocation.command,
     args: [...invocation.prefix, ...openCodeArgs(config)],
@@ -942,8 +1073,7 @@ export async function startOpenCodeProcess(
         model = { ...(model || {}), ...session.model };
         onMetadata?.({ model });
       }
-      const prompt = openCodePrompt(input.prompt);
-      const response = await client!.prompt(prompt, config.timeoutMs);
+      const response = await client!.prompt(promptBlocks, config.timeoutMs);
       const stopReason = text(response.stopReason);
       const responseUsage = usageFromOpenCodeValue(response);
       if (responseUsage) {
@@ -964,6 +1094,7 @@ export async function startOpenCodeProcess(
           : output,
         sessionId,
         artifacts,
+        inputArtifacts: preparedInputs.artifacts,
         ...(model ? { model } : {}),
         ...(usage ? { usage } : {}),
         ...(artifacts.length
@@ -989,6 +1120,7 @@ export async function startOpenCodeProcess(
         output,
         sessionId,
         artifacts,
+        inputArtifacts: preparedInputs.artifacts,
         ...(model ? { model } : {}),
         ...(usage ? { usage } : {}),
         ...(artifacts.length
@@ -1004,6 +1136,7 @@ export async function startOpenCodeProcess(
   })();
 
   return {
+    inputArtifacts: preparedInputs.artifacts,
     get sessionId() {
       return sessionId;
     },
