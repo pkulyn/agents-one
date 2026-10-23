@@ -237,3 +237,11 @@ OpenCode receives each explicitly attached file through ACP content blocks backe
 [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeWindowsEnvironment]] normalizes launcher-escaped Windows path variables only in the child environment and supplies standard executable suffixes if PATHEXT is absent. Explicit suffixes, proxy settings, permissions and unrelated environment values remain intact; provider and OS configuration are not rewritten.
 
 When OpenCode has no explicit shell override, [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeShellEnvironment]] probes the installed Windows shell with a bounded no-profile command. A bundled pwsh that aborts on unsupported CET is skipped in favor of a working Windows PowerShell or Git Bash. The choice is process-local, preserves an explicit SHELL, and leaves tool permission checks intact.
+
+## Claude and Codex attachment regression
+
+Claude Code and Codex preserve explicit attachment copies and complete final answers on both new and continued conversations, including when Chinese output spans process chunks.
+
+Claude attachments use the CLI staged-directory route, including read-only conversations; they never enter the SDK-only text control path. Codex grants the staged directory and passes image paths through native --image arguments, placing resumed images on exec resume. [[tests/claude-codex-attachments.test.ts]] launches process fixtures that read the copied bytes, emit a megabyte tool result and split a Chinese UTF-8 character in the final JSON event, then checks streaming and completed summaries plus the original session continuation.
+
+[[src/main/claude-code-runtime.ts#startClaudeCodeProcess]] and [[src/main/codex-runtime.ts#startCodexProcess]] decode stdout and stderr independently with incremental UTF-8 decoders and flush them on close before terminal summarization. This prevents replacement characters at valid byte boundaries without changing permissions, native arguments, staged content or output limits.
