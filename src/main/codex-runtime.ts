@@ -2,6 +2,7 @@ import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, mkdirSync } from "fs";
 import { promisify } from "util";
+import { StringDecoder } from "node:string_decoder";
 import { dirname, extname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
 import { agentsOneProfileHome } from "./utils";
@@ -218,7 +219,12 @@ function configuredProbeWorkspace(
 }
 
 function conversationCwd(profile?: string): string {
-  const root = join(agentsOneProfileHome(profile), "desktop", "runtime-chat", "codex");
+  const root = join(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "runtime-chat",
+    "codex",
+  );
   mkdirSync(root, { recursive: true });
   return root;
 }
@@ -482,14 +488,16 @@ export async function startCodexProcess(
     let output = "";
     // @lat: [[mobile-data#Mobile data#Codex long output session identity]]
     const thread = new CodexThreadTracker();
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
     child.stdout?.on("data", (data: Buffer) => {
-      const chunk = redact(data.toString());
+      const chunk = redact(stdoutDecoder.write(data));
       thread.push(chunk);
       output = appendCapped(output, chunk);
       onOutput(chunk);
     });
     child.stderr?.on("data", (data: Buffer) => {
-      const chunk = redact(data.toString());
+      const chunk = redact(stderrDecoder.write(data));
       output = appendCapped(output, chunk);
       onOutput(chunk);
     });
@@ -516,7 +524,14 @@ export async function startCodexProcess(
       });
       child.once("close", async (code) => {
         await mobileContext?.dispose();
-        thread.push("\n");
+        const stdoutTail = redact(stdoutDecoder.end());
+        const stderrTail = redact(stderrDecoder.end());
+        for (const tail of [stdoutTail, stderrTail]) {
+          if (!tail) continue;
+          output = appendCapped(output, tail);
+          onOutput(tail);
+        }
+        thread.push(stdoutTail + "\n");
         const requestedSessionId = input.sessionId?.trim();
         const mismatchedSession = Boolean(
           requestedSessionId && thread.id && thread.id !== requestedSessionId,
