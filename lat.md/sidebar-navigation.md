@@ -148,6 +148,8 @@ The main-process transports still send a generated `X-Hermes-Session-Id` on fres
 
 Default-agent and quick-chat menus share avatar rows, concise type/location descriptions and a desktop display order. Dragging a menu row or agent-management card changes presentation without editing Runtime definitions or conversation data.
 
-[[src/renderer/src/components/RuntimeMenu.tsx#useRuntimeOrder]] stores only ordered Runtime IDs in the dedicated renderer localStorage key `agents-one.runtime-display-order.v1`, synchronizes mounted consumers and retains newly registered agents. Management keeps its three domain groups and applies that same order within each group. Both menus use 32px avatars; sidebar task rows use 30px avatars and identical left padding inside and outside projects. Web-agent menu descriptions omit local location, Hermes uses Hermes Agent, and Pi uses Pi Agent.
+[[src/renderer/src/components/RuntimeMenu.tsx#useRuntimeOrder]] stores only ordered Runtime IDs in the dedicated renderer localStorage key `agents-one.runtime-display-order.v1`, synchronizes mounted consumers and retains newly registered agents. Management keeps its three domain groups and applies that same order within each group. Both menus use 36px avatars and 14px names; sidebar task rows use 24px avatars and identical left padding inside and outside projects. Web-agent menu descriptions omit local location, Hermes uses Hermes Agent, and Pi uses Pi Agent.
+
+The expanded sidebar footer uses a 26px default-agent avatar and 15px semibold name; the compact rail uses a 24px avatar.
 
 Settings place Mobile connection between Data and Archives. Composer toolbar controls share a 34px height; reply branch icons are vertically mirrored without changing branch behavior.

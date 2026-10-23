@@ -113,7 +113,7 @@ export function runtimeDescription(
 }
 export function RuntimeAvatar({
   runtime,
-  size = 32,
+  size = 36,
 }: {
   runtime?: AgentRuntimeDefinition;
   size?: number;

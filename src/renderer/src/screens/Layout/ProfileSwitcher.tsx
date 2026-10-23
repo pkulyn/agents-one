@@ -192,7 +192,7 @@ export default function ProfileSwitcher({
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        {renderRuntimeAvatar(defaultRuntime, compact ? 22 : 18)}
+        {renderRuntimeAvatar(defaultRuntime, compact ? 24 : 26)}
         {!compact && <span className="profile-switcher-name">{label}</span>}
         {!compact && (
           <ChevronDown size={14} className="profile-switcher-chevron" />

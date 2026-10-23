@@ -1459,7 +1459,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             {runtimeAvatar ? (
               <img src={runtimeAvatar} alt="" />
             ) : (
-              <Bot size={20} />
+              <Bot size={16} />
             )}
           </span>
         )}
