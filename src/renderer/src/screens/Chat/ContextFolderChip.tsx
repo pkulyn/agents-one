@@ -1,11 +1,5 @@
 import { memo, useState, useEffect, useRef } from "react";
-import {
-  FolderOpen,
-  PanelRightOpen,
-  PanelRightClose,
-  X,
-  Check,
-} from "lucide-react";
+import { FolderOpen, FolderSearch, X, Check } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 interface ContextFolderChipProps {
@@ -245,11 +239,7 @@ export const ContextFolderChip = memo(function ContextFolderChip({
         }
         type="button"
       >
-        {worktreeVisible ? (
-          <PanelRightClose size={16} />
-        ) : (
-          <PanelRightOpen size={16} />
-        )}
+        <FolderSearch size={18} />
       </button>
       {isOpen && renderDropdown()}
     </div>

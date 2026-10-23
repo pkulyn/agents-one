@@ -44,4 +44,4 @@ The `@wesbos/code-icons` SVGs render inside `.worktree-file-icon-wrapper`; CSS o
 
 ## File browser toolbar control
 
-The context-folder file browser toggle uses the shared 34×34px toolbar button, with a 16px right-panel open/close icon and accessible pressed state. Its larger hit target is independent from choosing or clearing the conversation folder.
+The context-folder file browser toggle uses the shared 34×34px toolbar button, with an 18px folder-and-magnifier icon and accessible pressed state. Its larger hit target is independent from choosing or clearing the conversation folder.
