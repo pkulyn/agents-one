@@ -59,7 +59,7 @@
     <string name="trigger_scheduled">Started by schedule</string>
     <string name="trigger_missed">Missed schedule</string>
     <string name="open_result_conversation">Open result conversation</string>
-    <string name="conversations">Conversations</string>
+    <string name="conversations">Tasks</string>
     <string name="schedules">Schedules</string>
     <string name="account">Account</string>
     <string name="new_conversation">New conversation</string>

@@ -2219,3 +2219,11 @@ Returning from schedules or account selects standalone conversations and restore
 ## Android project detail retains its category on back
 
 Opening an original project task and returning preserves the expanded project group; a subsequent bottom-navigation return to conversations resets to the standalone list.
+
+## Android task directory source boundary
+
+安卓任务目录排除通用 Conversation 接口中的 quick_chat 快捷聊天，保留任意日期的真实任务。列表、搜索、分页与升级前加密缓存使用同一筛选，保持原游标与重复 ID、筛选字段校验；原始记录和缓存不被删除。标题、分类及底部导航统一显示任务（Tasks）。
+
+## Android task source event and snapshot admission
+
+实时事件与过期游标快照恢复同样遵循任务来源边界，快捷聊天不得绕过列表筛选重新进入目录；原始 native_session、runtime_conversation 与 collaboration 继续按当前项目和归档条件展示。

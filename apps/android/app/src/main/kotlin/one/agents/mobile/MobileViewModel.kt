@@ -1432,8 +1432,11 @@ class MobileViewModel internal constructor(
             mutable.update { it.copy(schedules = (if (append) it.schedules + page.items else page.items).distinctBy { row -> row.id }, scheduleCursor = page.nextCursor, scheduleError = null, scheduleQuery = query, scheduleSelection = selection) }
         } else {
             val page = json.decodeFromJsonElement<ConversationPage>(response)
-            if (page.items.any { !selection.matches(it) } || page.items.distinctBy { it.id }.size != page.items.size) throw MobileApiException("protocol_incompatible", 0)
-            mutable.update { it.copy(conversations = (if (append) it.conversations + page.items else page.items).distinctBy { row -> row.id }, conversationCursor = page.nextCursor, conversationError = null, conversationQuery = query, conversationSelection = selection) }
+            // Owner's general conversation feed also contains the separate desktop Quick Chat history.
+            // Apply the task-directory boundary to both live pages and encrypted pre-upgrade cache pages.
+            val taskItems = page.items.filter { it.sourceKind != "quick_chat" }
+            if (taskItems.any { !selection.matches(it) } || page.items.distinctBy { it.id }.size != page.items.size) throw MobileApiException("protocol_incompatible", 0)
+            mutable.update { it.copy(conversations = (if (append) it.conversations.filter { row -> row.sourceKind != "quick_chat" } + taskItems else taskItems).distinctBy { row -> row.id }, conversationCursor = page.nextCursor, conversationError = null, conversationQuery = query, conversationSelection = selection) }
         }
     }
     private suspend fun fetchAndApplyListPage(
