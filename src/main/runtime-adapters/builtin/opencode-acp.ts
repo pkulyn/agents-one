@@ -789,7 +789,9 @@ export async function probeOpenCodeRuntime(
     process = startLocalProcess({
       command: invocation.command,
       args: [...invocation.prefix, ...openCodeArgs(config)],
-    env: await openCodeShellEnvironment(openCodeWindowsEnvironment({ ...globalThis.process.env })),
+      env: await openCodeShellEnvironment(
+        openCodeWindowsEnvironment({ ...globalThis.process.env }),
+      ),
       cwd: workspace,
       onLine: (line) => {
         if (line.json !== undefined) client?.handleLine(line.json);
@@ -998,6 +1000,9 @@ export async function startOpenCodeProcess(
   const process = startLocalProcess({
     command: invocation.command,
     args: [...invocation.prefix, ...openCodeArgs(config)],
+    env: await openCodeShellEnvironment(
+      openCodeWindowsEnvironment({ ...globalThis.process.env }),
+    ),
     cwd,
     onLine: (line) => {
       if (line.json !== undefined) client.handleLine(line.json);

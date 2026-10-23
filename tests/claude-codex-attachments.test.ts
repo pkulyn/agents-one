@@ -16,26 +16,6 @@ vi.mock("child_process", async (original) => {
     },
   };
 });
-vi.mock("../src/main/mobile-control/codex-mobile-context", () => ({
-  prepareCodexMobileContext: () => {
-    throw Error("unexpected mobile call");
-  },
-}));
-vi.mock("../src/main/mobile-control/codex-effective-config", () => ({
-  readCodexMobileConfiguration: () => {
-    throw Error("unexpected mobile call");
-  },
-}));
-vi.mock("../src/main/mobile-control/codex-invocation-identity", () => ({
-  captureCodexInspectionIdentity: vi.fn(),
-  assertReviewedCodexInspectionNative: vi.fn(),
-  assertCodexInspectionIdentity: vi.fn(),
-}));
-vi.mock("../src/main/mobile-control/codex-project-write-context", () => ({
-  createCodexProjectWriteRunner: () => {
-    throw Error("unexpected mobile call");
-  },
-}));
 import { startCodexProcess } from "../src/main/codex-runtime";
 import { startClaudeCodeProcess } from "../src/main/claude-code-runtime";
 

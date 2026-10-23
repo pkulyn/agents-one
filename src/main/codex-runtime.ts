@@ -487,9 +487,7 @@ export async function startCodexProcess(
         output: restoredFiles.length
           ? `${output}\n[Agents One] 已阻止移动或删除 ${restoredFiles.length} 个原有文件。`
           : output,
-        ...(thread.id
-          ? { sessionId: thread.id }
-          : {}),
+        ...(thread.id ? { sessionId: thread.id } : {}),
         ...(code === 0
           ? {}
           : { error: `Codex exited with code ${code ?? "unknown"}.` }),

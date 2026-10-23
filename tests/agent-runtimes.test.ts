@@ -480,7 +480,7 @@ describe("agent runtime registry", () => {
     });
     const result = await runtimes.runAgentRuntimeTask(saved.id, {
       prompt: "解释附件",
-      mode: "safe_write",
+      mode: "analysis",
       conversation: true,
       attachments: [
         {
@@ -501,7 +501,7 @@ describe("agent runtime registry", () => {
         },
       ],
     });
-    expect(result.status).toBe("succeeded");
+    expect(result.status, JSON.stringify(result)).toBe("succeeded");
     expect(result.output).toBe("ok");
     expect(result.inputArtifacts).toEqual(
       expect.arrayContaining([
