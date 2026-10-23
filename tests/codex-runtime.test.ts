@@ -1,11 +1,41 @@
 import { describe, expect, it } from "vitest";
 import {
   codexExecArgs,
+  codexDesktopEnvironment,
   codexInvocation,
   codexThreadIdFromOutput,
 } from "../src/main/codex-runtime";
 
 describe("Codex runtime invocation", () => {
+  it("excludes only CET-broken desktop shell directories and preserves every other setting", async () => {
+    const source = {
+      Path: "D:\\broken;D:\\healthy;D:\\tools",
+      MODEL_SETTING: "kept",
+      HTTPS_PROXY: "http://localhost:7890",
+    };
+    const result = await codexDesktopEnvironment(
+      source,
+      "win32",
+      (p) => !p.includes("tools"),
+      async (p) => p.includes("broken"),
+    );
+    expect(result).toEqual({ ...source, Path: "D:\\healthy;D:\\tools" });
+    expect(source.Path).toContain("broken");
+    expect(
+      await codexDesktopEnvironment(
+        source,
+        "win32",
+        () => true,
+        async () => false,
+      ),
+    ).toEqual(source);
+    expect(
+      await codexDesktopEnvironment(source, "linux", () => {
+        throw Error("unexpected probe");
+      }),
+    ).toEqual(source);
+  });
+
   it("captures a persisted thread id only from structured exec events", () => {
     expect(
       codexThreadIdFromOutput(
