@@ -41,3 +41,7 @@ Remote chats use an in-app picker so users do not accidentally select a local ma
 The tree keeps file-type icon shapes but normalizes their colors so the explorer reads quietly in the chat sidebar.
 
 The `@wesbos/code-icons` SVGs render inside `.worktree-file-icon-wrapper`; CSS overrides inline fills/strokes to `currentColor` while preserving `fill:none` outlines, and folder icons use the same low-opacity white tone.
+
+## File browser toolbar control
+
+The context-folder file browser toggle uses the shared 34×34px toolbar button, with a 16px right-panel open/close icon and accessible pressed state. Its larger hit target is independent from choosing or clearing the conversation folder.

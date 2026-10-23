@@ -153,3 +153,11 @@ Default-agent and quick-chat menus share avatar rows, concise type/location desc
 The expanded sidebar footer uses a 26px default-agent avatar and 15px semibold name; the compact rail uses a 24px avatar.
 
 Settings place Mobile connection between Data and Archives. Composer toolbar controls share a 34px height; reply branch icons are vertically mirrored without changing branch behavior.
+
+## Archive task identity
+
+Archived task rows and expanded project children retain their agent avatars, using current identity or a historical snapshot when the Runtime is unavailable.
+
+Registry identity is resolved by the archived runtime ID or conversation metadata; historical snapshots survive removed runtimes and registry read failures. Native conversations use the Hermes identity.
+
+[[src/renderer/src/components/settings/ArchivePane.tsx]] loads appearance metadata through existing read APIs, including tasks without a workspace. Project cards retain folder icons; missing task avatars fall back to a bot icon. Archive markers, conversation data and restore/delete behavior are unchanged.
