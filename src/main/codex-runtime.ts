@@ -246,6 +246,56 @@ function childEnvironment(): NodeJS.ProcessEnv {
   return { ...process.env };
 }
 
+/** Exclude only a proven CET-incompatible pwsh from this desktop child PATH. */
+export async function codexDesktopEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+  platform = process.platform,
+  fileExists: (path: string) => boolean = existsSync,
+  hasCetFailure: (
+    path: string,
+    env: NodeJS.ProcessEnv,
+  ) => Promise<boolean> = async (path, env) => {
+    try {
+      await execFile(
+        path,
+        ["-NoProfile", "-NonInteractive", "-Command", "exit 0"],
+        {
+          env,
+          windowsHide: true,
+          shell: false,
+          timeout: 2000,
+          maxBuffer: 4096,
+        },
+      );
+      return false;
+    } catch (error) {
+      return /doesn't fully support CET/i.test(
+        String((error as { stderr?: string }).stderr || ""),
+      );
+    }
+  },
+): Promise<NodeJS.ProcessEnv> {
+  const result = { ...source };
+  if (platform !== "win32") return result;
+  for (const key of Object.keys(result).filter(
+    (key) => key.toLowerCase() === "path",
+  )) {
+    const directories = result[key]?.split(";") || [];
+    const kept: string[] = [];
+    for (const directory of directories) {
+      const candidate = join(directory, "pwsh.exe");
+      if (
+        !directory ||
+        !fileExists(candidate) ||
+        !(await hasCetFailure(candidate, source))
+      )
+        kept.push(directory);
+    }
+    result[key] = kept.join(";");
+  }
+  return result;
+}
+
 /** This argument contract is intentionally kept pure and regression-tested. */
 export function codexExecArgs(
   cwd: string,
@@ -480,7 +530,10 @@ export async function startCodexProcess(
       );
     const child = spawn(invocation.command, [...invocation.prefix, ...args], {
       cwd,
-      env: mobileContext?.environment ?? environment ?? childEnvironment(),
+      env:
+        mobileContext?.environment ??
+        environment ??
+        (await codexDesktopEnvironment(childEnvironment())),
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
