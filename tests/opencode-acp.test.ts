@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   opencodeInvocation,
+  openCodeWindowsEnvironment,
+  openCodeShellEnvironment,
   probeOpenCodeRuntime,
   startOpenCodeProcess,
 } from "../src/main/runtime-adapters/builtin/opencode-acp";
@@ -101,6 +103,125 @@ function lifecycleAcpScript(delayMs: number, ignoresCancel = false): string {
 }
 
 describe("OpenCode ACP adapter", () => {
+  it("falls back from an unlaunchable Windows PowerShell to a healthy user shell", async () => {
+    const source = {
+      Path: "D:\\tools",
+      SYSTEMROOT: "C:\\Windows",
+      KEEP: "yes",
+    };
+    const calls: string[] = [];
+    const result = await openCodeShellEnvironment(
+      source,
+      "win32",
+      (p) => /pwsh\.exe$|powershell\.exe$/i.test(p),
+      async (p, args, env) => {
+        calls.push(p);
+        expect(args).toContain("-NoProfile");
+        expect(env).toBe(source);
+        return /powershell\.exe$/i.test(p);
+      },
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toContain("pwsh.exe");
+    expect(result.SHELL).toContain("powershell.exe");
+    expect(result.KEEP).toBe("yes");
+    expect(source).not.toHaveProperty("SHELL");
+    const explicit = { ...source, SHELL: "D:\\custom\\bash.exe" };
+    expect(
+      await openCodeShellEnvironment(explicit, "win32", () => {
+        throw Error("must not probe");
+      }),
+    ).toBe(explicit);
+    expect(
+      await openCodeShellEnvironment(source, "linux", () => {
+        throw Error("must not probe");
+      }),
+    ).toBe(source);
+  });
+
+  it.each([undefined, "existing-session"])(
+    "sends staged attachments through ACP on session %s",
+    async (sessionId) => {
+      const { stageAttachment } =
+        await import("../src/main/attachment-staging");
+      const script = [
+        "const fs=require('node:fs'),url=require('node:url'),rl=require('node:readline').createInterface({input:process.stdin});",
+        "const send=x=>process.stdout.write(JSON.stringify(x)+'\\n');",
+        "rl.on('line',line=>{const m=JSON.parse(line);if(m.method==='initialize')send({id:m.id,result:{agentCapabilities:{sessionCapabilities:{resume:true}}}});else if(m.method==='session/new'||m.method==='session/resume')send({id:m.id,result:{sessionId:m.params.sessionId||'new-session'}});else if(m.method==='session/prompt'){try{const p=m.params.prompt,resource=p.find(x=>x.type==='resource').resource,image=p.find(x=>x.type==='image'),link=p.find(x=>x.type==='resource_link');if(resource.text!=='联调测试内容'||fs.readFileSync(url.fileURLToPath(resource.uri),'utf8')!==resource.text||Buffer.from(image.data,'base64').toString()!=='test image bytes'||fs.readFileSync(url.fileURLToPath(link.uri),'utf8')!=='document bytes')throw Error('attachment mismatch');send({method:'session/update',params:{sessionId:m.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'两个附件及文档副本均已读取。'}}}});send({id:m.id,result:{stopReason:'end_turn'}})}catch(e){send({id:m.id,error:{message:e.message}})}}});",
+      ].join("");
+      const document = stageAttachment(
+        "acp-attachment",
+        "说明.pdf",
+        Buffer.from("document bytes").toString("base64"),
+      );
+      const started = await startOpenCodeProcess(
+        { executablePath: process.execPath, acpArgs: ["-e", script] },
+        {
+          prompt: "解释附件",
+          mode: "analysis",
+          sessionId,
+          attachments: [
+            {
+              id: "txt",
+              name: "测试文档.txt",
+              mime: "text/plain",
+              kind: "text-file",
+              size: 18,
+              text: "联调测试内容",
+            },
+            {
+              id: "img",
+              name: "图片.png",
+              mime: "image/png",
+              kind: "image",
+              size: 16,
+              dataUrl:
+                "data:image/png;base64," +
+                Buffer.from("test image bytes").toString("base64"),
+            },
+            {
+              id: "doc",
+              name: "说明.pdf",
+              mime: "application/pdf",
+              kind: "path-ref",
+              size: 14,
+              path: document,
+            },
+          ],
+        },
+        () => undefined,
+        () => undefined,
+      );
+      const result = await started.completion;
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe("两个附件及文档副本均已读取。");
+      expect(started.inputArtifacts.map((a) => a.id)).toEqual([
+        "txt",
+        "img",
+        "doc",
+      ]);
+      expect(result.inputArtifacts).toEqual(started.inputArtifacts);
+    },
+  );
+
+  it("normalizes escaped Windows child paths and restores missing executable suffix lookup", () => {
+    const source = {
+      Path: "C:\\\\Windows\\\\system32;D:\\\\portable-node",
+      SystemRoot: "C:\\\\Windows",
+      CUSTOM_SETTING: "kept",
+    };
+    const result = openCodeWindowsEnvironment(source, "win32");
+    expect(result.Path).toBe("C:\\Windows\\system32;D:\\portable-node");
+    expect(result.SystemRoot).toBe("C:\\Windows");
+    expect(result.PATHEXT).toBe(".COM;.EXE;.BAT;.CMD");
+    expect(result.CUSTOM_SETTING).toBe("kept");
+    expect(source).not.toHaveProperty("PATHEXT");
+    expect(
+      openCodeWindowsEnvironment({ PATHEXT: ".EXE;.CUSTOM" }, "win32").PATHEXT,
+    ).toBe(".EXE;.CUSTOM");
+    expect(openCodeWindowsEnvironment(source, "linux")).toEqual(source);
+  });
+
   // @lat: [[plugin-sdk#ACP turn deadlines#Configured deadline remains bounded]]
   it("enforces the configured prompt deadline independently of initialization", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "opencode-acp-deadline-"));

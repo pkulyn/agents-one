@@ -459,6 +459,89 @@ describe("agent runtime registry", () => {
     }
   });
 
+  // @lat: [[runtime-chat#OpenCode attachment transport]]
+  it("passes attachments from Main through ACP and reloads the final reply", async () => {
+    const { runtimes } = await loadModules();
+    const script = fakeOpenCodeAcpScript().replace(
+      "if(m.method==='session/prompt'){",
+      "if(m.method==='session/prompt'){if(!m.params.prompt.some(x=>x.type==='image')||!m.params.prompt.some(x=>x.type==='resource'&&x.resource.text==='测试附件正文')){s({id:m.id,error:{message:'missing attachments'}});return;}",
+    );
+    const saved = runtimes.saveAgentRuntime({
+      id: "opencode-inputs-main",
+      name: "OpenCode",
+      kind: "opencode",
+      location: "local",
+      enabled: true,
+      config: {
+        executablePath: process.execPath,
+        acpArgs: ["-e", script],
+        agentTransport: "local-cli",
+      },
+    });
+    const result = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "解释附件",
+      mode: "safe_write",
+      conversation: true,
+      attachments: [
+        {
+          id: "text",
+          name: "测试文档.txt",
+          kind: "text-file",
+          mime: "text/plain",
+          size: 18,
+          text: "测试附件正文",
+        },
+        {
+          id: "image",
+          name: "图片.png",
+          kind: "image",
+          mime: "image/png",
+          size: 4,
+          dataUrl: "data:image/png;base64,dGVzdA==",
+        },
+      ],
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toBe("ok");
+    expect(result.inputArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "text",
+          kind: "text",
+          sha256: expect.any(String),
+        }),
+        expect.objectContaining({
+          id: "image",
+          kind: "image",
+          sha256: expect.any(String),
+        }),
+      ]),
+    );
+    const store = await import("../src/main/runtime-conversation-store");
+    store.saveRuntimeConversation({
+      id: "attachment-main",
+      title: "附件",
+      runtimeId: saved.id,
+      runtimeName: saved.name,
+      runtimeKind: saved.kind,
+      messages: [
+        {
+          id: "reply",
+          role: "agent",
+          content: result.output!,
+          createdAt: Date.now(),
+          execution: { runId: result.id, events: result.events || [] },
+        },
+      ],
+    });
+    const restored = store.getRuntimeConversation("attachment-main")!;
+    const { runtimeConversationToChatMessages } =
+      await import("../src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter");
+    expect(runtimeConversationToChatMessages(restored.messages)).toContainEqual(
+      expect.objectContaining({ kind: "assistant", content: "ok" }),
+    );
+  });
+
   it("routes a local OpenCode task through the main Runtime lifecycle", async () => {
     const { runtimes } = await loadModules();
     const saved = runtimes.saveAgentRuntime({
