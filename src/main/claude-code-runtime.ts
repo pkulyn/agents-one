@@ -1,6 +1,7 @@
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync } from "fs";
 import { promisify } from "util";
+import { StringDecoder } from "node:string_decoder";
 import { delimiter, dirname, extname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
 import { profileHome } from "./utils";
@@ -480,6 +481,8 @@ export async function startClaudeCodeProcess(
   );
   let output = "";
   const filterStdout = createClaudeOutputFilter();
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
   const recordOutput = (chunk: string): void => {
     if (!chunk) return;
     const redacted = redact(chunk);
@@ -487,10 +490,10 @@ export async function startClaudeCodeProcess(
     onOutput(redacted);
   };
   child.stdout?.on("data", (data: Buffer) => {
-    recordOutput(filterStdout(data.toString()));
+    recordOutput(filterStdout(stdoutDecoder.write(data)));
   });
   child.stderr?.on("data", (data: Buffer) => {
-    recordOutput(data.toString());
+    recordOutput(stderrDecoder.write(data));
   });
 
   const completion = new Promise<ClaudeCodeProcessResult>((resolveResult) => {
@@ -515,7 +518,8 @@ export async function startClaudeCodeProcess(
     });
     child.once("close", async (code) => {
       const restoredFiles = workspaceProtection?.restoreAndDispose() || [];
-      recordOutput(filterStdout("", true));
+      recordOutput(filterStdout(stdoutDecoder.end(), true));
+      recordOutput(stderrDecoder.end());
       let diffSummary: string | undefined;
       let diff: string | undefined;
       if (worktreePath) {

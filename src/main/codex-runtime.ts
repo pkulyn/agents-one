@@ -1,3 +1,4 @@
+import { StringDecoder } from "node:string_decoder";
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, mkdirSync } from "fs";
 import { promisify } from "util";
@@ -124,6 +125,34 @@ export function codexThreadIdFromOutput(output: string): string | undefined {
   return undefined;
 }
 
+/** Capture provider identity before the bounded output tail drops its first event. */
+class CodexThreadTracker {
+  id?: string;
+  private pending = "";
+  private discardLine = false;
+  push(chunk: string): void {
+    if (this.id) return;
+    const lines = `${this.pending}${chunk}`.split(/\r?\n/);
+    this.pending = lines.pop() || "";
+    for (const line of lines) {
+      if (this.discardLine) {
+        this.discardLine = false;
+        continue;
+      }
+      // A thread identity event is small. Never retain an unbounded tool/body line.
+      if (line.length <= 16_384) this.id = codexThreadIdFromOutput(line);
+      if (this.id) {
+        this.pending = "";
+        return;
+      }
+    }
+    if (this.pending.length > 16_384) {
+      this.pending = "";
+      this.discardLine = true;
+    }
+  }
+}
+
 async function command(
   invocation: CodexInvocation,
   args: string[],
@@ -209,6 +238,7 @@ export function codexExecArgs(
   imagePaths: string[] = [],
   model?: string,
   skipGitRepoCheck = false,
+  sessionId?: string,
 ): string[] {
   const args = ["exec", "--json"];
   if (skipGitRepoCheck) args.push("--skip-git-repo-check");
@@ -222,9 +252,19 @@ export function codexExecArgs(
   }
   args.push("--cd", cwd);
   if (inputDirectory) args.push("--add-dir", inputDirectory);
-  for (const image of imagePaths) args.push("--image", image);
-  if (model?.trim()) args.push("--model", model.trim());
-  args.push(prompt);
+  const continuation = sessionId?.trim();
+  if (continuation) {
+    if (model?.trim()) args.push("--model", model.trim());
+    // --sandbox/--cd/--add-dir belong to exec, while resumed images belong to
+    // resume. Never select --last: this turn must advance its original thread.
+    args.push("resume", "--json");
+    for (const image of imagePaths) args.push("--image", image);
+    args.push("--", continuation, prompt);
+  } else {
+    for (const image of imagePaths) args.push("--image", image);
+    if (model?.trim()) args.push("--model", model.trim());
+    args.push("--", prompt);
+  }
   return args;
 }
 
@@ -306,6 +346,7 @@ export async function startCodexProcess(
     preparedInputs.imagePaths,
     config.model,
     !workspace,
+    input.sessionId,
   );
   const child = spawn(invocation.command, [...invocation.prefix, ...args], {
     cwd,
@@ -315,13 +356,17 @@ export async function startCodexProcess(
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
+  const thread = new CodexThreadTracker();
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
   child.stdout?.on("data", (data: Buffer) => {
-    const chunk = redact(data.toString());
+    const chunk = redact(stdoutDecoder.write(data));
+    thread.push(chunk);
     output = appendCapped(output, chunk);
     onOutput(chunk);
   });
   child.stderr?.on("data", (data: Buffer) => {
-    const chunk = redact(data.toString());
+    const chunk = redact(stderrDecoder.write(data));
     output = appendCapped(output, chunk);
     onOutput(chunk);
   });
@@ -346,6 +391,14 @@ export async function startCodexProcess(
       });
     });
     child.once("close", async (code) => {
+      const stdoutTail = redact(stdoutDecoder.end());
+      const stderrTail = redact(stderrDecoder.end());
+      for (const tail of [stdoutTail, stderrTail]) {
+        if (!tail) continue;
+        output = appendCapped(output, tail);
+        onOutput(tail);
+      }
+      thread.push(stdoutTail + "\n");
       const restoredFiles = workspaceProtection?.restoreAndDispose() || [];
       let diffSummary: string | undefined;
       let diff: string | undefined;
@@ -384,8 +437,8 @@ export async function startCodexProcess(
         output: restoredFiles.length
           ? `${output}\n[Agents One] 已阻止移动或删除 ${restoredFiles.length} 个原有文件。`
           : output,
-        ...(codexThreadIdFromOutput(output)
-          ? { sessionId: codexThreadIdFromOutput(output) }
+        ...(thread.id
+          ? { sessionId: thread.id }
           : {}),
         ...(code === 0
           ? {}
