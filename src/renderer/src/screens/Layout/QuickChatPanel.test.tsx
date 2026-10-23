@@ -97,7 +97,7 @@ describe("QuickChatPanel", () => {
     ).toBeVisible();
     expect(
       screen.getByRole("menuitemradio").querySelector(".profile-menu-runtime"),
-    ).toHaveStyle({ width: "36px", height: "36px" });
+    ).toHaveStyle({ width: "24px", height: "24px" });
     fireEvent.click(
       screen.getByRole("menuitemradio", { name: /Codex.*Codex \/ Local/ }),
     );
