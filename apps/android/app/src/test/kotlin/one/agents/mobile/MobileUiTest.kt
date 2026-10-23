@@ -69,7 +69,7 @@ class MobileUiTest {
         ui.onNodeWithText("每日工作摘要").assertIsDisplayed()
         ui.onAllNodesWithText("Enabled").onLast().assertExists()
         ui.onNodeWithText("Run once").assertDoesNotExist()
-        ui.onAllNodesWithText("Conversations").onLast().performClick()
+        ui.onAllNodesWithText("Tasks").onLast().performClick()
         ui.onNodeWithText("移动端实施契约").performClick()
         ui.onNodeWithText("View only · continue on Owner").assertIsDisplayed()
         ui.onNodeWithContentDescription("Send").assertDoesNotExist()

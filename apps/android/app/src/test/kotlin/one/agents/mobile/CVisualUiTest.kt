@@ -56,7 +56,7 @@ class CVisualUiTest {
         ui.onNode(hasText("English") and hasAnyAncestor(isDialog())).assertExists()
         capture("language-sheet")
         ui.onNodeWithText("Close").performClick()
-        ui.onAllNodesWithText("Conversations").onLast().performClick()
+        ui.onAllNodesWithText("Tasks").onLast().performClick()
         ui.onNodeWithContentDescription("New conversation").performClick()
         ui.onNodeWithTag("field:Task instructions").performTextInput("Please summarize this week's work.")
         ui.onNode(hasTestTag("field:Task instructions") and hasAnyAncestor(isDialog())).assertExists()

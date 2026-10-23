@@ -118,7 +118,7 @@ class MobileListReadTest {
         val selection = MobileListSelection()
         fun filters(schedules: Boolean) = selection.arguments(schedules).toSortedMap().map { (name, value) -> name to value.toString() }
         val cachedConversation = conversation("cached-conversation").copy(allowedActions = listOf("read", "manage"))
-        val cachedConversationPage = Json.encodeToJsonElement(ConversationPage(listOf(cachedConversation), null, "snapshot-1"))
+        val cachedConversationPage = Json.encodeToJsonElement(ConversationPage(listOf(cachedConversation) + (1..5).map { conversation("legacy-quick-$it").copy(sourceKind = "quick_chat", createdAt = "2026-07-21T00:00:00Z") }, null, "snapshot-1"))
         kotlinx.coroutines.runBlocking {
             listOf(false to cachedConversationPage, true to schedules(listOf("cached-schedule"))).forEach { (isSchedule, payload) ->
                 val section = if (isSchedule) "schedules" else "conversations"
@@ -413,6 +413,25 @@ class MobileListReadTest {
         client.handleRead = { suffix, _ -> if (suffix == listOf("conversations")) Json.encodeToJsonElement(ConversationPage(listOf(pending.copy(lastReadMessageSeq = pending.lastMessageSeq)), null, "1")) else null }
         perform { model.refresh() }
         ui.onNodeWithContentDescription("Unread").assertDoesNotExist()
+    }
+    // @lat: [[mobile-data#Mobile data#Android task directory source boundary]]
+    @Test fun taskDirectoryExcludesLegacyQuickChatsAcrossReadSearchAndMoreWithoutDateCutoff() {
+        val client = Client()
+        val oldTask = conversation("real-july-task").copy(createdAt = "2026-07-01T00:00:00Z", updatedAt = "2026-07-01T00:00:00Z")
+        val legacy = (1..5).map { conversation("legacy-quick-$it").copy(sourceKind = "quick_chat") }
+        client.handleRead = { suffix, query -> if (suffix == listOf("conversations")) Json.encodeToJsonElement(ConversationPage(if(query["cursor"] == null) listOf(oldTask) + legacy else listOf(conversation("next-task")) + legacy, if(query["cursor"] == null) "next-page" else null, "1")) else null }
+        connect(client)
+        check(model.state.value.conversations.map { it.id } == listOf(oldTask.id))
+        check(model.state.value.conversationCursor == "next-page" && model.state.value.conversationError == null)
+        perform { model.more(false) }
+        check(model.state.value.conversations.map { it.id } == listOf(oldTask.id, "next-task"))
+        client.handleSearch = { _, _ -> Json.encodeToJsonElement(ConversationPage(listOf(oldTask) + legacy, null, "2")) }
+        perform { model.search("task", false) }
+        check(model.state.value.conversations.map { it.id } == listOf(oldTask.id) && model.state.value.conversationError == null)
+        ui.runOnUiThread { model.language("zh-CN") }
+        ui.waitForIdle()
+        ui.onAllNodesWithText("任务").assertCountEquals(3)
+        ui.onAllNodesWithText("对话", substring = false).assertCountEquals(0)
     }
     // @lat: [[mobile-data#Mobile data#Android filter request and cursor fidelity]]
     @Test fun projectArchiveStatusFiltersStayTypedAcrossGetSearchMoreAndExpiredCursor() {
@@ -1033,7 +1052,7 @@ class MobileListReadTest {
             ui.onNodeWithTag("project-group:project-test").performClick()
             ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy && model.state.value.conversationSelection.projectId == "project-test" }
             ui.onAllNodesWithText(destination).onLast().performClick()
-            ui.onAllNodesWithText("Conversations").onLast().performClick()
+            ui.onAllNodesWithText("Tasks").onLast().performClick()
             ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy }
             ui.onNodeWithText("home-task-1").assertExists()
             ui.onNodeWithText("project-task-1").assertDoesNotExist()
@@ -1055,7 +1074,7 @@ class MobileListReadTest {
         ui.onNodeWithTag("project-group:project-test").assertExists()
         ui.onNodeWithText("project-task-1").assertExists()
         ui.onAllNodesWithText("Account").onLast().performClick()
-        ui.onAllNodesWithText("Conversations").onLast().performClick()
+        ui.onAllNodesWithText("Tasks").onLast().performClick()
         ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); !model.state.value.busy }
         ui.onNodeWithText("home-task-1").assertExists()
         ui.onNodeWithText("project-task-1").assertDoesNotExist()

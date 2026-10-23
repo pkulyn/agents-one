@@ -112,6 +112,19 @@ class MobileEventObservationTest {
     }
     private fun fail(client: Client, code: String, status: Int) { ui.runOnUiThread { client.streams.last().failed(MobileApiException(code, status)) } }
 
+    // @lat: [[mobile-data#Mobile data#Android task source event and snapshot admission]]
+    @Test fun legacyQuickChatEventsAndRecoverySnapshotsCannotEnterTaskDirectory() {
+        val client = Client(); connect(client)
+        val legacy = conversation("old-quick-chat").copy(sourceKind = "quick_chat")
+        emit(client, event("conversation.updated", Json.encodeToJsonElement(legacy), "1", refId = legacy.id))
+        waitFor { (MobileViewModel::class.java.getDeclaredField("eventCursor").apply { isAccessible = true }.get(model) as EventCursor).lastEventId == "epoch-1:1" }
+        check(model.state.value.conversations.map { it.id } == listOf("original"))
+        val oldTask = conversation("real-july-task").copy(createdAt = "2026-07-01T00:00:00Z", updatedAt = "2026-07-01T00:00:00Z")
+        client.snapshot = { Snapshot(listOf(legacy, oldTask), emptyList(), emptyList(), "recovery-anchor", "2", "epoch-1", null) }
+        fail(client, "cursor_expired", 410); waitFor { client.streams.size == 2 }
+        check(model.state.value.conversations.map { it.id } == listOf(oldTask.id))
+        check(model.state.value.syncError == null)
+    }
     // @lat: [[mobile-data#Mobile data#Android first-page backpressure recovery]]
     @Test fun firstPage429RecoversWithoutNewEventAndKeepsHealthyStreamAndSchedule() {
         val client = Client(); client.listFailure = true; connect(client)

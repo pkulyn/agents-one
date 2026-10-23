@@ -59,7 +59,7 @@
     <string name="trigger_scheduled">定时启动</string>
     <string name="trigger_missed">错过定时时刻</string>
     <string name="open_result_conversation">查看结果对话</string>
-    <string name="conversations">对话</string>
+    <string name="conversations">任务</string>
     <string name="schedules">定时</string>
     <string name="account">我的</string>
     <string name="new_conversation">新建对话</string>
