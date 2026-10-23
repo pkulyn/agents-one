@@ -1,5 +1,5 @@
 export default {
-  chat: "对话",
+  chat: "聊天",
   newTask: "新建任务",
   tasks: "任务",
   newChat: "新建对话",

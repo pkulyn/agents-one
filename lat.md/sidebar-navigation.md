@@ -143,3 +143,11 @@ The Appearance theme cards follow the order of [[src/renderer/src/constants.ts#T
 Fresh chat session ids are provisional until a turn produces output or completes successfully, so provider errors do not create visible recent-session rows.
 
 The main-process transports still send a generated `X-Hermes-Session-Id` on fresh requests to avoid gateway fingerprint collisions, but [[src/main/hermes.ts#sendMessageViaApi]] and the runs transport announce that id to the renderer only after visible output, tool/reasoning activity, or successful completion. Resumed sessions are announced immediately because the renderer already knows they are existing conversations. This keeps [[src/renderer/src/screens/Chat/hooks/useChatIPC.ts#useChatIPC]] from binding a failed first turn to a new sidebar entry.
+
+## Shared agent presentation
+
+Default-agent and quick-chat menus share avatar rows, concise type/location descriptions and a desktop display order. Dragging a menu row or agent-management card changes presentation without editing Runtime definitions or conversation data.
+
+[[src/renderer/src/components/RuntimeMenu.tsx#useRuntimeOrder]] stores only ordered Runtime IDs in the dedicated renderer localStorage key `agents-one.runtime-display-order.v1`, synchronizes mounted consumers and retains newly registered agents. Management keeps its three domain groups and applies that same order within each group. Both menus use 32px avatars; sidebar task rows use 30px avatars and identical left padding inside and outside projects. Web-agent menu descriptions omit local location, Hermes uses Hermes Agent, and Pi uses Pi Agent.
+
+Settings place Mobile connection between Data and Archives. Composer toolbar controls share a 34px height; reply branch icons are vertically mirrored without changing branch behavior.
