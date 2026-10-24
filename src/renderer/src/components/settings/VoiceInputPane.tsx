@@ -22,11 +22,18 @@ function bridgeUnavailableMessage(t: (key: string) => string): string {
  * The API key only crosses the preload bridge while being saved or tested and
  * is never included in the public configuration readback.
  */
-export default function VoiceInputPane({
+export default function VoiceInputPane(
+  props: VoiceInputPaneProps,
+): React.JSX.Element {
+  return <VoiceInputProfilePane key={props.profile || "default"} {...props} />;
+}
+
+function VoiceInputProfilePane({
   profile,
 }: VoiceInputPaneProps): React.JSX.Element {
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [url, setUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -41,6 +48,7 @@ export default function VoiceInputPane({
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
+    setReady(false);
     try {
       if (typeof window.agentsOneAPI.getVoiceInputConfig !== "function") {
         throw new Error(bridgeUnavailableMessage(t));
@@ -52,6 +60,7 @@ export default function VoiceInputPane({
       setHasApiKey(config.hasApiKey);
       setApiKey("");
       setClearApiKey(false);
+      setReady(true);
     } catch (error) {
       setNotice({
         kind: "error",
@@ -154,7 +163,7 @@ export default function VoiceInputPane({
             id="voice-input-enabled"
             type="checkbox"
             checked={enabled}
-            disabled={loading || saving}
+            disabled={!ready || loading || saving}
             onChange={(event) => setEnabled(event.target.checked)}
           />
           <span className="tools-toggle-track" />
@@ -173,12 +182,14 @@ export default function VoiceInputPane({
           className="input"
           type="url"
           value={url}
-          disabled={loading || saving}
+          disabled={!ready || loading || saving}
           onChange={(event) => setUrl(event.target.value)}
           placeholder={t("settings.voice.urlPlaceholder")}
           autoComplete="url"
         />
-        <div className="settings-field-hint">{t("settings.voice.urlHint")}</div>
+        <div className="settings-field-hint">
+          {t("settings.voice.urlHint")} {t("settings.voice.savedUrlHint")}
+        </div>
       </div>
 
       <div className="settings-field">
@@ -190,7 +201,7 @@ export default function VoiceInputPane({
           className="input"
           type="password"
           value={apiKey}
-          disabled={loading || saving}
+          disabled={!ready || loading || saving}
           onChange={(event) => {
             setApiKey(event.target.value);
             setClearApiKey(false);
@@ -209,7 +220,7 @@ export default function VoiceInputPane({
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            disabled={loading || saving}
+            disabled={!ready || loading || saving}
             onClick={() => {
               setClearApiKey(true);
               setApiKey("");
@@ -229,7 +240,7 @@ export default function VoiceInputPane({
         <button
           type="button"
           className="btn btn-primary"
-          disabled={loading || saving}
+          disabled={!ready || loading || saving}
           onClick={() => void save()}
         >
           {saving ? (
@@ -242,7 +253,7 @@ export default function VoiceInputPane({
         <button
           type="button"
           className="btn btn-secondary"
-          disabled={loading || testing || !url.trim()}
+          disabled={!ready || loading || saving || testing || !url.trim()}
           onClick={() => void testConnection()}
         >
           {testing ? (
