@@ -107,3 +107,9 @@ Shutdown rejects pending RPCs, escalates an unresponsive child within a bounded 
 Invalid or unreadable persisted Gateway state disables Gateway HTTP and WebSocket admission until an operator restores valid state and restarts the service. Startup, rejected requests and shutdown preserve the file.
 
 The entire collection and identity structure is validated before authorization indexes are installed. Unsupported versions, malformed records and duplicate identities fail closed; diagnostics omit original JSON. Missing files initialize a new store, while independent mobile authorization retains its own checks and persistence.
+
+## SSE metadata integrity
+
+Journal IDs must fit a single bounded SSE field. IDs containing control characters or exceeding 512 characters are replaced with stable SHA-256 identifiers before storage and serialization.
+
+Safe provider IDs retain their exact existing cursor and deduplication behavior. Unsafe IDs deduplicate consistently across refresh and persisted-journal reload; missing IDs retain random UUID allocation. Event types remain restricted to the existing whitelist, and JSON serialization keeps body newlines inside the data field. Real HTTP regressions cover forged metadata, replay cursors and legacy journal recovery.
