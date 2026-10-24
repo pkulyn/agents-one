@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -75,5 +76,75 @@ describe("safe-write workspace protection", () => {
     expect(protection.restoreAndDispose()).toEqual(["keep.txt"]);
     expect(readFileSync(original, "utf8")).toBe("original");
     expect(readFileSync(outsideFile, "utf8")).toBe("outside");
+  });
+  it("retains failed originals, restores other files, and supports recovery retry", () => {
+    const profileHome = mkdtempSync(
+      join(tmpdir(), "agents-one-recovery-profile-"),
+    );
+    const workspace = mkdtempSync(
+      join(tmpdir(), "agents-one-recovery-workspace-"),
+    );
+    roots.push(profileHome, workspace);
+    mkdirSync(join(workspace, "docs"));
+    writeFileSync(join(workspace, "docs", "original.txt"), "original document");
+    writeFileSync(join(workspace, "other.txt"), "other original");
+    const protection = protectWorkspaceFromRemoval(
+      workspace,
+      undefined,
+      profileHome,
+    );
+    rmSync(join(workspace, "docs"), { recursive: true });
+    writeFileSync(join(workspace, "docs"), "blocking file");
+    rmSync(join(workspace, "other.txt"));
+
+    expect(protection.restoreAndDispose()).toEqual(["other.txt"]);
+    expect(protection.recoveryError).toMatch(/恢复未完成/);
+    const backups = join(profileHome, "desktop", "safe-write-backups");
+    const [backup] = readdirSync(backups);
+    expect(
+      readFileSync(join(backups, backup, "docs", "original.txt"), "utf8"),
+    ).toBe("original document");
+    expect(readFileSync(join(workspace, "other.txt"), "utf8")).toBe(
+      "other original",
+    );
+
+    rmSync(join(workspace, "docs"));
+    expect(protection.restoreAndDispose()).toEqual([
+      join("docs", "original.txt"),
+    ]);
+    expect(protection.recoveryError).toBeUndefined();
+    expect(readFileSync(join(workspace, "docs", "original.txt"), "utf8")).toBe(
+      "original document",
+    );
+    expect(readdirSync(backups)).toEqual([]);
+  });
+
+  it("keeps the backup when an original parent becomes an outside junction", () => {
+    const profileHome = mkdtempSync(
+      join(tmpdir(), "agents-one-recovery-profile-"),
+    );
+    const workspace = mkdtempSync(
+      join(tmpdir(), "agents-one-recovery-workspace-"),
+    );
+    const outside = mkdtempSync(join(tmpdir(), "agents-one-recovery-outside-"));
+    roots.push(profileHome, workspace, outside);
+    mkdirSync(join(workspace, "docs"));
+    writeFileSync(join(workspace, "docs", "original.txt"), "original document");
+    const protection = protectWorkspaceFromRemoval(
+      workspace,
+      undefined,
+      profileHome,
+    );
+    rmSync(join(workspace, "docs"), { recursive: true });
+    symlinkSync(outside, join(workspace, "docs"), "junction");
+
+    expect(protection.restoreAndDispose()).toEqual([]);
+    expect(protection.recoveryError).toBeTruthy();
+    expect(existsSync(join(outside, "original.txt"))).toBe(false);
+    const backups = join(profileHome, "desktop", "safe-write-backups");
+    const [backup] = readdirSync(backups);
+    expect(
+      readFileSync(join(backups, backup, "docs", "original.txt"), "utf8"),
+    ).toBe("original document");
   });
 });

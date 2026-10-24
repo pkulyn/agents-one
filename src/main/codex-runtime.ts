@@ -561,7 +561,7 @@ export async function startCodexProcess(
         workspaceProtection?.restoreAndDispose();
         resolveResult({
           output,
-          error: redact(error.message),
+          error: workspaceProtection?.recoveryError || redact(error.message),
           worktreePath,
           artifacts: worktreePath
             ? [
@@ -644,6 +644,9 @@ export async function startCodexProcess(
           artifacts,
           ...(restoredFiles.length
             ? { error: runtimeRemovalBlockedMessage(restoredFiles) }
+            : {}),
+          ...(workspaceProtection?.recoveryError
+            ? { error: workspaceProtection.recoveryError }
             : {}),
           inputArtifacts: preparedInputs.artifacts,
         });

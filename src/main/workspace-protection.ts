@@ -1,6 +1,5 @@
 import {
   copyFileSync,
-  existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -25,6 +24,8 @@ const IGNORED_DIRECTORIES = new Set([
 
 export interface WorkspaceProtection {
   restoreAndDispose: () => string[];
+  /** Recovery failed; the retained backup remains available for a retry. */
+  readonly recoveryError?: string;
 }
 
 function hasSymbolicLinkParent(root: string, target: string): boolean {
@@ -96,30 +97,67 @@ export function protectWorkspaceFromRemoval(
   }
 
   let disposed = false;
+  let recoveryError: string | undefined;
+  const failedOriginals = new Set<string>();
   return {
+    get recoveryError() {
+      return recoveryError;
+    },
     restoreAndDispose: (): string[] => {
       if (disposed) return [];
-      disposed = true;
       const restored: string[] = [];
-      try {
-        for (const rel of files) {
+      const failed: string[] = [];
+      const previouslyFailed = new Set(failedOriginals);
+      failedOriginals.clear();
+      for (const rel of files) {
+        try {
           const target = resolve(root, rel);
-          if (relative(root, target).startsWith("..")) continue;
-          if (hasSymbolicLinkParent(root, target)) continue;
+          if (
+            relative(root, target).startsWith("..") ||
+            hasSymbolicLinkParent(root, target)
+          ) {
+            failed.push(rel);
+            continue;
+          }
           const targetInfo = lstatSync(target, { throwIfNoEntry: false });
           if (targetInfo?.isSymbolicLink()) {
             unlinkSync(target);
-          } else if (existsSync(target)) {
+          } else if (targetInfo?.isFile()) {
+            // A failed copy may have created a truncated destination. Its
+            // existence alone cannot prove recovery; retain the original.
+            if (previouslyFailed.has(rel)) failed.push(rel);
+            continue;
+          } else if (targetInfo) {
+            failed.push(rel);
             continue;
           }
           mkdirSync(dirname(target), { recursive: true });
           copyFileSync(join(backupRoot, rel), target);
           restored.push(rel);
+        } catch {
+          // One locked or replaced path must not prevent recovery of the rest.
+          failed.push(rel);
         }
-        return restored;
-      } finally {
-        rmSync(backupRoot, { recursive: true, force: true });
       }
+      recoveryError = undefined;
+      if (!failed.length) {
+        try {
+          rmSync(backupRoot, { recursive: true, force: true });
+          disposed = true;
+        } catch {
+          failed.push("backup cleanup");
+        }
+      }
+      if (failed.length) {
+        for (const rel of failed) failedOriginals.add(rel);
+        recoveryError =
+          "[Agents One 恢复未完成] 无法完成 " +
+          failed.length +
+          " 项原文件恢复或备份清理。备份保留于：" +
+          backupRoot +
+          "。请保留备份并手动恢复未完成的文件。";
+      }
+      return restored;
     },
   };
 }
