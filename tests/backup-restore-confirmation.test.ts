@@ -1,3 +1,15 @@
+import { createHash } from "node:crypto";
+import { withFrozenBackupArchive } from "../src/main/ipc/frozen-backup-archive";
+import {
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach } from "vitest";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 const show = vi.hoisted(() => vi.fn());
@@ -9,7 +21,13 @@ const event = {
   senderFrame: window.webContents.mainFrame,
 } as unknown as IpcMainInvokeEvent;
 const getWindow = (): BrowserWindow => window as unknown as BrowserWindow;
+let directory: string;
+let archive: string;
+afterEach(() => rmSync(directory, { recursive: true, force: true }));
 beforeEach(() => {
+  directory = mkdtempSync(join(tmpdir(), "restore-confirm-test-"));
+  archive = join(directory, "backup.archive");
+  writeFileSync(archive, "approved bytes");
   show.mockReset();
   show.mockResolvedValue({ response: 1 });
 });
@@ -19,7 +37,7 @@ it("defaults to native cancel without invoking any restore lifecycle", async () 
   const result = await runConfirmedBackupRestore(
     event,
     getWindow,
-    "C:/backup.archive",
+    archive,
     "zh-CN",
     restore,
   );
@@ -36,7 +54,7 @@ it("rejects another frame before displaying a privileged dialog", async () => {
   await runConfirmedBackupRestore(
     { ...event, senderFrame: {} } as IpcMainInvokeEvent,
     getWindow,
-    "C:/backup.archive",
+    archive,
     "en-US",
     restore,
   );
@@ -50,7 +68,7 @@ it("runs restoration only after explicit confirmation", async () => {
     await runConfirmedBackupRestore(
       event,
       getWindow,
-      "C:/backup.archive",
+      archive,
       "en-US",
       restore,
     ),
@@ -67,7 +85,7 @@ it("rechecks the current window after asynchronous confirmation", async () => {
   await runConfirmedBackupRestore(
     event,
     () => current,
-    "C:/backup.archive",
+    archive,
     "en-US",
     restore,
   );
@@ -82,7 +100,7 @@ it("serializes the entire operation, not just the confirmation", async () => {
   const first = runConfirmedBackupRestore(
     event,
     getWindow,
-    "C:/backup.archive",
+    archive,
     "en-US",
     async () => {
       await operation;
@@ -92,13 +110,7 @@ it("serializes the entire operation, not just the confirmation", async () => {
   await vi.waitFor(() => expect(show).toHaveBeenCalledOnce());
   const second = vi.fn();
   expect(
-    await runConfirmedBackupRestore(
-      event,
-      getWindow,
-      "C:/backup.archive",
-      "en-US",
-      second,
-    ),
+    await runConfirmedBackupRestore(event, getWindow, archive, "en-US", second),
   ).toMatchObject({ error: "restore_in_progress" });
   expect(second).not.toHaveBeenCalled();
   release();
@@ -111,7 +123,7 @@ it("fails closed on native dialog failure and releases the gate", async () => {
     await runConfirmedBackupRestore(
       event,
       getWindow,
-      "C:/backup.archive",
+      archive,
       "en-US",
       restore,
     ),
@@ -123,7 +135,7 @@ it("fails closed on native dialog failure and releases the gate", async () => {
       await runConfirmedBackupRestore(
         event,
         getWindow,
-        "C:/backup.archive",
+        archive,
         "en-US",
         restore,
       )
@@ -137,11 +149,63 @@ it("distinguishes a restore callback failure from a failed confirmation", async 
     await runConfirmedBackupRestore(
       event,
       getWindow,
-      "C:/backup.archive",
+      archive,
       "en-US",
       async () => {
         throw Error("restore failed");
       },
     ),
   ).toMatchObject({ error: "restore_failed" });
+});
+
+it("restores the frozen approved bytes when the original is replaced during confirmation", async () => {
+  let snapshotPath = "";
+  show.mockImplementation(async () => {
+    writeFileSync(archive, "replacement bytes");
+    return { response: 0 };
+  });
+  const result = await runConfirmedBackupRestore(
+    event,
+    getWindow,
+    archive,
+    "en-US",
+    async (snapshot) => {
+      snapshotPath = snapshot;
+      expect(readFileSync(snapshot, "utf8")).toBe("approved bytes");
+      return { success: true };
+    },
+  );
+  expect(result.success).toBe(true);
+  expect(existsSync(snapshotPath)).toBe(false);
+  expect(readFileSync(archive, "utf8")).toBe("replacement bytes");
+  expect(show.mock.calls[0][1].detail).toContain(
+    createHash("sha256").update("approved bytes").digest("hex"),
+  );
+});
+
+it("does not show a confirmation or enter restoration when snapshot creation fails", async () => {
+  const restore = vi.fn();
+  const result = await runConfirmedBackupRestore(
+    event,
+    getWindow,
+    join(directory, "missing"),
+    "en-US",
+    restore,
+  );
+  expect(result.error).toBe("backup_snapshot_failed");
+  expect(show).not.toHaveBeenCalled();
+  expect(restore).not.toHaveBeenCalled();
+});
+
+it("cleans its snapshot after a consumer rejects while preserving the original", async () => {
+  let target = "";
+  await expect(
+    withFrozenBackupArchive(archive, async (snapshot) => {
+      target = snapshot.path;
+      expect(readFileSync(target, "utf8")).toBe("approved bytes");
+      throw Error("consumer failure");
+    }),
+  ).rejects.toThrow("consumer failure");
+  expect(existsSync(target)).toBe(false);
+  expect(readFileSync(archive, "utf8")).toBe("approved bytes");
 });

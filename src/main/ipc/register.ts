@@ -2708,9 +2708,9 @@ export function registerIpcHandlers(context: IpcContext): void {
         context.getMainWindow,
         archivePath,
         getAppLocale(),
-        async () => {
+        async (approvedArchive) => {
           assertAgentsOneWritesAllowed();
-          const inspection = await inspectAgentsOneBackup(archivePath);
+          const inspection = await inspectAgentsOneBackup(approvedArchive);
           if (!inspection.success) return inspection;
 
           // Stop all desktop and gateway writers before touching profile data.
@@ -2759,7 +2759,7 @@ export function registerIpcHandlers(context: IpcContext): void {
               }
             }
             closeDbConnection();
-            return await restoreAgentsOneBackupFrom(archivePath);
+            return await restoreAgentsOneBackupFrom(approvedArchive);
           } catch (error) {
             return {
               success: false,

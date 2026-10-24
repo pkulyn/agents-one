@@ -30,4 +30,12 @@ Backups are integrity-checked but not encrypted or authenticated. Users should i
 
 Restore requires the current main window main frame and an explicit native warning confirmation with Cancel selected by default. Cancellation or dialog failure does not enter the restore lifecycle.
 
-The Main gate rechecks window identity after confirmation and serializes the full operation. This trigger gate supplements archive validation and transactional recovery; it does not itself freeze archive bytes or verify packaged failure reporting.
+The Main gate rechecks window identity after confirmation and serializes the full operation. The approved archive snapshot binds the confirmation to restoration bytes. Packaged failure reporting still requires separate acceptance.
+
+## Approved archive snapshot
+
+The native restore gate copies a bounded regular file from its opened handle before confirmation and displays the snapshot SHA256.
+
+Inspection and restoration consume that same private snapshot, so replacing the original path during confirmation cannot change approved content.
+
+Copying rejects growth, identity or timestamp changes, handles partial writes and removes its own random temporary directory after success, cancellation or failure. This protects against Renderer path replacement; processes with unrestricted same-user filesystem access remain outside this boundary.
