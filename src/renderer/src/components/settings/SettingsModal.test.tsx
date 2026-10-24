@@ -22,7 +22,7 @@ vi.mock("./MobileConnectionPane", () => ({
 
 describe("SettingsModal navigation", () => {
   // @lat: [[desktop-updates#Cumulative desktop feature acceptance]]
-  it("keeps mobile access first and opens its profile-scoped pane", async () => {
+  it("keeps mobile access reachable and opens its profile-scoped pane", async () => {
     render(
       <I18nProvider>
         <SettingsModal open profile="personal" onClose={vi.fn()} />
@@ -31,8 +31,15 @@ describe("SettingsModal navigation", () => {
     const entry = document.querySelector(
       '[data-desktop-feature="mobile-owner-settings"]',
     );
-    expect(entry).toBe(document.querySelector(".settings-modal-nav-item"));
+    expect(entry).not.toBeNull();
+    expect(entry?.closest("nav")).toBe(
+      document.querySelector(".settings-modal-nav"),
+    );
+    expect(
+      screen.queryByText("Mobile Owner settings: personal"),
+    ).not.toBeInTheDocument();
     fireEvent.click(entry!);
+    expect(entry).toHaveClass("active");
     await waitFor(() =>
       expect(screen.getByText("Mobile Owner settings: personal")).toBeVisible(),
     );

@@ -31,3 +31,9 @@ Local desktop delivery uses one cumulative source baseline and an independent pu
 Release builds set `AGENTS_ONE_RELEASE_BUILD=1`. `scripts/desktop-source-receipt.mjs` rejects dirty, untracked or ignored build inputs and derives an embedded receipt from Git objects. The independent publisher requires the candidate commit to descend from the accepted baseline, matches the embedded receipt to that clean source and invokes its own retained package verifier. Candidate-side scripts cannot reduce the gate. Ordinary development builds remain usable for development and are not promotion candidates.
 
 The publisher serializes resource-only promotion, refuses running applications and incompatible native sidecars, backs up current data and resources, and records a recoverable transaction. Actual loading and phone acceptance are separate evidence. Successful promotion advances the required baseline; recovery restores only resources and never overwrites newer user data.
+
+## Settings navigation acceptance
+
+Mobile access acceptance verifies a reachable navigation entry and the selected profile pane, independently of the presentation order of general settings.
+
+The navigation component test clicks the mobile entry, checks its active state and verifies the requested profile. Changing the order of appearance, language, voice and data settings must not hide that entry or replace it with an inert feature marker.
