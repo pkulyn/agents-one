@@ -192,4 +192,95 @@ describe("project folder registry", () => {
     expect(store.removeProjectWorkspace(id!)).toBe(true);
     expect(store.listProjectFolders()).toEqual([]);
   });
+  it("refuses to register arbitrary paths through a metadata update", async () => {
+    const store = await loadStore();
+    const selected = store.registerProjectFolder("D:/Projects/Selected");
+    const before = store.listProjectFolders();
+    expect(
+      store.updateProjectFolder({ path: "C:/", name: "Forged root" }),
+    ).toBeNull();
+    expect(
+      store.updateProjectFolder({
+        id: "project-missing",
+        path: "C:/",
+        pinned: true,
+      }),
+    ).toBeNull();
+    expect(store.listProjectFolders()).toEqual(before);
+    expect(store.resolveProjectFolderPath(selected!.id!)).toBe(selected!.path);
+  });
+
+  it("does not fall back to a legacy path when an id is unknown", async () => {
+    const store = await loadStore();
+    const selected = store.registerProjectFolder("D:/Projects/Selected");
+    expect(
+      store.updateProjectFolder({
+        id: "project-missing",
+        path: selected!.path,
+        name: "Wrong target",
+      }),
+    ).toBeNull();
+    expect(store.listProjectFolders()[0].name).toBe("Selected");
+  });
+
+  it("ignores a replacement path when editing an existing opaque id", async () => {
+    const store = await loadStore();
+    const selected = store.registerProjectFolder("D:/Projects/Selected");
+    expect(
+      store.updateProjectFolder({
+        id: selected!.id,
+        path: "C:/",
+        name: "Renamed",
+        pinned: true,
+      }),
+    ).toMatchObject({
+      id: selected!.id,
+      path: selected!.path,
+      name: "Renamed",
+      pinned: true,
+    });
+    expect(store.listProjectFolders()).toHaveLength(1);
+  });
+
+  it("rejects malformed metadata without writing the registry", async () => {
+    const store = await loadStore();
+    store.registerProjectFolder("D:/Projects/Selected");
+    const before = store.listProjectFolders();
+    for (const input of [
+      null,
+      undefined,
+      7,
+      "C:/",
+      {},
+      { id: 3, path: "C:/" },
+    ]) {
+      expect(store.updateProjectFolder(input as never)).toBeNull();
+    }
+    expect(store.listProjectFolders()).toEqual(before);
+  });
+
+  it("keeps forged metadata paths outside the filesystem authorization boundary", async () => {
+    const store = await loadStore();
+    const selected = join(testHome, "selected");
+    const outside = join(testHome, "outside");
+    mkdirSync(selected, { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    const secret = join(outside, "private.txt");
+    writeFileSync(secret, "synthetic private data");
+    const registered = store.registerProjectFolder(selected);
+    const authority = await import("../src/main/workspace-authority");
+    expect(authority.isAuthorizedWorkspacePath(secret)).toBe(false);
+    expect(store.updateProjectFolder({ path: outside })).toBeNull();
+    expect(
+      store.updateProjectFolder({ id: "project-forged", path: outside }),
+    ).toBeNull();
+    expect(authority.isAuthorizedWorkspacePath(secret)).toBe(false);
+    expect(
+      store.updateProjectFolder({
+        id: registered!.id,
+        name: "Selected project",
+      })?.name,
+    ).toBe("Selected project");
+    expect(authority.isAuthorizedWorkspaceRoot(selected)).toBe(true);
+  });
 });
