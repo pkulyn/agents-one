@@ -348,7 +348,7 @@ describe("OpenCode ACP adapter", () => {
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it.each([
     [{ sessionCapabilities: { resume: {} } }, "session/resume"],

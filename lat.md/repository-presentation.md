@@ -39,3 +39,9 @@ Public documentation covers supported usage, integration contracts and safe cont
 ## Private specification boundary
 
 Public source and tests are self-contained. Local execution plans, device acceptance records and private architecture specifications stay outside the repository and are not required to build or test a clean checkout.
+
+## Generated contract checkout consistency
+
+Generated JSON and Kotlin contract files retain LF bytes even when Git core.autocrlf is enabled. Fresh Windows checkouts must pass the same exact generation check as other hosts.
+
+A regression exports the tracked files with real Git checkout-index and compares them to index bytes; schema or fixture changes still require regeneration.
