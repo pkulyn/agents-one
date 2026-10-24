@@ -1,3 +1,4 @@
+import { isAuthorizedIpcSender } from "../ipc/sender-scope";
 import { ipcMain, type BrowserWindow } from "electron";
 import { prepareAndManageMobileExecutionPolicies } from "./execution-management";
 import { manageMobileWriteRecovery } from "./project-write-recovery";
@@ -9,6 +10,7 @@ export function registerMobileExecutionPolicyIpc(
   ipcMain.handle("mobile-write-recovery", (event, profile, command) => {
     const assertCurrent = (): void => {
       if (
+        !isAuthorizedIpcSender(event, "mobile-write-recovery", getMainWindow) ||
         event.sender !== getMainWindow()?.webContents ||
         event.senderFrame !== event.sender.mainFrame
       )
@@ -20,6 +22,11 @@ export function registerMobileExecutionPolicyIpc(
   ipcMain.handle("mobile-execution-manage", (event, profile, command) => {
     const assertCurrent = (): void => {
       if (
+        !isAuthorizedIpcSender(
+          event,
+          "mobile-execution-manage",
+          getMainWindow,
+        ) ||
         event.sender !== getMainWindow()?.webContents ||
         event.senderFrame !== event.sender.mainFrame
       )

@@ -6,7 +6,13 @@ type MockIpcCallback = (...args: unknown[]) => unknown;
 
 interface MockBrowserWindowLike {
   options: Record<string, unknown>;
-  webContents: { send: MockFunction; setWindowOpenHandler: MockFunction };
+  webContents: {
+    send: MockFunction;
+    setWindowOpenHandler: MockFunction;
+    mainFrame: { url: string };
+    isDestroyed(): boolean;
+    once: MockFunction;
+  };
   hide: MockFunction;
   loadFile: MockFunction;
   showInactive: MockFunction;
@@ -39,6 +45,9 @@ vi.mock("electron", () => {
     webContents = {
       send: vi.fn(),
       setWindowOpenHandler: vi.fn(),
+      mainFrame: { url: "" },
+      isDestroyed: () => this.destroyed,
+      once: vi.fn(),
     };
     setAlwaysOnTop = vi.fn();
     setPosition = vi.fn();
@@ -60,8 +69,17 @@ vi.mock("electron", () => {
       this.destroyed = true;
       this.closedListener?.();
     });
-    loadURL = vi.fn();
-    loadFile = vi.fn();
+    loadURL = vi.fn((url: string) => {
+      this.webContents.mainFrame.url = url;
+    });
+    loadFile = vi.fn(
+      (file: string, options?: { query?: Record<string, string> }) => {
+        const url = new URL("file:///" + file.replaceAll("\\", "/"));
+        for (const [key, value] of Object.entries(options?.query || {}))
+          url.searchParams.set(key, value);
+        this.webContents.mainFrame.url = url.href;
+      },
+    );
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
@@ -120,6 +138,7 @@ vi.mock("electron", () => {
   }
 
   return {
+    app: { isPackaged: true },
     BrowserWindow: MockBrowserWindow,
     Tray: MockTray,
     nativeImage: { createFromPath: vi.fn(() => ({})) },
@@ -196,9 +215,9 @@ describe("tray task completion", () => {
       (window) => window.options.title === "Agents One 快捷任务",
     )!;
     const handler = mocks.ipcHandlers.get("tray-composer-start-runtime-task")!;
-    await expect(
+    expect(() =>
       handler({ sender: {} }, "chatgpt-web", { prompt: "测试" }),
-    ).rejects.toThrow("sender was not recognized");
+    ).toThrow("scope_denied");
     expect(mocks.startQuickTask).not.toHaveBeenCalled();
 
     const task = {
@@ -208,9 +227,16 @@ describe("tray task completion", () => {
     };
     mocks.startQuickTask.mockResolvedValueOnce(task);
     await expect(
-      handler({ sender: composer.webContents }, "chatgpt-web", {
-        prompt: "测试",
-      }),
+      handler(
+        {
+          sender: composer.webContents,
+          senderFrame: composer.webContents.mainFrame,
+        },
+        "chatgpt-web",
+        {
+          prompt: "测试",
+        },
+      ),
     ).resolves.toEqual(task.run);
     expect(mocks.watchQuickTask).toHaveBeenCalledWith(
       task,
@@ -316,6 +342,7 @@ describe("tray task completion", () => {
 
     mocks.ipcListeners.get("tray-completion-open")?.({
       sender: notificationWindow.webContents,
+      senderFrame: notificationWindow.webContents.mainFrame,
     });
     expect(mainWindow.restore).toHaveBeenCalledOnce();
     expect(mainWindow.show).toHaveBeenCalledOnce();

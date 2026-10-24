@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import type { BrowserWindow } from "electron";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -30,13 +31,17 @@ const state = vi.hoisted(() => ({
   handler: undefined as undefined | MenuHandler,
   template: [] as MenuAction[],
   projects: [] as { path: string }[],
-  window: { webContents: { mainFrame: {} } },
+  window: {
+    isDestroyed: () => false,
+    webContents: { mainFrame: { url: "" }, isDestroyed: () => false },
+  },
   popup: vi.fn(),
   openPath: vi.fn(async () => ""),
   reveal: vi.fn(),
   copy: vi.fn(),
 }));
 vi.mock("electron", () => ({
+  app: { isPackaged: true },
   BrowserWindow: { fromWebContents: () => state.window },
   ipcMain: {
     on: (_channel: string, callback: typeof state.handler) => {
@@ -85,6 +90,9 @@ const item = (
 
 beforeEach(() => {
   vi.clearAllMocks();
+  state.window.webContents.mainFrame.url = pathToFileURL(
+    join(process.cwd(), "src/main/renderer/index.html"),
+  ).href;
   directory = mkdtempSync(join(tmpdir(), "agents-one-file-menu-"));
   project = join(directory, "project");
   mkdirSync(project);

@@ -1,3 +1,4 @@
+import { createScopedIpcMain } from "./sender-scope";
 import { readRendererConfigValue } from "./public-config";
 import { completeBackupRestore } from "./backup-restore-completion";
 import { runConfirmedBackupRestore } from "./backup-restore-confirmation";
@@ -11,7 +12,7 @@ import {
   app,
   shell,
   BrowserWindow,
-  ipcMain,
+  ipcMain as rawIpcMain,
   Menu,
   dialog,
   clipboard,
@@ -537,6 +538,7 @@ function resolveLibraryModelEntry(
 
 let unsubscribeConversationChanges: (() => void) | undefined;
 export function registerIpcHandlers(context: IpcContext): void {
+  const ipcMain = createScopedIpcMain(rawIpcMain, context.getMainWindow);
   unsubscribeConversationChanges?.();
   unsubscribeConversationChanges = onRuntimeConversationChanged((change) => {
     const window = context.getMainWindow();
@@ -1423,9 +1425,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
           const target = isData ? materializeDataUrlToTemp(src, name) : src;
           if (!target) return;
-          shell.openPath(target).then((err) => {
-            if (err) console.error("[media] open failed:", err);
-          });
+          void openAuthorizedLocalFile(target);
         },
       });
       template.push({
