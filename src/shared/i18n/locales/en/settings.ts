@@ -517,6 +517,8 @@ export default {
       "When off, the microphone never sends recordings to a voice service.",
     url: "Voice service URL",
     urlPlaceholder: "https://voice.example.com/voice",
+    savedUrlHint:
+      "Saved routing paths are hidden. Keeping the displayed value retains the endpoint; to change it, enter the complete URL without retained markers.",
     urlHint:
       "Enter the service base URL, a /v1/audio/transcriptions URL, or the WS/WSS stream URL from the v1.4 guide.",
     apiKey: "API key (optional)",

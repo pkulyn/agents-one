@@ -21,3 +21,11 @@ The main process owns the transcription endpoint and optional Bearer credential 
 Recording is an explicit user action, but transport security remains a deployment responsibility.
 
 The v1.4 service is streaming and single-connection serial, so renderer audio capture and service responses run independently rather than retranscribing cumulative recordings. It uses a 0.8-second pause to return whole punctuated sentences instead of partial frames. Streaming removes the 120-second and 25 MB whole-clip bounds; each IPC audio chunk is capped at 256 KiB as a transport sanity check. `AGENTS_ONE_VOICE_STREAM_AUDIT=1` adds an opt-in, in-memory connection summary to Main logs: Renderer capture counts, Main WebSocket counts, and final-text sequence with timestamps. It never writes the audit to chat history, task/project data, or configuration, and must be disabled after testing because the opt-in log contains transcript text. While recording, the composer renders an accessible sound-wave status and elapsed-time counter above itself; it disappears when capture stops. New open-source installs send no audio until a user enables a specific service from Settings; the health-only connection test uploads no audio. Production deployments must use HTTPS/WSS before enabling Bearer authentication because an HTTP/WS endpoint exposes both audio and credentials in transit. The operational setup lives in `docs/AGENTS_ONE_VOICE_INPUT.md`.
+
+## Saved endpoint projection
+
+Voice configuration exposes only the saved endpoint origin and a retained path marker; malformed saved URLs never echo their raw value. Native transcription retains the full endpoint.
+
+Unchanged markers resolve only against the target profile current endpoint for save and health checks. Edited or encoded markers are rejected before writes or requests. A malformed endpoint can be disabled while retained; enabling requires a valid complete URL. Draft key validation precedes all configuration writes, without claiming a disk transaction across env keys. Each profile mounts an independent settings pane and unavailable loads keep controls disabled, preventing late responses or empty defaults from overwriting another profile.
+
+Health transport failures use fixed diagnostics, including timeout and non-Error rejections, so private native URL details cannot escape through an exception message.

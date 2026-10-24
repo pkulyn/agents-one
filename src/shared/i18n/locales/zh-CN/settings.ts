@@ -485,6 +485,8 @@ export default {
     enabledHint: "关闭后，麦克风不会向任何语音服务发送录音。",
     url: "语音服务地址",
     urlPlaceholder: "https://voice.example.com/voice",
+    savedUrlHint:
+      "已保存的路由路径不会回显。保持显示值可保留原地址；修改时请重新输入不含隐藏标记的完整 URL。",
     urlHint:
       "可填写服务基础地址、/v1/audio/transcriptions 地址，或 v1.4 文档中的 WS/WSS 流地址。",
     apiKey: "API Key（可选）",
