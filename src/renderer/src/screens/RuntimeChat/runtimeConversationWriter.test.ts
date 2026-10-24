@@ -29,7 +29,6 @@ const input = (
   ...changes,
 });
 describe("Runtime conversation Renderer writer", () => {
-  // @lat: [[mobile-data#Mobile data#Desktop initial checkpoint protection]]
   it("refuses changed initial content and preserves an existing-record version requirement when its source was deleted", async () => {
     const write = vi.fn(async (_input: SaveRuntimeConversationInput) =>
       record("3"),
@@ -58,7 +57,6 @@ describe("Runtime conversation Renderer writer", () => {
     await deleted.save(input({ expectedRevision: "1" }));
     expect(write.mock.calls[0][0].expectedRevision).toBe("1");
   });
-  // @lat: [[mobile-data#Mobile data#Serialized desktop checkpoints]]
   it("serializes native session and final saves, freezes message input and carries the returned original revision", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -93,7 +91,6 @@ describe("Runtime conversation Renderer writer", () => {
     expect(write.mock.calls[1][0].title).toBe("User managed title");
     expect(writer.observe(record("1"), "owner")).toBe(false);
   });
-  // @lat: [[mobile-data#Mobile data#Desktop checkpoint conflict refusal]]
   it("does not rebase a stale checkpoint onto a mobile revision or retry the write after a conflict", async () => {
     const write = vi.fn().mockRejectedValueOnce(
       Object.assign(Error("revision_conflict"), {
@@ -107,7 +104,6 @@ describe("Runtime conversation Renderer writer", () => {
     expect(write.mock.calls[0][0].expectedRevision).toBe("4");
     expect(writer.observe(record("5"), "owner")).toBe(true);
   });
-  // @lat: [[mobile-data#Mobile data#Renderer checkpoint profile isolation]]
   it("reads the target profile again instead of borrowing a same-ID baseline from another profile", async () => {
     const read = vi.fn(async () => record("7"));
     const write = vi.fn(async (_input: SaveRuntimeConversationInput) =>
@@ -122,7 +118,6 @@ describe("Runtime conversation Renderer writer", () => {
       expectedRevision: "7",
     });
   });
-  // @lat: [[mobile-data#Mobile data#Main owned commit isolation]]
   it("refuses Renderer writes to a Main-owned task and rejects changed original Runtime identity", async () => {
     const write = vi.fn();
     const writer = new RuntimeConversationWriter(vi.fn(), write);

@@ -122,7 +122,6 @@ function setup() {
   return { client, sockets, diagnostic, accepted, authorize, signed };
 }
 describe("signed authorization lease watchdog", () => {
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Half open authorization recovery]]
   it("reconnects after signed authorization expires even when the socket never emits close, without replaying an accepted request", async () => {
     const s = setup();
     s.authorize("auth-1");
@@ -167,7 +166,6 @@ describe("signed authorization lease watchdog", () => {
       expect.objectContaining({ event: "authorization_lease_expired" }),
     );
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Lease watchdog refresh and clock rollback]]
   it("keeps a refreshed connection healthy and uses monotonic expiry despite a wall-clock rollback", async () => {
     const s = setup();
     s.authorize("a1");
@@ -183,7 +181,6 @@ describe("signed authorization lease watchdog", () => {
     await vi.advanceTimersByTimeAsync(10000);
     expect(s.sockets[0].terminated).toBe(true);
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Lease watchdog terminal trust boundaries]]
   it("does not reconnect after stop, explicit credential revocation or owner replacement", async () => {
     for (const code of [4001, 4002]) {
       const s = setup();

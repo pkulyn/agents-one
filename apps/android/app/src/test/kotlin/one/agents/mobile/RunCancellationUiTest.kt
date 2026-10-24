@@ -57,7 +57,6 @@ class RunCancellationUiTest {
         }
         perform { model.selectOwner(owner(client.scope)) }; perform { model.openConversation(conversation) }
     }
-    // @lat: [[mobile-data#Mobile data#Android original Run stop action]]
     @Test fun realRunCardStopsOnlyAuthorizedRunAndKeepsRealStatusAfterAcknowledgement() {
         val client = Client(); connect(client)
         val started = CountDownLatch(1); val release = CountDownLatch(1)
@@ -68,7 +67,6 @@ class RunCancellationUiTest {
         assertEquals(listOf(listOf("runs", "run-1", "cancel")), client.writes.toList())
         assertEquals("applied", model.state.value.operations.single().status); assertTrue(model.state.value.runs.all { it.status == "running" }); assertNull(model.state.value.error)
     }
-    // @lat: [[mobile-data#Mobile data#Android Run cancellation admission and receipt identity]]
     @Test fun missingScopeAndForeignReceiptCannotConfirmCancellation() {
         val denied = Client(false); connect(denied); ui.onNodeWithTag("composer-action").assertDoesNotExist()
         perform { model.cancelRun("run-1") }; assertTrue(denied.writes.isEmpty()); assertEquals("scope_denied", model.state.value.error)

@@ -65,7 +65,6 @@ function setup(available = true) {
   };
 }
 describe("desktop mobile connection", () => {
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Protected desktop binding]]
   it("registers Host trust once in the protected profile binding and never projects it to renderer", async () => {
     const s = setup();
     const signingPublicKey = generateKeyPairSync("ed25519")
@@ -196,7 +195,6 @@ describe("desktop mobile connection", () => {
   });
 });
 
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Windows binding path identity]]
 it("reads an existing Windows binding through slash and casing changes without rewriting secrets or registering a new Host", async () => {
   const s = setup();
   s.view.enabled = true;
@@ -242,7 +240,6 @@ it("reads an existing Windows binding through slash and casing changes without r
   expect(readFileSync(s.file, "utf8")).toBe(before);
 });
 
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Profile-root migration recovery]]
 it("copies one unambiguous legacy mobile binding to the sole default profile and keeps the source key", async () => {
   const s = setup();
   const profilesRoot = join(dirname(s.file), "data", "profiles");

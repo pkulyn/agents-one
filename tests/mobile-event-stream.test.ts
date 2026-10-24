@@ -104,7 +104,6 @@ async function publish(): Promise<Json> {
   });
 }
 describe("Owner persistent event replay and snapshots", () => {
-  // @lat: [[mobile-data#Mobile data#Original artifact event scope projection]]
   it("removes artifact metadata from Run events for a device without artifact read scope", async () => {
     const anchor = ledger.cursor("phone-1", "1");
     const fixtures = JSON.parse(
@@ -145,7 +144,6 @@ describe("Owner persistent event replay and snapshots", () => {
     allowedAbort.abort();
     await allowed.next();
   });
-  // @lat: [[mobile-data#Mobile data#Owner event stream resume]]
   it("replays from a device-bound snapshot anchor and resumes once after Last-Event-ID", async () => {
     const anchor = ledger.cursor("phone-1", "1");
     const first = await publish();
@@ -180,7 +178,6 @@ describe("Owner persistent event replay and snapshots", () => {
     live.abort();
     expect((await again.next()).done).toBe(true);
   });
-  // @lat: [[mobile-data#Mobile data#Event authorization projection]]
   it("filters denied topics and other-device permission events, and recomputes this device read position and actions", async () => {
     const anchor = ledger.cursor("phone-1", "1");
     const schedule = JSON.parse(
@@ -218,7 +215,6 @@ describe("Owner persistent event replay and snapshots", () => {
     abort.abort();
     expect((await iterator.next()).done).toBe(true);
   });
-  // @lat: [[mobile-data#Mobile data#Event expired resume rejection]]
   it("returns 410 before opening SSE for foreign cursors, epochs, future sequence or expired retention", async () => {
     const first = await publish();
     const service = new MobileOwnerEventStream(ledger);
@@ -253,7 +249,6 @@ describe("Owner persistent event replay and snapshots", () => {
       }),
     ).resolves.toBeDefined();
   });
-  // @lat: [[mobile-data#Mobile data#Event abort and grant expiry]]
   it("ends an idle iterator on cancellation and denies an expired grant before opening", async () => {
     const abort = new AbortController();
     const stream = await new MobileOwnerEventStream(ledger).open({
@@ -270,7 +265,6 @@ describe("Owner persistent event replay and snapshots", () => {
       "revoked",
     );
   });
-  // @lat: [[mobile-data#Mobile data#Frozen recovery snapshot anchor]]
   it("freezes all original conversations over pages and retains the first event anchor across concurrent changes", async () => {
     sources = Array.from({ length: 125 }, (_, n) => ({
       ...sources[0],

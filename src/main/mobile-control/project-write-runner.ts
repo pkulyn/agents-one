@@ -239,7 +239,6 @@ export class ProjectWriteRunner {
   ): Promise<void> {
     const operation = this.serial.then(() => {
       assertCaller?.();
-      // @lat: [[mobile-data#Mobile data#Closed worker explicit owned lease release]]
       if (acknowledged !== true) fail("confirmation_required");
       const review = this.review(id);
       if (review.reviewToken !== reviewToken) fail("revision_conflict");
@@ -286,7 +285,6 @@ export class ProjectWriteRunner {
     this.options.assertWritesAllowed();
   }
   private review(id: string): RetainedWriteReview {
-    // @lat: [[mobile-data#Mobile data#Closed worker uncertain outcome observation]]
     this.recoveryGuard();
     const retained = this.retained.get(id);
     if (!retained || !retained.lease.owned()) fail();
@@ -341,7 +339,6 @@ export class ProjectWriteRunner {
     ]);
   }
   private capture(command: ProjectWriteCommand, receipt: Receipt): void {
-    // @lat: [[mobile-data#Mobile data#Confirmed write byte snapshots]]
     const id = `write-${hash(JSON.stringify([this.namespace, receipt.path, receipt.sha256]))}`;
     if (this.snapshots.has(id)) return;
     if (this.snapshots.size >= 99) {
@@ -582,7 +579,6 @@ export class ProjectWriteRunner {
         this.root,
         environment,
       );
-      // @lat: [[mobile-data#Mobile data#Main audited Native project write runner]]
       const child = spawn(
         identity.nativePath,
         [

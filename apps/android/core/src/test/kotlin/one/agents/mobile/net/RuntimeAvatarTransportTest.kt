@@ -18,7 +18,6 @@ class RuntimeAvatarTransportTest {
             try { block(server, client) } finally { client.close() }
         }
     }
-    // @lat: [[mobile-data#Mobile data#Android avatar authenticated original bytes]]
     @Test fun `reads immutable original image from exact authenticated Owner and runtime scope`() = server { server, client ->
         server.enqueue(MockResponse().addHeader("Content-Type", "application/json").setBody(avatar.toString()))
         val image = client.runtimeAvatar(OwnerBinding("owner", "space"), runtimeId, id)
@@ -31,7 +30,6 @@ class RuntimeAvatarTransportTest {
         assertEquals("no-store", request.getHeader("Cache-Control"))
         assertNull(request.getHeader("Idempotency-Key")); assertNull(request.getHeader("If-Match"))
     }
-    // @lat: [[mobile-data#Mobile data#Android avatar content integrity rejection]]
     @Test fun `rejects wrong image identity mime size hash noncanonical base64 and unknown payload fields`() = server { server, client ->
         val corruptions = listOf(
             mapOf("id" to JsonPrimitive("other")), mapOf("runtimeId" to JsonPrimitive("other")),
@@ -45,7 +43,6 @@ class RuntimeAvatarTransportTest {
         }
         assertEquals(corruptions.size, server.requestCount)
     }
-    // @lat: [[mobile-data#Mobile data#Android avatar response limit and redirect refusal]]
     @Test fun `bounds image JSON response and refuses redirects without a second request`() = server { server, client ->
         server.enqueue(MockResponse().addHeader("Content-Type", "application/json").setBody(" ".repeat(1024 * 1024 + 1)))
         assertEquals("payload_too_large", assertFailsWith<MobileApiException> { client.runtimeAvatar(OwnerBinding("owner", "space"), runtimeId, id) }.code)

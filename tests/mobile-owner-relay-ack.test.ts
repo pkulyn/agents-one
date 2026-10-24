@@ -77,7 +77,6 @@ async function setup() {
     },
   };
 }
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Relay bounded delayed ACK]]
 it("accepts a six-second ACK without extending the signed thirty-second lease", async () => {
   const s = await setup();
   await wait(6100);
@@ -95,7 +94,6 @@ it("accepts a six-second ACK without extending the signed thirty-second lease", 
     }),
   );
 }, 12000);
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Relay missing and superseded ACK]]
 it("closes an unconfirmed current update even after a stale ACK", async () => {
   const s = await setup();
   s.tunnel.changed(owner.ownerId);

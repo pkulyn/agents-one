@@ -97,7 +97,6 @@ afterEach(() => {
     throw Error("unsafe cleanup");
   rmSync(root, { recursive: true, force: true });
 });
-// @lat: [[mobile-data#Mobile data#Original cancellation receipt without terminal invention]]
 it("persists acceptance before Main control, serializes duplicate keys and replays after restart without inventing terminal state", async () => {
   const req = request();
   cancel.mockImplementation(async () => {
@@ -121,7 +120,6 @@ it("persists acceptance before Main control, serializes duplicate keys and repla
   expect(await control.cancel(req)).toEqual(results[0]);
   expect(cancel).toHaveBeenCalledOnce();
 });
-// @lat: [[mobile-data#Mobile data#Original cancellation unknown outcome retention]]
 it("retains uncertain acknowledgement and persistence outcomes without sending Main control again", async () => {
   const req = request();
   cancel.mockRejectedValue(Error("unknown network result"));
@@ -143,7 +141,6 @@ it("retains uncertain acknowledgement and persistence outcomes without sending M
   await control.cancel(next);
   expect(cancel).toHaveBeenCalledTimes(2);
 });
-// @lat: [[mobile-data#Mobile data#Original cancellation known rejection and terminal replay]]
 it("records explicit rejection and handles proven terminal history without sending another control", async () => {
   cancel.mockResolvedValue({ accepted: false, run: native });
   const req = request();
@@ -160,7 +157,6 @@ it("records explicit rejection and handles proven terminal history without sendi
   });
   expect(cancel).toHaveBeenCalledOnce();
 });
-// @lat: [[mobile-data#Mobile data#Original cancellation scope and source admission]]
 it("refuses schedule-only permissions, scheduled ownership, revoked grants, missing sources and foreign native identities before control", async () => {
   await expect(
     control.cancel(request("no-scope", ["schedule:cancel"])),
@@ -194,7 +190,6 @@ it("refuses schedule-only permissions, scheduled ownership, revoked grants, miss
   expect(cancel).not.toHaveBeenCalled();
   expect(ledger.operations("phone-1")).toEqual([]);
 });
-// @lat: [[mobile-data#Mobile data#Original cancellation malformed control refusal]]
 it("refuses swapped routes and failure to persist acceptance before any Main control", async () => {
   const req = request();
   req.params.id = "foreign";

@@ -79,7 +79,6 @@ export async function probeCodexReadOnlyFilesystem(
     ])
       identity.update(readFileSync(file));
     evidence.invocationFingerprint = identity.digest("hex");
-    // @lat: [[mobile-data#Mobile data#Actual Codex filesystem proof]]
     const child = spawn(
       invocation.command,
       [

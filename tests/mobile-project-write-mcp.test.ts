@@ -54,7 +54,6 @@ const args = {
   writeId: "change-one",
 };
 
-// @lat: [[mobile-data#Mobile data#Project write MCP explicit catalog and receipt privacy]]
 it("exposes an explicit write tool only with a same-root Main runner and strips private receipt fields", async () => {
   const write = vi.fn(async () => ({
     path: "file.txt",
@@ -88,7 +87,6 @@ it("exposes an explicit write tool only with a same-root Main runner and strips 
   ).rejects.toThrow("binding unavailable");
 });
 
-// @lat: [[mobile-data#Mobile data#Project write MCP input token and revocation admission]]
 it("rejects token failure, extended or malformed arguments and revoked catalogs before writing", async () => {
   const write = vi.fn();
   let revoked = false;
@@ -117,7 +115,6 @@ it("rejects token failure, extended or malformed arguments and revoked catalogs 
   expect(write).not.toHaveBeenCalled();
 });
 
-// @lat: [[mobile-data#Mobile data#Project write MCP lifecycle cancellation and body bounds]]
 it("aborts and waits for accepted local writes when closing the task transport and accepts bounded text over read-only transport limits", async () => {
   let entered: (() => void) | undefined;
   const ready = new Promise<void>((resolve) => {
@@ -156,7 +153,6 @@ it("aborts and waits for accepted local writes when closing the task transport a
   expect(over.status).toBe(413);
 });
 
-// @lat: [[mobile-data#Mobile data#Project write MCP concurrent close boundary]]
 it("every concurrent close waits for the same accepted worker completion", async () => {
   let entered!: () => void, finish!: () => void;
   const ready = new Promise<void>((resolve) => {

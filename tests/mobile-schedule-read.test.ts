@@ -140,7 +140,6 @@ beforeEach(() => {
 afterEach(() => rmSync(state.root, { recursive: true, force: true }));
 
 describe("real Owner schedule reads", () => {
-  // @lat: [[mobile-data#Mobile data#Schedule recent execution original projection]]
   it("projects the latest original execution from the same history snapshot with stable ties and no invented completion", () => {
     const original = row();
     const timestamp = now + 999000;
@@ -178,7 +177,6 @@ describe("real Owner schedule reads", () => {
     );
     expect(readFileSync(file(), "utf8")).toBe(bytes);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule recent execution empty and corrupt source]]
   it("distinguishes a known empty history and refuses duplicate, malformed latest and unorderable timestamps", () => {
     const original = row();
     original.runs = [];
@@ -209,7 +207,6 @@ describe("real Owner schedule reads", () => {
     ];
     expect(() => reader.list()).toThrow("requires_owner_action");
   });
-  // @lat: [[mobile-data#Mobile data#Schedule recent execution authorized frozen pages]]
   it("freezes latest execution with paged definitions and only exposes new history on a fresh authorized read", async () => {
     const originals = [row("schedule-1"), row("schedule-2")];
     seed(originals);
@@ -240,7 +237,6 @@ describe("real Owner schedule reads", () => {
     await expect(owner.handle(denied)).rejects.toThrow("scope_denied");
     expect(readFileSync(file(), "utf8")).toBe(bytes);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule recovery read state]]
   it("shows admitted uncertain runs as blocked and retains their native IDs without mutating history", () => {
     const original = row();
     original.mobileRecoveryRequired = true;
@@ -255,7 +251,6 @@ describe("real Owner schedule reads", () => {
     expect(reader.executions(original.id)).toHaveLength(125);
     expect(readFileSync(file(), "utf8")).toBe(bytes);
   });
-  // @lat: [[mobile-data#Mobile data#Original schedule read projection]]
   it("reads all original history from the fixed profile without changing bytes or exposing paths and extensions", () => {
     const bytes = seed([row()]);
     const adapter = new DesktopMobileScheduleReadRepository("owner");
@@ -280,7 +275,6 @@ describe("real Owner schedule reads", () => {
     expect(listTaskSchedules("owner")[0].runs).toHaveLength(100);
     expect(readFileSync(file(), "utf8")).toBe(bytes);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule read corruption failures]]
   it("refuses malformed stores and duplicate original IDs while preserving them", () => {
     seed([row()]);
     for (const bytes of [
@@ -294,7 +288,6 @@ describe("real Owner schedule reads", () => {
       expect(readFileSync(file(), "utf8")).toBe(bytes);
     }
   });
-  // @lat: [[mobile-data#Mobile data#Schedule execution source integrity]]
   it("refuses unknown trigger and invalid original timestamps rather than fabricating history", () => {
     const value = row();
     delete value.runs[0].trigger;
@@ -310,7 +303,6 @@ describe("real Owner schedule reads", () => {
     ).toThrow("requires_owner_action");
     expect(() => adapter.get("missing")).toThrow("resource_not_found");
   });
-  // @lat: [[mobile-data#Mobile data#Frozen schedule history pages]]
   it("freezes history and binds page cursors to the original schedule, device and grant", async () => {
     seed([row(), row("schedule-2")]);
     const api = controller();
@@ -349,7 +341,6 @@ describe("real Owner schedule reads", () => {
     };
     await expect(api.handle(another)).rejects.toMatchObject({ status: 410 });
   });
-  // @lat: [[mobile-data#Mobile data#Schedule read capabilities and scope]]
   it("advertises read alone without claiming scheduler online, enforces scope and filters actual state", async () => {
     const paused = row("paused");
     paused.enabled = false;
@@ -367,7 +358,6 @@ describe("real Owner schedule reads", () => {
     denied.device = { ...denied.device, scopes: [] };
     await expect(api.handle(denied)).rejects.toMatchObject({ status: 403 });
   });
-  // @lat: [[mobile-data#Mobile data#Shared desktop schedule preview calculation]]
   it("calculates five future interval and local cron occurrences using the original scheduler clock", () => {
     const interval = previewTaskSchedule(" 5M ", now);
     expect(interval.normalizedExpression).toBe("5m");
@@ -408,7 +398,6 @@ describe("real Owner schedule reads", () => {
       expect(spring.nextOccurrences[0]).toBe("2026-03-09T06:30:00.000Z");
     }
   });
-  // @lat: [[mobile-data#Mobile data#Schedule preview is a bound calculation]]
   it("returns a device-bound expiring preview without executing, mutating definitions or approving policies", async () => {
     const bytes = seed([row()]);
     const api = controller();
@@ -447,7 +436,6 @@ describe("real Owner schedule reads", () => {
     };
     await expect(api.handle(denied)).rejects.toMatchObject({ status: 403 });
   });
-  // @lat: [[mobile-data#Mobile data#Schedule search filters stay bound]]
   it("searches original names with project and state filters and rejects filter-swapped cursors", async () => {
     seed([row("a"), row("b")]);
     const api = controller();

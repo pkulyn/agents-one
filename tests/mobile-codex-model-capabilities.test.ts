@@ -17,7 +17,6 @@ const sha = (value: string | Buffer): string =>
   createHash("sha256").update(value).digest("hex");
 
 describe("Main-owned Codex model capability projection", () => {
-  // @lat: [[mobile-data#Mobile data#Codex capability projection preserves model identity]]
   it("keeps the selected model and unknown metadata while binding original and projected bytes", () => {
     const input = bytes([{ slug: "other-model" }, metadata]);
     const result = projectCodexMobileModelCatalog(input, "gpt-6-sol");
@@ -38,7 +37,6 @@ describe("Main-owned Codex model capability projection", () => {
     expect(changed.projectedCatalogHash).not.toBe(result.projectedCatalogHash);
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex capability metadata never falls back]]
   it("rejects absent, duplicate, unknown or incompatible selected metadata", () => {
     for (const models of [
       [],
@@ -57,7 +55,6 @@ describe("Main-owned Codex model capability projection", () => {
     ).toThrow("capabilities are unavailable");
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex capability input is bounded and private]]
   it("rejects corrupt or oversized input without echoing private catalog data", () => {
     for (const input of [
       Buffer.alloc(0),

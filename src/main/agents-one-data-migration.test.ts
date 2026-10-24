@@ -28,7 +28,6 @@ afterEach(() => {
 });
 
 describe("Agents One data migration", () => {
-  // @lat: [[tests#Agents One data migration#Preserves app data and Hermes native data]]
   it("copies app-owned data and desktop tables without modifying Hermes state", () => {
     const legacy = join(fixtureRoot, "hermes");
     const userData = join(fixtureRoot, "user-data");
@@ -152,7 +151,6 @@ describe("Agents One data migration", () => {
     ).toBe(false);
   });
 
-  // @lat: [[tests#Agents One data migration#Rejects conflicting destination]]
   it("refuses a destination with unrelated data", () => {
     const legacy = join(fixtureRoot, "hermes");
     const userData = join(fixtureRoot, "user-data");
@@ -170,7 +168,6 @@ describe("Agents One data migration", () => {
     );
   });
 
-  // @lat: [[tests#Agents One data migration#Removes incomplete staging after copy failure]]
   it("removes only its staging directory when unsafe source data aborts the copy", () => {
     const legacy = join(fixtureRoot, "hermes");
     const userData = join(fixtureRoot, "user-data");

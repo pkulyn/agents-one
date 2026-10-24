@@ -172,7 +172,6 @@ async function prepare(input: ContextInput): Promise<CodexMobileContext> {
   let disposing: Promise<void> | undefined;
   const assertCurrent = (): void => {
     try {
-      // @lat: [[mobile-data#Mobile data#Codex invocation model and project context]]
       projectGuard?.();
       if (
         disposed ||

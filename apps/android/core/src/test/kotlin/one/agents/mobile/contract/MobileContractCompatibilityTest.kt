@@ -55,7 +55,6 @@ class MobileContractCompatibilityTest {
         )
     }
 
-    // @lat: [[mobile-data#Mobile sync protocol evolution#Legacy Kotlin reader compatibility]]
     @Test
     fun legacyReaderIgnoresNewOptionalBootstrapFields() {
         val legacy = json.decodeFromJsonElement<LegacyBootstrap>(compatibility["syncBootstrap"]!!)
@@ -64,7 +63,6 @@ class MobileContractCompatibilityTest {
         assertEquals("fixture-value", legacy.snapshotCursor)
     }
 
-    // @lat: [[mobile-data#Mobile sync protocol evolution#Snapshot anchors and filtered event gaps]]
     @Test
     fun eventCursorAllowsFilteredSequenceGapsAndDeduplicatesReplays() {
         val base = objects["Event"]!!.jsonObject

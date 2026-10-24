@@ -44,7 +44,6 @@ beforeEach(() => {
   ];
 });
 describe("Desktop execution Main bridge", () => {
-  // @lat: [[mobile-data#Mobile data#Owner controlled write dispatch retains approval binding]]
   it("passes controlled write authority and revokes it after mode, workspace or configuration changes", async () => {
     const policy = {
       id: "write-policy",
@@ -105,7 +104,6 @@ describe("Desktop execution Main bridge", () => {
       backend.authorize(policy.id, policy.runtimeId, policy.projectId),
     ).toThrow("unverified_policy");
   });
-  // @lat: [[mobile-data#Mobile data#Owner Codex configuration guard revocation]]
   it("passes the Main config guard without a project and keeps the approved value after provider mutation", async () => {
     const policy = {
       id: "policy-config",
@@ -145,7 +143,6 @@ describe("Desktop execution Main bridge", () => {
     mock.runtimes = [];
     expect(() => guard!("c".repeat(64))).toThrow("unverified_policy");
   });
-  // @lat: [[mobile-data#Mobile data#Owner project tool guard binds current approval]]
   it("retains a Main-only guard that refuses policy revocation, runtime changes and profile switches", async () => {
     const policy = {
       id: "policy-project",
@@ -186,7 +183,6 @@ describe("Desktop execution Main bridge", () => {
     mock.profile = "changed";
     expect(() => guard!()).toThrow("profile_inactive");
   });
-  // @lat: [[mobile-data#Mobile data#Catalog fixed Owner profile]]
   it("reads the original Runtime registry and repository only for its bound active Owner profile", () => {
     const policy = {
       id: "policy-inspect",
@@ -226,7 +222,6 @@ describe("Desktop execution Main bridge", () => {
     expect(() => catalog.snapshot()).toThrow("profile_inactive");
     expect(projects).toHaveBeenCalledTimes(3);
   });
-  // @lat: [[mobile-data#Mobile data#Bound execution policy bridge]]
   it("requires an enforced policy bound to active Owner profile, original runtime configuration and project", async () => {
     const policy = {
       id: "policy-1",
@@ -289,7 +284,6 @@ describe("Desktop execution Main bridge", () => {
       { ...options, codexMobileInspection: true },
     );
   });
-  // @lat: [[mobile-data#Mobile data#Unverified execution refusal]]
   it("denies unproven capability and unsupported policy modes without supplying full-access confirmation", () => {
     const runtime = mock.runtimes[0];
     const policy = {

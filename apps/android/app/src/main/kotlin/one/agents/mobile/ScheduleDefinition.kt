@@ -26,7 +26,6 @@ import one.agents.mobile.contract.ScheduleSummary
     }
 }
 
-// @lat: [[mobile-data#Mobile data#Android original schedule detail management]]
 internal fun scheduleDetailSummary(schedule: Schedule) = ScheduleSummary(
     id = schedule.id, name = schedule.name, runtimeId = schedule.runtimeId, projectId = schedule.projectId,
     executionPolicyId = schedule.executionPolicyId, scheduleExpression = schedule.scheduleExpression,

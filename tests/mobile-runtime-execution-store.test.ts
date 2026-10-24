@@ -57,7 +57,6 @@ beforeEach(async () => {
 });
 afterEach(() => rmSync(state.root, { recursive: true, force: true }));
 describe("Owner original execution commits", () => {
-  // @lat: [[mobile-data#Mobile data#Original cancellation current storage preservation]]
   it("completes an ordinary desktop cancellation against current metadata without a Renderer observer or duplicate result", async () => {
     const { completeOriginalCancelledRun } =
       await import("../src/main/mobile-control/original-cancel-completion");
@@ -143,7 +142,6 @@ describe("Owner original execution commits", () => {
     expect(claimed.workspace).toBe("D:/original-project");
     expect(claimed.messages).toHaveLength(1);
   });
-  // @lat: [[mobile-data#Mobile data#Desktop claim storage isolation]]
   it("claims a saved desktop user once and refuses stale, active and mismatched claims without altering bytes", () => {
     const saved = store.saveRuntimeConversation({
       ...store.getRuntimeConversation("original-conversation", "owner")!,
@@ -196,7 +194,6 @@ describe("Owner original execution commits", () => {
     ).toThrow("run_active");
     expect(readFileSync(file(), "utf8")).toBe(bytes);
   });
-  // @lat: [[mobile-data#Mobile data#Main owned storage checkpoint refusal]]
   it("marks Main ownership before dispatch and rejects a legacy Renderer checkpoint until Main commits its result", () => {
     const admitted = store.beginRuntimeConversationTurn(
       "original-conversation",
@@ -227,7 +224,6 @@ describe("Owner original execution commits", () => {
     expect(completed.activeRuntimeRunOwner).toBeUndefined();
     expect(completed.messages).toHaveLength(2);
   });
-  // @lat: [[mobile-data#Mobile data#Original turn admission]]
   it("compares revision and active Run in the same original commit and saves one user message before dispatch", () => {
     const admitted = store.beginRuntimeConversationTurn(
       "original-conversation",
@@ -262,7 +258,6 @@ describe("Owner original execution commits", () => {
     ).toThrow("run_active");
     expect(readFileSync(file(), "utf8")).toBe(originalBytes);
   });
-  // @lat: [[mobile-data#Mobile data#Current original result commit]]
   it("persists the final reply against current metadata after desktop rename, pin and archive changes", () => {
     store.beginRuntimeConversationTurn(
       "original-conversation",
@@ -314,7 +309,6 @@ describe("Owner original execution commits", () => {
       ),
     ).toThrow("reconciliation_required");
   });
-  // @lat: [[mobile-data#Mobile data#Execution commit history preservation]]
   it("retains old message windows and extensions when accepting and completing a new turn", () => {
     const raw = JSON.parse(readFileSync(file(), "utf8"));
     raw.extension = { keep: true };

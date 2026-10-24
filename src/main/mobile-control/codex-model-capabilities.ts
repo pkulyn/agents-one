@@ -31,7 +31,6 @@ export function projectCodexMobileModelCatalog(
   catalogBytes: Buffer,
   selectedModel: string,
 ): CodexMobileModelCatalog {
-  // @lat: [[mobile-data#Mobile data#Codex mobile model capability projection]]
   if (
     selectedModel !== MODEL ||
     !catalogBytes.length ||

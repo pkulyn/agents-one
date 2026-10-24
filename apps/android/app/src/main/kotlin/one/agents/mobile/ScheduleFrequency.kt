@@ -42,7 +42,6 @@ private fun cronValues(part: String, bounds: IntRange): Set<Int>? {
     return result
 }
 
-// @lat: [[mobile-data#Mobile data#Android readable original schedule frequency]]
 internal fun scheduleFrequency(context: Context, expression: String, language: String): String {
     val locale = Locale.forLanguageTag(language)
     val number = NumberFormat.getIntegerInstance(locale)

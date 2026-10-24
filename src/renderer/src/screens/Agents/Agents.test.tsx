@@ -196,7 +196,7 @@ describe("Agents", () => {
     expect(webSection?.textContent).toContain("豆包网页版");
   });
 
-  it("marks an unreachable runtime as a connection error and blocks chat", async () => {
+  it("shows the redacted Gateway probe reason and blocks chat", async () => {
     const api = installHermesAPI();
     api.listAgentRuntimes.mockResolvedValue([
       {
@@ -218,7 +218,7 @@ describe("Agents", () => {
       state: "unreachable",
       capabilities: {},
       checkedAt: Date.now(),
-      message: "连接检测失败",
+      message: "Gateway Token 无效或无权访问。",
     });
 
     render(<Agents onChatWithRuntime={() => {}} />);
@@ -227,6 +227,10 @@ describe("Agents", () => {
     await waitFor(() => {
       expect(screen.getByText(/^连接异常/)).toBeTruthy();
     });
+    expect(screen.getByText("Gateway Token 无效或无权访问。")).toBeTruthy();
+    expect(
+      screen.queryByText("连接检测失败，可进入管理页检查网关地址与凭据。"),
+    ).toBeNull();
     const chatButton = screen.getByRole("button", { name: "对话" });
     expect((chatButton as HTMLButtonElement).disabled).toBe(true);
   });

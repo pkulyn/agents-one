@@ -56,7 +56,6 @@ async function fixture(): Promise<{
   });
   return { api, release, review };
 }
-// @lat: [[mobile-data#Mobile data#Desktop retained write recovery scope]]
 it("binds terminal Run/profile and explicit release to the Main capability, never to arbitrary paths", async () => {
   const { api, release } = await fixture();
   const caller = vi.fn();
@@ -127,7 +126,6 @@ it("binds terminal Run/profile and explicit release to the Main capability, neve
   );
   expect(final.items).toEqual([]);
 });
-// @lat: [[mobile-data#Mobile data#Recovery async scope and restore admission]]
 it("rejects profile changes after Run lookup, lost frame authority and restored data before release", async () => {
   const { api, release } = await fixture();
   const item = (

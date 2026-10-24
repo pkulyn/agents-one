@@ -19,7 +19,6 @@ class OwnerSpaceSelectorUiTest {
     @get:Rule val ui=createAndroidComposeRule<ComponentActivity>()
     private val limits=Limits(100,50000,262144,86400000,7,100000,300000)
     private fun source(owner:String="owner-a",space:String="space-a",online:Boolean=true)=OwnerSpace(owner,space,"Same name","desktop",online,false,false,"Asia/Shanghai",listOf("conversation:read"),limits,"epoch-1")
-    // @lat: [[mobile-data#Mobile data#Android status header preserves brand]]
     @Test fun sameNamesNeverTurnTheStatusHeaderIntoASourcePicker() {
         val first = source(); var selected = 0
         ui.setContent { MaterialTheme { OwnerSpaceSelector(MobileState(owner = first, owners = listOf(first, source(space = "space-b"), source("owner-b"))), { selected++ }, {}) } }
@@ -29,7 +28,6 @@ class OwnerSpaceSelectorUiTest {
         ui.onNodeWithText("Space: space-a").assertDoesNotExist()
         assertEquals(0, selected)
     }
-    // @lat: [[mobile-data#Mobile data#Android status header handles connection loss]]
     @Test fun busyStatusRemainsReadOnlyAndConnectionLossShowsOffline() {
         val state = mutableStateOf(MobileState(owner = source(), busy = true))
         ui.setContent { MaterialTheme { OwnerSpaceSelector(state.value, { error("Unexpected selection") }, { error("Unexpected refresh") }) } }
@@ -38,7 +36,6 @@ class OwnerSpaceSelectorUiTest {
         ui.onNodeWithText("• Offline").assertIsDisplayed()
         ui.onNodeWithText("• Online").assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android status header with missing source]]
     @Test fun unpairedAndDemoHaveNoHeaderAndMissingOwnerCannotClaimOnline() {
         val state = mutableStateOf(MobileState())
         ui.setContent { MaterialTheme { OwnerSpaceSelector(state.value, {}, {}) } }
@@ -50,7 +47,6 @@ class OwnerSpaceSelectorUiTest {
         ui.onNodeWithText("• Online").assertDoesNotExist()
         ui.onNodeWithTag("owner-space-selector").assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android status header with long computer names]]
     @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun longComputerNameDoesNotReplaceBrandOrIntroduceHeaderActions() {
         var refreshed = 0
         ui.setContent { MaterialTheme { OwnerSpaceSelector(MobileState(owner = source().copy(label = "原桌面名称".repeat(80))), {}, { refreshed++ }) } }

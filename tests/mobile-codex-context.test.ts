@@ -106,7 +106,6 @@ afterEach(async () => {
 });
 
 describe("Main Codex invocation context", () => {
-  // @lat: [[mobile-data#Mobile data#Codex writer requires fixed project authority]]
   it("rejects missing or foreign writer bindings before creating private invocation files", async () => {
     const f = fixture();
     const writer = { projectRoot: () => f.workspace } as ProjectWriteRunner;
@@ -129,7 +128,6 @@ describe("Main Codex invocation context", () => {
     expect(existsSync(join(f.home, "desktop"))).toBe(false);
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex context rejects changed catalogs before write admission]]
   it("exposes explicit writer tools and denies HTTP admission after catalog replacement", async () => {
     const f = fixture();
     const write = vi.fn(async () => ({
@@ -183,7 +181,6 @@ describe("Main Codex invocation context", () => {
     );
   });
 
-  // @lat: [[mobile-data#Mobile data#Concurrent Codex disposal waits for write shutdown]]
   it("shares disposal completion until an aborted in-flight writer actually finishes", async () => {
     const f = fixture();
     let entered!: () => void, finish!: () => void, signal!: AbortSignal;
@@ -246,7 +243,6 @@ describe("Main Codex invocation context", () => {
     expect(disposed).toBe(true);
     expect(existsSync(catalog(context))).toBe(false);
   });
-  // @lat: [[mobile-data#Mobile data#Codex invocation directory cannot redirect private writes]]
   it("rejects private directory junctions and withholds deletion after directory replacement", async () => {
     const f = fixture();
     symlinkSync(f.workspace, join(f.home, "desktop"), "junction");
@@ -273,7 +269,6 @@ describe("Main Codex invocation context", () => {
     await context.dispose();
     expect(readFileSync(file)).toEqual(contents);
   });
-  // @lat: [[mobile-data#Mobile data#Codex private invocation catalog lifecycle]]
   it("removes model-selected agents, keeps no-project host disabled and disposes only its own catalog", async () => {
     const f = fixture();
     const context = await prepareCodexMobileContext({
@@ -298,7 +293,6 @@ describe("Main Codex invocation context", () => {
     expect(() => context.assertCurrent()).toThrow("context is unavailable");
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex project tool authority remains live]]
   it("requires Main project authority and rechecks revocation on actual MCP requests", async () => {
     const f = fixture();
     let revoked = false;
@@ -351,7 +345,6 @@ describe("Main Codex invocation context", () => {
     expect(guard.mock.calls.length).toBeGreaterThan(3);
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex catalog replacement invalidates dispatch]]
   it("rejects source or private catalog changes and preserves unknown replacement bytes", async () => {
     const f = fixture();
     const context = await prepareCodexMobileContext({
@@ -369,7 +362,6 @@ describe("Main Codex invocation context", () => {
     );
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex missing project authority prevents preparation]]
   it("rejects a missing guard or unsupported model before opening a transport or creating catalog files", async () => {
     const f = fixture();
     await expect(
@@ -396,7 +388,6 @@ describe("Main Codex invocation context", () => {
     expect(existsSync(join(f.home, "desktop"))).toBe(false);
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex failed project context closes prepared resources]]
   it("cleans its catalog when authority is revoked during context preparation", async () => {
     const f = fixture();
     let checks = 0;

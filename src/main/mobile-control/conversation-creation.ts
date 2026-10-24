@@ -67,7 +67,6 @@ export class DesktopConversationCreation implements MobileConversationCreation {
         code: "unverified_policy",
         status: 403,
       });
-    // @lat: [[mobile-data#Mobile data#Empty original conversation creation]]
     return saveRuntimeConversation({
       profile: this.profile,
       id,

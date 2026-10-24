@@ -24,6 +24,7 @@
     "test": "vitest run",
     "test:subprojects": "npm test --prefix plugins/agents-one-plugin && npm test --prefix plugins/agents-one-connector && npm test --prefix services/agents-one-connect",
     "test:all": "npm test && npm run test:subprojects",
+    "audit:ci": "node scripts/check-dependency-audit.mjs",
     "test:coverage": "vitest run --coverage",
     "test:sandbox": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hermes-sandbox.ps1 test",
     "test:live-visual": "node scripts/drive-live-regression-suite.js",
@@ -47,7 +48,8 @@
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "build:rpm": "npm run build && electron-builder --linux rpm",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "docs:check": "node scripts/check-public-documents.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.241",

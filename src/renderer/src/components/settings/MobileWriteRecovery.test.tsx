@@ -28,7 +28,6 @@ const status: MobileWriteRecoveryStatus = {
   capacityExceeded: false,
 };
 afterEach(() => cleanup());
-// @lat: [[mobile-data#Mobile data#Recovery UI explicit confirmation and one submit]]
 it("shows uncertain observation, requires confirmation and submits the exact reviewed token only once", async () => {
   let resolve!: (value: MobileWriteRecoveryStatus) => void;
   const manage = vi
@@ -61,7 +60,6 @@ it("shows uncertain observation, requires confirmation and submits the exact rev
   await act(async () => resolve({ items: [], capacityExceeded: false }));
   await screen.findByText("empty");
 });
-// @lat: [[mobile-data#Mobile data#Recovery UI old profile response isolation]]
 it("ignores an earlier profile response and offers no release for a blocked Run", async () => {
   let resolve!: (value: MobileWriteRecoveryStatus) => void;
   const manage = vi

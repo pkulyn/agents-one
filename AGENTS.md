@@ -116,3 +116,7 @@ Details about this child topic.
 ```
 
 The second example is invalid because `Bad Section` has no leading paragraph. `lat check` validates this rule and reports errors for missing or overly long leading paragraphs.
+
+## Public documentation scope
+
+Keep PRDs, future platform plans, progress logs, test evidence and audit records in a private local directory outside the public repository. The public `docs/` directory is an explicit allowlist. Do not force-add ignored files or add a document to `.github/public-documents.json` without the maintainer explicitly approving its publication. Validate changes with `npm run docs:check`. Local progress logging does not authorize publishing that log.

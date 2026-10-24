@@ -7,7 +7,6 @@ import one.agents.mobile.net.*
 
 class MobileSchemaValidationTest {
     private val objects = Json.parseToJsonElement(File("../../../contracts/mobile-control/v1/fixtures.json").readText()).jsonObject["objects"]!!.jsonObject
-    // @lat: [[mobile-data#Mobile data#Distinct desktop task mode contract]]
     @Test fun `desktop task modes validate separately from strict legacy sandbox policies`() {
         val policy = objects["ExecutionPolicy"]!!.jsonObject
         for (mode in listOf("inspect", "project_write", "desktop_analysis", "desktop_execute")) {
@@ -17,7 +16,6 @@ class MobileSchemaValidationTest {
         }
         assertFailsWith<MobileApiException> { validateMobileSchema("ExecutionPolicy", JsonObject(policy + ("mode" to JsonPrimitive("invented_mode")))) }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Generated live response validation]]
     @Test fun `all shared response fixtures validate and malformed revisions states identities and timestamps fail`() {
         objects.forEach { (name, value) -> validateMobileSchema(name, value) }
         val conversation = objects["Conversation"]!!.jsonObject
@@ -32,7 +30,6 @@ class MobileSchemaValidationTest {
         validateMobileSchema("ResourceDeletion", deletion)
         assertFailsWith<MobileApiException> { validateMobileSchema("ResourceDeletion", JsonObject(deletion - "conversationId")) }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Event cursor commit after validated application]]
     @Test fun `cursor remains unchanged after invalid envelope identity payload or failed application`() {
         val original = objects["Event"]!!.jsonObject
         fun event(changes: Map<String, JsonElement> = emptyMap()) = JsonObject(original + mapOf("eventId" to JsonPrimitive("epoch:9007199254740993"), "dataEpoch" to JsonPrimitive("epoch"), "spaceChangeSeq" to JsonPrimitive("9007199254740993")) + changes)

@@ -209,7 +209,6 @@ async function setup(
 }
 
 describe("mobile Owner outbound tunnel", () => {
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Refresh ACK window]]
   it("waits for fresh grant confirmation without reporting an established Owner offline", async () => {
     const s = await setup();
     s.client.start();
@@ -236,7 +235,6 @@ describe("mobile Owner outbound tunnel", () => {
     expect((await pending).status).toBe(200);
     expect(s.captured).toHaveLength(1);
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Refresh wait revocation]]
   it("rechecks device revocation after waiting for a refresh ACK", async () => {
     const s = await setup();
     s.client.start();
@@ -262,14 +260,12 @@ describe("mobile Owner outbound tunnel", () => {
     expect((await pending).body.error.code).toBe("revoked");
     expect(s.captured).toHaveLength(0);
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Bounded Relay clock lead]]
   it("connects an authenticated desktop to a Relay whose clock leads by eighteen seconds", async () => {
     const s = await setup(["conversation:read"], 18_000);
     s.client.start();
     await until(async () => (await s.management("/status")).body.taskChannelReady);
     expect((await s.mobile("bootstrap")).status).toBe(200);
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Clock lead lease and expiry limits]]
   it("caps a clock-leading authorization lease at thirty local seconds and rejects expired or excessively future signed frames", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     let time = Date.now();
@@ -288,7 +284,6 @@ describe("mobile Owner outbound tunnel", () => {
     time=initial+30_000;
     expect(auth.active("phone-1","1")).toBe(false);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule recent execution original Relay integration]]
   it("reads recent executions through authenticated Relay from the original desktop schedule file without persisting results in Relay state", async () => {
     const s = await setup(["schedule:read"]);
     desktop.root = dirname(s.options.storagePath);
@@ -384,7 +379,6 @@ describe("mobile Owner outbound tunnel", () => {
     expect((await s.mobile("schedules")).body.error.code).toBe("revoked");
     expect(patch).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Runtime avatar authenticated Relay integration]]
   it("transfers original avatar bytes through the authenticated HTTP and Owner WebSocket channel and rejects stale references and revoked devices", async () => {
     const s = await setup(["conversation:read"]);
     const avatar = fixtures.objects.RuntimeAvatar;
@@ -468,7 +462,6 @@ describe("mobile Owner outbound tunnel", () => {
     expect(patch).not.toHaveBeenCalled();
     expect(backend.start).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Persistent event HTTP integration]]
   it("routes persistent Owner events through signed WSS into real HTTP SSE and resumes from the exact event ID", async () => {
     const s = await setup(["conversation:read"]);
     const ledger = new MobileOwnerLedger(
@@ -540,7 +533,6 @@ describe("mobile Owner outbound tunnel", () => {
     expect(resumed).toContain(`id: ${second.eventId}\n`);
     expect(resumed).not.toContain(`id: ${first.eventId}\n`);
   });
-  // @lat: [[mobile-data#Mobile data#Relay to original history integration]]
   it("routes authenticated phone reads and idempotent management through the Owner to the original desktop store", async () => {
     const s = await setup(["conversation:read", "conversation:manage"]);
     desktop.root = dirname(s.options.storagePath);
@@ -655,7 +647,6 @@ describe("mobile Owner outbound tunnel", () => {
     await s.management(`/devices/${s.credentials.deviceId}`, "DELETE");
     expect((await s.mobile("conversations")).body.error.code).toBe("revoked");
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Generated business allowlist]]
   it("uses the generated contract for every business route and write schema", () => {
     for (const candidate of MOBILE_ROUTES.filter((route) =>
       route.path.includes("/spaces/{spaceId}/"),
@@ -678,7 +669,6 @@ describe("mobile Owner outbound tunnel", () => {
     expect(resolveBusinessRoute("POST", root + "/ipc")).toBeNull();
     expect(resolveBusinessRoute("GET", "/agents-one/v1/runs")).toBeNull();
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Authenticated routing]]
   it("routes a scoped real HTTP request over the independent Owner WebSocket", async () => {
     const s = await setup();
     s.client.start();
@@ -701,7 +691,6 @@ describe("mobile Owner outbound tunnel", () => {
     );
     expect((await s.mobile("bootstrap")).body.error.code).toBe("owner_offline");
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Long history response]]
   it("transports a long message page larger than the request frame limit without truncating final text", async () => {
     const s = await setup();
     const content = "测".repeat(200000);
@@ -725,7 +714,6 @@ describe("mobile Owner outbound tunnel", () => {
     expect(response.body.items).toHaveLength(4);
     expect(response.body.items[3].content).toBe(content);
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Scope and write gates]]
   it("rejects writes without scope, revision, stable identity or known fields before dispatch", async () => {
     const s = await setup(["conversation:read"]);
     s.client.start();
@@ -772,7 +760,6 @@ describe("mobile Owner outbound tunnel", () => {
     );
     expect(w.captured).toHaveLength(0);
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Grant confirmation]]
   it("never reports ready or forwards while the Owner has not confirmed grants", async () => {
     const s = await setup();
     const socket = new WebSocket(
@@ -810,7 +797,6 @@ describe("mobile Owner outbound tunnel", () => {
     expect((await s.management("/status")).body.taskChannelReady).toBe(false);
     expect((await s.mobile("bootstrap")).status).toBe(503);
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Revocation during streaming]]
   it("closes an authorized SSE on device revocation and leaves accepted execution independent", async () => {
     const s = await setup();
     let aborted = false;
@@ -847,7 +833,6 @@ describe("mobile Owner outbound tunnel", () => {
     await until(() => aborted);
     expect((await s.mobile("bootstrap")).body.error.code).toBe("revoked");
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Artifact transfer]]
   it("streams bounded Artifact chunks and verifies length/hash without relay persistence", async () => {
     const s = await setup(["artifact:read"]);
     const bytes = Buffer.alloc(196608, 0x61);
@@ -887,7 +872,6 @@ describe("mobile Owner outbound tunnel", () => {
       bytes.subarray(0, 200).toString(),
     );
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Interrupted mutation]]
   it("reports an interrupted dispatched write as requiring reconciliation without replay", async () => {
     const s = await setup();
     let started = false;
@@ -920,7 +904,6 @@ describe("mobile Owner outbound tunnel", () => {
     expect(result.status).toBe(409);
     expect(result.body.error.code).toBe("reconciliation_required");
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Host credential separation]]
   it("keeps a stable signing key across restart and excludes admin or phone tokens from Owner authentication", async () => {
     const s = await setup();
     expect(s.registration.hostCredential).not.toBe(admin);
@@ -972,7 +955,6 @@ describe("mobile Owner outbound tunnel", () => {
       expect(await closed).toBe(4000);
     }
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Signed context and replay]]
   it("pins the signing key, binds all request fields and rejects nonce replay", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const time = Date.now();

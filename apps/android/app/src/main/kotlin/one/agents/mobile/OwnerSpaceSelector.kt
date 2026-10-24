@@ -20,7 +20,6 @@ internal fun ownerConnectionError(code: String): Boolean = code == "owner_offlin
 internal fun ownerOffline(state: MobileState): Boolean = state.owner != null &&
     (state.ownerCacheOnly || state.owner.online == false || state.syncError?.let(::ownerConnectionError) == true || state.error?.let(::ownerConnectionError) == true)
 
-// @lat: [[mobile-data#Mobile data#Android visible original Owner and space]]
 @Composable internal fun OwnerSpaceSelector(state: MobileState, select: (OwnerSpace) -> Unit, refresh: () -> Unit) {
     if (state.demo || (state.owner == null && !state.paired && state.owners.isEmpty())) return
     val current = state.owner

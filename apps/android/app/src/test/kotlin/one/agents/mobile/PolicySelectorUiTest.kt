@@ -26,7 +26,6 @@ class PolicySelectorUiTest {
         policy.copy(id = "desktop-task-project-analysis", mode = "desktop_analysis", unattendedApproved = true),
     )
 
-    // @lat: [[mobile-data#Mobile data#Android task creation without a project]]
     @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun noProjectRemainsSubmittableForConversationAndSchedule() {
         val noProject = policy.copy(id = "desktop-task-no-project", projectId = null, mode = "desktop_auto", unattendedApproved = true, allowedActions = listOf("create", "advance", "trigger"))
         val withProject = noProject.copy(id = "desktop-task-with-project", projectId = "original-project")
@@ -71,7 +70,6 @@ class PolicySelectorUiTest {
         assertNull(currentPolicySelection(listOf(refreshed.copy(runtimeId = "other-runtime")), old, state))
     }
 
-    // @lat: [[mobile-data#Mobile data#Android independent desktop task choices]]
     @Test fun choosesAgentProjectAndModeIndependentlyUsingOriginalCatalogObject() {
         val policies = taskChoices(); val state = catalog().copy(policies = policies)
         val choice = mutableStateOf<ExecutionPolicy?>(null)
@@ -86,7 +84,6 @@ class PolicySelectorUiTest {
         ui.onNodeWithText("Read only").assertIsDisplayed()
     }
 
-    // @lat: [[mobile-data#Mobile data#Android task choice invalidation and recovery]]
     @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun chineseChoiceRejectsRemovedProjectAndCanSelectAnotherModeWithoutDesktopApproval() {
         val policies = taskChoices(); val state = mutableStateOf(catalog().copy(policies = policies))
         val choice = mutableStateOf<ExecutionPolicy?>(policies[2])
@@ -103,7 +100,6 @@ class PolicySelectorUiTest {
         ui.onNodeWithTag("task-mode").performClick(); ui.onNodeWithText("自动").performClick()
         assertSame(policies[0], choice.value); ui.onNodeWithText("Apply").assertIsEnabled()
     }
-    // @lat: [[mobile-data#Mobile data#Android full access never defaults]]
     @Test fun fullAccessRequiresExplicitChoiceAndNeverBecomesDefault() {
         val full = policy.copy(id = "desktop-task-full", mode = "desktop_full_access")
         assertNull(defaultTaskPolicy(listOf(full), catalog(full)))
@@ -112,7 +108,6 @@ class PolicySelectorUiTest {
         assertFalse(policyCatalogAvailable(full, catalog(full).copy(projects = emptyList())))
     }
 
-    // @lat: [[mobile-data#Mobile data#Android readable policy original identity]]
     @Test fun englishPolicyShowsOriginalNamesAndModeWhileSelectingOriginalObject() {
         var choice: ExecutionPolicy? = null
         ui.setContent { MaterialTheme { Column { PolicySelector(listOf(policy), catalog(), null) { choice = it } } } }
@@ -123,7 +118,6 @@ class PolicySelectorUiTest {
         ui.onNodeWithTag("execution-policy:opaque-policy").performClick()
         assertSame(policy, choice)
     }
-    // @lat: [[mobile-data#Mobile data#Android Chinese policy write explanation]]
     @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun chinesePolicyExplainsControlledWriteAndScheduledApproval() {
         val write = policy.copy(mode = "project_write", unattendedApproved = true)
         var choice: ExecutionPolicy? = null
@@ -134,7 +128,6 @@ class PolicySelectorUiTest {
         ui.onNodeWithTag("execution-policy:opaque-policy").performClick()
         assertSame(write, choice)
     }
-    // @lat: [[mobile-data#Mobile data#Android policy changed catalog admission]]
     @Test fun changedPolicyOrMissingDirectoryDisablesSubmissionAndUnavailableSelection() {
         val state = mutableStateOf(catalog()); val choice = mutableStateOf<ExecutionPolicy?>(policy)
         ui.setContent { MaterialTheme { Column {

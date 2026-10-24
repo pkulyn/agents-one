@@ -138,7 +138,6 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(state.root, { recursive: true, force: true }));
 describe("original schedule mobile controls", () => {
-  // @lat: [[mobile-data#Mobile data#Schedule control data integrity]]
   it("preserves corrupt stores and duplicate execution identities instead of repairing during a control", async () => {
     seed();
     writeFileSync(file(), "broken source");
@@ -168,7 +167,6 @@ describe("original schedule mobile controls", () => {
     expect(readFileSync(file(), "utf8")).toBe(duplicate);
     expect(ledger.operations("phone-1")).toEqual([]);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule original concurrent control]]
   it("uses the same original revision lock across distinct Owner handlers", async () => {
     seed();
     const other = new DesktopMobileScheduleControl("owner", ledger);
@@ -185,7 +183,6 @@ describe("original schedule mobile controls", () => {
     expect(rejected.reason).toMatchObject({ code: "revision_conflict" });
     expect(state.write).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule control binding and management lock]]
   it("rejects management changes and same-name profile home replacement before touching original data", async () => {
     const original = seed();
     state.locked = true;
@@ -205,7 +202,6 @@ describe("original schedule mobile controls", () => {
     expect(readFileSync(file(), "utf8")).toBe(original);
     expect(ledger.operations("phone-1")).toEqual([]);
   });
-  // @lat: [[mobile-data#Mobile data#Original schedule control admission]]
   it("pauses an invalid Runtime plan without cancelling its Run or losing queue, cursor, history and extensions", async () => {
     seed();
     expect(await control.handle(request())).toMatchObject({
@@ -230,7 +226,6 @@ describe("original schedule mobile controls", () => {
     expect(value.schedules[0].runs[0].privateExtension).toBe("keep");
     expect(state.cancel).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Schedule control receipt replay]]
   it("returns the same concurrent duplicate receipt, rejects changed content, and replays after restart without writing again", async () => {
     seed();
     const req = request();
@@ -257,7 +252,6 @@ describe("original schedule mobile controls", () => {
     expect(await reopened.handle(req)).toEqual(a);
     expect(state.write).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-data#Mobile data#Paused schedule discard and deletion]]
   it("discards only a paused queue and deletes only inactive empty definitions, preserving result conversations", async () => {
     seed();
     await expect(
@@ -290,7 +284,6 @@ describe("original schedule mobile controls", () => {
     expect(JSON.parse(readFileSync(file(), "utf8")).schedules).toEqual([]);
     expect(readFileSync(history, "utf8")).toBe(original);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule control scope and revision]]
   it("denies stale versions, missing management scope, revoked devices and changed profile before writing intent", async () => {
     const original = seed();
     await expect(
@@ -313,7 +306,6 @@ describe("original schedule mobile controls", () => {
     expect(readFileSync(file(), "utf8")).toBe(original);
     expect(ledger.operations("phone-1")).toEqual([]);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule control guard inside lock]]
   it("rechecks authority inside the original lock before admitting a write", async () => {
     const original = seed();
     let checks = 0;
@@ -333,7 +325,6 @@ describe("original schedule mobile controls", () => {
     expect(accept).not.toHaveBeenCalled();
     expect(readFileSync(file(), "utf8")).toBe(original);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule control uncertain persistence]]
   it("keeps original bytes on failed intent or failed source writes and never repeats uncertain controls", async () => {
     const original = seed();
     vi.spyOn(ledger, "accept").mockImplementationOnce(() => {
@@ -355,7 +346,6 @@ describe("original schedule mobile controls", () => {
     ).toMatchObject({ status: "reconciliation_required" });
     expect(readFileSync(file(), "utf8")).toBe(original);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule control production capabilities]]
   it("composes only real control actions and device scopes, without enabling unverified resume", async () => {
     seed();
     const source = new DesktopMobileScheduleReadRepository("owner");

@@ -89,7 +89,6 @@ function processFor(chunks: string[], stderr = "", code = 0): void {
 }
 
 describe("Codex continuation at the process boundary", () => {
-  // @lat: [[mobile-data#Mobile data#Codex mobile write model stays read only]]
   it("binds a fixed Main runner while the model process remains read-only", async () => {
     const workspace = join(state.root, "project"),
       home = join(state.root, "home");
@@ -131,7 +130,6 @@ describe("Codex continuation at the process boundary", () => {
     state.root = dirname(home);
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex mobile write requires Main guards before spawn]]
   it("rejects incomplete or contradictory write authority before configuration, context or spawn", async () => {
     const projectWrite = {
       runId: "run-11111111-1111-4111-8111-111111111111",
@@ -159,7 +157,6 @@ describe("Codex continuation at the process boundary", () => {
     expect(state.context).not.toHaveBeenCalled();
     expect(state.spawn).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Codex fresh configuration admission]]
   it("validates fresh configuration before tool context and rechecks approval immediately before native spawn", async () => {
     const guard = vi.fn((hash: string) => {
       if (hash !== "a".repeat(64)) throw Error("private-secret");
@@ -210,7 +207,6 @@ describe("Codex continuation at the process boundary", () => {
     expect(state.disposeContext).toHaveBeenCalledOnce();
     expect(state.spawn).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Codex configuration authority strict callback]]
   it("rejects async configuration authority and authority without mobile inspection before dispatch", async () => {
     const guard = vi.fn(async () => {
       throw Error("private-secret");
@@ -234,7 +230,6 @@ describe("Codex continuation at the process boundary", () => {
       ),
     ).rejects.toThrow("requires mobile inspection");
   });
-  // @lat: [[mobile-data#Mobile data#Codex Runtime owns tool context lifecycle]]
   it("passes Main project authority to the context and closes it before completion", async () => {
     const guard = vi.fn();
     processFor([
@@ -258,7 +253,6 @@ describe("Codex continuation at the process boundary", () => {
     expect(state.currentContext).toHaveBeenCalledOnce();
     expect(state.disposeContext).toHaveBeenCalledOnce();
   });
-  // @lat: [[mobile-data#Mobile data#Codex failed context blocks native spawn]]
   it("does not dispatch after context preparation or last context validation fails", async () => {
     state.context.mockRejectedValueOnce(Error("context unavailable"));
     await expect(
@@ -284,7 +278,6 @@ describe("Codex continuation at the process boundary", () => {
     expect(state.spawn).not.toHaveBeenCalled();
     expect(state.disposeContext).toHaveBeenCalledOnce();
   });
-  // @lat: [[mobile-data#Mobile data#Reviewed Codex native version gate#Unknown native refused before configuration RPC]]
   it("refuses unreviewed native bytes before reading configuration or starting a model process", async () => {
     state.reviewedNative.mockImplementation(() => {
       throw Error(
@@ -302,7 +295,6 @@ describe("Codex continuation at the process boundary", () => {
     expect(state.configuration).not.toHaveBeenCalled();
     expect(state.spawn).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Codex mobile inspection process arguments]]
   it("applies Main-owned inspection gates to the same original continuation without enabling shell or extensions", async () => {
     processFor([
       '{"type":"thread.started","thread_id":"original-thread-id"}\n',
@@ -346,7 +338,6 @@ describe("Codex continuation at the process boundary", () => {
     ]);
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex dispatch identity change refusal]]
   it("uses the identified native executable and refuses identity changes after configuration or immediately before dispatch", async () => {
     state.identity.mockReturnValue({
       nativePath: "identified-codex.exe",
@@ -426,7 +417,6 @@ describe("Codex continuation at the process boundary", () => {
     expect(readdirSync(state.root)).toEqual(staged);
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex mobile inspection mode rejection]]
   it("rejects writing modes before spawning or creating an input staging directory", async () => {
     for (const mode of ["safe_write", "full_access", "implementation"] as const)
       await expect(
@@ -440,7 +430,6 @@ describe("Codex continuation at the process boundary", () => {
     expect(state.spawn).not.toHaveBeenCalled();
     expect(readdirSync(state.root)).toEqual([]);
   });
-  // @lat: [[mobile-data#Mobile data#Codex long output session identity]]
   it("retains a chunked original thread id after the output tail window has discarded thread.started", async () => {
     processFor([
       '{"type":"thread.started","thread_',
@@ -472,7 +461,6 @@ describe("Codex continuation at the process boundary", () => {
     });
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex mismatched continuation identity]]
   it("fails when the provider reports a different resumed thread and does not retry as a new conversation", async () => {
     processFor(['{"type":"thread.started","thread_id":"different-thread"}\n']);
     const process = await startCodexProcess(
@@ -486,7 +474,6 @@ describe("Codex continuation at the process boundary", () => {
     expect(state.spawn).toHaveBeenCalledTimes(1);
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex session evidence source]]
   it("does not accept a session id from stderr and preserves an explicit continuation after an ID-free successful event stream", async () => {
     processFor(
       ['{"type":"turn.completed","usage":{}}\n'],

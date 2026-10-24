@@ -837,7 +837,6 @@ export function claimRuntimeConversationRun(
       code: "revision_conflict",
       status: 409,
     });
-  // @lat: [[mobile-data#Mobile data#Desktop dispatch claim]]
   return saveRuntimeConversation({
     ...value,
     profile,
@@ -876,7 +875,6 @@ export function beginRuntimeConversationTurn(
       code: "invalid_input",
       status: 422,
     });
-  // @lat: [[mobile-data#Mobile data#Original turn admission]]
   return saveRuntimeConversation({
     ...value,
     profile,
@@ -939,7 +937,6 @@ export function completeRuntimeConversationTurn(
       code: "reconciliation_required",
       status: 409,
     });
-  // @lat: [[mobile-data#Mobile data#Current original result commit]]
   return saveRuntimeConversation({
     ...value,
     profile,

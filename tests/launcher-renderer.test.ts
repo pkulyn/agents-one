@@ -8,7 +8,6 @@ const blank = {
 };
 const wait = async (): Promise<void> => {};
 
-// @lat: [[desktop-launch#Hidden window recovery#Renderer readiness]]
 it("accepts a rendered workspace without reloading drafts", async () => {
   const call = vi.fn().mockResolvedValue(ready);
   expect(await ensureWorkspace(call, { wait })).toEqual({
@@ -18,7 +17,6 @@ it("accepts a rendered workspace without reloading drafts", async () => {
   expect(call.mock.calls.map((c) => c[0])).toEqual(["Runtime.evaluate"]);
 });
 
-// @lat: [[desktop-launch#Hidden window recovery#Blank cache recovery]]
 it("reloads a blank page once with cache disabled and restores the cache setting", async () => {
   let reloaded = false;
   const call = vi.fn(async (method: string) => {
@@ -37,7 +35,6 @@ it("reloads a blank page once with cache disabled and restores the cache setting
   ]);
 });
 
-// @lat: [[desktop-launch#Hidden window recovery#Preserve rendered error state]]
 it("fails without reloading a nonempty page that did not reach the workspace", async () => {
   const call = vi
     .fn()

@@ -47,7 +47,6 @@ internal fun allowedMessageLink(value: String): Boolean = runCatching {
 
 private fun Node.children(): Sequence<Node> = generateSequence(firstChild) { it.next }
 
-// @lat: [[mobile-data#Mobile data#Android native message Markdown]]
 internal fun parseMessageMarkdown(content: String, onLink: (String) -> Unit = {}): List<MessageBlock> {
     return try {
         val result = mutableListOf<MessageBlock>()

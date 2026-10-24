@@ -58,7 +58,6 @@ class MobileDeviceSmokeTest {
         Configuration(ui.activity.resources.configuration).apply { setLocale(Locale.ENGLISH) }
     ).getString(resource)
 
-    // @lat: [[mobile-data#Mobile data#Android device bilingual navigation]]
     @Test fun languageChangesActualNavigationAndReturnsToEnglish() {
         ui.onNodeWithText("简体中文").performClick()
         ui.onNode(hasText("我的") and hasClickAction()).assertIsDisplayed()
@@ -68,7 +67,6 @@ class MobileDeviceSmokeTest {
         ui.onNode(hasText("Schedules") and hasClickAction()).assertIsDisplayed()
     }
 
-    // @lat: [[mobile-data#Mobile data#Android device IME pairing draft]]
     @Test fun endpointInputShowsSystemKeyboardAndAcceptsHardwareKey() {
         val field = ui.onNodeWithText(englishString(R.string.endpoint))
         field.performScrollTo().performTextClearance()
@@ -99,7 +97,6 @@ class MobileDeviceSmokeTest {
         check(!model.state.value.paired && model.state.value.claim == null)
     }
 
-    // @lat: [[mobile-data#Mobile data#Android device activity recreation]]
     @Test fun recreationKeepsLanguageAndDoesNotCreateConnection() {
         ui.activityRule.scenario.recreate()
         ui.waitForIdle()

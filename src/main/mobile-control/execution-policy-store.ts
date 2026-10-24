@@ -281,7 +281,6 @@ export class MobileExecutionPolicyStore implements DesktopExecutionPolicyCatalog
     ];
     value.revision = (BigInt(value.revision) + 1n).toString();
     if (!revision(value.revision)) fail("requires_owner_action", 409);
-    // @lat: [[mobile-data#Mobile data#Owner policy approval persistence]]
     this.write(value, () => this.validate(row));
     return policyId;
   }

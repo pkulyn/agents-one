@@ -111,7 +111,6 @@ function storeDirectory(): string {
   return join(parent, readdirSync(parent)[0]);
 }
 
-// @lat: [[mobile-data#Mobile data#Original artifact immutable delivery]]
 it("captures the authorized original binary and reopens identical delivery bytes after a restart without native registry state", async () => {
   const [metadata] = await repository.capture(run, "original-conversation");
   expect(metadata).toMatchObject({
@@ -136,7 +135,6 @@ it("captures the authorized original binary and reopens identical delivery bytes
   expect(await received(restarted, String(metadata.id))).toEqual(bytes);
   expect(readFileSync(original, "utf8")).toBe("later original edits");
 });
-// @lat: [[mobile-data#Mobile data#Original artifact capability admission]]
 it("rejects unknown Run identity and never interprets a message path or ordinary reply as an artifact capability", async () => {
   await expect(
     repository.capture(
@@ -167,7 +165,6 @@ it("rejects unknown Run identity and never interprets a message path or ordinary
     Buffer.from("Explicit original artifact"),
   );
 });
-// @lat: [[mobile-data#Mobile data#Original artifact identity revocation]]
 it("blocks deleted original conversations, inactive Owners and changed epochs without deleting the original files", async () => {
   const [metadata] = await repository.capture(run, "original-conversation");
   known = [];
@@ -200,7 +197,6 @@ it("blocks deleted original conversations, inactive Owners and changed epochs wi
   );
   expect(readFileSync(original)).toEqual(bytes);
 });
-// @lat: [[mobile-data#Mobile data#Original artifact stream revocation]]
 it("checks abort and original source authority between actual binary chunks", async () => {
   const [metadata] = await repository.capture(run, "original-conversation");
   const abort = new AbortController(),
@@ -218,7 +214,6 @@ it("checks abort and original source authority between actual binary chunks", as
     code: "owner_unavailable",
   });
 });
-// @lat: [[mobile-data#Mobile data#Original artifact source integrity]]
 it("refuses source hard links, wrong source digest and corrupt delivery bytes before returning a download response", async () => {
   linkSync(original, join(root, "alias.bin"));
   expect(await repository.capture(run, "original-conversation")).toEqual([]);
@@ -236,7 +231,6 @@ it("refuses source hard links, wrong source digest and corrupt delivery bytes be
     repository.download(String(metadata.id), new AbortController().signal),
   ).rejects.toMatchObject({ code: "requires_owner_action" });
 });
-// @lat: [[mobile-data#Mobile data#Original artifact linked directory rejection]]
 it("rejects a source directory junction before reading bytes even when the Main resolver supplies its lexical path", async () => {
   const directory = join(root, "original-directory");
   mkdirSync(directory);
@@ -252,7 +246,6 @@ it("rejects a source directory junction before reading bytes even when the Main 
   expect(readdirSync(storeDirectory())).toEqual([]);
   expect(readFileSync(join(directory, "result.bin"))).toEqual(bytes);
 });
-// @lat: [[mobile-data#Mobile data#Original artifact index isolation]]
 it("projects only public metadata and rejects a damaged or foreign immutable index on reopen", async () => {
   const [metadata] = await repository.capture(run, "original-conversation"),
     file = join(storeDirectory(), `${metadata.id}.json`);

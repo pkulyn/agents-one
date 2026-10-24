@@ -124,7 +124,6 @@ export class MobileExecutionManagement {
         };
       }
     }
-    // @lat: [[mobile-data#Mobile data#Local execution approval management]]
     if (command.action === "approve")
       this.source.store.approve(command.selection, command.expectedRevision);
     if (command.action === "revoke")

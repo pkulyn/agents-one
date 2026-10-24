@@ -152,7 +152,6 @@ describe("Codex runtime invocation", () => {
     expect(codexInvocation("codex")).toEqual({ command: "codex", prefix: [] });
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex original thread continuation]]
   it("resumes the explicit original thread with permissions and cwd on the parent command", () => {
     expect(
       codexExecArgs(
@@ -180,7 +179,6 @@ describe("Codex runtime invocation", () => {
     ]);
   });
 
-  // @lat: [[mobile-data#Mobile data#Codex continuation argument boundary]]
   it("places resumed images on the resume command and prevents prompt or session option injection", () => {
     const args = codexExecArgs(
       "D:\\repo",

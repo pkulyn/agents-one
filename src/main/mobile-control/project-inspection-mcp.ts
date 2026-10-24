@@ -100,7 +100,6 @@ export async function startProjectInspectionMcp(
   const expected = Buffer.from(`Bearer ${token}`);
   let closed = false;
   let closing: Promise<void> | undefined;
-  // @lat: [[mobile-data#Mobile data#Main project inspection MCP transport]]
   const server = createServer(async (request, response) => {
     const supplied = Buffer.from(request.headers.authorization ?? "");
     if (
@@ -230,7 +229,6 @@ export async function startProjectInspectionMcp(
               });
               return;
             }
-            // @lat: [[mobile-data#Mobile data#Explicit Main project write MCP entry]]
             try {
               current();
               const operation = writer.write({

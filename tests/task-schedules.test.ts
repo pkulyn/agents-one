@@ -53,7 +53,6 @@ async function loadModules(): Promise<{
 }
 
 describe("Runtime schedules", () => {
-  // @lat: [[mobile-data#Mobile data#Original scheduler lifecycle status]]
   it("reports the actual runner lifecycle only for the active unlocked profile", async () => {
     const { schedules } = await loadModules();
     const utils = await import("../src/main/utils");

@@ -4837,7 +4837,6 @@ export async function startAgentRuntimeTask(
       : {}),
     taskTimeoutMs: task.timeoutMs,
   };
-  // @lat: [[mobile-data#Mobile data#Execution persistence before dispatch]]
   // No external dispatch or started event occurs until this persistence barrier settles.
   // A rejected barrier must not become an in-memory running task.
   if (input.conversationContext) {

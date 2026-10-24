@@ -70,7 +70,6 @@ export function createCodexProjectWriteRunner(input: {
   authorize(): void;
   assertWritesAllowed(): void;
 }): ProjectWriteRunner {
-  // @lat: [[mobile-data#Mobile data#Codex fixed Run writer private storage]]
   if (
     !/^run-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
       input.runId,

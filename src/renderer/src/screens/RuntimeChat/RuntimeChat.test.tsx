@@ -358,7 +358,6 @@ describe("RuntimeChat inputs and persistence", () => {
     });
   });
 
-  // @lat: [[mobile-data#Mobile data#Desktop dispatch waits for checkpoint]]
   it("does not dispatch a Runtime task before its original user message has been saved", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -390,7 +389,6 @@ describe("RuntimeChat inputs and persistence", () => {
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
   });
 
-  // @lat: [[mobile-data#Mobile data#Desktop observes Main owned results]]
   it("shows a Main-owned reply only after original storage commits and never writes a second final reply", async () => {
     let original = {
       id: "main-owned-conversation",

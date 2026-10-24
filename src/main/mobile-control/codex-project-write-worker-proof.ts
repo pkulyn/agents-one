@@ -157,7 +157,6 @@ export async function probeCodexProjectWriteWorker(input: {
       },
     });
     const signal = new AbortController().signal;
-    // @lat: [[mobile-data#Mobile data#Actual built worker approval proof]]
     const command = {
       key: "replace-proof",
       path: "existing.txt",

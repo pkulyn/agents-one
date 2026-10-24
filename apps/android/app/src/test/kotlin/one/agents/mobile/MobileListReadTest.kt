@@ -100,7 +100,6 @@ class MobileListReadTest {
     @Before fun reset() {
         ui.runOnUiThread { model = ViewModelProvider(ui.activity)[MobileViewModel::class.java]; model.forget(); model.language("en") }
     }
-    // @lat: [[mobile-data#Mobile data#Android cache-first offline restoration]]
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     @Test fun coldStartupRendersEncryptedOwnerPagesBeforeOfflineOwnerDirectoryCompletes() {
         val application = ui.activity.application
@@ -160,7 +159,6 @@ class MobileListReadTest {
         val avatarId = "ava-" + avatarHash("image/png\u0000".toByteArray())
         val cachedRuntime = Runtime("runtime-1", "Original avatar agent", "local", avatar = avatarId, healthy = true, capabilities = emptyList(), allowedActions = listOf("read", "advance"))
         val avatar = RuntimeAvatar(avatarId, cachedRuntime.id, "image/png", avatarPng.size.toLong(), avatarHash(), java.util.Base64.getEncoder().encodeToString(avatarPng))
-        // @lat: [[mobile-data#Mobile data#Android authorized offline avatar copies]]
         kotlinx.coroutines.runBlocking {
             listOf("runtime-directory" to JsonArray(listOf(Json.encodeToJsonElement(cachedRuntime))), "avatar-" + cachedRuntime.id + "-" + avatarId to JsonArray(listOf(Json.encodeToJsonElement(avatar)))).forEach { (section, items) ->
                 val kind = if(section.startsWith("avatar-")) one.agents.mobile.local.CacheResourceKind.PRIVATE_AVATAR else one.agents.mobile.local.CacheResourceKind.DIRECTORY_ENTRY
@@ -307,7 +305,6 @@ class MobileListReadTest {
         client.handleRead = { suffix, _ -> if (suffix == listOf("runtimes")) Json.encodeToJsonElement(RuntimePage(listOf(Runtime("runtime-1", "Original agent", "local", avatar = "ava-1b4d3cd3392295481b6e62e72f15318c53f82fba43616f651d62fe062bcf5708", color = "#F37021", healthy = true, capabilities = emptyList(), allowedActions = listOf("read"))), null, "1")) else null }
         ui.runOnUiThread { MobileViewModel::class.java.getDeclaredField("credentials").apply { isAccessible = true }.set(model, Credentials("phone-1", "test-token", "2099-01-01T00:00:00Z", "test-refresh", "2099-01-01T00:00:00Z", "1")) }
     }
-    // @lat: [[mobile-data#Mobile data#Android avatar real list original runtime binding]]
     @Test @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE) fun originalListReadsOnlyCurrentRuntimeReferenceAndKeepsTaskStateIndependent() {
         val client = avatarClient()
         val requests = CopyOnWriteArrayList<List<Any>>()
@@ -322,7 +319,6 @@ class MobileListReadTest {
         check(model.state.value.error == null && !model.state.value.busy)
         ui.onNodeWithTag("runtime-avatar-image", useUnmergedTree = true).assertIsDisplayed()
     }
-    // @lat: [[mobile-data#Mobile data#Android avatar connection loss rejects late bytes]]
     @Test @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE) fun forgettingConnectionWhileImageReadIsPendingCannotInstallOldImage() {
         val client = avatarClient(); val started = CountDownLatch(1); val release = CountDownLatch(1); val completed = CountDownLatch(1)
         val originalReads = client.handleRead
@@ -341,7 +337,6 @@ class MobileListReadTest {
             check(model.state.value.owner == null && model.state.value.runtimes.isEmpty())
         } finally { release.countDown(); scope.cancel() }
     }
-    // @lat: [[mobile-data#Mobile data#Android credential late refresh connection admission]]
     @Test fun oldCredentialRefreshIsCancelledBeforeStorageAfterConnectionIsForgotten() {
         val client = avatarClient(); val originalReads = client.handleRead
         client.handleRead = { suffix, query -> if (suffix == listOf("conversations")) conversations(emptyList()) else originalReads?.invoke(suffix,query) }
@@ -363,7 +358,6 @@ class MobileListReadTest {
             check(prefs.getString("future-preference",null) == "preserve")
         } finally { release.countDown(); scope.cancel(); prefs.edit().remove("future-preference").commit() }
     }
-    // @lat: [[mobile-data#Mobile data#Android avatar revoked device clears connection]]
     @Test fun revokedImageReadClearsOriginalConnectionAndDoesNotBecomeTaskFailure() {
         val client = avatarClient()
         client.handleAvatar = { _, _, _ -> throw MobileApiException("revoked",403) }
@@ -371,7 +365,6 @@ class MobileListReadTest {
         ui.waitUntil(10000) { model.state.value.owner == null }
         check(model.state.value.runtimes.isEmpty() && model.state.value.error == null)
     }
-    // @lat: [[mobile-data#Mobile data#Android original conversation preview single line]]
     @Test @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE) fun authorizedOriginalPreviewUsesOneEllipsizedLineAtNarrowWidth() {
         val client = Client(); val preview = "原消息 excerpt " + "long original text ".repeat(10)
         client.handleRead = { suffix, _ -> if (suffix == listOf("conversations")) Json.encodeToJsonElement(ConversationPage(listOf(conversation("preview").copy(lastMessagePreview = preview)),null,"1")) else null }
@@ -381,7 +374,6 @@ class MobileListReadTest {
         check(layouts.single().lineCount == 1 && layouts.single().isLineEllipsized(0))
         check(model.state.value.conversations.single().lastMessagePreview == preview && model.state.value.selected == null)
     }
-    // @lat: [[mobile-data#Mobile data#Android runtime and policy frozen directory completeness]]
     @Test fun originalRuntimeAndPolicyDirectoriesLoadAllPagesAndRefuseChangedSnapshot() {
         val client = Client(); client.capabilities = listOf("conversation:read", "conversation:create")
         var changed = false
@@ -400,7 +392,6 @@ class MobileListReadTest {
         changed = true; perform { model.refresh() }
         check(model.state.value.runtimes.isEmpty() && model.state.value.error == "protocol_incompatible")
     }
-    // @lat: [[mobile-data#Mobile data#Android unread sequence precision]]
     @Test fun unreadBadgeUsesOriginalSequenceBeyondLongAndClearsAtConfirmedBoundary() {
         val client = Client()
         val pending = conversation("pending").copy(lastMessageSeq = "9007199254740993123457", lastReadMessageSeq = "9007199254740993123456")
@@ -414,7 +405,6 @@ class MobileListReadTest {
         perform { model.refresh() }
         ui.onNodeWithContentDescription("Unread").assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android task directory source boundary]]
     @Test fun taskDirectoryExcludesLegacyQuickChatsAcrossReadSearchAndMoreWithoutDateCutoff() {
         val client = Client()
         val oldTask = conversation("real-july-task").copy(createdAt = "2026-07-01T00:00:00Z", updatedAt = "2026-07-01T00:00:00Z")
@@ -433,7 +423,6 @@ class MobileListReadTest {
         ui.onAllNodesWithText("任务").assertCountEquals(3)
         ui.onAllNodesWithText("对话", substring = false).assertCountEquals(0)
     }
-    // @lat: [[mobile-data#Mobile data#Android filter request and cursor fidelity]]
     @Test fun projectArchiveStatusFiltersStayTypedAcrossGetSearchMoreAndExpiredCursor() {
         val client = Client()
         val filtered = conversation("filtered").copy(projectId = "p2", archived = true, activity = "needs_attention")
@@ -458,7 +447,6 @@ class MobileListReadTest {
         check(posts[1].body!!["cursor"]!!.jsonPrimitive.content == "expired" && posts[2].body!!["cursor"] == null)
         check(model.state.value.conversationSelection == filters && model.state.value.conversations.single().id == "fresh-2" && model.state.value.conversationCursor == null)
     }
-    // @lat: [[mobile-data#Mobile data#Android failed filter preserves original list authority]]
     @Test fun failedFilterLeavesTheOriginalQueryAndCursorAndCatalogFailureIsIndependent() {
         val client = Client()
         client.handleRead = { suffix, _ -> if (suffix == listOf("projects")) Json.encodeToJsonElement(ProjectPage(listOf(Project("p1", "First", emptyList())), null, "1")) else null }
@@ -474,7 +462,6 @@ class MobileListReadTest {
         perform { model.refresh() }
         check(model.state.value.projectError == "owner_offline" && model.state.value.conversations.isNotEmpty() && model.state.value.scheduleError == null)
     }
-    // @lat: [[mobile-data#Mobile data#Android filter source reset and list isolation]]
     @Test fun eachListHasIndependentFiltersRefreshRetainsThemAndAnotherOwnerResetsThem() {
         val client = Client()
         client.handleRead = { suffix, query -> when {
@@ -494,7 +481,6 @@ class MobileListReadTest {
         check(model.state.value.conversationSelection == MobileListSelection() && model.state.value.scheduleSelection == MobileListSelection())
         check(model.state.value.conversationQuery.isEmpty() && model.state.value.scheduleQuery.isEmpty())
     }
-    // @lat: [[mobile-data#Mobile data#Android visible message read boundary]]
     @Test fun readBoundaryAdvancesToVisibleLatestMessageAndScrollingBackDoesNotRewindIt() {
         val client = messageClient { messagePage((1..100).map { it.toString() }) }
         connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
@@ -510,7 +496,6 @@ class MobileListReadTest {
         ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); runCatching { ui.onNodeWithText("Original body 100").assertDoesNotExist() }.isSuccess }
         check(model.state.value.selected!!.lastReadMessageSeq == acknowledged)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Read failure and explicit retry]]
     @Test fun readFailureRetainsAuthorityAndDoesNotLoopUntilRetry() {
         val client = messageClient { messagePage(listOf("1")) }
         client.handleMarkRead = { _, _ -> throw MobileApiException("owner_offline", 503) }
@@ -524,7 +509,6 @@ class MobileListReadTest {
         ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); model.state.value.selected!!.lastReadMessageSeq == "1" }
         check(model.state.value.readError == null && client.calls.count { it.suffix.last() == "read" } == 2)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Read identity and precision]]
     @Test fun exactLargeReadSequenceRejectsUnloadedAndWrongConversationBoundaries() {
         val sequence = "900719925474099312345678901234567890"
         val client = messageClient { messagePage(listOf(sequence)) }
@@ -535,7 +519,6 @@ class MobileListReadTest {
         ui.waitForIdle(); check(client.calls.size == count)
         check(client.calls.single { it.suffix.last() == "read" }.body!!["lastReadMessageSeq"]!!.jsonPrimitive.content == sequence)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Late read confirmation]]
     @Test fun lateReadConfirmationCannotReopenConversationOrCancelOwnerRun() {
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
         val client = messageClient { messagePage(listOf("1")) }
@@ -548,7 +531,6 @@ class MobileListReadTest {
             check(client.calls.none { it.suffix.last() == "cancel" })
         } finally { release.countDown() }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Invalid read confirmation]]
     @Test fun wrongOwnerResponseDoesNotOptimisticallyMarkRead() {
         val client = messageClient { messagePage(listOf("1")) }
         client.handleMarkRead = { _, _ -> Json.encodeToJsonElement(ReadPosition("other", "1")) }
@@ -556,7 +538,6 @@ class MobileListReadTest {
         ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); model.state.value.readError == "protocol_incompatible" }
         check(model.state.value.selected!!.lastReadMessageSeq == "0")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Serialized read observations]]
     @Test fun scrollingWhileAcknowledgementIsPendingCoalescesWithoutParallelRequests() {
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
         val client = messageClient { messagePage((1..100).map { it.toString() }) }
@@ -577,7 +558,6 @@ class MobileListReadTest {
             check(requests.last().body!!["lastReadMessageSeq"]!!.jsonPrimitive.content == "80")
         } finally { release.countDown() }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Hidden read boundary rejection]]
     @Test fun hiddenLoadedMessagesCannotBecomeReadBoundaries() {
         val client = messageClient { Json.encodeToJsonElement(MessagePage(listOf(Message(id = "hidden", conversationId = "initial", messageSeq = "99", kind = "assistant", content = "Private", visibleToUser = false, createdAt = "2026-10-05T00:00:00Z")), false, "cursor", "1")) }
         connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
@@ -585,7 +565,6 @@ class MobileListReadTest {
         ui.waitForIdle(); check(client.calls.none { it.suffix.last() == "read" })
         check(model.state.value.selected!!.lastReadMessageSeq == "0")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Read credential revocation]]
     @Test fun revokedReadAcknowledgementClearsOwnerAndLoadedBusinessViews() {
         val client = messageClient { messagePage(listOf("1")) }
         client.handleMarkRead = { _, _ -> throw MobileApiException("revoked", 403) }
@@ -619,7 +598,6 @@ class MobileListReadTest {
         } }
     }
 
-    // @lat: [[mobile-data#Mobile data#Android request identity section isolation and no ID retry]]
     @Test fun unknownListFailureKeepsItsOwnTraceAndRetryWithoutIdClearsIt() {
         var requestId: String? = "conversation-original-51"
         val client = Client()
@@ -641,7 +619,6 @@ class MobileListReadTest {
         check(model.state.value.failureTraces.isEmpty())
         ui.onNodeWithText("Request ID: schedule-original-51").assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android request identity rejects late history error]]
     @Test fun historyErrorAfterLeavingDetailCannotPublishItsRequestIdentity() {
         val started = CountDownLatch(1); val release = CountDownLatch(1)
         val client = historyClient { started.countDown(); check(release.await(10, TimeUnit.SECONDS)); throw MobileApiException("new_owner_error", 500, "old-detail-request-51") }
@@ -656,7 +633,6 @@ class MobileListReadTest {
             ui.onNodeWithText("Request ID: old-detail-request-51").assertDoesNotExist()
         } finally { release.countDown() }
     }
-    // @lat: [[mobile-data#Mobile data#Android global action request identity and dismissal]]
     @Test fun bootstrapFailureShowsOriginalTraceAndDismissalHidesItWithoutWriting() {
         val client = Client()
         client.bootstrapOwnerId = "foreign-owner"
@@ -673,7 +649,6 @@ class MobileListReadTest {
         check(model.state.value.error == null && client.calls.all { it.method == "GET" })
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Original search pagination]]
     @Test fun searchAndMoreRetainSeparateQueriesForConversationsAndSchedules() {
         val client = Client()
         client.handleSearch = { suffix, body ->
@@ -695,7 +670,6 @@ class MobileListReadTest {
         check(posted[3].body?.get("cursor")?.jsonPrimitive?.content == "c-cursor")
         check(client.calls.none { it.method == "GET" && "cursor" in it.query })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Expired list snapshot replacement]]
     @Test fun expiredCursorReloadsSameQueryAndReplacesOldSnapshot() {
         val client = Client(); var firstPageCount = 0
         client.handleSearch = { _, body ->
@@ -708,7 +682,6 @@ class MobileListReadTest {
         check(model.state.value.conversationCursor == null && model.state.value.error == null)
         check(client.calls.filter { it.method == "POST" }.all { it.body?.get("query")?.jsonPrimitive?.content == "unchanged" })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Failed search keeps original cursor conditions]]
     @Test fun failedSearchDoesNotBindExistingCursorToNewQueryAndClearReturnsToGet() {
         val client = Client()
         client.handleSearch = { _, body ->
@@ -721,7 +694,6 @@ class MobileListReadTest {
         check(client.calls.last().method == "GET" && client.calls.last().query.isEmpty())
         check(model.state.value.conversationQuery.isEmpty())
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Read capability isolation]]
     @Test fun ungrantedSchedulesAreNotRequestedAndCatalogFailureDoesNotHideConversations() {
         val client = Client(); client.capabilities = listOf("conversation:read")
         client.handleRead = { suffix, _ -> if (suffix == listOf("runtimes")) throw MobileApiException("requires_owner_action", 503) else null }
@@ -734,7 +706,6 @@ class MobileListReadTest {
         val before = client.calls.size; perform { model.search("plan", true) }
         check(client.calls.size == before && model.state.value.error == "scope_denied")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Independent list read failure]]
     @Test fun failedScheduleReadIsNotShownAsAnEmptySuccessfulList() {
         val client = Client()
         client.handleRead = { suffix, _ -> if (suffix == listOf("schedules")) throw MobileApiException("requires_owner_action", 409) else null }
@@ -748,14 +719,12 @@ class MobileListReadTest {
         client.handleRead = null; perform { model.refresh() }
         check(model.state.value.scheduleError == null && model.state.value.schedules.isNotEmpty())
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Bootstrap space identity refusal]]
     @Test fun differentOwnerBootstrapIsRejectedBeforeBusinessReads() {
         val client = Client(); client.bootstrapOwnerId = "different-owner"
         connect(client)
         check(model.state.value.owner == null && model.state.value.error == "protocol_incompatible")
         check(client.calls.size == 1)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Read authentication failure]]
     @Test fun revocationIsNotSwallowedAsAPartialListError() {
         val client = Client()
         client.handleRead = { suffix, _ -> if (suffix == listOf("schedules")) throw MobileApiException("revoked", 403) else null }
@@ -763,7 +732,6 @@ class MobileListReadTest {
         check(model.state.value.owner == null && model.state.value.conversations.isEmpty())
         check(model.state.value.error == "revoked" && !model.state.value.busy) { "error=${model.state.value.error}, busy=${model.state.value.busy}, owner=${model.state.value.owner}" }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Nullable message identity display]]
     @Test fun nullableMessageIdsRenderSeparateOriginalSequences() {
         val client = Client()
         client.handleRead = { suffix, _ -> when (suffix) {
@@ -776,7 +744,6 @@ class MobileListReadTest {
         ui.onNodeWithText("Original user body").assertIsDisplayed()
         ui.onNodeWithText("Original reply body").assertIsDisplayed()
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Original schedule history navigation]]
     @Test fun nativeHistoryShowsOriginalDefinitionAndReturnsFromOriginalResultConversation() {
         val client = historyClient { history(listOf("e1")) }; connect(client)
         ui.onAllNodesWithText("Schedules").onLast().performClick()
@@ -799,7 +766,6 @@ class MobileListReadTest {
         check(model.state.value.viewedSchedule == null && model.state.value.scheduleExecutions.isEmpty())
         check(client.calls.all { it.method == "GET" || (it.method == "POST" && it.suffix.last() == "read" && it.body?.keys == setOf("lastReadMessageSeq")) })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Long schedule history pagination]]
     @Test fun historyPastOneHundredRunsKeepsOriginalIdsAndFrozenRevision() {
         val client = historyClient { query -> if (query["cursor"] == null) history((1..100).map { "e$it" }, "history-cursor") else history((101..125).map { "e$it" }) }
         connect(client); perform { model.openSchedule(model.state.value.schedules.single()) }
@@ -809,7 +775,6 @@ class MobileListReadTest {
         check(model.state.value.scheduleExecutions.last().conversationId == "result-e125")
         check(client.calls.last().suffix == listOf("schedules", "initial-schedule", "executions") && client.calls.last().query == mapOf("cursor" to "history-cursor"))
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Expired schedule history replacement]]
     @Test fun expiredHistoryCursorReplacesOldSnapshotRatherThanAppendingIt() {
         var fresh = false
         val client = historyClient { query ->
@@ -820,7 +785,6 @@ class MobileListReadTest {
         check(model.state.value.scheduleExecutions.map { it.id } == listOf("fresh"))
         check(model.state.value.historySnapshotRevision == "history-2" && model.state.value.historyError == null)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Schedule history error is not empty success]]
     @Test fun historyFailurePreservesDefinitionAndDisplaysAnErrorWithoutEmptySuccess() {
         val client = historyClient { throw MobileApiException("requires_owner_action", 409) }
         connect(client); perform { model.openSchedule(model.state.value.schedules.single()) }
@@ -830,7 +794,6 @@ class MobileListReadTest {
         ui.onNodeWithText("No executions yet").assertDoesNotExist()
         check(model.state.value.viewedSchedule?.revision == "9" && model.state.value.historyError == "requires_owner_action")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Schedule history identity and snapshot refusal]]
     @Test fun historyFromAnotherScheduleOrChangedFrozenSnapshotIsRefused() {
         var wrongSchedule = true
         val client = historyClient { query ->
@@ -842,7 +805,6 @@ class MobileListReadTest {
         wrongSchedule = false; perform { model.refreshViewedSchedule() }; perform { model.moreScheduleHistory() }
         check(model.state.value.scheduleExecutions.map { it.id } == listOf("e1") && model.state.value.historyError == "protocol_incompatible")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Schedule result read scope]]
     @Test fun resultNavigationRequiresConversationReadAndUsesStoredOriginalBinding() {
         val client = historyClient { history(listOf("e1")) }; client.capabilities = listOf("schedule:read")
         connect(client); perform { model.openSchedule(model.state.value.schedules.single()) }
@@ -855,7 +817,6 @@ class MobileListReadTest {
         check(model.state.value.selected?.id == "result-e1")
         check(client.calls.none { "fake-new-conversation" in it.suffix })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Late detail response after back]]
     @Test fun returningBeforeDetailArrivesDoesNotReopenItOrCancelActiveRun() {
         val started = CountDownLatch(1); val release = CountDownLatch(1)
         val client = historyClient { history(listOf("e1")) }
@@ -873,7 +834,6 @@ class MobileListReadTest {
         check(model.state.value.viewedSchedule == null && model.state.value.scheduleExecutions.isEmpty() && !model.state.value.openingDetail)
         check(client.calls.none { it.suffix.last() == "executions" || it.method != "GET" })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Late history response after back]]
     @Test fun returningAfterDefinitionLoadsRejectsLateExecutionHistory() {
         val started = CountDownLatch(1); val release = CountDownLatch(1)
         val client = historyClient { started.countDown(); check(release.await(10, TimeUnit.SECONDS)); history(listOf("e1"), "late-cursor") }
@@ -886,7 +846,6 @@ class MobileListReadTest {
         check(model.state.value.viewedSchedule == null && model.state.value.scheduleExecutions.isEmpty() && model.state.value.historyCursor == null)
         check(client.calls.all { it.method == "GET" || (it.method == "POST" && it.suffix.last() == "read" && it.body?.keys == setOf("lastReadMessageSeq")) })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Owner schedule time zone display]]
     @Test fun scheduleTimesFollowOwnerTimeZoneIncludingDifferentCalendarDate() {
         val client = historyClient { history(emptyList()) }
         val original = client.handleRead
@@ -900,7 +859,6 @@ class MobileListReadTest {
         ui.onNodeWithText("Owner timezone: America/New_York").assertIsDisplayed()
         ui.onNodeWithText("Next run: Oct 4, 2026, 9:00:00 PM").assertIsDisplayed()
     }
-    // @lat: [[mobile-data#Mobile data#Android schedule real list and detail metadata]]
     @Test fun authorizedScheduleListAndDetailShowSameOriginalExecutionWithoutMutation() {
         val client = historyClient { history(emptyList()) }
         val original = client.handleRead
@@ -930,7 +888,6 @@ class MobileListReadTest {
         ui.onNodeWithText("Owner expression: 5m").assertIsDisplayed()
         check(client.calls.all { it.method == "GET" })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Complete original message pagination]]
     @Test fun allOneHundredTwentyFiveMessagesArriveInOriginalOrderAndBody() {
         val client = messageClient { query -> when (query["cursor"]) {
             null -> messagePage((76..125).map { it.toString() }, true, "before-76")
@@ -951,7 +908,6 @@ class MobileListReadTest {
         check(calls[1].query == mapOf("cursor" to "before-76", "beforeSeq" to "76"))
         check(calls[2].query == mapOf("cursor" to "before-26", "beforeSeq" to "26"))
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Expired message snapshot replacement]]
     @Test fun messageCursorExpiryLoadsLatestPageAndDoesNotMixSnapshots() {
         var refreshed = false
         val client = messageClient { query ->
@@ -963,7 +919,6 @@ class MobileListReadTest {
         check(model.state.value.messageSnapshotRevision == "2" && model.state.value.messageError == null)
         check(client.calls.last().query.isEmpty())
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Message page integrity refusal]]
     @Test fun foreignDuplicateUnorderedOverlappingAndChangedSnapshotPagesAreRejected() {
         var broken: JsonElement = messagePage(listOf("1"), conversationId = "foreign")
         val client = messageClient { query -> if (query["cursor"] == null) messagePage(listOf("50", "51"), true, "old") else broken }
@@ -982,7 +937,6 @@ class MobileListReadTest {
             check(model.state.value.messages.map { it.messageSeq } == listOf("50", "51"))
         }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Large message sequences stay strings]]
     @Test fun sequenceComparisonRetainsSixtyFourDigitValuesAndGapsWithoutNumericCoercion() {
         val big = "1" + "0".repeat(63); val previous = (big.toBigInteger() - java.math.BigInteger.ONE).toString()
         val client = messageClient { query -> if (query["cursor"] == null) messagePage(listOf(big), true, "old") else messagePage(listOf(previous)) }
@@ -990,7 +944,6 @@ class MobileListReadTest {
         check(model.state.value.messages.map { it.messageSeq } == listOf(previous, big))
         check(client.calls.last().query["beforeSeq"] == big)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Late message page after back]]
     @Test fun returningDuringOldPageReadRejectsLateDataAndSendsNoCancellation() {
         val started = CountDownLatch(1); val release = CountDownLatch(1)
         val client = messageClient { query ->
@@ -1005,7 +958,6 @@ class MobileListReadTest {
         check(model.state.value.selected == null && model.state.value.messages.isEmpty() && model.state.value.messageCursor == null)
         check(client.calls.all { it.method == "GET" || (it.method == "POST" && it.suffix.last() == "read" && it.body?.keys == setOf("lastReadMessageSeq")) })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Message refresh keeps schedule parent]]
     @Test fun refreshingOriginalResultConversationRetainsItsParentHistory() {
         val client = historyClient { history(listOf("e1")) }
         connect(client); perform { model.openSchedule(model.state.value.schedules.single()) }; perform { model.openExecutionConversation(model.state.value.scheduleExecutions.single()) }
@@ -1030,7 +982,6 @@ class MobileListReadTest {
             }
         } }
     }
-    // @lat: [[mobile-data#Mobile data#Android conversation and project category isolation]]
     @Test fun standaloneConversationCategoryExcludesOriginalProjectTasks() {
         connect(projectListClient())
         ui.onNodeWithText("home-task-1").assertExists()
@@ -1043,7 +994,6 @@ class MobileListReadTest {
         ui.onNodeWithText("project-task-1").assertExists()
         ui.onNodeWithText("home-task-1").assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android bottom navigation restores standalone conversations]]
     @Test fun returningFromSchedulesAndAccountAfterProjectReadRestoresStandaloneList() {
         connect(projectListClient())
         for (destination in listOf("Schedules", "Account")) {
@@ -1061,7 +1011,6 @@ class MobileListReadTest {
     }
 
 
-    // @lat: [[mobile-data#Mobile data#Android project detail retains its category on back]]
     @Test fun openingProjectTaskAndBackKeepsItsGroupBeforeBottomNavigation() {
         connect(projectListClient())
         ui.onNodeWithTag("category:projects").performClick()

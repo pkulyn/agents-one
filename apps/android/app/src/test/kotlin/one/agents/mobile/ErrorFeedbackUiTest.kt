@@ -15,14 +15,12 @@ import org.robolectric.annotation.Config
 @Config(sdk=[35],qualifiers="en-w360dp-h640dp")
 class ErrorFeedbackUiTest {
     @get:Rule val ui=createAndroidComposeRule<ComponentActivity>()
-    // @lat: [[mobile-data#Mobile data#Android error feedback opaque request identity]]
     @Test fun unknownCodeShowsLocalRecoveryAndOriginalSelectableIdentity(){
         ui.setContent { MaterialTheme { ErrorFeedback(translatedError("new_owner_error"),"request.original:51") } }
         ui.onNodeWithText(ui.activity.getString(R.string.error_generic)).assertIsDisplayed()
         ui.onNodeWithText("Request ID: request.original:51").assertIsDisplayed()
         ui.onNodeWithText("new_owner_error").assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android error feedback Chinese and malformed identity]]
     @Test @Config(qualifiers="zh-rCN-w360dp-h640dp") fun chineseTracePreservesIdButRefusesArbitraryRemoteText(){
         ui.setContent { MaterialTheme { Column {
             ErrorFeedback(translatedError("login_required"),"original-id")
@@ -34,7 +32,6 @@ class ErrorFeedbackUiTest {
         ui.onAllNodesWithText("请求编号：",substring=true).assertCountEquals(1)
         ui.onNodeWithText("remote-text",substring=true).assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android known restriction bilingual coverage]]
     @Test fun knownRestrictionReasonsDoNotFallBackToGenericFailure(){
         val reasons=listOf("requires_owner_action","unverified_policy","unsupported_source","profile_inactive","runtime_offline","login_required","project_binding_conflict","policy_revoked","unknown_state")
         ui.setContent { MaterialTheme { Column { reasons.forEach { androidx.compose.material3.Text(translatedError(it)) } } } }

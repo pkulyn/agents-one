@@ -256,6 +256,32 @@ describe("Agents One Remote Gateway run contract", () => {
     });
   });
 
+  it.each([401, 403])(
+    "classifies an HTTP %s probe as a redacted credential failure",
+    async (status) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: "unauthorized",
+            detail: "Bearer private-token-value was rejected",
+          }),
+          { status, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+      const probe = await probeAgentsOneRemoteGateway(
+        { endpoint: "https://relay.example/agents-one/v1" },
+        { bearerToken: "private-token-value" },
+      );
+
+      expect(probe).toMatchObject({
+        healthy: false,
+        message: "Gateway Token 无效或无权访问。",
+      });
+      expect(JSON.stringify(probe)).not.toContain("private-token-value");
+    },
+  );
+
   it("recognizes transition plugin metadata and flat workspace capabilities", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

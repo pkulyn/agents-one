@@ -72,7 +72,6 @@ class MobileScheduleEditorWorkflowTest {
         waitFor{!model.state.value.busy&&(model.state.value.preview!=before||model.state.value.error!=null)}
         check(model.state.value.error==null){"Preview failed: ${model.state.value.error}"}
     }
-    // @lat: [[mobile-data#Mobile data#Android advanced create requires current Owner preview]]
     @Test fun realNewFormKeepsAdvancedValuesAndRequiresRepreviewAfterDraftChanges(){
         val client=Client();connect(client)
         ui.onNodeWithContentDescription("New schedule").performClick()
@@ -96,7 +95,6 @@ class MobileScheduleEditorWorkflowTest {
         check(body.getValue("runtimeId").jsonPrimitive.content==policy.runtimeId&&body.getValue("projectId").jsonPrimitive.content==policy.projectId&&body.getValue("executionPolicyId").jsonPrimitive.content==policy.id&&body.getValue("previewRevision").jsonPrimitive.content=="preview-2")
         check(client.previews.first().getValue("scheduleExpression").jsonPrimitive.content=="5m")
     }
-    // @lat: [[mobile-data#Mobile data#Android advanced edit conflict preserves original draft]]
     @Test fun realEditRetainsOriginalCronAndRevisionAndShowsConflictInsideDialog(){
         val client=Client().apply{editing=true};connect(client)
         ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("schedule-row:original-plan"));ui.onNodeWithTag("schedule-row:original-plan").performClick();waitFor{!model.state.value.busy&&model.state.value.viewedSchedule!=null}
@@ -114,7 +112,6 @@ class MobileScheduleEditorWorkflowTest {
         ui.onNodeWithText("Advanced options").performScrollTo().performClick()
         ui.onNodeWithText("Schedule expression").assert(hasText(original.scheduleExpression))
     }
-    // @lat: [[mobile-data#Mobile data#Android detail management original revision and receipts]]
     @Test fun detailManagementUsesFreshRevisionAndAcceptedNeverInventsScheduleResults(){
         val client=Client().apply {editing=true;management=true;detail=original.copy(effectiveState="running",activeRunIds=listOf("original-native-run"),pendingCount=2,allowedActions=listOf("read","pause","trigger"))}
         connect(client)
@@ -149,7 +146,6 @@ class MobileScheduleEditorWorkflowTest {
         check(client.writes.take(4).all{it.method=="POST"&&it.body==JsonObject(emptyMap())}&&client.writes.last().method=="DELETE"&&client.writes.last().body==null)
         check(model.state.value.operations.size==5&&model.state.value.operations.all{it.status=="accepted"})
     }
-    // @lat: [[mobile-data#Mobile data#Android detail edit rereads original definition]]
     @Test fun detailEditRereadsOwnerDefinitionAndConflictKeepsThatNewDraft(){
         val client=Client().apply{editing=true};connect(client)
         ui.runOnUiThread {model.openSchedule(model.state.value.schedules.single())};waitFor{!model.state.value.busy&&model.state.value.viewedSchedule!=null}
@@ -194,10 +190,8 @@ class MobileScheduleEditorWorkflowTest {
         ui.onNodeWithText(if(language=="zh-CN")"取消" else "Cancel").performClick()
         check(client.writes.isEmpty())
     }
-    // @lat: [[mobile-data#Mobile data#Android schedule actions narrow large font]]
     @Test @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     fun scheduleActionsRemainReadableAndTouchableAt360dpAnd200Percent(){largeFontScheduleActions("en")}
-    // @lat: [[mobile-data#Mobile data#Android schedule actions Chinese landscape large font]]
     @Test @Config(sdk=[35],qualifiers="zh-rCN-w640dp-h360dp-land") @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     fun chineseLandscapeScheduleActionsRetainTouchBoundsAt200Percent(){largeFontScheduleActions("zh-CN")}
 }

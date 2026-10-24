@@ -18,7 +18,6 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], qualifiers = "w360dp-h640dp")
 class AppearanceAndToolUiTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
-    // @lat: [[mobile-data#Mobile data#Android appearance preference preservation]]
     @Test fun appearanceIsSingleInterfacePreferenceAndSurvivesConnectionClearAndNewModel() {
         val app = ui.activity.application
         val raw = app.getSharedPreferences("connection", android.content.Context.MODE_PRIVATE)
@@ -34,7 +33,6 @@ class AppearanceAndToolUiTest {
         assertTrue(appearanceIsDark("system", true)); assertFalse(appearanceIsDark("system", false))
         model.appearance("system")
     }
-    // @lat: [[mobile-data#Mobile data#Android English appearance selection]]
     @Test fun englishAppearanceRadioUpdatesOriginalSelection() {
         val value = mutableStateOf("system")
         ui.setContent { MaterialTheme { Column { AppearanceSelector(value.value) { value.value = it } } } }
@@ -42,7 +40,6 @@ class AppearanceAndToolUiTest {
         ui.onNodeWithText("Light").performClick(); assertEquals("light", value.value)
         ui.onNodeWithText("Follow system").performClick(); assertEquals("system", value.value)
     }
-    // @lat: [[mobile-data#Mobile data#Android tool summary transient expansion]]
     @Test fun toolIsCollapsedKeepsFullUpdatedBodyWhenExpandedAndResetsForNewSource() {
         val row = mutableStateOf(Message(id = "tool-1", conversationId = "conversation-1", messageSeq = "1", messageRevision = "1", kind = "tool_summary", content = "Original **完整摘要** END", visibleToUser = true, createdAt = "2026-10-07T00:00:00Z"))
         val epoch = mutableStateOf("owner-1\u0000space-1\u0000epoch-1")
@@ -59,7 +56,6 @@ class AppearanceAndToolUiTest {
         ui.onNodeWithText("Tool activity").assertIsDisplayed()
         ui.onNodeWithText("Updated 完整摘要 FINAL").assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android Chinese tool and appearance labels]]
     @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun chineseControlsHaveTranslatedAppearanceAndToolActions() {
         ui.setContent { MaterialTheme { Column {
             AppearanceSelector("system") {}

@@ -5,7 +5,6 @@ import { projectRuntimeAvatar } from "../src/main/mobile-control/runtime-avatar"
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP8XKD4n4GBgYGJAQoAJzoChzU5gKEAAAAASUVORK5CYII=";
 describe("configured runtime image projection", () => {
-  // @lat: [[mobile-data#Mobile data#Runtime avatar original content identity]]
   it("preserves original image bytes and binds the immutable reference to MIME and content", () => {
     const bytes = Buffer.from(png, "base64");
     const projected = projectRuntimeAvatar(`data:image/png;base64,${png}`)!;
@@ -22,7 +21,6 @@ describe("configured runtime image projection", () => {
       )?.id,
     ).not.toBe(projected.id);
   });
-  // @lat: [[mobile-data#Mobile data#Runtime avatar bounded source admission]]
   it("rejects URLs, paths, SVG, wrong signatures, noncanonical bytes and oversized configured data", () => {
     for (const input of [
       undefined,

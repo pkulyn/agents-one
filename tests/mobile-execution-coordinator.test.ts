@@ -200,7 +200,6 @@ afterEach(async () => {
 });
 
 describe("Owner Main execution coordinator", () => {
-  // @lat: [[mobile-data#Mobile data#Projectless automatic and full-access execution#Projectless automatic dispatch]]
   it("accepts the projectless automatic policy and dispatches it as safe-write", async () => {
     const implementation = backend();
     implementation.authorize = vi.fn((policyId) => ({
@@ -220,7 +219,6 @@ describe("Owner Main execution coordinator", () => {
     );
   });
 
-  // @lat: [[mobile-data#Mobile data#Projectless automatic and full-access execution#Confirmed full-access continuation]]
   it("continues a full-access conversation when the current desktop policy explicitly confirms full access", async () => {
     const full = backend();
     full.authorize = vi.fn((policyId) => ({
@@ -246,7 +244,6 @@ describe("Owner Main execution coordinator", () => {
     );
   });
 
-  // @lat: [[mobile-data#Mobile data#Projectless automatic and full-access execution#Rejects unconfirmed full access]]
   it("rejects unconfirmed full access and legacy unscoped writes before dispatch", async () => {
     const unconfirmed = backend();
     unconfirmed.authorize = vi.fn((policyId) => ({
@@ -274,7 +271,6 @@ describe("Owner Main execution coordinator", () => {
     expect(legacyWrite.start).not.toHaveBeenCalled();
   });
 
-  // @lat: [[mobile-data#Mobile data#Original artifact final checkpoint and control routes]]
   it("publishes original artifact metadata in the durable final Run and serves scoped snapshot and binary routes without changing the final checkpoint on retry", async () => {
     let clock = now;
     const result = native({
@@ -390,7 +386,6 @@ describe("Owner Main execution coordinator", () => {
       chunks.push(Buffer.from(chunk));
     expect(Buffer.concat(chunks).toString()).toBe("Explicit artifact bytes");
   });
-  // @lat: [[mobile-data#Mobile data#Observed session identity mismatch]]
   it("retains original history and marks a provider session mismatch uncertain without accepting a substituted reply", async () => {
     original.saveRuntimeConversation({
       ...store.get("conversation-1")!,
@@ -413,7 +408,6 @@ describe("Owner Main execution coordinator", () => {
     });
     expect(store.get("conversation-1")?.messages).toHaveLength(1);
   });
-  // @lat: [[mobile-data#Mobile data#Accepted background execution]]
   it("durably accepts the original Turn before external dispatch finishes and survives phone disconnect", async () => {
     const started = deferred<AgentRuntimeRun>();
     const implementation = backend();
@@ -471,7 +465,6 @@ describe("Owner Main execution coordinator", () => {
       "Actual original final reply",
     );
   });
-  // @lat: [[mobile-data#Mobile data#Turn idempotency and continuation]]
   it("replays duplicate requests once and resumes the exact native session on the next original turn", async () => {
     const implementation = backend();
     const work = coordinator(implementation);
@@ -505,7 +498,6 @@ describe("Owner Main execution coordinator", () => {
     expect(store.get("conversation-1")?.messages).toHaveLength(4);
     expect(ledger.executionEntries()).toHaveLength(2);
   });
-  // @lat: [[mobile-data#Mobile data#Final write recovery without dispatch]]
   it("keeps a final checkpoint after disk failure and recovers only the original commit across restart", async () => {
     const finish = store.finish;
     store.finish = vi.fn(() => {
@@ -546,7 +538,6 @@ describe("Owner Main execution coordinator", () => {
       "Actual original final reply",
     );
   });
-  // @lat: [[mobile-data#Mobile data#Missing execution reconciliation]]
   it("keeps a transient observation error alive but marks a lost native handle uncertain without dispatch retry", async () => {
     const implementation = backend(native({ status: "running" }));
     implementation.get = vi
@@ -569,7 +560,6 @@ describe("Owner Main execution coordinator", () => {
       ),
     ).rejects.toThrow("run_active");
   });
-  // @lat: [[mobile-data#Mobile data#Cancellation acknowledgement boundary]]
   it("reports cancelling until actual terminal evidence and never equates acknowledgement with cancellation", async () => {
     const gate = deferred<void>();
     const implementation = backend(native({ status: "running" }));
@@ -604,7 +594,6 @@ describe("Owner Main execution coordinator", () => {
       content: "Visible reply before cancellation",
     });
   });
-  // @lat: [[mobile-data#Mobile data#Unknown cancellation outcome]]
   it("keeps an unacknowledged cancellation uncertain and does not reissue it after retry", async () => {
     const gate = deferred<void>();
     const implementation = backend(native({ status: "running" }));
@@ -634,7 +623,6 @@ describe("Owner Main execution coordinator", () => {
     gate.resolve();
     await work.waitForIdle();
   });
-  // @lat: [[mobile-data#Mobile data#Owner execution authorization]]
   it("denies invalid grants, stale revisions, unconfirmed legacy full access and changed policy before any external dispatch", async () => {
     const implementation = backend();
     const work = coordinator(implementation);

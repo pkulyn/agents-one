@@ -6,7 +6,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MessageMarkdownTest {
-    // @lat: [[mobile-data#Mobile data#Android Markdown structure and source preservation]]
     @Test fun rendersHeadingsEmphasisListsCodeAndTablesWithoutLosingCodeWhitespace() {
         val source = """# 中文 Heading
 
@@ -42,7 +41,6 @@ Hello **bold** and *italic*, ~~old~~ and `inline()`.
         assertEquals(listOf(listOf("名称", "Result"), listOf("项目", "read")), table.rows.map { row -> row.map { it.text } })
         assertEquals("https://example.com/result", (table.rows[1][1].getLinkAnnotations(0, 4).single().item as LinkAnnotation.Url).url)
     }
-    // @lat: [[mobile-data#Mobile data#Android Markdown link admission and inert HTML]]
     @Test fun onlyUserActivatedOrdinaryLinksHaveActionsAndImagesHtmlRemainInert() {
         val clicked = mutableListOf<String>()
         val blocks = parseMessageMarkdown("[web](https://example.com) [bad](javascript:alert) ![图像](https://example.com/pixel) <script>alert(1)</script>", clicked::add)
@@ -57,7 +55,6 @@ Hello **bold** and *italic*, ~~old~~ and `inline()`.
         listOf("javascript:alert(1)", "file:///D:/private", "intent://run", "data:text/html,x", "https://user:password@example.com", "https://example.com\n", "//example.com", "mailto:").forEach { assertFalse(it, allowedMessageLink(it)) }
         listOf("https://example.com/path?q=one#two", "http://example.com", "mailto:reader@example.com").forEach { assertTrue(it, allowedMessageLink(it)) }
     }
-    // @lat: [[mobile-data#Mobile data#Android Markdown complete fallback and incremental input]]
     @Test fun unfinishedStreamsAndDeepOrLargeStructuresPreserveTheWholeMessage() {
         val partial = parseMessageMarkdown("```text\nline one\n  line two")
         assertEquals("line one\n  line two\n", (partial.single() as MessageBlock.CodeBlock).text)

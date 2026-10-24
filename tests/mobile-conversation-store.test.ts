@@ -56,7 +56,6 @@ function seed(
 }
 
 describe("shared desktop and mobile conversation writes", () => {
-  // @lat: [[mobile-data#Mobile data#Deleted checkpoint does not recreate]]
   it("rejects an existing-record checkpoint after desktop deletion rather than recreating its old history", async () => {
     const store = await import("../src/main/runtime-conversation-store");
     const original = store.saveRuntimeConversation(base);
@@ -71,7 +70,6 @@ describe("shared desktop and mobile conversation writes", () => {
     expect(readFileSync(file(), "utf8")).toBe(before);
     expect(store.getRuntimeConversation(base.id)).toBeNull();
   });
-  // @lat: [[mobile-data#Mobile data#Shared conversation versions]]
   it("increments versions for desktop rename and rejects a stale mobile patch without altering data", async () => {
     const store = await import("../src/main/runtime-conversation-store");
     const initial = store.saveRuntimeConversation(base);
@@ -105,7 +103,6 @@ describe("shared desktop and mobile conversation writes", () => {
       ).getRuntimeConversation(base.id)?.revision,
     ).toBe("3");
   });
-  // @lat: [[mobile-data#Mobile data#Unknown history fields]]
   it("preserves root, record, message and execution extensions while keeping invalid historical records", async () => {
     seed({
       futureRoot: { keep: true },
@@ -162,7 +159,6 @@ describe("shared desktop and mobile conversation writes", () => {
         .opaque,
     ).toBe("keep unsupported history");
   });
-  // @lat: [[mobile-data#Mobile data#Full history preservation]]
   it("keeps messages outside the desktop view window across rename and append", async () => {
     const messages = Array.from({ length: 620 }, (_, i) => ({
       id: `message-${i}`,
@@ -209,7 +205,6 @@ describe("shared desktop and mobile conversation writes", () => {
       })?.messages,
     ).toHaveLength(620);
   });
-  // @lat: [[mobile-data#Mobile data#Safe management and project binding]]
   it("archives without cancelling a run and rejects project changes in active or bound native sessions", async () => {
     const store = await import("../src/main/runtime-conversation-store");
     store.saveRuntimeConversation({
@@ -247,7 +242,6 @@ describe("shared desktop and mobile conversation writes", () => {
     expect(cleared.workspaceId).toBeUndefined();
     expect(BigInt(cleared.revision!)).toBeGreaterThan(BigInt(ended.revision!));
   });
-  // @lat: [[mobile-data#Mobile data#Corrupt storage fails closed]]
   it("does not overwrite a malformed or incompatible existing history document", async () => {
     const store = await import("../src/main/runtime-conversation-store");
     for (const raw of [
@@ -263,7 +257,6 @@ describe("shared desktop and mobile conversation writes", () => {
       expect(readFileSync(file(), "utf8")).toBe(raw);
     }
   });
-  // @lat: [[mobile-data#Mobile data#Profile isolation and notifications]]
   it("publishes committed changes with original identity and leaves another profile untouched", async () => {
     const store = await import("../src/main/runtime-conversation-store");
     const changes: unknown[] = [];
@@ -284,7 +277,6 @@ describe("shared desktop and mobile conversation writes", () => {
     store.updateRuntimeConversationTitle(base.id, "Next", "work");
     expect(changes).toHaveLength(1);
   });
-  // @lat: [[mobile-data#Mobile data#Quick Chat storage protection]]
   it("retains Quick Chat extensions and older messages while using the same versioned management path", async () => {
     const messages = Array.from({ length: 110 }, (_, i) => ({
       id: `q-${i}`,

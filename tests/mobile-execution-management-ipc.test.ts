@@ -18,7 +18,6 @@ beforeEach(() => {
   state.manage.mockClear();
   state.recover.mockClear();
 });
-// @lat: [[mobile-data#Mobile data#Execution management trusted frame]]
 it("accepts only the current desktop window main frame and never dispatches requests from children or another window", () => {
   const mainFrame = {},
     contents = { mainFrame };
@@ -66,7 +65,6 @@ it("accepts only the current desktop window main frame and never dispatches requ
   ).toThrow("scope_denied");
   expect(state.manage).toHaveBeenCalledTimes(1);
 });
-// @lat: [[mobile-data#Mobile data#Recovery IPC trusted frame]]
 it("allows recovery only from the current main frame and retains a current-frame guard across awaits", () => {
   const mainFrame = {},
     contents = { mainFrame };
