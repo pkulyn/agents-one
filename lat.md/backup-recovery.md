@@ -39,3 +39,9 @@ The native restore gate copies a bounded regular file from its opened handle bef
 Inspection and restoration consume that same private snapshot, so replacing the original path during confirmation cannot change approved content.
 
 Copying rejects growth, identity or timestamp changes, handles partial writes and removes its own random temporary directory after success, cancellation or failure. This protects against Renderer path replacement; processes with unrestricted same-user filesystem access remain outside this boundary.
+
+## Restore failure after window destruction
+
+After retiring old Renderer windows, a failed restore is reported through a parentless native dialog. Restart is scheduled only after acknowledgement, preserving the error independently of the destroyed IPC caller.
+
+Returned errors are redacted. An unavailable asynchronous dialog falls back to a synchronous error box; if both APIs fail, a fixed diagnostic is logged and restart still invokes the existing startup recovery path. Success schedules restart without a failure dialog.
