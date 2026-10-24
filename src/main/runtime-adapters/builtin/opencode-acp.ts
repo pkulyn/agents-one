@@ -197,6 +197,31 @@ export function openCodePermissionDenial(
   return undefined;
 }
 
+function oneTimePermissionOption(value: unknown): JsonRecord | undefined {
+  if (!Array.isArray(value) || !value.length || value.length > 64)
+    return undefined;
+  const ids = new Set<string>();
+  const kinds = new Set([
+    "allow_once",
+    "allow_always",
+    "reject_once",
+    "reject_always",
+  ]);
+  for (const option of value) {
+    if (
+      !isRecord(option) ||
+      typeof option.optionId !== "string" ||
+      !option.optionId.trim() ||
+      typeof option.kind !== "string" ||
+      !kinds.has(option.kind) ||
+      ids.has(option.optionId)
+    )
+      return undefined;
+    ids.add(option.optionId);
+  }
+  return value.find((option) => option.kind === "allow_once");
+}
+
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
@@ -271,26 +296,37 @@ class OpenCodeAcpClient {
     params: JsonRecord,
   ): void {
     if (method === "session/request_permission") {
-      const rawOptions = Array.isArray(params.options) ? params.options : [];
-      const options = rawOptions.filter(isRecord);
-      const toolCall = isRecord(params.toolCall) ? params.toolCall : {};
-      const denial = openCodePermissionDenial(this.options.mode, toolCall);
-      if (denial) {
-        this.options.onPermissionDenied?.(denial);
+      const deny = (reason: string): void => {
+        this.options.onPermissionDenied?.(reason);
         this.respond(id, { outcome: { outcome: "cancelled" } });
+      };
+      if (!this.sessionId || params.sessionId !== this.sessionId) {
+        deny(
+          "[Agents One 权限不足] 工具权限请求未绑定当前会话，未执行该请求。",
+        );
         return;
       }
-      const preferred =
-        options.find((option) =>
-          /allow.?once|^once$/i.test(String(option.kind || option.optionId)),
-        ) ||
-        options.find((option) =>
-          /allow/i.test(String(option.kind || option.optionId)),
+      const toolCall = isRecord(params.toolCall) ? params.toolCall : {};
+      if (toolCall.kind === "switch_mode") {
+        deny(
+          "[Agents One 权限不足] 工具请求不能自动切换会话权限模式；请在 Runtime 设置中选择原生模式后重新发送任务。",
         );
+        return;
+      }
+      const denial = openCodePermissionDenial(this.options.mode, toolCall);
+      if (denial) {
+        deny(denial);
+        return;
+      }
+      const preferred = oneTimePermissionOption(params.options);
+      if (!preferred) {
+        deny(
+          "[Agents One 权限不足] Runtime 未提供有效的一次性授权选项，未授予持续权限，工具请求未执行。",
+        );
+        return;
+      }
       this.respond(id, {
-        outcome: preferred
-          ? { outcome: "selected", optionId: String(preferred.optionId) }
-          : { outcome: "cancelled" },
+        outcome: { outcome: "selected", optionId: preferred.optionId },
       });
       return;
     }

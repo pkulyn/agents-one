@@ -817,7 +817,7 @@ it.each([0, "0", "9001", "009"])(
         JSON.stringify(id) +
         ";",
       "rl.on('line',line=>{const m=JSON.parse(line);if(m.method==='initialize')send({id:m.id,result:{protocolVersion:1}});else if(m.method==='session/new')send({id:m.id,result:{sessionId:'id-session'}});",
-      "else if(m.method==='session/prompt'){prompt=m.id;send({id,method:'session/request_permission',params:{toolCall:{kind:'edit',title:'write'},options:[{kind:'allow_once',optionId:'once'}]}})}",
+      "else if(m.method==='session/prompt'){prompt=m.id;send({id,method:'session/request_permission',params:{sessionId:'id-session',toolCall:{kind:'edit',title:'write'},options:[{kind:'allow_once',optionId:'once'}]}})}",
       "else if(!m.method){fs.writeFileSync('response.json',JSON.stringify(m));if(m.id===id)send({id:prompt,result:{stopReason:'end_turn'}})}});",
     ].join("");
     try {

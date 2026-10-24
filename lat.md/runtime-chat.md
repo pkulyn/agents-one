@@ -200,9 +200,9 @@ Pi reasoning keeps a short progress summary and a separate bounded detail so lon
 
 ## Cross-runtime native permission enforcement
 
-All native adapters apply the same read-only, automatic and full-access business rules through their available tool and sandbox controls.
+Native adapters carry read-only, automatic and full-access modes through transport-specific controls. Enforcement requires separate verification for each Runtime; deletion recovery is not an execution sandbox.
 
-Codex retains its native read-only or workspace-write sandbox. Claude CLI analysis uses plan mode; conversational Claude SDK analysis explicitly selects plan mode and disables mutation/shell tools. OpenCode applies per-process permission overrides for edit, bash and task so native defaults cannot auto-approve these requests; ACP then permits declared read/search/fetch operations in analysis, edit in automatic, and delete/move only in full access. Rejected requests produce visible permission-denied events and actionable terminal errors.
+Codex retains its native read-only or workspace-write sandbox. Claude CLI analysis uses plan mode; conversational Claude SDK analysis explicitly selects plan mode and disables mutation/shell tools. OpenCode applies per-process permission overrides for edit, bash and task so native defaults cannot auto-approve these requests; ACP checks declared read/search/fetch operations in analysis and rejects declared delete/move requests in automatic. These metadata checks do not prove that an opaque command has no destructive side effects. Rejected requests produce visible permission-denied events and actionable terminal errors.
 
 [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodePermissionEnvironment]] preserves unrelated inherited environment settings without writing provider config. [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodePermissionDenial]] decides the ACP operation boundary. [[tests/opencode-acp.test.ts]] exercises actual request/response exchanges for read, search, edit, delete and move across modes. Automatic no longer silently downgrades a native or Gateway conversation to read-only just because no desktop project was selected. Browser and remote adapters remain constrained by the capabilities and authority their service actually provides.
 
@@ -253,3 +253,9 @@ Codex desktop execution additionally uses [[src/main/codex-runtime.ts#codexDeskt
 A safe-write recovery failure preserves the original backup and produces a Runtime error instead of a successful completion or a hanging process result.
 
 [[src/main/workspace-protection.ts#protectWorkspaceFromRemoval]] attempts each missing original independently. Locked paths, replacement directories and symlink parents retain the backup for retry. Only a complete recovery disposes it. Claude Code, Codex, Pi and OpenCode propagate the recovery error in their ordinary completion result; this fallback does not establish operating-system sandboxing.
+
+## ACP task-scoped permission decisions
+
+OpenCode permission replies preserve the original numeric or string RPC ID and approve only an explicit one-time option bound to the current native session. Permanent or ambiguous choices never substitute for one-time authority.
+
+Both local and remote clients reject mismatched or missing sessions, duplicate option IDs, unknown kinds, invalid identifiers and automatic native mode switches. Rejection is reported in task evidence and terminal state. Protocol subprocess regressions verify execution markers, persistent-grant markers, valid edits and response identity; these gates do not establish an operating-system sandbox or certify arbitrary script side effects.
