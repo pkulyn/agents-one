@@ -101,3 +101,9 @@ Read traffic triggers at most one state sweep per second. Mutations and state lo
 Remote OpenCode terminal status is published only after the child close event confirms process and stdio teardown. Probe and cancellation also await closure; duplicate shutdown requests share one completion promise.
 
 Shutdown rejects pending RPCs, escalates an unresponsive child within a bounded deadline and reports failure if closure cannot be confirmed. Workspace artifact capture follows closure, so late process writes are not omitted from the final snapshot.
+
+## Connect state recovery
+
+Invalid or unreadable persisted Gateway state disables Gateway HTTP and WebSocket admission until an operator restores valid state and restarts the service. Startup, rejected requests and shutdown preserve the file.
+
+The entire collection and identity structure is validated before authorization indexes are installed. Unsupported versions, malformed records and duplicate identities fail closed; diagnostics omit original JSON. Missing files initialize a new store, while independent mobile authorization retains its own checks and persistence.

@@ -6,7 +6,6 @@ import { createServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import {
   chmodSync,
-  existsSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -289,6 +288,49 @@ function gatewayPath(path) {
   );
 }
 
+// Validate the complete persisted index before installing any authorization.
+// Unknown business fields and older optional Runtime fields remain compatible.
+function validateStoredState(state) {
+  if (!state || typeof state !== "object" || state.schemaVersion !== 1)
+    throw new Error("unsupported state");
+  for (const [collection, key] of [
+    ["pairings", "codeDigest"],
+    ["devices", "deviceId"],
+    ["desktopTokens", "value"],
+  ]) {
+    if (!Array.isArray(state[collection]))
+      throw new Error("invalid collection");
+    const seen = new Set();
+    for (const record of state[collection]) {
+      if (
+        !record ||
+        typeof record !== "object" ||
+        Array.isArray(record) ||
+        typeof record[key] !== "string" ||
+        !record[key] ||
+        seen.has(record[key])
+      )
+        throw new Error("invalid identity");
+      seen.add(record[key]);
+    }
+  }
+  for (const device of state.devices) {
+    if (device.runtimes === undefined) continue;
+    if (!Array.isArray(device.runtimes)) throw new Error("invalid runtimes");
+    const seen = new Set();
+    for (const runtime of device.runtimes) {
+      if (
+        !runtime ||
+        typeof runtime.runtimeId !== "string" ||
+        !runtime.runtimeId ||
+        seen.has(runtime.runtimeId)
+      )
+        throw new Error("invalid runtime identity");
+      seen.add(runtime.runtimeId);
+    }
+  }
+}
+
 export function createConnectService({
   now = () => Date.now(),
   logger = () => {},
@@ -303,8 +345,15 @@ export function createConnectService({
   tls,
   mobile,
 } = {}) {
-  if (storagePath && mobile?.storagePath && resolve(storagePath).toLowerCase() === resolve(mobile.storagePath).toLowerCase()) {
-    throw new Error("Mobile authorization state must be separate from Gateway state.");
+  if (
+    storagePath &&
+    mobile?.storagePath &&
+    resolve(storagePath).toLowerCase() ===
+      resolve(mobile.storagePath).toLowerCase()
+  ) {
+    throw new Error(
+      "Mobile authorization state must be separate from Gateway state.",
+    );
   }
   const mobileControl = createMobileControlService(mobile);
   const pairings = new Map();
@@ -317,6 +366,7 @@ export function createConnectService({
     return admitPairingSource(req.socket.remoteAddress || "unknown");
   }
 
+  let gatewayStateUnavailable = false;
   let lastPruneAt = Number.NEGATIVE_INFINITY;
   function pruneState(force = false) {
     const at = now();
@@ -326,6 +376,7 @@ export function createConnectService({
   }
 
   function persistState() {
+    if (gatewayStateUnavailable) return;
     pruneState(true);
     if (typeof storagePath !== "string" || !storagePath.trim()) return;
     const state = {
@@ -362,18 +413,14 @@ export function createConnectService({
   function restoreState() {
     if (typeof storagePath !== "string" || !storagePath.trim()) return;
     const target = storagePath.trim();
-    if (!existsSync(target)) return;
     try {
       const state = JSON.parse(readFileSync(target, "utf8"));
-      if (!state || state.schemaVersion !== 1)
-        throw new Error("unsupported state");
-      for (const item of Array.isArray(state.pairings) ? state.pairings : []) {
-        if (typeof item.codeDigest !== "string") continue;
+      validateStoredState(state);
+      for (const item of state.pairings) {
         const { codeDigest, ...pairing } = item;
         pairings.set(codeDigest, pairing);
       }
-      for (const item of Array.isArray(state.devices) ? state.devices : []) {
-        if (!item || typeof item.deviceId !== "string") continue;
+      for (const item of state.devices) {
         const device = {
           ...item,
           socket: null,
@@ -391,10 +438,7 @@ export function createConnectService({
           );
         }
       }
-      for (const item of Array.isArray(state.desktopTokens)
-        ? state.desktopTokens
-        : []) {
-        if (typeof item.value !== "string") continue;
+      for (const item of state.desktopTokens) {
         const { value, ...record } = item;
         desktopTokens.set(value, record);
       }
@@ -415,9 +459,18 @@ export function createConnectService({
         }
       }
     } catch (cause) {
-      logger(cause);
-      // Keep the service available with an empty in-memory state. The corrupt
-      // file is never overwritten until a new mutation is made.
+      if (cause?.code === "ENOENT") return;
+      gatewayStateUnavailable = true;
+      pairings.clear();
+      devices.clear();
+      runtimes.clear();
+      desktopTokens.clear();
+      // JSON parse errors can quote credentials from the damaged input.
+      logger(
+        new Error(
+          "gateway_state_unavailable: restore valid Gateway state and restart.",
+        ),
+      );
     }
   }
 
@@ -427,6 +480,15 @@ export function createConnectService({
     const url = new URL(req.url || "/", "http://connect.local");
     try {
       if (await mobileControl.handle(req, res, url)) return;
+      if (gatewayStateUnavailable) {
+        error(
+          res,
+          503,
+          "Gateway state is unavailable; operator recovery required.",
+          "gateway_state_unavailable",
+        );
+        return;
+      }
       pruneState();
       if (req.method === "GET" && url.pathname === "/connect/v1/health") {
         json(res, 200, { status: "ok", protocolVersion: PROTOCOL_VERSION });
@@ -1233,6 +1295,12 @@ export function createConnectService({
   });
   server.on("upgrade", (req, socket, head) => {
     if (mobileControl.upgrade(req, socket, head)) return;
+    if (gatewayStateUnavailable) {
+      socket.end(
+        "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+      );
+      return;
+    }
     const url = new URL(req.url || "/", "http://connect.local");
     if (url.pathname !== "/connect/v1/tunnel") {
       socket.destroy();
@@ -1374,10 +1442,22 @@ export function createConnectService({
     socket.on("message", (raw) => {
       if (!identity) return;
       try {
-        const rawBytes = Buffer.isBuffer(raw) ? raw.length : Buffer.byteLength(String(raw));
+        const rawBytes = Buffer.isBuffer(raw)
+          ? raw.length
+          : Buffer.byteLength(String(raw));
         let frame = tunnelFrame(JSON.parse(raw.toString("utf8")));
-        if (rawBytes > MAX_STANDARD_TUNNEL_REQUEST_BYTES && frame.type === "request" && !(frame.method === "POST" && frame.path === "/artifacts")) {
-          sendSocketError(socket, frame.requestId, 413, "request_body_too_large", "Only artifact uploads may exceed the standard tunnel request limit.");
+        if (
+          rawBytes > MAX_STANDARD_TUNNEL_REQUEST_BYTES &&
+          frame.type === "request" &&
+          !(frame.method === "POST" && frame.path === "/artifacts")
+        ) {
+          sendSocketError(
+            socket,
+            frame.requestId,
+            413,
+            "request_body_too_large",
+            "Only artifact uploads may exceed the standard tunnel request limit.",
+          );
           return;
         }
         if (frame.type === "heartbeat") {
