@@ -1,21 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-// GHSA-ch52-4w7c-c8xp currently has no patched http-cache-semantics release.
-// Its only path here is through the development-only electron-builder toolchain.
-// Keep this exception narrow so any other high/critical finding still blocks CI.
-const builderChain = new Set([
-  "@electron/get",
-  "app-builder-lib",
-  "cacheable-request",
-  "dmg-builder",
-  "electron-builder",
-  "electron-builder-squirrel-windows",
-  "got",
-  "http-cache-semantics",
-]);
-const acceptedAdvisory = "https://github.com/advisories/GHSA-ch52-4w7c-c8xp";
 const npmEntry = process.env.npm_execpath;
-
 if (!npmEntry) {
   console.error("Run this check through npm run audit:ci.");
   process.exit(1);
@@ -31,59 +16,48 @@ function audit(args) {
     },
   );
   if (result.error) throw result.error;
+  if (result.status !== 0 && result.status !== 1)
+    throw new Error("npm audit did not complete successfully.");
   let report;
   try {
     report = JSON.parse(result.stdout);
   } catch {
-    throw new Error(`npm audit did not return JSON: ${result.stderr.trim()}`);
+    throw new Error("npm audit did not return valid JSON.");
   }
-  if (report.error || !report.vulnerabilities || result.status === null) {
-    throw new Error(
-      `npm audit failed: ${JSON.stringify(report.error ?? result.stderr.trim())}`,
-    );
-  }
-  return report;
+  if (
+    report.error ||
+    !report.vulnerabilities ||
+    typeof report.vulnerabilities !== "object" ||
+    Array.isArray(report.vulnerabilities)
+  )
+    throw new Error("npm audit did not return a vulnerability report.");
+  const findings = Object.entries(report.vulnerabilities);
+  const severities = new Set(["info", "low", "moderate", "high", "critical"]);
+  if (
+    findings.some(
+      ([, finding]) => !finding || !severities.has(finding.severity),
+    ) ||
+    (result.status === 1 && findings.length === 0)
+  )
+    throw new Error("npm audit returned an inconsistent vulnerability report.");
+  return findings
+    .filter(([, finding]) => ["high", "critical"].includes(finding.severity))
+    .map(([name]) => name);
 }
 
-const production = audit(["--omit=dev", "--audit-level=high"]);
-const productionHigh = Object.entries(production.vulnerabilities).filter(
-  ([, finding]) => ["high", "critical"].includes(finding.severity),
-);
+const productionHigh = audit(["--omit=dev", "--audit-level=high"]);
 if (productionHigh.length) {
   console.error(
     "Production dependency audit failed:",
-    productionHigh.map(([name]) => name).join(", "),
+    productionHigh.join(", "),
   );
   process.exit(1);
 }
-
-const full = audit(["--audit-level=high"]);
-const unexpected = Object.entries(full.vulnerabilities)
-  .filter(([, finding]) => ["high", "critical"].includes(finding.severity))
-  .filter(([name, finding]) => {
-    if (!builderChain.has(name)) return true;
-    return finding.via.some((cause) =>
-      typeof cause === "string"
-        ? !builderChain.has(cause)
-        : name !== "http-cache-semantics" || cause.url !== acceptedAdvisory,
-    );
-  })
-  .map(([name]) => name);
-
-if (unexpected.length) {
-  console.error(
-    "Unaccepted high/critical dependency findings:",
-    unexpected.join(", "),
-  );
+const allHigh = audit(["--audit-level=high"]);
+if (allHigh.length) {
+  console.error("Dependency audit failed:", allHigh.join(", "));
   process.exit(1);
 }
-
-const accepted = Object.entries(full.vulnerabilities)
-  .filter(([, finding]) => ["high", "critical"].includes(finding.severity))
-  .map(([name]) => name);
-console.log("Production dependencies: no high/critical findings.");
 console.log(
-  accepted.length
-    ? `Development-only builder advisory ${acceptedAdvisory} accepted for: ${accepted.join(", ")}.`
-    : "All dependencies: no high/critical findings.",
+  "Production and development dependencies: no high/critical findings.",
 );

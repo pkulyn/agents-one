@@ -37,8 +37,15 @@ The publisher serializes resource-only promotion, refuses running applications a
 Mobile access acceptance verifies a reachable navigation entry and the selected profile pane, independently of the presentation order of general settings.
 
 The navigation component test clicks the mobile entry, checks its active state and verifies the requested profile. Changing the order of appearance, language, voice and data settings must not hide that entry or replace it with an inert feature marker.
+
 ## Immutable candidate dependency gate
 
 Every rebuilt Windows candidate uses a fixed commit and its lockfile, and must pass the current dependency audit before packaging or artifact upload.
 
 A previously passing candidate can fail a later rebuild when new advisories affect its locked dependencies. Compatible dependency fixes create a new candidate SHA; they do not change the original candidate or waive the release gate. The Windows clean runner repeats all three gate rounds and packaged-app smoke checks before uploading that candidate. Artifact upload alone does not approve RC1 or publish a Release.
+
+## Dependency audit enforcement
+
+Both production-only and full dependency audits reject every high or critical finding. Fixed builder dependencies do not retain a historical advisory waiver.
+
+Unavailable, malformed or inconsistent npm audit results fail the gate. A lockfile repair still requires installation, Runtime dependency probes and candidate regression before packaging.
