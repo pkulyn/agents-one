@@ -240,7 +240,6 @@ interface AgentsOneAPI {
   setLocale: (locale: AppLocale) => Promise<AppLocale>;
 
   // Configuration (profile-aware)
-  getEnv: (profile?: string) => Promise<Record<string, string>>;
   setEnv: (key: string, value: string, profile?: string) => Promise<boolean>;
   getVoiceInputConfig: (profile?: string) => Promise<{
     enabled: boolean;
@@ -985,9 +984,6 @@ interface AgentsOneAPI {
 
   // Credential Pool (profile-aware) — entries follow the upstream
   // engine schema (issue #367). See `CredentialPoolEntry` below.
-  getCredentialPool: (
-    profile?: string,
-  ) => Promise<Record<string, Array<CredentialPoolEntry>>>;
   setCredentialPool: (
     provider: string,
     entries: Array<CredentialPoolEntry>,
@@ -998,7 +994,7 @@ interface AgentsOneAPI {
     apiKey: string,
     label: string,
     profile?: string,
-  ) => Promise<Array<CredentialPoolEntry>>;
+  ) => Promise<boolean>;
   invalidateSecretsCache: () => Promise<void>;
 
   // Models

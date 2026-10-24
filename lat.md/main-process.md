@@ -227,3 +227,9 @@ Clipboard copying rechecks an opened regular file, limits reads to five MiB and 
 ### Main window admission
 
 Only the current main window's main frame may request the artifact menu; another frame cannot reuse the native action surface.
+
+## Retired plaintext secret readers
+
+The legacy get-env and get-credential-pool channels and preload methods are removed because the current Renderer has no consumers. Main-owned configuration and Runtime code retain their internal credential readers.
+
+Adding a credential through IPC returns only completion, never the updated secret pool. This boundary does not replace audits of other configuration responses, sender validation or production CSP.
