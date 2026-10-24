@@ -233,3 +233,9 @@ Only the current main window's main frame may request the artifact menu; another
 The legacy get-env and get-credential-pool channels and preload methods are removed because the current Renderer has no consumers. Main-owned configuration and Runtime code retain their internal credential readers.
 
 Adding a credential through IPC returns only completion, never the updated secret pool. This boundary does not replace audits of other configuration responses, sender validation or production CSP.
+
+## Renderer configuration read scope
+
+The generic get-config IPC reads only four existing UI settings: service tier, reasoning effort, IPv4 preference and proxy configuration. Unknown or malformed paths cannot reach the internal YAML getter.
+
+Trusted Main consumers keep their existing full configuration reader. Proxy values retain their current editing contract; URL credential projection and other response surfaces require separate review.

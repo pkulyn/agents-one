@@ -1,3 +1,4 @@
+import { readRendererConfigValue } from "./public-config";
 import { completeBackupRestore } from "./backup-restore-completion";
 import { runConfirmedBackupRestore } from "./backup-restore-confirmation";
 import {
@@ -172,7 +173,6 @@ import { startOfficeStack } from "../office-start";
 import {
   readEnv,
   setEnvValue,
-  getConfigValue,
   setConfigValue,
   getHermesHome,
   getModelConfig,
@@ -726,7 +726,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
 
   ipcMain.handle("get-config", (_event, key: string, profile?: string) => {
-    return getConfigValue(key, profile);
+    return readRendererConfigValue(key, profile);
   });
 
   ipcMain.handle(
