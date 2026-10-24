@@ -259,3 +259,9 @@ Writes use the existing same-directory temporary-file replacement and preserve u
 App IPC requires a live native-owned WebContents, its main frame and the expected application URL. A same-URL window, child frame or navigated page cannot borrow another window's authority.
 
 The current Main window retains normal handlers. Native creation enrolls composer, tray-menu and completion identities with exact query URLs; destruction revokes them. Auxiliary channels are explicit and deny unknown additions, retaining common locale and composer attachment, voice and task flows. Invoke handlers fail before side effects; send listeners ignore denied events, and listener removal maps to the guarded callback. Registration, tray, updater and mobile management use the gate; existing deeper workspace, credential and restore checks remain necessary.
+
+## Renderer proxy URL projection
+
+The Renderer sees only a proxy URL's public scheme, host and port; stored authentication, routing paths, queries and fragments are replaced with retained markers. Internal networking continues to read the original value.
+
+Saving an unchanged projection preserves the current value of that profile. Changed values containing retained markers are rejected before writing; replacement or credential clearing requires an explicit complete value. Settings bind network loads and proxy-save acknowledgements to their profile/request, disable edits until loaded and report failed saves without marking them successful. This projection does not yet define the contracts for model or Runtime endpoint responses.

@@ -390,6 +390,11 @@ export default {
   updateSuccess: "Hermes Agent Runtime 更新成功。",
   updateFailed: "更新失败。",
   version: "v{{version}}",
+  networkLoading: "正在加载网络配置…",
+  networkLoadFailed: "网络配置加载失败。",
+  networkSaveFailed: "网络配置保存失败。",
+  proxySavedParametersHint:
+    "已保存的认证和 URL 参数不会回显。保持不变会保留；修改时请重新输入完整地址，或移除认证部分以清除凭据。",
   proxyPlaceholder: "例如：socks5://127.0.0.1:1080 或 http://proxy:8080",
   modelNamePlaceholder: "例如：anthropic/claude-opus-4.6",
   modelBaseUrlPlaceholder: "http://localhost:1234/v1",

@@ -1,5 +1,8 @@
 import { createScopedIpcMain } from "./sender-scope";
-import { readRendererConfigValue } from "./public-config";
+import {
+  readRendererConfigValue,
+  writeRendererConfigValue,
+} from "./public-config";
 import { completeBackupRestore } from "./backup-restore-completion";
 import { runConfirmedBackupRestore } from "./backup-restore-confirmation";
 import {
@@ -174,7 +177,6 @@ import { startOfficeStack } from "../office-start";
 import {
   readEnv,
   setEnvValue,
-  setConfigValue,
   getHermesHome,
   getModelConfig,
   setModelConfig,
@@ -734,7 +736,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     "set-config",
     async (_event, key: string, value: string, profile?: string) => {
-      setConfigValue(key, value, profile);
+      writeRendererConfigValue(key, value, profile);
       return true;
     },
   );
