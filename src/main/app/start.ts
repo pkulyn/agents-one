@@ -1,3 +1,4 @@
+import { resolveDesktopContentSecurityPolicy } from "../../shared/desktop-csp";
 import { app, BrowserWindow, safeStorage, session, shell } from "electron";
 import { join } from "path";
 import { optimizer, is } from "@electron-toolkit/utils";
@@ -186,7 +187,9 @@ export function startMainProcess(): void {
         logApplicationDiagnostic("backup.restore-recovered");
       }
       if (recoverInterruptedAgentsOneRestore()) {
-        console.warn("[BACKUP] Recovered an interrupted Agents One data restore.");
+        console.warn(
+          "[BACKUP] Recovered an interrupted Agents One data restore.",
+        );
         logApplicationDiagnostic("backup.data-restore-recovered");
       }
     } catch (error) {
@@ -232,16 +235,7 @@ export function startMainProcess(): void {
         responseHeaders: {
           ...details.responseHeaders,
           "Content-Security-Policy": [
-            "default-src 'self'; " +
-              "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
-              "style-src 'self' 'unsafe-inline'; " +
-              "img-src 'self' data: blob: file: https:; " +
-              "media-src 'self' data: blob: file: https:; " +
-              "connect-src 'self' blob: http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* https: wss:; " +
-              "font-src 'self' data:; " +
-              "frame-src 'self' https: http://127.0.0.1:* http://localhost:*; " +
-              "object-src 'none'; " +
-              "base-uri 'self';",
+            resolveDesktopContentSecurityPolicy(is.dev && !app.isPackaged),
           ],
         },
       });

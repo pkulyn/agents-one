@@ -1,3 +1,4 @@
+import { resolveDesktopContentSecurityPolicy } from "./src/shared/desktop-csp";
 import { resolve } from "path";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
@@ -114,6 +115,24 @@ export default defineConfig({
         "@renderer": resolve("src/renderer/src"),
       },
     },
-    plugins: [tailwindcss(), react()],
+    plugins: [
+      tailwindcss(),
+      react(),
+      {
+        name: "agents-one-development-csp",
+        apply: "serve",
+        transformIndexHtml(html) {
+          const pattern =
+            /(http-equiv="Content-Security-Policy"\s+content=")[^"]+("\s*\/?>)/;
+          if (!pattern.test(html))
+            throw Error("Renderer CSP metadata is missing");
+          return html.replace(
+            pattern,
+            (_, prefix, suffix) =>
+              prefix + resolveDesktopContentSecurityPolicy(true) + suffix,
+          );
+        },
+      },
+    ],
   },
 });
