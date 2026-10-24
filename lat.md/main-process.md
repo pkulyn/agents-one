@@ -181,3 +181,9 @@ Hermes SSH tunnel mode was removed (opensource plan D4): remote Hermes now alway
 The SSH transport modules (`ssh-remote.ts`, `ssh-tunnel.ts`, `ssh-options.ts`) were deleted, along with the `set-ssh-config` / `test-ssh-connection` / `start-ssh-tunnel` / `stop-ssh-tunnel` / `is-ssh-tunnel-active` IPC handlers, the `HermesRuntimeMode` "ssh" value, and every `conn.mode === "ssh"` branch across main, preload and renderer.
 
 Existing persisted SSH configs are read-only migrated: the old built-in connection (`connectionMode: "ssh"`) is coerced to `remote` and flagged `migratedFromSsh` (ConnectionPane shows a "re-set up on Gateway v1" banner); Agent Runtime configs with `hermes.mode: "ssh"` are coerced to `remote` and marked `needsReauthorization`. Stored `sshConfig` fields are left untouched on disk.
+
+## Effective CLI toolset defaults
+
+Changing one CLI toolset preserves the other effective defaults rather than replacing an implicit configuration with an empty list.
+
+[[src/main/tools.ts#setToolsetEnabled]] starts from [[src/main/tools.ts#getToolsets]] when a platform list is not yet explicit. A configuration without a platform-toolsets block keeps every other default enabled after one toggle; an explicitly empty CLI list remains empty until the user enables a toolset. Existing platform lists and unrelated configuration are preserved.
