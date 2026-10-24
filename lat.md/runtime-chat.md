@@ -247,3 +247,9 @@ Claude attachments use the CLI staged-directory route, including read-only conve
 [[src/main/claude-code-runtime.ts#startClaudeCodeProcess]] and [[src/main/codex-runtime.ts#startCodexProcess]] decode stdout and stderr independently with incremental UTF-8 decoders and flush them on close before terminal summarization. This prevents replacement characters at valid byte boundaries without changing permissions, native arguments, staged content or output limits.
 
 Codex desktop execution additionally uses [[src/main/codex-runtime.ts#codexDesktopEnvironment]] to probe pwsh binaries in its inherited PATH. Only directories whose pwsh reports the known CET incompatibility are excluded in the child environment, letting native shell discovery choose a healthy installed shell. Other probe failures, healthy candidates and all non-shell settings are retained. Mobile inspection and controlled project-write processes keep their existing verified environment and identity unchanged.
+
+## Workspace recovery failures
+
+A safe-write recovery failure preserves the original backup and produces a Runtime error instead of a successful completion or a hanging process result.
+
+[[src/main/workspace-protection.ts#protectWorkspaceFromRemoval]] attempts each missing original independently. Locked paths, replacement directories and symlink parents retain the backup for retry. Only a complete recovery disposes it. Claude Code, Codex, Pi and OpenCode propagate the recovery error in their ordinary completion result; this fallback does not establish operating-system sandboxing.

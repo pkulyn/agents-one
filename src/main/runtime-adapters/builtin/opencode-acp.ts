@@ -1326,6 +1326,9 @@ export async function startOpenCodeProcess(
                   processResult.stderr ||
                   `OpenCode exited with code ${processResult.exitCode ?? "unknown"}.`,
               }),
+        ...(protection?.recoveryError
+          ? { error: protection.recoveryError }
+          : {}),
       };
     } catch (error) {
       const restored = protection?.restoreAndDispose() || [];
@@ -1343,9 +1346,11 @@ export async function startOpenCodeProcess(
               diffSummary: `OpenCode 已产生 ${artifacts.length} 项工作区变更。`,
             }
           : {}),
-        error: redactSensitiveText(
-          error instanceof Error ? error.message : String(error),
-        ),
+        error:
+          protection?.recoveryError ||
+          redactSensitiveText(
+            error instanceof Error ? error.message : String(error),
+          ),
       };
     }
   })();

@@ -982,7 +982,7 @@ export async function startPiProcess(
       workspaceProtection?.restoreAndDispose();
       resolveResult({
         output,
-        error: redact(error.message),
+        error: workspaceProtection?.recoveryError || redact(error.message),
         worktreePath,
         artifacts: worktreePath
           ? [
@@ -1047,6 +1047,9 @@ export async function startPiProcess(
         artifacts,
         ...(restoredFiles.length
           ? { error: runtimeRemovalBlockedMessage(restoredFiles) }
+          : {}),
+        ...(workspaceProtection?.recoveryError
+          ? { error: workspaceProtection.recoveryError }
           : {}),
         inputArtifacts: preparedInputs.artifacts,
         sessionId,

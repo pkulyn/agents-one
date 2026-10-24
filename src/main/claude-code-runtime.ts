@@ -502,7 +502,7 @@ export async function startClaudeCodeProcess(
       workspaceProtection?.restoreAndDispose();
       resolveResult({
         output,
-        error: redact(error.message),
+        error: workspaceProtection?.recoveryError || redact(error.message),
         sessionId,
         worktreePath,
         artifacts: worktreePath
@@ -586,6 +586,9 @@ export async function startClaudeCodeProcess(
         artifacts,
         ...(restoredFiles.length
           ? { error: runtimeRemovalBlockedMessage(restoredFiles) }
+          : {}),
+        ...(workspaceProtection?.recoveryError
+          ? { error: workspaceProtection.recoveryError }
           : {}),
         inputArtifacts: preparedInputs.artifacts,
       });
