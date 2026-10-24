@@ -15,7 +15,7 @@ for (const [capabilities, expectedMethod] of [
       join(tmpdir(), "remote-opencode-continuation-"),
     );
     const program = [
-      "const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});",
+      "const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});fs.writeFileSync(process.cwd()+'/child.pid',String(process.pid));",
       "const send=(v)=>process.stdout.write(JSON.stringify(v)+'\\n');",
       `const capabilities=${JSON.stringify(capabilities)};`,
       "rl.on('line',(line)=>{const m=JSON.parse(line);fs.appendFileSync(process.cwd()+'/requests.jsonl',line+'\\n');",
@@ -67,6 +67,10 @@ for (const [capabilities, expectedMethod] of [
           ).json();
         }
         assert.equal(run.status, "succeeded", run.error?.message);
+        const childPid = Number(
+          readFileSync(join(workspace, "child.pid"), "utf8"),
+        );
+        assert.throws(() => process.kill(childPid, 0), { code: "ESRCH" });
         assert.equal(run.output, "CURRENT-ANSWER");
         assert.equal(run.sessionId, "native-opencode-session");
         return run;
