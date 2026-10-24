@@ -187,3 +187,9 @@ Existing persisted SSH configs are read-only migrated: the old built-in connecti
 Changing one CLI toolset preserves the other effective defaults rather than replacing an implicit configuration with an empty list.
 
 [[src/main/tools.ts#setToolsetEnabled]] starts from [[src/main/tools.ts#getToolsets]] when a platform list is not yet explicit. A configuration without a platform-toolsets block keeps every other default enabled after one toggle; an explicitly empty CLI list remains empty until the user enables a toolset. Existing platform lists and unrelated configuration are preserved.
+
+## Diagnostic credential redaction
+
+Diagnostic text and JSON frames redact credential aliases, URL user information and complete secret values before they reach logs or Runtime event consumers.
+
+[[src/shared/redaction.ts#redactSensitiveText]] handles complete JSON by redacting secret fields and string values while preserving a parseable frame and nonsecret metadata. Other text uses quote-aware and URL-aware replacements, including punctuation inside unquoted values. Nested JSON values at depth 64 are replaced with a redaction marker.
