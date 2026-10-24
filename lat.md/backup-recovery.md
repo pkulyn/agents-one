@@ -25,3 +25,9 @@ Before writing, the app's single-instance lock prevents a second Agents One proc
 Portable configuration is merged into the target's existing `config.yaml` so credentials and unknown keys survive. New or changed remote endpoints are disabled and marked for reauthorization, local executable/workspace paths are cleared when they do not match the target, and proxy endpoints never migrate. Legacy SSH connections in a restored archive are read-only coerced to the unified remote mode (see [[main-process#SSH transport (removed)]]). Restored schedules are disabled with no queued or active run, restored conversations do not retain an in-process run id, and only explicit `attachments[*].path` references to manifest-owned `desktop-staging` files are rebound to the target data home. The app relaunches after quiescing so every store and Runtime reopens against one consistent snapshot.
 
 Backups are integrity-checked but not encrypted or authenticated. Users should import only trusted archives and store them securely because conversations, memories, skills, attachments, and tool evidence can contain sensitive user-supplied content.
+
+## Native restore confirmation
+
+Restore requires the current main window main frame and an explicit native warning confirmation with Cancel selected by default. Cancellation or dialog failure does not enter the restore lifecycle.
+
+The Main gate rechecks window identity after confirmation and serializes the full operation. This trigger gate supplements archive validation and transactional recovery; it does not itself freeze archive bytes or verify packaged failure reporting.
