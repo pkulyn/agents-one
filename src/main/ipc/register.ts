@@ -1,3 +1,4 @@
+import { completeBackupRestore } from "./backup-restore-completion";
 import { runConfirmedBackupRestore } from "./backup-restore-confirmation";
 import {
   registerArtifactFileMenuIpc,
@@ -2721,59 +2722,50 @@ export function registerIpcHandlers(context: IpcContext): void {
               error: "计划任务仍在写入数据，恢复未开始。",
             };
           }
-          let relaunchRequired = false;
-          try {
-            relaunchRequired = true;
-            beginAgentsOneRestoreWriteLock();
-            stopAcceptingAgentRuntimeTasks();
-            for (const window of BrowserWindow.getAllWindows()) {
-              // Destroying the old renderer is the global write gate: no delayed
-              // save/invoke can race the restore. `window-all-closed` is suppressed
-              // while the restore lock is active, and this main-process handler
-              // continues until it relaunches the application.
-              window.destroy();
-            }
-            for (const run of activeRuns.values()) run.abort();
-            activeRuns.clear();
-            const activeRuntimeCount = activeAgentRuntimeTaskCount();
-            const cancelledRuntimeCount = await cancelAllAgentRuntimeTasks();
-            if (
-              activeAgentRuntimeTaskCount() > 0 ||
-              cancelledRuntimeCount < activeRuntimeCount
-            ) {
-              return {
-                success: false,
-                error:
-                  "仍有 Runtime 进程未确认退出，恢复未开始。请稍后重试或结束对应本地 CLI 进程。",
-              };
-            }
-            stopAllDashboards();
-            const profiles = await listProfiles();
-            for (const profile of profiles) {
-              if (!profile.gatewayRunning) continue;
-              if (!(await stopGatewayAndWait(profile.id))) {
+          return completeBackupRestore(
+            async () => {
+              beginAgentsOneRestoreWriteLock();
+              stopAcceptingAgentRuntimeTasks();
+              for (const window of BrowserWindow.getAllWindows()) {
+                // Destroying the old renderer is the global write gate: no delayed
+                // save/invoke can race the restore. `window-all-closed` is suppressed
+                // while the restore lock is active, and this main-process handler
+                // continues until it relaunches the application.
+                window.destroy();
+              }
+              for (const run of activeRuns.values()) run.abort();
+              activeRuns.clear();
+              const activeRuntimeCount = activeAgentRuntimeTaskCount();
+              const cancelledRuntimeCount = await cancelAllAgentRuntimeTasks();
+              if (
+                activeAgentRuntimeTaskCount() > 0 ||
+                cancelledRuntimeCount < activeRuntimeCount
+              ) {
                 return {
                   success: false,
-                  error: `无法安全停止配置档案 ${profile.name} 的本地网关，恢复未开始。`,
+                  error:
+                    "仍有 Runtime 进程未确认退出，恢复未开始。请稍后重试或结束对应本地 CLI 进程。",
                 };
               }
-            }
-            closeDbConnection();
-            return await restoreAgentsOneBackupFrom(approvedArchive);
-          } catch (error) {
-            return {
-              success: false,
-              error: error instanceof Error ? error.message : String(error),
-            };
-          } finally {
-            if (relaunchRequired) {
-              // A fresh process is the only reliable way to reopen every profile
-              // database, gateway and Runtime against the restored snapshot.
+              stopAllDashboards();
+              const profiles = await listProfiles();
+              for (const profile of profiles) {
+                if (!profile.gatewayRunning) continue;
+                if (!(await stopGatewayAndWait(profile.id))) {
+                  return {
+                    success: false,
+                    error: `无法安全停止配置档案 ${profile.name} 的本地网关，恢复未开始。`,
+                  };
+                }
+              }
+              closeDbConnection();
+              return await restoreAgentsOneBackupFrom(approvedArchive);
+            },
+            getAppLocale(),
+            () => {
               setTimeout(() => relaunchApp(), 1_000);
-            } else {
-              startTaskScheduleRunner();
-            }
-          }
+            },
+          );
         },
       ),
   );
