@@ -113,3 +113,9 @@ The entire collection and identity structure is validated before authorization i
 Journal IDs must fit a single bounded SSE field. IDs containing control characters or exceeding 512 characters are replaced with stable SHA-256 identifiers before storage and serialization.
 
 Safe provider IDs retain their exact existing cursor and deduplication behavior. Unsafe IDs deduplicate consistently across refresh and persisted-journal reload; missing IDs retain random UUID allocation. Event types remain restricted to the existing whitelist, and JSON serialization keeps body newlines inside the data field. Real HTTP regressions cover forged metadata, replay cursors and legacy journal recovery.
+
+## Connect tunnel request ownership
+
+Each pending Gateway tunnel request belongs to its exact Desktop and Connector connections. Disconnect or replacement settles the affected requests and releases capacity without touching newer connections.
+
+The Connector leg receives an opaque unique correlation ID; responses restore the original Desktop request ID. This prevents late responses from matching a reused ID after reconnection. Responses must match their pending Runtime, and requests for unadvertised Runtimes fail explicitly. Replacing a Desktop closes the old connection instead of transferring its pending work.

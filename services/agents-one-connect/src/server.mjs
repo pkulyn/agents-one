@@ -194,6 +194,20 @@ function sendSocketError(socket, requestId, status, code, message) {
   });
 }
 
+function settlePendingRequests(device, matches, code, message) {
+  for (const [wireId, pending] of device.pendingRequests || []) {
+    if (!matches(pending)) continue;
+    device.pendingRequests.delete(wireId);
+    sendSocketError(
+      pending.desktopSocket,
+      pending.requestId,
+      503,
+      code,
+      message,
+    );
+  }
+}
+
 function allowTunnelRequest(device, runtimeId, nowValue) {
   device.requestRates ||= new Map();
   const runtimeRate = device.requestRates.get(runtimeId);
@@ -1362,8 +1376,16 @@ export function createConnectService({
               .map((item) => item.runtimeId)
               .filter((id) => allowed.has(id)),
           );
-          if (device.socket && device.socket !== socket)
-            closeSocket(device.socket, 4002, "replaced by new connection");
+          if (device.socket && device.socket !== socket) {
+            const previous = device.socket;
+            settlePendingRequests(
+              device,
+              (pending) => pending.connectorSocket === previous,
+              "connector_offline",
+              "The Connector connection was replaced.",
+            );
+            closeSocket(previous, 4002, "replaced by new connection");
+          }
           device.socket = socket;
           device.lastSeenAt = now();
           const connector = normalizeConnectorMetadata(hello.connector);
@@ -1419,6 +1441,16 @@ export function createConnectService({
             return;
           }
           device.desktopSockets ||= new Map();
+          const previous = device.desktopSockets.get(hello.runtimeId);
+          if (previous && previous !== socket) {
+            settlePendingRequests(
+              device,
+              (pending) => pending.desktopSocket === previous,
+              "desktop_replaced",
+              "The Desktop connection was replaced.",
+            );
+            closeSocket(previous, 4002, "replaced by new connection");
+          }
           device.desktopSockets.set(hello.runtimeId, socket);
           identity = { role: "desktop", device, runtimeId: hello.runtimeId };
           const online =
@@ -1441,6 +1473,13 @@ export function createConnectService({
     });
     socket.on("message", (raw) => {
       if (!identity) return;
+      if (identity.role === "connector" && identity.device.socket !== socket)
+        return;
+      if (
+        identity.role === "desktop" &&
+        identity.device.desktopSockets?.get(identity.runtimeId) !== socket
+      )
+        return;
       try {
         const rawBytes = Buffer.isBuffer(raw)
           ? raw.length
@@ -1474,9 +1513,15 @@ export function createConnectService({
           }
           const pending = identity.device.pendingRequests || new Map();
           const pendingForRuntime = [...pending.values()].filter(
-            (runtimeId) => runtimeId === identity.runtimeId,
+            (record) => record.runtimeId === identity.runtimeId,
           ).length;
-          if (pending.has(frame.requestId)) {
+          if (
+            [...pending.values()].some(
+              (record) =>
+                record.desktopSocket === socket &&
+                record.requestId === frame.requestId,
+            )
+          ) {
             sendSocketError(
               socket,
               frame.requestId,
@@ -1502,51 +1547,56 @@ export function createConnectService({
           }
           frame = { ...frame, runtimeId: identity.runtimeId };
         }
-        let target;
         if (identity.role === "connector") {
-          const runtimeId =
-            frame.runtimeId ||
-            (frame.type === "response"
-              ? identity.device.pendingRequests?.get(frame.requestId)
-              : undefined);
-          target = runtimeId
-            ? identity.device.desktopSockets?.get(runtimeId)
-            : undefined;
-          if (frame.type === "response" && runtimeId) {
-            identity.device.pendingRequests?.delete(frame.requestId);
+          if (frame.type === "response") {
+            const pending = identity.device.pendingRequests?.get(
+              frame.requestId,
+            );
+            if (
+              !pending ||
+              pending.connectorSocket !== socket ||
+              (frame.runtimeId && frame.runtimeId !== pending.runtimeId)
+            )
+              return;
+            identity.device.pendingRequests.delete(frame.requestId);
+            sendSocket(pending.desktopSocket, {
+              ...frame,
+              requestId: pending.requestId,
+            });
+          } else if (frame.type === "event") {
+            const target = identity.device.desktopSockets?.get(frame.runtimeId);
+            if (target) sendSocket(target, frame);
           }
-        } else {
-          const runtimeId = identity.runtimeId;
-          if (frame.type === "request") {
-            identity.device.pendingRequests ||= new Map();
-            identity.device.pendingRequests?.set(frame.requestId, runtimeId);
+        } else if (frame.type === "request") {
+          const target = identity.device.socket;
+          const runtimeOnline =
+            !identity.device.onlineRuntimeIds ||
+            identity.device.onlineRuntimeIds.has(identity.runtimeId);
+          if (!target || target.readyState !== 1 || !runtimeOnline) {
+            const code =
+              target?.readyState === 1 && !runtimeOnline
+                ? "runtime_offline"
+                : "connector_offline";
+            sendSocketError(
+              socket,
+              frame.requestId,
+              503,
+              code,
+              code === "runtime_offline"
+                ? "The requested Runtime is offline."
+                : "The Connector is offline.",
+            );
+            return;
           }
-          target = identity.device.socket;
-        }
-        if (target) {
-          sendSocket(target, frame);
-        } else if (frame.type === "request" && identity.role === "desktop") {
-          const code = identity.device.socket
-            ? identity.device.onlineRuntimeIds &&
-              !identity.device.onlineRuntimeIds.has(identity.runtimeId)
-              ? "runtime_offline"
-              : "connector_offline"
-            : "connector_offline";
-          sendSocket(socket, {
-            type: "response",
+          const wireId = "tunnel_" + randomUUID();
+          identity.device.pendingRequests ||= new Map();
+          identity.device.pendingRequests.set(wireId, {
             requestId: frame.requestId,
-            status: code === "runtime_offline" ? 503 : 503,
-            body: {
-              error: {
-                code,
-                message:
-                  code === "runtime_offline"
-                    ? "The requested Runtime is offline."
-                    : "The Connector is offline.",
-              },
-            },
+            runtimeId: identity.runtimeId,
+            desktopSocket: socket,
+            connectorSocket: target,
           });
-          identity.device.pendingRequests?.delete(frame.requestId);
+          sendSocket(target, { ...frame, requestId: wireId });
         }
       } catch {
         closeSocket(socket, 4000, "invalid tunnel frame");
@@ -1554,15 +1604,25 @@ export function createConnectService({
     });
     socket.on("close", () => {
       if (!identity) return;
-      if (identity.role === "connector" && identity.device.socket === socket)
-        identity.device.socket = null;
+      if (identity.role === "connector") {
+        if (identity.device.socket === socket) {
+          identity.device.socket = null;
+          identity.device.onlineRuntimeIds = new Set();
+        }
+        settlePendingRequests(
+          identity.device,
+          (pending) => pending.connectorSocket === socket,
+          "connector_offline",
+          "The Connector disconnected before responding.",
+        );
+      }
       if (identity.role === "desktop") {
         const sockets = identity.device.desktopSockets;
         if (sockets?.get(identity.runtimeId) === socket)
           sockets.delete(identity.runtimeId);
-        for (const [requestId, runtimeId] of identity.device.pendingRequests ||
+        for (const [requestId, pending] of identity.device.pendingRequests ||
           []) {
-          if (runtimeId === identity.runtimeId)
+          if (pending.desktopSocket === socket)
             identity.device.pendingRequests.delete(requestId);
         }
       }
