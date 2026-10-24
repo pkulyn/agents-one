@@ -177,7 +177,6 @@ import {
   getHermesHome,
   getModelConfig,
   setModelConfig,
-  getCredentialPool,
   setCredentialPool,
   addCredentialPoolEntry,
   getConnectionConfig,
@@ -667,10 +666,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("set-locale", (_event, locale: AppLocale) =>
     setAppLocale(locale),
   );
-
-  ipcMain.handle("get-env", (_event, profile?: string) => {
-    return readEnv(profile);
-  });
 
   // Pre-send chat readiness — answers "if Send is clicked right now,
   // will it work?". Fail-open semantics: any uncertain state returns
@@ -2052,9 +2047,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   // credential pool helpers default to the currently active profile's
   // auth.json (see config.ts:authFilePath), so the renderer can pass an
   // explicit profile or rely on the active-profile fallback.
-  ipcMain.handle("get-credential-pool", (_event, profile?: string) =>
-    getCredentialPool(profile),
-  );
   ipcMain.handle(
     "set-credential-pool",
     (
@@ -2081,7 +2073,8 @@ export function registerIpcHandlers(context: IpcContext): void {
       label: string,
       profile?: string,
     ) => {
-      return addCredentialPoolEntry(provider, apiKey, label, profile);
+      addCredentialPoolEntry(provider, apiKey, label, profile);
+      return true;
     },
   );
 

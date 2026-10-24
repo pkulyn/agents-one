@@ -138,7 +138,6 @@ describe("Legacy IPC handlers preserved", () => {
     "get-hermes-version",
     "run-hermes-doctor",
     "run-hermes-update",
-    "get-env",
     "set-env",
     "get-config",
     "set-config",
@@ -167,4 +166,10 @@ describe("Legacy IPC handlers preserved", () => {
       expect(mainChannels).toContain(ch);
     });
   }
+});
+
+// @lat: [[main-process#Retired plaintext secret readers]]
+it("does not expose retired plaintext secret readers", () => {
+  expect(mainChannels).not.toContain("get-env");
+  expect(mainChannels).not.toContain("get-credential-pool");
 });

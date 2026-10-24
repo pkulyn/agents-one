@@ -283,9 +283,6 @@ const agentsOneAPI = {
     ipcRenderer.invoke("set-locale", locale),
 
   // Configuration (profile-aware)
-  getEnv: (profile?: string): Promise<Record<string, string>> =>
-    ipcRenderer.invoke("get-env", profile),
-
   setEnv: (key: string, value: string, profile?: string): Promise<boolean> =>
     ipcRenderer.invoke("set-env", key, value, profile),
 
@@ -1405,10 +1402,6 @@ const agentsOneAPI = {
   // Pool entries follow the upstream engine schema (issue #367) —
   // `access_token` for the secret, `auth_type` to distinguish OAuth
   // from API key, plus `id`/`priority`/`source` for rotation.
-  getCredentialPool: (
-    profile?: string,
-  ): Promise<Record<string, Array<CredentialPoolEntry>>> =>
-    ipcRenderer.invoke("get-credential-pool", profile),
   setCredentialPool: (
     provider: string,
     entries: Array<CredentialPoolEntry>,
@@ -1416,13 +1409,13 @@ const agentsOneAPI = {
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-credential-pool", provider, entries, profile),
   // Add a manually-typed key as a properly-shaped pool entry. Returns
-  // the updated entries list for the provider.
+  // a completion flag without returning stored credentials.
   addCredentialPoolEntry: (
     provider: string,
     apiKey: string,
     label: string,
     profile?: string,
-  ): Promise<Array<CredentialPoolEntry>> =>
+  ): Promise<boolean> =>
     ipcRenderer.invoke(
       "add-credential-pool-entry",
       provider,
