@@ -413,6 +413,11 @@ export default {
   updateSuccess: "Hermes Agent Runtime updated successfully.",
   updateFailed: "Update failed.",
   version: "v{{version}}",
+  networkLoading: "Loading network settings…",
+  networkLoadFailed: "Network settings could not be loaded.",
+  networkSaveFailed: "Network settings could not be saved.",
+  proxySavedParametersHint:
+    "Saved authentication and URL parameters are hidden. Leave this value unchanged to keep them; enter a complete URL to change it, or remove authentication to clear credentials.",
   proxyPlaceholder: "e.g. socks5://127.0.0.1:1080 or http://proxy:8080",
   modelNamePlaceholder: "e.g. anthropic/claude-opus-4.6",
   modelBaseUrlPlaceholder: "http://localhost:1234/v1",

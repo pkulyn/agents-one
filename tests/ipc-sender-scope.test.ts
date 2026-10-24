@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -106,6 +114,10 @@ beforeEach(() => {
 });
 
 describe("actual registration sender boundary", () => {
+  beforeAll(async () => {
+    // Load the full Main registration graph before individual boundary assertions.
+    await import("../src/main/ipc/register");
+  }, 15000);
   it("rejects unowned same-URL contents before a configuration write", async () => {
     const main = { webContents: contents(), isDestroyed: () => false };
     const { registerIpcHandlers } = await import("../src/main/ipc/register");
