@@ -4,6 +4,7 @@ import { join } from "path";
 import { optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../../resources/icon.png?asset";
 import { getPublicConnectionConfig } from "../config";
+import { verifyDesktopConfigurationAtStartup } from "./desktop-config-startup";
 import { stopHealthPolling } from "../hermes";
 import { stopAllDashboards } from "../dashboard";
 import { cleanupTempMediaFiles } from "../media";
@@ -205,6 +206,11 @@ export function startMainProcess(): void {
     } catch (error) {
       console.error("[DATA] Failed to migrate Agents One data", error);
       logErrorDiagnostic("data.migration-failed", error);
+      app.exit(1);
+      return;
+    }
+    if (!verifyDesktopConfigurationAtStartup()) {
+      logErrorDiagnostic("app.desktop-config-unavailable");
       app.exit(1);
       return;
     }

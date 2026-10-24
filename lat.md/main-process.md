@@ -247,3 +247,9 @@ Production Renderer HTML and Main response headers permit only same-origin scrip
 Only Vite serve and an unpackaged development Main opt into inline scripts for React refresh. An isolated Windows Electron regression verifies that same-origin scripts run while inline scripts and handlers remain blocked; packaged application acceptance stays separate.
 
 CSP resource regressions read the shared production policy and verify its Main header wiring, preserving existing loopback, remote dashboard and packaged asset requirements when policy code moves between modules.
+
+## Desktop configuration integrity
+
+Desktop configuration reads distinguish a missing file from invalid JSON, a non-object root or an I/O failure. Existing damaged state remains untouched, and ordinary writes cannot replace it with an empty fallback.
+
+Writes use the existing same-directory temporary-file replacement and preserve unknown fields in caller read/modify/write updates. Startup validates after restore recovery and migration, before Owner, windows or schedules; failure shows a native recovery path and exits. Locale bootstrap alone may fall back to the default language so it can reach this prompt, while failed saves cannot change in-memory language. Tests inject write/rename/read failures and verify original bytes, recovery instructions and startup ordering.
