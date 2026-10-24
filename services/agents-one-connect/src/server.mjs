@@ -1,3 +1,4 @@
+import { CONNECT_STATE_LIMITS, pruneConnectState } from "./state-retention.mjs";
 import { createPairingAttemptLimiter } from "./pairing-admission.mjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createMobileControlService } from "./mobile-control.mjs";
@@ -316,7 +317,16 @@ export function createConnectService({
     return admitPairingSource(req.socket.remoteAddress || "unknown");
   }
 
+  let lastPruneAt = Number.NEGATIVE_INFINITY;
+  function pruneState(force = false) {
+    const at = now();
+    if (!force && at >= lastPruneAt && at - lastPruneAt < 1000) return;
+    pruneConnectState({ pairings, devices, runtimes, desktopTokens }, at);
+    lastPruneAt = at;
+  }
+
   function persistState() {
+    pruneState(true);
     if (typeof storagePath !== "string" || !storagePath.trim()) return;
     const state = {
       schemaVersion: 1,
@@ -412,10 +422,12 @@ export function createConnectService({
   }
 
   restoreState();
+  pruneState(true);
   const requestHandler = async (req, res) => {
     const url = new URL(req.url || "/", "http://connect.local");
     try {
       if (await mobileControl.handle(req, res, url)) return;
+      pruneState();
       if (req.method === "GET" && url.pathname === "/connect/v1/health") {
         json(res, 200, { status: "ok", protocolVersion: PROTOCOL_VERSION });
         return;
@@ -434,6 +446,16 @@ export function createConnectService({
           req.resume();
           return;
         }
+        if (pairings.size >= CONNECT_STATE_LIMITS.pairings) {
+          error(
+            res,
+            503,
+            "Pairing capacity reached; try again later.",
+            "pairing_capacity_reached",
+          );
+          req.resume();
+          return;
+        }
         const input = await bodyOf(req);
         const runtimeList = normalizeRuntimes(input);
         if (!runtimeList.length || !validPublicKey(input.publicKey)) {
@@ -441,6 +463,16 @@ export function createConnectService({
             res,
             422,
             "runtimes (or runtimeId), displayName and publicKey are required.",
+          );
+          return;
+        }
+        // A body may have waited while another request consumed the last slot.
+        if (pairings.size >= CONNECT_STATE_LIMITS.pairings) {
+          error(
+            res,
+            503,
+            "Pairing capacity reached; try again later.",
+            "pairing_capacity_reached",
           );
           return;
         }
@@ -489,6 +521,16 @@ export function createConnectService({
           req.resume();
           return;
         }
+        if (pairings.size >= CONNECT_STATE_LIMITS.pairings) {
+          error(
+            res,
+            503,
+            "Pairing capacity reached; try again later.",
+            "pairing_capacity_reached",
+          );
+          req.resume();
+          return;
+        }
         const input = await bodyOf(req);
         const runtimeList = normalizeRuntimes(input);
         if (!runtimeList.length) {
@@ -496,6 +538,16 @@ export function createConnectService({
             res,
             422,
             "runtimes (or runtimeId) and displayName are required.",
+          );
+          return;
+        }
+        // A body may have waited while another request consumed the last slot.
+        if (pairings.size >= CONNECT_STATE_LIMITS.pairings) {
+          error(
+            res,
+            503,
+            "Pairing capacity reached; try again later.",
+            "pairing_capacity_reached",
           );
           return;
         }
@@ -644,6 +696,15 @@ export function createConnectService({
             403,
             "Runtime ID does not match the pairing request.",
             "permission_denied",
+          );
+          return;
+        }
+        if (devices.size >= CONNECT_STATE_LIMITS.devices) {
+          error(
+            res,
+            503,
+            "Device capacity reached; revoke unused devices and try again later.",
+            "device_capacity_reached",
           );
           return;
         }
@@ -798,6 +859,15 @@ export function createConnectService({
           );
           return;
         }
+        if (devices.size >= CONNECT_STATE_LIMITS.devices) {
+          error(
+            res,
+            503,
+            "Device capacity reached; revoke unused devices and try again later.",
+            "device_capacity_reached",
+          );
+          return;
+        }
         const deviceId = `device_${randomUUID()}`;
         const deviceToken = token("device");
         const runtimeTokens = runtimeTokensFor(pairing.runtimes);
@@ -899,6 +969,7 @@ export function createConnectService({
           error(res, 401, "Device authorization failed.", "unauthorized");
           return;
         }
+        if (device.state !== "revoked") device.revokedAt = now();
         device.state = "revoked";
         for (const runtime of device.runtimes || []) {
           const key = runtimeKey(device.deviceId, runtime.runtimeId);

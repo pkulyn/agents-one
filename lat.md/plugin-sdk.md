@@ -87,3 +87,11 @@ An ACP child that ignores cancellation is forcibly cleaned up after a bounded gr
 All five Gateway Connect pairing POST routes share the existing eight-attempt, sixty-second socket-source budget before JSON body parsing. Proxy headers cannot mint a new source budget.
 
 Expired source counters are removed, and a full bounded source table rejects new peers without evicting live budgets. Admission does not debounce accepted credential persistence; business-state capacity and lifecycle cleanup require separate gates.
+
+## Connect state retention
+
+Connect bounds new pairing and device records at 256 each, rejecting capacity overflow without evicting active authority or consuming a pending pairing. Existing oversized state remains available but cannot grow through new admission.
+
+Expired pending credentials are removed during cleanup, with five minutes of expired status retained. Paired devices outlive pairing expiry. Revoked devices retain status for twenty-four hours, then their pairing and credential indexes are removed. Accepted mutations retain synchronous persistence.
+
+Read traffic triggers at most one state sweep per second. Mutations and state loading force a sweep, so accepted credential changes remain durable without making every public health request rescan all credential indexes.

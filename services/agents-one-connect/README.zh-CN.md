@@ -31,3 +31,11 @@ node .\bin\agents-one-connect.mjs
 `CONNECT_STATE_FILE` 使用临时文件写入后原子替换，保存配对、设备、Runtime 授权和桌面 Token 索引；文件应放在受保护目录，并由部署系统负责备份与访问控制。`CONNECT_TLS_KEY_FILE` 与 `CONNECT_TLS_CERT_CHAIN_FILE`（兼容旧变量 `CONNECT_TLS_CERT_FILE`）同时提供时，服务直接使用 HTTPS/WSS；证书文件必须包含完整服务端证书链，`CONNECT_TLS_CLIENT_CA_FILE`（兼容旧变量 `CONNECT_TLS_CA_FILE`）只用于可选的 mTLS 客户端证书校验。不提供进程内 TLS 时仍可在可信反向代理后使用 HTTP/WS。公网入口必须使用受信任证书链，不能用自签名证书绕过桌面端校验。
 
 当前服务已覆盖配对、设备撤销、Runtime 审批、多 Runtime 路由、版本不兼容响应、配对尝试限流和离线错误。账户系统、跨实例共享数据库、分布式限流和长期审计存储仍属于生产 Connect 部署门槛；未接入这些组件前，不应直接把单进程内存模式暴露为公网生产 Relay。
+
+### 配对容量与过期保留
+
+Gateway Connect 的五个配对 POST 入口共用每个 socket 来源每分钟 8 次预算，不使用客户端传入的代理头扩展额度。新配对及设备记录分别最多 256 条；容量满返回 `pairing_capacity_reached` 或 `device_capacity_reached`（HTTP 503），不会淘汰有效设备或消耗等待中的配对。反向代理部署仍需自行设置可信来源与入口流量限制。
+
+待配对令牌到期后失效，过期状态额外保留五分钟。已配对设备不受配对 TTL 限制。撤销设备状态保留二十四小时，再清理对应记录和令牌索引。现有超额记录不会被静默删除，但会阻止新增，直到清理后低于容量。
+
+上述容量限制用于约束资源消耗，不提供运营方身份授权或多租户配额。Gateway 配对入口公开创建记录，实服应通过可信入口限制可访问客户端；移动控制协议的 Owner/设备授权仍是独立边界。
