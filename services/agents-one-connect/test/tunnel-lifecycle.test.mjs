@@ -292,3 +292,23 @@ test("equal Desktop IDs in different Runtimes stay isolated while same-origin du
     await ctx.close();
   }
 });
+
+test("normal shutdown settles pending transport work before closing authenticated peers", async () => {
+  const ctx = await setup();
+  try {
+    const connector = await ctx.open("connector");
+    const desktop = await ctx.open("desktop");
+    desktop.send(request("pending-on-close"));
+    await connector.box.next();
+    const received = desktop.box.next();
+    const closing = ctx.service.close();
+    const terminal = await received;
+    assert.equal(terminal.requestId, "pending-on-close");
+    assert.equal(terminal.status, 503);
+    assert.equal(terminal.body.error.code, "service_stopping");
+    await closing;
+    assert.equal(ctx.state().pendingRequests.size, 0);
+  } finally {
+    await ctx.close();
+  }
+});

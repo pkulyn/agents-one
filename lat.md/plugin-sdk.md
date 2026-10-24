@@ -119,3 +119,9 @@ Safe provider IDs retain their exact existing cursor and deduplication behavior.
 Each pending Gateway tunnel request belongs to its exact Desktop and Connector connections. Disconnect or replacement settles the affected requests and releases capacity without touching newer connections.
 
 The Connector leg receives an opaque unique correlation ID; responses restore the original Desktop request ID. This prevents late responses from matching a reused ID after reconnection. Responses must match their pending Runtime, and requests for unadvertised Runtimes fail explicitly. Replacing a Desktop closes the old connection instead of transferring its pending work.
+
+## Connect shutdown lifecycle
+
+Shutdown rejects new admissions, shares one completion promise and closes all WebSockets, including peers that never authenticate. After a one-second grace period, remaining WebSockets and HTTP connections are terminated.
+
+Outstanding Gateway requests receive a service-stopping transport error before closing. Hello timers are cleared on socket teardown. Mobile shutdown and state-save errors are reported after network cleanup; a failure cannot silently leave the listener or upgraded peers running. Transport shutdown does not certify cancellation of a remote Run.
