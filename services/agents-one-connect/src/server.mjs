@@ -380,6 +380,8 @@ export function createConnectService({
     return admitPairingSource(req.socket.remoteAddress || "unknown");
   }
 
+  let serviceStopping = false;
+  let closePromise;
   let gatewayStateUnavailable = false;
   let lastPruneAt = Number.NEGATIVE_INFINITY;
   function pruneState(force = false) {
@@ -493,6 +495,10 @@ export function createConnectService({
   const requestHandler = async (req, res) => {
     const url = new URL(req.url || "/", "http://connect.local");
     try {
+      if (serviceStopping) {
+        error(res, 503, "Connect service is stopping.", "service_stopping");
+        return;
+      }
       if (await mobileControl.handle(req, res, url)) return;
       if (gatewayStateUnavailable) {
         error(
@@ -1308,6 +1314,12 @@ export function createConnectService({
     maxPayload: MAX_TUNNEL_FRAME_BYTES,
   });
   server.on("upgrade", (req, socket, head) => {
+    if (serviceStopping) {
+      socket.end(
+        "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+      );
+      return;
+    }
     if (mobileControl.upgrade(req, socket, head)) return;
     if (gatewayStateUnavailable) {
       socket.end(
@@ -1603,6 +1615,7 @@ export function createConnectService({
       }
     });
     socket.on("close", () => {
+      clearTimeout(helloTimeout);
       if (!identity) return;
       if (identity.role === "connector") {
         if (identity.device.socket === socket) {
@@ -1641,19 +1654,55 @@ export function createConnectService({
       });
       return server.address();
     },
-    async close() {
-      await mobileControl.close();
-      persistState();
-      for (const device of devices.values()) {
-        closeSocket(device.socket, 1001, "service stopping");
-        for (const socket of device.desktopSockets?.values() || []) {
-          closeSocket(socket, 1001, "service stopping");
+    close() {
+      if (closePromise) return closePromise;
+      serviceStopping = true;
+      closePromise = (async () => {
+        const failures = [];
+        const httpClosed = new Promise((resolve, reject) =>
+          server.close((cause) =>
+            cause && cause.code !== "ERR_SERVER_NOT_RUNNING"
+              ? reject(cause)
+              : resolve(),
+          ),
+        );
+        const socketsClosed = new Promise((resolve) => wss.close(resolve));
+        const forceClose = setTimeout(() => {
+          for (const socket of wss.clients) socket.terminate();
+          server.closeAllConnections();
+        }, 1000);
+        try {
+          try {
+            await mobileControl.close();
+          } catch (cause) {
+            failures.push(cause);
+          }
+          try {
+            persistState();
+          } catch (cause) {
+            failures.push(cause);
+          }
+          for (const device of devices.values()) {
+            settlePendingRequests(
+              device,
+              () => true,
+              "service_stopping",
+              "The Connect service is stopping.",
+            );
+          }
+          // Include unauthenticated peers, not just sockets registered on a device.
+          for (const socket of wss.clients)
+            closeSocket(socket, 1001, "service stopping");
+          const results = await Promise.allSettled([httpClosed, socketsClosed]);
+          for (const result of results)
+            if (result.status === "rejected") failures.push(result.reason);
+        } finally {
+          clearTimeout(forceClose);
         }
-      }
-      await new Promise((resolve) => wss.close(resolve));
-      await new Promise((resolve, reject) =>
-        server.close((cause) => (cause ? reject(cause) : resolve())),
-      );
+        if (failures.length)
+          throw new AggregateError(failures, "Connect shutdown failed.");
+      })();
+      return closePromise;
     },
   };
 }

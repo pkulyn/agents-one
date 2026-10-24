@@ -51,3 +51,5 @@ Gateway Connect 的五个配对 POST 入口共用每个 socket 来源每分钟 8
 同设备、同 Runtime 的新桌面连接替换并关闭旧连接，旧连接的待处理请求返回 `desktop_replaced`（HTTP 风格状态 503）。Connector 断线或被新连接替换时，原连接上的请求立即返回 `connector_offline` 并释放容量；未在线声明的 Runtime 返回 `runtime_offline`。这些传输错误不证明远端任务没有执行，重试写操作仍须使用 Gateway 幂等键或查询原 Run。
 
 两段隧道使用独立的不透明关联 ID，Connector 必须原样回传收到的 `requestId`，服务会恢复桌面端原 ID。迟到、未知或 Runtime 不匹配的响应不会占用新连接的请求，也不会转发给其他 Runtime。
+
+服务关闭时停止新入口，通知待处理 Gateway 请求 `service_stopping`，并给连接一秒正常关闭窗口；未回应的 WebSocket（含未完成 hello 的连接）和残留 HTTP 连接随后被中止。关闭不会替代远端 Run 取消；再次连接后应查询任务状态。保存状态失败会在网络资源清理后报告，运营方仍需检查持久化故障。
