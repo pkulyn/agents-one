@@ -16,5 +16,6 @@
   "scripts": {
     "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "test:dpapi": "node --test test/dpapi-protector.test.mjs"
-  }
+  },
+  "license": "MIT"
 }

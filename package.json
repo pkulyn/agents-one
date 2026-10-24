@@ -4,7 +4,7 @@
   "description": "Agents One — a desktop workspace for coordinating conversations, tasks and artifacts across multiple AI agents (Pi, Claude Code, Codex, Hermes, OpenClaw and any Gateway v1 remote agent)",
   "main": "./out/main/index.js",
   "author": "pkulyn",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "homepage": "https://github.com/pkulyn/agents-one",
   "repository": {
     "type": "git",

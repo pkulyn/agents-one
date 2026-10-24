@@ -41,12 +41,14 @@ asarUnpack:
 extraResources:
   - from: LICENSE
     to: notices/LICENSE
-  - from: COMMERCIAL_EVALUATION_PERMISSION.md
-    to: notices/COMMERCIAL_EVALUATION_PERMISSION.md
   - from: THIRD_PARTY_NOTICES.md
     to: notices/THIRD_PARTY_NOTICES.md
   - from: assets/readme/OFL-Oxanium.txt
     to: notices/OFL-Oxanium.txt
+  - from: src/renderer/src/assets/fonts/Cairo-OFL.txt
+    to: notices/Cairo-OFL.txt
+  - from: src/renderer/src/assets/fonts/Manrope-OFL.txt
+    to: notices/Manrope-OFL.txt
 win:
   executableName: agents-one
   icon: build/icon.ico
