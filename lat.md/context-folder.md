@@ -45,3 +45,9 @@ The `@wesbos/code-icons` SVGs render inside `.worktree-file-icon-wrapper`; CSS o
 ## File browser toolbar control
 
 The context-folder file browser toggle uses the shared 34×34px toolbar button, with an 18px folder-and-magnifier icon and accessible pressed state. Its larger hit target is independent from choosing or clearing the conversation folder.
+
+## Registered project update authority
+
+Project metadata updates can rename or pin existing registrations, but cannot create new filesystem authority.
+
+[[src/main/project-folders.ts#updateProjectFolder]] resolves an opaque id against the stored registry. An unknown id never falls back to a supplied path. Legacy path-only updates can match an existing registration, preserving older callers without minting new workspace roots. Malformed input leaves the registry unchanged.
