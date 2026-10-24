@@ -81,3 +81,9 @@ A short configured Runtime deadline aborts a longer prompt after successful init
 ### Unresponsive cancellation cleanup
 
 An ACP child that ignores cancellation is forcibly cleaned up after a bounded grace window, ensuring graceful cancellation cannot indefinitely block the desktop or leave its process running.
+
+## Connect pairing admission
+
+All five Gateway Connect pairing POST routes share the existing eight-attempt, sixty-second socket-source budget before JSON body parsing. Proxy headers cannot mint a new source budget.
+
+Expired source counters are removed, and a full bounded source table rejects new peers without evicting live budgets. Admission does not debounce accepted credential persistence; business-state capacity and lifecycle cleanup require separate gates.

@@ -1,3 +1,4 @@
+import { createPairingAttemptLimiter } from "./pairing-admission.mjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createMobileControlService } from "./mobile-control.mjs";
 import { createServer } from "node:http";
@@ -16,8 +17,6 @@ import { WebSocketServer } from "ws";
 const PROTOCOL_VERSION = "1.1";
 const LEGACY_PROTOCOL_VERSION = "1.0";
 const PAIRING_TTL_MS = 5 * 60 * 1000;
-const PAIRING_ATTEMPT_WINDOW_MS = 60 * 1000;
-const PAIRING_MAX_ATTEMPTS = 8;
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_TUNNEL_FRAME_BYTES = 16 * 1024 * 1024;
 const MAX_STANDARD_TUNNEL_REQUEST_BYTES = 4 * 1024 * 1024;
@@ -311,19 +310,10 @@ export function createConnectService({
   const devices = new Map();
   const runtimes = new Map();
   const desktopTokens = new Map();
-  const pairingAttempts = new Map();
+  const admitPairingSource = createPairingAttemptLimiter({ now });
 
   function allowPairingAttempt(req) {
-    const key = req.socket.remoteAddress || "unknown";
-    const current = pairingAttempts.get(key);
-    const at = now();
-    if (!current || at - current.startedAt >= PAIRING_ATTEMPT_WINDOW_MS) {
-      pairingAttempts.set(key, { startedAt: at, count: 1 });
-      return true;
-    }
-    if (current.count >= PAIRING_MAX_ATTEMPTS) return false;
-    current.count += 1;
-    return true;
+    return admitPairingSource(req.socket.remoteAddress || "unknown");
   }
 
   function persistState() {
@@ -434,6 +424,16 @@ export function createConnectService({
         req.method === "POST" &&
         url.pathname === "/connect/v1/pair/request"
       ) {
+        if (!allowPairingAttempt(req)) {
+          error(
+            res,
+            429,
+            "Too many pairing attempts; try again later.",
+            "pairing_rate_limited",
+          );
+          req.resume();
+          return;
+        }
         const input = await bodyOf(req);
         const runtimeList = normalizeRuntimes(input);
         if (!runtimeList.length || !validPublicKey(input.publicKey)) {
@@ -479,6 +479,16 @@ export function createConnectService({
         req.method === "POST" &&
         url.pathname === "/connect/v1/pair/session"
       ) {
+        if (!allowPairingAttempt(req)) {
+          error(
+            res,
+            429,
+            "Too many pairing attempts; try again later.",
+            "pairing_rate_limited",
+          );
+          req.resume();
+          return;
+        }
         const input = await bodyOf(req);
         const runtimeList = normalizeRuntimes(input);
         if (!runtimeList.length) {
@@ -536,7 +546,6 @@ export function createConnectService({
         req.method === "POST" &&
         url.pathname === "/connect/v1/pair/preview"
       ) {
-        const input = await bodyOf(req);
         if (!allowPairingAttempt(req)) {
           error(
             res,
@@ -544,8 +553,10 @@ export function createConnectService({
             "Too many pairing attempts; try again later.",
             "pairing_rate_limited",
           );
+          req.resume();
           return;
         }
+        const input = await bodyOf(req);
         const normalizedPairingCode = normalizeCode(input.pairingCode);
         if (!/^[A-Z2-9]{10}$/.test(normalizedPairingCode)) {
           error(res, 422, "Pairing code is invalid.", "pairing_invalid");
@@ -593,7 +604,6 @@ export function createConnectService({
         return;
       }
       if (req.method === "POST" && url.pathname === "/connect/v1/pair/claim") {
-        const input = await bodyOf(req);
         if (!allowPairingAttempt(req)) {
           error(
             res,
@@ -601,8 +611,10 @@ export function createConnectService({
             "Too many pairing attempts; try again later.",
             "pairing_rate_limited",
           );
+          req.resume();
           return;
         }
+        const input = await bodyOf(req);
         const normalizedPairingCode = normalizeCode(input.pairingCode);
         if (!/^[A-Z2-9]{10}$/.test(normalizedPairingCode)) {
           error(res, 422, "Pairing code is invalid.", "pairing_invalid");
@@ -742,7 +754,6 @@ export function createConnectService({
         req.method === "POST" &&
         url.pathname === "/connect/v1/pair/exchange"
       ) {
-        const input = await bodyOf(req);
         if (!allowPairingAttempt(req)) {
           error(
             res,
@@ -750,8 +761,10 @@ export function createConnectService({
             "Too many pairing attempts; try again later.",
             "pairing_rate_limited",
           );
+          req.resume();
           return;
         }
+        const input = await bodyOf(req);
         const code = normalizeCode(input.pairingCode);
         if (!/^[A-Z2-9]{10}$/.test(code)) {
           error(res, 422, "Pairing code is invalid.", "pairing_invalid");
