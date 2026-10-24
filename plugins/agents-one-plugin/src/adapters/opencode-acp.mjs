@@ -1,3 +1,4 @@
+import { createChildShutdown } from "../child-shutdown.mjs";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -239,6 +240,7 @@ function changedFiles(before, root, maxFiles = MAX_WORKSPACE_FILES) {
 class AcpClient {
   constructor(child, { onUpdate, mode }) {
     this.child = child;
+    this.shutdown = createChildShutdown(child);
     this.onUpdate = onUpdate;
     this.mode = mode;
     this.nextId = 1;
@@ -430,12 +432,8 @@ class AcpClient {
   }
 
   close() {
-    if (this.closed) return;
-    this.closed = true;
-    this.lines.close();
-    for (const pending of this.pending.values()) clearTimeout(pending.timer);
-    this.pending.clear();
-    this.child.kill();
+    this.fail(new Error("OpenCode ACP 已关闭。"));
+    return this.shutdown();
   }
 }
 
@@ -540,6 +538,7 @@ async function publishChangedArtifacts(
 }
 
 async function executeRun(run, input, context, options) {
+  let terminalStatus;
   const mode = input.mode || input.input?.mode || "analysis";
   const maxOutput = boundedLimit(
     options.maxOutputBytes,
@@ -627,6 +626,7 @@ async function executeRun(run, input, context, options) {
         ...(run.model ? { model: run.model } : {}),
         ...(run.usage ? { usage: run.usage } : {}),
       });
+    await run.client.close();
     await publishChangedArtifacts(
       cwd,
       before,
@@ -635,15 +635,22 @@ async function executeRun(run, input, context, options) {
       maxWorkspaceFiles,
       maxArtifactBytes,
     );
-    run.status = run.cancelRequested ? "cancelled" : "succeeded";
+    terminalStatus = run.cancelRequested ? "cancelled" : "succeeded";
   } catch (cause) {
-    run.error =
-      text(cause instanceof Error ? cause.message : String(cause)) ||
-      "OpenCode ACP 运行失败。";
-    run.status = run.cancelRequested ? "cancelled" : "failed";
+    run.error = run.cancelRequested
+      ? undefined
+      : text(cause instanceof Error ? cause.message : String(cause)) ||
+        "OpenCode ACP 运行失败。";
+    terminalStatus = run.cancelRequested ? "cancelled" : "failed";
   } finally {
+    try {
+      await run.client?.close();
+    } catch {
+      run.error = "OpenCode ACP process shutdown was not confirmed.";
+      terminalStatus = "failed";
+    }
+    run.status = terminalStatus;
     run.completedAt = Date.now();
-    run.client?.close();
   }
 }
 
@@ -681,7 +688,7 @@ export function createOpenCodeAcpAdapter(options = {}) {
         toolStates: new Map(),
       };
       runs.set(vendorRunId, run);
-      void executeRun(run, input, context, options);
+      run.completion = executeRun(run, input, context, options);
       return { vendorRunId, status: "running" };
     },
     async getRun(vendorRunId) {
@@ -702,8 +709,8 @@ export function createOpenCodeAcpAdapter(options = {}) {
         return false;
       run.cancelRequested = true;
       run.client?.cancel();
-      run.client?.close();
-      run.status = "cancelled";
+      await run.client?.close().catch(() => undefined);
+      await run.completion;
       return true;
     },
     async probe() {
@@ -770,7 +777,7 @@ export function createOpenCodeAcpAdapter(options = {}) {
         };
       } finally {
         if (timer) clearTimeout(timer);
-        client?.close();
+        await client?.close();
       }
     },
   };

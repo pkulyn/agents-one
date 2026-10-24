@@ -95,3 +95,9 @@ Connect bounds new pairing and device records at 256 each, rejecting capacity ov
 Expired pending credentials are removed during cleanup, with five minutes of expired status retained. Paired devices outlive pairing expiry. Revoked devices retain status for twenty-four hours, then their pairing and credential indexes are removed. Accepted mutations retain synchronous persistence.
 
 Read traffic triggers at most one state sweep per second. Mutations and state loading force a sweep, so accepted credential changes remain durable without making every public health request rescan all credential indexes.
+
+## Remote ACP process closure
+
+Remote OpenCode terminal status is published only after the child close event confirms process and stdio teardown. Probe and cancellation also await closure; duplicate shutdown requests share one completion promise.
+
+Shutdown rejects pending RPCs, escalates an unresponsive child within a bounded deadline and reports failure if closure cannot be confirmed. Workspace artifact capture follows closure, so late process writes are not omitted from the final snapshot.
