@@ -239,3 +239,9 @@ Adding a credential through IPC returns only completion, never the updated secre
 The generic get-config IPC reads only four existing UI settings: service tier, reasoning effort, IPv4 preference and proxy configuration. Unknown or malformed paths cannot reach the internal YAML getter.
 
 Trusted Main consumers keep their existing full configuration reader. Proxy values retain their current editing contract; URL credential projection and other response surfaces require separate review.
+
+## Production desktop script policy
+
+Production Renderer HTML and Main response headers permit only same-origin scripts. Inline script and event-handler execution, eval and WebAssembly eval are not enabled.
+
+Only Vite serve and an unpackaged development Main opt into inline scripts for React refresh. An isolated Windows Electron regression verifies that same-origin scripts run while inline scripts and handlers remain blocked; packaged application acceptance stays separate.
