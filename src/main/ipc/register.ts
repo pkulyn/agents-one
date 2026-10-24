@@ -66,6 +66,7 @@ import { openTerminalInDirectory } from "../terminal-launcher";
 import {
   authorizeUserSelectedWorkspace,
   resolveAuthorizedWorkspaceId,
+  resolveAuthorizedChatWorkspace,
   resolveAuthorizedWorkspaceRelativePath,
   isAuthorizedWorkspacePath,
   isAuthorizedWorkspaceRoot,
@@ -1199,6 +1200,10 @@ export function registerIpcHandlers(context: IpcContext): void {
       contextWorkspaceId?: string,
     ) => {
       assertAgentsOneWritesAllowed();
+      const authorizedContextFolder = resolveAuthorizedChatWorkspace(
+        contextFolder,
+        contextWorkspaceId,
+      );
       // Each conversation has a stable runId minted by the renderer. Fall back
       // to a generated id for legacy callers so the run is still tracked.
       const chatRunId = runId || `run-${randomUUID()}`;
@@ -1327,9 +1332,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         resumeSessionId,
         history,
         attachments,
-        contextWorkspaceId
-          ? resolveAuthorizedWorkspaceId(contextWorkspaceId) || undefined
-          : contextFolder,
+        authorizedContextFolder,
         modelOverride,
       );
 

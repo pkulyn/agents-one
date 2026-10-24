@@ -117,3 +117,36 @@ export function isAuthorizedWorkspacePath(value: string): boolean {
     candidate && authorizedRoots().some((root) => containedBy(root, candidate)),
   );
 }
+
+/** Reject an untrusted cwd before starting or interrupting a chat Run. */
+export function resolveAuthorizedChatWorkspace(
+  contextFolder?: unknown,
+  workspaceId?: unknown,
+): string | undefined {
+  const denied = (): never => {
+    throw new Error("工作目录未获授权，请重新选择项目目录。");
+  };
+  if (workspaceId !== undefined && workspaceId !== null) {
+    if (
+      typeof workspaceId !== "string" ||
+      !workspaceId.trim() ||
+      workspaceId.length > 1024
+    )
+      return denied();
+    return resolveAuthorizedWorkspaceId(workspaceId) ?? denied();
+  }
+  if (contextFolder === undefined || contextFolder === null) return undefined;
+  if (
+    typeof contextFolder !== "string" ||
+    contextFolder.length > 32_768 ||
+    contextFolder.includes("\0")
+  )
+    return denied();
+  if (!contextFolder.trim()) return undefined;
+  if (
+    !isAbsolute(contextFolder.trim()) ||
+    !isAuthorizedWorkspaceRoot(contextFolder)
+  )
+    return denied();
+  return canonicalDirectory(contextFolder) ?? denied();
+}
