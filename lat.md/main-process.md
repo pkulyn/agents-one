@@ -245,3 +245,5 @@ Trusted Main consumers keep their existing full configuration reader. Proxy valu
 Production Renderer HTML and Main response headers permit only same-origin scripts. Inline script and event-handler execution, eval and WebAssembly eval are not enabled.
 
 Only Vite serve and an unpackaged development Main opt into inline scripts for React refresh. An isolated Windows Electron regression verifies that same-origin scripts run while inline scripts and handlers remain blocked; packaged application acceptance stays separate.
+
+CSP resource regressions read the shared production policy and verify its Main header wiring, preserving existing loopback, remote dashboard and packaged asset requirements when policy code moves between modules.
