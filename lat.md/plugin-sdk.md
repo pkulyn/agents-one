@@ -72,6 +72,8 @@ A real ACP child takes more than thirty seconds to finish a prompt within the Ru
 
 A real ACP child acknowledges tool cancellation after a delay and persists its state; the next process restores the same native session and successfully responds, detecting premature process termination.
 
+The test allows fifteen seconds for two native process launches and cancellation settlement under parallel suite load. Its acknowledgement and resumed-session assertions remain strict; Runtime handshake, prompt and cancellation deadlines are unchanged.
+
 ### Configured deadline remains bounded
 
 A short configured Runtime deadline aborts a longer prompt after successful initialization, ensuring the extended default cannot bypass the user's task limit.

@@ -5,3 +5,11 @@
 # Linux ("bad interpreter: /bin/bash\r: No such file or directory"),
 # which silently fails the .deb / .rpm postinst hook (#395).
 *.sh text eol=lf
+
+# Generated mobile contract comparisons are byte exact on every host.
+contracts/mobile-control/v1/schema.json text eol=lf
+contracts/mobile-control/v1/openapi.json text eol=lf
+contracts/mobile-control/v1/fixtures.json text eol=lf
+apps/android/core/src/main/kotlin/one/agents/mobile/contract/MobileDtos.kt text eol=lf
+apps/android/core/src/test/kotlin/one/agents/mobile/contract/GeneratedContractTest.kt text eol=lf
+apps/android/core/src/main/kotlin/one/agents/mobile/contract/MobileSchemaDefinitions.kt text eol=lf
