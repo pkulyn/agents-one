@@ -238,7 +238,8 @@ function changedFiles(before, root, maxFiles = MAX_WORKSPACE_FILES) {
 }
 
 class AcpClient {
-  constructor(child, { onUpdate, mode }) {
+  constructor(child, { onUpdate, mode, onPermissionDenied }) {
+    this.onPermissionDenied = onPermissionDenied;
     this.child = child;
     this.shutdown = createChildShutdown(child);
     this.onUpdate = onUpdate;
@@ -290,11 +291,7 @@ class AcpClient {
       return;
     }
     if (message.id !== undefined && typeof message.method === "string") {
-      this.permission(
-        String(message.id),
-        message.method,
-        record(message.params),
-      );
+      this.permission(message.id, message.method, record(message.params));
     }
   }
 
@@ -302,7 +299,7 @@ class AcpClient {
     if (method !== "session/request_permission") {
       this.send({
         jsonrpc: "2.0",
-        id: Number(id) || id,
+        id,
         error: {
           code: -32601,
           message: "Agents One Host 未启用此 ACP 客户端请求。",
@@ -310,32 +307,73 @@ class AcpClient {
       });
       return;
     }
-    const options = Array.isArray(params.options)
-      ? params.options.filter((item) => item && typeof item === "object")
-      : [];
-    const denied = options.find((item) =>
-      /reject|deny|cancel|read.?only/i.test(
-        String(item.kind || item.name || item.optionId),
-      ),
-    );
-    const allowed = options.find((item) =>
-      /allow.?once|once|allow/i.test(
-        String(item.kind || item.name || item.optionId),
-      ),
-    );
-    const selected = this.mode === "analysis" ? denied : allowed || options[0];
+    const deny = (reason) => {
+      this.onPermissionDenied?.(reason);
+      this.send({
+        jsonrpc: "2.0",
+        id,
+        result: { outcome: { outcome: "cancelled" } },
+      });
+    };
+    if (!this.sessionId || params.sessionId !== this.sessionId) {
+      deny("[Agents One 权限不足] 工具权限请求未绑定当前会话，未执行该请求。");
+      return;
+    }
+    if (record(params.toolCall).kind === "switch_mode") {
+      deny(
+        "[Agents One 权限不足] 工具请求不能自动切换会话权限模式；请在 Runtime 设置中选择原生模式后重新发送任务。",
+      );
+      return;
+    }
+    if (this.mode === "analysis") {
+      deny(
+        "[Agents One 权限不足] 远端只读任务未授予此工具执行权限，工具请求未执行。",
+      );
+      return;
+    }
+    const options = params.options;
+    const kinds = new Set([
+      "allow_once",
+      "allow_always",
+      "reject_once",
+      "reject_always",
+    ]);
+    const ids = new Set();
+    if (
+      !Array.isArray(options) ||
+      !options.length ||
+      options.length > 64 ||
+      options.some((option) => {
+        if (
+          !option ||
+          typeof option !== "object" ||
+          Array.isArray(option) ||
+          typeof option.optionId !== "string" ||
+          !option.optionId.trim() ||
+          !kinds.has(option.kind) ||
+          ids.has(option.optionId)
+        )
+          return true;
+        ids.add(option.optionId);
+        return false;
+      })
+    ) {
+      deny(
+        "[Agents One 权限不足] Runtime 未提供有效的一次性授权选项，未授予持续权限，工具请求未执行。",
+      );
+      return;
+    }
+    const selected = options.find((option) => option.kind === "allow_once");
+    if (!selected) {
+      deny(
+        "[Agents One 权限不足] Runtime 未提供有效的一次性授权选项，未授予持续权限，工具请求未执行。",
+      );
+      return;
+    }
     this.send({
       jsonrpc: "2.0",
-      id: Number(id) || id,
-      result:
-        selected && this.mode !== "analysis"
-          ? {
-              outcome: {
-                outcome: "selected",
-                optionId: String(selected.optionId || "allow_once"),
-              },
-            }
-          : { outcome: { outcome: "cancelled" } },
+      id,
+      result: { outcome: { outcome: "selected", optionId: selected.optionId } },
     });
   }
 
@@ -571,6 +609,13 @@ async function executeRun(run, input, context, options) {
     });
     run.client = new AcpClient(child, {
       mode,
+      onPermissionDenied: (reason) => {
+        run.permissionDenied = reason;
+        emit(context, run, "run.status", {
+          summary: reason,
+          code: "permission_denied",
+        });
+      },
       onUpdate: (params) => {
         const update = record(params.update || params);
         const answer =
@@ -635,7 +680,13 @@ async function executeRun(run, input, context, options) {
       maxWorkspaceFiles,
       maxArtifactBytes,
     );
-    terminalStatus = run.cancelRequested ? "cancelled" : "succeeded";
+    if (!run.cancelRequested && run.permissionDenied)
+      run.error = run.permissionDenied;
+    terminalStatus = run.cancelRequested
+      ? "cancelled"
+      : run.permissionDenied
+        ? "failed"
+        : "succeeded";
   } catch (cause) {
     run.error = run.cancelRequested
       ? undefined
