@@ -200,9 +200,11 @@ test("pairs a device, routes Gateway v1 frames, and revokes the device", async (
       path: "/capabilities",
     }),
   );
-  assert.deepEqual(await onceMessage(connector), {
+  const forwardedRequest = await onceMessage(connector);
+  assert.notEqual(forwardedRequest.requestId, "req_1");
+  assert.deepEqual(forwardedRequest, {
     type: "request",
-    requestId: "req_1",
+    requestId: forwardedRequest.requestId,
     method: "GET",
     path: "/capabilities",
     runtimeId: "hers-home2",
@@ -210,7 +212,7 @@ test("pairs a device, routes Gateway v1 frames, and revokes the device", async (
   connector.send(
     JSON.stringify({
       type: "response",
-      requestId: "req_1",
+      requestId: forwardedRequest.requestId,
       status: 200,
       body: { protocolVersion: "1.0" },
     }),
@@ -641,7 +643,7 @@ test("routes a shared Connector tunnel to two explicitly authorized Runtimes", a
     );
     assert.deepEqual(await onceMessage(desktop), {
       type: "response",
-      requestId: request.requestId,
+      requestId: `req_${runtime.runtimeId}`,
       status: 200,
       body: { runtimeId: runtime.runtimeId },
     });
