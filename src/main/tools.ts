@@ -238,7 +238,12 @@ export function setToolsetEnabled(
   enabled: boolean,
   profile?: string,
 ): boolean {
-  return setPlatformToolsetEnabled("cli", key, enabled, profile);
+  // Start from the same effective defaults presented to the user. A first
+  // toggle must not turn an implicit all-enabled config into an empty list.
+  const defaults = getToolsets(profile)
+    .filter((tool) => tool.enabled)
+    .map((tool) => tool.key);
+  return setPlatformToolsetEnabled("cli", key, enabled, profile, defaults);
 }
 
 export function setMessagingPlatformToolsetEnabled(
