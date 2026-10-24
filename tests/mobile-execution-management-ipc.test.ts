@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+import { join } from "node:path";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 import { registerMobileExecutionPolicyIpc } from "../src/main/mobile-control/execution-management-ipc";
@@ -6,7 +8,10 @@ const state = vi.hoisted(() => ({
   manage: vi.fn(() => ({ status: { revision: "0" } })),
   recover: vi.fn(() => ({ items: [], capacityExceeded: false })),
 }));
-vi.mock("electron", () => ({ ipcMain: { handle: state.handle } }));
+vi.mock("electron", () => ({
+  app: { isPackaged: true },
+  ipcMain: { handle: state.handle },
+}));
 vi.mock("../src/main/mobile-control/execution-management", () => ({
   prepareAndManageMobileExecutionPolicies: state.manage,
 }));
@@ -19,9 +24,15 @@ beforeEach(() => {
   state.recover.mockClear();
 });
 it("accepts only the current desktop window main frame and never dispatches requests from children or another window", () => {
-  const mainFrame = {},
-    contents = { mainFrame };
-  let window = { webContents: contents } as unknown as BrowserWindow | null;
+  const mainFrame = {
+      url: pathToFileURL(join(process.cwd(), "src/main/renderer/index.html"))
+        .href,
+    },
+    contents = { mainFrame, isDestroyed: () => false };
+  let window = {
+    webContents: contents,
+    isDestroyed: () => false,
+  } as unknown as BrowserWindow | null;
   registerMobileExecutionPolicyIpc(() => window);
   expect(state.handle).toHaveBeenCalledWith(
     "mobile-execution-manage",
@@ -54,6 +65,10 @@ it("accepts only the current desktop window main frame and never dispatches requ
   );
   const assertCurrent = state.manage.mock.calls[0][2] as () => void;
   assertCurrent();
+  const originalUrl = mainFrame.url;
+  mainFrame.url = "https://untrusted.invalid/";
+  expect(assertCurrent).toThrow("scope_denied");
+  mainFrame.url = originalUrl;
   window = null;
   expect(() => assertCurrent()).toThrow("scope_denied");
   expect(() =>
@@ -66,9 +81,15 @@ it("accepts only the current desktop window main frame and never dispatches requ
   expect(state.manage).toHaveBeenCalledTimes(1);
 });
 it("allows recovery only from the current main frame and retains a current-frame guard across awaits", () => {
-  const mainFrame = {},
-    contents = { mainFrame };
-  let window = { webContents: contents } as unknown as BrowserWindow | null;
+  const mainFrame = {
+      url: pathToFileURL(join(process.cwd(), "src/main/renderer/index.html"))
+        .href,
+    },
+    contents = { mainFrame, isDestroyed: () => false };
+  let window = {
+    webContents: contents,
+    isDestroyed: () => false,
+  } as unknown as BrowserWindow | null;
   registerMobileExecutionPolicyIpc(() => window);
   const handler = state.handle.mock.calls.find(
     (call) => call[0] === "mobile-write-recovery",
@@ -84,6 +105,10 @@ it("allows recovery only from the current main frame and retains a current-frame
   });
   const guard = state.recover.mock.calls[0][2] as () => void;
   guard();
+  const originalUrl = mainFrame.url;
+  mainFrame.url = "https://untrusted.invalid/";
+  expect(guard).toThrow("scope_denied");
+  mainFrame.url = originalUrl;
   window = null;
   expect(guard).toThrow("scope_denied");
 });

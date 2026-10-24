@@ -1,4 +1,14 @@
-import { BrowserWindow, ipcMain, nativeImage, screen, Tray } from "electron";
+import {
+  createScopedIpcMain,
+  registerAuxiliaryIpcWindow,
+} from "../ipc/sender-scope";
+import {
+  BrowserWindow,
+  ipcMain as rawIpcMain,
+  nativeImage,
+  screen,
+  Tray,
+} from "electron";
 import { join } from "path";
 import { is } from "@electron-toolkit/utils";
 import icon from "../../../resources/icon.png?asset";
@@ -137,6 +147,7 @@ export function setupTray({
   getRunningTaskCount,
   onQuitRequest,
 }: TrayDeps): TrayController {
+  const ipcMain = createScopedIpcMain(rawIpcMain, getMainWindow);
   let tray: Tray | null = null;
   let quickComposer: BrowserWindow | null = null;
   let quickComposerReady = false;
@@ -233,6 +244,12 @@ export function setupTray({
       },
     });
 
+    registerAuxiliaryIpcWindow(
+      window.webContents,
+      "tray-completion",
+      rendererHtmlPath,
+      is.dev ? process.env.ELECTRON_RENDERER_URL : undefined,
+    );
     window.setAlwaysOnTop(true, "floating");
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.once("ready-to-show", () => {
@@ -383,6 +400,12 @@ export function setupTray({
       },
     });
 
+    registerAuxiliaryIpcWindow(
+      window.webContents,
+      "tray-menu",
+      rendererHtmlPath,
+      is.dev ? process.env.ELECTRON_RENDERER_URL : undefined,
+    );
     window.setAlwaysOnTop(true, "floating");
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.once("ready-to-show", () => {
@@ -531,6 +554,12 @@ export function setupTray({
       },
     });
 
+    registerAuxiliaryIpcWindow(
+      window.webContents,
+      "quick-composer",
+      rendererHtmlPath,
+      is.dev ? process.env.ELECTRON_RENDERER_URL : undefined,
+    );
     window.setAlwaysOnTop(true, "floating");
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.once("ready-to-show", () => {

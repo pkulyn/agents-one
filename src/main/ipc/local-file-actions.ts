@@ -1,3 +1,4 @@
+import { isAuthorizedIpcSender } from "./sender-scope";
 import { BrowserWindow, clipboard, ipcMain, Menu, shell } from "electron";
 import { realpathSync, statSync } from "node:fs";
 import { open, stat } from "node:fs/promises";
@@ -144,13 +145,11 @@ export function registerArtifactFileMenuIpc(
         reveal: string;
       },
     ) => {
-      const win = getMainWindow();
-      if (
-        !win ||
-        event.sender !== win.webContents ||
-        event.senderFrame !== win.webContents.mainFrame
-      )
+      if (!isAuthorizedIpcSender(event, "show-file-menu", getMainWindow))
         return;
+      const win =
+        BrowserWindow.fromWebContents(event.sender) || getMainWindow();
+      if (!win || win.isDestroyed()) return;
       const target = resolveAuthorizedLocalPath(filePath);
       if (!target) return;
       const label = (key: keyof typeof labels, fallback: string): string =>

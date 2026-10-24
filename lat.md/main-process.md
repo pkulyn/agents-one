@@ -253,3 +253,9 @@ CSP resource regressions read the shared production policy and verify its Main h
 Desktop configuration reads distinguish a missing file from invalid JSON, a non-object root or an I/O failure. Existing damaged state remains untouched, and ordinary writes cannot replace it with an empty fallback.
 
 Writes use the existing same-directory temporary-file replacement and preserve unknown fields in caller read/modify/write updates. Startup validates after restore recovery and migration, before Owner, windows or schedules; failure shows a native recovery path and exits. Locale bootstrap alone may fall back to the default language so it can reach this prompt, while failed saves cannot change in-memory language. Tests inject write/rename/read failures and verify original bytes, recovery instructions and startup ordering.
+
+## IPC sender roles
+
+App IPC requires a live native-owned WebContents, its main frame and the expected application URL. A same-URL window, child frame or navigated page cannot borrow another window's authority.
+
+The current Main window retains normal handlers. Native creation enrolls composer, tray-menu and completion identities with exact query URLs; destruction revokes them. Auxiliary channels are explicit and deny unknown additions, retaining common locale and composer attachment, voice and task flows. Invoke handlers fail before side effects; send listeners ignore denied events, and listener removal maps to the guarded callback. Registration, tray, updater and mobile management use the gate; existing deeper workspace, credential and restore checks remain necessary.
