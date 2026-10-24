@@ -53,7 +53,6 @@ afterEach(async () => {
 });
 
 describe("Main project inspection MCP", () => {
-  // @lat: [[mobile-data#Mobile data#Project MCP token precedes project access]]
   it("binds only loopback and rejects missing token or browser origin before authorization", async () => {
     let checks = 0;
     const server = await fixture(() => {
@@ -78,7 +77,6 @@ describe("Main project inspection MCP", () => {
     expect(checks).toBe(0);
   });
 
-  // @lat: [[mobile-data#Mobile data#Project MCP reads only explicit project tools]]
   it("negotiates stateless MCP and exposes only bounded read and directory tools", async () => {
     const server = await fixture();
     expect(
@@ -119,7 +117,6 @@ describe("Main project inspection MCP", () => {
     await server.close();
   });
 
-  // @lat: [[mobile-data#Mobile data#Project MCP rejects stale and malformed requests]]
   it("rejects traversal, injected arguments, revoked authority and oversized requests", async () => {
     let revoked = false;
     const server = await fixture(() => {

@@ -250,7 +250,6 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(state.root, { recursive: true, force: true }));
 describe("original schedule mobile write channel", () => {
-  // @lat: [[mobile-data#Mobile data#Schedule recovery conversation identity]]
   it("reuses the deterministic original conversation after a lost pointer without overwriting user edits", async () => {
     const { id } = await create();
     await control.handle(
@@ -314,7 +313,6 @@ describe("original schedule mobile write channel", () => {
     ).toBe(conversationId);
     expect(state.nativeEffect).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule terminal commit replay]]
   it("replays an already-written result once when the subsequent schedule commit failed", async () => {
     const { id } = await create();
     await control.handle(
@@ -373,7 +371,6 @@ describe("original schedule mobile write channel", () => {
       logging.mockRestore();
     }
   });
-  // @lat: [[mobile-data#Mobile data#Schedule terminal checkpoint identity]]
   it("preserves a mismatched checkpoint without publishing results or dispatching", async () => {
     const { id } = await create();
     await control.handle(
@@ -405,7 +402,6 @@ describe("original schedule mobile write channel", () => {
       logging.mockRestore();
     }
   });
-  // @lat: [[mobile-data#Mobile data#Schedule terminal checkpoint recovery]]
   it("recovers a persisted real terminal result after native registry loss without launching again", async () => {
     const { id } = await create();
     await control.handle(
@@ -478,7 +474,6 @@ describe("original schedule mobile write channel", () => {
       logging.mockRestore();
     }
   });
-  // @lat: [[mobile-data#Mobile data#Schedule terminal checkpoint write failure]]
   it("does not publish completion or start queued work if the terminal checkpoint cannot be saved", async () => {
     const { id } = await create();
     await control.handle(
@@ -517,7 +512,6 @@ describe("original schedule mobile write channel", () => {
       logging.mockRestore();
     }
   });
-  // @lat: [[mobile-data#Mobile data#Schedule native admission barrier]]
   it("persists native ownership and consumes queued work before the native effect", async () => {
     const { id } = await create();
     const store = JSON.parse(readFileSync(file(), "utf8"));
@@ -560,7 +554,6 @@ describe("original schedule mobile write channel", () => {
       },
     );
   });
-  // @lat: [[mobile-data#Mobile data#Schedule due cursor admission]]
   it("commits the due cursor with native identity before any external effect", async () => {
     await create();
     const store = JSON.parse(readFileSync(file(), "utf8"));
@@ -578,7 +571,6 @@ describe("original schedule mobile write channel", () => {
     await tickTaskSchedules("owner", state.now);
     expect(state.nativeEffect).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule admission persistence failure]]
   it("does not launch native work or consume due state when the barrier write fails", async () => {
     await create();
     const store = JSON.parse(readFileSync(file(), "utf8"));
@@ -592,7 +584,6 @@ describe("original schedule mobile write channel", () => {
     expect(state.nativeEffect).not.toHaveBeenCalled();
     expect(readFileSync(file(), "utf8")).toBe(bytes);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule uncertain dispatch recovery]]
   it("keeps admitted unknown work and rejects manual replacement after a start failure", async () => {
     const { id } = await create();
     state.start.mockImplementation(async (_id, _task, options) => {
@@ -647,7 +638,6 @@ describe("original schedule mobile write channel", () => {
     ).rejects.toMatchObject({ code: "reconciliation_required" });
     expect(state.start).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule trigger and manage scopes are separate]]
   it("requires trigger scope for manual dispatch and exposes its action independently of plan management", async () => {
     const { id } = await create();
     const denied = request(
@@ -699,7 +689,6 @@ describe("original schedule mobile write channel", () => {
     });
     expect(state.start).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule policy selection scope]]
   it("keeps the enforced unattended trigger policy selectable with schedule management alone", async () => {
     const { id } = await create();
     expect(control.actions(reader.get(id))).toContain("edit");
@@ -753,7 +742,6 @@ describe("original schedule mobile write channel", () => {
         .allowedActions,
     ).toEqual([]);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule preview verification]]
   it("validates the original preview anchor, full draft, device, grant, purpose, timezone and expiry", async () => {
     const input = {
       ...draft(),
@@ -847,7 +835,6 @@ describe("original schedule mobile write channel", () => {
       validateMobileSchedulePreview(input, req, ledger, reader, state.now),
     ).rejects.toThrow("preview_expired");
   });
-  // @lat: [[mobile-data#Mobile data#Schedule creation and original binding]]
   it("creates an enabled original definition with persistent policy binding and idempotent original receipt", async () => {
     const { req, receipt, id } = await create();
     const bytes = readFileSync(file(), "utf8");
@@ -867,7 +854,6 @@ describe("original schedule mobile write channel", () => {
     expect(state.start).not.toHaveBeenCalled();
     expect(state.legacy).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Schedule editing original revision]]
   it("edits original definitions without resetting cursors and rejects stale revisions before accepting", async () => {
     const { id } = await create();
     const prior = JSON.parse(readFileSync(file(), "utf8")).schedules[0];
@@ -904,7 +890,6 @@ describe("original schedule mobile write channel", () => {
     expect(readFileSync(file(), "utf8")).toBe(bytes);
     expect(ledger.operations("phone-1")).toHaveLength(2);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule denied writing has no intent]]
   it("does not accept or write an invalid preview, revoked policy or active definition edit", async () => {
     const { id } = await create();
     const stored = JSON.parse(readFileSync(file(), "utf8"));
@@ -946,7 +931,6 @@ describe("original schedule mobile write channel", () => {
     expect(readFileSync(file(), "utf8")).toBe(bytes);
     expect(ledger.operations("phone-1")).toHaveLength(1);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule definition uncertain commit]]
   it("retains an accepted uncertain intent when original persistence fails and never retries that creation", async () => {
     const body = {
       ...draft(),
@@ -989,7 +973,6 @@ describe("original schedule mobile write channel", () => {
     });
     expect(readFileSync(file(), "utf8")).toBe(committedBytes);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule resume and manual trigger authority]]
   it("resumes only the original bound definition and manually triggers a paused schedule without enabling it", async () => {
     const { id } = await create();
     await control.handle(
@@ -1044,7 +1027,6 @@ describe("original schedule mobile write channel", () => {
     expect(reader.get(id)).toMatchObject({ enabled: true, revision: "5" });
     expect(state.start).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule runner rechecks original policy]]
   it("rechecks persisted policy before queued and due dispatch and preserves denied cursors during another schedule commit", async () => {
     const { id } = await create();
     for (const pendingRuns of [2, 0]) {
@@ -1078,7 +1060,6 @@ describe("original schedule mobile write channel", () => {
     expect(state.start).not.toHaveBeenCalled();
     expect(state.legacy).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Schedule desktop edit cannot remove policy]]
   it("retains mobile binding after a desktop edit and refuses its changed execution mode", async () => {
     const { id } = await create();
     await updateTaskSchedule(

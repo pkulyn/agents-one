@@ -600,7 +600,6 @@ describe("Agents One desktop configuration sanitization", () => {
 });
 
 describe("Agents One owned-data backup", { timeout: 30_000 }, () => {
-  // @lat: [[tests#Agents One data migration#Restores legacy backup into owned data]]
   it("imports v1 desktop data into the new layout without copying native Hermes state", async () => {
     const archive = join(testRoot, "legacy-to-owned.agents-one-backup");
     const exported = await exportAgentsOneBackupTo(archive, { sourceHome });
@@ -616,7 +615,6 @@ describe("Agents One owned-data backup", { timeout: 30_000 }, () => {
     expect(existsSync(join(targetHome, "profiles", "default", "desktop.db"))).toBe(true);
   });
 
-  // @lat: [[tests#Agents One data migration#Round trips owned-data backup]]
   it("exports and restores a v2 archive from the Agents One data root", async () => {
     const owned = join(testRoot, "owned-source");
     const restoredRoot = join(testRoot, "owned-target");
@@ -1020,7 +1018,6 @@ describe("Agents One backup round trip", { timeout: 30_000 }, () => {
     expect(readFileSync(expectedPath)).toEqual(Buffer.from("image-fixture"));
   });
 
-  // @lat: [[mobile-data#Mobile data#Restore excludes portable mobile authority and rotates epochs]]
   it("excludes mobile authority from real backups and transactionally rotates only restored profile generations", async () => {
     const generation = randomUUID(),
       marker = JSON.stringify({ version: 1, generation });
@@ -1098,7 +1095,6 @@ describe("Agents One backup round trip", { timeout: 30_000 }, () => {
     expect(next.executionEntries()).toEqual([]);
   });
 
-  // @lat: [[mobile-data#Mobile data#Restore marker journal rollback identity]]
   it("rolls back owned generation markers and refuses to remove changed or unproven newly introduced markers", () => {
     const path = MOBILE_DATA_GENERATION_PATH,
       destination = join(targetHome, path),
@@ -1143,7 +1139,6 @@ describe("Agents One backup round trip", { timeout: 30_000 }, () => {
     expect(readFileSync(destination, "utf8")).toBe(old);
   });
 
-  // @lat: [[mobile-data#Mobile data#Committed restore generation preservation]]
   it("keeps committed generation and rejects forged authority and marker journal paths", async () => {
     const destination = join(targetHome, MOBILE_DATA_GENERATION_PATH),
       marker = JSON.stringify({ version: 1, generation: randomUUID() });

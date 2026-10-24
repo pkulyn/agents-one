@@ -58,7 +58,6 @@ const recordFile = (): string =>
     directory,
     readdirSync(directory).find((n) => /^[a-f0-9]{64}\.json$/.test(n))!,
   );
-// @lat: [[mobile-data#Mobile data#Approved worker bytes bind Native dispatch]]
 it("rejects substituted worker bytes before launching Native and keeps a failed audit", async () => {
   const expected = createHash("sha256")
     .update(readFileSync(workerPath))
@@ -139,7 +138,6 @@ function spawnFixture(
     return proc;
   });
 }
-// @lat: [[mobile-data#Mobile data#Closed worker recovery confirmation and stale review]]
 it("requires explicit recovery authority and current review, preserves the unknown outcome and never redelivers it", async () => {
   spawnFixture("after-permit-error");
   let allowed = true;
@@ -187,7 +185,6 @@ it("requires explicit recovery authority and current review, preserves the unkno
   expect(await runner.reviewRetainedWrites()).toEqual([]);
 });
 
-// @lat: [[mobile-data#Mobile data#Recovery preserves replaced locks and journals]]
 it("refuses to release locks or audit records whose bytes were replaced after worker close", async () => {
   spawnFixture("after-permit-error");
   const runner = new ProjectWriteRunner({
@@ -220,7 +217,6 @@ it("refuses to release locks or audit records whose bytes were replaced after wo
   expect(readFileSync(lock)).toEqual(original);
 });
 
-// @lat: [[mobile-data#Mobile data#Recovery persistence failure retains lease]]
 it("keeps the original lock and unknown result when backup recovery blocks release intent persistence", async () => {
   spawnFixture("after-permit-error");
   let locked = false;
@@ -266,7 +262,6 @@ afterEach(() => {
   rmSync(base, { recursive: true, force: true });
 });
 
-// @lat: [[mobile-data#Mobile data#Applied write snapshots preserve version and replay identity]]
 it("exports only confirmed replacement bytes independently of the mutable project and deduplicates replay", async () => {
   spawnFixture();
   const runner = new ProjectWriteRunner(options());
@@ -299,7 +294,6 @@ it("exports only confirmed replacement bytes independently of the mutable projec
   expect(mocks.spawn).toHaveBeenCalledOnce();
 });
 
-// @lat: [[mobile-data#Mobile data#Unknown write snapshots remain unavailable]]
 it("does not publish content for a write whose worker failed after commit permission", async () => {
   spawnFixture("after-permit-error");
   const runner = new ProjectWriteRunner(options());
@@ -310,7 +304,6 @@ it("does not publish content for a write whose worker failed after commit permis
   expect(records()[0].phase).toBe("uncertain");
 });
 
-// @lat: [[mobile-data#Mobile data#Write snapshot memory limit is explicit]]
 it("bounds distinct applied versions and explicitly marks additional snapshots unavailable", async () => {
   spawnFixture();
   const runner = new ProjectWriteRunner(options());
@@ -348,7 +341,6 @@ it("bounds distinct applied versions and explicitly marks additional snapshots u
   expect(mocks.spawn).toHaveBeenCalledOnce();
 });
 
-// @lat: [[mobile-data#Mobile data#Main write audit and restart replay]]
 it("persists original text and committing before permit and replays applied after reconstructing Main without dispatch", async () => {
   spawnFixture();
   const value = command();
@@ -366,7 +358,6 @@ it("persists original text and committing before permit and replays applied afte
   expect(mocks.spawn).toHaveBeenCalledOnce();
 });
 
-// @lat: [[mobile-data#Mobile data#Main write interruption retains uncertainty]]
 it("retains uncertainty after permit and refuses repeat dispatch across reconstruction", async () => {
   spawnFixture("after-permit-error");
   const value = command();
@@ -392,7 +383,6 @@ it("retains uncertainty after permit and refuses repeat dispatch across reconstr
   expect(mocks.spawn).toHaveBeenCalledOnce();
 });
 
-// @lat: [[mobile-data#Mobile data#Main write revocation inside authorization]]
 it("rechecks cancellation raised synchronously inside the authorization callback before sending permit", async () => {
   spawnFixture();
   const abort = new AbortController();
@@ -410,7 +400,6 @@ it("rechecks cancellation raised synchronously inside the authorization callback
   expect(readFileSync(join(root, "file.txt"), "utf8")).toBe("original");
 });
 
-// @lat: [[mobile-data#Mobile data#Main write malformed prepared and audit failure]]
 it("terminates malformed preparation and refuses commit when audit persistence is locked", async () => {
   spawnFixture("malformed");
   await expect(
@@ -430,7 +419,6 @@ it("terminates malformed preparation and refuses commit when audit persistence i
   expect(mocks.spawn).not.toHaveBeenCalled();
 });
 
-// @lat: [[mobile-data#Mobile data#Main write private receipt admission]]
 it("rejects corrupt extended receipts and prevents journals inside the writable project", async () => {
   spawnFixture();
   const value = command();
@@ -451,7 +439,6 @@ it("rejects corrupt extended receipts and prevents journals inside the writable 
   ).toThrow("unverified_policy");
 });
 
-// @lat: [[mobile-data#Mobile data#Main write acknowledgement persistence failure]]
 it("retains committing when terminal receipt storage fails and never redelivers that attempt", async () => {
   spawnFixture();
   const spawn = mocks.spawn.getMockImplementation()!;
@@ -483,7 +470,6 @@ it("retains committing when terminal receipt storage fails and never redelivers 
   expect(mocks.spawn).toHaveBeenCalledOnce();
 });
 
-// @lat: [[mobile-data#Mobile data#Main write timeout close boundary]]
 it("waits for actual process close after timeout before settling the attempt", async () => {
   vi.useFakeTimers();
   const child = Object.assign(new EventEmitter(), {
@@ -509,7 +495,6 @@ it("waits for actual process close after timeout before settling the attempt", a
   expect(records()[0].phase).toBe("failed");
 });
 
-// @lat: [[mobile-data#Mobile data#Project write lease across Main instances]]
 it("excludes a second namespace and journal from the same project until Native closes", async () => {
   spawnFixture("hold");
   const runner = new ProjectWriteRunner(options()),
@@ -542,7 +527,6 @@ it("excludes a second namespace and journal from the same project until Native c
   expect(readdirSync(directory).filter((n) => n.endsWith(".lock"))).toEqual([]);
 });
 
-// @lat: [[mobile-data#Mobile data#Project write lease unknown ownership and uncertainty]]
 it("preserves an unknown replacement lock and refuses subsequent dispatch", async () => {
   spawnFixture("hold");
   const pending = new ProjectWriteRunner(options()).write(command());

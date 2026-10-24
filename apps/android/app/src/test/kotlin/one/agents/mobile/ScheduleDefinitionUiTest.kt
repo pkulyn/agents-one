@@ -19,7 +19,6 @@ class ScheduleDefinitionUiTest {
     @get:Rule val ui=createAndroidComposeRule<ComponentActivity>()
     private val schedule=Schedule("original-plan","Original plan","Original instructions","original-runtime",projectId="original-project",executionPolicyId="original-policy",scheduleExpression="5m",schedulerTimeZone="Asia/Shanghai",enabled=true,effectiveState="enabled",concurrencyPolicy="queue",timeoutMs=600000,activeRunIds=emptyList(),pendingCount=0,revision="9",allowedActions=listOf("read"))
     private val policy=ExecutionPolicy("original-policy","original-runtime","original-project","inspect",true,true,listOf("trigger"))
-    // @lat: [[mobile-data#Mobile data#Android schedule definition original policy binding]]
     @Test fun projectNameAndEnforcedPolicyUseExactOriginalBindings(){
         ui.setContent { MaterialTheme { ScheduleDefinition(schedule,MobileState(projects=listOf(Project("original-project","Original project name",listOf(policy.id))),policies=listOf(policy))) } }
         ui.onNodeWithText("Project: Original project name").assertIsDisplayed()
@@ -27,7 +26,6 @@ class ScheduleDefinitionUiTest {
         ui.onNodeWithText(ui.activity.getString(R.string.policy_inspect)).assertIsDisplayed()
         ui.onNodeWithText(ui.activity.getString(R.string.policy_unattended)).assertIsDisplayed()
     }
-    // @lat: [[mobile-data#Mobile data#Android schedule definition missing or foreign policy]]
     @Test fun missingCatalogOrForeignBindingNeverInventsExecutionApproval(){
         val state=mutableStateOf(MobileState(policies=listOf(policy.copy(projectId="foreign-project"))))
         ui.setContent { MaterialTheme { ScheduleDefinition(schedule,state.value) } }
@@ -38,14 +36,12 @@ class ScheduleDefinitionUiTest {
         ui.onNodeWithText(ui.activity.getString(R.string.error_unverified_policy)).assertIsDisplayed()
         ui.onNodeWithText(ui.activity.getString(R.string.policy_unattended)).assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android schedule definition Chinese labels]]
     @Test @Config(qualifiers="zh-rCN-w360dp-h640dp") fun chineseDefinitionKeepsOriginalProjectAndPolicyIds(){
         ui.setContent { MaterialTheme { ScheduleDefinition(schedule,MobileState(policies=listOf(policy.copy(mode="project_write")))) } }
         ui.onNodeWithText("项目：original-project").assertIsDisplayed()
         ui.onNodeWithText("策略 ID：original-policy").assertIsDisplayed()
         ui.onNodeWithText(ui.activity.getString(R.string.policy_project_write)).assertIsDisplayed()
     }
-    // @lat: [[mobile-data#Mobile data#Android schedule detail action scope and busy gate]]
     @Test fun scopeOriginalActionsAndBusyAllGateThePressedDetailAction(){
         val actions=mutableStateOf(listOf("read","edit","pause","trigger","discard_pending","delete"))
         val scopes=mutableStateOf(listOf("schedule:manage"));val busy=mutableStateOf(false)

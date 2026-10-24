@@ -9,7 +9,6 @@ import okhttp3.mockwebserver.MockWebServer
 import one.agents.mobile.contract.Artifact
 
 class ArtifactDownloadTest {
-    // @lat: [[mobile-data#Mobile data#Android artifact interrupted transfer]]
     @Test fun `does not report a truncated stream as a successful download or retry it`() {
         MockWebServer().use { server ->
             val bytes = ByteArray(200000) { (it % 251).toByte() }
@@ -27,7 +26,6 @@ class ArtifactDownloadTest {
     private fun artifact(bytes: ByteArray) = Artifact("artifact-1", "run-1", "../unsafe-name.pdf", "application/pdf", bytes.size.toLong(), MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }, allowedActions = listOf("read", "download"))
     private fun client(server: MockWebServer) = MobileControlClient(server.url("/").newBuilder().host("127.0.0.1").build().toString(), { "test-token" }, true)
 
-    // @lat: [[mobile-data#Mobile data#Android authenticated artifact transfer]]
     @Test fun `streams authenticated binary bytes in a fixed Owner scope and verifies metadata`() {
         MockWebServer().use { server ->
             val bytes = ByteArray(200000) { (it % 251).toByte() }
@@ -46,7 +44,6 @@ class ArtifactDownloadTest {
             } finally { client.close() }
         }
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact integrity failure]]
     @Test fun `rejects incorrect size mime hash encoding and redirects without retries`() {
         val bytes = "binary-result".toByteArray()
         for (case in listOf("size", "mime", "hash", "encoding", "redirect")) {
@@ -65,7 +62,6 @@ class ArtifactDownloadTest {
             }
         }
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact admission before HTTP]]
     @Test fun `refuses expired unavailable and malformed metadata before requesting bytes`() {
         MockWebServer().use { server ->
             server.start(InetAddress.getByName("127.0.0.1"), 0)

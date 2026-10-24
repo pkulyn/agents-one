@@ -18,7 +18,6 @@ import one.agents.mobile.contract.Artifact
 class ArtifactDeliveryUiTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
     private val artifact = Artifact("artifact-1", "run-1", "../../result.pdf", "application/pdf", 0, "0".repeat(64), allowedActions = listOf("read", "download"))
-    // @lat: [[mobile-data#Mobile data#Android artifact action admission]]
     @Test fun scopeAndOriginalActionAndBusyGateBothDeliveryButtons() {
         var saved = 0; var opened = 0
         fun show(scopes: List<String>, allowed: List<String>, busy: Boolean) { ui.runOnUiThread { ui.activity.setContent { MaterialTheme { ArtifactActions(artifact.copy(allowedActions = allowed), scopes, busy, { saved++ }, { opened++ }) } } } }
@@ -34,7 +33,6 @@ class ArtifactDeliveryUiTest {
         ui.onNodeWithTag("artifact-open-artifact-1").performClick()
         assertEquals(1, saved); assertEquals(1, opened)
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact readonly system opening]]
     @Test fun verifiedFileUsesPrivateContentUriWithReadOnlyGrantAndRejectsStaleBinding() {
         val files = ArtifactFiles(ui.activity.cacheDir)
         val file = files.stage { }

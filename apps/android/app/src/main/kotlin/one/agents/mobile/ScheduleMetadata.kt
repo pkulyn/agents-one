@@ -10,7 +10,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import one.agents.mobile.contract.ScheduleRecentExecution
 
-// @lat: [[mobile-data#Mobile data#Android schedule original execution metadata]]
 @Composable internal fun ScheduleMetadata(scheduleId: String, nextRunAt: String?, timeZone: String, recent: ScheduleRecentExecution?, language: String, compact: Boolean = true) {
     Column(Modifier.testTag("schedule-metadata-$scheduleId")) {
         Text(nextRunAt?.let { stringResource(R.string.next_run_at, scheduleTime(it, timeZone, language)) }

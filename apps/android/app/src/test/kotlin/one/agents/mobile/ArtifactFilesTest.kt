@@ -13,7 +13,6 @@ class ArtifactFilesTest {
             root.deleteRecursively()
         }
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact staging cleanup]]
     @Test fun failedVerificationDeletesPartialBytesAndSuccessfulDeliveryCanBeDiscarded() = fixture { root ->
         val files = ArtifactFiles(root)
         try { files.stage { it.write("partial".toByteArray()); throw java.io.IOException("hash mismatch") }; fail("Accepted partial output") }
@@ -25,7 +24,6 @@ class ArtifactFilesTest {
         files.discard(completed)
         assertFalse(completed.exists())
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact cache ownership]]
     @Test fun cleanupPreservesUnknownFilesAndAnotherLiveDelivery() = fixture { root ->
         val first = ArtifactFiles(root)
         val live = first.stage { it.write(1) }
@@ -36,7 +34,6 @@ class ArtifactFilesTest {
         first.clear()
         assertFalse(live.exists()); assertTrue(unknown.exists())
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact filename handling]]
     @Test fun remoteNamesNeverBecomeLocalPaths() {
         assertEquals("result.pdf", artifactDisplayName("../../result.pdf"))
         assertEquals("result.pdf", artifactDisplayName("D:\\private\\result.pdf"))

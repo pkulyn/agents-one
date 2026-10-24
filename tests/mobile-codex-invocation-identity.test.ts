@@ -26,7 +26,6 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 describe.skipIf(process.platform !== "win32" || process.arch !== "x64")(
   "Windows Codex native identity",
   () => {
-    // @lat: [[mobile-data#Mobile data#Reviewed Codex native version gate#Native version evidence is not execution approval]]
     it("accepts only the reviewed native digest and rejects unknown, missing and ambiguous native identities", () => {
       const identity = captureCodexInspectionIdentity(native, root, {});
       expect(() => assertReviewedCodexInspectionNative(identity)).toThrow(
@@ -53,7 +52,6 @@ describe.skipIf(process.platform !== "win32" || process.arch !== "x64")(
           assertReviewedCodexInspectionNative({ ...reviewed, files }),
         ).toThrow("identity");
     });
-    // @lat: [[mobile-data#Mobile data#Codex native byte and environment identity]]
     it("hashes the actual native bytes and current environment without exposing its values or granting approval", () => {
       const env = { Path: root, API_KEY: "private-secret" };
       const identity = captureCodexInspectionIdentity("codex", root, env);
@@ -79,7 +77,6 @@ describe.skipIf(process.platform !== "win32" || process.arch !== "x64")(
         }),
       ).toThrow("identity");
     });
-    // @lat: [[mobile-data#Mobile data#Codex same path replacement refusal]]
     it("rejects different bytes at the same path even when size and timestamp are retained", () => {
       const original = captureCodexInspectionIdentity(native, root, {}),
         stat = statSync(native);
@@ -90,7 +87,6 @@ describe.skipIf(process.platform !== "win32" || process.arch !== "x64")(
         assertCodexInspectionIdentity(original, native, root, {}),
       ).toThrow("identity");
     });
-    // @lat: [[mobile-data#Mobile data#Codex unknown wrapper and invalid runner refusal]]
     it("rejects missing files, directories, relative paths and unreviewed npm entrypoints without invoking them", () => {
       const entry = join(root, "node_modules", "@openai", "codex", "bin");
       mkdirSync(entry, { recursive: true });

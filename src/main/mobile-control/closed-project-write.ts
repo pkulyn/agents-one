@@ -223,7 +223,6 @@ class ClosedCapability implements WriteRecoveryCapability {
     lock: string;
     record: Record<string, unknown>;
   } {
-    // @lat: [[mobile-data#Mobile data#Restart closed writer authority]]
     const p = this.proof,
       home = agentsOneProfileHome(p.profile),
       folder = join(home, "desktop/mobile-control/project-writes"),

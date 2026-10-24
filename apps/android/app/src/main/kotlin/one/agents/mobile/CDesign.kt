@@ -48,7 +48,6 @@ internal fun cTypography(language: String): Typography {
     }
 }
 
-// @lat: [[mobile-data#Mobile data#Approved C native layout]]
 @Composable internal fun CNavigation(selected: Int, select: (Int) -> Unit, labels: List<String>, icons: List<androidx.compose.ui.graphics.vector.ImageVector>) {
     Surface(color = MaterialTheme.colorScheme.background) {
         Column(Modifier.navigationBarsPadding()) {

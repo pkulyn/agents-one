@@ -13,7 +13,6 @@ function fixture() {
   return { runtimes, projects, legacy, source, catalog };
 }
 describe("desktop task-time selections", () => {
-  // @lat: [[mobile-data#Mobile data#Task time desktop agent catalog]]
   it("offers all configured agents and independent project/mode choices without storing approvals", () => {
     const value = fixture(), before = JSON.stringify(value.runtimes);
     const policies = value.catalog.list();
@@ -31,7 +30,6 @@ describe("desktop task-time selections", () => {
     expect(JSON.stringify(value.runtimes)).toBe(before);
     expect(value.legacy.authorize).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#No-project task permission selection]]
   it("invalidates selected identities on runtime configuration or project identity changes", () => {
     const value = fixture(), selected = value.catalog.list().find(row => row.mode === "desktop_auto" && row.projectId)!;
     expect(value.catalog.authorize(selected.id)).toEqual(selected);
@@ -43,7 +41,6 @@ describe("desktop task-time selections", () => {
     value.runtimes[0].config.model = "changed-model";
     expect(() => value.catalog.authorize(next.id)).toThrow("unverified_policy");
   });
-  // @lat: [[mobile-data#Mobile data#Task selection current configuration binding]]
   it("authorizes projectless automatic and explicitly confirmed full access without assigning a project", () => {
     const value = fixture();
     const automatic = value.catalog.list().find(row => row.runtimeId === "codex-1" && !row.projectId && row.mode === "desktop_auto")!;
@@ -54,7 +51,6 @@ describe("desktop task-time selections", () => {
     expect(desktopTaskInput("desktop_auto", runtime("codex-1"), undefined)).toEqual({ mode: "safe_write" });
     expect(desktopTaskInput("desktop_full_access", runtime("codex-1"), undefined)).toEqual({ mode: "full_access", fullAccessConfirmed: true });
   });
-  // @lat: [[mobile-data#Mobile data#Task selection disabled and inactive refusal]]
   it("refuses disabled, removed, reauthorization and inactive sources", () => {
     const value = fixture(), selected = value.catalog.list()[0];
     value.runtimes[0].enabled = false;
@@ -66,7 +62,6 @@ describe("desktop task-time selections", () => {
     value.source.guard.mockImplementation(() => { throw Error("profile_inactive"); });
     expect(() => value.catalog.list()).toThrow("profile_inactive");
   });
-  // @lat: [[mobile-data#Mobile data#Legacy execution policy compatibility]]
   it("continues to delegate old identifiers to their original proof checks", () => {
     const value = fixture();
     expect(() => value.catalog.authorize("policy-original")).toThrow("old-proof-required");

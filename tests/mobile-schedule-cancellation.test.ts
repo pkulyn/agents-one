@@ -156,7 +156,6 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(state.root, { recursive: true, force: true }));
 describe("original schedule Run cancellation", () => {
-  // @lat: [[mobile-data#Mobile data#Schedule cancellation original identity]]
   it("controls only the original native ID, preserves definitions and running status, and replays the original receipt after restart", async () => {
     const bytes = seed(),
       req = request();
@@ -194,7 +193,6 @@ describe("original schedule Run cancellation", () => {
     expect(state.cancel).toHaveBeenCalledTimes(1);
     expect(state.cancel).toHaveBeenCalledWith("native-active");
   });
-  // @lat: [[mobile-data#Mobile data#Schedule cancellation scope and source admission]]
   it("rejects foreign scopes, devices, inactive profiles, locks, unknown IDs and ambiguous original ownership before acceptance", async () => {
     const bytes = seed();
     for (const scopes of [
@@ -239,7 +237,6 @@ describe("original schedule Run cancellation", () => {
     expect(ledger.operations("phone-1")).toEqual([]);
     expect(state.cancel).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Schedule cancellation terminal history]]
   it("completes an old terminal Run without controlling the next active Run", async () => {
     const bytes = seed();
     expect(await control.cancelRun(request("native-old"))).toMatchObject({
@@ -253,7 +250,6 @@ describe("original schedule Run cancellation", () => {
     expect(readFileSync(file(), "utf8")).toBe(bytes);
     expect(state.cancel).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Schedule cancellation rejection evidence]]
   it("persists a confirmed rejection without fabricating terminal state or resending that request", async () => {
     const bytes = seed(),
       req = request();
@@ -268,7 +264,6 @@ describe("original schedule Run cancellation", () => {
     expect(readFileSync(file(), "utf8")).toBe(bytes);
     expect(state.cancel).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule cancellation uncertain acknowledgement]]
   it("retains unknown acknowledgement, missing or foreign handle, and thrown control outcomes without replay", async () => {
     const bytes = seed();
     for (const [index, result] of [
@@ -316,7 +311,6 @@ describe("original schedule Run cancellation", () => {
     });
     expect(state.cancel).toHaveBeenCalledTimes(6);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule cancellation persistence gate]]
   it("never controls without a durable intent and retains an unknown receipt commit after actual cancellation", async () => {
     const bytes = seed();
     vi.spyOn(ledger, "accept").mockImplementationOnce(() => {
@@ -339,7 +333,6 @@ describe("original schedule Run cancellation", () => {
     expect(readFileSync(file(), "utf8")).toBe(bytes);
     expect(state.cancel).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule cancellation public route composition]]
   it("routes schedule cancellation without a conversation coordinator and filters actions by independent scopes", async () => {
     seed();
     const api = new MobileConversationController(

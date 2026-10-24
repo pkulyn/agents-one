@@ -120,7 +120,6 @@ vi.mock("../src/main/mobile-control/owner-tunnel-process", () => ({
   },
 }));
 let stop: (() => void) | undefined;
-// @lat: [[mobile-data#Mobile data#Owner scheduler status composition]]
 it("reads the original runner live state through the production Owner without requiring execution approval", async () => {
   state.root = mkdtempSync(join(tmpdir(), "agents-one-production-owner-"));
   mkdirSync(join(state.root, "owner"), { recursive: true });
@@ -155,7 +154,6 @@ afterEach(() => {
   vi.clearAllMocks();
   rmSync(state.root, { recursive: true, force: true });
 });
-// @lat: [[mobile-data#Mobile data#Owner proof refresh independent of phone]]
 it("renews current Owner authority without phone requests and stops the renewal timer during disposal", async () => {
   vi.clearAllMocks();
   vi.useFakeTimers();
@@ -196,7 +194,6 @@ function request(suffix: string): OwnerControlRequest {
     },
   };
 }
-// @lat: [[mobile-data#Mobile data#Production task selection creates original conversation]]
 it("creates an original conversation from desktop task selections without any approval document or model dispatch", async () => {
   state.root = mkdtempSync(join(tmpdir(), "agents-one-production-owner-"));
   mkdirSync(join(state.root, "owner"), { recursive: true });
@@ -221,7 +218,6 @@ it("creates an original conversation from desktop task selections without any ap
   expect(state.dispatch).not.toHaveBeenCalled();
   expect(() => readFileSync(join(state.root, "owner", "desktop", "mobile-execution-policies.json"))).toThrow();
 });
-// @lat: [[mobile-data#Mobile data#Production original desktop Run artifact assembly]]
 it("reads ordinary desktop Runs and original artifacts through the production Owner without phone execution entries", async () => {
   state.root = mkdtempSync(join(tmpdir(), "agents-one-production-owner-"));
   state.handler = undefined;
@@ -348,7 +344,6 @@ it("reads ordinary desktop Runs and original artifacts through the production Ow
     code: "resource_not_found",
   });
 });
-// @lat: [[mobile-data#Mobile data#Production original Run cancellation routing and scope]]
 it("routes ordinary original Run cancellation to Main and filters its action for schedule-only devices", async () => {
   state.root = mkdtempSync(join(tmpdir(), "agents-one-production-owner-"));
   state.handler = undefined;
@@ -458,7 +453,6 @@ it("routes ordinary original Run cancellation to Main and filters its action for
   vi.mocked(runtimes.getAgentRuntimeRun).mockReset();
   vi.mocked(runtimes.requestAgentRuntimeTaskCancellation).mockReset();
 });
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Production original data assembly]]
 it("assembles the production handler over original files, preserves bytes, and advertises only wired capabilities", async () => {
   state.root = mkdtempSync(join(tmpdir(), "agents-one-production-owner-"));
   const desktop = join(state.root, "owner", "desktop");

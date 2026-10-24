@@ -38,7 +38,6 @@ afterEach(() => {
   }
 });
 
-// @lat: [[mobile-data#Mobile data#Project text write creation and original audit]]
 it("creates and replaces actual UTF8 bytes after recording original text and hashes without exposing original text in receipts", () => {
   const { root } = fixture(),
     audit = vi.fn();
@@ -63,7 +62,6 @@ it("creates and replaces actual UTF8 bytes after recording original text and has
   expect(readdirSync(join(root, "src"))).toEqual(["file.txt"]);
 });
 
-// @lat: [[mobile-data#Mobile data#Project text write stale revision and concurrent replacement]]
 it("refuses stale hashes, creation over existing data and changes after the audit checkpoint", () => {
   const { root } = fixture();
   writeFileSync(join(root, "file.txt"), "original");
@@ -88,7 +86,6 @@ it("refuses stale hashes, creation over existing data and changes after the audi
   expect(readdirSync(root)).toEqual(["file.txt"]);
 });
 
-// @lat: [[mobile-data#Mobile data#Project text write authority and audit refusal]]
 it("refuses revoked or asynchronous authority and failed audit before changing target bytes", () => {
   const { root } = fixture();
   writeFileSync(join(root, "file.txt"), "original");
@@ -126,7 +123,6 @@ it("refuses revoked or asynchronous authority and failed audit before changing t
   );
 });
 
-// @lat: [[mobile-data#Mobile data#Project text write path and link boundaries]]
 it("rejects escapes, secret paths, internal staging names, hard links and junctions while preserving outside data", () => {
   const { root, outside } = fixture();
   writeFileSync(join(outside, "secret.txt"), "outside");
@@ -160,7 +156,6 @@ it("rejects escapes, secret paths, internal staging names, hard links and juncti
   ).toEqual([]);
 });
 
-// @lat: [[mobile-data#Mobile data#Project text write root and parent identity]]
 it("refuses root replacement and a parent redirected after staging without writing outside", () => {
   const { base, root, outside } = fixture();
   const writer = createProjectTextWriter(
@@ -190,7 +185,6 @@ it("refuses root replacement and a parent redirected after staging without writi
   );
 });
 
-// @lat: [[mobile-data#Mobile data#Project text write size encoding and staging integrity]]
 it("refuses oversized, binary and invalid text and preserves unknown replaced staging bytes", () => {
   const { root } = fixture(),
     writer = createProjectTextWriter(

@@ -80,7 +80,6 @@ function seed(value: unknown): void {
 }
 
 describe("shared desktop and mobile schedule transactions", () => {
-  // @lat: [[mobile-data#Mobile data#Shared schedule versions]]
   it("persists desktop versions and checks mobile revisions inside the same async schedule lock", async () => {
     seed({ version: 5, schedules: [base()] });
     const schedules = await import("../src/main/task-schedules");
@@ -118,7 +117,6 @@ describe("shared desktop and mobile schedule transactions", () => {
     expect(state.start).not.toHaveBeenCalled();
     expect(readFileSync(file(), "utf8")).toBe(before);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule history preservation]]
   it("preserves root/definition/execution extensions and execution history beyond the desktop window", async () => {
     const runs = Array.from({ length: 140 }, (_, index) => ({
       id: `original-run-${index}`,
@@ -148,7 +146,6 @@ describe("shared desktop and mobile schedule transactions", () => {
     expect(stored.schedules[0].runs).toEqual(runs);
     expect(schedules.listFullTaskSchedules("owner")[0].runs).toHaveLength(140);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule edit cursor preservation]]
   it("keeps due cursors for name/prompt edits and recalculates only when the expression changes", async () => {
     seed({ version: 5, schedules: [base()] });
     const schedules = await import("../src/main/task-schedules");
@@ -172,7 +169,6 @@ describe("shared desktop and mobile schedule transactions", () => {
     expect(edited.lastDueAt).toBeGreaterThan(1000);
     expect(edited.nextRunAt).toBe(edited.lastDueAt! + 600000);
   });
-  // @lat: [[mobile-data#Mobile data#Schedule storage corruption]]
   it("does not overwrite a damaged or incompatible original schedule file on create", async () => {
     seed({ version: 5, schedules: [base()] });
     const schedules = await import("../src/main/task-schedules");
@@ -187,7 +183,6 @@ describe("shared desktop and mobile schedule transactions", () => {
       expect(readFileSync(file(), "utf8")).toBe(bad);
     }
   });
-  // @lat: [[mobile-data#Mobile data#Schedule queue capacity]]
   it("rejects a full queue before dispatch or cancellation instead of silently losing a trigger", async () => {
     const schedules = await import("../src/main/task-schedules");
     for (const concurrencyPolicy of ["queue", "replace"] as const) {
@@ -211,7 +206,6 @@ describe("shared desktop and mobile schedule transactions", () => {
     expect(state.start).not.toHaveBeenCalled();
     expect(state.cancel).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Schedule replacement cancellation admission]]
   it("queues replacement only after cancellation acknowledgement and keeps the active run until runner reconciliation", async () => {
     seed({
       version: 5,
@@ -285,7 +279,6 @@ describe("shared desktop and mobile schedule transactions", () => {
     expect(readFileSync(file(), "utf8")).toBe(committed);
     dispose();
   });
-  // @lat: [[mobile-data#Mobile data#Schedule deletion safety]]
   it("requires a paused definition and empty queue for versioned deletion and leaves result conversations intact", async () => {
     seed({ version: 5, schedules: [base()] });
     const historyFile = join(
@@ -328,7 +321,6 @@ describe("shared desktop and mobile schedule transactions", () => {
       schedules.deleteTaskSchedule("schedule-1", "owner", "1"),
     ).rejects.toThrow("run_active");
   });
-  // @lat: [[mobile-data#Mobile data#Separate schedule cancellation and discard]]
   it("keeps active-run cancellation separate from paused pending-work discard", async () => {
     seed({
       version: 5,

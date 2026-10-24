@@ -101,7 +101,6 @@ export async function manageMobileWriteRecovery(
     if (!entry || entry.profile !== selected) fail("resource_not_found");
     const restriction = await terminal(entry);
     if (restriction) fail(restriction);
-    // @lat: [[mobile-data#Mobile data#Desktop retained write recovery scope]]
     guard();
     await entry.runner.releaseRetainedWrite(
       entry.localId,

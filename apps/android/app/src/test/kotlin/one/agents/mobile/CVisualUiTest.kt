@@ -17,7 +17,6 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CVisualUiTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
-    // @lat: [[mobile-data#Mobile data#Approved C native layout]]
     @Test fun nativeCorePagesRemainNavigableAt360dp() {
         ui.runOnUiThread { val model = ViewModelProvider(ui.activity)[MobileViewModel::class.java]; model.forget(); model.language("en"); model.appearance("light"); model.demo() }
         ui.runOnUiThread {

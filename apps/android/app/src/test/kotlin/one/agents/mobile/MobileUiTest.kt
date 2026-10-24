@@ -27,7 +27,6 @@ class MobileUiTest {
         }
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Ambiguous credential exchange]]
     @Test fun credentialExchangeRetryKeepsItsOriginalIdentity() {
         val keys = java.util.concurrent.CopyOnWriteArrayList<String>()
         lateinit var model: MobileViewModel
@@ -48,7 +47,6 @@ class MobileUiTest {
         ui.runOnUiThread { model.forget() }
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Language and draft preservation]]
     @Test fun languageSwitchRetainsConnectionDraft() {
         ui.onAllNodesWithText("Account").onLast().performClick()
         ui.onNodeWithTag("field:Owner HTTPS address").performScrollTo().performTextInput("https://owner.example")
@@ -60,7 +58,6 @@ class MobileUiTest {
         ui.onNodeWithText("https://owner.example").assertExists()
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Read-only sample navigation]]
     @Test fun samplePreviewHasSchedulesAndReadOnlyConversation() {
         ui.onAllNodesWithText("Account").onLast().performClick()
         ui.onNodeWithText("Preview with sample data").performScrollTo().performClick()
@@ -79,7 +76,6 @@ class MobileUiTest {
         }
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Sample search]]
     @Test fun sampleSearchFiltersAndClearingRestoresWithoutOwner() {
         ui.runOnUiThread { ViewModelProvider(ui.activity)[MobileViewModel::class.java].demo() }
         ui.onNodeWithTag("list-search").performTextInput("本周")
@@ -93,7 +89,6 @@ class MobileUiTest {
         ui.runOnUiThread { check(ViewModelProvider(ui.activity)[MobileViewModel::class.java].state.value.error == null) }
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Late response cancellation]]
     @Test fun forgettingConnectionRejectsLatePairingResponse() {
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -117,7 +112,6 @@ class MobileUiTest {
         ui.runOnUiThread { check(model.state.value.claim == null && !model.state.value.paired && !model.state.value.busy) }
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Pending pairing cancellation]]
     @Test fun pairingCanBeCancelledWhileWaitingForApproval() {
         lateinit var model: MobileViewModel
         ui.runOnUiThread {

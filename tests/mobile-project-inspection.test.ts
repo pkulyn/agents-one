@@ -43,7 +43,6 @@ afterEach(() => {
 });
 
 describe("Main controlled project inspection", () => {
-  // @lat: [[mobile-data#Mobile data#Project inspection returns bound UTF8 text]]
   it("reads only the fixed project's text with a hash of the actual bytes", () => {
     const { root, service } = fixture();
     mkdirSync(join(root, "src"));
@@ -56,7 +55,6 @@ describe("Main controlled project inspection", () => {
     });
   });
 
-  // @lat: [[mobile-data#Mobile data#Project inspection rejects path escapes and secrets]]
   it("rejects path traversal, Windows alternate forms, device names and private configuration", () => {
     const { root, service } = fixture();
     writeFileSync(join(root, ".env"), "private-secret");
@@ -90,7 +88,6 @@ describe("Main controlled project inspection", () => {
     );
   });
 
-  // @lat: [[mobile-data#Mobile data#Project inspection rejects linked outside data]]
   it("rejects hard links and directory junctions to outside data", () => {
     const { root, outside, service } = fixture();
     writeFileSync(join(outside, "secret.txt"), "private-secret");
@@ -105,7 +102,6 @@ describe("Main controlled project inspection", () => {
     expect(service.list("").entries).toEqual([]);
   });
 
-  // @lat: [[mobile-data#Mobile data#Project inspection rechecks revoked authority and root]]
   it("withholds results after authority revocation or root replacement", () => {
     const { root, base } = fixture();
     writeFileSync(join(root, "file.txt"), "private-secret");
@@ -125,7 +121,6 @@ describe("Main controlled project inspection", () => {
     );
   });
 
-  // @lat: [[mobile-data#Mobile data#Project inspection bounds content and encoding]]
   it("rejects oversized, binary and invalid UTF8 files instead of returning a truncated snapshot", () => {
     const { root, service } = fixture();
     for (const content of [
@@ -142,7 +137,6 @@ describe("Main controlled project inspection", () => {
     expect(service.readText("file.txt").text.length).toBe(256 * 1024);
   });
 
-  // @lat: [[mobile-data#Mobile data#Project inspection directory bounds and privacy]]
   it("omits private names and rejects directories exceeding the bounded scan", () => {
     const { root, service } = fixture();
     mkdirSync(join(root, "src"));

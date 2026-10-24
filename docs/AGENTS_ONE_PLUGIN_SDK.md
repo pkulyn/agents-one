@@ -1,8 +1,6 @@
-# Agents One Plugin SDK 规划与接入标准
+# Agents One Plugin SDK 接入指南
 
-状态：**预览实现（0.1.4）**
-
-日期：2026-08-10
+状态：**预览实现（0.1.5；新增续接修复待真实 Connector 复验）**
 
 ## 目标
 
@@ -76,9 +74,15 @@ node --test .\test\*.test.mjs
 
 该补丁版移除 SSE 响应中显式的 `Connection: keep-alive` hop-by-hop 头，由 Node 与反向代理按请求语义管理连接；同时声明 `Cache-Control: no-cache, no-transform` 与 `X-Accel-Buffering: no`。自动回归通过连接池反向代理覆盖默认连接、`Connection: close`、SSE 后连续创建三个 Run，以及五次 `Last-Event-ID` 恢复。
 
+### 0.1.5
+
+该补丁版让首轮 `adapter.startRun` 接收 Gateway 已确定的 `conversationId`，后续根据同 Runtime、同 conversationId 的持久化 Run 传入独立 Provider `sessionId`。旧客户端曾保存的 Provider ID 可在同 Runtime 内解析为已有 Gateway 对话，不改写历史记录。原始请求的幂等 fingerprint 不变。
+
+OpenCode ACP 兼容对象或布尔形式的 resume 能力与 `loadSession`；恢复可返回空对象，仍保留请求的原生 sessionId。加载期间旧历史通知不拼入本轮答复，恢复失败明确报错。契约依据 [ACP v1 session setup](https://agentclientprotocol.com/protocol/v1/session-setup)。新包需由远端维护者升级并保留原 `statePath`，真实 Connector 的会话续接仍须独立复测。
+
 ### 0.1.2
 
-该补丁版把 Hers-2 现场验收中的通用兼容修复收回 SDK：Gateway 先追加 Adapter 返回的工具、Workspace、推理与最终答复事件，再生成运行终态；能力标志只来自 Adapter 启动时的稳定声明。EventJournal 保留脱敏后的 Workspace `operation`/相对 `path` 和工具时长，请求体读取同时兼容字符串与 Buffer chunk。
+该补丁版包含 Gateway 与事件兼容修复：Gateway 先追加 Adapter 返回的工具、Workspace、推理与最终答复事件，再生成运行终态；能力标志只来自 Adapter 启动时的稳定声明。EventJournal 保留脱敏后的 Workspace `operation`/相对 `path` 和工具时长，请求体读取同时兼容字符串与 Buffer chunk。
 
 Adapter 应在 `capabilities.eventStream` 中只声明真实实现的增强能力，例如：
 
@@ -94,13 +98,6 @@ capabilities: {
 ```
 
 未声明的能力不会出现在 `/capabilities`。升级到0.1.2后，Connector 应删除对 `/capabilities` 的拦截、对 `record.journal` 的直接写入以及对 SDK EventJournal 白名单的本地补丁，让 `getRun()` 通过标准 `events` 返回真实事件。
-
-## 首批试点顺序
-
-1. Hers Relay：已有 Gateway v1、Relay 和 Workspace Grant，是最合适的端到端试点。
-2. OpenClaw：映射 subagent 生命周期、Bridge 工具、技能和 Artifact。
-3. Hermes：把 Dashboard/API 原始事件收敛到同一事件格式，保留其原生 UI 丰富度。
-4. Pi CLI：先使用 JSONL/Hook；随后扩展 Codex 与 Claude Code 的正式事件 mapper。
 
 ## 发布门槛
 

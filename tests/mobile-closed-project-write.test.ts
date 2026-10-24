@@ -177,7 +177,6 @@ function fixture(): {
     pid,
   };
 }
-// @lat: [[mobile-data#Mobile data#Restart closed writer recovery and current observation]]
 it("requires current confirmation after restart and preserves unknown audit while releasing only the original lease", async () => {
   const f = fixture(),
     result = discoverClosedProjectWrites("owner", new Set());
@@ -219,7 +218,6 @@ it("requires current confirmation after restart and preserves unknown audit whil
   expect(readFileSync(f.target, "utf8")).toBe("external change");
   expect(discoverClosedProjectWrites("owner", new Set()).entries).toEqual([]);
 });
-// @lat: [[mobile-data#Mobile data#Restart recovery rejects live or unverifiable host process]]
 it.each(["alive", "EPERM"])(
   "does not recover when the old PID is %s",
   (mode) => {
@@ -235,7 +233,6 @@ it.each(["alive", "EPERM"])(
     expect(existsSync(f.lock)).toBe(true);
   },
 );
-// @lat: [[mobile-data#Mobile data#Restart recovery scope and proof corruption refusal]]
 it.each(["audit", "lock", "proof", "generation", "project"])(
   "keeps the lock when the %s binding changes",
   (field) => {
@@ -257,7 +254,6 @@ it.each(["audit", "lock", "proof", "generation", "project"])(
     expect(existsSync(f.lock)).toBe(true);
   },
 );
-// @lat: [[mobile-data#Mobile data#Restart recovery refuses redirected private proof]]
 it("rejects a junction replacing private audit storage and a restored/profile-switched capability", async () => {
   const f = fixture(),
     entry = discoverClosedProjectWrites("owner", new Set()).entries[0];

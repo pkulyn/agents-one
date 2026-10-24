@@ -54,7 +54,6 @@ afterEach(() => {
   }
 });
 
-// @lat: [[mobile-data#Mobile data#Codex Run writer rejects unsafe private paths]]
 it("refuses non-Main Run ids, project-contained private storage and redirected private directories", () => {
   const f = fixture();
   expect(() =>
@@ -72,7 +71,6 @@ it("refuses non-Main Run ids, project-contained private storage and redirected p
   expect(existsSync(join(f.workspace, "mobile-control"))).toBe(false);
 });
 
-// @lat: [[mobile-data#Mobile data#Codex Run writer shares host coordination across profiles]]
 it("places audit in its fixed profile and uses a common host coordination directory", () => {
   const f = fixture();
   const first = createCodexProjectWriteRunner({ ...f, profile: "owner" });

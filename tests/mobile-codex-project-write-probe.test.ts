@@ -86,7 +86,6 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-// @lat: [[mobile-data#Mobile data#Project write probe actual bytes and policy separation]]
 it("requires actual inside bytes and preserved outside data without granting a complete execution policy", async () => {
   respond();
   const result = await probeCodexProjectWriteFilesystem(input());
@@ -98,7 +97,6 @@ it("requires actual inside bytes and preserved outside data without granting a c
   expect(readdirSync(root)).toEqual([]);
 });
 
-// @lat: [[mobile-data#Mobile data#Project write probe outside and junction detection]]
 it("rejects forged denial flags when either outside data or a junction target was written", async () => {
   for (const path of [
     "../outside/write.txt",
@@ -113,7 +111,6 @@ it("rejects forged denial flags when either outside data or a junction target wa
   }
 });
 
-// @lat: [[mobile-data#Mobile data#Project write probe inside capability refusal]]
 it("rejects a claimed inside capability without the exact actual bytes", async () => {
   respond(good, 0, (cwd) =>
     writeFileSync(join(cwd, "write.txt"), "wrong-bytes"),
@@ -124,7 +121,6 @@ it("rejects a claimed inside capability without the exact actual bytes", async (
   });
 });
 
-// @lat: [[mobile-data#Mobile data#Project write probe strict response and diagnostics]]
 it("rejects malformed, extended, oversized, false and nonzero results without leaking diagnostics", async () => {
   for (const [output, code] of [
     ["not-json", 0],
@@ -142,7 +138,6 @@ it("rejects malformed, extended, oversized, false and nonzero results without le
   }
 });
 
-// @lat: [[mobile-data#Mobile data#Project write probe termination and invalid admission]]
 it("waits for process close after timeout and refuses invalid timeouts before spawning", async () => {
   vi.useFakeTimers();
   const proc = child();

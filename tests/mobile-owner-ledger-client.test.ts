@@ -43,7 +43,6 @@ function childProcess(): FakeChild {
 afterEach(() => worker.fork.mockReset());
 
 describe("mobile Owner ledger worker client", () => {
-  // @lat: [[mobile-data#Mobile data#Independent ledger worker RPC]]
   it("waits for worker readiness, updates ledger metadata and closes through one RPC", async () => {
     const child = childProcess();
     const ledger = new MobileOwnerLedgerClient(

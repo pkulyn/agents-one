@@ -2404,7 +2404,6 @@ describe("agent runtime registry", () => {
     }
   });
 
-  // @lat: [[mobile-data#Mobile data#Main cancellation evidence]]
   it("distinguishes pending Gateway cancellation acknowledgement from an unconfirmed transport failure", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.spyOn(globalThis, "fetch");
@@ -2618,7 +2617,6 @@ describe("agent runtime registry", () => {
     }
   });
 
-  // @lat: [[mobile-data#Mobile data#Desktop claim blocks duplicate dispatch]]
   it("claims the original saved turn before CLI dispatch and starts only one competing request", async () => {
     const { runtimes } = await loadModules();
     const store = await import("../src/main/runtime-conversation-store");
@@ -2682,7 +2680,6 @@ describe("agent runtime registry", () => {
     expect(startCodexProcessMock).toHaveBeenCalledTimes(1);
   });
 
-  // @lat: [[mobile-data#Mobile data#Execution persistence before dispatch]]
   it("persists the original user message and native Run identity before launching the Adapter", async () => {
     const { runtimes } = await loadModules();
     const store = await import("../src/main/runtime-conversation-store");
@@ -2748,7 +2745,6 @@ describe("agent runtime registry", () => {
     expect(startCodexProcessMock).toHaveBeenCalledTimes(1);
   });
 
-  // @lat: [[mobile-data#Mobile data#Persistence failure blocks local dispatch]]
   it("does not launch or register a CLI Run when its persistence barrier fails", async () => {
     const { runtimes } = await loadModules();
     runtimes.saveAgentRuntime({
@@ -2786,7 +2782,6 @@ describe("agent runtime registry", () => {
     expect(runtimes.activeAgentRuntimeTaskCount()).toBe(0);
   });
 
-  // @lat: [[mobile-data#Mobile data#Persistence failure blocks remote dispatch]]
   it("does not create a remote workspace Grant or send HTTP when pre-dispatch persistence fails", async () => {
     const { runtimes } = await loadModules();
     runtimes.saveAgentRuntime({
@@ -2829,7 +2824,6 @@ describe("agent runtime registry", () => {
     }
   });
 
-  // @lat: [[mobile-data#Mobile data#Task validation precedes durable admission]]
   it("rejects unconfirmed full access before creating durable intent", async () => {
     const { runtimes } = await loadModules();
     runtimes.saveAgentRuntime({
@@ -2853,7 +2847,6 @@ describe("agent runtime registry", () => {
     expect(runtimes.activeAgentRuntimeTaskCount()).toBe(0);
   });
 
-  // @lat: [[mobile-data#Mobile data#Main mobile inspection ownership]]
   it("passes mobile inspection only through Main options and rejects other runtimes or modes before admission", async () => {
     const { runtimes } = await loadModules();
     for (const kind of ["codex", "pi"] as const)
@@ -2961,7 +2954,6 @@ describe("agent runtime registry", () => {
     );
   });
 
-  // @lat: [[mobile-data#Mobile data#Main allocated Run binds project writer dispatch]]
   it("passes the allocated Run to the controlled writer only after fixed-project Main admission", async () => {
     const { runtimes } = await loadModules();
     const projects = await import("../src/main/project-folders");
@@ -3032,7 +3024,6 @@ describe("agent runtime registry", () => {
     expect(dispatched.configurationGuard).toBe(configurationGuard);
   });
 
-  // @lat: [[mobile-data#Mobile data#Controlled write cancellation during Native preparation]]
   it("revokes the Run writer while Native is preparing and closes a late process before terminal cancellation", async () => {
     const { runtimes } = await loadModules();
     const projects = await import("../src/main/project-folders");

@@ -20,7 +20,6 @@ class MobileScheduleControlUiTest {
     @Before fun reset() { ui.runOnUiThread { ViewModelProvider(ui.activity)[MobileViewModel::class.java].forget() } }
     private fun show(block: @Composable () -> Unit) { ui.runOnUiThread { ui.activity.setContent(content = block) } }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Schedule stop original native IDs]]
     @Test fun stopsOnlyTheNativeIdOfThePressedButton() {
         val cancelled = mutableListOf<String>()
         show { MaterialTheme { ScheduleRunControls(listOf("native-1", "native-2"), listOf("cancel"), listOf("schedule:cancel"), false) { cancelled.add(it) } } }
@@ -29,19 +28,16 @@ class MobileScheduleControlUiTest {
         check(cancelled == listOf("native-1", "native-2"))
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Schedule stop needs cancellation scope]]
     @Test fun managementAndConversationStopScopesCannotShowScheduleStop() {
         show { MaterialTheme { ScheduleRunControls(listOf("native-1"), listOf("cancel"), listOf("schedule:manage", "conversation:cancel"), false) { error("unexpected stop") } } }
         ui.onNodeWithTag("schedule-stop-native-1").assertDoesNotExist()
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Schedule stop needs original allowed action]]
     @Test fun cancellationScopeCannotOverrideOriginalReadOnlyAction() {
         show { MaterialTheme { ScheduleRunControls(listOf("native-1"), listOf("read"), listOf("schedule:cancel"), false) { error("unexpected stop") } } }
         ui.onNodeWithTag("schedule-stop-native-1").assertDoesNotExist()
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Schedule stop busy admission]]
     @Test fun busyBlocksAnotherStopWhileTheRequestIsPending() {
         val cancelled = mutableListOf<String>()
         show { MaterialTheme { ScheduleRunControls(listOf("native-1"), listOf("cancel"), listOf("schedule:cancel"), true) { cancelled.add(it) } } }

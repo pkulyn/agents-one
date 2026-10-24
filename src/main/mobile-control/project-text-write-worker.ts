@@ -49,7 +49,6 @@ try {
         throw Error();
     },
   );
-  // @lat: [[mobile-data#Mobile data#Native text write commit handshake]]
   const receipt = writer.write(input.path, input.text, input.expectedSha256);
   send({ kind: "applied", receipt });
 } catch {

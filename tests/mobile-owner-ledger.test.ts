@@ -64,7 +64,6 @@ const permission = (): Record<string, unknown> => ({
 });
 
 describe("Owner durable control ledger", () => {
-  // @lat: [[mobile-data#Mobile data#Durable operation receipts]]
   it("persists intent before returning, replays exact results across restart and rejects changed requests", () => {
     const ledger = open();
     const accepted = ledger.accept(request(), {
@@ -101,7 +100,6 @@ describe("Owner durable control ledger", () => {
       applied,
     );
   });
-  // @lat: [[mobile-data#Mobile data#Uncertain operations after restart]]
   it("marks unresolved intent uncertain after restart without replaying or allowing terminal overwrite", () => {
     const ledger = open();
     ledger.accept(request());
@@ -129,7 +127,6 @@ describe("Owner durable control ledger", () => {
     });
     expect(() => recovered.complete(next)).toThrow("idempotency_conflict");
   });
-  // @lat: [[mobile-data#Mobile data#Device operation isolation]]
   it("isolates receipt namespaces even for colon-containing identifiers and unusual object keys", () => {
     const ledger = open();
     const first = request({
@@ -151,7 +148,6 @@ describe("Owner durable control ledger", () => {
       ledger.operations("device")[0].operationId,
     );
   });
-  // @lat: [[mobile-data#Mobile data#Stable message sequence]]
   it("keeps original IDs and sequence while increasing revisions on upsert, without duplicating body storage", () => {
     const ledger = open();
     const first = ledger.indexMessages("constructor", [
@@ -191,7 +187,6 @@ describe("Owner durable control ledger", () => {
         .messageSeq,
     ).toBe("4");
   });
-  // @lat: [[mobile-data#Mobile data#Returned read boundaries]]
   it("accepts only a returned boundary for that device and conversation and never moves read position backwards", () => {
     const ledger = open();
     ledger.indexMessages("constructor", [
@@ -214,7 +209,6 @@ describe("Owner durable control ledger", () => {
     expect(open().readPosition("constructor", "constructor")).toBe("3");
     expect(ledger.readPosition("other", "constructor")).toBe("0");
   });
-  // @lat: [[mobile-data#Mobile data#Bound cursor validity]]
   it("binds signed cursors to device, grant, space, epoch and five-minute lifetime", () => {
     const ledger = open();
     const cursor = ledger.cursor("device-1", "1", {
@@ -243,7 +237,6 @@ describe("Owner durable control ledger", () => {
       "cursor_expired",
     );
   });
-  // @lat: [[mobile-data#Mobile data#Owner event retention]]
   it("persists ordered Owner events, expires gaps and rolls back invalid event writes", () => {
     const ledger = open();
     ledger.publish(permission());
@@ -261,7 +254,6 @@ describe("Owner durable control ledger", () => {
     expect(() => ledger.eventsAfter("1")).toThrow("cursor_expired");
     expect(ledger.eventsAfter("2")).toEqual([]);
   });
-  // @lat: [[mobile-data#Mobile data#Ledger storage integrity]]
   it("preserves extensions and fails closed on malformed state, binding mismatches and invalid read positions", () => {
     open();
     const value = JSON.parse(readFileSync(file, "utf8"));
@@ -291,7 +283,6 @@ describe("Owner durable control ledger", () => {
     writeFileSync(file, "broken");
     expect(() => open()).toThrow("mobile_ledger_invalid");
   });
-  // @lat: [[mobile-data#Mobile data#Ledger failed persistence]]
   it("does not return an accepted receipt or consume a message sequence if atomic replacement fails", () => {
     const ledger = open();
     const saved = readFileSync(file, "utf8");

@@ -55,7 +55,6 @@ afterEach(() => {
   if (state.root) rmSync(state.root, { recursive: true, force: true });
 });
 
-// @lat: [[mobile-data#Mobile data#Schedule production authority remains unproven]]
 it("never authorizes a persisted mobile schedule or advertises executable schedules through the unverified production factory", () => {
   state.root = mkdtempSync(join(tmpdir(), "mobile-schedule-production-"));
   state.profile = "owner";
@@ -107,7 +106,6 @@ it("never authorizes a persisted mobile schedule or advertises executable schedu
   expect(readFileSync(file, "utf8")).toBe("corrupt approval store");
 });
 
-// @lat: [[mobile-data#Mobile data#Schedule unattended consent is mandatory]]
 it("requires unattended consent in addition to current proof and rejects runtime/project swaps through the actual backend", () => {
   state.root = mkdtempSync(join(tmpdir(), "mobile-schedule-authority-"));
   state.profile = "owner";
@@ -180,7 +178,6 @@ it("requires unattended consent in addition to current proof and rejects runtime
     }),
   ).toThrow("resource_not_found");
 });
-// @lat: [[mobile-data#Mobile data#Execution production settings storage]]
 it("uses the actual fixed-profile factory, keeps unproven approvals restricted, and can revoke with CAS while preserving unknown stored fields", () => {
   state.root = mkdtempSync(
     join(tmpdir(), "mobile-policy-settings-production-"),

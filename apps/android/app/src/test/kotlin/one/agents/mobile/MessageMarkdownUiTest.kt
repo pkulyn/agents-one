@@ -22,7 +22,6 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "w360dp-h640dp")
 class MessageMarkdownUiTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
-    // @lat: [[mobile-data#Mobile data#Android Markdown Chinese link failure feedback]]
     @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun chineseLinkFailureShowsSelectableAddress() {
         ui.setContent { MaterialTheme { MessageMarkdown("[打开结果](https://example.com/result)", openLink = { throw IllegalArgumentException("no_browser") }) } }
         ui.waitUntil(5_000) { ui.onAllNodesWithText("打开结果").fetchSemanticsNodes().isNotEmpty() }
@@ -30,7 +29,6 @@ class MessageMarkdownUiTest {
         ui.onNodeWithText("无法打开此链接，可选中并复制。").assertIsDisplayed()
         ui.onNodeWithText("https://example.com/result").assertIsDisplayed()
     }
-    // @lat: [[mobile-data#Mobile data#Android Markdown current streamed content authority]]
     @Test fun newContentSupersedesPendingParsingAndKeepsFinalBody() {
         val source = mutableStateOf("Old **message**")
         ui.setContent { MaterialTheme { MessageMarkdown(source.value) } }
@@ -41,7 +39,6 @@ class MessageMarkdownUiTest {
         ui.onNodeWithText("streaming first line", substring = true).assertDoesNotExist()
         ui.onNodeWithText("Final 完整回复 END-MARKER").assertIsDisplayed()
     }
-    // @lat: [[mobile-data#Mobile data#Android Markdown Compose link interaction]]
     @Test fun realTextLinkInvokesOnlyOnTapAndOpeningFailureHasFeedback() {
         val clicked = mutableListOf<String>()
         ui.setContent { MaterialTheme { MessageMarkdown("[Open result](https://example.com/result)", openLink = { clicked.add(it); throw IllegalArgumentException("no_browser") }) } }
@@ -52,7 +49,6 @@ class MessageMarkdownUiTest {
         ui.onNodeWithText("Could not open this link. You can select and copy it.").assertIsDisplayed()
         ui.onNodeWithText("https://example.com/result").assertIsDisplayed()
     }
-    // @lat: [[mobile-data#Mobile data#Android Markdown narrow large font horizontal access]]
     @Test @GraphicsMode(GraphicsMode.Mode.NATIVE) fun codeAndTableHaveIndependentHorizontalScrollAtLargeFont() {
         val content = "```text\n" + "long-column ".repeat(12) + "CODE-END\n```\n\n| 中文 | Second | Third |\n| --- | --- | --- |\n| 结果 | value | TABLE-END |"
         ui.setContent { MaterialTheme { CompositionLocalProvider(LocalDensity provides Density(1f, 2f)) { MessageMarkdown(content) } } }

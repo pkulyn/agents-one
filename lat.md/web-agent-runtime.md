@@ -2,7 +2,7 @@
 
 Web Agent Runtime 是已落地的本地 Runtime：由 Agents One 托管隔离的网页会话，让用户在任务对话中使用豆包、ChatGPT 与 Grok 网页版，并在需要登录或验证时转入应用内接管。
 
-完整产品范围、状态机、安全边界、测试和实施拆分见 `docs/AGENTS_ONE_WEB_AGENT_RUNTIME_PRD_20260828.md`。新增 Provider 必须通过独立适配器、隔离登录分区、域名白名单和 DOM 回归夹具接入。
+当前公开支持范围见 `KNOWN_ISSUES.md`。新增 Provider 必须通过独立适配器、隔离登录分区、域名白名单和 DOM 回归夹具接入。
 
 ## Release policy
 

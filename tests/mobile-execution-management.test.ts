@@ -82,7 +82,6 @@ beforeEach(() => {
   });
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
-// @lat: [[mobile-data#Mobile data#Execution approval management projection]]
 it("reviews current proof without writes and projects only public selection fields with the same policy revision", () => {
   const result = manager.execute({ action: "review", selection });
   expect(result.review).toMatchObject({
@@ -112,7 +111,6 @@ it("reviews current proof without writes and projects only public selection fiel
     /secret|private-command|runtimeConfigurationHash|enforcementFingerprint|D:\//,
   );
 });
-// @lat: [[mobile-data#Mobile data#Execution review cannot authorize stale proof]]
 it("rechecks evidence for approval after a review and refuses unsupported unattended execution or expired proof", () => {
   expect(
     manager.execute({ action: "review", selection }).review?.verified,
@@ -137,7 +135,6 @@ it("rechecks evidence for approval after a review and refuses unsupported unatte
   ).toThrow("unverified_policy");
   expect(existsSync(file)).toBe(false);
 });
-// @lat: [[mobile-data#Mobile data#Execution management write scope and CAS]]
 it("preserves bytes on a stale revision, restore lock or profile change and revokes without requiring current proof", () => {
   const approved = manager.execute({
     action: "approve",
@@ -168,7 +165,6 @@ it("preserves bytes on a stale revision, restore lock or profile change and revo
     manager.execute({ action: "revoke", id, expectedRevision: "1" }).status,
   ).toMatchObject({ revision: "2", policies: [] });
 });
-// @lat: [[mobile-data#Mobile data#Execution management rejects forged authority]]
 it("rejects paths, unknown actions and fields, fake evidence, malformed revisions and inherited requests before writes", () => {
   const invalid: unknown[] = [
     null,

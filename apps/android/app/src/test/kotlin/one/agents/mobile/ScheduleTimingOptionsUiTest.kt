@@ -17,7 +17,6 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], qualifiers = "en-w360dp-h640dp")
 class ScheduleTimingOptionsUiTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
-    // @lat: [[mobile-data#Mobile data#Android advanced draft survives folding]]
     @Test fun editedExpressionTimeoutAndConcurrencySurviveFoldAndReopen() {
         val expression=mutableStateOf("5m"); val timeout=mutableStateOf("300"); val concurrency=mutableStateOf("skip")
         ui.setContent { MaterialTheme { Column { ScheduleTimingOptions(expression.value, {expression.value=it}, timeout.value, {timeout.value=it}, concurrency.value, {concurrency.value=it}, "en") } } }
@@ -35,7 +34,6 @@ class ScheduleTimingOptionsUiTest {
         ui.onNodeWithText("Schedule expression").assert(hasText("30 9 * * 1-5"))
         ui.onNodeWithText("Timeout in seconds").assert(hasText("450"))
     }
-    // @lat: [[mobile-data#Mobile data#Android advanced original Cron remains exact]]
     @Test fun originalCronAndUnknownConcurrencyCannotBeRewrittenByVisibilityControls() {
         val expression=" 30 09 * * 1-5 "; var callbacks=0
         ui.setContent { MaterialTheme { Column { ScheduleTimingOptions(expression, {callbacks++}, "660", {callbacks++}, "legacy-policy", {callbacks++}, "en") } } }
@@ -48,7 +46,6 @@ class ScheduleTimingOptionsUiTest {
         assertEquals(0,callbacks)
         ui.onNodeWithText("Interval").assert(hasText(expression))
     }
-    // @lat: [[mobile-data#Mobile data#Android advanced Chinese controls]]
     @Test @Config(qualifiers="zh-rCN-w360dp-h640dp") fun chineseAdvancedLabelsAndSelectedSummaryRemainReadable() {
         ui.setContent { MaterialTheme { Column { ScheduleTimingOptions("5m", {}, "300", {}, "replace", {}, "zh-CN") } } }
         ui.onNodeWithText("运行间隔").assertIsDisplayed()

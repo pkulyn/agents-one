@@ -142,7 +142,6 @@ function controller(): MobileConversationController {
   );
 }
 
-// @lat: [[mobile-data#Mobile data#Original Run evidence projection]]
 it("uses real native status and explicit terminal evidence without guessing from ordinary replies or intermediate errors", async () => {
   const original = JSON.stringify(rows);
   await reader.sync();
@@ -186,7 +185,6 @@ it("uses real native status and explicit terminal evidence without guessing from
   await reader.sync();
   expect(JSON.stringify(rows)).toBe(original);
 });
-// @lat: [[mobile-data#Mobile data#Original scheduled Run evidence]]
 it("uses actual original scheduler terminal evidence and rejects conflicting or foreign native results", async () => {
   schedules = [
     {
@@ -222,7 +220,6 @@ it("uses actual original scheduler terminal evidence and rejects conflicting or 
   });
   expect(reader.get("run-1")!.status).toBe("timed_out");
 });
-// @lat: [[mobile-data#Mobile data#Original Run branch identity]]
 it("recognizes explicit inherited branches but rejects unrelated collisions, cycles and private-only records", () => {
   const child = structuredClone(rows[0]);
   child.id = "branch";
@@ -250,7 +247,6 @@ it("recognizes explicit inherited branches but rejects unrelated collisions, cyc
     [],
   );
 });
-// @lat: [[mobile-data#Mobile data#Original Run stable revision and guard]]
 it("keeps revisions across reopening, coalesces refresh and hides deleted sources without writing original data", async () => {
   const bytes = JSON.stringify(rows);
   const first = reader.sync();
@@ -272,7 +268,6 @@ it("keeps revisions across reopening, coalesces refresh and hides deleted source
   rows = [];
   expect(reader.list()).toEqual([]);
 });
-// @lat: [[mobile-data#Mobile data#Original Run controller read and scope]]
 it("exposes original Runs through scoped GET and filtered snapshots with execution disabled", async () => {
   const api = controller();
   expect(api.status().executionAvailable).toBe(false);
@@ -299,7 +294,6 @@ it("exposes original Runs through scoped GET and filtered snapshots with executi
     code: "resource_not_found",
   });
 });
-// @lat: [[mobile-data#Mobile data#Original Run async stream and deletion]]
 it("refreshes original native Runs in SSE and publishes explicit Run deletion without submitting tasks", async () => {
   const api = controller();
   await api.handle(request("/bootstrap"));

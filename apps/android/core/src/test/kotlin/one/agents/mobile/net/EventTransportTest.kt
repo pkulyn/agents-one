@@ -11,7 +11,6 @@ import okhttp3.mockwebserver.SocketPolicy
 
 class EventTransportTest {
     private fun client(server: MockWebServer) = MobileControlClient(server.url("/").newBuilder().host("127.0.0.1").build().toString(), { "test-token" }, true)
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Authenticated SSE transport]]
     @Test fun `real SSE request preserves scoped origin resume headers multiline payload and reports EOF without retries`() {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().addHeader("Content-Type", "text/event-stream; charset=utf-8").setBody(": heartbeat\r\nid: epoch:1\r\nevent: owner.status\r\ndata: {\"first\":true,\r\ndata: \"second\":true}\r\n\r\n"))
@@ -30,7 +29,6 @@ class EventTransportTest {
             subscription.close(); api.close()
         }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#SSE cancellation lifecycle]]
     @Test fun `closing idle SSE cancels without delivering errors or events`() {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)); server.start(InetAddress.getByName("127.0.0.1"), 0)
@@ -40,7 +38,6 @@ class EventTransportTest {
             assertFalse(callback.await(200, TimeUnit.MILLISECONDS)); api.close()
         }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#SSE errors and redirect isolation]]
     @Test fun `SSE surfaces 410 and refuses redirects or JSON success without replaying requests`() {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(410).setBody("{\"error\":{\"code\":\"cursor_expired\",\"message\":\"expired\",\"requestId\":\"request-1\",\"retryable\":false}}"))
@@ -56,7 +53,6 @@ class EventTransportTest {
             assertEquals(3, server.requestCount); api.close()
         }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#SSE bounded frame parsing]]
     @Test fun `oversized line and multibyte frame are rejected while CR framing is retained`() {
         val tooLong = "data: " + "a".repeat(1_048_576)
         assertEquals("payload_too_large", assertFailsWith<MobileApiException> { readSse(tooLong.reader().buffered()) {} }.code)

@@ -73,7 +73,6 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 describe("Owner execution evidence", () => {
-  // @lat: [[mobile-data#Mobile data#Atomic execution intent]]
   it("commits receipt and native identity together, refuses duplicate admission and rolls back invalid transitions", () => {
     const ledger = open();
     ledger.stageExecution(request, prepared);
@@ -104,7 +103,6 @@ describe("Owner execution evidence", () => {
     for (const event of ledger.eventsAfter("0"))
       assertMobileSchema("Event", event);
   });
-  // @lat: [[mobile-data#Mobile data#Execution crash recovery]]
   it("reports crash uncertainty with a new ordered event and retains unknown ledger data without replay", () => {
     const ledger = open();
     ledger.stageExecution(request, prepared);
@@ -128,7 +126,6 @@ describe("Owner execution evidence", () => {
       "reconciliation_required",
     );
   });
-  // @lat: [[mobile-data#Mobile data#Checkpoint integrity]]
   it("rejects changed final identity and malformed persisted checkpoints before touching original history", () => {
     const ledger = open();
     ledger.stageExecution(request, prepared);

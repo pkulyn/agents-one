@@ -16,7 +16,6 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], qualifiers = "w360dp-h640dp")
 class ListFiltersUiTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
-    // @lat: [[mobile-data#Mobile data#Android filter draft admission]]
     @Test fun conversationDraftSelectsOriginalProjectAndArchivedOnlyWhenApplied() {
         var applied: MobileListSelection? = null
         ui.setContent { MaterialTheme { ListFilterDialog(MobileListSelection(), listOf(Project("p1", "Original project", emptyList())), null, false, false, {}, {}, { applied = it }) } }
@@ -26,7 +25,6 @@ class ListFiltersUiTest {
         ui.onNodeWithText("Apply").performClick()
         assertEquals(MobileListSelection("p1", archived = true), applied)
     }
-    // @lat: [[mobile-data#Mobile data#Android Chinese schedule filter isolation]]
     @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun chineseScheduleShowsStatesWithoutArchiveAndMissingProjectCannotApply() {
         var retried = false
         ui.setContent { MaterialTheme { ListFilterDialog(MobileListSelection("missing", "paused"), emptyList(), "owner_offline", true, false, { retried = true }, {}, { fail("Missing project must not be submitted") }) } }

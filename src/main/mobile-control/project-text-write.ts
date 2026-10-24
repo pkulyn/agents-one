@@ -78,7 +78,6 @@ export function createProjectTextWriter(
   }
   return {
     write(input, text, expectedSha256) {
-      // @lat: [[mobile-data#Mobile data#Controlled project text write primitive]]
       guard();
       const parts = projectPathSegments(input, false);
       if (

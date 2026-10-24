@@ -67,7 +67,6 @@ class MobileConversationManagementTest {
         ui.onNodeWithText("Rename").performClick(); ui.onNodeWithText("Title").performTextClearance(); ui.onNodeWithText("Title").performTextInput(value)
     }
 
-    // @lat: [[mobile-data#Mobile data#Android project change original CAS]]
     @Test fun projectChoiceUsesOriginalPatchRevisionAndOnlyOriginalRefreshChangesBinding() {
         val client = Client(); connect(client)
         openActions(); ui.onNodeWithText("Change project").performClick()
@@ -80,7 +79,6 @@ class MobileConversationManagementTest {
         perform { model.refreshConversation() }
         check(model.state.value.selected?.projectId == "p2" && model.state.value.selected?.revision == "2")
     }
-    // @lat: [[mobile-data#Mobile data#Android project clear Chinese null contract]]
     @Test fun chineseProjectClearSendsExplicitNullWithoutOptimisticReplacement() {
         val client = Client(); client.original = conversation().copy(projectId = "p1"); connect(client); perform { model.language("zh-CN") }
         openActions(); ui.onNodeWithText("更改项目").performClick(); ui.onNodeWithText("无项目").performClick(); ui.onNodeWithText("保存").performClick()
@@ -88,7 +86,6 @@ class MobileConversationManagementTest {
         check(client.writes.single().body == buildJsonObject { put("projectId", JsonNull) })
         check(model.state.value.selected?.projectId == "p1")
     }
-    // @lat: [[mobile-data#Mobile data#Android project conflict draft preservation]]
     @Test fun projectRevisionConflictPreservesDraftAndCapturedVersion() {
         val client = Client(); connect(client)
         openActions(); ui.onNodeWithText("Change project").performClick(); ui.onNodeWithText("First project").performClick()
@@ -101,7 +98,6 @@ class MobileConversationManagementTest {
         ui.onNodeWithText("First project").assertExists(); ui.onNodeWithText("Save").assertIsEnabled()
         check(model.state.value.selected?.title == "Desktop changed" && model.state.value.selected?.projectId == null)
     }
-    // @lat: [[mobile-data#Mobile data#Android project change current authority admission]]
     @Test fun runningUnsupportedMissingAndRevokedProjectChangesDoNotWrite() {
         val client = Client(); client.original = conversation().copy(activeRunIds = listOf("original-run")); connect(client)
         openActions(); ui.onNodeWithText("Change project").assertIsNotEnabled()
@@ -116,7 +112,6 @@ class MobileConversationManagementTest {
         ui.onNodeWithText("Change project").assertDoesNotExist()
         perform { model.changeConversationProject(model.state.value.selected!!, "p1") }; check(model.state.value.error == "scope_denied" && client.writes.isEmpty())
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Original conversation rename contract]]
     @Test fun renameUsesOriginalIdentityAndRevisionWithoutOptimisticTitleReplacement() {
         val client = Client(); connect(client); editTitle("  中文标题 English  "); ui.onNodeWithText("Save").performClick(); waitFor { !model.state.value.busy && client.writes.size == 1 }
         val request = client.writes.single()
@@ -126,14 +121,12 @@ class MobileConversationManagementTest {
         ui.onNodeWithText("Rename conversation").assertDoesNotExist()
         client.original = conversation("中文标题 English", "2"); perform { model.refreshConversation() }; check(model.state.value.selected?.title == "中文标题 English")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Rename bilingual draft preservation]]
     @Test fun languageChangeKeepsOriginalRenameDraftAndLocalizedActions() {
         val client = Client(); connect(client); editTitle("草稿 Draft")
         perform { model.language("zh-CN") }; ui.onNodeWithText("重命名对话").assertExists(); ui.onNodeWithText("草稿 Draft").assertExists(); ui.onNodeWithText("保存").assertIsEnabled()
         perform { model.language("en") }; ui.onNodeWithText("Rename conversation").assertExists(); ui.onNodeWithText("草稿 Draft").assertExists(); ui.onNodeWithText("Cancel").performClick()
         check(client.writes.isEmpty())
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Rename revision conflict retains draft]]
     @Test fun conflictPreservesDraftAndOpeningRevisionAfterOwnerChanges() {
         val client = Client(); connect(client); editTitle("My preserved draft")
         client.response = { throw MobileApiException("revision_conflict", 409, "rename-cas-original-52") }
@@ -144,21 +137,18 @@ class MobileConversationManagementTest {
         ui.onNode(hasText("Request ID: rename-cas-original-52") and hasAnyAncestor(isDialog())).performScrollTo().assertIsDisplayed()
         check(client.writes.single().revision == "1" && model.state.value.selected?.title == "Desktop changed")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Conversation management capability admission]]
     @Test fun readonlyOwnerHidesRenameAndRefusesDirectManagementWithoutWriting() {
         val client = Client(); client.manageable = false; connect(client)
         ui.onNodeWithText("Rename").assertDoesNotExist()
         perform { model.renameConversation(model.state.value.selected!!, "Wrong") }; check(model.state.value.error == "scope_denied" && client.writes.isEmpty())
         perform { model.manageConversation(model.state.value.selected!!, "pinned", true) }; check(model.state.value.error == "scope_denied" && client.writes.isEmpty())
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Rename timeout uses original mutation lookup]]
     @Test fun ambiguousSubmissionQueriesSameMutationOnceWithoutReplayingPatch() {
         val client = Client(); connect(client); client.response = { throw java.io.IOException("timeout") }
         var completed = false; perform { model.renameConversation(model.state.value.selected!!, "Renamed") { completed = true } }
         check(completed && client.writes.size == 1 && client.lookups.single() == mapOf("clientMutationId" to client.writes.single().key))
         check(model.state.value.operations.single().clientMutationId == client.writes.single().key && model.state.value.selected?.title == "Original")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Mutation receipt identity refusal]]
     @Test fun wrongDeviceMutationActionOrConversationReceiptCannotClearFormOrBecomeSuccess() {
         var completed = 0
         val changes: List<(OperationReceipt) -> OperationReceipt> = listOf({ it.copy(deviceId = "other-phone") }, { it.copy(clientMutationId = "other-mutation") }, { it.copy(action = "createConversation") }, { it.copy(resourceRef = ResourceRef("conversation", "foreign")) })
@@ -170,7 +160,6 @@ class MobileConversationManagementTest {
         }
         check(completed == 0 && model.state.value.selected?.title == "Original")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Uncertain submission retains original mutation identity]]
     @Test fun repeatedConfirmationOnlyLooksUpOriginalUnknownWriteUntilReceiptArrives() {
         val client = Client(); connect(client); client.response = { throw java.io.IOException("timeout") }; client.lookup = { Json.encodeToJsonElement(OperationReceiptPage(emptyList(), null, "1")) }
         repeat(3) { perform { model.renameConversation(model.state.value.selected!!, "Draft") }; check(model.state.value.error == "reconciliation_required") }
@@ -179,7 +168,6 @@ class MobileConversationManagementTest {
         perform { model.renameConversation(model.state.value.selected!!, "Draft") { completed = true } }
         check(completed && client.writes.size == 1 && model.state.value.error == null)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Changed uncertain draft cannot borrow original receipt]]
     @Test fun changedDraftQueriesOldIdentityWithoutClosingNewDraftOrSendingNewPatch() {
         val client = Client(); connect(client); client.response = { throw java.io.IOException("timeout") }; client.lookup = { Json.encodeToJsonElement(OperationReceiptPage(emptyList(), null, "1")) }
         perform { model.renameConversation(model.state.value.selected!!, "Old draft") }
@@ -190,7 +178,6 @@ class MobileConversationManagementTest {
         perform { model.renameConversation(model.state.value.selected!!, "New draft") { completed = true } }
         check(completed && client.writes.size == 2 && client.writes[0].key != client.writes[1].key)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Local validation precedes uncertain write tracking]]
     @Test fun localRevisionFailureDoesNotInstallUnknownSlotOrSendLookup() {
         val client = Client(); connect(client)
         perform { model.renameConversation(model.state.value.selected!!.copy(revision = "invalid"), "Draft") }
@@ -198,7 +185,6 @@ class MobileConversationManagementTest {
         perform { model.renameConversation(model.state.value.selected!!, "Draft") }
         check(model.state.value.error == null && client.writes.size == 1 && client.lookups.isEmpty())
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Disconnect clears only local uncertain tracking]]
     @Test fun explicitDisconnectDropsMemoryTrackingWithoutReplayingOwnerMutation() {
         val client = Client(); connect(client); client.response = { throw java.io.IOException("timeout") }; client.lookup = { Json.encodeToJsonElement(OperationReceiptPage(emptyList(), null, "1")) }
         perform { model.renameConversation(model.state.value.selected!!, "Draft") }; val oldKey = client.writes.single().key
@@ -206,14 +192,12 @@ class MobileConversationManagementTest {
         connect(client); client.response = { Json.encodeToJsonElement(receipt(it.key)) }; perform { model.renameConversation(model.state.value.selected!!, "New explicit intent") }
         check(client.writes.size == 2 && client.writes.last().key != oldKey && client.lookups.size == 1)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Invalid write response retains reconciliation identity]]
     @Test fun wrongWriteReceiptCannotCauseSecondWriteOnConfirmation() {
         val client = Client(); connect(client); client.response = { Json.encodeToJsonElement(receipt("wrong-mutation")) }
         perform { model.renameConversation(model.state.value.selected!!, "Draft") }; check(model.state.value.error == "protocol_incompatible")
         perform { model.renameConversation(model.state.value.selected!!, "Draft") }
         check(client.writes.size == 1 && client.lookups.single()["clientMutationId"] == client.writes.single().key && model.state.value.error == null)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Definite rejection releases uncertain slot]]
     @Test fun definiteRevisionRejectionAllowsReviewedNewIntent() {
         val client = Client(); connect(client)
         for (code in listOf("revision_conflict", "unverified_policy", "policy_revoked")) {
@@ -222,7 +206,6 @@ class MobileConversationManagementTest {
             check(client.writes.takeLast(2).map { it.key }.distinct().size == 2 && client.lookups.isEmpty())
         }
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Uncertain mutation survives Owner refresh and restore epoch]]
     @Test fun refreshingOwnerKeepsPendingIdentityAndChangedEpochCannotReplayIt() {
         val client = Client(); connect(client); client.response = { throw java.io.IOException("timeout") }; client.lookup = { Json.encodeToJsonElement(OperationReceiptPage(emptyList(), null, "1")) }
         perform { model.renameConversation(model.state.value.selected!!, "Draft") }
@@ -231,7 +214,6 @@ class MobileConversationManagementTest {
         client.epoch = "epoch-2"; perform { model.refresh() }; perform { model.openConversation(model.state.value.conversations.single()) }; perform { model.renameConversation(model.state.value.selected!!, "Draft") }
         check(client.writes.size == 1 && client.lookups.size == 2 && model.state.value.error == "reconciliation_required")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Uncertain mutation Owner isolation]]
     @Test fun anotherOwnerDoesNotConsumeOldPendingWriteAndReturningQueriesOldIdentity() {
         val client = Client(); connect(client); client.response = { throw java.io.IOException("timeout") }; client.lookup = { Json.encodeToJsonElement(OperationReceiptPage(emptyList(), null, "1")) }
         perform { model.renameConversation(model.state.value.selected!!, "Draft") }
@@ -241,26 +223,22 @@ class MobileConversationManagementTest {
         client.ownerId = "owner-1"; perform { model.selectOwner(owner()) }; perform { model.openConversation(model.state.value.conversations.single()) }; perform { model.renameConversation(model.state.value.selected!!, "Draft") }
         check(client.writes.size == 2 && client.lookups.last()["clientMutationId"] == client.writes.first().key && model.state.value.error == "reconciliation_required")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Mutation lookup revocation propagation]]
     @Test fun revokedCredentialDuringTimeoutLookupClearsConnectionInsteadOfBecomingUncertain() {
         val client = Client(); connect(client); client.response = { throw java.io.IOException("timeout") }; client.lookup = { throw MobileApiException("revoked", 403) }
         perform { model.renameConversation(model.state.value.selected!!, "Draft") }
         check(model.state.value.error == "revoked" && model.state.value.owner == null && model.state.value.selected == null && client.writes.size == 1)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Rename Unicode title bounds]]
     @Test fun titleLimitCountsUnicodeCharactersAndRejectsBlankOrOversizedWithoutWriting() {
         val client = Client(); connect(client)
         for (title in listOf("   ", "😀".repeat(161))) { perform { model.renameConversation(model.state.value.selected!!, title) }; check(model.state.value.error == "invalid_input" && client.writes.isEmpty()) }
         perform { model.renameConversation(model.state.value.selected!!, "😀".repeat(160)) }
         check(client.writes.single().body?.get("title")?.jsonPrimitive?.content == "😀".repeat(160) && model.state.value.error == null)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Unknown rename outcome retains draft]]
     @Test fun unknownOutcomeKeepsDraftAndDoesNotAutomaticallyRetryMutation() {
         val client = Client(); connect(client); client.response = { throw java.io.IOException("timeout") }; client.lookup = { Json.encodeToJsonElement(OperationReceiptPage(emptyList(), null, "1")) }
         editTitle("Unknown outcome draft"); ui.onNodeWithText("Save").performClick(); waitFor { model.state.value.error == "reconciliation_required" && !model.state.value.busy }
         ui.onNodeWithText("Unknown outcome draft").assertExists(); check(client.writes.size == 1 && client.lookups.size == 1 && model.state.value.operations.isEmpty())
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Late rename receipt after navigation]]
     @Test fun lateReceiptDoesNotInvokeClosedPageCallbackOrReopenConversation() {
         val client = Client(); connect(client); val entered = CountDownLatch(1); val release = CountDownLatch(1); var completed = false
         client.response = { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)); Json.encodeToJsonElement(receipt(it.key)) }
@@ -294,10 +272,8 @@ class MobileConversationManagementTest {
         ui.onNodeWithText(if(language=="zh-CN")"取消" else "Cancel").performClick()
         check(client.writes.isEmpty())
     }
-    // @lat: [[mobile-data#Mobile data#Android conversation actions narrow large font]]
     @Test @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     fun conversationActionsRemainReadableAndTouchableAt360dpAnd200Percent(){largeFontActions("en")}
-    // @lat: [[mobile-data#Mobile data#Android conversation actions Chinese landscape large font]]
     @Test @Config(sdk=[35],qualifiers="zh-rCN-w640dp-h360dp-land") @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     fun chineseLandscapeConversationActionsRetainTouchBoundsAt200Percent(){largeFontActions("zh-CN")}
 }

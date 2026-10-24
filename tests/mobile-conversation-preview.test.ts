@@ -7,7 +7,6 @@ import { assertMobileSchema } from "../src/shared/mobile-control";
 import type { RuntimeConversation } from "../src/shared/runtime-conversations";
 
 describe("mobile original conversation preview", () => {
-  // @lat: [[mobile-data#Mobile data#Conversation preview Unicode and original body preservation]]
   it("bounds the last nonempty original excerpt without cutting Unicode or changing full body", () => {
     const text = "😀".repeat(200) + " original ending";
     const messages = [
@@ -45,7 +44,6 @@ describe("mobile original conversation preview", () => {
       }),
     ).not.toThrow();
   });
-  // @lat: [[mobile-data#Mobile data#Conversation preview visibility and platform redaction]]
   it("uses only durable user-visible source messages and keeps internal entries out of excerpts", () => {
     const value: RuntimeConversation = {
       id: "c",

@@ -29,7 +29,6 @@ function setup(active = true) {
     receive: (m: any) => listener(m),
   };
 }
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Independent transport dispatch safety]]
 it("rechecks delayed authorization before Main dispatch and preserves exact response DTO", async () => {
   const denied = setup(false);
   denied.receive({ kind: "call", id: 1, method: "handle", request: {} });
@@ -45,7 +44,6 @@ it("rechecks delayed authorization before Main dispatch and preserves exact resp
   expect(allowed.sent.at(-1).result.body).toEqual({ original: true });
   allowed.bridge.close();
 });
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Independent transport stream credit]]
 it("pulls only requested stream items and cancellation aborts source without redispatch", async () => {
   const s = setup();
   const pull = vi.fn(async () => ({
@@ -76,7 +74,6 @@ it("pulls only requested stream items and cancellation aborts source without red
   expect(s.handle).toHaveBeenCalledOnce();
   s.bridge.close();
 });
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Independent transport bounded IPC]]
 it("rejects an oversized DTO before authorization or execution", async () => {
   const s = setup();
   s.receive({
@@ -91,7 +88,6 @@ it("rejects an oversized DTO before authorization or execution", async () => {
   s.bridge.close();
 });
 
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Independent transport response cleanup]]
 it("releases and aborts a stream when its initial response exceeds the IPC budget", async () => {
   const s = setup();
   let signal: AbortSignal;
@@ -116,7 +112,6 @@ it("releases and aborts a stream when its initial response exceeds the IPC budge
   s.bridge.close();
 });
 
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Main failure diagnostics privacy]]
 it("records route identity and fixed error type without body, stack or error text", async () => {
   const s = setup();
   s.handle.mockRejectedValueOnce(new TypeError("private-task-and-secret"));

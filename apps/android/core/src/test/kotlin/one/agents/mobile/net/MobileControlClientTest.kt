@@ -9,7 +9,6 @@ import okhttp3.mockwebserver.MockWebServer
 import one.agents.mobile.contract.*
 
 class MobileControlClientTest {
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Dedicated read acknowledgement transport]]
     @Test fun `read acknowledgements use scoped authenticated POST with exact sequence and no business receipt headers`() {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().addHeader("Content-Type", "application/json").setBody("{\"conversationId\":\"original\",\"lastReadMessageSeq\":\"9007199254740993\"}"))

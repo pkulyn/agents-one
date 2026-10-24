@@ -87,7 +87,6 @@ function native(profile = "owner", id = "session-1"): void {
 }
 
 describe("profile-bound original desktop source repository", () => {
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Legacy collaboration task identity]]
   it("recognizes the desktop taskId-as-conversationId legacy link only for the matching Runtime", async () => {
     const original=conversation();
     original.runtimeSessionId="provider-session";
@@ -107,7 +106,6 @@ describe("profile-bound original desktop source repository", () => {
     seed("task-collaborations.json",{records:[{...record,sourceRuntimeId:"foreign-runtime"}]});
     expect(()=>repository.list()).toThrow("requires_owner_action");
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Absent native history schema]]
   it("reads configured Runtime conversations and cached overlays when an existing desktop database has no Hermes sessions table", async () => {
     const file=seed("runtime-conversations.json",{conversations:[conversation()]});
     seed("sessions.json",{sessions:[{id:"cached-native",source:"cli",startedAt:1,title:"Cached native"}]});
@@ -124,7 +122,6 @@ describe("profile-bound original desktop source repository", () => {
     expect(readFileSync(dbFile)).toEqual(before);
     expect(readFileSync(file)).toEqual(beforeRuntime);
   });
-  // @lat: [[mobile-data#Mobile data#Native continuation identity]]
   it("retains signed desktop continuation message IDs while excluding private reasoning and attachment metadata", async () => {
     native();
     const prefix = [
@@ -181,7 +178,6 @@ describe("profile-bound original desktop source repository", () => {
       messageSeq: "1",
     });
   });
-  // @lat: [[mobile-data#Mobile data#Original source projection]]
   it("reads all four original source kinds without exporting unknown metadata, private reasoning or tool payloads", async () => {
     const runtime = conversation();
     runtime.workspace = "D:\\synthetic\\project";
@@ -276,7 +272,6 @@ describe("profile-bound original desktop source repository", () => {
       "original-event",
     );
   });
-  // @lat: [[mobile-data#Mobile data#Fixed profile native reads]]
   it("uses a separate readonly database for the bound profile and leaves original files unchanged", async () => {
     native();
     native("other", "other-session");
@@ -300,7 +295,6 @@ describe("profile-bound original desktop source repository", () => {
     expect(readFileSync(file, "utf8")).toBe(original);
     expect(readFileSync(dbFile)).toEqual(before);
   });
-  // @lat: [[mobile-data#Mobile data#Linked source identity]]
   it("retains the original linked conversation identity and does not hide unrelated provider sessions", async () => {
     native();
     const runtime = {
@@ -344,7 +338,6 @@ describe("profile-bound original desktop source repository", () => {
         .sort(),
     ).toEqual(["conversation-1", "session-1"]);
   });
-  // @lat: [[mobile-data#Mobile data#Original store control patches]]
   it("patches the original versioned record while preserving source IDs, messages and extensions", async () => {
     const runtime = conversation();
     const file = seed("runtime-conversations.json", {
@@ -377,7 +370,6 @@ describe("profile-bound original desktop source repository", () => {
       conversations: [{ opaque: "preserve", messages: runtime.messages }],
     });
   });
-  // @lat: [[mobile-data#Mobile data#Legacy source restrictions]]
   it("rejects unverified native/collaboration writes and missing projects instead of creating replacement records", async () => {
     native();
     seed("runtime-conversations.json", { conversations: [conversation()] });
@@ -397,7 +389,6 @@ describe("profile-bound original desktop source repository", () => {
       restrictionReason: "requires_owner_action",
     });
   });
-  // @lat: [[mobile-data#Mobile data#Source corruption and collisions]]
   it("fails explicitly on corrupt source files and cross-source ID collisions", async () => {
     const file = seed("runtime-conversations.json", {
       conversations: [conversation()],

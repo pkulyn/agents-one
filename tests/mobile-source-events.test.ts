@@ -130,7 +130,6 @@ async function sync(): Promise<void> {
   await controller.handle(request("/snapshots"));
 }
 
-// @lat: [[mobile-data#Mobile data#Source event checkpoint and identity]]
 it("seeds silently, publishes full original changes once, and resumes after reopening the ledger", async () => {
   await sync();
   expect(ledger.changeSeq).toBe("0");
@@ -164,7 +163,6 @@ it("seeds silently, publishes full original changes once, and resumes after reop
     payload: { id: "new-original-message", messageSeq: "2" },
   });
 });
-// @lat: [[mobile-data#Mobile data#Source execution revisions and deletions]]
 it("publishes only changed executions and explicit original deletions", async () => {
   await sync();
   schedules[0].name = "Renamed";
@@ -205,7 +203,6 @@ it("publishes only changed executions and explicit original deletions", async ()
   await sync();
   expect(ledger.eventsAfter(seq)).toHaveLength(4);
 });
-// @lat: [[mobile-data#Mobile data#Source failure preserves event checkpoint]]
 it("does not publish false deletions on source or guard failures and retries an atomic checkpoint failure", async () => {
   await sync();
   const initial = readFileSync(file, "utf8");
@@ -239,7 +236,6 @@ it("does not publish false deletions on source or guard failures and retries an 
   writeFileSync(file, JSON.stringify(persisted));
   expect(() => setup()).toThrow("mobile_ledger_invalid");
 });
-// @lat: [[mobile-data#Mobile data#Source event delivery scope and read acknowledgement]]
 it("filters deletion topics and registers only authorized offered message sequences for read acknowledgement", async () => {
   await sync();
   const req = request("/events", ["conversation:read"]);
@@ -264,7 +260,6 @@ it("filters deletion topics and registers only authorized offered message sequen
   expect((await pending).done).toBe(true);
 });
 
-// @lat: [[mobile-data#Mobile data#Source event atomic persistence retry]]
 it("rolls back event sequence and checkpoints on atomic file replacement failure", async () => {
   await sync();
   const initial = readFileSync(file, "utf8");

@@ -18,7 +18,6 @@ class ScheduleMetadataUiTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
     private fun execution(scheduleId: String = "plan-1") = ScheduleExecution("original-run", scheduleId, "scheduled", triggeredAt = "2026-10-05T00:00:00Z", status = "running", summary = "Original running summary")
 
-    // @lat: [[mobile-data#Mobile data#Android schedule running and Owner calendar]]
     @Test fun runningRecordAndNextTimeKeepOriginalStatusAndOwnerCalendarDate() {
         ui.setContent { MaterialTheme { ScheduleMetadata("plan-1", "2026-10-05T01:00:00Z", "America/New_York", ScheduleRecentExecution(execution()), "en") } }
         ui.onNodeWithText("Next run: Oct 4, 2026, 9:00:00 PM").assertIsDisplayed()
@@ -27,7 +26,6 @@ class ScheduleMetadataUiTest {
         ui.onAllNodesWithText("Succeeded", substring = true).assertCountEquals(0)
     }
 
-    // @lat: [[mobile-data#Mobile data#Android schedule unknown versus known empty]]
     @Test fun legacyMissingFieldAndKnownEmptyHistoryRemainDifferent() {
         val recent = mutableStateOf<ScheduleRecentExecution?>(null)
         ui.setContent { MaterialTheme { ScheduleMetadata("plan-1", null, "Asia/Shanghai", recent.value, "en") } }
@@ -39,7 +37,6 @@ class ScheduleMetadataUiTest {
         ui.onNodeWithText("Latest execution unavailable. Open execution history.").assertDoesNotExist()
     }
 
-    // @lat: [[mobile-data#Mobile data#Android schedule foreign recent record hidden]]
     @Test fun foreignScheduleCannotRenderItsSummaryTimeOrStatus() {
         ui.setContent { MaterialTheme { ScheduleMetadata("plan-1", null, "Asia/Shanghai", ScheduleRecentExecution(execution("foreign-plan")), "en") } }
         ui.onNodeWithText("Latest execution unavailable. Open execution history.").assertIsDisplayed()
@@ -48,7 +45,6 @@ class ScheduleMetadataUiTest {
         ui.onNodeWithText("No executions yet").assertDoesNotExist()
     }
 
-    // @lat: [[mobile-data#Mobile data#Android schedule Chinese original metadata]]
     @Test @Config(qualifiers = "zh-rCN-w360dp-h640dp") fun chineseRecentExecutionLabelsUseOriginalOwnerTime() {
         ui.setContent { MaterialTheme { ScheduleMetadata("plan-1", null, "Asia/Shanghai", ScheduleRecentExecution(execution().copy(status = "failed", summary = "原失败摘要")), "zh-CN") } }
         ui.onNodeWithText("暂无下次运行时间").assertIsDisplayed()

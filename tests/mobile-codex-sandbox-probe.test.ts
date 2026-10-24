@@ -47,7 +47,6 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 describe("Codex filesystem evidence", () => {
-  // @lat: [[mobile-data#Mobile data#Sandbox probe strict result and policy separation]]
   it("requires actual denial evidence and never grants complete execution authority", async () => {
     mock.spawn.mockImplementation((_command, args: string[]) => {
       expect(args.slice(0, 3)).toEqual([
@@ -71,7 +70,6 @@ describe("Codex filesystem evidence", () => {
     });
     expect(readdirSync(root)).toEqual([]);
   });
-  // @lat: [[mobile-data#Mobile data#Sandbox probe write detection]]
   it("rejects a denial response when a target actually exists", async () => {
     mock.spawn.mockImplementation(
       (_command, _args, options: { cwd: string }) => {
@@ -92,7 +90,6 @@ describe("Codex filesystem evidence", () => {
     });
     expect(readdirSync(root)).toEqual([]);
   });
-  // @lat: [[mobile-data#Mobile data#Sandbox probe malformed and failed execution]]
   it("rejects invalid, oversized, extended and failed results without exposing stderr", async () => {
     for (const [output, code] of [
       ["invalid", 0],
@@ -118,7 +115,6 @@ describe("Codex filesystem evidence", () => {
       expect(readdirSync(root)).toEqual([]);
     }
   });
-  // @lat: [[mobile-data#Mobile data#Sandbox probe process termination]]
   it("awaits close after timed termination and reports launch failure", async () => {
     vi.useFakeTimers();
     const proc = child();

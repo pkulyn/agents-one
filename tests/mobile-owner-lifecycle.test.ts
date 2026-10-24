@@ -93,7 +93,6 @@ function fixture(): {
   };
 }
 describe("production Owner lifecycle", () => {
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Main lifecycle and scope isolation]]
   it("starts once, refreshes unchanged binding without rebuilding ledger handlers, and stops once", async () => {
     const f = fixture();
     f.lifecycle.start();
@@ -198,7 +197,6 @@ describe("production Owner lifecycle", () => {
     expect(f.transports).toHaveLength(2);
     expect(f.factory).toHaveBeenCalledTimes(1);
   });
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Transient management failure]]
   it("keeps the signed tunnel on a transient management outage but honors disable and scope changes", async () => {
     const f = fixture();
     f.lifecycle.start();

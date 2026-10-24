@@ -16,7 +16,6 @@ afterEach(() => {
 });
 
 describe("OpenCode no-project workspace", () => {
-  // @lat: [[tests#Agents One runtime working directories#OpenCode no-project cwd]]
   it("uses the Agents One profile data root instead of the system temp directory", () => {
     userData = mkdtempSync(join(tmpdir(), "agents-one-opencode-cwd-"));
     vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", userData);

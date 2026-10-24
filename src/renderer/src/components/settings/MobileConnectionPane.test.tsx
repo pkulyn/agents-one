@@ -36,7 +36,6 @@ const connected: MobileConnectionResult = {
 };
 afterEach(() => vi.restoreAllMocks());
 describe("phone connection settings", () => {
-  // @lat: [[mobile-owner-tunnel#Owner tunnel tests#Pairing background refresh availability]]
   it("keeps invitation available during background polling and ignores its stale response after an action", async () => {
     vi.useFakeTimers();
     try {
@@ -55,7 +54,6 @@ describe("phone connection settings", () => {
       expect(invite).toBeEnabled();
     } finally {vi.useRealTimers();}
   });
-  // @lat: [[mobile-data#Mobile data#Pairing defaults to declared phone operations]]
   it("requires phrase confirmation before approving and sends selected grants", async () => {
     const manage = vi.fn().mockResolvedValue(connected);
     Object.assign(window, { agentsOneAPI: { manageMobileConnection: manage } });

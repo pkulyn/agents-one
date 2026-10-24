@@ -40,7 +40,6 @@ let now: number;
 let repository: ConversationRepository;
 let ledger: MobileOwnerLedger;
 let controller: MobileConversationController;
-// @lat: [[mobile-owner-tunnel#Owner tunnel tests#Current execution availability]]
 it("rechecks execution availability for every status as proof appears and expires", () => {
   let verified = false;
   const execution = new MobileExecutionCoordinator(
@@ -172,7 +171,6 @@ const body = async (value: OwnerControlRequest): Promise<Json> =>
 const items = (value: Json): Json[] => value.items as Json[];
 
 describe("real desktop conversation control routes", () => {
-  // @lat: [[mobile-data#Mobile data#Original conversation continuation availability]]
   it("offers advance for an original conversation only with matching execution authority and device scope", async () => {
     const execution = new MobileExecutionCoordinator(
       { get: () => null, projectId: () => undefined, begin: vi.fn(), finish: vi.fn() },
@@ -195,7 +193,6 @@ describe("real desktop conversation control routes", () => {
     expect((await body(input)).allowedActions).not.toContain("advance");
     expect(readFileSync(file(), "utf8")).toBe(JSON.stringify({ conversations: rows() }));
   });
-  // @lat: [[mobile-data#Mobile data#Conversation preview authenticated frozen original reads]]
   it("returns authorized original previews with frozen pages and leaves source bytes and read position unchanged", async () => {
     const original = readFileSync(file());
     const first = await body(
@@ -221,7 +218,6 @@ describe("real desktop conversation control routes", () => {
     expect(readFileSync(file())).toEqual(beforeRead);
     expect(original.equals(beforeRead)).toBe(false);
   });
-  // @lat: [[mobile-data#Mobile data#Runtime avatar Owner authorization]]
   it("reads the current avatar through the Owner route and rejects revoked or cross-source requests without changing original history", async () => {
     const original = readFileSync(file());
     const runtime = {
@@ -273,7 +269,6 @@ describe("real desktop conversation control routes", () => {
     expect(readFileSync(file())).toEqual(original);
     expect(backend.start).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Catalog frozen pages and device actions]]
   it("freezes directory pages and intersects executable actions with available handlers and device scopes", async () => {
     let runtimeRows: Json[] = ["one", "two"].map((id) => ({
       id,
@@ -352,7 +347,6 @@ describe("real desktop conversation control routes", () => {
     another.device.deviceId = "another-device";
     await expect(body(another)).rejects.toThrow("cursor_expired");
   });
-  // @lat: [[mobile-data#Mobile data#Uncertain creation never duplicates]]
   it("retains the allocated original ID when a creation write succeeds but its acknowledgement is lost", async () => {
     const { DesktopConversationCreation } =
       await import("../src/main/mobile-control/conversation-creation");
@@ -405,7 +399,6 @@ describe("real desktop conversation control routes", () => {
     expect(creation.create).toHaveBeenCalledTimes(1);
     expect(repository.list()).toHaveLength(4);
   });
-  // @lat: [[mobile-data#Mobile data#Empty original creation replay]]
   it("creates an empty original record with desktop appearance and replays the same durable ID without dispatch", async () => {
     const { DesktopConversationCreation } =
       await import("../src/main/mobile-control/conversation-creation");
@@ -491,7 +484,6 @@ describe("real desktop conversation control routes", () => {
     ).rejects.toThrow("idempotency_conflict");
   });
 
-  // @lat: [[mobile-data#Mobile data#Explicit full-access conversation creation]]
   it("persists full access only when a generated desktop task policy carries confirmation", async () => {
     const { DesktopConversationCreation } =
       await import("../src/main/mobile-control/conversation-creation");
@@ -551,7 +543,6 @@ describe("real desktop conversation control routes", () => {
     })).toThrow("unverified_policy");
   });
 
-  // @lat: [[mobile-data#Mobile data#Creation authorization revalidation]]
   it("refuses unapproved and revoked creation policies before saving any original record", async () => {
     const { DesktopConversationCreation } =
       await import("../src/main/mobile-control/conversation-creation");
@@ -594,7 +585,6 @@ describe("real desktop conversation control routes", () => {
     expect(readFileSync(file(), "utf8")).toBe(bytes);
     expect(backend.start).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Restricted history contract visibility]]
   it("returns readable restricted histories with the contract activity and attention filtering", async () => {
     const original = repository.list()[0];
     vi.spyOn(repository, "list").mockReturnValue([
@@ -636,7 +626,6 @@ describe("real desktop conversation control routes", () => {
     });
   });
 
-  // @lat: [[mobile-data#Mobile data#Frozen conversation pagination]]
   it("freezes sort, filters and titles across pages even when the desktop updates the original record", async () => {
     const first = await body(
       request("/conversations", "GET", { query: { limit: "1" } }),
@@ -680,7 +669,6 @@ describe("real desktop conversation control routes", () => {
       ),
     ).rejects.toThrow("cursor_expired");
   });
-  // @lat: [[mobile-data#Mobile data#Frozen message pagination]]
   it("returns the latest 50 messages, then older pages of the same snapshot without duplicating live appends", async () => {
     const first = await body(request("/conversations/a/messages"));
     expect(items(first)).toHaveLength(50);
@@ -738,7 +726,6 @@ describe("real desktop conversation control routes", () => {
       messageSeq: "121",
     });
   });
-  // @lat: [[mobile-data#Mobile data#Control read visibility]]
   it("marks only returned visible boundaries and isolates read positions for different phones", async () => {
     await body(request("/conversations/a/messages"));
     await expect(
@@ -762,7 +749,6 @@ describe("real desktop conversation control routes", () => {
     other.device = { ...other.device, deviceId: "device-2" };
     expect(await body(other)).toMatchObject({ lastReadMessageSeq: "0" });
   });
-  // @lat: [[mobile-data#Mobile data#Original conversation mutation receipts]]
   it("applies a versioned mutation once and replays its persisted receipt before checking the current source revision", async () => {
     const mutation = request("/conversations/a", "PATCH", {
       headers: { "idempotency-key": "mutation-1", "if-match": '"1"' },
@@ -796,7 +782,6 @@ describe("real desktop conversation control routes", () => {
     other.device = { ...other.device, deviceId: "device-2" };
     await expect(body(other)).rejects.toThrow("resource_not_found");
   });
-  // @lat: [[mobile-data#Mobile data#Control scope and revision validation]]
   it("enforces scopes, Owner binding, signed route identity, schema and If-Match before changing business data", async () => {
     const original = readFileSync(file(), "utf8");
     const base = request("/conversations/a", "PATCH", {
@@ -853,7 +838,6 @@ describe("real desktop conversation control routes", () => {
     foreign.params = resolveMobileRoute("GET", foreign.path)!.params;
     await expect(body(foreign)).rejects.toThrow("scope_denied");
   });
-  // @lat: [[mobile-data#Mobile data#Original content search]]
   it("searches original visible message content and supports archive and project filters", async () => {
     const result = await body(
       request("/conversations/search", "POST", {

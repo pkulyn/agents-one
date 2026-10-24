@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm run install:clean
 
+      - name: Check public documentation scope
+        run: npm run docs:check
+
       - name: Check formatting
         run: npm run format:check
 
@@ -48,7 +51,7 @@ jobs:
         run: npm run lint
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        run: npm run audit:ci
 
       - name: Build
         run: npm run build

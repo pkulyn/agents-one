@@ -182,7 +182,6 @@ afterEach(() => {
   rmSync(state.root, { recursive: true, force: true });
 });
 describe("Main combined Codex inspection verifier", () => {
-  // @lat: [[mobile-data#Mobile data#Main controlled write proof and worker approval binding]]
   it("requires full worker and filesystem evidence, persists worker identity and invalidates replaced code", async () => {
     state.project = join(state.root, "project");
     mkdirSync(state.project);
@@ -224,7 +223,6 @@ describe("Main combined Codex inspection verifier", () => {
     expect(readFileSync(store.file, "utf8")).toBe(before);
   });
 
-  // @lat: [[mobile-data#Mobile data#Incomplete write probes never approve]]
   it("refuses write authority without a project or with missing OS/worker proof", async () => {
     const runtime = state.runtimes[0],
       input = { ...selection, mode: "project_write" as const };
@@ -271,7 +269,6 @@ describe("Main combined Codex inspection verifier", () => {
       existsSync(join(state.root, "desktop", "mobile-execution-policies.json")),
     ).toBe(false);
   });
-  // @lat: [[mobile-data#Mobile data#Main unattended controlled write approval binding]]
   it("requires independently prepared scheduled write proof, explicit consent and unchanged worker bytes", async () => {
     state.project = join(state.root, "project");
     mkdirSync(state.project);
@@ -318,7 +315,6 @@ describe("Main combined Codex inspection verifier", () => {
       "unverified_policy",
     );
   });
-  // @lat: [[mobile-data#Mobile data#Main unattended inspection consent binding]]
   it("requires independently prepared unattended evidence and explicit saved Owner consent", async () => {
     const runtime = state.runtimes[0];
     await prepareDesktopCodexPolicy("owner", repository, selection, runtime);
@@ -355,7 +351,6 @@ describe("Main combined Codex inspection verifier", () => {
       unattendedApproved: true,
     });
   });
-  // @lat: [[mobile-data#Mobile data#Proactive proof refresh preserves accepted access]]
   it("keeps checked proof during asynchronous renewal and renews before expiration without changing Owner intent", async () => {
     await prepareDesktopCodexPolicy(
       "owner",
@@ -408,7 +403,6 @@ describe("Main combined Codex inspection verifier", () => {
     expect(store.authorize("policy-one").enforced).toBe(true);
     expect(readFileSync(file, "utf8")).toBe(bytes);
   });
-  // @lat: [[mobile-data#Mobile data#Combined Main Codex inspection evidence]]
   it("requires prepared live Main evidence and binds it into the actual production approval factory", async () => {
     const runtime = state.runtimes[0];
     const store = createDesktopExecutionPolicyStore("owner", repository);
@@ -442,7 +436,6 @@ describe("Main combined Codex inspection verifier", () => {
     expect(store.list()[0].enforced).toBe(false);
     expect(() => store.authorize("policy-one")).toThrow("unverified_policy");
   });
-  // @lat: [[mobile-data#Mobile data#Combined verifier refusal before approval]]
   it("rejects unsupported modes, changed native, model and incomplete filesystem evidence", async () => {
     const runtime = state.runtimes[0];
     for (const input of [
@@ -483,7 +476,6 @@ describe("Main combined Codex inspection verifier", () => {
       existsSync(join(state.root, "desktop", "mobile-execution-policies.json")),
     ).toBe(false);
   });
-  // @lat: [[mobile-data#Mobile data#Prepared Codex authority remains current]]
   it("withdraws cached proof for native, metadata, profile or project identity changes", async () => {
     state.project = join(state.root, "project");
     mkdirSync(state.project);
@@ -514,7 +506,6 @@ describe("Main combined Codex inspection verifier", () => {
       verifyDesktopCodexPolicy("owner", repository, input, runtime),
     ).toBeUndefined();
   });
-  // @lat: [[mobile-data#Mobile data#Desktop review binds final confirmed proof]]
   it("requires a matching local review before approval and refuses changed configuration after review", async () => {
     await expect(
       prepareAndManageMobileExecutionPolicies("owner", {
@@ -567,7 +558,6 @@ describe("Main combined Codex inspection verifier", () => {
       createDesktopExecutionPolicyStore("owner", repository).list(),
     ).toEqual([]);
   });
-  // @lat: [[mobile-data#Mobile data#Review preparation frame and input revalidation]]
   it("rejects invalid commands before native preparation and rechecks the frame after asynchronous preparation", async () => {
     await expect(
       prepareAndManageMobileExecutionPolicies("owner", {
@@ -594,7 +584,6 @@ describe("Main combined Codex inspection verifier", () => {
       existsSync(join(state.root, "desktop", "mobile-execution-policies.json")),
     ).toBe(false);
   });
-  // @lat: [[mobile-data#Mobile data#Owner refresh never approves changed intent]]
   it("refreshes saved intent without rewriting it and leaves changed proof restricted", async () => {
     await prepareAndManageMobileExecutionPolicies("owner", {
       action: "review",

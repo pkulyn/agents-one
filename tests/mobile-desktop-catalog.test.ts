@@ -75,7 +75,6 @@ function fixture(): {
   };
 }
 describe("desktop public mobile catalog", () => {
-  // @lat: [[mobile-data#Mobile data#Runtime avatar current catalog binding]]
   it("advertises an opaque image reference and serves only the current original runtime image without modifying configuration", () => {
     const value = fixture();
     const png =
@@ -110,7 +109,6 @@ describe("desktop public mobile catalog", () => {
     ).toThrow("requires_owner_action");
     expect(value.backend.start).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Catalog privacy and original identity]]
   it("retains original IDs and names while omitting config, paths, secret references and raw avatar bytes", () => {
     const value = fixture();
     const snapshot = value.catalog.snapshot();
@@ -145,7 +143,6 @@ describe("desktop public mobile catalog", () => {
       expect(bytes).not.toContain(secret);
     expect(value.backend.start).not.toHaveBeenCalled();
   });
-  // @lat: [[mobile-data#Mobile data#Catalog execution authority recheck]]
   it("removes executable actions when trusted policy authorization fails or disagrees with its binding", () => {
     const value = fixture();
     value.authorize.mockImplementationOnce(() => {
@@ -173,7 +170,6 @@ describe("desktop public mobile catalog", () => {
       "read",
     ]);
   });
-  // @lat: [[mobile-data#Mobile data#No-project policy publication]]
   it("publishes automatic and explicitly confirmed full-access modes without a project while withholding unattended full access", () => {
     const value = fixture();
     value.source.projects = () => [];
@@ -199,7 +195,6 @@ describe("desktop public mobile catalog", () => {
       { id: "full", mode: "desktop_full_access", enforced: true, unattendedApproved: false, allowedActions: ["create", "advance"] },
     ]);
   });
-  // @lat: [[mobile-data#Mobile data#Catalog health evidence freshness]]
   it("does not turn an old, future or missing probe into a healthy runtime and classifies Web Agents by transport", () => {
     const value = fixture();
     value.runtime.lastProbe!.checkedAt = value.now - 300001;
@@ -213,7 +208,6 @@ describe("desktop public mobile catalog", () => {
       healthy: false,
     });
   });
-  // @lat: [[mobile-data#Mobile data#Catalog ambiguous identity refusal]]
   it("rejects duplicate original identities and invalid public source fields", () => {
     const value = fixture();
     value.source.projects = () => [

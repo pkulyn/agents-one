@@ -510,7 +510,7 @@ POST /workspace-grants/{grantId}/pull
 
 桌面端完成受控操作后调用 `POST /workspace-grants/{grantId}/results`，提交 `requestId`、`status`、脱敏摘要以及可选的相对路径、字节数和 SHA-256。拉取接口不得返回批量 `requests`；这样桌面端可以按顺序执行、审计并对删除逐次确认。
 
-请求、授权、路径校验、哈希冲突、删除本机确认和审计规则沿用 [OUTBOUND_WORKSPACE_GATEWAY_BRIDGE_REQUIREMENTS.md](OUTBOUND_WORKSPACE_GATEWAY_BRIDGE_REQUIREMENTS.md)。本规范额外要求：
+工作区请求必须绑定本轮已授权根目录与相对路径，拒绝越界、链接路径、未定义操作、过期或撤销的授权及超限正文。写操作校验期望哈希并返回实际哈希；删除必须得到本机用户确认。审计只保存脱敏元数据，不包含 Token、绝对路径或文件正文。工作区网关不接受 shell、进程、网络或凭据操作。本规范额外要求：
 
 - 远端 Runtime 必须注册一个真实工具，将 `workspaceRef=desktop-gateway:<grantId>` 转换成上述结构化队列请求；不能让模型输出 Windows 路径、Shell 或伪造“已完成”。
 - Gateway Tool 必须在得到 `succeeded` 和本机返回的 SHA-256 后，才能向模型报告文件交付成功。
@@ -522,7 +522,7 @@ POST /workspace-grants/{grantId}/pull
 
 - 协调者只能基于真实 Run 状态、Artifact 和工作区结果派发/推进后续阶段。
 - 下游验收 Run 必须引用实施 Run 的 Artifact 或本机工作区结果哈希；没有真实交付时，状态必须为 `blocked` 或 `review_required`。
-- 远程协调者的只读规划继续遵守 [REMOTE_COORDINATOR_BRIDGE_REQUIREMENTS.md](REMOTE_COORDINATOR_BRIDGE_REQUIREMENTS.md)，并应从本规范的 `/capabilities` 声明其 `orchestration.readOnlyPlanning` 能力。
+- 远程协调者必须由服务端强制执行只读规划：禁用工具、文件访问和网络写入，验证项目隔离与产物授权，并提供幂等、超时和取消终态。无法保证这些约束时，拒绝规划，不降级为普通 Agent run；只有真实实现后才能在 `/capabilities` 声明 `orchestration.readOnlyPlanning`。
 
 ## 12. 鉴权与安全要求
 

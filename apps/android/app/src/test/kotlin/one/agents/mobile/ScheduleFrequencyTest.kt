@@ -22,7 +22,6 @@ class ScheduleFrequencyTest {
     }
     private fun describe(value: String, language: String = "en") = scheduleFrequency(context(language), value, language)
 
-    // @lat: [[mobile-data#Mobile data#Android frequency interval original semantics]]
     @Test fun intervalsUseBilingualPluralAndLegacyZeroClampWithoutMutatingSource() {
         val original = " 0002H "
         assertEquals("Every 2 hours", describe(original)); assertEquals(" 0002H ", original)
@@ -31,7 +30,6 @@ class ScheduleFrequencyTest {
         assertEquals("每 2 小时", describe("2h", "zh-CN"))
     }
 
-    // @lat: [[mobile-data#Mobile data#Android frequency common Cron and Sunday alias]]
     @Test fun commonCronDescriptionsUseLocaleTimeAndBothOriginalSundayValues() {
         assertEquals("Every minute", describe("* * * * *"))
         val time = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(Locale.ENGLISH).format(LocalTime.of(9, 30))
@@ -43,7 +41,6 @@ class ScheduleFrequencyTest {
         assertTrue(describe("30 9 * * 1-5", "zh-CN").startsWith("周一至周五 "))
     }
 
-    // @lat: [[mobile-data#Mobile data#Android frequency complex AND with original step anchors]]
     @Test fun complexConditionsAreAndAndStepsStartAtFieldOrRangeMinimum() {
         assertEquals("All conditions must match: minute: 5, 12, 19; hour: 2; day of month: 1, 11, 21, 31; month: Jan, Jul; weekday: Sunday, Monday, Tuesday",
             describe("5-20/7 2 */10 1,7 0-2,7"))
@@ -55,14 +52,12 @@ class ScheduleFrequencyTest {
         assertTrue(zh.startsWith("以下条件须同时满足：")); assertTrue(zh.contains("日期：1")); assertTrue(zh.contains("星期：星期一"))
     }
 
-    // @lat: [[mobile-data#Mobile data#Android frequency unsupported expression preserves original]]
     @Test fun unsupportedOrUnsafeInputKeepsOriginalOwnerExpression() {
         val originals = listOf("30 9 * * MON", "0 0 * * ?", "60 9 * * *", "5/2 * * * *", "*/0 * * * *", "8-3 * * * *", "0 0 0 * *", "0 0 * 13 *", "0 0 * * 8", "0,,1 * * * *", "0 0 * * * *", "@daily", "9007199254740992h", "  custom expression  ")
         originals.forEach { assertEquals("Owner expression: $it", describe(it)) }
         assertEquals("桌面表达式：@daily", describe("@daily", "zh-CN"))
     }
 
-    // @lat: [[mobile-data#Mobile data#Android frequency weekday steps and full unions]]
     @Test fun steppedSundayAndUnionCoverageDoNotChangeCivilWeekdayMeaning() {
         assertEquals(describe("0 9 * * 0,2,4,6"), describe("0 9 * * */2"))
         assertEquals(describe("0 9 * * 1,4,0"), describe("0 9 * * 1-7/3"))

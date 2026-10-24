@@ -539,7 +539,6 @@ export async function startCodexProcess(
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
-    // @lat: [[mobile-data#Mobile data#Codex long output session identity]]
     const thread = new CodexThreadTracker();
     const stdoutDecoder = new StringDecoder("utf8");
     const stderrDecoder = new StringDecoder("utf8");

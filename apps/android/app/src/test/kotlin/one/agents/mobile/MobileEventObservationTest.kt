@@ -112,7 +112,6 @@ class MobileEventObservationTest {
     }
     private fun fail(client: Client, code: String, status: Int) { ui.runOnUiThread { client.streams.last().failed(MobileApiException(code, status)) } }
 
-    // @lat: [[mobile-data#Mobile data#Android task source event and snapshot admission]]
     @Test fun legacyQuickChatEventsAndRecoverySnapshotsCannotEnterTaskDirectory() {
         val client = Client(); connect(client)
         val legacy = conversation("old-quick-chat").copy(sourceKind = "quick_chat")
@@ -125,7 +124,6 @@ class MobileEventObservationTest {
         check(model.state.value.conversations.map { it.id } == listOf(oldTask.id))
         check(model.state.value.syncError == null)
     }
-    // @lat: [[mobile-data#Mobile data#Android first-page backpressure recovery]]
     @Test fun firstPage429RecoversWithoutNewEventAndKeepsHealthyStreamAndSchedule() {
         val client = Client(); client.listFailure = true; connect(client)
         waitFor { model.state.value.conversationError == "rate_limited" && !model.state.value.ownerDataRefreshing }
@@ -139,7 +137,6 @@ class MobileEventObservationTest {
         check(!model.state.value.conversationCacheStale && "conversation" !in model.state.value.failureTraces)
     }
 
-    // @lat: [[mobile-data#Mobile data#Android archived event exclusion]]
     @Test fun archivedRealtimeConversationLeavesDefaultListAndRecoveryDoesNotBringItBack() {
         val client = Client(); connect(client)
         val archived = conversation(revision = "2").copy(archived = true)
@@ -151,7 +148,6 @@ class MobileEventObservationTest {
         check(client.requests.none { it.method != "GET" })
     }
 
-    // @lat: [[mobile-data#Mobile data#Android original Run deletion]]
     @Test fun originalRunDeletionKeepsConversationAndOtherRunsWithoutMutationOrSnapshot() {
         val client = Client(); connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
         emit(client, event("run.updated", Json.encodeToJsonElement(run()), "1", refType = "run", refId = "run-1"))
@@ -167,7 +163,6 @@ class MobileEventObservationTest {
         check(model.state.value.runs.single().runId == "run-2")
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Original Run terminal observation]]
     @Test fun liveRunKeepsLargeSequenceAndTerminalStatusWithoutFullSnapshotRecovery() {
         val client = Client(); connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
         val before = client.requests.count { it.suffix == listOf("snapshots") }
@@ -182,7 +177,6 @@ class MobileEventObservationTest {
         check(client.requests.count { it.suffix == listOf("operations") } == 1)
         check(client.requests.count { it.suffix == listOf("snapshots") } == before && client.streams.size == 1)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Owner receipt terminal refresh]]
     @Test fun observedRunRereadsReceiptsAndReplacesAcceptedEvenWhenTimestampIsUnchanged() {
         val client = Client(); client.receipts = listOf(receipt("accepted")); connect(client)
         setLongField("lastReceiptRefreshAt", android.os.SystemClock.elapsedRealtime() - 31_000L)
@@ -192,7 +186,6 @@ class MobileEventObservationTest {
         waitFor { model.state.value.operations.single().status == "applied" }
         check(client.requests.none { it.method != "GET" })
     }
-    // @lat: [[mobile-data#Mobile data#Android event drain independent from user actions]]
     @Test fun eventConsumerAppliesUpdatesWhileConversationLoadKeepsGlobalActionBusy() {
         val client = Client(); connect(client)
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
@@ -207,7 +200,6 @@ class MobileEventObservationTest {
         } finally { release.countDown(); client.blockedReadSuffix = null }
         waitFor { !model.state.value.busy }
     }
-    // @lat: [[mobile-data#Mobile data#Android derived reads are single flight and coalesced]]
     @Test fun repeatedDirtyEventsDuringSlowSearchProduceOnlyOneTrailingRefresh() {
         val client = Client(); connect(client); perform { model.search("needle", false) }
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
@@ -221,7 +213,6 @@ class MobileEventObservationTest {
         waitFor { client.searchCalls.get() == 3 }
         check(client.streams.size == 1 && model.state.value.syncError == null)
     }
-    // @lat: [[mobile-data#Mobile data#Android receipt trailing refresh and scoped failures]]
     @Test fun finalReceiptDirtySchedulesThrottleExpiryRefreshWithoutAnotherEvent() {
         val client = Client(); client.receipts = listOf(receipt("accepted")); connect(client)
         val interval = MobileViewModel::class.java.getDeclaredField("receiptRefreshIntervalMs").apply { isAccessible = true }.getLong(model)
@@ -231,7 +222,6 @@ class MobileEventObservationTest {
         waitFor { model.state.value.operations.single().status == "applied" }
         check(client.streams.size == 1 && model.state.value.operationsError == null)
     }
-    // @lat: [[mobile-data#Mobile data#Android bounded event overflow recovery]]
     @Test fun boundedEventQueueOverflowRecoversFromSnapshotAndReopensAtNewAnchor() {
         val client = Client(); connect(client)
         val burst = (1..40).map { sequence ->
@@ -242,7 +232,6 @@ class MobileEventObservationTest {
         check(client.streams.first().closed && client.streams.last().cursor == "recovery-anchor" && client.streams.last().last == null)
         check(model.state.value.syncError == null && model.state.value.conversations.single().id == "original")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Run identity and terminal integrity]]
     @Test fun foreignRunIdentityAndTerminalRegressionAreRefusedWithoutReplacingStoredRun() {
         val client = Client(); connect(client)
         emit(client, event("run.updated", Json.encodeToJsonElement(run(status = "succeeded")), "1", refType = "run", refId = "run-1")); waitFor { model.state.value.runs.size == 1 }
@@ -254,7 +243,6 @@ class MobileEventObservationTest {
         waitFor { model.state.value.syncError == "protocol_incompatible" }
         check(model.state.value.runs.single().status == "succeeded" && client.streams.last().last == "epoch-1:1")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Frozen Run pages and scoped restoration]]
     @Test fun originalConversationLoadsAllRunPagesAndPermissionLossClearsRunData() {
         val client = Client(); client.snapshot = { query ->
             Snapshot(if (query["cursor"] == null) listOf(conversation()) else emptyList(), if (query["cursor"] == null) (1..99).map { run("run-$it") } else listOf(run("run-100", status = "succeeded")), emptyList(), "run-anchor", "1", "epoch-1", if (query["cursor"] == null) "more-runs" else null)
@@ -267,7 +255,6 @@ class MobileEventObservationTest {
         waitFor { client.streams.size == 2 }
         check(model.state.value.runs.isEmpty() && model.state.value.selected == null)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Receipt failure preserves observed Run]]
     @Test fun failedReceiptObservationDoesNotInventCompletionOrDiscardTerminalRun() {
         val client = Client(); client.receipts = listOf(receipt("accepted")); connect(client)
         setLongField("lastReceiptRefreshAt", android.os.SystemClock.elapsedRealtime() - 31_000L)
@@ -281,7 +268,6 @@ class MobileEventObservationTest {
         check(client.streams.size == 1 && model.state.value.operationsError == null)
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Run recovery preserves authoritative pages]]
     @Test fun expiredEventsRestoreRunPagesAndReplaceOldReceiptObservations() {
         val client = Client(); client.receipts = listOf(receipt("accepted")); connect(client)
         client.snapshot = { query -> Snapshot(if (query["cursor"] == null) listOf(conversation()) else emptyList(), if (query["cursor"] == null) (1..99).map { run("run-$it") } else listOf(run("run-100", status = "succeeded")), emptyList(), "all-runs", "1", "epoch-1", if (query["cursor"] == null) "page-2" else null) }
@@ -290,7 +276,6 @@ class MobileEventObservationTest {
         check(model.state.value.runs.size == 100 && model.state.value.runs.last().status == "succeeded")
         check(model.state.value.operations.single().status == "applied" && client.streams.last().cursor == "all-runs")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Run detail snapshot integrity]]
     @Test fun foreignDuplicateAndChangedRunSnapshotsDoNotReplaceOriginalRunState() {
         val client = Client(); connect(client)
         client.snapshot = { Snapshot(listOf(conversation()), listOf(run()), emptyList(), "runs", "1", "epoch-1", null) }
@@ -302,7 +287,6 @@ class MobileEventObservationTest {
         client.snapshot = { query -> Snapshot(emptyList(), listOf(run(if (query["cursor"] == null) "run-2" else "run-3")), emptyList(), "runs", if (query["cursor"] == null) "1" else "2", "epoch-1", if (query["cursor"] == null) "page-2" else null) }
         perform { model.refreshRunStatus() }; check(model.state.value.runError == "protocol_incompatible" && model.state.value.runs.single().runId == "run-1")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Late Run detail response]]
     @Test fun backWhileRunSnapshotIsPendingCannotReopenOrInstallLateRuns() {
         val client = Client(); connect(client)
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
@@ -314,7 +298,6 @@ class MobileEventObservationTest {
         } finally { release.countDown() }
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Live original messages and revisions]]
     @Test fun streamUpdatesOriginalConversationAndFullMessagesWithoutDuplicateOrOptimisticRead() {
         val client = Client(); connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
         val longBody = "原消息正文\n".repeat(5000)
@@ -326,7 +309,6 @@ class MobileEventObservationTest {
         ui.waitForIdle(); check(model.state.value.messages.single().content == longBody)
         check(client.requests.all { it.method == "GET" || it.suffix.last() == "read" })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Foreground event resume and isolation]]
     @Test fun stoppingObservationPreservesViewsAndReconnectsWithExactLastEventWithoutCancellingTasks() {
         val client = Client(); connect(client)
         val frame = event("conversation.updated", Json.encodeToJsonElement(conversation(title = "Updated", revision = "2")), "9007199254740993123456789", "2")
@@ -339,7 +321,6 @@ class MobileEventObservationTest {
         check(client.requests.all { it.method == "GET" })
         ui.runOnUiThread { model.forget() }; waitFor { client.streams.last().closed }; check(model.state.value.owner == null)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Expired event full snapshot recovery]]
     @Test fun expiredStreamReadsAllFrozenSnapshotPagesAndPreservesSelectedOriginalDetailAndEditor() {
         val client = Client(); connect(client); perform { model.openConversation(model.state.value.conversations.single()) }; perform { model.editSchedule(codec.decodeFromJsonElement<ScheduleSummary>(Json.encodeToJsonElement(schedule()))) }
         client.currentMessage = message("Recovered original body", revision = "2")
@@ -355,7 +336,6 @@ class MobileEventObservationTest {
         check(client.requests.filter { it.suffix == listOf("snapshots") && "conversationId" !in it.query }.map { it.query } == listOf(emptyMap(), mapOf("cursor" to "second-page")))
         check(client.requests.none { it.suffix.last() == "cancel" })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Live search remains Owner authoritative]]
     @Test fun messageChangesRefreshSameOwnerBodySearchAndRecoveryKeepsQuery() {
         val client = Client(); connect(client); perform { model.search("正文关键词", false) }
         client.searchResult = listOf(conversation("new-match", "Title without keyword"))
@@ -365,7 +345,6 @@ class MobileEventObservationTest {
         check(model.state.value.conversationQuery == "正文关键词" && model.state.value.conversations.single().id == "new-match")
         check(client.requests.filter { it.suffix == listOf("conversations", "search") }.all { it.body?.get("query")?.jsonPrimitive?.content == "正文关键词" && it.body?.get("cursor") == null })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Live protocol refusal and explicit retry]]
     @Test fun malformedReferenceStopsWithoutAdvancingCursorAndExplicitRetryReusesAnchor() {
         val client = Client(); connect(client)
         emit(client, event("message.upsert", Json.encodeToJsonElement(message()), "1", refId = "wrong-conversation"))
@@ -374,7 +353,6 @@ class MobileEventObservationTest {
         ui.onNodeWithText("Retry").performClick(); waitFor { client.streams.size == 2 }
         check(client.streams.last().cursor == "bootstrap-anchor" && client.streams.last().last == null)
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Live device revocation clears views]]
     @Test fun permissionRevocationClearsCredentialsAndBusinessViewsWithoutSubmittingCancellation() {
         val client = Client(); connect(client)
         emit(client, event("permission.changed", Json.encodeToJsonElement(PermissionChange("phone-1", "2", emptyList(), true)), "1", "2", "permission", "phone-1"))
@@ -382,7 +360,6 @@ class MobileEventObservationTest {
         check(model.state.value.owner == null && model.state.value.messages.isEmpty() && model.state.value.conversations.isEmpty() && client.streams.single().closed)
         check(client.requests.all { it.method == "GET" })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Late recovery after Owner switch]]
     @Test fun lateSnapshotCannotReplaceNewOwnerOrRestartOldSubscription() {
         val client = Client(); connect(client)
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
@@ -396,7 +373,6 @@ class MobileEventObservationTest {
         } finally { release.countDown() }
     }
 
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Network event retry retains identity]]
     @Test fun networkReconnectKeepsLastEventAndReportsOfflineUntilSubscriptionOpens() {
         val client = Client(); connect(client)
         emit(client, event("conversation.updated", Json.encodeToJsonElement(conversation(title = "Observed", revision = "2")), "9", "2")); waitFor { model.state.value.conversations.single().title == "Observed" }
@@ -405,14 +381,12 @@ class MobileEventObservationTest {
         check(model.state.value.conversations.single().title == "Observed" && model.state.value.owner?.online == true && model.state.value.syncError == null)
         check(client.requests.all { it.method == "GET" })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Live source deletion removes original view]]
     @Test fun originalConversationDeletionClosesItsViewAndRemovesListWithoutCancellingRun() {
         val client = Client(); connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
         emit(client, event("resource.deleted", buildJsonObject { put("kind", "conversation"); put("id", "original") }, "1"))
         waitFor { model.state.value.selected == null && model.state.value.conversations.isEmpty() }
         check(model.state.value.messages.isEmpty() && client.requests.none { it.suffix.last() == "cancel" })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Historical event keeps message pagination boundary]]
     @Test fun unloadedHistoricalUpdateRecoversFreshPageInsteadOfMovingOldPageBoundary() {
         val client = Client(); client.currentMessage = message("Latest 50", "50"); connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
         emit(client, event("message.upsert", Json.encodeToJsonElement(message("Historical 1 revised", "1", "2")), "1", "2"))
@@ -420,7 +394,6 @@ class MobileEventObservationTest {
         check(model.state.value.messages.map { it.messageSeq } == listOf("50"))
         check(client.streams.last().cursor == "recovery-anchor" && client.requests.any { it.suffix == listOf("snapshots") })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Live permission loss clears revoked data]]
     @Test fun reducedGrantClearsConversationDataBeforeRecoveringOnlyRemainingScopes() {
         val client = Client(); connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
         client.scopes = listOf("schedule:read"); client.grantRevision = "2"
@@ -431,7 +404,6 @@ class MobileEventObservationTest {
         check(model.state.value.owner?.capabilities == listOf("schedule:read") && model.state.value.conversations.isEmpty() && model.state.value.schedules.size == 1)
         check(client.requests.none { it.suffix.last() == "cancel" })
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Restored epoch resets visible read observer]]
     @Test fun restoredOwnerEpochResetsReadAttemptAndRequiresFreshVisibleAcknowledgement() {
         val client = Client(); connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
         waitFor { client.requests.any { it.suffix.last() == "read" } }
@@ -442,7 +414,6 @@ class MobileEventObservationTest {
         check(model.state.value.owner?.dataEpoch == "epoch-2" && client.streams.last().last == null && client.streams.last().cursor == "new-epoch-anchor")
         check(model.state.value.selected?.id == "original")
     }
-    // @lat: [[mobile-mac-roadmap#Native preview checks#Stale grant recovery cannot restore revoked data]]
     @Test fun oldBootstrapCannotRestoreContentAfterPermissionReduction() {
         val client = Client(); connect(client); perform { model.openConversation(model.state.value.conversations.single()) }
         emit(client, event("permission.changed", Json.encodeToJsonElement(PermissionChange("phone-1", "2", listOf("schedule:read"), false)), "1", "2", "permission", "phone-1"))
@@ -451,7 +422,6 @@ class MobileEventObservationTest {
         check(client.streams.size == 1 && client.streams.single().closed)
     }
 
-    // @lat: [[mobile-data#Mobile data#Android temporary read failure recovery]]
     @Test fun serviceReadFailureKeepsOwnerOnlineAndRetriesWithoutBusinessReplay() {
         val client=Client();connect(client)
         emit(client,event("run.updated",Json.encodeToJsonElement(run()),"1",refType="run",refId="run-1"))
@@ -464,7 +434,6 @@ class MobileEventObservationTest {
         waitFor { model.state.value.runs.single().status == "succeeded" }
         check(client.requests.all { it.method == "GET" })
     }
-    // @lat: [[mobile-data#Mobile data#Android genuine Owner restriction preservation]]
     @Test fun genuineOwnerRestrictionStillRequiresExplicitRecovery() {
         val client=Client();connect(client)
         fail(client,"requires_owner_action",403)
@@ -472,7 +441,6 @@ class MobileEventObservationTest {
         Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(3))
         check(client.streams.size == 1 && model.state.value.owner?.online == true)
     }
-    // @lat: [[mobile-data#Mobile data#Android current Run read feedback recovery]]
     @Test fun freshCurrentRunClearsOnlyItsTemporaryReadFailure() {
         val client=Client();connect(client)
         client.snapshot={throw MobileApiException("requires_owner_action",503,"read-failure-id")}
@@ -487,7 +455,6 @@ class MobileEventObservationTest {
         check("run" !in model.state.value.failureTraces)
     }
 
-    // @lat: [[mobile-data#Mobile data#Android auxiliary read conflicts keep healthy events]]
     @Test fun receiptConflictKeepsHealthyStreamAndRecoversWithoutMutations() {
         val client=Client();connect(client)
         client.receiptFailure=true;client.receiptFailureStatus=409;client.receiptFailureCode="revision_conflict"
@@ -501,7 +468,6 @@ class MobileEventObservationTest {
         waitFor { model.state.value.operationsError == null && model.state.value.operations.singleOrNull()?.status == "applied" }
         check(client.streams.size == 1 && client.requests.all { it.method == "GET" })
     }
-    // @lat: [[mobile-data#Mobile data#Android snapshot conflict bounded recovery]]
     @Test fun snapshotConflictRetriesRecoveryAndRetainsOriginalContent() {
         val client=Client();connect(client)
         val attempts=AtomicInteger()

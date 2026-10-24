@@ -20,7 +20,6 @@ const conversation = {
   messages: [{ id: "user-one", role: "user", content: "Wait", createdAt: 100 }],
 } as RuntimeConversation;
 
-// @lat: [[mobile-data#Mobile data#Original Native cancellation history completion]]
 it("commits the observed Native cancellation with real event and session identity and no model context for the platform notice", () => {
   const finish = vi.fn();
   completeOriginalCancelledRun(run, [conversation], finish);
@@ -48,7 +47,6 @@ it("commits the observed Native cancellation with real event and session identit
   );
 });
 
-// @lat: [[mobile-data#Mobile data#Original cancellation completion admission]]
 it("refuses acknowledgement-only, unrelated, Main-owned and ambiguous histories and preserves an existing Renderer final", () => {
   const finish = vi.fn();
   for (const status of ["running", "succeeded", "failed", "timed_out"] as const)
@@ -80,7 +78,6 @@ it("refuses acknowledgement-only, unrelated, Main-owned and ambiguous histories 
   expect(finish).not.toHaveBeenCalled();
 });
 
-// @lat: [[mobile-data#Mobile data#Original cancellation result fidelity and failure]]
 it("preserves a real reply and Native execution metadata and propagates persistence failures", () => {
   const finish = vi.fn(() => {
     throw Error("disk_unavailable");

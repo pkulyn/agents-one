@@ -27,7 +27,6 @@ class RuntimeAvatarImageTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
     private val png = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP8XKD4n4GBgYGJAQoAJzoChzU5gKEAAAAASUVORK5CYII=")
     private val runtime = Runtime("runtime", "原智能体", "local", avatar = "ava-one", color = "#F37021", healthy = true, capabilities = emptyList(), allowedActions = listOf("read"))
-    // @lat: [[mobile-data#Mobile data#Android avatar Native pixel and decode bounds]]
     @Test fun originalPixelsDecodeAndLargeImagesAreDownsampledBeforeDisplay() {
         val decoded = decodeRuntimeAvatar(RuntimeAvatarBytes("image/png", png))!!
         assertEquals(2, decoded.width); assertEquals(Color.rgb(243,112,33), decoded.getPixel(0,0))
@@ -43,7 +42,6 @@ class RuntimeAvatarImageTest {
         val hugeBytes = ByteArrayOutputStream().also { huge.compress(Bitmap.CompressFormat.PNG,100,it) }.toByteArray()
         assertNull(decodeRuntimeAvatar(RuntimeAvatarBytes("image/png",hugeBytes)))
     }
-    // @lat: [[mobile-data#Mobile data#Android avatar source replacement discards late result]]
     @Test fun sourceChangeRemovesOriginalImageAndLateReadCannotOverwriteNewPlaceholder() {
         val source = mutableStateOf("old-owner")
         val pending = CompletableDeferred<Bitmap?>()
@@ -56,7 +54,6 @@ class RuntimeAvatarImageTest {
         ui.onNodeWithTag("runtime-avatar-placeholder").assertIsDisplayed()
         ui.onNodeWithText("原").assertIsDisplayed()
     }
-    // @lat: [[mobile-data#Mobile data#Android avatar original image fallback presentation]]
     @Test fun originalImageAppearsAndRemovedReferenceResetsToOriginalName() {
         val current = mutableStateOf(runtime)
         ui.setContent { MaterialTheme { RuntimeAvatarImage(current.value, "fallback", "owner") { decodeRuntimeAvatar(RuntimeAvatarBytes("image/png",png)) } } }

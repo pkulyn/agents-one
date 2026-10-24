@@ -54,7 +54,6 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
-// @lat: [[mobile-data#Mobile data#Execution UI unverified refusal]]
 it("shows current restriction and never enables approval without verified execution capabilities", async () => {
   const manage = vi
     .fn()
@@ -85,7 +84,6 @@ it("shows current restriction and never enables approval without verified execut
     true,
   );
 });
-// @lat: [[mobile-data#Mobile data#Execution UI explicit CAS approval]]
 it("requires review and explicit confirmation, sends only selection and revision, and ignores a second click while pending", async () => {
   let complete!: (value: MobileExecutionManagementResult) => void;
   const manage = vi
@@ -127,7 +125,6 @@ it("requires review and explicit confirmation, sends only selection and revision
   expect(approve).toBeDisabled();
   expect(screen.getByLabelText("confirmApproval")).not.toBeChecked();
 });
-// @lat: [[mobile-data#Mobile data#Execution UI expiry and selection invalidation]]
 it("expires review and clears confirmed capabilities when selection changes; writing requires a project", async () => {
   vi.useFakeTimers();
   const manage = vi
@@ -165,7 +162,6 @@ it("expires review and clears confirmed capabilities when selection changes; wri
   expect(screen.getByRole("button", { name: "review" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "approve" })).toBeDisabled();
 });
-// @lat: [[mobile-data#Mobile data#Execution UI profile response isolation]]
 it("ignores a verified response from a previous profile and resets the selected execution scope", async () => {
   let complete!: (value: MobileExecutionManagementResult) => void;
   const manage = vi
@@ -192,7 +188,6 @@ it("ignores a verified response from a previous profile and resets the selected 
   expect(screen.getByLabelText("runtime")).toHaveValue("");
   expect(screen.queryByRole("option", { name: "Original runtime" })).toBeNull();
 });
-// @lat: [[mobile-data#Mobile data#Execution UI revoke inactive approval]]
 it("allows revoking an inactive policy after confirmation with its current revision", async () => {
   const current = {
     ...status,

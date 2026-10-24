@@ -43,7 +43,6 @@ function rpc(
   return child;
 }
 describe("Codex mobile effective configuration", () => {
-  // @lat: [[mobile-data#Mobile data#Codex configuration fingerprint stability]]
   it("binds explicit model selection and full source response while ignoring object key ordering", () => {
     const first = projectCodexMobileConfiguration({
       config: {
@@ -79,7 +78,6 @@ describe("Codex mobile effective configuration", () => {
         .configurationHash,
     );
   });
-  // @lat: [[mobile-data#Mobile data#Codex implicit model and provider preservation]]
   it("keeps the effective implicit model, runtime explicit priority and only the selected provider", () => {
     const config = {
       model: "original-model",
@@ -127,7 +125,6 @@ describe("Codex mobile effective configuration", () => {
     ).toBe("explicit-model");
     expect(result.configurationHash).toMatch(/^[a-f0-9]{64}$/);
   });
-  // @lat: [[mobile-data#Mobile data#Codex unsupported provider rejection]]
   it("refuses credentials, helpers, unknown provider effects, missing models and unsafe endpoints without echoing inputs", () => {
     const base = {
       model: "original",
@@ -214,7 +211,6 @@ describe("Codex mobile effective configuration", () => {
     expect(first.configurationHash).not.toBe(second.configurationHash);
     expect(first.args).toEqual(second.args);
   });
-  // @lat: [[mobile-data#Mobile data#Codex configuration RPC isolation]]
   it("only initializes and reads effective cwd configuration, uses the same environment and terminates its own process", async () => {
     const methods: string[] = [];
     rpc((frame) => {
@@ -252,7 +248,6 @@ describe("Codex mobile effective configuration", () => {
     expect(mock.terminate).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(result)).not.toContain("private-secret");
   });
-  // @lat: [[mobile-data#Mobile data#Codex configuration RPC failure bounds]]
   it("rejects RPC failures, malformed UTF8/JSON and oversized frames without exposing stderr or dispatching a turn", async () => {
     for (const mode of ["rpc", "utf8", "json", "oversized", "close", "error"]) {
       const child = rpc((frame) => ({

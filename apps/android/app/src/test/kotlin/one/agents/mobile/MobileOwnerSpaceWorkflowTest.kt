@@ -60,7 +60,6 @@ class MobileOwnerSpaceWorkflowTest {
         field("client",client);field("token","fake-token");field("credentials",Credentials("phone-1","fake-token","2099-01-01T00:00:00Z","fake-refresh","2099-01-01T00:00:00Z","1"))
     };perform{model.selectOwner(first)};perform{model.refreshConnection()};check(model.state.value.error==null&&model.state.value.owners.size==3)}
     private fun choose(source:OwnerSpace){ui.onAllNodesWithText("Account").onLast().performClick();ui.onNodeWithText("Switch execution device").performScrollTo().performClick();ui.onNodeWithTag("owner-space:${source.ownerId}:${source.spaceId}").performScrollTo().performClick()}
-    // @lat: [[mobile-data#Mobile data#Android real source change clears old list binding]]
     @Test fun actualListSelectorSwitchesSpaceAndSameNameOwnerWithOriginalBoundReads(){
         val client=Client();connect(client)
         perform{model.selectListFilters(MobileListSelection(state="active"),false)}
@@ -79,7 +78,6 @@ class MobileOwnerSpaceWorkflowTest {
         check(model.state.value.conversations.single().id=="conversation-owner-b-space-a"&&model.state.value.schedules.single().id=="schedule-owner-b-space-a")
         check(model.state.value.owner?.spaceId == "space-a");ui.onAllNodesWithText("Schedules").onLast().performClick();ui.onNodeWithTag("category:paused").performClick();ui.onNodeWithText("Original owner-b/space-a plan").assertIsDisplayed()
     }
-    // @lat: [[mobile-data#Mobile data#Android failed source selection retains original authority]]
     @Test fun failedBootstrapDoesNotChangeHeaderOrReplaceOriginalRecords(){
         val client=Client();connect(client);client.offline=binding(second)
         val originalConversations=model.state.value.conversations;val originalSchedules=model.state.value.schedules

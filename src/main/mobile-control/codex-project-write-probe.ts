@@ -85,7 +85,6 @@ export async function probeCodexProjectWriteFilesystem(
     ])
       identity.update(readFileSync(file));
     evidence.invocationFingerprint = identity.digest("hex");
-    // @lat: [[mobile-data#Mobile data#Actual Codex project write filesystem proof]]
     const child = spawn(
       invocation.command,
       [

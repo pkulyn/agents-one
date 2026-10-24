@@ -39,7 +39,6 @@ export interface CodexInspectionIdentity {
 export function assertReviewedCodexInspectionNative(
   identity: CodexInspectionIdentity,
 ): void {
-  // @lat: [[mobile-data#Mobile data#Reviewed Codex native version gate]]
   const native = identity.files.filter(
     (file) => file.path === identity.nativePath,
   );
@@ -155,7 +154,6 @@ export function captureCodexInspectionIdentity(
         Object.entries(environment).sort(([a], [b]) => a.localeCompare(b)),
       ),
     );
-    // @lat: [[mobile-data#Mobile data#Codex native invocation identity]]
     return {
       nativePath: nativeIdentity.path,
       files,

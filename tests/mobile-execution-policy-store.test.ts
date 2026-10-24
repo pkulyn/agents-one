@@ -116,7 +116,6 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 describe("Owner desktop execution approval store", () => {
-  // @lat: [[mobile-data#Mobile data#Owner effective Codex configuration approval binding]]
   it("persists the trusted config binding and restricts approvals after changes or lost proof across reload", () => {
     proof.codexConfigurationHash = "c".repeat(64);
     store.approve(input, "0", "policy-one");
@@ -140,7 +139,6 @@ describe("Owner desktop execution approval store", () => {
     writeFileSync(file, JSON.stringify(saved));
     expect(() => store.list()).toThrow("requires_owner_action");
   });
-  // @lat: [[mobile-data#Mobile data#Policy production profile and project capability]]
   it("binds approval to the active original profile and the actual authorized project realpath", () => {
     const repository = {
       profile: "owner",
@@ -170,7 +168,6 @@ describe("Owner desktop execution approval store", () => {
     expect(() => production.approve(input, "1")).toThrow("profile_inactive");
     expect(production.list()[0].enforced).toBe(false);
   });
-  // @lat: [[mobile-data#Mobile data#Policy approval reload and unknown fields]]
   it("persists a desktop approval and rechecks proof after restart without trusting saved enforced values", () => {
     expect(store.currentRevision()).toBe("0");
     store.approve(input, "0", "policy-one");
@@ -201,7 +198,6 @@ describe("Owner desktop execution approval store", () => {
     });
     expect(() => store.authorize("policy-one")).toThrow("unverified_policy");
   });
-  // @lat: [[mobile-data#Mobile data#Policy binding revocation]]
   it("invalidates approval for changed runtime, project capability and enforcement boundary while preserving appearance changes", () => {
     store.approve(input, "0", "policy-one");
     runtime.name = "Renamed";
@@ -231,7 +227,6 @@ describe("Owner desktop execution approval store", () => {
     expect(() => store.authorize("policy-one")).toThrow("unverified_policy");
     expect(store.list()[0].enforced).toBe(false);
   });
-  // @lat: [[mobile-data#Mobile data#Policy unsupported proof refusal]]
   it("refuses absent, malformed or non-matching proof and unattended requests without supported enforcement", () => {
     const original = { ...proof };
     for (const changes of [
@@ -259,7 +254,6 @@ describe("Owner desktop execution approval store", () => {
     authority.verify = () => undefined;
     expect(() => store.approve(input, "0")).toThrow("unverified_policy");
   });
-  // @lat: [[mobile-data#Mobile data#Policy compare and durable refusal]]
   it("enforces approval CAS and rechecks proof and restore-write lock before committing the temporary file", () => {
     store.approve(input, "0", "policy-one");
     const bytes = readFileSync(file, "utf8");
@@ -291,7 +285,6 @@ describe("Owner desktop execution approval store", () => {
     expect(store.list()).toEqual([]);
     expect(store.currentRevision()).toBe("2");
   });
-  // @lat: [[mobile-data#Mobile data#Policy corrupt storage preservation]]
   it("fails closed on corrupt approvals without rewriting their bytes", () => {
     for (const value of [
       "{bad",

@@ -12,7 +12,6 @@ import androidx.compose.ui.unit.dp
 import java.text.NumberFormat
 import java.util.Locale
 
-// @lat: [[mobile-data#Mobile data#Android schedule advanced draft preservation]]
 @Composable internal fun ScheduleTimingOptions(expression: String, changeExpression: (String) -> Unit, timeout: String, changeTimeout: (String) -> Unit, concurrency: String, changeConcurrency: (String) -> Unit, language: String) {
     var expanded by remember { mutableStateOf(false) }
     var intervalInput by remember { mutableStateOf(expression.isBlank() || Regex("^[0-9]+[mh]$", RegexOption.IGNORE_CASE).matches(expression.trim())) }

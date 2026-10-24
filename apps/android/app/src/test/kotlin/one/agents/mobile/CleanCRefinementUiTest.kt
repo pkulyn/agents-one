@@ -46,7 +46,6 @@ class CleanCRefinementUiTest {
             File(dir,name + ".png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
         }
     }
-    // @lat: [[mobile-data#Mobile data#Android single offline notice]]
     @Test fun offlineOwnerShowsOneShortTopNoticeWithoutDuplicateConnectionErrors() {
         setup(offline = true)
         ui.runOnUiThread { flow.value = flow.value.copy(error = "owner_offline", syncError = "owner_offline", conversationError = "owner_offline") }
@@ -57,7 +56,6 @@ class CleanCRefinementUiTest {
         ui.onNodeWithText("无法连接 Owner，请检查连接并保持 Owner 运行。").assertDoesNotExist()
         ui.onNodeWithText("连接待确认").assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android clean C task navigation]]
     @Test fun originalProjectsCollapseAndEnabledPlansIncludeRunning() {
         setup(offline = true)
         ui.onNodeWithContentDescription("刷新").assertDoesNotExist()
@@ -84,7 +82,6 @@ class CleanCRefinementUiTest {
         ui.onNodeWithText("切换运行设备").assertExists()
         capture("account-zh")
     }
-    // @lat: [[mobile-data#Mobile data#Android compact activity and composer stop]]
     @Test fun activityStartsFoldedAndEmptyComposerBecomesOriginalRunStop() {
         setup()
         ui.mainClock.autoAdvance = false

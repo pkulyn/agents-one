@@ -122,7 +122,6 @@ export class DesktopMobileCatalog implements MobileDesktopCatalog {
       assertMobileSchema("ExecutionPolicy", value);
       return value;
     });
-    // @lat: [[mobile-data#Mobile data#Public desktop selection catalog]]
     return {
       runtimes: runtimes.map((runtime) => {
         const available =

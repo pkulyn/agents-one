@@ -63,7 +63,6 @@ class ArtifactPreparationTest {
         }
         perform { model.selectOwner(owner(client.scope)) }; perform { model.openConversation(conversation) }
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact fresh metadata delivery]]
     @Test fun preparesUsingFreshOriginalMetadataAndDiscardsOnConnectionLoss() {
         val client = Client(); connect(client)
         var prepared: PreparedArtifact? = null
@@ -74,7 +73,6 @@ class ArtifactPreparationTest {
         perform { model.forget() }
         assertFalse(prepared!!.current()); assertFalse(prepared!!.file.exists())
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact preparation failure cleanup]]
     @Test fun failureCleansPartialStagingAndNeverCallsDelivery() {
         val client = Client(); connect(client)
         client.deliver = { it.write(1); throw MobileApiException("protocol_incompatible", 200) }
@@ -83,7 +81,6 @@ class ArtifactPreparationTest {
         assertFalse(delivered); assertEquals("protocol_incompatible", model.state.value.error)
         assertTrue(stagedFiles().isEmpty())
     }
-    // @lat: [[mobile-data#Mobile data#Android deleted Run artifact delivery invalidation]]
     @Test fun deletingOriginalRunInvalidatesPreparedFileBeforeExternalDelivery() {
         val client = Client(); connect(client)
         perform { model.observeForeground(true) }; waitFor { client.consume != null }
@@ -96,7 +93,6 @@ class ArtifactPreparationTest {
         assertFalse(prepared!!.current()); assertEquals("original", model.state.value.selected?.id)
         perform { model.discardArtifact(prepared!!) }; assertFalse(prepared!!.file.exists())
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact preparation identity admission]]
     @Test fun noScopeAndChangedOriginalIdentityNeverDownload() {
         val denied = Client(false); connect(denied)
         perform { model.prepareArtifact(artifact) { error("Unexpected delivery") } }
@@ -107,7 +103,6 @@ class ArtifactPreparationTest {
         assertEquals(1, mismatch.metadataReads); assertEquals(0, mismatch.downloads)
         assertEquals("protocol_incompatible", model.state.value.error)
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact stale completion cleanup]]
     @Test fun navigationDuringDownloadDoesNotPublishOldResult() {
         val client = Client(); connect(client)
         val started = CountDownLatch(1); val release = CountDownLatch(1)
@@ -120,7 +115,6 @@ class ArtifactPreparationTest {
         assertFalse(delivered)
         assertTrue(stagedFiles().isEmpty())
     }
-    // @lat: [[mobile-data#Mobile data#Android artifact system picker cancellation]]
     @Test fun realPageLaunchesSystemPickerAndCancelCleansStaging() {
         connect(Client())
         ui.onNodeWithTag("artifact-save-artifact-1").performClick()

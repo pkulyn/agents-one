@@ -78,7 +78,6 @@ class MobilePolicyWorkflowTest {
         return model
     }
     private fun waitForFailure(condition: () -> Boolean)=ui.waitUntil(10000){Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50));condition()}
-    // @lat: [[mobile-data#Mobile data#Creation navigates before network acceptance]]
     @Test fun creationShowsOriginalInputBeforeSlowReceiptWithoutInventingConversation() {
         val client = Client(); client.creationGate = java.util.concurrent.CountDownLatch(1)
         val model = connect(client)
@@ -94,7 +93,6 @@ class MobilePolicyWorkflowTest {
         check(client.writes.size == 2 && !model.state.value.creationVisible)
     }
 
-    // @lat: [[mobile-data#Mobile data#First prompt survives slow initial snapshot]]
     @Test fun originalPromptVisibleWhileFirstRunSnapshotIsDelayed() {
         val client = Client(); val model = connect(client)
         client.snapshotGate = java.util.concurrent.CountDownLatch(1)
@@ -110,7 +108,6 @@ class MobilePolicyWorkflowTest {
         check(client.writes.size == 2)
     }
 
-    // @lat: [[mobile-data#Mobile data#First prompt failure preserves original conversation]]
     @Test fun initialTurnFailureKeepsDraftAndRetryTargetsTheCreatedConversation() {
         val client = Client().apply { rejectTurn = true }; val model = connect(client)
         ui.runOnUiThread { model.createConversation("", "Keep my original goal", policy) }
@@ -127,7 +124,6 @@ class MobilePolicyWorkflowTest {
         check(client.writes.last().suffix == listOf("conversations", conversation.id, "turns"))
         check(model.state.value.composerDraft.isEmpty())
     }
-    // @lat: [[mobile-data#Mobile data#Android original conversation task mode recovery]]
     @Test fun originalConversationBindingStaysFixedAndChangedSelectionCannotSilentlySendAnotherMode() {
         val client = Client(); client.created = true
         val analysis = policy.copy(id = "desktop-task-analysis", mode = "desktop_analysis")
@@ -155,7 +151,6 @@ class MobilePolicyWorkflowTest {
         ui.onNodeWithContentDescription("Send").assertIsEnabled()
         check(client.writes.isEmpty())
     }
-    // @lat: [[mobile-data#Mobile data#Android create rejected receipt visible draft retry]]
     @Test fun rejectedCreateReceiptShowsSafeInlineFeedbackAndRetainsOriginalPolicyDraft(){
         val client=Client();client.rejected=true;val model=connectForFailure(client)
         ui.onNodeWithText("Create and send task").performClick();waitForFailure { !model.state.value.busy && model.state.value.error=="policy_denied" }
@@ -171,7 +166,6 @@ class MobilePolicyWorkflowTest {
         check(model.state.value.conversations.isEmpty())
         ui.onNodeWithText("Preserved create draft").assertDoesNotExist()
     }
-    // @lat: [[mobile-data#Mobile data#Android create uncertain outcome inline feedback no replay]]
     @Test fun uncertainCreateKeepsDraftAndUserRetryOnlyLooksUpOriginalReceipt(){
         val client=Client();client.uncertain=true;val model=connectForFailure(client)
         ui.onNodeWithText("Create and send task").performClick();waitForFailure { !model.state.value.busy && model.state.value.error=="reconciliation_required" }
@@ -184,7 +178,6 @@ class MobilePolicyWorkflowTest {
         ui.onNodeWithText("private network failure message").assertDoesNotExist()
         ui.onNodeWithContentDescription("Back").performClick();check(client.writes.size==1)
     }
-    // @lat: [[mobile-data#Mobile data#Android readable policy create and advance workflow]]
     @Test fun realFormsCreateAndAdvanceWithOriginalPolicyAndSinglePolicyExplainsPermissions() {
         lateinit var model: MobileViewModel; val client = Client()
         fun waitFor(condition: () -> Boolean) = ui.waitUntil(10000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(50)); condition() }

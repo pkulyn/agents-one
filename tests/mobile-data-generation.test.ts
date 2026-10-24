@@ -31,7 +31,6 @@ afterEach(() => {
     throw Error("unsafe cleanup");
   rmSync(root, { recursive: true, force: true });
 });
-// @lat: [[mobile-data#Mobile data#Legacy ledger namespace preservation]]
 it("keeps the old ledger namespace before restore and reads stable local generation without changing it", () => {
   const legacy = createHash("sha256")
     .update(JSON.stringify(["owner-1", "space-1"]))
@@ -50,7 +49,6 @@ it("keeps the old ledger namespace before restore and reads stable local generat
     mobileOwnerLedgerPath(root, "owner-1", "space-1", generation),
   ).not.toContain(legacy);
 });
-// @lat: [[mobile-data#Mobile data#Generation marker rejects corruption and file redirection]]
 it("rejects corrupt oversized hard-linked and redirected generation markers instead of treating them as legacy", () => {
   const folder = join(root, "desktop", "mobile-control");
   mkdirSync(folder, { recursive: true });

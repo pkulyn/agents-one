@@ -130,7 +130,6 @@ export function createProjectInspection(
   }
   return {
     readText(input) {
-      // @lat: [[mobile-data#Mobile data#Controlled project text inspection]]
       return run(() => {
         const parts = projectPathSegments(input, false),
           target = locate(parts);
@@ -186,7 +185,6 @@ export function createProjectInspection(
       });
     },
     list(input) {
-      // @lat: [[mobile-data#Mobile data#Controlled project directory inspection]]
       return run(() => {
         const parts = projectPathSegments(input, true),
           target = locate(parts);

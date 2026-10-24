@@ -27,7 +27,6 @@ export const CODEX_INSPECT_DISABLED_FEATURES = Object.freeze([
 
 /** Approval requires proof for the actual native binary, model/provider and configuration environment. */
 export function codexMobileInspectionArgs(): string[] {
-  // @lat: [[mobile-data#Mobile data#Codex native mobile inspection]]
   return [
     "--ignore-user-config",
     "--ignore-rules",
