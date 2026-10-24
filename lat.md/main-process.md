@@ -193,3 +193,37 @@ Changing one CLI toolset preserves the other effective defaults rather than repl
 Diagnostic text and JSON frames redact credential aliases, URL user information and complete secret values before they reach logs or Runtime event consumers.
 
 [[src/shared/redaction.ts#redactSensitiveText]] handles complete JSON by redacting secret fields and string values while preserving a parseable frame and nonsecret metadata. Other text uses quote-aware and URL-aware replacements, including punctuation inside unquoted values. Nested JSON values at depth 64 are replaced with a redaction marker.
+
+## Native file action authority
+
+Native file menus and default-application opening accept only existing files within a registered workspace, a native-selected workspace or the app media store. Renderer paths do not grant new authority.
+
+### Outside path rejection
+
+An unregistered file cannot create a native menu, reach the clipboard or launch an associated application.
+
+### Linked path rejection
+
+A junction or symlink inside a permitted root cannot expose an outside file through the menu.
+
+### Registered document actions
+
+The actual native menu callbacks retain document opening, bounded content copying and file location for an authorized document.
+
+### Document association limits
+
+Default-application opening allows a fixed set of document, image, audio and video extensions. Executables, scripts, shortcuts, active web files, macro-enabled Office files and unknown types cannot launch through file actions.
+
+Authorized files can still be located in the system file manager.
+
+### Deferred action authority
+
+Each callback rechecks authority when invoked, so a menu opened before project removal cannot retain file access.
+
+### Bounded clipboard reads
+
+Clipboard copying rechecks an opened regular file, limits reads to five MiB and rejects growth or replacement before publishing text.
+
+### Main window admission
+
+Only the current main window's main frame may request the artifact menu; another frame cannot reuse the native action surface.

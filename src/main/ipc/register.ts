@@ -1,3 +1,7 @@
+import {
+  registerArtifactFileMenuIpc,
+  openAuthorizedLocalFile,
+} from "./local-file-actions";
 import { manageMobileConnection } from "../mobile-connection";
 import { registerMobileExecutionPolicyIpc } from "../mobile-control/execution-management-ipc";
 import {
@@ -1434,66 +1438,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
-  // Local delivery artifacts use file semantics, not download semantics.
-  // Keep the native menu in the main process so paths and file contents do
-  // not need to be materialized into renderer-owned URLs.
-  ipcMain.on(
-    "show-file-menu",
-    async (
-      event,
-      filePath: string,
-      labels: {
-        open: string;
-        copyPath: string;
-        copyContent: string;
-        reveal: string;
-      },
-    ) => {
-      const win = BrowserWindow.fromWebContents(event.sender);
-      const target = typeof filePath === "string" ? filePath.trim() : "";
-      if (!win || !target || target.length > 32_768) return;
-
-      let copyContentEnabled = false;
-      try {
-        const info = await stat(target);
-        copyContentEnabled = info.isFile() && info.size <= 5 * 1024 * 1024;
-      } catch {
-        copyContentEnabled = false;
-      }
-
-      const template: Electron.MenuItemConstructorOptions[] = [
-        {
-          label: labels.open,
-          click: () => {
-            void shell.openPath(target).then((error) => {
-              if (error) console.error("[artifact] open failed:", error);
-            });
-          },
-        },
-        { type: "separator" },
-        {
-          label: labels.copyPath,
-          click: () => clipboard.writeText(target),
-        },
-        {
-          label: labels.copyContent,
-          enabled: copyContentEnabled,
-          click: () => {
-            void readFile(target, "utf8")
-              .then((content) => clipboard.writeText(content))
-              .catch((error) =>
-                console.error("[artifact] copy content failed:", error),
-              );
-          },
-        },
-        {
-          label: labels.reveal,
-          click: () => shell.showItemInFolder(target),
-        },
-      ];
-      Menu.buildFromTemplate(template).popup({ window: win });
-    },
-  );
+  registerArtifactFileMenuIpc(context.getMainWindow);
 
   // Attachment staging — for pasted blobs that have no filesystem origin.
   ipcMain.handle(
@@ -2561,7 +2506,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         relativePath,
       );
       if (!filePath) return false;
-      return !(await shell.openPath(filePath));
+      return openAuthorizedLocalFile(filePath);
     },
   );
   ipcMain.handle(
@@ -2629,8 +2574,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       ) {
         return false;
       }
-      await shell.openPath(normalizeMediaPath(filePath));
-      return true;
+      return openAuthorizedLocalFile(filePath);
     } catch {
       return false;
     }
