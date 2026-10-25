@@ -7,7 +7,9 @@ import { StringDecoder } from "node:string_decoder";
 import { homedir } from "os";
 import { delimiter, dirname, extname, join, relative, resolve } from "path";
 import { createHash, randomUUID } from "crypto";
-import { agentsOneProfileHome } from "./utils";
+import { agentsOneProfileHome, profileHome } from "./utils";
+import { agentsOneDataRoot } from "./agents-one-data-root";
+import { fileURLToPath } from "node:url";
 import { prepareRuntimeInputs } from "./runtime-inputs";
 import { protectWorkspaceFromRemoval } from "./workspace-protection";
 import { terminateProcessTree } from "./process-control";
@@ -840,6 +842,32 @@ export async function probePiRuntime(
   }
 }
 
+/** Match the native Pi 1.4 config path spelling before applying write authority. */
+function piPrivateConfigRoot(cwd: string): string {
+  let value =
+    process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+  if (process.platform === "win32") {
+    const drive = value.match(/^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i);
+    if (drive && !value.includes("\\"))
+      value =
+        drive[1].toUpperCase() + ":\\" + (drive[2] || "").replaceAll("/", "\\");
+  }
+  if (value === "~") value = homedir();
+  else if (
+    value.startsWith("~/") ||
+    (process.platform === "win32" && value.startsWith("~\\"))
+  )
+    value = join(homedir(), value.slice(2));
+  if (value.startsWith("file://")) {
+    try {
+      value = fileURLToPath(value);
+    } catch {
+      return cwd;
+    } // Invalid native config cannot establish automatic authority.
+  }
+  return resolve(cwd, value);
+}
+
 /** Native Pi hook: every nested tool call receives the same check. */
 // @lat: [[runtime-chat#Pi read-only tool boundary]]
 export function piReadOnlyExtensionSource(
@@ -944,15 +972,22 @@ export async function startPiProcess(
       ...(mode === "analysis" || mode === "safe_write"
         ? [
             "--extension",
-            piReadOnlyExtension(
-              input.profile,
-              mode,
-              cwd,
-              [invocation.command, ...invocation.prefix].flatMap((file) => [
-                file,
-                dirname(file),
-              ]),
-            ),
+            piReadOnlyExtension(input.profile, mode, cwd, [
+              ...[
+                invocation.command,
+                ...invocation.prefix,
+                process.execPath,
+              ].flatMap((file) => [file, dirname(file)]),
+              // Explicit selection cannot grant authority over private application state.
+              // Implicit conversation writes are already confined to their own cwd.
+              ...(workspace
+                ? [
+                    dirname(agentsOneDataRoot()),
+                    resolve(profileHome()),
+                    piPrivateConfigRoot(cwd),
+                  ]
+                : []),
+            ]),
           ]
         : []),
       ...piExecArgs(
