@@ -1,3 +1,4 @@
+import { assertPiNonExecutingConfig } from "./pi-config-policy";
 import { verifyPiStrictCapabilities } from "./pi-capabilities";
 import { createPiWriteBoundary } from "./pi-write-boundary";
 import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
@@ -255,13 +256,17 @@ function sessionsRoot(profile?: string): string {
   return root;
 }
 
-function conversationCwd(profile?: string): string {
-  const root = resolve(
+function conversationDirectory(profile?: string): string {
+  return resolve(
     agentsOneProfileHome(profile),
     "desktop",
     "runtime-chat",
     "pi",
   );
+}
+
+function conversationCwd(profile?: string): string {
+  const root = conversationDirectory(profile);
   mkdirSync(root, { recursive: true });
   return root;
 }
@@ -994,7 +999,10 @@ export async function startPiProcess(
   assertCanStart();
   if (strict) invocation = strict.invocation;
 
-  let cwd = workspace || conversationCwd(input.profile);
+  let cwd = workspace || conversationDirectory(input.profile);
+  const configRoot = strict ? piPrivateConfigRoot(cwd) : undefined;
+  if (configRoot) assertPiNonExecutingConfig(configRoot);
+  if (!workspace) mkdirSync(cwd, { recursive: true });
   let worktreePath: string | undefined;
   if (mode === "implementation" && workspace) {
     const root = await gitRoot(workspace);
@@ -1027,6 +1035,7 @@ export async function startPiProcess(
       ? protectWorkspaceFromRemoval(workspace, input.profile)
       : undefined;
   strict?.assertUnchanged();
+  if (configRoot) assertPiNonExecutingConfig(configRoot);
   assertCanStart();
   const child = spawn(
     invocation.command,
@@ -1043,13 +1052,9 @@ export async function startPiProcess(
               ].flatMap((file) => [file, dirname(file)]),
               // Explicit selection cannot grant authority over private application state.
               // Implicit conversation writes are already confined to their own cwd.
-              ...(workspace
-                ? [
-                    dirname(agentsOneDataRoot()),
-                    resolve(profileHome()),
-                    piPrivateConfigRoot(cwd),
-                  ]
-                : []),
+              resolve(profileHome()),
+              piPrivateConfigRoot(cwd),
+              ...(workspace ? [dirname(agentsOneDataRoot())] : []),
             ]),
           ]
         : []),

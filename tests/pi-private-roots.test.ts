@@ -208,3 +208,14 @@ it("protects Hermes roots configured relative to the Main process", async () => 
     fixture.nativeHome = absolute;
   }
 });
+
+it("does not grant an implicit fallback authority over a relative native config subtree", async () => {
+  vi.stubEnv("PI_CODING_AGENT_DIR", "nested-native-config");
+  try {
+    expect((await guard())!("nested-native-config/auth.json")).toMatchObject({
+      block: true,
+    });
+  } finally {
+    vi.stubEnv("PI_CODING_AGENT_DIR", piConfig);
+  }
+});
