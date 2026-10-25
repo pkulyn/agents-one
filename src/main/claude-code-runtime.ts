@@ -1,3 +1,4 @@
+import { assertClaudeNonExecutingUserConfig } from "./claude-config-policy";
 import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync } from "fs";
@@ -421,6 +422,18 @@ export async function startClaudeCodeProcess(
   if ((mode === "implementation" || mode === "full_access") && !workspace) {
     throw new Error(
       "Claude Code file tasks require a task-specific project folder.",
+    );
+  }
+
+  if (mode === "analysis" || mode === "safe_write") {
+    assertClaudeNonExecutingUserConfig(
+      workspace ||
+        join(
+          agentsOneProfileHome(input.profile),
+          "desktop",
+          "runtime-chat",
+          "claude-code",
+        ),
     );
   }
 
