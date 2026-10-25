@@ -309,3 +309,9 @@ A safe-write recovery failure preserves the original backup and produces a Runti
 OpenCode permission replies preserve the original numeric or string RPC ID and approve only an explicit one-time option bound to the current native session. Permanent or ambiguous choices never substitute for one-time authority.
 
 Both local and remote clients reject mismatched or missing sessions, duplicate option IDs, unknown kinds, invalid identifiers and automatic native mode switches. Rejection is reported in task evidence and terminal state. Protocol subprocess regressions verify execution markers, persistent-grant markers, valid edits and response identity; these gates do not establish an operating-system sandbox or certify arbitrary script side effects.
+
+## Claude non-executing user configuration
+
+Read-only and automatic Claude CLI tasks reject command-backed user or project credentials before creating the conversation directory, staging inputs, backing up files or spawning the executor.
+
+[[src/main/claude-config-policy.ts#assertClaudeNonExecutingUserConfig]] reads bounded stable regular-file snapshots of native user/global settings and logical/canonical project ancestor settings. Missing sources are allowed; malformed, ambiguous or command-bearing sources fail with a fixed diagnostic. Literal, environment and OAuth data are not rewritten; explicit full and implementation startup retain native behavior. This conservative preflight does not certify managed/remote policy, provider helpers, inherited execution environment, SDK controls or the complete native tool boundary. [[tests/claude-user-config-start.test.ts]] exercises the actual CLI start function and proves denial precedes input preparation, backup and process dispatch.
