@@ -4,7 +4,10 @@ import {
   type PiQueryBinding,
 } from "./pi-query-context";
 import { assertPiNonExecutingConfig } from "./pi-config-policy";
-import { verifyPiStrictCapabilities } from "./pi-capabilities";
+import {
+  inspectPiVersion,
+  verifyPiStrictCapabilities,
+} from "./pi-capabilities";
 import { createPiWriteBoundary } from "./pi-write-boundary";
 import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
@@ -1000,9 +1003,11 @@ export async function probePiRuntime(
   config: PiRuntimeConfig,
 ): Promise<PiRuntimeProbeResult> {
   try {
-    const version = await command(piInvocation(configuredExecutable(config)), [
-      "--version",
-    ]);
+    const inspected = await inspectPiVersion(
+      piInvocation(configuredExecutable(config)),
+    );
+    inspected.assertUnchanged();
+    const version = inspected.version;
     const workspace = configuredProbeWorkspace(config);
     if (workspace) await gitRoot(workspace);
     return {

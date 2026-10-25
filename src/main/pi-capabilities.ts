@@ -12,6 +12,11 @@ export interface VerifiedPiInvocation {
   invocation: PiCapabilityInvocation;
   assertUnchanged: () => void;
 }
+export interface InspectedPiInvocation extends VerifiedPiInvocation {
+  version: string;
+}
+const inspectionUnavailable =
+  "Pi 版本探测失败，无法安全确认版本元数据；请检查执行器安装。 / Pi version metadata could not be safely verified; check the CLI installation.";
 const exec = promisify(execFile);
 const unavailable =
   "[Agents One 权限不足] 无法确认 Pi 执行器的严格权限能力，本轮任务未发送。只读和自动模式目前支持已验证的 Pi 1.4.0；请检查执行器安装，或明确选择完全访问。 / Pi strict capabilities could not be verified; the task was not sent. Read-only and automatic modes currently require verified Pi 1.4.0. Check the CLI installation or explicitly choose full access.";
@@ -79,10 +84,10 @@ function probeEnvironment(directory: string): NodeJS.ProcessEnv {
   };
 }
 
-// @lat: [[runtime-chat#Pi strict CLI capability gate]]
-export async function verifyPiStrictCapabilities(
+// @lat: [[runtime-chat#Pi isolated health metadata]]
+export async function inspectPiVersion(
   requested: PiCapabilityInvocation,
-): Promise<VerifiedPiInvocation> {
+): Promise<InspectedPiInvocation> {
   let directory: string | undefined;
   try {
     const invocation = {
@@ -94,9 +99,9 @@ export async function verifyPiStrictCapabilities(
     const assertUnchanged = (): void => {
       try {
         if (files.some((file, index) => identity(file) !== before[index]))
-          throw Error(unavailable);
+          throw Error(inspectionUnavailable);
       } catch {
-        throw Error(unavailable);
+        throw Error(inspectionUnavailable);
       }
     };
     directory = mkdtempSync(join(tmpdir(), "agents-one-pi-capability-"));
@@ -123,13 +128,20 @@ export async function verifyPiStrictCapabilities(
         encoding: "utf8",
       },
     );
-    // A version range or help text is not evidence of equivalent native policy.
-    if (result.stdout.trim() !== "1.4.0" || result.stderr.trim())
-      throw Error(unavailable);
+    const version = result.stdout.trim();
+    // Discovery does not imply strict-policy compatibility. Keep diagnostics out.
+    if (
+      version.length > 128 ||
+      !/^(?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:[.][0-9A-Za-z-]+)*)?(?:[+][0-9A-Za-z-]+(?:[.][0-9A-Za-z-]+)*)?$/.test(
+        version,
+      ) ||
+      result.stderr.trim()
+    )
+      throw Error(inspectionUnavailable);
     assertUnchanged();
-    return { invocation, assertUnchanged };
+    return { invocation, assertUnchanged, version };
   } catch {
-    throw Error(unavailable);
+    throw Error(inspectionUnavailable);
   } finally {
     if (directory) {
       // This exact private mkdtemp result is never supplied by a task or CLI.
@@ -139,5 +151,27 @@ export async function verifyPiStrictCapabilities(
         /* Probe cleanup cannot reveal native diagnostics or task content. */
       }
     }
+  }
+}
+
+// @lat: [[runtime-chat#Pi strict CLI capability gate]]
+export async function verifyPiStrictCapabilities(
+  requested: PiCapabilityInvocation,
+): Promise<VerifiedPiInvocation> {
+  try {
+    const inspected = await inspectPiVersion(requested);
+    if (inspected.version !== "1.4.0") throw Error(unavailable);
+    return {
+      invocation: inspected.invocation,
+      assertUnchanged: (): void => {
+        try {
+          inspected.assertUnchanged();
+        } catch {
+          throw Error(unavailable);
+        }
+      },
+    };
+  } catch {
+    throw Error(unavailable);
   }
 }
