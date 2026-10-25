@@ -178,6 +178,12 @@ Restricted Pi tasks require a reviewed native CLI version before any task conten
 
 [[src/main/pi-capabilities.ts#verifyPiStrictCapabilities]] resolves and binds the actual command and wrapper entry, queries version in a temporary isolated home/config with minimal OS environment and offline resource-disabled flags, and accepts only Pi 1.4.0 whose native policy was verified. Each task rechecks file identity after metadata and before dispatch without a cached approval. Main checks task cancellation across startup waits so Stop cannot be followed by delayed prompt dispatch. Full access retains its explicit project requirement. Version metadata is compatibility evidence for a trusted user-selected CLI; it cannot sandbox a malicious binary or concurrent same-user filesystem changes.
 
+## Pi restricted task environment
+
+Analysis and automatic task processes omit inherited loader and runtime redirect controls while retaining provider credentials, proxy and certificate data. Explicit full access keeps native environment semantics.
+
+[[src/main/pi-runtime.ts#piChildEnvironment]] filters execution-oriented environment names case-insensitively for restricted task spawns, including Node preloads/search paths, native dynamic loaders, package redirects and interpreter startup controls. It returns a new object and does not rewrite the parent process or saved settings. Metadata probes retain their separately isolated environment; out-of-band native controls retain their existing contract. This prevents inherited preload execution before a tool hook, but does not prove that command-backed native credentials or external search-tool resolution are contained.
+
 ## Pi automatic write scope
 
 Automatic native write/edit calls bind to the Main-selected directory and its physical identity. Outside, linked, ambiguous and control targets are refused before the native tool runs.
