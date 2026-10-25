@@ -109,13 +109,17 @@ describe("Pi Agent CLI runtime invocation", () => {
       "D:\\sessions",
       "--session-id",
       "pi-session-1",
+      "--no-extensions",
+      "--no-mcp",
       "--tools",
-      "read,grep,find,ls,tool_search,codemode",
+      "read,grep,find,ls",
+      "--exclude-tools",
+      "bash,powershell,tool_search,codemode,mcp__*",
       "inspect this",
     ]);
   });
 
-  it("keeps Pi's native resources and custom tools enabled for writable tasks", () => {
+  it("disables extension and MCP execution for automatic tasks", () => {
     const args = piExecArgs(
       "safe_write",
       "use llm-wiki",
@@ -123,9 +127,10 @@ describe("Pi Agent CLI runtime invocation", () => {
       "D:\\sessions",
     );
     expect(args).not.toContain("--no-skills");
-    expect(args).not.toContain("--no-extensions");
+    expect(args).toContain("--no-extensions");
+    expect(args).toContain("--no-mcp");
     expect(args).not.toContain("--no-context-files");
-    expect(args).not.toContain("--tools");
+    expect(args).toContain("--tools");
     expect(args).not.toContain("--no-tools");
   });
 
@@ -139,7 +144,7 @@ describe("Pi Agent CLI runtime invocation", () => {
       true,
     );
     expect(args).toContain("--tools");
-    expect(args).toContain("read,grep,find,ls,tool_search,codemode");
+    expect(args).toContain("read,grep,find,ls");
     expect(args).not.toContain("--no-tools");
   });
 
@@ -155,15 +160,16 @@ describe("Pi Agent CLI runtime invocation", () => {
     expect(args).not.toContain("--no-tools");
   });
 
-  it("keeps Pi's complete native tool set in safe-write mode", () => {
+  it("keeps only native file readers and editors in safe-write mode", () => {
     const args = piExecArgs(
       "safe_write",
       "update this safely",
       "pi-session-safe",
       "D:\\sessions",
     );
-    expect(args).not.toContain("--tools");
-    expect(args).not.toContain("--exclude-tools");
+    expect(args).toContain("--tools");
+    expect(args).toContain("read,grep,find,ls,write,edit");
+    expect(args).toContain("--exclude-tools");
     expect(args).not.toContain("--no-tools");
   });
 
@@ -336,7 +342,7 @@ describe("Pi Agent CLI runtime invocation", () => {
 
 describe("Pi read-only native permission hook", () => {
   // @lat: [[runtime-chat#Pi read-only tool boundary]]
-  it("allows readers and annotated queries but blocks direct and nested mutation tools", () => {
+  it("allows native readers but blocks declared custom queries and mutations", () => {
     let handler: (event: {
       toolName: string;
       parentToolCallId?: string;
@@ -360,15 +366,7 @@ describe("Pi read-only native permission hook", () => {
         { name: "unknown_extension" },
       ],
     });
-    for (const toolName of [
-      "read",
-      "grep",
-      "find",
-      "ls",
-      "tool_search",
-      "codemode",
-      "mcp__search",
-    ]) {
+    for (const toolName of ["read", "grep", "find", "ls"]) {
       expect(handler!({ toolName })).toBeUndefined();
     }
     for (const toolName of [
@@ -378,6 +376,9 @@ describe("Pi read-only native permission hook", () => {
       "powershell",
       "mcp__delete",
       "unknown_extension",
+      "tool_search",
+      "codemode",
+      "mcp__search",
     ]) {
       const denied = handler!({
         toolName,
@@ -409,7 +410,7 @@ describe("Pi read-only native permission hook", () => {
       expect(handler({ toolName, input: {} })).toBeUndefined();
     expect(
       handler({ toolName: "bash", input: { command: "git status" } }),
-    ).toBeUndefined();
+    ).toMatchObject({ block: true });
     for (const event of [
       { toolName: "bash", input: { command: "rm original.txt" } },
       {

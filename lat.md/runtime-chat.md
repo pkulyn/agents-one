@@ -168,9 +168,9 @@ The DAG regression holds two sibling Runtime runs open, asserts both Runtime ide
 
 Pi read-only conversations retain file readers and query tools even without a selected project; a native tool-call hook blocks mutations rather than disabling every tool.
 
-[[src/main/pi-runtime.ts#piExecArgs]] declares read, grep, find, ls, tool_search and codemode. The generated [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] runs in Pi itself and checks direct and nested tool calls; automatic runs also block explicit removal/move tools and recognized removal shell commands before execution. Built-in readers and orchestration are allowed; other tools require a readOnlyHint annotation. Unknown or mutating tools return an actionable denial to the model instead of silently disappearing. Unrestricted shell execution is unavailable in read-only mode.
+[[src/main/pi-runtime.ts#piExecArgs]] restricts analysis to read, grep, find and ls, adding native write/edit only for automatic runs. Restricted processes disable extension discovery and built-in MCP, exclude terminal/codemode/MCP tools, and explicitly load only the Main-generated permission hook. Full access retains the native resource configuration.
 
-MCP tools remain callable through Pi 1.x discovery and codemode, subject to the same hook after registration. This preserves declared read-only queries without exposing unannotated mutations. Global agent instructions load normally, but instructed memory reads still require an actual tool call. User-selected projects determine project context; the fallback chat directory does not inherit a terminal project directory.
+The generated [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] authorizes exact native tool names and rejects all other direct or nested calls, regardless of a custom tool readOnlyHint. A tools allowlist alone does not disable MCP in Pi. User instructions and skills may still provide context, but cannot grant extra tools. This is native tool capability control, not an operating-system filesystem sandbox; write-path isolation and each other Runtime require independent enforcement and verification.
 
 ## Automatic permission defaults
 
