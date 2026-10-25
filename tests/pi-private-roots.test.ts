@@ -88,13 +88,14 @@ async function guard(
   const install = new Function(
     "fs",
     "path",
+    "process",
     source
       .replace(/^import .*;\r?$/gm, "")
       .replace(
         "export default function agentsOneReadOnly",
         "return function agentsOneReadOnly",
       ),
-  )(fs, path);
+  )(fs, path, { chdir: (): void => {} });
   install({
     on: (_event: string, handler: typeof check) => {
       check = handler;
@@ -132,6 +133,10 @@ it.each([
       workspace = path.join(container, "alias");
       fs.symlinkSync(desktop, workspace, "junction");
     }
+    if (kind === "pi" || kind === "parent") {
+      await expect(guard(workspace)).rejects.toThrow("本轮任务未发送");
+      return;
+    }
     const check = (await guard(workspace))!;
     expect(check("ordinary.txt")).toMatchObject({ block: true });
   },
@@ -151,9 +156,7 @@ it.each(["file-url", "relative", "shell-drive"])(
             : piConfig;
     vi.stubEnv("PI_CODING_AGENT_DIR", configured);
     try {
-      expect((await guard(piConfig))!("ordinary.txt")).toMatchObject({
-        block: true,
-      });
+      await expect(guard(piConfig)).rejects.toThrow("本轮任务未发送");
     } finally {
       vi.stubEnv("PI_CODING_AGENT_DIR", piConfig);
     }
@@ -181,9 +184,7 @@ it("protects a not-yet-created Pi config directory beneath a junction alias", as
   fs.symlinkSync(project, alias, "junction");
   vi.stubEnv("PI_CODING_AGENT_DIR", path.join(alias, "future-config"));
   try {
-    expect(
-      (await guard(project))!("future-config/settings.json"),
-    ).toMatchObject({ block: true });
+    await expect(guard(project)).rejects.toThrow("本轮任务未发送");
   } finally {
     vi.stubEnv("PI_CODING_AGENT_DIR", piConfig);
   }
@@ -191,7 +192,7 @@ it("protects a not-yet-created Pi config directory beneath a junction alias", as
 it("fails closed for a malformed native file URL without changing the target", async () => {
   vi.stubEnv("PI_CODING_AGENT_DIR", "file://%invalid");
   try {
-    expect((await guard(project))!("draft.txt")).toMatchObject({ block: true });
+    await expect(guard(project)).rejects.toThrow("本轮任务未发送");
   } finally {
     vi.stubEnv("PI_CODING_AGENT_DIR", piConfig);
   }
@@ -212,9 +213,7 @@ it("protects Hermes roots configured relative to the Main process", async () => 
 it("does not grant an implicit fallback authority over a relative native config subtree", async () => {
   vi.stubEnv("PI_CODING_AGENT_DIR", "nested-native-config");
   try {
-    expect((await guard())!("nested-native-config/auth.json")).toMatchObject({
-      block: true,
-    });
+    await expect(guard()).rejects.toThrow("本轮任务未发送");
   } finally {
     vi.stubEnv("PI_CODING_AGENT_DIR", piConfig);
   }

@@ -1,3 +1,8 @@
+import {
+  createPiQueryContext,
+  enterPiQueryContext,
+  type PiQueryBinding,
+} from "./pi-query-context";
 import { assertPiNonExecutingConfig } from "./pi-config-policy";
 import { verifyPiStrictCapabilities } from "./pi-capabilities";
 import { createPiWriteBoundary } from "./pi-write-boundary";
@@ -915,7 +920,9 @@ function piPrivateConfigRoot(cwd: string): string {
     try {
       value = fileURLToPath(value);
     } catch {
-      return cwd;
+      throw Error(
+        "Pi 配置目录无法核验，本轮任务未发送。 / Pi configuration directory could not be verified; the task was not sent.",
+      );
     } // Invalid native config cannot establish automatic authority.
   }
   return resolve(cwd, value);
@@ -927,13 +934,21 @@ export function piReadOnlyExtensionSource(
   mode: "analysis" | "safe_write" = "analysis",
   writableRoot = "",
   protectedPaths: string[] = [],
+  queryBinding?: PiQueryBinding,
 ): string {
   return `import * as fs from "node:fs";
 import * as path from "node:path";
 const checkWritePath = (${createPiWriteBoundary.toString()})(${JSON.stringify(writableRoot)}, fs, path, ${JSON.stringify(protectedPaths)});
+const queryBinding = ${JSON.stringify(queryBinding || null)};
+const enterQuery = (${enterPiQueryContext.toString()});
 export default function agentsOneReadOnly(pi) {
+  if (queryBinding) { try { enterQuery(queryBinding, fs, process); } catch {} }
   const allowed = new Set(${JSON.stringify(mode === "safe_write" ? ["read", "grep", "find", "ls", "write", "edit"] : ["read", "grep", "find", "ls"])});
   pi.on("tool_call", (event, ctx) => {
+    if (queryBinding) {
+      try { enterQuery(queryBinding, fs, process); }
+      catch (error) { return { block: true, reason: error.message }; }
+    }
     const name = event.toolName;
     if (allowed.has(name)) {
       if (name === "write" || name === "edit") {
@@ -958,8 +973,14 @@ function piReadOnlyExtension(
   mode: "analysis" | "safe_write",
   writableRoot: string,
   protectedPaths: string[],
+  queryBinding?: PiQueryBinding,
 ): string {
-  const source = piReadOnlyExtensionSource(mode, writableRoot, protectedPaths);
+  const source = piReadOnlyExtensionSource(
+    mode,
+    writableRoot,
+    protectedPaths,
+    queryBinding,
+  );
   const digest = createHash("sha256").update(source).digest("hex").slice(0, 16);
   const directory = resolve(
     agentsOneProfileHome(profile),
@@ -1003,6 +1024,14 @@ export async function startPiProcess(
   const configRoot = strict ? piPrivateConfigRoot(cwd) : undefined;
   if (configRoot) assertPiNonExecutingConfig(configRoot);
   if (!workspace) mkdirSync(cwd, { recursive: true });
+  const queryContext = configRoot
+    ? await createPiQueryContext(
+        resolve(agentsOneProfileHome(input.profile), "desktop", "pi-query-cwd"),
+        cwd,
+        configRoot,
+        piChildEnvironment(process.env, mode),
+      )
+    : undefined;
   let worktreePath: string | undefined;
   if (mode === "implementation" && workspace) {
     const root = await gitRoot(workspace);
@@ -1044,18 +1073,24 @@ export async function startPiProcess(
       ...(mode === "analysis" || mode === "safe_write"
         ? [
             "--extension",
-            piReadOnlyExtension(input.profile, mode, cwd, [
-              ...[
-                invocation.command,
-                ...invocation.prefix,
-                process.execPath,
-              ].flatMap((file) => [file, dirname(file)]),
-              // Explicit selection cannot grant authority over private application state.
-              // Implicit conversation writes are already confined to their own cwd.
-              resolve(profileHome()),
-              piPrivateConfigRoot(cwd),
-              ...(workspace ? [dirname(agentsOneDataRoot())] : []),
-            ]),
+            piReadOnlyExtension(
+              input.profile,
+              mode,
+              cwd,
+              [
+                ...[
+                  invocation.command,
+                  ...invocation.prefix,
+                  process.execPath,
+                ].flatMap((file) => [file, dirname(file)]),
+                // Explicit selection cannot grant authority over private application state.
+                // Implicit conversation writes are already confined to their own cwd.
+                resolve(profileHome()),
+                piPrivateConfigRoot(cwd),
+                ...(workspace ? [dirname(agentsOneDataRoot())] : []),
+              ],
+              queryContext?.binding,
+            ),
           ]
         : []),
       ...piExecArgs(
@@ -1070,7 +1105,7 @@ export async function startPiProcess(
     ],
     {
       cwd,
-      env: piChildEnvironment(process.env, mode),
+      env: queryContext?.environment || piChildEnvironment(process.env, mode),
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
