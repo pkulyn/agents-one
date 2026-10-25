@@ -1,3 +1,5 @@
+import * as permissionFs from "node:fs";
+import * as permissionPath from "node:path";
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
@@ -348,11 +350,15 @@ describe("Pi read-only native permission hook", () => {
       parentToolCallId?: string;
     }) => { block: boolean; reason: string } | undefined;
     const install = new Function(
-      piReadOnlyExtensionSource().replace(
-        "export default function agentsOneReadOnly",
-        "return function agentsOneReadOnly",
-      ),
-    )();
+      "fs",
+      "path",
+      piReadOnlyExtensionSource()
+        .replace(/^import .*;\r?$/gm, "")
+        .replace(
+          "export default function agentsOneReadOnly",
+          "return function agentsOneReadOnly",
+        ),
+    )(permissionFs, permissionPath);
     install({
       on: (_event: string, callback: typeof handler) => {
         handler = callback;
@@ -391,23 +397,36 @@ describe("Pi read-only native permission hook", () => {
     }
   });
   it("blocks automatic deletion and movement before execution while keeping reads and edits enabled", () => {
-    let handler!: (event: {
-      toolName: string;
-      input: Record<string, unknown>;
-    }) => { block: boolean; reason: string } | undefined;
+    const writableRoot = mkdtempSync(join(tmpdir(), "pi-auto-root-"));
+    let handler!: (
+      event: {
+        toolName: string;
+        input: Record<string, unknown>;
+      },
+      ctx?: { cwd: string },
+    ) => { block: boolean; reason: string } | undefined;
     const install = new Function(
-      piReadOnlyExtensionSource("safe_write").replace(
-        "export default function agentsOneReadOnly",
-        "return function agentsOneReadOnly",
-      ),
-    )();
+      "fs",
+      "path",
+      piReadOnlyExtensionSource("safe_write", writableRoot)
+        .replace(/^import .*;\r?$/gm, "")
+        .replace(
+          "export default function agentsOneReadOnly",
+          "return function agentsOneReadOnly",
+        ),
+    )(permissionFs, permissionPath);
     install({
       on: (_event: string, callback: typeof handler) => {
         handler = callback;
       },
     });
     for (const toolName of ["read", "write", "edit"])
-      expect(handler({ toolName, input: {} })).toBeUndefined();
+      expect(
+        handler(
+          { toolName, input: { path: "file.txt" } },
+          { cwd: writableRoot },
+        ),
+      ).toBeUndefined();
     expect(
       handler({ toolName: "bash", input: { command: "git status" } }),
     ).toMatchObject({ block: true });
