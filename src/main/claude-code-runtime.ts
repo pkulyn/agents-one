@@ -1,3 +1,4 @@
+import { verifyClaudeStrictCapabilities } from "./claude-capabilities";
 import { assertClaudeNonExecutingUserConfig } from "./claude-config-policy";
 import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
@@ -360,15 +361,30 @@ export function claudeCodeExecArgs(
     "stream-json",
     "--include-partial-messages",
   ];
-  if (mode !== "analysis") args.push("--dangerously-skip-permissions");
-  else args.push("--permission-mode", "plan");
+  const strict = mode === "analysis" || mode === "safe_write";
+  if (strict) {
+    args.push(
+      "--restricted",
+      "--safe-mode",
+      "--strict-mcp-config",
+      "--mcp-config",
+      JSON.stringify({ mcpServers: {} }),
+      "--permission-prompts",
+      "none",
+      "--permission-mode",
+      mode === "analysis" ? "plan" : "acceptEdits",
+      "--tools",
+      mode === "analysis" ? "Read,Glob,Grep" : "Read,Write,Edit,Glob,Grep",
+    );
+  } else args.push("--dangerously-skip-permissions");
   if (options.model?.trim()) args.push("--model", options.model.trim());
   if (options.resume) args.push("--resume", options.sessionId);
   else args.push("--session-id", options.sessionId);
   // `--add-dir` accepts a variadic list. Without the option terminator Claude
   // treats the prompt as another directory and exits with "Input must be
-  // provided". Keep the no-attachment contract unchanged.
-  if (inputDirectory) args.push("--add-dir", inputDirectory, "--");
+  // provided". Strict prompts always terminate options, including without files.
+  if (inputDirectory) args.push("--add-dir", inputDirectory);
+  if (strict || inputDirectory) args.push("--");
   args.push(prompt);
   return args;
 }
@@ -415,9 +431,15 @@ export async function startClaudeCodeProcess(
   config: ClaudeCodeRuntimeConfig,
   input: AgentRuntimeTaskInput,
   onOutput: (chunk: string) => void,
+  canStart: () => boolean = () => true,
 ): Promise<StartedClaudeCodeProcess> {
+  const assertCanStart = (): void => {
+    if (!canStart())
+      throw Error("Claude Code task was cancelled before process launch.");
+  };
+  assertCanStart();
   const mode = input.mode || "analysis";
-  const invocation = claudeCodeInvocation(configuredExecutable(config));
+  let invocation = claudeCodeInvocation(configuredExecutable(config));
   const workspace = requestedWorkspace(config, input);
   if ((mode === "implementation" || mode === "full_access") && !workspace) {
     throw new Error(
@@ -436,6 +458,14 @@ export async function startClaudeCodeProcess(
         ),
     );
   }
+
+  const strict =
+    mode === "analysis" || mode === "safe_write"
+      ? await verifyClaudeStrictCapabilities(invocation, canStart)
+      : undefined;
+  assertCanStart();
+  strict?.assertUnchanged();
+  if (strict) invocation = strict.invocation;
 
   let cwd = workspace || conversationCwd(input.profile);
   let worktreePath: string | undefined;
@@ -459,6 +489,8 @@ export async function startClaudeCodeProcess(
   const fullAccessSnapshot =
     mode === "full_access" ? workspaceSnapshot(cwd) : undefined;
 
+  assertCanStart();
+  strict?.assertUnchanged();
   const preparedInputs = prepareRuntimeInputs(
     input.profile,
     input.attachments,
@@ -475,6 +507,8 @@ export async function startClaudeCodeProcess(
     : randomUUID();
   const resume = validClaudeSessionId(requestedSessionId);
 
+  assertCanStart();
+  strict?.assertUnchanged();
   const child = spawn(
     invocation.command,
     [

@@ -1,3 +1,9 @@
+vi.mock("../src/main/claude-capabilities", () => ({
+  verifyClaudeStrictCapabilities: async (invocation: {
+    command: string;
+    prefix: string[];
+  }) => ({ invocation, assertUnchanged: () => {} }),
+}));
 import { describe, expect, it, vi } from "vitest";
 import { summarizeTaskOutput } from "../src/shared/runtime-output";
 
