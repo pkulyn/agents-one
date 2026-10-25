@@ -214,3 +214,127 @@ it("keeps explicit full access available with helpers", async () => {
   expect((await task.completion).error).toBeUndefined();
   expect(fixture.spawns).toHaveBeenCalledOnce();
 });
+
+it.each(["analysis", "safe_write"] as const)(
+  "forwards trusted user literal credentials for %s with native precedence",
+  async (mode) => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "owned-inherited-key");
+    const file = join(home, ".claude", "settings.json");
+    put(file, {
+      env: {
+        ANTHROPIC_API_KEY: "owned-user-key",
+        ANTHROPIC_BASE_URL: "https://owned.example.invalid/api",
+        ANTHROPIC_CUSTOM_HEADERS: "X-Owned: literal",
+        CLAUDE_CODE_OAUTH_TOKEN: "owned-oauth",
+        NODE_OPTIONS: "--require owned-loader",
+        CLAUDE_CODE_RESTRICTED: "0",
+      },
+    });
+    put(join(workspace, ".claude", "settings.local.json"), {
+      env: { ANTHROPIC_API_KEY: "owned-project-key" },
+    });
+    const before = readFileSync(file);
+    const task = await startClaudeCodeProcess(
+      { executablePath: "owned-cli" },
+      { prompt: "fixture", mode, workspace },
+      () => {},
+    );
+    await task.completion;
+    const env = fixture.spawns.mock.calls[0][2].env;
+    expect(env.ANTHROPIC_API_KEY).toBe("owned-user-key");
+    expect(env.ANTHROPIC_BASE_URL).toBe("https://owned.example.invalid/api");
+    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe("X-Owned: literal");
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("owned-oauth");
+    expect(env.NODE_OPTIONS).not.toBe("--require owned-loader");
+    expect(env.CLAUDE_CODE_RESTRICTED).not.toBe("0");
+    expect(process.env.ANTHROPIC_API_KEY).toBe("owned-inherited-key");
+    expect(readFileSync(file)).toEqual(before);
+  },
+);
+it("does not forward project-only credentials", async () => {
+  vi.stubEnv("ANTHROPIC_API_KEY", "owned-inherited-key");
+  put(join(workspace, ".claude", "settings.json"), {
+    env: { ANTHROPIC_API_KEY: "owned-project-key" },
+  });
+  const task = await startClaudeCodeProcess(
+    { executablePath: "owned-cli" },
+    { prompt: "fixture", mode: "safe_write", workspace },
+    () => {},
+  );
+  await task.completion;
+  expect(fixture.spawns.mock.calls[0][2].env.ANTHROPIC_API_KEY).toBe(
+    "owned-inherited-key",
+  );
+});
+it("rejects an unsupported user provider before copying its Key", async () => {
+  put(join(home, ".claude", "settings.json"), {
+    env: { CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_API_KEY: "owned-key" },
+  });
+  await denied("safe_write");
+});
+it("rejects malformed credential env data before dispatch", async () => {
+  put(join(home, ".claude", "settings.json"), {
+    env: { ANTHROPIC_API_KEY: { command: "owned helper" } },
+  });
+  await denied("safe_write");
+});
+it("keeps full native environment loading instead of rewriting it in Main", async () => {
+  vi.stubEnv("ANTHROPIC_API_KEY", "owned-inherited-key");
+  put(join(home, ".claude", "settings.json"), {
+    env: { ANTHROPIC_API_KEY: "owned-user-key" },
+  });
+  const task = await startClaudeCodeProcess(
+    { executablePath: "owned-cli" },
+    { prompt: "fixture", mode: "full_access", workspace },
+    () => {},
+  );
+  await task.completion;
+  expect(fixture.spawns.mock.calls[0][2].env.ANTHROPIC_API_KEY).toBe(
+    "owned-inherited-key",
+  );
+});
+
+it("rejects inherited provider routing when user credentials would otherwise be reinterpreted", async () => {
+  vi.stubEnv("CLAUDE_CODE_USE_VERTEX", "1");
+  put(join(home, ".claude", "settings.json"), {
+    env: { ANTHROPIC_API_KEY: "owned-key" },
+  });
+  await denied("safe_write");
+});
+it("recognizes case aliases of provider selectors", async () => {
+  put(join(home, ".claude", "settings.json"), {
+    env: { claude_code_use_bedrock: "1", ANTHROPIC_API_KEY: "owned-key" },
+  });
+  await denied("safe_write");
+});
+it("does not confuse the shell tool toggle with provider routing", async () => {
+  vi.stubEnv("CLAUDE_CODE_USE_POWERSHELL_TOOL", "1");
+  put(join(home, ".claude", "settings.json"), {
+    env: { ANTHROPIC_API_KEY: "owned-key" },
+  });
+  const task = await startClaudeCodeProcess(
+    { executablePath: "owned-cli" },
+    { prompt: "fixture", mode: "safe_write", workspace },
+    () => {},
+  );
+  await task.completion;
+  expect(fixture.spawns.mock.calls[0][2].env.ANTHROPIC_API_KEY).toBe(
+    "owned-key",
+  );
+});
+it("reads credentials from an absolute custom user root", async () => {
+  const custom = join(home, "custom-user");
+  vi.stubEnv("CLAUDE_CONFIG_DIR", custom);
+  put(join(custom, "settings.json"), {
+    env: { ANTHROPIC_API_KEY: "owned-custom" },
+  });
+  const task = await startClaudeCodeProcess(
+    { executablePath: "owned-cli" },
+    { prompt: "fixture", mode: "analysis", workspace },
+    () => {},
+  );
+  await task.completion;
+  expect(fixture.spawns.mock.calls[0][2].env.ANTHROPIC_API_KEY).toBe(
+    "owned-custom",
+  );
+});

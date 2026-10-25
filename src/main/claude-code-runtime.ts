@@ -341,8 +341,8 @@ function safeWorktreePath(profile: string | undefined, id: string): string {
   return target;
 }
 
-function childEnvironment(): NodeJS.ProcessEnv {
-  return { ...process.env };
+function childEnvironment(credentials: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...process.env, ...credentials };
 }
 
 /** This argument contract is intentionally kept pure and regression-tested. */
@@ -447,8 +447,9 @@ export async function startClaudeCodeProcess(
     );
   }
 
+  let userCredentials: NodeJS.ProcessEnv = {};
   if (mode === "analysis" || mode === "safe_write") {
-    assertClaudeNonExecutingUserConfig(
+    userCredentials = assertClaudeNonExecutingUserConfig(
       workspace ||
         join(
           agentsOneProfileHome(input.profile),
@@ -521,7 +522,7 @@ export async function startClaudeCodeProcess(
     ],
     {
       cwd,
-      env: childEnvironment(),
+      env: childEnvironment(userCredentials),
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
