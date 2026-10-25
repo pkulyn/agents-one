@@ -2,7 +2,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { afterAll, expect, it, vi } from "vitest";
-import { verifyPiStrictCapabilities } from "../src/main/pi-capabilities";
+import {
+  inspectPiVersion,
+  verifyPiStrictCapabilities,
+} from "../src/main/pi-capabilities";
 const directory = fs.mkdtempSync(path.join(tmpdir(), "pi-capability-fixture-"));
 let sequence = 0;
 function script(body: string): { command: string; prefix: string[] } {
@@ -136,3 +139,13 @@ it("bounds a hung metadata request without passing through its diagnostics", asy
     "本轮任务未发送",
   );
 }, 15_000);
+
+it("separates safe version discovery from exact reviewed task capabilities", async () => {
+  const invocation = script("process.stdout.write('2.0.0')");
+  const inspected = await inspectPiVersion(invocation);
+  expect(inspected.version).toBe("2.0.0");
+  expect(() => inspected.assertUnchanged()).not.toThrow();
+  await expect(verifyPiStrictCapabilities(invocation)).rejects.toThrow(
+    "本轮任务未发送",
+  );
+});

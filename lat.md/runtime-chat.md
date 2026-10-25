@@ -172,6 +172,12 @@ Pi read-only conversations retain file readers and query tools even without a se
 
 The generated [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] authorizes exact native tool names and rejects all other direct or nested calls, regardless of a custom tool readOnlyHint. A tools allowlist alone does not disable MCP in Pi. User instructions and skills may still provide context, but cannot grant extra tools. This is native tool capability control, not an operating-system filesystem sandbox; write-path isolation and each other Runtime require independent enforcement and verification.
 
+## Pi isolated health metadata
+
+Version health discovery runs without user loader controls, credentials or native resources, using the same bounded isolated inspection as strict task admission.
+
+[[src/main/pi-capabilities.ts#inspectPiVersion]] validates bounded semantic version output and unchanged executable/entry identity from a temporary metadata-only environment. [[src/main/pi-runtime.ts#probePiRuntime]] uses it instead of inheriting the task environment. Health discovery can report other native versions; [[src/main/pi-capabilities.ts#verifyPiStrictCapabilities]] separately requires the reviewed exact version for restricted tasks and preserves fixed strict diagnostics. Neither operation rewrites user configuration or claims installed-binary attestation.
+
 ## Pi strict CLI capability gate
 
 Restricted Pi tasks require a reviewed native CLI version before any task content, attachments or workspace preparation reaches the executor. Unknown versions fail with a fixed diagnostic.
