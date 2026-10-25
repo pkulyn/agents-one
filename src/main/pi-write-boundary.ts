@@ -16,7 +16,7 @@ export function createPiWriteBoundary(
   const denied =
     "[Agents One 权限不足] 自动写入仅限本轮工作目录中的普通文件；越界、链接、歧义路径或运行配置修改未执行，请使用明确路径，必要时切换为完全访问。 / Automatic writes require an ordinary file inside the current task directory; outside, linked, ambiguous or control paths require full access.";
   const unavailable =
-    "[Agents One 权限不足] 自动写入目录无法验证，或与当前执行器安装目录重叠；请选择其他工作目录，必要时切换为完全访问。 / Automatic write scope is unverifiable or overlaps the running CLI; choose another directory or full access.";
+    "[Agents One 权限不足] 自动写入目录无法验证，或与应用私有配置、执行器安装目录重叠；请选择其他工作目录，必要时切换为完全访问。 / Automatic write scope is unverifiable or overlaps private application state or the running CLI; choose another directory or full access.";
   const protectedNames = new Set([
     ".git",
     ".agents-one",
@@ -37,19 +37,41 @@ export function createPiWriteBoundary(
         !path.isAbsolute(relative))
     );
   };
+  let unverifiableProtectedPath = false;
   const blocked = protectedPaths
     .filter((value) => typeof value === "string" && path.isAbsolute(value))
     .map((value) => {
       const lexical = path.resolve(value);
-      try {
-        return { lexical, physical: fs.realpathSync(lexical) };
-      } catch {
-        return { lexical, physical: lexical };
+      let ancestor = lexical;
+      const missing: string[] = [];
+      while (true) {
+        try {
+          return {
+            lexical,
+            physical: path.resolve(fs.realpathSync(ancestor), ...missing),
+          };
+        } catch (error) {
+          const parent = path.dirname(ancestor);
+          if (
+            (error as NodeJS.ErrnoException).code !== "ENOENT" ||
+            same(parent, ancestor)
+          ) {
+            unverifiableProtectedPath = true;
+            return { lexical, physical: lexical };
+          }
+          missing.unshift(path.relative(parent, ancestor));
+          ancestor = parent;
+        }
       }
     });
   const binding = (() => {
     try {
-      if (typeof root !== "string" || !root || !path.isAbsolute(root))
+      if (
+        unverifiableProtectedPath ||
+        typeof root !== "string" ||
+        !root ||
+        !path.isAbsolute(root)
+      )
         return null;
       const lexical = path.resolve(root);
       const physical = fs.realpathSync(lexical);

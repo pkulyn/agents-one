@@ -206,3 +206,18 @@ describe("Pi automatic write scope", () => {
     expect(write(target)).toMatchObject({ block: true }),
   );
 });
+
+it("fails closed if a protected root cannot be inspected", () => {
+  const protectedRoot = path.join(fixture, "private");
+  const fsApi = {
+    ...fs,
+    realpathSync: (target: fs.PathLike) => {
+      if (String(target) === protectedRoot)
+        throw Object.assign(Error("private fixture"), { code: "EACCES" });
+      return fs.realpathSync(target);
+    },
+  } as typeof fs;
+  expect(write("draft.txt", gate(root, fsApi, [protectedRoot]))).toMatchObject({
+    block: true,
+  });
+});

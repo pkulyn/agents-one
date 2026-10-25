@@ -178,6 +178,8 @@ Automatic native write/edit calls bind to the Main-selected directory and its ph
 
 [[src/main/pi-write-boundary.ts#createPiWriteBoundary]] pins directory identity, checks the actual native context cwd, validates every existing ancestor, and rejects hardlinks, junctions, protected configuration directories and the executing CLI files. New nested ordinary files remain writable when the scope does not overlap the running CLI installation. [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] embeds this self-contained check; Main passes its actual cwd, invocation files and installation directories, including the private fallback directory for projectless conversations. Pi-specific tilde, at-prefix, file-URL and Windows shell-drive aliases are rejected to keep the checked target consistent with native resolution. Readers and staged attachment inputs retain their prior access. This guard is not an OS sandbox against a separate process racing filesystem changes.
 
+Explicit automatic workspaces cannot overlap Electron user data, any desktop or Hermes native profile, Pi config, or the Main/CLI installation. Main resolves native Pi config tilde, shell-drive, file-URL and cwd-relative spellings; missing protected paths resolve through their nearest existing physical ancestor, and inspection failures deny writing. The implicit projectless directory alone retains its bounded temporary writes; selecting that same private path explicitly does not grant authority. Full access keeps its explicit project contract.
+
 ## Automatic permission defaults
 
 New full-chat, tray and quick-chat conversations default to automatic permission while existing explicit selections and transport-specific authority remain intact.
