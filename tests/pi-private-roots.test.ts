@@ -1,3 +1,9 @@
+vi.mock("../src/main/pi-capabilities", () => ({
+  verifyPiStrictCapabilities: async (invocation: {
+    command: string;
+    prefix: string[];
+  }) => ({ invocation, assertUnchanged: (): void => {} }),
+}));
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";

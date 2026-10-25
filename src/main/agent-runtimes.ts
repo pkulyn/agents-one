@@ -5534,6 +5534,7 @@ export async function startAgentRuntimeTask(
             output: `${record.run.output ?? ""}${chunk}`.slice(-512 * 1024),
           };
         },
+        () => record.run.status === "running" && !record.cancelRequested,
       );
       record.pi = { cancel: pi.cancel };
       if (pi.inputArtifacts.length) {
