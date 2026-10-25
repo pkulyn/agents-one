@@ -1,3 +1,4 @@
+import { piNativeToolsExtensionSource } from "./pi-native-tools";
 import {
   createPiQueryContext,
   enterPiQueryContext,
@@ -669,6 +670,7 @@ async function preparePiRpc(
   environment: NodeJS.ProcessEnv;
   profile: string;
   assertReady: () => void;
+  startupTools: string[];
 }> {
   profile = profile || nativeContext?.profile || getActiveProfileNameSync();
   const activeProfile = getActiveProfileNameSync();
@@ -677,12 +679,31 @@ async function preparePiRpc(
     nativeContext.assertCurrent();
     if (nativeContext.profile !== profile || !isAbsolute(nativeContext.cwd))
       throw Error("Pi native command authority is invalid.");
+    let metadata: Awaited<ReturnType<typeof inspectPiVersion>> | undefined;
+    try {
+      metadata = await inspectPiVersion(invocation);
+    } catch {
+      /* Keep unreviewed explicit full-native behavior. */
+    }
+    const assertReady = (): void => {
+      nativeContext.assertCurrent();
+      metadata?.assertUnchanged();
+    };
+    assertReady();
     return {
-      invocation,
+      invocation: metadata?.invocation || invocation,
       cwd: nativeContext.cwd,
       environment: piChildEnvironment(),
       profile,
-      assertReady: nativeContext.assertCurrent,
+      assertReady,
+      startupTools:
+        metadata?.version === "1.4.0"
+          ? [
+              "--no-builtin-tools",
+              "--extension",
+              piNativeToolsExtension(profile),
+            ]
+          : [],
     };
   }
   const capabilities = await verifyPiStrictCapabilities(invocation);
@@ -704,7 +725,14 @@ async function preparePiRpc(
     ),
   );
   environment.PI_CODING_AGENT_DIR = configRoot;
-  return { invocation, cwd, environment, profile, assertReady };
+  return {
+    invocation,
+    cwd,
+    environment,
+    profile,
+    assertReady,
+    startupTools: [],
+  };
 }
 
 function piControlArgs(
@@ -751,6 +779,7 @@ export async function executePiRpcCommand(
       invocation.command,
       [
         ...invocation.prefix,
+        ...prepared.startupTools,
         ...piControlArgs(
           sessionDirectory,
           request.sessionId,
@@ -897,6 +926,7 @@ export async function executePiRpcPrompt(
       invocation.command,
       [
         ...invocation.prefix,
+        ...prepared.startupTools,
         ...piRpcArgs(sessionsRoot(nativeContext.profile), sessionId),
       ],
       {
@@ -1121,6 +1151,21 @@ function piReadOnlyExtension(
   return file;
 }
 
+function piNativeToolsExtension(profile?: string): string {
+  const source = piNativeToolsExtensionSource();
+  const digest = createHash("sha256").update(source).digest("hex").slice(0, 16);
+  const directory = resolve(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "pi-permissions",
+  );
+  mkdirSync(directory, { recursive: true });
+  const file = join(directory, "native-defaults-" + digest + ".mjs");
+  if (!existsSync(file) || readFileSync(file, "utf8") !== source)
+    writeFileSync(file, source, "utf8");
+  return file;
+}
+
 export async function startPiProcess(
   config: PiRuntimeConfig,
   input: AgentRuntimeTaskInput,
@@ -1144,8 +1189,17 @@ export async function startPiProcess(
     mode === "analysis" || mode === "safe_write"
       ? await verifyPiStrictCapabilities(invocation)
       : undefined;
+  let nativeMetadata: Awaited<ReturnType<typeof inspectPiVersion>> | undefined;
+  if (mode === "full_access") {
+    try {
+      nativeMetadata = await inspectPiVersion(invocation);
+    } catch {
+      /* Unreviewed full-native executors retain their existing startup behavior. */
+    }
+  }
   assertCanStart();
   if (strict) invocation = strict.invocation;
+  else if (nativeMetadata) invocation = nativeMetadata.invocation;
 
   let cwd = workspace || conversationDirectory(input.profile);
   const configRoot = strict ? piPrivateConfigRoot(cwd) : undefined;
@@ -1191,12 +1245,20 @@ export async function startPiProcess(
       ? protectWorkspaceFromRemoval(workspace, input.profile)
       : undefined;
   strict?.assertUnchanged();
+  nativeMetadata?.assertUnchanged();
   if (configRoot) assertPiNonExecutingConfig(configRoot);
   assertCanStart();
   const child = spawn(
     invocation.command,
     [
       ...invocation.prefix,
+      ...(nativeMetadata?.version === "1.4.0"
+        ? [
+            "--no-builtin-tools",
+            "--extension",
+            piNativeToolsExtension(input.profile),
+          ]
+        : []),
       ...(mode === "analysis" || mode === "safe_write"
         ? [
             "--extension",
