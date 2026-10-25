@@ -266,10 +266,57 @@ function conversationCwd(profile?: string): string {
   return root;
 }
 
+const PI_EXECUTION_ENVIRONMENT_KEYS = new Set([
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "NODE_REPL_EXTERNAL_MODULE",
+  "NODE_ICU_DATA",
+  "NODE_V8_COVERAGE",
+  "NODE_COMPILE_CACHE",
+  "NODE_COMPILE_CACHE_PORTABLE",
+  "NODE_REDIRECT_WARNINGS",
+  "OPENSSL_CONF",
+  "OPENSSL_CONF_INCLUDE",
+  "OPENSSL_ENGINES",
+  "OPENSSL_MODULES",
+  "ELECTRON_RUN_AS_NODE",
+  "PI_PACKAGE_DIR",
+  "RIPGREP_CONFIG_PATH",
+  "BASH_ENV",
+  "ENV",
+  "SHELLOPTS",
+  "BASHOPTS",
+  "PROMPT_COMMAND",
+  "ZDOTDIR",
+  "ZSH_ENV",
+  "PYTHONPATH",
+  "PYTHONHOME",
+  "PYTHONSTARTUP",
+  "PYTHONINSPECT",
+  "RUBYOPT",
+  "RUBYLIB",
+  "PERL5OPT",
+  "PERL5LIB",
+  "PERLLIB",
+]);
+
+// @lat: [[runtime-chat#Pi restricted task environment]]
 export function piChildEnvironment(
   source: NodeJS.ProcessEnv = process.env,
+  mode: AgentRuntimeTaskInput["mode"] = "full_access",
 ): NodeJS.ProcessEnv {
-  return { ...source };
+  if (mode !== "analysis" && mode !== "safe_write") return { ...source };
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => {
+      const name = key.toUpperCase();
+      return (
+        !PI_EXECUTION_ENVIRONMENT_KEYS.has(name) &&
+        !name.startsWith("LD_") &&
+        !name.startsWith("DYLD_") &&
+        !name.startsWith("BUN_")
+      );
+    }),
+  );
 }
 
 function positiveInteger(value: unknown): number | null {
@@ -1018,7 +1065,7 @@ export async function startPiProcess(
     ],
     {
       cwd,
-      env: piChildEnvironment(),
+      env: piChildEnvironment(process.env, mode),
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
