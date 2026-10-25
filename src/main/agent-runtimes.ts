@@ -1,3 +1,5 @@
+import { piControlScope, piNativeCommandContext } from "./pi-command-authority";
+import { getActiveProfileNameSync } from "./utils";
 import {
   automaticRuntimeTaskMode,
   withRuntimePermissionContext,
@@ -2728,7 +2730,12 @@ async function piAvailableThinkingLevels(
     { executablePath: runtime.config.executablePath },
     // This is an optional picker catalogue, never a task. Do not block the
     // chat for the generic 20-second RPC timeout if Pi has a transient lock.
-    { type: "get_available_thinking_levels", sessionId, timeoutMs: 2_500 },
+    {
+      ...piControlScope(runtime.id, sessionId),
+      type: "get_available_thinking_levels",
+      sessionId,
+      timeoutMs: 2_500,
+    },
   )
     .then((response) => {
       const levels = piThinkingLevelsFromResponse(response.data);
@@ -2990,7 +2997,11 @@ async function piRuntimeModels(
   }
   const response = await executePiRpcCommand(
     { executablePath: runtime.config.executablePath },
-    { type: "get_available_models", sessionId },
+    {
+      ...piControlScope(runtime.id, sessionId),
+      type: "get_available_models",
+      sessionId,
+    },
   );
   return piModelsFromResponse(response.data);
 }
@@ -3021,7 +3032,15 @@ export async function getAgentRuntimeCommandCatalog(
 ): Promise<RuntimeCommandCatalogSnapshot> {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!runtime) throw new Error("Runtime was not found.");
-  const key = runtimeCommandCacheKey(runtimeId, sessionId);
+  const nativeContext =
+    runtime.kind === "pi"
+      ? piNativeCommandContext(runtimeId, sessionId)
+      : undefined;
+  const key = JSON.stringify([
+    getActiveProfileNameSync(),
+    runtimeCommandCacheKey(runtimeId, sessionId),
+    nativeContext?.cwd ?? "restricted",
+  ]);
   const cached = runtimeCommandCatalogCache.get(key);
   const now = Date.now();
   if (cached && now - cached.fetchedAt < RUNTIME_COMMAND_CATALOG_TTL_MS) {
@@ -3034,7 +3053,14 @@ export async function getAgentRuntimeCommandCatalog(
     try {
       const response = await executePiRpcCommand(
         { executablePath: runtime.config.executablePath },
-        { type: "get_commands", sessionId },
+        {
+          ...piControlScope(runtime.id, sessionId),
+          type: "get_commands",
+          sessionId,
+          ...(nativeContext
+            ? { profile: nativeContext.profile, nativeContext }
+            : {}),
+        },
       );
       nativeCommands = piNativeCommandsFromResponse(response.data);
     } catch {
@@ -3214,7 +3240,11 @@ async function executeAgentRuntimeCommandOnce(
       try {
         const response = await executePiRpcCommand(
           { executablePath: runtime.config.executablePath },
-          { type: "get_state", sessionId: request.sessionId },
+          {
+            ...piControlScope(runtime.id, request.sessionId),
+            type: "get_state",
+            sessionId: request.sessionId,
+          },
         );
         const model = isRecord(response.data)
           ? piModelLabel(response.data.model)
@@ -3334,6 +3364,7 @@ async function executeAgentRuntimeCommandOnce(
         await executePiRpcCommand(
           { executablePath: runtime.config.executablePath },
           {
+            ...piControlScope(runtime.id, request.sessionId),
             type: "set_model",
             sessionId: request.sessionId,
             params: reference,
@@ -3392,7 +3423,12 @@ async function executeAgentRuntimeCommandOnce(
       // briefly unavailable.
       const state = await executePiRpcCommand(
         { executablePath: runtime.config.executablePath },
-        { type: "get_state", sessionId: request.sessionId, timeoutMs: 2_500 },
+        {
+          ...piControlScope(runtime.id, request.sessionId),
+          type: "get_state",
+          sessionId: request.sessionId,
+          timeoutMs: 2_500,
+        },
       )
         .then((response) => stringField(response.data, "thinkingLevel"))
         .catch(() => "");
@@ -3432,6 +3468,7 @@ async function executeAgentRuntimeCommandOnce(
       await executePiRpcCommand(
         { executablePath: runtime.config.executablePath },
         {
+          ...piControlScope(runtime.id, request.sessionId),
           type: "set_thinking_level",
           sessionId: request.sessionId,
           params: { level: args },
@@ -3563,6 +3600,7 @@ async function executeAgentRuntimeCommandOnce(
       const response = await executePiRpcCommand(
         { executablePath: runtime.config.executablePath },
         {
+          ...piControlScope(runtime.id, request.sessionId),
           type: "compact",
           sessionId: request.sessionId,
           ...(args ? { params: { customInstructions: args } } : {}),
@@ -3616,6 +3654,17 @@ async function executeAgentRuntimeCommandOnce(
   }
 
   if (command.target === "runtime-native" && runtime.kind === "pi") {
+    const nativeContext = piNativeCommandContext(
+      runtime.id,
+      request.sessionId,
+      request.conversationId,
+    );
+    if (!nativeContext)
+      return {
+        type: "error",
+        message:
+          "[Agents One 权限不足] Pi 原生命令需要已保存的完全访问会话和授权项目，请切换权限并选择项目后重试。",
+      };
     if (!request.sessionId?.trim()) {
       return {
         type: "error",
@@ -3629,6 +3678,7 @@ async function executeAgentRuntimeCommandOnce(
           sessionId: request.sessionId,
           message: `/${command.name}${args ? ` ${args}` : ""}`,
           waitForAgentSettled: command.source !== "plugin",
+          nativeContext,
         },
       );
       return {
@@ -3698,7 +3748,19 @@ export function executeAgentRuntimeCommand(
   for (const [key, entry] of runtimeCommandRequestCache) {
     if (entry.expiresAt <= now) runtimeCommandRequestCache.delete(key);
   }
-  const key = `${request.runtimeId}:${requestId}`;
+  const nativeContext = piNativeCommandContext(
+    request.runtimeId,
+    request.sessionId,
+    request.conversationId,
+  );
+  const key = JSON.stringify([
+    getActiveProfileNameSync(),
+    request.runtimeId,
+    requestId,
+    request.conversationId,
+    request.sessionId,
+    nativeContext?.cwd ?? "restricted",
+  ]);
   const previous = runtimeCommandRequestCache.get(key);
   if (previous) return previous.result;
   const result = executeAgentRuntimeCommandOnce(

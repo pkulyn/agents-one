@@ -12,9 +12,21 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promisify } from "util";
 import { StringDecoder } from "node:string_decoder";
 import { homedir } from "os";
-import { delimiter, dirname, extname, join, relative, resolve } from "path";
+import {
+  delimiter,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "path";
 import { createHash, randomUUID } from "crypto";
-import { agentsOneProfileHome, profileHome } from "./utils";
+import {
+  agentsOneProfileHome,
+  profileHome,
+  getActiveProfileNameSync,
+} from "./utils";
 import { agentsOneDataRoot } from "./agents-one-data-root";
 import { fileURLToPath } from "node:url";
 import { prepareRuntimeInputs } from "./runtime-inputs";
@@ -72,7 +84,17 @@ export type PiRpcCommand =
   | "get_commands"
   | "get_state";
 
+/** Main-only live authority; never serialized across IPC. */
+export interface PiNativeCommandContext {
+  cwd: string;
+  profile: string;
+  assertCurrent: () => void;
+}
+
 export interface PiRpcCommandRequest {
+  /** Main-resolved project context; it does not grant native resources. */
+  workspace?: string;
+  nativeContext?: PiNativeCommandContext;
   type: PiRpcCommand;
   /** A provider session is required for stateful commands such as compact. */
   sessionId?: string;
@@ -623,6 +645,78 @@ export function piRpcArgs(
   return args;
 }
 
+const PI_CONTROL_COMMANDS = new Set<PiRpcCommand>([
+  "get_available_models",
+  "set_model",
+  "get_available_thinking_levels",
+  "set_thinking_level",
+  "compact",
+  "get_commands",
+  "get_state",
+]);
+
+async function preparePiRpc(
+  config: PiRuntimeConfig,
+  profile?: string,
+  nativeContext?: PiNativeCommandContext,
+  workspace?: string,
+): Promise<{
+  invocation: PiInvocation;
+  cwd: string;
+  environment: NodeJS.ProcessEnv;
+  profile: string;
+  assertReady: () => void;
+}> {
+  profile = profile || nativeContext?.profile || getActiveProfileNameSync();
+  const activeProfile = getActiveProfileNameSync();
+  let invocation = piInvocation(configuredExecutable(config));
+  if (nativeContext) {
+    nativeContext.assertCurrent();
+    if (nativeContext.profile !== profile || !isAbsolute(nativeContext.cwd))
+      throw Error("Pi native command authority is invalid.");
+    return {
+      invocation,
+      cwd: nativeContext.cwd,
+      environment: piChildEnvironment(),
+      profile,
+      assertReady: nativeContext.assertCurrent,
+    };
+  }
+  const capabilities = await verifyPiStrictCapabilities(invocation);
+  invocation = capabilities.invocation;
+  if (workspace && !isAbsolute(workspace))
+    throw Error("Pi RPC project context is invalid.");
+  const cwd = workspace || conversationCwd(profile);
+  const configRoot = piPrivateConfigRoot(cwd);
+  const assertReady = (): void => {
+    if (getActiveProfileNameSync() !== activeProfile)
+      throw Error("Pi RPC profile changed before execution.");
+    capabilities.assertUnchanged();
+    assertPiNonExecutingConfig(configRoot);
+  };
+  assertReady();
+  const environment = Object.fromEntries(
+    Object.entries(piChildEnvironment(process.env, "analysis")).filter(
+      ([key]) => key.toUpperCase() !== "PI_CODING_AGENT_DIR",
+    ),
+  );
+  environment.PI_CODING_AGENT_DIR = configRoot;
+  return { invocation, cwd, environment, profile, assertReady };
+}
+
+function piControlArgs(
+  sessionDirectory: string,
+  sessionId?: string,
+  nativeContext?: PiNativeCommandContext,
+): string[] {
+  return [
+    ...piRpcArgs(sessionDirectory, sessionId),
+    ...(!nativeContext
+      ? ["--no-extensions", "--no-mcp", "--no-tools", "--exclude-tools", "*"]
+      : []),
+  ];
+}
+
 /**
  * Execute exactly one Pi RPC request over a short-lived JSONL control channel.
  * Prompt execution remains on the existing streaming process path; this helper
@@ -632,8 +726,16 @@ export async function executePiRpcCommand(
   config: PiRuntimeConfig,
   request: PiRpcCommandRequest,
 ): Promise<PiRpcCommandResponse> {
-  const invocation = piInvocation(configuredExecutable(config));
-  const sessionDirectory = sessionsRoot(request.profile);
+  if (!PI_CONTROL_COMMANDS.has(request.type))
+    throw Error("Unsupported Pi RPC control command.");
+  const prepared = await preparePiRpc(
+    config,
+    request.profile,
+    request.nativeContext,
+    request.workspace,
+  );
+  const invocation = prepared.invocation;
+  const sessionDirectory = sessionsRoot(prepared.profile);
   const requestId = `agents-one-${randomUUID()}`;
   const timeoutMs = Math.min(
     Math.max(request.timeoutMs ?? 20_000, 1_000),
@@ -641,12 +743,20 @@ export async function executePiRpcCommand(
   );
 
   return new Promise<PiRpcCommandResponse>((resolveResult, rejectResult) => {
+    prepared.assertReady();
     const child = spawn(
       invocation.command,
-      [...invocation.prefix, ...piRpcArgs(sessionDirectory, request.sessionId)],
+      [
+        ...invocation.prefix,
+        ...piControlArgs(
+          sessionDirectory,
+          request.sessionId,
+          request.nativeContext,
+        ),
+      ],
       {
-        cwd: conversationCwd(request.profile),
-        env: piChildEnvironment(),
+        cwd: prepared.cwd,
+        env: prepared.environment,
         shell: false,
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
@@ -732,7 +842,7 @@ export async function executePiRpcCommand(
       }
     });
     child.stdin?.write(
-      `${JSON.stringify({ id: requestId, type: request.type, ...(request.params ?? {}) })}\n`,
+      `${JSON.stringify({ ...(request.params ?? {}), id: requestId, type: request.type })}\n`,
     );
   });
 }
@@ -746,6 +856,7 @@ export async function executePiRpcPrompt(
   config: PiRuntimeConfig,
   request: {
     sessionId: string;
+    nativeContext?: PiNativeCommandContext;
     message: string;
     profile?: string;
     timeoutMs?: number;
@@ -760,7 +871,17 @@ export async function executePiRpcPrompt(
   if (!message.startsWith("/")) {
     throw new Error("Pi native commands must start with '/'.");
   }
-  const invocation = piInvocation(configuredExecutable(config));
+  const nativeContext = request.nativeContext;
+  if (!nativeContext)
+    throw Error(
+      "[Agents One 权限不足] Pi 原生命令需要已保存的完全访问会话和授权项目。 / Native commands require a saved full-access conversation and authorized project.",
+    );
+  const prepared = await preparePiRpc(
+    config,
+    nativeContext.profile,
+    nativeContext,
+  );
+  const invocation = prepared.invocation;
   const timeoutMs = Math.min(
     Math.max(request.timeoutMs ?? 60_000, 1_000),
     10 * 60_000,
@@ -768,15 +889,16 @@ export async function executePiRpcPrompt(
   const requestId = `agents-one-${randomUUID()}`;
 
   return new Promise<PiRpcPromptResult>((resolveResult, rejectResult) => {
+    prepared.assertReady();
     const child = spawn(
       invocation.command,
       [
         ...invocation.prefix,
-        ...piRpcArgs(sessionsRoot(request.profile), sessionId),
+        ...piRpcArgs(sessionsRoot(nativeContext.profile), sessionId),
       ],
       {
-        cwd: conversationCwd(request.profile),
-        env: piChildEnvironment(),
+        cwd: prepared.cwd,
+        env: prepared.environment,
         shell: false,
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
