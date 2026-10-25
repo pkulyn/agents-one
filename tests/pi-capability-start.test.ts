@@ -1,3 +1,6 @@
+vi.mock("../src/main/pi-config-policy", () => ({
+  assertPiNonExecutingConfig: (): void => {},
+}));
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";

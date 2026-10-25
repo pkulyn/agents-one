@@ -1,3 +1,6 @@
+vi.mock("../src/main/pi-config-policy", () => ({
+  assertPiNonExecutingConfig: (): void => {},
+}));
 vi.mock("../src/main/pi-capabilities", () => ({
   verifyPiStrictCapabilities: async (invocation: {
     command: string;

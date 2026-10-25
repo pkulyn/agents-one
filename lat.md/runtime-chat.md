@@ -184,6 +184,12 @@ Analysis and automatic task processes omit inherited loader and runtime redirect
 
 [[src/main/pi-runtime.ts#piChildEnvironment]] filters execution-oriented environment names case-insensitively for restricted task spawns, including Node preloads/search paths, native dynamic loaders, package redirects and interpreter startup controls. It returns a new object and does not rewrite the parent process or saved settings. Metadata probes retain their separately isolated environment; out-of-band native controls retain their existing contract. This prevents inherited preload execution before a tool hook, but does not prove that command-backed native credentials or external search-tool resolution are contained.
 
+## Pi non-executing native credentials
+
+Restricted tasks reject command-backed native credentials and request headers before preparing or sending a prompt. Literal values, environment templates and OAuth credentials remain native data.
+
+[[src/main/pi-config-policy.ts#assertPiNonExecutingConfig]] reads stable regular-file descriptors with an 8 MiB limit per native models/auth file and fixed diagnostics. It follows reviewed Pi 1.4 model line-comment/trailing-comma semantics and rejects commands only in native executable fields: provider keys, provider/model/override headers and stored API keys. Main rechecks before task launch without rewriting credentials or unknown fields. Native config roots stay outside automatic write authority even when relative to an implicit conversation cwd. Live OAuth updates remain native; this gate does not claim OS isolation from external same-user config edits after launch.
+
 ## Pi automatic write scope
 
 Automatic native write/edit calls bind to the Main-selected directory and its physical identity. Outside, linked, ambiguous and control targets are refused before the native tool runs.
