@@ -1,7 +1,4 @@
-import {
-  runtimeRemovalBlockedMessage,
-  isRuntimeRemovalOperation,
-} from "../shared/runtime-permissions";
+import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promisify } from "util";
@@ -529,11 +526,19 @@ export function piExecArgs(
     "--session-id",
     sessionId,
   ];
-  // Writable modes keep Pi's native terminal capabilities: built-in/custom
-  // tools, skills, extensions, MCP adapters, packages and project context.
-  // Only a user-selected read-only run narrows the available tools.
-  if (mode === "analysis") {
-    args.push("--tools", "read,grep,find,ls,tool_search,codemode");
+  // Restricted runs use trusted native file tools only. A tools allowlist alone
+  // does not disable MCP in Pi; block discovery and indirect execution as well.
+  if (mode === "analysis" || mode === "safe_write") {
+    args.push(
+      "--no-extensions",
+      "--no-mcp",
+      "--tools",
+      mode === "analysis"
+        ? "read,grep,find,ls"
+        : "read,grep,find,ls,write,edit",
+      "--exclude-tools",
+      "bash,powershell,tool_search,codemode,mcp__*",
+    );
   }
   if (model?.trim()) args.push("--model", model.trim());
   // Pi expands only these staged copies before the run. It never receives the
@@ -839,24 +844,16 @@ export async function probePiRuntime(
 export function piReadOnlyExtensionSource(
   mode: "analysis" | "safe_write" = "analysis",
 ): string {
-  return `const isRemoval = ${isRuntimeRemovalOperation.toString()};
-export default function agentsOneReadOnly(pi) {
-  const readers = new Set(["read", "grep", "find", "ls"]);
-  const orchestration = new Set(["tool_search", "codemode"]);
+  return `export default function agentsOneReadOnly(pi) {
+  const allowed = new Set(${JSON.stringify(mode === "safe_write" ? ["read", "grep", "find", "ls", "write", "edit"] : ["read", "grep", "find", "ls"])});
   pi.on("tool_call", (event) => {
     const name = event.toolName;
-    if (${JSON.stringify(mode)} === "safe_write") {
-      if (!isRemoval(name, event.input)) return;
-      return { block: true, reason: "[Agents One 权限不足] 当前为自动权限，已阻止工具 " + name + " 的移动或删除操作；如需执行，请切换为完全访问。" };
-    }
-    if (readers.has(name) || orchestration.has(name)) return;
-    const tool = pi.getAllTools().find((candidate) => candidate.name === name);
-    if (tool?.annotations?.readOnlyHint === true) return;
+    if (allowed.has(name)) return;
     return {
       block: true,
-      reason: "[Agents One 权限不足] 当前权限为只读，已阻止工具 " + name +
-        "：该工具未声明为只读查询，可能修改数据。读取/搜索/查询仍可执行。" +
-        "若任务需要创建或编辑，请提示用户切换为自动；移动或删除需切换为完全访问。不要声称该操作已完成。",
+      reason: "[Agents One 权限不足] 当前权限为" + ${JSON.stringify(mode === "safe_write" ? "自动" : "只读")} +
+        "，已阻止终端、脚本或未受控工具 " + name +
+        "。仅允许本轮受控文件工具；终端、脚本、移动或删除需切换为完全访问。不要声称该操作已完成。",
     };
   });
 }
