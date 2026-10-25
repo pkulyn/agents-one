@@ -114,14 +114,15 @@ it.each(["safe_write", "analysis"] as const)(
     expect(fixture.prepared).toHaveBeenCalledOnce();
   },
 );
-it("keeps explicit full access independent of restricted capability verification", async () => {
+it("keeps unreviewed full access available after non-executing version discovery", async () => {
   const task = await startPiProcess(
     { executablePath: process.execPath },
     { prompt: "fixture", mode: "full_access", workspace: directory },
     () => {},
   );
   await task.completion;
-  expect(fixture.args).toEqual([]);
+  expect(fixture.args).toContain("--version");
+  expect(fixture.args.join(" ")).not.toContain("fixture");
   expect(fixture.spawns).toBe(1);
 });
 

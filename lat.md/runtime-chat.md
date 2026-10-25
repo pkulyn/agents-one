@@ -172,6 +172,12 @@ Pi read-only conversations retain file readers and query tools even without a se
 
 The generated [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] authorizes exact native tool names and rejects all other direct or nested calls, regardless of a custom tool readOnlyHint. A tools allowlist alone does not disable MCP in Pi. User instructions and skills may still provide context, but cannot grant extra tools. This is native tool capability control, not an operating-system filesystem sandbox; write-path isolation and each other Runtime require independent enforcement and verification.
 
+## Pi native mode tool selection
+
+Reviewed Pi full-access processes rebuild their startup loadout from current native defaults and default-active extension tools, so a previous analysis turn cannot silently remove editors.
+
+[[src/main/pi-native-tools.ts#restorePiNativeTools]] follows merged native defaultTools names and modifiers without rewriting settings. A Main-owned startup extension runs before configured user session-start handlers. Reviewed Pi 1.4 full startup uses --no-builtin-tools to retain registered tools while skipping old transcript loadout restoration; unknown full-native versions retain their prior behavior. Current native defaults and extension selections apply to each full-access task or authorized native RPC process; restricted tasks and their write boundaries stay independent.
+
 ## Pi isolated health metadata
 
 Version health discovery runs without user loader controls, credentials or native resources, using the same bounded isolated inspection as strict task admission.

@@ -12,6 +12,9 @@ const fixture = vi.hoisted(() => ({
   verify: vi.fn(),
 }));
 vi.mock("../src/main/pi-capabilities", () => ({
+  inspectPiVersion: async (): Promise<never> => {
+    throw Error("uninspected-full-fixture");
+  },
   verifyPiStrictCapabilities: fixture.verify,
 }));
 vi.mock("../src/main/process-control", () => ({
@@ -163,7 +166,7 @@ it("retains explicitly authorized native resources in their Main-selected projec
     { executablePath: process.execPath },
     { type: "get_commands", profile: "default", nativeContext },
   );
-  expect(assertCurrent).toHaveBeenCalledTimes(2);
+  expect(assertCurrent).toHaveBeenCalledTimes(3);
   expect(fixture.verify).not.toHaveBeenCalled();
   expect(fixture.calls[0].args).not.toContain("--no-extensions");
   expect(fixture.calls[0].options.env.NODE_OPTIONS).toBe(
