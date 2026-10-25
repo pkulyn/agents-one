@@ -854,6 +854,7 @@ describe("agent runtime registry", () => {
   });
 
   it("maps Pi model, compact, and discovered commands to typed RPC controls", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", join(testHome, "desktop"));
     const { runtimes } = await loadModules();
     runtimes.saveAgentRuntime({
       id: "pi-command",
@@ -885,6 +886,17 @@ describe("agent runtime registry", () => {
       },
     });
 
+    const history = await import("../src/main/runtime-conversation-store");
+    history.saveRuntimeConversation({
+      id: "pi-command-conversation",
+      runtimeId: "pi-command",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+      runtimeSessionId: "pi-session",
+      accessMode: "analysis",
+      workspace: testHome,
+      messages: [],
+    });
     const catalog = await runtimes.getAgentRuntimeCommandCatalog(
       "pi-command",
       "pi-session",
@@ -976,6 +988,8 @@ describe("agent runtime registry", () => {
       expect.any(Object),
       expect.objectContaining({
         type: "compact",
+        workspace: testHome,
+        profile: "default",
         params: { customInstructions: "保留接口决策" },
         onEvent: expect.any(Function),
       }),
@@ -999,6 +1013,35 @@ describe("agent runtime registry", () => {
       }),
     );
 
+    await expect(
+      runtimes.executeAgentRuntimeCommand({
+        requestId: "cmd-review-denied",
+        runtimeId: "pi-command",
+        sessionId: "pi-session",
+        name: "review",
+      }),
+    ).resolves.toMatchObject({
+      type: "error",
+      message: expect.stringContaining("完全访问"),
+    });
+    expect(executePiRpcPromptMock).not.toHaveBeenCalled();
+    history.saveRuntimeConversation({
+      id: "pi-command-conversation",
+      runtimeId: "pi-command",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+      runtimeSessionId: "pi-session",
+      accessMode: "full_access",
+      workspace: testHome,
+      messages: [],
+    });
+    executePiRpcCommandMock.mockResolvedValue({
+      data: {
+        commands: [
+          { name: "review", description: "Review", source: "extension" },
+        ],
+      },
+    });
     executePiRpcPromptMock.mockResolvedValue({ output: "复核已完成" });
     await expect(
       runtimes.executeAgentRuntimeCommand({
@@ -1012,6 +1055,34 @@ describe("agent runtime registry", () => {
       expect.any(Object),
       expect.objectContaining({ message: "/review" }),
     );
+    history.saveRuntimeConversation({
+      id: "pi-command-conversation",
+      runtimeId: "pi-command",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+      runtimeSessionId: "pi-session",
+      accessMode: "analysis",
+      workspace: testHome,
+      messages: [],
+    });
+    const promptCalls = executePiRpcPromptMock.mock.calls.length;
+    await expect(
+      runtimes.executeAgentRuntimeCommand({
+        requestId: "cmd-review",
+        runtimeId: "pi-command",
+        sessionId: "pi-session",
+        name: "review",
+      }),
+    ).resolves.toMatchObject({
+      type: "error",
+      message: expect.stringContaining("完全访问"),
+    });
+    expect(executePiRpcPromptMock).toHaveBeenCalledTimes(promptCalls);
+    expect(
+      executePiRpcCommandMock.mock.calls.filter(
+        ([, request]) => request.type === "get_commands",
+      ),
+    ).toHaveLength(2);
   });
 
   it("opens Pi's locally configured model catalogue without a model-list RPC", async () => {

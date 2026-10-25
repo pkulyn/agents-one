@@ -190,6 +190,12 @@ Restricted tasks reject command-backed native credentials and request headers be
 
 [[src/main/pi-config-policy.ts#assertPiNonExecutingConfig]] reads stable regular-file descriptors with an 8 MiB limit per native models/auth file and fixed diagnostics. It follows reviewed Pi 1.4 model line-comment/trailing-comma semantics and rejects commands only in native executable fields: provider keys, provider/model/override headers and stored API keys. Main rechecks before task launch without rewriting credentials or unknown fields. Native config roots stay outside automatic write authority even when relative to an implicit conversation cwd. Live OAuth updates remain native; this gate does not claim OS isolation from external same-user config edits after launch.
 
+## Pi control-channel startup authority
+
+Metadata and control RPC starts use reviewed non-executing startup settings. Opaque native slash commands require a live Main-owned full-access conversation and authorized project.
+
+[[src/main/pi-runtime.ts#executePiRpcCommand]] validates the method and immutable request envelope, applies capability/config checks and removes extension, MCP, tool and loader startup authority from ordinary controls. [[src/main/pi-command-authority.ts#piNativeCommandContext]] binds full native resource discovery and slash execution to the current profile, conversation, Runtime, session and project; it rechecks revocation before spawn. [[src/main/pi-command-authority.ts#piControlScope]] also carries the authorized project into ordinary controls so native cwd-scoped lookup resumes the original history without granting resources. Native resource processes use the saved authorized project. Command catalogue and retry caches separate profile and authority scope; missing or downgraded bindings cannot reuse elevated results. No conversation, credentials or unknown configuration fields are rewritten.
+
 ## Pi query process context
 
 Restricted native helpers run from a verified empty control directory while Pi retains the selected project context. Executable lookup cannot inherit relative or project-owned PATH directories.
