@@ -3800,6 +3800,46 @@ describe("agent runtime registry", () => {
     }
   });
 
+  it("keeps a cancelled Pi task from dispatching after asynchronous startup", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-preflight-cancel",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "pi", transport: "cli" },
+    });
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let canStart: (() => boolean) | undefined;
+    let dispatched = false;
+    startPiProcessMock.mockImplementationOnce(
+      async (_config, _task, _onOutput, allowed: () => boolean) => {
+        canStart = allowed;
+        await waiting;
+        if (!allowed()) throw Error("Pi task was cancelled before execution.");
+        dispatched = true;
+        throw Error("Unexpected dispatch");
+      },
+    );
+    const pending = runtimes.startAgentRuntimeTask("pi-preflight-cancel", {
+      prompt: "cancel me",
+      mode: "safe_write",
+    });
+    await vi.waitFor(() => expect(canStart).toBeTypeOf("function"));
+    expect(canStart!()).toBe(true);
+    await expect(runtimes.cancelAllAgentRuntimeTasks()).resolves.toBe(1);
+    expect(canStart!()).toBe(false);
+    release();
+    const result = await pending;
+    expect(result.status).toBe("cancelled");
+    expect(result.error).toBe("Runtime task was cancelled.");
+    expect(dispatched).toBe(false);
+  });
+
   it("probes and runs a local Pi Agent CLI runtime with a resumable session", async () => {
     const { runtimes } = await loadModules();
     runtimes.saveAgentRuntime({
@@ -4030,7 +4070,7 @@ describe("agent runtime registry", () => {
     expect(startPiProcessMock.mock.calls[0][1].prompt).toContain(
       "当前权限：自动",
     );
-    const frame = (thinking: string) =>
+    const frame = (thinking: string): string =>
       JSON.stringify({
         type: "message_update",
         message: {

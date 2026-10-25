@@ -1,3 +1,4 @@
+import { verifyPiStrictCapabilities } from "./pi-capabilities";
 import { createPiWriteBoundary } from "./pi-write-boundary";
 import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
@@ -924,15 +925,27 @@ export async function startPiProcess(
   config: PiRuntimeConfig,
   input: AgentRuntimeTaskInput,
   onOutput: (chunk: string) => void,
+  canStart: () => boolean = () => true,
 ): Promise<StartedPiProcess> {
+  const assertCanStart = (): void => {
+    if (!canStart()) throw Error("Pi task was cancelled before execution.");
+  };
+  assertCanStart();
   const mode = input.mode || "analysis";
-  const invocation = piInvocation(configuredExecutable(config));
+  let invocation = piInvocation(configuredExecutable(config));
   const workspace = requestedWorkspace(config, input);
   if ((mode === "implementation" || mode === "full_access") && !workspace) {
     throw new Error(
       "Pi full-access tasks require a task-specific project folder.",
     );
   }
+
+  const strict =
+    mode === "analysis" || mode === "safe_write"
+      ? await verifyPiStrictCapabilities(invocation)
+      : undefined;
+  assertCanStart();
+  if (strict) invocation = strict.invocation;
 
   let cwd = workspace || conversationCwd(input.profile);
   let worktreePath: string | undefined;
@@ -954,6 +967,7 @@ export async function startPiProcess(
     cwd = worktreePath;
   }
 
+  assertCanStart();
   const preparedInputs = prepareRuntimeInputs(
     input.profile,
     input.attachments,
@@ -965,6 +979,8 @@ export async function startPiProcess(
     mode === "safe_write" && workspace
       ? protectWorkspaceFromRemoval(workspace, input.profile)
       : undefined;
+  strict?.assertUnchanged();
+  assertCanStart();
   const child = spawn(
     invocation.command,
     [
