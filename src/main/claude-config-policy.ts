@@ -112,11 +112,83 @@ function assertNoCommands(value: unknown): void {
     }
   }
 }
+const credentialEnvironmentKeys = new Set([
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_CUSTOM_HEADERS",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "NODE_EXTRA_CA_CERTS",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+]);
+const authRoutingKeys = new Set([
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_ANTHROPIC_AWS",
+  "CLAUDE_CODE_USE_MANTLE",
+  "CLAUDE_CODE_USE_VERTEX",
+  "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
+  "CLAUDE_CODE_USE_FOUNDRY",
+  "CLAUDE_CODE_USE_GATEWAY",
+  "USE_LOCAL_OAUTH",
+  "USE_STAGING_OAUTH",
+  "CLAUDE_LOCAL_OAUTH_API_BASE",
+  "CLAUDE_LOCAL_OAUTH_APPS_BASE",
+  "CLAUDE_LOCAL_OAUTH_CONSOLE_BASE",
+  "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST",
+  "CLAUDE_CODE_HOST_AUTH_ENV_VAR",
+  "CLAUDE_CODE_HOST_CREDS_FILE",
+  "CLAUDE_CODE_GB_BASE_URL",
+  "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
+  "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+]);
+function hasUnreviewedRouting(env: Record<string, unknown>): boolean {
+  return Object.entries(env).some(
+    ([key, value]) =>
+      authRoutingKeys.has(key.toUpperCase()) &&
+      value !== undefined &&
+      value !== null &&
+      value !== "" &&
+      value !== false &&
+      value !== "false" &&
+      value !== 0 &&
+      value !== "0",
+  );
+}
+function userCredentialEnvironment(
+  config: unknown,
+  source: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const env = (config as Record<string, unknown>).env;
+  if (env === undefined) return {};
+  if (env === null || typeof env !== "object" || Array.isArray(env))
+    throw Error(unavailable);
+  const values = env as Record<string, unknown>;
+  if (hasUnreviewedRouting(values)) throw Error(unavailable);
+  const result: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(values)) {
+    const canonical = name.toUpperCase();
+    if (!credentialEnvironmentKeys.has(canonical)) continue;
+    if (
+      typeof value !== "string" ||
+      (result[canonical] !== undefined && result[canonical] !== value)
+    )
+      throw Error(unavailable);
+    result[canonical] = value;
+  }
+  if (Object.keys(result).length && hasUnreviewedRouting(source))
+    throw Error(unavailable);
+  return result;
+}
 // @lat: [[runtime-chat#Claude non-executing user configuration]]
 export function assertClaudeNonExecutingUserConfig(
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
-): void {
+): NodeJS.ProcessEnv {
   try {
     if (!isAbsolute(cwd)) throw Error(unavailable);
     const home =
@@ -127,10 +199,8 @@ export function assertClaudeNonExecutingUserConfig(
     const custom = environmentValue(env, "CLAUDE_CONFIG_DIR");
     if (!isAbsolute(home) || (custom && !isAbsolute(custom)))
       throw Error(unavailable);
-    const files = new Set([
-      join(custom || home, ".claude.json"),
-      join(custom || join(home, ".claude"), "settings.json"),
-    ]);
+    const userSettings = join(custom || join(home, ".claude"), "settings.json");
+    const files = new Set([join(custom || home, ".claude.json"), userSettings]);
     const roots = new Set([resolve(cwd)]);
     try {
       roots.add(realpathSync(cwd));
@@ -148,7 +218,14 @@ export function assertClaudeNonExecutingUserConfig(
         dir = parent;
       }
     }
-    for (const file of files) assertNoCommands(configuration(file));
+    let credentials: NodeJS.ProcessEnv = {};
+    for (const file of files) {
+      const config = configuration(file);
+      assertNoCommands(config);
+      if (file === userSettings)
+        credentials = userCredentialEnvironment(config, env);
+    }
+    return credentials;
   } catch {
     throw Error(unavailable);
   }
