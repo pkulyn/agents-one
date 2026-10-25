@@ -190,6 +190,12 @@ Restricted tasks reject command-backed native credentials and request headers be
 
 [[src/main/pi-config-policy.ts#assertPiNonExecutingConfig]] reads stable regular-file descriptors with an 8 MiB limit per native models/auth file and fixed diagnostics. It follows reviewed Pi 1.4 model line-comment/trailing-comma semantics and rejects commands only in native executable fields: provider keys, provider/model/override headers and stored API keys. Main rechecks before task launch without rewriting credentials or unknown fields. Native config roots stay outside automatic write authority even when relative to an implicit conversation cwd. Live OAuth updates remain native; this gate does not claim OS isolation from external same-user config edits after launch.
 
+## Pi query process context
+
+Restricted native helpers run from a verified empty control directory while Pi retains the selected project context. Executable lookup cannot inherit relative or project-owned PATH directories.
+
+[[src/main/pi-query-context.ts#createPiQueryContext]] asynchronously bounds namespace discovery, canonicalizes outside helper directories and checks directory ancestry identities, pins native config and common certificate/credential paths, and reuses one empty control directory per profile. [[src/main/pi-query-context.ts#enterPiQueryContext]] is embedded in the trusted extension and rechecks that directory before every tool call. Startup refuses overlapping managed query-bin namespaces; unknown control files are preserved and refused. Initial session cwd, native grep/find behavior, staged inputs and write authority stay bound to the original project. Full access keeps its native process context; this is not attestation of installed helper binaries or an OS sandbox.
+
 ## Pi automatic write scope
 
 Automatic native write/edit calls bind to the Main-selected directory and its physical identity. Outside, linked, ambiguous and control targets are refused before the native tool runs.

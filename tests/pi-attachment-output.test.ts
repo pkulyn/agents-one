@@ -73,13 +73,14 @@ function actualGuard(): (target: string) => unknown {
   const install = new Function(
     "fs",
     "path",
+    "process",
     source
       .replace(/^import .*;\r?$/gm, "")
       .replace(
         "export default function agentsOneReadOnly",
         "return function agentsOneReadOnly",
       ),
-  )(fs, path);
+  )(fs, path, { chdir: (): void => {} });
   install({
     on: (_event: string, handler: typeof check) => {
       check = handler;
