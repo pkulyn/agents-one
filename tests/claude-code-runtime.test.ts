@@ -18,10 +18,20 @@ describe("Claude Code runtime invocation", () => {
       "--output-format",
       "stream-json",
       "--include-partial-messages",
+      "--restricted",
+      "--safe-mode",
+      "--strict-mcp-config",
+      "--mcp-config",
+      JSON.stringify({ mcpServers: {} }),
+      "--permission-prompts",
+      "none",
       "--permission-mode",
       "plan",
+      "--tools",
+      "Read,Glob,Grep",
       "--session-id",
       "11111111-1111-4111-8111-111111111111",
+      "--",
       "inspect this",
     ]);
   });
@@ -56,13 +66,12 @@ describe("Claude Code runtime invocation", () => {
     );
   });
 
-  it("keeps Claude Code skills, MCP, plugins, hooks and Bash in safe-write mode", () => {
+  it("restricts safe-write to reviewed native file tools", () => {
     const args = claudeCodeExecArgs("safe_write", "update this safely");
-    expect(args).toEqual(
-      expect.arrayContaining(["--dangerously-skip-permissions"]),
-    );
-    expect(args).not.toContain("--allowedTools");
-    expect(args).not.toContain("--disallowedTools");
+    expect(args).not.toContain("--dangerously-skip-permissions");
+    expect(args).toContain("--safe-mode");
+    expect(args[args.indexOf("--tools") + 1]).toBe("Read,Write,Edit,Glob,Grep");
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("acceptEdits");
   });
 
   it("adds only Agents One's staged input directory to the Claude Code scope", () => {
@@ -79,8 +88,17 @@ describe("Claude Code runtime invocation", () => {
       "--output-format",
       "stream-json",
       "--include-partial-messages",
+      "--restricted",
+      "--safe-mode",
+      "--strict-mcp-config",
+      "--mcp-config",
+      JSON.stringify({ mcpServers: {} }),
+      "--permission-prompts",
+      "none",
       "--permission-mode",
       "plan",
+      "--tools",
+      "Read,Glob,Grep",
       "--session-id",
       "33333333-3333-4333-8333-333333333333",
       "--add-dir",

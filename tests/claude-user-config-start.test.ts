@@ -1,3 +1,9 @@
+vi.mock("../src/main/claude-capabilities", () => ({
+  verifyClaudeStrictCapabilities: async (invocation: {
+    command: string;
+    prefix: string[];
+  }) => ({ invocation, assertUnchanged: () => {} }),
+}));
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import {

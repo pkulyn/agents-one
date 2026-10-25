@@ -3506,6 +3506,7 @@ describe("agent runtime registry", () => {
       }),
       expect.objectContaining({ mode: "implementation", workspace: testHome }),
       expect.any(Function),
+      expect.any(Function),
     );
 
     resolveCompletion({
@@ -3869,6 +3870,47 @@ describe("agent runtime registry", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps a cancelled Claude task from dispatching after asynchronous startup", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "claude-preflight-cancel",
+      name: "Claude",
+      kind: "claude-code",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "pi", transport: "cli" },
+    });
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let canStart: (() => boolean) | undefined;
+    let dispatched = false;
+    startClaudeCodeProcessMock.mockImplementationOnce(
+      async (_config, _task, _onOutput, allowed: () => boolean) => {
+        canStart = allowed;
+        await waiting;
+        if (!allowed())
+          throw Error("Claude task was cancelled before execution.");
+        dispatched = true;
+        throw Error("Unexpected dispatch");
+      },
+    );
+    const pending = runtimes.startAgentRuntimeTask("claude-preflight-cancel", {
+      prompt: "cancel me",
+      mode: "safe_write",
+    });
+    await vi.waitFor(() => expect(canStart).toBeTypeOf("function"));
+    expect(canStart!()).toBe(true);
+    await expect(runtimes.cancelAllAgentRuntimeTasks()).resolves.toBe(1);
+    expect(canStart!()).toBe(false);
+    release();
+    const result = await pending;
+    expect(result.status).toBe("cancelled");
+    expect(result.error).toBe("Runtime task was cancelled.");
+    expect(dispatched).toBe(false);
   });
 
   it("keeps a cancelled Pi task from dispatching after asynchronous startup", async () => {
