@@ -1,3 +1,4 @@
+import { createPiWriteBoundary } from "./pi-write-boundary";
 import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -843,12 +844,23 @@ export async function probePiRuntime(
 // @lat: [[runtime-chat#Pi read-only tool boundary]]
 export function piReadOnlyExtensionSource(
   mode: "analysis" | "safe_write" = "analysis",
+  writableRoot = "",
+  protectedPaths: string[] = [],
 ): string {
-  return `export default function agentsOneReadOnly(pi) {
+  return `import * as fs from "node:fs";
+import * as path from "node:path";
+const checkWritePath = (${createPiWriteBoundary.toString()})(${JSON.stringify(writableRoot)}, fs, path, ${JSON.stringify(protectedPaths)});
+export default function agentsOneReadOnly(pi) {
   const allowed = new Set(${JSON.stringify(mode === "safe_write" ? ["read", "grep", "find", "ls", "write", "edit"] : ["read", "grep", "find", "ls"])});
-  pi.on("tool_call", (event) => {
+  pi.on("tool_call", (event, ctx) => {
     const name = event.toolName;
-    if (allowed.has(name)) return;
+    if (allowed.has(name)) {
+      if (name === "write" || name === "edit") {
+        const reason = checkWritePath(event.input?.path, ctx?.cwd);
+        if (reason) return { block: true, reason };
+      }
+      return;
+    }
     return {
       block: true,
       reason: "[Agents One 权限不足] 当前权限为" + ${JSON.stringify(mode === "safe_write" ? "自动" : "只读")} +
@@ -863,8 +875,10 @@ export function piReadOnlyExtensionSource(
 function piReadOnlyExtension(
   profile: string | undefined,
   mode: "analysis" | "safe_write",
+  writableRoot: string,
+  protectedPaths: string[],
 ): string {
-  const source = piReadOnlyExtensionSource(mode);
+  const source = piReadOnlyExtensionSource(mode, writableRoot, protectedPaths);
   const digest = createHash("sha256").update(source).digest("hex").slice(0, 16);
   const directory = resolve(
     agentsOneProfileHome(profile),
@@ -928,7 +942,18 @@ export async function startPiProcess(
     [
       ...invocation.prefix,
       ...(mode === "analysis" || mode === "safe_write"
-        ? ["--extension", piReadOnlyExtension(input.profile, mode)]
+        ? [
+            "--extension",
+            piReadOnlyExtension(
+              input.profile,
+              mode,
+              cwd,
+              [invocation.command, ...invocation.prefix].flatMap((file) => [
+                file,
+                dirname(file),
+              ]),
+            ),
+          ]
         : []),
       ...piExecArgs(
         mode,

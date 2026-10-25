@@ -1,18 +1,34 @@
-import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { tmpdir } from "node:os";
+import { afterAll, describe, expect, it } from "vitest";
 import { piExecArgs, piReadOnlyExtensionSource } from "../src/main/pi-runtime";
 type ToolEvent = {
   toolName: string;
   input?: Record<string, unknown>;
   parentToolCallId?: string;
 };
+const writableRoot = fs.mkdtempSync(path.join(tmpdir(), "pi-strict-tools-"));
+afterAll(() => {
+  if (
+    !path.resolve(writableRoot).startsWith(path.resolve(tmpdir()) + path.sep) ||
+    !path.basename(writableRoot).startsWith("pi-strict-tools-")
+  )
+    throw Error("Unsafe cleanup");
+  fs.rmSync(writableRoot, { recursive: true, force: true });
+});
 function gate(mode: "analysis" | "safe_write"): (event: ToolEvent) => unknown {
-  let handler!: (event: ToolEvent) => unknown;
+  let handler!: (event: ToolEvent, ctx?: { cwd: string }) => unknown;
   const install = new Function(
-    piReadOnlyExtensionSource(mode).replace(
-      "export default function agentsOneReadOnly",
-      "return function agentsOneReadOnly",
-    ),
-  )();
+    "fs",
+    "path",
+    piReadOnlyExtensionSource(mode, writableRoot)
+      .replace(/^import .*;\r?$/gm, "")
+      .replace(
+        "export default function agentsOneReadOnly",
+        "return function agentsOneReadOnly",
+      ),
+  )(fs, path);
   install({
     on: (_name: string, callback: typeof handler) => {
       handler = callback;
@@ -22,7 +38,7 @@ function gate(mode: "analysis" | "safe_write"): (event: ToolEvent) => unknown {
       { name: "custom_query", annotations: { readOnlyHint: true } },
     ],
   });
-  return handler;
+  return (event) => handler(event, { cwd: writableRoot });
 }
 describe("strict Pi automatic capabilities", () => {
   it.each([
@@ -54,7 +70,9 @@ describe("strict Pi automatic capabilities", () => {
   );
   it("keeps native controlled reads and edits available", () => {
     for (const toolName of ["read", "grep", "find", "ls", "write", "edit"])
-      expect(gate("safe_write")({ toolName })).toBeUndefined();
+      expect(
+        gate("safe_write")({ toolName, input: { path: "file.txt" } }),
+      ).toBeUndefined();
     for (const toolName of ["read", "grep", "find", "ls"])
       expect(gate("analysis")({ toolName })).toBeUndefined();
   });

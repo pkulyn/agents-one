@@ -172,6 +172,12 @@ Pi read-only conversations retain file readers and query tools even without a se
 
 The generated [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] authorizes exact native tool names and rejects all other direct or nested calls, regardless of a custom tool readOnlyHint. A tools allowlist alone does not disable MCP in Pi. User instructions and skills may still provide context, but cannot grant extra tools. This is native tool capability control, not an operating-system filesystem sandbox; write-path isolation and each other Runtime require independent enforcement and verification.
 
+## Pi automatic write scope
+
+Automatic native write/edit calls bind to the Main-selected directory and its physical identity. Outside, linked, ambiguous and control targets are refused before the native tool runs.
+
+[[src/main/pi-write-boundary.ts#createPiWriteBoundary]] pins directory identity, checks the actual native context cwd, validates every existing ancestor, and rejects hardlinks, junctions, protected configuration directories and the executing CLI files. New nested ordinary files remain writable when the scope does not overlap the running CLI installation. [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] embeds this self-contained check; Main passes its actual cwd, invocation files and installation directories, including the private fallback directory for projectless conversations. Pi-specific tilde, at-prefix, file-URL and Windows shell-drive aliases are rejected to keep the checked target consistent with native resolution. Readers and staged attachment inputs retain their prior access. This guard is not an OS sandbox against a separate process racing filesystem changes.
+
 ## Automatic permission defaults
 
 New full-chat, tray and quick-chat conversations default to automatic permission while existing explicit selections and transport-specific authority remain intact.
