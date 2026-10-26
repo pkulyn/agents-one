@@ -167,7 +167,10 @@ export function manageMobileExecutionPolicies(
     const name = profile ?? getActiveProfileNameSync();
     const home = agentsOneProfileHome(name);
     const guard = (write: boolean): void => {
-      if (getActiveProfileNameSync() !== name || agentsOneProfileHome(name) !== home)
+      if (
+        getActiveProfileNameSync() !== name ||
+        agentsOneProfileHome(name) !== home
+      )
         fail("profile_inactive");
       if (write && isAgentsOneRestoreWriteLocked())
         fail("restore_write_locked");
@@ -215,7 +218,10 @@ export async function prepareAndManageMobileExecutionPolicies(
     const home = agentsOneProfileHome(name);
     const guard = (): void => {
       assertRequestCurrent();
-      if (getActiveProfileNameSync() !== name || agentsOneProfileHome(name) !== home)
+      if (
+        getActiveProfileNameSync() !== name ||
+        agentsOneProfileHome(name) !== home
+      )
         fail("profile_inactive");
       if (isAgentsOneRestoreWriteLocked()) fail("restore_write_locked");
     };

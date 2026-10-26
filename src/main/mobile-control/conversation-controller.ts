@@ -145,19 +145,21 @@ export class MobileConversationController implements OwnerControlHandler {
     };
   }
   private messages(value: SourceConversation): Promise<Json[]> {
-    return Promise.resolve(this.ledger.indexMessages(
-      value.id,
-      value.messages.map((message) => ({
-        id: message.id,
-        conversationId: value.id,
-        kind: message.kind,
-        content: message.content,
-        visibleToUser: true,
-        createdAt: iso(message.createdAt),
-        ...(message.runtimeId ? { runtimeId: message.runtimeId } : {}),
-        ...(message.runId ? { runId: message.runId } : {}),
-      })),
-    ));
+    return Promise.resolve(
+      this.ledger.indexMessages(
+        value.id,
+        value.messages.map((message) => ({
+          id: message.id,
+          conversationId: value.id,
+          kind: message.kind,
+          content: message.content,
+          visibleToUser: true,
+          createdAt: iso(message.createdAt),
+          ...(message.runtimeId ? { runtimeId: message.runtimeId } : {}),
+          ...(message.runId ? { runId: message.runId } : {}),
+        })),
+      ),
+    );
   }
   private async conversation(
     value: SourceConversation,
@@ -177,10 +179,14 @@ export class MobileConversationController implements OwnerControlHandler {
       ...(value.sourceKind === "runtime_conversation" &&
       this.execution &&
       (!request || request.device.scopes.includes("conversation:advance")) &&
-      (!request || this.policiesForRequest(request).some((policy) =>
-        policy.enforced === true && policy.runtimeId === value.runtimeId &&
-        (policy.projectId ?? undefined) === value.projectId &&
-        (policy.allowedActions as string[]).includes("advance")))
+      (!request ||
+        this.policiesForRequest(request).some(
+          (policy) =>
+            policy.enforced === true &&
+            policy.runtimeId === value.runtimeId &&
+            (policy.projectId ?? undefined) === value.projectId &&
+            (policy.allowedActions as string[]).includes("advance"),
+        ))
         ? ["advance"]
         : []),
       ...(value.manageable &&
@@ -196,10 +202,10 @@ export class MobileConversationController implements OwnerControlHandler {
       projectId: value.projectId ?? null,
       revision:
         value.revision ??
-        await this.ledger.observeReadonlySource(
+        (await this.ledger.observeReadonlySource(
           JSON.stringify([value.sourceKind, value.id]),
           { ...value, messages: indexedMessages },
-        ),
+        )),
       pinned: value.pinned,
       archived: value.archived,
       lastMessageSeq: last,
@@ -216,7 +222,9 @@ export class MobileConversationController implements OwnerControlHandler {
       createdAt: iso(value.createdAt),
       updatedAt: iso(value.updatedAt),
       allowedActions: actions,
-      restrictionReason: actions.includes("advance") ? null : value.restrictionReason ?? "requires_owner_action",
+      restrictionReason: actions.includes("advance")
+        ? null
+        : (value.restrictionReason ?? "requires_owner_action"),
     };
   }
   private requireRead(request: OwnerControlRequest): void {
@@ -337,10 +345,12 @@ export class MobileConversationController implements OwnerControlHandler {
     };
   }
   private cursor(snapshot: Snapshot, position: number): Promise<string> {
-    return Promise.resolve(this.ledger.cursor(snapshot.deviceId, snapshot.grantRevision, {
-      snapshotId: snapshot.id,
-      position,
-    }));
+    return Promise.resolve(
+      this.ledger.cursor(snapshot.deviceId, snapshot.grantRevision, {
+        snapshotId: snapshot.id,
+        position,
+      }),
+    );
   }
   private async page(
     request: OwnerControlRequest,
@@ -427,22 +437,23 @@ export class MobileConversationController implements OwnerControlHandler {
           filters,
           cursor,
           async () => {
-            const conversationItems =
-              request.device.scopes.includes("conversation:read")
-                ? await Promise.all(
-                    this.repository
-                      .list()
-                      .filter(
-                        (row) =>
-                          !filters.conversationId ||
-                          row.id === filters.conversationId,
-                      )
-                      .map(async (row) => ({
-                        kind: "conversation",
-                        value: await this.conversation(row, request),
-                      })),
-                  )
-                : [];
+            const conversationItems = request.device.scopes.includes(
+              "conversation:read",
+            )
+              ? await Promise.all(
+                  this.repository
+                    .list()
+                    .filter(
+                      (row) =>
+                        !filters.conversationId ||
+                        row.id === filters.conversationId,
+                    )
+                    .map(async (row) => ({
+                      kind: "conversation",
+                      value: await this.conversation(row, request),
+                    })),
+                )
+              : [];
             const scheduleItems =
               request.device.scopes.includes("schedule:read") &&
               this.schedules &&
@@ -455,21 +466,22 @@ export class MobileConversationController implements OwnerControlHandler {
                     ),
                   }))
                 : [];
-            const originalRunItems =
-              request.device.scopes.includes("conversation:read")
-                ? await Promise.all(
-                    (this.originalRuns?.list() ?? [])
-                      .filter(
-                        (run) =>
-                          !filters.conversationId ||
-                          run.conversationId === filters.conversationId,
-                      )
-                      .map(async (run) => ({
-                        kind: "run",
-                        value: await this.run(run, request),
-                      })),
-                  )
-                : [];
+            const originalRunItems = request.device.scopes.includes(
+              "conversation:read",
+            )
+              ? await Promise.all(
+                  (this.originalRuns?.list() ?? [])
+                    .filter(
+                      (run) =>
+                        !filters.conversationId ||
+                        run.conversationId === filters.conversationId,
+                    )
+                    .map(async (run) => ({
+                      kind: "run",
+                      value: await this.run(run, request),
+                    })),
+                )
+              : [];
             const executionEntries =
               request.device.scopes.includes("conversation:read") &&
               this.execution
@@ -487,8 +499,9 @@ export class MobileConversationController implements OwnerControlHandler {
                   value: {
                     ...entry.run,
                     artifacts: request.device.scopes.includes("artifact:read")
-                      ? (await this.artifacts?.list(String(entry.run.runId))) ??
-                        entry.run.artifacts
+                      ? ((await this.artifacts?.list(
+                          String(entry.run.runId),
+                        )) ?? entry.run.artifacts)
                       : [],
                     allowedActions: request.device.scopes.includes(
                       "conversation:advance",
@@ -523,7 +536,9 @@ export class MobileConversationController implements OwnerControlHandler {
           dataEpoch: this.ledger.dataEpoch,
           snapshotCursor: snapshot.eventCursor,
           nextCursor:
-            next < snapshot.items.length ? await this.cursor(snapshot, next) : null,
+            next < snapshot.items.length
+              ? await this.cursor(snapshot, next)
+              : null,
         };
         break;
       }
@@ -644,10 +659,15 @@ export class MobileConversationController implements OwnerControlHandler {
                       .toLocaleLowerCase()
                       .includes(String(filters.query).toLocaleLowerCase())),
               )
-               .sort(
-                 (a, b) =>
-                   (typeof a.nextRunAt === "string" ? a.nextRunAt : "~").localeCompare(typeof b.nextRunAt === "string" ? b.nextRunAt : "~") ||
-                   String(a.name).localeCompare(String(b.name)) ||
+              .sort(
+                (a, b) =>
+                  (typeof a.nextRunAt === "string"
+                    ? a.nextRunAt
+                    : "~"
+                  ).localeCompare(
+                    typeof b.nextRunAt === "string" ? b.nextRunAt : "~",
+                  ) ||
+                  String(a.name).localeCompare(String(b.name)) ||
                   String(a.id).localeCompare(String(b.id)),
               ),
         );
@@ -716,7 +736,8 @@ export class MobileConversationController implements OwnerControlHandler {
                     : value.archived ===
                       (filters.archived === true ||
                         filters.archived === "true")) &&
-                  (!filters.projectId || value.projectId === filters.projectId) &&
+                  (!filters.projectId ||
+                    value.projectId === filters.projectId) &&
                   (!filters.state ||
                     filters.state === "all" ||
                     value.activity ===
@@ -803,7 +824,10 @@ export class MobileConversationController implements OwnerControlHandler {
         if (value.revision !== revision) fail("revision_conflict");
         const { clientMutationId: unused, ...patch } = input;
         void unused;
-        await this.ledger.accept(request, { type: "conversation", id: value.id });
+        await this.ledger.accept(request, {
+          type: "conversation",
+          id: value.id,
+        });
         try {
           this.repository.patch(value.id, patch, revision);
         } catch (error) {
@@ -814,7 +838,9 @@ export class MobileConversationController implements OwnerControlHandler {
           throw error;
         }
         try {
-          body = await this.ledger.complete(request, { conversationId: value.id });
+          body = await this.ledger.complete(request, {
+            conversationId: value.id,
+          });
         } catch {
           fail("reconciliation_required");
         }
@@ -895,7 +921,8 @@ export class MobileConversationController implements OwnerControlHandler {
           {
             ...run,
             artifacts: request.device.scopes.includes("artifact:read")
-              ? (await this.artifacts?.list(request.params.id)) ?? run.artifacts
+              ? ((await this.artifacts?.list(request.params.id)) ??
+                run.artifacts)
               : [],
           },
           request,
@@ -945,21 +972,19 @@ export class MobileConversationController implements OwnerControlHandler {
           cursor,
           Number(limit ?? 50),
           async () =>
-            (await this.ledger
-              .operations(request.device.deviceId))
-              .filter(
-                (value) =>
-                  (!filters.status || value.status === filters.status) &&
-                  (!filters.clientMutationId ||
-                    value.clientMutationId === filters.clientMutationId),
-              ) as unknown as Json[],
+            (await this.ledger.operations(request.device.deviceId)).filter(
+              (value) =>
+                (!filters.status || value.status === filters.status) &&
+                (!filters.clientMutationId ||
+                  value.clientMutationId === filters.clientMutationId),
+            ) as unknown as Json[],
         );
         break;
       }
       case "getOperation": {
-        body = (await this.ledger
-          .operations(request.device.deviceId)
-        ).find((value) => value.operationId === request.params.id);
+        body = (await this.ledger.operations(request.device.deviceId)).find(
+          (value) => value.operationId === request.params.id,
+        );
         if (!body) fail("resource_not_found", 404);
         break;
       }

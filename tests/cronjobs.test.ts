@@ -18,8 +18,8 @@ vi.mock("child_process", () => ({
 
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  profileHome: () => "C:/hermes",
-};
+    profileHome: () => "C:/hermes",
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 

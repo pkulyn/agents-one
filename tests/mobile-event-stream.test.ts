@@ -131,12 +131,12 @@ describe("Owner persistent event replay and snapshots", () => {
     await denied.next();
     const allowedAbort = new AbortController();
     const allowedStream = await new MobileOwnerEventStream(ledger).open({
-        ...request("/events", { cursor: anchor }, [
-          "conversation:read",
-          "artifact:read",
-        ]),
-        signal: allowedAbort.signal,
-      });
+      ...request("/events", { cursor: anchor }, [
+        "conversation:read",
+        "artifact:read",
+      ]),
+      signal: allowedAbort.signal,
+    });
     const allowed = allowedStream[Symbol.asyncIterator]();
     expect((await allowed.next()).value).toMatchObject({
       payload: { artifacts: [fixtures.Artifact] },

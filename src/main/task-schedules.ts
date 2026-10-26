@@ -33,7 +33,11 @@ import {
   getRuntimeConversation,
   saveRuntimeConversation,
 } from "./runtime-conversation-store";
-import { getActiveProfileNameSync, agentsOneProfileHome, safeWriteFile } from "./utils";
+import {
+  getActiveProfileNameSync,
+  agentsOneProfileHome,
+  safeWriteFile,
+} from "./utils";
 import { resolveAuthorizedWorkspaceId } from "./workspace-authority";
 import { isAgentsOneRestoreWriteLocked } from "./restore-write-lock";
 
@@ -1369,10 +1373,12 @@ export async function writeMobileTaskSchedule(
   id: string | undefined,
   profile: string,
   expectedRevision: string | undefined,
-  prepare: (original?: TaskSchedule) => {
-    input: CreateTaskScheduleInput;
-    policyId: string;
-  } | Promise<{ input: CreateTaskScheduleInput; policyId: string }>,
+  prepare: (original?: TaskSchedule) =>
+    | {
+        input: CreateTaskScheduleInput;
+        policyId: string;
+      }
+    | Promise<{ input: CreateTaskScheduleInput; policyId: string }>,
   guard: () => void,
   accept: (id: string) => void | Promise<void>,
 ): Promise<{ scheduleId: string; revision: string }> {
@@ -1409,7 +1415,12 @@ export async function writeMobileTaskSchedule(
     const schedule =
       action === "create"
         ? await createTaskScheduleUnlocked(prepared.input, profile, beforeWrite)
-        : await updateTaskScheduleUnlocked(id!, prepared.input, profile, beforeWrite);
+        : await updateTaskScheduleUnlocked(
+            id!,
+            prepared.input,
+            profile,
+            beforeWrite,
+          );
     return {
       scheduleId: schedule.id,
       revision: scheduleRevision(schedule.revision),

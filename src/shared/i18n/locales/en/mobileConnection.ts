@@ -41,7 +41,8 @@ export default {
     },
   },
   title: "Phone connection",
-  pairedTasksHint: "After pairing, manage conversations and schedules on your phone and start tasks with agents configured on this computer.",
+  pairedTasksHint:
+    "After pairing, manage conversations and schedules on your phone and start tasks with agents configured on this computer.",
   advancedRecovery: "Advanced: task recovery",
   connectionSetup: "Connection service settings",
   description:

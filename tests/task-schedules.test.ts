@@ -294,7 +294,14 @@ describe("Runtime schedules", () => {
     });
     const now = Math.floor(Date.now() / 60_000) * 60_000;
     const overdueAt = now - 5 * 60_000;
-    const path = join(testHome, "data", "profiles", "default", "desktop", "task-schedules.json");
+    const path = join(
+      testHome,
+      "data",
+      "profiles",
+      "default",
+      "desktop",
+      "task-schedules.json",
+    );
     const store = JSON.parse(readFileSync(path, "utf8"));
     store.schedules[0].lastDueAt = now - 10 * 60_000;
     store.schedules[0].nextRunAt = overdueAt;
@@ -347,7 +354,14 @@ describe("Runtime schedules", () => {
       runtimeId: "pi-local",
     });
     const now = Math.floor(Date.now() / 60_000) * 60_000;
-    const path = join(testHome, "data", "profiles", "default", "desktop", "task-schedules.json");
+    const path = join(
+      testHome,
+      "data",
+      "profiles",
+      "default",
+      "desktop",
+      "task-schedules.json",
+    );
     const store = JSON.parse(readFileSync(path, "utf8"));
     store.schedules[0].lastDueAt = now;
     store.schedules[0].nextRunAt = now;
@@ -386,7 +400,14 @@ describe("Runtime schedules", () => {
       runtimeId: "pi-local",
     });
     const now = Math.floor(Date.now() / 60_000) * 60_000;
-    const path = join(testHome, "data", "profiles", "default", "desktop", "task-schedules.json");
+    const path = join(
+      testHome,
+      "data",
+      "profiles",
+      "default",
+      "desktop",
+      "task-schedules.json",
+    );
     const store = JSON.parse(readFileSync(path, "utf8"));
     for (const item of store.schedules) item.nextRunAt = now;
     writeFileSync(path, JSON.stringify(store));

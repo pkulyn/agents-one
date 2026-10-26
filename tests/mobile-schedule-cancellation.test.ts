@@ -26,14 +26,14 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => state.active,
-  profileHome: (profile: string) => join(state.root, profile),
-  safeWriteFile: (file: string, data: string) => {
-    state.write();
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, data);
-  },
-};
+    getActiveProfileNameSync: () => state.active,
+    profileHome: (profile: string) => join(state.root, profile),
+    safeWriteFile: (file: string, data: string) => {
+      state.write();
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, data);
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 vi.mock("../src/main/mobile-connection", () => ({

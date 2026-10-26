@@ -27,13 +27,13 @@ import { DesktopMobileCatalog } from "../src/main/mobile-control/desktop-catalog
 const state = vi.hoisted(() => ({ root: "" }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => "owner",
-  profileHome: (profile: string) => join(state.root, profile),
-  safeWriteFile: (path: string, data: string) => {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, data);
-  },
-};
+    getActiveProfileNameSync: () => "owner",
+    profileHome: (profile: string) => join(state.root, profile),
+    safeWriteFile: (path: string, data: string) => {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, data);
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 let now: number;
@@ -173,14 +173,38 @@ const items = (value: Json): Json[] => value.items as Json[];
 describe("real desktop conversation control routes", () => {
   it("offers advance for an original conversation only with matching execution authority and device scope", async () => {
     const execution = new MobileExecutionCoordinator(
-      { get: () => null, projectId: () => undefined, begin: vi.fn(), finish: vi.fn() },
-      { authorize: vi.fn(), start: vi.fn(), get: vi.fn(), cancel: vi.fn() }, ledger,
+      {
+        get: () => null,
+        projectId: () => undefined,
+        begin: vi.fn(),
+        finish: vi.fn(),
+      },
+      { authorize: vi.fn(), start: vi.fn(), get: vi.fn(), cancel: vi.fn() },
+      ledger,
     );
     let enforced = true;
-    const policy = { id: "policy", runtimeId: "runtime-1", projectId: null, enforced: true, allowedActions: ["advance"] };
-    controller = new MobileConversationController(repository, ledger, "Desktop", () => now, execution, undefined, {
-      snapshot: () => ({ runtimes: [], projects: [], policies: [{ ...policy, enforced }] }),
-    });
+    const policy = {
+      id: "policy",
+      runtimeId: "runtime-1",
+      projectId: null,
+      enforced: true,
+      allowedActions: ["advance"],
+    };
+    controller = new MobileConversationController(
+      repository,
+      ledger,
+      "Desktop",
+      () => now,
+      execution,
+      undefined,
+      {
+        snapshot: () => ({
+          runtimes: [],
+          projects: [],
+          policies: [{ ...policy, enforced }],
+        }),
+      },
+    );
     const input = request("/conversations/a");
     expect((await body(input)).allowedActions).not.toContain("advance");
     input.device.scopes.push("conversation:advance");
@@ -191,7 +215,9 @@ describe("real desktop conversation control routes", () => {
     enforced = true;
     policy.projectId = "other-project" as never;
     expect((await body(input)).allowedActions).not.toContain("advance");
-    expect(readFileSync(file(), "utf8")).toBe(JSON.stringify({ conversations: rows() }));
+    expect(readFileSync(file(), "utf8")).toBe(
+      JSON.stringify({ conversations: rows() }),
+    );
   });
   it("returns authorized original previews with frozen pages and leaves source bytes and read position unchanged", async () => {
     const original = readFileSync(file());
@@ -537,10 +563,12 @@ describe("real desktop conversation control routes", () => {
         task: { mode: "full_access", fullAccessConfirmed: true },
       })),
     });
-    expect(() => legacy.validate({
-      runtimeId: "runtime-1",
-      executionPolicyId: "legacy-policy",
-    })).toThrow("unverified_policy");
+    expect(() =>
+      legacy.validate({
+        runtimeId: "runtime-1",
+        executionPolicyId: "legacy-policy",
+      }),
+    ).toThrow("unverified_policy");
   });
 
   it("refuses unapproved and revoked creation policies before saving any original record", async () => {

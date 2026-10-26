@@ -30,8 +30,10 @@ export default {
     },
   },
   title: "手机连接",
-  description: "与 Android APP 配对，管理已连接的手机。智能体、项目和执行模式在手机发起任务时选择。",
-  pairedTasksHint: "配对后可在手机查看和管理对话、定时任务，并选择电脑已配置的智能体发起任务。",
+  description:
+    "与 Android APP 配对，管理已连接的手机。智能体、项目和执行模式在手机发起任务时选择。",
+  pairedTasksHint:
+    "配对后可在手机查看和管理对话、定时任务，并选择电脑已配置的智能体发起任务。",
   advancedRecovery: "高级：异常任务处理",
   connectionSetup: "连接服务设置",
   endpoint: "连接服务 HTTPS 地址",
@@ -47,8 +49,7 @@ export default {
     "关闭后阻止手机请求，并使未完成邀请失效。已有任务和定时计划继续运行。",
   owner: "数据空间",
   ready: "连接管理服务可用",
-  taskPending:
-    "桌面任务通道尚未就绪，请保持桌面端运行并检查连接。",
+  taskPending: "桌面任务通道尚未就绪，请保持桌面端运行并检查连接。",
   invite: "生成邀请",
   invitation: "配对邀请",
   expiry: "有效期至",

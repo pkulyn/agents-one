@@ -8,7 +8,11 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import MobileConnectionPane from "./MobileConnectionPane";
 import type { MobileConnectionResult } from "../../../../shared/mobile-connection";
-vi.mock("./MobileExecutionPolicies", () => ({ default: () => { throw Error("Connection settings must not load execution approval UI"); } }));
+vi.mock("./MobileExecutionPolicies", () => ({
+  default: () => {
+    throw Error("Connection settings must not load execution approval UI");
+  },
+}));
 vi.mock("./MobileWriteRecovery", () => ({ default: () => null }));
 
 vi.mock("../useI18n", () => ({
@@ -21,7 +25,17 @@ const connected: MobileConnectionResult = {
     enabled: true,
     taskChannelReady: false,
     owner: { ownerId: "o", spaceId: "s", label: "Desktop", online: false },
-    allowedScopes: ["conversation:read", "schedule:read", "conversation:create", "conversation:advance", "conversation:manage", "schedule:manage", "schedule:trigger", "schedule:cancel", "artifact:read"],
+    allowedScopes: [
+      "conversation:read",
+      "schedule:read",
+      "conversation:create",
+      "conversation:advance",
+      "conversation:manage",
+      "schedule:manage",
+      "schedule:trigger",
+      "schedule:cancel",
+      "artifact:read",
+    ],
     devices: [],
     claims: [
       {
@@ -40,19 +54,39 @@ describe("phone connection settings", () => {
     vi.useFakeTimers();
     try {
       let finishPoll!: (result: MobileConnectionResult) => void;
-      const manage=vi.fn().mockResolvedValueOnce(connected).mockImplementationOnce(()=>new Promise<MobileConnectionResult>(resolve=>{finishPoll=resolve;})).mockResolvedValue(connected);
-      Object.assign(window,{agentsOneAPI:{manageMobileConnection:manage}});
+      const manage = vi
+        .fn()
+        .mockResolvedValueOnce(connected)
+        .mockImplementationOnce(
+          () =>
+            new Promise<MobileConnectionResult>((resolve) => {
+              finishPoll = resolve;
+            }),
+        )
+        .mockResolvedValue(connected);
+      Object.assign(window, {
+        agentsOneAPI: { manageMobileConnection: manage },
+      });
       render(<MobileConnectionPane profile="a" />);
-      await act(async()=>{});
-      await act(async()=>{await vi.advanceTimersByTimeAsync(5000);});
-      const invite=screen.getByRole("button",{name:"invite"});
+      await act(async () => {});
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      const invite = screen.getByRole("button", { name: "invite" });
       expect(invite).toBeEnabled();
       fireEvent.click(invite);
-      await act(async()=>{});
-      expect(manage).toHaveBeenCalledWith("a",{action:"invite"});
-      await act(async()=>finishPoll({...connected,status:{...connected.status,enabled:false}}));
+      await act(async () => {});
+      expect(manage).toHaveBeenCalledWith("a", { action: "invite" });
+      await act(async () =>
+        finishPoll({
+          ...connected,
+          status: { ...connected.status, enabled: false },
+        }),
+      );
       expect(invite).toBeEnabled();
-    } finally {vi.useRealTimers();}
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("requires phrase confirmation before approving and sends selected grants", async () => {
     const manage = vi.fn().mockResolvedValue(connected);

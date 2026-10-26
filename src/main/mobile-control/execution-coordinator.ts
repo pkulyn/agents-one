@@ -86,7 +86,11 @@ export class MobileExecutionCoordinator {
       value.policyId !== policyId ||
       value.runtime.id !== runtimeId ||
       value.projectId !== projectId ||
-      !(mode === "analysis" || mode === "safe_write" || mode === "full_access") ||
+      !(
+        mode === "analysis" ||
+        mode === "safe_write" ||
+        mode === "full_access"
+      ) ||
       value.task.workspaceId !== projectId ||
       (mode === "safe_write" && !projectId && !desktopTaskPolicy) ||
       (mode === "full_access" &&
@@ -96,7 +100,9 @@ export class MobileExecutionCoordinator {
   }
   async createTurn(
     request: OwnerControlRequest,
-  ): Promise<NonNullable<Awaited<ReturnType<MobileOwnerLedgerPort["operation"]>>>> {
+  ): Promise<
+    NonNullable<Awaited<ReturnType<MobileOwnerLedgerPort["operation"]>>>
+  > {
     const input = this.validate(request, "createTurn");
     const replay = await this.ledger.operation(request);
     if (replay) return replay;
@@ -106,13 +112,10 @@ export class MobileExecutionCoordinator {
     if ((source.revision ?? "1") !== revision) fail("revision_conflict");
     if (
       source.activeRuntimeRunId ||
-      (await this.ledger
-        .executionEntries())
-        .some(
-          (entry) =>
-            entry.run.conversationId === source.id &&
-            entry.phase !== "terminal",
-        )
+      (await this.ledger.executionEntries()).some(
+        (entry) =>
+          entry.run.conversationId === source.id && entry.phase !== "terminal",
+      )
     )
       fail("run_active");
     if (source.messages.length && !source.runtimeSessionId)
@@ -407,7 +410,9 @@ export class MobileExecutionCoordinator {
   }
   async cancelRun(
     request: OwnerControlRequest,
-  ): Promise<NonNullable<Awaited<ReturnType<MobileOwnerLedgerPort["operation"]>>>> {
+  ): Promise<
+    NonNullable<Awaited<ReturnType<MobileOwnerLedgerPort["operation"]>>>
+  > {
     this.validate(request, "cancelRun");
     const replay = await this.ledger.operation(request);
     if (replay) return replay;

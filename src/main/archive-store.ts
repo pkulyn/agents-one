@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import type { ArchivedItem, ArchiveItemInput } from "../shared/archives";
-import { getActiveProfileNameSync, agentsOneProfileHome, safeWriteFile } from "./utils";
+import {
+  getActiveProfileNameSync,
+  agentsOneProfileHome,
+  safeWriteFile,
+} from "./utils";
 
 interface ArchiveStore {
   version: 1;

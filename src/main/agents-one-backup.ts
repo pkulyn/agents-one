@@ -305,7 +305,11 @@ function isAllowedBackupRelativePath(
     if (parts[0] === "desktop-staging") return parts.length >= 2;
     if (parts[0] !== "profiles" || parts.length < 3) return false;
     const profile = parts[1];
-    if (!PROFILE_NAME_PATTERN.test(profile) || (profiles && !profiles.has(profile))) return false;
+    if (
+      !PROFILE_NAME_PATTERN.test(profile) ||
+      (profiles && !profiles.has(profile))
+    )
+      return false;
     if (parts.length === 3) return V2_PROFILE_FILES.has(parts[2]);
     return V2_PROFILE_DIRECTORIES.has(parts[2]);
   }
@@ -878,7 +882,9 @@ function hasSqliteHeader(path: string): boolean {
 }
 
 function isProfileStateDatabasePath(path: string): boolean {
-  return path === "state.db" || /^profiles\/[^/]+\/(?:state|desktop)\.db$/.test(path);
+  return (
+    path === "state.db" || /^profiles\/[^/]+\/(?:state|desktop)\.db$/.test(path)
+  );
 }
 
 function pathWithinProfile(path: string): string {
@@ -1068,7 +1074,9 @@ function prepareBackup(root: string, appVersion: string): PreparedBackup {
         sha256: sha256File(sanitizedConfig),
       });
     }
-    for (const profile of schemaVersion === 2 ? [] : profileNames(resolvedRoot)) {
+    for (const profile of schemaVersion === 2
+      ? []
+      : profileNames(resolvedRoot)) {
       const portableConfig = materializePortableYamlConfig(
         resolvedRoot,
         temporaryRoot,
@@ -1204,7 +1212,9 @@ async function exportAgentsOneBackupUnlocked(
   options: ExportAgentsOneBackupOptions,
 ): Promise<AgentsOneBackupResult> {
   const destination = resolve(archivePath);
-  const root = options.sourceHome ? resolve(options.sourceHome) : agentsOneDataRoot();
+  const root = options.sourceHome
+    ? resolve(options.sourceHome)
+    : agentsOneDataRoot();
   let prepared: PreparedBackup | null = null;
   let temporaryArchive = "";
   try {
@@ -1353,7 +1363,10 @@ function parseManifest(extractionRoot: string): AgentsOneBackupManifest {
   if (manifest.product !== BACKUP_PRODUCT) {
     throw new Error("这不是 Agents One 备份文件，无法导入。");
   }
-  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== AGENTS_ONE_BACKUP_SCHEMA_VERSION) {
+  if (
+    manifest.schemaVersion !== 1 &&
+    manifest.schemaVersion !== AGENTS_ONE_BACKUP_SCHEMA_VERSION
+  ) {
     throw new Error(
       `不支持的备份版本 ${String(manifest.schemaVersion)}，请升级 Agents One 后再试。`,
     );
@@ -1415,7 +1428,11 @@ async function validateManifestFiles(
     if (
       !file ||
       typeof file.path !== "string" ||
-      !isAllowedBackupRelativePath(file.path, profiles, manifest.schemaVersion) ||
+      !isAllowedBackupRelativePath(
+        file.path,
+        profiles,
+        manifest.schemaVersion,
+      ) ||
       typeof file.size !== "number" ||
       !Number.isSafeInteger(file.size) ||
       file.size < 0 ||
@@ -1540,7 +1557,8 @@ function legacyBackupDesktopPath(path: string): string | null {
   if (path === "profile-meta.json") return "profiles/default/profile-meta.json";
   if (path.startsWith("desktop/")) return `profiles/default/${path}`;
   if (path.startsWith("desktop-staging/")) return path;
-  if (/^profiles\/[^/]+\/(?:profile-meta\.json|desktop\/.*)$/.test(path)) return path;
+  if (/^profiles\/[^/]+\/(?:profile-meta\.json|desktop\/.*)$/.test(path))
+    return path;
   return null;
 }
 
@@ -1553,7 +1571,10 @@ async function convertLegacyBackupToDesktopLayout(
   const payload = join(convertedRoot, PAYLOAD_DIR);
   mkdirSync(payload);
   try {
-    const converted = new Map<string, AgentsOneBackupManifest["files"][number]>();
+    const converted = new Map<
+      string,
+      AgentsOneBackupManifest["files"][number]
+    >();
     const add = (path: string, source: string): void => {
       const destination = join(payload, ...path.split("/"));
       mkdirSync(dirname(destination), { recursive: true });
@@ -1565,11 +1586,16 @@ async function convertLegacyBackupToDesktopLayout(
       });
     };
     for (const file of legacy.files) {
-      const original = join(extractionRoot, PAYLOAD_DIR, ...file.path.split("/"));
+      const original = join(
+        extractionRoot,
+        PAYLOAD_DIR,
+        ...file.path.split("/"),
+      );
       const target = legacyBackupDesktopPath(file.path);
       if (target) add(target, original);
       if (!isProfileStateDatabasePath(file.path)) continue;
-      const profile = file.path === "state.db" ? "default" : file.path.split("/")[1];
+      const profile =
+        file.path === "state.db" ? "default" : file.path.split("/")[1];
       const desktopPath = `profiles/${profile}/desktop.db`;
       const desktopDatabase = join(payload, ...desktopPath.split("/"));
       copyDesktopTables(original, desktopDatabase);
@@ -1584,8 +1610,13 @@ async function convertLegacyBackupToDesktopLayout(
     const manifest: AgentsOneBackupManifest = {
       ...legacy,
       schemaVersion: 2,
-      files: [...converted.values()].sort((left, right) => left.path.localeCompare(right.path)),
-      excluded: [...legacy.excluded, "Hermes native sessions, skills, memory and model configuration"],
+      files: [...converted.values()].sort((left, right) =>
+        left.path.localeCompare(right.path),
+      ),
+      excluded: [
+        ...legacy.excluded,
+        "Hermes native sessions, skills, memory and model configuration",
+      ],
     };
     await validateManifestFiles(convertedRoot, manifest);
     return { extractionRoot: convertedRoot, manifest };
@@ -2013,7 +2044,10 @@ async function loadAndValidateArchive(
     const manifest = parseManifest(extractionRoot);
     await validateManifestFiles(extractionRoot, manifest);
     if (convertLegacy && manifest.schemaVersion === 1) {
-      const converted = await convertLegacyBackupToDesktopLayout(extractionRoot, manifest);
+      const converted = await convertLegacyBackupToDesktopLayout(
+        extractionRoot,
+        manifest,
+      );
       await removeTemporaryTree(extractionRoot);
       return converted;
     }
@@ -2033,7 +2067,8 @@ export async function inspectAgentsOneBackup(
     const targetHome = resolve(options.targetHome || agentsOneDataRoot());
     const loaded = await loadAndValidateArchive(
       archivePath,
-      isAgentsOneDataLayout(targetHome) || targetHome === resolve(agentsOneDataRoot()),
+      isAgentsOneDataLayout(targetHome) ||
+        targetHome === resolve(agentsOneDataRoot()),
     );
     extractionRoot = loaded.extractionRoot;
     return {
@@ -2082,7 +2117,10 @@ function isAllowedRestoreJournalPath(path: string): boolean {
   ) {
     return true;
   }
-  return isAllowedBackupRelativePath(withoutSidecar) || isAllowedBackupRelativePath(withoutSidecar, undefined, 2);
+  return (
+    isAllowedBackupRelativePath(withoutSidecar) ||
+    isAllowedBackupRelativePath(withoutSidecar, undefined, 2)
+  );
 }
 
 function restoreTransactionRoot(targetHome: string): string {
@@ -2403,7 +2441,8 @@ async function restoreAgentsOneBackupUnlocked(
     recoverInterruptedAgentsOneRestore(targetHome);
     const loaded = await loadAndValidateArchive(
       archivePath,
-      isAgentsOneDataLayout(targetHome) || targetHome === resolve(agentsOneDataRoot()),
+      isAgentsOneDataLayout(targetHome) ||
+        targetHome === resolve(agentsOneDataRoot()),
     );
     extractionRoot = loaded.extractionRoot;
     mkdirSync(targetHome, { recursive: true });

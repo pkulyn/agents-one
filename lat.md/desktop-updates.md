@@ -49,3 +49,9 @@ A previously passing candidate can fail a later rebuild when new advisories affe
 Both production-only and full dependency audits reject every high or critical finding. Fixed builder dependencies do not retain a historical advisory waiver.
 
 Unavailable, malformed or inconsistent npm audit results fail the gate. A lockfile repair still requires installation, Runtime dependency probes and candidate regression before packaging.
+
+## Generated contract formatting
+
+The mobile contract generator formats its JSON outputs with the repository Prettier configuration, so regeneration and the formatting gate agree without changing schema or fixture values.
+
+Its check mode compares all six generated outputs byte for byte. Android Room schema exports remain checked as JSON; formatting preserves their parsed contents and identity hash.

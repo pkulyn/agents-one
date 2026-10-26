@@ -29,9 +29,7 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "namespaceId"
-          ]
+          "columnNames": ["namespaceId"]
         }
       },
       {
@@ -83,21 +81,13 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "namespaceId",
-            "resourceKind",
-            "resourceId"
-          ]
+          "columnNames": ["namespaceId", "resourceKind", "resourceId"]
         },
         "indices": [
           {
             "name": "index_encrypted_cache_entries_namespaceId_resourceKind_updatedAt",
             "unique": false,
-            "columnNames": [
-              "namespaceId",
-              "resourceKind",
-              "updatedAt"
-            ],
+            "columnNames": ["namespaceId", "resourceKind", "updatedAt"],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_encrypted_cache_entries_namespaceId_resourceKind_updatedAt` ON `${TABLE_NAME}` (`namespaceId`, `resourceKind`, `updatedAt`)"
           }
@@ -107,12 +97,8 @@
             "table": "cache_namespaces",
             "onDelete": "CASCADE",
             "onUpdate": "NO ACTION",
-            "columns": [
-              "namespaceId"
-            ],
-            "referencedColumns": [
-              "namespaceId"
-            ]
+            "columns": ["namespaceId"],
+            "referencedColumns": ["namespaceId"]
           }
         ]
       },
@@ -153,22 +139,15 @@
         ],
         "primaryKey": {
           "autoGenerate": false,
-          "columnNames": [
-            "namespaceId",
-            "feedId"
-          ]
+          "columnNames": ["namespaceId", "feedId"]
         },
         "foreignKeys": [
           {
             "table": "cache_namespaces",
             "onDelete": "CASCADE",
             "onUpdate": "NO ACTION",
-            "columns": [
-              "namespaceId"
-            ],
-            "referencedColumns": [
-              "namespaceId"
-            ]
+            "columns": ["namespaceId"],
+            "referencedColumns": ["namespaceId"]
           }
         ]
       }

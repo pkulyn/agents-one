@@ -18,11 +18,11 @@ vi.mock("../src/main/installer", () => ({
 
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  profileHome: (profile?: string) =>
-    profile && profile !== "default"
-      ? join(TEST_HOME, "profiles", profile)
-      : TEST_HOME,
-};
+    profileHome: (profile?: string) =>
+      profile && profile !== "default"
+        ? join(TEST_HOME, "profiles", profile)
+        : TEST_HOME,
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 

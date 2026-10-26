@@ -25,9 +25,9 @@ import { listAgentRuntimes } from "../src/main/agent-runtimes";
 const state = vi.hoisted(() => ({ root: "", profile: "owner", locked: false }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => state.profile,
-  profileHome: (profile: string) => join(state.root, profile),
-};
+    getActiveProfileNameSync: () => state.profile,
+    profileHome: (profile: string) => join(state.root, profile),
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 vi.mock("../src/main/agent-runtimes", () => ({

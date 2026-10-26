@@ -2,7 +2,11 @@ import Database from "./sqlite";
 import type BetterDatabase from "better-sqlite3";
 import { dirname, join } from "path";
 import { existsSync, mkdirSync } from "fs";
-import { activeStateDbPath, agentsOneProfileHome, getActiveProfileNameSync } from "./utils";
+import {
+  activeStateDbPath,
+  agentsOneProfileHome,
+  getActiveProfileNameSync,
+} from "./utils";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 let cachedDb: BetterDatabase.Database | null = null;
@@ -13,14 +17,23 @@ let cachedDesktopDbPath: string | null = null;
 let cachedDesktopDbReadonly: boolean | null = null;
 
 /** Agents One's session overlays and attachments never write Hermes state.db. */
-export function getDesktopDbConnection(readonly = true): BetterDatabase.Database | null {
+export function getDesktopDbConnection(
+  readonly = true,
+): BetterDatabase.Database | null {
   if (!readonly) assertAgentsOneWritesAllowed();
-  const path = join(agentsOneProfileHome(getActiveProfileNameSync()), "desktop.db");
+  const path = join(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    "desktop.db",
+  );
   if (!existsSync(path)) {
     if (readonly) return null;
     mkdirSync(dirname(path), { recursive: true });
   }
-  if (cachedDesktopDb && cachedDesktopDbPath === path && cachedDesktopDbReadonly === readonly) {
+  if (
+    cachedDesktopDb &&
+    cachedDesktopDbPath === path &&
+    cachedDesktopDbReadonly === readonly
+  ) {
     return cachedDesktopDb;
   }
   closeDesktopDbConnection();

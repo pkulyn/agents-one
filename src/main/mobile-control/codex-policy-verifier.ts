@@ -117,7 +117,9 @@ export function verifyDesktopCodexPolicy(
   try {
     if (!["inspect", "project_write"].includes(selection.mode))
       return undefined;
-    const binding = bindings.get(key(profile, agentsOneProfileHome(profile), selection));
+    const binding = bindings.get(
+      key(profile, agentsOneProfileHome(profile), selection),
+    );
     if (
       !binding ||
       binding.evidence.expiresAt <= Date.now() ||

@@ -95,10 +95,20 @@ export class DesktopMobileCatalog implements MobileDesktopCatalog {
                 : ["inspect", "desktop_analysis"].includes(policy.mode)
                   ? "analysis"
                   : policy.mode === "desktop_auto"
-                    ? automaticRuntimeTaskMode(candidate!, Boolean(policy.projectId))
+                    ? automaticRuntimeTaskMode(
+                        candidate!,
+                        Boolean(policy.projectId),
+                      )
                     : "safe_write") &&
-            (["inspect", "desktop_analysis", "desktop_auto", "desktop_full_access"].includes(policy.mode) || Boolean(policy.projectId)) &&
-            (policy.mode !== "desktop_full_access" || approved.task.fullAccessConfirmed === true);
+            ([
+              "inspect",
+              "desktop_analysis",
+              "desktop_auto",
+              "desktop_full_access",
+            ].includes(policy.mode) ||
+              Boolean(policy.projectId)) &&
+            (policy.mode !== "desktop_full_access" ||
+              approved.task.fullAccessConfirmed === true);
         } catch {
           /* Unapproved policies remain visible with a restriction. */
         }

@@ -36,11 +36,9 @@ it("reloads a blank page once with cache disabled and restores the cache setting
 });
 
 it("fails without reloading a nonempty page that did not reach the workspace", async () => {
-  const call = vi
-    .fn()
-    .mockResolvedValue({
-      result: { value: { rootChildren: 1, workspace: false, api: true } },
-    });
+  const call = vi.fn().mockResolvedValue({
+    result: { value: { rootChildren: 1, workspace: false, api: true } },
+  });
   await expect(ensureWorkspace(call, { wait })).rejects.toThrow(
     "did not display",
   );

@@ -13,13 +13,13 @@ import type { TaskSchedule } from "../src/shared/task-schedules";
 const state = vi.hoisted(() => ({ root: "", start: vi.fn(), cancel: vi.fn() }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => "owner",
-  profileHome: (profile: string) => join(state.root, profile),
-  safeWriteFile: (file: string, data: string) => {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, data);
-  },
-};
+    getActiveProfileNameSync: () => "owner",
+    profileHome: (profile: string) => join(state.root, profile),
+    safeWriteFile: (file: string, data: string) => {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, data);
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 vi.mock("../src/main/workspace-authority", () => ({

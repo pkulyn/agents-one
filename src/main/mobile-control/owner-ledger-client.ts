@@ -22,7 +22,12 @@ interface WorkerReply {
   dataEpoch?: string;
   changeSeq?: string;
   durationMs?: number;
-  error?: { message?: unknown; code?: unknown; status?: unknown; name?: unknown };
+  error?: {
+    message?: unknown;
+    code?: unknown;
+    status?: unknown;
+    name?: unknown;
+  };
 }
 
 interface PendingCall {
@@ -119,7 +124,8 @@ export class MobileOwnerLedgerClient {
       this.release(call.bytes);
       this.updateMetadata(reply);
       this.lastWorkerDurationMs =
-        typeof reply.durationMs === "number" && Number.isFinite(reply.durationMs)
+        typeof reply.durationMs === "number" &&
+        Number.isFinite(reply.durationMs)
           ? reply.durationMs
           : 0;
       if (reply.ok) call.resolve(reply.result);
@@ -223,10 +229,12 @@ export class MobileOwnerLedgerClient {
     result: unknown,
   ): void {
     if (method === "executionEntries" && Array.isArray(result)) {
-      this.executionSnapshot = structuredClone(
-        result as OwnerExecutionEntry[],
-      );
-    } else if (method === "stageExecution" && result && typeof result === "object") {
+      this.executionSnapshot = structuredClone(result as OwnerExecutionEntry[]);
+    } else if (
+      method === "stageExecution" &&
+      result &&
+      typeof result === "object"
+    ) {
       const entry = result as OwnerExecutionEntry;
       this.executionSnapshot = [
         ...this.executionSnapshot.filter(

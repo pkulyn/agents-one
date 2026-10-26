@@ -51,7 +51,11 @@ export interface ApprovedExecution {
   /** Main policy provider must supply an enforced, Runtime/project-bound policy. */
   task: Pick<
     AgentRuntimeTaskInput,
-    "mode" | "fullAccessConfirmed" | "workspaceId" | "workspaceRef" | "timeoutMs"
+    | "mode"
+    | "fullAccessConfirmed"
+    | "workspaceId"
+    | "workspaceRef"
+    | "timeoutMs"
   >;
   /** Functions retained only in Main; never persisted or serialized to a phone. */
   dispatchOptions?: Pick<

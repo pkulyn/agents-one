@@ -13,10 +13,10 @@ import { createCodexProjectWriteRunner } from "../src/main/mobile-control/codex-
 const state = vi.hoisted(() => ({ home: "" }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => "owner",
-  profileHome: (profile?: string) =>
-    profile ? join(state.home, "profiles", profile) : state.home,
-};
+    getActiveProfileNameSync: () => "owner",
+    profileHome: (profile?: string) =>
+      profile ? join(state.home, "profiles", profile) : state.home,
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 vi.mock("../src/main/workspace-authority", () => ({

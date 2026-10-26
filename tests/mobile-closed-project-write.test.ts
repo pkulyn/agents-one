@@ -32,9 +32,9 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  profileHome: () => state.home,
-  getActiveProfileNameSync: () => state.profile,
-};
+    profileHome: () => state.home,
+    getActiveProfileNameSync: () => state.profile,
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 vi.mock("../src/main/project-folders", () => ({

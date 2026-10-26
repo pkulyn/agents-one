@@ -15,14 +15,14 @@ import { assertMobileSchema } from "../src/shared/mobile-control";
 const state = vi.hoisted(() => ({ root: "", active: "other" }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => state.active,
-  profileHome: (profile: string) => join(state.root, profile),
-  activeStateDbPath: () => join(state.root, state.active, "state.db"),
-  safeWriteFile: (path: string, data: string) => {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, data);
-  },
-};
+    getActiveProfileNameSync: () => state.active,
+    profileHome: (profile: string) => join(state.root, profile),
+    activeStateDbPath: () => join(state.root, state.active, "state.db"),
+    safeWriteFile: (path: string, data: string) => {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, data);
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 beforeEach(() => {
@@ -79,46 +79,100 @@ function native(profile = "owner", id = "session-1"): void {
   ).run(id);
   db.close();
   const desktopDb = new DatabaseSync(join(state.root, profile, "desktop.db"));
-  desktopDb.exec("CREATE TABLE IF NOT EXISTS desktop_session_context_folders(session_id TEXT, folder_path TEXT, workspace_id TEXT, folder_name TEXT)");
-  desktopDb.prepare(
-    "INSERT INTO desktop_session_context_folders VALUES (?, 'D:\\synthetic\\project', NULL, NULL)",
-  ).run(id);
+  desktopDb.exec(
+    "CREATE TABLE IF NOT EXISTS desktop_session_context_folders(session_id TEXT, folder_path TEXT, workspace_id TEXT, folder_name TEXT)",
+  );
+  desktopDb
+    .prepare(
+      "INSERT INTO desktop_session_context_folders VALUES (?, 'D:\\synthetic\\project', NULL, NULL)",
+    )
+    .run(id);
   desktopDb.close();
 }
 
 describe("profile-bound original desktop source repository", () => {
   it("recognizes the desktop taskId-as-conversationId legacy link only for the matching Runtime", async () => {
-    const original=conversation();
-    original.runtimeSessionId="provider-session";
-    const source=seed("runtime-conversations.json",{conversations:[original]});
-    const record={taskId:original.id,title:"Original collaboration",sourceRuntimeId:original.runtimeId,status:"configured",assignments:[],createdAt:1000,updatedAt:2000};
-    const tasks=seed("task-collaborations.json",{records:[record]});
-    const beforeSource=readFileSync(source),beforeTasks=readFileSync(tasks);
-    const {DesktopConversationRepository}=await import("../src/main/mobile-control/desktop-conversations");
-    const repository=new DesktopConversationRepository("owner");
-    expect(repository.list()).toMatchObject([{id:original.id,sourceKind:"collaboration",runtimeId:original.runtimeId,manageable:false,messages:[{id:"message-1",content:"Original request"}]}]);
+    const original = conversation();
+    original.runtimeSessionId = "provider-session";
+    const source = seed("runtime-conversations.json", {
+      conversations: [original],
+    });
+    const record = {
+      taskId: original.id,
+      title: "Original collaboration",
+      sourceRuntimeId: original.runtimeId,
+      status: "configured",
+      assignments: [],
+      createdAt: 1000,
+      updatedAt: 2000,
+    };
+    const tasks = seed("task-collaborations.json", { records: [record] });
+    const beforeSource = readFileSync(source),
+      beforeTasks = readFileSync(tasks);
+    const { DesktopConversationRepository } =
+      await import("../src/main/mobile-control/desktop-conversations");
+    const repository = new DesktopConversationRepository("owner");
+    expect(repository.list()).toMatchObject([
+      {
+        id: original.id,
+        sourceKind: "collaboration",
+        runtimeId: original.runtimeId,
+        manageable: false,
+        messages: [{ id: "message-1", content: "Original request" }],
+      },
+    ]);
     expect(readFileSync(source)).toEqual(beforeSource);
     expect(readFileSync(tasks)).toEqual(beforeTasks);
-    seed("task-collaborations.json",{records:[{...record,sourceSessionId:"provider-session"}]});
-    expect(repository.list()).toMatchObject([{id:original.id,sourceKind:"collaboration"}]);
-    seed("task-collaborations.json",{records:[{...record,sourceSessionId:"unrelated-provider-session"}]});
-    expect(()=>repository.list()).toThrow("requires_owner_action");
-    seed("task-collaborations.json",{records:[{...record,sourceRuntimeId:"foreign-runtime"}]});
-    expect(()=>repository.list()).toThrow("requires_owner_action");
+    seed("task-collaborations.json", {
+      records: [{ ...record, sourceSessionId: "provider-session" }],
+    });
+    expect(repository.list()).toMatchObject([
+      { id: original.id, sourceKind: "collaboration" },
+    ]);
+    seed("task-collaborations.json", {
+      records: [{ ...record, sourceSessionId: "unrelated-provider-session" }],
+    });
+    expect(() => repository.list()).toThrow("requires_owner_action");
+    seed("task-collaborations.json", {
+      records: [{ ...record, sourceRuntimeId: "foreign-runtime" }],
+    });
+    expect(() => repository.list()).toThrow("requires_owner_action");
   });
   it("reads configured Runtime conversations and cached overlays when an existing desktop database has no Hermes sessions table", async () => {
-    const file=seed("runtime-conversations.json",{conversations:[conversation()]});
-    seed("sessions.json",{sessions:[{id:"cached-native",source:"cli",startedAt:1,title:"Cached native"}]});
-    seed("session-overlays.json",{sessions:{"cached-native":[{kind:"user",content:"Original cached request"}]}});
-    const dbFile=join(state.root,"owner","state.db");
-    const db=new DatabaseSync(dbFile);
+    const file = seed("runtime-conversations.json", {
+      conversations: [conversation()],
+    });
+    seed("sessions.json", {
+      sessions: [
+        {
+          id: "cached-native",
+          source: "cli",
+          startedAt: 1,
+          title: "Cached native",
+        },
+      ],
+    });
+    seed("session-overlays.json", {
+      sessions: {
+        "cached-native": [{ kind: "user", content: "Original cached request" }],
+      },
+    });
+    const dbFile = join(state.root, "owner", "state.db");
+    const db = new DatabaseSync(dbFile);
     db.exec("CREATE TABLE desktop_auxiliary_cache (id TEXT PRIMARY KEY)");
     db.close();
-    const before=readFileSync(dbFile),beforeRuntime=readFileSync(file);
-    const {DesktopConversationRepository}=await import("../src/main/mobile-control/desktop-conversations");
-    const rows=new DesktopConversationRepository("owner").list();
-    expect(rows.map(row=>row.id).sort()).toEqual(["cached-native","conversation-1"]);
-    expect(rows.find(row=>row.id==="cached-native")!.messages[0].content).toBe("Original cached request");
+    const before = readFileSync(dbFile),
+      beforeRuntime = readFileSync(file);
+    const { DesktopConversationRepository } =
+      await import("../src/main/mobile-control/desktop-conversations");
+    const rows = new DesktopConversationRepository("owner").list();
+    expect(rows.map((row) => row.id).sort()).toEqual([
+      "cached-native",
+      "conversation-1",
+    ]);
+    expect(
+      rows.find((row) => row.id === "cached-native")!.messages[0].content,
+    ).toBe("Original cached request");
     expect(readFileSync(dbFile)).toEqual(before);
     expect(readFileSync(file)).toEqual(beforeRuntime);
   });

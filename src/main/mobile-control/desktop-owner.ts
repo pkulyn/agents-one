@@ -102,7 +102,11 @@ export function startDesktopMobileOwner(
         scope.profile,
         repository,
       );
-      const { policies, backend } = createDesktopTaskAccess(scope.profile, repository, legacyPolicies);
+      const { policies, backend } = createDesktopTaskAccess(
+        scope.profile,
+        repository,
+        legacyPolicies,
+      );
       const sourceGuard = (): void => {
         if (
           !existsSync(scope.home) ||

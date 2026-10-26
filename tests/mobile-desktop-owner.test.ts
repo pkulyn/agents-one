@@ -39,13 +39,13 @@ vi.mock(
 );
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => "owner",
-  profileHome: (profile: string) => join(state.root, profile),
-  safeWriteFile: (file: string, data: string) => {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, data);
-  },
-};
+    getActiveProfileNameSync: () => "owner",
+    profileHome: (profile: string) => join(state.root, profile),
+    safeWriteFile: (file: string, data: string) => {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, data);
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 vi.mock("../src/main/mobile-connection", () => ({
@@ -94,9 +94,8 @@ vi.mock("../src/main/mobile-control/owner-tunnel", () => ({
   },
 }));
 vi.mock("../src/main/mobile-control/owner-ledger-client", async () => {
-  const { MobileOwnerLedger } = await import(
-    "../src/main/mobile-control/owner-ledger"
-  );
+  const { MobileOwnerLedger } =
+    await import("../src/main/mobile-control/owner-ledger");
   return {
     MobileOwnerLedgerClient: class extends MobileOwnerLedger {
       async whenReady(): Promise<void> {}
@@ -108,8 +107,7 @@ vi.mock("../src/main/mobile-control/owner-tunnel-process", () => ({
     constructor(
       _binding: unknown,
       private readonly handler: OwnerControlHandler,
-    ) {
-    }
+    ) {}
     start(): void {
       state.handler = this.handler;
       state.start();
@@ -198,25 +196,59 @@ it("creates an original conversation from desktop task selections without any ap
   state.root = mkdtempSync(join(tmpdir(), "agents-one-production-owner-"));
   mkdirSync(join(state.root, "owner"), { recursive: true });
   state.handler = undefined;
-  const { startDesktopMobileOwner } = await import("../src/main/mobile-control/desktop-owner");
+  const { startDesktopMobileOwner } =
+    await import("../src/main/mobile-control/desktop-owner");
   stop = startDesktopMobileOwner();
   await vi.waitFor(() => expect(state.handler).toBeDefined());
-  const page = (await state.handler!.handle(request("/execution-policies"))).body as { items: Array<{ id: string; runtimeId: string; mode: string; projectId: string | null }> };
-  const choice = page.items.find(row => row.mode === "desktop_analysis" && row.runtimeId === "original-runtime" && row.projectId === null)!;
+  const page = (await state.handler!.handle(request("/execution-policies")))
+    .body as {
+    items: Array<{
+      id: string;
+      runtimeId: string;
+      mode: string;
+      projectId: string | null;
+    }>;
+  };
+  const choice = page.items.find(
+    (row) =>
+      row.mode === "desktop_analysis" &&
+      row.runtimeId === "original-runtime" &&
+      row.projectId === null,
+  )!;
   expect(choice.id).toMatch(/^desktop-task-[a-f0-9]{64}$/);
-  const mutation = request("/conversations"); mutation.method = "POST";
+  const mutation = request("/conversations");
+  mutation.method = "POST";
   const route = resolveMobileRoute(mutation.method, mutation.path)!;
-  mutation.operationId = route.route.operationId; mutation.params = route.params;
+  mutation.operationId = route.route.operationId;
+  mutation.params = route.params;
   mutation.device.scopes.push("conversation:create");
-  mutation.headers = { "idempotency-key": "new-desktop-selection", "x-client-mutation-id": "new-desktop-selection" };
-  mutation.body = { runtimeId: "original-runtime", executionPolicyId: choice.id, projectId: null, title: "Phone selected agent" };
+  mutation.headers = {
+    "idempotency-key": "new-desktop-selection",
+    "x-client-mutation-id": "new-desktop-selection",
+  };
+  mutation.body = {
+    runtimeId: "original-runtime",
+    executionPolicyId: choice.id,
+    projectId: null,
+    title: "Phone selected agent",
+  };
   const receipt = await state.handler!.handle(mutation);
-  expect(receipt.body).toMatchObject({ status: "applied", resourceRef: { type: "conversation" } });
-  const original = readFileSync(join(state.root, "owner", "desktop", "runtime-conversations.json"), "utf8");
+  expect(receipt.body).toMatchObject({
+    status: "applied",
+    resourceRef: { type: "conversation" },
+  });
+  const original = readFileSync(
+    join(state.root, "owner", "desktop", "runtime-conversations.json"),
+    "utf8",
+  );
   expect(original).toContain("Phone selected agent");
   expect(original).toContain("original-runtime");
   expect(state.dispatch).not.toHaveBeenCalled();
-  expect(() => readFileSync(join(state.root, "owner", "desktop", "mobile-execution-policies.json"))).toThrow();
+  expect(() =>
+    readFileSync(
+      join(state.root, "owner", "desktop", "mobile-execution-policies.json"),
+    ),
+  ).toThrow();
 });
 it("reads ordinary desktop Runs and original artifacts through the production Owner without phone execution entries", async () => {
   state.root = mkdtempSync(join(tmpdir(), "agents-one-production-owner-"));

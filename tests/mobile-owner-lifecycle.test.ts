@@ -204,7 +204,9 @@ describe("production Owner lifecycle", () => {
     f.lookup.mockRejectedValueOnce(Error("service_unavailable"));
     await f.lifecycle.refresh();
     expect(f.transports[0].stop).not.toHaveBeenCalled();
-    await expect(f.transports[0].handler.status()).resolves.toEqual({ ownerId: "owner" });
+    await expect(f.transports[0].handler.status()).resolves.toEqual({
+      ownerId: "owner",
+    });
     await f.lifecycle.refresh();
     expect(f.transports).toHaveLength(1);
     f.lookup.mockResolvedValueOnce(undefined);
@@ -214,7 +216,9 @@ describe("production Owner lifecycle", () => {
     f.lookup.mockRejectedValueOnce(Error("service_unavailable"));
     await f.lifecycle.refresh();
     expect(f.transports).toHaveLength(1);
-    await expect(f.transports[0].handler.status()).rejects.toMatchObject({ status: 503 });
+    await expect(f.transports[0].handler.status()).rejects.toMatchObject({
+      status: 503,
+    });
   });
   it("serializes refresh and schedules a fresh lookup after settings invalidate a pending result", async () => {
     const f = fixture();

@@ -33,7 +33,10 @@ export default function MobileConnectionPane({
     refreshing = useRef(false),
     requestSequence = useRef(0),
     generation = useRef(0);
-  async function run(command: MobileConnectionCommand, background = false): Promise<void> {
+  async function run(
+    command: MobileConnectionCommand,
+    background = false,
+  ): Promise<void> {
     if (lock.current || (background && refreshing.current)) return;
     if (background) refreshing.current = true;
     else {
@@ -47,7 +50,12 @@ export default function MobileConnectionPane({
         profile,
         command,
       );
-      if (!mounted.current || version !== generation.current || sequence !== requestSequence.current) return;
+      if (
+        !mounted.current ||
+        version !== generation.current ||
+        sequence !== requestSequence.current
+      )
+        return;
       setStatus(result.status);
       setError(
         result.status.connectionError
@@ -67,7 +75,11 @@ export default function MobileConnectionPane({
         setApproved((old) => ({ ...old, [command.id]: false }));
       if (command.action === "revoke") setRevoke(undefined);
     } catch (cause) {
-      if (mounted.current && version === generation.current && sequence === requestSequence.current) {
+      if (
+        mounted.current &&
+        version === generation.current &&
+        sequence === requestSequence.current
+      ) {
         const code =
           String((cause as Error)?.message).match(
             /(invalid_input|scope_denied|secure_storage_unavailable|protocol_incompatible|connection_binding_conflict|invitation_expired|service_unavailable)/,
@@ -134,55 +146,55 @@ export default function MobileConnectionPane({
       )}
       <details open={!status.configured}>
         <summary>{text("connectionSetup")}</summary>
-      <div className="settings-field">
-        <label className="settings-field-label" htmlFor="mobile-endpoint">
-          {text("endpoint")}
-        </label>
-        <input
-          id="mobile-endpoint"
-          className="input"
-          value={endpoint}
-          onChange={(e) => setEndpoint(e.target.value)}
-          placeholder="https://connect.example.com"
-          disabled={busy || status.configured}
-        />
-      </div>
-      <div className="settings-field">
-        <label className="settings-field-label" htmlFor="mobile-token">
-          {text("token")}
-        </label>
-        <input
-          id="mobile-token"
-          className="input"
-          type="password"
-          autoComplete="off"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          disabled={busy}
-        />
-        <p className="settings-field-hint">{text("setup")}</p>
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          className="btn btn-primary"
-          disabled={busy || !endpoint.trim() || !token.trim()}
-          onClick={() =>
-            void run({ action: "save", endpoint, managementToken: token })
-          }
-        >
-          <Link size={14} />
-          {text("save")}
-        </button>
-        <button
-          className="btn"
-          disabled={busy}
-          onClick={() => void run({ action: "status" })}
-        >
-          <RefreshCw size={14} />
-          {text("refresh")}
-        </button>
-        {busy && <span role="status">{text("loading")}</span>}
-      </div>
+        <div className="settings-field">
+          <label className="settings-field-label" htmlFor="mobile-endpoint">
+            {text("endpoint")}
+          </label>
+          <input
+            id="mobile-endpoint"
+            className="input"
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            placeholder="https://connect.example.com"
+            disabled={busy || status.configured}
+          />
+        </div>
+        <div className="settings-field">
+          <label className="settings-field-label" htmlFor="mobile-token">
+            {text("token")}
+          </label>
+          <input
+            id="mobile-token"
+            className="input"
+            type="password"
+            autoComplete="off"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            disabled={busy}
+          />
+          <p className="settings-field-hint">{text("setup")}</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            className="btn btn-primary"
+            disabled={busy || !endpoint.trim() || !token.trim()}
+            onClick={() =>
+              void run({ action: "save", endpoint, managementToken: token })
+            }
+          >
+            <Link size={14} />
+            {text("save")}
+          </button>
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() => void run({ action: "status" })}
+          >
+            <RefreshCw size={14} />
+            {text("refresh")}
+          </button>
+          {busy && <span role="status">{text("loading")}</span>}
+        </div>
       </details>
       {status.configured && status.owner && (
         <>
@@ -274,7 +286,9 @@ export default function MobileConnectionPane({
                     />{" "}
                     {text("match")}
                   </label>
-                  <p className="settings-field-hint">{text("pairedTasksHint")}</p>
+                  <p className="settings-field-hint">
+                    {text("pairedTasksHint")}
+                  </p>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button
                       className="btn btn-primary"

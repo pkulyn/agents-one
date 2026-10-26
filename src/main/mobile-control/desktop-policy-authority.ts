@@ -33,7 +33,11 @@ export function createDesktopExecutionPolicyStore(
       });
   };
   return new MobileExecutionPolicyStore(
-    join(agentsOneProfileHome(profile), "desktop", "mobile-execution-policies.json"),
+    join(
+      agentsOneProfileHome(profile),
+      "desktop",
+      "mobile-execution-policies.json",
+    ),
     {
       runtime: (id) => {
         assertOwner();

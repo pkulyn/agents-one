@@ -13,13 +13,13 @@ import type { RuntimeConversationMessage } from "../src/shared/runtime-conversat
 const state = vi.hoisted(() => ({ root: "" }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => "owner",
-  profileHome: (profile: string) => join(state.root, profile),
-  safeWriteFile: (file: string, body: string) => {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, body);
-  },
-};
+    getActiveProfileNameSync: () => "owner",
+    profileHome: (profile: string) => join(state.root, profile),
+    safeWriteFile: (file: string, body: string) => {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, body);
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 let store: typeof import("../src/main/runtime-conversation-store");

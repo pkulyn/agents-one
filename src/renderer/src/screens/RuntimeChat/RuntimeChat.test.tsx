@@ -1682,7 +1682,9 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(screen.getByText("自动")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "管理本轮任务权限" }));
     expect(
-      screen.getByText("默认权限，可读取、查询、创建和编辑；不可移动或删除原有文件"),
+      screen.getByText(
+        "默认权限，可读取、查询、创建和编辑；不可移动或删除原有文件",
+      ),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitemradio", { name: /自动/ }));
     fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));

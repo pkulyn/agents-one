@@ -57,11 +57,7 @@
     },
     "ConversationActivity": {
       "type": "string",
-      "enum": [
-        "idle",
-        "active",
-        "needs_attention"
-      ]
+      "enum": ["idle", "active", "needs_attention"]
     },
     "ConversationSource": {
       "type": "string",
@@ -74,29 +70,15 @@
     },
     "ConversationFilter": {
       "type": "string",
-      "enum": [
-        "all",
-        "active",
-        "attention",
-        "idle"
-      ]
+      "enum": ["all", "active", "attention", "idle"]
     },
     "ScheduleState": {
       "type": "string",
-      "enum": [
-        "enabled",
-        "paused",
-        "running",
-        "blocked"
-      ]
+      "enum": ["enabled", "paused", "running", "blocked"]
     },
     "ConcurrencyPolicy": {
       "type": "string",
-      "enum": [
-        "skip",
-        "queue",
-        "replace"
-      ]
+      "enum": ["skip", "queue", "replace"]
     },
     "ExecutionStatus": {
       "type": "string",
@@ -112,21 +94,11 @@
     },
     "TriggerKind": {
       "type": "string",
-      "enum": [
-        "manual",
-        "scheduled",
-        "missed"
-      ]
+      "enum": ["manual", "scheduled", "missed"]
     },
     "MessageKind": {
       "type": "string",
-      "enum": [
-        "user",
-        "assistant",
-        "control",
-        "tool_summary",
-        "error"
-      ]
+      "enum": ["user", "assistant", "control", "tool_summary", "error"]
     },
     "RestrictionReason": {
       "type": "string",
@@ -172,13 +144,7 @@
     },
     "ClaimState": {
       "type": "string",
-      "enum": [
-        "pending",
-        "approved",
-        "rejected",
-        "expired",
-        "exchanged"
-      ]
+      "enum": ["pending", "approved", "rejected", "expired", "exchanged"]
     },
     "ResourceType": {
       "type": "string",
@@ -217,10 +183,7 @@
           ]
         }
       },
-      "required": [
-        "type",
-        "id"
-      ],
+      "required": ["type", "id"],
       "additionalProperties": true
     },
     "ErrorDetails": {
@@ -289,12 +252,7 @@
           "$ref": "#/$defs/ErrorDetails"
         }
       },
-      "required": [
-        "code",
-        "message",
-        "retryable",
-        "requestId"
-      ],
+      "required": ["code", "message", "retryable", "requestId"],
       "additionalProperties": true
     },
     "ErrorEnvelope": {
@@ -304,9 +262,7 @@
           "$ref": "#/$defs/MobileError"
         }
       },
-      "required": [
-        "error"
-      ],
+      "required": ["error"],
       "additionalProperties": true
     },
     "Limits": {
@@ -381,10 +337,7 @@
         },
         "ownerType": {
           "type": "string",
-          "enum": [
-            "desktop",
-            "server"
-          ]
+          "enum": ["desktop", "server"]
         },
         "online": {
           "type": "boolean"
@@ -419,11 +372,7 @@
         },
         "platform": {
           "type": "string",
-          "enum": [
-            "windows",
-            "mac",
-            "linux"
-          ]
+          "enum": ["windows", "mac", "linux"]
         }
       },
       "required": [
@@ -526,11 +475,7 @@
         },
         "category": {
           "type": "string",
-          "enum": [
-            "local",
-            "web",
-            "remote"
-          ]
+          "enum": ["local", "web", "remote"]
         },
         "color": {
           "type": "string",
@@ -567,12 +512,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "read",
-              "create",
-              "advance",
-              "cancel"
-            ]
+            "enum": ["read", "create", "advance", "cancel"]
           },
           "maxItems": 32,
           "uniqueItems": true
@@ -627,12 +567,7 @@
         },
         "mime": {
           "type": "string",
-          "enum": [
-            "image/png",
-            "image/jpeg",
-            "image/webp",
-            "image/gif"
-          ]
+          "enum": ["image/png", "image/jpeg", "image/webp", "image/gif"]
         },
         "sizeBytes": {
           "type": "integer",
@@ -652,14 +587,7 @@
           "pattern": "^[A-Za-z0-9+/]+={0,2}$"
         }
       },
-      "required": [
-        "id",
-        "runtimeId",
-        "mime",
-        "sizeBytes",
-        "sha256",
-        "base64"
-      ],
+      "required": ["id", "runtimeId", "mime", "sizeBytes", "sha256", "base64"],
       "additionalProperties": false
     },
     "Project": {
@@ -687,11 +615,7 @@
           "maxItems": 100
         }
       },
-      "required": [
-        "id",
-        "name",
-        "allowedExecutionPolicyIds"
-      ],
+      "required": ["id", "name", "allowedExecutionPolicyIds"],
       "additionalProperties": true
     },
     "ExecutionPolicy": {
@@ -743,11 +667,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "create",
-              "advance",
-              "trigger"
-            ]
+            "enum": ["create", "advance", "trigger"]
           },
           "maxItems": 32,
           "uniqueItems": true
@@ -878,12 +798,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "read",
-              "advance",
-              "manage",
-              "cancel"
-            ]
+            "enum": ["read", "advance", "manage", "cancel"]
           },
           "maxItems": 32,
           "uniqueItems": true
@@ -914,11 +829,7 @@
           "anyOf": [
             {
               "type": "string",
-              "enum": [
-                "auto",
-                "analysis",
-                "full_access"
-              ]
+              "enum": ["auto", "analysis", "full_access"]
             },
             {
               "type": "null"
@@ -1139,10 +1050,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "read",
-              "download"
-            ]
+            "enum": ["read", "download"]
           },
           "maxItems": 32,
           "uniqueItems": true
@@ -1247,10 +1155,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "read",
-              "cancel"
-            ]
+            "enum": ["read", "cancel"]
           },
           "maxItems": 32,
           "uniqueItems": true
@@ -1314,12 +1219,7 @@
           ]
         }
       },
-      "required": [
-        "eventId",
-        "type",
-        "summary",
-        "createdAt"
-      ],
+      "required": ["eventId", "type", "summary", "createdAt"],
       "additionalProperties": true
     },
     "Schedule": {
@@ -1561,13 +1461,7 @@
           ]
         }
       },
-      "required": [
-        "id",
-        "scheduleId",
-        "trigger",
-        "triggeredAt",
-        "status"
-      ],
+      "required": ["id", "scheduleId", "trigger", "triggeredAt", "status"],
       "additionalProperties": true
     },
     "ScheduleRecentExecution": {
@@ -1584,9 +1478,7 @@
           ]
         }
       },
-      "required": [
-        "execution"
-      ],
+      "required": ["execution"],
       "additionalProperties": true
     },
     "OperationResult": {
@@ -1624,11 +1516,7 @@
         },
         "disposition": {
           "type": "string",
-          "enum": [
-            "started",
-            "queued",
-            "skipped"
-          ]
+          "enum": ["started", "queued", "skipped"]
         },
         "discardedCount": {
           "type": "integer",
@@ -1725,12 +1613,7 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "deviceId",
-        "grantRevision",
-        "scopes",
-        "revoked"
-      ],
+      "required": ["deviceId", "grantRevision", "scopes", "revoked"],
       "additionalProperties": true
     },
     "ReadPosition": {
@@ -1747,10 +1630,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "conversationId",
-        "lastReadMessageSeq"
-      ],
+      "required": ["conversationId", "lastReadMessageSeq"],
       "additionalProperties": true
     },
     "MessagePage": {
@@ -1980,12 +1860,7 @@
           "maxLength": 4096
         }
       },
-      "required": [
-        "id",
-        "state",
-        "expiresAt",
-        "verificationPhrase"
-      ],
+      "required": ["id", "state", "expiresAt", "verificationPhrase"],
       "additionalProperties": true
     },
     "Credentials": {
@@ -2053,9 +1928,7 @@
           "maxLength": 80
         }
       },
-      "required": [
-        "deviceLabel"
-      ],
+      "required": ["deviceLabel"],
       "additionalProperties": false
     },
     "ExchangeInput": {
@@ -2086,10 +1959,7 @@
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"
         }
       },
-      "required": [
-        "refreshCredential",
-        "rotationId"
-      ],
+      "required": ["refreshCredential", "rotationId"],
       "additionalProperties": false
     },
     "CreateConversationInput": {
@@ -2132,10 +2002,7 @@
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"
         }
       },
-      "required": [
-        "runtimeId",
-        "executionPolicyId"
-      ],
+      "required": ["runtimeId", "executionPolicyId"],
       "additionalProperties": false
     },
     "PatchConversationInput": {
@@ -2215,10 +2082,7 @@
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"
         }
       },
-      "required": [
-        "text",
-        "executionPolicyId"
-      ],
+      "required": ["text", "executionPolicyId"],
       "additionalProperties": false
     },
     "ReadPositionInput": {
@@ -2229,9 +2093,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "lastReadMessageSeq"
-      ],
+      "required": ["lastReadMessageSeq"],
       "additionalProperties": false
     },
     "SearchConversationInput": {
@@ -2265,9 +2127,7 @@
           "maximum": 100
         }
       },
-      "required": [
-        "query"
-      ],
+      "required": ["query"],
       "additionalProperties": false
     },
     "SearchScheduleInput": {
@@ -2286,13 +2146,7 @@
         },
         "state": {
           "type": "string",
-          "enum": [
-            "all",
-            "enabled",
-            "paused",
-            "running",
-            "blocked"
-          ]
+          "enum": ["all", "enabled", "paused", "running", "blocked"]
         },
         "cursor": {
           "type": "string",
@@ -2305,9 +2159,7 @@
           "maximum": 100
         }
       },
-      "required": [
-        "query"
-      ],
+      "required": ["query"],
       "additionalProperties": false
     },
     "SchedulePreviewInput": {
@@ -2530,11 +2382,7 @@
           "properties": {
             "kind": {
               "type": "string",
-              "enum": [
-                "conversation",
-                "schedule",
-                "run"
-              ]
+              "enum": ["conversation", "schedule", "run"]
             },
             "id": {
               "type": "string",
@@ -2543,10 +2391,7 @@
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"
             }
           },
-          "required": [
-            "kind",
-            "id"
-          ],
+          "required": ["kind", "id"],
           "additionalProperties": true
         },
         {
@@ -2554,9 +2399,7 @@
           "properties": {
             "kind": {
               "type": "string",
-              "enum": [
-                "message"
-              ]
+              "enum": ["message"]
             },
             "id": {
               "anyOf": [
@@ -2581,11 +2424,7 @@
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"
             }
           },
-          "required": [
-            "kind",
-            "id",
-            "conversationId"
-          ],
+          "required": ["kind", "id", "conversationId"],
           "additionalProperties": true
         },
         {
@@ -2593,9 +2432,7 @@
           "properties": {
             "kind": {
               "type": "string",
-              "enum": [
-                "schedule_execution"
-              ]
+              "enum": ["schedule_execution"]
             },
             "id": {
               "type": "string",
@@ -2610,11 +2447,7 @@
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"
             }
           },
-          "required": [
-            "kind",
-            "id",
-            "scheduleId"
-          ],
+          "required": ["kind", "id", "scheduleId"],
           "additionalProperties": true
         }
       ]
@@ -2729,9 +2562,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "conversation.updated"
-              ]
+              "enum": ["conversation.updated"]
             },
             "resourceRef": {
               "$ref": "#/$defs/ResourceRef"
@@ -2793,9 +2624,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "message.upsert"
-              ]
+              "enum": ["message.upsert"]
             },
             "resourceRef": {
               "$ref": "#/$defs/ResourceRef"
@@ -2857,9 +2686,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "run.updated"
-              ]
+              "enum": ["run.updated"]
             },
             "resourceRef": {
               "$ref": "#/$defs/ResourceRef"
@@ -2923,9 +2750,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "schedule.updated"
-              ]
+              "enum": ["schedule.updated"]
             },
             "resourceRef": {
               "$ref": "#/$defs/ResourceRef"
@@ -2987,9 +2812,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "schedule.execution.updated"
-              ]
+              "enum": ["schedule.execution.updated"]
             },
             "resourceRef": {
               "$ref": "#/$defs/ResourceRef"
@@ -3051,9 +2874,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "artifact.created"
-              ]
+              "enum": ["artifact.created"]
             },
             "resourceRef": {
               "$ref": "#/$defs/ResourceRef"
@@ -3115,9 +2936,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "permission.changed"
-              ]
+              "enum": ["permission.changed"]
             },
             "resourceRef": {
               "$ref": "#/$defs/ResourceRef"
@@ -3179,9 +2998,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "owner.status"
-              ]
+              "enum": ["owner.status"]
             },
             "resourceRef": {
               "$ref": "#/$defs/ResourceRef"
@@ -3243,9 +3060,7 @@
             },
             "type": {
               "type": "string",
-              "enum": [
-                "resource.deleted"
-              ]
+              "enum": ["resource.deleted"]
             },
             "resourceRef": {
               "$ref": "#/$defs/ResourceRef"
@@ -3467,11 +3282,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "items",
-        "nextCursor",
-        "snapshotRevision"
-      ],
+      "required": ["items", "nextCursor", "snapshotRevision"],
       "additionalProperties": true
     },
     "ScheduleSummaryPage": {
@@ -3501,11 +3312,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "items",
-        "nextCursor",
-        "snapshotRevision"
-      ],
+      "required": ["items", "nextCursor", "snapshotRevision"],
       "additionalProperties": true
     },
     "ScheduleExecutionPage": {
@@ -3535,11 +3342,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "items",
-        "nextCursor",
-        "snapshotRevision"
-      ],
+      "required": ["items", "nextCursor", "snapshotRevision"],
       "additionalProperties": true
     },
     "OperationReceiptPage": {
@@ -3569,11 +3372,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "items",
-        "nextCursor",
-        "snapshotRevision"
-      ],
+      "required": ["items", "nextCursor", "snapshotRevision"],
       "additionalProperties": true
     },
     "RuntimePage": {
@@ -3603,11 +3402,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "items",
-        "nextCursor",
-        "snapshotRevision"
-      ],
+      "required": ["items", "nextCursor", "snapshotRevision"],
       "additionalProperties": true
     },
     "ProjectPage": {
@@ -3637,11 +3432,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "items",
-        "nextCursor",
-        "snapshotRevision"
-      ],
+      "required": ["items", "nextCursor", "snapshotRevision"],
       "additionalProperties": true
     },
     "ExecutionPolicyPage": {
@@ -3671,11 +3462,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "items",
-        "nextCursor",
-        "snapshotRevision"
-      ],
+      "required": ["items", "nextCursor", "snapshotRevision"],
       "additionalProperties": true
     },
     "OwnerSpacePage": {
@@ -3705,11 +3492,7 @@
           "pattern": "^(0|[1-9][0-9]{0,63})$"
         }
       },
-      "required": [
-        "items",
-        "nextCursor",
-        "snapshotRevision"
-      ],
+      "required": ["items", "nextCursor", "snapshotRevision"],
       "additionalProperties": true
     }
   }

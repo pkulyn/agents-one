@@ -44,34 +44,35 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => "owner",
-  profileHome: (profile: string) => join(state.root, profile),
-  safeWriteFile: (file: string, data: string) => {
-    if (state.finalWriteFailure && file.endsWith("task-schedules.json")) {
-      const stored = JSON.parse(data);
-      if (
-        stored.schedules.some(
-          (row: {
-            runs: { status: string; mobileFinalCheckpoint?: unknown }[];
-          }) =>
-            row.runs.some(
-              (run) => run.status === "succeeded" && !run.mobileFinalCheckpoint,
-            ),
+    getActiveProfileNameSync: () => "owner",
+    profileHome: (profile: string) => join(state.root, profile),
+    safeWriteFile: (file: string, data: string) => {
+      if (state.finalWriteFailure && file.endsWith("task-schedules.json")) {
+        const stored = JSON.parse(data);
+        if (
+          stored.schedules.some(
+            (row: {
+              runs: { status: string; mobileFinalCheckpoint?: unknown }[];
+            }) =>
+              row.runs.some(
+                (run) =>
+                  run.status === "succeeded" && !run.mobileFinalCheckpoint,
+              ),
+          )
         )
+          throw Error("synthetic final schedule persistence failure");
+      }
+      if (
+        state.conversationWriteFailure &&
+        file.endsWith("runtime-conversations.json")
       )
-        throw Error("synthetic final schedule persistence failure");
-    }
-    if (
-      state.conversationWriteFailure &&
-      file.endsWith("runtime-conversations.json")
-    )
-      throw Error("synthetic conversation persistence failure");
-    if (state.writeFailure && file.endsWith("task-schedules.json"))
-      throw Error("synthetic original persistence failure");
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, data);
-  },
-};
+        throw Error("synthetic conversation persistence failure");
+      if (state.writeFailure && file.endsWith("task-schedules.json"))
+        throw Error("synthetic original persistence failure");
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, data);
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 vi.mock("../src/main/mobile-connection", () => ({

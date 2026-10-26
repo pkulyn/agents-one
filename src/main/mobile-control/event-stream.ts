@@ -52,11 +52,13 @@ export class MobileOwnerEventStream {
     }
     if (request.query.cursor)
       return String(
-        (await this.ledger.parseCursor(
-          request.query.cursor,
-          request.device.deviceId,
-          request.device.grantRevision,
-        )).changeSeq,
+        (
+          await this.ledger.parseCursor(
+            request.query.cursor,
+            request.device.deviceId,
+            request.device.grantRevision,
+          )
+        ).changeSeq,
       );
     return this.ledger.changeSeq;
   }

@@ -36,9 +36,9 @@ vi.mock("../src/main/agent-runtimes", () => ({
 }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => mock.profile,
-  profileHome: (profile: string) => join(mock.root, profile),
-};
+    getActiveProfileNameSync: () => mock.profile,
+    profileHome: (profile: string) => join(mock.root, profile),
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 vi.mock("../src/main/workspace-authority", () => ({

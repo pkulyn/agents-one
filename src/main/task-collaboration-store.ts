@@ -16,7 +16,11 @@ import {
   type LinkTaskCollaborationInput,
   type UpdateTaskCollaborationExecutionInput,
 } from "../shared/task-collaboration";
-import { getActiveProfileNameSync, agentsOneProfileHome, safeWriteFile } from "./utils";
+import {
+  getActiveProfileNameSync,
+  agentsOneProfileHome,
+  safeWriteFile,
+} from "./utils";
 
 interface CollaborationStore {
   version: 1;

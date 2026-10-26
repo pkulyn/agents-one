@@ -174,25 +174,49 @@ describe("desktop public mobile catalog", () => {
     const value = fixture();
     value.source.projects = () => [];
     const policies = [
-      { ...value.policy, id: "automatic", projectId: undefined, mode: "desktop_auto" as const },
-      { ...value.policy, id: "full", projectId: undefined, mode: "desktop_full_access" as const, unattendedApproved: false },
+      {
+        ...value.policy,
+        id: "automatic",
+        projectId: undefined,
+        mode: "desktop_auto" as const,
+      },
+      {
+        ...value.policy,
+        id: "full",
+        projectId: undefined,
+        mode: "desktop_full_access" as const,
+        unattendedApproved: false,
+      },
     ];
     value.source.policies = () => policies;
     value.authorize.mockImplementation((policyId, runtimeId) => {
-      const policy = policies.find(row => row.id === policyId)!;
+      const policy = policies.find((row) => row.id === policyId)!;
       return {
         policyId,
         runtime: { ...value.runtime, id: runtimeId },
         projectId: undefined,
-        task: policy.mode === "desktop_full_access"
-          ? { mode: "full_access", fullAccessConfirmed: true }
-          : { mode: "safe_write" },
+        task:
+          policy.mode === "desktop_full_access"
+            ? { mode: "full_access", fullAccessConfirmed: true }
+            : { mode: "safe_write" },
       };
     });
     const snapshot = value.catalog.snapshot();
     expect(snapshot.policies).toMatchObject([
-      { id: "automatic", mode: "desktop_auto", enforced: true, unattendedApproved: true, allowedActions: ["create", "advance", "trigger"] },
-      { id: "full", mode: "desktop_full_access", enforced: true, unattendedApproved: false, allowedActions: ["create", "advance"] },
+      {
+        id: "automatic",
+        mode: "desktop_auto",
+        enforced: true,
+        unattendedApproved: true,
+        allowedActions: ["create", "advance", "trigger"],
+      },
+      {
+        id: "full",
+        mode: "desktop_full_access",
+        enforced: true,
+        unattendedApproved: false,
+        allowedActions: ["create", "advance"],
+      },
     ]);
   });
   it("does not turn an old, future or missing probe into a healthy runtime and classifies Web Agents by transport", () => {

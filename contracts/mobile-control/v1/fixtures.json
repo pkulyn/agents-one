@@ -281,9 +281,7 @@
       "executionAvailable": false,
       "schedulerOnline": false,
       "schedulerTimeZone": "Asia/Shanghai",
-      "capabilities": [
-        "conversation:read"
-      ],
+      "capabilities": ["conversation:read"],
       "limits": {
         "maxPageSize": 1,
         "maxTextCharacters": 1,
@@ -306,9 +304,7 @@
         "executionAvailable": false,
         "schedulerOnline": false,
         "schedulerTimeZone": "Asia/Shanghai",
-        "capabilities": [
-          "conversation:read"
-        ],
+        "capabilities": ["conversation:read"],
         "limits": {
           "maxPageSize": 1,
           "maxTextCharacters": 1,
@@ -323,9 +319,7 @@
       "grantRevision": "9007199254740993",
       "serverTime": "2026-10-04T03:00:00Z",
       "dataEpoch": "fixture-value",
-      "capabilities": [
-        "conversation:read"
-      ],
+      "capabilities": ["conversation:read"],
       "limits": {
         "maxPageSize": 1,
         "maxTextCharacters": 1,
@@ -342,12 +336,8 @@
       "name": "fixture-value",
       "category": "local",
       "healthy": false,
-      "capabilities": [
-        "fixture-value"
-      ],
-      "allowedActions": [
-        "read"
-      ]
+      "capabilities": ["fixture-value"],
+      "allowedActions": ["read"]
     },
     "RuntimeAvatar": {
       "id": "ava-1b4d3cd3392295481b6e62e72f15318c53f82fba43616f651d62fe062bcf5708",
@@ -360,9 +350,7 @@
     "Project": {
       "id": "fixture-value",
       "name": "fixture-value",
-      "allowedExecutionPolicyIds": [
-        "fixture-value"
-      ]
+      "allowedExecutionPolicyIds": ["fixture-value"]
     },
     "ExecutionPolicy": {
       "id": "fixture-value",
@@ -370,9 +358,7 @@
       "mode": "inspect",
       "enforced": false,
       "unattendedApproved": false,
-      "allowedActions": [
-        "create"
-      ]
+      "allowedActions": ["create"]
     },
     "Conversation": {
       "id": "fixture-value",
@@ -385,14 +371,10 @@
       "lastMessageSeq": "9007199254740993",
       "lastReadMessageSeq": "9007199254740993",
       "activity": "idle",
-      "activeRunIds": [
-        "fixture-value"
-      ],
+      "activeRunIds": ["fixture-value"],
       "createdAt": "2026-10-04T03:00:00Z",
       "updatedAt": "2026-10-04T03:00:00Z",
-      "allowedActions": [
-        "read"
-      ]
+      "allowedActions": ["read"]
     },
     "Message": {
       "id": "fixture-value",
@@ -419,9 +401,7 @@
       "mime": "fixture-value",
       "sizeBytes": 0,
       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "allowedActions": [
-        "read"
-      ]
+      "allowedActions": ["read"]
     },
     "Run": {
       "runId": "fixture-value",
@@ -437,14 +417,10 @@
           "mime": "fixture-value",
           "sizeBytes": 0,
           "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "allowedActions": [
-            "read"
-          ]
+          "allowedActions": ["read"]
         }
       ],
-      "allowedActions": [
-        "read"
-      ]
+      "allowedActions": ["read"]
     },
     "RunActivity": {
       "eventId": "fixture-value",
@@ -463,14 +439,10 @@
       "effectiveState": "enabled",
       "concurrencyPolicy": "skip",
       "timeoutMs": 1000,
-      "activeRunIds": [
-        "fixture-value"
-      ],
+      "activeRunIds": ["fixture-value"],
       "pendingCount": 0,
       "revision": "9007199254740993",
-      "allowedActions": [
-        "read"
-      ]
+      "allowedActions": ["read"]
     },
     "ScheduleExecution": {
       "id": "fixture-value",
@@ -501,9 +473,7 @@
     "PermissionChange": {
       "deviceId": "fixture-value",
       "grantRevision": "9007199254740993",
-      "scopes": [
-        "conversation:read"
-      ],
+      "scopes": ["conversation:read"],
       "revoked": false
     },
     "ReadPosition": {
@@ -539,14 +509,10 @@
           "lastMessageSeq": "9007199254740993",
           "lastReadMessageSeq": "9007199254740993",
           "activity": "idle",
-          "activeRunIds": [
-            "fixture-value"
-          ],
+          "activeRunIds": ["fixture-value"],
           "createdAt": "2026-10-04T03:00:00Z",
           "updatedAt": "2026-10-04T03:00:00Z",
-          "allowedActions": [
-            "read"
-          ]
+          "allowedActions": ["read"]
         }
       ],
       "runs": [
@@ -564,14 +530,10 @@
               "mime": "fixture-value",
               "sizeBytes": 0,
               "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-              "allowedActions": [
-                "read"
-              ]
+              "allowedActions": ["read"]
             }
           ],
-          "allowedActions": [
-            "read"
-          ]
+          "allowedActions": ["read"]
         }
       ],
       "schedules": [
@@ -586,14 +548,10 @@
           "effectiveState": "enabled",
           "concurrencyPolicy": "skip",
           "timeoutMs": 1000,
-          "activeRunIds": [
-            "fixture-value"
-          ],
+          "activeRunIds": ["fixture-value"],
           "pendingCount": 0,
           "revision": "9007199254740993",
-          "allowedActions": [
-            "read"
-          ]
+          "allowedActions": ["read"]
         }
       ],
       "snapshotCursor": "fixture-value",
@@ -619,9 +577,7 @@
       "deviceLabel": "fixture-value",
       "ownerId": "fixture-value",
       "spaceId": "fixture-value",
-      "scopes": [
-        "conversation:read"
-      ],
+      "scopes": ["conversation:read"],
       "grantRevision": "9007199254740993",
       "expiresAt": "2026-10-04T03:00:00Z",
       "revoked": false
@@ -676,14 +632,10 @@
         "lastMessageSeq": "9007199254740993",
         "lastReadMessageSeq": "9007199254740993",
         "activity": "idle",
-        "activeRunIds": [
-          "fixture-value"
-        ],
+        "activeRunIds": ["fixture-value"],
         "createdAt": "2026-10-04T03:00:00Z",
         "updatedAt": "2026-10-04T03:00:00Z",
-        "allowedActions": [
-          "read"
-        ]
+        "allowedActions": ["read"]
       }
     },
     "ScheduleSummary": {
@@ -696,14 +648,10 @@
       "effectiveState": "enabled",
       "concurrencyPolicy": "skip",
       "timeoutMs": 1000,
-      "activeRunIds": [
-        "fixture-value"
-      ],
+      "activeRunIds": ["fixture-value"],
       "pendingCount": 0,
       "revision": "9007199254740993",
-      "allowedActions": [
-        "read"
-      ]
+      "allowedActions": ["read"]
     },
     "ConversationPage": {
       "items": [
@@ -718,14 +666,10 @@
           "lastMessageSeq": "9007199254740993",
           "lastReadMessageSeq": "9007199254740993",
           "activity": "idle",
-          "activeRunIds": [
-            "fixture-value"
-          ],
+          "activeRunIds": ["fixture-value"],
           "createdAt": "2026-10-04T03:00:00Z",
           "updatedAt": "2026-10-04T03:00:00Z",
-          "allowedActions": [
-            "read"
-          ]
+          "allowedActions": ["read"]
         }
       ],
       "nextCursor": "fixture-value",
@@ -743,14 +687,10 @@
           "effectiveState": "enabled",
           "concurrencyPolicy": "skip",
           "timeoutMs": 1000,
-          "activeRunIds": [
-            "fixture-value"
-          ],
+          "activeRunIds": ["fixture-value"],
           "pendingCount": 0,
           "revision": "9007199254740993",
-          "allowedActions": [
-            "read"
-          ]
+          "allowedActions": ["read"]
         }
       ],
       "nextCursor": "fixture-value",
@@ -791,12 +731,8 @@
           "name": "fixture-value",
           "category": "local",
           "healthy": false,
-          "capabilities": [
-            "fixture-value"
-          ],
-          "allowedActions": [
-            "read"
-          ]
+          "capabilities": ["fixture-value"],
+          "allowedActions": ["read"]
         }
       ],
       "nextCursor": "fixture-value",
@@ -807,9 +743,7 @@
         {
           "id": "fixture-value",
           "name": "fixture-value",
-          "allowedExecutionPolicyIds": [
-            "fixture-value"
-          ]
+          "allowedExecutionPolicyIds": ["fixture-value"]
         }
       ],
       "nextCursor": "fixture-value",
@@ -823,9 +757,7 @@
           "mode": "inspect",
           "enforced": false,
           "unattendedApproved": false,
-          "allowedActions": [
-            "create"
-          ]
+          "allowedActions": ["create"]
         }
       ],
       "nextCursor": "fixture-value",
@@ -842,9 +774,7 @@
           "executionAvailable": false,
           "schedulerOnline": false,
           "schedulerTimeZone": "Asia/Shanghai",
-          "capabilities": [
-            "conversation:read"
-          ],
+          "capabilities": ["conversation:read"],
           "limits": {
             "maxPageSize": 1,
             "maxTextCharacters": 1,
@@ -903,34 +833,16 @@
       "rejected",
       "reconciliation_required"
     ],
-    "ConversationActivity": [
-      "idle",
-      "active",
-      "needs_attention"
-    ],
+    "ConversationActivity": ["idle", "active", "needs_attention"],
     "ConversationSource": [
       "runtime_conversation",
       "quick_chat",
       "native_session",
       "collaboration"
     ],
-    "ConversationFilter": [
-      "all",
-      "active",
-      "attention",
-      "idle"
-    ],
-    "ScheduleState": [
-      "enabled",
-      "paused",
-      "running",
-      "blocked"
-    ],
-    "ConcurrencyPolicy": [
-      "skip",
-      "queue",
-      "replace"
-    ],
+    "ConversationFilter": ["all", "active", "attention", "idle"],
+    "ScheduleState": ["enabled", "paused", "running", "blocked"],
+    "ConcurrencyPolicy": ["skip", "queue", "replace"],
     "ExecutionStatus": [
       "queued",
       "running",
@@ -940,18 +852,8 @@
       "timed_out",
       "skipped"
     ],
-    "TriggerKind": [
-      "manual",
-      "scheduled",
-      "missed"
-    ],
-    "MessageKind": [
-      "user",
-      "assistant",
-      "control",
-      "tool_summary",
-      "error"
-    ],
+    "TriggerKind": ["manual", "scheduled", "missed"],
+    "MessageKind": ["user", "assistant", "control", "tool_summary", "error"],
     "RestrictionReason": [
       "requires_owner_action",
       "unverified_policy",
@@ -985,13 +887,7 @@
       "owner.status",
       "resource.deleted"
     ],
-    "ClaimState": [
-      "pending",
-      "approved",
-      "rejected",
-      "expired",
-      "exchanged"
-    ],
+    "ClaimState": ["pending", "approved", "rejected", "expired", "exchanged"],
     "ResourceType": [
       "owner",
       "conversation",
@@ -1016,9 +912,7 @@
         "executionAvailable": false,
         "schedulerOnline": false,
         "schedulerTimeZone": "Asia/Shanghai",
-        "capabilities": [
-          "conversation:read"
-        ],
+        "capabilities": ["conversation:read"],
         "limits": {
           "maxPageSize": 1,
           "maxTextCharacters": 1,
@@ -1033,9 +927,7 @@
       "grantRevision": "9007199254740993",
       "serverTime": "2026-10-04T03:00:00Z",
       "dataEpoch": "fixture-value",
-      "capabilities": [
-        "conversation:read"
-      ],
+      "capabilities": ["conversation:read"],
       "limits": {
         "maxPageSize": 1,
         "maxTextCharacters": 1,
@@ -1058,9 +950,7 @@
         "executionAvailable": false,
         "schedulerOnline": false,
         "schedulerTimeZone": "Asia/Shanghai",
-        "capabilities": [
-          "conversation:read"
-        ],
+        "capabilities": ["conversation:read"],
         "limits": {
           "maxPageSize": 1,
           "maxTextCharacters": 1,
@@ -1075,9 +965,7 @@
       "grantRevision": "9007199254740993",
       "serverTime": "2026-10-04T03:00:00Z",
       "dataEpoch": "fixture-value",
-      "capabilities": [
-        "conversation:read"
-      ],
+      "capabilities": ["conversation:read"],
       "limits": {
         "maxPageSize": 1,
         "maxTextCharacters": 1,
@@ -1089,10 +977,7 @@
       },
       "snapshotCursor": "fixture-value",
       "snapshotRevision": "17",
-      "protocolFeatures": [
-        "owner.sync-window.v1",
-        "message.client-echo.v1"
-      ]
+      "protocolFeatures": ["owner.sync-window.v1", "message.client-echo.v1"]
     },
     "legacyUserMessage": {
       "id": "fixture-value",
@@ -1120,9 +1005,6 @@
       "projectId": null,
       "clientMutationId": "mutation-001"
     },
-    "filteredEventSequences": [
-      "4",
-      "9"
-    ]
+    "filteredEventSequences": ["4", "9"]
   }
 }
