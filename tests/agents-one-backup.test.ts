@@ -604,34 +604,83 @@ describe("Agents One owned-data backup", { timeout: 30_000 }, () => {
     const archive = join(testRoot, "legacy-to-owned.agents-one-backup");
     const exported = await exportAgentsOneBackupTo(archive, { sourceHome });
     expect(exported.success).toBe(true);
-    writeFileSync(join(targetHome, "migration-v1.json"), JSON.stringify({ version: 1 }));
+    writeFileSync(
+      join(targetHome, "migration-v1.json"),
+      JSON.stringify({ version: 1 }),
+    );
     const inspection = await inspectAgentsOneBackup(archive, { targetHome });
     expect(inspection.success).toBe(true);
     const restored = await restoreAgentsOneBackupFrom(archive, { targetHome });
     expect(restored.success).toBe(true);
-    expect(readJson(join(targetHome, "profiles", "default", "desktop", "project-folders.json"))).toBeTruthy();
+    expect(
+      readJson(
+        join(
+          targetHome,
+          "profiles",
+          "default",
+          "desktop",
+          "project-folders.json",
+        ),
+      ),
+    ).toBeTruthy();
     expect(existsSync(join(targetHome, "state.db"))).toBe(false);
-    expect(existsSync(join(targetHome, "profiles", "default", "state.db"))).toBe(false);
-    expect(existsSync(join(targetHome, "profiles", "default", "desktop.db"))).toBe(true);
+    expect(
+      existsSync(join(targetHome, "profiles", "default", "state.db")),
+    ).toBe(false);
+    expect(
+      existsSync(join(targetHome, "profiles", "default", "desktop.db")),
+    ).toBe(true);
   });
 
   it("exports and restores a v2 archive from the Agents One data root", async () => {
     const owned = join(testRoot, "owned-source");
     const restoredRoot = join(testRoot, "owned-target");
-    mkdirSync(join(owned, "profiles", "default", "desktop"), { recursive: true });
+    mkdirSync(join(owned, "profiles", "default", "desktop"), {
+      recursive: true,
+    });
     mkdirSync(restoredRoot);
-    writeFileSync(join(owned, "migration-v1.json"), JSON.stringify({ version: 1 }));
-    writeFileSync(join(restoredRoot, "migration-v1.json"), JSON.stringify({ version: 1 }));
-    writeFileSync(join(owned, "desktop.json"), JSON.stringify({ locale: "zh-CN", futureSetting: true }));
-    writeFileSync(join(owned, "profiles", "default", "desktop", "runtime-conversations.json"), JSON.stringify({ version: 1, conversations: [] }));
+    writeFileSync(
+      join(owned, "migration-v1.json"),
+      JSON.stringify({ version: 1 }),
+    );
+    writeFileSync(
+      join(restoredRoot, "migration-v1.json"),
+      JSON.stringify({ version: 1 }),
+    );
+    writeFileSync(
+      join(owned, "desktop.json"),
+      JSON.stringify({ locale: "zh-CN", futureSetting: true }),
+    );
+    writeFileSync(
+      join(
+        owned,
+        "profiles",
+        "default",
+        "desktop",
+        "runtime-conversations.json",
+      ),
+      JSON.stringify({ version: 1, conversations: [] }),
+    );
     const db = new Database(join(owned, "profiles", "default", "desktop.db"));
-    db.exec("CREATE TABLE desktop_session_continuations (session_id TEXT PRIMARY KEY, prefix_json TEXT NOT NULL); INSERT INTO desktop_session_continuations VALUES ('old', '[]')");
+    db.exec(
+      "CREATE TABLE desktop_session_continuations (session_id TEXT PRIMARY KEY, prefix_json TEXT NOT NULL); INSERT INTO desktop_session_continuations VALUES ('old', '[]')",
+    );
     db.close();
     const archive = join(testRoot, "owned-v2.agents-one-backup");
-    expect((await exportAgentsOneBackupTo(archive, { sourceHome: owned })).success).toBe(true);
-    expect((await restoreAgentsOneBackupFrom(archive, { targetHome: restoredRoot })).success).toBe(true);
-    expect(existsSync(join(restoredRoot, "profiles", "default", "desktop.db"))).toBe(true);
-    expect(readJson(join(restoredRoot, "desktop.json"))).toMatchObject({ locale: "zh-CN", futureSetting: true });
+    expect(
+      (await exportAgentsOneBackupTo(archive, { sourceHome: owned })).success,
+    ).toBe(true);
+    expect(
+      (await restoreAgentsOneBackupFrom(archive, { targetHome: restoredRoot }))
+        .success,
+    ).toBe(true);
+    expect(
+      existsSync(join(restoredRoot, "profiles", "default", "desktop.db")),
+    ).toBe(true);
+    expect(readJson(join(restoredRoot, "desktop.json"))).toMatchObject({
+      locale: "zh-CN",
+      futureSetting: true,
+    });
     expect(existsSync(join(restoredRoot, "state.db"))).toBe(false);
   });
 });

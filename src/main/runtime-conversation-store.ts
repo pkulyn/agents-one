@@ -1,7 +1,11 @@
 import { retainRuntimeEvents } from "../shared/runtime-event-retention";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { getActiveProfileNameSync, agentsOneProfileHome, safeWriteFile } from "./utils";
+import {
+  getActiveProfileNameSync,
+  agentsOneProfileHome,
+  safeWriteFile,
+} from "./utils";
 import type {
   AgentRuntimeEvent,
   AgentRuntimeEventType,

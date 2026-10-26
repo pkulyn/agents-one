@@ -271,7 +271,9 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
 
   const knownProfiles = new Set(profiles.map((profile) => profile.id));
   try {
-    for (const name of await fs.readdir(join(agentsOneDataRoot(), "profiles"))) {
+    for (const name of await fs.readdir(
+      join(agentsOneDataRoot(), "profiles"),
+    )) {
       if (
         knownProfiles.has(name) ||
         name.startsWith(".") ||

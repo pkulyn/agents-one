@@ -40,13 +40,13 @@ vi.mock("../src/main/agent-runtimes", () => ({
 }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => "owner",
-  profileHome: (profile: string) => join(state.root, profile),
-  safeWriteFile: (file: string, body: string) => {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, body);
-  },
-};
+    getActiveProfileNameSync: () => "owner",
+    profileHome: (profile: string) => join(state.root, profile),
+    safeWriteFile: (file: string, body: string) => {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, body);
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 let original: typeof import("../src/main/runtime-conversation-store");
@@ -208,9 +208,14 @@ describe("Owner Main execution coordinator", () => {
       task: { mode: "safe_write" },
     }));
     const work = coordinator(implementation);
-    await work.createTurn(request({
-      body: { text: "Research without a project", executionPolicyId: "desktop-task-auto" },
-    }));
+    await work.createTurn(
+      request({
+        body: {
+          text: "Research without a project",
+          executionPolicyId: "desktop-task-auto",
+        },
+      }),
+    );
     await work.waitForIdle();
     expect(implementation.start).toHaveBeenCalledWith(
       runtime.id,
@@ -232,14 +237,25 @@ describe("Owner Main execution coordinator", () => {
       accessMode: "full_access",
     });
     const fullWork = coordinator(full);
-    await fullWork.createTurn(request({
-      headers: { "idempotency-key": "full-access-confirmed", "if-match": '"2"' },
-      body: { text: "Explicitly authorized full access", executionPolicyId: "desktop-task-full" },
-    }));
+    await fullWork.createTurn(
+      request({
+        headers: {
+          "idempotency-key": "full-access-confirmed",
+          "if-match": '"2"',
+        },
+        body: {
+          text: "Explicitly authorized full access",
+          executionPolicyId: "desktop-task-full",
+        },
+      }),
+    );
     await fullWork.waitForIdle();
     expect(full.start).toHaveBeenCalledWith(
       runtime.id,
-      expect.objectContaining({ mode: "full_access", fullAccessConfirmed: true }),
+      expect.objectContaining({
+        mode: "full_access",
+        fullAccessConfirmed: true,
+      }),
       expect.anything(),
     );
   });
@@ -252,10 +268,17 @@ describe("Owner Main execution coordinator", () => {
       task: { mode: "full_access" },
     }));
     const denied = coordinator(unconfirmed);
-    await expect(denied.createTurn(request({
-      headers: { "idempotency-key": "unconfirmed-full", "if-match": '"1"' },
-      body: { text: "No confirmation", executionPolicyId: "desktop-task-full" },
-    }))).rejects.toThrow("unverified_policy");
+    await expect(
+      denied.createTurn(
+        request({
+          headers: { "idempotency-key": "unconfirmed-full", "if-match": '"1"' },
+          body: {
+            text: "No confirmation",
+            executionPolicyId: "desktop-task-full",
+          },
+        }),
+      ),
+    ).rejects.toThrow("unverified_policy");
     expect(unconfirmed.start).not.toHaveBeenCalled();
 
     const legacyWrite = backend();
@@ -264,10 +287,17 @@ describe("Owner Main execution coordinator", () => {
       runtime,
       task: { mode: "safe_write" },
     }));
-    await expect(coordinator(legacyWrite).createTurn(request({
-      headers: { "idempotency-key": "legacy-unscoped", "if-match": '"1"' },
-      body: { text: "Legacy unscoped write", executionPolicyId: "policy-1" },
-    }))).rejects.toThrow("unverified_policy");
+    await expect(
+      coordinator(legacyWrite).createTurn(
+        request({
+          headers: { "idempotency-key": "legacy-unscoped", "if-match": '"1"' },
+          body: {
+            text: "Legacy unscoped write",
+            executionPolicyId: "policy-1",
+          },
+        }),
+      ),
+    ).rejects.toThrow("unverified_policy");
     expect(legacyWrite.start).not.toHaveBeenCalled();
   });
 

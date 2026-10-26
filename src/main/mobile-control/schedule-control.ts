@@ -135,7 +135,10 @@ export class DesktopMobileScheduleControl implements MobileScheduleControl {
         this.profile,
         () => this.guard(request),
         async () => {
-          await this.ledger.accept(request, { type: "run", id: request.params.id });
+          await this.ledger.accept(request, {
+            type: "run",
+            id: request.params.id,
+          });
           accepted = true;
         },
       );

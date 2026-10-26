@@ -62,7 +62,14 @@ describe("Web Agent conversation mapping store", () => {
       ref: { url: "https://www.doubao.com/chat/conversation-1" },
       lastVerifiedAt: 1,
     });
-    const file = join(testHome, "data", "profiles", "default", "desktop", "web-agent-conversations.json");
+    const file = join(
+      testHome,
+      "data",
+      "profiles",
+      "default",
+      "desktop",
+      "web-agent-conversations.json",
+    );
     const { readFileSync, writeFileSync } = await import("fs");
     const parsed = JSON.parse(readFileSync(file, "utf8")) as {
       mappings: unknown[];

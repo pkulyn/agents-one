@@ -771,7 +771,10 @@ export function applySessionLocalOverlays(
   const base = mergeSessionContinuationWithCanonical(continuation, canonical);
   const desktopDb = getDesktopDbConnection(true);
   return desktopDb
-    ? mergeSessionLocalErrors(base, loadSessionLocalErrors(desktopDb, sessionId))
+    ? mergeSessionLocalErrors(
+        base,
+        loadSessionLocalErrors(desktopDb, sessionId),
+      )
     : base;
 }
 

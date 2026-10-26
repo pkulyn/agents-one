@@ -64,7 +64,10 @@ interface Document {
   approvals: Approval[];
   [key: string]: unknown;
 }
-type StoredPolicy = EnforcedDesktopExecutionPolicy & { mode: "inspect" | "project_write"; unattendedApproved: boolean };
+type StoredPolicy = EnforcedDesktopExecutionPolicy & {
+  mode: "inspect" | "project_write";
+  unattendedApproved: boolean;
+};
 const id = (value: unknown): value is string =>
   typeof value === "string" &&
   /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(value) &&
@@ -203,10 +206,7 @@ export class MobileExecutionPolicyStore implements DesktopExecutionPolicyCatalog
     )
       fail("unverified_policy");
   }
-  private publicPolicy(
-    row: Approval,
-    enforced: boolean,
-  ): StoredPolicy {
+  private publicPolicy(row: Approval, enforced: boolean): StoredPolicy {
     return {
       id: row.id,
       runtimeId: row.runtimeId,
@@ -243,9 +243,7 @@ export class MobileExecutionPolicyStore implements DesktopExecutionPolicyCatalog
     });
     return { revision: document.revision, policies };
   }
-  authorize(
-    policyId: string,
-  ): StoredPolicy {
+  authorize(policyId: string): StoredPolicy {
     const row = this.read().approvals.find((value) => value.id === policyId);
     if (!row) fail("resource_not_found", 404);
     this.validate(row);

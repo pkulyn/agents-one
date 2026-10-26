@@ -12,7 +12,9 @@ export class MobileSourceEventPublisher {
   constructor(
     private readonly ledger: MobileOwnerLedgerPort,
     private readonly repository: ConversationRepository,
-    private readonly messages: (row: SourceConversation) => Json[] | Promise<Json[]>,
+    private readonly messages: (
+      row: SourceConversation,
+    ) => Json[] | Promise<Json[]>,
     private readonly conversation: (
       row: SourceConversation,
       messages: Json[],

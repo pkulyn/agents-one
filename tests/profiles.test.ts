@@ -208,9 +208,12 @@ describe("listProfiles", () => {
   it("keeps a successful CLI-created profile when metadata cannot be written", async () => {
     execFileSyncMock.mockImplementation(() => {
       mkdirSync(join(PROFILES_DIR, "agent"), { recursive: true });
-      mkdirSync(join(AGENTS_DATA_DIR, "profiles", "agent", "profile-meta.json"), {
-        recursive: true,
-      });
+      mkdirSync(
+        join(AGENTS_DATA_DIR, "profiles", "agent", "profile-meta.json"),
+        {
+          recursive: true,
+        },
+      );
       return Buffer.from("");
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

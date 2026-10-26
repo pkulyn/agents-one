@@ -298,7 +298,9 @@ export class MobileOwnerTunnel {
     private readonly socketFactory = (url: string) =>
       new WebSocket(url, { maxPayload: 1024 * 1024, followRedirects: false }),
     allowLoopbackForTests = false,
-    private readonly diagnostic: (value: Record<string,unknown>)=>void = ()=>{},
+    private readonly diagnostic: (
+      value: Record<string, unknown>,
+    ) => void = () => {},
   ) {
     const url = new URL(binding.endpoint);
     if (
@@ -410,7 +412,8 @@ export class MobileOwnerTunnel {
         }
         if (frame.type === "authorization") {
           const update = this.auth.update(frame);
-          this.authorizationDeadline = performance.now()+this.auth.remainingLeaseMs();
+          this.authorizationDeadline =
+            performance.now() + this.auth.remainingLeaseMs();
           for (const entry of this.pending.values())
             if (update.revokedDeviceIds.includes(entry.deviceId))
               entry.controller.abort();

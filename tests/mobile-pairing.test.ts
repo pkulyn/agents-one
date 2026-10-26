@@ -126,8 +126,15 @@ async function setup() {
 }
 describe("mobile device authority", () => {
   it("rejects shared Gateway state paths before either store is opened", () => {
-    expect(() => createConnectService({storagePath:"same-state.json", mobile:{storagePath:"same-state.json"}})).toThrow("must be separate");
-    expect(() => createMobileControlService({owners:{}})).toThrow("must be an array");
+    expect(() =>
+      createConnectService({
+        storagePath: "same-state.json",
+        mobile: { storagePath: "same-state.json" },
+      }),
+    ).toThrow("must be separate");
+    expect(() => createMobileControlService({ owners: {} })).toThrow(
+      "must be an array",
+    );
   });
   it("allows approval polling without consuming the exchange budget", async () => {
     const s = await setup();

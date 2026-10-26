@@ -54,7 +54,10 @@ vi.mock("@electron-toolkit/utils", () => ({
   is: { dev: false },
 }));
 vi.mock("../resources/icon.png?asset", () => ({ default: "icon" }));
-vi.mock("../src/main/config", () => ({ getPublicConnectionConfig: vi.fn(), readDesktopConfig: vi.fn(() => ({})) }));
+vi.mock("../src/main/config", () => ({
+  getPublicConnectionConfig: vi.fn(),
+  readDesktopConfig: vi.fn(() => ({})),
+}));
 vi.mock("../src/main/hermes", () => ({
   stopHealthPolling: mocks.stopHealthPolling,
 }));

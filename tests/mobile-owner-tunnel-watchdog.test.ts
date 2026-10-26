@@ -106,19 +106,17 @@ function setup() {
     scopes: ["conversation:read", "conversation:manage"],
   };
   const authorize = (id: string) =>
-    sockets
-      .at(-1)!
-      .receive({
-        type: "authorization",
-        ...signed({
-          protocolVersion: "mobile-owner/1.0",
-          ownerId: "owner-1",
-          spaceId: "space-1",
-          updateId: id,
-          grants: { enabled: true, devices: [device] },
-          expiresAt: Date.now() + 30000,
-        }),
-      });
+    sockets.at(-1)!.receive({
+      type: "authorization",
+      ...signed({
+        protocolVersion: "mobile-owner/1.0",
+        ownerId: "owner-1",
+        spaceId: "space-1",
+        updateId: id,
+        grants: { enabled: true, devices: [device] },
+        expiresAt: Date.now() + 30000,
+      }),
+    });
   return { client, sockets, diagnostic, accepted, authorize, signed };
 }
 describe("signed authorization lease watchdog", () => {
@@ -129,7 +127,7 @@ describe("signed authorization lease watchdog", () => {
     expect(s.diagnostic.filter((d) => d.event === "frame_rejected")).toEqual(
       [],
     );
-    const body = {title:"Accepted once",clientMutationId:"stable-m"};
+    const body = { title: "Accepted once", clientMutationId: "stable-m" };
     const payload = {
       protocolVersion: "mobile-owner/1.0",
       audience: "owner-1",
@@ -140,7 +138,11 @@ describe("signed authorization lease watchdog", () => {
       method: "PATCH",
       path: "/agents-one/mobile/v1/owners/owner-1/spaces/space-1/conversations/original",
       query: {},
-      headers: {"if-match": '"1"', "idempotency-key":"stable-m", "x-client-mutation-id":"stable-m"},
+      headers: {
+        "if-match": '"1"',
+        "idempotency-key": "stable-m",
+        "x-client-mutation-id": "stable-m",
+      },
       bodyHash: createHash("sha256").update(canonical(body)).digest("hex"),
       requestId: "accepted-once",
       nonce: "once",

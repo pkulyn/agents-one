@@ -2,7 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import Database from "../sqlite";
 import type BetterDatabase from "better-sqlite3";
-import { agentsOneProfileHome, profileHome as hermesProfileHome } from "../utils";
+import {
+  agentsOneProfileHome,
+  profileHome as hermesProfileHome,
+} from "../utils";
 import {
   listFullRuntimeConversations,
   listQuickChats,
@@ -157,7 +160,11 @@ export class DesktopConversationRepository implements ConversationRepository {
       // Native Hermes history is optional; app-owned overlays have a separate DB.
       if (
         db &&
-        !db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()
+        !db
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sessions'",
+          )
+          .get()
       ) {
         db.close();
         db = undefined;
@@ -232,7 +239,9 @@ export class DesktopConversationRepository implements ConversationRepository {
               reasoning_details: null,
             })),
           );
-          const prefix = desktopDb ? loadSessionContinuationItems(desktopDb, row.id) : [];
+          const prefix = desktopDb
+            ? loadSessionContinuationItems(desktopDb, row.id)
+            : [];
           const continuation = prefix.length
             ? prefix
             : continuationItemsToHistory(
@@ -349,20 +358,25 @@ export class DesktopConversationRepository implements ConversationRepository {
       byId.set(value.id, value);
     }
     for (const collaboration of listTaskCollaborations(this.profile)) {
-      const explicitId = collaboration.conversationId ?? collaboration.sourceSessionId;
-      const legacy = !collaboration.conversationId ? byId.get(collaboration.taskId) : undefined;
-      const legacySessionMatches = !collaboration.sourceSessionId || runtime.some(
-        (row) => row.id === collaboration.taskId && row.runtimeSessionId === collaboration.sourceSessionId,
-      );
-      const linked = byId.get(
-        explicitId ?? "",
-      ) ?? (
-        legacy?.sourceKind === "runtime_conversation" &&
+      const explicitId =
+        collaboration.conversationId ?? collaboration.sourceSessionId;
+      const legacy = !collaboration.conversationId
+        ? byId.get(collaboration.taskId)
+        : undefined;
+      const legacySessionMatches =
+        !collaboration.sourceSessionId ||
+        runtime.some(
+          (row) =>
+            row.id === collaboration.taskId &&
+            row.runtimeSessionId === collaboration.sourceSessionId,
+        );
+      const linked =
+        byId.get(explicitId ?? "") ??
+        (legacy?.sourceKind === "runtime_conversation" &&
         legacy.runtimeId === collaboration.sourceRuntimeId &&
         legacySessionMatches
           ? legacy
-          : undefined
-      );
+          : undefined);
       const value = projectCollaboration(collaboration, linked);
       if (!linked && byId.has(value.id)) fail("requires_owner_action");
       byId.set(value.id, value);

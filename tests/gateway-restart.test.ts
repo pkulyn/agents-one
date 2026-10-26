@@ -51,23 +51,23 @@ vi.mock("../src/main/config", () => ({
 
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  stripAnsi: (s: string) => s,
-  pidIsAliveAs: (pid: number) => aliveGatewayPids.has(pid),
-  getActiveProfileNameSync: () => "default",
-  normalizeProfileName: (profile?: string) =>
-    !profile || profile === "default" ? undefined : profile,
-  profileHome: (profile?: string) =>
-    profile ? join(TEST_HOME, "profiles", profile) : TEST_HOME,
-  profilePaths: (profile?: string) => {
-    const home = profile ? join(TEST_HOME, "profiles", profile) : TEST_HOME;
-    return {
-      home,
-      configFile: join(home, "config.yaml"),
-      envFile: join(home, ".env"),
-      authFile: join(home, "auth.json"),
-    };
-  },
-};
+    stripAnsi: (s: string) => s,
+    pidIsAliveAs: (pid: number) => aliveGatewayPids.has(pid),
+    getActiveProfileNameSync: () => "default",
+    normalizeProfileName: (profile?: string) =>
+      !profile || profile === "default" ? undefined : profile,
+    profileHome: (profile?: string) =>
+      profile ? join(TEST_HOME, "profiles", profile) : TEST_HOME,
+    profilePaths: (profile?: string) => {
+      const home = profile ? join(TEST_HOME, "profiles", profile) : TEST_HOME;
+      return {
+        home,
+        configFile: join(home, "config.yaml"),
+        envFile: join(home, ".env"),
+        authFile: join(home, "auth.json"),
+      };
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 

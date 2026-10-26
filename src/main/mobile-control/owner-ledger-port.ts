@@ -56,4 +56,5 @@ type LedgerMethods = {
 export type MobileOwnerLedgerPort = Pick<
   MobileOwnerLedger,
   "ownerId" | "spaceId" | "dataEpoch" | "changeSeq"
-> & LedgerMethods;
+> &
+  LedgerMethods;

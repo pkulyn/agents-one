@@ -26,10 +26,10 @@ import {
 const state = vi.hoisted(() => ({ root: "" }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => "other",
-  profileHome: (profile: string) => join(state.root, profile),
-  safeWriteFile: vi.fn(),
-};
+    getActiveProfileNameSync: () => "other",
+    profileHome: (profile: string) => join(state.root, profile),
+    safeWriteFile: vi.fn(),
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 vi.mock("../src/main/workspace-authority", () => ({

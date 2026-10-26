@@ -938,10 +938,9 @@ export class MobileOwnerLedger {
     removedKeys: string[],
   ): void {
     const previous = this.state.sourceEvents ?? Object.create(null);
-    const next = Object.assign(
-      Object.create(null),
-      previous,
-    ) as NonNullable<State["sourceEvents"]>;
+    const next = Object.assign(Object.create(null), previous) as NonNullable<
+      State["sourceEvents"]
+    >;
     const changes: Json[] = [];
     const seen = new Set<string>();
     const removed = new Set(removedKeys);

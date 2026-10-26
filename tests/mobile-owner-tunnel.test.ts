@@ -34,13 +34,13 @@ import type { OwnerExecutionBackend } from "../src/main/mobile-control/execution
 const desktop = vi.hoisted(() => ({ root: "" }));
 vi.mock("../src/main/utils", () => {
   const mocked = {
-  getActiveProfileNameSync: () => "owner",
-  profileHome: (profile: string) => join(desktop.root, profile),
-  safeWriteFile: (file: string, value: string) => {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, value);
-  },
-};
+    getActiveProfileNameSync: () => "owner",
+    profileHome: (profile: string) => join(desktop.root, profile),
+    safeWriteFile: (file: string, value: string) => {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, value);
+    },
+  };
   return { ...mocked, agentsOneProfileHome: mocked.profileHome };
 });
 
@@ -212,22 +212,32 @@ describe("mobile Owner outbound tunnel", () => {
   it("waits for fresh grant confirmation without reporting an established Owner offline", async () => {
     const s = await setup();
     s.client.start();
-    await until(async () => (await s.management("/status")).body.taskChannelReady);
+    await until(
+      async () => (await s.management("/status")).body.taskChannelReady,
+    );
     const original = WebSocket.prototype.send;
     let held: (() => void) | undefined;
-    const spy = vi.spyOn(WebSocket.prototype, "send").mockImplementation(function (this: WebSocket, ...args: Parameters<WebSocket["send"]>) {
-      if (JSON.parse(String(args[0])).type === "authorization_ack") {
-        held = () => original.apply(this, args);
-        return;
-      }
-      return original.apply(this, args);
-    });
+    const spy = vi
+      .spyOn(WebSocket.prototype, "send")
+      .mockImplementation(function (
+        this: WebSocket,
+        ...args: Parameters<WebSocket["send"]>
+      ) {
+        if (JSON.parse(String(args[0])).type === "authorization_ack") {
+          held = () => original.apply(this, args);
+          return;
+        }
+        return original.apply(this, args);
+      });
     cleanup.push(() => spy.mockRestore());
     await s.management("/enabled", "PUT", { enabled: true });
     await until(() => !!held);
     expect((await s.management("/status")).body.taskChannelReady).toBe(true);
     let completed = false;
-    const pending = s.mobile("bootstrap").then((result) => { completed = true; return result; });
+    const pending = s.mobile("bootstrap").then((result) => {
+      completed = true;
+      return result;
+    });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(completed).toBe(false);
     expect(s.captured).toHaveLength(0);
@@ -238,16 +248,23 @@ describe("mobile Owner outbound tunnel", () => {
   it("rechecks device revocation after waiting for a refresh ACK", async () => {
     const s = await setup();
     s.client.start();
-    await until(async () => (await s.management("/status")).body.taskChannelReady);
+    await until(
+      async () => (await s.management("/status")).body.taskChannelReady,
+    );
     const original = WebSocket.prototype.send;
     let held: (() => void) | undefined;
-    const spy = vi.spyOn(WebSocket.prototype, "send").mockImplementation(function (this: WebSocket, ...args: Parameters<WebSocket["send"]>) {
-      if (JSON.parse(String(args[0])).type === "authorization_ack") {
-        held = () => original.apply(this, args);
-        return;
-      }
-      return original.apply(this, args);
-    });
+    const spy = vi
+      .spyOn(WebSocket.prototype, "send")
+      .mockImplementation(function (
+        this: WebSocket,
+        ...args: Parameters<WebSocket["send"]>
+      ) {
+        if (JSON.parse(String(args[0])).type === "authorization_ack") {
+          held = () => original.apply(this, args);
+          return;
+        }
+        return original.apply(this, args);
+      });
     cleanup.push(() => spy.mockRestore());
     await s.management("/enabled", "PUT", { enabled: true });
     await until(() => !!held);
@@ -263,26 +280,73 @@ describe("mobile Owner outbound tunnel", () => {
   it("connects an authenticated desktop to a Relay whose clock leads by eighteen seconds", async () => {
     const s = await setup(["conversation:read"], 18_000);
     s.client.start();
-    await until(async () => (await s.management("/status")).body.taskChannelReady);
+    await until(
+      async () => (await s.management("/status")).body.taskChannelReady,
+    );
     expect((await s.mobile("bootstrap")).status).toBe(200);
   });
   it("caps a clock-leading authorization lease at thirty local seconds and rejects expired or excessively future signed frames", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     let time = Date.now();
     const initial = time;
-    const auth = new OwnerAuthorization({endpoint:"https://connect.example",ownerId:"owner-1",spaceId:"space-1",hostCredential:"synthetic",signingPublicKey:publicKey.export({type:"spki",format:"der"}).toString("base64")}, () => time);
+    const auth = new OwnerAuthorization(
+      {
+        endpoint: "https://connect.example",
+        ownerId: "owner-1",
+        spaceId: "space-1",
+        hostCredential: "synthetic",
+        signingPublicKey: publicKey
+          .export({ type: "spki", format: "der" })
+          .toString("base64"),
+      },
+      () => time,
+    );
     const signed = (expiresAt: number, updateId: string) => {
-      const payload = {protocolVersion:"mobile-owner/1.0",ownerId:"owner-1",spaceId:"space-1",updateId,expiresAt,grants:{enabled:true,devices:[{...fixtures.objects.DeviceGrant,ownerId:"owner-1",spaceId:"space-1",deviceId:"phone-1",grantRevision:"1",expiresAt:new Date(initial+86400_000).toISOString(),revoked:false,scopes:["conversation:read"]}]}};
-      return {payload,signature:sign(null,Buffer.from(canonical(payload)),privateKey).toString("base64")};
+      const payload = {
+        protocolVersion: "mobile-owner/1.0",
+        ownerId: "owner-1",
+        spaceId: "space-1",
+        updateId,
+        expiresAt,
+        grants: {
+          enabled: true,
+          devices: [
+            {
+              ...fixtures.objects.DeviceGrant,
+              ownerId: "owner-1",
+              spaceId: "space-1",
+              deviceId: "phone-1",
+              grantRevision: "1",
+              expiresAt: new Date(initial + 86400_000).toISOString(),
+              revoked: false,
+              scopes: ["conversation:read"],
+            },
+          ],
+        },
+      };
+      return {
+        payload,
+        signature: sign(
+          null,
+          Buffer.from(canonical(payload)),
+          privateKey,
+        ).toString("base64"),
+      };
     };
-    expect(()=>auth.update(signed(initial,"expired"))).toThrow("scope_denied");
-    expect(()=>auth.update(signed(initial+75_001,"too-future"))).toThrow("scope_denied");
-    expect(()=>auth.update(signed(initial+61_000,"ahead-31"))).not.toThrow();
-    expect(auth.active("phone-1","1")).toBe(true);
-    time=initial+29_999;
-    expect(auth.active("phone-1","1")).toBe(true);
-    time=initial+30_000;
-    expect(auth.active("phone-1","1")).toBe(false);
+    expect(() => auth.update(signed(initial, "expired"))).toThrow(
+      "scope_denied",
+    );
+    expect(() => auth.update(signed(initial + 75_001, "too-future"))).toThrow(
+      "scope_denied",
+    );
+    expect(() =>
+      auth.update(signed(initial + 61_000, "ahead-31")),
+    ).not.toThrow();
+    expect(auth.active("phone-1", "1")).toBe(true);
+    time = initial + 29_999;
+    expect(auth.active("phone-1", "1")).toBe(true);
+    time = initial + 30_000;
+    expect(auth.active("phone-1", "1")).toBe(false);
   });
   it("reads recent executions through authenticated Relay from the original desktop schedule file without persisting results in Relay state", async () => {
     const s = await setup(["schedule:read"]);

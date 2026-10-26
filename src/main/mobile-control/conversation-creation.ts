@@ -29,7 +29,8 @@ export class DesktopConversationCreation implements MobileConversationCreation {
     this.authorize(input);
   }
   private authorize(input: NewMobileConversation): ApprovedExecution {
-    const desktopTaskPolicy = input.executionPolicyId.startsWith("desktop-task-");
+    const desktopTaskPolicy =
+      input.executionPolicyId.startsWith("desktop-task-");
     const approved = this.backend.authorize(
       input.executionPolicyId,
       input.runtimeId,
@@ -40,7 +41,11 @@ export class DesktopConversationCreation implements MobileConversationCreation {
       approved.policyId !== input.executionPolicyId ||
       approved.runtime.id !== input.runtimeId ||
       approved.projectId !== (input.projectId ?? undefined) ||
-      !(mode === "analysis" || mode === "safe_write" || mode === "full_access") ||
+      !(
+        mode === "analysis" ||
+        mode === "safe_write" ||
+        mode === "full_access"
+      ) ||
       (mode === "safe_write" && !approved.projectId && !desktopTaskPolicy) ||
       (mode === "full_access" &&
         (!desktopTaskPolicy || approved.task.fullAccessConfirmed !== true))

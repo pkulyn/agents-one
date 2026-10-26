@@ -9,7 +9,11 @@ import {
   isAllowedWebAgentUrl,
   normalizeWebAgentProfileId,
 } from "../../shared/web-agent";
-import { getActiveProfileNameSync, agentsOneProfileHome, safeWriteFile } from "../utils";
+import {
+  getActiveProfileNameSync,
+  agentsOneProfileHome,
+  safeWriteFile,
+} from "../utils";
 
 interface WebAgentConversationMapping {
   runtimeId: string;

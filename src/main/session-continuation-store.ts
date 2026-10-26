@@ -7,7 +7,11 @@ import type {
   DesktopSessionLocalError,
 } from "../shared/session-continuation";
 import { getDesktopDbConnection as getDbConnection } from "./db";
-import { agentsOneProfileHome, getActiveProfileNameSync, safeWriteFile } from "./utils";
+import {
+  agentsOneProfileHome,
+  getActiveProfileNameSync,
+  safeWriteFile,
+} from "./utils";
 import type { HistoryItem } from "./sessions";
 
 const TABLE = "desktop_session_continuations";
@@ -35,7 +39,11 @@ export interface LocalContinuationEntry {
 }
 
 function fallbackFilePath(): string {
-  return join(agentsOneProfileHome(getActiveProfileNameSync()), "desktop", "session-overlays.json");
+  return join(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    "desktop",
+    "session-overlays.json",
+  );
 }
 
 function readFallbackContinuations(): FallbackContinuationData {

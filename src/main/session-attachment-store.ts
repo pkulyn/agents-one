@@ -231,7 +231,12 @@ export function persistPromptImageAttachments(
     const desktopDb = getDesktopDbConnection(false);
     if (!desktopDb) return;
     ensureTable(desktopDb);
-    const messageId = findMatchingUserMessageId(db, desktopDb, sessionId, promptText);
+    const messageId = findMatchingUserMessageId(
+      db,
+      desktopDb,
+      sessionId,
+      promptText,
+    );
     if (!messageId) return;
 
     const insert = desktopDb.prepare(

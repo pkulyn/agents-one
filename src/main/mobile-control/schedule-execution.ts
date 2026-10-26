@@ -41,7 +41,8 @@ export function desktopMobileScheduleAuthority(
       const projectId =
         draft.projectId == null ? undefined : String(draft.projectId);
       const policy = policies.authorize(policyId);
-      if (!(policy as { unattendedApproved?: boolean }).unattendedApproved) return deny();
+      if (!(policy as { unattendedApproved?: boolean }).unattendedApproved)
+        return deny();
       const approved = backend.authorize(
         policyId,
         String(draft.runtimeId),
@@ -73,7 +74,11 @@ export function authorizeOriginalMobileSchedule(
     return deny();
   const repository = new DesktopConversationRepository(profile);
   const legacy = createDesktopExecutionPolicyStore(profile, repository);
-  const { policies, backend } = createDesktopTaskAccess(profile, repository, legacy);
+  const { policies, backend } = createDesktopTaskAccess(
+    profile,
+    repository,
+    legacy,
+  );
   const mode = desktopMobileScheduleAuthority(policies, backend).authorize({
     executionPolicyId: schedule.mobileExecutionPolicyId,
     runtimeId: schedule.runtimeId,

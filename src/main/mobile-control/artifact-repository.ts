@@ -148,16 +148,17 @@ export class MobileArtifactRepository {
     if (signal?.aborted) fail("revoked", 403);
   }
   private async known(record: ArtifactOriginalRun): Promise<boolean> {
-    return (await this.source
-      .knownRuns())
-      .some(
-        (row) =>
-          row.runId === record.runId &&
-          row.runtimeId === record.runtimeId &&
-          row.conversationId === record.conversationId,
-      );
+    return (await this.source.knownRuns()).some(
+      (row) =>
+        row.runId === record.runId &&
+        row.runtimeId === record.runtimeId &&
+        row.conversationId === record.conversationId,
+    );
   }
-  private async available(id: string, signal?: AbortSignal): Promise<RecordEntry> {
+  private async available(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<RecordEntry> {
     this.guard(signal);
     const record = this.entries.get(id);
     if (!record || !(await this.known(record))) fail("resource_not_found", 404);
@@ -213,7 +214,11 @@ export class MobileArtifactRepository {
     const operation = this.work.then(async () => {
       this.guard();
       if (
-        !(await this.known({ runId: run.id, runtimeId: run.runtimeId, conversationId }))
+        !(await this.known({
+          runId: run.id,
+          runtimeId: run.runtimeId,
+          conversationId,
+        }))
       )
         fail("resource_not_found", 404);
       if (run.status === "running") return;
