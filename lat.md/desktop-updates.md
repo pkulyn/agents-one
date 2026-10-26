@@ -55,3 +55,9 @@ Unavailable, malformed or inconsistent npm audit results fail the gate. A lockfi
 The mobile contract generator formats its JSON outputs with the repository Prettier configuration, so regeneration and the formatting gate agree without changing schema or fixture values.
 
 Its check mode compares all six generated outputs byte for byte. Android Room schema exports remain checked as JSON; formatting preserves their parsed contents and identity hash.
+
+## Dependency notice completion
+
+The distributed third-party notice includes the full MIT terms alongside preserved npm author declarations when a shipped archive omits a standalone file. It also retains the Standard Webhooks library license from its exact published gitHead.
+
+This supplements the generated originals without assigning project MIT terms to proprietary components or inferring missing copyright years.
