@@ -4,7 +4,11 @@ import { readFileSync } from "node:fs";
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
 import WebSocket from "ws";
 import { canonical } from "../contracts/mobile-control/v1/owner-tunnel.mjs";
-import { MobileOwnerTunnel } from "../src/main/mobile-control/owner-tunnel";
+import {
+  type OwnerControlRequest,
+  type OwnerControlResponse,
+  MobileOwnerTunnel,
+} from "../src/main/mobile-control/owner-tunnel";
 const fixtures = JSON.parse(
   readFileSync(
     new URL("../contracts/mobile-control/v1/fixtures.json", import.meta.url),
@@ -19,26 +23,35 @@ afterEach(() => {
 class Socket extends EventEmitter {
   readyState = WebSocket.OPEN;
   bufferedAmount = 0;
-  frames: any[] = [];
+  frames: Record<string, unknown>[] = [];
   terminated = false;
-  send(value: string, done?: (error?: Error) => void) {
+  send(value: string, done?: (error?: Error) => void): void {
     this.frames.push(JSON.parse(value));
     done?.();
   }
-  terminate() {
+  terminate(): void {
     this.terminated = true;
     this.readyState = WebSocket.CLOSED;
     this.emit("close", 1006, Buffer.alloc(0));
   }
-  close(code: number, reason: string) {
+  close(code: number, reason: string): void {
     this.readyState = WebSocket.CLOSED;
     this.emit("close", code, Buffer.from(reason));
   }
-  receive(frame: unknown) {
+  receive(frame: unknown): void {
     this.emit("message", Buffer.from(JSON.stringify(frame)));
   }
 }
-function setup() {
+type Signed<T = unknown> = { payload: T; signature: string };
+type Setup = {
+  client: MobileOwnerTunnel;
+  sockets: Socket[];
+  diagnostic: Record<string, unknown>[];
+  accepted: OwnerControlRequest[];
+  authorize(id: string): void;
+  signed<T>(payload: T): Signed<T>;
+};
+function setup(): Setup {
   vi.useFakeTimers({
     toFake: [
       "Date",
@@ -61,17 +74,17 @@ function setup() {
       .toString("base64"),
   };
   const sockets: Socket[] = [];
-  const diagnostic: any[] = [];
-  const accepted: any[] = [];
+  const diagnostic: Record<string, unknown>[] = [];
+  const accepted: OwnerControlRequest[] = [];
   const handler = {
     status: () => ({
       ...fixtures.OwnerSpace,
       ownerId: "owner-1",
       spaceId: "space-1",
     }),
-    handle: async (r: any) => {
+    handle: async (r: OwnerControlRequest) => {
       accepted.push(r);
-      return await new Promise<any>(() => {});
+      return await new Promise<OwnerControlResponse>(() => {});
     },
   };
   const client = new MobileOwnerTunnel(
@@ -87,7 +100,7 @@ function setup() {
   );
   clients.push(client);
   client.start();
-  const signed = (payload: any) => ({
+  const signed = <T>(payload: T): Signed<T> => ({
     payload,
     signature: sign(
       null,
@@ -105,7 +118,7 @@ function setup() {
     expiresAt: "2099-01-01T00:00:00Z",
     scopes: ["conversation:read", "conversation:manage"],
   };
-  const authorize = (id: string) =>
+  const authorize = (id: string): void =>
     sockets.at(-1)!.receive({
       type: "authorization",
       ...signed({

@@ -301,7 +301,10 @@ describe("mobile Owner outbound tunnel", () => {
       },
       () => time,
     );
-    const signed = (expiresAt: number, updateId: string) => {
+    const signed = (
+      expiresAt: number,
+      updateId: string,
+    ): { payload: Record<string, unknown>; signature: string } => {
       const payload = {
         protocolVersion: "mobile-owner/1.0",
         ownerId: "owner-1",

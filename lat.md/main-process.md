@@ -265,3 +265,9 @@ The current Main window retains normal handlers. Native creation enrolls compose
 The Renderer sees only a proxy URL's public scheme, host and port; stored authentication, routing paths, queries and fragments are replaced with retained markers. Internal networking continues to read the original value.
 
 Saving an unchanged projection preserves the current value of that profile. Changed values containing retained markers are rejected before writing; replacement or credential clearing requires an explicit complete value. Settings bind network loads and proxy-save acknowledgements to their profile/request, disable edits until loaded and report failed saves without marking them successful. This projection does not yet define the contracts for model or Runtime endpoint responses.
+
+## Owner transport type contracts
+
+The independent Owner transport and Main bridge describe their existing call, response and stream values with explicit TypeScript types. These declarations preserve the existing wire protocol and authorization checks.
+
+The worker RPC carries unknown results until its caller selects a response type; event streams carry unknown values and download streams carry byte arrays. The ledger client constructor Proxy supplies its shared RPC allowlist, which intentionally merges the public port interface with the class. Tests type partial transport fixtures separately from complete handler requests.

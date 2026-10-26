@@ -7,9 +7,19 @@ import type {
   OwnerTunnelBinding,
 } from "./owner-tunnel";
 
+type TunnelMessage = {
+  kind?: string;
+  id: number;
+  active?: boolean;
+  method?: string;
+  request?: Partial<OwnerControlRequest>;
+  sentAt?: number;
+  streamId: number;
+};
+
 export interface TunnelPort {
   send(value: unknown): void;
-  onMessage(listener: (value: any) => void): void;
+  onMessage(listener: (value: unknown) => void): void;
 }
 const MAX_BYTES = 8 * 1024 * 1024;
 const failure = (code = "owner_unavailable", status = 503): Error =>
@@ -46,7 +56,7 @@ export class OwnerTunnelMainBridge {
     ) => void = () => {},
   ) {
     port.onMessage((value) => {
-      void this.receive(value);
+      void this.receive(value as TunnelMessage);
     });
   }
   close(): void {
@@ -76,7 +86,7 @@ export class OwnerTunnelMainBridge {
       this.send({ kind: "probe", id });
     });
   }
-  private async receive(m: any): Promise<void> {
+  private async receive(m: TunnelMessage | undefined): Promise<void> {
     if (!this.alive || !m || !Number.isSafeInteger(m.id)) return;
     if (m.kind === "probe_result") {
       const p = this.probes.get(m.id);
@@ -236,7 +246,7 @@ export class MobileOwnerTunnelProcess {
       { serviceName: "Agents One mobile transport" },
     );
     this.child = child;
-    const listeners: ((value: any) => void)[] = [];
+    const listeners: ((value: unknown) => void)[] = [];
     this.bridge = new OwnerTunnelMainBridge(
       {
         send: (value) => child.postMessage(value),

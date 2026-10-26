@@ -11,19 +11,19 @@ let nextId = 1;
 const pending = new Map<
   number,
   {
-    resolve(value: any): void;
+    resolve(value: unknown): void;
     reject(error: Error): void;
     timer?: ReturnType<typeof setTimeout>;
   }
 >();
 const requests = new Map<number, OwnerControlRequest>();
 const send = (value: unknown): void => port.postMessage(value);
-function call(
+function call<T = unknown>(
   method: string,
   args: Record<string, unknown> = {},
   request?: OwnerControlRequest,
   signal = request?.signal,
-): Promise<any> {
+): Promise<T> {
   if (pending.size >= 256)
     return Promise.reject(
       Object.assign(Error("rate_limited"), {
@@ -52,7 +52,7 @@ function call(
       resolve: (value) => {
         clearTimeout(timer);
         signal?.removeEventListener("abort", cancel);
-        resolve(value);
+        resolve(value as T);
       },
       reject: (error) => {
         clearTimeout(timer);
@@ -81,13 +81,18 @@ function call(
     send({ kind: "call", id, method, sentAt: Date.now(), ...args });
   });
 }
-async function* stream(
+async function* stream<T = unknown>(
   streamId: number,
   signal: AbortSignal,
-): AsyncIterable<any> {
+): AsyncIterable<T> {
   try {
     while (!signal.aborted) {
-      const result = await call("next", { streamId }, undefined, signal);
+      const result = await call<IteratorResult<T>>(
+        "next",
+        { streamId },
+        undefined,
+        signal,
+      );
       if (result.done) return;
       yield result.value;
     }
@@ -123,7 +128,13 @@ port.on("message", ({ data: m }) => {
           },
           handle: async (request) => {
             const { signal, ...dto } = request;
-            const r = await call("handle", { request: dto }, request);
+            const r = await call<{
+              status: number;
+              body?: unknown;
+              events?: boolean;
+              download?: { metadata: unknown };
+              streamId: number;
+            }>("handle", { request: dto }, request);
             const response: OwnerControlResponse = {
               status: r.status,
               body: r.body,
@@ -132,7 +143,7 @@ port.on("message", ({ data: m }) => {
             else if (r.download)
               response.download = {
                 metadata: r.download.metadata,
-                chunks: stream(r.streamId, signal),
+                chunks: stream<Uint8Array>(r.streamId, signal),
               };
             else requests.delete(r.streamId);
             return response;
