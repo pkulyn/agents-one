@@ -1,3 +1,4 @@
+import { assertClaudeWorkspaceBoundary } from "./claude-workspace-policy";
 import { prepareClaudeQueryEnvironment } from "./claude-query-context";
 import { claudeChildEnvironment } from "./claude-environment";
 import { verifyClaudeStrictCapabilities } from "./claude-capabilities";
@@ -447,6 +448,17 @@ export async function startClaudeCodeProcess(
 
   let userCredentials: NodeJS.ProcessEnv = {};
   if (mode === "analysis" || mode === "safe_write") {
+    assertClaudeWorkspaceBoundary(
+      workspace ||
+        join(
+          agentsOneProfileHome(input.profile),
+          "desktop",
+          "runtime-chat",
+          "claude-code",
+        ),
+      input.profile,
+      !workspace,
+    );
     userCredentials = assertClaudeNonExecutingUserConfig(
       workspace ||
         join(
@@ -498,6 +510,7 @@ export async function startClaudeCodeProcess(
     : inheritedEnvironment;
   assertCanStart();
   strict?.assertUnchanged();
+  if (strict) assertClaudeWorkspaceBoundary(cwd, input.profile, !workspace);
   const preparedInputs = prepareRuntimeInputs(
     input.profile,
     input.attachments,

@@ -23,6 +23,7 @@ vi.mock("../src/main/claude-code-runtime", () => ({
   configuredExecutable: () => "owned-cli",
 }));
 vi.mock("../src/main/utils", () => ({
+  profileHome: () => "C:/synthetic-native-hermes",
   agentsOneProfileHome: () => "C:/owned-profile",
 }));
 vi.mock("../src/main/claude-config-policy", () => ({
