@@ -6,10 +6,14 @@ import {
   type SDKUserMessage,
   type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
-import { claudeCodeInvocation } from "./claude-code-runtime";
+import {
+  prepareClaudeSdkPolicy,
+  type PreparedClaudeSdkPolicy,
+  type ClaudeSdkStartupConfig,
+} from "./claude-sdk-policy";
 import type { AgentRuntimeTaskInput } from "../shared/agent-runtimes";
 
-export interface ClaudeAgentSdkConfig {
+export interface ClaudeAgentSdkConfig extends ClaudeSdkStartupConfig {
   executablePath?: string;
   workspace?: string;
   timeoutMs?: number;
@@ -74,6 +78,7 @@ class ClaudeInputQueue implements AsyncIterable<SDKUserMessage> {
 
   close(): void {
     this.closed = true;
+    this.items.length = 0;
     const waiter = this.waiter;
     this.waiter = undefined;
     waiter?.({ value: undefined, done: true });
@@ -97,14 +102,6 @@ class ClaudeInputQueue implements AsyncIterable<SDKUserMessage> {
   }
 }
 
-function controlExecutablePath(
-  config: ClaudeAgentSdkConfig,
-): string | undefined {
-  const configured = config.executablePath?.trim();
-  if (!configured) return undefined;
-  return claudeCodeInvocation(configured).command;
-}
-
 function sdkUserText(text: string): SDKUserMessage {
   return {
     type: "user",
@@ -115,6 +112,7 @@ function sdkUserText(text: string): SDKUserMessage {
 
 interface ClaudeAgentSdkSession {
   query: Query;
+  policy?: PreparedClaudeSdkPolicy;
   send: (text: string) => void;
   waitForCompaction: () => Promise<ClaudeAgentSdkCompaction>;
   waitForTurn: () => Promise<void>;
@@ -123,6 +121,7 @@ interface ClaudeAgentSdkSession {
 interface PersistentClaudeAgentSdkSession extends ClaudeAgentSdkSession {
   sessionId?: string;
   running: boolean;
+  closed: boolean;
   close: () => Promise<void>;
   runTurn: (
     text: string,
@@ -139,9 +138,7 @@ const persistentSessions = new Map<string, PersistentClaudeAgentSdkSession>();
 export async function closeClaudeAgentSdkSessions(): Promise<void> {
   const sessions = [...new Set(persistentSessions.values())];
   persistentSessions.clear();
-  await Promise.all(
-    sessions.map((session) => session.close().catch(() => undefined)),
-  );
+  await Promise.all(sessions.map((session) => session.close()));
 }
 
 function sdkMessageText(message: SDKMessage): string {
@@ -166,23 +163,29 @@ function errorText(message: Extract<SDKMessage, { type: "result" }>): string {
 async function createPersistentSession(
   config: ClaudeAgentSdkConfig,
   resume: string | undefined,
+  policy: PreparedClaudeSdkPolicy,
 ): Promise<PersistentClaudeAgentSdkSession> {
   const input = new ClaudeInputQueue();
+  policy.assertCurrent();
   const active = query({
     prompt: input,
     options: {
-      ...(config.workspace?.trim() ? { cwd: config.workspace.trim() } : {}),
+      ...policy.options,
       ...(resume?.trim() ? { resume: resume.trim() } : {}),
-      ...(controlExecutablePath(config)
-        ? { pathToClaudeCodeExecutable: controlExecutablePath(config) }
-        : {}),
       includePartialMessages: true,
-      permissionMode: "plan",
-      disallowedTools: ["Edit", "Write", "NotebookEdit", "Bash"],
     },
   });
   let sessionId: string | undefined;
   let closed = false;
+  let closing: Promise<void> | undefined;
+  let stopRequested = false;
+  const stop = (): void => {
+    closed = true;
+    if (stopRequested) return;
+    stopRequested = true;
+    input.close();
+    active.close();
+  };
   let currentTurn:
     | {
         resolve: (value: { output: string; sessionId?: string }) => void;
@@ -225,23 +228,48 @@ async function createPersistentSession(
           }
         }
       }
+      const failure = new Error(
+        "Claude Agent SDK session closed before a result.",
+      );
+      currentTurn?.reject(failure);
+      currentTurn = undefined;
+      rejectCompaction?.(failure);
+      stop();
     } catch (error) {
+      stop();
       const failure = error instanceof Error ? error : new Error(String(error));
       currentTurn?.reject(failure);
       currentTurn = undefined;
       rejectCompaction?.(failure);
     }
   })();
-  await withTimeout(
-    active.initializationResult(),
-    controlTimeout(config),
-    "Claude Agent SDK 初始化超时。请确认已配置受支持的 API 凭据。",
-  );
+  try {
+    await withTimeout(
+      active.initializationResult(),
+      controlTimeout(config),
+      "Claude Agent SDK 初始化超时。请确认已配置受支持的 API 凭据。",
+    );
+    policy.assertCurrent();
+    if (closed)
+      throw Error("Claude Agent SDK session closed during initialization.");
+  } catch (error) {
+    stop();
+    await withTimeout(
+      consume,
+      5000,
+      "Claude Agent SDK shutdown was not confirmed.",
+    );
+    throw error;
+  }
   return {
     query: active,
+    policy,
     send: (text) => input.push(sdkUserText(text)),
     get sessionId() {
       return sessionId;
+    },
+    get closed() {
+      return closed;
     },
     get running() {
       return Boolean(currentTurn);
@@ -282,22 +310,86 @@ async function createPersistentSession(
         input.push(sdkUserText(text));
       });
     },
-    close: async () => {
-      if (closed) return;
-      closed = true;
-      input.close();
-      active.close();
-      await consume.catch(() => undefined);
+    close: () => {
+      if (!closing) {
+        closed = true;
+        currentTurn?.reject(
+          new Error("Claude Agent SDK session closed before a result."),
+        );
+        currentTurn = undefined;
+        stop();
+        closing = withTimeout(
+          consume,
+          5000,
+          "Claude Agent SDK shutdown was not confirmed.",
+        );
+      }
+      return closing;
     },
   };
 }
 
-function persistentSession(
-  sessionId: string | undefined,
-): PersistentClaudeAgentSdkSession | undefined {
-  return sessionId?.trim()
-    ? persistentSessions.get(sessionId.trim())
-    : undefined;
+function sessionKey(
+  policy: PreparedClaudeSdkPolicy,
+  sessionId: string,
+): string {
+  return JSON.stringify([policy.key, sessionId.trim()]);
+}
+function rememberSession(
+  policy: PreparedClaudeSdkPolicy,
+  sessionId: string,
+  session: PersistentClaudeAgentSdkSession,
+): void {
+  persistentSessions.set(sessionKey(policy, sessionId), session);
+}
+function forgetSession(session: PersistentClaudeAgentSdkSession): void {
+  for (const [key, value] of persistentSessions)
+    if (value === session) persistentSessions.delete(key);
+}
+async function persistentSession(
+  policy: PreparedClaudeSdkPolicy,
+  sessionId?: string,
+): Promise<PersistentClaudeAgentSdkSession | undefined> {
+  if (!sessionId?.trim()) return undefined;
+  const session = persistentSessions.get(sessionKey(policy, sessionId));
+  if (!session) return undefined;
+  if (
+    session.closed ||
+    policy.native ||
+    session.policy?.fingerprint !== policy.fingerprint
+  ) {
+    if (session.running)
+      throw Error(
+        "Claude Agent SDK session is already running with another startup context.",
+      );
+    forgetSession(session);
+    await session.close();
+    return undefined;
+  }
+  policy.assertCurrent();
+  return session;
+}
+
+async function liveControl<T>(
+  session: PersistentClaudeAgentSdkSession,
+  config: ClaudeAgentSdkConfig,
+  policy: PreparedClaudeSdkPolicy,
+  operation: () => Promise<T>,
+): Promise<T> {
+  policy.assertCurrent();
+  try {
+    const result = await withTimeout(
+      operation(),
+      controlTimeout(config),
+      "Claude Agent SDK control operation timed out.",
+    );
+    policy.assertCurrent();
+    return result;
+  } catch (error) {
+    forgetSession(session);
+    await session.close();
+    throw error;
+  }
 }
 
 /**
@@ -307,26 +399,42 @@ function persistentSession(
  */
 export async function startClaudeAgentSdkProcess(
   config: ClaudeAgentSdkConfig,
-  input: Pick<AgentRuntimeTaskInput, "prompt" | "sessionId">,
+  input: Pick<AgentRuntimeTaskInput, "prompt" | "sessionId" | "model">,
   onMessage: (message: SDKMessage) => void,
+  canStart: () => boolean = () => true,
 ): Promise<StartedClaudeAgentSdkProcess> {
+  const policy = await prepareClaudeSdkPolicy(
+    { ...config, model: input.model?.trim() || config.model },
+    canStart,
+  );
   const requested = input.sessionId?.trim();
-  let session = persistentSession(requested);
+  let session = await persistentSession(policy, requested);
   if (!session) {
-    session = await createPersistentSession(config, requested);
-    if (requested) persistentSessions.set(requested, session);
+    session = await createPersistentSession(config, requested, policy);
+    if (requested) rememberSession(policy, requested, session);
   }
   const activeSession = session;
+  if (
+    policy.options.model &&
+    activeSession.policy?.options.model !== policy.options.model
+  ) {
+    await liveControl(activeSession, config, policy, () =>
+      activeSession.query.setModel(policy.options.model),
+    );
+    if (activeSession.policy)
+      activeSession.policy.options.model = policy.options.model;
+  }
+  policy.assertCurrent();
   const completion = activeSession
     .runTurn(input.prompt, (message) => {
       const discovered = activeSession.sessionId;
-      if (discovered) persistentSessions.set(discovered, activeSession);
+      if (discovered) rememberSession(policy, discovered, activeSession);
       onMessage(message);
     })
     .then(
       (result) => {
         if (result.sessionId)
-          persistentSessions.set(result.sessionId, activeSession);
+          rememberSession(policy, result.sessionId, activeSession);
         return result;
       },
       (error) => ({
@@ -340,7 +448,16 @@ export async function startClaudeAgentSdkProcess(
   return {
     ...(activeSession.sessionId ? { sessionId: activeSession.sessionId } : {}),
     cancel: async () => {
-      await activeSession.query.interrupt();
+      forgetSession(activeSession);
+      try {
+        await withTimeout(
+          activeSession.query.interrupt(),
+          5000,
+          "Claude Agent SDK interrupt was not confirmed.",
+        );
+      } finally {
+        await activeSession.close();
+      }
     },
     completion,
   };
@@ -350,16 +467,14 @@ async function withClaudeAgentSdkSession<T>(
   config: ClaudeAgentSdkConfig,
   sessionId: string | undefined,
   operation: (session: ClaudeAgentSdkSession) => Promise<T>,
+  policy: PreparedClaudeSdkPolicy,
 ): Promise<T> {
   const input = new ClaudeInputQueue();
   const active = query({
     prompt: input,
     options: {
-      ...(config.workspace?.trim() ? { cwd: config.workspace.trim() } : {}),
+      ...policy.options,
       ...(sessionId?.trim() ? { resume: sessionId.trim() } : {}),
-      ...(controlExecutablePath(config)
-        ? { pathToClaudeCodeExecutable: controlExecutablePath(config) }
-        : {}),
     },
   });
   let resolveCompaction:
@@ -383,6 +498,7 @@ async function withClaudeAgentSdkSession<T>(
     rejectTurn = reject;
   });
   void turn.catch(() => undefined);
+  let streamClosed = false;
   const consume = (async () => {
     try {
       for await (const message of active) {
@@ -407,7 +523,14 @@ async function withClaudeAgentSdkSession<T>(
           } else resolveTurn?.();
         }
       }
+      streamClosed = true;
+      const failure = new Error(
+        "Claude Agent SDK session closed before a result.",
+      );
+      rejectCompaction?.(failure);
+      rejectTurn?.(failure);
     } catch (error) {
+      streamClosed = true;
       const failure = error instanceof Error ? error : new Error(String(error));
       rejectCompaction?.(failure);
       rejectTurn?.(failure);
@@ -419,16 +542,30 @@ async function withClaudeAgentSdkSession<T>(
       controlTimeout(config),
       "Claude Agent SDK 初始化超时。请确认已配置受支持的 API 凭据。",
     );
-    return await operation({
-      query: active,
-      send: (text) => input.push(sdkUserText(text)),
-      waitForCompaction: () => compaction,
-      waitForTurn: () => turn,
-    });
+    policy.assertCurrent();
+    if (streamClosed)
+      throw Error("Claude Agent SDK session closed during initialization.");
+    return await withTimeout(
+      operation({
+        query: active,
+        send: (text) => {
+          policy.assertCurrent();
+          input.push(sdkUserText(text));
+        },
+        waitForCompaction: () => compaction,
+        waitForTurn: () => turn,
+      }),
+      controlTimeout(config),
+      "Claude Agent SDK control operation timed out.",
+    );
   } finally {
     input.close();
     active.close();
-    await consume.catch(() => undefined);
+    await withTimeout(
+      consume,
+      5000,
+      "Claude Agent SDK shutdown was not confirmed.",
+    );
   }
 }
 
@@ -445,10 +582,17 @@ export async function listClaudeAgentSdkModels(
   config: ClaudeAgentSdkConfig,
   sessionId?: string,
 ): Promise<ModelInfo[]> {
-  const live = persistentSession(sessionId);
-  if (live) return live.query.supportedModels();
-  return withClaudeAgentSdkSession(config, sessionId, (session) =>
-    session.query.supportedModels(),
+  const policy = await prepareClaudeSdkPolicy(config);
+  const live = await persistentSession(policy, sessionId);
+  if (live)
+    return liveControl(live, config, policy, () =>
+      live.query.supportedModels(),
+    );
+  return withClaudeAgentSdkSession(
+    config,
+    sessionId,
+    (session) => session.query.supportedModels(),
+    policy,
   );
 }
 
@@ -456,10 +600,21 @@ export async function listClaudeAgentSdkCommands(
   config: ClaudeAgentSdkConfig,
   sessionId?: string,
 ): Promise<SlashCommand[]> {
-  const live = persistentSession(sessionId);
-  if (live) return live.query.supportedCommands();
-  return withClaudeAgentSdkSession(config, sessionId, (session) =>
-    session.query.supportedCommands(),
+  const policy = await prepareClaudeSdkPolicy(
+    config,
+    undefined,
+    Boolean(config.nativeContext),
+  );
+  const live = await persistentSession(policy, sessionId);
+  if (live)
+    return liveControl(live, config, policy, () =>
+      live.query.supportedCommands(),
+    );
+  return withClaudeAgentSdkSession(
+    config,
+    sessionId,
+    (session) => session.query.supportedCommands(),
+    policy,
   );
 }
 
@@ -468,13 +623,18 @@ export async function setClaudeAgentSdkModel(
   sessionId: string,
   model: string,
 ): Promise<void> {
-  const live = persistentSession(sessionId);
+  const policy = await prepareClaudeSdkPolicy(config);
+  const live = await persistentSession(policy, sessionId);
   if (live) {
-    await live.query.setModel(model);
+    await liveControl(live, config, policy, () => live.query.setModel(model));
+    if (live.policy) live.policy.options.model = model;
     return;
   }
-  await withClaudeAgentSdkSession(config, sessionId, (session) =>
-    session.query.setModel(model),
+  await withClaudeAgentSdkSession(
+    config,
+    sessionId,
+    (session) => session.query.setModel(model),
+    policy,
   );
 }
 
@@ -483,7 +643,8 @@ export async function compactClaudeAgentSdkSession(
   sessionId: string,
   customInstructions?: string,
 ): Promise<ClaudeAgentSdkCompaction> {
-  const live = persistentSession(sessionId);
+  const policy = await prepareClaudeSdkPolicy(config);
+  const live = await persistentSession(policy, sessionId);
   if (live) {
     if (live.running) {
       throw new Error("Claude Code 正在执行当前轮次，不能同时压缩上下文。");
@@ -492,25 +653,30 @@ export async function compactClaudeAgentSdkSession(
       `/compact${customInstructions?.trim() ? ` ${customInstructions.trim()}` : ""}`,
       () => undefined,
     );
-    const result = await withTimeout(
+    const result = await liveControl(live, config, policy, () =>
       Promise.all([live.waitForCompaction(), turn]).then(
         ([compact]) => compact,
       ),
-      controlTimeout(config),
-      "Claude Code 上下文压缩等待超时。",
     );
     return result;
   }
-  return withClaudeAgentSdkSession(config, sessionId, async (session) => {
-    session.send(
-      `/compact${customInstructions?.trim() ? ` ${customInstructions.trim()}` : ""}`,
-    );
-    return withTimeout(
-      session.waitForCompaction(),
-      controlTimeout(config),
-      "Claude Code 上下文压缩等待超时。",
-    );
-  });
+  return withClaudeAgentSdkSession(
+    config,
+    sessionId,
+    async (session) => {
+      session.send(
+        `/compact${customInstructions?.trim() ? ` ${customInstructions.trim()}` : ""}`,
+      );
+      return withTimeout(
+        Promise.all([session.waitForCompaction(), session.waitForTurn()]).then(
+          ([compact]) => compact,
+        ),
+        controlTimeout(config),
+        "Claude Code 上下文压缩等待超时。",
+      );
+    },
+    policy,
+  );
 }
 
 export async function executeClaudeAgentSdkCommand(
@@ -519,27 +685,19 @@ export async function executeClaudeAgentSdkCommand(
   name: string,
   args?: string,
 ): Promise<void> {
-  const live = persistentSession(sessionId);
-  if (live) {
-    if (live.running) {
-      throw new Error(`Claude Code 正在执行当前轮次，不能同时运行 /${name}。`);
-    }
-    await withTimeout(
-      live.runTurn(
-        `/${name}${args?.trim() ? ` ${args.trim()}` : ""}`,
-        () => undefined,
-      ),
-      controlTimeout(config),
-      `Claude Code /${name} 命令等待超时。`,
-    );
-    return;
-  }
-  await withClaudeAgentSdkSession(config, sessionId, async (session) => {
-    session.send(`/${name}${args?.trim() ? ` ${args.trim()}` : ""}`);
-    await withTimeout(
-      session.waitForTurn(),
-      controlTimeout(config),
-      `Claude Code /${name} 命令等待超时。`,
-    );
-  });
+  const policy = await prepareClaudeSdkPolicy(config, undefined, true);
+  await persistentSession(policy, sessionId);
+  await withClaudeAgentSdkSession(
+    config,
+    sessionId,
+    async (session) => {
+      session.send(`/${name}${args?.trim() ? ` ${args.trim()}` : ""}`);
+      await withTimeout(
+        session.waitForTurn(),
+        controlTimeout(config),
+        `Claude Code /${name} 命令等待超时。`,
+      );
+    },
+    policy,
+  );
 }
