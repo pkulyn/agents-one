@@ -59,3 +59,9 @@ The build resource list copies the root license and third-party notices into res
 Desktop builds preserve production dependency notices separately from the project MIT license. The inventory binds installed versions to the lockfile and identifies missing standalone notices.
 
 The build collector emits build assets copied to resources/notices by electron-builder. Missing required packages or version drift stop generation; commercial SDK terms remain distinct. [[tests/dependency-notices.test.ts]] checks preservation, reproducibility and refusal of incomplete build inputs.
+
+## Windows direct npm collection
+
+Windows packaging runs npm dependency collection through the active Node executable and its adjacent npm CLI. The build hook preserves the collector arguments and waits for process close and file flush before parsing JSON.
+
+This build-only compatibility hook avoids dependence on a PowerShell shim. It leaves the application Runtime and production dependency graph unchanged. [[tests/windows-npm-collection.test.ts]] verifies real large child output, literal arguments and expected npm-list error handling.
