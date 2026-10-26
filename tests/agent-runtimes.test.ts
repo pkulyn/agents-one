@@ -1,3 +1,4 @@
+const closeClaudeAgentSdkSessionsMock = vi.hoisted(() => vi.fn());
 const startClaudeAgentSdkProcessMock = vi.hoisted(() => vi.fn());
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
@@ -52,6 +53,7 @@ vi.mock("../src/main/claude-code-runtime", () => ({
 }));
 
 vi.mock("../src/main/claude-agent-sdk", () => ({
+  closeClaudeAgentSdkSessions: closeClaudeAgentSdkSessionsMock,
   startClaudeAgentSdkProcess: startClaudeAgentSdkProcessMock,
   listClaudeAgentSdkCommands: listClaudeAgentSdkCommandsMock,
   listClaudeAgentSdkModels: listClaudeAgentSdkModelsMock,
@@ -105,6 +107,8 @@ async function loadModules(): Promise<{
 describe("agent runtime registry", () => {
   beforeEach(() => {
     testHome = mkdtempSync(join(tmpdir(), "hermes-agent-runtimes-"));
+    closeClaudeAgentSdkSessionsMock.mockReset();
+    closeClaudeAgentSdkSessionsMock.mockResolvedValue(undefined);
     startClaudeAgentSdkProcessMock.mockReset();
     startClaudeAgentSdkProcessMock.mockRejectedValue(
       new Error("SDK unavailable in fixture"),
@@ -3928,6 +3932,27 @@ describe("agent runtime registry", () => {
     expect(result.status).toBe("cancelled");
     expect(result.error).toBe("Runtime task was cancelled.");
     expect(dispatched).toBe(false);
+  });
+
+  it("observes a failed SDK shutdown without leaking native diagnostics", async () => {
+    const { runtimes } = await loadModules();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    closeClaudeAgentSdkSessionsMock.mockRejectedValueOnce(
+      new Error("owned private diagnostic"),
+    );
+    try {
+      runtimes.stopAcceptingAgentRuntimeTasks();
+      await vi.waitFor(() =>
+        expect(log).toHaveBeenCalledWith(
+          "Claude Agent SDK shutdown was not confirmed.",
+        ),
+      );
+      expect(JSON.stringify(log.mock.calls)).not.toContain(
+        "owned private diagnostic",
+      );
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("keeps cancelled Claude SDK startup from sending or falling back to CLI", async () => {
