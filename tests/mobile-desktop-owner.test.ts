@@ -98,7 +98,9 @@ vi.mock("../src/main/mobile-control/owner-ledger-client", async () => {
     await import("../src/main/mobile-control/owner-ledger");
   return {
     MobileOwnerLedgerClient: class extends MobileOwnerLedger {
-      async whenReady(): Promise<void> {}
+      async whenReady(): Promise<void> {
+        /* Test ledger is ready immediately. */
+      }
     },
   };
 });

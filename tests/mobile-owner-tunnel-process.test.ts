@@ -1,24 +1,44 @@
-import { expect, it, vi } from "vitest";
+import { expect, it, vi, type Mock } from "vitest";
 vi.mock("electron", () => ({ utilityProcess: {} }));
 import { OwnerTunnelMainBridge } from "../src/main/mobile-control/owner-tunnel-process";
-function setup(active = true) {
-  let listener: (value: any) => void = () => {};
-  const sent: any[] = [];
-  const diagnostics: any[] = [];
-  const handle = vi.fn(async () => ({ status: 200, body: { original: true } }));
+import type {
+  OwnerControlRequest,
+  OwnerControlResponse,
+} from "../src/main/mobile-control/owner-tunnel";
+type Frame = {
+  kind?: string;
+  id?: number;
+  ok?: boolean;
+  error?: { code: string; status: number };
+  result?: { body?: unknown };
+};
+type Setup = {
+  bridge: OwnerTunnelMainBridge;
+  handle: Mock<(request: OwnerControlRequest) => Promise<OwnerControlResponse>>;
+  sent: Frame[];
+  diagnostics: Record<string, unknown>[];
+  receive(m: unknown): void;
+};
+function setup(active = true): Setup {
+  let listener: (value: unknown) => void = () => {};
+  const sent: Frame[] = [];
+  const diagnostics: Record<string, unknown>[] = [];
+  const handle = vi.fn<
+    (request: OwnerControlRequest) => Promise<OwnerControlResponse>
+  >(async () => ({ status: 200, body: { original: true } }));
   const bridge = new OwnerTunnelMainBridge(
     {
       onMessage: (fn) => (listener = fn),
       send: (value) => {
-        sent.push(value);
-        const m = value as any;
+        sent.push(value as Frame);
+        const m = value as Frame;
         if (m.kind === "probe")
           queueMicrotask(() =>
             listener({ kind: "probe_result", id: m.id, active }),
           );
       },
     },
-    { status: () => ({}) as any, handle },
+    { status: () => ({}), handle },
     (value) => diagnostics.push(value),
   );
   return {
@@ -26,7 +46,7 @@ function setup(active = true) {
     handle,
     sent,
     diagnostics,
-    receive: (m: any) => listener(m),
+    receive: (m: unknown) => listener(m),
   };
 }
 it("rechecks delayed authorization before Main dispatch and preserves exact response DTO", async () => {
@@ -36,12 +56,12 @@ it("rechecks delayed authorization before Main dispatch and preserves exact resp
     expect(denied.sent.some((m) => m.kind === "reply")).toBe(true),
   );
   expect(denied.handle).not.toHaveBeenCalled();
-  expect(denied.sent.at(-1).error.code).toBe("revoked");
+  expect(denied.sent.at(-1)!.error!.code).toBe("revoked");
   denied.bridge.close();
   const allowed = setup();
   allowed.receive({ kind: "call", id: 1, method: "handle", request: {} });
   await vi.waitFor(() => expect(allowed.handle).toHaveBeenCalledOnce());
-  expect(allowed.sent.at(-1).result.body).toEqual({ original: true });
+  expect(allowed.sent.at(-1)!.result!.body).toEqual({ original: true });
   allowed.bridge.close();
 });
 it("pulls only requested stream items and cancellation aborts source without redispatch", async () => {
@@ -51,13 +71,13 @@ it("pulls only requested stream items and cancellation aborts source without red
     value: { eventId: "original" },
   }));
   let signal: AbortSignal;
-  s.handle.mockImplementation(async (request: any) => {
+  s.handle.mockImplementation(async (request: OwnerControlRequest) => {
     signal = request.signal;
     return {
       status: 200,
       body: undefined,
       events: { [Symbol.asyncIterator]: () => ({ next: pull }) },
-    } as any;
+    } as OwnerControlResponse;
   });
   s.receive({ kind: "call", id: 1, method: "handle", request: {} });
   await vi.waitFor(() => expect(s.handle).toHaveBeenCalledOnce());
@@ -91,7 +111,7 @@ it("rejects an oversized DTO before authorization or execution", async () => {
 it("releases and aborts a stream when its initial response exceeds the IPC budget", async () => {
   const s = setup();
   let signal: AbortSignal;
-  s.handle.mockImplementation(async (r: any) => {
+  s.handle.mockImplementation(async (r: OwnerControlRequest) => {
     signal = r.signal;
     return {
       status: 200,
@@ -101,7 +121,7 @@ it("releases and aborts a stream when its initial response exceeds the IPC budge
           next: async () => ({ done: true, value: undefined }),
         }),
       },
-    } as any;
+    } as OwnerControlResponse;
   });
   s.receive({ kind: "call", id: 1, method: "handle", request: {} });
   await vi.waitFor(() =>

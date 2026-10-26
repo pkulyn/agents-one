@@ -9,31 +9,42 @@ const owner = JSON.parse(
     "utf8",
   ),
 ).objects.OwnerSpace;
+type Frame = { type: string; payload: { updateId: string } };
+type Setup = {
+  socket: WebSocket;
+  tunnel: ReturnType<typeof createMobileOwnerTunnel>;
+  frames: Frame[];
+  diagnostics: Record<string, unknown>[];
+  auth: Frame;
+  ack(id?: string): void;
+  advance(ms: number): void;
+};
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const f of cleanup.splice(0).reverse()) await f();
 });
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-async function setup() {
+const wait = (ms: number): Promise<unknown> =>
+  new Promise((r) => setTimeout(r, ms));
+async function setup(): Promise<Setup> {
   let clock = Date.now();
-  const diagnostics: any[] = [];
+  const diagnostics: Record<string, unknown>[] = [];
   const tunnel = createMobileOwnerTunnel({
     stateKey: "e".repeat(64),
     now: () => clock,
     authenticate: () => owner,
     authorization: () => ({ enabled: true, devices: [] }),
     authorizeDevice: () => {},
-    diagnostic: (d: any) => diagnostics.push(d),
+    diagnostic: (d: Record<string, unknown>) => diagnostics.push(d),
   });
   const server = createServer();
   server.on("upgrade", (r, s, h) => tunnel.upgrade(r, s, h));
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const socket = new WebSocket(
     "ws://127.0.0.1:" +
-      (server.address() as any).port +
+      (server.address() as import("node:net").AddressInfo).port +
       "/agents-one/mobile/owner/v1/tunnel",
   );
-  const frames: any[] = [];
+  const frames: Frame[] = [];
   socket.on("message", (raw) => frames.push(JSON.parse(String(raw))));
   await new Promise<void>((r, j) => {
     socket.once("open", r);
@@ -60,10 +71,10 @@ async function setup() {
     i++
   )
     await wait(10);
-  const auth = frames.find((f) => f.type === "authorization");
+  const auth = frames.find((f) => f.type === "authorization")!;
   expect(auth).toBeTruthy();
   socket.send(JSON.stringify({ type: "owner_status", owner }));
-  const ack = (id = auth.payload.updateId) =>
+  const ack = (id = auth.payload.updateId): void =>
     socket.send(JSON.stringify({ type: "authorization_ack", updateId: id }));
   return {
     socket,

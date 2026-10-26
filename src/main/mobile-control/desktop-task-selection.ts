@@ -87,12 +87,10 @@ export class DesktopTaskSelectionCatalog implements DesktopExecutionPolicyCatalo
     this.source.guard();
     return [
       ...rows,
-      ...this.legacy
-        .list()
-        .map((row) => ({
-          ...row,
-          unattendedApproved: row.unattendedApproved === true,
-        })),
+      ...this.legacy.list().map((row) => ({
+        ...row,
+        unattendedApproved: row.unattendedApproved === true,
+      })),
     ];
   }
   authorize(id: string): Policy {

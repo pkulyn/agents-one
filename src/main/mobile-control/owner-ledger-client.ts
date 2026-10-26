@@ -57,6 +57,8 @@ function remoteError(value: WorkerReply["error"]): Error {
 }
 
 /** Main-process proxy. The child is the only process that opens the SQLite ledger. */
+// The constructor Proxy supplies every RPC method from the shared allowlist.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class MobileOwnerLedgerClient {
   readonly ownerId: string;
   readonly spaceId: string;
@@ -347,4 +349,6 @@ export class MobileOwnerLedgerClient {
   }
 }
 
+// This interface describes the methods supplied by the constructor Proxy.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface MobileOwnerLedgerClient extends MobileOwnerLedgerPort {}

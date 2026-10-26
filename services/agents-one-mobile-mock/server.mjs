@@ -20,7 +20,6 @@ const js = ts.transpileModule(source, {
   },
 }).outputText;
 const {
-  MOBILE_ROUTES,
   resolveMobileRoute,
   validateMobileBody,
   validateMobileMutationHeaders,

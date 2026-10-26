@@ -18,7 +18,18 @@ const runtime = (
   location: "local",
   config: { model: "original-model" },
 });
-function fixture() {
+type Fixture = {
+  runtimes: AgentRuntimeDefinition[];
+  projects: { id: string; identity: string }[];
+  legacy: DesktopExecutionPolicyCatalog;
+  source: {
+    guard: ReturnType<typeof vi.fn>;
+    runtimes(): AgentRuntimeDefinition[];
+    projects(): { id: string; identity: string }[];
+  };
+  catalog: DesktopTaskSelectionCatalog;
+};
+function fixture(): Fixture {
   const runtimes = [runtime("codex-1"), runtime("claude-1", "claude-code")];
   const projects = [{ id: "project-1", identity: "private-original-root" }];
   const legacy: DesktopExecutionPolicyCatalog = {

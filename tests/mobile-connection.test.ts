@@ -289,7 +289,7 @@ it("copies one unambiguous legacy mobile binding to the sole default profile and
 it("refuses unreadable canonical trust instead of falling back to an older legacy path", async () => {
   const s = setup();
   const home = s.file.slice(0, s.file.lastIndexOf("\\"));
-  const key = (p: string) =>
+  const key = (p: string): string =>
     "mobile-connection:" + createHash("sha256").update(p).digest("hex");
   const legacy = { read: () => null, remove: () => {} };
   s.store.set(

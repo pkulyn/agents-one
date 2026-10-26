@@ -6,13 +6,54 @@ import { join } from "node:path";
 import { createMobileControlService } from "../services/agents-one-connect/src/mobile-control.mjs";
 import { createConnectService } from "../services/agents-one-connect/src/server.mjs";
 import { assertMobileSchema } from "../src/shared/mobile-control";
+type ResponseBody = Awaited<ReturnType<Response["json"]>>;
+type TestResponse = {
+  status: number;
+  body: ResponseBody;
+  cache: string | null;
+};
+type Paired = {
+  invitation: ResponseBody;
+  claim: ResponseBody;
+  credentials: ResponseBody;
+};
+type Setup = {
+  management(
+    path: string,
+    method?: string,
+    input?: unknown,
+    token?: string,
+  ): Promise<TestResponse>;
+  mobile(
+    path: string,
+    method?: string,
+    token?: string,
+    input?: unknown,
+    key?: string,
+  ): Promise<TestResponse>;
+  paired(): Promise<Paired>;
+  storagePath: string;
+  options: {
+    owners: {
+      ownerId: string;
+      spaceId: string;
+      label: string;
+      adminToken: string;
+    }[];
+    storagePath: string;
+    stateKey: string;
+    now(): number;
+  };
+  advance(ms: number): number;
+  restart(): ReturnType<typeof createMobileControlService>;
+};
 const cleanup: (() => Promise<unknown> | void)[] = [];
 afterEach(async () => {
   for (const clean of cleanup.splice(0).reverse()) await clean();
 });
 const admin = "owner-secret-" + "a".repeat(40),
   other = "owner-secret-" + "b".repeat(40);
-async function setup() {
+async function setup(): Promise<Setup> {
   const dir = mkdtempSync(join(tmpdir(), "agents-one-mobile-auth-"));
   cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   let time = Date.now();
@@ -58,7 +99,7 @@ async function setup() {
     token = admin,
     input?: unknown,
     key?: string,
-  ) {
+  ): Promise<TestResponse> {
     const response = await fetch(origin + path, {
       method,
       headers: {
@@ -79,15 +120,17 @@ async function setup() {
     method = "GET",
     input?: unknown,
     token = admin,
-  ) => request("/agents-one/mobile/admin/v1" + path, method, token, input);
+  ): Promise<TestResponse> =>
+    request("/agents-one/mobile/admin/v1" + path, method, token, input);
   const mobile = (
     path: string,
     method = "GET",
     token = "",
     input?: unknown,
     key?: string,
-  ) => request("/agents-one/mobile/v1" + path, method, token, input, key);
-  async function paired() {
+  ): Promise<TestResponse> =>
+    request("/agents-one/mobile/v1" + path, method, token, input, key);
+  async function paired(): Promise<Paired> {
     await management("/enabled", "PUT", { enabled: true });
     const invitation = (await management("/invitations", "POST", {})).body;
     const claim = (

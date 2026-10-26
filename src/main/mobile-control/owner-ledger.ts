@@ -131,7 +131,9 @@ function validateCheckpoint(
 /** Owner-only durable control evidence; phone and Relay never receive this file. */
 export class MobileOwnerLedger {
   /** The ledger owns no external handles; the method closes the worker RPC contract. */
-  close(): void {}
+  close(): void {
+    // Durable writes are synchronous; there are no open handles to release.
+  }
   private state: State;
   constructor(
     private readonly file: string,
