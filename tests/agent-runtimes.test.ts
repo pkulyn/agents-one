@@ -1,3 +1,4 @@
+const startClaudeAgentSdkProcessMock = vi.hoisted(() => vi.fn());
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { createHash } from "crypto";
@@ -51,6 +52,7 @@ vi.mock("../src/main/claude-code-runtime", () => ({
 }));
 
 vi.mock("../src/main/claude-agent-sdk", () => ({
+  startClaudeAgentSdkProcess: startClaudeAgentSdkProcessMock,
   listClaudeAgentSdkCommands: listClaudeAgentSdkCommandsMock,
   listClaudeAgentSdkModels: listClaudeAgentSdkModelsMock,
   setClaudeAgentSdkModel: setClaudeAgentSdkModelMock,
@@ -103,6 +105,10 @@ async function loadModules(): Promise<{
 describe("agent runtime registry", () => {
   beforeEach(() => {
     testHome = mkdtempSync(join(tmpdir(), "hermes-agent-runtimes-"));
+    startClaudeAgentSdkProcessMock.mockReset();
+    startClaudeAgentSdkProcessMock.mockRejectedValue(
+      new Error("SDK unavailable in fixture"),
+    );
     sendMessageMock.mockReset();
     probeCodexRuntimeMock.mockReset();
     startCodexProcessMock.mockReset();
@@ -1235,6 +1241,17 @@ describe("agent runtime registry", () => {
         transport: "cli",
         workspace: testHome,
       },
+    });
+    const history = await import("../src/main/runtime-conversation-store");
+    history.saveRuntimeConversation({
+      id: "claude-command-conversation",
+      runtimeId: "claude-cli-only",
+      runtimeName: "Claude",
+      runtimeKind: "claude-code",
+      runtimeSessionId: "claude-session",
+      accessMode: "full_access",
+      workspace: testHome,
+      messages: [],
     });
     listClaudeAgentSdkCommandsMock.mockResolvedValue([
       {
@@ -3911,6 +3928,44 @@ describe("agent runtime registry", () => {
     expect(result.status).toBe("cancelled");
     expect(result.error).toBe("Runtime task was cancelled.");
     expect(dispatched).toBe(false);
+  });
+
+  it("keeps cancelled Claude SDK startup from sending or falling back to CLI", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "claude-sdk-cancel",
+      name: "Claude",
+      kind: "claude-code",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "claude", transport: "cli" },
+    });
+    let release!: () => void;
+    const waiting = new Promise<void>((r) => (release = r));
+    let allowed: (() => boolean) | undefined;
+    let sent = false;
+    startClaudeAgentSdkProcessMock.mockImplementationOnce(
+      async (_config, _input, _events, canStart: () => boolean) => {
+        allowed = canStart;
+        await waiting;
+        if (!canStart()) throw Error("cancelled before dispatch");
+        sent = true;
+        throw Error("unexpected dispatch");
+      },
+    );
+    const pending = runtimes.startAgentRuntimeTask("claude-sdk-cancel", {
+      prompt: "cancel me",
+      mode: "analysis",
+      conversation: true,
+    });
+    await vi.waitFor(() => expect(allowed).toBeTypeOf("function"));
+    expect(allowed!()).toBe(true);
+    await expect(runtimes.cancelAllAgentRuntimeTasks()).resolves.toBe(1);
+    expect(allowed!()).toBe(false);
+    release();
+    expect((await pending).status).toBe("cancelled");
+    expect(sent).toBe(false);
+    expect(startClaudeCodeProcessMock).not.toHaveBeenCalled();
   });
 
   it("keeps a cancelled Pi task from dispatching after asynchronous startup", async () => {

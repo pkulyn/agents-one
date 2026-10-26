@@ -133,7 +133,7 @@ function changedWorkspaceFiles(
   return changed.sort().slice(0, 200);
 }
 
-function configuredExecutable(config: ClaudeCodeRuntimeConfig): string {
+export function configuredExecutable(config: ClaudeCodeRuntimeConfig): string {
   const configured = config.executablePath?.trim();
   if (configured) return configured;
   if (process.platform !== "win32") return "claude";

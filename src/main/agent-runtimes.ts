@@ -1,3 +1,4 @@
+import { claudeControlScope } from "./claude-command-authority";
 import { piControlScope, piNativeCommandContext } from "./pi-command-authority";
 import { getActiveProfileNameSync } from "./utils";
 import {
@@ -57,6 +58,7 @@ import {
   startClaudeCodeProcess,
 } from "./claude-code-runtime";
 import {
+  type ClaudeAgentSdkConfig,
   closeClaudeAgentSdkSessions,
   compactClaudeAgentSdkSession,
   executeClaudeAgentSdkCommand,
@@ -2916,14 +2918,13 @@ function piNativeCommandsFromResponse(
   return mapped;
 }
 
-function claudeAgentSdkConfig(runtime: AgentRuntimeDefinition): {
-  executablePath?: string;
-  workspace?: string;
-  timeoutMs?: number;
-} {
+function claudeAgentSdkConfig(
+  runtime: AgentRuntimeDefinition,
+  sessionId?: string,
+): ClaudeAgentSdkConfig {
   return {
     executablePath: runtime.config.executablePath,
-    workspace: runtime.config.workspace,
+    ...claudeControlScope(runtime.id, sessionId),
     timeoutMs: runtime.config.timeoutMs,
   };
 }
@@ -3019,7 +3020,10 @@ async function runtimeModels(
   }
   if (runtime.kind === "claude-code") {
     return claudeModelsFromSdk(
-      await listClaudeAgentSdkModels(claudeAgentSdkConfig(runtime), sessionId),
+      await listClaudeAgentSdkModels(
+        claudeAgentSdkConfig(runtime, sessionId),
+        sessionId,
+      ),
     );
   }
   return configuredModelOption(runtime);
@@ -3036,10 +3040,14 @@ export async function getAgentRuntimeCommandCatalog(
     runtime.kind === "pi"
       ? piNativeCommandContext(runtimeId, sessionId)
       : undefined;
+  const claudeNativeContext =
+    runtime.kind === "claude-code"
+      ? claudeControlScope(runtimeId, sessionId).nativeContext
+      : undefined;
   const key = JSON.stringify([
     getActiveProfileNameSync(),
     runtimeCommandCacheKey(runtimeId, sessionId),
-    nativeContext?.cwd ?? "restricted",
+    nativeContext?.cwd ?? claudeNativeContext?.cwd ?? "restricted",
   ]);
   const cached = runtimeCommandCatalogCache.get(key);
   const now = Date.now();
@@ -3072,7 +3080,7 @@ export async function getAgentRuntimeCommandCatalog(
     try {
       nativeCommands = claudeNativeCommandsFromSdk(
         await listClaudeAgentSdkCommands(
-          claudeAgentSdkConfig(runtime),
+          claudeAgentSdkConfig(runtime, sessionId),
           sessionId,
         ),
       );
@@ -3381,7 +3389,7 @@ async function executeAgentRuntimeCommandOnce(
     if (applyClaudeModelImmediately) {
       try {
         await setClaudeAgentSdkModel(
-          claudeAgentSdkConfig(runtime),
+          claudeAgentSdkConfig(runtime, request.sessionId),
           request.sessionId as string,
           args,
         );
@@ -3544,7 +3552,7 @@ async function executeAgentRuntimeCommandOnce(
           "Claude Code 已开始压缩当前会话上下文…",
         );
         const compacted = await compactClaudeAgentSdkSession(
-          claudeAgentSdkConfig(runtime),
+          claudeAgentSdkConfig(runtime, request.sessionId),
           request.sessionId,
           args,
         );
@@ -3704,7 +3712,7 @@ async function executeAgentRuntimeCommandOnce(
     }
     try {
       await executeClaudeAgentSdkCommand(
-        claudeAgentSdkConfig(runtime),
+        claudeAgentSdkConfig(runtime, request.sessionId),
         request.sessionId,
         command.name,
         args,
@@ -5444,11 +5452,19 @@ export async function startAgentRuntimeTask(
       (task.mode || "analysis") === "analysis" &&
       !task.attachments?.length;
     if (useClaudeSdk) {
+      const sdkProfile = getActiveProfileNameSync();
       try {
         const claudeSdk = await startClaudeAgentSdkProcess(
           {
             executablePath: runtime.config.executablePath,
             workspace: task.workspace,
+            model: task.model?.trim() || runtime.config.model,
+            profile: task.profile || sdkProfile,
+            runtimeId: runtime.id,
+            assertCurrent: () => {
+              if (getActiveProfileNameSync() !== sdkProfile)
+                throw Error("Claude profile changed before task dispatch.");
+            },
             timeoutMs: runtime.config.timeoutMs,
           },
           { ...task, prompt: dispatchPrompt },
@@ -5461,7 +5477,12 @@ export async function startAgentRuntimeTask(
               output: `${record.run.output ?? ""}${chunk}`.slice(-512 * 1024),
             };
           },
+          () => record.run.status === "running" && !record.cancelRequested,
         );
+        if (record.run.status !== "running" || record.cancelRequested) {
+          await claudeSdk.cancel();
+          return { ...record.run };
+        }
         record.claudeSdk = { cancel: claudeSdk.cancel };
         if (claudeSdk.sessionId) {
           record.run = { ...record.run, sessionId: claudeSdk.sessionId };
@@ -5491,6 +5512,8 @@ export async function startAgentRuntimeTask(
         });
         return { ...record.run };
       } catch (error) {
+        if (record.run.status !== "running" || record.cancelRequested)
+          return { ...record.run };
         appendRuntimeEvent(
           record,
           "progress",
