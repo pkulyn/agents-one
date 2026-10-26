@@ -1,14 +1,12 @@
-param([switch]$EnableExperimentalWebAgents)
+param([switch]$EnableExperimentalWebAgents, [string]$NodePath)
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $ElectronPath = Join-Path $ProjectRoot "node_modules\electron\dist\electron.exe"
 $ViteCli = Join-Path $ProjectRoot "node_modules\electron-vite\bin\electron-vite.js"
 $NodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
-$PortableNode = if ($NodeCommand) { $NodeCommand.Source } else { $null }
-if (-not $PortableNode -and (Test-Path -LiteralPath 'D:\efunds\nodejs\node.exe')) {
-  $PortableNode = 'D:\efunds\nodejs\node.exe'
-}
+# Explicit portable Node takes precedence; otherwise use the user PATH.
+$PortableNode = if ($NodePath) { $NodePath } elseif ($NodeCommand) { $NodeCommand.Source } else { $null }
 $LogDirectory = Join-Path $ProjectRoot '.agents-one\launcher'
 New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
 trap {
