@@ -6,6 +6,7 @@ directories:
 # distribution. Reuse it instead of downloading and extracting a second copy
 # during packaging, which can be blocked by real-time scanners on Windows.
 electronDist: node_modules/electron/dist
+beforePack: scripts/before-pack-direct-npm.mjs
 afterPack: scripts/after-pack-windows-icon.mjs
 files:
   # `out/` is ignored by Git, but it is the actual electron-vite runtime
