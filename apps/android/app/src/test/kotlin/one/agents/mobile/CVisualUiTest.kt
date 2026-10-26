@@ -29,7 +29,7 @@ class CVisualUiTest {
             flow.value = flow.value.copy(demo = false, paired = true, owner = owner, owners = listOf(owner), policies = listOf(one.agents.mobile.contract.ExecutionPolicy("desktop-task-visual", "demo-runtime", null, "desktop_analysis", true, true, listOf("create", "advance", "trigger"))))
         }
         ui.onNodeWithText("移动端实施契约").assertExists()
-        val output = File("D:/Projects/Agents-One-Private/plans/mobile-mac/previews/android58").apply { mkdirs() }
+        val output = File(System.getProperty("java.io.tmpdir"), "agents-one-visual/CVisualUiTest").apply { mkdirs() }
         fun capture(name: String) {
             ui.waitForIdle()
             lateinit var bitmap: android.graphics.Bitmap

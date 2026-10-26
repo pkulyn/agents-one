@@ -45,3 +45,9 @@ Public source and tests are self-contained. Local execution plans, device accept
 Generated JSON and Kotlin contract files retain LF bytes even when Git core.autocrlf is enabled. Fresh Windows checkouts must pass the same exact generation check as other hosts.
 
 A regression exports the tracked files with real Git checkout-index and compares them to index bytes; schema or fixture changes still require regeneration.
+
+## Portable development fixtures
+
+Public tests use reserved example endpoints and generic project names. Screenshot tests write to the Java temporary directory; developer launch/build scripts take tool locations from explicit arguments or standard user environment settings.
+
+The desktop launcher accepts an optional NodePath and otherwise uses PATH. Android builds accept explicit portable tool paths or JAVA_HOME, ANDROID_SDK_ROOT/ANDROID_HOME, GRADLE_USER_HOME and GRADLE_HOME; no machine-specific drive layout is required. These choices do not migrate application configuration or change packaged Runtime behavior.

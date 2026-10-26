@@ -306,7 +306,7 @@ describe("Runtime schedules", () => {
         schedule: "5m",
         prompt: "Update the project.",
         runtimeId: "codex-local",
-        workspaceId: "project-pkulyn",
+        workspaceId: "project-notes",
         mode: "auto",
         timeoutMs: 7_200_000,
         enabled: true,
@@ -319,9 +319,9 @@ describe("Runtime schedules", () => {
     ]);
     listProjectFolders.mockResolvedValueOnce([
       {
-        id: "project-pkulyn",
+        id: "project-notes",
         path: "D:\\workspace\\vault",
-        name: "pkulyn_vault",
+        name: "sample-notes",
         createdAt: 1,
         updatedAt: 1,
       },
@@ -345,7 +345,7 @@ describe("Runtime schedules", () => {
         "schedule-workspace",
         expect.objectContaining({
           workspace: "D:\\workspace\\vault",
-          workspaceId: "project-pkulyn",
+          workspaceId: "project-notes",
           timeoutMs: 7_200_000,
         }),
         "default",

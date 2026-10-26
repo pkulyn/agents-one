@@ -42,7 +42,7 @@ class CleanCRefinementUiTest {
             val view = ui.activity.window.decorView
             val bitmap = android.graphics.Bitmap.createBitmap(view.width,view.height,android.graphics.Bitmap.Config.ARGB_8888)
             view.draw(android.graphics.Canvas(bitmap))
-            val dir = File("D:/Projects/Agents-One-Private/plans/mobile-mac/ui-polish-20261019/screenshots").apply { mkdirs() }
+            val dir = File(System.getProperty("java.io.tmpdir"), "agents-one-visual/CleanCRefinementUiTest").apply { mkdirs() }
             File(dir,name + ".png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
         }
     }

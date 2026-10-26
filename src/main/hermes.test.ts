@@ -152,7 +152,7 @@ describe("transcribeAudio API route", () => {
   it("uses the configured OpenAI-compatible voice service with multipart audio", async () => {
     // @lat: [[voice-input#Main-process service routing]]
     mockedReadEnv.mockReturnValue({
-      AGENTS_ONE_VOICE_API_URL: "http://115.191.47.168/voice",
+      AGENTS_ONE_VOICE_API_URL: "http://voice.example.test/voice",
     });
     mockedGetSecret.mockReturnValue("test-token");
     fetchMock.mockResolvedValue({
@@ -165,7 +165,7 @@ describe("transcribeAudio API route", () => {
     ).resolves.toBe("你好，Agents One。");
 
     const [url, init] = sentRequest();
-    expect(url).toBe("http://115.191.47.168/voice/v1/audio/transcriptions");
+    expect(url).toBe("http://voice.example.test/voice/v1/audio/transcriptions");
     expect(init.method).toBe("POST");
     expect(init.headers).toEqual({ Authorization: "Bearer test-token" });
     const form = init.body as FormData;
@@ -196,7 +196,7 @@ describe("transcribeAudio API route", () => {
   it("accepts the v1.4 direct WebSocket stream endpoint", async () => {
     mockedReadEnv.mockReturnValue({
       AGENTS_ONE_VOICE_API_URL:
-        "ws://115.191.47.168/voice/v1/audio/transcriptions/stream",
+        "ws://voice.example.test/voice/v1/audio/transcriptions/stream",
     });
     fetchMock.mockResolvedValue({
       ok: true,
@@ -206,7 +206,7 @@ describe("transcribeAudio API route", () => {
     await transcribeAudio(new Uint8Array([4]), "audio/mp4");
 
     const [url] = sentRequest();
-    expect(url).toBe("http://115.191.47.168/voice/v1/audio/transcriptions");
+    expect(url).toBe("http://voice.example.test/voice/v1/audio/transcriptions");
   });
 
   it("surfaces backend transcription errors", async () => {
