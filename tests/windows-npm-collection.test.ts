@@ -1,4 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
+import directWindowsNpmCollection from "../scripts/before-pack-direct-npm.mjs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -46,3 +48,39 @@ it("preserves npm list code1 tolerance while surfacing other process failures", 
     ),
   ).rejects.toThrow("owned failure");
 });
+
+it.skipIf(process.platform !== "win32")(
+  "runs the installed collector hook against real portable npm",
+  async () => {
+    const require = createRequire(import.meta.url);
+    const {
+      NpmNodeModulesCollector,
+    } = require("app-builder-lib/out/node-module-collector/npmNodeModulesCollector.js");
+    const original =
+      NpmNodeModulesCollector.prototype.streamCollectorCommandToFile;
+    const output = join(root, "actual-npm.json");
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({
+        name: "owned-fixture",
+        version: "1.0.0",
+        dependencies: {},
+      }),
+    );
+    try {
+      directWindowsNpmCollection();
+      await NpmNodeModulesCollector.prototype.streamCollectorCommandToFile.call(
+        {},
+        "npm",
+        ["list", "--json", "--all"],
+        root,
+        output,
+      );
+      expect(JSON.parse(readFileSync(output, "utf8")).name).toBe(
+        "owned-fixture",
+      );
+    } finally {
+      NpmNodeModulesCollector.prototype.streamCollectorCommandToFile = original;
+    }
+  },
+);

@@ -58,6 +58,7 @@ export default function directWindowsNpmCollection() {
       "Windows packaging requires npm beside the current Node executable.",
     );
   const require = createRequire(import.meta.url);
+  const { stripSensitiveEnvVars } = require("builder-util");
   const {
     NpmNodeModulesCollector,
   } = require("app-builder-lib/out/node-module-collector/npmNodeModulesCollector.js");
