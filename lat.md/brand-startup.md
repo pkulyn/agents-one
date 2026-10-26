@@ -53,3 +53,9 @@ Desktop-only environment variables prefer `AGENTS_ONE_*` and `VITE_AGENTS_ONE_*`
 Desktop packages include the MIT project license, inherited third-party notices and the licenses for bundled fonts.
 
 The build resource list copies the root license and third-party notices into resources/notices. Cairo and Manrope retain their embedded copyright notices and SIL OFL 1.1 terms; the Oxanium-derived wordmark notice is included separately. These files are build inputs and must exist in a clean checkout. Project MIT metadata does not replace dependency or asset licenses.
+
+## Packaged dependency notices
+
+Desktop builds preserve production dependency notices separately from the project MIT license. The inventory binds installed versions to the lockfile and identifies missing standalone notices.
+
+The build collector emits build assets copied to resources/notices by electron-builder. Missing required packages or version drift stop generation; commercial SDK terms remain distinct. [[tests/dependency-notices.test.ts]] checks preservation, reproducibility and refusal of incomplete build inputs.

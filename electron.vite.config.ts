@@ -1,3 +1,4 @@
+import { collectDependencyNotices } from "./scripts/collect-dependency-notices.mjs";
 import { resolveDesktopContentSecurityPolicy } from "./src/shared/desktop-csp";
 import { resolve } from "path";
 import { defineConfig } from "electron-vite";
@@ -24,6 +25,17 @@ export default defineConfig({
       {
         name: "agents-one-mobile-workers",
         generateBundle() {
+          const dependencyNotices = collectDependencyNotices(process.cwd());
+          this.emitFile({
+            type: "asset",
+            fileName: "third-party-dependencies.txt",
+            source: dependencyNotices.text,
+          });
+          this.emitFile({
+            type: "asset",
+            fileName: "third-party-dependencies.json",
+            source: JSON.stringify(dependencyNotices.index, null, 2),
+          });
           if (process.env.AGENTS_ONE_RELEASE_BUILD === "1") {
             this.emitFile({
               type: "asset",

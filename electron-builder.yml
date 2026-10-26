@@ -39,6 +39,10 @@ asarUnpack:
   - resources/**
   - node_modules/better-sqlite3/prebuilds/*.node
 extraResources:
+  - from: out/main/third-party-dependencies.txt
+    to: notices/third-party-dependencies.txt
+  - from: out/main/third-party-dependencies.json
+    to: notices/third-party-dependencies.json
   - from: LICENSE
     to: notices/LICENSE
   - from: THIRD_PARTY_NOTICES.md
