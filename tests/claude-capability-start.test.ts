@@ -1,7 +1,14 @@
+import {
+  realpathSync,
+  symlinkSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, delimiter, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({
@@ -206,5 +213,30 @@ it.each(["analysis", "safe_write"] as const)(
     expect(env.HTTPS_PROXY).toBe("http://owned-proxy.invalid");
     expect(process.env.NODE_OPTIONS).toBe("--require owned-loader");
     expect(process.env.USE_BUILTIN_RIPGREP).toBe("0");
+  },
+);
+
+it.each(["analysis", "safe_write"] as const)(
+  "excludes project/relative/alias PATH entries for %s before dispatch",
+  async (mode) => {
+    fixture.supported = true;
+    const bin = join(workspace, "bin"),
+      safe = join(fixture.home, "safe-bin"),
+      alias = join(fixture.home, "project-alias");
+    mkdirSync(bin);
+    mkdirSync(safe);
+    symlinkSync(bin, alias, process.platform === "win32" ? "junction" : "dir");
+    const inherited = [bin, alias, "", ".", "bin", safe].join(delimiter);
+    vi.stubEnv("PATH", inherited);
+    const task = await startClaudeCodeProcess(
+      { executablePath: "owned-cli" },
+      { prompt: "fixture", mode, workspace },
+      () => {},
+    );
+    await task.completion;
+    const options = fixture.spawns.mock.calls[0][2];
+    expect(options.cwd).toBe(workspace);
+    expect(options.env.PATH.split(delimiter)).toEqual([realpathSync(safe)]);
+    expect(process.env.PATH).toBe(inherited);
   },
 );

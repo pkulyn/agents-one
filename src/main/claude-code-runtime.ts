@@ -1,3 +1,4 @@
+import { prepareClaudeQueryEnvironment } from "./claude-query-context";
 import { claudeChildEnvironment } from "./claude-environment";
 import { verifyClaudeStrictCapabilities } from "./claude-capabilities";
 import { assertClaudeNonExecutingUserConfig } from "./claude-config-policy";
@@ -487,6 +488,14 @@ export async function startClaudeCodeProcess(
   const fullAccessSnapshot =
     mode === "full_access" ? workspaceSnapshot(cwd) : undefined;
 
+  const inheritedEnvironment = claudeChildEnvironment(
+    process.env,
+    mode,
+    userCredentials,
+  );
+  const taskEnvironment = strict
+    ? await prepareClaudeQueryEnvironment(inheritedEnvironment, cwd, canStart)
+    : inheritedEnvironment;
   assertCanStart();
   strict?.assertUnchanged();
   const preparedInputs = prepareRuntimeInputs(
@@ -519,7 +528,7 @@ export async function startClaudeCodeProcess(
     ],
     {
       cwd,
-      env: claudeChildEnvironment(process.env, mode, userCredentials),
+      env: taskEnvironment,
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
