@@ -24,6 +24,7 @@ const fixture = vi.hoisted(() => ({
   protected: vi.fn(),
 }));
 vi.mock("../src/main/utils", () => ({
+  profileHome: () => "C:/synthetic-native-hermes",
   agentsOneProfileHome: () => join(fixture.home, "profile"),
 }));
 vi.mock("../src/main/runtime-inputs", () => ({

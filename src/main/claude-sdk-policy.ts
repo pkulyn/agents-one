@@ -1,3 +1,4 @@
+import { assertClaudeWorkspaceBoundary } from "./claude-workspace-policy";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -60,6 +61,7 @@ export async function prepareClaudeSdkPolicy(
         "claude-code",
       ),
   );
+  if (!native) assertClaudeWorkspaceBoundary(cwd, config.profile, !selected);
   const credentials = native ? {} : assertClaudeNonExecutingUserConfig(cwd);
   const verified = native
     ? undefined
@@ -121,6 +123,8 @@ export async function prepareClaudeSdkPolicy(
     spawnClaudeCodeProcess: (requested) => {
       assertCurrent();
       verified?.assertUnchanged();
+      if (!native)
+        assertClaudeWorkspaceBoundary(cwd, config.profile, !selected);
       if (
         verified &&
         (requested.command !== executable || requested.cwd !== cwd)

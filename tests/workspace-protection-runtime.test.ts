@@ -44,8 +44,8 @@ describe("Runtime workspace recovery completion", () => {
         join(workspace, "docs", "original.txt"),
         "synthetic original",
       );
-      vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", home);
-      vi.stubEnv("HERMES_HOME", home);
+      vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", join(home, "app-data"));
+      vi.stubEnv("HERMES_HOME", join(home, "hermes"));
       vi.resetModules();
       const child = Object.assign(new EventEmitter(), {
         stdout: new PassThrough(),
