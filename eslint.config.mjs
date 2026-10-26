@@ -22,6 +22,8 @@ export default defineConfig(
       ".claude/**",
       ".agents/**",
       "build/**",
+      "apps/android/**/build/**",
+      "apps/android/.gradle/**",
       // CDP E2E harness — plain Node CommonJS scripts driving the
       // dev electron via Chrome DevTools Protocol for live testing.
       // They intentionally use require() because they run as one-off
