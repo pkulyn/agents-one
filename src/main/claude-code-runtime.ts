@@ -1,3 +1,4 @@
+import { claudeChildEnvironment } from "./claude-environment";
 import { verifyClaudeStrictCapabilities } from "./claude-capabilities";
 import { assertClaudeNonExecutingUserConfig } from "./claude-config-policy";
 import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
@@ -341,10 +342,6 @@ function safeWorktreePath(profile: string | undefined, id: string): string {
   return target;
 }
 
-function childEnvironment(credentials: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return { ...process.env, ...credentials };
-}
-
 /** This argument contract is intentionally kept pure and regression-tested. */
 export function claudeCodeExecArgs(
   mode: "analysis" | "safe_write" | "implementation" | "full_access",
@@ -522,7 +519,7 @@ export async function startClaudeCodeProcess(
     ],
     {
       cwd,
-      env: childEnvironment(userCredentials),
+      env: claudeChildEnvironment(process.env, mode, userCredentials),
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],

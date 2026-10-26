@@ -180,3 +180,31 @@ it("terminates native options before a strict prompt even without attachments", 
     ["--", "--owned fixture"],
   );
 });
+
+it.each(["analysis", "safe_write"] as const)(
+  "removes executable environment controls and pins native query tools for %s",
+  async (mode) => {
+    fixture.supported = true;
+    vi.stubEnv("NODE_OPTIONS", "--require owned-loader");
+    vi.stubEnv("BUN_OPTIONS", "--preload owned-loader");
+    vi.stubEnv("RIPGREP_CONFIG_PATH", "owned-rg.conf");
+    vi.stubEnv("USE_BUILTIN_RIPGREP", "0");
+    vi.stubEnv("ANTHROPIC_API_KEY", "owned-key");
+    vi.stubEnv("HTTPS_PROXY", "http://owned-proxy.invalid");
+    const task = await startClaudeCodeProcess(
+      { executablePath: "owned-cli" },
+      { prompt: "fixture", mode, workspace },
+      () => {},
+    );
+    await task.completion;
+    const env = fixture.spawns.mock.calls[0][2].env;
+    expect(env.NODE_OPTIONS).toBeUndefined();
+    expect(env.BUN_OPTIONS).toBeUndefined();
+    expect(env.RIPGREP_CONFIG_PATH).toBeUndefined();
+    expect(env.USE_BUILTIN_RIPGREP).toBe("1");
+    expect(env.ANTHROPIC_API_KEY).toBe("owned-key");
+    expect(env.HTTPS_PROXY).toBe("http://owned-proxy.invalid");
+    expect(process.env.NODE_OPTIONS).toBe("--require owned-loader");
+    expect(process.env.USE_BUILTIN_RIPGREP).toBe("0");
+  },
+);
