@@ -343,7 +343,9 @@ export function resolveAgentRuntimeArtifactPath(
 /** Prevent new Runtime dispatch while the app is quiescing for shutdown. */
 export function stopAcceptingAgentRuntimeTasks(): void {
   runtimeTaskAdmissionOpen = false;
-  void closeClaudeAgentSdkSessions();
+  void closeClaudeAgentSdkSessions().catch(() => {
+    console.error("Claude Agent SDK shutdown was not confirmed.");
+  });
 }
 
 function localRuntimeTerminationDetails(
