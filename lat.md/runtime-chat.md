@@ -310,6 +310,8 @@ OpenCode permission replies preserve the original numeric or string RPC ID and a
 
 Both local and remote clients reject mismatched or missing sessions, duplicate option IDs, unknown kinds, invalid identifiers and automatic native mode switches. Rejection is reported in task evidence and terminal state. Protocol subprocess regressions verify execution markers, persistent-grant markers, valid edits and response identity; these gates do not establish an operating-system sandbox or certify arbitrary script side effects.
 
+Local automatic OpenCode tasks approve only read, search, fetch, think and native edit categories. Opaque execution and missing or unknown categories are rejected before a one-time grant; explicit full access retains its native behavior. Real ACP subprocess tests assert both the response and absence of an execution marker.
+
 ## Claude non-executing user configuration
 
 Read-only and automatic Claude CLI tasks reject command-backed user or project credentials before creating the conversation directory, staging inputs, backing up files or spawning the executor.
@@ -353,3 +355,9 @@ Persistent SDK cache entries include profile, Runtime, selected project and exec
 Strict Claude CLI and SDK tasks refuse selected directories that contain application private data or lie inside protected data roots. Main rejects the task before input staging or executor startup.
 
 The exclusion compares logical and canonical paths for Agents One, Hermes and Claude configuration roots. Main-owned conversation cwd is permitted only at its expected physical location. Ordinary sibling projects, attachments and explicit full-access behavior retain their existing contracts. This is a conservative application boundary, without an operating-system sandbox claim.
+
+## OpenCode private workspace exclusion
+
+Read-only and automatic OpenCode tasks reject explicitly selected projects overlapping application private data before staging inputs or starting the ACP process.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] reuses the existing logical and canonical workspace overlap check. Main-owned projectless conversations and explicit full access retain their startup paths. [[tests/opencode-private-roots.test.ts]] verifies private roots and ancestors fail before input preparation and dispatch, while ordinary sibling projects still reach dispatch. This preflight does not sandbox arbitrary absolute-path reads by a third-party executor.

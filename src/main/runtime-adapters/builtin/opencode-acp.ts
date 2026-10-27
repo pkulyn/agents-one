@@ -36,6 +36,7 @@ import {
 import { startLocalProcess, type LocalProcessHandle } from "../local-process";
 import { protectWorkspaceFromRemoval } from "../../workspace-protection";
 import { agentsOneProfileHome } from "../../utils";
+import { assertClaudeWorkspaceBoundary } from "../../claude-workspace-policy";
 
 const MAX_OUTPUT = 512 * 1024;
 const MAX_RPC_TIMEOUT_MS = 30_000;
@@ -185,6 +186,11 @@ export function openCodePermissionDenial(
     isRuntimeRemovalOperation(title, rawInput);
   if (mode === "safe_write" && destructive)
     return "[Agents One 权限不足] 当前为自动权限，移动或删除原有文件未执行；请切换为完全访问后重新发送任务。";
+  if (
+    mode === "safe_write" &&
+    !["read", "search", "fetch", "think", "edit"].includes(kind)
+  )
+    return "[Agents One 权限不足] 当前为自动权限，不透明终端命令或未声明的工具未执行；请切换为完全访问后重新发送任务。";
   if (
     mode === "analysis" &&
     !["read", "search", "fetch", "think"].includes(kind)
@@ -1168,6 +1174,9 @@ export async function startOpenCodeProcess(
   if ((mode === "full_access" || mode === "implementation") && !workspace) {
     throw new Error("OpenCode 文件任务需要一个已授权的项目工作区。");
   }
+  // Reuse the existing private-data overlap guard before staging or dispatch.
+  if (workspace && (mode === "analysis" || mode === "safe_write"))
+    assertClaudeWorkspaceBoundary(workspace, input.profile);
   const cwd = workspace || openCodeConversationWorkspace(input.profile);
   const invocation = opencodeInvocation(
     configuredExecutable(config.executablePath),
