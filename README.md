@@ -208,7 +208,7 @@ For cached-only views, an offline Owner or an unready task channel, check the de
 
 ## Data and trust boundaries
 
-Desktop state lives in Electron `userData` (normally `%APPDATA%\Agents One` on Windows); portable builds use `%LOCALAPPDATA%\agents-one-portable` by default. User-selected project folders and local CLI homes stay outside that desktop state. Backups omit known credentials and protected secrets, but user-authored chats, memories, skills, and attachments can still contain sensitive information.
+Desktop state lives in Electron `userData` (normally `%APPDATA%\agents-one` on Windows); portable builds use `%LOCALAPPDATA%\agents-one-portable` by default. Launch arguments or explicit data-path overrides may change these locations. Project files stay in their selected folders; CLIs retain their own configuration and may store additional data outside the desktop directory. Backups omit known credentials and protected secrets, but user-authored chats, memories, skills, and attachments can still contain sensitive information.
 
 The built-in Doubao, ChatGPT, and Grok browser adapters are **default-off experiments** in public builds. Enabling them sends selected prompts and attachments through the signed-in provider webpage. See the [security policy](SECURITY.md), and [known issues](KNOWN_ISSUES.md) for the current boundaries and limitations.
 
