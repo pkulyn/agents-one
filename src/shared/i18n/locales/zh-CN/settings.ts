@@ -462,7 +462,7 @@ export default {
   autoUpgradeDesktopHint:
     "应用启动时自动从 GitHub 下载 Agents One 的新版本。关闭后，启动时会显示升级按钮，只有点击后才会下载。",
   desktopUpdateUnsignedDisabled:
-    "此 Alpha 构建未签名，自动更新已禁用。后续版本请手动下载，并核对 SHA-256 校验值。",
+    "此构建未签名，自动更新已禁用。后续版本请手动下载，并核对 SHA-256 校验值。",
   desktopUpdateUnavailable: "开发版和便携版不提供自动更新。",
   runningDiagnosis: "正在运行…",
   runDiagnosis: "运行诊断",
