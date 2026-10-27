@@ -51,16 +51,17 @@ describe("AboutPane", () => {
     expect(checkDesktopUpdate).toHaveBeenCalledOnce();
   });
 
-  it("warns and disables update controls for an unsigned Alpha build", () => {
+  it("describes an unsigned stable build without labeling it Alpha", () => {
     renderAbout({
       autoUpgradeEnabled: false,
       desktopUpdatePolicy: { enabled: false, reason: "unsigned-build" },
     });
 
-    expect(screen.getByText(/未签名|unsigned Alpha/i)).toBeInTheDocument();
+    expect(screen.getByText(/未签名|unsigned build/i)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /检查更新|Check for updates/i }),
     ).toBeDisabled();
     expect(screen.getByRole("checkbox")).toBeDisabled();
+    expect(screen.queryByText(/Alpha/i)).not.toBeInTheDocument();
   });
 });
