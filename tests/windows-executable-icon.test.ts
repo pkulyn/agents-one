@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { createPackage } from "@electron/asar";
+import { NtExecutable, NtExecutableResource, Resource } from "resedit";
 
 const frameHashes = (frames: Buffer[]): string[] =>
   frames.map((frame) => createHash("sha256").update(frame).digest("hex"));
@@ -96,7 +97,7 @@ function peIconResources(executable: Buffer): {
     dataLeaf(entries(relative)[0].target);
   const otherResources: Record<string, string> = {};
   for (const type of entries(0)) {
-    if (type.id === 3 || type.id === 14) continue;
+    if (type.id === 3 || type.id === 14 || type.id === 16) continue;
     for (const name of entries(type.target)) {
       for (const language of entries(name.target)) {
         otherResources[`${type.label}/${name.label}/${language.label}`] =
@@ -137,7 +138,12 @@ describe("Windows packaged executable icon", () => {
         appOutDir: tmpdir(),
         packager: {
           platformSpecificBuildOptions: { executableName: "../outside" },
-          appInfo: { productFilename: "Agents One" },
+          appInfo: {
+            productFilename: "Agents One",
+            productName: "Agents One",
+            version: "0.1.0-alpha.1",
+            buildVersion: "0.1.0.0",
+          },
         },
       }),
     ).rejects.toThrow("inside the package output");
@@ -207,7 +213,12 @@ describe("Windows packaged executable icon", () => {
           appOutDir: workspace,
           packager: {
             projectDir: process.cwd(),
-            appInfo: { productFilename: "Agents One" },
+            appInfo: {
+              productFilename: "Agents One",
+              productName: "Agents One",
+              version: "0.1.0-alpha.1",
+              buildVersion: "0.1.0.0",
+            },
             platformSpecificBuildOptions: { executableName: "agents-one" },
             getIconPath: async () => resolve("build/icon.ico"),
           },
@@ -215,6 +226,25 @@ describe("Windows packaged executable icon", () => {
         const actual = peIconResources(readFileSync(executable));
         expect(frameHashes(actual.frames)).toEqual(frameHashes(expected));
         expect(actual.otherResources).toEqual(original.otherResources);
+        const versionEntries = Resource.VersionInfo.fromEntries(
+          NtExecutableResource.from(NtExecutable.from(readFileSync(executable)))
+            .entries,
+        );
+        expect(versionEntries.length).toBeGreaterThan(0);
+        for (const info of versionEntries) {
+          for (const language of info.getAllLanguagesForStringValues()) {
+            expect(info.getStringValues(language)).toEqual(
+              expect.objectContaining({
+                FileDescription: "Agents One",
+                ProductName: "Agents One",
+                InternalName: "agents-one",
+                OriginalFilename: "agents-one.exe",
+                FileVersion: "0.1.0.0",
+                ProductVersion: "0.1.0-alpha.1",
+              }),
+            );
+          }
+        }
       } finally {
         rmSync(workspace, { recursive: true, force: true });
       }

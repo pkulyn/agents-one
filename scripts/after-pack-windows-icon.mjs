@@ -37,7 +37,40 @@ export default async function applyWindowsExecutableIcon(context) {
     existingGroup?.lang ?? 1033,
     iconFile.icons.map((icon) => icon.data),
   );
+  const { appInfo } = packager;
+  const productName = appInfo.productName || appInfo.productFilename;
+  const productVersion = appInfo.version;
+  const buildVersion = appInfo.buildVersion || productVersion;
+  if (!productName || !productVersion || !buildVersion) {
+    throw new Error(
+      "Windows package is missing product name or version metadata.",
+    );
+  }
+  const numericVersion = buildVersion.split("-")[0].split("+")[0];
+  const versionInfos = Resource.VersionInfo.fromEntries(resources.entries);
+  if (!versionInfos.length)
+    versionInfos.push(Resource.VersionInfo.createEmpty());
+  for (const info of versionInfos) {
+    info.setFileVersion(numericVersion);
+    info.setProductVersion(numericVersion);
+    const languages = info.getAllLanguagesForStringValues();
+    if (!languages.length) languages.push({ lang: 1033, codepage: 1200 });
+    for (const language of languages) {
+      info.setStringValues(language, {
+        ...info.getStringValues(language),
+        FileDescription: productName,
+        ProductName: productName,
+        InternalName: executableName,
+        OriginalFilename: `${executableName}.exe`,
+        FileVersion: buildVersion,
+        ProductVersion: productVersion,
+      });
+    }
+    info.outputToResourceEntries(resources.entries);
+  }
   resources.outputResource(executable);
   await writeFile(executablePath, Buffer.from(executable.generate()));
-  console.log("[Agents One] Embedded Windows rainbow-ring application icon.");
+  console.log(
+    "[Agents One] Embedded Windows application icon and Agents One product identity.",
+  );
 }

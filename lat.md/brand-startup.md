@@ -65,3 +65,9 @@ The build collector emits build assets copied to resources/notices by electron-b
 Windows packaging runs npm dependency collection through the active Node executable and its adjacent npm CLI. The build hook preserves the collector arguments and waits for process close and file flush before parsing JSON.
 
 This build-only compatibility hook avoids dependence on a PowerShell shim. It leaves the application Runtime and production dependency graph unchanged. [[tests/windows-npm-collection.test.ts]] verifies real large child output, literal arguments and expected npm-list error handling.
+
+## Windows process product identity
+
+Packaged Windows executables identify themselves as Agents One in native file descriptions and product metadata instead of retaining the Electron distribution name.
+
+The existing Windows resource hook writes the configured application name, executable identity and application versions alongside the icon, without external signing helpers. Electron copyright and unrelated resources remain intact. This applies to newly packaged executables; an app.asar-only update cannot replace old EXE metadata. The real-EXE packaging regression verifies all language tables and preservation of other resources.
