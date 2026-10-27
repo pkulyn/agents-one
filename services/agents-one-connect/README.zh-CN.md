@@ -53,3 +53,106 @@ Gateway Connect 的五个配对 POST 入口共用每个 socket 来源每分钟 8
 两段隧道使用独立的不透明关联 ID，Connector 必须原样回传收到的 `requestId`，服务会恢复桌面端原 ID。迟到、未知或 Runtime 不匹配的响应不会占用新连接的请求，也不会转发给其他 Runtime。
 
 服务关闭时停止新入口，通知待处理 Gateway 请求 `service_stopping`，并给连接一秒正常关闭窗口；未回应的 WebSocket（含未完成 hello 的连接）和残留 HTTP 连接随后被中止。关闭不会替代远端 Run 取消；再次连接后应查询任务状态。保存状态失败会在网络资源清理后报告，运营方仍需检查持久化故障。
+
+## 手机连接服务与 Owner 初始化
+
+手机授权服务与 Gateway/Connector 配对是独立的身份边界。普通 Gateway 配对服务能启动，并不代表手机接口已启用；必须另外配置 Owner 身份、加密授权状态和密钥。手机连接到桌面数据/执行宿主（Owner），不是直接连接某个远程 Agent 的 Token。
+
+### 1. 准备私有配置
+
+在服务器创建下面的 `provision-mobile.mjs`（仅运行一次）。它在当前用户 Home 的 `.agents-one-connect` 目录生成独立随机密钥，不输出密钥、不覆盖旧文件。生产部署应按实际桌面数量配置唯一的 `ownerId` / `spaceId`；示例为一台桌面。
+
+```js
+import { mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+
+const dir = join(homedir(), ".agents-one-connect");
+mkdirSync(dir, { recursive: true, mode: 0o700 });
+const owners = [
+  {
+    ownerId: "desktop-owner",
+    spaceId: "personal",
+    label: "My desktop",
+    adminToken: randomBytes(32).toString("base64url"),
+    schedulerTimeZone: "Asia/Shanghai",
+  },
+];
+writeFileSync(
+  join(dir, "mobile-owners.json"),
+  JSON.stringify(owners, null, 2),
+  {
+    mode: 0o600,
+    flag: "wx",
+  },
+);
+writeFileSync(
+  join(dir, "mobile-state-key.txt"),
+  randomBytes(32).toString("hex"),
+  {
+    mode: 0o600,
+    flag: "wx",
+  },
+);
+```
+
+用 `node provision-mobile.mjs` 执行。已有配置应备份并沿用，不要重跑来“修复”连接。Windows 的 POSIX mode 不能替代 NTFS ACL，请限制这些文件仅部署用户可读。保持 Owner 身份、状态文件和加密密钥一起备份；重置密钥或丢失状态可能使旧授权无法恢复。
+
+### 2. 带手机服务启动 Connect
+
+在源码仓库根目录先安装依赖：`npm ci --ignore-scripts --prefix services/agents-one-connect`。然后用 Linux Shell 设置：
+
+```bash
+export CONNECT_HOST=127.0.0.1
+export CONNECT_PORT=8788
+export CONNECT_STATE_FILE="$HOME/.agents-one-connect/gateway-state.json"
+export CONNECT_MOBILE_OWNERS_FILE="$HOME/.agents-one-connect/mobile-owners.json"
+export CONNECT_MOBILE_STATE_FILE="$HOME/.agents-one-connect/mobile-state.json"
+export CONNECT_MOBILE_STATE_KEY="$(cat "$HOME/.agents-one-connect/mobile-state-key.txt")"
+node services/agents-one-connect/bin/agents-one-connect.mjs
+```
+
+或在 Windows PowerShell 中：
+
+```powershell
+$env:CONNECT_HOST = "127.0.0.1"
+$env:CONNECT_PORT = "8788"
+$env:CONNECT_STATE_FILE = "$HOME/.agents-one-connect/gateway-state.json"
+$env:CONNECT_MOBILE_OWNERS_FILE = "$HOME/.agents-one-connect/mobile-owners.json"
+$env:CONNECT_MOBILE_STATE_FILE = "$HOME/.agents-one-connect/mobile-state.json"
+$env:CONNECT_MOBILE_STATE_KEY = (Get-Content "$HOME/.agents-one-connect/mobile-state-key.txt" -Raw).Trim()
+node services/agents-one-connect/bin/agents-one-connect.mjs
+```
+
+`CONNECT_MOBILE_STATE_KEY` 必须是 64 位十六进制字符串（32 字节）；两个状态文件必须使用不同路径。进程通过 AES-256-GCM 保存手机授权状态。这里只监听回环地址，供配置了受信任 TLS 的反向代理转发；不要把此 HTTP 地址填到手机或公网桌面设置中。也可沿用上文进程内 TLS 的完整证书链配置。
+
+反向代理须保留原始路径并支持全部相关 WebSocket Upgrade：Gateway Connect 使用 `/connect/v1/` 路由，手机使用 `/agents-one/mobile/` 路由（含管理与 Owner 通道）。只代理健康检查或只开放 Gateway 隧道，会造成“服务可用但手机任务通道未就绪”。不要关闭证书验证，也不要用 `localhost` 作为另一台设备的服务地址。
+
+### 3. 配置桌面与手机
+
+通过私密渠道把基础 HTTPS 地址和对应 Owner 的 `adminToken` 交给桌面维护者。桌面**设置 → 手机连接 → 连接服务设置**中的“Owner 管理密钥”使用此值；它不是 `CONNECT_MOBILE_STATE_KEY`、Gateway Token 或 Connector 设备 Token。不要把管理密钥交给手机，也不要把 `mobile-owners.json` 放到 Web 根目录或提交到 Git。
+
+桌面保存并连接后开启“允许手机连接”，生成邀请；Android 的“我的”连接入口填入同一基础地址、邀请和设备名称。比较两端短语后，在桌面批准设备及最小所需权限。手机完成领取后，分别验证列表读取、Owner 在线状态和一次允许的任务操作。手机发起任务还需要桌面有效的智能体/项目/执行策略；已经配对不等于已经获得全部执行能力。
+
+桌面需要持续运行并联网，负责实际任务与定时调度；关闭手机访问或撤销手机不会自动取消既有任务。部署更新前正常停止并备份服务状态，勿为排查离线而删除授权库。手机 APK 构建与安装说明见[根目录指南](../../README.zh-CN.md#android-手机端安装与连接桌面)。
+
+### English operator checklist
+
+The mobile service is separate from Gateway/Connector pairing. For one desktop Owner, save the initialization JavaScript above as `provision-mobile.mjs` and run it once with Node.js 24+. It creates `$HOME/.agents-one-connect/mobile-owners.json` and `mobile-state-key.txt` without printing secrets or overwriting files. Change the Owner/space IDs before provisioning additional desktops; keep each identity stable. Protect the directory with OS permissions (including NTFS ACLs on Windows).
+
+From the repository root, install with `npm ci --ignore-scripts --prefix services/agents-one-connect`, then start the service behind a trusted HTTPS/WebSocket reverse proxy:
+
+```bash
+export CONNECT_HOST=127.0.0.1
+export CONNECT_PORT=8788
+export CONNECT_STATE_FILE="$HOME/.agents-one-connect/gateway-state.json"
+export CONNECT_MOBILE_OWNERS_FILE="$HOME/.agents-one-connect/mobile-owners.json"
+export CONNECT_MOBILE_STATE_FILE="$HOME/.agents-one-connect/mobile-state.json"
+export CONNECT_MOBILE_STATE_KEY="$(cat "$HOME/.agents-one-connect/mobile-state-key.txt")"
+node services/agents-one-connect/bin/agents-one-connect.mjs
+```
+
+The state key is 64 hexadecimal characters (32 bytes). Gateway and mobile state paths must differ. Back up the Owner configuration, encrypted mobile state and state key together; do not regenerate or delete them to troubleshoot a connection. The proxy must preserve paths and WebSocket upgrades for both `/connect/v1/` and `/agents-one/mobile/` routes. Use a trusted full TLS chain and a base URL reachable from each device; loopback HTTP is only for the local proxy hop.
+
+Privately provide the desktop operator with the HTTPS base URL and that Owner's `adminToken`. In desktop Settings → Phone connection, this is the **Owner management key**, not the mobile state key or a Gateway/Connector token. Keep it off the phone. Enable connections, generate an invitation, enter the URL/invitation/device name in Android's Me connection area, compare phrases, and approve the required device scopes on the desktop. Execution may also require a reviewed desktop Runtime/project policy. Keep the desktop running and awake; revocation does not cancel existing tasks.

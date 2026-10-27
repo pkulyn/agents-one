@@ -22,18 +22,20 @@ node --test ./test/*.test.mjs
 
 ## 安装与升级
 
-预览阶段可直接从仓库安装或打包为 tarball：
+当前源码版本为 0.1.6，包仍为 private，未发布到公共 npm 注册表。可从同一源码版本打包为 tarball，再安装到自己维护的 Gateway 工程：
 
 ```powershell
 cd <repo>\plugins\agents-one-plugin
 npm.cmd pack
 # 在远程 Relay 或本地 CLI 的插件目录执行：
-npm.cmd install .\agents-one-plugin-sdk-0.1.5.tgz
+npm.cmd install .\agents-one-plugin-sdk-0.1.6.tgz
 ```
 
 `agents-one-plugin.manifest.json` 声明该包支持的协议与安全约束。升级插件后应重新执行 `agents-one-plugin-verify`、插件自身回归和目标智能体的真实对话/工具/工作区验收；只有破坏性协议变更才升级到 v2。
 
 ## 远程 Gateway 宿主
+
+以下为需要接入真实 Agent API 的集成示例，不是通用 Hermes/OpenClaw 一键启动器。应由远程服务维护者实现原生运行、取消、会话和产物接口；普通模型 API 不能直接代替 Gateway v1。
 
 ```js
 import { createRemoteGatewayPlugin } from "@agents-one/plugin-sdk/gateway";
