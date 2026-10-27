@@ -790,11 +790,32 @@ export function setupTray({
   ipcMain.on("tray-completion-open", handleCompletionOpen);
   ipcMain.on("tray-completion-close", handleCompletionClose);
 
+  let mainWindowClickTimer: ReturnType<typeof setTimeout> | null = null;
+  let suppressClickUntil = 0;
+  const cancelMainWindowClick = (): void => {
+    if (mainWindowClickTimer) clearTimeout(mainWindowClickTimer);
+    mainWindowClickTimer = null;
+  };
+
   try {
     const trayImage = nativeImage.createFromPath(icon);
     tray = new Tray(trayImage);
     tray.setToolTip("Agents One");
-    tray.on("click", (_event, bounds) => {
+    tray.on("click", () => {
+      cancelMainWindowClick();
+      if (Date.now() < suppressClickUntil) return;
+      // Wait for the native double-click event before restoring the main window.
+      mainWindowClickTimer = setTimeout(() => {
+        mainWindowClickTimer = null;
+        hideQuickComposer();
+        hideTrayMenu();
+        focusMainWindow();
+      }, 500);
+    });
+    tray.on("double-click", (_event, bounds) => {
+      cancelMainWindowClick();
+      // Some native event sequences include a click after the double-click.
+      suppressClickUntil = Date.now() + 500;
       if (isQuickComposerOpen()) {
         hideQuickComposer();
         return;
@@ -802,6 +823,7 @@ export function setupTray({
       showQuickComposer(bounds);
     });
     tray.on("right-click", (_event, bounds) => {
+      cancelMainWindowClick();
       if (isTrayMenuOpen()) {
         hideTrayMenu();
         return;
@@ -819,6 +841,7 @@ export function setupTray({
     hideQuickComposer,
     showTaskCompletion,
     destroy: () => {
+      cancelMainWindowClick();
       ipcMain.removeListener("tray-composer-close", handleQuickComposerClose);
       ipcMain.removeListener("tray-composer-resize", handleQuickComposerResize);
       ipcMain.removeHandler("tray-composer-start-runtime-task");

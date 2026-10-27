@@ -208,7 +208,7 @@ describe("tray task completion", () => {
       onQuitRequest: vi.fn(),
     });
     mocks.trays[0].emit(
-      "click",
+      "double-click",
       {},
       {
         x: 1160,
@@ -269,19 +269,19 @@ describe("tray task completion", () => {
       const tray = mocks.trays[0];
       const bounds = { x: 1160, y: 760, width: 24, height: 24 };
 
-      tray.emit("click", {}, bounds);
+      tray.emit("double-click", {}, bounds);
       const composer = mocks.windows.find(
         (window) => window.options.title === "Agents One 快捷任务",
       )!;
-      tray.emit("click", {}, bounds);
+      tray.emit("double-click", {}, bounds);
       composer.emitReady();
       expect(composer.isVisible()).toBe(false);
 
-      tray.emit("click", {}, bounds);
+      tray.emit("double-click", {}, bounds);
       expect(composer.isVisible()).toBe(true);
 
       composer.hide.mockClear();
-      tray.emit("click", {}, bounds);
+      tray.emit("double-click", {}, bounds);
       expect(composer.hide).toHaveBeenCalledOnce();
       expect(composer.isVisible()).toBe(false);
 
@@ -386,3 +386,56 @@ it.each([false, true])(
     }
   },
 );
+
+it("opens the main window on a single click and reserves double clicks for toggling the quick composer", async () => {
+  vi.useFakeTimers();
+  let controller: import("./tray").TrayController | undefined;
+  try {
+    const main = {
+      isDestroyed: () => false,
+      isMinimized: () => true,
+      restore: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn(),
+      webContents: { send: vi.fn() },
+    };
+    const { setupTray } = await import("./tray");
+    controller = setupTray({
+      getMainWindow: () => main as unknown as Electron.BrowserWindow,
+      getActiveChatTasks: () => [],
+      getRunningTaskCount: () => 0,
+      onQuitRequest: vi.fn(),
+    });
+    const tray = mocks.trays.at(-1)!;
+    const bounds = { x: 1160, y: 760, width: 24, height: 24 };
+    tray.emit("click", {}, bounds);
+    expect(main.show).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(main.restore).toHaveBeenCalledOnce();
+    expect(main.show).toHaveBeenCalledOnce();
+    expect(main.focus).toHaveBeenCalledOnce();
+    main.show.mockClear();
+    tray.emit("click", {}, bounds);
+    tray.emit("click", {}, bounds);
+    tray.emit("double-click", {}, bounds);
+    tray.emit("click", {}, bounds);
+    const composer = mocks.windows.at(-1)!;
+    composer.emitReady();
+    expect(composer.options.title).toBe("Agents One 快捷任务");
+    expect(composer.isVisible()).toBe(true);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(main.show).not.toHaveBeenCalled();
+    tray.emit("click", {}, bounds);
+    tray.emit("double-click", {}, bounds);
+    expect(composer.isVisible()).toBe(false);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(main.show).not.toHaveBeenCalled();
+    tray.emit("click", {}, bounds);
+    controller.destroy();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(main.show).not.toHaveBeenCalled();
+  } finally {
+    controller?.destroy();
+    vi.useRealTimers();
+  }
+});
