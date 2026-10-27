@@ -156,3 +156,36 @@ it("an old profile save acknowledgement cannot overwrite the new profile's saved
   expect(hook.result.current.networkSaved).toBe(false);
   hook.unmount();
 });
+
+it.each(["0.1.1", null, "failure"])(
+  "checks versions with automatic updates disabled: %s",
+  async (version) => {
+    api(vi.fn(async () => "false"));
+    const checkForUpdates = vi.fn(async () => {
+      if (version === "failure") throw Error("network unavailable");
+      return version;
+    });
+    const downloadUpdate = vi.fn(),
+      installUpdate = vi.fn();
+    Object.assign(window.agentsOneAPI, {
+      checkForUpdates,
+      downloadUpdate,
+      installUpdate,
+    });
+    const hook = renderHook(() => useSettingsData());
+    await act(async () => {});
+    await act(async () => hook.result.current.checkDesktopUpdate());
+    expect(checkForUpdates).toHaveBeenCalledOnce();
+    expect(hook.result.current.desktopUpdateState).toBe(
+      version === "failure" ? "error" : version ? "available" : "uptodate",
+    );
+    if (version === "failure")
+      expect(hook.result.current.desktopUpdateError).toContain(
+        "network unavailable",
+      );
+    await act(async () => hook.result.current.handleDesktopUpdate());
+    expect(downloadUpdate).not.toHaveBeenCalled();
+    expect(installUpdate).not.toHaveBeenCalled();
+    hook.unmount();
+  },
+);

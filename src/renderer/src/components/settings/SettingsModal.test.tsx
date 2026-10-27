@@ -57,6 +57,32 @@ describe("SettingsModal navigation", () => {
     expect(labels[0]).not.toHaveTextContent("Agents One");
   });
 
+  it("places About immediately after Logs and opens both panes", async () => {
+    render(
+      <I18nProvider>
+        <SettingsModal open onClose={vi.fn()} />
+      </I18nProvider>,
+    );
+    const items = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        ".settings-modal-nav-item",
+      ),
+    ];
+    const logs = items.findIndex((item) =>
+      /日志与诊断|Logs.*Diagnostics/i.test(item.textContent ?? ""),
+    );
+    expect(logs).toBeGreaterThanOrEqual(0);
+    expect(items[logs + 1]).toHaveTextContent(/关于与更新|About.*Updates/i);
+    fireEvent.click(items[logs]);
+    await waitFor(() =>
+      expect(screen.getByText("Logs", { exact: true })).toBeVisible(),
+    );
+    fireEvent.click(items[logs + 1]);
+    await waitFor(() =>
+      expect(screen.getByText("About", { exact: true })).toBeVisible(),
+    );
+  });
+
   it("opens the voice input pane when targeted by settings navigation", () => {
     render(
       <I18nProvider>

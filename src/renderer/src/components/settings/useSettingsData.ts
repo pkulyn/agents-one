@@ -241,7 +241,6 @@ export function useSettingsData(profile?: string) {
   }, []);
 
   async function checkDesktopUpdate(): Promise<void> {
-    if (!desktopUpdatePolicy.enabled) return;
     setDesktopUpdateState("checking");
     setDesktopUpdateError(null);
     try {
@@ -259,6 +258,7 @@ export function useSettingsData(profile?: string) {
   }
 
   async function handleDesktopUpdate(): Promise<void> {
+    if (!desktopUpdatePolicy.enabled) return;
     if (desktopUpdateState === "ready") {
       await window.agentsOneAPI.installUpdate();
       return;

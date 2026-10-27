@@ -51,17 +51,44 @@ describe("AboutPane", () => {
     expect(checkDesktopUpdate).toHaveBeenCalledOnce();
   });
 
-  it("describes an unsigned stable build without labeling it Alpha", () => {
+  it("lets unsigned builds check versions without automatic update controls", () => {
+    const checkDesktopUpdate = vi.fn();
     renderAbout({
-      autoUpgradeEnabled: false,
       desktopUpdatePolicy: { enabled: false, reason: "unsigned-build" },
+      checkDesktopUpdate,
     });
-
-    expect(screen.getByText(/未签名|unsigned build/i)).toBeInTheDocument();
+    const button = screen.getByRole("button", {
+      name: /检查更新|Check for updates/i,
+    });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(checkDesktopUpdate).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/未签名|unsigned build/i),
+    ).not.toBeInTheDocument();
+  });
+  it("directs an unsigned update to GitHub without downloading it", () => {
+    const handleDesktopUpdate = vi.fn();
+    renderAbout({
+      desktopUpdatePolicy: { enabled: false, reason: "unsigned-build" },
+      desktopUpdateState: "available",
+      desktopUpdateVersion: "0.1.1",
+      handleDesktopUpdate,
+    });
+    expect(
+      screen.getByText(
+        /请手动到 GitHub 下载新版本并安装|manually download.*GitHub/i,
+      ),
+    ).toBeVisible();
+    const link = screen.getByRole("link", { name: /GitHub/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://github.com/pkulyn/agents-one/releases/latest",
+    );
+    expect(handleDesktopUpdate).not.toHaveBeenCalled();
     expect(
       screen.getByRole("button", { name: /检查更新|Check for updates/i }),
-    ).toBeDisabled();
-    expect(screen.getByRole("checkbox")).toBeDisabled();
-    expect(screen.queryByText(/Alpha/i)).not.toBeInTheDocument();
+    ).toBeEnabled();
   });
 });
