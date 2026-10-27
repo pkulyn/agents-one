@@ -1,8 +1,21 @@
+import { createScopedIpcMain } from "./sender-scope";
+import {
+  readRendererConfigValue,
+  writeRendererConfigValue,
+} from "./public-config";
+import { completeBackupRestore } from "./backup-restore-completion";
+import { runConfirmedBackupRestore } from "./backup-restore-confirmation";
+import {
+  registerArtifactFileMenuIpc,
+  openAuthorizedLocalFile,
+} from "./local-file-actions";
+import { manageMobileConnection } from "../mobile-connection";
+import { registerMobileExecutionPolicyIpc } from "../mobile-control/execution-management-ipc";
 import {
   app,
   shell,
   BrowserWindow,
-  ipcMain,
+  ipcMain as rawIpcMain,
   Menu,
   dialog,
   clipboard,
@@ -60,6 +73,7 @@ import { openTerminalInDirectory } from "../terminal-launcher";
 import {
   authorizeUserSelectedWorkspace,
   resolveAuthorizedWorkspaceId,
+  resolveAuthorizedChatWorkspace,
   resolveAuthorizedWorkspaceRelativePath,
   isAuthorizedWorkspacePath,
   isAuthorizedWorkspaceRoot,
@@ -163,12 +177,9 @@ import { startOfficeStack } from "../office-start";
 import {
   readEnv,
   setEnvValue,
-  getConfigValue,
-  setConfigValue,
   getHermesHome,
   getModelConfig,
   setModelConfig,
-  getCredentialPool,
   setCredentialPool,
   addCredentialPoolEntry,
   getConnectionConfig,
@@ -203,6 +214,7 @@ import {
   listRuntimeConversations,
   saveQuickChats,
   saveRuntimeConversation,
+  onRuntimeConversationChanged,
   updateRuntimeConversationTitle,
   clearRuntimeConversationWorkspace,
   clearRuntimeConversationWorkspaceId,
@@ -526,7 +538,24 @@ function resolveLibraryModelEntry(
   return matches.find((m) => norm(m.baseUrl) === target) ?? matches[0];
 }
 
+let unsubscribeConversationChanges: (() => void) | undefined;
 export function registerIpcHandlers(context: IpcContext): void {
+  const ipcMain = createScopedIpcMain(rawIpcMain, context.getMainWindow);
+  unsubscribeConversationChanges?.();
+  unsubscribeConversationChanges = onRuntimeConversationChanged((change) => {
+    const window = context.getMainWindow();
+    if (window && !window.isDestroyed() && !window.webContents.isDestroyed())
+      window.webContents.send("runtime-conversation-changed", change);
+  });
+  ipcMain.handle("mobile-connection-manage", (event, profile, command) => {
+    if (
+      event.sender !== context.getMainWindow()?.webContents ||
+      event.senderFrame !== event.sender.mainFrame
+    )
+      throw Error("scope_denied");
+    return manageMobileConnection(profile, command);
+  });
+  registerMobileExecutionPolicyIpc(context.getMainWindow);
   const {
     activeRuns,
     getMainWindow,
@@ -642,10 +671,6 @@ export function registerIpcHandlers(context: IpcContext): void {
     setAppLocale(locale),
   );
 
-  ipcMain.handle("get-env", (_event, profile?: string) => {
-    return readEnv(profile);
-  });
-
   // Pre-send chat readiness — answers "if Send is clicked right now,
   // will it work?". Fail-open semantics: any uncertain state returns
   // `ok: true`, so the renderer never false-blocks a Send.
@@ -705,13 +730,13 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
 
   ipcMain.handle("get-config", (_event, key: string, profile?: string) => {
-    return getConfigValue(key, profile);
+    return readRendererConfigValue(key, profile);
   });
 
   ipcMain.handle(
     "set-config",
     async (_event, key: string, value: string, profile?: string) => {
-      setConfigValue(key, value, profile);
+      writeRendererConfigValue(key, value, profile);
       return true;
     },
   );
@@ -1176,6 +1201,10 @@ export function registerIpcHandlers(context: IpcContext): void {
       contextWorkspaceId?: string,
     ) => {
       assertAgentsOneWritesAllowed();
+      const authorizedContextFolder = resolveAuthorizedChatWorkspace(
+        contextFolder,
+        contextWorkspaceId,
+      );
       // Each conversation has a stable runId minted by the renderer. Fall back
       // to a generated id for legacy callers so the run is still tracked.
       const chatRunId = runId || `run-${randomUUID()}`;
@@ -1304,9 +1333,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         resumeSessionId,
         history,
         attachments,
-        contextWorkspaceId
-          ? resolveAuthorizedWorkspaceId(contextWorkspaceId) || undefined
-          : contextFolder,
+        authorizedContextFolder,
         modelOverride,
       );
 
@@ -1400,9 +1427,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
           const target = isData ? materializeDataUrlToTemp(src, name) : src;
           if (!target) return;
-          shell.openPath(target).then((err) => {
-            if (err) console.error("[media] open failed:", err);
-          });
+          void openAuthorizedLocalFile(target);
         },
       });
       template.push({
@@ -1415,66 +1440,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
-  // Local delivery artifacts use file semantics, not download semantics.
-  // Keep the native menu in the main process so paths and file contents do
-  // not need to be materialized into renderer-owned URLs.
-  ipcMain.on(
-    "show-file-menu",
-    async (
-      event,
-      filePath: string,
-      labels: {
-        open: string;
-        copyPath: string;
-        copyContent: string;
-        reveal: string;
-      },
-    ) => {
-      const win = BrowserWindow.fromWebContents(event.sender);
-      const target = typeof filePath === "string" ? filePath.trim() : "";
-      if (!win || !target || target.length > 32_768) return;
-
-      let copyContentEnabled = false;
-      try {
-        const info = await stat(target);
-        copyContentEnabled = info.isFile() && info.size <= 5 * 1024 * 1024;
-      } catch {
-        copyContentEnabled = false;
-      }
-
-      const template: Electron.MenuItemConstructorOptions[] = [
-        {
-          label: labels.open,
-          click: () => {
-            void shell.openPath(target).then((error) => {
-              if (error) console.error("[artifact] open failed:", error);
-            });
-          },
-        },
-        { type: "separator" },
-        {
-          label: labels.copyPath,
-          click: () => clipboard.writeText(target),
-        },
-        {
-          label: labels.copyContent,
-          enabled: copyContentEnabled,
-          click: () => {
-            void readFile(target, "utf8")
-              .then((content) => clipboard.writeText(content))
-              .catch((error) =>
-                console.error("[artifact] copy content failed:", error),
-              );
-          },
-        },
-        {
-          label: labels.reveal,
-          click: () => shell.showItemInFolder(target),
-        },
-      ];
-      Menu.buildFromTemplate(template).popup({ window: win });
-    },
-  );
+  registerArtifactFileMenuIpc(context.getMainWindow);
 
   // Attachment staging — for pasted blobs that have no filesystem origin.
   ipcMain.handle(
@@ -2021,8 +1987,11 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     "save-runtime-conversation",
-    (_event, input: SaveRuntimeConversationInput) =>
-      saveRuntimeConversation(input),
+    (_event, input: SaveRuntimeConversationInput) => {
+      if (Object.hasOwn(input, "activeRuntimeRunOwner"))
+        throw Error("scope_denied");
+      return saveRuntimeConversation(input);
+    },
   );
 
   ipcMain.handle(
@@ -2080,9 +2049,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   // credential pool helpers default to the currently active profile's
   // auth.json (see config.ts:authFilePath), so the renderer can pass an
   // explicit profile or rely on the active-profile fallback.
-  ipcMain.handle("get-credential-pool", (_event, profile?: string) =>
-    getCredentialPool(profile),
-  );
   ipcMain.handle(
     "set-credential-pool",
     (
@@ -2109,7 +2075,8 @@ export function registerIpcHandlers(context: IpcContext): void {
       label: string,
       profile?: string,
     ) => {
-      return addCredentialPoolEntry(provider, apiKey, label, profile);
+      addCredentialPoolEntry(provider, apiKey, label, profile);
+      return true;
     },
   );
 
@@ -2539,7 +2506,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         relativePath,
       );
       if (!filePath) return false;
-      return !(await shell.openPath(filePath));
+      return openAuthorizedLocalFile(filePath);
     },
   );
   ipcMain.handle(
@@ -2607,8 +2574,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       ) {
         return false;
       }
-      await shell.openPath(normalizeMediaPath(filePath));
-      return true;
+      return openAuthorizedLocalFile(filePath);
     } catch {
       return false;
     }
@@ -2732,72 +2698,71 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle(
     "restore-agents-one-backup",
-    async (_event, archivePath: string) => {
-      const inspection = await inspectAgentsOneBackup(archivePath);
-      if (!inspection.success) return inspection;
+    async (event, archivePath: string) =>
+      runConfirmedBackupRestore(
+        event,
+        context.getMainWindow,
+        archivePath,
+        getAppLocale(),
+        async (approvedArchive) => {
+          assertAgentsOneWritesAllowed();
+          const inspection = await inspectAgentsOneBackup(approvedArchive);
+          if (!inspection.success) return inspection;
 
-      // Stop all desktop and gateway writers before touching profile data.
-      if (!(await stopTaskScheduleRunnerAndWait())) {
-        startTaskScheduleRunner();
-        return {
-          success: false,
-          error: "计划任务仍在写入数据，恢复未开始。",
-        };
-      }
-      let relaunchRequired = false;
-      try {
-        relaunchRequired = true;
-        beginAgentsOneRestoreWriteLock();
-        stopAcceptingAgentRuntimeTasks();
-        for (const window of BrowserWindow.getAllWindows()) {
-          // Destroying the old renderer is the global write gate: no delayed
-          // save/invoke can race the restore. `window-all-closed` is suppressed
-          // while the restore lock is active, and this main-process handler
-          // continues until it relaunches the application.
-          window.destroy();
-        }
-        for (const run of activeRuns.values()) run.abort();
-        activeRuns.clear();
-        const activeRuntimeCount = activeAgentRuntimeTaskCount();
-        const cancelledRuntimeCount = await cancelAllAgentRuntimeTasks();
-        if (
-          activeAgentRuntimeTaskCount() > 0 ||
-          cancelledRuntimeCount < activeRuntimeCount
-        ) {
-          return {
-            success: false,
-            error:
-              "仍有 Runtime 进程未确认退出，恢复未开始。请稍后重试或结束对应本地 CLI 进程。",
-          };
-        }
-        stopAllDashboards();
-        const profiles = await listProfiles();
-        for (const profile of profiles) {
-          if (!profile.gatewayRunning) continue;
-          if (!(await stopGatewayAndWait(profile.id))) {
+          // Stop all desktop and gateway writers before touching profile data.
+          if (!(await stopTaskScheduleRunnerAndWait())) {
+            startTaskScheduleRunner();
             return {
               success: false,
-              error: `无法安全停止配置档案 ${profile.name} 的本地网关，恢复未开始。`,
+              error: "计划任务仍在写入数据，恢复未开始。",
             };
           }
-        }
-        closeDbConnection();
-        return await restoreAgentsOneBackupFrom(archivePath);
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      } finally {
-        if (relaunchRequired) {
-          // A fresh process is the only reliable way to reopen every profile
-          // database, gateway and Runtime against the restored snapshot.
-          setTimeout(() => relaunchApp(), 1_000);
-        } else {
-          startTaskScheduleRunner();
-        }
-      }
-    },
+          return completeBackupRestore(
+            async () => {
+              beginAgentsOneRestoreWriteLock();
+              stopAcceptingAgentRuntimeTasks();
+              for (const window of BrowserWindow.getAllWindows()) {
+                // Destroying the old renderer is the global write gate: no delayed
+                // save/invoke can race the restore. `window-all-closed` is suppressed
+                // while the restore lock is active, and this main-process handler
+                // continues until it relaunches the application.
+                window.destroy();
+              }
+              for (const run of activeRuns.values()) run.abort();
+              activeRuns.clear();
+              const activeRuntimeCount = activeAgentRuntimeTaskCount();
+              const cancelledRuntimeCount = await cancelAllAgentRuntimeTasks();
+              if (
+                activeAgentRuntimeTaskCount() > 0 ||
+                cancelledRuntimeCount < activeRuntimeCount
+              ) {
+                return {
+                  success: false,
+                  error:
+                    "仍有 Runtime 进程未确认退出，恢复未开始。请稍后重试或结束对应本地 CLI 进程。",
+                };
+              }
+              stopAllDashboards();
+              const profiles = await listProfiles();
+              for (const profile of profiles) {
+                if (!profile.gatewayRunning) continue;
+                if (!(await stopGatewayAndWait(profile.id))) {
+                  return {
+                    success: false,
+                    error: `无法安全停止配置档案 ${profile.name} 的本地网关，恢复未开始。`,
+                  };
+                }
+              }
+              closeDbConnection();
+              return await restoreAgentsOneBackupFrom(approvedArchive);
+            },
+            getAppLocale(),
+            () => {
+              setTimeout(() => relaunchApp(), 1_000);
+            },
+          );
+        },
+      ),
   );
 
   // Debug dump

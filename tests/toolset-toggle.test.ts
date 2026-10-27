@@ -328,3 +328,47 @@ describe("setMessagingPlatformToolsetEnabled", () => {
     expect(getPlatformToolsets().telegram).toEqual(["browser"]);
   });
 });
+
+describe("CLI effective defaults when no platform configuration exists", () => {
+  it("disables only the selected default toolset and preserves unrelated configuration", () => {
+    writeConfig(
+      "model:\n  default: synthetic-model\ncustom_option: retained\n",
+    );
+    const defaults = getToolsets()
+      .filter((tool) => tool.enabled)
+      .map((tool) => tool.key)
+      .sort();
+    expect(defaults.length).toBeGreaterThan(1);
+    expect(setToolsetEnabled("web", false)).toBe(true);
+    expect(
+      getToolsets()
+        .filter((tool) => tool.enabled)
+        .map((tool) => tool.key)
+        .sort(),
+    ).toEqual(defaults.filter((key) => key !== "web"));
+    expect(readConfig()).toContain("custom_option: retained");
+    expect(readConfig()).toContain("default: synthetic-model");
+    expect(setToolsetEnabled("vision", false)).toBe(true);
+    expect(
+      getToolsets()
+        .filter((tool) => tool.enabled)
+        .map((tool) => tool.key)
+        .sort(),
+    ).toEqual(defaults.filter((key) => key !== "web" && key !== "vision"));
+  });
+
+  it("does not disable other effective defaults when enabling an already enabled toolset", () => {
+    writeConfig("model:\n  default: synthetic-model\n");
+    const defaults = getToolsets()
+      .filter((tool) => tool.enabled)
+      .map((tool) => tool.key)
+      .sort();
+    expect(setToolsetEnabled("web", true)).toBe(true);
+    expect(
+      getToolsets()
+        .filter((tool) => tool.enabled)
+        .map((tool) => tool.key)
+        .sort(),
+    ).toEqual(defaults);
+  });
+});

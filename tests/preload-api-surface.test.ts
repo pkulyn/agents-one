@@ -151,7 +151,6 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "runHermesDoctor",
     "runHermesUpdate",
     // Config
-    "getEnv",
     "setEnv",
     "getConfig",
     "setConfig",
@@ -212,7 +211,6 @@ describe("Legacy APIs preserved (backward compat)", () => {
     "updateModel",
     "onModelLibraryChanged",
     // Credential pool
-    "getCredentialPool",
     "setCredentialPool",
     // Claw3D
     "claw3dStatus",
@@ -263,4 +261,12 @@ describe("IPC channel consistency", () => {
       expect(ch).toMatch(/^[a-z][a-z0-9-]*$/);
     }
   });
+});
+
+// @lat: [[main-process#Retired plaintext secret readers]]
+it("does not expose retired plaintext secret readers", () => {
+  expect(preloadMethods).not.toContain("getEnv");
+  expect(preloadMethods).not.toContain("getCredentialPool");
+  expect(typeMethods).not.toContain("getEnv");
+  expect(typeMethods).not.toContain("getCredentialPool");
 });

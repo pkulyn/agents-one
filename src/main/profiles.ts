@@ -14,10 +14,11 @@ import {
   isValidNamedProfileName,
   isValidProfileName,
   pidIsAliveAs,
-  profileHome,
+  agentsOneProfileHome,
   PROFILE_NAME_ERROR,
 } from "./utils";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
+import { agentsOneDataRoot } from "./agents-one-data-root";
 import { readProfileMeta, defaultColorForName } from "./profile-meta";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
@@ -83,7 +84,11 @@ function slugBaseForAgentName(name: string): string {
 }
 
 function profileIdExists(id: string): boolean {
-  return id === "default" || existsSync(join(PROFILES_DIR, id));
+  return (
+    id === "default" ||
+    existsSync(join(PROFILES_DIR, id)) ||
+    existsSync(agentsOneProfileHome(id))
+  );
 }
 
 export function profileIdForAgentName(agentName: string): string {
@@ -264,6 +269,43 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
     }
   }
 
+  const knownProfiles = new Set(profiles.map((profile) => profile.id));
+  try {
+    for (const name of await fs.readdir(
+      join(agentsOneDataRoot(), "profiles"),
+    )) {
+      if (
+        knownProfiles.has(name) ||
+        name.startsWith(".") ||
+        !isValidNamedProfileName(name)
+      )
+        continue;
+      const profilePath = agentsOneProfileHome(name);
+      if (!(await fs.stat(profilePath)).isDirectory()) continue;
+      const [meta, config] = await Promise.all([
+        readProfileMeta(name),
+        readProfileConfig(profilePath),
+      ]);
+      profiles.push({
+        id: name,
+        name: meta.name || name,
+        path: profilePath,
+        isDefault: false,
+        isActive: activeName === name,
+        model: config.model,
+        provider: config.provider,
+        hasEnv: false,
+        hasSoul: false,
+        skillCount: 0,
+        gatewayRunning: false,
+        color: meta.color || defaultColorForName(name),
+        avatar: meta.avatar || null,
+      });
+    }
+  } catch {
+    // No app-owned profiles yet.
+  }
+
   return profiles;
 }
 
@@ -311,9 +353,9 @@ export function createProfile(
   }
 
   try {
-    mkdirSync(profileHome(id), { recursive: true });
+    mkdirSync(agentsOneProfileHome(id), { recursive: true });
     writeFileSync(
-      join(profileHome(id), "profile-meta.json"),
+      join(agentsOneProfileHome(id), "profile-meta.json"),
       JSON.stringify({ name: agentName }, null, 2),
       "utf-8",
     );
@@ -366,41 +408,6 @@ export function setActiveProfile(name: string): void {
   if (!isValidProfileName(name)) {
     throw new Error(PROFILE_NAME_ERROR);
   }
-
-  try {
-    execFileSync(HERMES_PYTHON, hermesCliArgs(["profile", "use", name]), {
-      cwd: join(HERMES_HOME, "hermes-agent"),
-      env: {
-        ...process.env,
-        PATH: getEnhancedPath(),
-        HOME: homedir(),
-        HERMES_HOME,
-      },
-      stdio: "pipe",
-      timeout: 10000,
-      ...HIDDEN_SUBPROCESS_OPTIONS,
-    });
-  } catch {
-    // ignore — verified and repaired below
-  }
-
-  // The CLI validates against LOCAL profiles and raises when the name exists
-  // only on the remote host (or when there is no local install at all).
-  // That failure is swallowed above, so before this fallback the selection
-  // silently never persisted: ~/.hermes/active_profile kept its old value,
-  // every relaunch reset the UI to `default`, and activeProfileName() scoped
-  // the unified remote dashboard's data to the wrong profile. The desktop's
-  // source of truth is the local active_profile file (getActiveProfileNameSync),
-  // so when the CLI didn't move it, write it directly — `name` is already
-  // validated, and "default" is a plain value here (readers treat a missing
-  // file and the literal "default" identically).
-  if (getActiveProfileNameSync() !== name) {
-    try {
-      mkdirSync(HERMES_HOME, { recursive: true });
-      writeFileSync(join(HERMES_HOME, "active_profile"), `${name}\n`);
-    } catch {
-      // Filesystem write failed — nothing else to fall back to; the CLI
-      // attempt above already didn't persist it either.
-    }
-  }
+  mkdirSync(agentsOneDataRoot(), { recursive: true });
+  writeFileSync(join(agentsOneDataRoot(), "active_profile"), `${name}\n`);
 }

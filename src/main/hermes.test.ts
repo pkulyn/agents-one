@@ -152,7 +152,7 @@ describe("transcribeAudio API route", () => {
   it("uses the configured OpenAI-compatible voice service with multipart audio", async () => {
     // @lat: [[voice-input#Main-process service routing]]
     mockedReadEnv.mockReturnValue({
-      AGENTS_ONE_VOICE_API_URL: "http://115.191.47.168/voice",
+      AGENTS_ONE_VOICE_API_URL: "http://voice.example.test/voice",
     });
     mockedGetSecret.mockReturnValue("test-token");
     fetchMock.mockResolvedValue({
@@ -165,7 +165,7 @@ describe("transcribeAudio API route", () => {
     ).resolves.toBe("你好，Agents One。");
 
     const [url, init] = sentRequest();
-    expect(url).toBe("http://115.191.47.168/voice/v1/audio/transcriptions");
+    expect(url).toBe("http://voice.example.test/voice/v1/audio/transcriptions");
     expect(init.method).toBe("POST");
     expect(init.headers).toEqual({ Authorization: "Bearer test-token" });
     const form = init.body as FormData;
@@ -196,7 +196,7 @@ describe("transcribeAudio API route", () => {
   it("accepts the v1.4 direct WebSocket stream endpoint", async () => {
     mockedReadEnv.mockReturnValue({
       AGENTS_ONE_VOICE_API_URL:
-        "ws://115.191.47.168/voice/v1/audio/transcriptions/stream",
+        "ws://voice.example.test/voice/v1/audio/transcriptions/stream",
     });
     fetchMock.mockResolvedValue({
       ok: true,
@@ -206,7 +206,7 @@ describe("transcribeAudio API route", () => {
     await transcribeAudio(new Uint8Array([4]), "audio/mp4");
 
     const [url] = sentRequest();
-    expect(url).toBe("http://115.191.47.168/voice/v1/audio/transcriptions");
+    expect(url).toBe("http://voice.example.test/voice/v1/audio/transcriptions");
   });
 
   it("surfaces backend transcription errors", async () => {
@@ -261,11 +261,127 @@ describe("transcribeAudio API route", () => {
     expect(mockedInvalidateSecretsCache).toHaveBeenCalledOnce();
     expect(result).toEqual({
       enabled: true,
-      url: "https://voice.example.test/voice",
+      url: "https://voice.example.test/__saved__",
       hasApiKey: true,
       configured: true,
     });
     expect(result).not.toHaveProperty("apiKey");
+  });
+
+  it.each([
+    "https://voice.example.test/private-routing-secret",
+    "https://user:fixture-url-secret@voice.example.test/?token=fixture-query",
+    "invalid fixture-private-value",
+  ])("does not expose saved voice URL parts: %s", (raw) => {
+    mockedReadEnv.mockReturnValue({
+      AGENTS_ONE_VOICE_API_URL: raw,
+      AGENTS_ONE_VOICE_ENABLED: "1",
+    });
+    const result = getVoiceInputPublicConfig("default");
+    expect(result.url).not.toContain("private-routing-secret");
+    expect(result.url).not.toContain("fixture-");
+    expect(result.url).not.toContain("user:");
+  });
+
+  it("resolves an unchanged saved path privately for save and health test", async () => {
+    const raw = "https://voice.example.test/private-route";
+    mockedReadEnv.mockReturnValue({
+      AGENTS_ONE_VOICE_API_URL: raw,
+      AGENTS_ONE_VOICE_ENABLED: "1",
+    });
+    const visible = getVoiceInputPublicConfig("default").url;
+    expect(visible).not.toContain("private-route");
+    saveVoiceInputConfig({ enabled: true, url: visible }, "default");
+    expect(mockedSetEnvValue).toHaveBeenCalledWith(
+      "AGENTS_ONE_VOICE_API_URL",
+      raw,
+      "default",
+    );
+    await testVoiceInputService({ url: visible }, "default");
+    expect(String(sentRequest()[0])).toBe(raw + "/health");
+  });
+
+  it.each(["__saved__", "%5f%5fsaved%5f%5f", "%255f%255fsaved%255f%255f"])(
+    "rejects edited retained voice marker %s before write or network",
+    async (marker) => {
+      mockedReadEnv.mockReturnValue({
+        AGENTS_ONE_VOICE_API_URL: "https://voice.example.test/private-route",
+      });
+      const url = "https://different.example.test/" + marker;
+      expect(() =>
+        saveVoiceInputConfig({ enabled: true, url }, "default"),
+      ).toThrow();
+      await expect(testVoiceInputService({ url }, "default")).rejects.toThrow();
+      expect(mockedSetEnvValue).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("validates a replacement key before changing enabled state or URL", () => {
+    expect(() =>
+      saveVoiceInputConfig(
+        {
+          enabled: true,
+          url: "https://voice.example.test",
+          apiKey: "bad\nkey",
+        },
+        "default",
+      ),
+    ).toThrow();
+    expect(mockedSetEnvValue).not.toHaveBeenCalled();
+    expect(mockedInvalidateSecretsCache).not.toHaveBeenCalled();
+  });
+
+  it("resolves retained voice paths from the target profile current value", () => {
+    mockedReadEnv.mockImplementation((profile) => ({
+      AGENTS_ONE_VOICE_ENABLED: "1",
+      AGENTS_ONE_VOICE_API_URL:
+        "https://voice.example.test/" +
+        (profile === "a" ? "private-a" : "private-b"),
+    }));
+    const visible = getVoiceInputPublicConfig("a").url;
+    saveVoiceInputConfig({ enabled: true, url: visible }, "b");
+    expect(mockedSetEnvValue).toHaveBeenCalledWith(
+      "AGENTS_ONE_VOICE_API_URL",
+      "https://voice.example.test/private-b",
+      "b",
+    );
+  });
+
+  it("can disable a malformed saved URL without echoing or replacing it", () => {
+    const raw = "invalid fixture-secret";
+    mockedReadEnv.mockReturnValue({
+      AGENTS_ONE_VOICE_API_URL: raw,
+      AGENTS_ONE_VOICE_ENABLED: "1",
+    });
+    const visible = getVoiceInputPublicConfig("default");
+    expect(visible.configured).toBe(false);
+    saveVoiceInputConfig({ enabled: false, url: visible.url }, "default");
+    expect(mockedSetEnvValue).toHaveBeenCalledWith(
+      "AGENTS_ONE_VOICE_API_URL",
+      raw,
+      "default",
+    );
+    mockedSetEnvValue.mockClear();
+    expect(() =>
+      saveVoiceInputConfig({ enabled: true, url: visible.url }, "default"),
+    ).toThrow();
+    expect(mockedSetEnvValue).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    new Error("request https://voice.example.test/private-route fixture-key"),
+    null,
+  ])("does not return native health failure details %s", async (failure) => {
+    mockedReadEnv.mockReturnValue({
+      AGENTS_ONE_VOICE_API_URL: "https://voice.example.test/private-route",
+      AGENTS_ONE_VOICE_API_KEY: "fixture-key",
+    });
+    fetchMock.mockRejectedValueOnce(failure);
+    const result = await testVoiceInputService({
+      url: getVoiceInputPublicConfig().url,
+    });
+    expect(result).toEqual({ ok: false, message: "无法连接语音服务。" });
   });
 
   it("tests the service health endpoint without uploading audio", async () => {

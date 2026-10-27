@@ -152,7 +152,8 @@ describe("Agents", () => {
 
     await screen.findByText("Hermes Gateway");
     // Unified access label (plan 1.1/1.5).
-    expect(screen.getByText(/Gateway v1/)).toBeTruthy();
+    expect(screen.getByText("Hermes Agent")).toBeTruthy();
+    expect(screen.queryByText(/Gateway v1/)).toBeNull();
     // Connection hint shows the Gateway endpoint.
     expect(
       screen.getByText("https://gateway.example/agents-one/v1"),

@@ -15,16 +15,16 @@ describe("sidebar project grouping", () => {
         {
           id: "scheduled-task",
           title: "定时任务：知识库整理",
-          contextWorkspaceId: "project-pkulyn",
+          contextWorkspaceId: "project-notes",
           updatedAt: 2,
         },
       ],
-      [{ id: "project-pkulyn", name: "pkulyn_vault", updatedAt: 3 }],
+      [{ id: "project-notes", name: "sample-notes", updatedAt: 3 }],
       [
         {
-          id: "project-pkulyn",
+          id: "project-notes",
           path: "D:\\workspace\\vault",
-          name: "pkulyn_vault",
+          name: "sample-notes",
           createdAt: 1,
           updatedAt: 3,
         },
@@ -34,8 +34,8 @@ describe("sidebar project grouping", () => {
     expect(grouped.chats).toEqual([]);
     expect(grouped.projectGroups).toEqual([
       expect.objectContaining({
-        workspaceId: "project-pkulyn",
-        name: "pkulyn_vault",
+        workspaceId: "project-notes",
+        name: "sample-notes",
         sessions: expect.arrayContaining([
           expect.objectContaining({ id: "legacy-task" }),
           expect.objectContaining({ id: "scheduled-task" }),

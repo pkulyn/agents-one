@@ -4,6 +4,7 @@ import type {
   AgentRuntimeKind,
   RuntimeIsolationInfo,
 } from "./agent-runtimes";
+import type { Attachment } from "./attachments";
 import type {
   AgentEventStreamModel,
   AgentEventStreamUsage,
@@ -49,6 +50,11 @@ export interface RuntimeConversationMessage {
   role: "user" | "agent" | "system";
   content: string;
   createdAt: number;
+  /** Safe display metadata for files attached to a user message. */
+  attachments?: Pick<
+    Attachment,
+    "id" | "kind" | "name" | "mime" | "size" | "originalSize"
+  >[];
   /** Attribution for replies dispatched by a collaboration task. */
   agentRuntimeId?: string;
   agentName?: string;
@@ -78,9 +84,21 @@ export interface RuntimeConversationMessage {
   meta?: ConversationEntryMeta;
 }
 
+export interface RuntimeConversationChange {
+  profile: string;
+  conversationId: string;
+  revision: string;
+  kind: "runtime_conversation" | "quick_chat";
+  deleted?: boolean;
+}
+
 export interface RuntimeConversationSummary {
   id: string;
   title: string;
+  /** Version shared by desktop and mobile writes; absent legacy records read as 1. */
+  revision?: string;
+  pinned?: boolean;
+  archived?: boolean;
   createdAt: number;
   updatedAt: number;
   runtimeId: string;
@@ -93,6 +111,8 @@ export interface RuntimeConversationSummary {
   runtimeSessionId?: string;
   /** Background Runtime run currently advancing this persisted conversation. */
   activeRuntimeRunId?: string;
+  /** Main-owned task results must not be committed again by a Renderer observer. */
+  activeRuntimeRunOwner?: "main";
   /** Last local project explicitly selected for this conversation. */
   workspace?: string;
   /** Preferred opaque project capability for new Runtime dispatches. */
@@ -117,6 +137,9 @@ export interface QuickChatMessage {
 export interface QuickChatConversation {
   id: string;
   title: string;
+  revision?: string;
+  pinned?: boolean;
+  archived?: boolean;
   runtimeId: string;
   runtimeName: string;
   runtimeSessionId?: string | null;
@@ -128,6 +151,8 @@ export interface QuickChatConversation {
 export interface SaveRuntimeConversationInput {
   profile?: string;
   id: string;
+  /** Optimistic concurrency for callers editing an already loaded record. */
+  expectedRevision?: string;
   title: string;
   runtimeId: string;
   runtimeName: string;
@@ -138,6 +163,8 @@ export interface SaveRuntimeConversationInput {
   runtimeSessionId?: string;
   /** Set by background task creation and cleared after terminal delivery. */
   activeRuntimeRunId?: string | null;
+  /** Main-only store input; the Renderer IPC rejects this field. */
+  activeRuntimeRunOwner?: "main" | null;
   workspace?: string;
   workspaceId?: string;
   accessMode?: "auto" | "analysis" | "full_access";

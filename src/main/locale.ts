@@ -14,8 +14,14 @@ function isAppLocale(value: unknown): value is AppLocale {
 }
 
 function readSavedLocale(): AppLocale | undefined {
-  const value = readDesktopConfig()[DESKTOP_LOCALE_KEY];
-  return isAppLocale(value) ? value : undefined;
+  try {
+    const value = readDesktopConfig()[DESKTOP_LOCALE_KEY];
+    return isAppLocale(value) ? value : undefined;
+  } catch {
+    // Language bootstrap must reach the native startup recovery prompt even
+    // when desktop.json is damaged. This fallback never authorizes a write.
+    return undefined;
+  }
 }
 
 function writeSavedLocale(locale: AppLocale): void {
@@ -34,7 +40,6 @@ export function getAppLocale(): AppLocale {
 }
 
 export function setAppLocale(locale: AppLocale): AppLocale {
-  const nextLocale = setSharedLocale(locale);
-  writeSavedLocale(nextLocale);
-  return nextLocale;
+  writeSavedLocale(locale);
+  return setSharedLocale(locale);
 }

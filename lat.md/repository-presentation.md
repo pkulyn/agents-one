@@ -35,3 +35,25 @@ The gate checks production dependencies independently, then checks the full grap
 Public documentation covers supported usage, integration contracts and safe contributions; internal requirements, future plans and development evidence remain private.
 
 `docs/` uses a default-deny Git ignore policy. `.github/public-documents.json` explicitly lists permitted Markdown and documentation files; `scripts/check-public-documents.mjs` validates the tracked tree in CI. Local skills, agent settings and internal planning records are excluded. Necessary architecture and test specifications remain linked to source through lat.
+
+## Private specification boundary
+
+Public source and tests are self-contained. Local execution plans, device acceptance records and private architecture specifications stay outside the repository and are not required to build or test a clean checkout.
+
+## Generated contract checkout consistency
+
+Generated JSON and Kotlin contract files retain LF bytes even when Git core.autocrlf is enabled. Fresh Windows checkouts must pass the same exact generation check as other hosts.
+
+A regression exports the tracked files with real Git checkout-index and compares them to index bytes; schema or fixture changes still require regeneration.
+
+## Portable development fixtures
+
+Public tests use reserved example endpoints and generic project names. Screenshot tests write to the Java temporary directory; developer launch/build scripts take tool locations from explicit arguments or standard user environment settings.
+
+The desktop launcher accepts an optional NodePath and otherwise uses PATH. Android builds accept explicit portable tool paths or JAVA_HOME, ANDROID_SDK_ROOT/ANDROID_HOME, GRADLE_USER_HOME and GRADLE_HOME; no machine-specific drive layout is required. These choices do not migrate application configuration or change packaged Runtime behavior.
+
+## Generated Android build output
+
+Repository lint and formatting gates exclude Gradle build and cache directories. Generated reports are not authored JavaScript or HTML and must not change source quality results after Android tests run.
+
+The exclusion is limited to Android build/cache output; Android source, development scripts and tracked contract inputs remain subject to the existing checks.

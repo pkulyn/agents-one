@@ -1,0 +1,1010 @@
+{
+  "version": "mobile-control/1.0",
+  "errors": [
+    {
+      "error": {
+        "code": "credential_expired",
+        "message": "credential_expired",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "revoked",
+        "message": "revoked",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "scope_denied",
+        "message": "scope_denied",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "policy_denied",
+        "message": "policy_denied",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "unverified_policy",
+        "message": "unverified_policy",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "policy_revoked",
+        "message": "policy_revoked",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "profile_inactive",
+        "message": "profile_inactive",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "resource_not_found",
+        "message": "resource_not_found",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "revision_conflict",
+        "message": "revision_conflict",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "run_active",
+        "message": "run_active",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "idempotency_conflict",
+        "message": "idempotency_conflict",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "cursor_expired",
+        "message": "cursor_expired",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "invalid_schedule",
+        "message": "invalid_schedule",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "invalid_input",
+        "message": "invalid_input",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "revision_required",
+        "message": "revision_required",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "rate_limited",
+        "message": "rate_limited",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "owner_offline",
+        "message": "owner_offline",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "runtime_offline",
+        "message": "runtime_offline",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "requires_owner_action",
+        "message": "requires_owner_action",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "project_binding_conflict",
+        "message": "project_binding_conflict",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "queue_full",
+        "message": "queue_full",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "preview_expired",
+        "message": "preview_expired",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "protocol_incompatible",
+        "message": "protocol_incompatible",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "reconciliation_required",
+        "message": "reconciliation_required",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "invitation_expired",
+        "message": "invitation_expired",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "claim_rejected",
+        "message": "claim_rejected",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "refresh_reused",
+        "message": "refresh_reused",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    },
+    {
+      "error": {
+        "code": "payload_too_large",
+        "message": "payload_too_large",
+        "retryable": false,
+        "requestId": "fixture-request"
+      }
+    }
+  ],
+  "objects": {
+    "RunStatus": "queued",
+    "RunActivityType": "queued",
+    "TurnState": "accepted",
+    "OperationStatus": "accepted",
+    "ConversationActivity": "idle",
+    "ConversationSource": "runtime_conversation",
+    "ConversationFilter": "all",
+    "ScheduleState": "enabled",
+    "ConcurrencyPolicy": "skip",
+    "ExecutionStatus": "queued",
+    "TriggerKind": "manual",
+    "MessageKind": "user",
+    "RestrictionReason": "requires_owner_action",
+    "Scope": "conversation:read",
+    "EventType": "conversation.updated",
+    "ClaimState": "pending",
+    "ResourceType": "owner",
+    "ResourceRef": {
+      "type": "owner",
+      "id": "fixture-value"
+    },
+    "ErrorDetails": {},
+    "MobileError": {
+      "code": "fixture-value",
+      "message": "fixture-value",
+      "retryable": false,
+      "requestId": "fixture-value"
+    },
+    "ErrorEnvelope": {
+      "error": {
+        "code": "fixture-value",
+        "message": "fixture-value",
+        "retryable": false,
+        "requestId": "fixture-value"
+      }
+    },
+    "Limits": {
+      "maxPageSize": 1,
+      "maxTextCharacters": 1,
+      "maxRequestBytes": 1,
+      "maxTimeoutMs": 1000,
+      "eventRetentionDays": 1,
+      "eventRetentionCount": 1,
+      "snapshotTtlMs": 1
+    },
+    "OwnerSpace": {
+      "ownerId": "fixture-value",
+      "spaceId": "fixture-value",
+      "label": "fixture-value",
+      "ownerType": "desktop",
+      "online": false,
+      "executionAvailable": false,
+      "schedulerOnline": false,
+      "schedulerTimeZone": "Asia/Shanghai",
+      "capabilities": ["conversation:read"],
+      "limits": {
+        "maxPageSize": 1,
+        "maxTextCharacters": 1,
+        "maxRequestBytes": 1,
+        "maxTimeoutMs": 1000,
+        "eventRetentionDays": 1,
+        "eventRetentionCount": 1,
+        "snapshotTtlMs": 1
+      },
+      "dataEpoch": "fixture-value"
+    },
+    "Bootstrap": {
+      "protocolVersion": "fixture-value",
+      "ownerSpace": {
+        "ownerId": "fixture-value",
+        "spaceId": "fixture-value",
+        "label": "fixture-value",
+        "ownerType": "desktop",
+        "online": false,
+        "executionAvailable": false,
+        "schedulerOnline": false,
+        "schedulerTimeZone": "Asia/Shanghai",
+        "capabilities": ["conversation:read"],
+        "limits": {
+          "maxPageSize": 1,
+          "maxTextCharacters": 1,
+          "maxRequestBytes": 1,
+          "maxTimeoutMs": 1000,
+          "eventRetentionDays": 1,
+          "eventRetentionCount": 1,
+          "snapshotTtlMs": 1
+        },
+        "dataEpoch": "fixture-value"
+      },
+      "grantRevision": "9007199254740993",
+      "serverTime": "2026-10-04T03:00:00Z",
+      "dataEpoch": "fixture-value",
+      "capabilities": ["conversation:read"],
+      "limits": {
+        "maxPageSize": 1,
+        "maxTextCharacters": 1,
+        "maxRequestBytes": 1,
+        "maxTimeoutMs": 1000,
+        "eventRetentionDays": 1,
+        "eventRetentionCount": 1,
+        "snapshotTtlMs": 1
+      },
+      "snapshotCursor": "fixture-value"
+    },
+    "Runtime": {
+      "id": "fixture-value",
+      "name": "fixture-value",
+      "category": "local",
+      "healthy": false,
+      "capabilities": ["fixture-value"],
+      "allowedActions": ["read"]
+    },
+    "RuntimeAvatar": {
+      "id": "ava-1b4d3cd3392295481b6e62e72f15318c53f82fba43616f651d62fe062bcf5708",
+      "runtimeId": "fixture-runtime",
+      "mime": "image/png",
+      "sizeBytes": 77,
+      "sha256": "5d27b1adc94205438a55cf503a1e1cd4ef9132926e20f6484e0fbf4bccd873e4",
+      "base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP8XKD4n4GBgYGJAQoAJzoChzU5gKEAAAAASUVORK5CYII="
+    },
+    "Project": {
+      "id": "fixture-value",
+      "name": "fixture-value",
+      "allowedExecutionPolicyIds": ["fixture-value"]
+    },
+    "ExecutionPolicy": {
+      "id": "fixture-value",
+      "runtimeId": "fixture-value",
+      "mode": "inspect",
+      "enforced": false,
+      "unattendedApproved": false,
+      "allowedActions": ["create"]
+    },
+    "Conversation": {
+      "id": "fixture-value",
+      "sourceKind": "runtime_conversation",
+      "title": "fixture-value",
+      "runtimeId": "fixture-value",
+      "pinned": false,
+      "archived": false,
+      "revision": "9007199254740993",
+      "lastMessageSeq": "9007199254740993",
+      "lastReadMessageSeq": "9007199254740993",
+      "activity": "idle",
+      "activeRunIds": ["fixture-value"],
+      "createdAt": "2026-10-04T03:00:00Z",
+      "updatedAt": "2026-10-04T03:00:00Z",
+      "allowedActions": ["read"]
+    },
+    "Message": {
+      "id": "fixture-value",
+      "conversationId": "fixture-value",
+      "messageSeq": "9007199254740993",
+      "kind": "user",
+      "content": "fixture-value",
+      "visibleToUser": false,
+      "createdAt": "2026-10-04T03:00:00Z"
+    },
+    "Turn": {
+      "turnId": "fixture-value",
+      "conversationId": "fixture-value",
+      "clientMutationId": "fixture-value",
+      "state": "accepted",
+      "revision": "9007199254740993",
+      "requestedPolicyId": "fixture-value",
+      "createdAt": "2026-10-04T03:00:00Z"
+    },
+    "Artifact": {
+      "id": "fixture-value",
+      "runId": "fixture-value",
+      "name": "fixture-value",
+      "mime": "fixture-value",
+      "sizeBytes": 0,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "allowedActions": ["read"]
+    },
+    "Run": {
+      "runId": "fixture-value",
+      "conversationId": "fixture-value",
+      "runtimeId": "fixture-value",
+      "status": "queued",
+      "lastRunEventSeq": "9007199254740993",
+      "artifacts": [
+        {
+          "id": "fixture-value",
+          "runId": "fixture-value",
+          "name": "fixture-value",
+          "mime": "fixture-value",
+          "sizeBytes": 0,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "allowedActions": ["read"]
+        }
+      ],
+      "allowedActions": ["read"]
+    },
+    "RunActivity": {
+      "eventId": "fixture-value",
+      "type": "queued",
+      "summary": "fixture-value",
+      "createdAt": "2026-10-04T03:00:00Z"
+    },
+    "Schedule": {
+      "id": "fixture-value",
+      "name": "fixture-value",
+      "prompt": "fixture-value",
+      "runtimeId": "fixture-value",
+      "scheduleExpression": "fixture-value",
+      "schedulerTimeZone": "Asia/Shanghai",
+      "enabled": false,
+      "effectiveState": "enabled",
+      "concurrencyPolicy": "skip",
+      "timeoutMs": 1000,
+      "activeRunIds": ["fixture-value"],
+      "pendingCount": 0,
+      "revision": "9007199254740993",
+      "allowedActions": ["read"]
+    },
+    "ScheduleExecution": {
+      "id": "fixture-value",
+      "scheduleId": "fixture-value",
+      "trigger": "manual",
+      "triggeredAt": "2026-10-04T03:00:00Z",
+      "status": "queued"
+    },
+    "ScheduleRecentExecution": {
+      "execution": {
+        "id": "fixture-value",
+        "scheduleId": "fixture-value",
+        "trigger": "manual",
+        "triggeredAt": "2026-10-04T03:00:00Z",
+        "status": "queued"
+      }
+    },
+    "OperationResult": {},
+    "OperationReceipt": {
+      "operationId": "fixture-value",
+      "clientMutationId": "fixture-value",
+      "deviceId": "fixture-value",
+      "action": "fixture-value",
+      "status": "accepted",
+      "createdAt": "2026-10-04T03:00:00Z",
+      "updatedAt": "2026-10-04T03:00:00Z"
+    },
+    "PermissionChange": {
+      "deviceId": "fixture-value",
+      "grantRevision": "9007199254740993",
+      "scopes": ["conversation:read"],
+      "revoked": false
+    },
+    "ReadPosition": {
+      "conversationId": "fixture-value",
+      "lastReadMessageSeq": "9007199254740993"
+    },
+    "MessagePage": {
+      "items": [
+        {
+          "id": "fixture-value",
+          "conversationId": "fixture-value",
+          "messageSeq": "9007199254740993",
+          "kind": "user",
+          "content": "fixture-value",
+          "visibleToUser": false,
+          "createdAt": "2026-10-04T03:00:00Z"
+        }
+      ],
+      "hasMoreBefore": false,
+      "snapshotCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993"
+    },
+    "Snapshot": {
+      "conversations": [
+        {
+          "id": "fixture-value",
+          "sourceKind": "runtime_conversation",
+          "title": "fixture-value",
+          "runtimeId": "fixture-value",
+          "pinned": false,
+          "archived": false,
+          "revision": "9007199254740993",
+          "lastMessageSeq": "9007199254740993",
+          "lastReadMessageSeq": "9007199254740993",
+          "activity": "idle",
+          "activeRunIds": ["fixture-value"],
+          "createdAt": "2026-10-04T03:00:00Z",
+          "updatedAt": "2026-10-04T03:00:00Z",
+          "allowedActions": ["read"]
+        }
+      ],
+      "runs": [
+        {
+          "runId": "fixture-value",
+          "conversationId": "fixture-value",
+          "runtimeId": "fixture-value",
+          "status": "queued",
+          "lastRunEventSeq": "9007199254740993",
+          "artifacts": [
+            {
+              "id": "fixture-value",
+              "runId": "fixture-value",
+              "name": "fixture-value",
+              "mime": "fixture-value",
+              "sizeBytes": 0,
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "allowedActions": ["read"]
+            }
+          ],
+          "allowedActions": ["read"]
+        }
+      ],
+      "schedules": [
+        {
+          "id": "fixture-value",
+          "name": "fixture-value",
+          "prompt": "fixture-value",
+          "runtimeId": "fixture-value",
+          "scheduleExpression": "fixture-value",
+          "schedulerTimeZone": "Asia/Shanghai",
+          "enabled": false,
+          "effectiveState": "enabled",
+          "concurrencyPolicy": "skip",
+          "timeoutMs": 1000,
+          "activeRunIds": ["fixture-value"],
+          "pendingCount": 0,
+          "revision": "9007199254740993",
+          "allowedActions": ["read"]
+        }
+      ],
+      "snapshotCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993",
+      "dataEpoch": "fixture-value",
+      "nextCursor": "fixture-value"
+    },
+    "SchedulePreview": {
+      "normalizedExpression": "fixture-value",
+      "schedulerTimeZone": "Asia/Shanghai",
+      "description": "fixture-value",
+      "nextOccurrences": [
+        "2026-10-05T03:00:00Z",
+        "2026-10-06T03:00:00Z",
+        "2026-10-07T03:00:00Z",
+        "2026-10-08T03:00:00Z",
+        "2026-10-09T03:00:00Z"
+      ],
+      "previewRevision": "fixture-value"
+    },
+    "DeviceGrant": {
+      "deviceId": "fixture-value",
+      "deviceLabel": "fixture-value",
+      "ownerId": "fixture-value",
+      "spaceId": "fixture-value",
+      "scopes": ["conversation:read"],
+      "grantRevision": "9007199254740993",
+      "expiresAt": "2026-10-04T03:00:00Z",
+      "revoked": false
+    },
+    "PairingClaim": {
+      "id": "fixture-value",
+      "state": "pending",
+      "expiresAt": "2026-10-04T03:00:00Z",
+      "verificationPhrase": "fixture-value"
+    },
+    "Credentials": {
+      "deviceId": "fixture-value",
+      "accessToken": "fixture-value",
+      "accessExpiresAt": "2026-10-04T03:00:00Z",
+      "refreshCredential": "fixture-value",
+      "refreshExpiresAt": "2026-10-04T03:00:00Z",
+      "grantRevision": "9007199254740993"
+    },
+    "ResourceDeletion": {
+      "kind": "conversation",
+      "id": "fixture-value"
+    },
+    "MessageUpsert": {
+      "id": "fixture-value",
+      "conversationId": "fixture-value",
+      "messageSeq": "9007199254740993",
+      "messageRevision": "9007199254740993",
+      "kind": "user",
+      "content": "fixture-value",
+      "visibleToUser": false,
+      "createdAt": "2026-10-04T03:00:00Z"
+    },
+    "Event": {
+      "eventId": "fixture-value",
+      "spaceChangeSeq": "9007199254740993",
+      "dataEpoch": "fixture-value",
+      "type": "conversation.updated",
+      "resourceRef": {
+        "type": "owner",
+        "id": "fixture-value"
+      },
+      "resourceRevision": "9007199254740993",
+      "createdAt": "2026-10-04T03:00:00Z",
+      "payload": {
+        "id": "fixture-value",
+        "sourceKind": "runtime_conversation",
+        "title": "fixture-value",
+        "runtimeId": "fixture-value",
+        "pinned": false,
+        "archived": false,
+        "revision": "9007199254740993",
+        "lastMessageSeq": "9007199254740993",
+        "lastReadMessageSeq": "9007199254740993",
+        "activity": "idle",
+        "activeRunIds": ["fixture-value"],
+        "createdAt": "2026-10-04T03:00:00Z",
+        "updatedAt": "2026-10-04T03:00:00Z",
+        "allowedActions": ["read"]
+      }
+    },
+    "ScheduleSummary": {
+      "id": "fixture-value",
+      "name": "fixture-value",
+      "runtimeId": "fixture-value",
+      "scheduleExpression": "fixture-value",
+      "schedulerTimeZone": "Asia/Shanghai",
+      "enabled": false,
+      "effectiveState": "enabled",
+      "concurrencyPolicy": "skip",
+      "timeoutMs": 1000,
+      "activeRunIds": ["fixture-value"],
+      "pendingCount": 0,
+      "revision": "9007199254740993",
+      "allowedActions": ["read"]
+    },
+    "ConversationPage": {
+      "items": [
+        {
+          "id": "fixture-value",
+          "sourceKind": "runtime_conversation",
+          "title": "fixture-value",
+          "runtimeId": "fixture-value",
+          "pinned": false,
+          "archived": false,
+          "revision": "9007199254740993",
+          "lastMessageSeq": "9007199254740993",
+          "lastReadMessageSeq": "9007199254740993",
+          "activity": "idle",
+          "activeRunIds": ["fixture-value"],
+          "createdAt": "2026-10-04T03:00:00Z",
+          "updatedAt": "2026-10-04T03:00:00Z",
+          "allowedActions": ["read"]
+        }
+      ],
+      "nextCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993"
+    },
+    "ScheduleSummaryPage": {
+      "items": [
+        {
+          "id": "fixture-value",
+          "name": "fixture-value",
+          "runtimeId": "fixture-value",
+          "scheduleExpression": "fixture-value",
+          "schedulerTimeZone": "Asia/Shanghai",
+          "enabled": false,
+          "effectiveState": "enabled",
+          "concurrencyPolicy": "skip",
+          "timeoutMs": 1000,
+          "activeRunIds": ["fixture-value"],
+          "pendingCount": 0,
+          "revision": "9007199254740993",
+          "allowedActions": ["read"]
+        }
+      ],
+      "nextCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993"
+    },
+    "ScheduleExecutionPage": {
+      "items": [
+        {
+          "id": "fixture-value",
+          "scheduleId": "fixture-value",
+          "trigger": "manual",
+          "triggeredAt": "2026-10-04T03:00:00Z",
+          "status": "queued"
+        }
+      ],
+      "nextCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993"
+    },
+    "OperationReceiptPage": {
+      "items": [
+        {
+          "operationId": "fixture-value",
+          "clientMutationId": "fixture-value",
+          "deviceId": "fixture-value",
+          "action": "fixture-value",
+          "status": "accepted",
+          "createdAt": "2026-10-04T03:00:00Z",
+          "updatedAt": "2026-10-04T03:00:00Z"
+        }
+      ],
+      "nextCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993"
+    },
+    "RuntimePage": {
+      "items": [
+        {
+          "id": "fixture-value",
+          "name": "fixture-value",
+          "category": "local",
+          "healthy": false,
+          "capabilities": ["fixture-value"],
+          "allowedActions": ["read"]
+        }
+      ],
+      "nextCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993"
+    },
+    "ProjectPage": {
+      "items": [
+        {
+          "id": "fixture-value",
+          "name": "fixture-value",
+          "allowedExecutionPolicyIds": ["fixture-value"]
+        }
+      ],
+      "nextCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993"
+    },
+    "ExecutionPolicyPage": {
+      "items": [
+        {
+          "id": "fixture-value",
+          "runtimeId": "fixture-value",
+          "mode": "inspect",
+          "enforced": false,
+          "unattendedApproved": false,
+          "allowedActions": ["create"]
+        }
+      ],
+      "nextCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993"
+    },
+    "OwnerSpacePage": {
+      "items": [
+        {
+          "ownerId": "fixture-value",
+          "spaceId": "fixture-value",
+          "label": "fixture-value",
+          "ownerType": "desktop",
+          "online": false,
+          "executionAvailable": false,
+          "schedulerOnline": false,
+          "schedulerTimeZone": "Asia/Shanghai",
+          "capabilities": ["conversation:read"],
+          "limits": {
+            "maxPageSize": 1,
+            "maxTextCharacters": 1,
+            "maxRequestBytes": 1,
+            "maxTimeoutMs": 1000,
+            "eventRetentionDays": 1,
+            "eventRetentionCount": 1,
+            "snapshotTtlMs": 1
+          },
+          "dataEpoch": "fixture-value"
+        }
+      ],
+      "nextCursor": "fixture-value",
+      "snapshotRevision": "9007199254740993"
+    }
+  },
+  "enums": {
+    "RunStatus": [
+      "queued",
+      "running",
+      "cancelling",
+      "succeeded",
+      "failed",
+      "cancelled",
+      "timed_out",
+      "review_required",
+      "reconciliation_required"
+    ],
+    "RunActivityType": [
+      "queued",
+      "started",
+      "progress",
+      "tool_call",
+      "tool_result",
+      "error",
+      "completed",
+      "cancelled",
+      "timed_out"
+    ],
+    "TurnState": [
+      "accepted",
+      "queued",
+      "running",
+      "cancelling",
+      "succeeded",
+      "failed",
+      "cancelled",
+      "timed_out",
+      "review_required",
+      "reconciliation_required"
+    ],
+    "OperationStatus": [
+      "accepted",
+      "applying",
+      "applied",
+      "rejected",
+      "reconciliation_required"
+    ],
+    "ConversationActivity": ["idle", "active", "needs_attention"],
+    "ConversationSource": [
+      "runtime_conversation",
+      "quick_chat",
+      "native_session",
+      "collaboration"
+    ],
+    "ConversationFilter": ["all", "active", "attention", "idle"],
+    "ScheduleState": ["enabled", "paused", "running", "blocked"],
+    "ConcurrencyPolicy": ["skip", "queue", "replace"],
+    "ExecutionStatus": [
+      "queued",
+      "running",
+      "succeeded",
+      "failed",
+      "cancelled",
+      "timed_out",
+      "skipped"
+    ],
+    "TriggerKind": ["manual", "scheduled", "missed"],
+    "MessageKind": ["user", "assistant", "control", "tool_summary", "error"],
+    "RestrictionReason": [
+      "requires_owner_action",
+      "unverified_policy",
+      "unsupported_source",
+      "profile_inactive",
+      "runtime_offline",
+      "login_required",
+      "project_binding_conflict",
+      "policy_revoked",
+      "unknown_state"
+    ],
+    "Scope": [
+      "conversation:read",
+      "conversation:create",
+      "conversation:advance",
+      "conversation:manage",
+      "schedule:read",
+      "schedule:manage",
+      "schedule:trigger",
+      "schedule:cancel",
+      "artifact:read"
+    ],
+    "EventType": [
+      "conversation.updated",
+      "message.upsert",
+      "run.updated",
+      "schedule.updated",
+      "schedule.execution.updated",
+      "artifact.created",
+      "permission.changed",
+      "owner.status",
+      "resource.deleted"
+    ],
+    "ClaimState": ["pending", "approved", "rejected", "expired", "exchanged"],
+    "ResourceType": [
+      "owner",
+      "conversation",
+      "message",
+      "turn",
+      "run",
+      "schedule",
+      "schedule_execution",
+      "artifact",
+      "permission"
+    ]
+  },
+  "compatibility": {
+    "legacyBootstrap": {
+      "protocolVersion": "fixture-value",
+      "ownerSpace": {
+        "ownerId": "fixture-value",
+        "spaceId": "fixture-value",
+        "label": "fixture-value",
+        "ownerType": "desktop",
+        "online": false,
+        "executionAvailable": false,
+        "schedulerOnline": false,
+        "schedulerTimeZone": "Asia/Shanghai",
+        "capabilities": ["conversation:read"],
+        "limits": {
+          "maxPageSize": 1,
+          "maxTextCharacters": 1,
+          "maxRequestBytes": 1,
+          "maxTimeoutMs": 1000,
+          "eventRetentionDays": 1,
+          "eventRetentionCount": 1,
+          "snapshotTtlMs": 1
+        },
+        "dataEpoch": "fixture-value"
+      },
+      "grantRevision": "9007199254740993",
+      "serverTime": "2026-10-04T03:00:00Z",
+      "dataEpoch": "fixture-value",
+      "capabilities": ["conversation:read"],
+      "limits": {
+        "maxPageSize": 1,
+        "maxTextCharacters": 1,
+        "maxRequestBytes": 1,
+        "maxTimeoutMs": 1000,
+        "eventRetentionDays": 1,
+        "eventRetentionCount": 1,
+        "snapshotTtlMs": 1
+      },
+      "snapshotCursor": "fixture-value"
+    },
+    "syncBootstrap": {
+      "protocolVersion": "fixture-value",
+      "ownerSpace": {
+        "ownerId": "fixture-value",
+        "spaceId": "fixture-value",
+        "label": "fixture-value",
+        "ownerType": "desktop",
+        "online": false,
+        "executionAvailable": false,
+        "schedulerOnline": false,
+        "schedulerTimeZone": "Asia/Shanghai",
+        "capabilities": ["conversation:read"],
+        "limits": {
+          "maxPageSize": 1,
+          "maxTextCharacters": 1,
+          "maxRequestBytes": 1,
+          "maxTimeoutMs": 1000,
+          "eventRetentionDays": 1,
+          "eventRetentionCount": 1,
+          "snapshotTtlMs": 1
+        },
+        "dataEpoch": "fixture-value"
+      },
+      "grantRevision": "9007199254740993",
+      "serverTime": "2026-10-04T03:00:00Z",
+      "dataEpoch": "fixture-value",
+      "capabilities": ["conversation:read"],
+      "limits": {
+        "maxPageSize": 1,
+        "maxTextCharacters": 1,
+        "maxRequestBytes": 1,
+        "maxTimeoutMs": 1000,
+        "eventRetentionDays": 1,
+        "eventRetentionCount": 1,
+        "snapshotTtlMs": 1
+      },
+      "snapshotCursor": "fixture-value",
+      "snapshotRevision": "17",
+      "protocolFeatures": ["owner.sync-window.v1", "message.client-echo.v1"]
+    },
+    "legacyUserMessage": {
+      "id": "fixture-value",
+      "conversationId": "fixture-value",
+      "messageSeq": "9007199254740993",
+      "kind": "user",
+      "content": "fixture-value",
+      "visibleToUser": false,
+      "createdAt": "2026-10-04T03:00:00Z"
+    },
+    "echoedUserMessage": {
+      "id": "fixture-value",
+      "conversationId": "fixture-value",
+      "messageSeq": "9007199254740993",
+      "kind": "user",
+      "content": "fixture-value",
+      "visibleToUser": false,
+      "createdAt": "2026-10-04T03:00:00Z",
+      "clientMessageId": "mobile-message-001"
+    },
+    "createTurnWithEcho": {
+      "text": "fixture prompt",
+      "clientMessageId": "mobile-message-001",
+      "executionPolicyId": "inspect-1",
+      "projectId": null,
+      "clientMutationId": "mutation-001"
+    },
+    "filteredEventSequences": ["4", "9"]
+  }
+}

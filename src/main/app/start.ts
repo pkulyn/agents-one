@@ -1,14 +1,19 @@
+import { resolveDesktopContentSecurityPolicy } from "../../shared/desktop-csp";
 import { app, BrowserWindow, safeStorage, session, shell } from "electron";
 import { join } from "path";
 import { optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../../resources/icon.png?asset";
 import { getPublicConnectionConfig } from "../config";
+import { verifyDesktopConfigurationAtStartup } from "./desktop-config-startup";
 import { stopHealthPolling } from "../hermes";
 import { stopAllDashboards } from "../dashboard";
 import { cleanupTempMediaFiles } from "../media";
 import { closeDbConnection } from "../db";
 import { recoverInterruptedAgentsOneRestore } from "../agents-one-backup";
+import { migrateLegacyAgentsOneData } from "../agents-one-data-migration";
+import { HERMES_HOME } from "../installer";
 import { isAgentsOneRestoreWriteLocked } from "../restore-write-lock";
+import { startDesktopMobileOwner } from "../mobile-control/desktop-owner";
 import {
   hardenAttachedWebContents,
   hardenWebviewPreferences,
@@ -64,9 +69,12 @@ let shutdownInProgress: Promise<void> | null = null;
 let shutdownComplete = false;
 let quitRequested = false;
 let trayController: TrayController | null = null;
+let stopMobileOwner: (() => void) | undefined;
 
 async function gracefulMainProcessShutdown(): Promise<void> {
   logApplicationDiagnostic("app.shutdown.started");
+  stopMobileOwner?.();
+  stopMobileOwner = undefined;
   stopAcceptingAgentRuntimeTasks();
   stopHealthPolling();
   stopTaskScheduleRunner();
@@ -138,7 +146,10 @@ export function startMainProcess(): void {
   setupUpdater({ getMainWindow: () => mainWindow });
 
   app.on("second-instance", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (app.isReady() && !quitRequested) createWindow();
+      return;
+    }
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
@@ -175,9 +186,15 @@ export function startMainProcess(): void {
     // A durable restore journal is replayed before any window, scheduler or
     // writable database connection can observe a partially replaced snapshot.
     try {
-      if (recoverInterruptedAgentsOneRestore()) {
+      if (recoverInterruptedAgentsOneRestore(HERMES_HOME)) {
         console.warn("[BACKUP] Recovered an interrupted Agents One restore.");
         logApplicationDiagnostic("backup.restore-recovered");
+      }
+      if (recoverInterruptedAgentsOneRestore()) {
+        console.warn(
+          "[BACKUP] Recovered an interrupted Agents One data restore.",
+        );
+        logApplicationDiagnostic("backup.data-restore-recovered");
       }
     } catch (error) {
       console.error("[BACKUP] Failed to recover interrupted restore", error);
@@ -185,7 +202,25 @@ export function startMainProcess(): void {
       app.exit(1);
       return;
     }
+    try {
+      if (migrateLegacyAgentsOneData({ legacyHermesHome: HERMES_HOME })) {
+        logApplicationDiagnostic("data.migrated-from-hermes-home");
+      }
+    } catch (error) {
+      console.error("[DATA] Failed to migrate Agents One data", error);
+      logErrorDiagnostic("data.migration-failed", error);
+      app.exit(1);
+      return;
+    }
+    if (!verifyDesktopConfigurationAtStartup()) {
+      logErrorDiagnostic("app.desktop-config-unavailable");
+      app.exit(1);
+      return;
+    }
     logApplicationDiagnostic("app.ready");
+    stopMobileOwner = startDesktopMobileOwner(() => {
+      logApplicationDiagnostic("mobile.owner.unavailable");
+    });
     app.on("browser-window-created", (_, window) => {
       optimizer.watchWindowShortcuts(window);
     });
@@ -209,16 +244,7 @@ export function startMainProcess(): void {
         responseHeaders: {
           ...details.responseHeaders,
           "Content-Security-Policy": [
-            "default-src 'self'; " +
-              "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
-              "style-src 'self' 'unsafe-inline'; " +
-              "img-src 'self' data: blob: file: https:; " +
-              "media-src 'self' data: blob: file: https:; " +
-              "connect-src 'self' blob: http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* https: wss:; " +
-              "font-src 'self' data:; " +
-              "frame-src 'self' https: http://127.0.0.1:* http://localhost:*; " +
-              "object-src 'none'; " +
-              "base-uri 'self';",
+            resolveDesktopContentSecurityPolicy(is.dev && !app.isPackaged),
           ],
         },
       });
@@ -240,6 +266,9 @@ export function startMainProcess(): void {
         quitRequested = true;
         app.quit();
       },
+    });
+    logApplicationDiagnostic("app.tray-status", {
+      available: trayController.isAvailable(),
     });
     // @lat: [[main-process#App Lifecycle#Notification-area tray and quick task composer#Task completion toast]]
     removeTaskScheduleStartedListener = onTaskScheduleRunStarted((event) => {
@@ -378,7 +407,19 @@ function createWindow(): void {
   mainWindow.on("close", (event) => {
     if (quitRequested || shutdownComplete) return;
     event.preventDefault();
-    mainWindow?.hide();
+    if (trayController?.isAvailable()) {
+      mainWindow?.hide();
+    } else {
+      // Without a usable tray, hiding would strand the app without controls.
+      // Route through the existing graceful task/database shutdown instead.
+      logErrorDiagnostic("app.tray-unavailable-on-close");
+      if (activeRuns.size + activeAgentRuntimeTaskCount() > 0) {
+        mainWindow?.minimize();
+        return;
+      }
+      quitRequested = true;
+      app.quit();
+    }
   });
 
   mainWindow.on("ready-to-show", () => mainWindow?.show());

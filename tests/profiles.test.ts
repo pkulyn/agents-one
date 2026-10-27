@@ -42,11 +42,14 @@ import {
 import { setProfileName } from "../src/main/profile-meta";
 
 const PROFILES_DIR = join(TEST_HOME, "profiles");
+const AGENTS_DATA_DIR = join(TEST_HOME, "data");
 
 beforeEach(() => {
+  vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", TEST_HOME);
   execFileSyncMock.mockReset();
   mkdirSync(TEST_HOME, { recursive: true });
   mkdirSync(PROFILES_DIR, { recursive: true });
+  mkdirSync(join(AGENTS_DATA_DIR, "profiles", "default"), { recursive: true });
 });
 
 afterEach(() => {
@@ -132,13 +135,14 @@ describe("listProfiles", () => {
 
   it("returns saved agent names while keeping profile ids internal", async () => {
     writeFileSync(
-      join(TEST_HOME, "profile-meta.json"),
+      join(AGENTS_DATA_DIR, "profiles", "default", "profile-meta.json"),
       JSON.stringify({ name: "Hermes CN" }),
     );
     const namedDir = join(PROFILES_DIR, "work");
     mkdirSync(namedDir, { recursive: true });
+    mkdirSync(join(AGENTS_DATA_DIR, "profiles", "work"), { recursive: true });
     writeFileSync(
-      join(namedDir, "profile-meta.json"),
+      join(AGENTS_DATA_DIR, "profiles", "work", "profile-meta.json"),
       JSON.stringify({ name: "Work Agent" }),
     );
 
@@ -168,7 +172,7 @@ describe("listProfiles", () => {
   it("marks the active profile correctly", async () => {
     const dir = join(PROFILES_DIR, "work");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(TEST_HOME, "active_profile"), "work\n");
+    writeFileSync(join(AGENTS_DATA_DIR, "active_profile"), "work\n");
 
     const profiles = await listProfiles();
     const work = profiles.find((p) => p.id === "work");
@@ -203,9 +207,13 @@ describe("listProfiles", () => {
 
   it("keeps a successful CLI-created profile when metadata cannot be written", async () => {
     execFileSyncMock.mockImplementation(() => {
-      mkdirSync(join(PROFILES_DIR, "agent", "profile-meta.json"), {
-        recursive: true,
-      });
+      mkdirSync(join(PROFILES_DIR, "agent"), { recursive: true });
+      mkdirSync(
+        join(AGENTS_DATA_DIR, "profiles", "agent", "profile-meta.json"),
+        {
+          recursive: true,
+        },
+      );
       return Buffer.from("");
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -297,63 +305,30 @@ describe("listProfiles", () => {
 });
 
 describe("setActiveProfile persistence", () => {
-  const activeFile = join(TEST_HOME, "active_profile");
+  const activeFile = join(AGENTS_DATA_DIR, "active_profile");
+  const hermesActiveFile = join(TEST_HOME, "active_profile");
 
-  it("persists a remote-only profile even when the local CLI rejects it", () => {
-    // In remote mode the selected profile lives on the REMOTE. The local
-    // `hermes profile use` validates against local profiles and raises
-    // FileNotFoundError for it; before the direct-write fallback that error
-    // was swallowed and ~/.hermes/active_profile never changed — so the
-    // selection reset to `default` on relaunch and activeProfileName() scoped
-    // the unified remote dashboard to the wrong profile.
-    execFileSyncMock.mockImplementation(() => {
-      throw new Error("Profile 'vps-agent' does not exist.");
-    });
-
-    setActiveProfile("vps-agent");
-
-    expect(readFileSync(activeFile, "utf-8").trim()).toBe("vps-agent");
-  });
-
-  it("persists even when there is no local hermes install at all", () => {
-    execFileSyncMock.mockImplementation(() => {
-      const err = new Error("spawn ENOENT") as Error & { code?: string };
-      err.code = "ENOENT";
-      throw err;
-    });
-
+  it("stores the Agents One profile without switching Hermes native state", () => {
+    writeFileSync(hermesActiveFile, "native-profile\n");
     setActiveProfile("work");
-
     expect(readFileSync(activeFile, "utf-8").trim()).toBe("work");
+    expect(readFileSync(hermesActiveFile, "utf-8")).toBe("native-profile\n");
+    expect(execFileSyncMock).not.toHaveBeenCalled();
   });
 
-  it("leaves the file alone when the CLI already persisted the selection", () => {
-    // Local mode: the CLI writes active_profile itself. The fallback must
-    // detect that via read-back and not double-write.
-    execFileSyncMock.mockImplementation(() => {
-      writeFileSync(activeFile, "work\n");
-      return Buffer.from("");
-    });
-
-    setActiveProfile("work");
-
-    expect(readFileSync(activeFile, "utf-8")).toBe("work\n");
-    expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+  it("persists a remote-only profile without requiring Hermes", () => {
+    setActiveProfile("vps-agent");
+    expect(readFileSync(activeFile, "utf-8").trim()).toBe("vps-agent");
+    expect(execFileSyncMock).not.toHaveBeenCalled();
   });
 
-  it("persists switching back to default when the CLI fails", () => {
+  it("persists switching back to the default profile", () => {
     writeFileSync(activeFile, "work\n");
-    execFileSyncMock.mockImplementation(() => {
-      throw new Error("no local install");
-    });
-
     setActiveProfile("default");
-
-    // Readers treat the literal "default" and a missing file identically.
     expect(readFileSync(activeFile, "utf-8").trim()).toBe("default");
   });
 
-  it("still rejects invalid names before touching CLI or file", () => {
+  it("rejects invalid names before touching Hermes or files", () => {
     expect(() => setActiveProfile("../outside")).toThrow(
       "Profile names may contain lowercase letters",
     );

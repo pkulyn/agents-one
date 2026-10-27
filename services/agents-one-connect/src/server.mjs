@@ -1,23 +1,25 @@
+import { CONNECT_STATE_LIMITS, pruneConnectState } from "./state-retention.mjs";
+import { createPairingAttemptLimiter } from "./pairing-admission.mjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createMobileControlService } from "./mobile-control.mjs";
 import { createServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import {
   chmodSync,
-  existsSync,
   mkdirSync,
   readFileSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 
 const PROTOCOL_VERSION = "1.1";
 const LEGACY_PROTOCOL_VERSION = "1.0";
 const PAIRING_TTL_MS = 5 * 60 * 1000;
-const PAIRING_ATTEMPT_WINDOW_MS = 60 * 1000;
-const PAIRING_MAX_ATTEMPTS = 8;
 const MAX_BODY_BYTES = 256 * 1024;
+const MAX_TUNNEL_FRAME_BYTES = 16 * 1024 * 1024;
+const MAX_STANDARD_TUNNEL_REQUEST_BYTES = 4 * 1024 * 1024;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MAX_PENDING_REQUESTS_PER_DEVICE = 128;
 const MAX_PENDING_REQUESTS_PER_RUNTIME = 32;
@@ -192,6 +194,20 @@ function sendSocketError(socket, requestId, status, code, message) {
   });
 }
 
+function settlePendingRequests(device, matches, code, message) {
+  for (const [wireId, pending] of device.pendingRequests || []) {
+    if (!matches(pending)) continue;
+    device.pendingRequests.delete(wireId);
+    sendSocketError(
+      pending.desktopSocket,
+      pending.requestId,
+      503,
+      code,
+      message,
+    );
+  }
+}
+
 function allowTunnelRequest(device, runtimeId, nowValue) {
   device.requestRates ||= new Map();
   const runtimeRate = device.requestRates.get(runtimeId);
@@ -286,6 +302,49 @@ function gatewayPath(path) {
   );
 }
 
+// Validate the complete persisted index before installing any authorization.
+// Unknown business fields and older optional Runtime fields remain compatible.
+function validateStoredState(state) {
+  if (!state || typeof state !== "object" || state.schemaVersion !== 1)
+    throw new Error("unsupported state");
+  for (const [collection, key] of [
+    ["pairings", "codeDigest"],
+    ["devices", "deviceId"],
+    ["desktopTokens", "value"],
+  ]) {
+    if (!Array.isArray(state[collection]))
+      throw new Error("invalid collection");
+    const seen = new Set();
+    for (const record of state[collection]) {
+      if (
+        !record ||
+        typeof record !== "object" ||
+        Array.isArray(record) ||
+        typeof record[key] !== "string" ||
+        !record[key] ||
+        seen.has(record[key])
+      )
+        throw new Error("invalid identity");
+      seen.add(record[key]);
+    }
+  }
+  for (const device of state.devices) {
+    if (device.runtimes === undefined) continue;
+    if (!Array.isArray(device.runtimes)) throw new Error("invalid runtimes");
+    const seen = new Set();
+    for (const runtime of device.runtimes) {
+      if (
+        !runtime ||
+        typeof runtime.runtimeId !== "string" ||
+        !runtime.runtimeId ||
+        seen.has(runtime.runtimeId)
+      )
+        throw new Error("invalid runtime identity");
+      seen.add(runtime.runtimeId);
+    }
+  }
+}
+
 export function createConnectService({
   now = () => Date.now(),
   logger = () => {},
@@ -298,27 +357,43 @@ export function createConnectService({
    * public deployment should either provide these or terminate TLS in a
    * trusted reverse proxy. */
   tls,
+  mobile,
 } = {}) {
+  if (
+    storagePath &&
+    mobile?.storagePath &&
+    resolve(storagePath).toLowerCase() ===
+      resolve(mobile.storagePath).toLowerCase()
+  ) {
+    throw new Error(
+      "Mobile authorization state must be separate from Gateway state.",
+    );
+  }
+  const mobileControl = createMobileControlService(mobile);
   const pairings = new Map();
   const devices = new Map();
   const runtimes = new Map();
   const desktopTokens = new Map();
-  const pairingAttempts = new Map();
+  const admitPairingSource = createPairingAttemptLimiter({ now });
 
   function allowPairingAttempt(req) {
-    const key = req.socket.remoteAddress || "unknown";
-    const current = pairingAttempts.get(key);
+    return admitPairingSource(req.socket.remoteAddress || "unknown");
+  }
+
+  let serviceStopping = false;
+  let closePromise;
+  let gatewayStateUnavailable = false;
+  let lastPruneAt = Number.NEGATIVE_INFINITY;
+  function pruneState(force = false) {
     const at = now();
-    if (!current || at - current.startedAt >= PAIRING_ATTEMPT_WINDOW_MS) {
-      pairingAttempts.set(key, { startedAt: at, count: 1 });
-      return true;
-    }
-    if (current.count >= PAIRING_MAX_ATTEMPTS) return false;
-    current.count += 1;
-    return true;
+    if (!force && at >= lastPruneAt && at - lastPruneAt < 1000) return;
+    pruneConnectState({ pairings, devices, runtimes, desktopTokens }, at);
+    lastPruneAt = at;
   }
 
   function persistState() {
+    if (gatewayStateUnavailable) return;
+    pruneState(true);
     if (typeof storagePath !== "string" || !storagePath.trim()) return;
     const state = {
       schemaVersion: 1,
@@ -354,18 +429,14 @@ export function createConnectService({
   function restoreState() {
     if (typeof storagePath !== "string" || !storagePath.trim()) return;
     const target = storagePath.trim();
-    if (!existsSync(target)) return;
     try {
       const state = JSON.parse(readFileSync(target, "utf8"));
-      if (!state || state.schemaVersion !== 1)
-        throw new Error("unsupported state");
-      for (const item of Array.isArray(state.pairings) ? state.pairings : []) {
-        if (typeof item.codeDigest !== "string") continue;
+      validateStoredState(state);
+      for (const item of state.pairings) {
         const { codeDigest, ...pairing } = item;
         pairings.set(codeDigest, pairing);
       }
-      for (const item of Array.isArray(state.devices) ? state.devices : []) {
-        if (!item || typeof item.deviceId !== "string") continue;
+      for (const item of state.devices) {
         const device = {
           ...item,
           socket: null,
@@ -383,10 +454,7 @@ export function createConnectService({
           );
         }
       }
-      for (const item of Array.isArray(state.desktopTokens)
-        ? state.desktopTokens
-        : []) {
-        if (typeof item.value !== "string") continue;
+      for (const item of state.desktopTokens) {
         const { value, ...record } = item;
         desktopTokens.set(value, record);
       }
@@ -407,16 +475,41 @@ export function createConnectService({
         }
       }
     } catch (cause) {
-      logger(cause);
-      // Keep the service available with an empty in-memory state. The corrupt
-      // file is never overwritten until a new mutation is made.
+      if (cause?.code === "ENOENT") return;
+      gatewayStateUnavailable = true;
+      pairings.clear();
+      devices.clear();
+      runtimes.clear();
+      desktopTokens.clear();
+      // JSON parse errors can quote credentials from the damaged input.
+      logger(
+        new Error(
+          "gateway_state_unavailable: restore valid Gateway state and restart.",
+        ),
+      );
     }
   }
 
   restoreState();
+  pruneState(true);
   const requestHandler = async (req, res) => {
     const url = new URL(req.url || "/", "http://connect.local");
     try {
+      if (serviceStopping) {
+        error(res, 503, "Connect service is stopping.", "service_stopping");
+        return;
+      }
+      if (await mobileControl.handle(req, res, url)) return;
+      if (gatewayStateUnavailable) {
+        error(
+          res,
+          503,
+          "Gateway state is unavailable; operator recovery required.",
+          "gateway_state_unavailable",
+        );
+        return;
+      }
+      pruneState();
       if (req.method === "GET" && url.pathname === "/connect/v1/health") {
         json(res, 200, { status: "ok", protocolVersion: PROTOCOL_VERSION });
         return;
@@ -425,6 +518,26 @@ export function createConnectService({
         req.method === "POST" &&
         url.pathname === "/connect/v1/pair/request"
       ) {
+        if (!allowPairingAttempt(req)) {
+          error(
+            res,
+            429,
+            "Too many pairing attempts; try again later.",
+            "pairing_rate_limited",
+          );
+          req.resume();
+          return;
+        }
+        if (pairings.size >= CONNECT_STATE_LIMITS.pairings) {
+          error(
+            res,
+            503,
+            "Pairing capacity reached; try again later.",
+            "pairing_capacity_reached",
+          );
+          req.resume();
+          return;
+        }
         const input = await bodyOf(req);
         const runtimeList = normalizeRuntimes(input);
         if (!runtimeList.length || !validPublicKey(input.publicKey)) {
@@ -432,6 +545,16 @@ export function createConnectService({
             res,
             422,
             "runtimes (or runtimeId), displayName and publicKey are required.",
+          );
+          return;
+        }
+        // A body may have waited while another request consumed the last slot.
+        if (pairings.size >= CONNECT_STATE_LIMITS.pairings) {
+          error(
+            res,
+            503,
+            "Pairing capacity reached; try again later.",
+            "pairing_capacity_reached",
           );
           return;
         }
@@ -470,6 +593,26 @@ export function createConnectService({
         req.method === "POST" &&
         url.pathname === "/connect/v1/pair/session"
       ) {
+        if (!allowPairingAttempt(req)) {
+          error(
+            res,
+            429,
+            "Too many pairing attempts; try again later.",
+            "pairing_rate_limited",
+          );
+          req.resume();
+          return;
+        }
+        if (pairings.size >= CONNECT_STATE_LIMITS.pairings) {
+          error(
+            res,
+            503,
+            "Pairing capacity reached; try again later.",
+            "pairing_capacity_reached",
+          );
+          req.resume();
+          return;
+        }
         const input = await bodyOf(req);
         const runtimeList = normalizeRuntimes(input);
         if (!runtimeList.length) {
@@ -477,6 +620,16 @@ export function createConnectService({
             res,
             422,
             "runtimes (or runtimeId) and displayName are required.",
+          );
+          return;
+        }
+        // A body may have waited while another request consumed the last slot.
+        if (pairings.size >= CONNECT_STATE_LIMITS.pairings) {
+          error(
+            res,
+            503,
+            "Pairing capacity reached; try again later.",
+            "pairing_capacity_reached",
           );
           return;
         }
@@ -527,7 +680,6 @@ export function createConnectService({
         req.method === "POST" &&
         url.pathname === "/connect/v1/pair/preview"
       ) {
-        const input = await bodyOf(req);
         if (!allowPairingAttempt(req)) {
           error(
             res,
@@ -535,8 +687,10 @@ export function createConnectService({
             "Too many pairing attempts; try again later.",
             "pairing_rate_limited",
           );
+          req.resume();
           return;
         }
+        const input = await bodyOf(req);
         const normalizedPairingCode = normalizeCode(input.pairingCode);
         if (!/^[A-Z2-9]{10}$/.test(normalizedPairingCode)) {
           error(res, 422, "Pairing code is invalid.", "pairing_invalid");
@@ -584,7 +738,6 @@ export function createConnectService({
         return;
       }
       if (req.method === "POST" && url.pathname === "/connect/v1/pair/claim") {
-        const input = await bodyOf(req);
         if (!allowPairingAttempt(req)) {
           error(
             res,
@@ -592,8 +745,10 @@ export function createConnectService({
             "Too many pairing attempts; try again later.",
             "pairing_rate_limited",
           );
+          req.resume();
           return;
         }
+        const input = await bodyOf(req);
         const normalizedPairingCode = normalizeCode(input.pairingCode);
         if (!/^[A-Z2-9]{10}$/.test(normalizedPairingCode)) {
           error(res, 422, "Pairing code is invalid.", "pairing_invalid");
@@ -623,6 +778,15 @@ export function createConnectService({
             403,
             "Runtime ID does not match the pairing request.",
             "permission_denied",
+          );
+          return;
+        }
+        if (devices.size >= CONNECT_STATE_LIMITS.devices) {
+          error(
+            res,
+            503,
+            "Device capacity reached; revoke unused devices and try again later.",
+            "device_capacity_reached",
           );
           return;
         }
@@ -733,7 +897,6 @@ export function createConnectService({
         req.method === "POST" &&
         url.pathname === "/connect/v1/pair/exchange"
       ) {
-        const input = await bodyOf(req);
         if (!allowPairingAttempt(req)) {
           error(
             res,
@@ -741,8 +904,10 @@ export function createConnectService({
             "Too many pairing attempts; try again later.",
             "pairing_rate_limited",
           );
+          req.resume();
           return;
         }
+        const input = await bodyOf(req);
         const code = normalizeCode(input.pairingCode);
         if (!/^[A-Z2-9]{10}$/.test(code)) {
           error(res, 422, "Pairing code is invalid.", "pairing_invalid");
@@ -773,6 +938,15 @@ export function createConnectService({
             403,
             "Connector identity does not match the pairing session.",
             "permission_denied",
+          );
+          return;
+        }
+        if (devices.size >= CONNECT_STATE_LIMITS.devices) {
+          error(
+            res,
+            503,
+            "Device capacity reached; revoke unused devices and try again later.",
+            "device_capacity_reached",
           );
           return;
         }
@@ -877,6 +1051,7 @@ export function createConnectService({
           error(res, 401, "Device authorization failed.", "unauthorized");
           return;
         }
+        if (device.state !== "revoked") device.revokedAt = now();
         device.state = "revoked";
         for (const runtime of device.runtimes || []) {
           const key = runtimeKey(device.deviceId, runtime.runtimeId);
@@ -1136,9 +1311,22 @@ export function createConnectService({
 
   const wss = new WebSocketServer({
     noServer: true,
-    maxPayload: 4 * 1024 * 1024,
+    maxPayload: MAX_TUNNEL_FRAME_BYTES,
   });
   server.on("upgrade", (req, socket, head) => {
+    if (serviceStopping) {
+      socket.end(
+        "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+      );
+      return;
+    }
+    if (mobileControl.upgrade(req, socket, head)) return;
+    if (gatewayStateUnavailable) {
+      socket.end(
+        "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+      );
+      return;
+    }
     const url = new URL(req.url || "/", "http://connect.local");
     if (url.pathname !== "/connect/v1/tunnel") {
       socket.destroy();
@@ -1200,8 +1388,16 @@ export function createConnectService({
               .map((item) => item.runtimeId)
               .filter((id) => allowed.has(id)),
           );
-          if (device.socket && device.socket !== socket)
-            closeSocket(device.socket, 4002, "replaced by new connection");
+          if (device.socket && device.socket !== socket) {
+            const previous = device.socket;
+            settlePendingRequests(
+              device,
+              (pending) => pending.connectorSocket === previous,
+              "connector_offline",
+              "The Connector connection was replaced.",
+            );
+            closeSocket(previous, 4002, "replaced by new connection");
+          }
           device.socket = socket;
           device.lastSeenAt = now();
           const connector = normalizeConnectorMetadata(hello.connector);
@@ -1257,6 +1453,16 @@ export function createConnectService({
             return;
           }
           device.desktopSockets ||= new Map();
+          const previous = device.desktopSockets.get(hello.runtimeId);
+          if (previous && previous !== socket) {
+            settlePendingRequests(
+              device,
+              (pending) => pending.desktopSocket === previous,
+              "desktop_replaced",
+              "The Desktop connection was replaced.",
+            );
+            closeSocket(previous, 4002, "replaced by new connection");
+          }
           device.desktopSockets.set(hello.runtimeId, socket);
           identity = { role: "desktop", device, runtimeId: hello.runtimeId };
           const online =
@@ -1279,8 +1485,32 @@ export function createConnectService({
     });
     socket.on("message", (raw) => {
       if (!identity) return;
+      if (identity.role === "connector" && identity.device.socket !== socket)
+        return;
+      if (
+        identity.role === "desktop" &&
+        identity.device.desktopSockets?.get(identity.runtimeId) !== socket
+      )
+        return;
       try {
+        const rawBytes = Buffer.isBuffer(raw)
+          ? raw.length
+          : Buffer.byteLength(String(raw));
         let frame = tunnelFrame(JSON.parse(raw.toString("utf8")));
+        if (
+          rawBytes > MAX_STANDARD_TUNNEL_REQUEST_BYTES &&
+          frame.type === "request" &&
+          !(frame.method === "POST" && frame.path === "/artifacts")
+        ) {
+          sendSocketError(
+            socket,
+            frame.requestId,
+            413,
+            "request_body_too_large",
+            "Only artifact uploads may exceed the standard tunnel request limit.",
+          );
+          return;
+        }
         if (frame.type === "heartbeat") {
           identity.device.lastSeenAt = now();
           sendSocket(socket, { type: "heartbeat_ack", at: now() });
@@ -1295,9 +1525,15 @@ export function createConnectService({
           }
           const pending = identity.device.pendingRequests || new Map();
           const pendingForRuntime = [...pending.values()].filter(
-            (runtimeId) => runtimeId === identity.runtimeId,
+            (record) => record.runtimeId === identity.runtimeId,
           ).length;
-          if (pending.has(frame.requestId)) {
+          if (
+            [...pending.values()].some(
+              (record) =>
+                record.desktopSocket === socket &&
+                record.requestId === frame.requestId,
+            )
+          ) {
             sendSocketError(
               socket,
               frame.requestId,
@@ -1323,67 +1559,83 @@ export function createConnectService({
           }
           frame = { ...frame, runtimeId: identity.runtimeId };
         }
-        let target;
         if (identity.role === "connector") {
-          const runtimeId =
-            frame.runtimeId ||
-            (frame.type === "response"
-              ? identity.device.pendingRequests?.get(frame.requestId)
-              : undefined);
-          target = runtimeId
-            ? identity.device.desktopSockets?.get(runtimeId)
-            : undefined;
-          if (frame.type === "response" && runtimeId) {
-            identity.device.pendingRequests?.delete(frame.requestId);
+          if (frame.type === "response") {
+            const pending = identity.device.pendingRequests?.get(
+              frame.requestId,
+            );
+            if (
+              !pending ||
+              pending.connectorSocket !== socket ||
+              (frame.runtimeId && frame.runtimeId !== pending.runtimeId)
+            )
+              return;
+            identity.device.pendingRequests.delete(frame.requestId);
+            sendSocket(pending.desktopSocket, {
+              ...frame,
+              requestId: pending.requestId,
+            });
+          } else if (frame.type === "event") {
+            const target = identity.device.desktopSockets?.get(frame.runtimeId);
+            if (target) sendSocket(target, frame);
           }
-        } else {
-          const runtimeId = identity.runtimeId;
-          if (frame.type === "request") {
-            identity.device.pendingRequests ||= new Map();
-            identity.device.pendingRequests?.set(frame.requestId, runtimeId);
+        } else if (frame.type === "request") {
+          const target = identity.device.socket;
+          const runtimeOnline =
+            !identity.device.onlineRuntimeIds ||
+            identity.device.onlineRuntimeIds.has(identity.runtimeId);
+          if (!target || target.readyState !== 1 || !runtimeOnline) {
+            const code =
+              target?.readyState === 1 && !runtimeOnline
+                ? "runtime_offline"
+                : "connector_offline";
+            sendSocketError(
+              socket,
+              frame.requestId,
+              503,
+              code,
+              code === "runtime_offline"
+                ? "The requested Runtime is offline."
+                : "The Connector is offline.",
+            );
+            return;
           }
-          target = identity.device.socket;
-        }
-        if (target) {
-          sendSocket(target, frame);
-        } else if (frame.type === "request" && identity.role === "desktop") {
-          const code = identity.device.socket
-            ? identity.device.onlineRuntimeIds &&
-              !identity.device.onlineRuntimeIds.has(identity.runtimeId)
-              ? "runtime_offline"
-              : "connector_offline"
-            : "connector_offline";
-          sendSocket(socket, {
-            type: "response",
+          const wireId = "tunnel_" + randomUUID();
+          identity.device.pendingRequests ||= new Map();
+          identity.device.pendingRequests.set(wireId, {
             requestId: frame.requestId,
-            status: code === "runtime_offline" ? 503 : 503,
-            body: {
-              error: {
-                code,
-                message:
-                  code === "runtime_offline"
-                    ? "The requested Runtime is offline."
-                    : "The Connector is offline.",
-              },
-            },
+            runtimeId: identity.runtimeId,
+            desktopSocket: socket,
+            connectorSocket: target,
           });
-          identity.device.pendingRequests?.delete(frame.requestId);
+          sendSocket(target, { ...frame, requestId: wireId });
         }
       } catch {
         closeSocket(socket, 4000, "invalid tunnel frame");
       }
     });
     socket.on("close", () => {
+      clearTimeout(helloTimeout);
       if (!identity) return;
-      if (identity.role === "connector" && identity.device.socket === socket)
-        identity.device.socket = null;
+      if (identity.role === "connector") {
+        if (identity.device.socket === socket) {
+          identity.device.socket = null;
+          identity.device.onlineRuntimeIds = new Set();
+        }
+        settlePendingRequests(
+          identity.device,
+          (pending) => pending.connectorSocket === socket,
+          "connector_offline",
+          "The Connector disconnected before responding.",
+        );
+      }
       if (identity.role === "desktop") {
         const sockets = identity.device.desktopSockets;
         if (sockets?.get(identity.runtimeId) === socket)
           sockets.delete(identity.runtimeId);
-        for (const [requestId, runtimeId] of identity.device.pendingRequests ||
+        for (const [requestId, pending] of identity.device.pendingRequests ||
           []) {
-          if (runtimeId === identity.runtimeId)
+          if (pending.desktopSocket === socket)
             identity.device.pendingRequests.delete(requestId);
         }
       }
@@ -1402,18 +1654,55 @@ export function createConnectService({
       });
       return server.address();
     },
-    async close() {
-      persistState();
-      for (const device of devices.values()) {
-        closeSocket(device.socket, 1001, "service stopping");
-        for (const socket of device.desktopSockets?.values() || []) {
-          closeSocket(socket, 1001, "service stopping");
+    close() {
+      if (closePromise) return closePromise;
+      serviceStopping = true;
+      closePromise = (async () => {
+        const failures = [];
+        const httpClosed = new Promise((resolve, reject) =>
+          server.close((cause) =>
+            cause && cause.code !== "ERR_SERVER_NOT_RUNNING"
+              ? reject(cause)
+              : resolve(),
+          ),
+        );
+        const socketsClosed = new Promise((resolve) => wss.close(resolve));
+        const forceClose = setTimeout(() => {
+          for (const socket of wss.clients) socket.terminate();
+          server.closeAllConnections();
+        }, 1000);
+        try {
+          try {
+            await mobileControl.close();
+          } catch (cause) {
+            failures.push(cause);
+          }
+          try {
+            persistState();
+          } catch (cause) {
+            failures.push(cause);
+          }
+          for (const device of devices.values()) {
+            settlePendingRequests(
+              device,
+              () => true,
+              "service_stopping",
+              "The Connect service is stopping.",
+            );
+          }
+          // Include unauthenticated peers, not just sockets registered on a device.
+          for (const socket of wss.clients)
+            closeSocket(socket, 1001, "service stopping");
+          const results = await Promise.allSettled([httpClosed, socketsClosed]);
+          for (const result of results)
+            if (result.status === "rejected") failures.push(result.reason);
+        } finally {
+          clearTimeout(forceClose);
         }
-      }
-      await new Promise((resolve) => wss.close(resolve));
-      await new Promise((resolve, reject) =>
-        server.close((cause) => (cause ? reject(cause) : resolve())),
-      );
+        if (failures.length)
+          throw new AggregateError(failures, "Connect shutdown failed.");
+      })();
+      return closePromise;
     },
   };
 }

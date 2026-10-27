@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../I18nProvider";
 import SettingsModal from "./SettingsModal";
@@ -14,8 +14,37 @@ vi.mock("./LogsPane", () => ({ default: () => <div>Logs</div> }));
 vi.mock("./VoiceInputPane", () => ({
   default: () => <div>Voice input pane</div>,
 }));
+vi.mock("./MobileConnectionPane", () => ({
+  default: ({ profile }: { profile?: string }) => (
+    <div>Mobile Owner settings: {profile}</div>
+  ),
+}));
 
 describe("SettingsModal navigation", () => {
+  // @lat: [[desktop-updates#Cumulative desktop feature acceptance]]
+  it("keeps mobile access reachable and opens its profile-scoped pane", async () => {
+    render(
+      <I18nProvider>
+        <SettingsModal open profile="personal" onClose={vi.fn()} />
+      </I18nProvider>,
+    );
+    const entry = document.querySelector(
+      '[data-desktop-feature="mobile-owner-settings"]',
+    );
+    expect(entry).not.toBeNull();
+    expect(entry?.closest("nav")).toBe(
+      document.querySelector(".settings-modal-nav"),
+    );
+    expect(
+      screen.queryByText("Mobile Owner settings: personal"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(entry!);
+    expect(entry).toHaveClass("active");
+    await waitFor(() =>
+      expect(screen.getByText("Mobile Owner settings: personal")).toBeVisible(),
+    );
+  });
+
   it("uses one general group without a separate Agents One heading", () => {
     render(
       <I18nProvider>

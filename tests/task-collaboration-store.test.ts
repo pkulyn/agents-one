@@ -10,10 +10,12 @@ async function loadStore(): Promise<
 > {
   vi.resetModules();
   vi.stubEnv("HERMES_HOME", testHome);
+  vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
   // The store only needs these three helpers. Mock them immediately before the
   // dynamic import so this JSON unit test cannot transitively load Electron.
   vi.doMock("../src/main/utils", () => ({
     profileHome: () => testHome,
+    agentsOneProfileHome: () => testHome,
     getActiveProfileNameSync: () => "default",
     safeWriteFile: (path: string, data: string) => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports

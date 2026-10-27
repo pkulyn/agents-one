@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useRef } from "react";
-import { FolderOpen, FolderTree, X, Check } from "lucide-react";
+import { FolderOpen, FolderSearch, X, Check } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 interface ContextFolderChipProps {
@@ -226,16 +226,20 @@ export const ContextFolderChip = memo(function ContextFolderChip({
         <X size={11} />
       </button>
       <button
-        className={`chat-meta-chip-icon${
-          worktreeVisible ? " chat-meta-chip-icon--active" : ""
+        className={`chat-tool-btn${
+          worktreeVisible ? " chat-tool-btn-active" : ""
         }`}
+        aria-pressed={worktreeVisible}
+        aria-label={
+          worktreeVisible ? t("chat.hideWorktree") : t("chat.showWorktree")
+        }
         onClick={onToggleWorktree}
         title={
           worktreeVisible ? t("chat.hideWorktree") : t("chat.showWorktree")
         }
         type="button"
       >
-        <FolderTree size={13} />
+        <FolderSearch size={18} />
       </button>
       {isOpen && renderDropdown()}
     </div>

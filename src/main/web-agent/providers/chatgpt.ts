@@ -1,5 +1,6 @@
 import type {
   WebAgentConversationRef,
+  WebAgentResponseSnapshot,
   WebAgentStagedFile,
   WebAgentSubmissionReceipt,
 } from "../../../shared/web-agent";
@@ -21,6 +22,98 @@ import { isAllowedWebAgentNavigationUrl } from "../../../shared/web-agent";
 export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
   override readonly provider = "chatgpt" as const;
   override readonly chatUrl = "https://chatgpt.com/";
+  private retriedFullPageError = false;
+  private fullPageRetryStartedAt = 0;
+
+  override async readResponse(
+    page: WebAgentPage,
+  ): Promise<WebAgentResponseSnapshot> {
+    const waitingSnapshot = (): WebAgentResponseSnapshot => ({
+      text: "",
+      hash: "",
+      hasAssistantMessage: false,
+      isGenerating: true,
+      hasUploadInProgress: false,
+      hasError: false,
+      observedAt: Date.now(),
+    });
+    let errorPage: "none" | "retrying" | "failed";
+    try {
+      errorPage = await page.evaluate<typeof errorPage>(`
+      (() => {
+        const body = String(document.body?.innerText || document.body?.textContent || '').trim();
+        if (!/^(?:ChatGPT 遇到了问题|ChatGPT has encountered a problem)/i.test(body) ||
+            !/(?:出了点问题。请重试以继续|something went wrong)/i.test(body) ||
+            document.querySelector('textarea, [contenteditable="true"]')) return 'none';
+        const retry = [...document.querySelectorAll('button')].find((button) => {
+          const rect = button.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && /^(?:重试|retry)$/i.test(String(button.innerText || button.textContent || '').trim());
+        });
+        if (!retry || ${this.retriedFullPageError}) return 'failed';
+        retry.click();
+        return 'retrying';
+      })()
+    `);
+    } catch (error) {
+      // A retry navigates the page and can briefly destroy its JS context.
+      if (
+        this.fullPageRetryStartedAt &&
+        Date.now() - this.fullPageRetryStartedAt < 10_000
+      )
+        return waitingSnapshot();
+      throw error;
+    }
+    if (errorPage === "retrying") {
+      this.retriedFullPageError = true;
+      this.fullPageRetryStartedAt = Date.now();
+      // The retry reloads an existing conversation; never submit the prompt again.
+      return waitingSnapshot();
+    }
+    if (errorPage === "failed") {
+      if (
+        this.fullPageRetryStartedAt &&
+        Date.now() - this.fullPageRetryStartedAt < 10_000
+      )
+        return waitingSnapshot();
+      return {
+        text: "",
+        hash: "",
+        hasAssistantMessage: false,
+        isGenerating: false,
+        hasUploadInProgress: false,
+        hasError: true,
+        errorCode: "provider_error",
+        observedAt: Date.now(),
+      };
+    }
+    const snapshot = await super.readResponse(page);
+    if (!snapshot.hasAssistantMessage || snapshot.hasError) return snapshot;
+    const completion = await page.evaluate<{
+      modernAnswer: boolean;
+      completed: boolean;
+    }>(`
+      (() => {
+        const visible = (element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+        };
+        const modernAnswer = [...document.querySelectorAll('[data-markdown-text-style="assistant-message"]')].some(visible);
+        const status = [...document.querySelectorAll('[role="status"][aria-live="polite"]')]
+          .map((element) => String(element.textContent || '').trim())
+          .filter(Boolean).at(-1) || '';
+        return {
+          modernAnswer,
+          completed: /^(?:回答已完成|response completed?|answer completed?)$/i.test(status),
+        };
+      })()
+    `);
+    // Modern ChatGPT can pause after a provisional sentence while tools work.
+    // Its accessibility status is the completion receipt, not text stability.
+    return completion.modernAnswer && !completion.completed
+      ? { ...snapshot, isGenerating: true }
+      : snapshot;
+  }
 
   override async probeLogin(page: WebAgentPage): Promise<DoubaoLoginProbe> {
     const snapshot = await page.evaluate<{
@@ -69,9 +162,11 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
       await page.navigate(this.chatUrl);
     }
     let result = await this.probeLogin(page);
+    // Login redirects can finish before ChatGPT hydrates its composer. Keep
+    // polling the same isolated page before declaring the UI unsupported.
     for (
       let attempt = 0;
-      result.state === "unsupported" && attempt < 24;
+      result.state === "unsupported" && attempt < 120;
       attempt += 1
     ) {
       await page.sleep(250);
@@ -89,22 +184,34 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
           const rect = element.getBoundingClientRect();
           return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
         };
-        const labels = [...document.querySelectorAll('button, [role="tab"], [role="button"], div, span')]
+        const controlFor = (element) => element.closest('button, [role="tab"], [role="radio"], [role="button"], a, label') || element;
+        const candidates = [...document.querySelectorAll('button, [role="tab"], [role="radio"], [role="button"], a, label, span')]
           .filter(visible)
-          .map((element) => ({ element, label: normalize(element.textContent || element.getAttribute('aria-label')) }))
-          .filter(({ label }) => /^(?:聊天|工作|对话|chat|work)$/i.test(label));
-        const active = labels.find(({ element }) =>
-          element.getAttribute('aria-selected') === 'true' || element.getAttribute('data-state') === 'active' ||
-          element.getAttribute('data-state') === 'on' ||
-          element.getAttribute('aria-checked') === 'true' ||
-          element.getAttribute('data-active') === 'true' || /selected|active/i.test(String(element.className || ''))
+          .map((element) => ({
+            element,
+            control: controlFor(element),
+            label: normalize(element.getAttribute('aria-label') || element.textContent),
+          }))
+          .filter(({ label, control }) => /^(?:聊天|工作|对话|chat|work)$/i.test(label) &&
+            control.matches('button, [role="tab"], [role="radio"], [role="button"], a, label') && visible(control));
+        const modeOf = (label) => /^(?:工作|work)$/i.test(label) ? 'work' : 'chat';
+        const groupFor = (control) => control.closest('[role="tablist"], [role="radiogroup"], [role="group"]') || control.parentElement;
+        const labels = candidates.filter(({ control, label }) => candidates.some((other) =>
+          groupFor(control) && groupFor(control) === groupFor(other.control) && modeOf(label) !== modeOf(other.label)
+        ));
+        const isActive = (element) => element && (
+          element.getAttribute('aria-selected') === 'true' || element.getAttribute('aria-pressed') === 'true' ||
+          element.getAttribute('aria-checked') === 'true' || /^(?:page|true)$/.test(element.getAttribute('aria-current') || '') ||
+          /^(?:active|on|checked)$/.test(element.getAttribute('data-state') || '') ||
+          element.getAttribute('data-active') === 'true' ||
+          element.matches('input:checked') || Boolean(element.querySelector('input:checked')) ||
+          /(?:^|[\\s_-])(?:selected|active)(?:$|[\\s_-])/i.test(String(element.className || ''))
         );
-        const activeLabel = active?.label || '';
+        const activeModes = [...new Set(labels
+          .filter(({ element, control }) => isActive(element) || isActive(control))
+          .map(({ label }) => modeOf(label)))];
         const body = normalize(document.body?.innerText || document.body?.textContent || '');
-        const mode = /^(?:工作|work)$/i.test(activeLabel) ? 'work' :
-          /^(?:聊天|对话|chat)$/i.test(activeLabel) ? 'chat' :
-          /处理任何事务|chatgpt work|工作模式/i.test(body) ? 'work' :
-          /消息|ask anything|有什么可以帮忙/i.test(body) ? 'chat' : 'unknown';
+        const mode = activeModes.length === 1 ? activeModes[0] : 'unknown';
         const workUnavailable = /工作.{0,80}(?:额度|次数|上限|不可用|受限|限制)|(?:额度|次数|上限).{0,80}工作|work.{0,80}(?:quota|limit|unavailable|exhausted)|切换到聊天|switch to chat/i.test(body);
         return { mode, workUnavailable, ...(workUnavailable ? { reason: 'ChatGPT 工作模式额度或次数暂不可用。' } : {}) };
       })()
@@ -130,9 +237,17 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
       return { ...state, fallbackUsed: false };
     const clicked = await page.evaluate<boolean>(`((target) => {
       const visible = (element) => { const s = window.getComputedStyle(element); const r = element.getBoundingClientRect(); return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0; };
-      const labels = [...document.querySelectorAll('button, [role="tab"], [role="button"], div, span')].filter(visible);
-      const label = labels.find((element) => new RegExp(target === 'work' ? '^(?:工作|work)$' : '^(?:聊天|对话|chat)$', 'i').test(String(element.textContent || element.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim()));
-      const targetElement = label?.closest('button, [role="tab"], [role="button"], a') || label;
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const controls = [...document.querySelectorAll('button, [role="tab"], [role="radio"], [role="button"], a, label, span')]
+        .filter(visible)
+        .map((element) => ({ element, control: element.closest('button, [role="tab"], [role="radio"], [role="button"], a, label'), label: normalize(element.getAttribute('aria-label') || element.textContent) }))
+        .filter(({ control, label }) => control && visible(control) && /^(?:聊天|工作|对话|chat|work)$/i.test(label));
+      const modeOf = (label) => /^(?:工作|work)$/i.test(label) ? 'work' : 'chat';
+      const groupFor = (control) => control.closest('[role="tablist"], [role="radiogroup"], [role="group"]') || control.parentElement;
+      const candidate = controls.find(({ control, label }) => modeOf(label) === target && controls.some((other) =>
+        groupFor(control) && groupFor(control) === groupFor(other.control) && modeOf(label) !== modeOf(other.label)
+      ));
+      const targetElement = candidate?.control;
       if (!targetElement) return false;
       targetElement.click(); return true;
     })(${JSON.stringify(preferred)})`);
@@ -159,7 +274,9 @@ export class ChatGPTProviderAdapter extends DoubaoProviderAdapter {
       throw new Error(
         "WEB_PAGE_UNSUPPORTED: 未能确认 ChatGPT 已切换到工作模式。",
       );
-    return { ...state, fallbackUsed: false };
+    throw new Error(
+      "WEB_PAGE_UNSUPPORTED: 未能确认 ChatGPT 已切换到对话模式。",
+    );
   }
 
   override async createConversation(

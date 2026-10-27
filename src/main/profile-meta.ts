@@ -1,7 +1,7 @@
 import { join } from "path";
 import { promises as fs } from "fs";
 import {
-  profileHome,
+  agentsOneProfileHome,
   isValidProfileName,
   PROFILE_NAME_ERROR,
   safeWriteFile,
@@ -31,7 +31,7 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const MAX_AVATAR_BYTES = 1_500_000;
 
 function metaPath(name: string): string {
-  return join(profileHome(name), META_FILE);
+  return join(agentsOneProfileHome(name), META_FILE);
 }
 
 export async function readProfileMeta(name: string): Promise<ProfileMeta> {

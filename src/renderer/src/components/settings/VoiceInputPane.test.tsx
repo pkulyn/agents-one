@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../I18nProvider";
 import VoiceInputPane from "./VoiceInputPane";
@@ -111,5 +117,97 @@ describe("VoiceInputPane", () => {
         "default",
       );
     });
+  });
+
+  function delayed<T>(): { promise: Promise<T>; resolve(value: T): void } {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((yes) => {
+      resolve = yes;
+    });
+    return { promise, resolve };
+  }
+  const configA = {
+    enabled: true,
+    url: "https://a.example.test/__saved__",
+    hasApiKey: true,
+    configured: true,
+  };
+  const configB = {
+    enabled: true,
+    url: "https://b.example.test/__saved__",
+    hasApiKey: true,
+    configured: true,
+  };
+  it("does not apply an old profile load to the new profile", async () => {
+    const old = delayed<typeof configA>();
+    api.getVoiceInputConfig.mockImplementation((profile: string) =>
+      profile === "a" ? old.promise : Promise.resolve(configB),
+    );
+    const view = render(
+      <I18nProvider>
+        <VoiceInputPane profile="a" />
+      </I18nProvider>,
+    );
+    view.rerender(
+      <I18nProvider>
+        <VoiceInputPane profile="b" />
+      </I18nProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Voice service URL")).toHaveValue(
+        configB.url,
+      ),
+    );
+    await act(async () => old.resolve(configA));
+    expect(screen.getByLabelText("Voice service URL")).toHaveValue(configB.url);
+  });
+  it("does not apply an old profile save result to the new profile", async () => {
+    const old = delayed<typeof configA>();
+    api.getVoiceInputConfig.mockImplementation((profile: string) =>
+      Promise.resolve(profile === "a" ? configA : configB),
+    );
+    api.saveVoiceInputConfig.mockReturnValue(old.promise);
+    const view = render(
+      <I18nProvider>
+        <VoiceInputPane profile="a" />
+      </I18nProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    view.rerender(
+      <I18nProvider>
+        <VoiceInputPane profile="b" />
+      </I18nProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Voice service URL")).toHaveValue(
+        configB.url,
+      ),
+    );
+    await act(async () => old.resolve(configA));
+    expect(screen.getByLabelText("Voice service URL")).toHaveValue(configB.url);
+    expect(api.saveVoiceInputConfig).toHaveBeenCalledWith(
+      expect.any(Object),
+      "a",
+    );
+  });
+  it("keeps controls disabled when loading the profile fails", async () => {
+    api.getVoiceInputConfig.mockRejectedValue(
+      Error("fixture config unavailable"),
+    );
+    render(
+      <I18nProvider>
+        <VoiceInputPane profile="failure" />
+      </I18nProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "fixture config unavailable",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByLabelText("Voice service URL")).toBeDisabled();
   });
 });

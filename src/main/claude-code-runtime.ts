@@ -1,9 +1,16 @@
+import { assertClaudeWorkspaceBoundary } from "./claude-workspace-policy";
+import { prepareClaudeQueryEnvironment } from "./claude-query-context";
+import { claudeChildEnvironment } from "./claude-environment";
+import { verifyClaudeStrictCapabilities } from "./claude-capabilities";
+import { assertClaudeNonExecutingUserConfig } from "./claude-config-policy";
+import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync } from "fs";
 import { promisify } from "util";
+import { StringDecoder } from "node:string_decoder";
 import { delimiter, dirname, extname, join, relative, resolve } from "path";
 import { randomUUID } from "crypto";
-import { profileHome } from "./utils";
+import { agentsOneProfileHome } from "./utils";
 import { prepareRuntimeInputs } from "./runtime-inputs";
 import { protectWorkspaceFromRemoval } from "./workspace-protection";
 import { terminateProcessTree } from "./process-control";
@@ -127,7 +134,7 @@ function changedWorkspaceFiles(
   return changed.sort().slice(0, 200);
 }
 
-function configuredExecutable(config: ClaudeCodeRuntimeConfig): string {
+export function configuredExecutable(config: ClaudeCodeRuntimeConfig): string {
   const configured = config.executablePath?.trim();
   if (configured) return configured;
   if (process.platform !== "win32") return "claude";
@@ -314,7 +321,7 @@ function configuredProbeWorkspace(
 
 function conversationCwd(profile?: string): string {
   const root = join(
-    profileHome(profile),
+    agentsOneProfileHome(profile),
     "desktop",
     "runtime-chat",
     "claude-code",
@@ -325,7 +332,7 @@ function conversationCwd(profile?: string): string {
 
 function safeWorktreePath(profile: string | undefined, id: string): string {
   const root = resolve(
-    profileHome(profile),
+    agentsOneProfileHome(profile),
     "desktop",
     "worktrees",
     "claude-code",
@@ -335,10 +342,6 @@ function safeWorktreePath(profile: string | undefined, id: string): string {
     throw new Error("Invalid worktree path.");
   mkdirSync(root, { recursive: true });
   return target;
-}
-
-function childEnvironment(): NodeJS.ProcessEnv {
-  return { ...process.env };
 }
 
 /** This argument contract is intentionally kept pure and regression-tested. */
@@ -357,15 +360,30 @@ export function claudeCodeExecArgs(
     "stream-json",
     "--include-partial-messages",
   ];
-  if (mode !== "analysis") args.push("--dangerously-skip-permissions");
-  else args.push("--permission-mode", "plan");
+  const strict = mode === "analysis" || mode === "safe_write";
+  if (strict) {
+    args.push(
+      "--restricted",
+      "--safe-mode",
+      "--strict-mcp-config",
+      "--mcp-config",
+      JSON.stringify({ mcpServers: {} }),
+      "--permission-prompts",
+      "none",
+      "--permission-mode",
+      mode === "analysis" ? "plan" : "acceptEdits",
+      "--tools",
+      mode === "analysis" ? "Read,Glob,Grep" : "Read,Write,Edit,Glob,Grep",
+    );
+  } else args.push("--dangerously-skip-permissions");
   if (options.model?.trim()) args.push("--model", options.model.trim());
   if (options.resume) args.push("--resume", options.sessionId);
   else args.push("--session-id", options.sessionId);
   // `--add-dir` accepts a variadic list. Without the option terminator Claude
   // treats the prompt as another directory and exits with "Input must be
-  // provided". Keep the no-attachment contract unchanged.
-  if (inputDirectory) args.push("--add-dir", inputDirectory, "--");
+  // provided". Strict prompts always terminate options, including without files.
+  if (inputDirectory) args.push("--add-dir", inputDirectory);
+  if (strict || inputDirectory) args.push("--");
   args.push(prompt);
   return args;
 }
@@ -412,15 +430,53 @@ export async function startClaudeCodeProcess(
   config: ClaudeCodeRuntimeConfig,
   input: AgentRuntimeTaskInput,
   onOutput: (chunk: string) => void,
+  canStart: () => boolean = () => true,
 ): Promise<StartedClaudeCodeProcess> {
+  const assertCanStart = (): void => {
+    if (!canStart())
+      throw Error("Claude Code task was cancelled before process launch.");
+  };
+  assertCanStart();
   const mode = input.mode || "analysis";
-  const invocation = claudeCodeInvocation(configuredExecutable(config));
+  let invocation = claudeCodeInvocation(configuredExecutable(config));
   const workspace = requestedWorkspace(config, input);
   if ((mode === "implementation" || mode === "full_access") && !workspace) {
     throw new Error(
       "Claude Code file tasks require a task-specific project folder.",
     );
   }
+
+  let userCredentials: NodeJS.ProcessEnv = {};
+  if (mode === "analysis" || mode === "safe_write") {
+    assertClaudeWorkspaceBoundary(
+      workspace ||
+        join(
+          agentsOneProfileHome(input.profile),
+          "desktop",
+          "runtime-chat",
+          "claude-code",
+        ),
+      input.profile,
+      !workspace,
+    );
+    userCredentials = assertClaudeNonExecutingUserConfig(
+      workspace ||
+        join(
+          agentsOneProfileHome(input.profile),
+          "desktop",
+          "runtime-chat",
+          "claude-code",
+        ),
+    );
+  }
+
+  const strict =
+    mode === "analysis" || mode === "safe_write"
+      ? await verifyClaudeStrictCapabilities(invocation, canStart)
+      : undefined;
+  assertCanStart();
+  strict?.assertUnchanged();
+  if (strict) invocation = strict.invocation;
 
   let cwd = workspace || conversationCwd(input.profile);
   let worktreePath: string | undefined;
@@ -444,6 +500,17 @@ export async function startClaudeCodeProcess(
   const fullAccessSnapshot =
     mode === "full_access" ? workspaceSnapshot(cwd) : undefined;
 
+  const inheritedEnvironment = claudeChildEnvironment(
+    process.env,
+    mode,
+    userCredentials,
+  );
+  const taskEnvironment = strict
+    ? await prepareClaudeQueryEnvironment(inheritedEnvironment, cwd, canStart)
+    : inheritedEnvironment;
+  assertCanStart();
+  strict?.assertUnchanged();
+  if (strict) assertClaudeWorkspaceBoundary(cwd, input.profile, !workspace);
   const preparedInputs = prepareRuntimeInputs(
     input.profile,
     input.attachments,
@@ -460,6 +527,8 @@ export async function startClaudeCodeProcess(
     : randomUUID();
   const resume = validClaudeSessionId(requestedSessionId);
 
+  assertCanStart();
+  strict?.assertUnchanged();
   const child = spawn(
     invocation.command,
     [
@@ -472,7 +541,7 @@ export async function startClaudeCodeProcess(
     ],
     {
       cwd,
-      env: childEnvironment(),
+      env: taskEnvironment,
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
@@ -480,6 +549,8 @@ export async function startClaudeCodeProcess(
   );
   let output = "";
   const filterStdout = createClaudeOutputFilter();
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
   const recordOutput = (chunk: string): void => {
     if (!chunk) return;
     const redacted = redact(chunk);
@@ -487,10 +558,10 @@ export async function startClaudeCodeProcess(
     onOutput(redacted);
   };
   child.stdout?.on("data", (data: Buffer) => {
-    recordOutput(filterStdout(data.toString()));
+    recordOutput(filterStdout(stdoutDecoder.write(data)));
   });
   child.stderr?.on("data", (data: Buffer) => {
-    recordOutput(data.toString());
+    recordOutput(stderrDecoder.write(data));
   });
 
   const completion = new Promise<ClaudeCodeProcessResult>((resolveResult) => {
@@ -498,7 +569,7 @@ export async function startClaudeCodeProcess(
       workspaceProtection?.restoreAndDispose();
       resolveResult({
         output,
-        error: redact(error.message),
+        error: workspaceProtection?.recoveryError || redact(error.message),
         sessionId,
         worktreePath,
         artifacts: worktreePath
@@ -515,7 +586,8 @@ export async function startClaudeCodeProcess(
     });
     child.once("close", async (code) => {
       const restoredFiles = workspaceProtection?.restoreAndDispose() || [];
-      recordOutput(filterStdout("", true));
+      recordOutput(filterStdout(stdoutDecoder.end(), true));
+      recordOutput(stderrDecoder.end());
       let diffSummary: string | undefined;
       let diff: string | undefined;
       if (worktreePath) {
@@ -579,6 +651,12 @@ export async function startClaudeCodeProcess(
         ...(worktreePath ? { worktreePath } : {}),
         ...(diffSummary ? { diffSummary } : {}),
         artifacts,
+        ...(restoredFiles.length
+          ? { error: runtimeRemovalBlockedMessage(restoredFiles) }
+          : {}),
+        ...(workspaceProtection?.recoveryError
+          ? { error: workspaceProtection.recoveryError }
+          : {}),
         inputArtifacts: preparedInputs.artifacts,
       });
     });

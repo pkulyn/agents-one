@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import type { ArchivedItem, ArchiveItemInput } from "../shared/archives";
-import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
+import {
+  getActiveProfileNameSync,
+  agentsOneProfileHome,
+  safeWriteFile,
+} from "./utils";
 
 interface ArchiveStore {
   version: 1;
@@ -10,7 +14,7 @@ interface ArchiveStore {
 
 function storePath(profile?: string): string {
   return join(
-    profileHome(profile || getActiveProfileNameSync()),
+    agentsOneProfileHome(profile || getActiveProfileNameSync()),
     "desktop",
     "archives.json",
   );

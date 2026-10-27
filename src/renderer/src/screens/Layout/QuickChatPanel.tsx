@@ -1,3 +1,5 @@
+import { RuntimeMenuItems, RuntimeAvatar } from "../../components/RuntimeMenu";
+import { automaticRuntimeTaskMode } from "../../../../shared/runtime-permissions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
@@ -181,15 +183,6 @@ function transcriptForTask(chat: QuickChatConversation, t: Translate): string {
   return `${t("chat.quickChat.taskTranscriptIntro")}\n\n${lines}`;
 }
 
-function runtimeLabel(runtime: AgentRuntimeDefinition, t: Translate): string {
-  const location = t(
-    runtime.location === "local"
-      ? "chat.quickChat.local"
-      : "chat.quickChat.remote",
-  );
-  return t("chat.quickChat.runtimeLabel", { name: runtime.name, location });
-}
-
 function QuickRuntimeAvatar({
   runtime,
   size = 16,
@@ -236,6 +229,23 @@ export default function QuickChatPanel({
     t("chat.quickChat.submitting"),
   );
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  useEffect(() => {
+    const dismiss = (event: MouseEvent): void => {
+      if (!pickerRef.current?.contains(event.target as Node))
+        setPickerOpen(false);
+    };
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setPickerOpen(false);
+    };
+    document.addEventListener("mousedown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, []);
   const [historyOpen, setHistoryOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -625,7 +635,8 @@ export default function QuickChatPanel({
       }
       const run = await window.agentsOneAPI.startAgentRuntimeTask(runtime.id, {
         prompt: buildPrompt(chat, text, t),
-        mode: "analysis",
+        mode: automaticRuntimeTaskMode(runtime),
+        conversation: true,
         sessionId: chat.runtimeSessionId || undefined,
         timeoutMs: QUICK_CHAT_TIMEOUT_MS,
       });
@@ -722,24 +733,35 @@ export default function QuickChatPanel({
         </div>
       </header>
 
-      <div className="quick-chat-agent-row">
-        <QuickRuntimeAvatar runtime={selectedRuntime} />
-        <select
-          value={selectedRuntimeId}
-          onChange={(event) => {
-            const next = event.target.value;
-            setSelectedRuntimeId(next);
-            const existing = chats.find((chat) => chat.runtimeId === next);
-            if (existing) setActiveChatId(existing.id);
-          }}
+      <div className="quick-chat-agent-row" ref={pickerRef}>
+        <button
+          type="button"
+          className="quick-chat-runtime-trigger profile-menu-item"
           aria-label={t("chat.quickChat.selectRuntime")}
+          aria-haspopup="menu"
+          aria-expanded={pickerOpen}
+          onClick={() => setPickerOpen((value) => !value)}
         >
-          {runtimeOptions.map((runtime) => (
-            <option key={runtime.id} value={runtime.id}>
-              {runtimeLabel(runtime, t)}
-            </option>
-          ))}
-        </select>
+          <RuntimeAvatar runtime={selectedRuntime} />
+          <span className="profile-menu-name">{selectedRuntime?.name}</span>
+          <span aria-hidden="true">⌄</span>
+        </button>
+        {pickerOpen && (
+          <div className="quick-chat-runtime-menu" role="menu">
+            <RuntimeMenuItems
+              runtimes={runtimeOptions}
+              selectedId={selectedRuntimeId}
+              onSelect={(runtime) => {
+                setSelectedRuntimeId(runtime.id);
+                setPickerOpen(false);
+                const existing = chats.find(
+                  (chat) => chat.runtimeId === runtime.id,
+                );
+                if (existing) setActiveChatId(existing.id);
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {historyOpen && (

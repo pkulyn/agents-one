@@ -6,6 +6,7 @@ directories:
 # distribution. Reuse it instead of downloading and extracting a second copy
 # during packaging, which can be blocked by real-time scanners on Windows.
 electronDist: node_modules/electron/dist
+beforePack: scripts/before-pack-direct-npm.mjs
 afterPack: scripts/after-pack-windows-icon.mjs
 files:
   # `out/` is ignored by Git, but it is the actual electron-vite runtime
@@ -39,12 +40,20 @@ asarUnpack:
   - resources/**
   - node_modules/better-sqlite3/prebuilds/*.node
 extraResources:
+  - from: out/main/third-party-dependencies.txt
+    to: notices/third-party-dependencies.txt
+  - from: out/main/third-party-dependencies.json
+    to: notices/third-party-dependencies.json
   - from: LICENSE
     to: notices/LICENSE
   - from: THIRD_PARTY_NOTICES.md
     to: notices/THIRD_PARTY_NOTICES.md
   - from: assets/readme/OFL-Oxanium.txt
     to: notices/OFL-Oxanium.txt
+  - from: src/renderer/src/assets/fonts/Cairo-OFL.txt
+    to: notices/Cairo-OFL.txt
+  - from: src/renderer/src/assets/fonts/Manrope-OFL.txt
+    to: notices/Manrope-OFL.txt
 win:
   executableName: agents-one
   icon: build/icon.ico

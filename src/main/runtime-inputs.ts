@@ -16,7 +16,7 @@ import {
   MAX_TEXT_BYTES,
 } from "../shared/attachments";
 import type { RuntimeInputArtifact } from "../shared/agent-runtimes";
-import { profileHome } from "./utils";
+import { agentsOneProfileHome } from "./utils";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 import { isStagedAttachmentPath } from "./attachment-staging";
 
@@ -74,7 +74,7 @@ function inputDirectory(
 ): string {
   const root = rootOverride
     ? resolve(rootOverride)
-    : resolve(profileHome(profile), "desktop", "runtime-inputs");
+    : resolve(agentsOneProfileHome(profile), "desktop", "runtime-inputs");
   const directory = resolve(root, token);
   if (relative(root, directory).startsWith("..")) {
     throw new Error("Invalid runtime input directory.");

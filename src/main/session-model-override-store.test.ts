@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getDbConnection } from "./db";
+import { getDesktopDbConnection } from "./db";
 import {
   deleteSessionModelOverrideForSession,
   getSessionModelOverride,
@@ -7,10 +7,10 @@ import {
 } from "./session-model-override-store";
 
 vi.mock("./db", () => ({
-  getDbConnection: vi.fn(),
+  getDesktopDbConnection: vi.fn(),
 }));
 
-const mockedGetDbConnection = vi.mocked(getDbConnection);
+const mockedGetDbConnection = vi.mocked(getDesktopDbConnection);
 
 class FakeStatement {
   constructor(

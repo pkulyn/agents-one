@@ -3,6 +3,7 @@ import type BetterDatabase from "better-sqlite3";
 import { basename, extname } from "path";
 import { existsSync, readFileSync, statSync } from "fs";
 import { activeStateDbPath } from "./utils";
+import { getDesktopDbConnection } from "./db";
 import type { Attachment } from "../shared/attachments";
 import { isImageMime, MAX_IMAGE_BYTES } from "../shared/attachments";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
@@ -179,13 +180,14 @@ function imageAttachments(attachments?: Attachment[]): Attachment[] {
 }
 
 function findMatchingUserMessageId(
-  db: BetterDatabase.Database,
+  nativeDb: BetterDatabase.Database,
+  desktopDb: BetterDatabase.Database,
   sessionId: string,
   promptText: string,
 ): number | null {
   const target = normalizedPromptText(promptText);
 
-  const rows = db
+  const rows = nativeDb
     .prepare(
       `SELECT id, content
        FROM messages
@@ -195,7 +197,7 @@ function findMatchingUserMessageId(
     )
     .all(sessionId) as Array<{ id: number; content: string | null }>;
 
-  const hasAttachments = db.prepare(
+  const hasAttachments = desktopDb.prepare(
     `SELECT 1 FROM ${TABLE} WHERE message_id = ? LIMIT 1`,
   );
 
@@ -224,19 +226,26 @@ export function persistPromptImageAttachments(
   const dbPath = activeStateDbPath();
   if (!existsSync(dbPath)) return;
 
-  const db = new Database(dbPath);
+  const db = new Database(dbPath, { readonly: true });
   try {
-    ensureTable(db);
-    const messageId = findMatchingUserMessageId(db, sessionId, promptText);
+    const desktopDb = getDesktopDbConnection(false);
+    if (!desktopDb) return;
+    ensureTable(desktopDb);
+    const messageId = findMatchingUserMessageId(
+      db,
+      desktopDb,
+      sessionId,
+      promptText,
+    );
     if (!messageId) return;
 
-    const insert = db.prepare(
+    const insert = desktopDb.prepare(
       `INSERT OR REPLACE INTO ${TABLE}
        (message_id, session_id, ordinal, kind, name, mime, size, data)
        VALUES (?, ?, ?, 'image', ?, ?, ?, ?)`,
     );
 
-    const tx = db.transaction(() => {
+    const tx = desktopDb.transaction(() => {
       images.forEach((attachment, index) => {
         const parsed = parseImageDataUrl(attachment.dataUrl || "");
         if (!parsed) return;
@@ -258,10 +267,12 @@ export function persistPromptImageAttachments(
 }
 
 export function loadPromptImageAttachments(
-  db: BetterDatabase.Database,
+  _nativeDb: BetterDatabase.Database,
   sessionId: string,
 ): Map<number, Attachment[]> {
   const byMessageId = new Map<number, Attachment[]>();
+  const db = getDesktopDbConnection(true);
+  if (!db) return byMessageId;
   if (!tableExists(db)) return byMessageId;
 
   const rows = db

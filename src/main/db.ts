@@ -1,13 +1,62 @@
 import Database from "./sqlite";
 import type BetterDatabase from "better-sqlite3";
-import { dirname } from "path";
+import { dirname, join } from "path";
 import { existsSync, mkdirSync } from "fs";
-import { activeStateDbPath } from "./utils";
+import {
+  activeStateDbPath,
+  agentsOneProfileHome,
+  getActiveProfileNameSync,
+} from "./utils";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
 
 let cachedDb: BetterDatabase.Database | null = null;
 let cachedDbPath: string | null = null;
 let cachedDbReadonly: boolean | null = null;
+let cachedDesktopDb: BetterDatabase.Database | null = null;
+let cachedDesktopDbPath: string | null = null;
+let cachedDesktopDbReadonly: boolean | null = null;
+
+/** Agents One's session overlays and attachments never write Hermes state.db. */
+export function getDesktopDbConnection(
+  readonly = true,
+): BetterDatabase.Database | null {
+  if (!readonly) assertAgentsOneWritesAllowed();
+  const path = join(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    "desktop.db",
+  );
+  if (!existsSync(path)) {
+    if (readonly) return null;
+    mkdirSync(dirname(path), { recursive: true });
+  }
+  if (
+    cachedDesktopDb &&
+    cachedDesktopDbPath === path &&
+    cachedDesktopDbReadonly === readonly
+  ) {
+    return cachedDesktopDb;
+  }
+  closeDesktopDbConnection();
+  try {
+    cachedDesktopDb = new Database(path, readonly ? { readonly: true } : {});
+    cachedDesktopDbPath = path;
+    cachedDesktopDbReadonly = readonly;
+    return cachedDesktopDb;
+  } catch (error) {
+    console.error(`[db] Failed to open Agents One database at ${path}:`, error);
+    return null;
+  }
+}
+
+function closeDesktopDbConnection(): void {
+  try {
+    cachedDesktopDb?.close();
+  } finally {
+    cachedDesktopDb = null;
+    cachedDesktopDbPath = null;
+    cachedDesktopDbReadonly = null;
+  }
+}
 
 /**
  * Return a cached database connection for the active profile state DB.
@@ -58,6 +107,7 @@ export function getDbConnection(
  * Close the cached database connection if open.
  */
 export function closeDbConnection(): void {
+  closeDesktopDbConnection();
   if (cachedDb) {
     try {
       cachedDb.close();

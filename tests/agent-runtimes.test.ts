@@ -1,3 +1,5 @@
+const closeClaudeAgentSdkSessionsMock = vi.hoisted(() => vi.fn());
+const startClaudeAgentSdkProcessMock = vi.hoisted(() => vi.fn());
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { createHash } from "crypto";
@@ -31,10 +33,13 @@ function fakeOpenCodeAcpScript(): string {
   ].join("");
 }
 
-function fakeOpenCodeToolAcpScript(): string {
+function fakeOpenCodeToolAcpScript(
+  answerChunks = ["读取完成。"],
+  thoughtChunks: string[] = [],
+): string {
   return [
     "const r=require('readline'),l=r.createInterface({input:process.stdin}),s=x=>process.stdout.write(JSON.stringify({...x,jsonrpc:'2.0'})+String.fromCharCode(10));",
-    "l.on('line',x=>{const m=JSON.parse(x);if(m.method==='initialize')s({id:m.id,result:{protocolVersion:1,agentInfo:{name:'OpenCode',version:'test'}}});else if(m.method==='session/new')s({id:m.id,result:{sessionId:'main-tool'}});else if(m.method==='session/prompt'){const rawInput={filePath:process.cwd()+'/README.md',limit:10};s({method:'session/update',params:{sessionId:'main-tool',update:{sessionUpdate:'tool_call',toolCallId:'call-main-1',title:'read',kind:'read',status:'pending',rawInput:{}}}});s({method:'session/update',params:{sessionId:'main-tool',update:{sessionUpdate:'tool_call_update',toolCallId:'call-main-1',title:'read',kind:'read',status:'in_progress',rawInput}}});s({method:'session/update',params:{sessionId:'main-tool',update:{sessionUpdate:'tool_call_update',toolCallId:'call-main-1',title:'README.md',status:'completed',content:[{type:'text',text:'Agents One test'}]}}});s({method:'session/update',params:{sessionId:'main-tool',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'读取完成。'}}}});s({id:m.id,result:{stopReason:'end_turn'}})}});",
+    `l.on('line',x=>{const m=JSON.parse(x);if(m.method==='initialize')s({id:m.id,result:{protocolVersion:1,agentInfo:{name:'OpenCode',version:'test'}}});else if(m.method==='session/new')s({id:m.id,result:{sessionId:'main-tool'}});else if(m.method==='session/prompt'){for(const text of ${JSON.stringify(thoughtChunks)})s({method:'session/update',params:{sessionId:'main-tool',update:{sessionUpdate:'agent_thought_chunk',content:{type:'text',text}}}});const rawInput={filePath:process.cwd()+'/README.md',limit:10};s({method:'session/update',params:{sessionId:'main-tool',update:{sessionUpdate:'tool_call',toolCallId:'call-main-1',title:'read',kind:'read',status:'pending',rawInput:{}}}});s({method:'session/update',params:{sessionId:'main-tool',update:{sessionUpdate:'tool_call_update',toolCallId:'call-main-1',title:'read',kind:'read',status:'in_progress',rawInput}}});s({method:'session/update',params:{sessionId:'main-tool',update:{sessionUpdate:'tool_call_update',toolCallId:'call-main-1',title:'README.md',status:'completed',content:[{type:'text',text:'Agents One test'}]}}});for(const text of ${JSON.stringify(answerChunks)})s({method:'session/update',params:{sessionId:'main-tool',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}});s({id:m.id,result:{stopReason:'end_turn'}})}});`,
   ].join("");
 }
 
@@ -48,6 +53,8 @@ vi.mock("../src/main/claude-code-runtime", () => ({
 }));
 
 vi.mock("../src/main/claude-agent-sdk", () => ({
+  closeClaudeAgentSdkSessions: closeClaudeAgentSdkSessionsMock,
+  startClaudeAgentSdkProcess: startClaudeAgentSdkProcessMock,
   listClaudeAgentSdkCommands: listClaudeAgentSdkCommandsMock,
   listClaudeAgentSdkModels: listClaudeAgentSdkModelsMock,
   setClaudeAgentSdkModel: setClaudeAgentSdkModelMock,
@@ -100,6 +107,12 @@ async function loadModules(): Promise<{
 describe("agent runtime registry", () => {
   beforeEach(() => {
     testHome = mkdtempSync(join(tmpdir(), "hermes-agent-runtimes-"));
+    closeClaudeAgentSdkSessionsMock.mockReset();
+    closeClaudeAgentSdkSessionsMock.mockResolvedValue(undefined);
+    startClaudeAgentSdkProcessMock.mockReset();
+    startClaudeAgentSdkProcessMock.mockRejectedValue(
+      new Error("SDK unavailable in fixture"),
+    );
     sendMessageMock.mockReset();
     probeCodexRuntimeMock.mockReset();
     startCodexProcessMock.mockReset();
@@ -459,6 +472,89 @@ describe("agent runtime registry", () => {
     }
   });
 
+  // @lat: [[runtime-chat#OpenCode attachment transport]]
+  it("passes attachments from Main through ACP and reloads the final reply", async () => {
+    const { runtimes } = await loadModules();
+    const script = fakeOpenCodeAcpScript().replace(
+      "if(m.method==='session/prompt'){",
+      "if(m.method==='session/prompt'){if(!m.params.prompt.some(x=>x.type==='image')||!m.params.prompt.some(x=>x.type==='resource'&&x.resource.text==='测试附件正文')){s({id:m.id,error:{message:'missing attachments'}});return;}",
+    );
+    const saved = runtimes.saveAgentRuntime({
+      id: "opencode-inputs-main",
+      name: "OpenCode",
+      kind: "opencode",
+      location: "local",
+      enabled: true,
+      config: {
+        executablePath: process.execPath,
+        acpArgs: ["-e", script],
+        agentTransport: "local-cli",
+      },
+    });
+    const result = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "解释附件",
+      mode: "safe_write",
+      conversation: true,
+      attachments: [
+        {
+          id: "text",
+          name: "测试文档.txt",
+          kind: "text-file",
+          mime: "text/plain",
+          size: 18,
+          text: "测试附件正文",
+        },
+        {
+          id: "image",
+          name: "图片.png",
+          kind: "image",
+          mime: "image/png",
+          size: 4,
+          dataUrl: "data:image/png;base64,dGVzdA==",
+        },
+      ],
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toBe("ok");
+    expect(result.inputArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "text",
+          kind: "text",
+          sha256: expect.any(String),
+        }),
+        expect.objectContaining({
+          id: "image",
+          kind: "image",
+          sha256: expect.any(String),
+        }),
+      ]),
+    );
+    const store = await import("../src/main/runtime-conversation-store");
+    store.saveRuntimeConversation({
+      id: "attachment-main",
+      title: "附件",
+      runtimeId: saved.id,
+      runtimeName: saved.name,
+      runtimeKind: saved.kind,
+      messages: [
+        {
+          id: "reply",
+          role: "agent",
+          content: result.output!,
+          createdAt: Date.now(),
+          execution: { runId: result.id, events: result.events || [] },
+        },
+      ],
+    });
+    const restored = store.getRuntimeConversation("attachment-main")!;
+    const { runtimeConversationToChatMessages } =
+      await import("../src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter");
+    expect(runtimeConversationToChatMessages(restored.messages)).toContainEqual(
+      expect.objectContaining({ kind: "assistant", content: "ok" }),
+    );
+  });
+
   it("routes a local OpenCode task through the main Runtime lifecycle", async () => {
     const { runtimes } = await loadModules();
     const saved = runtimes.saveAgentRuntime({
@@ -534,6 +630,97 @@ describe("agent runtime registry", () => {
     );
   });
 
+  // @lat: [[runtime-chat#Runtime Chat Rendering#OpenCode streamed Markdown and trace retention]]
+  it("retains OpenCode thoughts and tools after a long streamed Markdown answer is archived", async () => {
+    const { runtimes } = await loadModules();
+    const prefix =
+      "# AI领域周报\n\n## 模型发布\n\n- **重要发布**：说明\n  - 子项\n\n";
+    const items = Array.from(
+      { length: 240 },
+      (_, i) => `- 资讯 ${i}：周报内容。\n`,
+    );
+    const suffix = "\n```text\n  保留缩进\n```\n";
+    const markdown = prefix + items.join("") + suffix;
+    // Unique answer deltas exceed both live and persisted event limits;
+    // character deltas additionally exercise standalone whitespace.
+    const chunks = [...Array.from(prefix), ...items, ...Array.from(suffix)];
+    const thought = "先检查资料。\n\n再整理周报。";
+    const scriptPath = join(testHome, "opencode-long-acp.cjs");
+    writeFileSync(
+      scriptPath,
+      fakeOpenCodeToolAcpScript(chunks, Array.from(thought)),
+    );
+    const saved = runtimes.saveAgentRuntime({
+      id: "opencode-long-markdown",
+      name: "OpenCode",
+      kind: "opencode",
+      location: "local",
+      enabled: true,
+      config: {
+        executablePath: process.execPath,
+        acpArgs: [scriptPath],
+        agentTransport: "local-cli",
+      },
+    });
+    const result = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "整理周报",
+      mode: "analysis",
+      conversation: true,
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toBe(markdown);
+    expect(
+      result.events?.filter((event) => event.type === "message"),
+    ).toHaveLength(1);
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "progress", detail: thought }),
+        expect.objectContaining({
+          type: "tool_call",
+          tool: expect.objectContaining({ callId: "call-main-1" }),
+        }),
+        expect.objectContaining({
+          type: "tool_result",
+          detail: "Agents One test",
+        }),
+      ]),
+    );
+    const store = await import("../src/main/runtime-conversation-store");
+    store.saveRuntimeConversation({
+      id: "opencode-long-markdown-conversation",
+      title: "周报",
+      runtimeId: saved.id,
+      runtimeName: saved.name,
+      runtimeKind: saved.kind,
+      messages: [
+        {
+          id: "reply",
+          role: "agent",
+          content: result.output!,
+          createdAt: Date.now(),
+          execution: { runId: result.id, events: result.events || [] },
+        },
+      ],
+    });
+    const restored = store.getRuntimeConversation(
+      "opencode-long-markdown-conversation",
+    )!;
+    const { runtimeConversationToChatMessages } =
+      await import("../src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter");
+    const rows = runtimeConversationToChatMessages(restored.messages);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "reasoning", text: thought }),
+        expect.objectContaining({ kind: "tool_call", name: "Read File" }),
+        expect.objectContaining({
+          kind: "tool_result",
+          content: "Agents One test",
+        }),
+        expect.objectContaining({ kind: "assistant", content: markdown }),
+      ]),
+    );
+  });
+
   it("does not advertise the managed Hermes runtime when the local executable is absent", async () => {
     const { config, runtimes } = await loadModules();
     config.setConnectionConfig();
@@ -583,7 +770,7 @@ describe("agent runtime registry", () => {
       runtimes.startAgentRuntimeTask(saved.id, { prompt: "请直接回答" }),
     ).resolves.toMatchObject({
       status: "failed",
-      error: expect.stringContaining("公开构建默认关闭网页 Provider"),
+      error: expect.stringContaining("总开关未启用"),
     });
   });
 
@@ -677,6 +864,7 @@ describe("agent runtime registry", () => {
   });
 
   it("maps Pi model, compact, and discovered commands to typed RPC controls", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", join(testHome, "desktop"));
     const { runtimes } = await loadModules();
     runtimes.saveAgentRuntime({
       id: "pi-command",
@@ -708,6 +896,17 @@ describe("agent runtime registry", () => {
       },
     });
 
+    const history = await import("../src/main/runtime-conversation-store");
+    history.saveRuntimeConversation({
+      id: "pi-command-conversation",
+      runtimeId: "pi-command",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+      runtimeSessionId: "pi-session",
+      accessMode: "analysis",
+      workspace: testHome,
+      messages: [],
+    });
     const catalog = await runtimes.getAgentRuntimeCommandCatalog(
       "pi-command",
       "pi-session",
@@ -799,6 +998,8 @@ describe("agent runtime registry", () => {
       expect.any(Object),
       expect.objectContaining({
         type: "compact",
+        workspace: testHome,
+        profile: "default",
         params: { customInstructions: "保留接口决策" },
         onEvent: expect.any(Function),
       }),
@@ -822,6 +1023,35 @@ describe("agent runtime registry", () => {
       }),
     );
 
+    await expect(
+      runtimes.executeAgentRuntimeCommand({
+        requestId: "cmd-review-denied",
+        runtimeId: "pi-command",
+        sessionId: "pi-session",
+        name: "review",
+      }),
+    ).resolves.toMatchObject({
+      type: "error",
+      message: expect.stringContaining("完全访问"),
+    });
+    expect(executePiRpcPromptMock).not.toHaveBeenCalled();
+    history.saveRuntimeConversation({
+      id: "pi-command-conversation",
+      runtimeId: "pi-command",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+      runtimeSessionId: "pi-session",
+      accessMode: "full_access",
+      workspace: testHome,
+      messages: [],
+    });
+    executePiRpcCommandMock.mockResolvedValue({
+      data: {
+        commands: [
+          { name: "review", description: "Review", source: "extension" },
+        ],
+      },
+    });
     executePiRpcPromptMock.mockResolvedValue({ output: "复核已完成" });
     await expect(
       runtimes.executeAgentRuntimeCommand({
@@ -835,6 +1065,34 @@ describe("agent runtime registry", () => {
       expect.any(Object),
       expect.objectContaining({ message: "/review" }),
     );
+    history.saveRuntimeConversation({
+      id: "pi-command-conversation",
+      runtimeId: "pi-command",
+      runtimeName: "Pi",
+      runtimeKind: "pi",
+      runtimeSessionId: "pi-session",
+      accessMode: "analysis",
+      workspace: testHome,
+      messages: [],
+    });
+    const promptCalls = executePiRpcPromptMock.mock.calls.length;
+    await expect(
+      runtimes.executeAgentRuntimeCommand({
+        requestId: "cmd-review",
+        runtimeId: "pi-command",
+        sessionId: "pi-session",
+        name: "review",
+      }),
+    ).resolves.toMatchObject({
+      type: "error",
+      message: expect.stringContaining("完全访问"),
+    });
+    expect(executePiRpcPromptMock).toHaveBeenCalledTimes(promptCalls);
+    expect(
+      executePiRpcCommandMock.mock.calls.filter(
+        ([, request]) => request.type === "get_commands",
+      ),
+    ).toHaveLength(2);
   });
 
   it("opens Pi's locally configured model catalogue without a model-list RPC", async () => {
@@ -987,6 +1245,17 @@ describe("agent runtime registry", () => {
         transport: "cli",
         workspace: testHome,
       },
+    });
+    const history = await import("../src/main/runtime-conversation-store");
+    history.saveRuntimeConversation({
+      id: "claude-command-conversation",
+      runtimeId: "claude-cli-only",
+      runtimeName: "Claude",
+      runtimeKind: "claude-code",
+      runtimeSessionId: "claude-session",
+      accessMode: "full_access",
+      workspace: testHome,
+      messages: [],
     });
     listClaudeAgentSdkCommandsMock.mockResolvedValue([
       {
@@ -1783,6 +2052,73 @@ describe("agent runtime registry", () => {
     }
   });
 
+  it("preserves long Hers reasoning text carried in a Gateway reasoning event", async () => {
+    const answer = "Hers 已完成分析。";
+    const reasoning = Array.from(
+      { length: 80 },
+      (_, index) => `第 ${index + 1} 段：逐项核对任务上下文并保留推理细节。`,
+    ).join("\n");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "remote-run-hers-reasoning",
+          status: "succeeded",
+          output: answer,
+          events: [
+            {
+              id: "evt-hers-reasoning",
+              sequence: 1,
+              type: "reasoning.summary",
+              data: { text: reasoning },
+            },
+            {
+              id: "evt-hers-answer",
+              sequence: 2,
+              type: "assistant.completed",
+              data: { text: answer },
+            },
+          ],
+        }),
+        { status: 202, headers: { "content-type": "application/json" } },
+      ),
+    );
+    try {
+      const { runtimes } = await loadModules();
+      runtimes.saveAgentRuntime({
+        id: "hers-reasoning",
+        name: "Hers",
+        kind: "hermes",
+        location: "remote",
+        enabled: true,
+        config: {
+          endpoint: "https://family-relay.example/agents-one/v1",
+          remoteGateway: { protocol: "agents-one-v1" },
+          transport: "http",
+          timeoutMs: 10_000,
+        },
+      });
+      runtimes.setAgentRuntimeBearerToken("hers-reasoning", "hers-token");
+
+      const run = await runtimes.startAgentRuntimeTask("hers-reasoning", {
+        prompt: "请完整保留思考记录。",
+        mode: "analysis",
+        conversation: true,
+      });
+
+      expect(run.status).toBe("succeeded");
+      expect(run.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "progress",
+            detail: reasoning,
+          }),
+        ]),
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("accepts delivered media or artifacts without a workspace audit entry", async () => {
     const { runtimes } = await loadModules();
 
@@ -2160,6 +2496,67 @@ describe("agent runtime registry", () => {
     }
   });
 
+  it("distinguishes pending Gateway cancellation acknowledgement from an unconfirmed transport failure", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: "mobile-remote-run", status: "running" }),
+          { status: 202 },
+        ),
+      )
+      .mockRejectedValueOnce(Error("Synthetic cancellation connection lost"))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: "mobile-remote-run", status: "cancelling" }),
+          { status: 202 },
+        ),
+      );
+    try {
+      const { runtimes } = await loadModules();
+      runtimes.saveAgentRuntime({
+        id: "mobile-cancellation-evidence",
+        name: "Mobile cancellation evidence",
+        kind: "hermes",
+        location: "remote",
+        enabled: true,
+        config: {
+          endpoint: "https://relay.example/agents-one/v1",
+          remoteGateway: { protocol: "agents-one-v1" },
+          timeoutMs: 10_000,
+        },
+      });
+      runtimes.setAgentRuntimeBearerToken(
+        "mobile-cancellation-evidence",
+        "synthetic-cancellation-token",
+      );
+      const run = await runtimes.startAgentRuntimeTask(
+        "mobile-cancellation-evidence",
+        { prompt: "Synthetic mobile task", mode: "analysis" },
+      );
+      await expect(
+        runtimes.requestAgentRuntimeTaskCancellation(run.id),
+      ).resolves.toMatchObject({
+        accepted: false,
+        uncertain: true,
+        run: { id: run.id, status: "running" },
+      });
+      await expect(
+        runtimes.requestAgentRuntimeTaskCancellation(run.id),
+      ).resolves.toMatchObject({
+        accepted: true,
+        run: { id: run.id, status: "running" },
+      });
+      await expect(
+        runtimes.requestAgentRuntimeTaskCancellation("missing-native-run"),
+      ).resolves.toEqual({ accepted: false, run: null });
+    } finally {
+      fetchMock.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("does not mark a Gateway timeout terminal until remote cancellation is confirmed", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.spyOn(globalThis, "fetch");
@@ -2278,7 +2675,8 @@ describe("agent runtime registry", () => {
       };
       expect(body.conversationId).toBe("hers-existing-conversation");
       expect(body.input?.workspaceRef).toBeUndefined();
-      expect(body.input?.text).toBe("你好，请确认连接。");
+      expect(body.input?.text).toContain("你好，请确认连接。");
+      expect(body.input?.text).toContain("当前权限：只读");
       expect(body.execution?.permission).toBe("read");
     } finally {
       fetchMock.mockRestore();
@@ -2309,6 +2707,485 @@ describe("agent runtime registry", () => {
     } finally {
       rmSync(unapproved, { recursive: true, force: true });
     }
+  });
+
+  it("claims the original saved turn before CLI dispatch and starts only one competing request", async () => {
+    const { runtimes } = await loadModules();
+    const store = await import("../src/main/runtime-conversation-store");
+    runtimes.saveAgentRuntime({
+      id: "codex-desktop-claim",
+      name: "Codex",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "codex", transport: "cli" },
+    });
+    const saved = store.saveRuntimeConversation({
+      id: "desktop-claim",
+      title: "Original",
+      runtimeId: "codex-desktop-claim",
+      runtimeName: "Codex",
+      runtimeKind: "codex",
+      runtimeLocation: "local",
+      messages: [
+        {
+          id: "user-claim",
+          role: "user",
+          content: "Continue",
+          createdAt: 1000,
+        },
+      ],
+    });
+    startCodexProcessMock.mockImplementation(async () => {
+      const original = store.getRuntimeConversation(saved.id)!;
+      expect(original.activeRuntimeRunId).toMatch(/^run-/);
+      expect(original.revision).toBe("2");
+      expect(original.messages).toHaveLength(1);
+      return {
+        cancel: vi.fn(async () => undefined),
+        inputArtifacts: [],
+        completion: Promise.resolve({
+          output: "done",
+          artifacts: [],
+          inputArtifacts: [],
+        }),
+      };
+    });
+    const input = {
+      prompt: "Continue",
+      mode: "analysis" as const,
+      conversationContext: { id: saved.id, expectedRevision: saved.revision! },
+    };
+    const results = await Promise.allSettled([
+      runtimes.startAgentRuntimeTask(saved.runtimeId, input),
+      runtimes.startAgentRuntimeTask(saved.runtimeId, input),
+    ]);
+    expect(results.filter((item) => item.status === "fulfilled")).toHaveLength(
+      1,
+    );
+    expect(results.find((item) => item.status === "rejected")).toMatchObject({
+      reason: { message: "revision_conflict" },
+    });
+    expect(results.find((item) => item.status === "fulfilled")).toMatchObject({
+      value: { conversationRevision: "2" },
+    });
+    expect(startCodexProcessMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists the original user message and native Run identity before launching the Adapter", async () => {
+    const { runtimes } = await loadModules();
+    const store = await import("../src/main/runtime-conversation-store");
+    runtimes.saveAgentRuntime({
+      id: "codex-persist-first",
+      name: "Codex",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "codex", transport: "cli" },
+    });
+    let preparedId = "";
+    startCodexProcessMock.mockImplementation(async () => {
+      // Read through the original on-disk store, not the callback's in-memory value.
+      expect(store.getRuntimeConversation("persist-first")).toMatchObject({
+        activeRuntimeRunId: preparedId,
+        messages: [
+          { id: `${preparedId}-user`, role: "user", content: "Continue task" },
+        ],
+      });
+      expect(preparedId).toMatch(/^run-/);
+      return {
+        cancel: vi.fn(async () => undefined),
+        inputArtifacts: [],
+        completion: Promise.resolve({
+          output: "done",
+          artifacts: [],
+          inputArtifacts: [],
+        }),
+      };
+    });
+    const run = await runtimes.startAgentRuntimeTask(
+      "codex-persist-first",
+      { prompt: "Continue task", mode: "analysis" },
+      {
+        persistBeforeDispatch: async (prepared) => {
+          preparedId = prepared.id;
+          expect(startCodexProcessMock).not.toHaveBeenCalled();
+          await Promise.resolve();
+          store.saveRuntimeConversation({
+            id: "persist-first",
+            title: "Persist first",
+            runtimeId: prepared.runtimeId,
+            runtimeName: "Codex",
+            runtimeKind: "codex",
+            runtimeLocation: "local",
+            activeRuntimeRunId: prepared.id,
+            messages: [
+              {
+                id: `${prepared.id}-user`,
+                role: "user",
+                content: "Continue task",
+                createdAt: prepared.startedAt,
+              },
+            ],
+          });
+          // Trusted callers still receive a detached snapshot, not mutable registry state.
+          Object.assign(prepared, { id: "modified-snapshot" });
+        },
+      },
+    );
+    expect(run.id).toBe(preparedId);
+    expect(startCodexProcessMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not launch or register a CLI Run when its persistence barrier fails", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "codex-persistence-failure",
+      name: "Codex",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "codex", transport: "cli" },
+    });
+    await expect(
+      runtimes.startAgentRuntimeTask(
+        "codex-persistence-failure",
+        { prompt: "Must not dispatch" },
+        {
+          persistBeforeDispatch: () => {
+            throw new Error("Synthetic storage failure");
+          },
+        },
+      ),
+    ).rejects.toThrow("Synthetic storage failure");
+    await expect(
+      runtimes.startAgentRuntimeTask(
+        "codex-persistence-failure",
+        { prompt: "Must not dispatch" },
+        {
+          persistBeforeDispatch: async () => {
+            await Promise.resolve();
+            throw new Error("Synthetic async storage failure");
+          },
+        },
+      ),
+    ).rejects.toThrow("Synthetic async storage failure");
+    expect(startCodexProcessMock).not.toHaveBeenCalled();
+    expect(runtimes.activeAgentRuntimeTaskCount()).toBe(0);
+  });
+
+  it("does not create a remote workspace Grant or send HTTP when pre-dispatch persistence fails", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "remote-persistence-failure",
+      name: "Remote",
+      kind: "hermes",
+      location: "remote",
+      enabled: true,
+      config: {
+        endpoint: "https://synthetic.example/agents-one/v1",
+        remoteGateway: { protocol: "agents-one-v1" },
+        transport: "http",
+      },
+    });
+    runtimes.setAgentRuntimeBearerToken(
+      "remote-persistence-failure",
+      "synthetic-token",
+    );
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    try {
+      await expect(
+        runtimes.startAgentRuntimeTask(
+          "remote-persistence-failure",
+          {
+            prompt: "Must not dispatch",
+            workspace: testHome,
+            mode: "analysis",
+          },
+          {
+            persistBeforeDispatch: () => {
+              throw new Error("Synthetic storage failure");
+            },
+          },
+        ),
+      ).rejects.toThrow("Synthetic storage failure");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(runtimes.activeAgentRuntimeTaskCount()).toBe(0);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("rejects unconfirmed full access before creating durable intent", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "codex-validation-first",
+      name: "Codex",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "codex", transport: "cli" },
+    });
+    const persistBeforeDispatch = vi.fn();
+    await expect(
+      runtimes.startAgentRuntimeTask(
+        "codex-validation-first",
+        { prompt: "Must not dispatch", mode: "full_access" },
+        { persistBeforeDispatch },
+      ),
+    ).rejects.toThrow(/explicit confirmation/i);
+    expect(persistBeforeDispatch).not.toHaveBeenCalled();
+    expect(startCodexProcessMock).not.toHaveBeenCalled();
+    expect(runtimes.activeAgentRuntimeTaskCount()).toBe(0);
+  });
+
+  it("passes mobile inspection only through Main options and rejects other runtimes or modes before admission", async () => {
+    const { runtimes } = await loadModules();
+    for (const kind of ["codex", "pi"] as const)
+      runtimes.saveAgentRuntime({
+        id: `inspect-${kind}`,
+        name: kind,
+        kind,
+        location: "local",
+        enabled: true,
+        config: { executablePath: kind, transport: "cli" },
+      });
+    const persistBeforeDispatch = vi.fn();
+    runtimes.saveAgentRuntime({
+      id: "inspect-gateway",
+      name: "Remote Codex",
+      kind: "codex",
+      location: "remote",
+      enabled: true,
+      config: {
+        endpoint: "https://gateway.example",
+        agentTransport: "gateway-v1",
+      },
+    });
+    await expect(
+      runtimes.startAgentRuntimeTask(
+        "inspect-gateway",
+        { prompt: "Inspect", mode: "analysis" },
+        { codexMobileInspection: true, persistBeforeDispatch },
+      ),
+    ).rejects.toThrow("Codex analysis executor");
+    for (const [id, mode] of [
+      ["inspect-pi", "analysis"],
+      ["inspect-codex", "safe_write"],
+      ["inspect-codex", "full_access"],
+    ] as const)
+      await expect(
+        runtimes.startAgentRuntimeTask(
+          id,
+          { prompt: "Inspect", mode },
+          { codexMobileInspection: true, persistBeforeDispatch },
+        ),
+      ).rejects.toThrow("Codex analysis executor");
+    expect(persistBeforeDispatch).not.toHaveBeenCalled();
+    expect(startCodexProcessMock).not.toHaveBeenCalled();
+    expect(runtimes.activeAgentRuntimeTaskCount()).toBe(0);
+    const projectGuard = vi.fn();
+    await expect(
+      runtimes.startAgentRuntimeTask(
+        "inspect-codex",
+        { prompt: "Inspect", mode: "analysis" },
+        { codexMobileProjectGuard: projectGuard, persistBeforeDispatch },
+      ),
+    ).rejects.toThrow("requires mobile inspection");
+    const configurationGuard = vi.fn();
+    await expect(
+      runtimes.startAgentRuntimeTask(
+        "inspect-codex",
+        { prompt: "Inspect", mode: "analysis" },
+        {
+          codexMobileConfigurationGuard: configurationGuard,
+          persistBeforeDispatch,
+        },
+      ),
+    ).rejects.toThrow("requires mobile inspection");
+    startCodexProcessMock.mockResolvedValue({
+      cancel: vi.fn(),
+      inputArtifacts: [],
+      completion: Promise.resolve({
+        output: "done",
+        artifacts: [],
+        inputArtifacts: [],
+      }),
+    });
+    await runtimes.startAgentRuntimeTask(
+      "inspect-codex",
+      { prompt: "Inspect", mode: "analysis" },
+      { codexMobileInspection: true, persistBeforeDispatch },
+    );
+    expect(persistBeforeDispatch).toHaveBeenCalledTimes(1);
+    expect(startCodexProcessMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ mode: "analysis" }),
+      expect.any(Function),
+      { mobileInspection: true },
+    );
+    await runtimes.startAgentRuntimeTask(
+      "inspect-codex",
+      { prompt: "Inspect", mode: "analysis" },
+      {
+        codexMobileInspection: true,
+        codexMobileProjectGuard: projectGuard,
+        codexMobileConfigurationGuard: configurationGuard,
+        persistBeforeDispatch,
+      },
+    );
+    expect(startCodexProcessMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ mode: "analysis" }),
+      expect.any(Function),
+      {
+        mobileInspection: true,
+        projectInspectionGuard: projectGuard,
+        configurationGuard,
+      },
+    );
+  });
+
+  it("passes the allocated Run to the controlled writer only after fixed-project Main admission", async () => {
+    const { runtimes } = await loadModules();
+    const projects = await import("../src/main/project-folders");
+    const project = projects.registerProjectFolder(testHome)!;
+    runtimes.saveAgentRuntime({
+      id: "write-codex",
+      name: "Codex",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "codex", transport: "cli" },
+    });
+    const persistBeforeDispatch = vi.fn(),
+      projectGuard = vi.fn(),
+      configurationGuard = vi.fn();
+    const options = {
+      codexMobileProjectWrite: true as const,
+      codexMobileProjectWriteWorkerHash: "d".repeat(64),
+      codexMobileProjectGuard: projectGuard,
+      codexMobileConfigurationGuard: configurationGuard,
+      persistBeforeDispatch,
+    };
+    for (const input of [
+      { prompt: "Write", mode: "analysis" as const, workspaceId: project.id },
+      { prompt: "Write", mode: "safe_write" as const },
+    ])
+      await expect(
+        runtimes.startAgentRuntimeTask("write-codex", input, options),
+      ).rejects.toThrow("fixed-project executor");
+    await expect(
+      runtimes.startAgentRuntimeTask(
+        "write-codex",
+        { prompt: "Write", mode: "safe_write", workspaceId: project.id },
+        { ...options, codexMobileConfigurationGuard: undefined },
+      ),
+    ).rejects.toThrow("fixed-project executor");
+    expect(persistBeforeDispatch).not.toHaveBeenCalled();
+    expect(startCodexProcessMock).not.toHaveBeenCalled();
+    startCodexProcessMock.mockResolvedValue({
+      cancel: vi.fn(),
+      inputArtifacts: [],
+      completion: Promise.resolve({
+        output: "done",
+        artifacts: [],
+        inputArtifacts: [],
+      }),
+    });
+    const run = await runtimes.startAgentRuntimeTask(
+      "write-codex",
+      { prompt: "Write", mode: "safe_write", workspaceId: project.id },
+      options,
+    );
+    const dispatched = startCodexProcessMock.mock.calls[0][3];
+    expect(dispatched.projectWrite.runId).toBe(run.id);
+    expect(persistBeforeDispatch.mock.calls[0][0].id).toBe(run.id);
+    expect(persistBeforeDispatch.mock.invocationCallOrder[0]).toBeLessThan(
+      startCodexProcessMock.mock.invocationCallOrder[0],
+    );
+    expect(dispatched.projectWrite.workerPath).toMatch(
+      /project-text-write-worker\.cjs$/,
+    );
+    expect(dispatched.projectWrite.assertWritesAllowed).toBeTypeOf("function");
+    expect(dispatched.mobileInspection).toBeUndefined();
+    expect(dispatched.projectInspectionGuard).toBeTypeOf("function");
+    expect(() => dispatched.projectInspectionGuard()).toThrow(
+      "no longer active",
+    );
+    expect(dispatched.configurationGuard).toBe(configurationGuard);
+  });
+
+  it("revokes the Run writer while Native is preparing and closes a late process before terminal cancellation", async () => {
+    const { runtimes } = await loadModules();
+    const projects = await import("../src/main/project-folders");
+    const project = projects.registerProjectFolder(testHome)!;
+    runtimes.saveAgentRuntime({
+      id: "write-preparing-codex",
+      name: "Codex",
+      kind: "codex",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "codex", transport: "cli" },
+    });
+    let runId = "",
+      startedOptions!: { projectInspectionGuard(): void },
+      release!: (value: unknown) => void;
+    const preparing = new Promise((resolve) => {
+      release = resolve;
+    });
+    startCodexProcessMock.mockImplementation(
+      (_config, _input, _output, options) => {
+        startedOptions = options;
+        return preparing;
+      },
+    );
+    const projectGuard = vi.fn();
+    const starting = runtimes.startAgentRuntimeTask(
+      "write-preparing-codex",
+      { prompt: "Write", mode: "safe_write", workspaceId: project.id },
+      {
+        codexMobileProjectWrite: true,
+        codexMobileProjectWriteWorkerHash: "d".repeat(64),
+        codexMobileProjectGuard: projectGuard,
+        codexMobileConfigurationGuard: () => undefined,
+        persistBeforeDispatch: (run) => {
+          runId = run.id;
+        },
+      },
+    );
+    expect(runId).toMatch(/^run-/);
+    await vi.waitFor(() => expect(startedOptions).toBeDefined());
+    startedOptions.projectInspectionGuard();
+    expect(projectGuard).toHaveBeenCalledOnce();
+    await runtimes.requestAgentRuntimeTaskCancellation(runId);
+    expect((await runtimes.getAgentRuntimeRun(runId))?.status).toBe("running");
+    expect(() => startedOptions.projectInspectionGuard()).toThrow(
+      "no longer active",
+    );
+    const cancel = vi.fn(async () => undefined);
+    const confirmedArtifact = {
+      id: "confirmed-write-before-cancel",
+      kind: "file",
+      label: "result.txt",
+      content: "confirmed-before-cancel",
+    };
+    release({
+      cancel,
+      inputArtifacts: [],
+      completion: Promise.resolve({
+        output: "cancelled",
+        artifacts: [confirmedArtifact],
+        inputArtifacts: [],
+      }),
+    });
+    const terminal = await starting;
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(terminal.status).toBe("cancelled");
+    expect(terminal.artifacts).toEqual([confirmedArtifact]);
+    expect((await runtimes.getAgentRuntimeRun(runId))?.status).toBe(
+      "cancelled",
+    );
   });
 
   it("resolves a Runtime workspace from a registered opaque project id", async () => {
@@ -2649,6 +3526,7 @@ describe("agent runtime registry", () => {
         executablePath: "D:\\portable-node\\claude.cmd",
       }),
       expect.objectContaining({ mode: "implementation", workspace: testHome }),
+      expect.any(Function),
       expect.any(Function),
     );
 
@@ -3015,6 +3893,146 @@ describe("agent runtime registry", () => {
     }
   });
 
+  it("keeps a cancelled Claude task from dispatching after asynchronous startup", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "claude-preflight-cancel",
+      name: "Claude",
+      kind: "claude-code",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "pi", transport: "cli" },
+    });
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let canStart: (() => boolean) | undefined;
+    let dispatched = false;
+    startClaudeCodeProcessMock.mockImplementationOnce(
+      async (_config, _task, _onOutput, allowed: () => boolean) => {
+        canStart = allowed;
+        await waiting;
+        if (!allowed())
+          throw Error("Claude task was cancelled before execution.");
+        dispatched = true;
+        throw Error("Unexpected dispatch");
+      },
+    );
+    const pending = runtimes.startAgentRuntimeTask("claude-preflight-cancel", {
+      prompt: "cancel me",
+      mode: "safe_write",
+    });
+    await vi.waitFor(() => expect(canStart).toBeTypeOf("function"));
+    expect(canStart!()).toBe(true);
+    await expect(runtimes.cancelAllAgentRuntimeTasks()).resolves.toBe(1);
+    expect(canStart!()).toBe(false);
+    release();
+    const result = await pending;
+    expect(result.status).toBe("cancelled");
+    expect(result.error).toBe("Runtime task was cancelled.");
+    expect(dispatched).toBe(false);
+  });
+
+  it("observes a failed SDK shutdown without leaking native diagnostics", async () => {
+    const { runtimes } = await loadModules();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    closeClaudeAgentSdkSessionsMock.mockRejectedValueOnce(
+      new Error("owned private diagnostic"),
+    );
+    try {
+      runtimes.stopAcceptingAgentRuntimeTasks();
+      await vi.waitFor(() =>
+        expect(log).toHaveBeenCalledWith(
+          "Claude Agent SDK shutdown was not confirmed.",
+        ),
+      );
+      expect(JSON.stringify(log.mock.calls)).not.toContain(
+        "owned private diagnostic",
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("keeps cancelled Claude SDK startup from sending or falling back to CLI", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "claude-sdk-cancel",
+      name: "Claude",
+      kind: "claude-code",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "claude", transport: "cli" },
+    });
+    let release!: () => void;
+    const waiting = new Promise<void>((r) => (release = r));
+    let allowed: (() => boolean) | undefined;
+    let sent = false;
+    startClaudeAgentSdkProcessMock.mockImplementationOnce(
+      async (_config, _input, _events, canStart: () => boolean) => {
+        allowed = canStart;
+        await waiting;
+        if (!canStart()) throw Error("cancelled before dispatch");
+        sent = true;
+        throw Error("unexpected dispatch");
+      },
+    );
+    const pending = runtimes.startAgentRuntimeTask("claude-sdk-cancel", {
+      prompt: "cancel me",
+      mode: "analysis",
+      conversation: true,
+    });
+    await vi.waitFor(() => expect(allowed).toBeTypeOf("function"));
+    expect(allowed!()).toBe(true);
+    await expect(runtimes.cancelAllAgentRuntimeTasks()).resolves.toBe(1);
+    expect(allowed!()).toBe(false);
+    release();
+    expect((await pending).status).toBe("cancelled");
+    expect(sent).toBe(false);
+    expect(startClaudeCodeProcessMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps a cancelled Pi task from dispatching after asynchronous startup", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-preflight-cancel",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "pi", transport: "cli" },
+    });
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let canStart: (() => boolean) | undefined;
+    let dispatched = false;
+    startPiProcessMock.mockImplementationOnce(
+      async (_config, _task, _onOutput, allowed: () => boolean) => {
+        canStart = allowed;
+        await waiting;
+        if (!allowed()) throw Error("Pi task was cancelled before execution.");
+        dispatched = true;
+        throw Error("Unexpected dispatch");
+      },
+    );
+    const pending = runtimes.startAgentRuntimeTask("pi-preflight-cancel", {
+      prompt: "cancel me",
+      mode: "safe_write",
+    });
+    await vi.waitFor(() => expect(canStart).toBeTypeOf("function"));
+    expect(canStart!()).toBe(true);
+    await expect(runtimes.cancelAllAgentRuntimeTasks()).resolves.toBe(1);
+    expect(canStart!()).toBe(false);
+    release();
+    const result = await pending;
+    expect(result.status).toBe("cancelled");
+    expect(result.error).toBe("Runtime task was cancelled.");
+    expect(dispatched).toBe(false);
+  });
+
   it("probes and runs a local Pi Agent CLI runtime with a resumable session", async () => {
     const { runtimes } = await loadModules();
     runtimes.saveAgentRuntime({
@@ -3206,6 +4224,96 @@ describe("agent runtime registry", () => {
     expect(userThinking).toEqual([
       expect.objectContaining({ summary: "用户说这是 Agents One 联调测试。" }),
     ]);
+  });
+
+  // @lat: [[runtime-chat#Pi reasoning preview boundary]]
+  it("keeps a growing Pi thought complete across live snapshots and durable reload", async () => {
+    const { runtimes } = await loadModules();
+    const saved = runtimes.saveAgentRuntime({
+      id: "pi-long-thought",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "pi", transport: "cli" },
+    });
+    const thought =
+      "先核对权限。\n\n" +
+      "读取资料并核对来源。".repeat(140) +
+      "\n最终思考尾部保留。";
+    let emit!: (chunk: string) => void;
+    let finish!: (result: object) => void;
+    startPiProcessMock.mockImplementationOnce((_config, _task, onOutput) => {
+      emit = onOutput;
+      return Promise.resolve({
+        sessionId: "pi-long-session",
+        inputArtifacts: [],
+        cancel: vi.fn(),
+        completion: new Promise((resolve) => {
+          finish = resolve;
+        }),
+      });
+    });
+    const run = await runtimes.startAgentRuntimeTask(saved.id, {
+      prompt: "读取并分析资料",
+    });
+    expect(startPiProcessMock.mock.calls[0][1]).toMatchObject({
+      mode: "safe_write",
+    });
+    expect(startPiProcessMock.mock.calls[0][1].prompt).toContain(
+      "当前权限：自动",
+    );
+    const frame = (thinking: string): string =>
+      JSON.stringify({
+        type: "message_update",
+        message: {
+          role: "assistant",
+          content: [{ type: "thinking", thinking }],
+        },
+      }) + "\n";
+    for (const length of [2, 519, 620, 1000, thought.length])
+      emit(frame(thought.slice(0, length)));
+    emit(frame(thought.slice(0, 620))); // Older snapshots cannot shorten the completed detail.
+    const live = await runtimes.getAgentRuntimeRun(run.id);
+    const thoughts =
+      live?.events?.filter((event) => event.type === "progress") || [];
+    expect(thoughts).toHaveLength(1);
+    expect(thoughts[0].detail).toBe(thought);
+    const store = await import("../src/main/runtime-conversation-store");
+    store.saveRuntimeConversation({
+      id: "pi-long-restored",
+      title: "长思考",
+      runtimeId: saved.id,
+      runtimeName: saved.name,
+      runtimeKind: saved.kind,
+      runtimeLocation: "local",
+      accessMode: "auto",
+      messages: [
+        {
+          id: "reply",
+          role: "agent",
+          content: "分析完成",
+          createdAt: Date.now(),
+          execution: { runId: run.id, events: live?.events || [] },
+        },
+      ],
+    });
+    const restored = store.getRuntimeConversation("pi-long-restored");
+    const { runtimeConversationToChatMessages } =
+      await import("../src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter");
+    const displayed = runtimeConversationToChatMessages(restored!.messages);
+    expect(
+      displayed.some(
+        (message) => message.kind === "reasoning" && message.text === thought,
+      ),
+    ).toBe(true);
+    finish({
+      output: "分析完成",
+      sessionId: "pi-long-session",
+      artifacts: [],
+      inputArtifacts: [],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 });
 

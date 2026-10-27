@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -13,12 +13,24 @@ const mocks = vi.hoisted(() => {
     whenReady: vi.fn(() => new Promise<void>(() => undefined)),
     getVersion: vi.fn(() => "0.1.0-test"),
     setAppUserModelId: vi.fn(),
+    getPath: vi.fn(() => "synthetic-user-data"),
+    isReady: vi.fn(() => true),
     quit: vi.fn(),
     exit: vi.fn(),
   };
   return {
     app,
     handlers,
+    windows: [] as Array<{
+      destroyed: boolean;
+      handlers: Map<string, (...args: unknown[]) => void>;
+      hide: ReturnType<typeof vi.fn>;
+      show: ReturnType<typeof vi.fn>;
+      focus: ReturnType<typeof vi.fn>;
+      restore: ReturnType<typeof vi.fn>;
+      minimize: ReturnType<typeof vi.fn>;
+    }>,
+    trayAvailable: true,
     cancellation,
     resolveCancellation: () => resolveCancellation?.(),
     stopHealthPolling: vi.fn(),
@@ -41,12 +53,38 @@ const mocks = vi.hoisted(() => {
 vi.mock("electron", () => ({
   app: mocks.app,
   BrowserWindow: class BrowserWindow {
-    static getAllWindows(): [] {
-      return [];
+    destroyed = false;
+    handlers = new Map<string, (...args: unknown[]) => void>();
+    webContents = {
+      on: vi.fn(),
+      once: vi.fn(),
+      setWindowOpenHandler: vi.fn(),
+      send: vi.fn(),
+    };
+    hide = vi.fn();
+    show = vi.fn();
+    focus = vi.fn();
+    restore = vi.fn();
+    minimize = vi.fn();
+    isDestroyed = (): boolean => this.destroyed;
+    isMinimized = (): boolean => true;
+    loadFile = vi.fn();
+    on = vi.fn((event: string, handler: (...args: unknown[]) => void) =>
+      this.handlers.set(event, handler),
+    );
+    constructor() {
+      mocks.windows.push(this);
+    }
+    static getAllWindows(): typeof mocks.windows {
+      return mocks.windows;
     }
   },
   Notification: class Notification {},
-  session: { fromPartition: vi.fn() },
+  session: {
+    fromPartition: vi.fn(),
+    defaultSession: { webRequest: { onHeadersReceived: vi.fn() } },
+  },
+  safeStorage: { isEncryptionAvailable: vi.fn(() => false) },
   shell: { openExternal: vi.fn() },
 }));
 vi.mock("@electron-toolkit/utils", () => ({
@@ -54,7 +92,10 @@ vi.mock("@electron-toolkit/utils", () => ({
   is: { dev: false },
 }));
 vi.mock("../resources/icon.png?asset", () => ({ default: "icon" }));
-vi.mock("../src/main/config", () => ({ getPublicConnectionConfig: vi.fn() }));
+vi.mock("../src/main/config", () => ({
+  getPublicConnectionConfig: vi.fn(),
+  readDesktopConfig: vi.fn(() => ({})),
+}));
 vi.mock("../src/main/hermes", () => ({
   stopHealthPolling: mocks.stopHealthPolling,
 }));
@@ -90,7 +131,12 @@ vi.mock("../src/main/app/context-menu", () => ({
   showChatContextMenu: vi.fn(),
 }));
 vi.mock("../src/main/app/menu", () => ({ buildMenu: vi.fn() }));
-vi.mock("../src/main/app/tray", () => ({ setupTray: vi.fn() }));
+vi.mock("../src/main/app/tray", () => ({
+  setupTray: vi.fn(() => ({
+    isAvailable: () => mocks.trayAvailable,
+    destroy: vi.fn(),
+  })),
+}));
 vi.mock("../src/main/app/updater", () => ({
   setupUpdater: mocks.setupUpdater,
 }));
@@ -149,7 +195,7 @@ describe("main-process graceful shutdown", () => {
       expect(mocks.closeDbConnection).toHaveBeenCalledOnce();
       expect(mocks.app.quit).toHaveBeenCalledOnce();
     });
-  });
+  }, 15000);
 
   it("sets the stable Agents One Windows identity before app readiness", async () => {
     const { startMainProcess } = await import("../src/main/app/start");
@@ -165,5 +211,74 @@ describe("main-process graceful shutdown", () => {
     } else {
       expect(mocks.app.setAppUserModelId).not.toHaveBeenCalled();
     }
+  }, 15000);
+});
+
+vi.mock("../src/main/desktop-secret-store", () => ({
+  configureDesktopSecretStore: vi.fn(),
+  DesktopSecretStore: class {},
+}));
+vi.mock("../src/main/agents-one-data-migration", () => ({
+  migrateLegacyAgentsOneData: vi.fn(() => false),
+}));
+vi.mock("../src/main/app/desktop-config-startup", () => ({
+  verifyDesktopConfigurationAtStartup: vi.fn(() => true),
+}));
+vi.mock("../src/main/mobile-control/desktop-owner", () => ({
+  startDesktopMobileOwner: vi.fn(),
+}));
+vi.mock("../src/main/installer", () => ({ HERMES_HOME: "synthetic-hermes" }));
+
+describe("main window recovery", () => {
+  beforeEach(() => vi.clearAllMocks());
+  // @lat: [[main-process#Tray failure recovery]]
+  it.each([
+    [true, 0],
+    [false, 0],
+    [false, 1],
+  ] as const)(
+    "uses a reachable close path when tray availability is %s and active count is %s",
+    async (available, active) => {
+      vi.resetModules();
+      mocks.handlers.clear();
+      mocks.windows.length = 0;
+      mocks.trayAvailable = available;
+      mocks.activeAgentRuntimeTaskCount.mockReturnValue(active);
+      mocks.app.whenReady.mockResolvedValueOnce(undefined);
+      const { startMainProcess } = await import("../src/main/app/start");
+      startMainProcess();
+      await vi.waitFor(() => expect(mocks.windows).toHaveLength(1));
+      const event = { preventDefault: vi.fn() };
+      mocks.windows[0].handlers.get("close")?.(event);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      if (available) {
+        expect(mocks.windows[0].hide).toHaveBeenCalledOnce();
+        expect(mocks.app.quit).not.toHaveBeenCalled();
+      } else {
+        expect(mocks.windows[0].hide).not.toHaveBeenCalled();
+        if (active) {
+          expect(mocks.windows[0].minimize).toHaveBeenCalledOnce();
+          expect(mocks.app.quit).not.toHaveBeenCalled();
+        } else expect(mocks.app.quit).toHaveBeenCalledOnce();
+      }
+    },
+  );
+  it("restores a hidden window and recreates a destroyed main window on a second instance", async () => {
+    vi.resetModules();
+    mocks.handlers.clear();
+    mocks.windows.length = 0;
+    mocks.trayAvailable = true;
+    mocks.app.whenReady.mockResolvedValueOnce(undefined);
+    const { startMainProcess } = await import("../src/main/app/start");
+    startMainProcess();
+    await vi.waitFor(() => expect(mocks.windows).toHaveLength(1));
+    const secondInstance = mocks.handlers.get("second-instance")?.[0];
+    secondInstance?.();
+    expect(mocks.windows[0].restore).toHaveBeenCalledOnce();
+    expect(mocks.windows[0].show).toHaveBeenCalledOnce();
+    expect(mocks.windows[0].focus).toHaveBeenCalledOnce();
+    mocks.windows[0].destroyed = true;
+    secondInstance?.();
+    expect(mocks.windows).toHaveLength(2);
   });
 });

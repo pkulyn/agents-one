@@ -58,14 +58,14 @@ describe("QuickComposer", () => {
   const resizeTrayComposer = vi.fn();
   const selectFolder = vi.fn();
   const registerProjectWorkspace = vi.fn();
-  const startAgentRuntimeTask = vi.fn();
+  const startTrayRuntimeTask = vi.fn();
 
   beforeEach(() => {
     localStorage.clear();
     resizeTrayComposer.mockReset();
     selectFolder.mockReset();
     registerProjectWorkspace.mockReset();
-    startAgentRuntimeTask.mockReset();
+    startTrayRuntimeTask.mockReset();
     voiceToggle.mockReset();
     i18nTestState.locale = "zh-CN";
     Object.defineProperty(window, "agentsOneAPI", {
@@ -78,7 +78,7 @@ describe("QuickComposer", () => {
         registerProjectWorkspace,
         sendMessage: vi.fn().mockResolvedValue({ response: "ok" }),
         abortChat: vi.fn().mockResolvedValue(undefined),
-        startAgentRuntimeTask: startAgentRuntimeTask.mockResolvedValue({
+        startTrayRuntimeTask: startTrayRuntimeTask.mockResolvedValue({
           id: "runtime-run-1",
           runtimeId: "codex-local",
           status: "running",
@@ -111,12 +111,11 @@ describe("QuickComposer", () => {
     });
 
     await waitFor(() =>
-      expect(startAgentRuntimeTask).toHaveBeenCalledWith(
+      expect(startTrayRuntimeTask).toHaveBeenCalledWith(
         "codex-local",
         expect.objectContaining({
           prompt: "检查项目",
-          mode: "analysis",
-          conversation: true,
+          attachments: [],
         }),
       ),
     );

@@ -1,4 +1,5 @@
-import { app, ipcMain, type BrowserWindow } from "electron";
+import { createScopedIpcMain } from "../ipc/sender-scope";
+import { app, ipcMain as rawIpcMain, type BrowserWindow } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { AppUpdater } from "electron-updater";
 import { dirname, join } from "path";
@@ -47,6 +48,7 @@ function setAutoUpgradeEnabled(enabled: boolean): void {
 }
 
 export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
+  const ipcMain = createScopedIpcMain(rawIpcMain, getMainWindow);
   const policy = resolveDesktopUpdatePolicy({
     isPackaged: app.isPackaged,
     isPortable: !!process.env.PORTABLE_EXECUTABLE_DIR,

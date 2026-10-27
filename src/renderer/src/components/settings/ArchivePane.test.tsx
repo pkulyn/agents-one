@@ -10,6 +10,7 @@ import ArchivePane from "./ArchivePane";
 import { I18nProvider } from "../I18nProvider";
 
 describe("ArchivePane", () => {
+  const listAgentRuntimes = vi.fn();
   const listArchivedItems = vi.fn();
   const restoreArchivedItem = vi.fn().mockResolvedValue(true);
   const deleteArchivedItem = vi.fn().mockResolvedValue(true);
@@ -18,6 +19,7 @@ describe("ArchivePane", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    listAgentRuntimes.mockResolvedValue([]);
     listArchivedItems.mockResolvedValue([
       {
         id: "task:t1",
@@ -60,6 +62,7 @@ describe("ArchivePane", () => {
     Object.defineProperty(window, "agentsOneAPI", {
       configurable: true,
       value: {
+        listAgentRuntimes,
         listArchivedItems,
         listCachedSessions,
         listRuntimeConversations,
@@ -126,5 +129,111 @@ describe("ArchivePane", () => {
     expect(screen.getByText("原生项目任务")).toBeInTheDocument();
     expect(screen.getByText("Runtime 项目任务")).toBeInTheDocument();
     expect(screen.queryByText("其他任务")).not.toBeInTheDocument();
+  });
+  // @lat: [[sidebar-navigation#Archive task identity]]
+  it("shows registered avatars, deleted-runtime snapshots and native Hermes identity without a project", async () => {
+    listAgentRuntimes.mockResolvedValue([
+      {
+        id: "pi",
+        name: "Pi",
+        kind: "pi",
+        avatar: "data:image/png;base64,cGk=",
+      },
+      {
+        id: "hers",
+        name: "Hers",
+        kind: "hermes",
+        avatar: "data:image/png;base64,aGVycw==",
+      },
+    ]);
+    listArchivedItems.mockResolvedValue([
+      {
+        id: "task:pi-task",
+        kind: "task",
+        targetId: "pi-task",
+        title: "Pi 归档",
+        runtimeId: "pi",
+        archivedAt: 1,
+      },
+      {
+        id: "task:old-task",
+        kind: "task",
+        targetId: "old-task",
+        title: "历史归档",
+        runtimeId: "removed",
+        archivedAt: 1,
+      },
+      {
+        id: "task:native",
+        kind: "task",
+        targetId: "native",
+        title: "原生归档",
+        archivedAt: 1,
+      },
+    ]);
+    listRuntimeConversations.mockResolvedValue([
+      {
+        id: "old-task",
+        title: "历史归档",
+        runtimeId: "removed",
+        runtimeName: "Old Agent",
+        runtimeKind: "codex",
+        runtimeAvatar: "data:image/png;base64,b2xk",
+        updatedAt: 1,
+      },
+    ]);
+    listCachedSessions.mockResolvedValue([
+      { id: "native", title: "原生归档", startedAt: 1 },
+    ]);
+    render(
+      <I18nProvider>
+        <ArchivePane profile="default" />
+      </I18nProvider>,
+    );
+    expect(await screen.findByRole("img", { name: "Pi" })).toHaveAttribute(
+      "src",
+      "data:image/png;base64,cGk=",
+    );
+    expect(
+      await screen.findByRole("img", { name: "Old Agent" }),
+    ).toHaveAttribute("src", "data:image/png;base64,b2xk");
+    expect(await screen.findByRole("img", { name: "Hers" })).toHaveAttribute(
+      "src",
+      "data:image/png;base64,aGVycw==",
+    );
+  });
+  it("retains snapshot avatars on registry failure, including project child tasks", async () => {
+    listAgentRuntimes.mockRejectedValue(new Error("temporarily unavailable"));
+    listRuntimeConversations.mockResolvedValue([
+      {
+        id: "runtime-1",
+        title: "Runtime 项目任务",
+        runtimeId: "removed",
+        runtimeName: "Snapshot",
+        runtimeAvatar: "data:image/png;base64,c25hcA==",
+        updatedAt: 4,
+        workspace: "D:/work",
+      },
+    ]);
+    render(
+      <I18nProvider>
+        <ArchivePane profile="default" />
+      </I18nProvider>,
+    );
+    const toggle = await screen.findByRole("button", {
+      name: /任务对话|Task conversations/,
+    });
+    await waitFor(() => expect(toggle).toHaveTextContent("2"));
+    fireEvent.click(toggle);
+    expect(screen.getByRole("img", { name: "Snapshot" })).toHaveAttribute(
+      "src",
+      "data:image/png;base64,c25hcA==",
+    );
+    const fallback = screen
+      .getByText("原生项目任务")
+      .closest(".settings-archive-project-task");
+    expect(
+      fallback?.querySelector(".settings-archive-avatar svg"),
+    ).toBeTruthy();
   });
 });

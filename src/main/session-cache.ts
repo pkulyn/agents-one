@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import {
   activeStateDbPath,
-  profileHome,
+  agentsOneProfileHome,
   getActiveProfileNameSync,
   safeWriteFile,
 } from "./utils";
@@ -25,7 +25,7 @@ import { getSessionContextWorkspaces } from "./session-context-folder-store";
  */
 function cacheFilePath(): string {
   return join(
-    profileHome(getActiveProfileNameSync()),
+    agentsOneProfileHome(getActiveProfileNameSync()),
     "desktop",
     "sessions.json",
   );

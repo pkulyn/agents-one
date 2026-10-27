@@ -1,7 +1,14 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  lstatSync,
+} from "fs";
 import { randomBytes } from "crypto";
 import { join } from "path";
-import { HERMES_HOME, expectedEnvKeyForModel } from "./installer";
+import { expectedEnvKeyForModel } from "./installer";
+import { agentsOneDataRoot } from "./agents-one-data-root";
 import {
   escapeRegex,
   getActiveProfileNameSync,
@@ -47,25 +54,47 @@ export interface PublicConnectionConfig {
 // Lazy getter — avoids circular dependency with installer.ts
 // (HERMES_HOME may not be assigned yet when this module first loads)
 function desktopConfigFile(): string {
-  return join(HERMES_HOME, "desktop.json");
+  return join(agentsOneDataRoot(), "desktop.json");
 }
 
 export function readDesktopConfig(): Record<string, unknown> {
   try {
-    const f = desktopConfigFile();
-    if (!existsSync(f)) return {};
-    return JSON.parse(readFileSync(f, "utf-8").replace(/^\uFEFF/, ""));
-  } catch {
-    return {};
+    const data: unknown = JSON.parse(
+      readFileSync(desktopConfigFile(), "utf-8").replace(/^\uFEFF/, ""),
+    );
+    if (!data || typeof data !== "object" || Array.isArray(data))
+      throw new Error("invalid root");
+    return data as Record<string, unknown>;
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") {
+      try {
+        lstatSync(desktopConfigFile());
+      } catch (lookupError) {
+        if ((lookupError as NodeJS.ErrnoException)?.code === "ENOENT")
+          return {};
+      }
+      // An existing dangling link or a file created during the failed read
+      // is not proof of a new store. Preserve it and require a fresh read.
+    }
+    // Parse errors may quote credentials from the original JSON. Keep a
+    // fixed diagnostic and preserve the original file for manual recovery.
+    throw new Error(
+      "Desktop configuration is invalid or unreadable. The original file was preserved; restore a valid desktop.json before retrying.",
+    );
   }
 }
 
 export function writeDesktopConfig(data: Record<string, unknown>): void {
   assertAgentsOneWritesAllowed();
-  if (!existsSync(HERMES_HOME)) {
-    mkdirSync(HERMES_HOME, { recursive: true });
-  }
-  writeFileSync(desktopConfigFile(), JSON.stringify(data, null, 2), "utf-8");
+  // Never replace damaged/unreadable existing state with a caller's empty
+  // fallback or stale snapshot. A missing file is a legitimate new store.
+  readDesktopConfig();
+  const serialized = JSON.stringify(data, null, 2);
+  const root: unknown =
+    serialized === undefined ? undefined : JSON.parse(serialized);
+  if (!root || typeof root !== "object" || Array.isArray(root))
+    throw new Error("Desktop configuration must be a JSON object.");
+  safeWriteFile(desktopConfigFile(), serialized);
 }
 
 export function getConnectionConfig(): ConnectionConfig {

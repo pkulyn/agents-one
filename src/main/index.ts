@@ -31,8 +31,8 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 function migrateLegacyUserData(): void {
   // The product name is part of Electron's default userData path. Keep the
   // rename from silently dropping small desktop-level preferences such as the
-  // selected Hermes home, GPU fallback and update settings. Core agent data
-  // stays in HERMES_HOME and is deliberately not moved.
+  // selected Hermes home, GPU fallback and update settings. Desktop-owned
+  // data is migrated separately into the effective Agents One userData path.
   if (
     process.env.AGENTS_ONE_USER_DATA_DIR?.trim() ||
     process.env.HERMES_DESKTOP_USER_DATA_DIR?.trim()
@@ -65,7 +65,7 @@ function migrateLegacyUserData(): void {
     writeFileSync(migrationMarker, "completed\n", "utf8");
   } catch {
     // A failed preference migration must never prevent the application from
-    // starting. HERMES_HOME data remains available independently.
+    // starting. The versioned desktop-data migration runs before app readers.
   }
 }
 

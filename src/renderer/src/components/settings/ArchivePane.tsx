@@ -5,10 +5,14 @@ import {
   ChevronRight,
   Folder,
   LoaderCircle,
-  MessageSquare,
+  Bot,
   Search,
   Trash2,
 } from "lucide-react";
+import type {
+  AgentRuntimeDefinition,
+  AgentRuntimeKind,
+} from "../../../../shared/agent-runtimes";
 import type { RuntimeConversationSummary } from "../../../../shared/runtime-conversations";
 import type {
   ArchivedItem,
@@ -21,6 +25,11 @@ interface ArchivedProjectTask {
   title: string;
   projectPath: string;
   updatedAt: number;
+  runtimeId?: string;
+  runtimeName?: string;
+  runtimeKind?: AgentRuntimeKind;
+  runtimeAvatar?: string | null;
+  runtimeColor?: string;
 }
 
 const TASK_PAGE_SIZE = 100;
@@ -52,6 +61,7 @@ export default function ArchivePane({
   profile?: string;
 }): React.JSX.Element {
   const { t } = useI18n();
+  const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
   const [items, setItems] = useState<ArchivedItem[]>([]);
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<"all" | ArchiveItemKind>("all");
@@ -64,6 +74,12 @@ export default function ArchivePane({
 
   const load = useCallback(() => {
     void window.agentsOneAPI.listArchivedItems(profile).then(setItems);
+    void window.agentsOneAPI
+      .listAgentRuntimes()
+      .then(setRuntimes)
+      .catch(() => {
+        /* retain last known appearances */
+      });
     setTasksLoading(true);
     void Promise.all([
       collectPages((limit, offset) =>
@@ -76,20 +92,24 @@ export default function ArchivePane({
       .then(([nativeSessions, runtimeConversations]) => {
         const rows = new Map<string, ArchivedProjectTask>();
         for (const session of nativeSessions) {
-          if (!session.contextFolder) continue;
           rows.set(session.id, {
             id: session.id,
             title: session.title,
-            projectPath: session.contextFolder,
+            projectPath: session.contextFolder || "",
+            runtimeKind: "hermes",
             updatedAt: session.startedAt,
           });
         }
         for (const conversation of runtimeConversations as RuntimeConversationSummary[]) {
-          if (!conversation.workspace) continue;
           rows.set(conversation.id, {
             id: conversation.id,
             title: conversation.title,
-            projectPath: conversation.workspace,
+            projectPath: conversation.workspace || "",
+            runtimeId: conversation.runtimeId,
+            runtimeName: conversation.runtimeName,
+            runtimeKind: conversation.runtimeKind,
+            runtimeAvatar: conversation.runtimeAvatar,
+            runtimeColor: conversation.runtimeColor,
             updatedAt: conversation.updatedAt,
           });
         }
@@ -173,6 +193,42 @@ export default function ArchivePane({
     }
   };
 
+  function renderTaskAvatar(
+    taskId: string,
+    runtimeId?: string,
+    size = 32,
+  ): React.JSX.Element {
+    const task = projectTasks.find((task) => task.id === taskId);
+    const id = runtimeId || task?.runtimeId;
+    const runtime = id
+      ? runtimes.find((runtime) => runtime.id === id)
+      : runtimes.find((runtime) =>
+          task?.runtimeName
+            ? runtime.name === task.runtimeName
+            : runtime.kind === (task?.runtimeKind || "hermes"),
+        );
+    const avatar = runtime?.avatar ?? task?.runtimeAvatar;
+    const name = runtime?.name || task?.runtimeName || "";
+    const color = runtime?.color ?? task?.runtimeColor;
+    return (
+      <span
+        className="settings-archive-avatar"
+        title={name || undefined}
+        style={{
+          width: size,
+          height: size,
+          ...(color ? { background: color, color: "#fff" } : {}),
+        }}
+      >
+        {avatar ? (
+          <img src={avatar} alt={name} />
+        ) : (
+          <Bot size={Math.round(size / 2)} aria-hidden="true" />
+        )}
+      </span>
+    );
+  }
+
   return (
     <div className="settings-modal-pane settings-archive-pane">
       <div className="settings-section-intro settings-archive-intro">
@@ -212,13 +268,13 @@ export default function ArchivePane({
             return (
               <article className="settings-archive-item" key={item.id}>
                 <div className="settings-archive-item-main">
-                  <span className="settings-archive-icon">
-                    {item.kind === "project" ? (
+                  {item.kind === "project" ? (
+                    <span className="settings-archive-icon">
                       <Folder size={18} />
-                    ) : (
-                      <MessageSquare size={18} />
-                    )}
-                  </span>
+                    </span>
+                  ) : (
+                    renderTaskAvatar(item.targetId, item.runtimeId)
+                  )}
                   <div className="settings-archive-details">
                     <strong>{item.title}</strong>
                     <small title={item.projectPath}>
@@ -280,7 +336,7 @@ export default function ArchivePane({
                               className="settings-archive-project-task"
                               key={task.id}
                             >
-                              <MessageSquare size={13} />
+                              {renderTaskAvatar(task.id, task.runtimeId, 24)}
                               <span title={task.title}>{task.title}</span>
                               <time>
                                 {new Date(task.updatedAt).toLocaleString()}
