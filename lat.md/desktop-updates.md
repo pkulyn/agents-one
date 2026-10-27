@@ -61,3 +61,9 @@ Its check mode compares all six generated outputs byte for byte. Android Room sc
 The distributed third-party notice includes the full MIT terms alongside preserved npm author declarations when a shipped archive omits a standalone file. It also retains the Standard Webhooks library license from its exact published gitHead.
 
 This supplements the generated originals without assigning project MIT terms to proprietary components or inferring missing copyright years.
+
+## Stable version promotion
+
+Promoting the accepted Windows candidate to 0.1.0 changes application version metadata while preserving the reviewed Runtime implementation and dependency versions.
+
+A stable version number does not enable unsigned automatic updates. The release build still requires the signed-update build flag before updater code is loaded, and new installer hashes and source receipts identify the promoted package separately from its accepted candidate.
