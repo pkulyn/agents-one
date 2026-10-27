@@ -1,14 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import {
   checkLatestDesktopRelease,
   DESKTOP_RELEASE_API,
 } from "./release-check";
-const release = (tag_name: string) => ({
+const release = (
+  tag_name: string,
+): { tag_name: string; draft: boolean; prerelease: boolean } => ({
   tag_name,
   draft: false,
   prerelease: false,
 });
-const requestFor = (value: unknown, status = 200) =>
+const requestFor = (value: unknown, status = 200): Mock<typeof fetch> =>
   vi
     .fn<typeof fetch>()
     .mockResolvedValue(new Response(JSON.stringify(value), { status }));
