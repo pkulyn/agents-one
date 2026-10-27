@@ -48,6 +48,8 @@ A previously passing candidate can fail a later rebuild when new advisories affe
 
 Both production-only and full dependency audits reject every high or critical finding. Fixed builder dependencies do not retain a historical advisory waiver.
 
+Policy tests remove inherited case variants of npm_execpath before installing a controlled audit fixture, including when launched through npm test on Windows. Main-process tests canonicalize their existing TEMP/TMP directories before creating fixtures; deliberate alias and junction cases remain explicit.
+
 Unavailable, malformed or inconsistent npm audit results fail the gate. A lockfile repair still requires installation, Runtime dependency probes and candidate regression before packaging.
 
 ## Generated contract formatting

@@ -26,7 +26,11 @@ function check(production: Reply, full = clean): ReturnType<typeof spawnSync> {
       encoding: "utf8",
       windowsHide: true,
       env: {
-        ...process.env,
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(
+            ([key]) => key.toLowerCase() !== "npm_execpath",
+          ),
+        ),
         npm_execpath: npmFixture,
         AGENTS_ONE_AUDIT_FIXTURE: JSON.stringify({ production, full }),
       },
