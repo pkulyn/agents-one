@@ -208,7 +208,7 @@ Linux/macOS 构建主机可在 `apps/android` 执行 `sh ./gradlew :app:assemble
 
 ## 数据与信任边界
 
-桌面状态存放于 Electron `userData`（Windows 通常为 `%APPDATA%\Agents One`）；便携版默认使用 `%LOCALAPPDATA%\agents-one-portable`。用户选择的项目目录和本地 CLI 数据位于桌面状态之外。备份排除已知凭据与受保护密文，但用户编写的对话、记忆、技能和附件仍可能含敏感信息。
+桌面状态存放于 Electron `userData`（Windows 通常为 `%APPDATA%\agents-one`）；便携版默认使用 `%LOCALAPPDATA%\agents-one-portable`。启动参数或显式数据路径配置可能改变该位置。项目实际文件仍在所选目录中；各 CLI 保留自己的配置，也可能在桌面数据目录外存储额外数据。备份排除已知凭据与受保护密文，但用户编写的对话、记忆、技能和附件仍可能含敏感信息。
 
 内置的豆包、ChatGPT 和 Grok 浏览器适配器在公开构建中是**默认关闭的实验功能**。启用后，选定的提示词和附件会通过已登录的第三方网页发送。当前边界与限制见[安全策略](SECURITY.md)和[已知问题](KNOWN_ISSUES.md)。
 
