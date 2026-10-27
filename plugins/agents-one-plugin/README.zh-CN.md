@@ -27,7 +27,7 @@ node --test ./test/*.test.mjs
 ```powershell
 cd <repo>\plugins\agents-one-plugin
 npm.cmd pack
-# 在远程 Relay 或本地 CLI 的插件目录执行：
+# 将生成的 tgz 复制到你的 Gateway 工程目录，再在该目录执行：
 npm.cmd install .\agents-one-plugin-sdk-0.1.6.tgz
 ```
 
