@@ -350,6 +350,9 @@ export default {
   statusUpToDate: "Up to date",
   statusUpdateAvailable: "Update available",
   statusUpdateReady: "Update ready",
+  manualUpdateAvailable:
+    "Version {{version}} is available. Please manually download the new version from GitHub and install it.",
+  manualUpdateGithub: "Download from GitHub",
   checkForUpdates: "Check for updates",
   checkingUpdates: "Checking…",
   downloadUpdate: "Download update",
