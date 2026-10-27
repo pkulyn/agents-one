@@ -73,4 +73,3 @@ The real portable npm integration test allows 30 seconds for Windows process sta
 Packaged Windows executables identify themselves as Agents One in native file descriptions and product metadata instead of retaining the Electron distribution name.
 
 The existing Windows resource hook writes the configured application name, executable identity and application versions alongside the icon, without external signing helpers. Electron copyright and unrelated resources remain intact. This applies to newly packaged executables; an app.asar-only update cannot replace old EXE metadata. The real-EXE packaging regression verifies all language tables and preservation of other resources.
-
