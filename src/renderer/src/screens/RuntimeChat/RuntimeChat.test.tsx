@@ -49,6 +49,8 @@ vi.mock("../Chat/ChatInput", () => ({
     toolbarExtras?: React.ReactNode;
     slashCommands?: Array<{ name: string }>;
     onSubmit: (text: string, attachments: Attachment[]) => void;
+    onAbort?: () => void;
+    isLoading?: boolean;
   }) => (
     <div
       data-testid="runtime-composer"
@@ -57,6 +59,11 @@ vi.mock("../Chat/ChatInput", () => ({
         props.allowAttachmentsWhileLoading,
       )}
     >
+      {props.isLoading && (
+        <button type="button" onClick={props.onAbort}>
+          停止测试任务
+        </button>
+      )}
       {props.toolbarExtras}
       {props.contextUsage && (
         <>
@@ -357,6 +364,138 @@ describe("RuntimeChat inputs and persistence", () => {
       },
     });
   });
+
+  // @lat: [[runtime-chat#Cancellation terminal observation]]
+  it.each(["renderer", "main"] as const)(
+    "keeps observing a stopped %s-owned task until its conversation is durable and accepts the next turn",
+    async (owner) => {
+      type Saved = Awaited<
+        ReturnType<typeof window.agentsOneAPI.saveRuntimeConversation>
+      >;
+      let durable: Saved | null = null;
+      let status = "running";
+      let releaseMain: (() => void) | undefined;
+      saveRuntimeConversation.mockImplementation(async (input) => {
+        durable = {
+          ...input,
+          revision: String(BigInt(input.expectedRevision || "0") + 1n),
+          createdAt: 1,
+          updatedAt: 2,
+          messageCount: input.messages.length,
+        } as Saved;
+        return durable;
+      });
+      getRuntimeConversation.mockImplementation(async () => durable);
+      startAgentRuntimeTask.mockImplementation(async () => {
+        if (durable?.activeRuntimeRunId)
+          throw new Error("conversation still locked");
+        const id =
+          startAgentRuntimeTask.mock.calls.length === 1
+            ? "cancel-run"
+            : "followup-run";
+        durable = {
+          ...durable!,
+          revision: String(BigInt(durable!.revision || "1") + 1n),
+          activeRuntimeRunId: id,
+          ...(owner === "main" && id === "cancel-run"
+            ? { activeRuntimeRunOwner: "main" as const }
+            : {}),
+        };
+        return {
+          id,
+          runtimeId: openCodeRuntime.id,
+          status: "running",
+          output: "",
+          createdAt: 1,
+          updatedAt: 2,
+          conversationRevision: durable.revision,
+        };
+      });
+      getAgentRuntimeRun.mockImplementation(async (id) => ({
+        id,
+        runtimeId: openCodeRuntime.id,
+        status: id === "followup-run" ? "succeeded" : status,
+        output: id === "followup-run" ? "NEW-TASK-OK" : "",
+        error:
+          status === "cancelled" ? "Runtime task was cancelled." : undefined,
+        createdAt: 1,
+        updatedAt: 2,
+      }));
+      vi.mocked(window.agentsOneAPI.cancelAgentRuntimeTask).mockImplementation(
+        async () => {
+          status = "cancelled";
+          if (owner === "main")
+            releaseMain = () => {
+              durable = {
+                ...durable!,
+                revision: String(BigInt(durable!.revision || "1") + 1n),
+                activeRuntimeRunId: undefined,
+                activeRuntimeRunOwner: undefined,
+                messages: [
+                  ...durable!.messages,
+                  {
+                    id: "cancel-terminal",
+                    role: "agent",
+                    content: "Runtime task was cancelled.",
+                    timestamp: 3,
+                  },
+                ],
+              } as Saved;
+            };
+          return true;
+        },
+      );
+      render(
+        <RuntimeChat
+          runId="cancel-convergence"
+          runtime={openCodeRuntime}
+          profile="default"
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+      await waitFor(() => expect(getAgentRuntimeRun).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole("button", { name: "停止测试任务" }));
+      await waitFor(() =>
+        expect(window.agentsOneAPI.cancelAgentRuntimeTask).toHaveBeenCalledWith(
+          "cancel-run",
+        ),
+      );
+      if (owner === "main") {
+        expect(
+          screen.getByRole("button", { name: "停止测试任务" }),
+        ).toBeInTheDocument();
+        releaseMain!();
+      }
+      await waitFor(() => expect(durable?.activeRuntimeRunId).toBeFalsy(), {
+        timeout: 3500,
+      });
+      await waitFor(
+        () =>
+          expect(
+            screen.queryByRole("button", { name: "停止测试任务" }),
+          ).toBeNull(),
+        { timeout: 3500 },
+      );
+      expect(
+        (durable as Saved | null)?.messages.some((message) =>
+          message.content.includes("cancelled"),
+        ),
+      ).toBe(true);
+      fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+      await waitFor(() =>
+        expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2),
+      );
+      await waitFor(
+        () =>
+          expect(
+            (durable as Saved | null)?.messages.some((message) =>
+              message.content.includes("NEW-TASK-OK"),
+            ),
+          ).toBe(true),
+        { timeout: 3500 },
+      );
+    },
+  );
 
   it("does not dispatch a Runtime task before its original user message has been saved", async () => {
     let release!: () => void;

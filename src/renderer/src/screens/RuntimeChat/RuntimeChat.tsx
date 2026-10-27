@@ -4600,6 +4600,19 @@ export default function RuntimeChat({
   }
 
   async function stop(): Promise<void> {
+    // Keep the single-task observer alive: it owns terminal UI convergence
+    // and waits for the Main/Renderer conversation checkpoint to unlock.
+    if (
+      currentRunId &&
+      !Object.keys(activeCollaborationRunsRef.current).length
+    ) {
+      try {
+        await window.agentsOneAPI.cancelAgentRuntimeTask(currentRunId);
+      } catch {
+        appendRuntimeControlMessage(t("runtimeChat.feedback.taskFailed"));
+      }
+      return;
+    }
     cancelledRef.current = true;
     const activeRunIds = [
       ...new Set([

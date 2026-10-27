@@ -361,3 +361,9 @@ The exclusion compares logical and canonical paths for Agents One, Hermes and Cl
 Read-only and automatic OpenCode tasks reject explicitly selected projects overlapping application private data before staging inputs or starting the ACP process.
 
 [[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] reuses the existing logical and canonical workspace overlap check. Main-owned projectless conversations and explicit full access retain their startup paths. [[tests/opencode-private-roots.test.ts]] verifies private roots and ancestors fail before input preparation and dispatch, while ordinary sibling projects still reach dispatch. This preflight does not sandbox arbitrary absolute-path reads by a third-party executor.
+
+## Cancellation terminal observation
+
+Stopping a single Runtime task keeps its result observer alive until the terminal conversation checkpoint is durable and the composer can accept the next turn.
+
+The cancel request does not itself clear the active run or stop terminal polling. Main-owned runs wait for Main persistence; Renderer-owned runs retain their existing serialized terminal writer. A rejected cancellation remains observable. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx]] covers both persistence owners from the stop button through cancellation and a durable follow-up answer.
