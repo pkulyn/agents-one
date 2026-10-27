@@ -18,7 +18,7 @@ agents-one-connector diagnose --connect https://connect.example
 agents-one-connector revoke
 agents-one-connector runtimes
 agents-one-connector register --runtime '{"runtimeId":"opencode-main","displayName":"OpenCode","kind":"opencode"}' --publish true
-agents-one-connector enable --runtime-id opencode-main --publish
+agents-one-connector enable --runtime-id opencode-main --publish true
 agents-one-connector probe --runtime-id opencode-main --runtime-adapters ./runtime-adapters.mjs
 agents-one-connector publish
 agents-one-connector run --adapter ./my-agent-adapter.mjs
@@ -49,4 +49,4 @@ powershell -ExecutionPolicy Bypass -File scripts/install-user.ps1 -AdapterPath C
 
 Linux 可使用 `scripts/install-user.sh --adapter ./hers-adapter.mjs --startup`，在支持 systemd user 的发行版注册用户服务。
 
-当前仍是预览：凭据目录已使用用户级目录和 Unix `0700/0600` 权限，Connect 已支持可选状态持久化和进程内 TLS，但Windows 凭据通过当前用户 DPAPI 保护；非 Windows 环境仍需自行核对文件权限和秘密存储。生产部署还需核对 Connect 账户/多实例/分布式限流/审计、Artifact 分块和签名升级回滚。Connect 的单进程内存模式不能作为公网生产安全存储。
+当前仍是预览：凭据目录已使用用户级目录和 Unix `0700/0600` 权限，Connect 已支持可选状态持久化和进程内 TLS。Windows 凭据通过当前用户 DPAPI 保护；非 Windows 环境仍需自行核对文件权限和秘密存储。生产部署还需核对 Connect 账户/多实例/分布式限流/审计、Artifact 分块和签名升级回滚。Connect 的单进程内存模式不能作为公网生产安全存储。
