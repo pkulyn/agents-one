@@ -221,6 +221,27 @@ function Layout(): React.JSX.Element {
   }, [activeProfile, view]);
 
   useEffect(() => {
+    const disposeConversation =
+      window.agentsOneAPI.onRuntimeConversationChanged?.((change) => {
+        if (change.profile !== activeProfile) return;
+        dispatchAgentsOneEvent("sessionTranscriptChanged");
+        if (change.kind === "runtime_conversation")
+          window.dispatchEvent(
+            new CustomEvent("agents-one:runtime-conversation-updated", {
+              detail: change,
+            }),
+          );
+      });
+    const disposeTrayTask =
+      window.agentsOneAPI.onTrayRuntimeConversationChanged?.((change) => {
+        if (change.profile !== activeProfile) return;
+        dispatchAgentsOneEvent("sessionTranscriptChanged");
+        window.dispatchEvent(
+          new CustomEvent("agents-one:runtime-conversation-updated", {
+            detail: change,
+          }),
+        );
+      });
     const disposeStarted = window.agentsOneAPI.onTaskScheduleRunStarted?.(
       (event) => {
         if (event.profile !== activeProfile) return;
@@ -258,6 +279,8 @@ function Layout(): React.JSX.Element {
       },
     );
     return () => {
+      disposeConversation?.();
+      disposeTrayTask?.();
       disposeStarted?.();
       dispose?.();
     };

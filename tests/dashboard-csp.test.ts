@@ -1,3 +1,4 @@
+import { resolveDesktopContentSecurityPolicy } from "../src/shared/desktop-csp";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
@@ -5,6 +6,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = join(__dirname, "..");
 // The production CSP header is injected from the main-process startup module.
 const mainSrc = readFileSync(join(ROOT, "src/main/app/start.ts"), "utf-8");
+const productionPolicy = resolveDesktopContentSecurityPolicy();
 const rendererIndexHtml = readFileSync(
   join(ROOT, "src/renderer/index.html"),
   "utf-8",
@@ -28,9 +30,14 @@ const packagedAssetSources = [
 ];
 
 describe("dashboard Content Security Policy", () => {
+  it("wires the shared policy into the Main header with a packaged-build guard", () => {
+    expect(mainSrc).toContain(
+      "resolveDesktopContentSecurityPolicy(is.dev && !app.isPackaged)",
+    );
+  });
   it("allows loopback HTTP and WebSocket connections in the production CSP header", () => {
     for (const source of loopbackConnectSources) {
-      expect(mainSrc).toContain(source);
+      expect(productionPolicy).toContain(source);
     }
   });
 
@@ -42,14 +49,14 @@ describe("dashboard Content Security Policy", () => {
 
   it("allows configured remote dashboard HTTP and WebSocket connections in both CSP policies", () => {
     for (const source of remoteConnectSources) {
-      expect(mainSrc).toContain(source);
+      expect(productionPolicy).toContain(source);
       expect(rendererIndexHtml).toContain(source);
     }
   });
 
   it("keeps packaged file-backed startup assets allowed in both CSP policies", () => {
     for (const source of packagedAssetSources) {
-      expect(mainSrc).toContain(source);
+      expect(productionPolicy).toContain(source);
       expect(rendererIndexHtml).toContain(source);
     }
   });

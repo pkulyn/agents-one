@@ -371,7 +371,7 @@ export const MessageRow = memo(function MessageRow({
             title={t("chat.message.branch")}
             aria-label={t("chat.message.branch")}
           >
-            <GitBranch size={15} />
+            <GitBranch size={15} style={{ transform: "scaleY(-1)" }} />
           </button>
         ) : null}
         {bubbleTime ? (

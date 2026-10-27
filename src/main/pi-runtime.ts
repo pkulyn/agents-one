@@ -1,10 +1,38 @@
+import { piNativeToolsExtensionSource } from "./pi-native-tools";
+import {
+  createPiQueryContext,
+  enterPiQueryContext,
+  type PiQueryBinding,
+} from "./pi-query-context";
+import { assertPiNonExecutingConfig } from "./pi-config-policy";
+import {
+  inspectPiVersion,
+  verifyPiStrictCapabilities,
+} from "./pi-capabilities";
+import { createPiWriteBoundary } from "./pi-write-boundary";
+import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
-import { existsSync, mkdirSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promisify } from "util";
+import { StringDecoder } from "node:string_decoder";
 import { homedir } from "os";
-import { delimiter, dirname, extname, join, relative, resolve } from "path";
-import { randomUUID } from "crypto";
-import { profileHome } from "./utils";
+import {
+  delimiter,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "path";
+import { createHash, randomUUID } from "crypto";
+import {
+  agentsOneProfileHome,
+  profileHome,
+  getActiveProfileNameSync,
+} from "./utils";
+import { agentsOneDataRoot } from "./agents-one-data-root";
+import { fileURLToPath } from "node:url";
 import { prepareRuntimeInputs } from "./runtime-inputs";
 import { protectWorkspaceFromRemoval } from "./workspace-protection";
 import { terminateProcessTree } from "./process-control";
@@ -60,7 +88,17 @@ export type PiRpcCommand =
   | "get_commands"
   | "get_state";
 
+/** Main-only live authority; never serialized across IPC. */
+export interface PiNativeCommandContext {
+  cwd: string;
+  profile: string;
+  assertCurrent: () => void;
+}
+
 export interface PiRpcCommandRequest {
+  /** Main-resolved project context; it does not grant native resources. */
+  workspace?: string;
+  nativeContext?: PiNativeCommandContext;
   type: PiRpcCommand;
   /** A provider session is required for stateful commands such as compact. */
   sessionId?: string;
@@ -148,6 +186,31 @@ function redact(value: string): string {
   return value.replace(SECRET_VALUE, "$1[redacted]");
 }
 
+/** Binary input echoes are not output and must not evict the final JSON frame. */
+// @lat: [[runtime-chat#Pi attachment output retention]]
+export function piOutputFrame(line: string): string {
+  try {
+    const frame = JSON.parse(line);
+    if (frame.type === "agent_end" && Array.isArray(frame.messages)) {
+      frame.messages = frame.messages.filter(
+        (message: unknown) => record(message) && message.role === "assistant",
+      );
+    }
+    return JSON.stringify(frame, (_key, value) => {
+      if (record(value) && value.type === "image") {
+        return {
+          type: "image",
+          mimeType: value.mimeType,
+          data: "[input omitted]",
+        };
+      }
+      return value;
+    });
+  } catch {
+    return line;
+  }
+}
+
 function appendCapped(current: string, next: string): string {
   const merged = `${current}${redact(next)}`;
   return merged.length <= MAX_OUTPUT ? merged : merged.slice(-MAX_OUTPUT);
@@ -205,7 +268,12 @@ function configuredProbeWorkspace(config: PiRuntimeConfig): string | undefined {
 }
 
 function safeWorktreePath(profile: string | undefined, id: string): string {
-  const root = resolve(profileHome(profile), "desktop", "worktrees", "pi");
+  const root = resolve(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "worktrees",
+    "pi",
+  );
   const target = resolve(root, id);
   if (relative(root, target).startsWith(".."))
     throw new Error("Invalid worktree path.");
@@ -214,21 +282,77 @@ function safeWorktreePath(profile: string | undefined, id: string): string {
 }
 
 function sessionsRoot(profile?: string): string {
-  const root = resolve(profileHome(profile), "desktop", "pi-sessions");
+  const root = resolve(agentsOneProfileHome(profile), "desktop", "pi-sessions");
   mkdirSync(root, { recursive: true });
   return root;
+}
+
+function conversationDirectory(profile?: string): string {
+  return resolve(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "runtime-chat",
+    "pi",
+  );
 }
 
 function conversationCwd(profile?: string): string {
-  const root = resolve(profileHome(profile), "desktop", "runtime-chat", "pi");
+  const root = conversationDirectory(profile);
   mkdirSync(root, { recursive: true });
   return root;
 }
 
+const PI_EXECUTION_ENVIRONMENT_KEYS = new Set([
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "NODE_REPL_EXTERNAL_MODULE",
+  "NODE_ICU_DATA",
+  "NODE_V8_COVERAGE",
+  "NODE_COMPILE_CACHE",
+  "NODE_COMPILE_CACHE_PORTABLE",
+  "NODE_REDIRECT_WARNINGS",
+  "OPENSSL_CONF",
+  "OPENSSL_CONF_INCLUDE",
+  "OPENSSL_ENGINES",
+  "OPENSSL_MODULES",
+  "ELECTRON_RUN_AS_NODE",
+  "PI_PACKAGE_DIR",
+  "RIPGREP_CONFIG_PATH",
+  "BASH_ENV",
+  "ENV",
+  "SHELLOPTS",
+  "BASHOPTS",
+  "PROMPT_COMMAND",
+  "ZDOTDIR",
+  "ZSH_ENV",
+  "PYTHONPATH",
+  "PYTHONHOME",
+  "PYTHONSTARTUP",
+  "PYTHONINSPECT",
+  "RUBYOPT",
+  "RUBYLIB",
+  "PERL5OPT",
+  "PERL5LIB",
+  "PERLLIB",
+]);
+
+// @lat: [[runtime-chat#Pi restricted task environment]]
 export function piChildEnvironment(
   source: NodeJS.ProcessEnv = process.env,
+  mode: AgentRuntimeTaskInput["mode"] = "full_access",
 ): NodeJS.ProcessEnv {
-  return { ...source };
+  if (mode !== "analysis" && mode !== "safe_write") return { ...source };
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => {
+      const name = key.toUpperCase();
+      return (
+        !PI_EXECUTION_ENVIRONMENT_KEYS.has(name) &&
+        !name.startsWith("LD_") &&
+        !name.startsWith("DYLD_") &&
+        !name.startsWith("BUN_")
+      );
+    }),
+  );
 }
 
 function positiveInteger(value: unknown): number | null {
@@ -468,9 +592,8 @@ export function piOutputError(output: string): string | undefined {
 }
 
 /**
- * Pure, regression-tested Pi invocation. Analysis can use a small read-only
- * tool allowlist inside an explicitly selected workspace. It never receives
- * write, edit, or shell access outside an isolated implementation worktree.
+ * Read-only runs retain file readers and query orchestration. A native Pi
+ * extension guards every actual call, including nested MCP/codemode calls.
  */
 export function piExecArgs(
   mode: "analysis" | "safe_write" | "implementation" | "full_access",
@@ -478,7 +601,7 @@ export function piExecArgs(
   sessionId: string,
   sessionDirectory: string,
   inputPaths: string[] = [],
-  allowReadTools = false,
+  _allowReadTools = false,
   model?: string,
 ): string[] {
   const args = [
@@ -490,15 +613,19 @@ export function piExecArgs(
     "--session-id",
     sessionId,
   ];
-  // Writable modes keep Pi's native terminal capabilities: built-in/custom
-  // tools, skills, extensions, MCP adapters, packages and project context.
-  // Only a user-selected read-only run narrows the available tools.
-  if (mode === "analysis") {
-    if (allowReadTools) {
-      args.push("--tools", "read,grep,find,ls");
-    } else {
-      args.push("--no-tools");
-    }
+  // Restricted runs use trusted native file tools only. A tools allowlist alone
+  // does not disable MCP in Pi; block discovery and indirect execution as well.
+  if (mode === "analysis" || mode === "safe_write") {
+    args.push(
+      "--no-extensions",
+      "--no-mcp",
+      "--tools",
+      mode === "analysis"
+        ? "read,grep,find,ls"
+        : "read,grep,find,ls,write,edit",
+      "--exclude-tools",
+      "bash,powershell,tool_search,codemode,mcp__*",
+    );
   }
   if (model?.trim()) args.push("--model", model.trim());
   // Pi expands only these staged copies before the run. It never receives the
@@ -522,6 +649,105 @@ export function piRpcArgs(
   return args;
 }
 
+const PI_CONTROL_COMMANDS = new Set<PiRpcCommand>([
+  "get_available_models",
+  "set_model",
+  "get_available_thinking_levels",
+  "set_thinking_level",
+  "compact",
+  "get_commands",
+  "get_state",
+]);
+
+async function preparePiRpc(
+  config: PiRuntimeConfig,
+  profile?: string,
+  nativeContext?: PiNativeCommandContext,
+  workspace?: string,
+): Promise<{
+  invocation: PiInvocation;
+  cwd: string;
+  environment: NodeJS.ProcessEnv;
+  profile: string;
+  assertReady: () => void;
+  startupTools: string[];
+}> {
+  profile = profile || nativeContext?.profile || getActiveProfileNameSync();
+  const activeProfile = getActiveProfileNameSync();
+  let invocation = piInvocation(configuredExecutable(config));
+  if (nativeContext) {
+    nativeContext.assertCurrent();
+    if (nativeContext.profile !== profile || !isAbsolute(nativeContext.cwd))
+      throw Error("Pi native command authority is invalid.");
+    let metadata: Awaited<ReturnType<typeof inspectPiVersion>> | undefined;
+    try {
+      metadata = await inspectPiVersion(invocation);
+    } catch {
+      /* Keep unreviewed explicit full-native behavior. */
+    }
+    const assertReady = (): void => {
+      nativeContext.assertCurrent();
+      metadata?.assertUnchanged();
+    };
+    assertReady();
+    return {
+      invocation: metadata?.invocation || invocation,
+      cwd: nativeContext.cwd,
+      environment: piChildEnvironment(),
+      profile,
+      assertReady,
+      startupTools:
+        metadata?.version === "1.4.0"
+          ? [
+              "--no-builtin-tools",
+              "--extension",
+              piNativeToolsExtension(profile),
+            ]
+          : [],
+    };
+  }
+  const capabilities = await verifyPiStrictCapabilities(invocation);
+  invocation = capabilities.invocation;
+  if (workspace && !isAbsolute(workspace))
+    throw Error("Pi RPC project context is invalid.");
+  const cwd = workspace || conversationCwd(profile);
+  const configRoot = piPrivateConfigRoot(cwd);
+  const assertReady = (): void => {
+    if (getActiveProfileNameSync() !== activeProfile)
+      throw Error("Pi RPC profile changed before execution.");
+    capabilities.assertUnchanged();
+    assertPiNonExecutingConfig(configRoot);
+  };
+  assertReady();
+  const environment = Object.fromEntries(
+    Object.entries(piChildEnvironment(process.env, "analysis")).filter(
+      ([key]) => key.toUpperCase() !== "PI_CODING_AGENT_DIR",
+    ),
+  );
+  environment.PI_CODING_AGENT_DIR = configRoot;
+  return {
+    invocation,
+    cwd,
+    environment,
+    profile,
+    assertReady,
+    startupTools: [],
+  };
+}
+
+function piControlArgs(
+  sessionDirectory: string,
+  sessionId?: string,
+  nativeContext?: PiNativeCommandContext,
+): string[] {
+  return [
+    ...piRpcArgs(sessionDirectory, sessionId),
+    ...(!nativeContext
+      ? ["--no-extensions", "--no-mcp", "--no-tools", "--exclude-tools", "*"]
+      : []),
+  ];
+}
+
 /**
  * Execute exactly one Pi RPC request over a short-lived JSONL control channel.
  * Prompt execution remains on the existing streaming process path; this helper
@@ -531,8 +757,16 @@ export async function executePiRpcCommand(
   config: PiRuntimeConfig,
   request: PiRpcCommandRequest,
 ): Promise<PiRpcCommandResponse> {
-  const invocation = piInvocation(configuredExecutable(config));
-  const sessionDirectory = sessionsRoot(request.profile);
+  if (!PI_CONTROL_COMMANDS.has(request.type))
+    throw Error("Unsupported Pi RPC control command.");
+  const prepared = await preparePiRpc(
+    config,
+    request.profile,
+    request.nativeContext,
+    request.workspace,
+  );
+  const invocation = prepared.invocation;
+  const sessionDirectory = sessionsRoot(prepared.profile);
   const requestId = `agents-one-${randomUUID()}`;
   const timeoutMs = Math.min(
     Math.max(request.timeoutMs ?? 20_000, 1_000),
@@ -540,12 +774,21 @@ export async function executePiRpcCommand(
   );
 
   return new Promise<PiRpcCommandResponse>((resolveResult, rejectResult) => {
+    prepared.assertReady();
     const child = spawn(
       invocation.command,
-      [...invocation.prefix, ...piRpcArgs(sessionDirectory, request.sessionId)],
+      [
+        ...invocation.prefix,
+        ...prepared.startupTools,
+        ...piControlArgs(
+          sessionDirectory,
+          request.sessionId,
+          request.nativeContext,
+        ),
+      ],
       {
-        cwd: conversationCwd(request.profile),
-        env: piChildEnvironment(),
+        cwd: prepared.cwd,
+        env: prepared.environment,
         shell: false,
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
@@ -631,7 +874,7 @@ export async function executePiRpcCommand(
       }
     });
     child.stdin?.write(
-      `${JSON.stringify({ id: requestId, type: request.type, ...(request.params ?? {}) })}\n`,
+      `${JSON.stringify({ ...(request.params ?? {}), id: requestId, type: request.type })}\n`,
     );
   });
 }
@@ -645,6 +888,7 @@ export async function executePiRpcPrompt(
   config: PiRuntimeConfig,
   request: {
     sessionId: string;
+    nativeContext?: PiNativeCommandContext;
     message: string;
     profile?: string;
     timeoutMs?: number;
@@ -659,7 +903,17 @@ export async function executePiRpcPrompt(
   if (!message.startsWith("/")) {
     throw new Error("Pi native commands must start with '/'.");
   }
-  const invocation = piInvocation(configuredExecutable(config));
+  const nativeContext = request.nativeContext;
+  if (!nativeContext)
+    throw Error(
+      "[Agents One 权限不足] Pi 原生命令需要已保存的完全访问会话和授权项目。 / Native commands require a saved full-access conversation and authorized project.",
+    );
+  const prepared = await preparePiRpc(
+    config,
+    nativeContext.profile,
+    nativeContext,
+  );
+  const invocation = prepared.invocation;
   const timeoutMs = Math.min(
     Math.max(request.timeoutMs ?? 60_000, 1_000),
     10 * 60_000,
@@ -667,15 +921,17 @@ export async function executePiRpcPrompt(
   const requestId = `agents-one-${randomUUID()}`;
 
   return new Promise<PiRpcPromptResult>((resolveResult, rejectResult) => {
+    prepared.assertReady();
     const child = spawn(
       invocation.command,
       [
         ...invocation.prefix,
-        ...piRpcArgs(sessionsRoot(request.profile), sessionId),
+        ...prepared.startupTools,
+        ...piRpcArgs(sessionsRoot(nativeContext.profile), sessionId),
       ],
       {
-        cwd: conversationCwd(request.profile),
-        env: piChildEnvironment(),
+        cwd: prepared.cwd,
+        env: prepared.environment,
         shell: false,
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
@@ -777,9 +1033,11 @@ export async function probePiRuntime(
   config: PiRuntimeConfig,
 ): Promise<PiRuntimeProbeResult> {
   try {
-    const version = await command(piInvocation(configuredExecutable(config)), [
-      "--version",
-    ]);
+    const inspected = await inspectPiVersion(
+      piInvocation(configuredExecutable(config)),
+    );
+    inspected.assertUnchanged();
+    const version = inspected.version;
     const workspace = configuredProbeWorkspace(config);
     if (workspace) await gitRoot(workspace);
     return {
@@ -799,13 +1057,127 @@ export async function probePiRuntime(
   }
 }
 
+/** Match the native Pi 1.4 config path spelling before applying write authority. */
+function piPrivateConfigRoot(cwd: string): string {
+  let value =
+    process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+  if (process.platform === "win32") {
+    const drive = value.match(/^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i);
+    if (drive && !value.includes("\\"))
+      value =
+        drive[1].toUpperCase() + ":\\" + (drive[2] || "").replaceAll("/", "\\");
+  }
+  if (value === "~") value = homedir();
+  else if (
+    value.startsWith("~/") ||
+    (process.platform === "win32" && value.startsWith("~\\"))
+  )
+    value = join(homedir(), value.slice(2));
+  if (value.startsWith("file://")) {
+    try {
+      value = fileURLToPath(value);
+    } catch {
+      throw Error(
+        "Pi 配置目录无法核验，本轮任务未发送。 / Pi configuration directory could not be verified; the task was not sent.",
+      );
+    } // Invalid native config cannot establish automatic authority.
+  }
+  return resolve(cwd, value);
+}
+
+/** Native Pi hook: every nested tool call receives the same check. */
+// @lat: [[runtime-chat#Pi read-only tool boundary]]
+export function piReadOnlyExtensionSource(
+  mode: "analysis" | "safe_write" = "analysis",
+  writableRoot = "",
+  protectedPaths: string[] = [],
+  queryBinding?: PiQueryBinding,
+): string {
+  return `import * as fs from "node:fs";
+import * as path from "node:path";
+const checkWritePath = (${createPiWriteBoundary.toString()})(${JSON.stringify(writableRoot)}, fs, path, ${JSON.stringify(protectedPaths)});
+const queryBinding = ${JSON.stringify(queryBinding || null)};
+const enterQuery = (${enterPiQueryContext.toString()});
+export default function agentsOneReadOnly(pi) {
+  if (queryBinding) { try { enterQuery(queryBinding, fs, process); } catch {} }
+  const allowed = new Set(${JSON.stringify(mode === "safe_write" ? ["read", "grep", "find", "ls", "write", "edit"] : ["read", "grep", "find", "ls"])});
+  pi.on("tool_call", (event, ctx) => {
+    if (queryBinding) {
+      try { enterQuery(queryBinding, fs, process); }
+      catch (error) { return { block: true, reason: error.message }; }
+    }
+    const name = event.toolName;
+    if (allowed.has(name)) {
+      if (name === "write" || name === "edit") {
+        const reason = checkWritePath(event.input?.path, ctx?.cwd);
+        if (reason) return { block: true, reason };
+      }
+      return;
+    }
+    return {
+      block: true,
+      reason: "[Agents One 权限不足] 当前权限为" + ${JSON.stringify(mode === "safe_write" ? "自动" : "只读")} +
+        "，已阻止终端、脚本或未受控工具 " + name +
+        "。仅允许本轮受控文件工具；终端、脚本、移动或删除需切换为完全访问。不要声称该操作已完成。",
+    };
+  });
+}
+`;
+}
+
+function piReadOnlyExtension(
+  profile: string | undefined,
+  mode: "analysis" | "safe_write",
+  writableRoot: string,
+  protectedPaths: string[],
+  queryBinding?: PiQueryBinding,
+): string {
+  const source = piReadOnlyExtensionSource(
+    mode,
+    writableRoot,
+    protectedPaths,
+    queryBinding,
+  );
+  const digest = createHash("sha256").update(source).digest("hex").slice(0, 16);
+  const directory = resolve(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "pi-permissions",
+  );
+  mkdirSync(directory, { recursive: true });
+  const file = join(directory, `read-only-${digest}.mjs`);
+  // Generated code is Main-owned and contains no provider/user configuration.
+  writeFileSync(file, source, "utf-8");
+  return file;
+}
+
+function piNativeToolsExtension(profile?: string): string {
+  const source = piNativeToolsExtensionSource();
+  const digest = createHash("sha256").update(source).digest("hex").slice(0, 16);
+  const directory = resolve(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "pi-permissions",
+  );
+  mkdirSync(directory, { recursive: true });
+  const file = join(directory, "native-defaults-" + digest + ".mjs");
+  if (!existsSync(file) || readFileSync(file, "utf8") !== source)
+    writeFileSync(file, source, "utf8");
+  return file;
+}
+
 export async function startPiProcess(
   config: PiRuntimeConfig,
   input: AgentRuntimeTaskInput,
   onOutput: (chunk: string) => void,
+  canStart: () => boolean = () => true,
 ): Promise<StartedPiProcess> {
+  const assertCanStart = (): void => {
+    if (!canStart()) throw Error("Pi task was cancelled before execution.");
+  };
+  assertCanStart();
   const mode = input.mode || "analysis";
-  const invocation = piInvocation(configuredExecutable(config));
+  let invocation = piInvocation(configuredExecutable(config));
   const workspace = requestedWorkspace(config, input);
   if ((mode === "implementation" || mode === "full_access") && !workspace) {
     throw new Error(
@@ -813,7 +1185,34 @@ export async function startPiProcess(
     );
   }
 
-  let cwd = workspace || conversationCwd(input.profile);
+  const strict =
+    mode === "analysis" || mode === "safe_write"
+      ? await verifyPiStrictCapabilities(invocation)
+      : undefined;
+  let nativeMetadata: Awaited<ReturnType<typeof inspectPiVersion>> | undefined;
+  if (mode === "full_access") {
+    try {
+      nativeMetadata = await inspectPiVersion(invocation);
+    } catch {
+      /* Unreviewed full-native executors retain their existing startup behavior. */
+    }
+  }
+  assertCanStart();
+  if (strict) invocation = strict.invocation;
+  else if (nativeMetadata) invocation = nativeMetadata.invocation;
+
+  let cwd = workspace || conversationDirectory(input.profile);
+  const configRoot = strict ? piPrivateConfigRoot(cwd) : undefined;
+  if (configRoot) assertPiNonExecutingConfig(configRoot);
+  if (!workspace) mkdirSync(cwd, { recursive: true });
+  const queryContext = configRoot
+    ? await createPiQueryContext(
+        resolve(agentsOneProfileHome(input.profile), "desktop", "pi-query-cwd"),
+        cwd,
+        configRoot,
+        piChildEnvironment(process.env, mode),
+      )
+    : undefined;
   let worktreePath: string | undefined;
   if (mode === "implementation" && workspace) {
     const root = await gitRoot(workspace);
@@ -833,6 +1232,7 @@ export async function startPiProcess(
     cwd = worktreePath;
   }
 
+  assertCanStart();
   const preparedInputs = prepareRuntimeInputs(
     input.profile,
     input.attachments,
@@ -844,10 +1244,44 @@ export async function startPiProcess(
     mode === "safe_write" && workspace
       ? protectWorkspaceFromRemoval(workspace, input.profile)
       : undefined;
+  strict?.assertUnchanged();
+  nativeMetadata?.assertUnchanged();
+  if (configRoot) assertPiNonExecutingConfig(configRoot);
+  assertCanStart();
   const child = spawn(
     invocation.command,
     [
       ...invocation.prefix,
+      ...(nativeMetadata?.version === "1.4.0"
+        ? [
+            "--no-builtin-tools",
+            "--extension",
+            piNativeToolsExtension(input.profile),
+          ]
+        : []),
+      ...(mode === "analysis" || mode === "safe_write"
+        ? [
+            "--extension",
+            piReadOnlyExtension(
+              input.profile,
+              mode,
+              cwd,
+              [
+                ...[
+                  invocation.command,
+                  ...invocation.prefix,
+                  process.execPath,
+                ].flatMap((file) => [file, dirname(file)]),
+                // Explicit selection cannot grant authority over private application state.
+                // Implicit conversation writes are already confined to their own cwd.
+                resolve(profileHome()),
+                piPrivateConfigRoot(cwd),
+                ...(workspace ? [dirname(agentsOneDataRoot())] : []),
+              ],
+              queryContext?.binding,
+            ),
+          ]
+        : []),
       ...piExecArgs(
         mode,
         runtimePrompt,
@@ -860,7 +1294,7 @@ export async function startPiProcess(
     ],
     {
       cwd,
-      env: piChildEnvironment(),
+      env: queryContext?.environment || piChildEnvironment(process.env, mode),
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
@@ -873,7 +1307,23 @@ export async function startPiProcess(
     output = appendCapped(output, safe);
     onOutput(safe);
   };
-  child.stdout?.on("data", (data: Buffer) => recordOutput(data.toString()));
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  const consume = (value: string): void => {
+    pending += value;
+    let newline = pending.indexOf("\n");
+    while (newline >= 0) {
+      recordOutput(piOutputFrame(pending.slice(0, newline)) + "\n");
+      pending = pending.slice(newline + 1);
+      newline = pending.indexOf("\n");
+    }
+  };
+  child.stdout?.on("data", (data: Buffer) => consume(decoder.write(data)));
+  child.stdout?.on("end", () => {
+    consume(decoder.end());
+    if (pending) recordOutput(piOutputFrame(pending) + "\n");
+    pending = "";
+  });
   child.stderr?.on("data", (data: Buffer) => recordOutput(data.toString()));
 
   const completion = new Promise<PiProcessResult>((resolveResult) => {
@@ -881,7 +1331,7 @@ export async function startPiProcess(
       workspaceProtection?.restoreAndDispose();
       resolveResult({
         output,
-        error: redact(error.message),
+        error: workspaceProtection?.recoveryError || redact(error.message),
         worktreePath,
         artifacts: worktreePath
           ? [
@@ -944,6 +1394,12 @@ export async function startPiProcess(
         ...(worktreePath ? { worktreePath } : {}),
         ...(diffSummary ? { diffSummary } : {}),
         artifacts,
+        ...(restoredFiles.length
+          ? { error: runtimeRemovalBlockedMessage(restoredFiles) }
+          : {}),
+        ...(workspaceProtection?.recoveryError
+          ? { error: workspaceProtection.recoveryError }
+          : {}),
         inputArtifacts: preparedInputs.artifacts,
         sessionId,
       });

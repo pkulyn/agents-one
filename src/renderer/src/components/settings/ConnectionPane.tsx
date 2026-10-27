@@ -81,11 +81,22 @@ export default function ConnectionPane(): React.JSX.Element {
         </div>
       )}
 
+      {s.networkError && (
+        <div className="settings-pane-flash" role="alert">
+          {s.networkError}
+        </div>
+      )}
+
       {/* Network — applies to the local gateway connection. */}
       <div className="settings-subsection">
         <div className="settings-subsection-head">
           <Wifi size={14} />
           <span>{t("settings.networkSection")}</span>
+          {s.networkLoading && (
+            <span className="settings-field-hint">
+              {t("settings.networkLoading")}
+            </span>
+          )}
           {networkSaved && (
             <span className="settings-saved">{t("settings.saved")}</span>
           )}
@@ -99,6 +110,7 @@ export default function ConnectionPane(): React.JSX.Element {
             >
               <input
                 type="checkbox"
+                disabled={s.networkReady === false}
                 checked={forceIpv4}
                 onChange={async (e) => {
                   const val = e.target.checked;
@@ -126,6 +138,7 @@ export default function ConnectionPane(): React.JSX.Element {
           <input
             className="input"
             type="text"
+            disabled={s.networkReady === false}
             value={httpProxy}
             onChange={(e) => {
               httpProxyRef.current = e.target.value;
@@ -144,7 +157,8 @@ export default function ConnectionPane(): React.JSX.Element {
             placeholder={t("settings.proxyPlaceholder")}
           />
           <div className="settings-field-hint">
-            {t("settings.httpProxyHint")}
+            {t("settings.httpProxyHint")}{" "}
+            {t("settings.proxySavedParametersHint")}
           </div>
         </div>
       </div>

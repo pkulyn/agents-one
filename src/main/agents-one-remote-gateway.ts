@@ -1286,7 +1286,6 @@ export async function uploadAgentsOneRemoteGatewayArtifact(
       size: input.bytes.length,
       sha256: input.sha256.toLowerCase(),
       contentBase64: input.bytes.toString("base64"),
-      content_base64: input.bytes.toString("base64"),
     },
   });
   if (!response.ok) {

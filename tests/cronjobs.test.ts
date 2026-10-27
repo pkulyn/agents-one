@@ -16,9 +16,12 @@ vi.mock("child_process", () => ({
   default: { execFile: execFileSpy },
 }));
 
-vi.mock("../src/main/utils", () => ({
-  profileHome: () => "C:/hermes",
-}));
+vi.mock("../src/main/utils", () => {
+  const mocked = {
+    profileHome: () => "C:/hermes",
+  };
+  return { ...mocked, agentsOneProfileHome: mocked.profileHome };
+});
 
 vi.mock("../src/main/hermes", () => ({
   isRemoteMode: () => false,

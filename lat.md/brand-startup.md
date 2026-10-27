@@ -47,3 +47,29 @@ Agents One removes the former desktop product identity while preserving Hermes A
 The preload bridge is exposed as `window.agentsOneAPI`; `window.hermesAPI` remains a deprecated alias for older automation during a migration window. Renderer preferences use versioned `agents-one.*` keys and copy old values on first read without deleting them, so rollback remains safe. New window events use the `agents-one:` namespace while listeners accept old event names temporarily.
 
 Desktop-only environment variables prefer `AGENTS_ONE_*` and `VITE_AGENTS_ONE_*`, with former names retained only as read fallbacks. Windows taskbar and notification identity matches the packaged `com.pkulyn.agents-one` app id in both development and packaged runs: [[src/main/app/start.ts#startMainProcess]] calls Electron's native `app.setAppUserModelId` before readiness because the toolkit helper deliberately substitutes `electron.exe` during development, which would restore the Electron atom taskbar icon. The main BrowserWindow keeps using `resources/icon.png`, while packaging uses the multi-size `build/icon.ico`; both are generated from the same rainbow dawn-ring mark. Old Electron user-data directories are read once as migration sources and are never deleted; `.hermes`, `HERMES_HOME`, Runtime ids, CLI commands, Dashboard headers, and gateway events remain unchanged because they belong to the Hermes Agent Runtime contract.
+
+## Packaged license notices
+
+Desktop packages include the MIT project license, inherited third-party notices and the licenses for bundled fonts.
+
+The build resource list copies the root license and third-party notices into resources/notices. Cairo and Manrope retain their embedded copyright notices and SIL OFL 1.1 terms; the Oxanium-derived wordmark notice is included separately. These files are build inputs and must exist in a clean checkout. Project MIT metadata does not replace dependency or asset licenses.
+
+## Packaged dependency notices
+
+Desktop builds preserve production dependency notices separately from the project MIT license. The inventory binds installed versions to the lockfile and identifies missing standalone notices.
+
+The build collector emits build assets copied to resources/notices by electron-builder. Missing required packages or version drift stop generation; commercial SDK terms remain distinct. [[tests/dependency-notices.test.ts]] checks preservation, reproducibility and refusal of incomplete build inputs.
+
+## Windows direct npm collection
+
+Windows packaging runs npm dependency collection through the active Node executable and its adjacent npm CLI. The build hook preserves the collector arguments and waits for process close and file flush before parsing JSON.
+
+This build-only compatibility hook avoids dependence on a PowerShell shim. It leaves the application Runtime and production dependency graph unchanged. [[tests/windows-npm-collection.test.ts]] verifies real large child output, literal arguments and expected npm-list error handling.
+
+The real portable npm integration test allows 30 seconds for Windows process startup and collection under a full-suite workload. This test deadline does not change production collector arguments or error handling.
+
+## Windows process product identity
+
+Packaged Windows executables identify themselves as Agents One in native file descriptions and product metadata instead of retaining the Electron distribution name.
+
+The existing Windows resource hook writes the configured application name, executable identity and application versions alongside the icon, without external signing helpers. Electron copyright and unrelated resources remain intact. This applies to newly packaged executables; an app.asar-only update cannot replace old EXE metadata. The real-EXE packaging regression verifies all language tables and preservation of other resources.

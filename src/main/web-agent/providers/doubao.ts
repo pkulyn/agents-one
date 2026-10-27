@@ -835,7 +835,7 @@ export class DoubaoProviderAdapter {
         }
         const currentText = editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement
           ? editor.value
-          : editor.textContent;
+          : editor.innerText || editor.textContent;
         return normalize(currentText).includes(normalize(prompt));
       })()
     `);
@@ -903,7 +903,7 @@ export class DoubaoProviderAdapter {
             )[0];
             const value = editor instanceof HTMLTextAreaElement || editor instanceof HTMLInputElement
               ? editor.value
-              : editor?.textContent || '';
+              : editor?.innerText || editor?.textContent || '';
             return normalize(value).includes(normalize(prompt));
           })()
         `);
@@ -912,7 +912,7 @@ export class DoubaoProviderAdapter {
       if (page.click) {
         try {
           await page.click(
-            'button[aria-label="发送提示"], button[data-testid="send-button"]',
+            'form:has([data-agents-one-composer-target="true"]) button[type="submit"][aria-label="发送"], button[aria-label="发送提示"], button[data-testid="send-button"]',
           );
           clicked = true;
         } catch {
@@ -945,7 +945,7 @@ export class DoubaoProviderAdapter {
         const domSubmitted = await page.evaluate<boolean>(`
           (() => {
             const send = document.querySelector(
-              'button[aria-label="发送提示"], button[data-testid="send-button"]'
+              'form:has([data-agents-one-composer-target="true"]) button[type="submit"][aria-label="发送"], button[aria-label="发送提示"], button[data-testid="send-button"]'
             );
             if (!send || send.hasAttribute('disabled') || send.getAttribute('aria-disabled') === 'true') return false;
             send.click();
@@ -1260,7 +1260,7 @@ export class DoubaoProviderAdapter {
           return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
         };
         const candidates = [
-          ...document.querySelectorAll('[data-message-author-role="assistant"], [data-role="assistant"], [data-testid*="assistant"], .assistant-message'),
+          ...document.querySelectorAll('[data-message-author-role="assistant"], [data-role="assistant"], [data-testid*="assistant"], .assistant-message, [data-markdown-text-style="assistant-message"]'),
           // Current Doubao chat messages expose only a data-message-id. User
           // bubbles carry the stable send-bubble class, while assistant rows
           // contain the generated answer and thinking blocks.
@@ -1347,6 +1347,23 @@ export class DoubaoProviderAdapter {
             }
             if (tag === 'ul') return renderList(element, false, context);
             if (tag === 'ol') return renderList(element, true, context);
+            if (tag === 'table') {
+              // The renderer accepts GFM tables; flattening cells here loses
+              // the columns and joins adjacent companies into one paragraph.
+              const rows = [...element.querySelectorAll('tr')].map((row) =>
+                [...row.children]
+                  .filter((cell) => /^(?:th|td)$/i.test(String(cell.tagName || '')))
+                  .map((cell) => inline(renderChildren(cell, context)).replace(/\\|/g, '\\\\|'))
+              ).filter((cells) => cells.length);
+              if (!rows.length) return '';
+              const width = Math.max(...rows.map((cells) => cells.length));
+              const line = (cells) => '| ' + [...cells, ...Array(width - cells.length).fill('')].join(' | ') + ' |';
+              return '\\n\\n' + [
+                line(rows[0]),
+                line(Array(width).fill('---')),
+                ...rows.slice(1).map(line),
+              ].join('\\n') + '\\n\\n';
+            }
             if (tag === 'strong' || tag === 'b') {
               const value = inline(renderChildren(element, context));
               return value ? '**' + value + '**' : '';
@@ -1432,7 +1449,7 @@ export class DoubaoProviderAdapter {
           // data-message-id-only guard is intended for Doubao's untyped
           // transient rows; never discard a row whose role is explicit.
           const hasSemanticAssistantRole = Boolean(element.matches?.(
-            '[data-message-author-role="assistant"], [data-role="assistant"], [data-testid*="assistant"], .assistant-message'
+            '[data-message-author-role="assistant"], [data-role="assistant"], [data-testid*="assistant"], .assistant-message, [data-markdown-text-style="assistant-message"]'
           ));
           if (element.hasAttribute?.('data-message-id') && !hasSemanticAssistantRole) return '';
           const clone = element.cloneNode(true);
@@ -1446,7 +1463,7 @@ export class DoubaoProviderAdapter {
         const hasThinkingBlock = Boolean(last?.querySelector?.(thinkingSelector));
         const isModernMessageRow = Boolean(last?.hasAttribute?.('data-message-id'));
         const hasSemanticAssistantRole = Boolean(last?.matches?.(
-          '[data-message-author-role="assistant"], [data-role="assistant"], [data-testid*="assistant"], .assistant-message'
+          '[data-message-author-role="assistant"], [data-role="assistant"], [data-testid*="assistant"], .assistant-message, [data-markdown-text-style="assistant-message"]'
         ));
         const hasExplicitAnswerBlock = Boolean(last?.querySelector?.(
           '[data-plugin-identifier*="block_type:10000"]'

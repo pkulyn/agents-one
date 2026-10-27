@@ -9,7 +9,11 @@ import {
   isAllowedWebAgentUrl,
   normalizeWebAgentProfileId,
 } from "../../shared/web-agent";
-import { getActiveProfileNameSync, profileHome, safeWriteFile } from "../utils";
+import {
+  getActiveProfileNameSync,
+  agentsOneProfileHome,
+  safeWriteFile,
+} from "../utils";
 
 interface WebAgentConversationMapping {
   runtimeId: string;
@@ -28,7 +32,7 @@ const MAX_MAPPINGS = 500;
 
 function filePath(profile?: string): string {
   return join(
-    profileHome(profile || getActiveProfileNameSync()),
+    agentsOneProfileHome(profile || getActiveProfileNameSync()),
     "desktop",
     "web-agent-conversations.json",
   );

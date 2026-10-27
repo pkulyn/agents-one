@@ -1,9 +1,18 @@
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
+import { createPackage } from "@electron/asar";
+import { NtExecutable, NtExecutableResource, Resource } from "resedit";
 
 const frameHashes = (frames: Buffer[]): string[] =>
   frames.map((frame) => createHash("sha256").update(frame).digest("hex"));
@@ -88,7 +97,7 @@ function peIconResources(executable: Buffer): {
     dataLeaf(entries(relative)[0].target);
   const otherResources: Record<string, string> = {};
   for (const type of entries(0)) {
-    if (type.id === 3 || type.id === 14) continue;
+    if (type.id === 3 || type.id === 14 || type.id === 16) continue;
     for (const name of entries(type.target)) {
       for (const language of entries(name.target)) {
         otherResources[`${type.label}/${name.label}/${language.label}`] =
@@ -129,7 +138,12 @@ describe("Windows packaged executable icon", () => {
         appOutDir: tmpdir(),
         packager: {
           platformSpecificBuildOptions: { executableName: "../outside" },
-          appInfo: { productFilename: "Agents One" },
+          appInfo: {
+            productFilename: "Agents One",
+            productName: "Agents One",
+            version: "0.1.0-alpha.1",
+            buildVersion: "0.1.0.0",
+          },
         },
       }),
     ).rejects.toThrow("inside the package output");
@@ -142,6 +156,40 @@ describe("Windows packaged executable icon", () => {
       const workspace = mkdtempSync(join(tmpdir(), "agents-one-icon-"));
       try {
         const executable = join(workspace, "agents-one.exe");
+        const asarSource = join(workspace, "asar-source");
+        const mainDirectory = join(asarSource, "out", "main");
+        mkdirSync(mainDirectory, { recursive: true });
+        writeFileSync(
+          join(mainDirectory, "index.js"),
+          'import "./start-test.js";',
+        );
+        writeFileSync(
+          join(mainDirectory, "start-test.js"),
+          "conversation:read schedule:read artifact:read mobile-owner-tunnel-worker.cjs mobile-owner-ledger-worker.cjs desktop_auto desktop_full_access runtime-conversations.json project-folders.json",
+        );
+        writeFileSync(
+          join(mainDirectory, "mobile-owner-tunnel-worker.cjs"),
+          "worker",
+        );
+        writeFileSync(
+          join(mainDirectory, "mobile-owner-ledger-worker.cjs"),
+          "worker",
+        );
+        const rendererDirectory = join(asarSource, "out", "renderer");
+        mkdirSync(rendererDirectory, { recursive: true });
+        writeFileSync(
+          join(rendererDirectory, "index.html"),
+          '<script src="./index.js"></script>',
+        );
+        writeFileSync(
+          join(rendererDirectory, "index.js"),
+          "mobile-owner-settings settings.mobile.title web-agent-opt-in attachment-chip-body",
+        );
+        mkdirSync(join(workspace, "resources"), { recursive: true });
+        await createPackage(
+          asarSource,
+          join(workspace, "resources", "app.asar"),
+        );
         copyFileSync(
           resolve("node_modules/electron/dist/electron.exe"),
           executable,
@@ -165,7 +213,12 @@ describe("Windows packaged executable icon", () => {
           appOutDir: workspace,
           packager: {
             projectDir: process.cwd(),
-            appInfo: { productFilename: "Agents One" },
+            appInfo: {
+              productFilename: "Agents One",
+              productName: "Agents One",
+              version: "0.1.0-alpha.1",
+              buildVersion: "0.1.0.0",
+            },
             platformSpecificBuildOptions: { executableName: "agents-one" },
             getIconPath: async () => resolve("build/icon.ico"),
           },
@@ -173,6 +226,25 @@ describe("Windows packaged executable icon", () => {
         const actual = peIconResources(readFileSync(executable));
         expect(frameHashes(actual.frames)).toEqual(frameHashes(expected));
         expect(actual.otherResources).toEqual(original.otherResources);
+        const versionEntries = Resource.VersionInfo.fromEntries(
+          NtExecutableResource.from(NtExecutable.from(readFileSync(executable)))
+            .entries,
+        );
+        expect(versionEntries.length).toBeGreaterThan(0);
+        for (const info of versionEntries) {
+          for (const language of info.getAllLanguagesForStringValues()) {
+            expect(info.getStringValues(language)).toEqual(
+              expect.objectContaining({
+                FileDescription: "Agents One",
+                ProductName: "Agents One",
+                InternalName: "agents-one",
+                OriginalFilename: "agents-one.exe",
+                FileVersion: "0.1.0.0",
+                ProductVersion: "0.1.0-alpha.1",
+              }),
+            );
+          }
+        }
       } finally {
         rmSync(workspace, { recursive: true, force: true });
       }

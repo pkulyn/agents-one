@@ -1,10 +1,26 @@
-import { BrowserWindow, ipcMain, nativeImage, screen, Tray } from "electron";
+import {
+  createScopedIpcMain,
+  registerAuxiliaryIpcWindow,
+} from "../ipc/sender-scope";
+import {
+  BrowserWindow,
+  ipcMain as rawIpcMain,
+  nativeImage,
+  screen,
+  Tray,
+} from "electron";
 import { join } from "path";
 import { is } from "@electron-toolkit/utils";
 import icon from "../../../resources/icon.png?asset";
 import { listCachedSessions } from "../session-cache";
 import { listRuntimeConversations } from "../runtime-conversation-store";
 import { listProjectFolders } from "../project-folders";
+import {
+  startTrayRuntimeTask,
+  watchTrayRuntimeTask,
+  type TrayRuntimeConversationChange,
+} from "./tray-runtime-task";
+import type { AgentRuntimeTaskInput } from "../../shared/agent-runtimes";
 import type {
   TrayMenuAction,
   TrayMenuData,
@@ -45,6 +61,7 @@ export interface ActiveTrayTask {
 }
 
 export interface TrayController {
+  isAvailable: () => boolean;
   hideQuickComposer: () => void;
   showTaskCompletion: (data: TrayCompletionData) => void;
   destroy: () => void;
@@ -131,6 +148,7 @@ export function setupTray({
   getRunningTaskCount,
   onQuitRequest,
 }: TrayDeps): TrayController {
+  const ipcMain = createScopedIpcMain(rawIpcMain, getMainWindow);
   let tray: Tray | null = null;
   let quickComposer: BrowserWindow | null = null;
   let quickComposerReady = false;
@@ -227,6 +245,12 @@ export function setupTray({
       },
     });
 
+    registerAuxiliaryIpcWindow(
+      window.webContents,
+      "tray-completion",
+      rendererHtmlPath,
+      is.dev ? process.env.ELECTRON_RENDERER_URL : undefined,
+    );
     window.setAlwaysOnTop(true, "floating");
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.once("ready-to-show", () => {
@@ -377,6 +401,12 @@ export function setupTray({
       },
     });
 
+    registerAuxiliaryIpcWindow(
+      window.webContents,
+      "tray-menu",
+      rendererHtmlPath,
+      is.dev ? process.env.ELECTRON_RENDERER_URL : undefined,
+    );
     window.setAlwaysOnTop(true, "floating");
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.once("ready-to-show", () => {
@@ -525,6 +555,12 @@ export function setupTray({
       },
     });
 
+    registerAuxiliaryIpcWindow(
+      window.webContents,
+      "quick-composer",
+      rendererHtmlPath,
+      is.dev ? process.env.ELECTRON_RENDERER_URL : undefined,
+    );
     window.setAlwaysOnTop(true, "floating");
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.once("ready-to-show", () => {
@@ -709,6 +745,36 @@ export function setupTray({
   };
   ipcMain.on("tray-composer-close", handleQuickComposerClose);
   ipcMain.on("tray-composer-resize", handleQuickComposerResize);
+  const notifyQuickTaskChanged = (
+    change: TrayRuntimeConversationChange,
+  ): void => {
+    const window = getMainWindow();
+    if (window && !window.isDestroyed()) {
+      window.webContents.send("tray-runtime-conversation-changed", change);
+    }
+  };
+  ipcMain.handle(
+    "tray-composer-start-runtime-task",
+    async (
+      event,
+      runtimeId: string,
+      input: Pick<
+        AgentRuntimeTaskInput,
+        "prompt" | "attachments" | "workspaceId"
+      >,
+    ) => {
+      if (!quickComposer || event.sender !== quickComposer.webContents) {
+        throw new Error("Quick task sender was not recognized.");
+      }
+      const task = await startTrayRuntimeTask(runtimeId, input);
+      notifyQuickTaskChanged({
+        profile: task.profile,
+        conversationId: task.conversationId,
+      });
+      watchTrayRuntimeTask(task, notifyQuickTaskChanged);
+      return task.run;
+    },
+  );
   ipcMain.handle("tray-menu-data", (event) =>
     trayMenuWindow && event.sender === trayMenuWindow.webContents
       ? currentTrayMenuData
@@ -724,11 +790,32 @@ export function setupTray({
   ipcMain.on("tray-completion-open", handleCompletionOpen);
   ipcMain.on("tray-completion-close", handleCompletionClose);
 
+  let mainWindowClickTimer: ReturnType<typeof setTimeout> | null = null;
+  let suppressClickUntil = 0;
+  const cancelMainWindowClick = (): void => {
+    if (mainWindowClickTimer) clearTimeout(mainWindowClickTimer);
+    mainWindowClickTimer = null;
+  };
+
   try {
     const trayImage = nativeImage.createFromPath(icon);
     tray = new Tray(trayImage);
     tray.setToolTip("Agents One");
-    tray.on("click", (_event, bounds) => {
+    tray.on("click", () => {
+      cancelMainWindowClick();
+      if (Date.now() < suppressClickUntil) return;
+      // Wait for the native double-click event before restoring the main window.
+      mainWindowClickTimer = setTimeout(() => {
+        mainWindowClickTimer = null;
+        hideQuickComposer();
+        hideTrayMenu();
+        focusMainWindow();
+      }, 500);
+    });
+    tray.on("double-click", (_event, bounds) => {
+      cancelMainWindowClick();
+      // Some native event sequences include a click after the double-click.
+      suppressClickUntil = Date.now() + 500;
       if (isQuickComposerOpen()) {
         hideQuickComposer();
         return;
@@ -736,6 +823,7 @@ export function setupTray({
       showQuickComposer(bounds);
     });
     tray.on("right-click", (_event, bounds) => {
+      cancelMainWindowClick();
       if (isTrayMenuOpen()) {
         hideTrayMenu();
         return;
@@ -743,15 +831,20 @@ export function setupTray({
       showTrayMenu(bounds);
     });
   } catch (error) {
+    tray?.destroy();
+    tray = null;
     console.error("[TRAY] Failed to initialize notification-area tray", error);
   }
 
   return {
+    isAvailable: () => Boolean(tray && !tray.isDestroyed()),
     hideQuickComposer,
     showTaskCompletion,
     destroy: () => {
+      cancelMainWindowClick();
       ipcMain.removeListener("tray-composer-close", handleQuickComposerClose);
       ipcMain.removeListener("tray-composer-resize", handleQuickComposerResize);
+      ipcMain.removeHandler("tray-composer-start-runtime-task");
       ipcMain.removeHandler("tray-menu-data");
       ipcMain.removeListener("tray-menu-action", handleTrayMenuAction);
       ipcMain.removeListener("tray-menu-resize", handleTrayMenuResize);

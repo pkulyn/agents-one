@@ -21,18 +21,24 @@ vi.mock("../src/main/installer", () => ({
   HERMES_HOME: TEST_HOME,
 }));
 
-vi.mock("../src/main/utils", () => ({
-  activeStateDbPath: () => DB_PATH,
-  profileHome: () => TEST_HOME,
-  getActiveProfileNameSync: () => "default",
-  safeWriteFile: (path: string, data: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("fs");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const nodePath = require("path");
-    fs.mkdirSync(nodePath.dirname(path), { recursive: true });
-    fs.writeFileSync(path, data, "utf-8");
-  },
+vi.mock("../src/main/utils", () => {
+  const mocked = {
+    activeStateDbPath: () => DB_PATH,
+    profileHome: () => TEST_HOME,
+    getActiveProfileNameSync: () => "default",
+    safeWriteFile: (path: string, data: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require("fs");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const nodePath = require("path");
+      fs.mkdirSync(nodePath.dirname(path), { recursive: true });
+      fs.writeFileSync(path, data, "utf-8");
+    },
+  };
+  return { ...mocked, agentsOneProfileHome: mocked.profileHome };
+});
+vi.mock("../src/main/agents-one-data-root", () => ({
+  agentsOneDataRoot: () => TEST_HOME,
 }));
 
 // Simulate better-sqlite3 faithfully: readonly connections reject writes

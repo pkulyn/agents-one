@@ -1,4 +1,8 @@
 import type { AppLocale } from "../shared/i18n/types";
+import type {
+  MobileConnectionCommand,
+  MobileConnectionResult,
+} from "../shared/mobile-connection";
 import type { Attachment } from "../shared/attachments";
 import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
@@ -171,6 +175,18 @@ interface CredentialPoolEntry {
 }
 
 interface AgentsOneAPI {
+  manageMobileWriteRecovery(
+    profile: string | undefined,
+    command: MobileWriteRecoveryCommand,
+  ): Promise<MobileWriteRecoveryStatus>;
+  manageMobileExecutionPolicies(
+    profile: string | undefined,
+    command: MobileExecutionManagementCommand,
+  ): Promise<MobileExecutionManagementResult>;
+  manageMobileConnection(
+    profile: string | undefined,
+    command: MobileConnectionCommand,
+  ): Promise<MobileConnectionResult>;
   // Installation
   checkInstall: () => Promise<InstallStatus>;
   verifyInstall: () => Promise<boolean>;
@@ -224,7 +240,6 @@ interface AgentsOneAPI {
   setLocale: (locale: AppLocale) => Promise<AppLocale>;
 
   // Configuration (profile-aware)
-  getEnv: (profile?: string) => Promise<Record<string, string>>;
   setEnv: (key: string, value: string, profile?: string) => Promise<boolean>;
   getVoiceInputConfig: (profile?: string) => Promise<{
     enabled: boolean;
@@ -396,6 +411,16 @@ interface AgentsOneAPI {
     runtimeId: string,
     input: AgentRuntimeTaskInput,
   ) => Promise<AgentRuntimeRun>;
+  startTrayRuntimeTask: (
+    runtimeId: string,
+    input: Pick<
+      AgentRuntimeTaskInput,
+      "prompt" | "attachments" | "workspaceId"
+    >,
+  ) => Promise<AgentRuntimeRun>;
+  onTrayRuntimeConversationChanged: (
+    callback: (change: { profile: string; conversationId: string }) => void,
+  ) => () => void;
   getAgentRuntimeCommandCatalog: (
     runtimeId: string,
     sessionId?: string,
@@ -911,6 +936,11 @@ interface AgentsOneAPI {
   saveRuntimeConversation: (
     input: SaveRuntimeConversationInput,
   ) => Promise<RuntimeConversation>;
+  onRuntimeConversationChanged: (
+    callback: (
+      change: import("../shared/runtime-conversations").RuntimeConversationChange,
+    ) => void,
+  ) => () => void;
   updateRuntimeConversationTitle: (
     id: string,
     title: string,
@@ -954,9 +984,6 @@ interface AgentsOneAPI {
 
   // Credential Pool (profile-aware) — entries follow the upstream
   // engine schema (issue #367). See `CredentialPoolEntry` below.
-  getCredentialPool: (
-    profile?: string,
-  ) => Promise<Record<string, Array<CredentialPoolEntry>>>;
   setCredentialPool: (
     provider: string,
     entries: Array<CredentialPoolEntry>,
@@ -967,7 +994,7 @@ interface AgentsOneAPI {
     apiKey: string,
     label: string,
     profile?: string,
-  ) => Promise<Array<CredentialPoolEntry>>;
+  ) => Promise<boolean>;
   invalidateSecretsCache: () => Promise<void>;
 
   // Models
@@ -1321,3 +1348,11 @@ declare global {
     hermesAPI: AgentsOneAPI;
   }
 }
+import type {
+  MobileWriteRecoveryCommand,
+  MobileWriteRecoveryStatus,
+} from "../shared/mobile-write-recovery";
+import type {
+  MobileExecutionManagementCommand,
+  MobileExecutionManagementResult,
+} from "../shared/mobile-execution-management";

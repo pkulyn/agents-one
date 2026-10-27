@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 export const EVENT_STREAM_PROTOCOL = "agents-one-event-stream-v1";
 
@@ -30,6 +30,22 @@ const SENSITIVE_PATTERNS = [
 
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function sanitizeEventId(rawEvent) {
+  const id = nonEmptyString(rawEvent.id) || nonEmptyString(rawEvent.eventId);
+  if (!id) return `evt_${randomUUID()}`;
+  if (
+    id.length <= 512 &&
+    !Array.from(id).some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+    })
+  )
+    return id;
+  // Stable replacement preserves deduplication and restart cursors without
+  // retaining unsafe metadata or allowing it to create new SSE fields.
+  return `evt_${createHash("sha256").update(id).digest("hex")}`;
 }
 
 const WORKSPACE_OPERATIONS = new Set([
@@ -138,10 +154,7 @@ export class EventJournal {
 
   append(rawEvent) {
     if (!rawEvent || !EVENT_TYPES.has(rawEvent.type)) return undefined;
-    const id =
-      nonEmptyString(rawEvent.id) ||
-      nonEmptyString(rawEvent.eventId) ||
-      `evt_${randomUUID()}`;
+    const id = sanitizeEventId(rawEvent);
     if (this.ids.has(id)) return this.events.find((event) => event.id === id);
     const data =
       rawEvent.data && typeof rawEvent.data === "object"

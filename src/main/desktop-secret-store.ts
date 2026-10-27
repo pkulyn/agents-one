@@ -134,6 +134,40 @@ export class DesktopSecretStore {
     return { protection: "os-protected", backend: this.protector.backend };
   }
 
+  /** Copy one unambiguous protected record to its new key without removing the source. */
+  copyUniquePrefixedRecord(sourcePrefix: string, targetKey: string): boolean {
+    if (!this.protector.available || !sourcePrefix || !targetKey) return false;
+    let data: ProtectedSecretFile;
+    try {
+      data = this.readFile();
+    } catch {
+      return false;
+    }
+    if (data.records[targetKey]) return false;
+    const sourceKeys = Object.keys(data.records).filter((key) =>
+      key.startsWith(sourcePrefix),
+    );
+    if (sourceKeys.length !== 1) return false;
+    const source = data.records[sourceKeys[0]];
+    if (!source || typeof source.ciphertext !== "string") return false;
+    try {
+      const value = this.protector.decrypt(
+        Buffer.from(source.ciphertext, "base64"),
+      );
+      const ciphertext = this.protector.encrypt(value);
+      if (this.protector.decrypt(ciphertext) !== value) return false;
+      data.records[targetKey] = {
+        ...source,
+        ciphertext: ciphertext.toString("base64"),
+        updatedAt: Date.now(),
+      };
+      this.writeFile(data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   get(
     key: string,
     legacy: { read(): string | null; remove(): void },

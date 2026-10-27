@@ -1,11 +1,41 @@
 import { describe, expect, it } from "vitest";
 import {
   codexExecArgs,
+  codexDesktopEnvironment,
   codexInvocation,
   codexThreadIdFromOutput,
 } from "../src/main/codex-runtime";
 
 describe("Codex runtime invocation", () => {
+  it("excludes only CET-broken desktop shell directories and preserves every other setting", async () => {
+    const source = {
+      Path: "D:\\broken;D:\\healthy;D:\\tools",
+      MODEL_SETTING: "kept",
+      HTTPS_PROXY: "http://localhost:7890",
+    };
+    const result = await codexDesktopEnvironment(
+      source,
+      "win32",
+      (p) => !p.includes("tools"),
+      async (p) => p.includes("broken"),
+    );
+    expect(result).toEqual({ ...source, Path: "D:\\healthy;D:\\tools" });
+    expect(source.Path).toContain("broken");
+    expect(
+      await codexDesktopEnvironment(
+        source,
+        "win32",
+        () => true,
+        async () => false,
+      ),
+    ).toEqual(source);
+    expect(
+      await codexDesktopEnvironment(source, "linux", () => {
+        throw Error("unexpected probe");
+      }),
+    ).toEqual(source);
+  });
+
   it("captures a persisted thread id only from structured exec events", () => {
     expect(
       codexThreadIdFromOutput(
@@ -28,6 +58,7 @@ describe("Codex runtime invocation", () => {
       "read-only",
       "--cd",
       "D:\\repo",
+      "--",
       "inspect this",
     ]);
   });
@@ -51,6 +82,7 @@ describe("Codex runtime invocation", () => {
       "read-only",
       "--cd",
       "D:\\private-runtime-chat",
+      "--",
       "inspect this",
     ]);
   });
@@ -96,6 +128,7 @@ describe("Codex runtime invocation", () => {
       "D:\\inputs\\task-1",
       "--image",
       "D:\\inputs\\task-1\\diagram.png",
+      "--",
       "inspect the supplied files",
     ]);
   });
@@ -117,6 +150,69 @@ describe("Codex runtime invocation", () => {
 
   it("keeps a normal executable invocation shell-free", () => {
     expect(codexInvocation("codex")).toEqual({ command: "codex", prefix: [] });
+  });
+
+  it("resumes the explicit original thread with permissions and cwd on the parent command", () => {
+    expect(
+      codexExecArgs(
+        "D:\\repo",
+        "analysis",
+        "Continue this task",
+        undefined,
+        [],
+        undefined,
+        false,
+        "original-thread-id",
+      ),
+    ).toEqual([
+      "exec",
+      "--json",
+      "--sandbox",
+      "read-only",
+      "--cd",
+      "D:\\repo",
+      "resume",
+      "--json",
+      "--",
+      "original-thread-id",
+      "Continue this task",
+    ]);
+  });
+
+  it("places resumed images on the resume command and prevents prompt or session option injection", () => {
+    const args = codexExecArgs(
+      "D:\\repo",
+      "analysis",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "D:\\inputs",
+      ["D:\\inputs\\diagram.png"],
+      "selected-model",
+      false,
+      "--last",
+    );
+    expect(args).toEqual([
+      "exec",
+      "--json",
+      "--sandbox",
+      "read-only",
+      "--cd",
+      "D:\\repo",
+      "--add-dir",
+      "D:\\inputs",
+      "--model",
+      "selected-model",
+      "resume",
+      "--json",
+      "--image",
+      "D:\\inputs\\diagram.png",
+      "--",
+      "--last",
+      "--dangerously-bypass-approvals-and-sandbox",
+    ]);
+    expect(codexExecArgs("D:\\repo", "analysis", "--help").slice(-2)).toEqual([
+      "--",
+      "--help",
+    ]);
   });
 
   it("unwraps the Windows npm .cmd shim without enabling a shell", () => {

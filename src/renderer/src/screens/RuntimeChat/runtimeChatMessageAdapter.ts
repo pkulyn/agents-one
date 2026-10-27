@@ -384,8 +384,8 @@ function runtimeConversationMessage(
   const mediaTokens = isUser
     ? ""
     : runtimeArtifactMediaTokens(message.execution);
-  const attachments = isUser
-    ? []
+  const attachments: Attachment[] = isUser
+    ? (message.attachments ?? [])
     : runtimeArtifactAttachments(message.execution);
   const displayContent = isUser
     ? content

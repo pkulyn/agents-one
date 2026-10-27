@@ -17,7 +17,7 @@ export interface ProjectWorkspaceCapability {
 }
 
 export interface UpdateProjectFolderInput {
-  /** Preferred identifier for a registered project. `path` is legacy-only. */
+  /** Preferred identifier for a registered project. Legacy `path` can only update an existing registration. */
   id?: string;
   path?: string;
   name?: string;

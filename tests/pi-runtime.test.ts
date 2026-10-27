@@ -1,3 +1,5 @@
+import * as permissionFs from "node:fs";
+import * as permissionPath from "node:path";
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
@@ -8,6 +10,7 @@ import {
   piChildEnvironment,
   piExecArgs,
   piInvocation,
+  piReadOnlyExtensionSource,
   piOutputError,
   piRpcArgs,
 } from "../src/main/pi-runtime";
@@ -97,7 +100,7 @@ describe("Pi Agent CLI runtime invocation", () => {
     );
   });
 
-  it("keeps unscoped conversations tool-free and noninteractive", () => {
+  it("keeps unscoped read-only conversations able to read and query", () => {
     expect(
       piExecArgs("analysis", "inspect this", "pi-session-1", "D:\\sessions"),
     ).toEqual([
@@ -108,12 +111,17 @@ describe("Pi Agent CLI runtime invocation", () => {
       "D:\\sessions",
       "--session-id",
       "pi-session-1",
-      "--no-tools",
+      "--no-extensions",
+      "--no-mcp",
+      "--tools",
+      "read,grep,find,ls",
+      "--exclude-tools",
+      "bash,powershell,tool_search,codemode,mcp__*",
       "inspect this",
     ]);
   });
 
-  it("keeps Pi's native resources and custom tools enabled for writable tasks", () => {
+  it("disables extension and MCP execution for automatic tasks", () => {
     const args = piExecArgs(
       "safe_write",
       "use llm-wiki",
@@ -121,9 +129,10 @@ describe("Pi Agent CLI runtime invocation", () => {
       "D:\\sessions",
     );
     expect(args).not.toContain("--no-skills");
-    expect(args).not.toContain("--no-extensions");
+    expect(args).toContain("--no-extensions");
+    expect(args).toContain("--no-mcp");
     expect(args).not.toContain("--no-context-files");
-    expect(args).not.toContain("--tools");
+    expect(args).toContain("--tools");
     expect(args).not.toContain("--no-tools");
   });
 
@@ -153,15 +162,16 @@ describe("Pi Agent CLI runtime invocation", () => {
     expect(args).not.toContain("--no-tools");
   });
 
-  it("keeps Pi's complete native tool set in safe-write mode", () => {
+  it("keeps only native file readers and editors in safe-write mode", () => {
     const args = piExecArgs(
       "safe_write",
       "update this safely",
       "pi-session-safe",
       "D:\\sessions",
     );
-    expect(args).not.toContain("--tools");
-    expect(args).not.toContain("--exclude-tools");
+    expect(args).toContain("--tools");
+    expect(args).toContain("read,grep,find,ls,write,edit");
+    expect(args).toContain("--exclude-tools");
     expect(args).not.toContain("--no-tools");
   });
 
@@ -329,5 +339,110 @@ describe("Pi Agent CLI runtime invocation", () => {
         }),
       ),
     ).toBe("Pi Agent 本轮在工具或思考阶段结束，未返回最终答复。");
+  });
+});
+
+describe("Pi read-only native permission hook", () => {
+  // @lat: [[runtime-chat#Pi read-only tool boundary]]
+  it("allows native readers but blocks declared custom queries and mutations", () => {
+    let handler: (event: {
+      toolName: string;
+      parentToolCallId?: string;
+    }) => { block: boolean; reason: string } | undefined;
+    const install = new Function(
+      "fs",
+      "path",
+      piReadOnlyExtensionSource()
+        .replace(/^import .*;\r?$/gm, "")
+        .replace(
+          "export default function agentsOneReadOnly",
+          "return function agentsOneReadOnly",
+        ),
+    )(permissionFs, permissionPath);
+    install({
+      on: (_event: string, callback: typeof handler) => {
+        handler = callback;
+      },
+      getAllTools: () => [
+        { name: "mcp__search", annotations: { readOnlyHint: true } },
+        {
+          name: "mcp__delete",
+          annotations: { readOnlyHint: false, destructiveHint: true },
+        },
+        { name: "unknown_extension" },
+      ],
+    });
+    for (const toolName of ["read", "grep", "find", "ls"]) {
+      expect(handler!({ toolName })).toBeUndefined();
+    }
+    for (const toolName of [
+      "write",
+      "edit",
+      "bash",
+      "powershell",
+      "mcp__delete",
+      "unknown_extension",
+      "tool_search",
+      "codemode",
+      "mcp__search",
+    ]) {
+      const denied = handler!({
+        toolName,
+        parentToolCallId: "codemode/nested",
+      });
+      expect(denied).toMatchObject({ block: true });
+      expect(denied?.reason).toContain(toolName);
+      expect(denied?.reason).toContain("只读");
+      expect(denied?.reason).toContain("移动或删除需切换为完全访问");
+    }
+  });
+  it("blocks automatic deletion and movement before execution while keeping reads and edits enabled", () => {
+    const writableRoot = mkdtempSync(join(tmpdir(), "pi-auto-root-"));
+    let handler!: (
+      event: {
+        toolName: string;
+        input: Record<string, unknown>;
+      },
+      ctx?: { cwd: string },
+    ) => { block: boolean; reason: string } | undefined;
+    const install = new Function(
+      "fs",
+      "path",
+      piReadOnlyExtensionSource("safe_write", writableRoot)
+        .replace(/^import .*;\r?$/gm, "")
+        .replace(
+          "export default function agentsOneReadOnly",
+          "return function agentsOneReadOnly",
+        ),
+    )(permissionFs, permissionPath);
+    install({
+      on: (_event: string, callback: typeof handler) => {
+        handler = callback;
+      },
+    });
+    for (const toolName of ["read", "write", "edit"])
+      expect(
+        handler(
+          { toolName, input: { path: "file.txt" } },
+          { cwd: writableRoot },
+        ),
+      ).toBeUndefined();
+    expect(
+      handler({ toolName: "bash", input: { command: "git status" } }),
+    ).toMatchObject({ block: true });
+    for (const event of [
+      { toolName: "bash", input: { command: "rm original.txt" } },
+      {
+        toolName: "powershell",
+        input: { command: "Remove-Item -LiteralPath original.txt" },
+      },
+      { toolName: "mcp__delete_file", input: { path: "original.txt" } },
+      { toolName: "mcp__file_operation", input: { operation: "move" } },
+    ]) {
+      expect(handler(event)).toMatchObject({
+        block: true,
+        reason: expect.stringContaining("完全访问"),
+      });
+    }
   });
 });

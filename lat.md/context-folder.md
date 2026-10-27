@@ -41,3 +41,41 @@ Remote chats use an in-app picker so users do not accidentally select a local ma
 The tree keeps file-type icon shapes but normalizes their colors so the explorer reads quietly in the chat sidebar.
 
 The `@wesbos/code-icons` SVGs render inside `.worktree-file-icon-wrapper`; CSS overrides inline fills/strokes to `currentColor` while preserving `fill:none` outlines, and folder icons use the same low-opacity white tone.
+
+## File browser toolbar control
+
+The context-folder file browser toggle uses the shared 34×34px toolbar button, with an 18px folder-and-magnifier icon and accessible pressed state. Its larger hit target is independent from choosing or clearing the conversation folder.
+
+## Registered project update authority
+
+Project metadata updates can rename or pin existing registrations, but cannot create new filesystem authority.
+
+[[src/main/project-folders.ts#updateProjectFolder]] resolves an opaque id against the stored registry. An unknown id never falls back to a supplied path. Legacy path-only updates can match an existing registration, preserving older callers without minting new workspace roots. Malformed input leaves the registry unchanged.
+
+## Chat execution root authority
+
+The legacy chat IPC validates an execution directory before starting the Gateway, cancelling an existing Run or dispatching a message. Invalid selection fails explicitly rather than silently becoming a no-project task.
+
+### Unauthorized legacy root
+
+A Renderer-provided directory is usable only when the exact existing root was registered or selected through the native chooser.
+
+### Opaque workspace identity
+
+An opaque workspace ID resolves through the existing Main registry. An unknown or malformed ID cannot fall back to a caller path or default execution.
+
+### Registered root compatibility
+
+A valid project ID takes precedence over the legacy path, and an existing registered root remains usable without a new chooser interaction.
+
+### Exact selected root
+
+A child directory needs its own native selection or registration; a junction to an outside directory does not inherit permission from its parent.
+
+### No-project context
+
+An omitted or blank legacy directory retains the normal Runtime no-project behavior and does not create new filesystem authority.
+
+### Revoked project root
+
+A removed project registration cannot supply a working directory to the next chat request. Existing history and configuration are not rewritten by validation.

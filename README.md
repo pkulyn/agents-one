@@ -10,9 +10,9 @@
 
 **An AI agent management and collaboration platform.** Connect Pi, Codex, Claude Code, OpenCode, and other local agents, as well as remote agents through Gateway, to manage conversations, tasks, collaboration, and artifacts in one place. Each agent keeps its native tools and permissions while you work from one conversation surface.
 
-> **Pre-release · Windows x64 Alpha candidate.** No public Agents One release has been published yet. The current candidate is still behind release and clean-machine acceptance gates. Features and stored-data formats may change. Follow [Releases](https://github.com/pkulyn/agents-one/releases) for the first published build.
+> **Windows x64 · 0.1.0.** Download the installer or portable executable from [Releases](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0). Check the SHA-256 before launching.
 
-**Alpha source:** the repository is public under MIT. There is no accepted installer Release yet, and remote Hermes conversation recall remains experimental. See [known issues](KNOWN_ISSUES.md).
+**MIT open source.** Windows core acceptance is complete. Remote Hermes conversation recall remains experimental; see [known issues](KNOWN_ISSUES.md).
 
 ## See it in action
 
@@ -37,7 +37,7 @@ The product itself is a conversation workspace. Chat stays central, with project
 
 </details>
 
-Screenshots show development builds; labels and layout may change before release.
+Screenshots show development builds; labels and layout may change between releases.
 
 ## What comes together
 
@@ -56,9 +56,9 @@ The [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) lets additional agents implement
 
 ## Get started
 
-### Install when the Alpha is published
+### Install on Windows
 
-The first public package is planned for **Windows x64**. Download only from the [official Releases page](https://github.com/pkulyn/agents-one/releases) and compare the package SHA-256 with `SHA256SUMS.txt`. The Alpha is expected to be unsigned, so Windows SmartScreen may warn on first launch. Automatic updates are disabled for unsigned builds. macOS and Linux packages are outside this first release.
+The first release supports **Windows x64**. Download only from the [official Releases page](https://github.com/pkulyn/agents-one/releases) and compare the package SHA-256 with `SHA256SUMS.txt`. The build is unsigned, so Windows SmartScreen may warn on first launch. Automatic updates are disabled for unsigned builds. macOS and Linux packages are outside this first release.
 
 ### Add an agent
 

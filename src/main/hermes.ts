@@ -300,6 +300,8 @@ function voiceUrlInput(env: Record<string, string>): string {
 }
 
 function normalizedVoiceBaseUrl(value: string): URL {
+  if (value.length > 16384)
+    throw new Error("语音服务地址过长。 / Voice service URL is too long.");
   let url: URL;
   try {
     url = new URL(value.trim());
@@ -357,27 +359,56 @@ function voiceApiKey(profile?: string): string {
   ).trim();
 }
 
+const SAVED_VOICE_URL_PART = "__saved__";
+
+function publicVoiceUrl(raw: string): string {
+  if (!raw) return "";
+  try {
+    const url = normalizedVoiceBaseUrl(raw);
+    if (url.pathname !== "/") url.pathname = "/" + SAVED_VOICE_URL_PART;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return SAVED_VOICE_URL_PART;
+  }
+}
+
+function hasSavedVoiceMarker(value: string): boolean {
+  let decoded = value;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (decoded.toLowerCase().includes(SAVED_VOICE_URL_PART)) return true;
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+  return false;
+}
+
+function resolveVoiceUrlDraft(value: string, profile?: string): string {
+  const draft = value.trim();
+  if (!hasSavedVoiceMarker(draft)) return draft;
+  const current = voiceUrlInput(readEnv(profile) || {});
+  if (current && draft === publicVoiceUrl(current)) return current;
+  throw new Error(
+    "修改语音地址时请重新输入完整 URL；隐藏标记不能保存或连接。 / Re-enter the complete voice URL; retained markers cannot be saved or connected.",
+  );
+}
+
 export function getVoiceInputPublicConfig(
   profile?: string,
 ): VoiceInputPublicConfig {
   const env = readEnv(profile) || {};
   const rawUrl = voiceUrlInput(env);
-  let url = "";
-  if (rawUrl) {
-    try {
-      url = normalizedVoiceBaseUrl(rawUrl).toString().replace(/\/$/, "");
-    } catch {
-      // Keep the Settings page operable so a malformed saved value can be
-      // corrected; the stream itself will still reject that value safely.
-      url = rawUrl;
-    }
-  }
+  const url = publicVoiceUrl(rawUrl);
   const enabled = voiceSettingEnabled(env);
   return {
     enabled,
     url,
     hasApiKey: Boolean(voiceApiKey(profile)),
-    configured: enabled && Boolean(rawUrl),
+    configured: enabled && Boolean(rawUrl) && url !== SAVED_VOICE_URL_PART,
   };
 }
 
@@ -401,23 +432,38 @@ export function saveVoiceInputConfig(
   ) {
     throw new Error("语音服务设置无效。");
   }
-  const rawUrl = input.url.trim();
+  const rawUrl = resolveVoiceUrlDraft(input.url, profile);
   if (input.enabled && !rawUrl) {
     throw new Error("启用语音输入前请填写语音服务地址。");
   }
-  const url = rawUrl
-    ? normalizedVoiceBaseUrl(rawUrl).toString().replace(/\/$/, "")
-    : "";
+  let url = "";
+  if (rawUrl) {
+    try {
+      url = normalizedVoiceBaseUrl(rawUrl).toString().replace(/\/$/, "");
+    } catch (error) {
+      // Disabling an invalid saved endpoint must not require exposing or losing it.
+      const current = voiceUrlInput(readEnv(profile) || {});
+      if (
+        input.enabled ||
+        input.url.trim() !== publicVoiceUrl(current) ||
+        rawUrl !== current
+      )
+        throw error;
+      url = current;
+    }
+  }
+  const replacementKey =
+    input.clearApiKey !== true &&
+    typeof input.apiKey === "string" &&
+    input.apiKey.trim()
+      ? assertVoiceApiKey(input.apiKey)
+      : undefined;
   setEnvValue(VOICE_ENABLED_ENV_KEY, input.enabled ? "1" : "0", profile);
   setEnvValue(VOICE_URL_ENV_KEY, url, profile);
   if (input.clearApiKey === true) {
     setEnvValue(VOICE_API_KEY_ENV_KEY, "", profile);
-  } else if (typeof input.apiKey === "string" && input.apiKey.trim()) {
-    setEnvValue(
-      VOICE_API_KEY_ENV_KEY,
-      assertVoiceApiKey(input.apiKey),
-      profile,
-    );
+  } else if (replacementKey !== undefined) {
+    setEnvValue(VOICE_API_KEY_ENV_KEY, replacementKey, profile);
   }
   invalidateSecretsCache();
   return getVoiceInputPublicConfig(profile);
@@ -428,7 +474,9 @@ export async function testVoiceInputService(
   input: Pick<VoiceInputConfigUpdate, "url" | "apiKey">,
   profile?: string,
 ): Promise<VoiceInputServiceTestResult> {
-  const base = normalizedVoiceBaseUrl(input.url);
+  if (!input || typeof input.url !== "string")
+    throw new Error("语音服务设置无效。");
+  const base = normalizedVoiceBaseUrl(resolveVoiceUrlDraft(input.url, profile));
   const healthUrl = new URL(base.toString());
   healthUrl.pathname =
     `${healthUrl.pathname.replace(/\/$/, "")}/health`.replace(/\/{2,}/g, "/");
@@ -468,10 +516,10 @@ export async function testVoiceInputService(
     };
   } catch (cause) {
     const message =
-      (cause as Error).name === "AbortError"
+      cause instanceof Error && cause.name === "AbortError"
         ? "语音服务连接超时。"
-        : (cause as Error).message;
-    return { ok: false, message: message || "无法连接语音服务。" };
+        : "无法连接语音服务。";
+    return { ok: false, message };
   } finally {
     clearTimeout(timeout);
   }

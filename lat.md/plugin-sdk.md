@@ -72,6 +72,8 @@ A real ACP child takes more than thirty seconds to finish a prompt within the Ru
 
 A real ACP child acknowledges tool cancellation after a delay and persists its state; the next process restores the same native session and successfully responds, detecting premature process termination.
 
+The test allows fifteen seconds for two native process launches and cancellation settlement under parallel suite load. Its acknowledgement and resumed-session assertions remain strict; Runtime handshake, prompt and cancellation deadlines are unchanged.
+
 ### Configured deadline remains bounded
 
 A short configured Runtime deadline aborts a longer prompt after successful initialization, ensuring the extended default cannot bypass the user's task limit.
@@ -79,3 +81,47 @@ A short configured Runtime deadline aborts a longer prompt after successful init
 ### Unresponsive cancellation cleanup
 
 An ACP child that ignores cancellation is forcibly cleaned up after a bounded grace window, ensuring graceful cancellation cannot indefinitely block the desktop or leave its process running.
+
+## Connect pairing admission
+
+All five Gateway Connect pairing POST routes share the existing eight-attempt, sixty-second socket-source budget before JSON body parsing. Proxy headers cannot mint a new source budget.
+
+Expired source counters are removed, and a full bounded source table rejects new peers without evicting live budgets. Admission does not debounce accepted credential persistence; business-state capacity and lifecycle cleanup require separate gates.
+
+## Connect state retention
+
+Connect bounds new pairing and device records at 256 each, rejecting capacity overflow without evicting active authority or consuming a pending pairing. Existing oversized state remains available but cannot grow through new admission.
+
+Expired pending credentials are removed during cleanup, with five minutes of expired status retained. Paired devices outlive pairing expiry. Revoked devices retain status for twenty-four hours, then their pairing and credential indexes are removed. Accepted mutations retain synchronous persistence.
+
+Read traffic triggers at most one state sweep per second. Mutations and state loading force a sweep, so accepted credential changes remain durable without making every public health request rescan all credential indexes.
+
+## Remote ACP process closure
+
+Remote OpenCode terminal status is published only after the child close event confirms process and stdio teardown. Probe and cancellation also await closure; duplicate shutdown requests share one completion promise.
+
+Shutdown rejects pending RPCs, escalates an unresponsive child within a bounded deadline and reports failure if closure cannot be confirmed. Workspace artifact capture follows closure, so late process writes are not omitted from the final snapshot.
+
+## Connect state recovery
+
+Invalid or unreadable persisted Gateway state disables Gateway HTTP and WebSocket admission until an operator restores valid state and restarts the service. Startup, rejected requests and shutdown preserve the file.
+
+The entire collection and identity structure is validated before authorization indexes are installed. Unsupported versions, malformed records and duplicate identities fail closed; diagnostics omit original JSON. Missing files initialize a new store, while independent mobile authorization retains its own checks and persistence.
+
+## SSE metadata integrity
+
+Journal IDs must fit a single bounded SSE field. IDs containing control characters or exceeding 512 characters are replaced with stable SHA-256 identifiers before storage and serialization.
+
+Safe provider IDs retain their exact existing cursor and deduplication behavior. Unsafe IDs deduplicate consistently across refresh and persisted-journal reload; missing IDs retain random UUID allocation. Event types remain restricted to the existing whitelist, and JSON serialization keeps body newlines inside the data field. Real HTTP regressions cover forged metadata, replay cursors and legacy journal recovery.
+
+## Connect tunnel request ownership
+
+Each pending Gateway tunnel request belongs to its exact Desktop and Connector connections. Disconnect or replacement settles the affected requests and releases capacity without touching newer connections.
+
+The Connector leg receives an opaque unique correlation ID; responses restore the original Desktop request ID. This prevents late responses from matching a reused ID after reconnection. Responses must match their pending Runtime, and requests for unadvertised Runtimes fail explicitly. Replacing a Desktop closes the old connection instead of transferring its pending work.
+
+## Connect shutdown lifecycle
+
+Shutdown rejects new admissions, shares one completion promise and closes all WebSockets, including peers that never authenticate. After a one-second grace period, remaining WebSockets and HTTP connections are terminated.
+
+Outstanding Gateway requests receive a service-stopping transport error before closing. Hello timers are cleared on socket teardown. Mobile shutdown and state-save errors are reported after network cleanup; a failure cannot silently leave the listener or upgraded peers running. Transport shutdown does not certify cancellation of a remote Run.

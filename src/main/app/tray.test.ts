@@ -6,7 +6,13 @@ type MockIpcCallback = (...args: unknown[]) => unknown;
 
 interface MockBrowserWindowLike {
   options: Record<string, unknown>;
-  webContents: { send: MockFunction; setWindowOpenHandler: MockFunction };
+  webContents: {
+    send: MockFunction;
+    setWindowOpenHandler: MockFunction;
+    mainFrame: { url: string };
+    isDestroyed(): boolean;
+    once: MockFunction;
+  };
   hide: MockFunction;
   loadFile: MockFunction;
   showInactive: MockFunction;
@@ -24,6 +30,9 @@ const mocks = vi.hoisted(() => ({
   trays: [] as MockTrayLike[],
   ipcListeners: new Map<string, MockIpcCallback>(),
   ipcHandlers: new Map<string, MockIpcCallback>(),
+  startQuickTask: vi.fn(),
+  watchQuickTask: vi.fn(),
+  trayCreationFails: false,
 }));
 
 vi.mock("electron", () => {
@@ -37,6 +46,9 @@ vi.mock("electron", () => {
     webContents = {
       send: vi.fn(),
       setWindowOpenHandler: vi.fn(),
+      mainFrame: { url: "" },
+      isDestroyed: () => this.destroyed,
+      once: vi.fn(),
     };
     setAlwaysOnTop = vi.fn();
     setPosition = vi.fn();
@@ -58,8 +70,17 @@ vi.mock("electron", () => {
       this.destroyed = true;
       this.closedListener?.();
     });
-    loadURL = vi.fn();
-    loadFile = vi.fn();
+    loadURL = vi.fn((url: string) => {
+      this.webContents.mainFrame.url = url;
+    });
+    loadFile = vi.fn(
+      (file: string, options?: { query?: Record<string, string> }) => {
+        const url = new URL("file:///" + file.replaceAll("\\", "/"));
+        for (const [key, value] of Object.entries(options?.query || {}))
+          url.searchParams.set(key, value);
+        this.webContents.mainFrame.url = url.href;
+      },
+    );
 
     constructor(options: Record<string, unknown>) {
       this.options = options;
@@ -103,9 +124,14 @@ vi.mock("electron", () => {
       this.handlers.set(event, listener);
       return this;
     });
-    destroy = vi.fn();
+    destroyed = false;
+    destroy = vi.fn(() => {
+      this.destroyed = true;
+    });
+    isDestroyed = (): boolean => this.destroyed;
 
     constructor() {
+      if (mocks.trayCreationFails) throw new Error("synthetic tray failure");
       mocks.trays.push(this);
     }
 
@@ -118,6 +144,7 @@ vi.mock("electron", () => {
   }
 
   return {
+    app: { isPackaged: true },
     BrowserWindow: MockBrowserWindow,
     Tray: MockTray,
     nativeImage: { createFromPath: vi.fn(() => ({})) },
@@ -154,6 +181,10 @@ vi.mock("../runtime-conversation-store", () => ({
   listRuntimeConversations: vi.fn(() => []),
 }));
 vi.mock("../project-folders", () => ({ listProjectFolders: vi.fn(() => []) }));
+vi.mock("./tray-runtime-task", () => ({
+  startTrayRuntimeTask: mocks.startQuickTask,
+  watchTrayRuntimeTask: mocks.watchQuickTask,
+}));
 
 describe("tray task completion", () => {
   beforeEach(() => {
@@ -162,6 +193,66 @@ describe("tray task completion", () => {
     mocks.ipcListeners.clear();
     mocks.ipcHandlers.clear();
     vi.clearAllMocks();
+  });
+
+  it("accepts quick tasks only from the composer and refreshes the main task list", async () => {
+    const { setupTray } = await import("./tray");
+    const mainWindow = {
+      isDestroyed: () => false,
+      webContents: { send: vi.fn() },
+    };
+    const controller = setupTray({
+      getMainWindow: () => mainWindow as never,
+      getActiveChatTasks: () => [],
+      getRunningTaskCount: () => 0,
+      onQuitRequest: vi.fn(),
+    });
+    mocks.trays[0].emit(
+      "double-click",
+      {},
+      {
+        x: 1160,
+        y: 760,
+        width: 24,
+        height: 24,
+      },
+    );
+    const composer = mocks.windows.find(
+      (window) => window.options.title === "Agents One 快捷任务",
+    )!;
+    const handler = mocks.ipcHandlers.get("tray-composer-start-runtime-task")!;
+    expect(() =>
+      handler({ sender: {} }, "chatgpt-web", { prompt: "测试" }),
+    ).toThrow("scope_denied");
+    expect(mocks.startQuickTask).not.toHaveBeenCalled();
+
+    const task = {
+      profile: "default",
+      conversationId: "runtime-conv-tray-1",
+      run: { id: "run-1", status: "running" },
+    };
+    mocks.startQuickTask.mockResolvedValueOnce(task);
+    await expect(
+      handler(
+        {
+          sender: composer.webContents,
+          senderFrame: composer.webContents.mainFrame,
+        },
+        "chatgpt-web",
+        {
+          prompt: "测试",
+        },
+      ),
+    ).resolves.toEqual(task.run);
+    expect(mocks.watchQuickTask).toHaveBeenCalledWith(
+      task,
+      expect.any(Function),
+    );
+    expect(mainWindow.webContents.send).toHaveBeenCalledWith(
+      "tray-runtime-conversation-changed",
+      { profile: task.profile, conversationId: task.conversationId },
+    );
+    controller.destroy();
   });
 
   // @lat: [[main-process#App Lifecycle#Notification-area tray and quick task composer]]
@@ -178,19 +269,19 @@ describe("tray task completion", () => {
       const tray = mocks.trays[0];
       const bounds = { x: 1160, y: 760, width: 24, height: 24 };
 
-      tray.emit("click", {}, bounds);
+      tray.emit("double-click", {}, bounds);
       const composer = mocks.windows.find(
         (window) => window.options.title === "Agents One 快捷任务",
       )!;
-      tray.emit("click", {}, bounds);
+      tray.emit("double-click", {}, bounds);
       composer.emitReady();
       expect(composer.isVisible()).toBe(false);
 
-      tray.emit("click", {}, bounds);
+      tray.emit("double-click", {}, bounds);
       expect(composer.isVisible()).toBe(true);
 
       composer.hide.mockClear();
-      tray.emit("click", {}, bounds);
+      tray.emit("double-click", {}, bounds);
       expect(composer.hide).toHaveBeenCalledOnce();
       expect(composer.isVisible()).toBe(false);
 
@@ -257,6 +348,7 @@ describe("tray task completion", () => {
 
     mocks.ipcListeners.get("tray-completion-open")?.({
       sender: notificationWindow.webContents,
+      senderFrame: notificationWindow.webContents.mainFrame,
     });
     expect(mainWindow.restore).toHaveBeenCalledOnce();
     expect(mainWindow.show).toHaveBeenCalledOnce();
@@ -268,4 +360,82 @@ describe("tray task completion", () => {
 
     controller.destroy();
   });
+});
+
+// @lat: [[main-process#Tray failure recovery]]
+it.each([false, true])(
+  "reports actual native tray availability when creation fails: %s",
+  async (fails) => {
+    mocks.trayCreationFails = fails;
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { setupTray } = await import("./tray");
+      const controller = setupTray({
+        getMainWindow: () => null,
+        getActiveChatTasks: () => [],
+        getRunningTaskCount: () => 0,
+        onQuitRequest: vi.fn(),
+      });
+      expect(controller.isAvailable()).toBe(!fails);
+      controller.destroy();
+      expect(controller.isAvailable()).toBe(false);
+      if (fails) expect(diagnostic).toHaveBeenCalled();
+    } finally {
+      mocks.trayCreationFails = false;
+      diagnostic.mockRestore();
+    }
+  },
+);
+
+it("opens the main window on a single click and reserves double clicks for toggling the quick composer", async () => {
+  vi.useFakeTimers();
+  let controller: import("./tray").TrayController | undefined;
+  try {
+    const main = {
+      isDestroyed: () => false,
+      isMinimized: () => true,
+      restore: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn(),
+      webContents: { send: vi.fn() },
+    };
+    const { setupTray } = await import("./tray");
+    controller = setupTray({
+      getMainWindow: () => main as unknown as Electron.BrowserWindow,
+      getActiveChatTasks: () => [],
+      getRunningTaskCount: () => 0,
+      onQuitRequest: vi.fn(),
+    });
+    const tray = mocks.trays.at(-1)!;
+    const bounds = { x: 1160, y: 760, width: 24, height: 24 };
+    tray.emit("click", {}, bounds);
+    expect(main.show).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(main.restore).toHaveBeenCalledOnce();
+    expect(main.show).toHaveBeenCalledOnce();
+    expect(main.focus).toHaveBeenCalledOnce();
+    main.show.mockClear();
+    tray.emit("click", {}, bounds);
+    tray.emit("click", {}, bounds);
+    tray.emit("double-click", {}, bounds);
+    tray.emit("click", {}, bounds);
+    const composer = mocks.windows.at(-1)!;
+    composer.emitReady();
+    expect(composer.options.title).toBe("Agents One 快捷任务");
+    expect(composer.isVisible()).toBe(true);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(main.show).not.toHaveBeenCalled();
+    tray.emit("click", {}, bounds);
+    tray.emit("double-click", {}, bounds);
+    expect(composer.isVisible()).toBe(false);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(main.show).not.toHaveBeenCalled();
+    tray.emit("click", {}, bounds);
+    controller.destroy();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(main.show).not.toHaveBeenCalled();
+  } finally {
+    controller?.destroy();
+    vi.useRealTimers();
+  }
 });

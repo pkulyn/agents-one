@@ -1,4 +1,6 @@
+import mobile from "./mobileConnection";
 export default {
+  mobile,
   title: "设置",
   sections: {
     hermesAgent: "Hermes Agent Runtime",
@@ -388,6 +390,11 @@ export default {
   updateSuccess: "Hermes Agent Runtime 更新成功。",
   updateFailed: "更新失败。",
   version: "v{{version}}",
+  networkLoading: "正在加载网络配置…",
+  networkLoadFailed: "网络配置加载失败。",
+  networkSaveFailed: "网络配置保存失败。",
+  proxySavedParametersHint:
+    "已保存的认证和 URL 参数不会回显。保持不变会保留；修改时请重新输入完整地址，或移除认证部分以清除凭据。",
   proxyPlaceholder: "例如：socks5://127.0.0.1:1080 或 http://proxy:8080",
   modelNamePlaceholder: "例如：anthropic/claude-opus-4.6",
   modelBaseUrlPlaceholder: "http://localhost:1234/v1",
@@ -478,6 +485,8 @@ export default {
     enabledHint: "关闭后，麦克风不会向任何语音服务发送录音。",
     url: "语音服务地址",
     urlPlaceholder: "https://voice.example.com/voice",
+    savedUrlHint:
+      "已保存的路由路径不会回显。保持显示值可保留原地址；修改时请重新输入不含隐藏标记的完整 URL。",
     urlHint:
       "可填写服务基础地址、/v1/audio/transcriptions 地址，或 v1.4 文档中的 WS/WSS 流地址。",
     apiKey: "API Key（可选）",

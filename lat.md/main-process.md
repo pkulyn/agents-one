@@ -38,6 +38,14 @@ Lifecycle code owns Electron windows, global app events, and shutdown cleanup.
 
 [[src/main/app/start.ts#startMainProcess]] registers crash logging, IPC handlers, updater handlers, Electron ready/activate/window-all-closed/before-quit events, CSP headers, security hardening, and the main BrowserWindow.
 
+### Agents One data ownership
+
+Agents One durable desktop state follows Electron `userData` under `data/`; Hermes native state remains under the optional Hermes home.
+
+[[src/main/agents-one-data-root.ts#agentsOneDataRoot]] resolves the app-owned root and profile homes. Before the window, scheduler, or mobile Owner starts, [[src/main/app/start.ts#startMainProcess]] runs [[src/main/agents-one-data-migration.ts#migrateLegacyAgentsOneData]] to copy legacy desktop files and split `desktop_*` SQLite tables from Hermes `state.db` into Agents One `desktop.db`. The migration verifies staged copies and switches the new root atomically, preserving the original Hermes database and legacy files. Runtime/Quick Chat history, projects, schedules, staged attachments, profile metadata, caches, and no-workspace Runtime directories belong to Agents One; native Hermes sessions, configuration, credentials, memory and skills remain optional Hermes data. [[src/main/agents-one-data-root.ts#agentsOneProfileHome]] places every desktop profile under `data/profiles/<profile>/`, including explicit `data/profiles/default/`; this is distinct from Hermes [[src/main/utils.ts#profileHome]], where the default profile maps to Hermes home. Runtime and Quick Chat conversation readers and writers must share the Agents One profile home through [[src/main/runtime-conversation-store.ts#storeFilePath]], so records remain visible even when Hermes home is relocated.
+
+Pi, Codex, Claude Code and OpenCode use a selected project directory only when the task carries an explicit workspace. With no project, each local process `cwd` is an Agents One per-profile runtime directory under `data/profiles/<profile>/desktop/runtime-chat/`; [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeConversationWorkspace]] provides OpenCode's directory. Profile setup's workspace detection is a probe and does not select the cwd or silently bind the conversation to a project.
+
 Normal shutdown is a quiescing transition, not a best-effort synchronous cleanup. [[src/main/app/start.ts]] first closes admission for new Runtime tasks, stops and waits for schedule ticks, aborts legacy active requests, and awaits [[src/main/agent-runtimes.ts#cancelAllAgentRuntimeTasks]] before closing temporary media, dashboards, and SQLite. The `before-quit` event is prevented until this ordering completes, avoiding a normal app exit racing a local CLI process that can still write its workspace. The same Runtime quiet gate is applied before backup restore replaces profile data in [[src/main/ipc/register.ts#registerIpcHandlers]].
 
 Gateway restart tests launch real short-lived child processes with a temporary repository as their working directory. Their teardown uses asynchronous recursive removal with bounded Windows lock retries, so a just-exited process cannot turn a successful behavioral assertion into a transient `EPERM`, while a persistent process leak still fails the suite.
@@ -54,19 +62,25 @@ On Windows and other supported desktop platforms, closing the main window hides 
 
 The packaged application must include a non-empty, structurally valid `resources/icon.png` outside the ASAR because Electron can otherwise create a notification host from an empty `nativeImage` without showing a recoverable tray icon. The Windows package smoke gate checks the unpacked asset before launching either distribution.
 
-[[src/main/app/tray.ts#setupTray]] owns the notification-area icon and positions two frameless utility windows above it: the left-click quick composer and the right-click task menu. The task menu reads existing Runtime conversations and session caches through a sender-bound, read-only IPC; running tasks and the three newest completed tasks are direct rows. Hovering or focusing `More` expands the same window leftward while keeping the main panel anchored on the right, exposing the remaining completed tasks in reverse chronological order as a separate scrollable panel. The compact main/history panels meet at a zero-gap shared edge and use one shell shadow; the collapsed/expanded widths are allow-listed by the main process. Its renderer uses a real two-column grid so long titles can ellipsize without hiding the fixed, right-aligned project-name column; unassociated tasks leave that column blank. Task titles and project names share one explicit Windows typography contract—`Microsoft YaHei UI` first, 12px size, 400 weight and 18px line height—and differ only through semantic color and alignment, preventing mixed Chinese/Latin fallback from producing mismatched visual sizes. This replaces the native menu accelerator-column workaround because Windows drops arbitrary non-shortcut accelerator text. The full-app `New Task` action reuses the existing `menu-new-chat` event. Escape, window blur, and leaving the combined menu surface dismiss auxiliary content without changing task data.
+[[src/main/app/tray.ts#setupTray]] owns the notification-area icon and positions two frameless utility windows above it: the double-left-click quick composer and the right-click task menu. The task menu reads existing Runtime conversations and session caches through a sender-bound, read-only IPC; running tasks and the three newest completed tasks are direct rows. Hovering or focusing `More` expands the same window leftward while keeping the main panel anchored on the right, exposing the remaining completed tasks in reverse chronological order as a separate scrollable panel. The compact main/history panels meet at a zero-gap shared edge and use one shell shadow; the collapsed/expanded widths are allow-listed by the main process. Its renderer uses a real two-column grid so long titles can ellipsize without hiding the fixed, right-aligned project-name column; unassociated tasks leave that column blank. Task titles and project names share one explicit Windows typography contract—`Microsoft YaHei UI` first, 12px size, 400 weight and 18px line height—and differ only through semantic color and alignment, preventing mixed Chinese/Latin fallback from producing mismatched visual sizes. This replaces the native menu accelerator-column workaround because Windows drops arbitrary non-shortcut accelerator text. The full-app `New Task` action reuses the existing `menu-new-chat` event. Escape, window blur, and leaving the combined menu surface dismiss auxiliary content without changing task data.
 
-A second left click toggles the quick composer closed and a second right click toggles the task menu closed. The same state check also covers a surface waiting for its first `ready-to-show`, so repeated clicks cancel a pending reveal rather than letting it appear after the user has already dismissed it; clicking the other button still switches surfaces as before.
+A single left click restores and focuses the main window after a 500ms double-click decision interval. A double left click cancels that pending action and toggles the quick composer; a subsequent double click closes it. Native click events immediately following a double click are suppressed. A second right click toggles the task menu closed. The same state check also covers a surface waiting for its first `ready-to-show`, so repeated clicks cancel a pending reveal rather than letting it appear after the user has already dismissed it; clicking the other button still switches surfaces as before.
 
 On Windows, a tray right click can blur the task menu before Electron delivers the tray callback. Its blur dismissal is therefore deferred by one event turn: the callback can still recognize an open menu and close it on a second right click, while ordinary focus loss retains the existing automatic dismissal.
 
 [[src/main/app/tray-task-list.ts#groupTrayTasks]] keeps grouping, deduplication, title compaction and folder-name-only display independent from Electron. Legacy active chats add only transient title/project metadata to their existing in-memory abort records; no prompt, project path or task state is added to persisted conversation files.
 
-The tray's left-click surface loads the regular renderer with `?tray=1`, which [[src/renderer/src/screens/QuickComposer/QuickComposer.tsx]] routes to a 560px agent-first capsule. It reuses [[src/renderer/src/screens/Chat/ChatInput.tsx]] for safe attachment staging and the same voice capture, recording timer and `Ctrl+M` shortcut as the main composer; in recording state the status bar overlaps the capsule by one pixel to remove the seam and is inset 36px on each side, aligning with the straight top edge between the capsule's rounded corners. One paperclip menu offers file upload and authorized project-folder registration. The selected enabled Runtime receives the task without changing persisted Runtime configuration. Agent, attachment, voice-status and attachment-strip DOM changes explicitly remeasure the transparent frameless window through a sender-bound 96–420px resize IPC; the main process preserves the bottom edge so popovers open upward and the closed surface has no empty footer. The first position is horizontally centred in the tray icon's display and vertically above the taskbar; a dedicated drag region marks only interactive `will-move` events, so programmatic resize/reposition cannot suppress default centring and later tray clicks preserve a user-chosen in-process position. The right-click surface uses `?trayMenu=1` and [[src/renderer/src/screens/TrayMenu/TrayMenu.tsx]]; its narrow preload methods only read prepared display rows, resize/close auxiliary windows, or forward existing open/new/quit actions. Neither surface adds a second persistence path.
+The tray's double-left-click surface loads the regular renderer with `?tray=1`, which [[src/renderer/src/screens/QuickComposer/QuickComposer.tsx]] routes to a 560px agent-first capsule. It reuses [[src/renderer/src/screens/Chat/ChatInput.tsx]] for safe attachment staging and the same voice capture, recording timer and `Ctrl+M` shortcut as the main composer; in recording state the status bar overlaps the capsule by one pixel to remove the seam and is inset 36px on each side, aligning with the straight top edge between the capsule's rounded corners. One paperclip menu offers file upload and authorized project-folder registration. The selected enabled Runtime receives the task without changing persisted Runtime configuration. Agent, attachment, voice-status and attachment-strip DOM changes explicitly remeasure the transparent frameless window through a sender-bound 96–420px resize IPC; the main process preserves the bottom edge so popovers open upward and the closed surface has no empty footer. The first position is horizontally centred in the tray icon's display and vertically above the taskbar; a dedicated drag region marks only interactive `will-move` events, so programmatic resize/reposition cannot suppress default centring and later tray clicks preserve a user-chosen in-process position. The right-click surface uses `?trayMenu=1` and [[src/renderer/src/screens/TrayMenu/TrayMenu.tsx]]; its narrow preload methods only read prepared display rows, resize/close auxiliary windows, or forward existing open/new/quit actions. Neither surface adds a second persistence path.
 
 Quick-composer controls, picker-dialog copy, platform error fallbacks, Runtime location labels, and accessible names follow the active application locale. Runtime names, project names, and provider errors remain unchanged user/provider data.
 
 The right-click task menu follows the same locale for section headings, empty/count states, flyout labels, and application actions. Persisted task titles and project names are never translated or rewritten.
+
+#### Durable quick tasks
+
+The tray quick composer must create the same durable Runtime conversation as the main chat before it closes, then keep saving the terminal reply while its window is gone.
+
+[[src/main/app/tray-runtime-task.ts#startTrayRuntimeTask]] starts the selected Runtime under the active profile and records the user prompt with its run id in the existing conversation store. The tray-only IPC accepts only its own composer window. [[src/main/app/tray-runtime-task.ts#watchTrayRuntimeTask]] continues polling in the main process, including remote Gateway runs that need polling, and [[src/main/app/tray-runtime-task.ts#finishTrayRuntimeTask]] appends one final reply or failure with the web session id and execution timeline. The main window receives a narrow conversation-change event so the sidebar and any open task refresh immediately. A failed initial save cancels the dispatched run; a repeat terminal observation does not duplicate the result. The tray menu and completion card open this persisted conversation.
 
 #### Task completion toast
 
@@ -167,3 +181,99 @@ Hermes SSH tunnel mode was removed (opensource plan D4): remote Hermes now alway
 The SSH transport modules (`ssh-remote.ts`, `ssh-tunnel.ts`, `ssh-options.ts`) were deleted, along with the `set-ssh-config` / `test-ssh-connection` / `start-ssh-tunnel` / `stop-ssh-tunnel` / `is-ssh-tunnel-active` IPC handlers, the `HermesRuntimeMode` "ssh" value, and every `conn.mode === "ssh"` branch across main, preload and renderer.
 
 Existing persisted SSH configs are read-only migrated: the old built-in connection (`connectionMode: "ssh"`) is coerced to `remote` and flagged `migratedFromSsh` (ConnectionPane shows a "re-set up on Gateway v1" banner); Agent Runtime configs with `hermes.mode: "ssh"` are coerced to `remote` and marked `needsReauthorization`. Stored `sshConfig` fields are left untouched on disk.
+
+## Effective CLI toolset defaults
+
+Changing one CLI toolset preserves the other effective defaults rather than replacing an implicit configuration with an empty list.
+
+[[src/main/tools.ts#setToolsetEnabled]] starts from [[src/main/tools.ts#getToolsets]] when a platform list is not yet explicit. A configuration without a platform-toolsets block keeps every other default enabled after one toggle; an explicitly empty CLI list remains empty until the user enables a toolset. Existing platform lists and unrelated configuration are preserved.
+
+## Diagnostic credential redaction
+
+Diagnostic text and JSON frames redact credential aliases, URL user information and complete secret values before they reach logs or Runtime event consumers.
+
+[[src/shared/redaction.ts#redactSensitiveText]] handles complete JSON by redacting secret fields and string values while preserving a parseable frame and nonsecret metadata. Other text uses quote-aware and URL-aware replacements, including punctuation inside unquoted values. Nested JSON values at depth 64 are replaced with a redaction marker.
+
+## Native file action authority
+
+Native file menus and default-application opening accept only existing files within a registered workspace, a native-selected workspace or the app media store. Renderer paths do not grant new authority.
+
+### Outside path rejection
+
+An unregistered file cannot create a native menu, reach the clipboard or launch an associated application.
+
+### Linked path rejection
+
+A junction or symlink inside a permitted root cannot expose an outside file through the menu.
+
+### Registered document actions
+
+The actual native menu callbacks retain document opening, bounded content copying and file location for an authorized document.
+
+### Document association limits
+
+Default-application opening allows a fixed set of document, image, audio and video extensions. Executables, scripts, shortcuts, active web files, macro-enabled Office files and unknown types cannot launch through file actions.
+
+Authorized files can still be located in the system file manager.
+
+### Deferred action authority
+
+Each callback rechecks authority when invoked, so a menu opened before project removal cannot retain file access.
+
+### Bounded clipboard reads
+
+Clipboard copying rechecks an opened regular file, limits reads to five MiB and rejects growth or replacement before publishing text.
+
+### Main window admission
+
+Only the current main window's main frame may request the artifact menu; another frame cannot reuse the native action surface.
+
+## Retired plaintext secret readers
+
+The legacy get-env and get-credential-pool channels and preload methods are removed because the current Renderer has no consumers. Main-owned configuration and Runtime code retain their internal credential readers.
+
+Adding a credential through IPC returns only completion, never the updated secret pool. This boundary does not replace audits of other configuration responses, sender validation or production CSP.
+
+## Renderer configuration read scope
+
+The generic get-config IPC reads only four existing UI settings: service tier, reasoning effort, IPv4 preference and proxy configuration. Unknown or malformed paths cannot reach the internal YAML getter.
+
+Trusted Main consumers keep their existing full configuration reader. Proxy values retain their current editing contract; URL credential projection and other response surfaces require separate review.
+
+## Production desktop script policy
+
+Production Renderer HTML and Main response headers permit only same-origin scripts. Inline script and event-handler execution, eval and WebAssembly eval are not enabled.
+
+Only Vite serve and an unpackaged development Main opt into inline scripts for React refresh. An isolated Windows Electron regression verifies that same-origin scripts run while inline scripts and handlers remain blocked; packaged application acceptance stays separate.
+
+CSP resource regressions read the shared production policy and verify its Main header wiring, preserving existing loopback, remote dashboard and packaged asset requirements when policy code moves between modules.
+
+## Desktop configuration integrity
+
+Desktop configuration reads distinguish a missing file from invalid JSON, a non-object root or an I/O failure. Existing damaged state remains untouched, and ordinary writes cannot replace it with an empty fallback.
+
+Writes use the existing same-directory temporary-file replacement and preserve unknown fields in caller read/modify/write updates. Startup validates after restore recovery and migration, before Owner, windows or schedules; failure shows a native recovery path and exits. Locale bootstrap alone may fall back to the default language so it can reach this prompt, while failed saves cannot change in-memory language. Tests inject write/rename/read failures and verify original bytes, recovery instructions and startup ordering.
+
+## IPC sender roles
+
+App IPC requires a live native-owned WebContents, its main frame and the expected application URL. A same-URL window, child frame or navigated page cannot borrow another window's authority.
+
+The current Main window retains normal handlers. Native creation enrolls composer, tray-menu and completion identities with exact query URLs; destruction revokes them. Auxiliary channels are explicit and deny unknown additions, retaining common locale and composer attachment, voice and task flows. Invoke handlers fail before side effects; send listeners ignore denied events, and listener removal maps to the guarded callback. Registration, tray, updater and mobile management use the gate; existing deeper workspace, credential and restore checks remain necessary.
+
+## Renderer proxy URL projection
+
+The Renderer sees only a proxy URL's public scheme, host and port; stored authentication, routing paths, queries and fragments are replaced with retained markers. Internal networking continues to read the original value.
+
+Saving an unchanged projection preserves the current value of that profile. Changed values containing retained markers are rejected before writing; replacement or credential clearing requires an explicit complete value. Settings bind network loads and proxy-save acknowledgements to their profile/request, disable edits until loaded and report failed saves without marking them successful. This projection does not yet define the contracts for model or Runtime endpoint responses.
+
+## Owner transport type contracts
+
+The independent Owner transport and Main bridge describe their existing call, response and stream values with explicit TypeScript types. These declarations preserve the existing wire protocol and authorization checks.
+
+The worker RPC carries unknown results until its caller selects a response type; event streams carry unknown values and download streams carry byte arrays. The ledger client constructor Proxy supplies its shared RPC allowlist, which intentionally merges the public port interface with the class. Tests type partial transport fixtures separately from complete handler requests.
+
+## Tray failure recovery
+
+A failed or destroyed native tray cannot turn closing the main window into an unreachable hidden process.
+
+The tray controller exposes actual availability. Closing without a tray minimizes the visible taskbar window while work is active and uses the existing graceful shutdown when idle; normal tray-backed background work keeps its close-to-tray behavior. A second instance restores the current main window or creates it again if destroyed. Main lifecycle and tray tests cover both native creation outcomes and subsequent recovery.

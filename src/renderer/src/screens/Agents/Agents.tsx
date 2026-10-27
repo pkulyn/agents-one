@@ -1,3 +1,4 @@
+import { useRuntimeOrder } from "../../components/RuntimeMenu";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, ChatBubble } from "../../assets/icons";
 import {
@@ -24,10 +25,10 @@ interface AgentsProps {
 }
 
 const RUNTIME_LABELS: Record<string, string> = {
-  hermes: "Hermes Agent Runtime",
+  hermes: "Hermes Agent",
   codex: "Codex",
   "claude-code": "Claude Code",
-  pi: "Pi Agent CLI",
+  pi: "Pi Agent",
   opencode: "OpenCode",
   openclaw: "OpenClaw",
   "web-agent": "agents.kindWebAgent",
@@ -224,12 +225,13 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
     };
   }, [runtimes, t]);
 
+  const { sorted, dragProps } = useRuntimeOrder(runtimes);
   const groupedRuntimes: Record<AgentSectionKey, AgentRuntimeDefinition[]> = {
     local: [],
     remote: [],
     web: [],
   };
-  runtimes.forEach((runtime) => {
+  sorted.forEach((runtime) => {
     groupedRuntimes[sectionForRuntime(runtime)].push(runtime);
   });
 
@@ -264,6 +266,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
         className={`agents-domain-card agents-domain-card--${section}${
           section === "remote" ? " agents-domain-card--remote-featured" : ""
         }`}
+        {...dragProps(runtime.id)}
         key={runtime.id}
       >
         <div className="agents-domain-card-top">
@@ -281,10 +284,15 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                 {runtime.kind === "web-agent"
                   ? t(RUNTIME_LABELS[runtime.kind])
                   : RUNTIME_LABELS[runtime.kind]}{" "}
-                ·{" "}
-                {deriveAgentTransport(runtime) === "gateway-v1"
-                  ? TRANSPORT_LABEL_KEY[deriveAgentTransport(runtime)]
-                  : t(TRANSPORT_LABEL_KEY[deriveAgentTransport(runtime)])}
+                {runtime.kind !== "hermes" && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    {deriveAgentTransport(runtime) === "gateway-v1"
+                      ? TRANSPORT_LABEL_KEY[deriveAgentTransport(runtime)]
+                      : t(TRANSPORT_LABEL_KEY[deriveAgentTransport(runtime)])}
+                  </>
+                )}
               </small>
             </span>
           </div>

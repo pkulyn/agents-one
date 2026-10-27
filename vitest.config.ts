@@ -17,6 +17,7 @@ export default defineConfig({
           name: "main",
           environment: "node",
           globals: true,
+          setupFiles: ["./tests/setup-main-data-root.ts"],
           include: [
             "src/main/**/*.test.ts",
             "src/shared/**/*.test.ts",

@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from "fs";
 import { basename, join, normalize } from "path";
 import { createHash } from "crypto";
-import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
+import {
+  getActiveProfileNameSync,
+  agentsOneProfileHome,
+  profileHome,
+  safeWriteFile,
+} from "./utils";
 import type {
   ProjectFolderRecord,
   ProjectWorkspaceCapability,
@@ -17,6 +22,15 @@ const STORE_VERSION = 2;
 const MAX_FOLDERS = 100;
 
 function storePath(): string {
+  return join(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    "desktop",
+    "project-folders.json",
+  );
+}
+
+/** Read old registries only when the app-owned registry does not exist. */
+function legacyStorePath(): string {
   return join(
     profileHome(getActiveProfileNameSync()),
     "desktop",
@@ -56,9 +70,12 @@ function isRecord(value: unknown): value is ProjectFolderRecord {
 
 function readStore(): ProjectFolderStore {
   try {
-    if (!existsSync(storePath()))
-      return { version: STORE_VERSION, folders: [] };
-    const parsed = JSON.parse(readFileSync(storePath(), "utf8")) as unknown;
+    const currentPath = storePath();
+    const sourcePath = existsSync(currentPath)
+      ? currentPath
+      : legacyStorePath();
+    if (!existsSync(sourcePath)) return { version: STORE_VERSION, folders: [] };
+    const parsed = JSON.parse(readFileSync(sourcePath, "utf8")) as unknown;
     const folders =
       parsed &&
       typeof parsed === "object" &&
@@ -149,12 +166,16 @@ export function registerProjectFolder(
 export function updateProjectFolder(
   input: UpdateProjectFolderInput,
 ): ProjectFolderRecord | null {
-  const normalized = cleanPath(
-    input.id ? resolveProjectFolderPath(input.id) || input.path : input.path,
-  );
-  if (!normalized) return null;
+  if (!input || typeof input !== "object") return null;
   const store = readStore();
-  const existing = store.folders.find((folder) => folder.path === normalized);
+  // Metadata updates can only target a previously registered project. An
+  // unknown id must never fall back to a renderer-supplied filesystem root.
+  const existing =
+    input.id !== undefined
+      ? store.folders.find((folder) => folder.id === input.id)
+      : store.folders.find((folder) => folder.path === cleanPath(input.path));
+  if (!existing) return null;
+  const normalized = existing.path;
   const now = Date.now();
   const requestedName =
     typeof input.name === "string" ? input.name.trim().slice(0, 120) : "";

@@ -18,6 +18,40 @@ OpenCode's ACP tool trace is structured rather than a plain text progress line. 
 
 The live typing bubble keeps only the neutral three-dot activity animation. [[src/renderer/src/screens/Chat/MessageList.tsx#MessageList]] no longer adds a separate rotating Agents One logo because that mark did not identify the responding Runtime or expose actionable state.
 
+## OpenCode streamed Markdown and trace retention
+
+OpenCode ACP answer and thought deltas preserve every space and newline so headings, lists, paragraphs and code indentation survive token boundaries.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#agentTextDelta]] reads text content without trimming. Answer fragments flow through the output callback and produce only one message status event per turn, preventing a long answer from evicting earlier thought/tool evidence from the existing bounded Runtime and archived execution histories. Tool evidence and provider metadata keep their existing normalization.
+
+[[tests/agent-runtimes.test.ts]] streams more than 200 unique answer deltas, then saves and reloads the execution and checks that reasoning and named tool rows remain alongside the original Markdown. [[tests/opencode-acp.test.ts]] also checks whitespace-only deltas in the live output callback. Existing histories are not rewritten.
+
+## Bounded execution trace retention
+
+Answer-fragment events must not evict reasoning, tools or terminal evidence when a Runtime answer becomes a durable transcript.
+
+[[src/shared/runtime-event-retention.ts#retainRuntimeEvents]] removes older message fragments before applying the existing chronological tail limit. Main uses it for both local and Gateway event appends; conversation storage uses the same policy for execution serialization. The 200-event Run and 80-event archive limits remain bounded, and process-only overflow keeps the previous tail behavior. Stored replies remain the authoritative answer text. The actual installed desktop bundle must carry both this retention policy and the OpenCode delta fix; validating a newer checkout alone does not update a separately packaged candidate.
+
+[[tests/runtime-conversation-store.test.ts]] verifies that a trace followed by 240 answer fragments still renders reasoning and paired tools after save and reload. [[src/shared/runtime-event-retention.test.ts]] protects repeated live truncation and evidence-only overflow ordering.
+
+## Remote reasoning and sent attachments
+
+RuntimeChat keeps remote reasoning text and the files that accompanied each user turn visible in the saved transcript.
+
+[[src/shared/agent-event-stream.ts#agentEventTimelineEntry]] maps the complete Gateway `reasoning.summary` text into a bounded detail field, including older Hers events that carry the thought in `data.text`. [[src/main/agent-runtimes.ts]] retains up to 16,000 characters of event detail, and [[src/main/runtime-conversation-store.ts#cleanRuntimeEvent]] preserves that detail when the conversation is reopened.
+
+[[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]] copies only attachment identity, type, name, and size into the user message. [[src/main/runtime-conversation-store.ts#cleanMessageAttachments]] validates and persists those display fields while excluding file contents, image data, and local paths. [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.ts#runtimeConversationMessage]] passes them to the same [[src/renderer/src/components/AttachmentChip.tsx#AttachmentChip]] used by the composer. A fixed 180-by-64-pixel card shows an image thumbnail when available or a type icon otherwise, plus a truncated filename.
+
+[[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.test.ts]] verifies transcript mapping, and [[src/main/runtime-conversation-store.test.ts]] verifies safe metadata persistence and full reasoning-detail round trips.
+
+## OpenCode historical trace recovery
+
+A fixed adapter cannot recreate evidence already evicted from an old execution, but a verified native OpenCode session export can supply the original reasoning and tool records for a targeted repair.
+
+Recovery matches each native assistant turn through its parent user ID, original run time bounds and exact final-answer text after whitespace normalization. Verified native parts pass through [[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] for the existing bounded, redacted event shape. Repeated answer-fragment events are replaced by one status event so restored reasoning and tools fit the persisted execution limit.
+
+Before writing, recovery saves a private backup and uses the existing [[src/main/runtime-conversation-store.ts#saveRuntimeConversation]] revision check. Only the matched reply execution events change; message identities, user/assistant text, model metadata and other conversations remain intact. The desktop must be validated through its actual IPC dispatch and visible original chat, because an isolated adapter check does not prove that a running Main process has loaded a new build.
+
 ## Pi model transport failures
 
 Pi may emit assistant messages with `stopReason=error` and still exit with status code `0`. [[src/main/pi-runtime.ts#piOutputError]] makes a terminal structured model error fail the Runtime Run instead of producing an empty-success fallback in chat.
@@ -129,3 +163,207 @@ Gateway attachment persistence waits for the tested conversation's terminal chec
 [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.test.ts]] verifies that error, artifact, and workspace-authorization lifecycle notices are omitted while genuine reasoning and hydrated image artifacts remain. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx]] protects progressive collaboration events, terminal snapshot merging, avatar-triggered pause, repeated target-only guided turns, shared response context, session reuse, explicit downstream resume, collaboration consent, remote-native workspace semantics, and model-label continuity; MessageList and file-component tests protect per-agent identity, avatar routing, quiet typing state, and local artifact actions.
 
 The DAG regression holds two sibling Runtime runs open, asserts both Runtime identities and running states are simultaneously visible, and confirms the join is not dispatched until both siblings succeed. Shared graph tests additionally protect coordinator anchoring, legacy serial compatibility, parallel layers, multi-input joins, descendants, missing dependencies and cycle rejection.
+
+## Pi read-only tool boundary
+
+Pi read-only conversations retain file readers and query tools even without a selected project; a native tool-call hook blocks mutations rather than disabling every tool.
+
+[[src/main/pi-runtime.ts#piExecArgs]] restricts analysis to read, grep, find and ls, adding native write/edit only for automatic runs. Restricted processes disable extension discovery and built-in MCP, exclude terminal/codemode/MCP tools, and explicitly load only the Main-generated permission hook. Full access retains the native resource configuration.
+
+The generated [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] authorizes exact native tool names and rejects all other direct or nested calls, regardless of a custom tool readOnlyHint. A tools allowlist alone does not disable MCP in Pi. User instructions and skills may still provide context, but cannot grant extra tools. This is native tool capability control, not an operating-system filesystem sandbox; write-path isolation and each other Runtime require independent enforcement and verification.
+
+## Pi native mode tool selection
+
+Reviewed Pi full-access processes rebuild their startup loadout from current native defaults and default-active extension tools, so a previous analysis turn cannot silently remove editors.
+
+[[src/main/pi-native-tools.ts#restorePiNativeTools]] follows merged native defaultTools names and modifiers without rewriting settings. A Main-owned startup extension runs before configured user session-start handlers. Reviewed Pi 1.4 full startup uses --no-builtin-tools to retain registered tools while skipping old transcript loadout restoration; unknown full-native versions retain their prior behavior. Current native defaults and extension selections apply to each full-access task or authorized native RPC process; restricted tasks and their write boundaries stay independent.
+
+## Pi isolated health metadata
+
+Version health discovery runs without user loader controls, credentials or native resources, using the same bounded isolated inspection as strict task admission.
+
+[[src/main/pi-capabilities.ts#inspectPiVersion]] validates bounded semantic version output and unchanged executable/entry identity from a temporary metadata-only environment. [[src/main/pi-runtime.ts#probePiRuntime]] uses it instead of inheriting the task environment. Health discovery can report other native versions; [[src/main/pi-capabilities.ts#verifyPiStrictCapabilities]] separately requires the reviewed exact version for restricted tasks and preserves fixed strict diagnostics. Neither operation rewrites user configuration or claims installed-binary attestation.
+
+## Pi strict CLI capability gate
+
+Restricted Pi tasks require a reviewed native CLI version before any task content, attachments or workspace preparation reaches the executor. Unknown versions fail with a fixed diagnostic.
+
+[[src/main/pi-capabilities.ts#verifyPiStrictCapabilities]] resolves and binds the actual command and wrapper entry, queries version in a temporary isolated home/config with minimal OS environment and offline resource-disabled flags, and accepts only Pi 1.4.0 whose native policy was verified. Each task rechecks file identity after metadata and before dispatch without a cached approval. Main checks task cancellation across startup waits so Stop cannot be followed by delayed prompt dispatch. Full access retains its explicit project requirement. Version metadata is compatibility evidence for a trusted user-selected CLI; it cannot sandbox a malicious binary or concurrent same-user filesystem changes.
+
+## Pi restricted task environment
+
+Analysis and automatic task processes omit inherited loader and runtime redirect controls while retaining provider credentials, proxy and certificate data. Explicit full access keeps native environment semantics.
+
+[[src/main/pi-runtime.ts#piChildEnvironment]] filters execution-oriented environment names case-insensitively for restricted task spawns, including Node preloads/search paths, native dynamic loaders, package redirects and interpreter startup controls. It returns a new object and does not rewrite the parent process or saved settings. Metadata probes retain their separately isolated environment; out-of-band native controls retain their existing contract. This prevents inherited preload execution before a tool hook, but does not prove that command-backed native credentials or external search-tool resolution are contained.
+
+## Pi non-executing native credentials
+
+Restricted tasks reject command-backed native credentials and request headers before preparing or sending a prompt. Literal values, environment templates and OAuth credentials remain native data.
+
+[[src/main/pi-config-policy.ts#assertPiNonExecutingConfig]] reads stable regular-file descriptors with an 8 MiB limit per native models/auth file and fixed diagnostics. It follows reviewed Pi 1.4 model line-comment/trailing-comma semantics and rejects commands only in native executable fields: provider keys, provider/model/override headers and stored API keys. Main rechecks before task launch without rewriting credentials or unknown fields. Native config roots stay outside automatic write authority even when relative to an implicit conversation cwd. Live OAuth updates remain native; this gate does not claim OS isolation from external same-user config edits after launch.
+
+## Pi control-channel startup authority
+
+Metadata and control RPC starts use reviewed non-executing startup settings. Opaque native slash commands require a live Main-owned full-access conversation and authorized project.
+
+[[src/main/pi-runtime.ts#executePiRpcCommand]] validates the method and immutable request envelope, applies capability/config checks and removes extension, MCP, tool and loader startup authority from ordinary controls. [[src/main/pi-command-authority.ts#piNativeCommandContext]] binds full native resource discovery and slash execution to the current profile, conversation, Runtime, session and project; it rechecks revocation before spawn. [[src/main/pi-command-authority.ts#piControlScope]] also carries the authorized project into ordinary controls so native cwd-scoped lookup resumes the original history without granting resources. Native resource processes use the saved authorized project. Command catalogue and retry caches separate profile and authority scope; missing or downgraded bindings cannot reuse elevated results. No conversation, credentials or unknown configuration fields are rewritten.
+
+## Pi query process context
+
+Restricted native helpers run from a verified empty control directory while Pi retains the selected project context. Executable lookup cannot inherit relative or project-owned PATH directories.
+
+[[src/main/pi-query-context.ts#createPiQueryContext]] asynchronously bounds namespace discovery, canonicalizes outside helper directories and checks directory ancestry identities, pins native config and common certificate/credential paths, and reuses one empty control directory per profile. [[src/main/pi-query-context.ts#enterPiQueryContext]] is embedded in the trusted extension and rechecks that directory before every tool call. Startup refuses overlapping managed query-bin namespaces; unknown control files are preserved and refused. Initial session cwd, native grep/find behavior, staged inputs and write authority stay bound to the original project. Full access keeps its native process context; this is not attestation of installed helper binaries or an OS sandbox.
+
+## Pi automatic write scope
+
+Automatic native write/edit calls bind to the Main-selected directory and its physical identity. Outside, linked, ambiguous and control targets are refused before the native tool runs.
+
+[[src/main/pi-write-boundary.ts#createPiWriteBoundary]] pins directory identity, checks the actual native context cwd, validates every existing ancestor, and rejects hardlinks, junctions, protected configuration directories and the executing CLI files. New nested ordinary files remain writable when the scope does not overlap the running CLI installation. [[src/main/pi-runtime.ts#piReadOnlyExtensionSource]] embeds this self-contained check; Main passes its actual cwd, invocation files and installation directories, including the private fallback directory for projectless conversations. Pi-specific tilde, at-prefix, file-URL and Windows shell-drive aliases are rejected to keep the checked target consistent with native resolution. Readers and staged attachment inputs retain their prior access. This guard is not an OS sandbox against a separate process racing filesystem changes.
+
+Explicit automatic workspaces cannot overlap Electron user data, any desktop or Hermes native profile, Pi config, or the Main/CLI installation. Main resolves native Pi config tilde, shell-drive, file-URL and cwd-relative spellings; missing protected paths resolve through their nearest existing physical ancestor, and inspection failures deny writing. The implicit projectless directory alone retains its bounded temporary writes; selecting that same private path explicitly does not grant authority. Full access keeps its explicit project contract.
+
+## Automatic permission defaults
+
+New full-chat, tray and quick-chat conversations default to automatic permission while existing explicit selections and transport-specific authority remain intact.
+
+[[src/shared/runtime-permissions.ts#automaticRuntimeTaskMode]] resolves automatic to safe_write for native and Gateway runtimes, including unscoped OpenCode conversations; browser agents retain their analysis-only capability. The mode reflects executable capability; a browser agent never gains local filesystem tools. Explicit mobile inspection policies and read-only analysis branches retain their enforced authority.
+
+Mobile desktop-task policies use the same automatic mode at Owner dispatch. [[src/main/mobile-control/execution-coordinator.ts#MobileExecutionCoordinator#checkApproval]] permits a projectless automatic write only for the generated desktop-task policy; legacy project-write approvals stay project-bound. Full access is dispatched only when the current generated policy carries explicit confirmation, including on continued turns.
+
+[[src/main/app/tray-runtime-task.ts#startTrayRuntimeTask]] persists auto instead of the former implicit analysis selection, and quick chat uses the same resolver. Main resolves omitted task modes at dispatch without rewriting saved conversations or provider configuration.
+
+## Permission conflict feedback
+
+Every dispatched task receives its effective permission and instructions to name blocked operations and the permission required before attempting unsupported work.
+
+[[src/shared/runtime-permissions.ts#runtimePermissionInstruction]] distinguishes read-only, automatic safe-write, isolated implementation and full access. Read-only permits queries but no creation or mutation; automatic permits creation/editing but prohibits removing or moving original files. A deletion request under automatic must explain the restriction and request full access, rather than ending with a promise to execute.
+
+Main adds this context for local and Gateway task dispatch. Pi native denial results carry the blocked tool and required permission back to the model, including nested calls. If safe-write restoration catches removed originals, [[src/shared/runtime-permissions.ts#runtimeRemovalBlockedMessage]] makes local adapters report an actionable failure even when the provider exits successfully; restoration text must not disappear behind a structured final answer.
+
+## Pi reasoning preview boundary
+
+Pi reasoning keeps a short progress summary and a separate bounded detail so long thoughts remain readable in live chat and after durable reload.
+
+[[src/main/agent-runtimes.ts#appendOutputEvent]] preserves original whitespace in Pi thinking detail instead of reducing the entire thought to 520 preview characters. Growing snapshots with identical clipped summaries update one progress event, and shorter later snapshots cannot replace longer detail. Existing redaction and event-detail bounds still apply.
+
+[[tests/agent-runtimes.test.ts]] streams snapshots past the preview boundary, verifies a single complete thought, saves/reloads the execution and checks the renderer's reasoning content. Earlier truncated conversation events are not rewritten automatically; their native Pi JSONL remains available for targeted recovery.
+
+## Cross-runtime native permission enforcement
+
+Native adapters carry read-only, automatic and full-access modes through transport-specific controls. Enforcement requires separate verification for each Runtime; deletion recovery is not an execution sandbox.
+
+Codex retains its native read-only or workspace-write sandbox. Claude CLI analysis uses plan mode; conversational Claude SDK analysis explicitly selects plan mode and disables mutation/shell tools. OpenCode applies per-process permission overrides for edit, bash and task so native defaults cannot auto-approve these requests; ACP checks declared read/search/fetch operations in analysis and rejects declared delete/move requests in automatic. These metadata checks do not prove that an opaque command has no destructive side effects. Rejected requests produce visible permission-denied events and actionable terminal errors.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodePermissionEnvironment]] preserves unrelated inherited environment settings without writing provider config. [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodePermissionDenial]] decides the ACP operation boundary. [[tests/opencode-acp.test.ts]] exercises actual request/response exchanges for read, search, edit, delete and move across modes. Automatic no longer silently downgrades a native or Gateway conversation to read-only just because no desktop project was selected. Browser and remote adapters remain constrained by the capabilities and authority their service actually provides.
+
+## ACP agent request identity preservation
+
+ACP permission and error replies retain the original numeric or string ID, including zero and numeric strings. Coercion can leave permitted tools waiting; permission decisions and session identity stay unchanged.
+
+## ACP turn session and deadline metadata
+
+OpenCode reports its native session ID immediately after creation or restore, before a prompt completes. The task timeout overrides the runtime fallback deadline so both layers enforce the same turn budget.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] publishes session metadata before prompting; [[src/main/agent-runtimes.ts#startAgentRuntimeTask]] records it while running, retaining continuation after cancellation or timeout. The process fixture checks both shorter and longer task deadlines, including servers without model metadata.
+
+## OpenCode Windows system proxy inheritance
+
+OpenCode inherits an enabled Windows manual proxy in its child process when no explicit CLI proxy is set, preventing direct-connection timeouts on systems whose desktop networking already uses a proxy.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeProxyEnvironment]] preserves explicit proxy and bypass variables and existing permission settings. A bounded read-only HKCU query supplies manual proxy routes for OpenCode probes and tasks; provider files, Windows settings and other runtimes are untouched. Loopback bypass keeps ACP and local model endpoints reachable. Tests cover disabled, invalid, protocol-specific and explicitly overridden settings.
+
+## Pi attachment output retention
+
+Pi input image echoes must never evict a completed assistant answer from the bounded Runtime output.
+
+[[src/main/pi-runtime.ts#piOutputFrame]] removes image payloads from JSONL output and retains assistant messages in the terminal agent_end snapshot. UTF-8 decoding and complete-line framing happen before redaction, buffering and Main callbacks, preserving parseable final messages across process chunks. The original staged input remains intact; binary data is input evidence rather than conversation output. [[tests/pi-attachment-output.test.ts]] reproduces a multi-megabyte terminal echo and split Chinese UTF-8 bytes through a real subprocess and validates the same final-answer summary used by chat.
+
+## OpenCode attachment transport
+
+OpenCode receives each explicitly attached file through ACP content blocks backed by validated per-task copies, on both new and resumed sessions.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] reuses input staging and sends images as image blocks, UTF-8 text as embedded resources, and documents as file resource links. A manifest names only staged copies and the native reader can open those exact files. Main retains input hashes and metadata on the Run without publishing inputs as output artifacts or changing workspace permissions. ACP process fixtures verify contents from staged paths; the Main regression checks dispatch, completion, input evidence and durable reply rendering.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeWindowsEnvironment]] normalizes launcher-escaped Windows path variables only in the child environment and supplies standard executable suffixes if PATHEXT is absent. Explicit suffixes, proxy settings, permissions and unrelated environment values remain intact; provider and OS configuration are not rewritten.
+
+When OpenCode has no explicit shell override, [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeShellEnvironment]] probes the installed Windows shell with a bounded no-profile command. A bundled pwsh that aborts on unsupported CET is skipped in favor of a working Windows PowerShell or Git Bash. The choice is process-local, preserves an explicit SHELL, and leaves tool permission checks intact.
+
+## Claude and Codex attachment regression
+
+Claude Code and Codex preserve explicit attachment copies and complete final answers on both new and continued conversations, including when Chinese output spans process chunks.
+
+Claude attachments use the CLI staged-directory route, including read-only conversations; they never enter the SDK-only text control path. Codex grants the staged directory and passes image paths through native --image arguments, placing resumed images on exec resume. [[tests/claude-codex-attachments.test.ts]] launches process fixtures that read the copied bytes, emit a megabyte tool result and split a Chinese UTF-8 character in the final JSON event, then checks streaming and completed summaries plus the original session continuation.
+
+[[src/main/claude-code-runtime.ts#startClaudeCodeProcess]] and [[src/main/codex-runtime.ts#startCodexProcess]] decode stdout and stderr independently with incremental UTF-8 decoders and flush them on close before terminal summarization. This prevents replacement characters at valid byte boundaries without changing permissions, native arguments, staged content or output limits.
+
+Codex desktop execution additionally uses [[src/main/codex-runtime.ts#codexDesktopEnvironment]] to probe pwsh binaries in its inherited PATH. Only directories whose pwsh reports the known CET incompatibility are excluded in the child environment, letting native shell discovery choose a healthy installed shell. Other probe failures, healthy candidates and all non-shell settings are retained. Mobile inspection and controlled project-write processes keep their existing verified environment and identity unchanged.
+
+## Workspace recovery failures
+
+A safe-write recovery failure preserves the original backup and produces a Runtime error instead of a successful completion or a hanging process result.
+
+[[src/main/workspace-protection.ts#protectWorkspaceFromRemoval]] attempts each missing original independently. Locked paths, replacement directories and symlink parents retain the backup for retry. Only a complete recovery disposes it. Claude Code, Codex, Pi and OpenCode propagate the recovery error in their ordinary completion result; this fallback does not establish operating-system sandboxing.
+
+## ACP task-scoped permission decisions
+
+OpenCode permission replies preserve the original numeric or string RPC ID and approve only an explicit one-time option bound to the current native session. Permanent or ambiguous choices never substitute for one-time authority.
+
+Both local and remote clients reject mismatched or missing sessions, duplicate option IDs, unknown kinds, invalid identifiers and automatic native mode switches. Rejection is reported in task evidence and terminal state. Protocol subprocess regressions verify execution markers, persistent-grant markers, valid edits and response identity; these gates do not establish an operating-system sandbox or certify arbitrary script side effects.
+
+Local automatic OpenCode tasks approve only read, search, fetch, think and native edit categories. Opaque execution and missing or unknown categories are rejected before a one-time grant; explicit full access retains its native behavior. Real ACP subprocess tests assert both the response and absence of an execution marker.
+
+## Claude non-executing user configuration
+
+Read-only and automatic Claude CLI tasks reject command-backed user or project credentials before creating the conversation directory, staging inputs, backing up files or spawning the executor.
+
+[[src/main/claude-config-policy.ts#assertClaudeNonExecutingUserConfig]] reads bounded stable regular-file snapshots of native user/global settings and logical/canonical project ancestor settings. Missing sources are allowed; malformed, ambiguous or command-bearing sources fail with a fixed diagnostic. Literal, environment and OAuth data are not rewritten; explicit full and implementation startup retain native behavior. This conservative preflight does not certify managed/remote policy, provider helpers, inherited execution environment, SDK controls or the complete native tool boundary. [[tests/claude-user-config-start.test.ts]] exercises the actual CLI start function and proves denial precedes input preparation, backup and process dispatch.
+
+## Claude strict native task dispatch
+
+Read-only and automatic Claude CLI tasks use reviewed native file-tool restrictions and verify the executable before task inputs or workspace preparation reach it. Unknown executor bytes fail closed.
+
+[[src/main/claude-capabilities.ts#verifyClaudeStrictCapabilities]] hashes the exact reviewed Windows Claude Code 2.1.287 native executable without executing metadata commands, bounds the digest stream and rechecks file identity. Main supplies a live run cancellation callback across asynchronous verification and dispatch. Analysis selects plan with Read/Glob/Grep; automatic selects acceptEdits with Read/Write/Edit/Glob/Grep. Both use restricted/safe-mode, empty strict MCP configuration, no permission prompts and an option terminator. Full/implementation native arguments remain explicit. [[tests/claude-capability-start.test.ts]] covers startup effects, cancellation and mode arguments; [[tests/claude-native-capabilities.test.ts]] rejects unknown/same-size bytes and cancels real file hashing. Managed/remote credentials, inherited execution environment, private-root and attachment write policies, and SDK controls require separate verification; these flags do not establish an OS sandbox.
+
+## Claude trusted user credential environment
+
+Strict Claude CLI tasks copy reviewed literal user credential and transport values into the child environment because native restricted mode ignores user settings. Project settings never supply these values.
+
+[[src/main/claude-config-policy.ts#assertClaudeNonExecutingUserConfig]] returns a Main-only allowlist from the stable user settings snapshot. User values override inherited values, matching the reviewed native precedence, while the parent environment and original files stay unchanged. API keys, direct bearer tokens, base URL, headers, OAuth token data and reviewed proxy/certificate values remain literal strings; loader/internal control variables are excluded. Active unreviewed provider or authentication routing is rejected before task effects rather than silently reinterpreted. Full/implementation keep native settings loading. [[tests/claude-user-config-start.test.ts]] covers precedence, project exclusion, custom roots, malformed values and provider refusal. This projection does not certify managed/remote/provider processes, inherited execution variables or real OAuth refresh.
+
+## Claude restricted child environment
+
+Read-only and automatic Claude tasks omit inherited loader and runtime redirect controls and force the reviewed native CLI to use its bundled ripgrep for queries. Explicit full access retains native environment selection.
+
+[[src/main/claude-environment.ts#claudeChildEnvironment]] filters known Node, Bun, OS-library, shell, Python, Ruby, Perl and OpenSSL execution controls after applying the trusted user credential snapshot. It preserves credential, proxy, certificate and config-location data without changing the parent environment. Inherited USE_BUILTIN_RIPGREP overrides cannot select a project PATH executable during a permitted Grep. [[tests/claude-child-environment.test.ts]] covers case aliases, data preservation and full/implementation behavior; [[tests/claude-capability-start.test.ts]] checks actual task dispatch options. Other helper PATH/cwd behavior, managed/remote/provider processes, private roots and SDK controls remain separate boundaries.
+
+## Claude canonical helper lookup
+
+Restricted Claude CLI startup excludes project-owned helper lookup paths while preserving the native working directory and session location. Canonical directory checks also reject external aliases into the project.
+
+[[src/main/claude-query-context.ts#prepareClaudeQueryEnvironment]] resolves the selected directory and absolute PATH directories under a bounded asynchronous deadline. Empty, relative, missing and project-owned entries are excluded; ambiguous aliases or no safe lookup fail before input preparation or dispatch. Credentials and other data stay unchanged, and full/implementation retain native lookup. Cancellation and executable identity are rechecked after asynchronous startup. [[tests/claude-query-context.test.ts]] covers real directories, junction aliases, cancellation and late timeout completion; [[tests/claude-capability-start.test.ts]] verifies the actual start call keeps its project cwd. This gate addresses project helper lookup, separately from managed/provider processes, private file roots and SDK controls.
+
+## Claude SDK startup authority
+
+Strict SDK queries share verified native startup boundaries and bind persistent processes to a profile, Runtime and project. Native customizations require current Main-owned full-access conversation authority.
+
+[[src/main/claude-sdk-policy.ts#prepareClaudeSdkPolicy]] validates non-executing configuration, trusted user credentials, reviewed executable identity and canonical outside-project helper lookup before query creation. Its actual spawn callback rechecks cancellation and authority; strict queries name only Read, Glob and Grep and pass native restricted/safe-mode/empty-MCP/no-prompt controls. [[src/main/claude-command-authority.ts#claudeControlScope]] resolves project and full-access authority from current Main conversation data rather than a registered default directory or provider session identifier alone.
+
+Persistent SDK cache entries include profile, Runtime, selected project and executable, with a private startup-environment fingerprint. Each new turn/control revalidates policy; changed credentials reopen an idle Query with the original native session. SDK transport, working directory, partial events and model/compact controls remain native. Initialization failure, stream EOF and explicit cancellation settle pending work and close the Query; unconfirmed shutdown is reported. Main shutdown admission observes cleanup rejection with a fixed diagnostic. [[tests/claude-agent-sdk-policy.test.ts]], [[tests/claude-command-authority.test.ts]] and [[tests/agent-runtimes.test.ts]] cover startup refusal, cache isolation, authority changes and Main cancellation.
+
+## Claude private workspace exclusion
+
+Strict Claude CLI and SDK tasks refuse selected directories that contain application private data or lie inside protected data roots. Main rejects the task before input staging or executor startup.
+
+The exclusion compares logical and canonical paths for Agents One, Hermes and Claude configuration roots. Main-owned conversation cwd is permitted only at its expected physical location. Ordinary sibling projects, attachments and explicit full-access behavior retain their existing contracts. This is a conservative application boundary, without an operating-system sandbox claim.
+
+## OpenCode private workspace exclusion
+
+Read-only and automatic OpenCode tasks reject explicitly selected projects overlapping application private data before staging inputs or starting the ACP process.
+
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] reuses the existing logical and canonical workspace overlap check. Main-owned projectless conversations and explicit full access retain their startup paths. [[tests/opencode-private-roots.test.ts]] verifies private roots and ancestors fail before input preparation and dispatch, while ordinary sibling projects still reach dispatch. This preflight does not sandbox arbitrary absolute-path reads by a third-party executor.
+
+## Cancellation terminal observation
+
+Stopping a single Runtime task keeps its result observer alive until the terminal conversation checkpoint is durable and the composer can accept the next turn.
+
+The cancel request does not itself clear the active run or stop terminal polling. Main-owned runs wait for Main persistence; Renderer-owned runs retain their existing serialized terminal writer. A rejected cancellation remains observable. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx]] covers both persistence owners from the stop button through cancellation and a durable follow-up answer.

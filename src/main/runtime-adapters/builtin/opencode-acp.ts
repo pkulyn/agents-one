@@ -1,3 +1,8 @@
+import { execFile } from "node:child_process";
+import {
+  runtimeRemovalBlockedMessage,
+  isRuntimeRemovalOperation,
+} from "../../../shared/runtime-permissions";
 import {
   existsSync,
   lstatSync,
@@ -5,12 +10,15 @@ import {
   readFileSync,
   readdirSync,
 } from "node:fs";
-import { createHash } from "node:crypto";
-import { extname, dirname, join, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
+import { prepareRuntimeInputs } from "../../runtime-inputs";
+import { extname, dirname, join, relative, resolve, win32 } from "node:path";
 import type {
   AgentRuntimeCapabilities,
   AgentRuntimeTaskInput,
   AgentRuntimeArtifact,
+  RuntimeInputArtifact,
 } from "../../../shared/agent-runtimes";
 import {
   normalizeAgentEventStreamModel,
@@ -27,6 +35,8 @@ import {
 } from "../event-normalizer";
 import { startLocalProcess, type LocalProcessHandle } from "../local-process";
 import { protectWorkspaceFromRemoval } from "../../workspace-protection";
+import { agentsOneProfileHome } from "../../utils";
+import { assertClaudeWorkspaceBoundary } from "../../claude-workspace-policy";
 
 const MAX_OUTPUT = 512 * 1024;
 const MAX_RPC_TIMEOUT_MS = 30_000;
@@ -138,6 +148,86 @@ export function opencodeInvocation(
   return resolved;
 }
 
+// @lat: [[runtime-chat#Cross-runtime native permission enforcement]]
+export function openCodePermissionEnvironment(
+  mode: AgentRuntimeTaskInput["mode"],
+  source: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  if (mode === "full_access" || mode === "implementation") return { ...source };
+  const inherited = source.OPENCODE_PERMISSION
+    ? JSON.parse(source.OPENCODE_PERMISSION)
+    : {};
+  if (!isRecord(inherited))
+    throw new Error(
+      "OpenCode process permission configuration must be an object.",
+    );
+  // Per-process overrides only. Native reader/query permissions remain available.
+  return {
+    ...source,
+    OPENCODE_PERMISSION: JSON.stringify({
+      ...inherited,
+      "*": "ask",
+      edit: "ask",
+      bash: "ask",
+      task: "ask",
+    }),
+  };
+}
+
+export function openCodePermissionDenial(
+  mode: AgentRuntimeTaskInput["mode"],
+  toolCall: JsonRecord,
+): string | undefined {
+  const kind = (text(toolCall.kind) || "").toLowerCase();
+  const title = text(toolCall.title) || "";
+  const rawInput = isRecord(toolCall.rawInput) ? toolCall.rawInput : {};
+  const destructive =
+    ["delete", "move"].includes(kind) ||
+    isRuntimeRemovalOperation(title, rawInput);
+  if (mode === "safe_write" && destructive)
+    return "[Agents One 权限不足] 当前为自动权限，移动或删除原有文件未执行；请切换为完全访问后重新发送任务。";
+  if (
+    mode === "safe_write" &&
+    !["read", "search", "fetch", "think", "edit"].includes(kind)
+  )
+    return "[Agents One 权限不足] 当前为自动权限，不透明终端命令或未声明的工具未执行；请切换为完全访问后重新发送任务。";
+  if (
+    mode === "analysis" &&
+    !["read", "search", "fetch", "think"].includes(kind)
+  )
+    return (
+      "[Agents One 权限不足] 当前为只读权限，已阻止 " +
+      (title || kind || "未声明为只读的工具") +
+      "。读取和查询仍可执行；创建或编辑请切换为自动，移动或删除请切换为完全访问。"
+    );
+  return undefined;
+}
+
+function oneTimePermissionOption(value: unknown): JsonRecord | undefined {
+  if (!Array.isArray(value) || !value.length || value.length > 64)
+    return undefined;
+  const ids = new Set<string>();
+  const kinds = new Set([
+    "allow_once",
+    "allow_always",
+    "reject_once",
+    "reject_always",
+  ]);
+  for (const option of value) {
+    if (
+      !isRecord(option) ||
+      typeof option.optionId !== "string" ||
+      !option.optionId.trim() ||
+      typeof option.kind !== "string" ||
+      !kinds.has(option.kind) ||
+      ids.has(option.optionId)
+    )
+      return undefined;
+    ids.add(option.optionId);
+  }
+  return value.find((option) => option.kind === "allow_once");
+}
+
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
@@ -147,6 +237,7 @@ interface PendingRequest {
 interface OpenCodeAcpClientOptions {
   mode: AgentRuntimeTaskInput["mode"];
   onUpdate: (params: JsonRecord) => void;
+  onPermissionDenied?: (reason: string) => void;
 }
 
 interface OpenCodeSessionInfo {
@@ -201,42 +292,47 @@ class OpenCodeAcpClient {
       return;
     }
     if ((typeof id === "number" || typeof id === "string") && method) {
-      this.handleAgentRequest(String(id), method, params);
+      this.handleAgentRequest(id, method, params);
     }
   }
 
   private handleAgentRequest(
-    id: string,
+    id: string | number,
     method: string,
     params: JsonRecord,
   ): void {
     if (method === "session/request_permission") {
-      const rawOptions = Array.isArray(params.options) ? params.options : [];
-      const options = rawOptions.filter(isRecord);
-      const preferred =
-        this.options.mode === "analysis"
-          ? options.find((option) =>
-              /reject|deny|cancel|read.?only/i.test(
-                String(option.kind || option.name || option.optionId),
-              ),
-            )
-          : options.find((option) =>
-              /allow.?once|once|allow/i.test(
-                String(option.kind || option.name || option.optionId),
-              ),
-            ) || options[0];
-      if (!preferred) {
+      const deny = (reason: string): void => {
+        this.options.onPermissionDenied?.(reason);
         this.respond(id, { outcome: { outcome: "cancelled" } });
+      };
+      if (!this.sessionId || params.sessionId !== this.sessionId) {
+        deny(
+          "[Agents One 权限不足] 工具权限请求未绑定当前会话，未执行该请求。",
+        );
+        return;
+      }
+      const toolCall = isRecord(params.toolCall) ? params.toolCall : {};
+      if (toolCall.kind === "switch_mode") {
+        deny(
+          "[Agents One 权限不足] 工具请求不能自动切换会话权限模式；请在 Runtime 设置中选择原生模式后重新发送任务。",
+        );
+        return;
+      }
+      const denial = openCodePermissionDenial(this.options.mode, toolCall);
+      if (denial) {
+        deny(denial);
+        return;
+      }
+      const preferred = oneTimePermissionOption(params.options);
+      if (!preferred) {
+        deny(
+          "[Agents One 权限不足] Runtime 未提供有效的一次性授权选项，未授予持续权限，工具请求未执行。",
+        );
         return;
       }
       this.respond(id, {
-        outcome:
-          this.options.mode === "analysis"
-            ? { outcome: "cancelled" }
-            : {
-                outcome: "selected",
-                optionId: String(preferred.optionId || "allow_once"),
-              },
+        outcome: { outcome: "selected", optionId: preferred.optionId },
       });
       return;
     }
@@ -246,19 +342,21 @@ class OpenCodeAcpClient {
     this.respondError(id, -32601, `${method} 未被 Agents One ACP 客户端启用。`);
   }
 
-  private respond(id: string, result: unknown): void {
+  private respond(id: string | number, result: unknown): void {
     if (this.closed) return;
-    this.process.sendLine(
-      JSON.stringify({ jsonrpc: "2.0", id: Number(id) || id, result }),
-    );
+    this.process.sendLine(JSON.stringify({ jsonrpc: "2.0", id, result }));
   }
 
-  private respondError(id: string, code: number, message: string): void {
+  private respondError(
+    id: string | number,
+    code: number,
+    message: string,
+  ): void {
     if (this.closed) return;
     this.process.sendLine(
       JSON.stringify({
         jsonrpc: "2.0",
-        id: Number(id) || id,
+        id,
         error: { code, message: redactSensitiveText(message) },
       }),
     );
@@ -373,7 +471,7 @@ class OpenCodeAcpClient {
   }
 
   async prompt(
-    prompt: string,
+    prompt: JsonRecord[],
     timeoutMs = DEFAULT_PROMPT_TIMEOUT_MS,
   ): Promise<JsonRecord> {
     if (!this.sessionId) throw new Error("OpenCode ACP session 尚未创建。");
@@ -381,7 +479,7 @@ class OpenCodeAcpClient {
       "session/prompt",
       {
         sessionId: this.sessionId,
-        prompt: [{ type: "text", text: prompt }],
+        prompt,
       },
       timeoutMs,
     );
@@ -405,12 +503,12 @@ function configuredWorkspace(value?: string): string | undefined {
   return resolved;
 }
 
-function conversationWorkspace(profile?: string): string {
-  const safeProfile = profile?.trim() || "default";
+export function openCodeConversationWorkspace(profile?: string): string {
   const root = resolve(
-    process.env.TEMP || process.env.TMP || ".",
-    "agents-one-opencode",
-    safeProfile,
+    agentsOneProfileHome(profile),
+    "desktop",
+    "runtime-chat",
+    "opencode",
   );
   mkdirSync(root, { recursive: true });
   return root;
@@ -419,6 +517,13 @@ function conversationWorkspace(profile?: string): string {
 function appendOutput(current: string, value: string): string {
   const next = `${current}${redactSensitiveText(value)}`;
   return next.length <= MAX_OUTPUT ? next : next.slice(-MAX_OUTPUT);
+}
+
+/** ACP text deltas must keep whitespace, including whitespace-only chunks. */
+function agentTextDelta(value: unknown): string | undefined {
+  if (typeof value === "string") return redactSensitiveText(value);
+  if (!isRecord(value) || value.type !== "text") return undefined;
+  return agentTextDelta(value.text);
 }
 
 function contentText(value: unknown, depth = 0): string | undefined {
@@ -786,6 +891,7 @@ export async function probeOpenCodeRuntime(
       command: invocation.command,
       args: [...invocation.prefix, ...openCodeArgs(config)],
       cwd: workspace,
+      env: await openCodeProcessEnvironment("analysis"),
       onLine: (line) => {
         if (line.json !== undefined) client?.handleLine(line.json);
       },
@@ -821,7 +927,213 @@ export async function probeOpenCodeRuntime(
   }
 }
 
+interface OpenCodeWindowsProxySettings {
+  enabled: boolean;
+  server?: string;
+  bypass?: string;
+}
+
+function hasOpenCodeProxyEnvironment(source: NodeJS.ProcessEnv): boolean {
+  return [
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+  ].some((key) => source[key] !== undefined);
+}
+
+/** Inherit an enabled Windows manual proxy without overriding explicit CLI settings. */
+export function openCodeProxyEnvironment(
+  source: NodeJS.ProcessEnv,
+  settings?: OpenCodeWindowsProxySettings,
+): NodeJS.ProcessEnv {
+  if (
+    !settings?.enabled ||
+    !settings.server ||
+    hasOpenCodeProxyEnvironment(source)
+  )
+    return source;
+  const endpoints: Record<string, string> = {};
+  for (const item of settings.server.split(";")) {
+    const match = item.trim().match(/^(http|https|socks)=(.*)$/i);
+    if (match) endpoints[match[1].toLowerCase()] = match[2].trim();
+    else if (item.trim()) endpoints.http = endpoints.https = item.trim();
+  }
+  const result = { ...source };
+  for (const protocol of ["http", "https"] as const) {
+    const address = endpoints[protocol];
+    if (!address) continue;
+    try {
+      const url = new URL(
+        address.includes("://") ? address : "http://" + address,
+      );
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        !url.hostname ||
+        url.pathname !== "/" ||
+        url.search ||
+        url.hash
+      )
+        continue;
+      result[protocol === "http" ? "HTTP_PROXY" : "HTTPS_PROXY"] =
+        url.href.replace(/\/$/, "");
+    } catch {
+      /* Invalid system proxy settings must not break task startup. */
+    }
+  }
+  if (result.HTTP_PROXY || result.HTTPS_PROXY) {
+    if (source.NO_PROXY === undefined && source.no_proxy === undefined) {
+      result.NO_PROXY = [
+        ...new Set([
+          "localhost",
+          "127.0.0.1",
+          "::1",
+          ...(settings.bypass || "")
+            .split(";")
+            .map((value) => value.trim())
+            .filter((value) => value && value !== "<local>"),
+        ]),
+      ].join(",");
+    }
+  }
+  return result;
+}
+
+/** Repair launcher-escaped paths only in the OpenCode child environment. */
+export function openCodeWindowsEnvironment(
+  source: NodeJS.ProcessEnv,
+  platform = process.platform,
+): NodeJS.ProcessEnv {
+  const result = { ...source };
+  if (platform !== "win32") return result;
+  for (const key of Object.keys(result)) {
+    const value = result[key];
+    if (!value) continue;
+    if (key.toLowerCase() === "path") {
+      result[key] = value
+        .split(";")
+        .map((part) => (part ? win32.normalize(part) : part))
+        .join(";");
+    } else if (/^(systemroot|windir|comspec|temp|tmp)$/i.test(key)) {
+      result[key] = win32.normalize(value);
+    }
+  }
+  if (
+    !Object.keys(result).some(
+      (key) => key.toLowerCase() === "pathext" && result[key],
+    )
+  ) {
+    result.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+  }
+  return result;
+}
+
+/** Validate the native Windows shell before model tools start using it. */
+export async function openCodeShellEnvironment(
+  source: NodeJS.ProcessEnv,
+  platform = process.platform,
+  fileExists: (path: string) => boolean = existsSync,
+  probe: (
+    path: string,
+    args: string[],
+    env: NodeJS.ProcessEnv,
+  ) => Promise<boolean> = (path, args, env) =>
+    new Promise((resolveProbe) => {
+      execFile(
+        path,
+        args,
+        {
+          env,
+          windowsHide: true,
+          shell: false,
+          timeout: 3000,
+          maxBuffer: 4096,
+        },
+        (error, stdout) =>
+          resolveProbe(!error && stdout.trim() === "agents-one-shell-ok"),
+      );
+    }),
+): Promise<NodeJS.ProcessEnv> {
+  if (platform !== "win32" || source.SHELL?.trim()) return source;
+  const directories = (source.PATH || source.Path || "")
+    .split(";")
+    .filter(Boolean);
+  const find = (name: string): string | undefined =>
+    directories.map((directory) => join(directory, name)).find(fileExists);
+  const root = source.SystemRoot || source.SYSTEMROOT || source.WINDIR;
+  const candidates = [
+    find("pwsh.exe"),
+    find("powershell.exe"),
+    root
+      ? join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+      : undefined,
+    source.OPENCODE_GIT_BASH_PATH,
+    ...directories.map((directory) => join(directory, "..", "bin", "bash.exe")),
+  ];
+  for (const candidate of new Set(
+    candidates.filter((path): path is string =>
+      Boolean(path && fileExists(path)),
+    ),
+  )) {
+    const args = /bash\.exe$/i.test(candidate)
+      ? ["--noprofile", "--norc", "-c", "printf agents-one-shell-ok"]
+      : [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "Write-Output 'agents-one-shell-ok'",
+        ];
+    if (await probe(candidate, args, source))
+      return { ...source, SHELL: candidate };
+  }
+  return source;
+}
+
+async function openCodeProcessEnvironment(
+  mode: AgentRuntimeTaskInput["mode"],
+): Promise<NodeJS.ProcessEnv> {
+  const source = await openCodeShellEnvironment(
+    openCodeWindowsEnvironment(openCodePermissionEnvironment(mode)),
+  );
+  if (process.platform !== "win32" || hasOpenCodeProxyEnvironment(source))
+    return source;
+  const settings = await new Promise<OpenCodeWindowsProxySettings | undefined>(
+    (resolve) => {
+      execFile(
+        "reg.exe",
+        [
+          "query",
+          "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+        ],
+        { windowsHide: true, timeout: 2000, maxBuffer: 32 * 1024 },
+        (error, stdout) => {
+          if (error) {
+            resolve(undefined);
+            return;
+          }
+          const values: Record<string, string> = {};
+          for (const line of stdout.split(/\r?\n/)) {
+            const match = line.match(
+              /^\s*(ProxyEnable|ProxyServer|ProxyOverride)\s+REG_\w+\s+(.*?)\s*$/,
+            );
+            if (match) values[match[1]] = match[2];
+          }
+          resolve({
+            enabled: Number(values.ProxyEnable) === 1,
+            server: values.ProxyServer,
+            bypass: values.ProxyOverride,
+          });
+        },
+      );
+    },
+  );
+  return openCodeProxyEnvironment(source, settings);
+}
+
 export interface OpenCodeProcessResult {
+  inputArtifacts: RuntimeInputArtifact[];
   output: string;
   error?: string;
   sessionId?: string;
@@ -832,6 +1144,7 @@ export interface OpenCodeProcessResult {
 }
 
 export interface StartedOpenCodeProcess {
+  inputArtifacts: RuntimeInputArtifact[];
   sessionId?: string;
   model?: AgentEventStreamModel;
   usage?: AgentEventStreamUsage;
@@ -840,6 +1153,7 @@ export interface StartedOpenCodeProcess {
 }
 
 export interface OpenCodeProcessMetadata {
+  sessionId?: string;
   model?: AgentEventStreamModel;
   usage?: AgentEventStreamUsage;
 }
@@ -857,17 +1171,55 @@ export async function startOpenCodeProcess(
   // must use the workspace explicitly selected for this conversation; falling
   // back to the saved path would bypass the current workspace capability.
   const workspace = configuredWorkspace(input.workspace);
-  if (mode !== "analysis" && !workspace) {
+  if ((mode === "full_access" || mode === "implementation") && !workspace) {
     throw new Error("OpenCode 文件任务需要一个已授权的项目工作区。");
   }
-  const cwd = workspace || conversationWorkspace(input.profile);
+  // Reuse the existing private-data overlap guard before staging or dispatch.
+  if (workspace && (mode === "analysis" || mode === "safe_write"))
+    assertClaudeWorkspaceBoundary(workspace, input.profile);
+  const cwd = workspace || openCodeConversationWorkspace(input.profile);
   const invocation = opencodeInvocation(
     configuredExecutable(config.executablePath),
   );
+  const preparedInputs = prepareRuntimeInputs(
+    input.profile,
+    input.attachments,
+    `opencode-${randomUUID()}`,
+  );
+  const promptBlocks: JsonRecord[] = [
+    {
+      type: "text",
+      text: openCodePrompt(input.prompt + preparedInputs.promptContext),
+    },
+    ...preparedInputs.files.map(({ artifact, path }): JsonRecord => {
+      if (artifact.kind === "image")
+        return {
+          type: "image",
+          mimeType: artifact.mime,
+          data: readFileSync(path).toString("base64"),
+        };
+      if (artifact.kind === "text")
+        return {
+          type: "resource",
+          resource: {
+            uri: pathToFileURL(path).href,
+            mimeType: artifact.mime,
+            text: readFileSync(path, "utf8"),
+          },
+        };
+      return {
+        type: "resource_link",
+        uri: pathToFileURL(path).href,
+        name: artifact.name,
+        mimeType: artifact.mime,
+      };
+    }),
+  ];
   const process = startLocalProcess({
     command: invocation.command,
     args: [...invocation.prefix, ...openCodeArgs(config)],
     cwd,
+    env: await openCodeProcessEnvironment(mode),
     onLine: (line) => {
       if (line.json !== undefined) client.handleLine(line.json);
     },
@@ -879,6 +1231,8 @@ export async function startOpenCodeProcess(
   let model: AgentEventStreamModel | undefined;
   let usage: AgentEventStreamUsage | undefined;
   let thought = "";
+  let messageStarted = false;
+  let permissionDenied: string | undefined;
   const events: NormalizedRuntimeEvent[] = [];
   const toolStates = new Map<string, OpenCodeToolState>();
   const beforeWorkspace = workspace ? workspaceSnapshot(workspace) : undefined;
@@ -888,10 +1242,26 @@ export async function startOpenCodeProcess(
       : undefined;
   const client = new OpenCodeAcpClient(process, {
     mode,
+    onPermissionDenied: (reason) => {
+      permissionDenied = reason;
+      const event: NormalizedRuntimeEvent = {
+        type: "error",
+        summary: reason,
+        detail: reason,
+        code: "permission_denied",
+      };
+      events.push(event);
+      onEvent(event);
+    },
     onUpdate: (params) => {
       if (sessionId && params.sessionId !== sessionId) return;
       const update = isRecord(params.update) ? params.update : params;
-      const chunk = contentText(update);
+      const isAgentText =
+        update.sessionUpdate === "agent_message_chunk" ||
+        update.sessionUpdate === "agent_thought_chunk";
+      const chunk = isAgentText
+        ? agentTextDelta(update.content)
+        : contentText(update);
       const updateModel = modelFromOpenCodeValue(update.model);
       const updateUsage = usageFromOpenCodeValue(update.usage ?? update);
       if (updateModel || updateUsage) {
@@ -910,6 +1280,20 @@ export async function startOpenCodeProcess(
         thought = appendOutput(thought, chunk);
       } else if (update.sessionUpdate !== "agent_thought_chunk") {
         thought = "";
+      }
+      if (update.sessionUpdate === "agent_message_chunk") {
+        // The answer is already streamed through onOutput. A status event per
+        // delta would evict earlier thought/tool evidence from bounded history.
+        if (chunk && !messageStarted) {
+          messageStarted = true;
+          const event: NormalizedRuntimeEvent = {
+            type: "message",
+            summary: "OpenCode 正在生成回复。",
+          };
+          events.push(event);
+          onEvent(event);
+        }
+        return;
       }
       const eventText =
         update.sessionUpdate === "agent_thought_chunk" ? thought : chunk;
@@ -940,10 +1324,12 @@ export async function startOpenCodeProcess(
       sessionId = session.sessionId;
       if (session.model) {
         model = { ...(model || {}), ...session.model };
-        onMetadata?.({ model });
       }
-      const prompt = openCodePrompt(input.prompt);
-      const response = await client!.prompt(prompt, config.timeoutMs);
+      onMetadata?.({ sessionId, ...(model ? { model } : {}) });
+      const response = await client!.prompt(
+        promptBlocks,
+        input.timeoutMs ?? config.timeoutMs,
+      );
       const stopReason = text(response.stopReason);
       const responseUsage = usageFromOpenCodeValue(response);
       if (responseUsage) {
@@ -964,12 +1350,17 @@ export async function startOpenCodeProcess(
           : output,
         sessionId,
         artifacts,
+        inputArtifacts: preparedInputs.artifacts,
         ...(model ? { model } : {}),
         ...(usage ? { usage } : {}),
         ...(artifacts.length
           ? {
               diffSummary: `OpenCode 已产生 ${artifacts.length} 项工作区变更。`,
             }
+          : {}),
+        ...(permissionDenied ? { error: permissionDenied } : {}),
+        ...(restored.length
+          ? { error: runtimeRemovalBlockedMessage(restored) }
           : {}),
         ...(stopReason === "cancelled" || cancelRequested || turnCompleted
           ? {}
@@ -980,6 +1371,9 @@ export async function startOpenCodeProcess(
                   processResult.stderr ||
                   `OpenCode exited with code ${processResult.exitCode ?? "unknown"}.`,
               }),
+        ...(protection?.recoveryError
+          ? { error: protection.recoveryError }
+          : {}),
       };
     } catch (error) {
       const restored = protection?.restoreAndDispose() || [];
@@ -989,6 +1383,7 @@ export async function startOpenCodeProcess(
         output,
         sessionId,
         artifacts,
+        inputArtifacts: preparedInputs.artifacts,
         ...(model ? { model } : {}),
         ...(usage ? { usage } : {}),
         ...(artifacts.length
@@ -996,14 +1391,17 @@ export async function startOpenCodeProcess(
               diffSummary: `OpenCode 已产生 ${artifacts.length} 项工作区变更。`,
             }
           : {}),
-        error: redactSensitiveText(
-          error instanceof Error ? error.message : String(error),
-        ),
+        error:
+          protection?.recoveryError ||
+          redactSensitiveText(
+            error instanceof Error ? error.message : String(error),
+          ),
       };
     }
   })();
 
   return {
+    inputArtifacts: preparedInputs.artifacts,
     get sessionId() {
       return sessionId;
     },

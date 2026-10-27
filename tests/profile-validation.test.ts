@@ -68,10 +68,12 @@ describe("profile name validation", () => {
 
   it("resolves the active profile's session DB path (issue #311)", () => {
     mkdirSync(TEST_HOME, { recursive: true });
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", TEST_HOME);
     // No active_profile file → default profile → root state.db.
     expect(activeStateDbPath()).toBe(join(TEST_HOME, "state.db"));
     // Named active profile → profiles/<name>/state.db, not the root db.
-    writeFileSync(join(TEST_HOME, "active_profile"), "work_1-prod");
+    mkdirSync(join(TEST_HOME, "data"), { recursive: true });
+    writeFileSync(join(TEST_HOME, "data", "active_profile"), "work_1-prod");
     expect(activeStateDbPath()).toBe(
       join(TEST_HOME, "profiles", "work_1-prod", "state.db"),
     );

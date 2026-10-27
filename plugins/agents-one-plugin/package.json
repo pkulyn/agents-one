@@ -1,6 +1,6 @@
 {
   "name": "@agents-one/plugin-sdk",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Agents One Remote Gateway and local CLI adapter plugin SDK",
   "license": "MIT",
   "type": "module",
@@ -22,5 +22,6 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "license": "MIT"
 }

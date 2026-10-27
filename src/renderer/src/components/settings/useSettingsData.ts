@@ -1,3 +1,4 @@
+import toast from "react-hot-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../useI18n";
 import {
@@ -74,6 +75,51 @@ export function useSettingsData(profile?: string) {
   const httpProxyRef = useRef("");
   const savedHttpProxyRef = useRef("");
   const [networkSaved, setNetworkSaved] = useState(false);
+  const [networkLoading, setNetworkLoading] = useState(true);
+  const [networkReady, setNetworkReady] = useState(false);
+  const [networkError, setNetworkError] = useState<string | null>(null);
+  const networkRequestRef = useRef(0);
+  const networkBindingRef = useRef<{
+    profile: string;
+    requestId: number;
+  } | null>(null);
+  const networkTranslationRef = useRef(t);
+  networkTranslationRef.current = t;
+  const loadNetwork = useCallback(async (): Promise<void> => {
+    const requestId = ++networkRequestRef.current;
+    networkBindingRef.current = null;
+    setNetworkLoading(true);
+    setNetworkReady(false);
+    setNetworkError(null);
+    setNetworkSaved(false);
+    setHttpProxy("");
+    httpProxyRef.current = "";
+    savedHttpProxyRef.current = "";
+    setForceIpv4(false);
+    try {
+      const [ipv4, proxy] = await Promise.all([
+        window.agentsOneAPI.getConfig("network.force_ipv4", profile),
+        window.agentsOneAPI.getConfig("network.proxy", profile),
+      ]);
+      if (requestId !== networkRequestRef.current) return;
+      const loadedProxy = proxy || "";
+      setForceIpv4(ipv4 === "true" || ipv4 === "True");
+      setHttpProxy(loadedProxy);
+      httpProxyRef.current = loadedProxy;
+      savedHttpProxyRef.current = loadedProxy.trim();
+      networkBindingRef.current = { profile: profile || "default", requestId };
+      setNetworkReady(true);
+    } catch (error) {
+      if (requestId === networkRequestRef.current)
+        setNetworkError(
+          error instanceof Error
+            ? error.message
+            : networkTranslationRef.current("settings.networkLoadFailed"),
+        );
+    } finally {
+      if (requestId === networkRequestRef.current) setNetworkLoading(false);
+    }
+  }, [profile]);
 
   // Debug dump
   const [dumpOutput, setDumpOutput] = useState<string | null>(null);
@@ -106,6 +152,7 @@ export function useSettingsData(profile?: string) {
 
   const loadConfig = useCallback(async (): Promise<void> => {
     const requestId = ++loadConfigRequestRef.current;
+    void loadNetwork();
     setHermesHome("");
     setHermesVersion(null);
 
@@ -148,18 +195,7 @@ export function useSettingsData(profile?: string) {
       versionResult.status === "fulfilled" ? versionResult.value : null;
     setHermesVersion(version);
     if (version) setCachedVersion(cacheKey, version);
-
-    // Load network settings from config.yaml
-    window.agentsOneAPI.getConfig("network.force_ipv4", profile).then((v) => {
-      setForceIpv4(v === "true" || v === "True");
-    });
-    window.agentsOneAPI.getConfig("network.proxy", profile).then((v) => {
-      const loadedProxy = v || "";
-      setHttpProxy(loadedProxy);
-      httpProxyRef.current = loadedProxy;
-      savedHttpProxyRef.current = loadedProxy.trim();
-    });
-  }, [profile]);
+  }, [profile, loadNetwork]);
 
   useEffect(() => {
     void Promise.resolve().then(loadConfig);
@@ -242,12 +278,28 @@ export function useSettingsData(profile?: string) {
   }
 
   const saveHttpProxy = useCallback(async (): Promise<void> => {
+    const binding = networkBindingRef.current;
+    if (!binding || binding.profile !== (profile || "default")) return;
     const trimmed = httpProxyRef.current.trim();
     if (trimmed === savedHttpProxyRef.current) return;
-    await window.agentsOneAPI.setConfig("network.proxy", trimmed, profile);
-    savedHttpProxyRef.current = trimmed;
-    setNetworkSaved(true);
-    setTimeout(() => setNetworkSaved(false), 2000);
+    try {
+      await window.agentsOneAPI.setConfig("network.proxy", trimmed, profile);
+      if (networkBindingRef.current !== binding) return;
+      savedHttpProxyRef.current = trimmed;
+      setNetworkError(null);
+      setNetworkSaved(true);
+      setTimeout(() => setNetworkSaved(false), 2000);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : networkTranslationRef.current("settings.networkSaveFailed");
+      if (networkBindingRef.current === binding) {
+        setNetworkError(message);
+        setNetworkSaved(false);
+      }
+      toast.error(message, { id: "proxy-save-" + binding.profile });
+    }
   }, [profile]);
 
   useEffect(() => {
@@ -262,8 +314,12 @@ export function useSettingsData(profile?: string) {
   }, [httpProxy, saveHttpProxy]);
 
   useEffect(() => {
+    const requestCounter = networkRequestRef;
+    const activeBinding = networkBindingRef;
     return () => {
       void saveHttpProxy();
+      requestCounter.current++;
+      activeBinding.current = null;
     };
   }, [saveHttpProxy]);
 
@@ -573,6 +629,9 @@ export function useSettingsData(profile?: string) {
     saveHttpProxy,
     networkSaved,
     setNetworkSaved,
+    networkLoading,
+    networkReady,
+    networkError,
   };
 }
 

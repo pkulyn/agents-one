@@ -91,13 +91,26 @@ describe("QuickChatPanel", () => {
 
     expect(await screen.findByLabelText("Quick chat")).toBeInTheDocument();
     expect(screen.getByText("Current task: Open-source release")).toBeVisible();
-    expect(screen.getByRole("option", { name: "Codex / Local" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Select agent" }));
+    expect(
+      screen.getByRole("menuitemradio", { name: /Codex.*Codex \/ Local/ }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("menuitemradio").querySelector(".profile-menu-runtime"),
+    ).toHaveStyle({ width: "24px", height: "24px" });
+    fireEvent.click(
+      screen.getByRole("menuitemradio", { name: /Codex.*Codex \/ Local/ }),
+    );
 
     const input = screen.getByPlaceholderText("Message Codex");
     fireEvent.change(input, { target: { value: "Continue the review" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    expect(startAgentRuntimeTask.mock.calls[0][1]).toMatchObject({
+      mode: "safe_write",
+      conversation: true,
+    });
     expect(startAgentRuntimeTask.mock.calls[0][1].prompt).toContain(
       "Here is the recent context from this quick chat.",
     );
@@ -106,6 +119,36 @@ describe("QuickChatPanel", () => {
     );
     expect(startAgentRuntimeTask.mock.calls[0][1].prompt).toContain(
       "Current user message: Continue the review",
+    );
+  });
+  it("uses saved order and dispatches to the agent selected from the shared menu", async () => {
+    const pi = { ...runtime, id: "pi", kind: "pi" as const, name: "Pi" };
+    localStorage.setItem(
+      "agents-one.runtime-display-order.v1",
+      JSON.stringify(["pi", runtime.id]),
+    );
+    render(
+      <QuickChatPanel
+        open
+        runtimes={[runtime, pi]}
+        defaultRuntimeId={runtime.id}
+        profile="default"
+        onClose={() => undefined}
+        onAddToTask={() => undefined}
+      />,
+    );
+    await screen.findByText("Release review");
+    fireEvent.click(screen.getByRole("button", { name: "Select agent" }));
+    expect(screen.getAllByRole("menuitemradio")[0]).toHaveTextContent("Pi");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Pi/ }));
+    const input = screen.getByPlaceholderText("Message Pi");
+    fireEvent.change(input, { target: { value: "Test selected agent" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(startAgentRuntimeTask).toHaveBeenCalledWith(
+        "pi",
+        expect.objectContaining({ conversation: true }),
+      ),
     );
   });
 });

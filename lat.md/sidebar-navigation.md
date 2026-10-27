@@ -143,3 +143,21 @@ The Appearance theme cards follow the order of [[src/renderer/src/constants.ts#T
 Fresh chat session ids are provisional until a turn produces output or completes successfully, so provider errors do not create visible recent-session rows.
 
 The main-process transports still send a generated `X-Hermes-Session-Id` on fresh requests to avoid gateway fingerprint collisions, but [[src/main/hermes.ts#sendMessageViaApi]] and the runs transport announce that id to the renderer only after visible output, tool/reasoning activity, or successful completion. Resumed sessions are announced immediately because the renderer already knows they are existing conversations. This keeps [[src/renderer/src/screens/Chat/hooks/useChatIPC.ts#useChatIPC]] from binding a failed first turn to a new sidebar entry.
+
+## Shared agent presentation
+
+Default-agent and quick-chat menus share avatar rows, concise type/location descriptions and a desktop display order. Dragging a menu row or agent-management card changes presentation without editing Runtime definitions or conversation data.
+
+[[src/renderer/src/components/RuntimeMenu.tsx#useRuntimeOrder]] stores only ordered Runtime IDs in the dedicated renderer localStorage key `agents-one.runtime-display-order.v1`, synchronizes mounted consumers and retains newly registered agents. Management keeps its three domain groups and applies that same order within each group. Both menus use 24px avatars and 13px names; sidebar task rows use 24px avatars and identical left padding inside and outside projects. Web-agent menu descriptions omit local location, Hermes uses Hermes Agent, and Pi uses Pi Agent.
+
+The expanded sidebar footer uses a 26px default-agent avatar and 15px semibold name; the compact rail uses a 24px avatar.
+
+Settings place Mobile connection between Data and Archives. Composer toolbar controls share a 34px height; reply branch icons are vertically mirrored without changing branch behavior.
+
+## Archive task identity
+
+Archived task rows and expanded project children retain their agent avatars, using current identity or a historical snapshot when the Runtime is unavailable.
+
+Registry identity is resolved by the archived runtime ID or conversation metadata; historical snapshots survive removed runtimes and registry read failures. Native conversations use the Hermes identity.
+
+[[src/renderer/src/components/settings/ArchivePane.tsx]] loads appearance metadata through existing read APIs, including tasks without a workspace. Project cards retain folder icons; missing task avatars fall back to a bot icon. Archive markers, conversation data and restore/delete behavior are unchanged.

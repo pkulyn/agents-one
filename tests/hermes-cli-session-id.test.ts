@@ -345,19 +345,22 @@ vi.mock("../src/main/config", () => ({
   getConnectionConfig: () => ({ mode: "local" as const }),
 }));
 
-vi.mock("../src/main/utils", () => ({
-  stripAnsi: (s: string) => s,
-  pidIsAliveAs: () => false,
-  getActiveProfileNameSync: () => "default",
-  normalizeProfileName: (p?: string) =>
-    p === undefined || p === "" || p === "default" ? undefined : p,
-  profileHome: () => TEST_HOME,
-  profilePaths: () => ({
-    home: TEST_HOME,
-    envFile: `${TEST_HOME}/.env`,
-    configFile: `${TEST_HOME}/config.yaml`,
-  }),
-}));
+vi.mock("../src/main/utils", () => {
+  const mocked = {
+    stripAnsi: (s: string) => s,
+    pidIsAliveAs: () => false,
+    getActiveProfileNameSync: () => "default",
+    normalizeProfileName: (p?: string) =>
+      p === undefined || p === "" || p === "default" ? undefined : p,
+    profileHome: () => TEST_HOME,
+    profilePaths: () => ({
+      home: TEST_HOME,
+      envFile: `${TEST_HOME}/.env`,
+      configFile: `${TEST_HOME}/config.yaml`,
+    }),
+  };
+  return { ...mocked, agentsOneProfileHome: mocked.profileHome };
+});
 
 vi.mock("../src/main/models", () => ({
   readModels: () => [],
