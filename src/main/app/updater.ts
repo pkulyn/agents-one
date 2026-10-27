@@ -1,5 +1,6 @@
+import { checkLatestDesktopRelease } from "./release-check";
 import { createScopedIpcMain } from "../ipc/sender-scope";
-import { app, ipcMain as rawIpcMain, type BrowserWindow } from "electron";
+import { app, net, ipcMain as rawIpcMain, type BrowserWindow } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { AppUpdater } from "electron-updater";
 import { dirname, join } from "path";
@@ -73,7 +74,9 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
 
   if (!policy.enabled) {
     autoUpdaterInstance = null;
-    ipcMain.handle("check-for-updates", async () => null);
+    ipcMain.handle("check-for-updates", () =>
+      checkLatestDesktopRelease(app.getVersion(), net.fetch),
+    );
     ipcMain.handle("download-update", () => false);
     ipcMain.handle("install-update", () => {});
     return;

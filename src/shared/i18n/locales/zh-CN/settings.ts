@@ -327,6 +327,9 @@ export default {
   statusUpToDate: "已是最新版本",
   statusUpdateAvailable: "有可用更新",
   statusUpdateReady: "更新已准备就绪",
+  manualUpdateAvailable:
+    "发现新版本 v{{version}}。请手动到 GitHub 下载新版本并安装。",
+  manualUpdateGithub: "前往 GitHub 下载",
   checkForUpdates: "检查更新",
   checkingUpdates: "正在检查…",
   downloadUpdate: "下载更新",

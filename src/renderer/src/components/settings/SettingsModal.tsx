@@ -78,13 +78,13 @@ const SETTINGS_NAV: ReadonlyArray<{
     labelKey: "settings.nav.archives",
     Icon: Archive,
   },
-  { group: "general", id: "about", labelKey: "settings.nav.about", Icon: Info },
   {
     group: "general",
     id: "logs",
     labelKey: "settings.nav.logs",
     Icon: FileText,
   },
+  { group: "general", id: "about", labelKey: "settings.nav.about", Icon: Info },
 ];
 
 const NAV_GROUP_ORDER: { id: NavGroup; labelKey: string }[] = [
