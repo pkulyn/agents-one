@@ -491,7 +491,7 @@ export default {
   autoUpgradeDesktopHint:
     "Automatically download new Agents One releases from GitHub when the app starts. Turn this off to show the startup upgrade button without downloading until you click it.",
   desktopUpdateUnsignedDisabled:
-    "Automatic updates are disabled in this unsigned Alpha build. Download future releases manually and verify their SHA-256 checksums.",
+    "Automatic updates are disabled in this unsigned build. Download future releases manually and verify their SHA-256 checksums.",
   desktopUpdateUnavailable:
     "Automatic updates are unavailable in development and portable builds.",
   runningDiagnosis: "Running diagnosis...",
