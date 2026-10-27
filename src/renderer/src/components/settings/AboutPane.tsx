@@ -10,10 +10,7 @@ export default function AboutPane(): React.JSX.Element {
   const { t } = useI18n();
   const {
     appVersion,
-    autoUpgradeEnabled,
-    autoUpgradeSaved,
     desktopUpdatePolicy,
-    handleAutoUpgradeChange,
     desktopUpdateState,
     desktopUpdateVersion,
     desktopUpdatePercent,
@@ -71,12 +68,17 @@ export default function AboutPane(): React.JSX.Element {
 
           <div className="settings-card-actions">
             <DesktopUpdateButton
-              state={desktopUpdateState}
+              state={
+                !desktopUpdatePolicy.enabled &&
+                desktopUpdateState === "available"
+                  ? null
+                  : desktopUpdateState
+              }
               version={desktopUpdateVersion}
               percent={desktopUpdatePercent}
               onCheck={checkDesktopUpdate}
               onAct={handleDesktopUpdate}
-              disabled={!desktopUpdatePolicy.enabled}
+              disabled={false}
             />
             {desktopUpdateState === "uptodate" && (
               <span className="settings-card-actions-note">
@@ -91,38 +93,23 @@ export default function AboutPane(): React.JSX.Element {
             </div>
           )}
 
-          {!desktopUpdatePolicy.enabled && (
-            <div className="settings-hermes-result error">
-              {t(
-                desktopUpdatePolicy.reason === "unsigned-build"
-                  ? "settings.desktopUpdateUnsignedDisabled"
-                  : "settings.desktopUpdateUnavailable",
-              )}
-            </div>
-          )}
-
-          <div className="settings-toggle-row">
-            <div className="settings-toggle-text">
-              <div className="settings-toggle-title">
-                {t("settings.autoUpgradeDesktop")}
-                {autoUpgradeSaved && (
-                  <span className="settings-saved">{t("settings.saved")}</span>
-                )}
+          {!desktopUpdatePolicy.enabled &&
+            desktopUpdateState === "available" && (
+              <div className="settings-card-actions-note" role="status">
+                <p>
+                  {t("settings.manualUpdateAvailable", {
+                    version: desktopUpdateVersion ?? "",
+                  })}
+                </p>
+                <a
+                  href="https://github.com/pkulyn/agents-one/releases/latest"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t("settings.manualUpdateGithub")}
+                </a>
               </div>
-              <div className="settings-field-hint">
-                {t("settings.autoUpgradeDesktopHint")}
-              </div>
-            </div>
-            <label className="tools-toggle">
-              <input
-                type="checkbox"
-                checked={autoUpgradeEnabled}
-                disabled={!desktopUpdatePolicy.enabled}
-                onChange={(e) => void handleAutoUpgradeChange(e.target.checked)}
-              />
-              <span className="tools-toggle-track" />
-            </label>
-          </div>
+            )}
         </div>
       </section>
     </div>
