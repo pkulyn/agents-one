@@ -61,6 +61,7 @@ export interface ActiveTrayTask {
 }
 
 export interface TrayController {
+  isAvailable: () => boolean;
   hideQuickComposer: () => void;
   showTaskCompletion: (data: TrayCompletionData) => void;
   destroy: () => void;
@@ -808,10 +809,13 @@ export function setupTray({
       showTrayMenu(bounds);
     });
   } catch (error) {
+    tray?.destroy();
+    tray = null;
     console.error("[TRAY] Failed to initialize notification-area tray", error);
   }
 
   return {
+    isAvailable: () => Boolean(tray && !tray.isDestroyed()),
     hideQuickComposer,
     showTaskCompletion,
     destroy: () => {

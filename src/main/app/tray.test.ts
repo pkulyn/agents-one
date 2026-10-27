@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   ipcHandlers: new Map<string, MockIpcCallback>(),
   startQuickTask: vi.fn(),
   watchQuickTask: vi.fn(),
+  trayCreationFails: false,
 }));
 
 vi.mock("electron", () => {
@@ -123,9 +124,14 @@ vi.mock("electron", () => {
       this.handlers.set(event, listener);
       return this;
     });
-    destroy = vi.fn();
+    destroyed = false;
+    destroy = vi.fn(() => {
+      this.destroyed = true;
+    });
+    isDestroyed = (): boolean => this.destroyed;
 
     constructor() {
+      if (mocks.trayCreationFails) throw new Error("synthetic tray failure");
       mocks.trays.push(this);
     }
 
@@ -355,3 +361,28 @@ describe("tray task completion", () => {
     controller.destroy();
   });
 });
+
+// @lat: [[main-process#Tray failure recovery]]
+it.each([false, true])(
+  "reports actual native tray availability when creation fails: %s",
+  async (fails) => {
+    mocks.trayCreationFails = fails;
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { setupTray } = await import("./tray");
+      const controller = setupTray({
+        getMainWindow: () => null,
+        getActiveChatTasks: () => [],
+        getRunningTaskCount: () => 0,
+        onQuitRequest: vi.fn(),
+      });
+      expect(controller.isAvailable()).toBe(!fails);
+      controller.destroy();
+      expect(controller.isAvailable()).toBe(false);
+      if (fails) expect(diagnostic).toHaveBeenCalled();
+    } finally {
+      mocks.trayCreationFails = false;
+      diagnostic.mockRestore();
+    }
+  },
+);
