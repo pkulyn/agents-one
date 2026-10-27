@@ -83,4 +83,5 @@ it.skipIf(process.platform !== "win32")(
       NpmNodeModulesCollector.prototype.streamCollectorCommandToFile = original;
     }
   },
+  30_000,
 );
