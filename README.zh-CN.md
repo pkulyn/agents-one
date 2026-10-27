@@ -10,9 +10,9 @@
 
 **AI 智能体管理与协作平台。** 统一接入 Pi、Codex、Claude Code、OpenCode 等本地智能体，以及通过 Gateway 连接的远程智能体，集中管理对话、任务、协作与产物。每个智能体保留自己的工具与权限，而你的工作集中在同一个对话界面。
 
-> **预发布 · Windows x64 Alpha 候选。** Agents One 尚无公开 Release；当前候选仍需通过发布门禁与干净环境验收。功能及持久化数据格式可能变化。首个公开版本请关注 [Releases 页面](https://github.com/pkulyn/agents-one/releases)。
+> **Windows x64 · 0.1.0。** 安装版与便携版见 [Releases](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0)，启动前请核对 SHA-256。
 
-**Alpha 源码：**仓库已按 MIT 公开，目前没有正式安装包 Release；远程 Hermes 多轮记忆与重启续接仍为实验性功能。详见[已知问题](KNOWN_ISSUES.md)。
+**MIT 开源。** Windows 核心功能验收已通过；远程 Hermes 多轮记忆与重启续接仍为实验性功能。详见[已知问题](KNOWN_ISSUES.md)。
 
 ## 产品一览
 
@@ -37,7 +37,7 @@
 
 </details>
 
-截图来自开发构建，正式发布前文案与布局可能调整。
+截图来自开发构建，不同版本的文案与布局可能调整。
 
 ## 核心体验
 
@@ -56,9 +56,9 @@ Agents One 以原生进程启动本地 CLI。Pi、Codex、Claude Code、OpenCode
 
 ## 快速开始
 
-### Alpha 发布后安装
+### Windows 安装
 
-首个公开安装包计划仅面向 **Windows x64**。请从[官方 Releases 页面](https://github.com/pkulyn/agents-one/releases)下载，并用 `SHA256SUMS.txt` 核对 SHA-256。Alpha 预计不带代码签名，Windows SmartScreen 首次启动可能提示风险；未签名构建默认关闭自动更新。首版不提供 macOS / Linux 发布资产。
+首个公开版本支持 **Windows x64**。请从[官方 Releases 页面](https://github.com/pkulyn/agents-one/releases)下载，并用 `SHA256SUMS.txt` 核对 SHA-256。当前构建不带代码签名，Windows SmartScreen 首次启动可能提示风险；未签名构建默认关闭自动更新。首版不提供 macOS / Linux 发布资产。
 
 ### 添加智能体
 
