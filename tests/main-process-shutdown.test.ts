@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
       show: ReturnType<typeof vi.fn>;
       focus: ReturnType<typeof vi.fn>;
       restore: ReturnType<typeof vi.fn>;
+      minimize: ReturnType<typeof vi.fn>;
     }>,
     trayAvailable: true,
     cancellation,
@@ -64,6 +65,7 @@ vi.mock("electron", () => ({
     show = vi.fn();
     focus = vi.fn();
     restore = vi.fn();
+    minimize = vi.fn();
     isDestroyed = (): boolean => this.destroyed;
     isMinimized = (): boolean => true;
     loadFile = vi.fn();
@@ -230,13 +232,18 @@ vi.mock("../src/main/installer", () => ({ HERMES_HOME: "synthetic-hermes" }));
 describe("main window recovery", () => {
   beforeEach(() => vi.clearAllMocks());
   // @lat: [[main-process#Tray failure recovery]]
-  it.each([true, false])(
-    "uses a reachable close path when tray availability is %s",
-    async (available) => {
+  it.each([
+    [true, 0],
+    [false, 0],
+    [false, 1],
+  ] as const)(
+    "uses a reachable close path when tray availability is %s and active count is %s",
+    async (available, active) => {
       vi.resetModules();
       mocks.handlers.clear();
       mocks.windows.length = 0;
       mocks.trayAvailable = available;
+      mocks.activeAgentRuntimeTaskCount.mockReturnValue(active);
       mocks.app.whenReady.mockResolvedValueOnce(undefined);
       const { startMainProcess } = await import("../src/main/app/start");
       startMainProcess();
@@ -249,7 +256,10 @@ describe("main window recovery", () => {
         expect(mocks.app.quit).not.toHaveBeenCalled();
       } else {
         expect(mocks.windows[0].hide).not.toHaveBeenCalled();
-        expect(mocks.app.quit).toHaveBeenCalledOnce();
+        if (active) {
+          expect(mocks.windows[0].minimize).toHaveBeenCalledOnce();
+          expect(mocks.app.quit).not.toHaveBeenCalled();
+        } else expect(mocks.app.quit).toHaveBeenCalledOnce();
       }
     },
   );

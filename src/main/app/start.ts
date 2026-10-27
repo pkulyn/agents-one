@@ -267,6 +267,9 @@ export function startMainProcess(): void {
         app.quit();
       },
     });
+    logApplicationDiagnostic("app.tray-status", {
+      available: trayController.isAvailable(),
+    });
     // @lat: [[main-process#App Lifecycle#Notification-area tray and quick task composer#Task completion toast]]
     removeTaskScheduleStartedListener = onTaskScheduleRunStarted((event) => {
       mainWindow?.webContents.send("task-schedule-run-started", event);
@@ -410,6 +413,10 @@ function createWindow(): void {
       // Without a usable tray, hiding would strand the app without controls.
       // Route through the existing graceful task/database shutdown instead.
       logErrorDiagnostic("app.tray-unavailable-on-close");
+      if (activeRuns.size + activeAgentRuntimeTaskCount() > 0) {
+        mainWindow?.minimize();
+        return;
+      }
       quitRequested = true;
       app.quit();
     }

@@ -276,4 +276,4 @@ The worker RPC carries unknown results until its caller selects a response type;
 
 A failed or destroyed native tray cannot turn closing the main window into an unreachable hidden process.
 
-The tray controller exposes actual availability. Closing without a tray uses the existing graceful Runtime and database shutdown; normal tray-backed background work keeps its close-to-tray behavior. A second instance restores the current main window or creates it again if destroyed. Main lifecycle and tray tests cover both native creation outcomes and subsequent recovery.
+The tray controller exposes actual availability. Closing without a tray minimizes the visible taskbar window while work is active and uses the existing graceful shutdown when idle; normal tray-backed background work keeps its close-to-tray behavior. A second instance restores the current main window or creates it again if destroyed. Main lifecycle and tray tests cover both native creation outcomes and subsequent recovery.
