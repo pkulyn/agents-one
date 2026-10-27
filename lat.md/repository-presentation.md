@@ -8,7 +8,13 @@ The English and Chinese homepages follow the same sequence and use actual produc
 
 The hero and introduction describe AI agent management and collaboration, with conversations, tasks, collaboration and artifacts; local agent examples include Pi, Codex, Claude Code and OpenCode alongside remote Gateway agents.
 
-`README.md` and `README.zh-CN.md` share the order of product promise, development-build proof, core workflow, first-use path, trust boundaries, and license. Their SVG heroes reuse the Dawn Ring wordmark and depict local and remote agents converging on one workspace. The full original startup image and the existing chat screenshot provide visual proof; UI details may change before release.
+`README.md` and `README.zh-CN.md` share the order of product promise, development-build proof, core workflow, first-use path, trust boundaries, and license. Their SVG heroes reuse the Dawn Ring wordmark and depict local and remote agents converging on one workspace. The full original startup image and the existing chat screenshot provide visual proof; UI details may change between releases.
+
+## Installation and connection guidance
+
+Both READMEs explain verified Windows downloads, SmartScreen, local CLI prerequisites, remote Gateway/Connector/Connect deployment and independent Android Owner pairing.
+
+The guide distinguishes released packages from main-branch improvements, keeps source-only Android installation explicit, and separates remote-agent pairing credentials from mobile Owner management keys. Detailed mobile provisioning remains in the already-public Connect README; private deployment configuration and acceptance evidence are not linked or published.
 
 ## MIT license and inherited notices
 
@@ -18,17 +24,17 @@ The root `LICENSE` covers licensor-owned Agents One contributions. `THIRD_PARTY_
 
 `electron-builder.yml` copies the current MIT license, inherited MIT notice, and Oxanium font notice into packaged `resources/notices` so binary recipients can inspect the applicable terms.
 
-## Alpha source publication boundary
+## Release and source publication boundary
 
 Publishing development source and certifying a Windows installer are separate decisions with explicit evidence and known integration limits.
 
-Both READMEs link the public known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The public README does not claim a replacement packaged UI, signed installer, or stable binary release.
+Both READMEs link the public known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The README identifies Windows 0.1.0 as the published binary and separates later main-branch fixes from those immutable assets. Android source/build instructions do not imply an APK has been publicly released.
 
 ## Dependency audit gate
 
-CI blocks new high or critical advisories and records one narrow exception for an unpatched development-only builder dependency.
+CI blocks high or critical advisories in both production dependencies and the full dependency graph.
 
-The gate checks production dependencies independently, then checks the full graph. It accepts only GHSA-ch52-4w7c-c8xp through the known electron-builder chain while the registry has no patched http-cache-semantics version. A new advisory, affected package, or production path fails the gate. Remove the exception when upstream releases a fix.
+The gate checks production dependencies independently, then checks the full graph. Historical dependency exceptions do not waive a new candidate audit; unavailable or malformed results also fail the gate.
 
 ## Public documentation boundary
 
