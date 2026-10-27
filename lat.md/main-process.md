@@ -271,3 +271,9 @@ Saving an unchanged projection preserves the current value of that profile. Chan
 The independent Owner transport and Main bridge describe their existing call, response and stream values with explicit TypeScript types. These declarations preserve the existing wire protocol and authorization checks.
 
 The worker RPC carries unknown results until its caller selects a response type; event streams carry unknown values and download streams carry byte arrays. The ledger client constructor Proxy supplies its shared RPC allowlist, which intentionally merges the public port interface with the class. Tests type partial transport fixtures separately from complete handler requests.
+
+## Tray failure recovery
+
+A failed or destroyed native tray cannot turn closing the main window into an unreachable hidden process.
+
+The tray controller exposes actual availability. Closing without a tray uses the existing graceful Runtime and database shutdown; normal tray-backed background work keeps its close-to-tray behavior. A second instance restores the current main window or creates it again if destroyed. Main lifecycle and tray tests cover both native creation outcomes and subsequent recovery.

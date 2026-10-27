@@ -146,7 +146,10 @@ export function startMainProcess(): void {
   setupUpdater({ getMainWindow: () => mainWindow });
 
   app.on("second-instance", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (app.isReady() && !quitRequested) createWindow();
+      return;
+    }
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
@@ -401,7 +404,15 @@ function createWindow(): void {
   mainWindow.on("close", (event) => {
     if (quitRequested || shutdownComplete) return;
     event.preventDefault();
-    mainWindow?.hide();
+    if (trayController?.isAvailable()) {
+      mainWindow?.hide();
+    } else {
+      // Without a usable tray, hiding would strand the app without controls.
+      // Route through the existing graceful task/database shutdown instead.
+      logErrorDiagnostic("app.tray-unavailable-on-close");
+      quitRequested = true;
+      app.quit();
+    }
   });
 
   mainWindow.on("ready-to-show", () => mainWindow?.show());
