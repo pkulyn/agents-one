@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -749,6 +749,11 @@ describe("OpenCode shared permission semantics", () => {
     ["analysis", "search", true],
     ["analysis", "edit", false],
     ["safe_write", "edit", true],
+    ["safe_write", "execute", false],
+    ["safe_write", "other", false],
+    ["safe_write", "", false],
+    ["analysis", "execute", false],
+    ["full_access", "execute", true],
     ["safe_write", "delete", false],
     ["safe_write", "move", false],
     ["full_access", "delete", true],
@@ -767,7 +772,7 @@ describe("OpenCode shared permission semantics", () => {
           ",title:" +
           JSON.stringify(kind) +
           "},options:[{kind:'reject_once',optionId:'reject'},{kind:'allow_once',optionId:'once'}]}})}",
-        "else if(m.id===9001){fs.writeFileSync('permission-result.json',JSON.stringify(m.result));send({method:'session/update',params:{sessionId:'permission-session',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'操作结果'}}}});send({id:prompt,result:{stopReason:'end_turn'}})}});",
+        "else if(m.id===9001){fs.writeFileSync('permission-result.json',JSON.stringify(m.result));if(m.result.outcome.outcome==='selected')fs.writeFileSync('tool-executed.txt','executed');send({method:'session/update',params:{sessionId:'permission-session',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'操作结果'}}}});send({id:prompt,result:{stopReason:'end_turn'}})}});",
       ].join("");
       try {
         const events: Array<{ type: string; summary: string }> = [];
@@ -789,6 +794,7 @@ describe("OpenCode shared permission semantics", () => {
         expect(response.outcome.outcome).toBe(
           allowed ? "selected" : "cancelled",
         );
+        expect(existsSync(join(workspace, "tool-executed.txt"))).toBe(allowed);
         if (allowed) expect(result.error).toBeUndefined();
         else {
           expect(result.error).toContain("[Agents One 权限不足]");
