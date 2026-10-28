@@ -32,11 +32,20 @@ async function seek(page: Page, time: number): Promise<void> {
   }, time);
 }
 
-async function geometry(page: Page) {
+async function geometry(page: Page): Promise<{
+  gap: number;
+  anchorError: number;
+  robotFrameTop: number;
+  humanFrameBottom: number;
+  windowHeight: number;
+  burstOpacity: number;
+  logoOpacity: number;
+  handFilter: string;
+}> {
   return page.evaluate(() => {
     // Measured half-alpha contour points in the actual 1672×941 plate.
     // These are deliberately independent of the component's CSS variables.
-    function tip(selector: string, x: number, y: number) {
+    function tip(selector: string, x: number, y: number): { x: number; y: number } {
       const im = document.querySelector<HTMLImageElement>(selector)!;
       const box = im.getBoundingClientRect();
       return {
@@ -171,7 +180,7 @@ describe("startup animation in Chromium", () => {
         const ctx = canvas.getContext("2d")!;
         ctx.drawImage(im, 0, 0);
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        const alpha = (x: number, y: number) =>
+        const alpha = (x: number, y: number): number =>
           data[(y * canvas.width + x) * 4 + 3];
         const surfaces = [
           [5, 59],
