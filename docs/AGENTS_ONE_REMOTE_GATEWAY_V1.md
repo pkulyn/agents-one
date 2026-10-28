@@ -40,7 +40,7 @@ Gateway 内部仍可使用多个上游服务和内部凭据，但它们是**远�
 
 ## 3.1 本地 CLI 的边界：不接入 Remote Gateway
 
-本规范是远程连接和跨机器安全边界协议，不是本地 CLI 的执行协议。安装或已配置在办公电脑上的 Codex CLI、Claude Code CLI、Pi Agent CLI 等必须继续由 Agents One 主进程以本地 Runtime Adapter 直接启动和管理：
+本规范是远程连接和跨机器安全边界协议，不是本地 CLI 的执行协议。安装或已配置在办公电脑上的 Codex CLI、Claude Code CLI、Pi Agent 等必须继续由 Agents One 主进程以本地 Runtime Adapter 直接启动和管理：
 
 - 保留 CLI 原生的会话续接、模型选择、工具调用、子智能体、终端输出、权限机制和工作目录语义；
 - 使用参数数组启动子进程，不通过 HTTP Gateway 转发，也不要求 Gateway Token 或 Workspace Grant；
