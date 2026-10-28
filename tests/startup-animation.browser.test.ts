@@ -45,7 +45,11 @@ async function geometry(page: Page): Promise<{
   return page.evaluate(() => {
     // Measured half-alpha contour points in the actual 1672×941 plate.
     // These are deliberately independent of the component's CSS variables.
-    function tip(selector: string, x: number, y: number): { x: number; y: number } {
+    function tip(
+      selector: string,
+      x: number,
+      y: number,
+    ): { x: number; y: number } {
       const im = document.querySelector<HTMLImageElement>(selector)!;
       const box = im.getBoundingClientRect();
       return {
