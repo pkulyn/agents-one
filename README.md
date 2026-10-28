@@ -8,15 +8,11 @@
   <a href="README.zh-CN.md">简体中文</a> · <a href="#see-it-in-action">Preview</a> · <a href="#get-started">Get started</a> · <a href="#development">Develop</a> · <a href="#license">License</a>
 </p>
 
-**An AI agent management and collaboration platform.** Connect Pi Agent, Codex, Claude Code, OpenCode, and other local agents, as well as remote agents through Gateway, to manage conversations, tasks, collaboration, and artifacts in one place. Each agent keeps its native tools and permissions while you work from one conversation surface.
-
-> **Windows x64 · 0.1.0.** Download the installer or portable executable from [Releases](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0). Check the SHA-256 before launching.
-
-**MIT open source.** Windows core acceptance is complete. Remote Hermes conversation recall remains experimental; see [known issues](KNOWN_ISSUES.md).
+**Manage local and remote AI agents in one workspace.** Connect Pi Agent, Codex, Claude Code, OpenCode and more to organize conversations, tasks, collaboration and artifacts. Each agent keeps its own tools and permissions.
 
 ## Ask an AI agent to help you get started
 
-If your agent can access this computer, send it the prompt below to help with installation, configuration and deployment for your needs. Remote deployment also requires access to the relevant server; you may need to install the phone app, pair devices or complete sign-in yourself.
+You can send the prompt below to your agent so it can help install, configure and deploy Agents One for your needs.
 
 ```text
 Please read https://github.com/pkulyn/agents-one/blob/main/README.md first,
@@ -39,7 +35,7 @@ The opening scene of the current app carries the Agents One Dawn Ring identity:
   <img src="assets/readme/startup.png" width="100%" alt="Agents One startup scene: a robot hand and a fully visible human hand meet behind the Dawn Ring wordmark" />
 </p>
 
-The product itself is a conversation workspace. Chat stays central, with projects, scheduled work, and agent selection close at hand.
+Conversations stay central, with projects, scheduled work and agent selection close at hand.
 
 <p align="center">
   <img src="previews/chat.png" width="100%" alt="Agents One desktop chat with project navigation and task actions" />
@@ -58,16 +54,16 @@ Screenshots show development builds; labels and layout may change between releas
 
 ## What comes together
 
-| Your work                  | What Agents One adds                                                                                                                         |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Conversations**          | Streaming responses, tool activity, artifacts, retry and cancel controls, searchable history, and a native terminal fallback for CLI output. |
-| **Agents**                 | One registry for local CLI runtimes and remote Gateway v1 agents, with health probes and capability badges based on reported behavior.       |
-| **Projects & tasks**       | Folder-scoped workspaces, conversations that also serve as tasks, scheduled runs, archives, and structured multi-agent handoffs.             |
-| **Ownership of your data** | Portable backup and restore with integrity checks, credential exclusions, and rollback safeguards.                                           |
+| Your work            | What Agents One adds                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Conversations**    | Streaming replies, tool activity, artifacts, searchable history, retry/cancel controls and terminal fallback. |
+| **Agents**           | One registry for local CLIs and remote Gateway v1 agents, with health and reported capabilities.              |
+| **Projects & tasks** | Folder-scoped workspaces, scheduled runs, archives and multi-agent handoffs.                                  |
+| **Your data**        | Portable backup and restore with integrity checks and rollback safeguards.                                    |
 
 ### Local power, one shared surface
 
-Agents One starts local CLIs as native processes. Pi Agent, Codex, Claude Code, and OpenCode keep their own models, tools, project instructions, and permission modes. For remote agents, Gateway v1 uses a URL and bearer token, negotiates capabilities, and grants workspace access only for a bounded run. Both routes feed the same conversation experience.
+Local CLIs run as native processes and retain their models, tools, project instructions and permissions. Remote agents connect through Gateway v1, which negotiates capabilities and grants workspace access for bounded runs. Both use the same conversation interface.
 
 The [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) lets additional agents implement this contract without changing the desktop app. The [event stream](docs/AGENT_EVENT_STREAM_V1.md) carries tool activity, artifacts, and handoffs; the [Gateway protocol](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md) covers remote runs and workspace grants.
 
@@ -77,15 +73,14 @@ The [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) lets additional agents implement
 
 ### Release status
 
-| Component          | Current status                                                                                                                                                                                                                                                    |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows desktop    | [0.1.0 stable Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0), with x64 installer and portable EXE. Unsigned; updates are downloaded and installed manually.                                                                                   |
-| Latest main branch | Adds manual GitHub version checks and download guidance, removes the unsigned warning/automatic-update switch, and reorders settings navigation. **These commits have not been repackaged into the 0.1.0 Release**; that package retains the earlier update page. |
-| Android            | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev), Android 8.0 / API 26 or newer. Debug-signed, debuggable prerelease.                                                                                                |
-| Remote components  | Plugin SDK **0.1.6**, Connector CLI **0.1.0**, Connect service **0.1.1**. Deploy from this repository; do not assume a published npm package or a project-operated public service.                                                                                |
-| Other platforms    | No public macOS/Linux desktop or iOS binaries. Linux can host self-managed remote services.                                                                                                                                                                       |
+| Component         | Current status                                                                                                                                                                     |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows desktop   | [0.1.0 stable Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0), with x64 installer and portable EXE.                                                             |
+| Android           | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev), Android 8.0 / API 26 or newer. Debug-signed, debuggable prerelease.                 |
+| Remote components | Plugin SDK **0.1.6**, Connector CLI **0.1.0**, Connect service **0.1.1**. Deploy from this repository; do not assume a published npm package or a project-operated public service. |
+| Other platforms   | No public macOS/Linux desktop or iOS binaries. Linux can host self-managed remote services.                                                                                        |
 
-Windows core acceptance is complete within a bounded scope. It does not qualify every model, remote service, upgrade/restore or mobile combination; see [known issues](KNOWN_ISSUES.md).
+Windows core flows have passed acceptance within a limited scope; other models, remote services, upgrade/restore paths and mobile combinations are not all qualified. See [known issues](KNOWN_ISSUES.md).
 
 ### Install and verify on Windows
 
@@ -100,10 +95,10 @@ Windows core acceptance is complete within a bounded scope. It does not qualify 
    Get-Content .\SHA256SUMS.txt
    ```
 
-3. **SmartScreen:** the Windows packages are currently unsigned. First launch may show “Windows protected your PC” or “Unknown publisher.” This is not a Windows crash screen or proof that the file is safe. Only after confirming the official source, matching checksum and your trust in that release, choose **More info → Run anyway**, if Windows offers it. Stop and investigate malware detections or checksum mismatches; do not disable protection or bypass an organization's policy. [Microsoft guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
+3. **SmartScreen:** unsigned Windows packages may show a warning on first launch. Verify the official Release and SHA-256 first; if Windows offers it and you trust the file, choose **More info → Run anyway**. Stop if the hash differs, security software flags the file or your organization blocks it. [Microsoft guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
 4. Finish the installer and open the **Agents One** shortcut, or run the portable EXE directly. Use a normal user account for the desktop app and its CLIs. Single-click the tray icon to open the main window; double-click to toggle Quick Chat, then double-click again to close it. Use the tray context menu to quit normally.
 
-**Updates:** with the published 0.1.0 package, check [Releases](https://github.com/pkulyn/agents-one/releases) manually. Latest source builds provide **Settings → About & Updates → Check for updates**, below Logs & Diagnostics. When a newer version is found, follow the GitHub link, verify it and install manually; the app does not automatically download or install it. Back up through **Settings → Data** and quit from the tray before upgrading. Installer and portable builds use different data directories; switching between them does not automatically share data. There is currently no published winget or Microsoft Store installation entry.
+**Updates:** the 0.1.0 package has no in-app update check; use [Releases](https://github.com/pkulyn/agents-one/releases) and install updates manually. Newer source builds can check from **Settings → About & Updates → Check for updates** and link to GitHub; they do not download or install updates automatically. Before upgrading, back up in **Settings → Data** and quit from the tray. Installer and portable builds use separate data directories. No winget or Microsoft Store package is available.
 
 ### Connect a local agent
 
@@ -199,7 +194,7 @@ Advanced users may skip Connect: choose **Self-hosted Gateway**, enter a reachab
 
 ### Android: install and connect to the desktop
 
-The phone accesses an authorized desktop **Owner**: the data and execution host. It does not install the desktop CLIs on Android. Keep the desktop running, online and awake; an online Connect service does not prove the desktop task channel is online.
+The Android app connects to an authorized desktop **Owner**, which holds the data and runs agents. Keep the desktop online and awake; an online Connect service alone does not mean the desktop task channel is ready.
 
 **Install:**
 

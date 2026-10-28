@@ -1,6 +1,6 @@
 # Repository presentation and licensing
 
-The repository homepage introduces Agents One through its actual desktop experience and states the license boundaries before a reader downloads or modifies the product.
+The repository homepage introduces Agents One through its product visuals and links to licensing details.
 
 ## Bilingual README story
 
@@ -8,7 +8,7 @@ The English and Chinese homepages follow the same sequence and use actual produc
 
 The hero and introduction describe AI agent management and collaboration, with conversations, tasks, collaboration and artifacts; local agent examples include Pi Agent, Codex, Claude Code and OpenCode alongside remote Gateway agents.
 
-`README.md` and `README.zh-CN.md` share the order of product promise, development-build proof, core workflow, first-use path, trust boundaries, and license. Their SVG heroes reuse the Dawn Ring wordmark and depict local and remote agents converging on one workspace. The full original startup image and the existing chat screenshot provide visual proof; UI details may change between releases.
+`README.md` and `README.zh-CN.md` share the order of product overview, AI setup prompt, product visuals, core workflow, first-use path, trust boundaries, and license. Their SVG heroes reuse the Dawn Ring wordmark and depict local and remote agents converging on one workspace. The full original startup image and the existing chat screenshot provide visual proof; UI details may change between releases.
 
 ## Installation and connection guidance
 
