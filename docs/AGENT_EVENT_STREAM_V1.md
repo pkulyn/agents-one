@@ -9,7 +9,7 @@
 本协议适用于：
 
 - Gateway v1 远程智能体：Hers、OpenClaw、后续第三方 Gateway。
-- 本地 CLI Adapter：Codex CLI、Claude Code CLI、Pi Agent CLI 的本地适配器可将原生事件映射为同一模型。
+- 本地 CLI Adapter：Codex CLI、Claude Code CLI、Pi Agent 的本地适配器可将原生事件映射为同一模型。
 
 本协议**不要求**本地 CLI 放弃其原生参数、工具、交互或工作区能力。CLI 保持由本地 Adapter 直接启动和管理；协议只规范 Adapter 向桌面 UI 输出什么事件。
 

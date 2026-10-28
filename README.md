@@ -8,11 +8,28 @@
   <a href="README.zh-CN.md">简体中文</a> · <a href="#see-it-in-action">Preview</a> · <a href="#get-started">Get started</a> · <a href="#development">Develop</a> · <a href="#license">License</a>
 </p>
 
-**An AI agent management and collaboration platform.** Connect Pi, Codex, Claude Code, OpenCode, and other local agents, as well as remote agents through Gateway, to manage conversations, tasks, collaboration, and artifacts in one place. Each agent keeps its native tools and permissions while you work from one conversation surface.
+**An AI agent management and collaboration platform.** Connect Pi Agent, Codex, Claude Code, OpenCode, and other local agents, as well as remote agents through Gateway, to manage conversations, tasks, collaboration, and artifacts in one place. Each agent keeps its native tools and permissions while you work from one conversation surface.
 
 > **Windows x64 · 0.1.0.** Download the installer or portable executable from [Releases](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0). Check the SHA-256 before launching.
 
 **MIT open source.** Windows core acceptance is complete. Remote Hermes conversation recall remains experimental; see [known issues](KNOWN_ISSUES.md).
+
+## Ask an AI agent to help you get started
+
+If your agent can access this computer, send it the prompt below to help with installation, configuration and deployment for your needs. Remote deployment also requires access to the relevant server; you may need to install the phone app, pair devices or complete sign-in yourself.
+
+```text
+Please read https://github.com/pkulyn/agents-one/blob/main/README.md first,
+then help me install and configure Agents One for my environment. Check my system
+and existing tools, download the appropriate Windows or Android package from the
+official GitHub Releases, and verify its SHA-256. Help me connect the local or
+remote agents I need; if applicable, deploy the plugin, Connector and Connect,
+and help install, connect and pair the phone app. First ask what features I need;
+do not deploy components I do not need. Preserve existing configuration and data.
+Explain any steps that require my account, secrets, server access or my own action;
+do not write credentials to source files, documentation or logs. Verify each step
+and report what is complete, what was tested and what still needs my attention.
+```
 
 ## See it in action
 
@@ -50,7 +67,7 @@ Screenshots show development builds; labels and layout may change between releas
 
 ### Local power, one shared surface
 
-Agents One starts local CLIs as native processes. Pi, Codex, Claude Code, and OpenCode keep their own models, tools, project instructions, and permission modes. For remote agents, Gateway v1 uses a URL and bearer token, negotiates capabilities, and grants workspace access only for a bounded run. Both routes feed the same conversation experience.
+Agents One starts local CLIs as native processes. Pi Agent, Codex, Claude Code, and OpenCode keep their own models, tools, project instructions, and permission modes. For remote agents, Gateway v1 uses a URL and bearer token, negotiates capabilities, and grants workspace access only for a bounded run. Both routes feed the same conversation experience.
 
 The [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) lets additional agents implement this contract without changing the desktop app. The [event stream](docs/AGENT_EVENT_STREAM_V1.md) carries tool activity, artifacts, and handoffs; the [Gateway protocol](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md) covers remote runs and workspace grants.
 
@@ -64,7 +81,7 @@ The [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) lets additional agents implement
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Windows desktop    | [0.1.0 stable Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0), with x64 installer and portable EXE. Unsigned; updates are downloaded and installed manually.                                                                                   |
 | Latest main branch | Adds manual GitHub version checks and download guidance, removes the unsigned warning/automatic-update switch, and reorders settings navigation. **These commits have not been repackaged into the 0.1.0 Release**; that package retains the earlier update page. |
-| Android            | Source version **0.1.13-dev** (debug: 0.1.13-dev-debug), Android 8.0 / API 26 or newer. The current public Release has **no APK asset**; build from source below.                                                                                                 |
+| Android            | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev), Android 8.0 / API 26 or newer. Debug-signed, debuggable prerelease.                                                                                                |
 | Remote components  | Plugin SDK **0.1.6**, Connector CLI **0.1.0**, Connect service **0.1.1**. Deploy from this repository; do not assume a published npm package or a project-operated public service.                                                                                |
 | Other platforms    | No public macOS/Linux desktop or iOS binaries. Linux can host self-managed remote services.                                                                                                                                                                       |
 
@@ -92,12 +109,12 @@ Windows core acceptance is complete within a bounded scope. It does not qualify 
 
 Agents One does not provide a CLI subscription, sign in to a provider for you, or supply API keys. Install and configure each desired CLI under the **same Windows user** as the desktop app, and complete a normal conversation in its own terminal first.
 
-| Agent type   | Common command | Before connecting                                                                 |
-| ------------ | -------------- | --------------------------------------------------------------------------------- |
-| Codex        | `codex`        | Complete the CLI's own sign-in or provider configuration.                         |
-| Claude Code  | `claude`       | Authenticate Claude Code and confirm access to the intended working folder.       |
-| Pi Agent CLI | `pi`           | Configure Pi's provider, model and credentials.                                   |
-| OpenCode     | `opencode`     | Confirm the selected provider/model works; the desktop uses native CLI protocols. |
+| Agent type  | Common command | Before connecting                                                                 |
+| ----------- | -------------- | --------------------------------------------------------------------------------- |
+| Codex       | `codex`        | Complete the CLI's own sign-in or provider configuration.                         |
+| Claude Code | `claude`       | Authenticate Claude Code and confirm access to the intended working folder.       |
+| Pi Agent    | `pi`           | Configure Pi's provider, model and credentials.                                   |
+| OpenCode    | `opencode`     | Confirm the selected provider/model works; the desktop uses native CLI protocols. |
 
 1. Open **Agents → Add agent**, choose **Local**, then set the agent type, name and appearance.
 2. Use the detected executable path, or select the actual CLI launcher. Do not select a project directory, installer or a whole shell command. On Windows, locate it with `where.exe codex`, `where.exe claude`, `where.exe pi` or `where.exe opencode`.
@@ -184,16 +201,20 @@ Advanced users may skip Connect: choose **Self-hosted Gateway**, enter a reachab
 
 The phone accesses an authorized desktop **Owner**: the data and execution host. It does not install the desktop CLIs on Android. Keep the desktop running, online and awake; an online Connect service does not prove the desktop task channel is online.
 
-**Install:** there is no public APK asset in the current Release. Developers can build with JDK **17** and Android SDK **36**, configuring `ANDROID_HOME` or the Android project's `local.properties`. From the repository root on Windows:
+**Install:**
 
-```powershell
-Push-Location apps/android
-.\gradlew.bat :app:assembleDebug
-Pop-Location
-# Output: apps/android/app/build/outputs/apk/debug/app-debug.apk
-```
+1. Download [agents-one-android-0.1.13-dev-debug.apk](https://github.com/pkulyn/agents-one/releases/download/android-v0.1.13-dev/agents-one-android-0.1.13-dev-debug.apk) and the matching [SHA256SUMS.txt](https://github.com/pkulyn/agents-one/releases/download/android-v0.1.13-dev/SHA256SUMS.txt) from the [Android release](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev); you do not need to build it yourself. The APK requires Android 8.0 (API 26) or newer.
+2. Before installing, compare the APK's SHA-256 with the matching filename in the checksum file:
 
-On a Linux/macOS build host, run `sh ./gradlew :app:assembleDebug` inside `apps/android`. Gradle, Android and Maven dependencies must be downloaded. Transfer your own verified APK to an Android 8.0+ phone and temporarily allow “Install unknown apps” for that installation source. This is a development-signed build: another build machine may use a different debug key, preventing an in-place upgrade; uninstalling removes the phone's local state. No iOS or app-store download is provided.
+   ```text
+   533d61317743b40f9e584fabaa11b109b387ab1fbc2060894ccc4c2d8f5601f0
+   ```
+
+   For example, run `Get-FileHash .\agents-one-android-0.1.13-dev-debug.apk -Algorithm SHA256` in the Windows download directory, or use a trusted local hashing tool on the phone. Stop if the hashes differ.
+
+3. Transfer the APK to the phone or download it there. Follow Android's prompts to temporarily allow “Install unknown apps” for the browser or file manager used; you can turn that permission off after installation.
+
+This is a **debug-signed, debuggable** prerelease with package ID `one.agents.mobile.debug`. An authorized ADB debugging connection may access app data; turn off USB debugging when it is not needed and avoid using this build for sensitive data. An in-place update requires the same package ID and signing certificate; a differently signed build may not upgrade it. Uninstalling removes the phone's local state, so back up anything you need first. No iOS or app-store download is provided.
 
 **Connect:**
 
