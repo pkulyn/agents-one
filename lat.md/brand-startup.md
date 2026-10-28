@@ -6,13 +6,31 @@ The startup surface and expanded sidebar share one wordmark rule: the dawn ring 
 
 The startup animates transparent robot and human foregrounds over one fixed hand-free background.
 
-The layers come from the confirmed contact composition rather than rectangular crops or complete generated scene frames. This preserves the intended approach while preventing ghost fingertips, moving background seams, truncated fingers, and camera drift.
+The foreground is a transparent plate extracted from the original design, preserving bright silver surfaces, natural skin and rounded tips. Both layers share this plate; their separation lies entirely in its empty alpha gap, never through either fingertip. The hand-free background has no baked contact highlight. No darkening filter is applied; a gentle vignette preserves the design's brightness.
 
-[[src/renderer/src/screens/SplashScreen/SplashScreen.tsx#SplashScreen]] renders the three independent layers. Both the foreground mattes and the fixed background exclude the baked contact highlight, so no fingertip or floating contact glow appears during the approach. Over 1.65 seconds, the robot moves from upper left to lower right and the human hand moves from lower right to upper left along the same contact axis. The motions are symmetric and end at the shared contact point; there is no common camera lift or independent vertical drift. Only when both hands reach that final position does a 0.86-second contact burst begin: a bright white-blue core produces two short peaks separated by a brief opacity dip, then expands and fades. `src/renderer/src/assets/agents-one-splash.svg` starts 0.14 seconds after contact so it does not cover the first flash. The shared glow/wordmark anchor is `50.7% / 47.3%`, calibrated in the Electron renderer's CSS viewport.
+[[src/renderer/src/screens/SplashScreen/SplashScreen.tsx#SplashScreen]] renders the background, foregrounds, burst and wordmark on one fixed-aspect image-coordinate canvas. The canvas covers the window with 6% overscan so the source frame edges stay outside the window when the hands move inward. Measured half-alpha fingertip contours at `(849,396)` and `(888,435)` meet at `(868.5,415.5)` in the 1672×941 plate. The positions and travel distances come from [[src/renderer/src/screens/SplashScreen/startup-scene.ts#STARTUP_SCENE]], so window resizing cannot separate the tips or move the burst away from contact.
 
-[[src/renderer/src/App.tsx#App]] keeps the startup surface visible for at least 2.9 seconds. The wordmark starts near 1.2 seconds, enters over 0.7 seconds, and remains stable for roughly one second while connection checks continue in parallel.
+Over 1.65 seconds, the robot moves from upper left to lower right and the human hand moves symmetrically from lower right to upper left along the same diagonal axis. Only after contact does a 0.86-second burst begin: a white-blue core produces two short peaks, then expands and fades. `src/renderer/src/assets/agents-one-splash.svg` starts 0.14 seconds after contact so it does not cover the first flash.
+
+[[src/renderer/src/App.tsx#App]] keeps the startup surface visible for at least 2.9 seconds. The wordmark starts at 1.79 seconds and enters over 0.7 seconds while connection checks continue in parallel.
 
 The splash keeps loading status and the delayed local-mode escape hatch outside the decorative stage. `prefers-reduced-motion` disables scene, burst, and logo animations and immediately shows the aligned final scene and wordmark.
+
+### Startup contact geometry regression
+
+The real component and splash CSS run in Chromium at wide, square and tall window sizes, including DPR 2 and resizing.
+
+Both measured fingertip contours must meet the burst anchor before any flash or wordmark appears, with the original frame edges outside the window.
+
+### Startup foreground integrity regression
+
+The decoded foreground must retain opaque metal at the damaged surface locations and a fully transparent gap around the layer split.
+
+Both measured fingertip contour pixels must exist, preventing an eroded matte or a cut through a fingertip from passing validation.
+
+### Startup reduced motion regression
+
+Reduced motion must show the same aligned final hands and visible wordmark without a flash. Loading status remains available, and the component regression preserves readiness and the delayed local-mode escape control.
 
 ## Wordmark assets
 

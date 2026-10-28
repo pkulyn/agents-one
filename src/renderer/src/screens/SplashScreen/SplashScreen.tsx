@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import startupHandsBackground from "../../assets/startup-hands-background-v2.png";
-import startupHumanHand from "../../assets/startup-human-hand-alpha-v2.png";
-import startupRobotHand from "../../assets/startup-robot-hand-alpha-v2.png";
+import startupHandsForeground from "../../assets/startup-hands-foreground-v3.png";
 import splashLogo from "../../assets/agents-one-splash.svg";
+import { startupSceneStyle } from "./startup-scene";
 
 interface SplashScreenProps {
   onFinished: () => void;
@@ -41,7 +41,7 @@ function SplashScreen({
 
   return (
     <div className="splash-screen">
-      <div className="splash-hand-stage" aria-hidden="true">
+      <div className="splash-hand-stage" style={startupSceneStyle}>
         <img
           className="splash-hand-background"
           src={startupHandsBackground}
@@ -49,20 +49,20 @@ function SplashScreen({
         />
         <img
           className="splash-hand-layer splash-hand-robot"
-          src={startupRobotHand}
+          src={startupHandsForeground}
           alt=""
         />
         <img
           className="splash-hand-layer splash-hand-human"
-          src={startupHumanHand}
+          src={startupHandsForeground}
           alt=""
         />
-        <div className="splash-vignette" />
+        <div className="splash-vignette" aria-hidden="true" />
+        <div className="splash-contact" aria-hidden="true">
+          <span className="splash-contact-core" />
+        </div>
+        <img className="splash-logo" src={splashLogo} alt="Agents One" />
       </div>
-      <div className="splash-contact" aria-hidden="true">
-        <span className="splash-contact-core" />
-      </div>
-      <img className="splash-logo" src={splashLogo} alt="Agents One" />
       {onSwitchToLocal && showEscape && (
         <div className="splash-escape">
           <span className="splash-escape-hint">Taking longer than usual?</span>
