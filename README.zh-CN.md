@@ -8,15 +8,11 @@
   <a href="README.md">English</a> · <a href="#产品一览">界面预览</a> · <a href="#快速开始">快速开始</a> · <a href="#参与开发">参与开发</a> · <a href="#许可协议">许可协议</a>
 </p>
 
-**AI 智能体管理与协作平台。** 统一接入 Pi Agent、Codex、Claude Code、OpenCode 等本地智能体，以及通过 Gateway 连接的远程智能体，集中管理对话、任务、协作与产物。每个智能体保留自己的工具与权限，而你的工作集中在同一个对话界面。
-
-> **Windows x64 · 0.1.0。** 安装版与便携版见 [Releases](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0)，启动前请核对 SHA-256。
-
-**MIT 开源。** Windows 核心功能验收已通过；远程 Hermes 多轮记忆与重启续接仍为实验性功能。详见[已知问题](KNOWN_ISSUES.md)。
+**在一个工作区管理本地与远程智能体。** 接入 Pi Agent、Codex、Claude Code、OpenCode 等智能体，集中处理对话、任务、协作与产物；智能体保留各自的工具与权限。
 
 ## 让智能体协助安装与配置
 
-如果你的智能体可以访问这台电脑，将下面这段话发给它，就可以让它按你的需要协助安装、配置和部署。远程部署还需要你授权它访问相应服务器；手机上的安装、设备配对和必要的登录确认可能需要你操作。
+可把下面内容发给你的智能体，让它按你的需要协助完成安装、配置和部署。
 
 ```text
 请先阅读 https://github.com/pkulyn/agents-one/blob/main/README.zh-CN.md，
@@ -37,7 +33,7 @@
   <img src="assets/readme/startup.png" width="100%" alt="Agents One 完整启动画面：机械手与完整可见的人手在 Dawn Ring 字标后相接" />
 </p>
 
-真正的工作发生在对话里：项目、定时任务与智能体入口围绕对话组织。
+对话是主要工作界面，项目、定时任务与智能体入口都围绕对话组织。
 
 <p align="center">
   <img src="previews/chat.png" width="100%" alt="Agents One 桌面对话界面，包含项目导航和任务入口" />
@@ -56,16 +52,16 @@
 
 ## 核心体验
 
-| 工作内容       | Agents One 提供什么                                                             |
-| -------------- | ------------------------------------------------------------------------------- |
-| **对话**       | 流式回复、工具过程、产物、重试与取消、可搜索历史，以及 CLI 原始输出的终端回退。 |
-| **智能体**     | 本地 CLI 与远程 Gateway v1 共用一个注册表；健康探测和能力徽章来自实际探测结果。 |
-| **项目与任务** | 以文件夹限定工作区，让对话成为任务；支持定时运行、归档和结构化多智能体交接。    |
-| **数据自主**   | 可移植备份与恢复，包含完整性校验、凭据排除和回滚保护。                          |
+| 工作内容       | Agents One 提供什么                                               |
+| -------------- | ----------------------------------------------------------------- |
+| **对话**       | 流式回复、工具过程、产物、可搜索历史、重试与取消，以及终端回退。  |
+| **智能体**     | 本地 CLI 与远程 Gateway v1 共用注册表，并显示健康状态和实际能力。 |
+| **项目与任务** | 文件夹限定工作区、定时任务、归档与多智能体交接。                  |
+| **数据自主**   | 可移植备份与恢复，支持完整性校验和回滚保护。                      |
 
 ### 保留原生能力，汇入统一界面
 
-Agents One 以原生进程启动本地 CLI。Pi Agent、Codex、Claude Code、OpenCode 等本地智能体保留自己的模型、工具、项目指令与权限模式。远程智能体通过一个 Gateway v1 地址和 Bearer Token 接入，按协议协商能力，工作区访问只在有边界的运行期间授权。两条路径最终都进入同一套对话体验。
+本地 CLI 由 Agents One 以原生进程启动，并保留各自的模型、工具、项目指令和权限。远程智能体通过 Gateway v1 接入，协商能力，并仅在限定任务期间获得工作区访问。两者共用同一对话界面。
 
 [插件 SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) 允许新智能体实现统一契约，无需改动桌面端。[事件流协议](docs/AGENT_EVENT_STREAM_V1.md)承载工具过程、产物与交接；[Gateway 协议](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md)负责远程运行与工作区授权。
 
@@ -75,15 +71,14 @@ Agents One 以原生进程启动本地 CLI。Pi Agent、Codex、Claude Code、Op
 
 ### 当前发布状态
 
-| 组件           | 当前情况                                                                                                                                                                       |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Windows 桌面端 | [0.1.0 正式 Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0)，提供 x64 安装版和便携版；未签名，手动下载安装更新。                                            |
-| 最新主分支     | 已加入主动检查 GitHub 新版本和手动下载提示，移除关于页的未签名提示与自动更新开关，并调整设置菜单顺序。**这些提交尚未重新打包进 0.1.0 Release**；Release 包仍显示旧的更新页面。 |
-| Android        | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev)，Android 8.0 / API 26 起；开发签名、可调试的预发布版本。                         |
-| 远程接入组件   | Plugin SDK **0.1.6**、Connector CLI **0.1.0**、Connect 服务 **0.1.1**，均从本仓库部署；当前不依赖已发布的 npm 包或项目托管公共服务。                                           |
-| 其他平台       | 当前不提供 macOS、Linux 桌面端及 iOS 的公开安装包。Linux 可用于自行部署远程服务。                                                                                              |
+| 组件           | 当前情况                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Windows 桌面端 | [0.1.0 正式 Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0)，提供 x64 安装版和便携版。                                              |
+| Android        | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev)，Android 8.0 / API 26 起；开发签名、可调试的预发布版本。 |
+| 远程接入组件   | Plugin SDK **0.1.6**、Connector CLI **0.1.0**、Connect 服务 **0.1.1**，均从本仓库部署；当前不依赖已发布的 npm 包或项目托管公共服务。                   |
+| 其他平台       | 当前不提供 macOS、Linux 桌面端及 iOS 的公开安装包。Linux 可用于自行部署远程服务。                                                                      |
 
-Windows 核心流程已完成验收，不代表全部模型、远程服务、跨版本恢复及手机组合均已验收；具体限制见[已知问题](KNOWN_ISSUES.md)。
+Windows 核心流程已通过限定范围的验收；其他模型、远程服务、升级恢复和手机组合尚未全部验证。详见[已知问题](KNOWN_ISSUES.md)。
 
 ### Windows 安装与校验
 
@@ -98,10 +93,10 @@ Windows 核心流程已完成验收，不代表全部模型、远程服务、跨
    Get-Content .\SHA256SUMS.txt
    ```
 
-3. **SmartScreen 说明：** 当前 Windows 包未进行代码签名，首次下载运行可能出现“Windows 已保护你的电脑”或“未知发布者”等提示。这与系统崩溃蓝屏不同，也不是对文件安全性的证明。仅在确认来自本项目官方 Release、哈希一致且信任该版本后，才可选择“更多信息”→“仍要运行”（如系统提供该选项）。若是恶意软件检出、哈希不符，或企业策略禁止运行，应停止并核查，不关闭防护或绕过单位策略。[微软说明](https://learn.microsoft.com/zh-tw/windows/apps/package-and-deploy/smartscreen-reputation)
+3. **SmartScreen：** Windows 安装包未签名，首次运行可能出现安全提示。确认来自官方 Release 且 SHA-256 一致后，如系统提供该选项，可选择“更多信息”→“仍要运行”。哈希不符、安全软件报毒或单位策略禁止时，请停止安装。[微软说明](https://learn.microsoft.com/zh-tw/windows/apps/package-and-deploy/smartscreen-reputation)
 4. 安装版按向导完成后，从 **Agents One** 快捷方式启动；便携版直接运行 EXE。应用与 CLI 都建议使用普通用户权限。托盘左键单击打开主窗，左键双击切换快捷输入条，再双击即可关闭；右键菜单可正常退出应用。
 
-**更新：** 0.1.0 安装包请手动查看 [Releases](https://github.com/pkulyn/agents-one/releases)。最新源码构建可在**设置 → 关于与更新 → 检查更新**查询新版；发现后按提示去 GitHub 下载、校验并手动安装，不会自动下载安装。关于入口位于日志与诊断下方。升级前在**设置 → 数据**备份，并正常从托盘退出；安装版和便携版的数据目录不同，切换方式不会自动共用数据。当前没有已上架的 winget 或 Microsoft Store 安装入口。
+**更新：** 0.1.0 安装包没有应用内更新检查，请手动查看 [Releases](https://github.com/pkulyn/agents-one/releases) 并下载安装。较新的源码构建可在**设置 → 关于与更新 → 检查更新**查询，发现新版后跳转 GitHub，由你校验并手动安装；应用不会自动下载或安装。升级前请在**设置 → 数据**备份并从托盘退出。安装版和便携版使用不同数据目录。当前没有 winget 或 Microsoft Store 安装包。
 
 ### 接入本地智能体
 
@@ -197,7 +192,7 @@ node plugins/agents-one-connector/bin/agents-one-connector.mjs run --adapter ./p
 
 ### Android 手机端：安装与连接桌面
 
-手机端用于访问已授权的桌面 Owner（数据与执行宿主）；它不等同于把各个 CLI 安装到手机。桌面端必须保持运行、联网且不休眠；Connect 在线不代表桌面任务通道在线。
+手机端连接已授权的桌面 Owner（数据与执行宿主）。桌面端需保持运行、联网且不休眠；Connect 在线不代表桌面任务通道已就绪。
 
 **安装：**
 
