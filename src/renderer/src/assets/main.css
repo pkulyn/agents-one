@@ -16511,10 +16511,6 @@ button.task-collaboration-inline-avatar:focus-visible {
    SPLASH SCREEN
    ======================================================================== */
 .splash-screen {
-  /* The background remains fixed while both clean foreground hands move on
-     the same diagonal contact axis. The burst shares their final anchor. */
-  --splash-contact-x: 50.7%;
-  --splash-contact-y: 47.3%;
   --splash-approach-duration: 1.65s;
 
   position: fixed;
@@ -16528,9 +16524,17 @@ button.task-collaboration-inline-avatar:focus-visible {
 }
 
 .splash-hand-stage {
+  /* Cover the window with one image-coordinate canvas. Hands, contact and
+     wordmark retain the same anchor when the window's aspect ratio changes. */
   position: absolute;
-  inset: 0;
-  overflow: hidden;
+  left: 50%;
+  top: 50%;
+  /* Six percent overscan keeps the original frame edges outside the window
+     even after the hands move inward to close the source image's small gap. */
+  width: max(106vw, calc(106vh * var(--splash-scene-ratio)));
+  aspect-ratio: var(--splash-scene-ratio);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
   background: #041426;
 }
 
@@ -16543,15 +16547,18 @@ button.task-collaboration-inline-avatar:focus-visible {
   object-fit: cover;
   object-position: center;
   backface-visibility: hidden;
-  filter: brightness(0.68) saturate(0.86) contrast(1.04);
 }
 
 .splash-hand-robot {
+  clip-path: inset(0 0 calc(100% - var(--splash-hand-split)) 0);
+  transform: translate(var(--splash-robot-end-x), var(--splash-robot-end-y));
   animation: splashRobotApproach var(--splash-approach-duration)
     cubic-bezier(0.45, 0, 0.2, 1) forwards;
 }
 
 .splash-hand-human {
+  clip-path: inset(var(--splash-hand-split) 0 0 0);
+  transform: translate(var(--splash-human-end-x), var(--splash-human-end-y));
   animation: splashHumanApproach var(--splash-approach-duration)
     cubic-bezier(0.45, 0, 0.2, 1) forwards;
 }
@@ -16562,11 +16569,10 @@ button.task-collaboration-inline-avatar:focus-visible {
   background:
     radial-gradient(
       circle at var(--splash-contact-x) var(--splash-contact-y),
-      transparent 0 8%,
-      rgba(2, 10, 22, 0.18) 34%,
-      rgba(2, 9, 20, 0.62) 100%
+      transparent 0 28%,
+      rgba(2, 9, 20, 0.1) 100%
     ),
-    linear-gradient(180deg, rgba(3, 13, 28, 0.06), rgba(3, 13, 28, 0.28));
+    linear-gradient(180deg, transparent, rgba(3, 13, 28, 0.04));
 }
 
 .splash-contact {
@@ -16654,19 +16660,25 @@ button.task-collaboration-inline-avatar:focus-visible {
 
 @keyframes splashRobotApproach {
   0% {
-    transform: translate(-8vw, -6vh);
+    transform: translate(
+      calc(var(--splash-robot-end-x) - var(--splash-travel-x)),
+      calc(var(--splash-robot-end-y) - var(--splash-travel-y))
+    );
   }
   100% {
-    transform: translate(0, 0);
+    transform: translate(var(--splash-robot-end-x), var(--splash-robot-end-y));
   }
 }
 
 @keyframes splashHumanApproach {
   0% {
-    transform: translate(8vw, 6vh);
+    transform: translate(
+      calc(var(--splash-human-end-x) + var(--splash-travel-x)),
+      calc(var(--splash-human-end-y) + var(--splash-travel-y))
+    );
   }
   100% {
-    transform: translate(0, 0);
+    transform: translate(var(--splash-human-end-x), var(--splash-human-end-y));
   }
 }
 
@@ -16719,11 +16731,6 @@ button.task-collaboration-inline-avatar:focus-visible {
   .splash-contact,
   .splash-logo {
     animation: none;
-  }
-
-  .splash-hand-robot,
-  .splash-hand-human {
-    transform: translate(0, 0);
   }
 
   .splash-contact {

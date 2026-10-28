@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import SplashScreen from "./SplashScreen";
 
@@ -20,5 +20,42 @@ describe("SplashScreen", () => {
     expect(wordmark).toHaveClass("splash-logo");
     expect(wordmark.getAttribute("src")).toMatch(/^data:image\/svg\+xml/);
     expect(screen.getByText("正在准备工作区…")).toBeInTheDocument();
+  });
+
+  it("keeps readiness, loading status and the delayed local-mode escape outside the decorative scene", () => {
+    vi.useFakeTimers();
+    try {
+      const onFinished = vi.fn();
+      const onSwitchToLocal = vi.fn();
+      const { container } = render(
+        <SplashScreen
+          onFinished={onFinished}
+          status="Connecting"
+          onSwitchToLocal={onSwitchToLocal}
+        />,
+      );
+      expect(onFinished).toHaveBeenCalledOnce();
+      expect(
+        screen.getByText("Connecting").closest(".splash-hand-stage"),
+      ).toBeNull();
+      act(() => vi.advanceTimersByTime(11999));
+      expect(
+        screen.queryByRole("button", { name: "Switch to local mode" }),
+      ).toBeNull();
+      act(() => vi.advanceTimersByTime(1));
+      const button = screen.getByRole("button", {
+        name: "Switch to local mode",
+      });
+      expect(button.closest(".splash-hand-stage")).toBeNull();
+      fireEvent.click(button);
+      expect(onSwitchToLocal).toHaveBeenCalledOnce();
+      expect(
+        container
+          .querySelector(".splash-hand-stage")!
+          .getAttribute("aria-hidden"),
+      ).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
