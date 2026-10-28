@@ -8,11 +8,26 @@
   <a href="README.md">English</a> · <a href="#产品一览">界面预览</a> · <a href="#快速开始">快速开始</a> · <a href="#参与开发">参与开发</a> · <a href="#许可协议">许可协议</a>
 </p>
 
-**AI 智能体管理与协作平台。** 统一接入 Pi、Codex、Claude Code、OpenCode 等本地智能体，以及通过 Gateway 连接的远程智能体，集中管理对话、任务、协作与产物。每个智能体保留自己的工具与权限，而你的工作集中在同一个对话界面。
+**AI 智能体管理与协作平台。** 统一接入 Pi Agent、Codex、Claude Code、OpenCode 等本地智能体，以及通过 Gateway 连接的远程智能体，集中管理对话、任务、协作与产物。每个智能体保留自己的工具与权限，而你的工作集中在同一个对话界面。
 
 > **Windows x64 · 0.1.0。** 安装版与便携版见 [Releases](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0)，启动前请核对 SHA-256。
 
 **MIT 开源。** Windows 核心功能验收已通过；远程 Hermes 多轮记忆与重启续接仍为实验性功能。详见[已知问题](KNOWN_ISSUES.md)。
+
+## 让智能体协助安装与配置
+
+如果你的智能体可以访问这台电脑，将下面这段话发给它，就可以让它按你的需要协助安装、配置和部署。远程部署还需要你授权它访问相应服务器；手机上的安装、设备配对和必要的登录确认可能需要你操作。
+
+```text
+请先阅读 https://github.com/pkulyn/agents-one/blob/main/README.zh-CN.md，
+根据我的实际环境协助我安装和配置 Agents One：检查系统和已有工具，
+从官方 GitHub Releases 下载适合我的 Windows 或 Android 安装包并核对 SHA-256；
+按我的需求接入本地或远程智能体，必要时部署插件、Connector 和 Connect，
+并协助手机端安装、连接和配对。先了解我需要哪些功能，不必部署不需要的组件。
+请保留现有配置和数据；涉及账号、密钥、服务器权限或必须由我操作的步骤时，
+说明需要我做什么，不要把凭据写入源码、文档或日志。
+完成后逐项验证，告诉我已完成的内容、验证结果和仍需我处理的事项。
+```
 
 ## 产品一览
 
@@ -50,7 +65,7 @@
 
 ### 保留原生能力，汇入统一界面
 
-Agents One 以原生进程启动本地 CLI。Pi、Codex、Claude Code、OpenCode 等本地智能体保留自己的模型、工具、项目指令与权限模式。远程智能体通过一个 Gateway v1 地址和 Bearer Token 接入，按协议协商能力，工作区访问只在有边界的运行期间授权。两条路径最终都进入同一套对话体验。
+Agents One 以原生进程启动本地 CLI。Pi Agent、Codex、Claude Code、OpenCode 等本地智能体保留自己的模型、工具、项目指令与权限模式。远程智能体通过一个 Gateway v1 地址和 Bearer Token 接入，按协议协商能力，工作区访问只在有边界的运行期间授权。两条路径最终都进入同一套对话体验。
 
 [插件 SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) 允许新智能体实现统一契约，无需改动桌面端。[事件流协议](docs/AGENT_EVENT_STREAM_V1.md)承载工具过程、产物与交接；[Gateway 协议](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md)负责远程运行与工作区授权。
 
@@ -64,7 +79,7 @@ Agents One 以原生进程启动本地 CLI。Pi、Codex、Claude Code、OpenCode
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Windows 桌面端 | [0.1.0 正式 Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0)，提供 x64 安装版和便携版；未签名，手动下载安装更新。                                            |
 | 最新主分支     | 已加入主动检查 GitHub 新版本和手动下载提示，移除关于页的未签名提示与自动更新开关，并调整设置菜单顺序。**这些提交尚未重新打包进 0.1.0 Release**；Release 包仍显示旧的更新页面。 |
-| Android        | 源码版本为 **0.1.13-dev**（debug 构建为 0.1.13-dev-debug），Android 8.0 / API 26 起；当前公开 Release **没有 APK 下载资产**，可按下文自行构建。                                |
+| Android        | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev)，Android 8.0 / API 26 起；开发签名、可调试的预发布版本。                         |
 | 远程接入组件   | Plugin SDK **0.1.6**、Connector CLI **0.1.0**、Connect 服务 **0.1.1**，均从本仓库部署；当前不依赖已发布的 npm 包或项目托管公共服务。                                           |
 | 其他平台       | 当前不提供 macOS、Linux 桌面端及 iOS 的公开安装包。Linux 可用于自行部署远程服务。                                                                                              |
 
@@ -92,12 +107,12 @@ Windows 核心流程已完成验收，不代表全部模型、远程服务、跨
 
 Agents One 不包含各 CLI 的服务订阅，也不会代替它们登录、配置模型或提供 API Key。先在运行桌面端的**同一 Windows 用户**下安装并配置所需 CLI，确认能在终端完成一次普通对话：
 
-| 智能体类型   | 常见命令   | 接入前检查                                               |
-| ------------ | ---------- | -------------------------------------------------------- |
-| Codex        | `codex`    | 已完成该 CLI 自身的登录或 Provider 配置。                |
-| Claude Code  | `claude`   | 已完成 Claude Code 自身的认证，所选工作目录可访问。      |
-| Pi Agent CLI | `pi`       | Pi 的 Provider、模型与凭据已经配置。                     |
-| OpenCode     | `opencode` | Provider / 模型能正常使用；桌面端接入使用原生 CLI 协议。 |
+| 智能体类型  | 常见命令   | 接入前检查                                               |
+| ----------- | ---------- | -------------------------------------------------------- |
+| Codex       | `codex`    | 已完成该 CLI 自身的登录或 Provider 配置。                |
+| Claude Code | `claude`   | 已完成 Claude Code 自身的认证，所选工作目录可访问。      |
+| Pi Agent    | `pi`       | Pi 的 Provider、模型与凭据已经配置。                     |
+| OpenCode    | `opencode` | Provider / 模型能正常使用；桌面端接入使用原生 CLI 协议。 |
 
 1. 打开侧栏**智能体 → 新增智能体**，选择**本地**，再选择对应类型、名称和头像。
 2. 在连接设置中使用自动检测到的可执行路径；检测失败时选取真实的 CLI 启动文件，而不是项目目录、安装器或一整段 Shell 命令。Windows 可先用 `where.exe codex`、`where.exe claude`、`where.exe pi` 或 `where.exe opencode`定位。
@@ -184,16 +199,20 @@ node plugins/agents-one-connector/bin/agents-one-connector.mjs run --adapter ./p
 
 手机端用于访问已授权的桌面 Owner（数据与执行宿主）；它不等同于把各个 CLI 安装到手机。桌面端必须保持运行、联网且不休眠；Connect 在线不代表桌面任务通道在线。
 
-**安装：** 当前 Release 没有公开 APK。开发者可使用 JDK **17**、Android SDK **36**（配置 `ANDROID_HOME` 或 Android 工程的 `local.properties`），在源码根目录执行：
+**安装：**
 
-```powershell
-Push-Location apps/android
-.\gradlew.bat :app:assembleDebug
-Pop-Location
-# 输出：apps/android/app/build/outputs/apk/debug/app-debug.apk
-```
+1. 从 [Android 发布页](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev)下载 [agents-one-android-0.1.13-dev-debug.apk](https://github.com/pkulyn/agents-one/releases/download/android-v0.1.13-dev/agents-one-android-0.1.13-dev-debug.apk) 和对应的 [SHA256SUMS.txt](https://github.com/pkulyn/agents-one/releases/download/android-v0.1.13-dev/SHA256SUMS.txt)，无需自行构建。支持 Android 8.0（API 26）及更新版本。
+2. 安装前核对 APK 的 SHA-256 与校验文件中同名条目一致：
 
-Linux/macOS 构建主机可在 `apps/android` 执行 `sh ./gradlew :app:assembleDebug`。构建需要下载 Gradle、Android 和 Maven 依赖。将自己构建的 APK 传到 Android 8.0+ 手机，核对来源 / 哈希后，只为本次安装来源临时允许“安装未知应用”。这是开发签名包；换构建机后 debug 签名可能变化，不能保证覆盖安装，卸载会丢失该手机的本地状态。当前无 iOS 版或应用商店安装链接。
+   ```text
+   533d61317743b40f9e584fabaa11b109b387ab1fbc2060894ccc4c2d8f5601f0
+   ```
+
+   例如，在 Windows 下载目录运行 `Get-FileHash .\agents-one-android-0.1.13-dev-debug.apk -Algorithm SHA256`。也可以在手机上使用可信的本地文件哈希工具核对。哈希不一致时请停止安装。
+
+3. 将 APK 传到手机或直接在手机下载；按系统提示只为使用的浏览器 / 文件管理器临时允许“安装未知应用”，安装完成后可关闭该权限。
+
+这是**开发签名且可调试**的预发布包，包名为 `one.agents.mobile.debug`。已授权的 ADB 调试连接可能访问应用数据；无需调试时请关闭 USB 调试，避免在此版本中处理敏感数据。覆盖升级需要相同包名和签名证书；不同签名的包可能无法覆盖安装，卸载会删除该手机的本地状态，请先备份需要保留的数据。当前无 iOS 版或应用商店安装链接。
 
 **接入：**
 

@@ -6,7 +6,7 @@ The repository homepage introduces Agents One through its actual desktop experie
 
 The English and Chinese homepages follow the same sequence and use actual product visuals to explain Agents One.
 
-The hero and introduction describe AI agent management and collaboration, with conversations, tasks, collaboration and artifacts; local agent examples include Pi, Codex, Claude Code and OpenCode alongside remote Gateway agents.
+The hero and introduction describe AI agent management and collaboration, with conversations, tasks, collaboration and artifacts; local agent examples include Pi Agent, Codex, Claude Code and OpenCode alongside remote Gateway agents.
 
 `README.md` and `README.zh-CN.md` share the order of product promise, development-build proof, core workflow, first-use path, trust boundaries, and license. Their SVG heroes reuse the Dawn Ring wordmark and depict local and remote agents converging on one workspace. The full original startup image and the existing chat screenshot provide visual proof; UI details may change between releases.
 
@@ -14,7 +14,7 @@ The hero and introduction describe AI agent management and collaboration, with c
 
 Both READMEs explain verified Windows downloads, SmartScreen, local CLI prerequisites, remote Gateway/Connector/Connect deployment and independent Android Owner pairing.
 
-The guide distinguishes released packages from main-branch improvements, keeps source-only Android installation explicit, and separates remote-agent pairing credentials from mobile Owner management keys. Detailed mobile provisioning remains in the already-public Connect README; private deployment configuration and acceptance evidence are not linked or published.
+The guide distinguishes released packages from main-branch improvements, links the Android debug prerelease and its checksum, and separates remote-agent pairing credentials from mobile Owner management keys. Detailed mobile provisioning remains in the already-public Connect README; private deployment configuration and acceptance evidence are not linked or published.
 
 ## MIT license and inherited notices
 
@@ -28,7 +28,7 @@ The root `LICENSE` covers licensor-owned Agents One contributions. `THIRD_PARTY_
 
 Publishing development source and certifying a Windows installer are separate decisions with explicit evidence and known integration limits.
 
-Both READMEs link the public known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The README identifies Windows 0.1.0 as the published binary and separates later main-branch fixes from those immutable assets. Android source/build instructions do not imply an APK has been publicly released.
+Both READMEs link the public known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The README identifies Windows 0.1.0 as the published binary and separates later main-branch fixes from those immutable assets. Android 0.1.13-dev-debug is distributed separately as a debuggable prerelease with its own source identity and checksum; it does not change the Windows release.
 
 ## Dependency audit gate
 
