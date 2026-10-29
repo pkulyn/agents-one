@@ -16572,9 +16572,12 @@ button.task-collaboration-inline-avatar:focus-visible {
 }
 
 .splash-hand-human {
-  clip-path: inset(var(--splash-hand-split) 0 0 0);
-  /* Blend skin into opaque continuation, never into the background. */
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+  /* One continuous square human plate; no forearm splice or blend mask.
+     Calibrate its body size to the approved small-hand composition. */
+  height: auto;
+  max-width: none;
+  transform-origin: var(--splash-human-origin-x) var(--splash-human-origin-y);
+  transform: scale(0.96);
 }
 
 .splash-human-motion {
@@ -16583,18 +16586,6 @@ button.task-collaboration-inline-avatar:focus-visible {
   transform: translate(var(--splash-human-end-x), var(--splash-human-end-y));
   animation: splashHumanApproach var(--splash-approach-duration)
     cubic-bezier(0.45, 0, 0.2, 1) forwards;
-}
-
-.splash-forearm-continuation {
-  /* The square outpaint continues only the forearm beyond the original plate.
-     Original hands stay untouched and remain the visible upper layer. */
-  position: absolute;
-  left: calc(100% * 72 / 1672);
-  top: 0;
-  width: 100%;
-  height: auto;
-  max-width: none;
-  clip-path: inset(calc(100% * 850 / 1672) 0 0);
 }
 
 .splash-vignette {
