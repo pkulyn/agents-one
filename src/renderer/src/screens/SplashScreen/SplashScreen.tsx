@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import startupHandsBackground from "../../assets/startup-hands-background-v2.png";
 import startupHandsForeground from "../../assets/startup-hands-foreground-small-v4.png";
+import startupForearmContinuation from "../../assets/startup-forearm-continuation-v1.png";
 import splashLogo from "../../assets/agents-one-splash.svg";
 import { startupSceneStyle } from "./startup-scene";
 
@@ -54,11 +55,18 @@ function SplashScreen({
               src={startupHandsForeground}
               alt=""
             />
-            <img
-              className="splash-hand-layer splash-hand-human"
-              src={startupHandsForeground}
-              alt=""
-            />
+            <div className="splash-human-motion">
+              <img
+                className="splash-forearm-continuation"
+                src={startupForearmContinuation}
+                alt=""
+              />
+              <img
+                className="splash-hand-layer splash-hand-human"
+                src={startupHandsForeground}
+                alt=""
+              />
+            </div>
           </div>
           <div className="splash-contact" aria-hidden="true">
             <span className="splash-contact-core" />
