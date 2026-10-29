@@ -36,11 +36,23 @@ CI blocks high or critical advisories in both production dependencies and the fu
 
 The gate checks production dependencies independently, then checks the full graph. Historical dependency exceptions do not waive a new candidate audit; unavailable or malformed results also fail the gate.
 
+## CI change routing
+
+The required `check` job always returns. Explicit documentation-only changes run formatting and public-scope validation without application builds, runtime tests or dependency audits.
+
+The classifier is loaded from the comparison base rather than the proposed revision. It compares immutable Git SHAs, includes deleted and renamed inputs, and falls back to full checks when unavailable. Workflows, dependencies, scripts, executable files and unknown inputs take the full path. The routing regression runs on both paths; release validation always uses the full gate.
+
 ## Public documentation boundary
 
 Public documentation covers supported usage, integration contracts and safe contributions; internal requirements, future plans and development evidence remain private.
 
 `docs/` uses a default-deny Git ignore policy. `.github/public-documents.json` explicitly lists permitted Markdown and documentation files; `scripts/check-public-documents.mjs` validates the tracked tree in CI. Local skills, agent settings and internal planning records are excluded. Necessary architecture and test specifications remain linked to source through lat.
+
+## Immutable Windows release identity
+
+Windows release validation checks one immutable SHA and emits installer, portable, checksums and source identity together. Draft publication is optional and stable or prerelease status is explicit.
+
+Packaging embeds the committed source receipt. The identity writer rejects a different source commit or tree and requires both binaries. Validation-only runs may reuse the current package version without altering its existing tag; draft publication rejects a tag pointing elsewhere. The historical RC1 wrapper remains validation-only by default. Unsigned packages retain manual updates.
 
 ## Private specification boundary
 
