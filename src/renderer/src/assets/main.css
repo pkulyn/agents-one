@@ -16534,7 +16534,21 @@ button.task-collaboration-inline-avatar:focus-visible {
   transform: translate(-50%, -50%);
   overflow: hidden;
   pointer-events: none;
-  background: #041426;
+  /* Blend the extended forearm into the full-window background in tall windows.
+     Fade only the frame edge; keep the approved hand bodies and contact intact. */
+  mask-image: linear-gradient(
+    to bottom,
+    #000
+      calc(
+        100% -
+          clamp(
+            0px,
+            calc((100vh - 100vw / var(--splash-scene-ratio)) / 2),
+            32px
+          )
+      ),
+    transparent
+  );
 }
 
 .splash-hand-canvas {
