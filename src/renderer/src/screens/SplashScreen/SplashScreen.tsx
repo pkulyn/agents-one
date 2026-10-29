@@ -40,14 +40,14 @@ function SplashScreen({
   }, [canSwitch]);
 
   return (
-    <div className="splash-screen">
-      <div className="splash-hand-stage" style={startupSceneStyle}>
+    <div className="splash-screen" style={startupSceneStyle}>
+      <img
+        className="splash-hand-background"
+        src={startupHandsBackground}
+        alt=""
+      />
+      <div className="splash-hand-stage">
         <div className="splash-hand-canvas">
-          <img
-            className="splash-hand-background"
-            src={startupHandsBackground}
-            alt=""
-          />
           <div className="splash-hands">
             <img
               className="splash-hand-layer splash-hand-robot"
@@ -60,13 +60,13 @@ function SplashScreen({
               alt=""
             />
           </div>
-          <div className="splash-vignette" aria-hidden="true" />
           <div className="splash-contact" aria-hidden="true">
             <span className="splash-contact-core" />
           </div>
           <img className="splash-logo" src={splashLogo} alt="Agents One" />
         </div>
       </div>
+      <div className="splash-vignette" aria-hidden="true" />
       {onSwitchToLocal && showEscape && (
         <div className="splash-escape">
           <span className="splash-escape-hint">Taking longer than usual?</span>

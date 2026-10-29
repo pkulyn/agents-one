@@ -138,6 +138,41 @@ describe("startup animation in Chromium", () => {
     await browser?.close();
   });
 
+  // @lat: [[brand-startup#Startup brand animation#Startup full-window background regression]]
+  it("fills tall and wide windows with the background without enlarging the hands", async () => {
+    for (const size of [
+      { width: 1087, height: 787 },
+      { width: 900, height: 900 },
+      { width: 1920, height: 720 },
+    ]) {
+      const page = await browser.newPage({ viewport: size });
+      try {
+        await mount(page);
+        await seek(page, 1650);
+        const background = await page
+          .locator(".splash-hand-background")
+          .boundingBox();
+        const vignette = await page.locator(".splash-vignette").boundingBox();
+        expect(background).toEqual({ x: 0, y: 0, ...size });
+        expect(vignette).toEqual(background);
+        expect(
+          await page
+            .locator(".splash-hand-stage")
+            .evaluate((element) => getComputedStyle(element).backgroundColor),
+        ).toBe("rgba(0, 0, 0, 0)");
+        const g = await geometry(page);
+        expect(g.frame.width).toBeCloseTo(
+          Math.min(size.width, size.height * (1672 / 941)),
+          0,
+        );
+        expect(g.gap).toBeLessThan(0.1);
+        expect(g.anchorError).toBeLessThan(0.1);
+      } finally {
+        await page.close();
+      }
+    }
+  }, 15000);
+
   // @lat: [[brand-startup#Startup brand animation#Startup contact geometry regression]]
   it("touches at one image-space anchor before the burst, across window shapes and DPI", async () => {
     for (const size of [
