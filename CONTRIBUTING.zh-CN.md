@@ -9,6 +9,8 @@
 
 ## 快速开始
 
+仅修改文档时，核对内容、中英一致性、链接和公开范围。使用 `npm ci --ignore-scripts --no-audit` 安装格式工具，再运行 `npm run format:check` 和 `npm run docs:check`；无需启动 Electron、构建应用或审计依赖。远端 required check 仍运行，混合或无法识别的改动走完整验证。
+
 1. **Fork** 本仓库，并将你的 fork 克隆到本地。
 2. 安装 Node.js 24 或更高版本。企业 Windows 无管理员权限时，可使用官方 ZIP 便携版，解压到用户可写目录并加入用户级 `PATH`；无需系统服务、驱动、Visual Studio 或全局 npm 包。测试与数据库回退路径会导入内置 `node:sqlite` 模块，因此最低版本为 Node 24。
 3. **严格按 lockfile 安装依赖：**
@@ -36,18 +38,19 @@
 
 2. 完成你的改动。请保持提交聚焦，每个 commit 只做一类逻辑改动。
 
-3. 提交前运行与发布门禁一致的检查：
+3. 应用代码改动先运行受影响行为的回归和相关类型检查。完整 CI 与发布验证使用以下门禁：
 
    ```bash
    npm run format:check
+   npm run docs:check
    npm run typecheck
    npm run lint -- --no-cache --quiet
    npm run test:all
-   npm audit --audit-level=high
+   npm run audit:ci
    npm run build
    ```
 
-4. 使用 `npm run dev` 在本地测试改动，确保行为符合预期。
+4. 行为有变化时，使用 `npm run dev` 验证受影响流程。真实 Runtime、实际打包程序和设备验收与自动测试结果分别记录。
 
 ## 提交 Pull Request
 
