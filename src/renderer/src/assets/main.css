@@ -16524,18 +16524,27 @@ button.task-collaboration-inline-avatar:focus-visible {
 }
 
 .splash-hand-stage {
-  /* Cover the window with one image-coordinate canvas. Hands, contact and
-     wordmark retain the same anchor when the window's aspect ratio changes. */
+  /* Keep the original wide composition visible. Covering a taller window
+     would crop its sides and enlarge both hands relative to the design. */
   position: absolute;
   left: 50%;
   top: 50%;
-  /* Six percent overscan keeps the original frame edges outside the window
-     even after the hands move inward to close the source image's small gap. */
-  width: max(106vw, calc(106vh * var(--splash-scene-ratio)));
+  width: min(100vw, calc(100vh * var(--splash-scene-ratio)));
   aspect-ratio: var(--splash-scene-ratio);
   transform: translate(-50%, -50%);
+  overflow: hidden;
   pointer-events: none;
   background: #041426;
+}
+
+.splash-hand-canvas {
+  /* Only the inner canvas has a small edge allowance for inward hand motion.
+     The containing design frame never grows to fill/crop the viewport. */
+  position: absolute;
+  left: -3%;
+  top: -3%;
+  width: 106%;
+  height: 106%;
 }
 
 .splash-hand-background,
@@ -16547,6 +16556,13 @@ button.task-collaboration-inline-avatar:focus-visible {
   object-fit: cover;
   object-position: center;
   backface-visibility: hidden;
+}
+
+.splash-hands {
+  position: absolute;
+  inset: 0;
+  transform-origin: var(--splash-contact-x) var(--splash-contact-y);
+  transform: scale(var(--splash-hand-scale, 1));
 }
 
 .splash-hand-robot {
