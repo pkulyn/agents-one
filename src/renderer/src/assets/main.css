@@ -16532,9 +16532,8 @@ button.task-collaboration-inline-avatar:focus-visible {
   width: min(100vw, calc(100vh * var(--splash-scene-ratio)));
   aspect-ratio: var(--splash-scene-ratio);
   transform: translate(-50%, -50%);
-  overflow: hidden;
+  overflow: visible;
   pointer-events: none;
-  background: #041426;
 }
 
 .splash-hand-canvas {
@@ -16574,9 +16573,28 @@ button.task-collaboration-inline-avatar:focus-visible {
 
 .splash-hand-human {
   clip-path: inset(var(--splash-hand-split) 0 0 0);
+  /* Blend skin into opaque continuation, never into the background. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+}
+
+.splash-human-motion {
+  position: absolute;
+  inset: 0;
   transform: translate(var(--splash-human-end-x), var(--splash-human-end-y));
   animation: splashHumanApproach var(--splash-approach-duration)
     cubic-bezier(0.45, 0, 0.2, 1) forwards;
+}
+
+.splash-forearm-continuation {
+  /* The square outpaint continues only the forearm beyond the original plate.
+     Original hands stay untouched and remain the visible upper layer. */
+  position: absolute;
+  left: calc(100% * 72 / 1672);
+  top: 0;
+  width: 100%;
+  height: auto;
+  max-width: none;
+  clip-path: inset(calc(100% * 850 / 1672) 0 0);
 }
 
 .splash-vignette {
@@ -16744,6 +16762,7 @@ button.task-collaboration-inline-avatar:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .splash-hand-layer,
+  .splash-human-motion,
   .splash-contact,
   .splash-logo {
     animation: none;

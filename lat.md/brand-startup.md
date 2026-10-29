@@ -8,7 +8,7 @@ The startup animates transparent robot and human foregrounds over one fixed hand
 
 The foreground uses smaller hand bodies with continued forearms, preserving bright silver surfaces, natural skin and rounded tips. Both layers share this transparent plate; their separation lies in its nearly transparent alpha gap, never through either fingertip. A contact-centered hand group allows proportional size adjustment without scaling the background or wordmark. The hand-free background has no baked contact highlight. No darkening filter is applied; a gentle vignette preserves the design's brightness.
 
-[[src/renderer/src/screens/SplashScreen/SplashScreen.tsx#SplashScreen]] fits the original wide composition inside the window without viewport-cover enlargement. Taller windows retain dark-blue space above and below the artwork. A separate inner image-coordinate canvas keeps 6% edge allowance within this frame so inward hand motion never exposes source edges. Measured half-alpha fingertip contours at `(836,457)` and `(858,478)` meet at `(847,467.5)` in the 1672×941 plate. The positions and travel distances come from [[src/renderer/src/screens/SplashScreen/startup-scene.ts#STARTUP_SCENE]], so window resizing cannot separate the tips or move the burst away from contact.
+[[src/renderer/src/screens/SplashScreen/SplashScreen.tsx#SplashScreen]] fills the entire window with an independent background and vignette, avoiding letterbox bars. The foreground retains the approved small-hand composition inside a wide coordinate frame without viewport-cover enlargement. A separate inner image-coordinate canvas keeps 6% edge allowance. The frame allows overflow: an opaque forearm outpaint continues below the original plate to the window boundary instead of fading or cropping the arm. Only the overlapping skin images blend; the original hand bodies remain untouched. Measured half-alpha fingertip contours at `(836,457)` and `(858,478)` meet at `(847,467.5)` in the 1672×941 plate. The positions and travel distances come from [[src/renderer/src/screens/SplashScreen/startup-scene.ts#STARTUP_SCENE]], so window resizing cannot separate the tips or move the burst away from contact.
 
 Over 1.65 seconds, the robot moves from upper left to lower right and the human hand moves symmetrically from lower right to upper left along the same diagonal axis. Only after contact does a 0.86-second burst begin: a white-blue core produces two short peaks, then expands and fades. `src/renderer/src/assets/agents-one-splash.svg` starts 0.14 seconds after contact so it does not cover the first flash.
 
@@ -24,11 +24,23 @@ Both measured fingertip contours must meet the burst anchor before any flash or 
 
 The visible artwork must retain its original aspect ratio and fit within both window dimensions. Inward hand motion keeps source edges outside this artwork frame, rather than using an oversized viewport-cover scene that enlarges the hands in taller windows.
 
+### Startup full-window background regression
+
+The background and vignette must cover the entire viewport across tall, square and wide windows, while the transparent foreground frame preserves the approved hand size and contact alignment.
+
+This catches the former contained background and opaque frame, which produced broad top and bottom bars even though fingertip alignment passed.
+
 ### Startup foreground integrity regression
 
 The decoded foreground must retain opaque metal at the damaged surface locations and a nearly transparent gap around the layer split.
 
 Both measured fingertip contour pixels must exist, preventing an eroded matte or a cut through a fingertip from passing validation.
+
+### Startup forearm continuation regression
+
+The human forearm must continue as opaque skin below the original image boundary, moving together with the unchanged hand rather than ending at a frame mask.
+
+Across approach and contact, the continuation keeps the original plate's width and top position and has opaque skin samples below that plate. The coordinate frame must allow overflow and have no scene-wide fade mask. Reduced motion disables the shared human motion wrapper as well as the robot animation.
 
 ### Startup reduced motion regression
 

@@ -138,6 +138,92 @@ describe("startup animation in Chromium", () => {
     await browser?.close();
   });
 
+  // @lat: [[brand-startup#Startup brand animation#Startup full-window background regression]]
+  it("fills tall and wide windows with the background without enlarging the hands", async () => {
+    for (const size of [
+      { width: 1087, height: 787 },
+      { width: 900, height: 900 },
+      { width: 1920, height: 720 },
+    ]) {
+      const page = await browser.newPage({ viewport: size });
+      try {
+        await mount(page);
+        await seek(page, 1650);
+        const background = await page
+          .locator(".splash-hand-background")
+          .boundingBox();
+        const vignette = await page.locator(".splash-vignette").boundingBox();
+        expect(background).toEqual({ x: 0, y: 0, ...size });
+        expect(vignette).toEqual(background);
+        expect(
+          await page
+            .locator(".splash-hand-stage")
+            .evaluate((element) => getComputedStyle(element).backgroundColor),
+        ).toBe("rgba(0, 0, 0, 0)");
+        const g = await geometry(page);
+        expect(g.frame.width).toBeCloseTo(
+          Math.min(size.width, size.height * (1672 / 941)),
+          0,
+        );
+        expect(g.gap).toBeLessThan(0.1);
+        expect(g.anchorError).toBeLessThan(0.1);
+      } finally {
+        await page.close();
+      }
+    }
+  }, 15000);
+
+  // @lat: [[brand-startup#Startup brand animation#Startup forearm continuation regression]]
+  it("continues opaque skin below the original plate without fading the scene into the background", async () => {
+    const page = await browser.newPage({
+      viewport: { width: 1087, height: 787 },
+    });
+    try {
+      await mount(page);
+      for (const ms of [0, 1100, 1650]) {
+        await seek(page, ms);
+        const continuation = await page.evaluate(() => {
+          const stage = document.querySelector(".splash-hand-stage")!;
+          const original = document
+            .querySelector(".splash-hand-human")!
+            .getBoundingClientRect();
+          const image = document.querySelector<HTMLImageElement>(
+            ".splash-forearm-continuation",
+          )!;
+          const box = image.getBoundingClientRect();
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(image, 0, 0);
+          const alpha = (x: number, y: number): number =>
+            ctx.getImageData(
+              Math.round((x * canvas.width) / 1672),
+              Math.round((y * canvas.height) / 1672),
+              1,
+              1,
+            ).data[3];
+          return {
+            overflow: getComputedStyle(stage).overflow,
+            sceneMask: getComputedStyle(stage).maskImage,
+            topOffset: Math.abs(box.top - original.top),
+            widthError: Math.abs(box.width - original.width),
+            extraHeight: box.bottom - original.bottom,
+            skinAlpha: [alpha(1600, 960), alpha(1600, 1030)],
+          };
+        });
+        expect(continuation.overflow).toBe("visible");
+        expect(continuation.sceneMask).toBe("none");
+        expect(continuation.topOffset).toBeLessThan(0.1);
+        expect(continuation.widthError).toBeLessThan(0.1);
+        expect(continuation.extraHeight).toBeGreaterThan(400);
+        expect(Math.min(...continuation.skinAlpha)).toBeGreaterThan(245);
+      }
+    } finally {
+      await page.close();
+    }
+  }, 15000);
+
   // @lat: [[brand-startup#Startup brand animation#Startup contact geometry regression]]
   it("touches at one image-space anchor before the burst, across window shapes and DPI", async () => {
     for (const size of [
