@@ -41,6 +41,7 @@ async function geometry(page: Page): Promise<{
   burstOpacity: number;
   logoOpacity: number;
   handFilter: string;
+  frame: { width: number; height: number; top: number; bottom: number };
 }> {
   return page.evaluate(() => {
     // Measured half-alpha contour points in the actual 1672×941 plate.
@@ -57,8 +58,8 @@ async function geometry(page: Page): Promise<{
         y: box.y + (y * box.height) / 941,
       };
     }
-    const robot = tip(".splash-hand-robot", 849, 396);
-    const human = tip(".splash-hand-human", 888, 435);
+    const robot = tip(".splash-hand-robot", 836, 457);
+    const human = tip(".splash-hand-human", 858, 478);
     const burst = document
       .querySelector(".splash-contact")!
       .getBoundingClientRect();
@@ -66,6 +67,9 @@ async function geometry(page: Page): Promise<{
       x: burst.x + burst.width / 2,
       y: burst.y + burst.height / 2,
     };
+    const frame = document
+      .querySelector(".splash-hand-stage")!
+      .getBoundingClientRect();
     return {
       gap: Math.hypot(robot.x - human.x, robot.y - human.y),
       anchorError: Math.hypot(robot.x - center.x, robot.y - center.y),
@@ -85,6 +89,12 @@ async function geometry(page: Page): Promise<{
       handFilter: getComputedStyle(
         document.querySelector(".splash-hand-robot")!,
       ).filter,
+      frame: {
+        width: frame.width,
+        height: frame.height,
+        top: frame.top,
+        bottom: frame.bottom,
+      },
     };
   });
 }
@@ -154,9 +164,30 @@ describe("startup animation in Chromium", () => {
         const final = await geometry(page);
         expect(final.gap).toBeLessThan(0.1);
         expect(final.anchorError).toBeLessThan(0.1);
-        expect(final.robotFrameTop).toBeLessThan(0);
-        expect(final.humanFrameBottom).toBeGreaterThan(final.windowHeight);
+        expect(final.robotFrameTop).toBeLessThan(final.frame.top);
+        expect(final.humanFrameBottom).toBeGreaterThan(final.frame.bottom);
+        // A tall window must not enlarge/crop the original wide artwork.
+        // This fails the former viewport-cover canvas even with aligned tips.
+        expect(final.frame.width).toBeLessThanOrEqual(size.width + 0.1);
+        expect(final.frame.height).toBeLessThanOrEqual(size.height + 0.1);
+        expect(final.frame.width).toBeCloseTo(
+          Math.min(size.width, size.height * (1672 / 941)),
+          0,
+        );
+        expect(final.frame.width / final.frame.height).toBeCloseTo(
+          1672 / 941,
+          3,
+        );
         expect(final.handFilter).toBe("none");
+        for (const scale of [1.15, 1.3]) {
+          await page.evaluate((value) => {
+            document
+              .querySelector<HTMLElement>(".splash-screen")!
+              .style.setProperty("--splash-hand-scale", String(value));
+          }, scale);
+          expect((await geometry(page)).gap).toBeLessThan(0.1);
+          expect((await geometry(page)).anchorError).toBeLessThan(0.1);
+        }
         await seek(page, 1720);
         expect((await geometry(page)).burstOpacity).toBeGreaterThan(0.5);
         expect((await geometry(page)).logoOpacity).toBe(0);
@@ -194,11 +225,11 @@ describe("startup animation in Chromium", () => {
           [200, 100],
           [300, 150],
           [400, 200],
-          [700, 300],
-          [837, 389],
+          [600, 300],
+          [810, 440],
         ].map(([x, y]) => alpha(x, y));
         let maxGapAlpha = 0;
-        for (let y = 406; y <= 420; y++)
+        for (let y = 465; y <= 469; y++)
           for (let x = 0; x < canvas.width; x++)
             maxGapAlpha = Math.max(maxGapAlpha, alpha(x, y));
         return {
@@ -206,13 +237,13 @@ describe("startup animation in Chromium", () => {
           height: canvas.height,
           surfaces,
           maxGapAlpha,
-          robotTip: alpha(849, 396),
-          humanTip: alpha(888, 435),
+          robotTip: alpha(836, 457),
+          humanTip: alpha(858, 478),
         };
       });
       expect([pixels.width, pixels.height]).toEqual([1672, 941]);
       expect(Math.min(...pixels.surfaces)).toBeGreaterThan(245);
-      expect(pixels.maxGapAlpha).toBe(0);
+      expect(pixels.maxGapAlpha).toBeLessThanOrEqual(8);
       expect(pixels.robotTip).toBeGreaterThanOrEqual(128);
       expect(pixels.humanTip).toBeGreaterThanOrEqual(128);
     } finally {

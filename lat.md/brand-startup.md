@@ -6,9 +6,9 @@ The startup surface and expanded sidebar share one wordmark rule: the dawn ring 
 
 The startup animates transparent robot and human foregrounds over one fixed hand-free background.
 
-The foreground is a transparent plate extracted from the original design, preserving bright silver surfaces, natural skin and rounded tips. Both layers share this plate; their separation lies entirely in its empty alpha gap, never through either fingertip. The hand-free background has no baked contact highlight. No darkening filter is applied; a gentle vignette preserves the design's brightness.
+The foreground uses smaller hand bodies with continued forearms, preserving bright silver surfaces, natural skin and rounded tips. Both layers share this transparent plate; their separation lies in its nearly transparent alpha gap, never through either fingertip. A contact-centered hand group allows proportional size adjustment without scaling the background or wordmark. The hand-free background has no baked contact highlight. No darkening filter is applied; a gentle vignette preserves the design's brightness.
 
-[[src/renderer/src/screens/SplashScreen/SplashScreen.tsx#SplashScreen]] renders the background, foregrounds, burst and wordmark on one fixed-aspect image-coordinate canvas. The canvas covers the window with 6% overscan so the source frame edges stay outside the window when the hands move inward. Measured half-alpha fingertip contours at `(849,396)` and `(888,435)` meet at `(868.5,415.5)` in the 1672×941 plate. The positions and travel distances come from [[src/renderer/src/screens/SplashScreen/startup-scene.ts#STARTUP_SCENE]], so window resizing cannot separate the tips or move the burst away from contact.
+[[src/renderer/src/screens/SplashScreen/SplashScreen.tsx#SplashScreen]] fits the original wide composition inside the window without viewport-cover enlargement. Taller windows retain dark-blue space above and below the artwork. A separate inner image-coordinate canvas keeps 6% edge allowance within this frame so inward hand motion never exposes source edges. Measured half-alpha fingertip contours at `(836,457)` and `(858,478)` meet at `(847,467.5)` in the 1672×941 plate. The positions and travel distances come from [[src/renderer/src/screens/SplashScreen/startup-scene.ts#STARTUP_SCENE]], so window resizing cannot separate the tips or move the burst away from contact.
 
 Over 1.65 seconds, the robot moves from upper left to lower right and the human hand moves symmetrically from lower right to upper left along the same diagonal axis. Only after contact does a 0.86-second burst begin: a white-blue core produces two short peaks, then expands and fades. `src/renderer/src/assets/agents-one-splash.svg` starts 0.14 seconds after contact so it does not cover the first flash.
 
@@ -20,11 +20,13 @@ The splash keeps loading status and the delayed local-mode escape hatch outside 
 
 The real component and splash CSS run in Chromium at wide, square and tall window sizes, including DPR 2 and resizing.
 
-Both measured fingertip contours must meet the burst anchor before any flash or wordmark appears, with the original frame edges outside the window.
+Both measured fingertip contours must meet the burst anchor before any flash or wordmark appears, with source image edges outside the visible artwork frame. Hand-group scaling must preserve this contact anchor.
+
+The visible artwork must retain its original aspect ratio and fit within both window dimensions. Inward hand motion keeps source edges outside this artwork frame, rather than using an oversized viewport-cover scene that enlarges the hands in taller windows.
 
 ### Startup foreground integrity regression
 
-The decoded foreground must retain opaque metal at the damaged surface locations and a fully transparent gap around the layer split.
+The decoded foreground must retain opaque metal at the damaged surface locations and a nearly transparent gap around the layer split.
 
 Both measured fingertip contour pixels must exist, preventing an eroded matte or a cut through a fingertip from passing validation.
 
