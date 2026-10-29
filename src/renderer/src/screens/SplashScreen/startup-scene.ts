@@ -2,14 +2,14 @@ import type { CSSProperties } from "react";
 
 // Coordinates belong to the transparent foreground plate, not the viewport.
 // Both contours are measured at their half-alpha edge. The split is in the
-// completely transparent gap (rows 406–420), clear of either rounded fingertip.
+// nearly transparent gap (rows 465–469), clear of either rounded fingertip.
 export const STARTUP_SCENE = {
   width: 1672,
   height: 941,
-  robotTip: { x: 849, y: 396 },
-  humanTip: { x: 888, y: 435 },
-  contact: { x: 868.5, y: 415.5 },
-  splitY: 413,
+  robotTip: { x: 836, y: 457 },
+  humanTip: { x: 858, y: 478 },
+  contact: { x: 847, y: 467.5 },
+  splitY: 467,
   approachDistance: 134,
 } as const;
 
