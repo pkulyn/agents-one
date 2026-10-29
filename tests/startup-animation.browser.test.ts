@@ -44,7 +44,7 @@ async function geometry(page: Page): Promise<{
   frame: { width: number; height: number; top: number; bottom: number };
 }> {
   return page.evaluate(() => {
-    // Measured half-alpha contour points in the actual 1672×941 plate.
+    // Measured half-alpha contour points in each actual source image.
     // These are deliberately independent of the component's CSS variables.
     function tip(
       selector: string,
@@ -54,12 +54,12 @@ async function geometry(page: Page): Promise<{
       const im = document.querySelector<HTMLImageElement>(selector)!;
       const box = im.getBoundingClientRect();
       return {
-        x: box.x + (x * box.width) / 1672,
-        y: box.y + (y * box.height) / 941,
+        x: box.x + (x * box.width) / im.naturalWidth,
+        y: box.y + (y * box.height) / im.naturalHeight,
       };
     }
     const robot = tip(".splash-hand-robot", 836, 457);
-    const human = tip(".splash-hand-human", 858, 478);
+    const human = tip(".splash-hand-human", 628, 369);
     const burst = document
       .querySelector(".splash-contact")!
       .getBoundingClientRect();
@@ -174,49 +174,66 @@ describe("startup animation in Chromium", () => {
   }, 15000);
 
   // @lat: [[brand-startup#Startup brand animation#Startup forearm continuation regression]]
-  it("continues opaque skin below the original plate without fading the scene into the background", async () => {
+  it("uses one unmasked human image with an opaque forearm and a smooth lower contour", async () => {
     const page = await browser.newPage({
       viewport: { width: 1087, height: 787 },
     });
     try {
       await mount(page);
+      expect(await page.locator(".splash-human-motion img").count()).toBe(1);
+      expect(await page.locator(".splash-forearm-continuation").count()).toBe(
+        0,
+      );
       for (const ms of [0, 1100, 1650]) {
         await seek(page, ms);
         const continuation = await page.evaluate(() => {
           const stage = document.querySelector(".splash-hand-stage")!;
-          const original = document
-            .querySelector(".splash-hand-human")!
-            .getBoundingClientRect();
-          const image = document.querySelector<HTMLImageElement>(
-            ".splash-forearm-continuation",
-          )!;
+          const image =
+            document.querySelector<HTMLImageElement>(".splash-hand-human")!;
           const box = image.getBoundingClientRect();
           const canvas = document.createElement("canvas");
           canvas.width = image.naturalWidth;
           canvas.height = image.naturalHeight;
           const ctx = canvas.getContext("2d")!;
           ctx.drawImage(image, 0, 0);
+          const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
           const alpha = (x: number, y: number): number =>
-            ctx.getImageData(
-              Math.round((x * canvas.width) / 1672),
-              Math.round((y * canvas.height) / 1672),
-              1,
-              1,
-            ).data[3];
+            data[
+              (Math.round((y * canvas.height) / 1672) * canvas.width +
+                Math.round((x * canvas.width) / 1672)) *
+                4 +
+                3
+            ];
+          const edge: number[] = [];
+          for (let y = 840; y <= 1100; y += 20) {
+            const row = Math.round((y * canvas.height) / 1672);
+            let x = 0;
+            while (
+              x < canvas.width &&
+              data[(row * canvas.width + x) * 4 + 3] < 128
+            )
+              x++;
+            edge.push((x * 1672) / canvas.width);
+          }
+          const slopeChanges = edge
+            .slice(2)
+            .map((x, i) => Math.abs(x - 2 * edge[i + 1] + edge[i]));
           return {
             overflow: getComputedStyle(stage).overflow,
             sceneMask: getComputedStyle(stage).maskImage,
-            topOffset: Math.abs(box.top - original.top),
-            widthError: Math.abs(box.width - original.width),
-            extraHeight: box.bottom - original.bottom,
+            humanMask: getComputedStyle(image).maskImage,
+            humanClip: getComputedStyle(image).clipPath,
+            extraHeight: box.bottom - stage.getBoundingClientRect().bottom,
+            maxSlopeChange: Math.max(...slopeChanges),
             skinAlpha: [alpha(1600, 960), alpha(1600, 1030)],
           };
         });
         expect(continuation.overflow).toBe("visible");
         expect(continuation.sceneMask).toBe("none");
-        expect(continuation.topOffset).toBeLessThan(0.1);
-        expect(continuation.widthError).toBeLessThan(0.1);
-        expect(continuation.extraHeight).toBeGreaterThan(400);
+        expect(continuation.humanMask).toBe("none");
+        expect(continuation.humanClip).toBe("none");
+        expect(continuation.extraHeight).toBeGreaterThan(300);
+        expect(continuation.maxSlopeChange).toBeLessThan(8);
         expect(Math.min(...continuation.skinAlpha)).toBeGreaterThan(245);
       }
     } finally {
@@ -318,13 +335,21 @@ describe("startup animation in Chromium", () => {
         for (let y = 465; y <= 469; y++)
           for (let x = 0; x < canvas.width; x++)
             maxGapAlpha = Math.max(maxGapAlpha, alpha(x, y));
+        const robotTip = alpha(836, 457);
+        const human =
+          document.querySelector<HTMLImageElement>(".splash-hand-human")!;
+        const humanCanvas = document.createElement("canvas");
+        humanCanvas.width = human.naturalWidth;
+        humanCanvas.height = human.naturalHeight;
+        const humanContext = humanCanvas.getContext("2d")!;
+        humanContext.drawImage(human, 0, 0);
         return {
           width: canvas.width,
           height: canvas.height,
           surfaces,
           maxGapAlpha,
-          robotTip: alpha(836, 457),
-          humanTip: alpha(858, 478),
+          robotTip,
+          humanTip: humanContext.getImageData(628, 369, 1, 1).data[3],
         };
       });
       expect([pixels.width, pixels.height]).toEqual([1672, 941]);
