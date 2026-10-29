@@ -16,6 +16,10 @@ describe("SplashScreen", () => {
       container.querySelector(".splash-hand-background"),
     ).toBeInTheDocument();
     expect(container.querySelectorAll(".splash-hand-layer")).toHaveLength(2);
+    expect(container.querySelectorAll(".splash-human-motion img")).toHaveLength(
+      1,
+    );
+    expect(container.querySelector(".splash-forearm-continuation")).toBeNull();
     const wordmark = screen.getByRole("img", { name: "Agents One" });
     expect(wordmark).toHaveClass("splash-logo");
     expect(wordmark.getAttribute("src")).toMatch(/^data:image\/svg\+xml/);

@@ -6,9 +6,9 @@ The startup surface and expanded sidebar share one wordmark rule: the dawn ring 
 
 The startup animates transparent robot and human foregrounds over one fixed hand-free background.
 
-The foreground uses smaller hand bodies with continued forearms, preserving bright silver surfaces, natural skin and rounded tips. Both layers share this transparent plate; their separation lies in its nearly transparent alpha gap, never through either fingertip. A contact-centered hand group allows proportional size adjustment without scaling the background or wordmark. The hand-free background has no baked contact highlight. No darkening filter is applied; a gentle vignette preserves the design's brightness.
+The foreground uses smaller hand bodies with continued forearms, preserving bright silver surfaces, natural skin and rounded tips. The robot retains its original transparent plate and safe layer split. The human uses one complete square transparent image from fingertip through forearm, with no separate continuation, clip or blend mask. A 0.96 image calibration about its measured tip matches the approved small-hand composition. A contact-centered hand group allows proportional size adjustment without scaling the background or wordmark. The hand-free background has no baked contact highlight. No darkening filter is applied; a gentle vignette preserves the design's brightness.
 
-[[src/renderer/src/screens/SplashScreen/SplashScreen.tsx#SplashScreen]] fills the entire window with an independent background and vignette, avoiding letterbox bars. The foreground retains the approved small-hand composition inside a wide coordinate frame without viewport-cover enlargement. A separate inner image-coordinate canvas keeps 6% edge allowance. The frame allows overflow: an opaque forearm outpaint continues below the original plate to the window boundary instead of fading or cropping the arm. Only the overlapping skin images blend; the original hand bodies remain untouched. Measured half-alpha fingertip contours at `(836,457)` and `(858,478)` meet at `(847,467.5)` in the 1672×941 plate. The positions and travel distances come from [[src/renderer/src/screens/SplashScreen/startup-scene.ts#STARTUP_SCENE]], so window resizing cannot separate the tips or move the burst away from contact.
+[[src/renderer/src/screens/SplashScreen/SplashScreen.tsx#SplashScreen]] fills the entire window with an independent background and vignette, avoiding letterbox bars. The foreground retains the approved small-hand composition inside a wide coordinate frame without viewport-cover enlargement. A separate inner image-coordinate canvas keeps 6% edge allowance. The frame allows overflow so the continuous human forearm reaches the window boundary. Measured half-alpha contours at robot `(836,457)` in its 1672×941 plate and human `(628,369)` in its 1254×1254 plate meet at the original shared anchor `(847,467.5)`. Human coordinates are normalized to the shared 1672-unit width before wrapper translation; square-image height is not stretched to the wide frame. The positions and travel distances come from [[src/renderer/src/screens/SplashScreen/startup-scene.ts#STARTUP_SCENE]], so window resizing cannot separate the tips or move the burst away from contact.
 
 Over 1.65 seconds, the robot moves from upper left to lower right and the human hand moves symmetrically from lower right to upper left along the same diagonal axis. Only after contact does a 0.86-second burst begin: a white-blue core produces two short peaks, then expands and fades. `src/renderer/src/assets/agents-one-splash.svg` starts 0.14 seconds after contact so it does not cover the first flash.
 
@@ -32,15 +32,15 @@ This catches the former contained background and opaque frame, which produced br
 
 ### Startup foreground integrity regression
 
-The decoded foreground must retain opaque metal at the damaged surface locations and a nearly transparent gap around the layer split.
+The decoded robot foreground must retain opaque metal at the damaged surface locations and a nearly transparent gap around its layer split.
 
 Both measured fingertip contour pixels must exist, preventing an eroded matte or a cut through a fingertip from passing validation.
 
 ### Startup forearm continuation regression
 
-The human forearm must continue as opaque skin below the original image boundary, moving together with the unchanged hand rather than ending at a frame mask.
+The entire human hand and forearm must render from one unmasked image, preventing a blended continuation from introducing a texture seam or contour kink.
 
-Across approach and contact, the continuation keeps the original plate's width and top position and has opaque skin samples below that plate. The coordinate frame must allow overflow and have no scene-wide fade mask. Reduced motion disables the shared human motion wrapper as well as the robot animation.
+Across approach and contact, the continuous image extends beyond the wide frame and retains opaque skin below the former join. Samples along the lower alpha contour must change slope smoothly across that region. Neither the human image nor the frame may apply a fade mask or clip. Reduced motion disables the human motion wrapper as well as the robot animation; measured tips remain aligned after the image-size calibration.
 
 ### Startup reduced motion regression
 

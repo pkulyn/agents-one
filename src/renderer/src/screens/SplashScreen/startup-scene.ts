@@ -1,13 +1,13 @@
 import type { CSSProperties } from "react";
 
-// Coordinates belong to the transparent foreground plate, not the viewport.
-// Both contours are measured at their half-alpha edge. The split is in the
-// nearly transparent gap (rows 465–469), clear of either rounded fingertip.
+// Coordinates use the original plate width, not the viewport. The robot keeps
+// its original half-alpha contour; the continuous square human plate's native
+// (628,369) contour is normalized to this shared width before positioning.
 export const STARTUP_SCENE = {
   width: 1672,
   height: 941,
   robotTip: { x: 836, y: 457 },
-  humanTip: { x: 858, y: 478 },
+  humanTip: { x: (628 * 1672) / 1254, y: (369 * 1672) / 1254 },
   contact: { x: 847, y: 467.5 },
   splitY: 467,
   approachDistance: 134,
@@ -21,6 +21,14 @@ export const startupSceneStyle = {
   "--splash-contact-x": percent(STARTUP_SCENE.contact.x, STARTUP_SCENE.width),
   "--splash-contact-y": percent(STARTUP_SCENE.contact.y, STARTUP_SCENE.height),
   "--splash-hand-split": percent(STARTUP_SCENE.splitY, STARTUP_SCENE.height),
+  "--splash-human-origin-x": percent(
+    STARTUP_SCENE.humanTip.x,
+    STARTUP_SCENE.width,
+  ),
+  "--splash-human-origin-y": percent(
+    STARTUP_SCENE.humanTip.y,
+    STARTUP_SCENE.width,
+  ),
   "--splash-travel-x": percent(
     STARTUP_SCENE.approachDistance,
     STARTUP_SCENE.width,
