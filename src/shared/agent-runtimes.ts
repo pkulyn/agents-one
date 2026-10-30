@@ -306,8 +306,8 @@ export interface AgentRuntimeTaskInput {
   attachments?: Attachment[];
   /**
    * `implementation` is retained only so historical isolated-worktree tasks
-   * remain readable. `safe_write` allows create/edit/write inside an explicit
-   * workspace while denying move and delete operations.
+   * remain readable. `safe_write` allows reading, querying, creating and editing;
+   * each deletion requires confirmation before execution.
    */
   mode?: "analysis" | "safe_write" | "implementation" | "full_access";
   /** Required by the main process for every direct full-access run. */
