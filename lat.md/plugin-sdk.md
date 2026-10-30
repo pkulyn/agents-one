@@ -62,7 +62,7 @@ The SSE diagnostic refreshes every Run to a terminal state before starting anoth
 
 ## ACP turn deadlines
 
-Local ACP turns require a task deadline distinct from the handshake deadline, and cancellation must allow the native agent to finish stopping tools before its process is cleaned up.
+Ordinary local ACP turns have no prompt deadline; explicit task budgets remain separate from bounded handshake and cancellation controls. Cancellation must allow native tools to finish stopping before process cleanup.
 
 ### Long prompt completion
 
@@ -73,6 +73,10 @@ A real ACP child takes more than thirty seconds to finish a prompt within the Ru
 A real ACP child acknowledges tool cancellation after a delay and persists its state; the next process restores the same native session and successfully responds, detecting premature process termination.
 
 The test allows fifteen seconds for two native process launches and cancellation settlement under parallel suite load. Its acknowledgement and resumed-session assertions remain strict; Runtime handshake, prompt and cancellation deadlines are unchanged.
+
+### Ordinary turns have no prompt deadline
+
+The local task executor disables the prompt RPC deadline for ordinary tasks, so a configured control timeout cannot interrupt active work. A real child regression checks this path while explicit budgets retain deadline behavior.
 
 ### Configured deadline remains bounded
 

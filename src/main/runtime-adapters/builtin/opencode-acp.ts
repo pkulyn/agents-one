@@ -231,7 +231,7 @@ function oneTimePermissionOption(value: unknown): JsonRecord | undefined {
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
+  timer?: NodeJS.Timeout;
 }
 
 interface OpenCodeAcpClientOptions {
@@ -370,15 +370,18 @@ class OpenCodeAcpClient {
   request(
     method: string,
     params: JsonRecord,
-    timeoutMs = MAX_RPC_TIMEOUT_MS,
+    timeoutMs: number | null = MAX_RPC_TIMEOUT_MS,
   ): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error("OpenCode ACP 已关闭。"));
     const id = String(this.nextId++);
     return new Promise((resolveResult, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`OpenCode ACP 请求超时：${method}`));
-      }, timeoutMs);
+      const timer =
+        timeoutMs === null
+          ? undefined
+          : setTimeout(() => {
+              this.pending.delete(id);
+              reject(new Error(`OpenCode ACP 请求超时：${method}`));
+            }, timeoutMs);
       this.pending.set(id, { resolve: resolveResult, reject, timer });
       try {
         this.process.sendLine(
@@ -472,7 +475,7 @@ class OpenCodeAcpClient {
 
   async prompt(
     prompt: JsonRecord[],
-    timeoutMs = DEFAULT_PROMPT_TIMEOUT_MS,
+    timeoutMs: number | null = DEFAULT_PROMPT_TIMEOUT_MS,
   ): Promise<JsonRecord> {
     if (!this.sessionId) throw new Error("OpenCode ACP session 尚未创建。");
     const result = await this.request(
@@ -1161,7 +1164,7 @@ export interface OpenCodeProcessMetadata {
 /** Start one OpenCode ACP session and stream normalized updates to the caller. */
 export async function startOpenCodeProcess(
   config: OpenCodeRuntimeConfig,
-  input: AgentRuntimeTaskInput,
+  input: AgentRuntimeTaskInput & { disablePromptDeadline?: boolean },
   onOutput: (chunk: string) => void,
   onEvent: (event: NormalizedRuntimeEvent) => void,
   onMetadata?: (metadata: OpenCodeProcessMetadata) => void,
@@ -1328,7 +1331,9 @@ export async function startOpenCodeProcess(
       onMetadata?.({ sessionId, ...(model ? { model } : {}) });
       const response = await client!.prompt(
         promptBlocks,
-        input.timeoutMs ?? config.timeoutMs,
+        input.disablePromptDeadline
+          ? null
+          : (input.timeoutMs ?? config.timeoutMs),
       );
       const stopReason = text(response.stopReason);
       const responseUsage = usageFromOpenCodeValue(response);

@@ -166,6 +166,7 @@ const MAX_RUNTIME_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_TASK_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const MAX_TASK_PROMPT_LENGTH = 100_000;
 const DEFAULT_TASK_TIMEOUT_MS = 5 * 60 * 1000;
+const RUNTIME_INACTIVITY_WARNING_MS = 10 * 60 * 1000;
 const DEFAULT_GATEWAY_TASK_TIMEOUT_MS = 30 * 60 * 1000;
 const GATEWAY_TERMINAL_RECONCILIATION_MAX_ATTEMPTS = 3;
 const GATEWAY_TERMINAL_RECONCILIATION_INTERVAL_MS = 750;
@@ -204,6 +205,8 @@ interface RuntimeRunRecord {
   pendingEventOutput?: string;
   claudeStream?: ClaudeStreamState;
   timeout?: NodeJS.Timeout;
+  monitorInactivity?: boolean;
+  inactivityTimeout?: NodeJS.Timeout;
   abortHandle?: () => void;
   cancelRequested: boolean;
   /** Only this executor defers cancellation during Native preparation until cleanup is verified. */
@@ -417,6 +420,29 @@ async function terminateLocalRuntime(
   return true;
 }
 
+/** Ordinary local tasks have no wall-clock deadline; silence is advisory. */
+function noteRuntimeActivity(record: RuntimeRunRecord): void {
+  if (!record.monitorInactivity || record.run.status !== "running") return;
+  if (record.inactivityTimeout) clearTimeout(record.inactivityTimeout);
+  record.run = {
+    ...record.run,
+    events: record.run.events?.filter(
+      (event) => event.code !== "runtime_inactive",
+    ),
+  };
+  record.inactivityTimeout = setTimeout(() => {
+    record.inactivityTimeout = undefined;
+    if (record.run.status !== "running" || record.cancelRequested) return;
+    appendRuntimeEvent(
+      record,
+      "progress",
+      "智能体已连续 10 分钟没有思考、工具调用或回复反馈，任务执行可能中断。你可以继续等待，或停止任务后重试。",
+      { code: "runtime_inactive" },
+    );
+  }, RUNTIME_INACTIVITY_WARNING_MS);
+  record.inactivityTimeout.unref?.();
+}
+
 function eventSummary(value: string): string {
   return redactSensitiveText(value)
     .replace(/\s+/g, " ")
@@ -568,6 +594,7 @@ function appendRuntimeEvent(
   summary: string,
   evidence: Pick<AgentRuntimeEvent, "detail" | "code" | "tool"> = {},
 ): void {
+  if (evidence.code !== "runtime_inactive") noteRuntimeActivity(record);
   const cleanSummary = eventSummary(summary);
   if (!cleanSummary) return;
   const detail = evidence.detail?.trim()
@@ -1079,6 +1106,7 @@ function appendOutputEvent(
   chunk: string,
 ): void {
   if (!chunk.trim()) return;
+  noteRuntimeActivity(record);
   // OpenCode ACP delivers assistant text through the dedicated `onOutput`
   // callback, while lifecycle/tool frames arrive through `onEvent`. There is
   // no provider JSONL to parse here. Falling through to the legacy default
@@ -4518,6 +4546,8 @@ function finishRuntimeRun(
 ): AgentRuntimeRun {
   if (record.run.status !== "running") return { ...record.run };
   if (record.timeout) clearTimeout(record.timeout);
+  if (record.inactivityTimeout) clearTimeout(record.inactivityTimeout);
+  record.monitorInactivity = false;
   if (record.workspaceGateway) {
     const gateway = record.workspaceGateway;
     gateway.stopped = true;
@@ -4908,6 +4938,12 @@ export async function startAgentRuntimeTask(
       ? { controlledProjectWrite: true as const }
       : {}),
     taskTimeoutMs: task.timeoutMs,
+    // Explicit per-task budgets (schedules/policy) remain intentional limits.
+    monitorInactivity:
+      input.timeoutMs === undefined &&
+      !mobileExecution &&
+      !isGatewayTransport(runtime) &&
+      !isLocalWebTransport(runtime),
   };
   // No external dispatch or started event occurs until this persistence barrier settles.
   // A rejected barrier must not become an in-memory running task.
@@ -4934,6 +4970,7 @@ export async function startAgentRuntimeTask(
   await options?.persistBeforeDispatch?.(structuredClone(record.run));
   appendRuntimeEvent(record, "started", "任务已开始执行。");
   rememberRuntimeRun(record);
+  noteRuntimeActivity(record);
   // Do not record the prompt, output, workspace path or provider payloads.
   // Task diagnostics describe only lifecycle metadata.
   logTaskDiagnostic("task.started", {
@@ -5058,7 +5095,11 @@ export async function startAgentRuntimeTask(
           workspace: runtime.config.workspace,
           timeoutMs: runtime.config.timeoutMs,
         },
-        { ...task, prompt: dispatchPrompt },
+        {
+          ...task,
+          prompt: dispatchPrompt,
+          disablePromptDeadline: record.monitorInactivity,
+        },
         (chunk) => {
           if (record.run.status !== "running") return;
           appendOutputEvent(record, "opencode", chunk);
@@ -5090,9 +5131,11 @@ export async function startAgentRuntimeTask(
       if (opencode.sessionId) {
         record.run = { ...record.run, sessionId: opencode.sessionId };
       }
-      record.timeout = setTimeout(() => {
-        void terminateLocalRuntime(record, "timed_out");
-      }, task.timeoutMs);
+      if (!record.monitorInactivity) {
+        record.timeout = setTimeout(() => {
+          void terminateLocalRuntime(record, "timed_out");
+        }, task.timeoutMs);
+      }
       void opencode.completion.then((result) => {
         if (record.run.status !== "running") return;
         if (record.terminationStatus) {
@@ -5390,9 +5433,11 @@ export async function startAgentRuntimeTask(
           worktreePath: codex.worktreePath,
         };
       }
-      record.timeout = setTimeout(() => {
-        void terminateLocalRuntime(record, "timed_out");
-      }, task.timeoutMs);
+      if (!record.monitorInactivity) {
+        record.timeout = setTimeout(() => {
+          void terminateLocalRuntime(record, "timed_out");
+        }, task.timeoutMs);
+      }
       void codex.completion.then(async (result) => {
         if (record.run.status !== "running") return;
         if (record.controlledProjectWrite && result.artifacts.length)
@@ -5489,9 +5534,11 @@ export async function startAgentRuntimeTask(
         if (claudeSdk.sessionId) {
           record.run = { ...record.run, sessionId: claudeSdk.sessionId };
         }
-        record.timeout = setTimeout(() => {
-          void terminateLocalRuntime(record, "timed_out");
-        }, task.timeoutMs);
+        if (!record.monitorInactivity) {
+          record.timeout = setTimeout(() => {
+            void terminateLocalRuntime(record, "timed_out");
+          }, task.timeoutMs);
+        }
         void claudeSdk.completion.then((result) => {
           if (record.run.status !== "running") return;
           if (record.terminationStatus) {
@@ -5558,9 +5605,11 @@ export async function startAgentRuntimeTask(
           worktreePath: claudeCode.worktreePath,
         };
       }
-      record.timeout = setTimeout(() => {
-        void terminateLocalRuntime(record, "timed_out");
-      }, task.timeoutMs);
+      if (!record.monitorInactivity) {
+        record.timeout = setTimeout(() => {
+          void terminateLocalRuntime(record, "timed_out");
+        }, task.timeoutMs);
+      }
       void claudeCode.completion.then(async (result) => {
         if (record.run.status !== "running") return;
         if (record.terminationStatus) {
@@ -5636,9 +5685,11 @@ export async function startAgentRuntimeTask(
         };
       }
       record.run = { ...record.run, sessionId: pi.sessionId };
-      record.timeout = setTimeout(() => {
-        void terminateLocalRuntime(record, "timed_out");
-      }, task.timeoutMs);
+      if (!record.monitorInactivity) {
+        record.timeout = setTimeout(() => {
+          void terminateLocalRuntime(record, "timed_out");
+        }, task.timeoutMs);
+      }
       void pi.completion.then(async (result) => {
         if (record.run.status !== "running") return;
         if (record.terminationStatus) {
@@ -5690,13 +5741,15 @@ export async function startAgentRuntimeTask(
     finishRuntimeRun(record, status, details);
   };
 
-  record.timeout = setTimeout(() => {
-    record.abortHandle?.();
-    finish("timed_out", {
-      output: record.run.output,
-      error: `Runtime task exceeded ${task.timeoutMs}ms.`,
-    });
-  }, task.timeoutMs);
+  if (!record.monitorInactivity) {
+    record.timeout = setTimeout(() => {
+      record.abortHandle?.();
+      finish("timed_out", {
+        output: record.run.output,
+        error: `Runtime task exceeded ${task.timeoutMs}ms.`,
+      });
+    }, task.timeoutMs);
+  }
 
   void sendMessage(
     dispatchPrompt,
