@@ -723,6 +723,77 @@ describe("OpenCode ACP adapter", () => {
 });
 
 describe("OpenCode shared permission semantics", () => {
+  it.each([false, true])(
+    "confirms an automatic deletion once with decision %s",
+    async (allowed) => {
+      const workspace = mkdtempSync(join(tmpdir(), "opencode-confirm-delete-"));
+      const file = join(workspace, "document.docx");
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(file, "document");
+      const script =
+        "const fs=require('fs'),rl=require('readline').createInterface({input:process.stdin}),send=x=>process.stdout.write(JSON.stringify(x)+'\\n');let prompt;rl.on('line',line=>{const m=JSON.parse(line);if(m.method==='initialize')send({id:m.id,result:{protocolVersion:1}});else if(m.method==='session/new')send({id:m.id,result:{sessionId:'delete-session'}});else if(m.method==='session/prompt'){prompt=m.id;send({id:9,method:'session/request_permission',params:{sessionId:'delete-session',toolCall:{kind:'delete',title:'delete_document',rawInput:{path:'document.docx'}},options:[{kind:'allow_once',optionId:'once'}]}});}else if(m.id===9){if(m.result.outcome.outcome==='selected')fs.unlinkSync('document.docx');send({id:prompt,result:{stopReason:'end_turn'}});}});";
+      let confirmations = 0;
+      try {
+        const started = await startOpenCodeProcess(
+          {
+            executablePath: process.execPath,
+            acpArgs: ["-e", script],
+            permissionBridge: {
+              environment: {},
+              authorize: async () => {
+                confirmations++;
+                return allowed;
+              },
+              dispose() {
+                return undefined;
+              },
+            },
+          },
+          { prompt: "Delete the test document", mode: "safe_write", workspace },
+          () => undefined,
+          () => undefined,
+        );
+        const result = await started.completion;
+        expect(confirmations).toBe(1);
+        expect(existsSync(file)).toBe(!allowed);
+        if (allowed) expect(result.error).toBeUndefined();
+        else expect(result.error).toContain("未获授权");
+      } finally {
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // @lat: [[runtime-chat#No-project full access]]
+  it("runs full access without a project and operates on an explicit absolute file", async () => {
+    const home = mkdtempSync(join(tmpdir(), "opencode-full-no-project-"));
+    const file = join(home, "desktop-document.txt");
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(file, "delete this fixture");
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", home);
+    const script = writingAcpScript().replace(
+      "fs.writeFileSync(process.cwd()+'/created.txt','created by ACP')",
+      "fs.unlinkSync(" + JSON.stringify(file) + ")",
+    );
+    try {
+      const started = await startOpenCodeProcess(
+        { executablePath: process.execPath, acpArgs: ["-e", script] },
+        {
+          prompt: "Delete the supplied fixture path",
+          mode: "full_access",
+          fullAccessConfirmed: true,
+        },
+        () => undefined,
+        () => undefined,
+      );
+      expect((await started.completion).error).toBeUndefined();
+      expect(existsSync(file)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("preserves inherited config and credentials while requiring native mutation approval", () => {
     const source = {
       PATH: "portable",
@@ -776,13 +847,13 @@ describe("OpenCode shared permission semantics", () => {
     ["analysis", "search", true],
     ["analysis", "edit", false],
     ["safe_write", "edit", true],
-    ["safe_write", "execute", false],
-    ["safe_write", "other", false],
-    ["safe_write", "", false],
+    ["safe_write", "execute", true],
+    ["safe_write", "other", true],
+    ["safe_write", "", true],
     ["analysis", "execute", false],
     ["full_access", "execute", true],
     ["safe_write", "delete", false],
-    ["safe_write", "move", false],
+    ["safe_write", "move", true],
     ["full_access", "delete", true],
   ] as const)(
     "applies %s permission to %s through an actual ACP request",
@@ -828,7 +899,9 @@ describe("OpenCode shared permission semantics", () => {
           expect(
             events.some(
               (event) =>
-                event.type === "error" && event.summary.includes("切换"),
+                event.type === "error" &&
+                (event.summary.includes("切换") ||
+                  event.summary.includes("未获授权")),
             ),
           ).toBe(true);
         }

@@ -711,6 +711,38 @@ describe("Runtime schedules", () => {
     expect(schedules.listTaskSchedules()[0]).toMatchObject({ mode: "auto" });
   });
 
+  it("creates and edits full-access schedules without a project folder", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-no-project",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli" },
+    });
+    const schedule = await schedules.createTaskSchedule({
+      name: "Host files",
+      schedule: "5m",
+      prompt: "Handle the explicit document path",
+      runtimeId: "pi-no-project",
+      mode: "full_access",
+      enabled: false,
+    });
+    expect(schedule).toMatchObject({ mode: "full_access" });
+    expect(schedule.workspace).toBeUndefined();
+    const updated = await schedules.updateTaskSchedule(schedule.id, {
+      name: "Host files updated",
+      schedule: "10m",
+      prompt: "Handle the explicit document path",
+      runtimeId: "pi-no-project",
+      mode: "full_access",
+      enabled: false,
+    });
+    expect(updated).toMatchObject({ mode: "full_access" });
+    expect(updated.workspace).toBeUndefined();
+  });
+
   it("migrates the legacy writable mode to explicit full access", async () => {
     const { schedules } = await loadModules();
     const now = Date.now();

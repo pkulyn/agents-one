@@ -1,6 +1,6 @@
 # Agents One Plugin SDK（预览版）
 
-这是 Agents One 的独立接入插件套件。它把不同智能体的原生运行过程转换成统一的 Gateway v1 与 Agent Event Stream v1，不改变智能体的模型、工具、工作区或权限本身。
+这是 Agents One 的独立接入插件套件。它把不同智能体的原生运行过程转换成统一的 Gateway v1 与 Agent Event Stream v1，保留原生模型与工具，并将桌面选择的权限模式传到执行端。
 
 ## 两类插件
 
@@ -141,6 +141,14 @@ await host.listen(8787, "127.0.0.1");
 Host 默认只监听 Loopback；`statePath` 用于原子持久化 Run、幂等键、Provider sessionId 和事件快照，本地开发可省略，但生产和发布验收必须配置。Host 重启时未完成 Run 会在下一次查询时进入终态对账：可恢复的 Adapter 可实现 `reconcileRun(vendorRunId, record, context)` 返回 Provider 终态/事件；无法恢复时会产生带 `host_restart_reconciliation_required` 的明确失败终态，不会伪造成功。公网暴露应由受信任的 HTTPS Gateway/反向代理承担，不能把 Loopback Host 直接绑定到公网。
 
 OpenCode Adapter 通过 ACP JSON-RPC 启动受控 CLI，保留真实模型与用量，分别上报 `assistant.*`、`reasoning.summary`、`tool.*` 和 `artifact.created`；它不会把最终答复写进思考事件，也不会接受未经 Host 配置的 Shell 命令或工作区路径。Pi、Codex、Claude Code 的远程 Adapter 复用该 Host 契约，按后续阶段单独交付。
+
+## 权限模式与删除确认
+
+桌面会在 `execution.permissionMode` 传递 `analysis`、`safe_write` 或 `full_access`，同时保留旧版 `execution.permission` 的 read/write 字段。自动模式允许读取、查询、创建和编辑，删除需要本次确认；完全访问不要求项目目录，删除无需再次确认。完全访问作用于远端执行主机，桌面文件仍通过单独的文件访问通道交接。
+
+自定义 Adapter 应在每次原生工具执行前等待 `context.authorizeTool(toolName, toolInput)` 的布尔结果，拒绝时不执行该操作。SDK 将待确认删除暴露在 Run 的 `permissionRequests` 中，桌面通过认证的 `POST /runs/{runId}/permissions/{requestId}` 返回 `{ allowed: boolean }`。请求绑定当前 Run；取消、终态和 Host 关闭都会撤销未完成授权，决策不升级成持续授权。OpenCode ACP Adapter 已接入该回调。
+
+使用 Connect 中继时，远端 SDK 和 Connect 服务都需要更新到包含此权限通道的源码；仅更新桌面或提示词不能替代第三方服务中的原生工具拦截。旧服务继续遵守其实际能力与授权边界。
 
 ## 本地 CLI Adapter
 

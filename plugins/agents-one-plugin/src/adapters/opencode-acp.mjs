@@ -1,3 +1,4 @@
+import { toolPermissionDecision } from "../tool-permission-policy.mjs";
 import { createChildShutdown } from "../child-shutdown.mjs";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -129,11 +130,9 @@ function toolKind(value) {
   return "tool";
 }
 
-function workspacePath(root, requested, mode) {
+function workspacePath(root, requested) {
   const base = root ? resolve(root) : undefined;
   if (!base) {
-    if (mode !== "analysis")
-      throw new Error("OpenCode 文件任务需要 Host 配置的工作区。 ");
     return undefined;
   }
   if (!existsSync(base)) throw new Error("OpenCode Host 工作区不存在。");
@@ -238,12 +237,13 @@ function changedFiles(before, root, maxFiles = MAX_WORKSPACE_FILES) {
 }
 
 class AcpClient {
-  constructor(child, { onUpdate, mode, onPermissionDenied }) {
+  constructor(child, { onUpdate, mode, onPermissionDenied, authorizeTool }) {
     this.onPermissionDenied = onPermissionDenied;
     this.child = child;
     this.shutdown = createChildShutdown(child);
     this.onUpdate = onUpdate;
     this.mode = mode;
+    this.authorizeTool = authorizeTool;
     this.nextId = 1;
     this.pending = new Map();
     this.sessionId = undefined;
@@ -291,11 +291,11 @@ class AcpClient {
       return;
     }
     if (message.id !== undefined && typeof message.method === "string") {
-      this.permission(message.id, message.method, record(message.params));
+      void this.permission(message.id, message.method, record(message.params));
     }
   }
 
-  permission(id, method, params) {
+  async permission(id, method, params) {
     if (method !== "session/request_permission") {
       this.send({
         jsonrpc: "2.0",
@@ -325,9 +325,19 @@ class AcpClient {
       );
       return;
     }
-    if (this.mode === "analysis") {
+    const tool = record(params.toolCall);
+    const name = String(tool.title || tool.kind || "tool");
+    const toolInput = { ...tool, input: record(tool.rawInput) };
+    const decision = toolPermissionDecision(this.mode, name, toolInput);
+    const allowed =
+      decision === "allow" ||
+      (decision === "confirm" &&
+        (await Promise.resolve()
+          .then(() => this.authorizeTool?.(name, toolInput))
+          .catch(() => false)));
+    if (!allowed || this.closed) {
       deny(
-        "[Agents One 权限不足] 远端只读任务未授予此工具执行权限，工具请求未执行。",
+        "[Agents One 权限不足] 本次工具请求未获授权，未执行；删除需要本次确认。",
       );
       return;
     }
@@ -577,7 +587,16 @@ async function publishChangedArtifacts(
 
 async function executeRun(run, input, context, options) {
   let terminalStatus;
-  const mode = input.mode || input.input?.mode || "analysis";
+  const mode =
+    input.execution?.permissionMode ||
+    input.input?.permissionMode ||
+    (["analysis", "safe_write", "full_access", "implementation"].includes(
+      input.mode,
+    )
+      ? input.mode
+      : input.execution?.permission === "write"
+        ? "full_access"
+        : "analysis");
   const maxOutput = boundedLimit(
     options.maxOutputBytes,
     MAX_OUTPUT,
@@ -596,19 +615,28 @@ async function executeRun(run, input, context, options) {
   const requestedWorkspace = input.workspace || input.input?.workspace;
   let cwd;
   try {
-    cwd = workspacePath(options.workspaceRoot, requestedWorkspace, mode);
+    cwd = workspacePath(options.workspaceRoot, requestedWorkspace);
     const invocation = executableConfig({
       ...options,
       model: options.model || input.model || input.input?.model,
     });
     const child = spawn(invocation.command, invocation.args, {
       cwd,
-      env: childEnvironment(options),
+      env: {
+        ...childEnvironment(options),
+        OPENCODE_PERMISSION: JSON.stringify({
+          "*": mode === "full_access" ? "allow" : "ask",
+          edit: mode === "full_access" ? "allow" : "ask",
+          bash: mode === "full_access" ? "allow" : "ask",
+          task: mode === "full_access" ? "allow" : "ask",
+        }),
+      },
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
     run.client = new AcpClient(child, {
       mode,
+      authorizeTool: context.authorizeTool,
       onPermissionDenied: (reason) => {
         run.permissionDenied = reason;
         emit(context, run, "run.status", {
@@ -715,7 +743,10 @@ export function createOpenCodeAcpAdapter(options = {}) {
       usageMetadata: true,
     },
     tasks: { start: true, get: true, cancel: true },
-    permissions: { interactive: false, policy: "host-managed" },
+    permissions: {
+      interactive: true,
+      policy: "run-bound-deletion-confirmation",
+    },
     sessions: { create: true, resume: true },
     artifacts: { publish: true },
   };

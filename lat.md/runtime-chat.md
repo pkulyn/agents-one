@@ -236,7 +236,7 @@ Mobile desktop-task policies use the same automatic mode at Owner dispatch. [[sr
 
 Every dispatched task receives its effective permission and instructions to name blocked operations and the permission required before attempting unsupported work.
 
-[[src/shared/runtime-permissions.ts#runtimePermissionInstruction]] distinguishes read-only, automatic safe-write, isolated implementation and full access. Read-only permits queries but no creation or mutation; automatic permits creation/editing but prohibits removing or moving original files. A deletion request under automatic must explain the restriction and request full access, rather than ending with a promise to execute.
+[[src/shared/runtime-permissions.ts#runtimePermissionInstruction]] distinguishes read-only, automatic safe-write, isolated implementation and full access. Read-only permits queries but no creation or mutation; automatic permits reading, queries, creation and editing through native tools, scripts and document generators. Deletion requires confirmation for that individual operation; full access permits it without another confirmation and does not require a project folder.
 
 Main adds this context for local and Gateway task dispatch. Pi native denial results carry the blocked tool and required permission back to the model, including nested calls. If safe-write restoration catches removed originals, [[src/shared/runtime-permissions.ts#runtimeRemovalBlockedMessage]] makes local adapters report an actionable failure even when the provider exits successfully; restoration text must not disappear behind a structured final answer.
 
@@ -252,7 +252,7 @@ Pi reasoning keeps a short progress summary and a separate bounded detail so lon
 
 Native adapters carry read-only, automatic and full-access modes through transport-specific controls. Enforcement requires separate verification for each Runtime; deletion recovery is not an execution sandbox.
 
-Codex retains its native read-only or workspace-write sandbox. Claude CLI analysis uses plan mode; conversational Claude SDK analysis explicitly selects plan mode and disables mutation/shell tools. OpenCode applies per-process permission overrides for edit, bash and task so native defaults cannot auto-approve these requests; ACP checks declared read/search/fetch operations in analysis and rejects declared delete/move requests in automatic. These metadata checks do not prove that an opaque command has no destructive side effects. Rejected requests produce visible permission-denied events and actionable terminal errors.
+Read-only keeps its native restrictions. Ordinary automatic turns use a Main-owned per-run tool approval bridge: OpenCode ACP, Claude pre-tool hooks and Pi tool hooks can run document generation tools, and declared deletion intent waits for confirmation. Codex automatic turns use bidirectional App Server approvals because exec JSONL cannot answer native requests. These operation checks are not an OS sandbox and cannot prove arbitrary opaque code harmless.
 
 [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodePermissionEnvironment]] preserves unrelated inherited environment settings without writing provider config. [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodePermissionDenial]] decides the ACP operation boundary. [[tests/opencode-acp.test.ts]] exercises actual request/response exchanges for read, search, edit, delete and move across modes. Automatic no longer silently downgrades a native or Gateway conversation to read-only just because no desktop project was selected. Browser and remote adapters remain constrained by the capabilities and authority their service actually provides.
 
@@ -367,6 +367,34 @@ Read-only and automatic OpenCode tasks reject explicitly selected projects overl
 Stopping a single Runtime task keeps its result observer alive until the terminal conversation checkpoint is durable and the composer can accept the next turn.
 
 The cancel request does not itself clear the active run or stop terminal polling. Main-owned runs wait for Main persistence; Renderer-owned runs retain their existing serialized terminal writer. A rejected cancellation remains observable. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx]] covers both persistence owners from the stop button through cancellation and a durable follow-up answer.
+
+## Automatic tool execution and deletion confirmation
+
+Automatic permission allows read/query/create/edit tools and document generators. Deletion intent is checked separately.
+
+The shared policy identifies declared deletion operations, destructive command forms and deleted-file patches, while ordinary document content does not trigger confirmation.
+
+The loopback permission capability belongs to one live Run, is never saved in user config, rejects wrong tokens and browser-origin requests, and denies unresolved work on disposal. Main rechecks task state after each confirmation. Full-access tasks use native host permissions without choosing a project; read-only and controlled mobile policies remain distinct.
+
+## No-project full access
+
+A local full-access turn may start without linking a project folder and can operate on an explicit path on its execution host. The implicit working directory does not restrict this host authority.
+
+Isolated implementation tasks still require a project, and remote desktop-file access still uses its existing transport.
+
+## Native CLI deletion approvals
+
+Codex uses App Server command/file approval requests; Claude CLI uses a per-process pre-tool command hook and Pi uses its native tool hook.
+
+OpenCode answers ACP requests once, allowing generation and editing and confirming deletions. Approval decisions never become session-wide permission rules.
+
+## Remote deletion approval lifecycle
+
+Gateway requests carry an explicit permissionMode alongside legacy read/write. Updated SDK adapters receive a per-run authorizeTool callback; pending deletions wait for confirmation.
+
+Requests are returned by run polling and answered through authenticated run-bound endpoints. Cancellation and terminal status revoke pending requests.
+
+Full access applies to the remote execution host. Access to desktop files still uses the configured workspace transport; its automatic deletions require desktop confirmation, while full-access deletions do not prompt again. Older third-party services require corresponding permission-protocol support; desktop text alone cannot enforce their native tools.
 
 ## Local task inactivity monitoring
 

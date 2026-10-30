@@ -62,11 +62,12 @@ export default {
   choose: "Choose",
   clear: "Clear",
   workspaceHint:
-    "This does not inherit the workspace from the agent configuration. Auto can read and write the selected folder, but cannot move or delete files.",
+    "This does not inherit the workspace from the agent configuration. Auto can read, query, create and edit; deletion requires confirmation. Full access does not require a project folder.",
   fileAccess: "File Access",
-  modeAuto: "Auto: read and write, without move or delete permission",
+  modeAuto: "Auto: read, query, create and edit; confirm deletion",
   modeAnalysis: "Read-only: only read the selected project",
-  modeFullAccess: "Full access: create, edit, move, or delete project files",
+  modeFullAccess:
+    "Full access: read, create and edit; no further deletion confirmation",
   timeout: "Maximum Run Time",
   timeout10m: "10 minutes",
   timeout30m: "30 minutes",

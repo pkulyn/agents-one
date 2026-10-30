@@ -4440,24 +4440,6 @@ export default function RuntimeChat({
     setLoading(true);
     try {
       const checkpoint = await persistConversation(nextMessages);
-      if (
-        resolvedAccessMode === "full_access" &&
-        !hasSelectedWorkspace &&
-        !collaborationLaunch &&
-        runtime.location === "local"
-      ) {
-        const failedMessages = [
-          ...nextMessages,
-          newMessage(
-            "system",
-            t("runtimeChat.feedback.fullAccessRequiresProject"),
-          ),
-        ];
-        setMessages(failedMessages);
-        void persistConversation(failedMessages).catch(() => undefined);
-        setLoading(false);
-        return;
-      }
       if (collaborationLaunch) {
         await runCollaboration(prompt, collaborationLaunch, selectedWorkspace);
         setLoading(false);
