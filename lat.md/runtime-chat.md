@@ -405,3 +405,9 @@ Silence emits one advisory progress event with code `runtime_inactive`; the run 
 ## Inactivity warning visibility
 
 The Runtime chat renders the inactivity event as a visible system notice, outside collapsed thinking rows, without marking an active tool failed or replacing the agent response.
+
+## Hermes native approval forwarding
+
+Hermes 原生审批必须经 Connector 和远端适配器转发到同一 SDK Run，才能在桌面逐次确认删除。重复事件不重复授权，取消后的迟到回复失效，无法区分的并行原生审批会终止执行。
+
+原生请求以独立 request ID 绑定 vendor Run 和 Runtime；回传仅允许 once/deny，不创建会话或永久授权。参见 `plugins/agents-one-plugin/src/hermes-approval-bridge.mjs` 的 `createHermesApprovalForwarder`。
