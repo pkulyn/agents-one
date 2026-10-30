@@ -548,3 +548,35 @@ describe("runtimeChatMessageAdapter", () => {
     expect(toolNameFromRuntimeSummary("Gateway 查询失败")).toBe("工具");
   });
 });
+
+// @lat: [[runtime-chat#Inactivity warning visibility]]
+it("shows inactivity as a system notice while preserving the running tool", () => {
+  const result = runtimeEventsToChatMessages(
+    [
+      {
+        id: "tool",
+        type: "tool_call",
+        summary: "Read",
+        createdAt: 1,
+        tool: { name: "Read", kind: "tool", callId: "read-1" },
+      },
+      {
+        id: "idle",
+        type: "progress",
+        summary: "任务执行可能中断，请停止后重试。",
+        code: "runtime_inactive",
+        createdAt: 2,
+      },
+    ],
+    { live: true },
+  );
+  expect(result).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "system",
+        title: "任务执行可能中断，请停止后重试。",
+      }),
+      expect.objectContaining({ kind: "tool_call", status: "running" }),
+    ]),
+  );
+});

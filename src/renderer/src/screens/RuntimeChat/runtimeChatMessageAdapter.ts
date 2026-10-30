@@ -259,6 +259,17 @@ function runtimeEventMessages(
 
   for (const event of events) {
     const id = `${prefix}:event:${event.id}`;
+    if (event.code === "runtime_inactive") {
+      const message: SystemMessage = {
+        id,
+        kind: "system",
+        role: "agent",
+        title: event.summary,
+        detail: "",
+      };
+      messages.push(withIdentity(message, options.agentIdentity));
+      continue;
+    }
     if (event.type === "progress") {
       if (isPlatformLifecycleProgress(event)) continue;
       const previous = messages.at(-1);
