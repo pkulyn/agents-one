@@ -1256,6 +1256,10 @@ export function clearPendingClarify(requestId: string): void {
 }
 
 export interface ChatCallbacks {
+  authorizeTool?: (
+    name: string,
+    input: Record<string, unknown>,
+  ) => Promise<boolean>;
   onChunk: (text: string) => void;
   /** Streaming reasoning / thinking tokens, when the provider emits them
    *  alongside `content`. DeepSeek surfaces these as `delta.reasoning_content`;
@@ -2210,16 +2214,24 @@ async function sendMessageViaTuiGateway(
       // Match the existing local chat posture: Agents One does not expose a
       // mid-stream approval dialog, so answer the dashboard protocol once and
       // keep the transcript focused on the resulting tool call/result events.
-      void client
-        .request(
-          "approval.respond",
-          {
-            session_id: activeSessionId,
-            choice: "once",
-            all: false,
-          },
-          30_000,
-        )
+      void Promise.resolve()
+        .then(async () => {
+          const payload = event.payload || {};
+          const name = String(payload.tool_name || payload.tool || "tool");
+          const allowed = cb.authorizeTool
+            ? await cb.authorizeTool(name, payload as Record<string, unknown>)
+            : true;
+          if (finished) return;
+          await client.request(
+            "approval.respond",
+            {
+              session_id: activeSessionId,
+              choice: allowed ? "once" : "deny",
+              all: false,
+            },
+            30_000,
+          );
+        })
         .catch((error) => {
           const message =
             error instanceof Error ? error.message : String(error);

@@ -1,3 +1,7 @@
+export {
+  isToolDeletion,
+  toolPermissionDecision,
+} from "../../plugins/agents-one-plugin/src/tool-permission-policy.mjs";
 import type {
   AgentRuntimeDefinition,
   AgentRuntimeTaskInput,
@@ -20,12 +24,12 @@ export function automaticRuntimeTaskMode(
 export function runtimePermissionInstruction(mode: RuntimeTaskMode): string {
   const policy =
     mode === "analysis"
-      ? "当前权限：只读。可以调用读取、列举、搜索、查询工具；禁止创建、编辑、覆盖、移动和删除文件，也禁止产生其他写入副作用。需要编辑或创建时，请明确告知用户切换为“自动”；需要移动或删除时，请明确告知用户切换为“完全访问”。"
+      ? "当前权限：只读。可以调用读取、列举、搜索、查询工具；禁止创建、编辑、覆盖、移动和删除文件，也禁止产生其他写入副作用。需要编辑或创建时，请明确告知用户切换为“自动”；需要删除时，请明确告知用户切换为“自动”并确认本次删除，或选择“完全访问”。"
       : mode === "safe_write"
-        ? "当前权限：自动。可以读取、搜索、查询，以及创建和编辑文件；禁止移动或删除原有文件。用户要求移动或删除时，应在执行前说明当前“自动”权限不允许该操作，并请用户切换为“完全访问”。"
+        ? "当前权限：自动。可读取、查询、创建和编辑文件，也可使用终端、脚本、MCP 和文档生成工具完成这些工作。删除文件或文档前必须请求用户确认本次删除；用户拒绝时不得执行，也不得通过脚本或其他工具绕过确认。"
         : mode === "implementation"
           ? "当前权限：隔离工作区。修改仅在隔离工作区生效，不得把隔离工作区中的改动声称为已修改用户的原项目。"
-          : "当前权限：完全访问。仅执行用户授权的操作，尊重运行时和操作系统返回的实际权限限制。";
+          : "当前权限：完全访问。可读取、创建和编辑，删除文件或文档不需要再次授权确认。不要求关联项目目录，可按用户提供的绝对路径操作执行主机上的文件。仅执行用户要求的工作，尊重运行时和操作系统返回的实际权限限制。";
   return [
     "[Agents One 本轮权限]",
     policy,

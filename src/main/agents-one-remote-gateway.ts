@@ -71,6 +71,7 @@ export interface AgentsOneRemoteGatewayRunInput {
   workspaceRef?: string;
   timeoutSeconds: number;
   permission: "read" | "write";
+  permissionMode?: "analysis" | "safe_write" | "full_access" | "implementation";
 }
 
 export interface AgentsOneRemoteGatewayArtifactUploadInput {
@@ -94,6 +95,11 @@ export interface AgentsOneRemoteGatewayArtifactDownload extends AgentsOneRemoteG
 }
 
 export interface AgentsOneRemoteGatewayRun {
+  permissionRequests?: Array<{
+    id: string;
+    name: string;
+    input: Record<string, unknown>;
+  }>;
   id: string;
   status: AgentRuntimeRun["status"];
   output?: string;
@@ -935,6 +941,24 @@ function gatewayRunFrom(value: unknown): AgentsOneRemoteGatewayRun {
     ...(message ? { error: message } : {}),
     ...(artifacts ? { artifacts } : {}),
     ...(events.length ? { events } : {}),
+    ...(Array.isArray(root.permissionRequests)
+      ? {
+          permissionRequests: root.permissionRequests
+            .slice(0, 16)
+            .flatMap((value) => {
+              const p = object(value);
+              const input = object(p?.input);
+              return p &&
+                typeof p.id === "string" &&
+                /^[A-Za-z0-9_-]{1,128}$/.test(p.id) &&
+                typeof p.name === "string" &&
+                p.name.length <= 256 &&
+                input
+                ? [{ id: p.id, name: p.name, input }]
+                : [];
+            }),
+        }
+      : {}),
     ...(model ? { model } : {}),
     ...(model ? { actualModel: model } : {}),
     ...(requestedModel ? { requestedModel } : {}),
@@ -1200,6 +1224,9 @@ export async function startAgentsOneRemoteGatewayRun(
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
       input: {
         text: input.text,
+        ...(input.permissionMode
+          ? { permissionMode: input.permissionMode }
+          : {}),
         ...(input.model ? { model: input.model } : {}),
         // Keep the stable route ID in the nested payload as well. The v1
         // field is top-level, but older remote adapters commonly inspect the
@@ -1213,6 +1240,9 @@ export async function startAgentsOneRemoteGatewayRun(
       execution: {
         timeoutSeconds: input.timeoutSeconds,
         permission: input.permission,
+        ...(input.permissionMode
+          ? { permissionMode: input.permissionMode }
+          : {}),
       },
     },
   });
@@ -1400,4 +1430,26 @@ export async function cancelAgentsOneRemoteGatewayRun(
     );
   }
   return gatewayRunFrom(response.body);
+}
+
+export async function respondToAgentsOneRemotePermission(
+  config: AgentsOneRemoteGatewayConfig,
+  runId: string,
+  requestId: string,
+  allowed: boolean,
+  auth?: AgentsOneRemoteGatewayAuth,
+): Promise<void> {
+  const response = await requestJson(
+    config,
+    "/runs/" +
+      encodeURIComponent(runId) +
+      "/permissions/" +
+      encodeURIComponent(requestId),
+    auth,
+    { method: "POST", body: { allowed } },
+  );
+  if (!response.ok)
+    throw Error(
+      "Remote permission response was not accepted: " + response.status,
+    );
 }

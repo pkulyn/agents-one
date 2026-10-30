@@ -1,3 +1,5 @@
+import { startCodexPermissionTurn } from "./codex-permission-turn";
+import type { RuntimePermissionBridge } from "./runtime-tool-permissions";
 import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
 import { spawn, execFile as execFileCallback } from "child_process";
 import { existsSync, mkdirSync } from "fs";
@@ -32,6 +34,7 @@ const SECRET_VALUE =
   /((?:authorization|api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;]+)/gi;
 
 export interface CodexRuntimeConfig {
+  permissionBridge?: RuntimePermissionBridge;
   executablePath?: string;
   model?: string;
   workspace?: string;
@@ -409,7 +412,7 @@ export async function startCodexProcess(
   const workspace = requestedWorkspace(config, input);
   if (mobileWrite && !workspace)
     throw Error("Mobile project write requires a fixed project.");
-  if ((mode === "implementation" || mode === "full_access") && !workspace) {
+  if (mode === "implementation" && !workspace) {
     throw new Error("Codex file tasks require a task-specific project folder.");
   }
 
@@ -501,6 +504,20 @@ export async function startCodexProcess(
       `codex-${randomUUID()}`,
     );
     const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
+    if (mode === "safe_write" && config.permissionBridge && !mobileExecution) {
+      return startCodexPermissionTurn({
+        invocation,
+        cwd,
+        prompt: runtimePrompt,
+        model: config.model,
+        sessionId: input.sessionId,
+        imagePaths: preparedInputs.imagePaths,
+        inputArtifacts: preparedInputs.artifacts,
+        environment: await codexDesktopEnvironment(childEnvironment()),
+        bridge: config.permissionBridge,
+        onOutput,
+      });
+    }
     const workspaceProtection =
       mode === "safe_write" && workspace && !mobileWrite
         ? protectWorkspaceFromRemoval(workspace, input.profile)

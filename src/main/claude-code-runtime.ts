@@ -1,3 +1,4 @@
+import type { RuntimePermissionBridge } from "./runtime-tool-permissions";
 import { assertClaudeWorkspaceBoundary } from "./claude-workspace-policy";
 import { prepareClaudeQueryEnvironment } from "./claude-query-context";
 import { claudeChildEnvironment } from "./claude-environment";
@@ -26,6 +27,7 @@ const SECRET_VALUE =
   /((?:authorization|api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;]+)/gi;
 
 export interface ClaudeCodeRuntimeConfig {
+  permissionBridge?: RuntimePermissionBridge;
   executablePath?: string;
   model?: string;
   workspace?: string;
@@ -349,7 +351,12 @@ export function claudeCodeExecArgs(
   mode: "analysis" | "safe_write" | "implementation" | "full_access",
   prompt: string,
   inputDirectory?: string,
-  options: { sessionId: string; resume?: boolean; model?: string } = {
+  options: {
+    sessionId: string;
+    resume?: boolean;
+    model?: string;
+    permissionHook?: string;
+  } = {
     sessionId: randomUUID(),
   },
 ): string[] {
@@ -360,7 +367,8 @@ export function claudeCodeExecArgs(
     "stream-json",
     "--include-partial-messages",
   ];
-  const strict = mode === "analysis" || mode === "safe_write";
+  const strict =
+    mode === "analysis" || (mode === "safe_write" && !options.permissionHook);
   if (strict) {
     args.push(
       "--restricted",
@@ -376,6 +384,27 @@ export function claudeCodeExecArgs(
       mode === "analysis" ? "Read,Glob,Grep" : "Read,Write,Edit,Glob,Grep",
     );
   } else args.push("--dangerously-skip-permissions");
+  if (options.permissionHook)
+    args.push(
+      "--settings",
+      JSON.stringify({
+        disableAllHooks: false,
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: ".*",
+              hooks: [
+                {
+                  type: "command",
+                  command: options.permissionHook,
+                  timeout: 3600,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
   if (options.model?.trim()) args.push("--model", options.model.trim());
   if (options.resume) args.push("--resume", options.sessionId);
   else args.push("--session-id", options.sessionId);
@@ -440,14 +469,17 @@ export async function startClaudeCodeProcess(
   const mode = input.mode || "analysis";
   let invocation = claudeCodeInvocation(configuredExecutable(config));
   const workspace = requestedWorkspace(config, input);
-  if ((mode === "implementation" || mode === "full_access") && !workspace) {
+  if (mode === "implementation" && !workspace) {
     throw new Error(
       "Claude Code file tasks require a task-specific project folder.",
     );
   }
 
   let userCredentials: NodeJS.ProcessEnv = {};
-  if (mode === "analysis" || mode === "safe_write") {
+  if (
+    mode === "analysis" ||
+    (mode === "safe_write" && !config.permissionBridge)
+  ) {
     assertClaudeWorkspaceBoundary(
       workspace ||
         join(
@@ -471,7 +503,7 @@ export async function startClaudeCodeProcess(
   }
 
   const strict =
-    mode === "analysis" || mode === "safe_write"
+    mode === "analysis" || (mode === "safe_write" && !config.permissionBridge)
       ? await verifyClaudeStrictCapabilities(invocation, canStart)
       : undefined;
   assertCanStart();
@@ -502,7 +534,7 @@ export async function startClaudeCodeProcess(
 
   const inheritedEnvironment = claudeChildEnvironment(
     process.env,
-    mode,
+    config.permissionBridge ? "full_access" : mode,
     userCredentials,
   );
   const taskEnvironment = strict
@@ -518,7 +550,7 @@ export async function startClaudeCodeProcess(
   );
   const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
   const workspaceProtection =
-    mode === "safe_write" && workspace
+    mode === "safe_write" && workspace && !config.permissionBridge
       ? protectWorkspaceFromRemoval(workspace, input.profile)
       : undefined;
   const requestedSessionId = input.sessionId?.trim();
@@ -537,11 +569,25 @@ export async function startClaudeCodeProcess(
         sessionId,
         resume,
         model: config.model,
+        ...(config.permissionBridge
+          ? {
+              permissionHook:
+                'node "' +
+                join(
+                  __dirname.replace(
+                    /app\.asar([\\/]|$)/,
+                    "app.asar.unpacked$1",
+                  ),
+                  "runtime-permission-hook.cjs",
+                ) +
+                '"',
+            }
+          : {}),
       }),
     ],
     {
       cwd,
-      env: taskEnvironment,
+      env: { ...taskEnvironment, ...config.permissionBridge?.environment },
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],

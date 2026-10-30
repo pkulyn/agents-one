@@ -1,3 +1,4 @@
+import type { RuntimePermissionBridge } from "./runtime-tool-permissions";
 import { piNativeToolsExtensionSource } from "./pi-native-tools";
 import {
   createPiQueryContext,
@@ -48,6 +49,7 @@ const SECRET_VALUE =
   /((?:authorization|api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;]+)/gi;
 
 export interface PiRuntimeConfig {
+  permissionBridge?: RuntimePermissionBridge;
   executablePath?: string;
   model?: string;
   workspace?: string;
@@ -1085,6 +1087,32 @@ function piPrivateConfigRoot(cwd: string): string {
   return resolve(cwd, value);
 }
 
+export function piAutomaticPermissionExtension(profile?: string): string {
+  const directory = join(
+    agentsOneProfileHome(profile),
+    "desktop",
+    "pi-permissions",
+  );
+  mkdirSync(directory, { recursive: true });
+  const file = join(directory, "automatic.mjs");
+  writeFileSync(
+    file,
+    `export default function(pi) {
+    pi.on("tool_call", async event => {
+      try {
+        const url = new URL(process.env.AGENTS_ONE_PERMISSION_URL || "");
+        if (url.protocol !== "http:" || url.hostname !== "127.0.0.1") throw Error();
+        const response = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + process.env.AGENTS_ONE_PERMISSION_TOKEN, "Content-Type": "application/json" }, body: JSON.stringify({ name: event.toolName, input: event.input || {} }) });
+        if (response.ok && (await response.json()).allowed === true) return;
+      } catch {}
+      return { block: true, reason: "[Agents One 权限不足] 本次工具请求未获授权，未执行；删除需要本次确认。" };
+    });
+  }`,
+    "utf8",
+  );
+  return file;
+}
+
 /** Native Pi hook: every nested tool call receives the same check. */
 // @lat: [[runtime-chat#Pi read-only tool boundary]]
 export function piReadOnlyExtensionSource(
@@ -1179,18 +1207,19 @@ export async function startPiProcess(
   const mode = input.mode || "analysis";
   let invocation = piInvocation(configuredExecutable(config));
   const workspace = requestedWorkspace(config, input);
-  if ((mode === "implementation" || mode === "full_access") && !workspace) {
+  if (mode === "implementation" && !workspace) {
     throw new Error(
       "Pi full-access tasks require a task-specific project folder.",
     );
   }
 
+  const bridgedAuto = mode === "safe_write" && Boolean(config.permissionBridge);
   const strict =
-    mode === "analysis" || mode === "safe_write"
+    mode === "analysis" || (mode === "safe_write" && !bridgedAuto)
       ? await verifyPiStrictCapabilities(invocation)
       : undefined;
   let nativeMetadata: Awaited<ReturnType<typeof inspectPiVersion>> | undefined;
-  if (mode === "full_access") {
+  if (mode === "full_access" || bridgedAuto) {
     try {
       nativeMetadata = await inspectPiVersion(invocation);
     } catch {
@@ -1241,7 +1270,7 @@ export async function startPiProcess(
   const sessionId = input.sessionId?.trim() || `pi-${randomUUID()}`;
   const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
   const workspaceProtection =
-    mode === "safe_write" && workspace
+    mode === "safe_write" && workspace && !bridgedAuto
       ? protectWorkspaceFromRemoval(workspace, input.profile)
       : undefined;
   strict?.assertUnchanged();
@@ -1259,7 +1288,10 @@ export async function startPiProcess(
             piNativeToolsExtension(input.profile),
           ]
         : []),
-      ...(mode === "analysis" || mode === "safe_write"
+      ...(bridgedAuto
+        ? ["--extension", piAutomaticPermissionExtension(input.profile)]
+        : []),
+      ...(mode === "analysis" || (mode === "safe_write" && !bridgedAuto)
         ? [
             "--extension",
             piReadOnlyExtension(
@@ -1283,7 +1315,7 @@ export async function startPiProcess(
           ]
         : []),
       ...piExecArgs(
-        mode,
+        bridgedAuto ? "full_access" : mode,
         runtimePrompt,
         sessionId,
         sessionsRoot(input.profile),
@@ -1294,7 +1326,11 @@ export async function startPiProcess(
     ],
     {
       cwd,
-      env: queryContext?.environment || piChildEnvironment(process.env, mode),
+      env: {
+        ...(queryContext?.environment ||
+          piChildEnvironment(process.env, bridgedAuto ? "full_access" : mode)),
+        ...config.permissionBridge?.environment,
+      },
       shell: false,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],

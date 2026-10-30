@@ -51,8 +51,6 @@ export default {
       "This Runtime did not declare mid-run steering support. The message was preserved without being sent or interrupting the task.",
     readOnlyBranch:
       "This is a read-only analysis branch. Writing requires a separate implementation branch with its own worktree. The message was not sent.",
-    fullAccessRequiresProject:
-      "Select a project folder before using full access.",
     collaborationSaveFailed:
       "Could not save the collaboration plan. Try again later.",
     currentUserRequest: "Current user request:\n{{prompt}}",
@@ -161,13 +159,14 @@ export default {
     readOnly: "Read only",
     fullAccess: "Full access",
     autoHint:
-      "Default: read, query, create and edit; cannot move or delete existing files",
+      "Read, query, create and edit; document deletion requires confirmation",
     readOnlyHint:
       "Can use read, search and query tools; cannot create, edit, move or delete files",
     unavailable: "This Runtime did not declare usable write permissions",
     remoteFullHint:
-      "Full access on the remote host; local projects require separate authorization",
-    fullHint: "Can create, edit, move, or delete project files",
+      "Read, create and edit on the remote host; deletion needs no further confirmation",
+    fullHint:
+      "Read, create and edit; document deletion needs no further confirmation",
   },
   isolation: {
     worktree: "Worktree branch",
@@ -207,7 +206,7 @@ export default {
     rolePermission: "Role permission",
     inheritPermission: "Inherit task permission (current: {{permission}})",
     fullAccessOption:
-      "Full access (create and edit; deletion requires confirmation)",
+      "Full access (read, create and edit; no further deletion confirmation)",
     shareHint:
       "Share with the collaboration so later roles can read this exchange",
     currentAgent: "Current agent",

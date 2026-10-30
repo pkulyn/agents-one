@@ -45,6 +45,10 @@ export default defineConfig({
           }
           for (const [entry, fileName] of [
             [
+              "src/main/runtime-permission-hook.ts",
+              "runtime-permission-hook.cjs",
+            ],
+            [
               "src/main/mobile-control/project-text-write-worker.ts",
               "project-text-write-worker.cjs",
             ],

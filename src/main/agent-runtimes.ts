@@ -1,3 +1,10 @@
+import { respondToAgentsOneRemotePermission } from "./agents-one-remote-gateway";
+import {
+  createRuntimePermissionBridge,
+  promptRuntimeDeletion,
+  requiresDeletionConfirmation,
+  type RuntimePermissionBridge,
+} from "./runtime-tool-permissions";
 import { claudeControlScope } from "./claude-command-authority";
 import { piControlScope, piNativeCommandContext } from "./pi-command-authority";
 import { getActiveProfileNameSync } from "./utils";
@@ -206,12 +213,15 @@ interface RuntimeRunRecord {
   claudeStream?: ClaudeStreamState;
   timeout?: NodeJS.Timeout;
   monitorInactivity?: boolean;
+  permissionBridge?: RuntimePermissionBridge;
   inactivityTimeout?: NodeJS.Timeout;
   abortHandle?: () => void;
   cancelRequested: boolean;
   /** Only this executor defers cancellation during Native preparation until cleanup is verified. */
   controlledProjectWrite?: true;
   taskTimeoutMs: number;
+  taskMode?: AgentRuntimeTaskInput["mode"];
+  remotePermissionRequests?: Set<string>;
   terminationStatus?: "cancelled" | "timed_out";
   codex?: {
     cancel: () => Promise<void>;
@@ -4243,6 +4253,43 @@ function applyAgentsOneRemoteGatewayRun(
   record: RuntimeRunRecord,
   remoteRun: Awaited<ReturnType<typeof getAgentsOneRemoteGatewayRun>>,
 ): AgentRuntimeRun {
+  if (
+    remoteRun.status === "running" &&
+    record.remoteGateway &&
+    remoteRun.permissionRequests?.length
+  ) {
+    const gateway = record.remoteGateway;
+    record.remotePermissionRequests ||= new Set();
+    const requests = record.remotePermissionRequests;
+    for (const request of remoteRun.permissionRequests) {
+      if (requests.has(request.id)) continue;
+      requests.add(request.id);
+      const active = (): boolean =>
+        record.run.status === "running" && !record.cancelRequested;
+      void (async () => {
+        const runtime = listAgentRuntimes().find(
+          (item) => item.id === record.run.runtimeId,
+        );
+        const allowed =
+          active() &&
+          (record.taskMode === "full_access" ||
+            (record.taskMode === "safe_write" &&
+              (!requiresDeletionConfirmation(request.name, request.input) ||
+                (await promptRuntimeDeletion(
+                  runtime?.name || record.run.runtimeId,
+                  request.name,
+                  request.input,
+                )))));
+        await respondToAgentsOneRemotePermission(
+          gateway.config,
+          gateway.runId,
+          request.id,
+          allowed && active(),
+          runtime ? runtimeAuth(runtime) : undefined,
+        );
+      })().catch(() => requests.delete(request.id));
+    }
+  }
   const assistantOutput = remoteRun.events?.length
     ? [...remoteRun.events]
         .reverse()
@@ -4547,6 +4594,7 @@ function finishRuntimeRun(
   if (record.run.status !== "running") return { ...record.run };
   if (record.timeout) clearTimeout(record.timeout);
   if (record.inactivityTimeout) clearTimeout(record.inactivityTimeout);
+  record.permissionBridge?.dispose();
   record.monitorInactivity = false;
   if (record.workspaceGateway) {
     const gateway = record.workspaceGateway;
@@ -4938,6 +4986,7 @@ export async function startAgentRuntimeTask(
       ? { controlledProjectWrite: true as const }
       : {}),
     taskTimeoutMs: task.timeoutMs,
+    taskMode: task.mode,
     // Explicit per-task budgets (schedules/policy) remain intentional limits.
     monitorInactivity:
       input.timeoutMs === undefined &&
@@ -4983,6 +5032,46 @@ export async function startAgentRuntimeTask(
     hasWorkspace: Boolean(task.workspace),
   });
 
+  if (
+    task.mode === "safe_write" &&
+    !mobileExecution &&
+    !isGatewayTransport(runtime) &&
+    !isLocalWebTransport(runtime)
+  ) {
+    try {
+      record.permissionBridge = await createRuntimePermissionBridge(
+        async (name, input) => {
+          if (record.run.status !== "running" || record.cancelRequested)
+            return false;
+          if (!requiresDeletionConfirmation(name, input)) return true;
+          appendRuntimeEvent(
+            record,
+            "progress",
+            runtime.name + " 请求删除文件或文档，等待本次确认。",
+            { code: "deletion_confirmation" },
+          );
+          const allowed = await promptRuntimeDeletion(
+            runtime.name,
+            name,
+            input,
+          );
+          return (
+            allowed &&
+            record.run.status === "running" &&
+            !record.cancelRequested
+          );
+        },
+      );
+    } catch (error) {
+      return finishRuntimeRun(record, "failed", {
+        error: "无法建立本轮删除确认通道：" + String(error),
+      });
+    }
+    if (record.run.status !== "running" || record.cancelRequested) {
+      record.permissionBridge.dispose();
+      return { ...record.run };
+    }
+  }
   let dispatchPrompt = withRuntimePermissionContext(task.prompt, task.mode);
   let dispatchWorkspaceRef = task.workspaceRef;
   const unifiedGatewayRuntime = isAgentsOneGatewayRuntime(runtime);
@@ -5020,11 +5109,11 @@ export async function startAgentRuntimeTask(
             ? "safe_write"
             : "read";
       const requiredOperations =
-        permission === "write"
-          ? (["list", "read", "write", "move", "delete"] as const)
+        permission === "read"
+          ? (["list", "read"] as const)
           : permission === "safe_write"
             ? (["list", "read", "write"] as const)
-            : (["list", "read"] as const);
+            : (["list", "read", "write", "move", "delete"] as const);
       const missingOperations = requiredOperations.filter(
         (operation) => !capabilities.operations.includes(operation),
       );
@@ -5038,7 +5127,14 @@ export async function startAgentRuntimeTask(
         runtimeId: runtime.id,
         rootPath: task.workspace,
         permission: permission === "read" ? "read" : "write",
-        operations: [...requiredOperations],
+        operations: [
+          ...requiredOperations,
+          ...(permission === "safe_write"
+            ? capabilities.operations.filter(
+                (operation) => operation === "move" || operation === "delete",
+              )
+            : []),
+        ],
         // A workspace Grant may never outlive this desktop task, the desktop
         // safety ceiling, or the Relay's advertised maximum lifetime.
         expiresAt: workspaceGrantExpiresAt(
@@ -5052,12 +5148,23 @@ export async function startAgentRuntimeTask(
       });
       const gateway = new OutboundRemoteWorkspaceGateway(config, grant, {
         confirmDelete: async (request) => {
+          if (record.run.status !== "running" || record.cancelRequested)
+            return false;
+          if (task.mode === "full_access") return true;
           appendRuntimeEvent(
             record,
             "progress",
             `${runtime.name} 请求删除项目文件 ${request.path}，等待本机确认。`,
           );
-          return promptRemoteWorkspaceDelete(runtime.name, request.path);
+          const allowed = await promptRemoteWorkspaceDelete(
+            runtime.name,
+            request.path,
+          );
+          return (
+            allowed &&
+            record.run.status === "running" &&
+            !record.cancelRequested
+          );
         },
       });
       await gateway.register();
@@ -5094,6 +5201,9 @@ export async function startAgentRuntimeTask(
           agent: runtime.config.agent,
           workspace: runtime.config.workspace,
           timeoutMs: runtime.config.timeoutMs,
+          ...(record.permissionBridge
+            ? { permissionBridge: record.permissionBridge }
+            : {}),
         },
         {
           ...task,
@@ -5236,6 +5346,7 @@ export async function startAgentRuntimeTask(
           workspaceRef: dispatchWorkspaceRef,
           timeoutSeconds: Math.ceil(task.timeoutMs / 1_000),
           permission: gatewayPermission,
+          permissionMode: task.mode,
         },
         auth,
       );
@@ -5355,6 +5466,9 @@ export async function startAgentRuntimeTask(
           executablePath: runtime.config.executablePath,
           model: task.model?.trim() || runtime.config.model,
           timeoutMs: runtime.config.timeoutMs,
+          ...(record.permissionBridge
+            ? { permissionBridge: record.permissionBridge }
+            : {}),
         },
         { ...task, prompt: dispatchPrompt },
         (chunk) => {
@@ -5513,6 +5627,9 @@ export async function startAgentRuntimeTask(
                 throw Error("Claude profile changed before task dispatch.");
             },
             timeoutMs: runtime.config.timeoutMs,
+            ...(record.permissionBridge
+              ? { permissionBridge: record.permissionBridge }
+              : {}),
           },
           { ...task, prompt: dispatchPrompt },
           (message) => {
@@ -5577,6 +5694,9 @@ export async function startAgentRuntimeTask(
           executablePath: runtime.config.executablePath,
           model: task.model?.trim() || runtime.config.model,
           timeoutMs: runtime.config.timeoutMs,
+          ...(record.permissionBridge
+            ? { permissionBridge: record.permissionBridge }
+            : {}),
         },
         { ...task, prompt: dispatchPrompt },
         (chunk) => {
@@ -5661,6 +5781,9 @@ export async function startAgentRuntimeTask(
           executablePath: runtime.config.executablePath,
           model: task.model?.trim() || runtime.config.model,
           timeoutMs: runtime.config.timeoutMs,
+          ...(record.permissionBridge
+            ? { permissionBridge: record.permissionBridge }
+            : {}),
         },
         { ...task, prompt: dispatchPrompt },
         (chunk) => {
@@ -5754,6 +5877,14 @@ export async function startAgentRuntimeTask(
   void sendMessage(
     dispatchPrompt,
     {
+      authorizeTool: async (name, input) => {
+        if (record.run.status !== "running" || record.cancelRequested)
+          return false;
+        if (task.mode === "full_access") return true;
+        if (task.mode === "safe_write")
+          return record.permissionBridge?.authorize(name, input) ?? false;
+        return false;
+      },
       onChunk: (chunk) => {
         if (record.run.status !== "running") return;
         appendOutputEvent(record, "hermes", chunk);
