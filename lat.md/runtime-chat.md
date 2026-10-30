@@ -367,3 +367,13 @@ Read-only and automatic OpenCode tasks reject explicitly selected projects overl
 Stopping a single Runtime task keeps its result observer alive until the terminal conversation checkpoint is durable and the composer can accept the next turn.
 
 The cancel request does not itself clear the active run or stop terminal polling. Main-owned runs wait for Main persistence; Renderer-owned runs retain their existing serialized terminal writer. A rejected cancellation remains observable. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx]] covers both persistence owners from the stop button through cancellation and a durable follow-up answer.
+
+## Local task inactivity monitoring
+
+Ordinary local CLI/API tasks have no elapsed-time cutoff. Thinking, tool calls/results and nonempty output reset a ten-minute silence watchdog, even when transcript deduplication hides repeated activity.
+
+Silence emits one advisory progress event with code `runtime_inactive`; the run stays active and its process is not cancelled. New activity removes the stale notice and rearms monitoring. Completion and manual cancellation clear the watchdog. Explicit task budgets, mobile policy execution, remote Gateway and browser limits retain their existing contracts.
+
+## Inactivity warning visibility
+
+The Runtime chat renders the inactivity event as a visible system notice, outside collapsed thinking rows, without marking an active tool failed or replacing the agent response.

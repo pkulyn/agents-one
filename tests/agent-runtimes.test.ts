@@ -3811,6 +3811,136 @@ describe("agent runtime registry", () => {
     ).toBe("Read");
   });
 
+  // @lat: [[runtime-chat#Local task inactivity monitoring]]
+  it("keeps active local work running for twelve hours and only warns on silence", async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtimes } = await loadModules();
+      runtimes.saveAgentRuntime({
+        id: "claude-long-running",
+        name: "Claude",
+        kind: "claude-code",
+        location: "local",
+        enabled: true,
+        config: {
+          executablePath: "claude",
+          transport: "cli",
+          timeoutMs: 1_000,
+        },
+      });
+      let output!: (chunk: string) => void;
+      let complete!: (result: {
+        output: string;
+        artifacts: never[];
+        inputArtifacts: never[];
+      }) => void;
+      const completion = new Promise<{
+        output: string;
+        artifacts: never[];
+        inputArtifacts: never[];
+      }>((resolve) => {
+        complete = resolve;
+      });
+      const cancel = vi.fn(async () => undefined);
+      startClaudeCodeProcessMock.mockImplementationOnce(
+        (_config, _task, onOutput) => {
+          output = onOutput;
+          return Promise.resolve({ cancel, completion });
+        },
+      );
+      const run = await runtimes.startAgentRuntimeTask("claude-long-running", {
+        prompt: "Long research",
+      });
+      const activity =
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [{ type: "thinking", thinking: "Checking evidence" }],
+          },
+        }) + "\n";
+      // Identical thinking is deduplicated in the timeline but still proves activity.
+      for (let i = 0; i < 80; i++) {
+        await vi.advanceTimersByTimeAsync(9 * 60_000);
+        output(activity);
+      }
+      let current = await runtimes.getAgentRuntimeRun(run.id);
+      expect(current?.status).toBe("running");
+      expect(
+        current?.events?.some((event) => event.code === "runtime_inactive"),
+      ).toBe(false);
+      expect(cancel).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10 * 60_000 - 1);
+      expect(
+        (await runtimes.getAgentRuntimeRun(run.id))?.events?.some(
+          (event) => event.code === "runtime_inactive",
+        ),
+      ).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      current = await runtimes.getAgentRuntimeRun(run.id);
+      expect(current?.status).toBe("running");
+      expect(
+        current?.events?.filter((event) => event.code === "runtime_inactive"),
+      ).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(
+        (await runtimes.getAgentRuntimeRun(run.id))?.events?.filter(
+          (event) => event.code === "runtime_inactive",
+        ),
+      ).toHaveLength(1);
+      expect(cancel).not.toHaveBeenCalled();
+      output(
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "call-1",
+                name: "Read",
+                input: { path: "README.md" },
+              },
+            ],
+          },
+        }) + "\n",
+      );
+      expect(
+        (await runtimes.getAgentRuntimeRun(run.id))?.events?.some(
+          (event) => event.code === "runtime_inactive",
+        ),
+      ).toBe(false);
+      await vi.advanceTimersByTimeAsync(9 * 60_000);
+      output(
+        JSON.stringify({
+          type: "user",
+          message: {
+            content: [
+              { type: "tool_result", tool_use_id: "call-1", content: "done" },
+            ],
+          },
+        }) + "\n",
+      );
+      await vi.advanceTimersByTimeAsync(9 * 60_000);
+      expect(
+        (await runtimes.getAgentRuntimeRun(run.id))?.events?.some(
+          (event) => event.code === "runtime_inactive",
+        ),
+      ).toBe(false);
+      complete({ output: "done", artifacts: [], inputArtifacts: [] });
+      await vi.advanceTimersByTimeAsync(20 * 60_000);
+      expect((await runtimes.getAgentRuntimeRun(run.id))?.status).toBe(
+        "succeeded",
+      );
+      expect(
+        (await runtimes.getAgentRuntimeRun(run.id))?.events?.some(
+          (event) => event.code === "runtime_inactive",
+        ),
+      ).toBe(false);
+      expect(cancel).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("times out a local Claude Code runtime and preserves captured output", async () => {
     vi.useFakeTimers();
     try {
