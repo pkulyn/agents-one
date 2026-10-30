@@ -224,6 +224,33 @@ describe("OpenCode ACP adapter", () => {
     expect(openCodeWindowsEnvironment(source, "linux")).toEqual(source);
   });
 
+  // @lat: [[plugin-sdk#ACP turn deadlines#Ordinary turns have no prompt deadline]]
+  it("lets an ordinary prompt finish beyond a configured control timeout", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "opencode-acp-unbounded-"));
+    try {
+      const started = await startOpenCodeProcess(
+        {
+          executablePath: process.execPath,
+          acpArgs: ["-e", lifecycleAcpScript(300)],
+          timeoutMs: 100,
+        },
+        {
+          prompt: "long",
+          mode: "analysis",
+          workspace,
+          disablePromptDeadline: true,
+        },
+        () => undefined,
+        () => undefined,
+      );
+      const result = await started.completion;
+      expect(result.error).toBeUndefined();
+      expect(result.output).toBe("LONG-TURN-OK");
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   // @lat: [[plugin-sdk#ACP turn deadlines#Configured deadline remains bounded]]
   it("enforces the configured prompt deadline independently of initialization", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "opencode-acp-deadline-"));
