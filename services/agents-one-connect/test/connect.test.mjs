@@ -512,6 +512,22 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
     desktop.send(
       JSON.stringify({
         type: "request",
+        requestId: "permission-route-e2e",
+        method: "POST",
+        path: `/runs/${started.body.id}/permissions/permission_expired`,
+        runtimeId: runtime.runtimeId,
+        body: { allowed: true },
+      }),
+    );
+    const expiredPermission = await withTimeout(
+      onceMessage(desktop),
+      "Expired permission response through Connect",
+    );
+    assert.equal(expiredPermission.status, 409);
+
+    desktop.send(
+      JSON.stringify({
+        type: "request",
         requestId: "run-after-events-e2e",
         method: "POST",
         path: "/runs",

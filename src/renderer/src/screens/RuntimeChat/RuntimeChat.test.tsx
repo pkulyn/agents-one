@@ -1821,9 +1821,7 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(screen.getByText("自动")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "管理本轮任务权限" }));
     expect(
-      screen.getByText(
-        "默认权限，可读取、查询、创建和编辑；不可移动或删除原有文件",
-      ),
+      screen.getByText("可读取、查询、创建和编辑，删除文档需要授权确认"),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitemradio", { name: /自动/ }));
     fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
@@ -1910,6 +1908,36 @@ describe("RuntimeChat inputs and persistence", () => {
       "title",
       "OpenCode ACP 当前未声明可切换的思考等级，思考过程由当前模型自动决定。",
     );
+  });
+
+  it("dispatches full access without selecting a project and displays the new permission descriptions", async () => {
+    render(
+      <RuntimeChat
+        runId="chat-full-without-project"
+        runtime={codexRuntime}
+        profile="default"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "管理本轮任务权限" }));
+    expect(
+      screen.getByText("可读取、查询、创建和编辑，删除文档需要授权确认"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("可读取、创建和编辑，删除文档不需要再授权确认"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /完全访问/ }));
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await waitFor(() =>
+      expect(startAgentRuntimeTask).toHaveBeenCalledWith(
+        "codex-local",
+        expect.objectContaining({
+          mode: "full_access",
+          fullAccessConfirmed: true,
+        }),
+      ),
+    );
+    expect(startAgentRuntimeTask.mock.calls[0][1].workspace).toBeUndefined();
+    expect(selectFolder).not.toHaveBeenCalled();
   });
 
   it("starts a full-access run after the user chooses the permission", async () => {

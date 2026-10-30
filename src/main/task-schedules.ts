@@ -1004,11 +1004,6 @@ async function createTaskScheduleUnlocked(
       "Scheduled workspace capability is unavailable or no longer authorized.",
     );
   }
-  if (input.mode === "full_access" && !workspace && !workspaceId) {
-    throw new Error(
-      "Full access requires an explicitly selected project folder.",
-    );
-  }
   const now = Date.now();
   const store = readStore(profile);
   if (store.schedules.length >= MAX_SCHEDULES)
@@ -1097,11 +1092,6 @@ async function updateTaskScheduleUnlocked(
   if (workspaceId && !resolveAuthorizedWorkspaceId(workspaceId)) {
     throw new Error(
       "Scheduled workspace capability is unavailable or no longer authorized.",
-    );
-  }
-  if (mode === "full_access" && !workspace && !workspaceId) {
-    throw new Error(
-      "Full access requires an explicitly selected project folder.",
     );
   }
   const now = Date.now();

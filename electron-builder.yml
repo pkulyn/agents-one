@@ -37,6 +37,7 @@ files:
   - "!{.env,.env.*,.npmrc,pnpm-lock.yaml}"
   - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
 asarUnpack:
+  - out/main/runtime-permission-hook.cjs
   - resources/**
   - node_modules/better-sqlite3/prebuilds/*.node
 extraResources:
