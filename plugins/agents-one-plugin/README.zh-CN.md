@@ -182,3 +182,9 @@ CLI Adapter 只以参数数组启动进程，不调用 Shell，也不替换 CLI 
 - SDK v0.1.2 只声明 Adapter 在 `capabilities.eventStream` 中明确启用的增强能力，并在追加 provider 事件后再生成 `run.completed` / `run.failed`；Adapter 不再需要直接操作 `record.journal` 或拦截 `/capabilities`。
 - SDK v0.1.5 延续数字 sequence 或稳定事件 ID 的 SSE 恢复和代理连接兼容；首轮即向 Adapter 传递 Gateway conversationId，持久化 Run 记录用于后续恢复 Provider sessionId。两种身份须分开，不能把 Gateway ID 当成 OpenCode ACP sessionId。OpenCode 优先使用 `session/resume`，也兼容 `loadSession` 和空恢复响应，加载历史不重复输出旧消息。远端维护者需升级 SDK、保留 `statePath` 并重启自身服务，再复测真实四轮和重启续接；桌面更新不会自动升级远端插件。
 - 为显示真实模型和上下文占用，适配器应在 `getRun` 或事件的 `data.model`、`data.usage` 中返回 `model_name`/`modelId`、`context_window_tokens`、`context_used` 等真实字段，不要猜测或伪造。
+
+### Hermes 原生审批桥
+
+已有 Hermes API 审批机制的接入，可使用 `@agents-one/plugin-sdk/hermes-approval` 的 `createHermesApprovalForwarder({ respond, stop })`。适配器创建 Run 后，调用 `bind(sdkRunId, { vendorRunId, runtimeId }, context.authorizeTool)`；Connector 为每次原生 `approval.request` 分配唯一 `approvalRequestId`，适配器用 `forward(sdkRunId, { approvalRequestId, command })` 转交本轮策略。
+
+`respond` 必须把相同原生 Run 和 request ID 发回 Connector。Connector 验证该请求仍是本 Run 唯一待处理审批、原生状态仍为 `waiting_for_approval` 后，才向原生接口发送 `once` 或 `deny`。取消或终态调用 `revoke(sdkRunId)`。重复事件不会重复确认，多个无法区分的原生审批会调用 `stop` 终止 Run；不能把一次授权提升为会话或永久授权。原生 API、适配器、Connector 三层都需支持该流程；只更新桌面无法替代远端升级。

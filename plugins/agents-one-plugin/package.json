@@ -11,7 +11,8 @@
     "./host": "./src/remote-cli-host.mjs",
     "./opencode": "./src/adapters/opencode-acp.mjs",
     "./cli": "./src/cli-adapter-plugin.mjs",
-    "./hermes": "./examples/hermes-or-hers-adapter.mjs"
+    "./hermes": "./examples/hermes-or-hers-adapter.mjs",
+    "./hermes-approval": "./src/hermes-approval-bridge.mjs"
   },
   "bin": {
     "agents-one-plugin-verify": "./bin/verify.mjs"
