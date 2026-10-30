@@ -43,7 +43,6 @@ export default {
       "当前 Runtime 未声明运行中纠偏能力；消息已保留，未发送也未中断任务。",
     readOnlyBranch:
       "此分支是只读分析分支；写入任务必须先创建独立 worktree 的实现分支。消息未发送。",
-    fullAccessRequiresProject: "完全访问需要先选择一个项目目录。",
     collaborationSaveFailed: "无法保存协作安排，请稍后重试。",
     currentUserRequest: "当前用户请求：\n{{prompt}}",
     taskFailed: "任务请求失败。",
@@ -142,11 +141,12 @@ export default {
     auto: "自动",
     readOnly: "只读",
     fullAccess: "完全访问",
-    autoHint: "默认权限，可读取、查询、创建和编辑；不可移动或删除原有文件",
+    autoHint: "可读取、查询、创建和编辑，删除文档需要授权确认",
     readOnlyHint: "可调用读取、搜索和查询工具；不可创建、编辑、移动或删除文件",
     unavailable: "当前 Runtime 未声明可用的写入权限",
-    remoteFullHint: "远端主机完全访问；本机项目需另行授权",
-    fullHint: "可创建、编辑、移动或删除项目文件",
+    remoteFullHint:
+      "可读取、创建和编辑，删除文档不需要再授权确认；操作在远端主机执行",
+    fullHint: "可读取、创建和编辑，删除文档不需要再授权确认",
   },
   isolation: {
     worktree: "Worktree 分支",
@@ -184,7 +184,7 @@ export default {
     instructionLabel: "给当前角色的人工指令",
     rolePermission: "本角色权限",
     inheritPermission: "继承任务权限（当前：{{permission}}）",
-    fullAccessOption: "完全访问（可创建、编辑，删除需确认）",
+    fullAccessOption: "完全访问（可读取、创建和编辑，删除无需再次确认）",
     shareHint: "共享给协作组，供后续角色读取本轮问答",
     currentAgent: "当前智能体",
     reassignRole: "改派当前角色",

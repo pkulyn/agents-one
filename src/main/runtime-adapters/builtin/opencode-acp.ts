@@ -1,7 +1,8 @@
+import type { RuntimePermissionBridge } from "../../runtime-tool-permissions";
 import { execFile } from "node:child_process";
 import {
   runtimeRemovalBlockedMessage,
-  isRuntimeRemovalOperation,
+  isToolDeletion,
 } from "../../../shared/runtime-permissions";
 import {
   existsSync,
@@ -153,7 +154,21 @@ export function openCodePermissionEnvironment(
   mode: AgentRuntimeTaskInput["mode"],
   source: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  if (mode === "full_access" || mode === "implementation") return { ...source };
+  if (mode === "full_access" || mode === "implementation") {
+    const configured = source.OPENCODE_PERMISSION
+      ? JSON.parse(source.OPENCODE_PERMISSION)
+      : {};
+    return {
+      ...source,
+      OPENCODE_PERMISSION: JSON.stringify({
+        ...configured,
+        "*": "allow",
+        edit: "allow",
+        bash: "allow",
+        task: "allow",
+      }),
+    };
+  }
   const inherited = source.OPENCODE_PERMISSION
     ? JSON.parse(source.OPENCODE_PERMISSION)
     : {};
@@ -180,20 +195,10 @@ export function openCodePermissionDenial(
 ): string | undefined {
   const kind = (text(toolCall.kind) || "").toLowerCase();
   const title = text(toolCall.title) || "";
-  const rawInput = isRecord(toolCall.rawInput) ? toolCall.rawInput : {};
-  const destructive =
-    ["delete", "move"].includes(kind) ||
-    isRuntimeRemovalOperation(title, rawInput);
-  if (mode === "safe_write" && destructive)
-    return "[Agents One 权限不足] 当前为自动权限，移动或删除原有文件未执行；请切换为完全访问后重新发送任务。";
-  if (
-    mode === "safe_write" &&
-    !["read", "search", "fetch", "think", "edit"].includes(kind)
-  )
-    return "[Agents One 权限不足] 当前为自动权限，不透明终端命令或未声明的工具未执行；请切换为完全访问后重新发送任务。";
   if (
     mode === "analysis" &&
-    !["read", "search", "fetch", "think"].includes(kind)
+    (!["read", "search", "fetch", "think"].includes(kind) ||
+      isToolDeletion(title, { ...toolCall, input: toolCall.rawInput }))
   )
     return (
       "[Agents One 权限不足] 当前为只读权限，已阻止 " +
@@ -238,6 +243,7 @@ interface OpenCodeAcpClientOptions {
   mode: AgentRuntimeTaskInput["mode"];
   onUpdate: (params: JsonRecord) => void;
   onPermissionDenied?: (reason: string) => void;
+  authorizeTool?: RuntimePermissionBridge["authorize"];
 }
 
 interface OpenCodeSessionInfo {
@@ -292,15 +298,15 @@ class OpenCodeAcpClient {
       return;
     }
     if ((typeof id === "number" || typeof id === "string") && method) {
-      this.handleAgentRequest(id, method, params);
+      void this.handleAgentRequest(id, method, params);
     }
   }
 
-  private handleAgentRequest(
+  private async handleAgentRequest(
     id: string | number,
     method: string,
     params: JsonRecord,
-  ): void {
+  ): Promise<void> {
     if (method === "session/request_permission") {
       const deny = (reason: string): void => {
         this.options.onPermissionDenied?.(reason);
@@ -323,6 +329,28 @@ class OpenCodeAcpClient {
       if (denial) {
         deny(denial);
         return;
+      }
+      if (
+        this.options.mode === "safe_write" &&
+        isToolDeletion(String(toolCall.title || toolCall.kind || ""), {
+          ...toolCall,
+          input: toolCall.rawInput,
+        })
+      ) {
+        const allowed = await Promise.resolve()
+          .then(() =>
+            this.options.authorizeTool?.(
+              String(toolCall.title || toolCall.kind || "delete"),
+              { ...toolCall, input: toolCall.rawInput },
+            ),
+          )
+          .catch(() => false);
+        if (!allowed || this.closed) {
+          deny(
+            "[Agents One 权限不足] 本次删除未获授权，操作未执行；其他创建和编辑操作仍可继续。",
+          );
+          return;
+        }
       }
       const preferred = oneTimePermissionOption(params.options);
       if (!preferred) {
@@ -855,6 +883,7 @@ export interface OpenCodeProbeResult {
 }
 
 export interface OpenCodeRuntimeConfig {
+  permissionBridge?: RuntimePermissionBridge;
   executablePath?: string;
   acpArgs?: string[];
   model?: string;
@@ -1174,7 +1203,7 @@ export async function startOpenCodeProcess(
   // must use the workspace explicitly selected for this conversation; falling
   // back to the saved path would bypass the current workspace capability.
   const workspace = configuredWorkspace(input.workspace);
-  if ((mode === "full_access" || mode === "implementation") && !workspace) {
+  if (mode === "implementation" && !workspace) {
     throw new Error("OpenCode 文件任务需要一个已授权的项目工作区。");
   }
   // Reuse the existing private-data overlap guard before staging or dispatch.
@@ -1240,11 +1269,12 @@ export async function startOpenCodeProcess(
   const toolStates = new Map<string, OpenCodeToolState>();
   const beforeWorkspace = workspace ? workspaceSnapshot(workspace) : undefined;
   const protection =
-    mode === "safe_write" && workspace
+    mode === "safe_write" && workspace && !config.permissionBridge
       ? protectWorkspaceFromRemoval(workspace, input.profile)
       : undefined;
   const client = new OpenCodeAcpClient(process, {
     mode,
+    authorizeTool: config.permissionBridge?.authorize,
     onPermissionDenied: (reason) => {
       permissionDenied = reason;
       const event: NormalizedRuntimeEvent = {

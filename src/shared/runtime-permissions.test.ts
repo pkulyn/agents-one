@@ -40,9 +40,9 @@ describe("Runtime permission semantics", () => {
     expect(readOnly).toContain("禁止创建、编辑、覆盖、移动和删除");
     expect(readOnly).toContain("切换为“自动”");
     const automatic = runtimePermissionInstruction("safe_write");
-    expect(automatic).toContain("禁止移动或删除原有文件");
-    expect(automatic).toContain("在执行前说明");
-    expect(automatic).toContain("切换为“完全访问”");
+    expect(automatic).toContain("终端、脚本、MCP 和文档生成工具");
+    expect(automatic).toContain("删除文件或文档前必须请求用户确认本次删除");
+    expect(automatic).toContain("用户拒绝时不得执行");
     for (const mode of [
       "analysis",
       "safe_write",

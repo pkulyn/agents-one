@@ -1,3 +1,4 @@
+import { toolPermissionDecision } from "./tool-permission-policy.mjs";
 import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -108,6 +109,11 @@ function requestFingerprint(input) {
       JSON.stringify({
         runtimeId: input?.runtimeId || input?.input?.runtimeId || null,
         mode: input?.mode || null,
+        permissionMode:
+          input?.execution?.permissionMode ||
+          input?.input?.permissionMode ||
+          null,
+        permission: input?.execution?.permission || null,
         conversationId: input?.conversationId || null,
         text: input?.input?.text || "",
         model: input?.model || input?.input?.model || null,
@@ -130,6 +136,13 @@ function runPayload(record) {
     ...(record.requestedModel ? { requestedModel: record.requestedModel } : {}),
     ...(record.model ? { actualModel: record.model } : {}),
     ...(record.usage ? { usage: record.usage } : {}),
+    ...(record.permissionRequests?.size
+      ? {
+          permissionRequests: [...record.permissionRequests.values()].map(
+            ({ id, name, input }) => ({ id, name, input }),
+          ),
+        }
+      : {}),
     events: record.journal.snapshot(),
   };
 }
@@ -137,6 +150,11 @@ function runPayload(record) {
 function recordStatus(record, status) {
   if (!status || record.status === status) return;
   record.status = status;
+  if (!["queued", "running"].includes(status)) {
+    for (const request of record.permissionRequests?.values() || [])
+      request.resolve(false);
+    record.permissionRequests?.clear();
+  }
   if (status === "succeeded" && !record.terminalEvent) {
     record.terminalEvent = true;
     record.journal.append({
@@ -528,6 +546,12 @@ export function createRemoteGatewayPlugin({
             : {}),
           capabilities: {
             ...declaredCapabilities,
+            permissions: {
+              interactive: true,
+              deletionConfirmation: true,
+              policyVersion: 1,
+              modes: ["analysis", "safe_write", "full_access"],
+            },
             conversation: { stream: "sse", continuation: true },
             tasks: {
               start: true,
@@ -819,6 +843,47 @@ export function createRemoteGatewayPlugin({
             emit,
             runtimeId,
             publishArtifact: artifactPublisher(record),
+            authorizeTool: async (name, toolInput = {}) => {
+              if (
+                record.permissionRevoked ||
+                !["queued", "running"].includes(record.status)
+              )
+                return false;
+              const mode =
+                input.execution?.permissionMode ||
+                input.input?.permissionMode ||
+                ([
+                  "analysis",
+                  "safe_write",
+                  "full_access",
+                  "implementation",
+                ].includes(input.mode)
+                  ? input.mode
+                  : input.execution?.permission === "write"
+                    ? "full_access"
+                    : "analysis");
+              const decision = toolPermissionDecision(mode, name, toolInput);
+              if (decision !== "confirm") return decision === "allow";
+              if (!["queued", "running"].includes(record.status)) return false;
+              record.permissionRequests ||= new Map();
+              if (
+                record.permissionRequests.size >= 16 ||
+                JSON.stringify(toolInput).length > 256 * 1024
+              )
+                return false;
+              const requestId = "permission_" + randomUUID();
+              return new Promise((resolve) => {
+                record.permissionRequests.set(requestId, {
+                  id: requestId,
+                  name,
+                  input: toolInput,
+                  resolve: (allowed) => {
+                    record.permissionRequests.delete(requestId);
+                    resolve(allowed);
+                  },
+                });
+              });
+            },
           });
         } catch (cause) {
           runs.delete(id);
@@ -829,6 +894,32 @@ export function createRemoteGatewayPlugin({
         if (started?.sessionId) record.sessionId = String(started.sessionId);
         recordStatus(record, started?.status);
         return json(response, 202, runPayload(record));
+      }
+      const approvalRoute = url.pathname.match(
+        /^\/runs\/([^/]+)\/permissions\/([^/]+)$/,
+      );
+      if (request.method === "POST" && approvalRoute) {
+        const owner = runs.get(decodeURIComponent(approvalRoute[1]));
+        const approval = owner?.permissionRequests?.get(
+          decodeURIComponent(approvalRoute[2]),
+        );
+        if (!approval || !["queued", "running"].includes(owner.status))
+          return error(
+            response,
+            409,
+            "permission_unavailable",
+            "Permission request is no longer active.",
+          );
+        const body = await readJsonBody(request);
+        if (typeof body.allowed !== "boolean")
+          return error(
+            response,
+            422,
+            "invalid_permission",
+            "allowed must be boolean.",
+          );
+        approval.resolve(body.allowed);
+        return json(response, 200, { accepted: true });
       }
       const match = url.pathname.match(
         /^\/runs\/([^/]+)(?:\/(cancel|events))?$/,
@@ -860,6 +951,10 @@ export function createRemoteGatewayPlugin({
         }
         if (record.status === "cancelling")
           return json(response, 202, runPayload(record));
+        record.permissionRevoked = true;
+        for (const permission of record.permissionRequests?.values() || [])
+          permission.resolve(false);
+        record.permissionRequests?.clear();
         const accepted = await adapter.cancelRun(record.vendorRunId, record);
         if (accepted === false) {
           await refresh(record);
@@ -876,7 +971,7 @@ export function createRemoteGatewayPlugin({
             );
           }
         }
-        record.status = "cancelling";
+        recordStatus(record, "cancelling");
         record.journal.append({
           type: "run.status",
           data: { summary: "正在取消远程任务。" },
@@ -923,9 +1018,16 @@ export function createRemoteGatewayPlugin({
     server,
     listen: (port, host = "127.0.0.1") =>
       new Promise((resolve) => server.listen(port, host, resolve)),
-    close: () =>
-      new Promise((resolve, reject) =>
+    close: () => {
+      for (const run of runs.values()) {
+        run.permissionRevoked = true;
+        for (const permission of run.permissionRequests?.values() || [])
+          permission.resolve(false);
+        run.permissionRequests?.clear();
+      }
+      return new Promise((resolve, reject) =>
         server.close((cause) => (cause ? reject(cause) : resolve())),
-      ),
+      );
+    },
   };
 }
