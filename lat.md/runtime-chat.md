@@ -411,3 +411,9 @@ The Runtime chat renders the inactivity event as a visible system notice, outsid
 Hermes 原生审批必须经 Connector 和远端适配器转发到同一 SDK Run，才能在桌面逐次确认删除。重复事件不重复授权，取消后的迟到回复失效，无法区分的并行原生审批会终止执行。
 
 原生请求以独立 request ID 绑定 vendor Run 和 Runtime；回传仅允许 once/deny，不创建会话或永久授权。参见 `plugins/agents-one-plugin/src/hermes-approval-bridge.mjs` 的 `createHermesApprovalForwarder`。
+
+## Hermes Run policy before smart approval
+
+Hermes 的全局 Smart 审批不能覆盖 Agents One 本轮权限。带明确模式标记的 API Run 在已有串行工具授权钩子内先检查删除意图，逐次请求原生 Gateway 回调；其他客户端保持原有策略。
+
+自动模式允许文档生成与编辑；删除只接受本次 once，拒绝、超时、无回调或未知响应均阻止工具执行。完全访问直接继续本轮工具，读取模式阻止未知执行和删除。策略实现见 [[plugins/agents-one-plugin/examples/hermes_run_permissions.py#tool_permission_block]]，删除识别与桌面共享策略通过跨语言用例对照。
