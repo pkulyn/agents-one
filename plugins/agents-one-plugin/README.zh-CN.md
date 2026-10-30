@@ -188,3 +188,9 @@ CLI Adapter 只以参数数组启动进程，不调用 Shell，也不替换 CLI 
 已有 Hermes API 审批机制的接入，可使用 `@agents-one/plugin-sdk/hermes-approval` 的 `createHermesApprovalForwarder({ respond, stop })`。适配器创建 Run 后，调用 `bind(sdkRunId, { vendorRunId, runtimeId }, context.authorizeTool)`；Connector 为每次原生 `approval.request` 分配唯一 `approvalRequestId`，适配器用 `forward(sdkRunId, { approvalRequestId, command })` 转交本轮策略。
 
 `respond` 必须把相同原生 Run 和 request ID 发回 Connector。Connector 验证该请求仍是本 Run 唯一待处理审批、原生状态仍为 `waiting_for_approval` 后，才向原生接口发送 `once` 或 `deny`。取消或终态调用 `revoke(sdkRunId)`。重复事件不会重复确认，多个无法区分的原生审批会调用 `stop` 终止 Run；不能把一次授权提升为会话或永久授权。原生 API、适配器、Connector 三层都需支持该流程；只更新桌面无法替代远端升级。
+
+### Hermes Smart 审批的本轮优先级
+
+仅转发 `approval.request` 还不够：原生 Smart、YOLO 或永久白名单可能在发事件前自动放行删除。`examples/hermes_run_permissions.py` 提供独立的本轮前置策略，可安装为原生 `agent/agents_one_permissions.py`。接入层应把明确模式传入原生 API 的 `agents_one_permission_mode`，API 在本次专用 agent 上设置同名私有属性 `_agents_one_permission_mode`；原生 executor 在已有的串行 `_resolve_pre_tool_block` 内、其他策略前调用 `tool_permission_block(agent, function_name, final_args)`，返回字符串时阻止执行。标记请求的钩子加载或检查异常也必须阻止执行。
+
+该函数对删除直接使用本 Run 已绑定的 Gateway 决策回调，只接受 `resolved=True` 且 `choice=once`，不调用 Smart，不写会话或永久授权。无标记的其他客户端立即返回原有流程；不能全局修改 `approvals.mode` 来代替本轮策略。原生私有接口需核对实际版本和源码，并验证回调绑定、取消、并发和拒绝后文件保留；示例面向具备 `_await_gateway_decision` 等接口的原生 Hermes 接入。
