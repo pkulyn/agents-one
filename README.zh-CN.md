@@ -73,7 +73,7 @@
 
 | 组件           | 当前情况                                                                                                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Windows 桌面端 | [0.1.0 正式 Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.0)，提供 x64 安装版和便携版。                                              |
+| Windows 桌面端 | [0.1.1 正式 Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.1)，提供 x64 安装版和便携版。                                              |
 | Android        | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev)，Android 8.0 / API 26 起；开发签名、可调试的预发布版本。 |
 | 远程接入组件   | Plugin SDK **0.1.6**、Connector CLI **0.1.0**、Connect 服务 **0.1.1**，均从本仓库部署；当前不依赖已发布的 npm 包或项目托管公共服务。                   |
 | 其他平台       | 当前不提供 macOS、Linux 桌面端及 iOS 的公开安装包。Linux 可用于自行部署远程服务。                                                                      |
@@ -83,12 +83,12 @@ Windows 核心流程已通过限定范围的验收；其他模型、远程服务
 ### Windows 安装与校验
 
 1. 从[官方 Release](https://github.com/pkulyn/agents-one/releases/latest)下载以下两种包之一，同时下载同一版本的 `SHA256SUMS.txt`：
-   - `agents-one-0.1.0-setup.exe`：普通用户推荐，按向导安装到当前用户目录，不要求系统级安装权限。
-   - `agents-one-0.1.0-portable.exe`：无需安装，放在可写的本地目录后运行。**便携指程序免安装，不代表数据保存在 EXE 旁边**；默认数据位置见下文。
+   - `agents-one-0.1.1-setup.exe`：普通用户推荐，按向导安装到当前用户目录，不要求系统级安装权限。
+   - `agents-one-0.1.1-portable.exe`：无需安装，放在可写的本地目录后运行。**便携指程序免安装，不代表数据保存在 EXE 旁边**；默认数据位置见下文。
 2. 在下载目录打开 PowerShell，检查哈希是否与清单中**相同文件名**的一行一致：
 
    ```powershell
-   Get-FileHash .\agents-one-0.1.0-setup.exe -Algorithm SHA256
+   Get-FileHash .\agents-one-0.1.1-setup.exe -Algorithm SHA256
    # 选择便携版时，改为对应的 portable.exe 文件名
    Get-Content .\SHA256SUMS.txt
    ```
@@ -96,7 +96,7 @@ Windows 核心流程已通过限定范围的验收；其他模型、远程服务
 3. **SmartScreen：** Windows 安装包未签名，首次运行可能出现安全提示。确认来自官方 Release 且 SHA-256 一致后，如系统提供该选项，可选择“更多信息”→“仍要运行”。哈希不符、安全软件报毒或单位策略禁止时，请停止安装。[微软说明](https://learn.microsoft.com/zh-tw/windows/apps/package-and-deploy/smartscreen-reputation)
 4. 安装版按向导完成后，从 **Agents One** 快捷方式启动；便携版直接运行 EXE。应用与 CLI 都建议使用普通用户权限。托盘左键单击打开主窗，左键双击切换快捷输入条，再双击即可关闭；右键菜单可正常退出应用。
 
-**更新：** 0.1.0 安装包没有应用内更新检查，请手动查看 [Releases](https://github.com/pkulyn/agents-one/releases) 并下载安装。较新的源码构建可在**设置 → 关于与更新 → 检查更新**查询，发现新版后跳转 GitHub，由你校验并手动安装；应用不会自动下载或安装。升级前请在**设置 → 数据**备份并从托盘退出。安装版和便携版使用不同数据目录。当前没有 winget 或 Microsoft Store 安装包。
+**更新：** 0.1.0 安装包没有应用内更新检查，请手动查看 [Releases](https://github.com/pkulyn/agents-one/releases) 并下载安装。0.1.1 可在**设置 → 关于与更新 → 检查更新**查询，发现新版后跳转 GitHub，由你校验并手动安装；应用不会自动下载或安装。升级前请在**设置 → 数据**备份并从托盘退出。安装版和便携版使用不同数据目录。当前没有 winget 或 Microsoft Store 安装包。
 
 ### 接入本地智能体
 
