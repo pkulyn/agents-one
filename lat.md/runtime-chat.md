@@ -130,6 +130,8 @@ Saved assistant replies render verified file references as inline links and deli
 
 [[src/renderer/src/components/ConversationFiles.tsx#ConversationFiles]] preserves Markdown structure, exposes hover paths and native menus, and shows only provider-supplied revision summaries/diffs and their actual line counts. Missing files retain their prose or an unavailable artifact card. No history migration, global filesystem grant or fabricated Undo state is involved. [[tests/conversation-files.test.ts]] covers local references, remote isolation and restored artifact ownership; component tests exercise links, menus, cards and diff headers.
 
+[[tests/ipc-handlers.test.ts]] includes the dedicated conversation-files registration module when checking that every preload invocation has a matching scoped Main handler.
+
 [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.ts#runtimeConversationMessage]] converts image artifacts into local `MEDIA` tokens and non-image files into attachments. Local file artifacts are openable links rather than download-only chips: hover exposes the complete path, click opens the file, and the native context menu supports opening, copying the path, copying bounded document content, and revealing the file in the system explorer. Remote URLs and data payloads retain save/download behavior. Hiding artifact-publication cards therefore does not hide images or files.
 
 ## Ordered delivery and per-agent identity

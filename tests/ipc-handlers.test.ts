@@ -9,6 +9,7 @@ const ROOT = join(__dirname, "..");
 // to both the missing-handler and missing-preload checks below.
 const indexSrc = [
   "src/main/ipc/register.ts",
+  "src/main/ipc/conversation-files.ts",
   "src/main/app/updater.ts",
   "src/main/app/tray.ts",
   "src/main/mobile-control/execution-management-ipc.ts",
@@ -28,7 +29,7 @@ const profileMetaSrc = readFileSync(
  */
 function extractIpcHandleChannels(src: string): string[] {
   const channels: string[] = [];
-  const re = /ipcMain\.handle\(\s*["']([^"']+)["']/g;
+  const re = /(?:ipcMain|ipc)\.handle\(\s*["']([^"']+)["']/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src)) !== null) {
     channels.push(m[1]);
