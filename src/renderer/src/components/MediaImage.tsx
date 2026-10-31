@@ -33,8 +33,12 @@ function useMediaContextMenu(
  */
 export function MediaImage({
   token,
+  onContextMenuOverride,
+  title,
 }: {
   token: MediaToken;
+  onContextMenuOverride?: (event: React.MouseEvent) => void;
+  title?: string;
 }): React.JSX.Element {
   const { t } = useI18n();
   const runtimeArtifact = token.runtimeArtifact;
@@ -49,6 +53,10 @@ export function MediaImage({
   const resolvedToken = { ...token, src: resolved ?? token.src };
   const directContextMenu = useMediaContextMenu(resolvedToken);
   const onContextMenu = (event: React.MouseEvent): void => {
+    if (onContextMenuOverride) {
+      onContextMenuOverride(event);
+      return;
+    }
     if (!runtimeArtifact) {
       directContextMenu(event);
       return;
@@ -99,6 +107,7 @@ export function MediaImage({
         className="chat-media-image"
         src={resolved}
         alt={token.name}
+        title={title}
         onClick={() => setZoomed(true)}
         onContextMenu={onContextMenu}
         onError={() => setFailed(true)}

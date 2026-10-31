@@ -1,4 +1,12 @@
 export default {
+  files: {
+    openWith: "打开方式…",
+    copyAbsolute: "复制绝对路径",
+    copyRelative: "复制相对路径",
+    actions: "文件操作",
+    document: "文件",
+    unavailable: "文件暂不可用，可能已移动或尚未下载。",
+  },
   title: "新对话",
   sessionTitle: "对话 {{id}}",
   noModel: "未设置模型",
