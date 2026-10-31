@@ -1,4 +1,5 @@
 import { createScopedIpcMain } from "./sender-scope";
+import { registerConversationFileIpc } from "./conversation-files";
 import {
   readRendererConfigValue,
   writeRendererConfigValue,
@@ -1441,6 +1442,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
 
   registerArtifactFileMenuIpc(context.getMainWindow);
+  registerConversationFileIpc(context.getMainWindow, rawIpcMain);
 
   // Attachment staging — for pasted blobs that have no filesystem origin.
   ipcMain.handle(

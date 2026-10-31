@@ -1451,6 +1451,7 @@ export default function RuntimeChat({
 
   const nativeMessages = useMemo(() => {
     const history = runtimeConversationToChatMessages(messages, {
+      conversationId: conversationIdRef.current || undefined,
       getAgentContent,
       translate: t,
     });

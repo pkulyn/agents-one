@@ -1,5 +1,10 @@
 import type { AppLocale } from "../shared/i18n/types";
 import type {
+  ConversationFileRef,
+  ConversationFileAction,
+  ConversationFileInfo,
+} from "../shared/conversation-files";
+import type {
   MobileConnectionCommand,
   MobileConnectionResult,
 } from "../shared/mobile-connection";
@@ -536,6 +541,14 @@ interface AgentsOneAPI {
   readMediaFile: (filePath: string) => Promise<string | null>;
   saveMediaFile: (src: string, name: string) => Promise<boolean>;
   mediaFileExists: (filePath: string) => Promise<boolean>;
+  conversationFileInfo: (
+    ref: ConversationFileRef,
+  ) => Promise<ConversationFileInfo | null>;
+  conversationFileAction: (
+    ref: ConversationFileRef,
+    action: ConversationFileAction,
+    labels?: Record<string, string>,
+  ) => Promise<boolean | string>;
   showMediaMenu: (
     src: string,
     name: string,

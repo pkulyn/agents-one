@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
+  ConversationFileRef,
+  ConversationFileAction,
+  ConversationFileInfo,
+} from "../shared/conversation-files";
+import type {
   MobileWriteRecoveryCommand,
   MobileWriteRecoveryStatus,
 } from "../shared/mobile-write-recovery";
@@ -751,6 +756,16 @@ const agentsOneAPI = {
     ipcRenderer.invoke("save-media-file", src, name),
   mediaFileExists: (filePath: string): Promise<boolean> =>
     ipcRenderer.invoke("media-file-exists", filePath),
+  conversationFileInfo: (
+    ref: ConversationFileRef,
+  ): Promise<ConversationFileInfo | null> =>
+    ipcRenderer.invoke("conversation-file-info", ref),
+  conversationFileAction: (
+    ref: ConversationFileRef,
+    action: ConversationFileAction,
+    labels?: Record<string, string>,
+  ): Promise<boolean | string> =>
+    ipcRenderer.invoke("conversation-file-action", ref, action, labels),
   showMediaMenu: (
     src: string,
     name: string,

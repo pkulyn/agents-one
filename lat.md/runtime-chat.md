@@ -122,6 +122,16 @@ Human intervention is a multi-turn role conversation inside the shared transcrip
 
 Real artifacts are rendered from execution metadata rather than from publication notices.
 
+## Clickable delivered documents
+
+Saved assistant replies render verified file references as inline links and delivery cards, with native open, Open With, Save As and path-copy actions; verified images display directly.
+
+[[src/shared/conversation-files.ts#findDocumentReferences]] recognizes document paths in prose, inline code and Markdown links without converting fenced commands. [[src/main/conversation-files.ts#resolveConversationFile]] verifies the exact current-profile reply and regular file before granting a file-scoped action; local paths outside projects need no directory grant. Remote prose never authorizes a same-named local file. Persisted remote artifact ids can restore their downloaded copy after restart through the owning Runtime, with credentials remaining in Main.
+
+[[src/renderer/src/components/ConversationFiles.tsx#ConversationFiles]] preserves Markdown structure, exposes hover paths and native menus, and shows only provider-supplied revision summaries/diffs and their actual line counts. Missing files retain their prose or an unavailable artifact card. No history migration, global filesystem grant or fabricated Undo state is involved. [[tests/conversation-files.test.ts]] covers local references, remote isolation and restored artifact ownership; component tests exercise links, menus, cards and diff headers.
+
+[[tests/ipc-handlers.test.ts]] includes the dedicated conversation-files registration module when checking that every preload invocation has a matching scoped Main handler.
+
 [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.ts#runtimeConversationMessage]] converts image artifacts into local `MEDIA` tokens and non-image files into attachments. Local file artifacts are openable links rather than download-only chips: hover exposes the complete path, click opens the file, and the native context menu supports opening, copying the path, copying bounded document content, and revealing the file in the system explorer. Remote URLs and data payloads retain save/download behavior. Hiding artifact-publication cards therefore does not hide images or files.
 
 ## Ordered delivery and per-agent identity

@@ -360,6 +360,8 @@ describe("RuntimeChat inputs and persistence", () => {
         executeAgentRuntimeCommand,
         onAgentRuntimeCommandProgress,
         mediaFileExists: vi.fn().mockResolvedValue(false),
+        conversationFileInfo: vi.fn().mockResolvedValue(null),
+        conversationFileAction: vi.fn().mockResolvedValue(false),
         cancelAgentRuntimeTask: vi.fn(),
       },
     });
