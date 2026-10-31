@@ -1,4 +1,13 @@
 export default {
+  files: {
+    openWith: "Open with…",
+    copyAbsolute: "Copy absolute path",
+    copyRelative: "Copy relative path",
+    actions: "File actions",
+    document: "File",
+    unavailable:
+      "File unavailable. It may have moved or not been downloaded yet.",
+  },
   title: "New Conversation",
   sessionTitle: "Session {{id}}",
   noModel: "No model set",

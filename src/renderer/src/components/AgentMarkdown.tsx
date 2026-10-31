@@ -1,10 +1,16 @@
 import { useState, useEffect, memo } from "react";
-import Markdown from "react-markdown";
+import Markdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy } from "lucide-react";
 import { useI18n } from "./useI18n";
-import { MediaImage, DownloadChip } from "./MediaImage";
+import { DownloadChip } from "./MediaImage";
 import { describeImageSrc } from "../screens/Chat/mediaUtils";
+import {
+  ConversationFileLink,
+  ConversationMarkdownImage,
+  remarkDocumentLinks,
+} from "./ConversationFiles";
+import { documentPath } from "../../../shared/conversation-files";
 
 // Lazy-load the heavy syntax highlighter — only imported when a code block renders
 let _highlighterMod: typeof import("react-syntax-highlighter") | null = null;
@@ -210,35 +216,45 @@ const AgentMarkdown = memo(function AgentMarkdown({
 }): React.JSX.Element {
   return (
     <Markdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkDocumentLinks]}
+      urlTransform={(url) =>
+        url.startsWith("agents-one-file:") ? url : defaultUrlTransform(url)
+      }
       components={{
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            onClick={(e) => {
-              e.preventDefault();
-              if (!href) return;
-              try {
-                const url = new URL(href, "https://placeholder.invalid");
-                if (!["http:", "https:", "mailto:"].includes(url.protocol)) {
+        a: ({ href, children }) =>
+          href?.startsWith("agents-one-file:") ? (
+            <ConversationFileLink
+              path={decodeURIComponent(href.slice("agents-one-file:".length))}
+            >
+              {children}
+            </ConversationFileLink>
+          ) : (
+            <a
+              href={href}
+              onClick={(e) => {
+                e.preventDefault();
+                if (!href) return;
+                try {
+                  const url = new URL(href, "https://placeholder.invalid");
+                  if (!["http:", "https:", "mailto:"].includes(url.protocol)) {
+                    return;
+                  }
+                  if (url.protocol === "http:" || url.protocol === "https:") {
+                    const event = new CustomEvent("web-preview:navigate", {
+                      detail: href,
+                    });
+                    document.dispatchEvent(event);
+                    return;
+                  }
+                } catch {
                   return;
                 }
-                if (url.protocol === "http:" || url.protocol === "https:") {
-                  const event = new CustomEvent("web-preview:navigate", {
-                    detail: href,
-                  });
-                  document.dispatchEvent(event);
-                  return;
-                }
-              } catch {
-                return;
-              }
-              window.agentsOneAPI.openExternal(href);
-            }}
-          >
-            {children}
-          </a>
-        ),
+                window.agentsOneAPI.openExternal(href);
+              }}
+            >
+              {children}
+            </a>
+          ),
         img: ({ src }) => {
           if (typeof src !== "string" || src.length === 0) return null;
           // ![alt](file.pdf) parses as a markdown image but isn't an image —
@@ -246,7 +262,7 @@ const AgentMarkdown = memo(function AgentMarkdown({
           // try to load a non-image MIME and fail. (Follow-up from #303.)
           const token = describeImageSrc(src);
           return token.isImage ? (
-            <MediaImage token={token} />
+            <ConversationMarkdownImage token={token} />
           ) : (
             <DownloadChip token={token} />
           );
@@ -257,6 +273,13 @@ const AgentMarkdown = memo(function AgentMarkdown({
             typeof children === "string" &&
             !children.includes("\n");
           if (isInline) {
+            const path = documentPath(children);
+            if (path)
+              return (
+                <ConversationFileLink path={path}>
+                  <code>{children}</code>
+                </ConversationFileLink>
+              );
             return (
               <code className={className} {...props}>
                 {children}

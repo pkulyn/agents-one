@@ -17,6 +17,7 @@ import { isSyntheticRemoteReasoningSummary } from "../../../../shared/agent-even
 import { runtimeArtifactMediaUri } from "../Chat/mediaUtils";
 
 export interface RuntimeChatMessageAdapterOptions {
+  conversationId?: string;
   /**
    * Runtime protocol markers (for example collaboration proposals) can be
    * removed before the native MessageRow renders the assistant bubble.
@@ -394,10 +395,14 @@ function runtimeConversationMessage(
       : message.content;
   const mediaTokens = isUser
     ? ""
-    : runtimeArtifactMediaTokens(message.execution);
+    : options.conversationId
+      ? ""
+      : runtimeArtifactMediaTokens(message.execution);
   const attachments: Attachment[] = isUser
     ? (message.attachments ?? [])
-    : runtimeArtifactAttachments(message.execution);
+    : options.conversationId
+      ? []
+      : runtimeArtifactAttachments(message.execution);
   const displayContent = isUser
     ? content
     : removeRemoteArtifactMediaTokens(content, message.execution);
@@ -414,6 +419,15 @@ function runtimeConversationMessage(
     kind: isUser ? "user" : "assistant",
     role: isUser ? "user" : "agent",
     content: [displayContent, mediaTokens].filter(Boolean).join("\n"),
+    ...(!isUser && !isControlMessage && options.conversationId
+      ? {
+          fileDelivery: {
+            conversationId: options.conversationId,
+            messageId: message.id,
+            artifacts: message.execution?.artifacts || [],
+          },
+        }
+      : {}),
     ...(attachments.length ? { attachments } : {}),
     timestamp: message.createdAt,
     ...(isControlMessage ? { isControlMessage: true } : {}),

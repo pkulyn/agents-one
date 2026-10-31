@@ -3,6 +3,7 @@ import { Grid } from "react-loader-spinner";
 import { Copy, Check, GitBranch } from "lucide-react";
 import agentsOneMark from "../../assets/agents-one-mark.svg";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
+import { ConversationFiles } from "../../components/ConversationFiles";
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { MediaSegmentView } from "../../components/MediaImage";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
@@ -319,24 +320,35 @@ export const MessageRow = memo(function MessageRow({
         </div>
       ) : (
         displayBubbleContent &&
-        (msg.role === "agent" && segments
-          ? segments.map((segment) =>
-              segment.type === "text" ? (
-                segment.value.trim() ? (
-                  <AgentMarkdown key={`t-${segment.start}`}>
-                    {segment.value}
-                  </AgentMarkdown>
-                ) : null
-              ) : (
-                <MediaSegmentView
-                  key={`m-${segment.start}`}
-                  token={segment.token}
-                  raw={segment.raw}
-                  source={segment.source}
-                />
-              ),
-            )
-          : displayBubbleContent)
+        (msg.role === "agent" && msg.fileDelivery ? (
+          <ConversationFiles delivery={msg.fileDelivery} content={msg.content}>
+            <AgentMarkdown>
+              {cleanLeakedToolTags(displayBubbleContent).replace(
+                /MEDIA[：:][ \t]*/gi,
+                "",
+              )}
+            </AgentMarkdown>
+          </ConversationFiles>
+        ) : msg.role === "agent" && segments ? (
+          segments.map((segment) =>
+            segment.type === "text" ? (
+              segment.value.trim() ? (
+                <AgentMarkdown key={`t-${segment.start}`}>
+                  {segment.value}
+                </AgentMarkdown>
+              ) : null
+            ) : (
+              <MediaSegmentView
+                key={`m-${segment.start}`}
+                token={segment.token}
+                raw={segment.raw}
+                source={segment.source}
+              />
+            ),
+          )
+        ) : (
+          displayBubbleContent
+        ))
       )}
       {msg.error && (
         <div className="chat-error-message" role="alert">

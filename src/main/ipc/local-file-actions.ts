@@ -20,8 +20,13 @@ const DEFAULT_OPEN_EXTENSIONS = new Set([
   ".toml",
   ".pdf",
   ".docx",
+  ".doc",
+  ".rtf",
   ".xlsx",
+  ".xls",
   ".pptx",
+  ".ppt",
+  ".zip",
   ".odt",
   ".ods",
   ".odp",
@@ -62,7 +67,7 @@ function resolveAuthorizedLocalPath(value: unknown): string | null {
   }
 }
 
-function canOpenDocument(target: string): boolean {
+export function canOpenDocument(target: string): boolean {
   try {
     return (
       DEFAULT_OPEN_EXTENSIONS.has(extname(target).toLowerCase()) &&

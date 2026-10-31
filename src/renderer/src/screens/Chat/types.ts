@@ -19,6 +19,12 @@ export interface ChatMessageAgentIdentity {
  * one of the variants of the broader `ChatMessage` history union.
  */
 export interface ChatBubbleMessage {
+  /** Derived file capabilities; never written back to conversation history. */
+  fileDelivery?: {
+    conversationId: string;
+    messageId: string;
+    artifacts: import("../../../../shared/agent-runtimes").AgentRuntimeArtifact[];
+  };
   id: string;
   kind?: "user" | "assistant"; // optional for backward compat; absent ⇒ user/assistant by role
   role: "user" | "agent";

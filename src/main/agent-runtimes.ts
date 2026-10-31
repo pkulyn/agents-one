@@ -353,6 +353,35 @@ export function resolveAgentRuntimeArtifactPath(
   return { path: artifact.path, label: artifact.label };
 }
 
+/** Re-fetch a persisted, caller-verified artifact id after the desktop restarts. */
+export async function restoreConversationArtifactFile(
+  runtimeId: string,
+  artifactId: string,
+): Promise<string | null> {
+  const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
+  if (
+    !runtime ||
+    !isAgentsOneGatewayRuntime(runtime) ||
+    !runtime.config.endpoint
+  )
+    return null;
+  try {
+    const file = await getAgentsOneRemoteGatewayArtifact(
+      {
+        endpoint: runtime.config.endpoint,
+        runtimeId: runtime.id,
+        timeoutMs: runtime.config.timeoutMs,
+        connect: runtime.config.connect,
+      },
+      artifactId,
+      runtimeAuth(runtime),
+    );
+    return materializeBytesToTemp(file.bytes, file.name, file.mime);
+  } catch {
+    return null;
+  }
+}
+
 /** Prevent new Runtime dispatch while the app is quiescing for shutdown. */
 export function stopAcceptingAgentRuntimeTasks(): void {
   runtimeTaskAdmissionOpen = false;
