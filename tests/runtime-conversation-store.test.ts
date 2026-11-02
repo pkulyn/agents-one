@@ -19,6 +19,58 @@ async function loadStore(): Promise<
 }
 
 describe("runtime conversation store", () => {
+  it("preserves the initial Pi thought and more than 80 process events across save and reload", async () => {
+    const store = await loadStore();
+    const thought = {
+      id: "initial-pi",
+      type: "progress" as const,
+      summary: "先制定计划。",
+      detail: "完整初始思考。\n".repeat(160).trim(),
+      createdAt: 1,
+    };
+    const events = [
+      thought,
+      ...Array.from({ length: 120 }, (_, i) => ({
+        id: "tool-" + i,
+        type: "tool_result" as const,
+        summary: "Read done " + i,
+        createdAt: i + 2,
+      })),
+      {
+        id: "done",
+        type: "completed" as const,
+        summary: "完成",
+        createdAt: 123,
+      },
+    ];
+    const input = {
+      id: "pi-long-process",
+      title: "Pi",
+      runtimeId: "pi",
+      runtimeName: "Pi",
+      runtimeKind: "pi" as const,
+      runtimeLocation: "local" as const,
+      messages: [
+        {
+          id: "reply",
+          role: "agent" as const,
+          content: "最终答复",
+          createdAt: 123,
+          execution: { runId: "pi-run", events },
+        },
+      ],
+    };
+    store.saveRuntimeConversation(input);
+    const reloadedStore = await loadStore();
+    const restored = reloadedStore.getRuntimeConversation(input.id)!;
+    expect(restored.messages[0].execution!.events).toEqual(events);
+    const { runtimeConversationToChatMessages } =
+      await import("../src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter");
+    expect(
+      runtimeConversationToChatMessages(restored.messages)[0],
+    ).toMatchObject({ kind: "reasoning", text: thought.detail });
+  });
+
   // @lat: [[runtime-chat#Runtime Chat Rendering#Bounded execution trace retention]]
   it("keeps reasoning and tools when a long answer is saved and reloaded", async () => {
     const store = await loadStore();
@@ -79,7 +131,7 @@ describe("runtime conversation store", () => {
     });
     const restored = store.getRuntimeConversation("opencode-long-answer")!;
     const events = restored.messages[0].execution!.events;
-    expect(events).toHaveLength(80);
+    expect(events).toHaveLength(200);
     expect(events.slice(0, 3)).toEqual(evidence);
     expect(events.at(-1)).toEqual(completed);
     const { runtimeConversationToChatMessages } =
