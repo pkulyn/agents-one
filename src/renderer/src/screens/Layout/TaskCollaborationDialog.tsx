@@ -90,9 +90,12 @@ export default function TaskCollaborationDialog({
     () => runtimes.filter((runtime) => runtime.enabled),
     [runtimes],
   );
-  const [assignments, setAssignments] = useState<TaskCollaborationAssignment[]>(
+  const defaultTeam = useMemo(
     () => localizedDefaultAssignments(draft, locale),
+    [draft, locale],
   );
+  const [assignments, setAssignments] =
+    useState<TaskCollaborationAssignment[]>(defaultTeam);
   const [message, setMessage] = useState(() => draft.message || "");
   const orchestrationError = useMemo(() => {
     const configured = assignments.filter(
@@ -118,9 +121,9 @@ export default function TaskCollaborationDialog({
   }, [assignments, draft.configureOnly, t]);
 
   useEffect(() => {
-    setAssignments(localizedDefaultAssignments(draft, locale));
+    setAssignments(defaultTeam);
     setMessage(draft.message || "");
-  }, [draft, locale]);
+  }, [defaultTeam, draft.message]);
 
   const updateAssignment = (
     id: string | undefined,

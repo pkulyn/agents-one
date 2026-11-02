@@ -195,3 +195,39 @@ describe("Configure task mode without dispatch", () => {
     );
   });
 });
+
+describe("English explicit mode", () => {
+  it("keeps both initial selections while configuring the complete team", () => {
+    i18nTestState.locale = "en";
+    const onStart = vi.fn();
+    render(
+      <TaskCollaborationDialog
+        draft={{
+          title: "Team",
+          sourceRuntimeId: "hermes",
+          configureOnly: true,
+        }}
+        runtimes={[runtime("hermes", "Hermes"), runtime("codex", "Codex")]}
+        onClose={() => {}}
+        onStart={onStart}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Implementation agent"), {
+      target: { value: "codex" },
+    });
+    fireEvent.change(screen.getByLabelText("Testing agent"), {
+      target: { value: "hermes" },
+    });
+    expect(screen.getByLabelText("Implementation agent")).toHaveValue("codex");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enable collaboration" }),
+    );
+    expect(onStart).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "Implementation", runtimeId: "codex" }),
+        expect.objectContaining({ role: "Testing", runtimeId: "hermes" }),
+      ]),
+      "",
+    );
+  });
+});
