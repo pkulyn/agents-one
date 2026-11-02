@@ -1,3 +1,4 @@
+import { runtimeModelFailureKind } from "../shared/runtime-model-errors";
 import { respondToAgentsOneRemotePermission } from "./agents-one-remote-gateway";
 import {
   createRuntimePermissionBridge,
@@ -33,6 +34,7 @@ import {
   type AgentRuntimeProbe,
   type AgentRuntimeRun,
   type AgentRuntimeTaskInput,
+  type RuntimeInputArtifact,
 } from "../shared/agent-runtimes";
 import {
   manifestForAdapterId,
@@ -54,7 +56,11 @@ import { sendMessage, testRemoteConnection } from "./hermes";
 import { HERMES_SCRIPT } from "./installer";
 import { existsSync, readFileSync } from "fs";
 import { delimiter, join } from "path";
-import { prepareRuntimeInputs } from "./runtime-inputs";
+import {
+  prepareRuntimeInputs,
+  prepareRuntimeWordInputs,
+  isWordAttachment,
+} from "./runtime-inputs";
 import { probeCodexRuntime, startCodexProcess } from "./codex-runtime";
 import {
   compactCodexAppServerThread,
@@ -210,6 +216,9 @@ interface RuntimeRunRecord {
     profile?: string;
   };
   pendingEventOutput?: string;
+  originalWordInputs?: RuntimeInputArtifact[];
+  providerFailure?: string;
+  finishing?: boolean;
   claudeStream?: ClaudeStreamState;
   timeout?: NodeJS.Timeout;
   monitorInactivity?: boolean;
@@ -627,6 +636,33 @@ function isGenericWorkspaceFailureEvent(event: AgentEventStreamEvent): boolean {
   );
 }
 
+function noteProviderFailure(
+  record: RuntimeRunRecord,
+  event: Pick<
+    AgentRuntimeEvent,
+    "type" | "summary" | "detail" | "tool" | "code"
+  >,
+): void {
+  if (
+    record.finishing ||
+    record.providerFailure ||
+    record.run.status !== "running" ||
+    event.type !== "error" ||
+    event.tool
+  )
+    return;
+  const error = event.detail || event.summary;
+  if (!runtimeModelFailureKind(error) && event.code !== "model_request_failed")
+    return;
+  record.providerFailure = error;
+  // Reuse the established cleanup path; terminal delivery preserves the
+  // provider error instead of misreporting the cleanup as user cancellation.
+  setTimeout(() => {
+    if (record.run.status !== "running") return;
+    void cancelAgentRuntimeTask(record.run.id).catch(() => undefined);
+  }, 0);
+}
+
 function appendRuntimeEvent(
   record: RuntimeRunRecord,
   type: AgentRuntimeEventType,
@@ -641,6 +677,13 @@ function appendRuntimeEvent(
     : undefined;
   const code = evidence.code?.trim() ? eventSummary(evidence.code) : undefined;
   const tool = runtimeEventTool(evidence.tool);
+  noteProviderFailure(record, {
+    type,
+    summary: cleanSummary,
+    detail,
+    tool,
+    code,
+  });
   let current = record.run.events || [];
   if (type === "error" && isDetailedWorkspaceFailure(cleanSummary)) {
     const filtered = current.filter(
@@ -796,6 +839,7 @@ function appendProviderRuntimeEvent(
           : {}),
       }
     : undefined;
+  noteProviderFailure(record, event);
   const incoming: AgentRuntimeEvent = {
     ...event,
     summary,
@@ -1355,6 +1399,16 @@ function appendOutputEvent(
                   },
             );
             break;
+          case "turn.failed":
+            appendRuntimeEvent(
+              record,
+              "error",
+              isRecord(frame.error) && typeof frame.error.message === "string"
+                ? frame.error.message
+                : "Codex 模型请求失败。",
+              { code: "model_request_failed" },
+            );
+            break;
           case "error":
             appendRuntimeEvent(
               record,
@@ -1562,7 +1616,23 @@ function appendOutputEvent(
             );
           }
         } else if (frame.type === "result") {
-          appendRuntimeEvent(record, "message", "Claude Code 已生成本轮答复。");
+          if (frame.is_error === true) {
+            appendRuntimeEvent(record, "error", "Claude Code 模型请求失败。", {
+              code: "model_request_failed",
+              detail:
+                compactText(frame.result) ||
+                (Array.isArray(frame.errors)
+                  ? frame.errors
+                      .filter((value) => typeof value === "string")
+                      .join("; ")
+                  : undefined),
+            });
+          } else
+            appendRuntimeEvent(
+              record,
+              "message",
+              "Claude Code 已生成本轮答复。",
+            );
         } else if (frame.type === "error") {
           appendRuntimeEvent(record, "error", "Claude Code 返回了执行错误。", {
             detail: compactText(frame.message),
@@ -1582,6 +1652,16 @@ function appendOutputEvent(
         appendLocalRuntimeMetadata(record, frame);
         const message = isRecord(frame.message) ? frame.message : undefined;
         const items = contentItems(message);
+        if (message?.role === "assistant" && message.stopReason === "error") {
+          appendRuntimeEvent(
+            record,
+            "error",
+            typeof message.errorMessage === "string"
+              ? message.errorMessage
+              : "Pi Agent 模型请求失败。",
+            { code: "model_request_failed" },
+          );
+        }
         if (message?.role === "assistant") {
           for (const item of items) {
             if (item.type === "toolCall") {
@@ -4621,6 +4701,25 @@ function finishRuntimeRun(
   > = {},
 ): AgentRuntimeRun {
   if (record.run.status !== "running") return { ...record.run };
+  record.finishing = true;
+  if (record.providerFailure) {
+    status = "failed";
+    details = { ...details, error: record.providerFailure };
+  }
+  if (record.originalWordInputs?.length) {
+    details = {
+      ...details,
+      inputArtifacts: [
+        ...record.originalWordInputs,
+        ...(details.inputArtifacts || record.run.inputArtifacts || []).filter(
+          (artifact) =>
+            !record.originalWordInputs!.some(
+              (original) => original.id === artifact.id,
+            ),
+        ),
+      ],
+    };
+  }
   if (record.timeout) clearTimeout(record.timeout);
   if (record.inactivityTimeout) clearTimeout(record.inactivityTimeout);
   record.permissionBridge?.dispose();
@@ -5101,7 +5200,33 @@ export async function startAgentRuntimeTask(
       return { ...record.run };
     }
   }
-  let dispatchPrompt = withRuntimePermissionContext(task.prompt, task.mode);
+  let documentContext = "";
+  try {
+    const wordInputs = await prepareRuntimeWordInputs(
+      task.profile,
+      task.attachments,
+    );
+    documentContext = wordInputs.context;
+    if (wordInputs.artifacts.length) {
+      record.originalWordInputs = wordInputs.artifacts;
+      record.run = { ...record.run, inputArtifacts: wordInputs.artifacts };
+      // Keep original input copies and desktop attachment metadata, but do not
+      // inject an unsupported Word binary into any provider's model history.
+      task.attachments = task.attachments?.filter(
+        (attachment) => !isWordAttachment(attachment),
+      );
+    }
+  } catch (error) {
+    return finishRuntimeRun(record, "failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (record.run.status !== "running" || record.cancelRequested)
+    return { ...record.run };
+  let dispatchPrompt = withRuntimePermissionContext(
+    task.prompt + documentContext,
+    task.mode,
+  );
   let dispatchWorkspaceRef = task.workspaceRef;
   const unifiedGatewayRuntime = isAgentsOneGatewayRuntime(runtime);
   if (

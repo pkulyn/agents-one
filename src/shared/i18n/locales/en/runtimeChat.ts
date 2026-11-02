@@ -71,6 +71,19 @@ export default {
     entry: "{{role}}: {{content}}",
   },
   events: {
+    wordInputError:
+      "Unable to read the Word document. Check that it is valid, unencrypted, and in .docx format.",
+    modelErrors: {
+      quota:
+        "The model's quota or usage limit has been reached. Choose an available model or check your quota, then retry.",
+      auth: "Model authentication failed. Check your API key or login, then retry.",
+      model:
+        "The model is unavailable or does not support these attachments. Choose a model that supports this input.",
+      network:
+        "Unable to connect to the model service. Check the network or service status, then retry.",
+    },
+    modelsUnavailable:
+      "No OpenCode model is available. Check model access or quota, then retry.",
     noDetail: "The Runtime did not provide details.",
     cancelled: "Task cancelled",
     timedOut: "Task timed out. Please try again.",

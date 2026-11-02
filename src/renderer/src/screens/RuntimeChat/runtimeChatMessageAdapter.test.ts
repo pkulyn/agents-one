@@ -713,3 +713,98 @@ it("coalesces live warnings, then drops them from completed history", () => {
     expect.objectContaining({ kind: "assistant", content: "Final answer" }),
   ]);
 });
+
+it.each(["zh-CN", "en"] as const)(
+  "shows model exhaustion as one localized agent bubble in %s",
+  (locale) => {
+    const content =
+      "[OpenCode models unavailable] No available configured or free model.";
+    const result = runtimeConversationToChatMessages(
+      [
+        {
+          id: "quota",
+          role: "agent",
+          content,
+          createdAt: 1,
+          execution: {
+            runId: "quota-run",
+            events: [event("quota-error", "error", content)],
+          },
+        },
+      ],
+      { translate: (key) => translate(key, locale) },
+    );
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "assistant",
+        content: translate("runtimeChat.events.modelsUnavailable", locale),
+      }),
+    ]);
+  },
+);
+
+it.each([
+  "invalid_api_key",
+  "insufficient_quota",
+  "Model unavailable",
+  "AI_APICallError: network connection failed",
+  "[Word input error] broken document",
+])("shows a localized failure in one agent reply: %s", (content) => {
+  const result = runtimeConversationToChatMessages([
+    {
+      id: "failure",
+      role: "agent",
+      content,
+      createdAt: 1,
+      execution: {
+        runId: "failed",
+        events: [event("error", "error", content)],
+      },
+    },
+  ]);
+  expect(result).toHaveLength(1);
+  expect(result[0].kind).toBe("assistant");
+  expect(JSON.stringify(result)).not.toContain(content);
+});
+
+it("does not add trace-unavailable cards to failed collaboration replies", () => {
+  const result = runtimeConversationToChatMessages([
+    {
+      id: "collab-error",
+      role: "agent",
+      collaborationRole: "review",
+      content: "invalid_api_key",
+      createdAt: 1,
+      execution: {
+        runId: "error-run",
+        events: [event("error", "error", "invalid_api_key")],
+      },
+    },
+  ]);
+  expect(result).toHaveLength(1);
+  expect(result[0].kind).toBe("assistant");
+});
+
+it("shows a model failure immediately while native cleanup is pending", () => {
+  expect(
+    runtimeEventsToChatMessages(
+      [event("failure", "error", "insufficient_quota")],
+      { live: true },
+    ),
+  ).toEqual([
+    expect.objectContaining({
+      kind: "assistant",
+      content: "模型额度已用尽或达到调用上限，请更换可用模型或检查额度后重试。",
+    }),
+  ]);
+  expect(
+    runtimeEventsToChatMessages(
+      [
+        event("tool-error", "error", "insufficient_quota", {
+          tool: { name: "Read", kind: "tool", callId: "tool" },
+        }),
+      ],
+      { live: true },
+    ),
+  ).toEqual([]);
+});
