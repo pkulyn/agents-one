@@ -19901,6 +19901,7 @@ body.tray-completion-document {
   transform: rotate(90deg);
 }
 .chat-execution-trace-items {
+  width: calc(100% - 5px);
   margin: 10px 0 4px 5px;
   padding-left: 16px;
   border-left: 1px solid var(--border);
@@ -19909,6 +19910,8 @@ body.tray-completion-document {
   display: none;
 }
 .chat-execution-trace-items .chat-message-history {
+  max-width: 100%;
+  animation: none;
   margin: 0;
   padding: 6px 0;
 }
