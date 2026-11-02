@@ -1,4 +1,11 @@
 export default {
+  executionTrace: {
+    title: "Execution details",
+    thoughts: "{{count}} thoughts",
+    thoughts_one: "{{count}} thought",
+    calls: "{{count}} tool calls",
+    calls_one: "{{count}} tool call",
+  },
   files: {
     openWith: "Open with…",
     copyAbsolute: "Copy absolute path",
