@@ -1,3 +1,4 @@
+import { runtimeModelFailureKind } from "../../../../shared/runtime-model-errors";
 import type {
   AgentRuntimeArtifact,
   AgentRuntimeEvent,
@@ -35,6 +36,18 @@ export interface RuntimeChatMessageAdapterOptions {
 const DEFAULT_PLATFORM_TEXT: Record<string, string> = {
   "runtimeChat.events.noDetail": "运行时未提供详细信息。",
   "runtimeChat.events.cancelled": "任务已取消",
+  "runtimeChat.events.wordInputError":
+    "无法读取 Word 文档，请确认文件有效、未加密，并使用 .docx 格式。",
+  "runtimeChat.events.modelErrors.quota":
+    "模型额度已用尽或达到调用上限，请更换可用模型或检查额度后重试。",
+  "runtimeChat.events.modelErrors.auth":
+    "模型认证失败，请检查 API 密钥或登录状态后重试。",
+  "runtimeChat.events.modelErrors.model":
+    "当前模型不可用或不支持本轮附件，请更换支持该输入的模型。",
+  "runtimeChat.events.modelErrors.network":
+    "模型服务连接失败，请检查网络或服务状态后重试。",
+  "runtimeChat.events.modelsUnavailable":
+    "OpenCode 暂无可用模型，请检查模型权限或额度后重试。",
   "runtimeChat.events.timedOut": "任务已超时，请重试。",
   "runtimeChat.events.inactive":
     "智能体已 10 分钟无响应，可继续等待或停止后重试。",
@@ -378,6 +391,10 @@ function taskNoticeKey(events: AgentRuntimeEvent[]): string | undefined {
 
 function fallbackTaskNoticeKey(content: string): string | undefined {
   const value = content.trim().replace(/[.!。！]+$/u, "");
+  if (value.startsWith("[Word input error]"))
+    return "runtimeChat.events.wordInputError";
+  if (value.startsWith("[OpenCode models unavailable]"))
+    return "runtimeChat.events.modelsUnavailable";
   if (
     /^(?:Runtime task was cancelled|Task cancelled|cancelled|任务已取消)$/i.test(
       value,
@@ -416,14 +433,24 @@ function runtimeConversationMessage(
     : options.conversationId
       ? []
       : runtimeArtifactAttachments(message.execution);
+  const modelFailureKind = message.execution?.events?.some(
+    (event) => event.type === "error" && !event.tool,
+  )
+    ? runtimeModelFailureKind(content)
+    : undefined;
   const noticeKey =
     !isUser && !isControlMessage
       ? taskNoticeKey(message.execution?.events || []) ||
-        fallbackTaskNoticeKey(content)
+        fallbackTaskNoticeKey(content) ||
+        (modelFailureKind
+          ? `runtimeChat.events.modelErrors.${modelFailureKind}`
+          : undefined)
       : undefined;
   const localizedContent = noticeKey
     ? [
-        fallbackTaskNoticeKey(content) ? "" : content.trim(),
+        fallbackTaskNoticeKey(content) || modelFailureKind
+          ? ""
+          : content.trim(),
         platformText(options, noticeKey),
       ]
         .filter(Boolean)
@@ -494,7 +521,8 @@ export function runtimeConversationToChatMessages(
       if (
         message.collaborationRole &&
         !hasReasoning &&
-        !taskNoticeKey(visibleEvents)
+        !taskNoticeKey(visibleEvents) &&
+        !visibleEvents.some((event) => event.type === "error" && !event.tool)
       ) {
         result.push(
           withIdentity<SystemMessage>(

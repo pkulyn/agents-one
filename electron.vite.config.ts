@@ -95,6 +95,7 @@ export default defineConfig({
           "@electron-toolkit/utils",
           "electron-updater",
           "i18next",
+          "mammoth",
           "tar",
           "ws",
           "yaml",

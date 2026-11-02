@@ -1,9 +1,12 @@
+import { WORD_INPUT_BASE64 } from "./fixtures/word-input";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   opencodeInvocation,
+  openCodeImageModels,
+  openCodeProviderFailure,
   openCodePermissionEnvironment,
   openCodeWindowsEnvironment,
   openCodeShellEnvironment,
@@ -149,7 +152,7 @@ describe("OpenCode ACP adapter", () => {
       const script = [
         "const fs=require('node:fs'),url=require('node:url'),rl=require('node:readline').createInterface({input:process.stdin});",
         "const send=x=>process.stdout.write(JSON.stringify(x)+'\\n');",
-        "rl.on('line',line=>{const m=JSON.parse(line);if(m.method==='initialize')send({id:m.id,result:{agentCapabilities:{sessionCapabilities:{resume:true}}}});else if(m.method==='session/new'||m.method==='session/resume')send({id:m.id,result:{sessionId:m.params.sessionId||'new-session'}});else if(m.method==='session/prompt'){try{const p=m.params.prompt,resource=p.find(x=>x.type==='resource').resource,image=p.find(x=>x.type==='image'),link=p.find(x=>x.type==='resource_link');if(resource.text!=='联调测试内容'||fs.readFileSync(url.fileURLToPath(resource.uri),'utf8')!==resource.text||Buffer.from(image.data,'base64').toString()!=='test image bytes'||fs.readFileSync(url.fileURLToPath(link.uri),'utf8')!=='document bytes')throw Error('attachment mismatch');send({method:'session/update',params:{sessionId:m.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'两个附件及文档副本均已读取。'}}}});send({id:m.id,result:{stopReason:'end_turn'}})}catch(e){send({id:m.id,error:{message:e.message}})}}});",
+        "rl.on('line',line=>{const m=JSON.parse(line);if(m.method==='initialize')send({id:m.id,result:{agentCapabilities:{sessionCapabilities:{resume:true}}}});else if(m.method==='session/new'||m.method==='session/resume')send({id:m.id,result:{sessionId:m.params.sessionId||'new-session'}});else if(m.method==='session/prompt'){try{const p=m.params.prompt,resource=p.find(x=>x.type==='resource').resource,image=p.find(x=>x.type==='image'),link=JSON.parse(p.find(x=>x.type==='text'&&x.text.startsWith('{')).text);if(resource.text!=='联调测试内容'||fs.readFileSync(url.fileURLToPath(resource.uri),'utf8')!==resource.text||Buffer.from(image.data,'base64').toString()!=='test image bytes'||fs.readFileSync(link.path,'utf8')!=='document bytes'||p.some(x=>x.type==='resource_link'))throw Error('attachment mismatch');send({method:'session/update',params:{sessionId:m.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'两个附件及文档副本均已读取。'}}}});send({id:m.id,result:{stopReason:'end_turn'}})}catch(e){send({id:m.id,error:{message:e.message}})}}});",
       ].join("");
       const document = stageAttachment(
         "acp-attachment",
@@ -1060,4 +1063,175 @@ describe("OpenCode Windows proxy inheritance", () => {
       KEEP: "unchanged",
     });
   });
+});
+
+// @lat: [[runtime-chat#OpenCode provider failures]]
+it("ends a hanging ACP prompt on this session's explicit free quota error", async () => {
+  const script = fakeAcpScript().replace(
+    /else if\(m.method==='session\/prompt'\).*$/,
+    "else if(m.method==='session/prompt'){process.stderr.write('timestamp=x level=ERROR message=\"stream error\" session.id=session-test small=false error.error=\"AI_APICallError: Free usage limit reached.\"\\n');}});",
+  );
+  const started = await startOpenCodeProcess(
+    { executablePath: process.execPath, acpArgs: ["-e", script] },
+    { prompt: "quota", mode: "analysis", disablePromptDeadline: true },
+    () => undefined,
+    () => undefined,
+  );
+  const result = await started.completion;
+  expect(result.error).toContain("[OpenCode models unavailable]");
+  expect(result.output).toBe("");
+});
+
+it("ignores title, other-session and ordinary stderr quota text", () => {
+  const log =
+    'level=ERROR message="stream error" session.id=ses_current small=false error.error="Free usage limit reached."';
+  expect(openCodeProviderFailure("stderr", log, "ses_current")).toMatch(
+    /free usage limit reached/i,
+  );
+  expect(openCodeProviderFailure("stdout", log, "ses_current")).toBeUndefined();
+  expect(openCodeProviderFailure("stderr", log, "ses_other")).toBeUndefined();
+  expect(
+    openCodeProviderFailure(
+      "stderr",
+      log.replace("small=false", "small=true"),
+      "ses_current",
+    ),
+  ).toBeUndefined();
+  expect(
+    openCodeProviderFailure(
+      "stderr",
+      "Free usage limit reached.",
+      "ses_current",
+    ),
+  ).toBeUndefined();
+});
+
+// @lat: [[runtime-chat#OpenCode document model inputs]]
+it.each([undefined, "existing-session"])(
+  "extracts Word text without binary model parts on session %s",
+  async (sessionId) => {
+    const { stageAttachment } = await import("../src/main/attachment-staging");
+    const bytes = Buffer.from(WORD_INPUT_BASE64, "base64");
+    const path = stageAttachment(
+      "word-regression",
+      "说明.docx",
+      bytes.toString("base64"),
+    );
+    const script = fakeAcpScript()
+      .replaceAll("session-test", sessionId || "session-test")
+      .replace(
+        "for(const text of",
+        "const doc=JSON.parse(m.params.prompt[1].text);if(doc.documentText!=='Word 回归正文。'||m.params.prompt.some(x=>x.type==='resource_link'))throw Error('Word not extracted');for(const text of",
+      );
+    const started = await startOpenCodeProcess(
+      { executablePath: process.execPath, acpArgs: ["-e", script] },
+      {
+        prompt: "Read the document",
+        mode: "analysis",
+        sessionId,
+        attachments: [
+          {
+            id: "word",
+            name: "说明.docx",
+            kind: "path-ref",
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size: bytes.length,
+            path,
+          },
+        ],
+      },
+      () => undefined,
+      () => undefined,
+    );
+    const result = await started.completion;
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe("OpenCode 已回复。");
+    expect(readFileSync(path)).toEqual(bytes);
+    expect(result.inputArtifacts[0]).toMatchObject({
+      kind: "document",
+      size: bytes.length,
+    });
+  },
+);
+
+// @lat: [[runtime-chat#OpenCode model fallback]]
+it.each([false, true])(
+  "tries advertised session models after quota failure (all unavailable=%s)",
+  async (allUnavailable) => {
+    const cwd = mkdtempSync(join(tmpdir(), "opencode-fallback-"));
+    const script = [
+      "const fs=require('fs'),rl=require('readline').createInterface({input:process.stdin});let model='opencode/big-pickle';const send=x=>process.stdout.write(JSON.stringify(x)+'\\n');",
+      "rl.on('line',line=>{const m=JSON.parse(line);if(m.method==='initialize')send({id:m.id,result:{agentCapabilities:{sessionCapabilities:{resume:true}}}});else if(m.method==='session/new'||m.method==='session/resume')send({id:m.id,result:{sessionId:'fallback-session',configOptions:[{id:'model',category:'model',currentValue:model,options:[{value:model},{value:'configured/available'}]}]}});else if(m.method==='session/set_config_option'){model=m.params.value;fs.appendFileSync('models.txt',model+'\\n');send({id:m.id,result:{}});}else if(m.method==='session/prompt'){",
+      allUnavailable ? "if(true){" : "if(model==='opencode/big-pickle'){",
+      "process.stderr.write('level=ERROR message=\"stream error\" session.id=fallback-session small=false error.error=\"Free usage limit reached.\"\\n');}else{send({method:'session/update',params:{sessionId:'fallback-session',update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'FALLBACK_OK'}}}});send({id:m.id,result:{stopReason:'end_turn'}});}}});",
+    ].join("");
+    try {
+      const metadata: unknown[] = [];
+      const started = await startOpenCodeProcess(
+        { executablePath: process.execPath, acpArgs: ["-e", script] },
+        {
+          prompt: "Reply",
+          workspace: cwd,
+          mode: "analysis",
+          disablePromptDeadline: true,
+        },
+        () => undefined,
+        () => undefined,
+        (m) => metadata.push(m),
+      );
+      const result = await started.completion;
+      expect(readFileSync(join(cwd, "models.txt"), "utf8")).toBe(
+        "configured/available\n",
+      );
+      if (allUnavailable) {
+        expect(result.error).toContain("[OpenCode models unavailable]");
+        expect(result.output).toBe("");
+      } else {
+        expect(result.error).toBeUndefined();
+        expect(result.output).toBe("FALLBACK_OK");
+        expect(result.model).toMatchObject({
+          provider: "configured",
+          id: "available",
+        });
+      }
+      expect(result.sessionId).toBe("fallback-session");
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  },
+);
+
+it("filters image candidates using explicit native model capabilities", () => {
+  const catalog =
+    "text/model\n" +
+    JSON.stringify({ capabilities: { input: { image: false } } }) +
+    "\nvision/model\n" +
+    JSON.stringify({ capabilities: { input: { image: true } } });
+  expect([...openCodeImageModels(catalog)]).toEqual(["vision/model"]);
+});
+
+it("does not repeat a task after tool activity when a later model call fails", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "opencode-no-replay-"));
+  const script = fakeAcpScript()
+    .replace(
+      "result:{sessionId:'session-test'}",
+      "result:{sessionId:'session-test',configOptions:[{id:'model',category:'model',currentValue:'opencode/big-pickle',options:[{value:'configured/available'}]}]}",
+    )
+    .replace(
+      /else if\(m.method==='session\/prompt'\).*$/,
+      "else if(m.method==='session/prompt'){send({method:'session/update',params:{sessionId:'session-test',update:{sessionUpdate:'tool_call',toolCallId:'effect',title:'write',kind:'edit',status:'in_progress',rawInput:{}}}});process.stderr.write('level=ERROR message=\"stream error\" session.id=session-test small=false error.error=\"Free usage limit reached.\"\\n');}});",
+    );
+  try {
+    const started = await startOpenCodeProcess(
+      { executablePath: process.execPath, acpArgs: ["-e", script] },
+      { prompt: "Work", mode: "analysis", workspace: cwd },
+      () => undefined,
+      () => undefined,
+    );
+    const result = await started.completion;
+    expect(result.error).toBeDefined();
+    expect(result.sessionId).toBe("session-test");
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
 });

@@ -1,3 +1,4 @@
+import { prepareRuntimeWordInputs, isWordAttachment } from "./runtime-inputs";
 import { ChildProcess, spawn } from "child_process";
 import { randomUUID } from "crypto";
 import {
@@ -3075,6 +3076,13 @@ export async function sendMessage(
   contextFolder?: string,
   override?: SessionModelOverride,
 ): Promise<ChatHandle> {
+  const wordInputs = await prepareRuntimeWordInputs(profile, attachments);
+  if (wordInputs.context) {
+    message += wordInputs.context;
+    attachments = attachments?.filter(
+      (attachment) => !isWordAttachment(attachment),
+    );
+  }
   ensureInitialized();
 
   // Remote mode: always use API, no CLI fallback. Cross-provider session
