@@ -469,3 +469,19 @@ Completed reasoning and tool records share one optional process row, keeping the
 [[src/renderer/src/screens/Chat/ExecutionTraceGroup.tsx#ExecutionTraceGroup]] reuses the existing thought and tool controls inside a default-closed group. Counts deduplicate tool call ids. The chevron follows duration with no Expand/Collapse text; localized labels, keyboard activation, theme colors and reduced motion remain supported. [[src/renderer/src/screens/Chat/MessageList.tsx#MessageList]] groups only contiguous process rows with the same runtime and collaboration assignment. Current live traces remain visible, and final replies, system notices, attachments on replies and clarification controls stay outside. Opening a completed group survives subsequent message refreshes under its stable first-event key. Nested process rows disable their inherited content-visibility optimization: the outer row already owns containment, and nested auto containment can stall layout capture after expansion.
 
 [[src/renderer/src/screens/Chat/MessageList.test.tsx]] covers completion, ongoing and earlier turns, identity boundaries, external confirmation controls, count deduplication, arrow order and English labels.
+
+## Explicit task mode
+
+The composer toolbar stores ordinary or collaborative execution explicitly. Natural-language requests and model proposals cannot switch task mode or launch hidden platform collaboration.
+
+[[src/renderer/src/screens/RuntimeChat/TaskModeControl.tsx#TaskModeControl]] opens the existing team editor without dispatching a brief. A complete team needs two distinct enabled agents, assigned responsibilities and valid dependencies. Every message in collaborative mode uses platform scheduling; unavailable or incomplete assignments fail visibly instead of falling back to ordinary execution. Running tasks lock mode changes. Switching back selects the future reply agent and preserves messages, author identity and collaboration history; native session binding is cleared when the owner changes. [[src/renderer/src/screens/Layout/taskMode.ts#switchTaskToSingle]] restores the mode if owner persistence fails. Legacy collaboration records default to collaborative mode and retain unknown fields.
+
+## Inline collaboration progress
+
+Active collaborative tasks show a compact progress strip above the composer, with actual per-role states and completed counts. Completed or cancelled work and ordinary mode hide the strip.
+
+[[src/renderer/src/screens/RuntimeChat/CollaborationProgress.tsx#CollaborationProgress]] defaults to a compact summary and role buttons. Its chevron reveals responsibilities, latest events, directed dialogue and retained delivery/intervention controls. Waiting, paused and blocked execution stays visible for intervention. Final replies and role execution evidence remain in the conversation after the strip disappears. [[src/renderer/src/screens/RuntimeChat/CollaborationProgress.test.tsx]] and [[src/renderer/src/screens/Layout/taskMode.test.ts]] verify visibility and safe mode conversion.
+
+Reopening interrupted Renderer-owned scheduling checks the recorded native runs. If none remain active, the execution becomes paused without losing evidence or starting work; live or unconfirmed runs stay locked.
+
+Opening directed dialogue closes expanded progress to return space to its controls. The intervention panel shows the role error, latest event detail or handoff, falling back to its configured responsibility when no execution detail exists.

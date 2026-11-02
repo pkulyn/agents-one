@@ -1,3 +1,6 @@
+import { recoverInterruptedCollaboration } from "./collaborationRecovery";
+import { CollaborationProgress } from "./CollaborationProgress";
+import { TaskModeControl } from "./TaskModeControl";
 import {
   automaticRuntimeTaskMode,
   isRuntimePermissionFailure,
@@ -21,7 +24,6 @@ import {
   Monitor,
   ShieldCheck,
   Users,
-  X,
 } from "lucide-react";
 import { WebPreviewPanel } from "../Chat/WebPreviewPanel";
 import { ChatInput, type ChatInputHandle } from "../Chat/ChatInput";
@@ -38,7 +40,6 @@ import {
   runtimeEventsToChatMessages,
 } from "./runtimeChatMessageAdapter";
 import { RuntimeConversationWriter } from "./runtimeConversationWriter";
-import { TaskCollaborationRolePanel } from "../../components/TaskCollaborationRolePanel";
 import { TaskCollaborationArtifactPanel } from "../../components/TaskCollaborationArtifactPanel";
 import { TaskCollaborationTimeline } from "../../components/TaskCollaborationTimeline";
 import { useI18n } from "../../components/useI18n";
@@ -74,12 +75,8 @@ import type {
   TaskCollaborationTimelineEvent,
 } from "../../../../shared/task-collaboration";
 import {
-  createExplicitTaskCollaborationProposal,
-  formatTaskCollaborationProposal,
-  hasExplicitTaskCollaborationIntent,
   parseTaskCollaborationProposal,
   orderTaskCollaborationAssignments,
-  taskCollaborationProposalProtocol,
   type TaskCollaborationProposal,
 } from "../../../../shared/task-collaboration-proposals";
 import { summarizeTaskOutput } from "../Chat/runtimeOutput";
@@ -121,6 +118,7 @@ interface RuntimeChatProps {
   initialWorkspaceId?: string;
   initialAccessMode?: "auto" | "analysis" | "full_access";
   collaboration?: {
+    taskMode?: "single" | "collaboration";
     assignments: TaskCollaborationAssignment[];
     execution?: TaskCollaborationExecution;
     taskId?: string;
@@ -134,7 +132,11 @@ interface RuntimeChatProps {
   onConversationIdChange?: (runId: string, conversationId: string) => void;
   onTitleChange?: (runId: string, title: string) => void;
   /** Opens the explicit collaboration proposal for this existing task. */
-  onRequestCollaboration?: (proposal?: TaskCollaborationProposal) => void;
+  onRequestCollaboration?: (
+    proposal?: TaskCollaborationProposal,
+    options?: { configureOnly?: boolean },
+  ) => void;
+  onChangeToSingle?: (runtimeId: string) => Promise<void>;
   /** Persists a validated proposal and returns the launch owned by this task. */
   onStartCollaboration?: (
     proposal: TaskCollaborationProposal,
@@ -946,7 +948,7 @@ function collaborationRolePrompt(
   return [
     "这是 Agents One 平台受控编排的多智能体协作任务。",
     `你当前只执行“${roleLabel}”角色。职责：${responsibility}。`,
-    "严格边界：只报告和完成本角色职责；不要代替其他已登记角色，不要创建 subagent，也不要把未收到的他人结果写成已完成。平台会在你完成后自动派发下一角色。",
+    "严格边界：只报告和完成本角色职责；不要代替其他已登记角色，不要创建 subagent，不得通过 Shell/CLI/脚本启动 opencode、codex、claude、pi、hermes 等其他智能体，也不要把未收到的他人结果写成已完成。只有平台负责派发其他角色。",
     roleCanModify(recipient)
       ? `${
           recipientWorkspaceAccess === "runtime_native"
@@ -1099,6 +1101,7 @@ export default function RuntimeChat({
   onTitleChange,
   onRequestCollaboration,
   onStartCollaboration,
+  onChangeToSingle,
 }: RuntimeChatProps): React.JSX.Element {
   const { t } = useI18n();
   const runtimeCatalog = useMemo(
@@ -1230,8 +1233,9 @@ export default function RuntimeChat({
   const [collaborationAssignments, setCollaborationAssignments] = useState<
     TaskCollaborationAssignment[]
   >(() => collaboration?.assignments || []);
-  const [collaborationDashboardVisible, setCollaborationDashboardVisible] =
-    useState(true);
+  const collaborativeMode = Boolean(
+    collaboration && collaboration.taskMode !== "single",
+  );
   const cancelledRef = useRef(false);
   const runtimeCommandInFlightRef = useRef(false);
   const runtimeCommandRequestIdRef = useRef<string | null>(null);
@@ -1980,12 +1984,7 @@ export default function RuntimeChat({
           runtime.id,
           ...Object.keys(runtimeCatalog),
         ];
-        const latestUserRequest = [...messagesRef.current]
-          .reverse()
-          .find((message) => message.role === "user")?.content;
-        const collaborationAuthorized = hasExplicitTaskCollaborationIntent(
-          latestUserRequest || "",
-        );
+
         const summarizedProposalResult =
           current.status === "succeeded"
             ? parseTaskCollaborationProposal(
@@ -2002,12 +2001,7 @@ export default function RuntimeChat({
             : undefined;
         const summarizedProposal = summarizedProposalResult.proposal;
         const rawProposal = rawProposalResult?.proposal;
-        const parsedProposal = collaborationAuthorized
-          ? summarizedProposal || rawProposal
-          : undefined;
-        const unrequestedProposal =
-          !collaborationAuthorized &&
-          Boolean(summarizedProposal || rawProposal);
+        const unrequestedProposal = Boolean(summarizedProposal || rawProposal);
         const terminalText = unrequestedProposal
           ? (summarizedProposal
               ? summarizedProposalResult.displayContent
@@ -2043,58 +2037,18 @@ export default function RuntimeChat({
           setLoading(false);
           setCurrentRunId(null);
         }
-        if (parsedProposal && onStartCollaboration) {
-          try {
-            const launch = await onStartCollaboration(parsedProposal, {
-              ...(workspaceId ? { workspaceId } : {}),
-              ...(workspace ? { name: workspace } : {}),
-              ...(!workspaceId && workspace ? { legacyPath: workspace } : {}),
-            });
-            if (launch) {
-              await linkCollaborationToConversation(launch.taskId);
-              setCollaborationAssignments(launch.assignments);
-              const brief =
-                parsedProposal.brief ||
-                [...nextMessages]
-                  .reverse()
-                  .find((message) => message.role === "user")?.content ||
-                t("runtimeChat.collaborationRun.defaultBrief");
-              requestAnimationFrame(() => {
-                window.dispatchEvent(
-                  new CustomEvent("agents-one:submit-task-message", {
-                    detail: {
-                      runId,
-                      content: brief,
-                      reuseExistingUserMessage: true,
-                      collaboration: {
-                        ...launch,
-                        initialCoordinatorHandoff: terminalText,
-                      },
-                    },
-                  }),
-                );
-              });
-            }
-          } catch {
-            // The validated proposal stays visible and can still be adjusted
-            // manually if persistence is temporarily unavailable.
-          }
-        }
+
         return;
       }
     },
     [
       onSessionIdChange,
-      onStartCollaboration,
-      linkCollaborationToConversation,
       persistConversation,
       profile,
       runId,
       runtime,
       runtimeCatalog,
       t,
-      workspace,
-      workspaceId,
     ],
   );
 
@@ -3964,12 +3918,37 @@ export default function RuntimeChat({
     )
       return;
     let disposed = false;
+    let initialLoad = true;
+    let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
     const loadExecution = (): void => {
+      const recover = initialLoad;
+      initialLoad = false;
       void window.agentsOneAPI
         .getTaskCollaboration(collaboration.taskId as string, profile)
-        .then((record) => {
-          if (!disposed && record?.execution)
-            setCollaborationExecution(record.execution);
+        .then(async (record) => {
+          if (disposed || !record?.execution) return;
+          const execution =
+            recover &&
+            !taskRunRef.current &&
+            typeof window.agentsOneAPI.getAgentRuntimeRun === "function"
+              ? await recoverInterruptedCollaboration(record.execution, (id) =>
+                  window.agentsOneAPI.getAgentRuntimeRun(id),
+                )
+              : record.execution;
+          if (disposed || (recover && taskRunRef.current)) return;
+          if (recover && execution.status === "running") {
+            recoveryTimer = setTimeout(() => {
+              initialLoad = true;
+              loadExecution();
+            }, 2000);
+          }
+          if (execution !== record.execution) {
+            await window.agentsOneAPI.updateTaskCollaborationExecution(
+              { taskId: collaboration.taskId as string, execution },
+              profile,
+            );
+          }
+          if (!disposed) setCollaborationExecution(execution);
         })
         .catch(() => {
           // The current transcript remains usable if optional collaboration
@@ -3983,6 +3962,7 @@ export default function RuntimeChat({
     );
     return () => {
       disposed = true;
+      clearTimeout(recoveryTimer);
       window.removeEventListener(
         "agents-one:task-collaboration-changed",
         loadExecution,
@@ -4401,6 +4381,11 @@ export default function RuntimeChat({
       );
       return;
     }
+    if (collaborativeMode && collaborationExecution?.status === "running") {
+      chatInputRef.current?.restore(prompt, attachments);
+      appendRuntimeControlMessage(t("runtimeChat.taskMode.busy"));
+      return;
+    }
     const selectedWorkspace = workspace || undefined;
     const hasSelectedWorkspace = Boolean(selectedWorkspace || workspaceId);
     const resolvedAccessMode =
@@ -4446,62 +4431,34 @@ export default function RuntimeChat({
         setLoading(false);
         return;
       }
-      const collaborationCandidates = [
-        ...new Map(
-          [runtime, ...Object.values(runtimeCatalog)].map((candidate) => [
-            candidate.id,
-            candidate,
-          ]),
-        ).values(),
-      ]
-        .filter((candidate) => candidate.enabled)
-        .map((candidate) => ({
-          id: candidate.id,
-          name: candidate.name,
-          kind: candidate.kind,
-        }));
-      const collaborationRequested = hasExplicitTaskCollaborationIntent(prompt);
-      const explicitProposal =
-        collaborationRequested &&
-        (onStartCollaboration || onRequestCollaboration)
-          ? createExplicitTaskCollaborationProposal(
-              prompt,
-              { id: runtime.id, name: runtime.name, kind: runtime.kind },
-              collaborationCandidates,
-            )
-          : undefined;
-      if (explicitProposal) {
-        if (onStartCollaboration) {
-          const launch = await onStartCollaboration(explicitProposal, {
-            ...(workspaceId ? { workspaceId } : {}),
-            ...(selectedWorkspace ? { name: selectedWorkspace } : {}),
-            ...(!workspaceId && selectedWorkspace
-              ? { legacyPath: selectedWorkspace }
-              : {}),
-          });
-          if (!launch)
-            throw new Error(t("runtimeChat.feedback.collaborationSaveFailed"));
-          await linkCollaborationToConversation(launch.taskId);
-          setCollaborationAssignments(launch.assignments);
-          await runCollaboration(prompt, launch, selectedWorkspace);
-          setLoading(false);
-          setCurrentRunId(null);
-          return;
-        }
-        const proposalMessages = [
-          ...nextMessages,
-          newMessage(
-            "agent",
-            formatTaskCollaborationProposal(explicitProposal),
-          ),
-        ];
-        messagesRef.current = proposalMessages;
-        setMessages(proposalMessages);
-        await persistConversation(proposalMessages);
+      if (collaborativeMode) {
+        const configured = collaborationAssignments.filter(
+          (item) => item.runtimeId && runtimeCatalog[item.runtimeId]?.enabled,
+        );
+        if (
+          !collaboration?.taskId ||
+          configured.length !== collaborationAssignments.length ||
+          new Set(configured.map((item) => item.runtimeId)).size < 2 ||
+          configured.some((item) => !item.responsibility?.trim())
+        )
+          throw new Error(t("runtimeChat.taskMode.incomplete"));
+        await linkCollaborationToConversation(collaboration.taskId);
+        await runCollaboration(
+          prompt,
+          {
+            ...collaboration,
+            assignments: configured,
+            taskId: collaboration.taskId,
+          },
+          selectedWorkspace,
+        );
         setLoading(false);
         setCurrentRunId(null);
         return;
       }
+      const collaborationCandidates = Object.values(runtimeCatalog).filter(
+        (item) => item.enabled,
+      );
       const resumableSessionId = runtimeSessionIdRef.current || undefined;
       const basePrompt = resumableSessionId
         ? prompt
@@ -4510,9 +4467,7 @@ export default function RuntimeChat({
         runtime.location === "remote"
           ? remoteRuntimeEnvironmentProtocol()
           : undefined,
-        collaborationRequested && collaborationCandidates.length > 1
-          ? taskCollaborationProposalProtocol(collaborationCandidates)
-          : undefined,
+        "当前是 Agents One 普通任务。由你独立完成。不得通过 Shell、CLI、脚本或工具启动 opencode、codex、claude、pi、hermes 等其他智能体；如需其他智能体，请让用户通过任务模式切换为协作任务。不得输出协作提案或自行派发。",
       ].filter((rule): rule is string => Boolean(rule));
       const runtimePrompt = platformRules.length
         ? `${platformRules.join("\n\n")}\n\n${t("runtimeChat.feedback.currentUserRequest", { prompt: basePrompt })}`
@@ -4955,6 +4910,80 @@ export default function RuntimeChat({
               </button>
             ) : null}
             <div className="chat-input-area">
+              <CollaborationProgress
+                enabled={collaborativeMode}
+                execution={collaborationExecution}
+                assignments={collaborationAssignments}
+                runtimes={runtimeCatalog}
+                onIntervene={openRoleDialogue}
+              >
+                <TaskCollaborationArtifactPanel
+                  execution={collaborationExecution}
+                  onIntervene={() => {
+                    const target =
+                      collaborationExecution?.roleRuns.find((item) =>
+                        [
+                          "waiting_for_user",
+                          "failed",
+                          "blocked",
+                          "needs_review",
+                        ].includes(item.status),
+                      ) ||
+                      collaborationExecution?.roleRuns.find(
+                        (item) =>
+                          item.assignmentId ===
+                          collaborationExecution.acceptance?.assignmentId,
+                      );
+                    const assignment = target
+                      ? collaborationAssignments.find(
+                          (item, index) =>
+                            assignmentKey(item, index) === target.assignmentId,
+                        )
+                      : undefined;
+                    if (target && assignment) {
+                      openRoleDialogue(assignment, target.assignmentId);
+                    }
+                  }}
+                  onReassignImplementation={() => {
+                    const blockedRun = collaborationExecution?.roleRuns.find(
+                      (item) =>
+                        ["waiting_for_user", "failed", "blocked"].includes(
+                          item.status,
+                        ),
+                    );
+                    const assignment = blockedRun
+                      ? collaborationAssignments.find(
+                          (item, index) =>
+                            assignmentKey(item, index) ===
+                            blockedRun.assignmentId,
+                        )
+                      : collaborationAssignments.find(roleCanModify);
+                    if (assignment) {
+                      const assignmentId =
+                        blockedRun?.assignmentId ||
+                        assignmentKey(
+                          assignment,
+                          collaborationAssignments.indexOf(assignment),
+                        );
+                      openRoleDialogue(assignment, assignmentId);
+                      setInterventionText(
+                        t("runtimeChat.collaboration.implementationGuidance"),
+                      );
+                      setInterventionShared(true);
+                    }
+                  }}
+                  acceptanceRuntimeOptions={Object.values(runtimeCatalog)
+                    .filter((candidate) => candidate.enabled)
+                    .map((candidate) => ({
+                      id: candidate.id,
+                      name: candidate.name,
+                    }))}
+                  onReassignAcceptance={(runtimeId) =>
+                    void reassignAcceptance(runtimeId)
+                  }
+                />
+                <TaskCollaborationTimeline execution={collaborationExecution} />
+              </CollaborationProgress>
               {skillsPanelOpen ? (
                 <div
                   className="runtime-model-picker"
@@ -5500,6 +5529,32 @@ export default function RuntimeChat({
                         </span>
                       </span>
                     ) : null}
+                    <TaskModeControl
+                      collaborative={collaborativeMode}
+                      count={
+                        new Set(
+                          collaborationAssignments
+                            .map((item) => item.runtimeId)
+                            .filter(Boolean),
+                        ).size
+                      }
+                      busy={
+                        loading || collaborationExecution?.status === "running"
+                      }
+                      runtimeId={runtime.id}
+                      runtimes={Object.values(runtimeCatalog)
+                        .filter((item) => item.enabled)
+                        .map((item) => ({ id: item.id, name: item.name }))}
+                      onConfigure={
+                        onRequestCollaboration
+                          ? () =>
+                              onRequestCollaboration(undefined, {
+                                configureOnly: true,
+                              })
+                          : undefined
+                      }
+                      onSingle={onChangeToSingle}
+                    />
                     {lastReportedIsolation &&
                     isolationBadge &&
                     IsolationBadgeIcon ? (
@@ -5546,117 +5601,23 @@ export default function RuntimeChat({
             ref={scrollRef}
             onScroll={handleMessageScroll}
           >
-            {collaboration && collaborationDashboardVisible ? (
-              <aside
-                className="task-collaboration-dashboard"
-                aria-label={t("runtimeChat.collaboration.dashboardAria")}
-              >
-                <header className="task-collaboration-dashboard-header">
-                  <span>
-                    <Users size={15} />
-                    {t("runtimeChat.collaboration.dashboard")}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn-ghost task-collaboration-dashboard-close"
-                    onClick={() => setCollaborationDashboardVisible(false)}
-                    aria-label={t("runtimeChat.collaboration.hideDashboard")}
-                    title={t("runtimeChat.collaboration.hideDashboard")}
-                  >
-                    <X size={15} />
-                  </button>
-                </header>
-                <TaskCollaborationRolePanel
-                  assignments={collaborationAssignments}
-                  runtimes={runtimeCatalog}
-                  execution={collaborationExecution}
-                  onIntervene={openRoleDialogue}
-                />
-                <TaskCollaborationArtifactPanel
-                  execution={collaborationExecution}
-                  onIntervene={() => {
-                    const target =
-                      collaborationExecution?.roleRuns.find((item) =>
-                        [
-                          "waiting_for_user",
-                          "failed",
-                          "blocked",
-                          "needs_review",
-                        ].includes(item.status),
-                      ) ||
-                      collaborationExecution?.roleRuns.find(
-                        (item) =>
-                          item.assignmentId ===
-                          collaborationExecution.acceptance?.assignmentId,
-                      );
-                    const assignment = target
-                      ? collaborationAssignments.find(
-                          (item, index) =>
-                            assignmentKey(item, index) === target.assignmentId,
-                        )
-                      : undefined;
-                    if (target && assignment) {
-                      openRoleDialogue(assignment, target.assignmentId);
-                    }
-                  }}
-                  onReassignImplementation={() => {
-                    const blockedRun = collaborationExecution?.roleRuns.find(
-                      (item) =>
-                        ["waiting_for_user", "failed", "blocked"].includes(
-                          item.status,
-                        ),
-                    );
-                    const assignment = blockedRun
-                      ? collaborationAssignments.find(
-                          (item, index) =>
-                            assignmentKey(item, index) ===
-                            blockedRun.assignmentId,
-                        )
-                      : collaborationAssignments.find(roleCanModify);
-                    if (assignment) {
-                      const assignmentId =
-                        blockedRun?.assignmentId ||
-                        assignmentKey(
-                          assignment,
-                          collaborationAssignments.indexOf(assignment),
-                        );
-                      openRoleDialogue(assignment, assignmentId);
-                      setInterventionText(
-                        t("runtimeChat.collaboration.implementationGuidance"),
-                      );
-                      setInterventionShared(true);
-                    }
-                  }}
-                  acceptanceRuntimeOptions={Object.values(runtimeCatalog)
-                    .filter((candidate) => candidate.enabled)
-                    .map((candidate) => ({
-                      id: candidate.id,
-                      name: candidate.name,
-                    }))}
-                  onReassignAcceptance={(runtimeId) =>
-                    void reassignAcceptance(runtimeId)
-                  }
-                />
-                <TaskCollaborationTimeline execution={collaborationExecution} />
-              </aside>
-            ) : collaboration ? (
-              <button
-                type="button"
-                className="task-collaboration-dashboard-trigger"
-                onClick={() => setCollaborationDashboardVisible(true)}
-                aria-label={t("runtimeChat.collaboration.showDashboard")}
-                title={t("runtimeChat.collaboration.showDashboard")}
-              >
-                <Users size={16} />
-                <span>{t("runtimeChat.collaboration.dashboard")}</span>
-              </button>
-            ) : null}
             {interventionTarget
               ? (() => {
                   const targetRun = collaborationExecution?.roleRuns.find(
                     (item) =>
                       item.assignmentId === interventionTarget.assignmentId,
                   );
+                  const roleContext =
+                    targetRun?.error ||
+                    collaborationExecution?.timeline
+                      ?.filter(
+                        (event) =>
+                          event.assignmentId ===
+                          interventionTarget.assignmentId,
+                      )
+                      .at(-1)?.detail ||
+                    targetRun?.handoff ||
+                    interventionTarget.assignment.responsibility;
                   const canContinue = Boolean(
                     targetRun &&
                     [
@@ -5723,6 +5684,14 @@ export default function RuntimeChat({
                                     ),
                         })}
                       </p>
+                      {roleContext ? (
+                        <div className="collaboration-intervention-context">
+                          <strong>
+                            {t("runtimeChat.collaborationProgress.context")}
+                          </strong>
+                          <p>{roleContext}</p>
+                        </div>
+                      ) : null}
                       {priorInstructions.length ? (
                         <ol className="collaboration-intervention-history">
                           {priorInstructions.slice(-6).map((item) => (

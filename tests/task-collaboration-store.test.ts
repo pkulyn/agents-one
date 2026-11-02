@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -359,5 +359,94 @@ describe("task collaboration store", () => {
     ).toEqual(
       expect.objectContaining({ runtimeSessionId: "pi-guided-session" }),
     );
+  });
+});
+
+describe("Explicit task mode persistence", () => {
+  beforeEach(() => {
+    testHome = mkdtempSync(join(tmpdir(), "agents-one-mode-"));
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(testHome, { recursive: true, force: true });
+  });
+  it("retains team, execution, links and unknown data through mode changes and reload", async () => {
+    const store = await loadStore();
+    const initial = store.saveTaskCollaboration({
+      taskId: "mode-task",
+      title: "Mode",
+      assignments: [
+        { id: "lead", role: "编排", runtimeId: "pi" },
+        { id: "work", role: "执行", runtimeId: "opencode" },
+      ],
+    });
+    store.linkTaskCollaboration({
+      taskId: initial.taskId,
+      conversationId: "conversation-mode",
+    });
+    store.updateTaskCollaborationExecution({
+      taskId: initial.taskId,
+      execution: {
+        status: "succeeded",
+        roleRuns: [
+          {
+            assignmentId: "lead",
+            role: "编排",
+            runtimeId: "pi",
+            status: "succeeded",
+          },
+        ],
+        updatedAt: 2,
+        completedAt: 2,
+      },
+    });
+    const file = join(testHome, "desktop", "task-collaborations.json");
+    const raw = JSON.parse(readFileSync(file, "utf8"));
+    raw.records[0].futureExtension = { keep: true };
+    writeFileSync(file, JSON.stringify(raw));
+    const saved = store.saveTaskCollaboration({
+      ...initial,
+      taskMode: "single",
+    });
+    const reloaded = await loadStore();
+    expect(reloaded.getTaskCollaboration("conversation-mode")).toMatchObject({
+      taskMode: "single",
+      assignments: initial.assignments,
+      execution: { status: "succeeded" },
+      futureExtension: { keep: true },
+    });
+    const enabled = reloaded.saveTaskCollaboration({
+      ...saved,
+      taskMode: "collaboration",
+    });
+    expect(enabled.execution).toEqual(saved.execution);
+    expect(enabled.assignments).toEqual(initial.assignments);
+  });
+  it("rejects switching a running collaboration and preserves its mode", async () => {
+    const store = await loadStore();
+    const task = store.saveTaskCollaboration({
+      taskId: "busy",
+      title: "Busy",
+      assignments: [{ id: "work", role: "执行", runtimeId: "pi" }],
+    });
+    store.updateTaskCollaborationExecution({
+      taskId: "busy",
+      execution: {
+        status: "running",
+        roleRuns: [
+          {
+            assignmentId: "work",
+            role: "执行",
+            runtimeId: "pi",
+            status: "running",
+          },
+        ],
+        updatedAt: 2,
+      },
+    });
+    expect(() =>
+      store.saveTaskCollaboration({ ...task, taskMode: "single" }),
+    ).toThrow("collaboration_running");
+    expect(store.getTaskCollaboration("busy")?.taskMode).toBe("collaboration");
   });
 });
