@@ -6,7 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ChevronDown, FileText } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type {
   ConversationFileRef,
   ConversationFileInfo,
@@ -18,6 +18,7 @@ import {
 } from "../../../shared/conversation-files";
 import type { ChatBubbleMessage } from "../screens/Chat/types";
 import { parseRuntimeArtifactMediaUri } from "../screens/Chat/mediaUtils";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { MediaImage } from "./MediaImage";
 import { useI18n } from "./useI18n";
 
@@ -118,7 +119,7 @@ function VerifiedLink({
           act("menu");
         }}
       >
-        <FileText size={14} />
+        <FileTypeIcon name={entry.name} />
         {children}
       </button>
       {error && (
@@ -149,7 +150,7 @@ function FileCard({ entry }: { entry: FileEntry }): React.JSX.Element {
   if (!entry.info)
     return (
       <div className="chat-document-unavailable">
-        <FileText size={16} />
+        <FileTypeIcon name={entry.name} />
         <span>{entry.name}</span>
         <small>{t("chat.files.unavailable")}</small>
       </div>
@@ -182,7 +183,7 @@ function FileCard({ entry }: { entry: FileEntry }): React.JSX.Element {
           onClick={() => act("open")}
         >
           <span className="chat-document-icon">
-            <FileText size={24} />
+            <FileTypeIcon name={entry.name} size={48} />
           </span>
           <span className="chat-document-description">
             <strong>{entry.name}</strong>
@@ -309,7 +310,7 @@ export function ConversationFiles({
           return (
             <details className="chat-document-revision" key={index}>
               <summary>
-                <FileText size={15} />
+                <FileTypeIcon name={diff.label} />
                 <span>{diff.label}</span>
                 {hasLineDiff && (
                   <>

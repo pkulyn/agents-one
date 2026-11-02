@@ -1,8 +1,9 @@
-import { Download, FileText, Image as ImageIcon, X } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { Attachment } from "../../../shared/attachments";
 import { useLightboxClose } from "../hooks/useLightboxClose";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { useI18n } from "./useI18n";
 
 interface AttachmentChipProps {
@@ -64,7 +65,7 @@ export function AttachmentChip({
       <img className="attachment-chip-thumb" src={attachment.dataUrl} alt="" />
     ) : (
       <span className="attachment-chip-icon" aria-hidden="true">
-        {isImage ? <ImageIcon size={18} /> : <FileText size={18} />}
+        <FileTypeIcon name={attachment.name} mime={attachment.mime} size={24} />
       </span>
     );
   const name = <span className="attachment-chip-name">{attachment.name}</span>;

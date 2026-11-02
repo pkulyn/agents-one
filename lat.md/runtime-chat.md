@@ -134,6 +134,12 @@ Saved assistant replies render verified file references as inline links and deli
 
 [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.ts#runtimeConversationMessage]] converts image artifacts into local `MEDIA` tokens and non-image files into attachments. Local file artifacts are openable links rather than download-only chips: hover exposes the complete path, click opens the file, and the native context menu supports opening, copying the path, copying bounded document content, and revealing the file in the system explorer. Remote URLs and data payloads retain save/download behavior. Hiding artifact-publication cards therefore does not hide images or files.
 
+### File format icons
+
+[[src/renderer/src/components/FileTypeIcon.tsx#FileTypeIcon]] shares bundled format-specific SVGs across delivered cards, inline file links, sent attachments, composer chips and legacy download chips.
+
+Filename extensions take priority, MIME supplies a fallback, and unknown types retain a generic file icon. Real image thumbnails remain intact. Microsoft file-type assets keep their original colors; the community Markdown mark has a white backing in both themes. Icon sizes are 16, 24 and 48 pixels; changing presentation grants no file capability and changes no Runtime transport or stored data.
+
 ## Ordered delivery and per-agent identity
 
 Collaboration execution must follow dependency order, preserve platform-verified delivery facts, and render each handoff under the Runtime that produced it.
