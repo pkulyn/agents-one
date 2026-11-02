@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Download, FileText, X } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { useLightboxClose } from "../hooks/useLightboxClose";
 import type { MediaToken } from "../screens/Chat/mediaUtils";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { useI18n } from "./useI18n";
 
 /**
@@ -220,11 +221,7 @@ export function DownloadChip({
             : onContextMenu
       }
     >
-      {localFile || runtimeArtifact ? (
-        <FileText size={14} />
-      ) : (
-        <Download size={14} />
-      )}
+      <FileTypeIcon name={token.name} />
       {token.name}
     </button>
   );

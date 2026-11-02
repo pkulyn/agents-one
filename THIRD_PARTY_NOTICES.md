@@ -95,3 +95,27 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+## Fluent file-type icons and Markdown Mark
+
+The bundled file-type SVGs in src/renderer/src/assets/file-types preserve the Microsoft Fluent file-type artwork distributed by [react-icons-file-type](https://github.com/microsoft/fluentui-system-icons/tree/main/packages/react-icons-file-type), pinned to Office CDN fabric-cdn-prod_20261014.001 (assets/item-types, sizes 16, 24 and 48). Copyright (c) 2020 Microsoft Corporation. The upstream [MIT license](https://github.com/microsoft/fluentui-system-icons/blob/main/LICENSE) applies with the full MIT permission and warranty terms reproduced below. Microsoft names and marks identify file formats and do not imply endorsement.
+
+The Markdown Mark is by Dustin Curtis, dedicated to the public domain under [CC0](https://github.com/dcurtis/markdown-mark/blob/master/LICENSE). The original svg/markdown-mark.svg is retained without changes.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
