@@ -16,6 +16,7 @@ export default {
       "The team is incomplete or an agent is unavailable. Edit the team before dispatching.",
   },
   collaborationProgress: {
+    empty: "No delivery or intervention records yet.",
     context: "Current context",
     title: "Collaboration progress",
     completed: "{{done}}/{{total}} completed",
@@ -28,7 +29,7 @@ export default {
       succeeded: "Completed",
       failed: "Failed",
       blocked: "Blocked",
-      waiting_for_user: "Needs input",
+      waiting_for_user: "Waiting for input",
       paused: "Paused",
       needs_review: "Needs review",
       cancelled: "Cancelled",
@@ -231,6 +232,10 @@ export default {
     hide: "Hide web preview",
   },
   collaboration: {
+    saveHint:
+      "Saving keeps instructions for later. Send to this agent starts execution immediately.",
+    savedInstruction: "Saved instruction",
+    executionSettings: "Permissions and reassignment",
     dashboard: "Collaboration dashboard",
     dashboardAria: "Agent collaboration dashboard",
     showDashboard: "Show collaboration dashboard",

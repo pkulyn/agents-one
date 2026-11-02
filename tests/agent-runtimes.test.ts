@@ -760,6 +760,59 @@ describe("agent runtime registry", () => {
     );
   });
 
+  it("verifies a real projectless collaborative ACP file in automatic mode", async () => {
+    const { runtimes } = await loadModules();
+    const nativeWrite =
+      "const fs=require('node:fs'),p=require('node:path'),c=require('node:crypto');const target=p.join(process.cwd(),'handoff.txt');fs.writeFileSync(target,'COLLAB_OK');const hash=c.createHash('sha256').update('COLLAB_OK').digest('hex');const delivery='[交付物]\\n路径：'+target+'\\nSHA-256：'+hash+'\\n来源机器：本机工作区\\n变更摘要：创建交接文件。';";
+    const script = fakeOpenCodeAcpScript()
+      .replace(
+        "if(m.method==='session/prompt'){",
+        "if(m.method==='session/prompt'){" + nativeWrite,
+      )
+      .replace(
+        "text:'ok'",
+        "text:delivery.replace(/\\\\n/g,String.fromCharCode(10))",
+      );
+    const saved = runtimes.saveAgentRuntime({
+      id: "collab-opencode",
+      name: "OpenCode",
+      kind: "opencode",
+      location: "local",
+      enabled: true,
+      config: {
+        executablePath: process.execPath,
+        acpArgs: ["-e", script],
+        agentTransport: "local-cli",
+      },
+    });
+    const { saveTaskCollaboration } =
+      await import("../src/main/task-collaboration-store");
+    saveTaskCollaboration({
+      taskId: "native-collab",
+      title: "ACP shared delivery",
+      taskMode: "collaboration",
+      assignments: [{ id: "work", role: "实施", runtimeId: saved.id }],
+    });
+    const result = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "Write handoff",
+      mode: "safe_write",
+      collaborationContext: { taskId: "native-collab", assignmentId: "work" },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "file",
+          relativePath: "handoff.txt",
+          sha256: createHash("sha256").update("COLLAB_OK").digest("hex"),
+        }),
+      ]),
+    );
+    expect(result.artifacts?.find((a) => a.kind === "file")?.path).toContain(
+      "collaboration-workspaces",
+    );
+  });
+
   it("routes a local OpenCode task through the main Runtime lifecycle", async () => {
     const { runtimes } = await loadModules();
     const saved = runtimes.saveAgentRuntime({

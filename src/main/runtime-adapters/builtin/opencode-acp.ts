@@ -1,3 +1,4 @@
+import { collaborationWorkingDirectory } from "../../collaboration-working-directory";
 import { runtimeModelFailureKind } from "../../../shared/runtime-model-errors";
 import type { RuntimePermissionBridge } from "../../runtime-tool-permissions";
 import { execFile } from "node:child_process";
@@ -1270,7 +1271,10 @@ async function startOpenCodeAttempt(
   // Reuse the existing private-data overlap guard before staging or dispatch.
   if (workspace && (mode === "analysis" || mode === "safe_write"))
     assertClaudeWorkspaceBoundary(workspace, input.profile);
-  const cwd = workspace || openCodeConversationWorkspace(input.profile);
+  const cwd =
+    workspace ||
+    collaborationWorkingDirectory(input) ||
+    openCodeConversationWorkspace(input.profile);
   const invocation = opencodeInvocation(
     configuredExecutable(config.executablePath),
   );
@@ -1360,10 +1364,13 @@ async function startOpenCodeAttempt(
   let permissionDenied: string | undefined;
   const events: NormalizedRuntimeEvent[] = [];
   const toolStates = new Map<string, OpenCodeToolState>();
-  const beforeWorkspace = workspace ? workspaceSnapshot(workspace) : undefined;
+  const deliveryWorkspace = workspace || collaborationWorkingDirectory(input);
+  const beforeWorkspace = deliveryWorkspace
+    ? workspaceSnapshot(deliveryWorkspace)
+    : undefined;
   const protection =
-    mode === "safe_write" && workspace && !config.permissionBridge
-      ? protectWorkspaceFromRemoval(workspace, input.profile)
+    mode === "safe_write" && deliveryWorkspace && !config.permissionBridge
+      ? protectWorkspaceFromRemoval(deliveryWorkspace, input.profile)
       : undefined;
   const client = new OpenCodeAcpClient(process, {
     mode,
@@ -1490,7 +1497,11 @@ async function startOpenCodeAttempt(
       await process.cancel();
       const processResult = await process.completion;
       const restored = protection?.restoreAndDispose() || [];
-      const artifacts = changedArtifacts(workspace, beforeWorkspace, restored);
+      const artifacts = changedArtifacts(
+        deliveryWorkspace,
+        beforeWorkspace,
+        restored,
+      );
       return {
         output: restored.length
           ? `${output}\n[Agents One] 已阻止移动或删除 ${restored.length} 个原有文件。`
@@ -1524,7 +1535,11 @@ async function startOpenCodeAttempt(
       };
     } catch (error) {
       const restored = protection?.restoreAndDispose() || [];
-      const artifacts = changedArtifacts(workspace, beforeWorkspace, restored);
+      const artifacts = changedArtifacts(
+        deliveryWorkspace,
+        beforeWorkspace,
+        restored,
+      );
       await process.cancel().catch(() => undefined);
       return {
         output,

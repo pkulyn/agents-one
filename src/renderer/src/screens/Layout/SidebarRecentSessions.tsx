@@ -1464,16 +1464,18 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           </span>
         )}
         <span className="sidebar-recent-session-text">
-          {runtimeLabel && (
-            <span className="sidebar-recent-session-agent-name">
-              {runtimeLabel}
-            </span>
-          )}
-          {isCollaboration ? (
-            <span className="sidebar-recent-session-collaboration">
-              {t("navigation.sidebar.collaboration")}
-            </span>
-          ) : null}
+          <span className="sidebar-recent-session-heading">
+            {runtimeLabel && (
+              <span className="sidebar-recent-session-agent-name">
+                {runtimeLabel}
+              </span>
+            )}
+            {isCollaboration ? (
+              <span className="sidebar-recent-session-collaboration">
+                {t("navigation.sidebar.collaboration")}
+              </span>
+            ) : null}
+          </span>
           <span className="sidebar-recent-session-title">{title}</span>
         </span>
         <button
