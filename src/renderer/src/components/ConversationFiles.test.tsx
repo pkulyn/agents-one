@@ -51,6 +51,13 @@ describe("delivered documents", () => {
       }),
     );
     expect(container.querySelectorAll(".chat-document-card")).toHaveLength(1);
+    expect(link.querySelector(".file-type-icon")).toHaveAttribute(
+      "data-file-type",
+      "markdown",
+    );
+    expect(
+      container.querySelector(".chat-document-card .file-type-icon"),
+    ).toHaveAttribute("data-file-type", "markdown");
   });
   it("renders a Markdown file link without navigating the browser", async () => {
     const content = "文件：[周报](<" + path + ">)";

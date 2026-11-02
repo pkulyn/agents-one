@@ -28,7 +28,11 @@ describe("AttachmentChip local file actions", () => {
       size: 433,
       runtimeArtifact: { runId: "run-1", artifactId: "report-1" },
     };
-    render(<AttachmentChip attachment={attachment} />);
+    const { container } = render(<AttachmentChip attachment={attachment} />);
+    expect(container.querySelector(".file-type-icon")).toHaveAttribute(
+      "data-file-type",
+      "pdf",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "report.pdf" }));
     expect(window.agentsOneAPI.openAgentRuntimeArtifact).toHaveBeenCalledWith(
