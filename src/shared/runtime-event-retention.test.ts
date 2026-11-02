@@ -34,6 +34,38 @@ describe("Runtime trace retention", () => {
     expect(events.at(-1)?.id).toBe("399");
   });
 
+  it("keeps initial reasoning through repeated process-only overflow", () => {
+    const thought: AgentRuntimeEvent = {
+      id: "initial",
+      type: "progress",
+      summary: "Initial plan",
+      detail: "Full initial reasoning",
+      createdAt: 1,
+    };
+    let events = [thought];
+    for (let i = 0; i < 450; i += 1) {
+      events = retainRuntimeEvents(
+        [
+          ...events,
+          {
+            id: String(i),
+            type: i === 449 ? "completed" : "tool_result",
+            summary: String(i),
+            createdAt: i + 2,
+          },
+        ],
+        200,
+      );
+    }
+    expect(events).toHaveLength(200);
+    expect(events[0]).toEqual(thought);
+    expect(events.slice(1).map((event) => event.id)).toEqual(
+      Array.from({ length: 199 }, (_, i) => String(i + 251)),
+    );
+    expect(retainRuntimeEvents(events, 1)).toEqual([events.at(-1)]);
+    expect(retainRuntimeEvents(events, 0)).toEqual([]);
+  });
+
   it("keeps existing chronological tail behavior when process evidence alone fills the limit", () => {
     const events: AgentRuntimeEvent[] = Array.from({ length: 85 }, (_, i) => ({
       id: String(i),
