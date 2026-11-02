@@ -118,5 +118,10 @@ describe("local Runtime delivery verification", () => {
         }),
       ),
     );
+    const singleMarkerOutput =
+      "[交付物]\n" + output.replaceAll("[交付物]\n", "");
+    expect(
+      await verifyLocalDeliveryArtifacts(singleMarkerOutput, root),
+    ).toHaveLength(2);
   });
 });
