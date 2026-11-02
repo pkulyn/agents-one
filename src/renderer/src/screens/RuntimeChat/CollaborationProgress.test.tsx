@@ -106,6 +106,6 @@ describe("Inline collaboration progress", () => {
         onIntervene={vi.fn()}
       />,
     );
-    expect(screen.getByText("等待确认")).toBeVisible();
+    expect(screen.getByText("等待人工处理")).toBeVisible();
   });
 });

@@ -3514,6 +3514,7 @@ describe("RuntimeChat inputs and persistence", () => {
         id,
         runtimeId,
         status: "succeeded",
+        sessionId: `child-session-${runtimeId}`,
         output:
           runtimeId === "hermes-gateway"
             ? "[验收结论]\n状态：通过\n依据：#1 #2\n结论：两个分支均完成。"
@@ -3566,6 +3567,7 @@ describe("RuntimeChat inputs and persistence", () => {
         runId="dag-collaboration"
         runtime={piRuntime}
         profile="default"
+        initialRuntimeSessionId="parent-pi-session"
         initialMessages={[
           {
             id: "parent-history",
@@ -3630,6 +3632,10 @@ describe("RuntimeChat inputs and persistence", () => {
       { timeout: 4_000 },
     );
     expect(startAgentRuntimeTask.mock.calls[3][0]).toBe("hermes-gateway");
+    expect(startAgentRuntimeTask.mock.calls[0][1]).toMatchObject({
+      profile: "default",
+      collaborationContext: { taskId: "dag-task", assignmentId: "plan" },
+    });
     await waitFor(
       () =>
         expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
@@ -3640,6 +3646,17 @@ describe("RuntimeChat inputs and persistence", () => {
         ),
       { timeout: 4_000 },
     );
+    expect(
+      saveRuntimeConversation.mock.calls.at(-1)?.[0].runtimeSessionId,
+    ).toBe("parent-pi-session");
+    expect(
+      saveRuntimeConversation.mock.calls
+        .at(-1)?.[0]
+        .messages.filter(
+          (m: { role: string; content: string }) =>
+            m.role === "agent" && m.content === "codex-local 完成",
+        ),
+    ).toHaveLength(1);
   });
 
   it("hides progress when a collaboration is configured but not executing", () => {
@@ -3715,6 +3732,9 @@ describe("RuntimeChat inputs and persistence", () => {
     );
 
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    expect(
+      screen.getByText("我已经完成实施。", { exact: false }),
+    ).toBeInTheDocument();
     expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
       expect.objectContaining({
         taskId: "collaboration-missing-artifact-task",
@@ -3725,6 +3745,7 @@ describe("RuntimeChat inputs and persistence", () => {
             expect.objectContaining({
               assignmentId: "implement",
               status: "waiting_for_user",
+              handoff: "我已经完成实施。",
             }),
             expect.objectContaining({
               assignmentId: "test",
@@ -3735,6 +3756,40 @@ describe("RuntimeChat inputs and persistence", () => {
       }),
       "default",
     );
+    fireEvent.click(
+      screen.getByRole("button", { name: "与 Codex（实施）沟通" }),
+    );
+    const blockedExecution =
+      updateTaskCollaborationExecution.mock.calls.at(-1)?.[0].execution;
+    const blockedReason = blockedExecution.roleRuns.find(
+      (item) => item.assignmentId === "implement",
+    ).error;
+    fireEvent.change(screen.getByLabelText("给当前角色的人工指令"), {
+      target: { value: "请补充可核验的交付物。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存指令" }));
+    await waitFor(() =>
+      expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          execution: expect.objectContaining({
+            roleRuns: expect.arrayContaining([
+              expect.objectContaining({
+                assignmentId: "implement",
+                status: "waiting_for_user",
+                error: blockedReason,
+              }),
+            ]),
+          }),
+        }),
+        "default",
+      ),
+    );
+    expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText(
+        "保存指令会留给后续执行；点击“发送给此智能体”才会立即执行。",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("blocks a remote implementation role that only has a read-only evidence bundle", async () => {

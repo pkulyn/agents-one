@@ -91,4 +91,32 @@ describe("local Runtime delivery verification", () => {
       verifyLocalDeliveryArtifacts(contract(outside, outsideSha), root),
     ).resolves.toEqual([]);
   });
+  it("verifies multiple Markdown-quoted file contracts", async () => {
+    const root = workspace();
+    const files = ["digest.md", "sources.md"];
+    for (const file of files) writeFileSync(join(root, file), file);
+    const quote = String.fromCharCode(96);
+    const output = files
+      .map(
+        (file) =>
+          "[交付物]\n路径：" +
+          quote +
+          join(root, file) +
+          quote +
+          "\nSHA-256：" +
+          quote +
+          createHash("sha256").update(file).digest("hex") +
+          quote +
+          "\n变更摘要：交付文件。",
+      )
+      .join("\n\n");
+    expect(await verifyLocalDeliveryArtifacts(output, root)).toEqual(
+      files.map((file) =>
+        expect.objectContaining({
+          relativePath: file,
+          sha256: createHash("sha256").update(file).digest("hex"),
+        }),
+      ),
+    );
+  });
 });

@@ -1,3 +1,4 @@
+import { collaborationWorkingDirectory } from "./collaboration-working-directory";
 import type { RuntimePermissionBridge } from "./runtime-tool-permissions";
 import { piNativeToolsExtensionSource } from "./pi-native-tools";
 import {
@@ -1230,7 +1231,10 @@ export async function startPiProcess(
   if (strict) invocation = strict.invocation;
   else if (nativeMetadata) invocation = nativeMetadata.invocation;
 
-  let cwd = workspace || conversationDirectory(input.profile);
+  let cwd =
+    workspace ||
+    collaborationWorkingDirectory(input) ||
+    conversationDirectory(input.profile);
   const configRoot = strict ? piPrivateConfigRoot(cwd) : undefined;
   if (configRoot) assertPiNonExecutingConfig(configRoot);
   if (!workspace) mkdirSync(cwd, { recursive: true });

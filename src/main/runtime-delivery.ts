@@ -40,24 +40,38 @@ function contractTexts(output: string): string[] {
   return [...candidates, output];
 }
 
-function parseDeliveryContract(output: string): DeliveryContract | undefined {
+function parseDeliveryContracts(output: string): DeliveryContract[] {
+  const contracts = new Map<string, DeliveryContract>();
   for (const text of contractTexts(output)) {
-    const marker = text.match(/\[(?:交付物|交付契约)\]([\s\S]{0,4000})/i)?.[1];
-    if (!marker) continue;
-    const value = (label: string): string | undefined =>
-      marker
-        .match(new RegExp(`${label}\\s*[：:]\\s*([^\\r\\n]+)`, "i"))?.[1]
-        ?.trim();
-    const path = value("路径");
-    const sha256 = value("SHA-?256")?.match(/[a-f0-9]{64}/i)?.[0];
-    const changeSummary = value("变更摘要");
-    if (path && sha256 && changeSummary) {
-      return { path, sha256: sha256.toLowerCase(), changeSummary };
+    for (const match of text.matchAll(
+      /\[(?:交付物|交付契约)\]([\s\S]*?)(?=\[(?:交付物|交付契约)\]|$)/g,
+    )) {
+      const marker = match[1].slice(0, 4000);
+      const value = (label: string): string | undefined =>
+        marker
+          .match(new RegExp(label + "\\s*[：:]\\s*([^\\r\\n]+)", "i"))?.[1]
+          ?.trim();
+      let path = value("路径");
+      if (
+        path &&
+        [
+          String.fromCharCode(96),
+          String.fromCharCode(34),
+          String.fromCharCode(39),
+        ].includes(path[0]) &&
+        path.at(-1) === path[0]
+      )
+        path = path.slice(1, -1);
+      const sha256 = value("SHA-?256")
+        ?.match(/[a-f0-9]{64}/i)?.[0]
+        ?.toLowerCase();
+      const changeSummary = value("变更摘要");
+      if (path && sha256 && changeSummary)
+        contracts.set(path + ":" + sha256, { path, sha256, changeSummary });
     }
   }
-  return undefined;
+  return [...contracts.values()].slice(0, 50);
 }
-
 async function sha256File(path: string): Promise<string> {
   const hash = createHash("sha256");
   await new Promise<void>((resolvePromise, reject) => {
@@ -78,39 +92,40 @@ export async function verifyLocalDeliveryArtifacts(
   output: string,
   workspace: string,
 ): Promise<AgentRuntimeArtifact[]> {
-  const contract = parseDeliveryContract(output);
-  if (!contract || !workspace.trim()) return [];
-  try {
-    const workspacePath = await realpath(resolve(workspace));
-    const declaredPath = isAbsolute(contract.path)
-      ? resolve(contract.path)
-      : resolve(workspacePath, contract.path);
-    const filePath = await realpath(declaredPath);
-    const relation = relative(workspacePath, filePath);
-    if (
-      relation === ".." ||
-      relation.startsWith(`..\\`) ||
-      relation.startsWith("../") ||
-      isAbsolute(relation)
-    ) {
-      return [];
-    }
-    const fileStat = await stat(filePath);
-    if (!fileStat.isFile()) return [];
-    const sha256 = await sha256File(filePath);
-    if (sha256 !== contract.sha256) return [];
-    return [
-      {
+  if (!workspace.trim()) return [];
+  const verified: AgentRuntimeArtifact[] = [];
+  for (const contract of parseDeliveryContracts(output)) {
+    try {
+      const workspacePath = await realpath(resolve(workspace));
+      const declaredPath = isAbsolute(contract.path)
+        ? resolve(contract.path)
+        : resolve(workspacePath, contract.path);
+      const filePath = await realpath(declaredPath);
+      const relation = relative(workspacePath, filePath);
+      if (
+        relation === ".." ||
+        relation.startsWith("..\\") ||
+        relation.startsWith("../") ||
+        isAbsolute(relation)
+      )
+        continue;
+      const fileStat = await stat(filePath);
+      if (!fileStat.isFile()) continue;
+      const sha256 = await sha256File(filePath);
+      if (sha256 !== contract.sha256) continue;
+      verified.push({
         kind: "file",
         label: basename(filePath),
         path: filePath,
+        relativePath: relation.replace(/\\/g, "/"),
         size: fileStat.size,
         sha256,
         sourceMachine: "本机工作区",
         changeSummary: contract.changeSummary,
-      },
-    ];
-  } catch {
-    return [];
+      });
+    } catch {
+      continue;
+    }
   }
+  return verified;
 }
