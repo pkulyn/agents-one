@@ -73,6 +73,9 @@ export default {
   events: {
     noDetail: "The Runtime did not provide details.",
     cancelled: "Task cancelled",
+    timedOut: "Task timed out. Please try again.",
+    inactive:
+      "No response for 10 minutes. You can keep waiting or stop and retry.",
     traceUnavailable: "Reasoning trace unavailable",
     toolsWithoutReasoning:
       "The agent Runtime reported tool calls for this turn but did not provide a displayable reasoning summary.",

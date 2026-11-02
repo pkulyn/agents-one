@@ -420,7 +420,7 @@ Silence emits one advisory progress event with code `runtime_inactive`; the run 
 
 ## Inactivity warning visibility
 
-The Runtime chat renders the inactivity event as a visible system notice, outside collapsed thinking rows, without marking an active tool failed or replacing the agent response.
+The Runtime chat shows one localized inactivity advisory in an agent message bubble during a live run. Repeated advisories coalesce; completed history hides stale advisories and keeps tools and final replies.
 
 ## Hermes native approval forwarding
 
@@ -433,3 +433,7 @@ Hermes 原生审批必须经 Connector 和远端适配器转发到同一 SDK Run
 Hermes 的全局 Smart 审批不能覆盖 Agents One 本轮权限。带明确模式标记的 API Run 在已有串行工具授权钩子内先检查删除意图，逐次请求原生 Gateway 回调；其他客户端保持原有策略。
 
 自动模式允许文档生成与编辑；删除只接受本次 once，拒绝、超时、无回调或未知响应均阻止工具执行。完全访问直接继续本轮工具，读取模式阻止未知执行和删除。策略实现见 [[plugins/agents-one-plugin/examples/hermes_run_permissions.py#tool_permission_block]]，删除识别与桌面共享策略通过跨语言用例对照。
+
+## Task outcome message visibility
+
+Cancellation and timeout notices appear once in the agent message bubble, using the current UI language. The renderer hides event cards, localizes legacy fallback text and preserves partial replies, tool evidence and stored history.
