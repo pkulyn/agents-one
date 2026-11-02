@@ -653,8 +653,14 @@ function collectRuntimeArtifacts(
       label:
         artifact.label ||
         (artifact.kind === "diff" ? "Git diff" : "项目工作目录"),
-      ...(relativeCollaborationArtifactPath(artifact.path)
-        ? { path: relativeCollaborationArtifactPath(artifact.path) }
+      ...(relativeCollaborationArtifactPath(
+        artifact.relativePath || artifact.path,
+      )
+        ? {
+            path: relativeCollaborationArtifactPath(
+              artifact.relativePath || artifact.path,
+            ),
+          }
         : {}),
       ...(typeof artifact.size === "number" ? { size: artifact.size } : {}),
       ...(artifact.sha256 ? { sha256: artifact.sha256 } : {}),
@@ -945,8 +951,21 @@ function collaborationRolePrompt(
     )
     .join("\n\n")
     .slice(-12_000);
+  const taskTime = new Date(
+    completedHandoffs.find((item) => item.startedAt)?.startedAt || Date.now(),
+  );
+  const localDate = [
+    taskTime.getFullYear(),
+    String(taskTime.getMonth() + 1).padStart(2, "0"),
+    String(taskTime.getDate()).padStart(2, "0"),
+  ].join("-");
   return [
     "这是 Agents One 平台受控编排的多智能体协作任务。",
+    `本轮时间基准：${taskTime.toISOString()}；用户本地日期：${localDate}；用户时区：${Intl.DateTimeFormat().resolvedOptions().timeZone}。昨天等相对日期以本轮时间为准，不得使用旧文件名的日期。`,
+    "无关联项目时，平台为本任务提供独立共享工作目录。请先确认当前工作目录，只在当前工作目录内使用相对路径交付；不得从交接文字借用其他任务的绝对路径或把旧目录当成本轮结果。",
+    isCoordinator(recipient) && !isFinalReview(recipient)
+      ? "当前是起始规划阶段：只拆分任务、确认本轮范围与验收标准，不读取旧任务目录，不预先验收未执行的下游成果。后续实施与验收由平台按分工自动派发，不需要等待用户再次派发。"
+      : "",
     `你当前只执行“${roleLabel}”角色。职责：${responsibility}。`,
     "严格边界：只报告和完成本角色职责；不要代替其他已登记角色，不要创建 subagent，不得通过 Shell/CLI/脚本启动 opencode、codex、claude、pi、hermes 等其他智能体，也不要把未收到的他人结果写成已完成。只有平台负责派发其他角色。",
     roleCanModify(recipient)
@@ -2053,11 +2072,22 @@ export default function RuntimeChat({
   );
 
   useEffect(() => {
-    if (!currentRunId || taskRunRef.current?.id === currentRunId) return;
+    if (
+      !currentRunId ||
+      taskRunRef.current?.id === currentRunId ||
+      activeCollaborationRuntimeId ||
+      Object.keys(activeCollaborationRuns).length
+    )
+      return;
     cancelledRef.current = false;
     setLoading(true);
     void pollRun(currentRunId);
-  }, [currentRunId, pollRun]);
+  }, [
+    currentRunId,
+    pollRun,
+    activeCollaborationRuntimeId,
+    activeCollaborationRuns,
+  ]);
 
   const appendCollaborationMessage = useCallback(
     async (
@@ -2633,6 +2663,15 @@ export default function RuntimeChat({
                       interventions,
                       artifacts,
                     ),
+                    ...(launch.taskId
+                      ? {
+                          profile,
+                          collaborationContext: {
+                            taskId: launch.taskId,
+                            assignmentId: roleRun.assignmentId,
+                          },
+                        }
+                      : {}),
                     mode: roleMode,
                     fullAccessConfirmed: roleMode === "full_access",
                     workspace:
@@ -2778,13 +2817,16 @@ export default function RuntimeChat({
                     status: "waiting_for_user",
                     completedAt: Date.now(),
                     error: reason,
+                    handoff: output.slice(0, 6000),
                   };
                   firstProblemId ??= roleRun.assignmentId;
                   await appendCollaborationMessage(
                     assignedRuntime,
                     assignment,
-                    "system",
-                    reason,
+                    "agent",
+                    `${output}
+
+${reason}`,
                     executionFromRun(observed),
                   );
                   return;
@@ -3048,6 +3090,15 @@ export default function RuntimeChat({
                 artifacts,
                 retryFeedback.get(roleRun.assignmentId),
               ),
+              ...(launch.taskId
+                ? {
+                    profile,
+                    collaborationContext: {
+                      taskId: launch.taskId,
+                      assignmentId: roleRun.assignmentId,
+                    },
+                  }
+                : {}),
               mode: roleMode,
               fullAccessConfirmed: roleMode === "full_access",
               workspace:
@@ -3218,6 +3269,7 @@ export default function RuntimeChat({
               status: "waiting_for_user",
               completedAt: Date.now(),
               error: reason,
+              handoff: output.slice(0, 6000),
             };
             blockRemaining(
               index + 1,
@@ -3228,8 +3280,10 @@ export default function RuntimeChat({
             await appendCollaborationMessage(
               assignedRuntime,
               assignment,
-              "system",
-              reason,
+              "agent",
+              `${output}
+
+${reason}`,
               runExecution,
             );
             recordTimeline(
@@ -3512,7 +3566,7 @@ export default function RuntimeChat({
           status: runTarget
             ? ("retrying" as const)
             : ("waiting_for_user" as const),
-          error: undefined,
+          error: runTarget ? undefined : previous?.error,
         };
       });
       const nextExecution: TaskCollaborationExecution = {
@@ -4982,6 +5036,30 @@ export default function RuntimeChat({
                     void reassignAcceptance(runtimeId)
                   }
                 />
+                {collaborationExecution?.interventions?.length ? (
+                  <ol className="collaboration-intervention-history">
+                    {collaborationExecution.interventions
+                      .slice(-6)
+                      .map((item) => (
+                        <li key={item.id}>
+                          <strong>
+                            {t("runtimeChat.collaboration.savedInstruction")}
+                          </strong>
+                          <span>{item.content}</span>
+                        </li>
+                      ))}
+                  </ol>
+                ) : null}
+                {!collaborationExecution?.timeline?.length &&
+                !collaborationExecution?.artifacts?.length &&
+                !collaborationExecution?.interventions?.length &&
+                !collaborationExecution?.roleRuns.some(
+                  (item) => item.startedAt || item.completedAt,
+                ) ? (
+                  <p className="collaboration-progress-empty">
+                    {t("runtimeChat.collaborationProgress.empty")}
+                  </p>
+                ) : null}
                 <TaskCollaborationTimeline execution={collaborationExecution} />
               </CollaborationProgress>
               {skillsPanelOpen ? (
@@ -5734,47 +5812,6 @@ export default function RuntimeChat({
                         )}
                         disabled={loading}
                       />
-                      {roleCanModify(interventionTarget.assignment) ? (
-                        <label className="collaboration-intervention-access">
-                          {t("runtimeChat.collaboration.rolePermission")}
-                          <select
-                            value={interventionAccessMode}
-                            onChange={(event) =>
-                              setInterventionAccessMode(
-                                event.target.value as
-                                  | "inherit"
-                                  | "analysis"
-                                  | "full_access",
-                              )
-                            }
-                            aria-label={t(
-                              "runtimeChat.collaboration.rolePermission",
-                            )}
-                          >
-                            <option value="inherit">
-                              {t(
-                                "runtimeChat.collaboration.inheritPermission",
-                                {
-                                  permission:
-                                    accessMode === "auto"
-                                      ? t("runtimeChat.permissions.auto")
-                                      : accessMode === "full_access"
-                                        ? t(
-                                            "runtimeChat.permissions.fullAccess",
-                                          )
-                                        : t("runtimeChat.permissions.readOnly"),
-                                },
-                              )}
-                            </option>
-                            <option value="analysis">
-                              {t("runtimeChat.permissions.readOnly")}
-                            </option>
-                            <option value="full_access">
-                              {t("runtimeChat.collaboration.fullAccessOption")}
-                            </option>
-                          </select>
-                        </label>
-                      ) : null}
                       <label className="collaboration-intervention-share">
                         <input
                           type="checkbox"
@@ -5785,49 +5822,105 @@ export default function RuntimeChat({
                         />
                         {t("runtimeChat.collaboration.shareHint")}
                       </label>
-                      <div className="collaboration-intervention-reassign">
-                        <label>
-                          {t("runtimeChat.collaboration.currentAgent")}
-                          <select
-                            value={interventionRuntimeId}
-                            onChange={(event) =>
-                              setInterventionRuntimeId(event.target.value)
+                      <details className="collaboration-intervention-options">
+                        <summary>
+                          {t("runtimeChat.collaboration.executionSettings")}
+                        </summary>{" "}
+                        {roleCanModify(interventionTarget.assignment) ? (
+                          <label className="collaboration-intervention-access">
+                            {t("runtimeChat.collaboration.rolePermission")}
+                            <select
+                              value={interventionAccessMode}
+                              onChange={(event) =>
+                                setInterventionAccessMode(
+                                  event.target.value as
+                                    | "inherit"
+                                    | "analysis"
+                                    | "full_access",
+                                )
+                              }
+                              aria-label={t(
+                                "runtimeChat.collaboration.rolePermission",
+                              )}
+                            >
+                              <option value="inherit">
+                                {t(
+                                  "runtimeChat.collaboration.inheritPermission",
+                                  {
+                                    permission:
+                                      accessMode === "auto"
+                                        ? t("runtimeChat.permissions.auto")
+                                        : accessMode === "full_access"
+                                          ? t(
+                                              "runtimeChat.permissions.fullAccess",
+                                            )
+                                          : t(
+                                              "runtimeChat.permissions.readOnly",
+                                            ),
+                                  },
+                                )}
+                              </option>
+                              <option value="analysis">
+                                {t("runtimeChat.permissions.readOnly")}
+                              </option>
+                              <option value="full_access">
+                                {t(
+                                  "runtimeChat.collaboration.fullAccessOption",
+                                )}
+                              </option>
+                            </select>
+                          </label>
+                        ) : null}
+                        <div className="collaboration-intervention-reassign">
+                          <label>
+                            {t("runtimeChat.collaboration.currentAgent")}
+                            <select
+                              value={interventionRuntimeId}
+                              onChange={(event) =>
+                                setInterventionRuntimeId(event.target.value)
+                              }
+                              aria-label={t(
+                                "runtimeChat.collaboration.reassignRole",
+                              )}
+                              disabled={loading}
+                            >
+                              {Object.values(runtimeCatalog)
+                                .filter((candidate) => candidate.enabled)
+                                .map((candidate) => (
+                                  <option
+                                    key={candidate.id}
+                                    value={candidate.id}
+                                  >
+                                    {candidate.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                          <button
+                            type="button"
+                            className="collaboration-intervention-button"
+                            disabled={
+                              loading ||
+                              !interventionRuntimeId ||
+                              interventionRuntimeId ===
+                                interventionTarget.assignment.runtimeId
                             }
-                            aria-label={t(
-                              "runtimeChat.collaboration.reassignRole",
-                            )}
-                            disabled={loading}
+                            onClick={() => void reassignInterventionRole()}
                           >
-                            {Object.values(runtimeCatalog)
-                              .filter((candidate) => candidate.enabled)
-                              .map((candidate) => (
-                                <option key={candidate.id} value={candidate.id}>
-                                  {candidate.name}
-                                </option>
-                              ))}
-                          </select>
-                        </label>
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          disabled={
-                            loading ||
-                            !interventionRuntimeId ||
-                            interventionRuntimeId ===
-                              interventionTarget.assignment.runtimeId
-                          }
-                          onClick={() => void reassignInterventionRole()}
-                        >
-                          {t("runtimeChat.collaboration.reassignRole")}
-                        </button>
-                      </div>
+                            {t("runtimeChat.collaboration.reassignRole")}
+                          </button>
+                        </div>
+                      </details>
+                      <small className="collaboration-intervention-save-hint">
+                        {t("runtimeChat.collaboration.saveHint")}
+                      </small>
                       <footer>
                         {["running", "retrying"].includes(
                           targetRun?.status || "",
                         ) ? (
                           <button
                             type="button"
-                            className="btn-secondary"
+                            className="collaboration-intervention-button"
                             onClick={() =>
                               void pauseCollaborationRole(
                                 interventionTarget.assignmentId,
@@ -5839,7 +5932,7 @@ export default function RuntimeChat({
                         ) : null}
                         <button
                           type="button"
-                          className="btn-secondary"
+                          className="collaboration-intervention-button"
                           disabled={!interventionText.trim() || loading}
                           onClick={() => void persistIntervention(false)}
                         >
@@ -5847,7 +5940,7 @@ export default function RuntimeChat({
                         </button>
                         <button
                           type="button"
-                          className="btn-primary"
+                          className="collaboration-intervention-button collaboration-intervention-button--primary"
                           disabled={
                             !interventionText.trim() || !canContinue || loading
                           }
@@ -5861,7 +5954,7 @@ export default function RuntimeChat({
                         collaborationExecution?.status === "paused" ? (
                           <button
                             type="button"
-                            className="btn-primary"
+                            className="collaboration-intervention-button collaboration-intervention-button--primary"
                             disabled={loading}
                             onClick={() => void continueAfterIntervention()}
                           >

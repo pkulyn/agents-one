@@ -1,3 +1,4 @@
+import { collaborationWorkingDirectory } from "./collaboration-working-directory";
 import { startCodexPermissionTurn } from "./codex-permission-turn";
 import type { RuntimePermissionBridge } from "./runtime-tool-permissions";
 import { runtimeRemovalBlockedMessage } from "../shared/runtime-permissions";
@@ -416,7 +417,10 @@ export async function startCodexProcess(
     throw new Error("Codex file tasks require a task-specific project folder.");
   }
 
-  let cwd = workspace || conversationCwd(input.profile);
+  let cwd =
+    workspace ||
+    collaborationWorkingDirectory(input) ||
+    conversationCwd(input.profile);
   const environment = mobileExecution ? childEnvironment() : undefined;
   const identity = mobileExecution
     ? captureCodexInspectionIdentity(executable(config), cwd, environment!)

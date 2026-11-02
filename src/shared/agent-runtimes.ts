@@ -291,6 +291,8 @@ export interface RuntimeInputArtifact {
 }
 
 export interface AgentRuntimeTaskInput {
+  /** Persisted collaboration assignment; Main validates it before using a managed task directory. */
+  collaborationContext?: { taskId: string; assignmentId: string };
   prompt: string;
   /** Conversation-scoped model selection. It overrides the Runtime default for
    * this request without writing user-managed Runtime configuration. */
@@ -335,6 +337,8 @@ export interface AgentRuntimeTaskInput {
 }
 
 export interface AgentRuntimeArtifact {
+  /** Main-verified path relative to the delivery workspace; absolute path remains available for native open. */
+  relativePath?: string;
   kind: "worktree" | "diff" | "file" | "final";
   label: string;
   /** Remote artifact id, when the provider exposes a downloadable object. */
