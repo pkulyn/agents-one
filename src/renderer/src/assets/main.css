@@ -19910,6 +19910,8 @@ body.tray-completion-document {
   display: none;
 }
 .chat-execution-trace-items .chat-message-history {
+  content-visibility: visible;
+  contain-intrinsic-size: none;
   max-width: 100%;
   animation: none;
   margin: 0;
