@@ -487,3 +487,5 @@ Reopening interrupted Renderer-owned scheduling checks the recorded native runs.
 Opening directed dialogue closes expanded progress to return space to its controls. The intervention panel shows the role error, latest event detail or handoff, falling back to its configured responsibility when no execution detail exists.
 
 Owner conversion sends only Renderer-writable conversation fields; Main-owned active-run ownership is never round-tripped through Renderer saves, even when its read value is undefined. Narrow windows hide only the participant count to keep the mode label on one line.
+
+Team setup memoizes its initial assignments so mount synchronization cannot replace role ids between the first selection and its change handler. Chinese and English configuration-only flows retain all initial agent selections.
