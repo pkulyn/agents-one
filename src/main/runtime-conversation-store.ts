@@ -1,4 +1,7 @@
-import { retainRuntimeEvents } from "../shared/runtime-event-retention";
+import {
+  MAX_RUNTIME_TRACE_EVENTS,
+  retainRuntimeEvents,
+} from "../shared/runtime-event-retention";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import {
@@ -30,7 +33,7 @@ interface RuntimeConversationData {
 const MAX_TITLE_LENGTH = 160;
 const MAX_MESSAGE_LENGTH = 200_000;
 const MAX_MESSAGES = 500;
-const MAX_EXECUTION_EVENTS = 80;
+const MAX_EXECUTION_EVENTS = MAX_RUNTIME_TRACE_EVENTS;
 const MAX_EVENT_SUMMARY_LENGTH = 800;
 const MAX_EVENT_DETAIL_LENGTH = 16_000;
 const MAX_AVATAR_DATA_URL_LENGTH = 700_000;
