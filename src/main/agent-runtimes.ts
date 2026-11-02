@@ -1,3 +1,7 @@
+import {
+  bindCollaborationWorkingDirectory,
+  collaborationWorkingDirectory,
+} from "./collaboration-working-directory";
 import { runtimeModelFailureKind } from "../shared/runtime-model-errors";
 import { respondToAgentsOneRemotePermission } from "./agents-one-remote-gateway";
 import {
@@ -5080,12 +5084,16 @@ export async function startAgentRuntimeTask(
     );
   }
   const id = `run-${randomUUID()}`;
-  const task = {
-    ...validatedTask,
-    ...(validatedTask.mode === "implementation"
-      ? { worktreeId: `worktree-${id.slice(4)}` }
-      : {}),
-  };
+  const task = bindCollaborationWorkingDirectory(
+    {
+      ...validatedTask,
+      ...(validatedTask.mode === "implementation"
+        ? { worktreeId: `worktree-${id.slice(4)}` }
+        : {}),
+    },
+    input.collaborationContext,
+    runtime,
+  );
   if (isLocalWebTransport(runtime) && task.mode !== "analysis") {
     throw new Error(
       "Web Agent Runtime 仅支持对话分析，不提供工作区或 Shell 权限。",
@@ -5403,7 +5411,7 @@ export async function startAgentRuntimeTask(
           void terminateLocalRuntime(record, "timed_out");
         }, task.timeoutMs);
       }
-      void opencode.completion.then((result) => {
+      void opencode.completion.then(async (result) => {
         if (record.run.status !== "running") return;
         if (record.terminationStatus) {
           finishRuntimeRun(
@@ -5417,6 +5425,17 @@ export async function startAgentRuntimeTask(
           );
           return;
         }
+        const verifiedFiles =
+          !result.error &&
+          (task.mode === "full_access" ||
+            (input.collaborationContext && task.mode === "safe_write"))
+            ? await verifyLocalDeliveryArtifacts(
+                result.output,
+                task.workspace || collaborationWorkingDirectory(task) || "",
+              )
+            : [];
+        if (record.run.status !== "running") return;
+        const artifacts = [...result.artifacts, ...verifiedFiles];
         finishRuntimeRun(record, result.error ? "failed" : "succeeded", {
           output: result.output,
           ...(result.inputArtifacts.length
@@ -5425,7 +5444,7 @@ export async function startAgentRuntimeTask(
           ...(result.sessionId ? { sessionId: result.sessionId } : {}),
           ...(result.error ? { error: result.error } : {}),
           ...(result.diffSummary ? { diffSummary: result.diffSummary } : {}),
-          ...(result.artifacts.length ? { artifacts: result.artifacts } : {}),
+          ...(artifacts.length ? { artifacts } : {}),
           ...(result.model ? { model: result.model } : {}),
           ...(result.usage ? { usage: result.usage } : {}),
         });
@@ -5726,10 +5745,12 @@ export async function startAgentRuntimeTask(
           return;
         }
         const verifiedFiles =
-          !result.error && task.mode === "full_access"
+          !result.error &&
+          (task.mode === "full_access" ||
+            (input.collaborationContext && task.mode === "safe_write"))
             ? await verifyLocalDeliveryArtifacts(
                 result.output,
-                task.workspace || "",
+                task.workspace || collaborationWorkingDirectory(task) || "",
               )
             : [];
         if (record.run.status !== "running") return;
@@ -5902,10 +5923,12 @@ export async function startAgentRuntimeTask(
           return;
         }
         const verifiedFiles =
-          !result.error && task.mode === "full_access"
+          !result.error &&
+          (task.mode === "full_access" ||
+            (input.collaborationContext && task.mode === "safe_write"))
             ? await verifyLocalDeliveryArtifacts(
                 result.output,
-                task.workspace || "",
+                task.workspace || collaborationWorkingDirectory(task) || "",
               )
             : [];
         if (record.run.status !== "running") return;
@@ -5985,10 +6008,12 @@ export async function startAgentRuntimeTask(
           return;
         }
         const verifiedFiles =
-          !result.error && task.mode === "full_access"
+          !result.error &&
+          (task.mode === "full_access" ||
+            (input.collaborationContext && task.mode === "safe_write"))
             ? await verifyLocalDeliveryArtifacts(
                 result.output,
-                task.workspace || "",
+                task.workspace || collaborationWorkingDirectory(task) || "",
               )
             : [];
         if (record.run.status !== "running") return;

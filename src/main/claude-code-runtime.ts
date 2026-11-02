@@ -1,3 +1,4 @@
+import { collaborationWorkingDirectory } from "./collaboration-working-directory";
 import type { RuntimePermissionBridge } from "./runtime-tool-permissions";
 import { assertClaudeWorkspaceBoundary } from "./claude-workspace-policy";
 import { prepareClaudeQueryEnvironment } from "./claude-query-context";
@@ -480,19 +481,21 @@ export async function startClaudeCodeProcess(
     mode === "analysis" ||
     (mode === "safe_write" && !config.permissionBridge)
   ) {
-    assertClaudeWorkspaceBoundary(
-      workspace ||
-        join(
-          agentsOneProfileHome(input.profile),
-          "desktop",
-          "runtime-chat",
-          "claude-code",
-        ),
-      input.profile,
-      !workspace,
-    );
+    if (!collaborationWorkingDirectory(input))
+      assertClaudeWorkspaceBoundary(
+        workspace ||
+          join(
+            agentsOneProfileHome(input.profile),
+            "desktop",
+            "runtime-chat",
+            "claude-code",
+          ),
+        input.profile,
+        !workspace,
+      );
     userCredentials = assertClaudeNonExecutingUserConfig(
       workspace ||
+        collaborationWorkingDirectory(input) ||
         join(
           agentsOneProfileHome(input.profile),
           "desktop",
@@ -510,7 +513,10 @@ export async function startClaudeCodeProcess(
   strict?.assertUnchanged();
   if (strict) invocation = strict.invocation;
 
-  let cwd = workspace || conversationCwd(input.profile);
+  let cwd =
+    workspace ||
+    collaborationWorkingDirectory(input) ||
+    conversationCwd(input.profile);
   let worktreePath: string | undefined;
   if (mode === "implementation") {
     const root = await gitRoot(workspace as string);
@@ -542,7 +548,8 @@ export async function startClaudeCodeProcess(
     : inheritedEnvironment;
   assertCanStart();
   strict?.assertUnchanged();
-  if (strict) assertClaudeWorkspaceBoundary(cwd, input.profile, !workspace);
+  if (strict && !collaborationWorkingDirectory(input))
+    assertClaudeWorkspaceBoundary(cwd, input.profile, !workspace);
   const preparedInputs = prepareRuntimeInputs(
     input.profile,
     input.attachments,

@@ -14,6 +14,7 @@ export default {
     incomplete: "协作分工不完整或智能体不可用，请先调整分工；本次未派发。",
   },
   collaborationProgress: {
+    empty: "暂无交付或介入记录。",
     context: "当前事项",
     title: "协作进展",
     completed: "已完成 {{done}}/{{total}}",
@@ -26,7 +27,7 @@ export default {
       succeeded: "已完成",
       failed: "失败",
       blocked: "受阻",
-      waiting_for_user: "等待确认",
+      waiting_for_user: "等待人工处理",
       paused: "已暂停",
       needs_review: "待复核",
       cancelled: "已取消",
@@ -204,6 +205,9 @@ export default {
     hide: "隐藏网页预览",
   },
   collaboration: {
+    saveHint: "保存指令会留给后续执行；点击“发送给此智能体”才会立即执行。",
+    savedInstruction: "已保存的指令",
+    executionSettings: "权限与改派",
     dashboard: "协作看板",
     dashboardAria: "智能体协作看板",
     showDashboard: "显示协作看板",

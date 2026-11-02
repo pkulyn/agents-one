@@ -489,3 +489,19 @@ Opening directed dialogue closes expanded progress to return space to its contro
 Owner conversion sends only Renderer-writable conversation fields; Main-owned active-run ownership is never round-tripped through Renderer saves, even when its read value is undefined. Narrow windows hide only the participant count to keep the mode label on one line.
 
 Team setup memoizes its initial assignments so mount synchronization cannot replace role ids between the first selection and its change handler. Chinese and English configuration-only flows retain all initial agent selections.
+
+## Projectless collaboration handoff
+
+A persisted collaboration assignment binds local CLI roles to one Main-owned, canonical task directory. This separates a new task from old runtime-wide folders and makes produced files visible to later local roles.
+
+[[src/main/collaboration-working-directory.ts#bindCollaborationWorkingDirectory]] verifies task mode, assignment and Runtime before attaching a non-serializable internal directory marker; explicit user-selected workspaces keep precedence. Physical aliases are rejected, and adapters recheck the marker at startup. OpenCode snapshots the bound directory even without a user project. Automatic-mode collaboration deliveries use the existing Main file/hash verifier, which now accepts Markdown-quoted paths and multiple contracts and exposes a verified relative path alongside the native path. Invalid or out-of-root files remain untrusted. [[tests/collaboration-working-directory.test.ts]] and [[tests/agent-runtimes.test.ts]] cover the boundary and an actual ACP child process writing a verified file.
+
+DAG role runs are observed only by their collaboration scheduler; ordinary polling cannot overwrite the owner conversation with a child Runtime session. A blocked delivery still retains its actual reply and handoff. Starting coordinators receive a planning-only stage and current task time; they must not inspect stale task directories or judge downstream results before dispatch.
+
+## Compact intervention controls
+
+The intervention panel uses one compact typography scale and styled controls. Optional permission and agent reassignment controls stay under a closed disclosure so the current issue, instruction and primary actions stay visible.
+
+The task sidebar places the collaboration badge beside the agent name, leaving the task title on the next line. This changes presentation only, retaining task identity, records and dispatch behavior.
+
+Saving an intervention preserves the unresolved error, records the instruction for later roles, and explains that only sending starts execution immediately. The role prompt includes the current local calendar date to resolve relative dates independently of older files.
