@@ -259,3 +259,154 @@ describe("MessageList runtime identity and activity markers", () => {
     ).toBeVisible();
   });
 });
+
+const foldTrace: ChatMessage[] = [
+  { id: "u-fold", role: "user", content: "Run a task" },
+  { id: "r-fold", kind: "reasoning", role: "agent", text: "Initial plan" },
+  {
+    id: "t-fold",
+    kind: "tool_call",
+    role: "agent",
+    callId: "call-fold",
+    name: "read",
+    args: "brief.md",
+  },
+  {
+    id: "o-fold",
+    kind: "tool_result",
+    role: "agent",
+    callId: "call-fold",
+    name: "read",
+    content: "Read result",
+  },
+  {
+    id: "a-fold",
+    role: "agent",
+    content: "Final answer",
+    runtimeMeta: { durationMs: 669000 },
+  },
+];
+function foldProps(
+  messages = foldTrace,
+  isLoading = false,
+): React.ComponentProps<typeof MessageList> {
+  return {
+    messages,
+    isLoading,
+    toolProgress: null,
+    onApprove: vi.fn(),
+    onDeny: vi.fn(),
+    onClarifyResolved: vi.fn(),
+  };
+}
+describe("Completed execution trace grouping", () => {
+  beforeEach(() => {
+    i18nTestState.locale = "zh-CN";
+  });
+  // @lat: [[runtime-chat#Runtime Chat Rendering#Completed execution process fold]]
+  it("folds reasoning and paired tools behind one row with the chevron after duration", () => {
+    const { container, rerender } = render(<MessageList {...foldProps()} />);
+    const summary = screen.getByRole("button", { name: /执行过程/ });
+    expect(summary).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("1 段思考")).toBeVisible();
+    expect(screen.getByText("1 次工具调用")).toBeVisible();
+    expect(screen.getByText("Final answer")).toBeVisible();
+    expect(
+      container.querySelector(".chat-execution-trace-items"),
+    ).not.toBeVisible();
+    expect(summary.lastElementChild).toHaveClass(
+      "chat-execution-trace-chevron",
+    );
+    expect(summary.lastElementChild?.previousElementSibling).toHaveTextContent(
+      "11 分 9 秒",
+    );
+    expect(summary).not.toHaveTextContent(/展开|收起/);
+    fireEvent.click(summary);
+    expect(
+      container.querySelector(".chat-execution-trace-items"),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "思考" }));
+    expect(screen.getByText("Initial plan")).toBeVisible();
+    rerender(<MessageList {...foldProps([...foldTrace])} />);
+    expect(summary).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(summary);
+    expect(summary).toHaveAttribute("aria-expanded", "false");
+  });
+  it("keeps active process rows live and folds them when execution ends", () => {
+    const active = foldTrace.slice(0, -1);
+    const { rerender } = render(<MessageList {...foldProps(active, true)} />);
+    expect(
+      screen.queryByRole("button", { name: /执行过程/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "思考" })).toBeVisible();
+    rerender(<MessageList {...foldProps()} />);
+    expect(screen.getByRole("button", { name: /执行过程/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+  it("keeps completed earlier turns folded while the next turn streams", () => {
+    render(
+      <MessageList
+        {...foldProps(
+          [
+            ...foldTrace,
+            { id: "u-next", role: "user", content: "Continue" },
+            {
+              id: "r-next",
+              kind: "reasoning",
+              role: "agent",
+              text: "Next thought",
+            },
+          ],
+          true,
+        )}
+      />,
+    );
+    expect(screen.getAllByRole("button", { name: /执行过程/ })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "思考中…" })).toBeVisible();
+  });
+  it("keeps runtime identities separate and confirmation outside the process", () => {
+    const withIdentity = (
+      runtimeId: string,
+      name: string,
+      suffix: string,
+    ): ChatMessage[] =>
+      foldTrace.slice(1, 4).map((m) => ({
+        ...m,
+        id: m.id + suffix,
+        agentRuntimeId: runtimeId,
+        agentName: name,
+      }));
+    render(
+      <MessageList
+        {...foldProps([
+          ...withIdentity("pi", "Pi", "1"),
+          ...withIdentity("opencode", "OpenCode", "2"),
+          {
+            id: "clarify-fold",
+            kind: "clarify",
+            role: "agent",
+            requestId: "question-fold",
+            question: "Choose a scope",
+            choices: ["Current folder"],
+          },
+          { id: "final-fold", role: "agent", content: "Needs confirmation" },
+        ])}
+      />,
+    );
+    expect(screen.getAllByRole("button", { name: /执行过程/ })).toHaveLength(2);
+    expect(screen.getByText("Pi")).toBeVisible();
+    expect(screen.getByText("OpenCode")).toBeVisible();
+    expect(screen.getByText("Choose a scope")).toBeVisible();
+    expect(screen.getByText("Needs confirmation")).toBeVisible();
+  });
+  it("localizes the summary and counts in English", () => {
+    i18nTestState.locale = "en";
+    render(<MessageList {...foldProps()} />);
+    const summary = screen.getByRole("button", { name: /Execution details/ });
+    expect(summary).toHaveTextContent("1 thought");
+    expect(summary).toHaveTextContent("1 tool call");
+    expect(summary).not.toHaveTextContent(/执行过程|展开|收起|Expand|Collapse/);
+  });
+});

@@ -19865,3 +19865,64 @@ body.tray-completion-document {
     transform: translateY(0) scale(1);
   }
 }
+
+/* Completed execution traces use a quiet summary, with the chevron last. */
+.chat-execution-trace-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.chat-execution-trace-summary:hover {
+  color: var(--text-primary);
+}
+.chat-execution-trace-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.chat-execution-trace-title {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.chat-execution-trace-chevron {
+  flex-shrink: 0;
+  transition: transform 160ms ease;
+}
+.chat-execution-trace-chevron--open {
+  transform: rotate(90deg);
+}
+.chat-execution-trace-items {
+  margin: 10px 0 4px 5px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
+.chat-execution-trace-items[hidden] {
+  display: none;
+}
+.chat-execution-trace-items .chat-message-history {
+  margin: 0;
+  padding: 6px 0;
+}
+.chat-execution-trace-items .chat-avatar[aria-hidden="true"] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-execution-trace-chevron {
+    transition: none;
+  }
+}
+
+.chat-execution-trace-summary > span + span::before {
+  content: "·";
+  margin-right: 10px;
+  color: var(--text-muted);
+}

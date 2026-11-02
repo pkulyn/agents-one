@@ -461,3 +461,11 @@ All desktop Runtime transports and ordinary native chat receive bounded Word tex
 Explicit provider quota, authentication and unsupported-model error events trigger the existing cleanup path and finish as failed agent replies. Tool failures and retry notices remain nonterminal, and ordinary silence retains its advisory watchdog.
 
 Model failures are visible in a single live agent bubble while native cleanup or remote stop confirmation is pending; tool errors do not create this model-failure reply.
+
+## Completed execution process fold
+
+Completed reasoning and tool records share one optional process row, keeping the final answer and user decisions visible.
+
+[[src/renderer/src/screens/Chat/ExecutionTraceGroup.tsx#ExecutionTraceGroup]] reuses the existing thought and tool controls inside a default-closed group. Counts deduplicate tool call ids. The chevron follows duration with no Expand/Collapse text; localized labels, keyboard activation, theme colors and reduced motion remain supported. [[src/renderer/src/screens/Chat/MessageList.tsx#MessageList]] groups only contiguous process rows with the same runtime and collaboration assignment. Current live traces remain visible, and final replies, system notices, attachments on replies and clarification controls stay outside. Opening a completed group survives subsequent message refreshes under its stable first-event key.
+
+[[src/renderer/src/screens/Chat/MessageList.test.tsx]] covers completion, ongoing and earlier turns, identity boundaries, external confirmation controls, count deduplication, arrow order and English labels.

@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import { MessageRow } from "./MessageRow";
+import { ExecutionTraceGroup, isTraceMessage } from "./ExecutionTraceGroup";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
 import { ClarifyCard } from "./ClarifyCard";
 import { collapseHistoricalEchoes } from "./messageDedup";
@@ -174,6 +175,51 @@ export const MessageList = memo(function MessageList({
       currentIdentity && onAgentAvatarClick
         ? () => onAgentAvatarClick(currentIdentity)
         : undefined;
+
+    if (isTraceMessage(msg)) {
+      let end = i + 1;
+      while (
+        end < visibleMessages.length &&
+        isTraceMessage(visibleMessages[end]) &&
+        identityKey(messageIdentity(visibleMessages[end])) ===
+          identityKey(currentIdentity)
+      )
+        end += 1;
+      const following = visibleMessages[end];
+      const answer =
+        following &&
+        isBubble(following) &&
+        following.role === "agent" &&
+        identityKey(messageIdentity(following)) === identityKey(currentIdentity)
+          ? following
+          : undefined;
+      const hasLaterUser = visibleMessages
+        .slice(end)
+        .some((message) => message.role === "user");
+      const completed =
+        !isLoading ||
+        hasLaterUser ||
+        answer?.runtimeMeta?.durationMs !== undefined;
+      if (completed) {
+        rows.push(
+          <ExecutionTraceGroup
+            key={msg.id}
+            items={visibleMessages.slice(i, end).filter(isTraceMessage)}
+            durationMs={answer?.runtimeMeta?.durationMs}
+            showAvatar={showAvatar}
+            identity={{
+              ...currentIdentity,
+              agentName: rowAgentName,
+              agentAvatar: rowAgentAvatar,
+              agentColor: rowAgentColor,
+            }}
+            onAvatarClick={handleAvatarClick}
+          />,
+        );
+        i = end - 1;
+        continue;
+      }
+    }
 
     if (isToolRow(msg)) {
       // Collect the whole run of consecutive tool rows.
