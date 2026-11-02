@@ -13,7 +13,10 @@ import {
   automaticRuntimeTaskMode,
   withRuntimePermissionContext,
 } from "../shared/runtime-permissions";
-import { retainRuntimeEvents } from "../shared/runtime-event-retention";
+import {
+  MAX_RUNTIME_TRACE_EVENTS,
+  retainRuntimeEvents,
+} from "../shared/runtime-event-retention";
 import { claimRuntimeConversationRun } from "./runtime-conversation-store";
 import {
   NO_AGENT_RUNTIME_CAPABILITIES,
@@ -187,7 +190,7 @@ const GATEWAY_CANCEL_CONFIRMATION_INTERVAL_MS = 1_000;
 const GATEWAY_CANCEL_CONFIRMATION_TIMEOUT_MS = 60_000;
 const MAX_GATEWAY_ARTIFACT_RETRY_ATTEMPTS = 3;
 const MAX_RETAINED_RUNS = 100;
-const MAX_RUNTIME_EVENTS = 200;
+const MAX_RUNTIME_EVENTS = MAX_RUNTIME_TRACE_EVENTS;
 const MAX_RUNTIME_EVENT_SUMMARY_LENGTH = 1_000;
 const MAX_RUNTIME_EVENT_DETAIL_LENGTH = 16_000;
 const WORKSPACE_GATEWAY_TOKEN_SECRET_PREFIX = "HERMES_WORKSPACE_GATEWAY_";
