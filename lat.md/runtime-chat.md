@@ -459,3 +459,5 @@ All desktop Runtime transports and ordinary native chat receive bounded Word tex
 ## Universal model failure convergence
 
 Explicit provider quota, authentication and unsupported-model error events trigger the existing cleanup path and finish as failed agent replies. Tool failures and retry notices remain nonterminal, and ordinary silence retains its advisory watchdog.
+
+Model failures are visible in a single live agent bubble while native cleanup or remote stop confirmation is pending; tool errors do not create this model-failure reply.

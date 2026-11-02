@@ -784,3 +784,27 @@ it("does not add trace-unavailable cards to failed collaboration replies", () =>
   expect(result).toHaveLength(1);
   expect(result[0].kind).toBe("assistant");
 });
+
+it("shows a model failure immediately while native cleanup is pending", () => {
+  expect(
+    runtimeEventsToChatMessages(
+      [event("failure", "error", "insufficient_quota")],
+      { live: true },
+    ),
+  ).toEqual([
+    expect.objectContaining({
+      kind: "assistant",
+      content: "模型额度已用尽或达到调用上限，请更换可用模型或检查额度后重试。",
+    }),
+  ]);
+  expect(
+    runtimeEventsToChatMessages(
+      [
+        event("tool-error", "error", "insufficient_quota", {
+          tool: { name: "Read", kind: "tool", callId: "tool" },
+        }),
+      ],
+      { live: true },
+    ),
+  ).toEqual([]);
+});
