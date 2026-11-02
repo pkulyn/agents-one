@@ -644,8 +644,8 @@ describe("RuntimeChat inputs and persistence", () => {
       screen.getByRole("button", { name: "Show web preview" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Agent collaboration dashboard"),
-    ).toBeInTheDocument();
+      screen.queryByLabelText("Agent collaboration dashboard"),
+    ).not.toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", {
         name: "Talk to OpenCode (Implementation)",
@@ -2565,11 +2565,12 @@ describe("RuntimeChat inputs and persistence", () => {
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
 
     const prompt = startAgentRuntimeTask.mock.calls[0][1].prompt as string;
-    expect(prompt).toBe("检查输入");
+    expect(prompt).toContain("检查输入");
+    expect(prompt).toContain("普通任务");
     expect(prompt).not.toContain("agents-one-collaboration-proposal");
   });
 
-  it("adds collaboration control only after the user explicitly asks for it", async () => {
+  it("keeps natural-language collaboration requests in single mode until the user changes mode", async () => {
     render(
       <RuntimeChat
         runId="chat-collaboration-policy-explicit"
@@ -2586,10 +2587,9 @@ describe("RuntimeChat inputs and persistence", () => {
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
 
     const prompt = startAgentRuntimeTask.mock.calls[0][1].prompt as string;
-    expect(prompt).toContain("协作必须由用户在当前请求中明确提出");
-    expect(prompt.indexOf("Agents One 平台协作规则")).toBeLessThan(
-      prompt.indexOf("请使用多智能体协作完成这个任务"),
-    );
+    expect(prompt).toContain("普通任务");
+    expect(prompt).not.toContain("<agents-one-collaboration-proposal>");
+    expect(prompt).toContain("请使用多智能体协作完成这个任务");
   });
 
   it("describes remote native tools separately from an Agents One project grant", async () => {
@@ -2693,7 +2693,7 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
-  it("automatically starts explicit collaboration without duplicating the user brief", async () => {
+  it("dispatches the configured collaboration for every message without relying on natural-language intent", async () => {
     const onStartCollaboration = vi.fn().mockResolvedValue({
       taskId: "chat-explicit-collaboration",
       projectFolder: "D:\\default",
@@ -2729,38 +2729,41 @@ describe("RuntimeChat inputs and persistence", () => {
       output: "",
       startedAt: Date.now(),
     }));
-    getAgentRuntimeRun.mockImplementation(async (id: string) => ({
-      id,
-      runtimeId:
-        id === "explicit-run-2"
-          ? "pi-local"
-          : id === "explicit-run-3"
-            ? "claude-local"
-            : "hermes-home2",
-      status: "succeeded",
-      output:
-        id === "explicit-run-2"
-          ? "已完成实施。"
-          : id === "explicit-run-3" || id === "explicit-run-4"
-            ? "[验收结论]\n状态：通过\n依据：#1\n结论：文件已核验。"
-            : "已完成编排，下一步由 Pi 执行。",
-      startedAt: Date.now(),
-      completedAt: Date.now(),
-      ...(id === "explicit-run-2"
-        ? {
-            artifacts: [
-              {
-                kind: "file",
-                label: "multi-agent-smoke-test.txt",
-                path: "multi-agent-smoke-test.txt",
-                sha256: "b".repeat(64),
-                sourceMachine: "本机工作区",
-                changeSummary: "创建冒烟测试文件。",
-              },
-            ],
-          }
-        : {}),
-    }));
+    getAgentRuntimeRun.mockImplementation(async (id: string) => {
+      const phase = ((Number(id.split("-").at(-1)) - 1) % 4) + 1;
+      return {
+        id,
+        runtimeId:
+          phase === 2
+            ? "pi-local"
+            : phase === 3
+              ? "claude-local"
+              : "hermes-home2",
+        status: "succeeded",
+        output:
+          phase === 2
+            ? "已完成实施。"
+            : phase === 3 || phase === 4
+              ? "[验收结论]\n状态：通过\n依据：#1\n结论：文件已核验。"
+              : "已完成编排，下一步由 Pi 执行。",
+        startedAt: Date.now(),
+        completedAt: Date.now(),
+        ...(phase === 2
+          ? {
+              artifacts: [
+                {
+                  kind: "file",
+                  label: "multi-agent-smoke-test.txt",
+                  path: "multi-agent-smoke-test.txt",
+                  sha256: "b".repeat(64),
+                  sourceMachine: "本机工作区",
+                  changeSummary: "创建冒烟测试文件。",
+                },
+              ],
+            }
+          : {}),
+      };
+    });
     render(
       <RuntimeChat
         runId="chat-explicit-collaboration"
@@ -2770,30 +2773,18 @@ describe("RuntimeChat inputs and persistence", () => {
           "claude-local": claudeRuntime,
           "pi-local": piRuntime,
         }}
+        collaboration={{
+          ...(await onStartCollaboration()),
+          taskMode: "collaboration",
+        }}
         onStartCollaboration={onStartCollaboration}
       />,
     );
 
     selectFullAccess();
-    fireEvent.click(screen.getByRole("button", { name: "发送明确协作输入" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
 
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(4));
-    expect(onStartCollaboration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        assignments: expect.arrayContaining([
-          expect.objectContaining({
-            role: "项目负责人",
-            runtimeId: "hermes-home2",
-          }),
-          expect.objectContaining({ role: "实施", runtimeId: "pi-local" }),
-          expect.objectContaining({
-            role: "复核",
-            runtimeId: "claude-local",
-          }),
-        ]),
-      }),
-      expect.any(Object),
-    );
     expect(
       startAgentRuntimeTask.mock.calls.map(([runtimeId]) => runtimeId),
     ).toEqual(["hermes-home2", "pi-local", "claude-local", "hermes-home2"]);
@@ -2811,13 +2802,50 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(
       saved.messages.filter(
         (message: { role: string; content: string }) =>
-          message.role === "user" &&
-          message.content.includes("Agents One 冒烟测试"),
+          message.role === "user" && message.content === "检查输入",
       ),
     ).toHaveLength(1);
     expect(
       screen.queryByRole("button", { name: "调整协作安排" }),
     ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "停止测试任务" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByLabelText("协作进展")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(8));
+    expect(startAgentRuntimeTask.mock.calls.slice(4).map(([id]) => id)).toEqual(
+      ["hermes-home2", "pi-local", "claude-local", "hermes-home2"],
+    );
+  });
+
+  it("blocks incomplete collaboration instead of silently running the current agent", async () => {
+    render(
+      <RuntimeChat
+        runId="incomplete-team"
+        runtime={piRuntime}
+        profile="default"
+        collaboration={{
+          taskId: "incomplete-team",
+          taskMode: "collaboration",
+          assignments: [
+            {
+              id: "lead",
+              role: "项目负责人",
+              runtimeId: "pi-local",
+              responsibility: "编排",
+            },
+          ],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await screen.findByText(
+      "协作分工不完整或智能体不可用，请先调整分工；本次未派发。",
+    );
+    expect(startAgentRuntimeTask).not.toHaveBeenCalled();
   });
 
   it("renders collaboration reasoning and tool events while the assigned runtime is still running", async () => {
@@ -3048,7 +3076,7 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
-  it("automatically dispatches a validated coordinator proposal and reuses its visible planning turn", async () => {
+  it("does not dispatch a model proposal in ordinary mode even when the message mentions collaboration", async () => {
     const assignments = [
       {
         id: "lead",
@@ -3143,12 +3171,8 @@ describe("RuntimeChat inputs and persistence", () => {
     selectFullAccess();
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
 
-    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(4));
-    expect(
-      startAgentRuntimeTask.mock.calls.map(([runtimeId]) => runtimeId),
-    ).toEqual(["hermes-home2", "pi-local", "claude-local", "hermes-home2"]);
-    expect(onStartCollaboration).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("我来负责安排并终验。")).toBeInTheDocument();
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    expect(onStartCollaboration).not.toHaveBeenCalled();
     const saved = saveRuntimeConversation.mock.calls.at(-1)?.[0];
     expect(
       saved.messages.filter(
@@ -3197,7 +3221,7 @@ describe("RuntimeChat inputs and persistence", () => {
       expect(startAgentRuntimeTask).toHaveBeenCalledWith(
         "claude-local",
         expect.objectContaining({
-          prompt: "检查输入",
+          prompt: expect.stringContaining("检查输入"),
           workspace: "D:\\selected-project",
           attachments: [testAttachment],
         }),
@@ -3317,7 +3341,7 @@ describe("RuntimeChat inputs and persistence", () => {
       expect(startAgentRuntimeTask).toHaveBeenCalledWith(
         "claude-local",
         expect.objectContaining({
-          prompt: "检查输入",
+          prompt: expect.stringContaining("检查输入"),
           sessionId: "11111111-1111-4111-8111-111111111111",
         }),
       ),
@@ -3618,31 +3642,24 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
-  it("hides the collaboration dashboard and restores it from a compact trigger", () => {
+  it("hides progress when a collaboration is configured but not executing", () => {
     render(
       <RuntimeChat
-        runId="dashboard-visibility"
-        runtime={hers2Runtime}
+        runId="idle-mode"
+        runtime={piRuntime}
         profile="default"
         collaboration={{
-          taskId: "dashboard-task",
+          taskId: "idle-task",
+          taskMode: "collaboration",
           assignments: [
-            {
-              id: "lead",
-              role: "项目负责人",
-              runtimeId: "hermes-home2",
-            },
+            { id: "lead", role: "项目负责人", runtimeId: piRuntime.id },
           ],
         }}
-        runtimeCatalog={{ "hermes-home2": hers2Runtime }}
       />,
     );
-
-    expect(screen.getByLabelText("智能体协作看板")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "隐藏协作看板" }));
+    expect(screen.queryByLabelText("协作进展")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("任务模式")).toHaveTextContent("协作任务");
     expect(screen.queryByLabelText("智能体协作看板")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "显示协作看板" }));
-    expect(screen.getByLabelText("智能体协作看板")).toBeInTheDocument();
   });
 
   it("blocks downstream roles when an implementation role has no concrete delivery", async () => {
