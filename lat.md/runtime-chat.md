@@ -298,7 +298,7 @@ Pi input image echoes must never evict a completed assistant answer from the bou
 
 OpenCode receives each explicitly attached file through ACP content blocks backed by validated per-task copies, on both new and resumed sessions.
 
-[[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] reuses input staging and sends images as image blocks, UTF-8 text as embedded resources, and documents as file resource links. A manifest names only staged copies and the native reader can open those exact files. Main retains input hashes and metadata on the Run without publishing inputs as output artifacts or changing workspace permissions. ACP process fixtures verify contents from staged paths; the Main regression checks dispatch, completion, input evidence and durable reply rendering.
+[[src/main/runtime-adapters/builtin/opencode-acp.ts#startOpenCodeProcess]] reuses input staging and sends images as image blocks, UTF-8 text as embedded resources, and other documents through their existing resource links. Word documents are extracted to bounded text before dispatch so unsupported Word file parts cannot enter model history. A manifest names only staged copies and the native reader can open those exact files. Main retains input hashes and metadata on the Run without publishing inputs as output artifacts or changing workspace permissions. ACP process fixtures verify contents from staged paths; the Main regression checks dispatch, completion, input evidence and durable reply rendering.
 
 [[src/main/runtime-adapters/builtin/opencode-acp.ts#openCodeWindowsEnvironment]] normalizes launcher-escaped Windows path variables only in the child environment and supplies standard executable suffixes if PATHEXT is absent. Explicit suffixes, proxy settings, permissions and unrelated environment values remain intact; provider and OS configuration are not rewritten.
 
@@ -437,3 +437,27 @@ Hermes 的全局 Smart 审批不能覆盖 Agents One 本轮权限。带明确模
 ## Task outcome message visibility
 
 Cancellation and timeout notices appear once in the agent message bubble, using the current UI language. The renderer hides event cards, localizes legacy fallback text and preserves partial replies, tool evidence and stored history.
+
+## OpenCode document model inputs
+
+Word attachments are extracted from validated staged copies before ACP dispatch. New and resumed sessions receive the document text as user data while source bytes and input hashes remain unchanged.
+
+## OpenCode provider failures
+
+Explicit quota failures from the active session's primary request end a hanging ACP prompt through redacted stderr diagnostics. Title generation, other sessions and ordinary output cannot trigger termination.
+
+## OpenCode model fallback
+
+Pre-output model availability failures try other models advertised by the native session, closing each previous process before retrying. Session identity and permissions persist.
+
+Image inputs use the native model catalog to select image-capable models. Exhaustion appears as one localized agent reply.
+
+## Universal Word attachment dispatch
+
+All desktop Runtime transports and ordinary native chat receive bounded Word text from explicitly staged .docx attachments before dispatch. Original file copies and hashes remain audit evidence; binary Word blocks cannot poison provider history.
+
+## Universal model failure convergence
+
+Explicit provider quota, authentication and unsupported-model error events trigger the existing cleanup path and finish as failed agent replies. Tool failures and retry notices remain nonterminal, and ordinary silence retains its advisory watchdog.
+
+Model failures are visible in a single live agent bubble while native cleanup or remote stop confirmation is pending; tool errors do not create this model-failure reply.

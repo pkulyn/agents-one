@@ -1,3 +1,4 @@
+import { WORD_INPUT_BASE64 } from "./fixtures/word-input";
 const closeClaudeAgentSdkSessionsMock = vi.hoisted(() => vi.fn());
 const startClaudeAgentSdkProcessMock = vi.hoisted(() => vi.fn());
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -137,6 +138,210 @@ describe("agent runtime registry", () => {
     vi.unstubAllEnvs();
     rmSync(testHome, { recursive: true, force: true });
   });
+
+  // @lat: [[runtime-chat#Universal Word attachment dispatch]]
+  it.each(["pi", "codex", "claude-code", "hermes"])(
+    "dispatches Word text to %s without binary model parts",
+    async (kind) => {
+      const { runtimes } = await loadModules();
+      const { stageAttachment } =
+        await import("../src/main/attachment-staging");
+      const source = stageAttachment("word", "说明.docx", WORD_INPUT_BASE64);
+      runtimes.saveAgentRuntime({
+        id: "word-agent",
+        name: "Word agent",
+        kind,
+        location: "local",
+        enabled: true,
+        config: {
+          transport: kind === "hermes" ? "http" : "cli",
+          executablePath: kind,
+        },
+      });
+      const done = {
+        output: "WORD_OK",
+        artifacts: [],
+        inputArtifacts: [],
+        sessionId: "word-session",
+      };
+      const mock =
+        kind === "pi"
+          ? startPiProcessMock
+          : kind === "codex"
+            ? startCodexProcessMock
+            : startClaudeCodeProcessMock;
+      if (kind === "hermes")
+        sendMessageMock.mockImplementation(async (_prompt, callbacks) => {
+          queueMicrotask(() => callbacks.onDone("word-session"));
+          return { abort: vi.fn() };
+        });
+      else
+        mock.mockResolvedValue({
+          cancel: vi.fn(),
+          sessionId: "word-session",
+          inputArtifacts: [],
+          completion: Promise.resolve(done),
+        });
+      const run = await runtimes.startAgentRuntimeTask("word-agent", {
+        prompt: "Explain Word",
+        mode: "analysis",
+        attachments: [
+          {
+            id: "word",
+            kind: "path-ref",
+            name: "说明.docx",
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size: Buffer.from(WORD_INPUT_BASE64, "base64").length,
+            path: source,
+          },
+        ],
+      });
+      const prompt =
+        kind === "hermes"
+          ? sendMessageMock.mock.calls[0][0]
+          : mock.mock.calls[0][1].prompt;
+      expect(prompt).toContain("Word 回归正文。");
+      const forwarded =
+        kind === "hermes"
+          ? sendMessageMock.mock.calls[0][5]
+          : mock.mock.calls[0][1].attachments;
+      expect(forwarded).toEqual([]);
+      await vi.waitFor(async () =>
+        expect((await runtimes.getAgentRuntimeRun(run.id))?.status).toBe(
+          "succeeded",
+        ),
+      );
+      expect(
+        (await runtimes.getAgentRuntimeRun(run.id))?.inputArtifacts,
+      ).toEqual([
+        expect.objectContaining({
+          id: "word",
+          name: "说明.docx",
+          kind: "document",
+        }),
+      ]);
+    },
+  );
+
+  it.each([
+    "pi",
+    "codex",
+    "claude-code",
+    "opencode",
+    "hermes",
+    "openclaw",
+    "web-agent",
+  ])("ends unreadable Word input before dispatching %s", async (kind) => {
+    const { runtimes } = await loadModules();
+    const { stageAttachment } = await import("../src/main/attachment-staging");
+    const source = stageAttachment(
+      "bad-word",
+      "broken.docx",
+      Buffer.from("invalid zip").toString("base64"),
+    );
+    runtimes.saveAgentRuntime({
+      id: "broken-word",
+      name: "Agent",
+      kind,
+      location: "local",
+      enabled: true,
+      config:
+        kind === "web-agent"
+          ? {
+              agentTransport: "local-web",
+              webAgent: {
+                provider: "doubao",
+                profileId: "test",
+                adapterVersion: "1.0.0",
+                enabled: true,
+              },
+            }
+          : { transport: "cli", executablePath: kind },
+    });
+    const run = await runtimes.startAgentRuntimeTask("broken-word", {
+      prompt: "Read",
+      mode: "analysis",
+      attachments: [
+        {
+          id: "bad",
+          kind: "path-ref",
+          name: "broken.docx",
+          mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          size: 11,
+          path: source,
+        },
+      ],
+    });
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("[Word input error]");
+    expect(startPiProcessMock).not.toHaveBeenCalled();
+    expect(startCodexProcessMock).not.toHaveBeenCalled();
+    expect(startClaudeCodeProcessMock).not.toHaveBeenCalled();
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  // @lat: [[runtime-chat#Universal model failure convergence]]
+  it.each(["pi", "codex", "claude-code"])(
+    "cleans up %s and delivers provider failure instead of remaining active",
+    async (kind) => {
+      const { runtimes } = await loadModules();
+      runtimes.saveAgentRuntime({
+        id: "quota-agent",
+        name: "Agent",
+        kind,
+        location: "local",
+        enabled: true,
+        config: { transport: "cli", executablePath: kind },
+      });
+      let complete!: (value: unknown) => void;
+      const completion = new Promise((resolve) => (complete = resolve));
+      const cancel = vi.fn(async () => {
+        complete({ output: "", artifacts: [], inputArtifacts: [] });
+      });
+      const mock =
+        kind === "pi"
+          ? startPiProcessMock
+          : kind === "codex"
+            ? startCodexProcessMock
+            : startClaudeCodeProcessMock;
+      mock.mockImplementation(async (_config, _task, onOutput) => {
+        setTimeout(
+          () =>
+            onOutput(
+              JSON.stringify(
+                kind === "pi"
+                  ? {
+                      type: "message_end",
+                      message: {
+                        role: "assistant",
+                        stopReason: "error",
+                        errorMessage:
+                          "insufficient_quota: model quota exhausted",
+                        content: [],
+                      },
+                    }
+                  : {
+                      type: "error",
+                      message: "insufficient_quota: model quota exhausted",
+                    },
+              ) + "\n",
+            ),
+          5,
+        );
+        return { cancel, inputArtifacts: [], sessionId: "quota", completion };
+      });
+      const run = await runtimes.startAgentRuntimeTask("quota-agent", {
+        prompt: "Reply",
+        mode: "analysis",
+      });
+      await vi.waitFor(async () => {
+        const terminal = await runtimes.getAgentRuntimeRun(run.id);
+        expect(terminal?.status).toBe("failed");
+        expect(terminal?.error).toContain("quota");
+      });
+      expect(cancel).toHaveBeenCalledOnce();
+    },
+  );
 
   // @lat: [[adapter-registry#Compatibility and quarantine]]
   it("adds adapter metadata to legacy runtimes and preserves unknown kinds", async () => {
