@@ -1302,6 +1302,14 @@ async function startOpenCodeAttempt(
                 text: readFileSync(path, "utf8"),
               },
             };
+          if (extname(artifact.name).toLowerCase() !== ".docx") {
+            return {
+              type: "resource_link",
+              uri: pathToFileURL(path).href,
+              name: artifact.name,
+              mimeType: artifact.mime,
+            };
+          }
           // A resource_link makes OpenCode's Read tool inject the binary as a
           // model file part. Word files are not accepted by model serializers.
           const extracted =
