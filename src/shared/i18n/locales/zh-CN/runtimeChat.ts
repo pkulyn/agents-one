@@ -61,6 +61,8 @@ export default {
   events: {
     noDetail: "运行时未提供详细信息。",
     cancelled: "任务已取消",
+    timedOut: "任务已超时，请重试。",
+    inactive: "智能体已 10 分钟无响应，可继续等待或停止后重试。",
     traceUnavailable: "思考记录未上报",
     toolsWithoutReasoning:
       "该智能体的运行服务本轮提供了工具调用记录，但没有提供可展示的思考摘要。",

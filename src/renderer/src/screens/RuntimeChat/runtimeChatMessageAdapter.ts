@@ -35,6 +35,9 @@ export interface RuntimeChatMessageAdapterOptions {
 const DEFAULT_PLATFORM_TEXT: Record<string, string> = {
   "runtimeChat.events.noDetail": "运行时未提供详细信息。",
   "runtimeChat.events.cancelled": "任务已取消",
+  "runtimeChat.events.timedOut": "任务已超时，请重试。",
+  "runtimeChat.events.inactive":
+    "智能体已 10 分钟无响应，可继续等待或停止后重试。",
   "runtimeChat.events.traceUnavailable": "思考记录未上报",
   "runtimeChat.events.toolsWithoutReasoning":
     "该智能体的运行服务本轮提供了工具调用记录，但没有提供可展示的思考摘要。",
@@ -260,17 +263,7 @@ function runtimeEventMessages(
 
   for (const event of events) {
     const id = `${prefix}:event:${event.id}`;
-    if (event.code === "runtime_inactive") {
-      const message: SystemMessage = {
-        id,
-        kind: "system",
-        role: "agent",
-        title: event.summary,
-        detail: "",
-      };
-      messages.push(withIdentity(message, options.agentIdentity));
-      continue;
-    }
+    if (event.code === "runtime_inactive") continue;
     if (event.type === "progress") {
       if (isPlatformLifecycleProgress(event)) continue;
       const previous = messages.at(-1);
@@ -366,20 +359,40 @@ function runtimeEventMessages(
     if (event.type === "artifact_published") {
       continue;
     }
-
-    if (event.type === "cancelled") {
-      const message: SystemMessage = {
-        id,
-        kind: "system",
-        role: "agent",
-        title: platformText(options, "runtimeChat.events.cancelled"),
-        detail: eventDetail(event, options),
-      };
-      messages.push(withIdentity(message, options.agentIdentity));
-    }
   }
 
   return messages;
+}
+
+/** Platform task notices belong in one agent bubble, never event cards. */
+function taskNoticeKey(events: AgentRuntimeEvent[]): string | undefined {
+  const terminal = [...events]
+    .reverse()
+    .find((event) =>
+      ["cancelled", "timed_out", "completed", "error"].includes(event.type),
+    );
+  if (terminal?.type === "cancelled") return "runtimeChat.events.cancelled";
+  if (terminal?.type === "timed_out") return "runtimeChat.events.timedOut";
+  return undefined;
+}
+
+function fallbackTaskNoticeKey(content: string): string | undefined {
+  const value = content.trim().replace(/[.!。！]+$/u, "");
+  if (
+    /^(?:Runtime task was cancelled|Task cancelled|cancelled|任务已取消)$/i.test(
+      value,
+    )
+  ) {
+    return "runtimeChat.events.cancelled";
+  }
+  if (
+    /^(?:Runtime task exceeded \d+ms|Runtime task timed out|Task timed out|timed_out|任务已超时(?:，请重试)?)$/i.test(
+      value,
+    )
+  ) {
+    return "runtimeChat.events.timedOut";
+  }
+  return undefined;
 }
 
 function runtimeConversationMessage(
@@ -403,9 +416,22 @@ function runtimeConversationMessage(
     : options.conversationId
       ? []
       : runtimeArtifactAttachments(message.execution);
+  const noticeKey =
+    !isUser && !isControlMessage
+      ? taskNoticeKey(message.execution?.events || []) ||
+        fallbackTaskNoticeKey(content)
+      : undefined;
+  const localizedContent = noticeKey
+    ? [
+        fallbackTaskNoticeKey(content) ? "" : content.trim(),
+        platformText(options, noticeKey),
+      ]
+        .filter(Boolean)
+        .join("\n\n")
+    : content;
   const displayContent = isUser
     ? content
-    : removeRemoteArtifactMediaTokens(content, message.execution);
+    : removeRemoteArtifactMediaTokens(localizedContent, message.execution);
   const startedAt = message.execution?.startedAt;
   const completedAt = message.execution?.completedAt;
   const durationMs =
@@ -465,7 +491,11 @@ export function runtimeConversationToChatMessages(
       const hasTools = visibleEvents.some((event) =>
         ["tool_call", "tool_result"].includes(event.type),
       );
-      if (message.collaborationRole && !hasReasoning) {
+      if (
+        message.collaborationRole &&
+        !hasReasoning &&
+        !taskNoticeKey(visibleEvents)
+      ) {
         result.push(
           withIdentity<SystemMessage>(
             {
@@ -508,5 +538,26 @@ export function runtimeEventsToChatMessages(
     "live" | "idPrefix" | "agentIdentity" | "translate"
   > = {},
 ): ChatMessage[] {
-  return runtimeEventMessages(events, options);
+  const messages = runtimeEventMessages(events, options);
+  const noticeKey =
+    taskNoticeKey(events) ||
+    (options.live &&
+    events.some((event) => event.code === "runtime_inactive") &&
+    !events.some((event) => ["completed", "error"].includes(event.type))
+      ? "runtimeChat.events.inactive"
+      : undefined);
+  if (noticeKey) {
+    messages.push(
+      withIdentity<ChatBubbleMessage>(
+        {
+          id: `${options.idPrefix || "runtime"}:task-notice`,
+          kind: "assistant",
+          role: "agent",
+          content: platformText(options, noticeKey),
+        },
+        options.agentIdentity,
+      ),
+    );
+  }
+  return messages;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { t as translate } from "../../../../shared/i18n";
 import type { AgentRuntimeEvent } from "../../../../shared/agent-runtimes";
 import type { RuntimeConversationMessage } from "../../../../shared/runtime-conversations";
 import {
@@ -531,9 +532,8 @@ describe("runtimeChatMessageAdapter", () => {
 
     expect(result).toEqual([
       expect.objectContaining({
-        kind: "system",
-        title: "Task cancelled",
-        detail: "The Runtime did not provide details.",
+        kind: "assistant",
+        content: "Task cancelled",
       }),
     ]);
   });
@@ -550,7 +550,7 @@ describe("runtimeChatMessageAdapter", () => {
 });
 
 // @lat: [[runtime-chat#Inactivity warning visibility]]
-it("shows inactivity as a system notice while preserving the running tool", () => {
+it("shows one localized inactivity bubble while preserving the running tool", () => {
   const result = runtimeEventsToChatMessages(
     [
       {
@@ -573,10 +573,143 @@ it("shows inactivity as a system notice while preserving the running tool", () =
   expect(result).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
-        kind: "system",
-        title: "任务执行可能中断，请停止后重试。",
+        kind: "assistant",
+        content: "智能体已 10 分钟无响应，可继续等待或停止后重试。",
       }),
       expect.objectContaining({ kind: "tool_call", status: "running" }),
     ]),
   );
+});
+
+// @lat: [[runtime-chat#Task outcome message visibility]]
+it.each([
+  ["cancelled", "Runtime task was cancelled.", "任务已取消", "Task cancelled"],
+  [
+    "timed_out",
+    "Runtime task exceeded 600000ms.",
+    "任务已超时，请重试。",
+    "Task timed out. Please try again.",
+  ],
+] as const)(
+  "renders repeated %s events as one localized agent bubble in history",
+  (type, content, zh, en) => {
+    const messages: RuntimeConversationMessage[] = [
+      {
+        id: "reply",
+        role: "agent",
+        content,
+        createdAt: 2,
+        agentRuntimeId: "opencode",
+        agentName: "OpenCode",
+        execution: {
+          runId: "run",
+          events: [
+            event("idle-1", "progress", "stale warning", {
+              code: "runtime_inactive",
+            }),
+            event("terminal-1", type, content),
+            event("idle-2", "progress", "stale warning", {
+              code: "runtime_inactive",
+            }),
+            event("terminal-2", type, content),
+          ],
+        },
+      },
+    ];
+    const original = JSON.stringify(messages);
+    for (const [language, expected] of [
+      ["zh-CN", zh],
+      ["en", en],
+    ]) {
+      const result = runtimeConversationToChatMessages(messages, {
+        translate: (key) => translate(key, language as "en" | "zh-CN"),
+      });
+      expect(result).toEqual([
+        expect.objectContaining({
+          kind: "assistant",
+          content: expected,
+          agentName: "OpenCode",
+        }),
+      ]);
+    }
+    expect(JSON.stringify(messages)).toBe(original);
+  },
+);
+
+it("localizes legacy terminal fallback text without execution metadata", () => {
+  expect(
+    runtimeConversationToChatMessages([
+      {
+        id: "old",
+        role: "agent",
+        content: "Runtime task was cancelled.",
+        createdAt: 1,
+      },
+    ])[0],
+  ).toMatchObject({ kind: "assistant", content: "任务已取消" });
+});
+
+it("keeps useful partial output and tool failures with a single timeout notice", () => {
+  const result = runtimeConversationToChatMessages([
+    {
+      id: "partial",
+      role: "agent",
+      content: "已完成第一步。",
+      createdAt: 1,
+      execution: {
+        runId: "partial-run",
+        events: [
+          event("tool", "tool_call", "Read", {
+            tool: { name: "Read", callId: "call", kind: "tool" },
+          }),
+          event("timeout", "timed_out", "budget exceeded"),
+        ],
+      },
+    },
+  ]);
+  expect(result).toEqual([
+    expect.objectContaining({ kind: "tool_call", status: "failed" }),
+    expect.objectContaining({
+      kind: "assistant",
+      content: "已完成第一步。\n\n任务已超时，请重试。",
+    }),
+  ]);
+});
+
+it("coalesces live warnings, then drops them from completed history", () => {
+  const idle = event("idle", "progress", "中文原文", {
+    code: "runtime_inactive",
+  });
+  const options = {
+    live: true,
+    translate: (key: string) => translate(key, "en"),
+  };
+  expect(
+    runtimeEventsToChatMessages([idle, { ...idle, id: "idle-2" }], options),
+  ).toEqual([
+    expect.objectContaining({
+      kind: "assistant",
+      content:
+        "No response for 10 minutes. You can keep waiting or stop and retry.",
+    }),
+  ]);
+  expect(
+    runtimeEventsToChatMessages(
+      [idle, event("done", "completed", "done")],
+      options,
+    ),
+  ).toEqual([]);
+  expect(
+    runtimeConversationToChatMessages([
+      {
+        id: "done",
+        role: "agent",
+        content: "Final answer",
+        createdAt: 1,
+        execution: { runId: "done-run", events: [idle] },
+      },
+    ]),
+  ).toEqual([
+    expect.objectContaining({ kind: "assistant", content: "Final answer" }),
+  ]);
 });
