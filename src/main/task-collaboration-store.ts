@@ -556,8 +556,31 @@ function normalize(value: unknown): TaskCollaborationRecord | null {
     normalizedAssignments,
   );
   return {
+    ...Object.fromEntries(
+      Object.entries(record).filter(
+        ([key]) =>
+          ![
+            "taskId",
+            "title",
+            "projectWorkspaceId",
+            "projectName",
+            "projectFolder",
+            "sourceRuntimeId",
+            "assignments",
+            "taskMode",
+            "status",
+            "createdAt",
+            "updatedAt",
+            "startedAt",
+            "conversationId",
+            "sourceSessionId",
+            "execution",
+          ].includes(key),
+      ),
+    ),
     taskId,
     title,
+    taskMode: record.taskMode === "single" ? "single" : "collaboration",
     ...project,
     ...(sourceRuntimeId ? { sourceRuntimeId } : {}),
     assignments: normalizedAssignments,
@@ -611,6 +634,12 @@ export function saveTaskCollaboration(
   const taskId = text(input.taskId, 200);
   const title = text(input.title, 240);
   if (!taskId || !title) throw new Error("协作任务必须包含任务标识和标题。");
+  if (
+    input.taskMode !== undefined &&
+    input.taskMode !== "single" &&
+    input.taskMode !== "collaboration"
+  )
+    throw new Error("invalid_task_mode");
   const now = Date.now();
   const store = readStore(profile);
   const previous = store.records.find((item) => item.taskId === taskId);
@@ -639,7 +668,27 @@ export function saveTaskCollaboration(
   if (status === "active" && nextAssignments.length === 0) {
     throw new Error("启动协作前至少要为一个角色选择智能体。");
   }
+  if (
+    input.taskMode &&
+    previous &&
+    input.taskMode !== (previous.taskMode || "collaboration") &&
+    previous.execution?.status === "running"
+  ) {
+    throw new Error("collaboration_running");
+  }
   const next: TaskCollaborationRecord = {
+    ...Object.fromEntries(
+      Object.entries(previous || {}).filter(
+        ([key]) =>
+          !["projectWorkspaceId", "projectName", "projectFolder"].includes(key),
+      ),
+    ),
+    taskMode:
+      input.taskMode === "single"
+        ? "single"
+        : input.taskMode === "collaboration"
+          ? "collaboration"
+          : previous?.taskMode || "collaboration",
     taskId,
     title,
     ...preservedProject,

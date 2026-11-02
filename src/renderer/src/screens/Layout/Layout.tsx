@@ -1,3 +1,4 @@
+import { switchTaskToSingle } from "./taskMode";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import toast from "react-hot-toast";
 import Chat from "../Chat/Chat";
@@ -723,10 +724,19 @@ function Layout(): React.JSX.Element {
   );
 
   const handleOpenTaskCollaboration = useCallback(
-    (task: ChatRun, proposal?: TaskCollaborationProposal): void => {
+    (
+      task: ChatRun,
+      proposal?: TaskCollaborationProposal,
+      configureOnly = false,
+    ): void => {
       setCollaborationDraft({
+        configureOnly,
         runId: task.runId,
-        taskId: task.runtimeConversationId || task.sessionId || undefined,
+        taskId:
+          task.collaboration?.persistedTaskId ||
+          task.runtimeConversationId ||
+          task.sessionId ||
+          undefined,
         title:
           proposal?.title ||
           task.title ||
@@ -739,7 +749,7 @@ function Layout(): React.JSX.Element {
           ? null
           : task.runtimeWorkspace || task.contextFolder || null,
         sourceRuntimeId: task.runtimeId,
-        assignments: proposal?.assignments,
+        assignments: proposal?.assignments || task.collaboration?.assignments,
         message: proposal?.brief,
       });
     },
@@ -841,6 +851,40 @@ function Layout(): React.JSX.Element {
     [activeProfile, runtimeCatalog, t],
   );
 
+  const handleTaskModeChange = useCallback(
+    async (task: ChatRun, nextRuntimeId?: string): Promise<void> => {
+      if (task.loading || !task.collaboration?.persistedTaskId)
+        throw new Error(t("runtimeChat.taskMode.busy"));
+      const target = nextRuntimeId ? runtimeCatalog[nextRuntimeId] : undefined;
+      if (nextRuntimeId && !target?.enabled)
+        throw new Error(t("runtimeChat.taskMode.unavailable"));
+      const { record, conversation: savedConversation } =
+        await switchTaskToSingle(window.agentsOneAPI, {
+          taskId: task.collaboration.persistedTaskId,
+          profile: task.profile,
+          conversationId: task.runtimeConversationId,
+          runtimeId: task.runtimeId,
+          target,
+        });
+      setRuns((previousRuns) =>
+        patchRun(previousRuns, task.runId, {
+          collaboration: { ...task.collaboration!, taskMode: record.taskMode },
+          ...(target && target.id !== task.runtimeId
+            ? {
+                runtimeId: target.id,
+                runtimeName: target.name,
+                runtimeKind: target.kind,
+                sessionId: null,
+                runtimeSeed: savedConversation?.messages || task.runtimeSeed,
+              }
+            : {}),
+        }),
+      );
+      window.dispatchEvent(new Event("agents-one:task-collaboration-changed"));
+    },
+    [runtimeCatalog, t],
+  );
+
   const handleStartTaskCollaboration = useCallback(
     (assignments: TaskCollaborationAssignment[], message: string): void => {
       const draft = collaborationDraft;
@@ -856,7 +900,8 @@ function Layout(): React.JSX.Element {
               projectFolder: draft.projectFolder || undefined,
               sourceRuntimeId: draft.sourceRuntimeId,
               assignments,
-              status: "active",
+              taskMode: "collaboration",
+              status: draft.configureOnly ? "configured" : "active",
             },
             activeProfile,
           )
@@ -873,6 +918,8 @@ function Layout(): React.JSX.Element {
             setRuns((previous) =>
               patchRun(previous, live.runId, {
                 collaboration: {
+                  taskMode: record.taskMode,
+                  execution: record.execution,
                   assignments: record.assignments,
                   ...(record.projectWorkspaceId
                     ? {
@@ -890,6 +937,7 @@ function Layout(): React.JSX.Element {
             );
             setActiveRunId(live.runId);
             goTo("chat");
+            if (draft.configureOnly) return;
             requestAnimationFrame(() => {
               window.dispatchEvent(
                 new CustomEvent("agents-one:submit-task-message", {
@@ -898,6 +946,8 @@ function Layout(): React.JSX.Element {
                     content: message,
                     collaboration: {
                       taskId: record.taskId,
+                      taskMode: record.taskMode,
+                      execution: record.execution,
                       assignments: record.assignments,
                       projectWorkspaceId: record.projectWorkspaceId,
                       projectName: record.projectName,
@@ -930,7 +980,8 @@ function Layout(): React.JSX.Element {
               projectFolder: draft.projectFolder || undefined,
               sourceRuntimeId: draft.sourceRuntimeId,
               assignments,
-              status: "active",
+              taskMode: "collaboration",
+              status: draft.configureOnly ? "configured" : "active",
             },
             activeProfile,
           )
@@ -938,6 +989,8 @@ function Layout(): React.JSX.Element {
             setRuns((previous) =>
               patchRun(previous, parentTaskId, {
                 collaboration: {
+                  taskMode: record.taskMode,
+                  execution: record.execution,
                   assignments: record.assignments,
                   ...(record.projectWorkspaceId
                     ? {
@@ -959,6 +1012,7 @@ function Layout(): React.JSX.Element {
             setCollaborationDraft(null);
             setActiveRunId(parentTaskId);
             goTo("chat");
+            if (draft.configureOnly) return;
             requestAnimationFrame(() => {
               window.dispatchEvent(
                 new CustomEvent("agents-one:submit-task-message", {
@@ -967,6 +1021,8 @@ function Layout(): React.JSX.Element {
                     content: message,
                     collaboration: {
                       taskId: record.taskId,
+                      taskMode: record.taskMode,
+                      execution: record.execution,
                       assignments: record.assignments,
                       projectWorkspaceId: record.projectWorkspaceId,
                       projectName: record.projectName,
@@ -1275,6 +1331,8 @@ function Layout(): React.JSX.Element {
           });
           if (collaborationRecord) {
             run.collaboration = {
+              execution: collaborationRecord.execution,
+              taskMode: collaborationRecord.taskMode,
               assignments: collaborationRecord.assignments,
               ...(collaborationRecord.projectWorkspaceId
                 ? {
@@ -1523,6 +1581,7 @@ function Layout(): React.JSX.Element {
             >
               {run.runtimeId ? (
                 <RuntimeChat
+                  key={`${run.runId}:${run.runtimeId}`}
                   runId={run.runId}
                   runtime={
                     runtimeCatalog[run.runtimeId] ?? {
@@ -1547,6 +1606,8 @@ function Layout(): React.JSX.Element {
                   collaboration={
                     run.collaboration
                       ? {
+                          execution: run.collaboration.execution,
+                          taskMode: run.collaboration.taskMode,
                           assignments: run.collaboration.assignments,
                           projectWorkspaceId:
                             run.collaboration.projectWorkspaceId,
@@ -1557,8 +1618,15 @@ function Layout(): React.JSX.Element {
                       : undefined
                   }
                   runtimeCatalog={runtimeCatalog}
-                  onRequestCollaboration={(proposal) =>
-                    handleOpenTaskCollaboration(run, proposal)
+                  onChangeToSingle={(runtimeId) =>
+                    handleTaskModeChange(run, runtimeId)
+                  }
+                  onRequestCollaboration={(proposal, options) =>
+                    handleOpenTaskCollaboration(
+                      run,
+                      proposal,
+                      options?.configureOnly,
+                    )
                   }
                   onStartCollaboration={(proposal, project) =>
                     handleAutoStartTaskCollaboration(run, proposal, project)

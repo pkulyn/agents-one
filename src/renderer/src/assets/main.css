@@ -19931,3 +19931,230 @@ body.tray-completion-document {
   margin-right: 10px;
   color: var(--text-muted);
 }
+
+/* Explicit task mode and inline collaboration progress. */
+.task-mode-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.task-mode-trigger--collaborative {
+  color: var(--accent-text);
+}
+.task-mode-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  min-width: 220px;
+  padding: 6px;
+  z-index: 80;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  box-shadow: 0 6px 24px #0002;
+}
+.task-mode-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text-primary);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.task-mode-menu button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.task-mode-menu button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.task-mode-menu p {
+  margin: 6px 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.task-mode-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #0005;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.task-mode-dialog {
+  width: min(440px, 100%);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+}
+.task-mode-dialog header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.task-mode-dialog p {
+  line-height: 1.7;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.task-mode-dialog label {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+.task-mode-dialog select {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  color: var(--text-primary);
+}
+.collaboration-progress {
+  flex-shrink: 0;
+  margin: 0 0 10px;
+  padding: 10px 4px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.collaboration-progress-summary {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: 0;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.collaboration-progress-summary strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.collaboration-progress-summary > svg:last-child {
+  margin-left: auto;
+  transition: transform 160ms ease;
+}
+.collaboration-progress-chevron--open {
+  transform: rotate(180deg);
+}
+.collaboration-progress-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 7px;
+  font-size: 13px;
+}
+.collaboration-progress-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.collaboration-progress-agent--running,
+.collaboration-progress-agent--retrying {
+  color: var(--accent-text);
+}
+.collaboration-progress-spinner {
+  animation: collaborationSpin 1s linear infinite;
+}
+@keyframes collaborationSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.collaboration-progress-details {
+  max-height: min(44vh, 360px);
+  overflow: auto;
+  margin-top: 12px;
+}
+.collaboration-progress-role {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.collaboration-progress-role strong {
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-right: 9px;
+}
+.collaboration-progress-role p {
+  margin: 5px 0 0;
+  line-height: 1.6;
+}
+.collaboration-progress-role button {
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.collaboration-progress-error {
+  color: var(--error);
+}
+.collaboration-progress-advanced > summary {
+  padding: 8px 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collaboration-progress-spinner {
+    animation: none;
+  }
+  .collaboration-progress-summary > svg:last-child {
+    transition: none;
+  }
+}
+
+.collaboration-progress-agent {
+  border: 0;
+  background: none;
+  padding: 1px 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.collaboration-progress-agent:hover {
+  color: var(--text-primary);
+}
+.collaboration-progress-agent--running,
+.collaboration-progress-agent--retrying {
+  color: var(--accent-text);
+}
+
+.collaboration-intervention-context p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 8em;
+  overflow-y: auto;
+  margin: 6px 0 12px;
+  color: var(--text-secondary);
+}
+
+.task-mode-control {
+  flex-shrink: 0;
+}
+.task-mode-trigger {
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .task-mode-count {
+    display: none;
+  }
+}

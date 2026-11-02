@@ -8,6 +8,7 @@ import type {
   TaskCollaborationAssignment,
   TaskCollaborationRecord,
   TaskCollaborationStatus,
+  TaskCollaborationExecution,
 } from "../../../../shared/task-collaboration";
 
 /**
@@ -42,6 +43,8 @@ export interface ChatRun {
   contextFolder?: string;
   /** Saved once the first message gives this draft a durable conversation id. */
   collaboration?: {
+    taskMode?: "single" | "collaboration";
+    execution?: TaskCollaborationExecution;
     assignments: TaskCollaborationAssignment[];
     projectWorkspaceId?: string;
     projectName?: string;

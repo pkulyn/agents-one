@@ -82,6 +82,8 @@ export default {
     openTask: "打开任务对话",
   },
   dialog: {
+    enable: "启用协作",
+    completeTeam: "请至少选择两个不同的智能体，并补齐每个角色、智能体和职责。",
     defaultRoles: {
       coordinator: {
         role: "项目负责人",

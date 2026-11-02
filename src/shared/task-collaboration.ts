@@ -183,6 +183,8 @@ export interface TaskCollaborationRecord {
   /** Legacy absolute path retained only for pre-capability records. */
   projectFolder?: string;
   sourceRuntimeId?: string;
+  /** Explicit dispatch mode; absent legacy collaborations remain collaborative. */
+  taskMode?: "single" | "collaboration";
   assignments: TaskCollaborationAssignment[];
   /** Started from a user request after a proposal passes the Runtime allow-list. */
   status: TaskCollaborationStatus;
@@ -196,6 +198,7 @@ export interface TaskCollaborationRecord {
 }
 
 export interface SaveTaskCollaborationInput {
+  taskMode?: "single" | "collaboration";
   taskId: string;
   title: string;
   projectWorkspaceId?: string;
