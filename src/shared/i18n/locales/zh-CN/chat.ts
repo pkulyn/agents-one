@@ -1,4 +1,9 @@
 export default {
+  executionTrace: {
+    title: "执行过程",
+    thoughts: "{{count}} 段思考",
+    calls: "{{count}} 次工具调用",
+  },
   files: {
     openWith: "打开方式…",
     copyAbsolute: "复制绝对路径",

@@ -79,7 +79,10 @@ function formatBubbleTime(ms: number, t: Translate): string {
   }
 }
 
-function formatRuntimeDuration(durationMs: number, t: Translate): string {
+export function formatRuntimeDuration(
+  durationMs: number,
+  t: Translate,
+): string {
   const seconds = Math.max(0, Math.round(durationMs / 1000));
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
