@@ -10,6 +10,7 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
 const DEFAULT_ROLE_KEYS = ["coordinator", "implementer", "tester"] as const;
 
 export interface CollaborationTaskDraft {
+  configureOnly?: boolean;
   runId?: string;
   taskId?: string;
   title: string;
@@ -97,6 +98,13 @@ export default function TaskCollaborationDialog({
     const configured = assignments.filter(
       (item) => item.role.trim() && item.runtimeId,
     );
+    if (
+      draft.configureOnly &&
+      (configured.length !== assignments.length ||
+        new Set(configured.map((item) => item.runtimeId)).size < 2 ||
+        configured.some((item) => !item.responsibility?.trim()))
+    )
+      return t("collaboration.dialog.completeTeam");
     if (configured.length === 0)
       return t("collaboration.dialog.assignAgentError");
     try {
@@ -107,7 +115,7 @@ export default function TaskCollaborationDialog({
         ? error.message
         : t("collaboration.dialog.invalidDependencies");
     }
-  }, [assignments, t]);
+  }, [assignments, draft.configureOnly, t]);
 
   useEffect(() => {
     setAssignments(localizedDefaultAssignments(draft, locale));
@@ -165,7 +173,7 @@ export default function TaskCollaborationDialog({
 
   const start = (): void => {
     const trimmed = message.trim();
-    if (!trimmed) return;
+    if (!trimmed && !draft.configureOnly) return;
     const configured = assignments
       .map((item) => ({ ...item, role: item.role.trim() }))
       .filter((item) => item.role && item.runtimeId);
@@ -432,19 +440,23 @@ export default function TaskCollaborationDialog({
         </div>
 
         <footer className="task-collaboration-composer">
-          <textarea
-            autoFocus
-            aria-label={t("collaboration.dialog.taskBrief")}
-            placeholder={t("collaboration.dialog.taskBriefPlaceholder")}
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                start();
-              }
-            }}
-          />
+          {!draft.configureOnly && (
+            <>
+              <textarea
+                autoFocus
+                aria-label={t("collaboration.dialog.taskBrief")}
+                placeholder={t("collaboration.dialog.taskBriefPlaceholder")}
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    start();
+                  }
+                }}
+              />
+            </>
+          )}
           <div className="task-collaboration-composer-tools">
             <span
               title={
@@ -465,9 +477,17 @@ export default function TaskCollaborationDialog({
               type="button"
               className="primary-btn"
               onClick={start}
-              disabled={!message.trim() || Boolean(orchestrationError)}
+              disabled={
+                (!draft.configureOnly && !message.trim()) ||
+                Boolean(orchestrationError)
+              }
             >
-              <Send size={16} /> {t("collaboration.dialog.sendAndStart")}
+              <Send size={16} />{" "}
+              {t(
+                draft.configureOnly
+                  ? "collaboration.dialog.enable"
+                  : "collaboration.dialog.sendAndStart",
+              )}
             </button>
           </div>
         </footer>

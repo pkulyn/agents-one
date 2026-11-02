@@ -161,3 +161,37 @@ describe("TaskCollaborationDialog", () => {
     );
   });
 });
+
+describe("Configure task mode without dispatch", () => {
+  it("requires a complete team and enables collaboration without a brief", () => {
+    const onStart = vi.fn();
+    render(
+      <TaskCollaborationDialog
+        draft={{
+          title: "Team",
+          sourceRuntimeId: "hermes",
+          configureOnly: true,
+        }}
+        runtimes={[runtime("hermes", "Hermes"), runtime("codex", "Codex")]}
+        onClose={() => {}}
+        onStart={onStart}
+      />,
+    );
+    expect(screen.queryByLabelText("任务说明")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "启用协作" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("实施智能体"), {
+      target: { value: "codex" },
+    });
+    fireEvent.change(screen.getByLabelText("测试智能体"), {
+      target: { value: "codex" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "启用协作" }));
+    expect(onStart).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ runtimeId: "hermes" }),
+        expect.objectContaining({ runtimeId: "codex" }),
+      ]),
+      "",
+    );
+  });
+});

@@ -1,4 +1,39 @@
 export default {
+  taskMode: {
+    label: "Task mode",
+    single: "Single-agent task",
+    collaboration: "Collaborative task",
+    participants: "{{count}} agents",
+    editTeam: "Edit team",
+    busy: "A task is running. Switch modes after it ends.",
+    switchSingle: "Switch to a single-agent task",
+    preserveHistory:
+      "Only future execution changes. Existing messages and collaboration history are retained.",
+    replyAgent: "Agent for future replies",
+    saveFailed: "Could not switch modes. Please retry.",
+    unavailable: "The agent or collaboration settings are unavailable.",
+    incomplete:
+      "The team is incomplete or an agent is unavailable. Edit the team before dispatching.",
+  },
+  collaborationProgress: {
+    context: "Current context",
+    title: "Collaboration progress",
+    completed: "{{done}}/{{total}} completed",
+    view: "View and discuss",
+    details: "Delivery and intervention history",
+    status: {
+      pending: "Waiting",
+      running: "Running",
+      retrying: "Retrying",
+      succeeded: "Completed",
+      failed: "Failed",
+      blocked: "Blocked",
+      waiting_for_user: "Needs input",
+      paused: "Paused",
+      needs_review: "Needs review",
+      cancelled: "Cancelled",
+    },
+  },
   scrollToLatest: "Jump to latest message",
   skills: {
     title: "Discovered Skills",

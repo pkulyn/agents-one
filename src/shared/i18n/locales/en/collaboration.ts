@@ -83,6 +83,9 @@ export default {
     openTask: "Open task conversation",
   },
   dialog: {
+    enable: "Enable collaboration",
+    completeTeam:
+      "Choose at least two distinct agents and complete every role and responsibility.",
     defaultRoles: {
       coordinator: {
         role: "Project lead",
