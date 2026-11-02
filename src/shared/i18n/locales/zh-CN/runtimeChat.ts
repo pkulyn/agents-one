@@ -59,6 +59,15 @@ export default {
     entry: "{{role}}：{{content}}",
   },
   events: {
+    wordInputError:
+      "无法读取 Word 文档，请确认文件有效、未加密，并使用 .docx 格式。",
+    modelErrors: {
+      quota: "模型额度已用尽或达到调用上限，请更换可用模型或检查额度后重试。",
+      auth: "模型认证失败，请检查 API 密钥或登录状态后重试。",
+      model: "当前模型不可用或不支持本轮附件，请更换支持该输入的模型。",
+      network: "模型服务连接失败，请检查网络或服务状态后重试。",
+    },
+    modelsUnavailable: "OpenCode 暂无可用模型，请检查模型权限或额度后重试。",
     noDetail: "运行时未提供详细信息。",
     cancelled: "任务已取消",
     timedOut: "任务已超时，请重试。",
