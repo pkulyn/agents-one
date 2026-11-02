@@ -574,14 +574,33 @@ export function runtimeEventsToChatMessages(
     !events.some((event) => ["completed", "error"].includes(event.type))
       ? "runtimeChat.events.inactive"
       : undefined);
-  if (noticeKey) {
+  const modelFailure = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.type === "error" &&
+        !event.tool &&
+        (event.code === "model_request_failed" ||
+          runtimeModelFailureKind(event.detail || event.summary)),
+    );
+  const failureKind =
+    modelFailure &&
+    runtimeModelFailureKind(modelFailure.detail || modelFailure.summary);
+  const noticeContent = noticeKey
+    ? platformText(options, noticeKey)
+    : modelFailure
+      ? failureKind
+        ? platformText(options, `runtimeChat.events.modelErrors.${failureKind}`)
+        : modelFailure.detail || modelFailure.summary
+      : undefined;
+  if (noticeContent) {
     messages.push(
       withIdentity<ChatBubbleMessage>(
         {
           id: `${options.idPrefix || "runtime"}:task-notice`,
           kind: "assistant",
           role: "agent",
-          content: platformText(options, noticeKey),
+          content: noticeContent,
         },
         options.agentIdentity,
       ),
