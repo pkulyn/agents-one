@@ -46,7 +46,12 @@ export async function switchTaskToSingle(
   const target = input.target;
   try {
     const conversation = await api.saveRuntimeConversation({
-      ...current,
+      id: current.id,
+      title: current.title,
+      workspace: current.workspace,
+      workspaceId: current.workspaceId,
+      accessMode: current.accessMode,
+      branch: current.branch,
       profile: input.profile,
       expectedRevision: current.revision,
       runtimeId: target.id,

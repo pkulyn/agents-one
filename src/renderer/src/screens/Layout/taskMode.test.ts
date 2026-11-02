@@ -26,6 +26,7 @@ const conversation = {
   runtimeId: "pi",
   runtimeName: "Pi",
   revision: "3",
+  activeRuntimeRunOwner: undefined,
   title: "Conversation",
   createdAt: 1,
   updatedAt: 1,
@@ -64,6 +65,12 @@ describe("Task mode persistence", () => {
   it("preserves previous message authors and clears the native session when changing future agent", async () => {
     const api = setup();
     await switchTaskToSingle(api, input);
+    expect(
+      Object.hasOwn(
+        api.saveRuntimeConversation.mock.calls[0][0],
+        "activeRuntimeRunOwner",
+      ),
+    ).toBe(false);
     expect(api.saveRuntimeConversation).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedRevision: "3",

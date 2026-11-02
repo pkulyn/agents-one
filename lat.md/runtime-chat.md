@@ -485,3 +485,5 @@ Active collaborative tasks show a compact progress strip above the composer, wit
 Reopening interrupted Renderer-owned scheduling checks the recorded native runs. If none remain active, the execution becomes paused without losing evidence or starting work; live or unconfirmed runs stay locked.
 
 Opening directed dialogue closes expanded progress to return space to its controls. The intervention panel shows the role error, latest event detail or handoff, falling back to its configured responsibility when no execution detail exists.
+
+Owner conversion sends only Renderer-writable conversation fields; Main-owned active-run ownership is never round-tripped through Renderer saves, even when its read value is undefined. Narrow windows hide only the participant count to keep the mode label on one line.

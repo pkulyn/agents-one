@@ -67,9 +67,9 @@ export function TaskModeControl({
               ? "runtimeChat.taskMode.collaboration"
               : "runtimeChat.taskMode.single",
           )}
-          {collaborative && count > 0
-            ? ` · ${t("runtimeChat.taskMode.participants", { count })}`
-            : ""}
+          {collaborative && count > 0 ? (
+            <span className="task-mode-count">{` · ${t("runtimeChat.taskMode.participants", { count })}`}</span>
+          ) : null}
         </span>
         <ChevronDown size={12} />
       </button>

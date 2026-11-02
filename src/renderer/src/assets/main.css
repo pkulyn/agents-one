@@ -20146,3 +20146,15 @@ body.tray-completion-document {
   margin: 6px 0 12px;
   color: var(--text-secondary);
 }
+
+.task-mode-control {
+  flex-shrink: 0;
+}
+.task-mode-trigger {
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .task-mode-count {
+    display: none;
+  }
+}
