@@ -46,28 +46,30 @@ function parseDeliveryContracts(output: string): DeliveryContract[] {
     for (const match of text.matchAll(
       /\[(?:交付物|交付契约)\]([\s\S]*?)(?=\[(?:交付物|交付契约)\]|$)/g,
     )) {
-      const marker = match[1].slice(0, 4000);
-      const value = (label: string): string | undefined =>
-        marker
-          .match(new RegExp(label + "\\s*[：:]\\s*([^\\r\\n]+)", "i"))?.[1]
-          ?.trim();
-      let path = value("路径");
-      if (
-        path &&
-        [
-          String.fromCharCode(96),
-          String.fromCharCode(34),
-          String.fromCharCode(39),
-        ].includes(path[0]) &&
-        path.at(-1) === path[0]
-      )
-        path = path.slice(1, -1);
-      const sha256 = value("SHA-?256")
-        ?.match(/[a-f0-9]{64}/i)?.[0]
-        ?.toLowerCase();
-      const changeSummary = value("变更摘要");
-      if (path && sha256 && changeSummary)
-        contracts.set(path + ":" + sha256, { path, sha256, changeSummary });
+      for (const entry of match[1].split(/(?=^[ \t]*路径\s*[：:])/m)) {
+        const marker = entry.slice(0, 4000);
+        const value = (label: string): string | undefined =>
+          marker
+            .match(new RegExp(label + "\\s*[：:]\\s*([^\\r\\n]+)", "i"))?.[1]
+            ?.trim();
+        let path = value("路径");
+        if (
+          path &&
+          [
+            String.fromCharCode(96),
+            String.fromCharCode(34),
+            String.fromCharCode(39),
+          ].includes(path[0]) &&
+          path.at(-1) === path[0]
+        )
+          path = path.slice(1, -1);
+        const sha256 = value("SHA-?256")
+          ?.match(/[a-f0-9]{64}/i)?.[0]
+          ?.toLowerCase();
+        const changeSummary = value("变更摘要");
+        if (path && sha256 && changeSummary)
+          contracts.set(path + ":" + sha256, { path, sha256, changeSummary });
+      }
     }
   }
   return [...contracts.values()].slice(0, 50);
