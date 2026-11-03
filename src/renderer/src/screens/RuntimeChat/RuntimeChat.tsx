@@ -5647,6 +5647,31 @@ ${reason}`,
                     ? "runtimeChat.feedback.adjustNow"
                     : "runtimeChat.cancelResume.queue",
                 )}
+                leadingExtras={
+                  loading ? (
+                    <div className="runtime-input-options">
+                      <span>{t("runtimeChat.feedback.inputMode")}</span>
+                      <select
+                        className="runtime-input-mode"
+                        aria-label={t("runtimeChat.feedback.inputMode")}
+                        title={t("runtimeChat.feedback.inputModeHint")}
+                        value={runningInputMode}
+                        onChange={(event) =>
+                          setRunningInputMode(
+                            event.target.value as "steer" | "follow_up",
+                          )
+                        }
+                      >
+                        <option value="steer">
+                          {t("runtimeChat.feedback.adjustNow")}
+                        </option>
+                        <option value="follow_up">
+                          {t("runtimeChat.cancelResume.queue")}
+                        </option>
+                      </select>
+                    </div>
+                  ) : undefined
+                }
                 ref={chatInputRef}
                 isLoading={loading}
                 hasSession={Boolean(runtimeSessionIdRef.current)}
@@ -5666,26 +5691,6 @@ ${reason}`,
                 slashCommands={runtimeSlashCommands}
                 toolbarExtras={
                   <>
-                    {loading ? (
-                      <select
-                        className="runtime-input-mode"
-                        aria-label={t("runtimeChat.feedback.inputMode")}
-                        title={t("runtimeChat.feedback.inputModeHint")}
-                        value={runningInputMode}
-                        onChange={(event) =>
-                          setRunningInputMode(
-                            event.target.value as "steer" | "follow_up",
-                          )
-                        }
-                      >
-                        <option value="steer">
-                          {t("runtimeChat.feedback.adjustNow")}
-                        </option>
-                        <option value="follow_up">
-                          {t("runtimeChat.cancelResume.queue")}
-                        </option>
-                      </select>
-                    ) : null}
                     <ContextFolderChip
                       contextFolder={workspace || null}
                       show={localFileInputs || remoteWorkspaceGatewayRuntime}

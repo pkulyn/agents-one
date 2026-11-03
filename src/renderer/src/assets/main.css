@@ -20567,3 +20567,24 @@ body.tray-completion-document {
   font: inherit;
   font-size: 12px;
 }
+
+.runtime-chat .runtime-input-options {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.runtime-chat .runtime-input-options .runtime-input-mode {
+  height: 26px;
+}
+.runtime-chat .chat-input-toolbar {
+  flex-wrap: wrap;
+}
+.runtime-chat .chat-input-wrapper:has(.runtime-input-options) .chat-model-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
