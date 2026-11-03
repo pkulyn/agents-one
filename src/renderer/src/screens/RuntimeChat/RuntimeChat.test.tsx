@@ -4976,6 +4976,133 @@ describe("RuntimeChat inputs and persistence", () => {
       "已完成第二轮确认并重新验证。",
     );
   });
+  it("adjusts a non-native run only after confirmed termination and resumes its session", async () => {
+    let cancelled = false;
+    getAgentRuntimeRun.mockImplementation(async () => ({
+      id: "run-1",
+      runtimeId: gatewayRuntime.id,
+      status: cancelled ? "cancelled" : "running",
+      output: "partial",
+      sessionId: "same-session",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }));
+    window.agentsOneAPI.sendAgentRuntimeInput = vi
+      .fn()
+      .mockResolvedValue("unsupported");
+    vi.mocked(window.agentsOneAPI.cancelAgentRuntimeTask).mockImplementation(
+      async () => {
+        cancelled = true;
+        return true;
+      },
+    );
+    startAgentRuntimeTask.mockResolvedValue({
+      id: "run-1",
+      runtimeId: gatewayRuntime.id,
+      status: "running",
+      sessionId: "same-session",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    render(
+      <RuntimeChat
+        runId="steer-fallback"
+        runtime={gatewayRuntime}
+        profile="default"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
+    await waitFor(
+      () => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2),
+      { timeout: 5000 },
+    );
+    expect(window.agentsOneAPI.cancelAgentRuntimeTask).toHaveBeenCalledWith(
+      "run-1",
+    );
+    expect(startAgentRuntimeTask.mock.calls[1][1]).toMatchObject({
+      sessionId: "same-session",
+    });
+    expect(
+      screen.queryByRole("dialog", { name: /停止当前运行/ }),
+    ).not.toBeInTheDocument();
+  });
+  it("delivers running input through the live channel without cancelling or starting another run", async () => {
+    getAgentRuntimeRun.mockResolvedValue({
+      id: "run-1",
+      runtimeId: gatewayRuntime.id,
+      status: "running",
+      output: "",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    const nativeInput = vi.fn().mockResolvedValue("accepted");
+    window.agentsOneAPI.sendAgentRuntimeInput = nativeInput;
+    render(
+      <RuntimeChat
+        runId="steer-native"
+        runtime={gatewayRuntime}
+        profile="default"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "停止测试任务" }),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
+    await waitFor(() =>
+      expect(nativeInput).toHaveBeenCalledWith(
+        "run-1",
+        "请使用多智能体协作完成这个任务。",
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/补充说明已送达/)).toBeInTheDocument(),
+    );
+    expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1);
+    expect(window.agentsOneAPI.cancelAgentRuntimeTask).not.toHaveBeenCalled();
+    expect(
+      saveRuntimeConversation.mock.calls.some(
+        ([input]) =>
+          input.messages.filter((m: { role: string }) => m.role === "user")
+            .length === 2,
+      ),
+    ).toBe(true);
+  });
+  it("does not claim delivery or cancel when native input rejects", async () => {
+    getAgentRuntimeRun.mockResolvedValue({
+      id: "run-1",
+      runtimeId: gatewayRuntime.id,
+      status: "running",
+      output: "",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    window.agentsOneAPI.sendAgentRuntimeInput = vi
+      .fn()
+      .mockRejectedValue(new Error("transport rejected"));
+    render(
+      <RuntimeChat
+        runId="steer-reject"
+        runtime={gatewayRuntime}
+        profile="default"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
+    await waitFor(() =>
+      expect(screen.getByText(/无法确认补充说明已送达/)).toBeInTheDocument(),
+    );
+    expect(window.agentsOneAPI.cancelAgentRuntimeTask).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(/补充说明已送达正在执行/),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("Preset context transfer", () => {

@@ -1695,6 +1695,42 @@ describe("agent runtime registry", () => {
     ).resolves.toMatchObject({ type: "unsupported" });
   });
 
+  it("sends supplemental text only through the authorized live Pi process", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-live-input",
+      name: "Pi live",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "pi", transport: "cli", workspace: testHome },
+    });
+    const steer = vi.fn().mockResolvedValue(undefined);
+    startPiProcessMock.mockResolvedValue({
+      sessionId: "pi-input-session",
+      inputArtifacts: [],
+      cancel: vi.fn(),
+      steer,
+      completion: new Promise<never>(() => undefined),
+    });
+    const run = await runtimes.startAgentRuntimeTask("pi-live-input", {
+      prompt: "work",
+      mode: "analysis",
+      workspace: testHome,
+    });
+    await expect(
+      runtimes.sendAgentRuntimeInput(run.id, "revised scope"),
+    ).resolves.toBe("accepted");
+    expect(steer).toHaveBeenCalledWith("revised scope");
+    await expect(
+      runtimes.sendAgentRuntimeInput("missing", "late"),
+    ).resolves.toBe("ended");
+    steer.mockRejectedValueOnce(new Error("not accepted"));
+    await expect(
+      runtimes.sendAgentRuntimeInput(run.id, "again"),
+    ).rejects.toThrow("not accepted");
+  });
+
   it("defers Pi model changes while a task is running instead of mutating its live session", async () => {
     const { runtimes } = await loadModules();
     runtimes.saveAgentRuntime({

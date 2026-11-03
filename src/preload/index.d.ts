@@ -437,6 +437,10 @@ interface AgentsOneAPI {
     callback: (progress: RuntimeCommandProgress) => void,
   ) => () => void;
   getAgentRuntimeRun: (runId: string) => Promise<AgentRuntimeRun | null>;
+  sendAgentRuntimeInput: (
+    runId: string,
+    text: string,
+  ) => Promise<"accepted" | "unsupported" | "ended">;
   cancelAgentRuntimeTask: (runId: string) => Promise<boolean>;
   retryAgentRuntimeArtifact: (
     runId: string,
