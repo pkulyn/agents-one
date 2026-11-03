@@ -21,6 +21,7 @@ Further Runtime and platform compatibility work is tracked in [known issues](KNO
 - Show collaboration execution in the conversation, inherit task permissions, cancel active branches and hide progress after completion.
 - Report model/provider failures clearly, try configured alternatives for eligible OpenCode model failures, and consolidate localized cancellation/timeout notices.
 - Keep a task running when native input is rejected or unavailable; preserve the submitted text and explain the result.
+- Ignore stale Codex completion notifications batched with turn startup and await process cleanup before cancellation returns.
 
 ### Distribution
 
