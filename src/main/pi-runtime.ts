@@ -1,3 +1,4 @@
+import { createPiLiveInput } from "./pi-live-input";
 import { collaborationWorkingDirectory } from "./collaboration-working-directory";
 import type { RuntimePermissionBridge } from "./runtime-tool-permissions";
 import { piNativeToolsExtensionSource } from "./pi-native-tools";
@@ -74,6 +75,7 @@ export interface PiProcessResult {
 }
 
 export interface StartedPiProcess {
+  steer?: (text: string) => Promise<void>;
   worktreePath?: string;
   inputArtifacts: RuntimeInputArtifact[];
   sessionId: string;
@@ -1281,6 +1283,23 @@ export async function startPiProcess(
   nativeMetadata?.assertUnchanged();
   if (configRoot) assertPiNonExecutingConfig(configRoot);
   assertCanStart();
+  const liveRpc =
+    Boolean(strict) ||
+    nativeMetadata?.version === "1.4.0" ||
+    nativeMetadata?.version === "1.5.0";
+  const executionArgs = piExecArgs(
+    bridgedAuto ? "full_access" : mode,
+    runtimePrompt,
+    sessionId,
+    sessionsRoot(input.profile),
+    liveRpc ? [] : preparedInputs.files.map((file) => file.path),
+    Boolean(workspace),
+    config.model,
+  );
+  if (liveRpc) {
+    executionArgs.splice(0, 3, "--mode", "rpc");
+    executionArgs.pop();
+  }
   const child = spawn(
     invocation.command,
     [
@@ -1318,15 +1337,7 @@ export async function startPiProcess(
             ),
           ]
         : []),
-      ...piExecArgs(
-        bridgedAuto ? "full_access" : mode,
-        runtimePrompt,
-        sessionId,
-        sessionsRoot(input.profile),
-        preparedInputs.files.map((file) => file.path),
-        Boolean(workspace),
-        config.model,
-      ),
+      ...executionArgs,
     ],
     {
       cwd,
@@ -1337,9 +1348,11 @@ export async function startPiProcess(
       },
       shell: false,
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [liveRpc ? "pipe" : "ignore", "pipe", "pipe"],
     },
   );
+  const liveInput = liveRpc ? createPiLiveInput(child) : undefined;
+  let nativeInputError: string | undefined;
   let output = "";
   const recordOutput = (chunk: string): void => {
     if (!chunk) return;
@@ -1353,7 +1366,17 @@ export async function startPiProcess(
     pending += value;
     let newline = pending.indexOf("\n");
     while (newline >= 0) {
-      recordOutput(piOutputFrame(pending.slice(0, newline)) + "\n");
+      const line = pending.slice(0, newline);
+      if (liveInput) {
+        try {
+          const frame = JSON.parse(line);
+          liveInput.accept(frame);
+          if (frame.type === "agent_settled") child.stdin?.end();
+        } catch {
+          /* Diagnostics remain in the normal event stream. */
+        }
+      }
+      recordOutput(piOutputFrame(line) + "\n");
       pending = pending.slice(newline + 1);
       newline = pending.indexOf("\n");
     }
@@ -1421,7 +1444,8 @@ export async function startPiProcess(
           label: "Git diff",
           content: diff.slice(0, MAX_OUTPUT),
         });
-      const structuredError = code === 0 ? piOutputError(output) : undefined;
+      const structuredError =
+        nativeInputError || (code === 0 ? piOutputError(output) : undefined);
       resolveResult({
         output: restoredFiles.length
           ? `${output}\n[Agents One] 已阻止移动或删除 ${restoredFiles.length} 个原有文件。`
@@ -1446,7 +1470,29 @@ export async function startPiProcess(
     });
   });
 
+  if (liveInput) {
+    const images = preparedInputs.files
+      .filter((file) => file.artifact.kind === "image")
+      .map((file) => ({
+        type: "image" as const,
+        data: readFileSync(file.path).toString("base64"),
+        mimeType: /\.png$/i.test(file.path)
+          ? "image/png"
+          : /\.webp$/i.test(file.path)
+            ? "image/webp"
+            : /\.gif$/i.test(file.path)
+              ? "image/gif"
+              : "image/jpeg",
+      }));
+    void liveInput.send("prompt", runtimePrompt, images).catch((error) => {
+      nativeInputError = redact(String(error.message));
+      child.stdin?.end();
+    });
+  }
   return {
+    ...(liveInput
+      ? { steer: (text: string) => liveInput.send("steer", text) }
+      : {}),
     worktreePath,
     inputArtifacts: preparedInputs.artifacts,
     sessionId,

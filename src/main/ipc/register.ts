@@ -227,6 +227,7 @@ import { homedir } from "os";
 import {
   activeAgentRuntimeTaskCount,
   cancelAgentRuntimeTask,
+  sendAgentRuntimeInput,
   cancelAllAgentRuntimeTasks,
   clearWebAgentRuntimeLogin,
   executeAgentRuntimeCommand,
@@ -1046,6 +1047,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle("get-agent-runtime-run", async (_event, runId: string) =>
     toRendererAgentRuntimeRun(await getAgentRuntimeRun(runId)),
+  );
+  ipcMain.handle(
+    "send-agent-runtime-input",
+    (_event, runId: string, text: string) => sendAgentRuntimeInput(runId, text),
   );
   ipcMain.handle("cancel-agent-runtime-task", (_event, runId: string) =>
     cancelAgentRuntimeTask(runId),

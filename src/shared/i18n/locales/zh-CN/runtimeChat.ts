@@ -71,8 +71,18 @@ export default {
     emptyPrompt: "Runtime 命令返回了空的提示模板。",
     commandNeedsInput: "该 Runtime 命令需要继续确认。",
     commandComplete: "Runtime 命令已完成。",
-    queuedFollowUp:
-      "当前 Runtime 不支持中途纠偏；此消息会在本轮完成后作为跟进发送。",
+    adjustNow: "立即纠偏",
+    inputMode: "运行中补充方式",
+    inputModeHint:
+      "立即纠偏优先原生送达；不支持时会停止当前步骤，在原会话按补充说明继续。也可选择完成本轮后跟进。",
+    supplementResuming: "当前步骤已停止，将在原会话按补充说明继续。",
+    sendSupplement: "发送补充说明",
+    supplementDelivered:
+      "补充说明已送达正在执行的智能体，将在可处理输入时调整。",
+    sharedSupplement:
+      "补充说明已共享给后续角色；部分当前执行通道不能原生接收，可选择停止后继续。",
+    supplementFailed: "无法确认补充说明已送达，输入已保留。",
+    queuedFollowUp: "补充说明已排队，将在本轮完成后按顺序发送。",
     steeringUnavailable:
       "当前 Runtime 未声明运行中纠偏能力；消息已保留，未发送也未中断任务。",
     readOnlyBranch:
@@ -170,6 +180,7 @@ export default {
     confirm: "确认压缩",
   },
   cancelResume: {
+    queue: "完成本轮后跟进",
     dialog: "确认停止并以新消息恢复",
     title: "停止当前运行并以新消息恢复？",
     description:

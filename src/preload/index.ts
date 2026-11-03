@@ -567,6 +567,11 @@ const agentsOneAPI = {
   },
   getAgentRuntimeRun: (runId: string): Promise<AgentRuntimeRun | null> =>
     ipcRenderer.invoke("get-agent-runtime-run", runId),
+  sendAgentRuntimeInput: (
+    runId: string,
+    text: string,
+  ): Promise<"accepted" | "unsupported" | "ended"> =>
+    ipcRenderer.invoke("send-agent-runtime-input", runId, text),
   cancelAgentRuntimeTask: (runId: string): Promise<boolean> =>
     ipcRenderer.invoke("cancel-agent-runtime-task", runId),
   retryAgentRuntimeArtifact: (

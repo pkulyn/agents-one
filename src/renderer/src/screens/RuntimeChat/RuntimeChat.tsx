@@ -50,11 +50,9 @@ import { useI18n } from "../../components/useI18n";
 import { t as sharedTranslate } from "../../../../shared/i18n";
 import type { Attachment } from "../../../../shared/attachments";
 import type {
-  AgentRuntimeCapabilities,
   AgentRuntimeDefinition,
   AgentRuntimeRun,
 } from "../../../../shared/agent-runtimes";
-import { runtimeSteeringPlan } from "../../../../shared/agent-runtimes";
 import type {
   RuntimeCommandDescriptor,
   RuntimeCommandResult,
@@ -1244,24 +1242,17 @@ export default function RuntimeChat({
     rawInput: string;
     instructions: string;
   } | null>(null);
-  // Web Agent's platform queue is deterministic; use it until the first
-  // probe resolves so a fast second message cannot hit the conservative
-  // `none` default and get rejected during the probe race.
-  const [steeringCapabilities, setSteeringCapabilities] = useState<
-    Pick<AgentRuntimeCapabilities, "steering" | "cancellation">
-  >(
-    webAgentRuntime
-      ? { steering: "follow_up", cancellation: true }
-      : { steering: "none", cancellation: false },
-  );
-  const [queuedFollowUp, setQueuedFollowUp] = useState<{
-    text: string;
-    attachments: Attachment[];
-  } | null>(null);
-  const [pendingCancelResume, setPendingCancelResume] = useState<{
-    text: string;
-    attachments: Attachment[];
-  } | null>(null);
+  const [queuedFollowUp, setQueuedFollowUp] = useState<
+    Array<{
+      text: string;
+      attachments: Attachment[];
+    }>
+  >([]);
+  const sendingSupplementRef = useRef(false);
+  const collaborationSupplementsRef = useRef<string[]>([]);
+  const [runningInputMode, setRunningInputMode] = useState<
+    "steer" | "follow_up"
+  >(webAgentRuntime ? "follow_up" : "steer");
   const [webPreviewUrl, setWebPreviewUrl] = useState("about:blank");
 
   // Schedule records use opaque workspace capabilities. Resolve only the
@@ -1723,29 +1714,6 @@ export default function RuntimeChat({
     unifiedRemoteGatewayRuntime,
     webAgentRuntime,
   ]);
-
-  // Control semantics come from a fresh Runtime probe, never from UI kind
-  // guesses. A failed probe deliberately falls back to "unsupported".
-  useEffect(() => {
-    let cancelled = false;
-    void window.agentsOneAPI
-      .probeAgentRuntime(runtime.id)
-      .then((probe) => {
-        if (!cancelled) {
-          setSteeringCapabilities({
-            steering: probe.capabilities.steering || "none",
-            cancellation: probe.capabilities.cancellation,
-          });
-        }
-      })
-      .catch(() => {
-        if (!cancelled)
-          setSteeringCapabilities({ steering: "none", cancellation: false });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [runtime.id]);
 
   const updateFollowingLatest = useCallback((following: boolean): void => {
     if (followingLatestRef.current === following) return;
@@ -2770,7 +2738,12 @@ export default function RuntimeChat({
                   assignedRuntime.id,
                   {
                     prompt: collaborationRolePrompt(
-                      brief,
+                      [
+                        brief,
+                        ...collaborationSupplementsRef.current.map(
+                          (text) => "[用户补充说明 / User update]\n" + text,
+                        ),
+                      ].join("\n\n"),
                       configured,
                       runtimeCatalog,
                       assignment,
@@ -3252,7 +3225,12 @@ ${reason}`,
             assignedRuntime.id,
             {
               prompt: collaborationRolePrompt(
-                brief,
+                [
+                  brief,
+                  ...collaborationSupplementsRef.current.map(
+                    (text) => "[用户补充说明 / User update]\n" + text,
+                  ),
+                ].join("\n\n"),
                 configured,
                 runtimeCatalog,
                 assignment,
@@ -3722,6 +3700,7 @@ ${reason}`,
     async (...args: Parameters<typeof executeCollaboration>): Promise<void> => {
       if (collaborationRunActiveRef.current) return;
       collaborationRunActiveRef.current = true;
+      collaborationSupplementsRef.current = [];
       collaborationCancelFailuresRef.current.clear();
       collaborationCancellationRef.current = null;
       setLoading(true);
@@ -4657,20 +4636,122 @@ ${reason}`,
       return;
     }
     if (loading) {
-      const plan = runtimeSteeringPlan(steeringCapabilities);
-      if (plan.kind === "follow_up") {
-        setQueuedFollowUp({ text: prompt, attachments });
+      if (sendingSupplementRef.current) {
+        chatInputRef.current?.restore(prompt, attachments);
+        return;
+      }
+      const collab = collaborationRunActiveRef.current;
+      const continuation =
+        collab && collaborationExecution?.brief
+          ? [
+              collaborationExecution.brief,
+              ...collaborationSupplementsRef.current,
+              prompt,
+            ].join("\n\n[用户补充说明 / User update]\n")
+          : prompt;
+      if (runningInputMode === "follow_up") {
+        if (collab) collaborationSupplementsRef.current.push(prompt);
+        setQueuedFollowUp((queue) => [
+          ...queue,
+          { text: continuation, attachments },
+        ]);
         appendRuntimeControlMessage(t("runtimeChat.feedback.queuedFollowUp"));
         return;
       }
-      if (plan.kind === "cancel_resume") {
-        setPendingCancelResume({ text: prompt, attachments });
-        return;
+      const targets = [
+        ...new Set([
+          ...Object.values(activeCollaborationRunsRef.current).map(
+            (active) => active.run.id,
+          ),
+          ...(currentRunId && taskRunRef.current?.status === "running"
+            ? [currentRunId]
+            : []),
+        ]),
+      ];
+      sendingSupplementRef.current = true;
+      try {
+        let accepted = 0;
+        if (
+          !attachments.length &&
+          window.agentsOneAPI.sendAgentRuntimeInput &&
+          targets.length
+        ) {
+          const results = await Promise.allSettled(
+            targets.map((id) =>
+              window.agentsOneAPI.sendAgentRuntimeInput(id, prompt),
+            ),
+          );
+          accepted = results.filter(
+            (result) =>
+              result.status === "fulfilled" && result.value === "accepted",
+          ).length;
+          const rejected = results.find(
+            (result) => result.status === "rejected",
+          );
+          if (rejected?.status === "rejected") throw rejected.reason;
+          if (accepted === targets.length) {
+            if (collab) collaborationSupplementsRef.current.push(prompt);
+            const next = [...messagesRef.current, newMessage("user", prompt)];
+            messagesRef.current = next;
+            setMessages(next);
+            await persistConversation(next);
+            appendRuntimeControlMessage(
+              t("runtimeChat.feedback.supplementDelivered"),
+            );
+            return;
+          }
+        }
+        // Sending with "Adjust now" explicitly authorizes this fallback. Never
+        // start another task until the previous executor confirms termination.
+        if (collab) {
+          await stop();
+          const deadline = Date.now() + 30000;
+          while (collaborationRunActiveRef.current && Date.now() < deadline)
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          if (
+            collaborationRunActiveRef.current ||
+            collaborationCancelFailuresRef.current.size
+          )
+            throw Error(t("runtimeChat.collaborationRun.cancelFailed"));
+        } else if (currentRunId) {
+          await window.agentsOneAPI.cancelAgentRuntimeTask(currentRunId);
+          const deadline = Date.now() + 15000;
+          let observed =
+            await window.agentsOneAPI.getAgentRuntimeRun(currentRunId);
+          while (observed?.status === "running" && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            observed =
+              await window.agentsOneAPI.getAgentRuntimeRun(currentRunId);
+          }
+          if (!observed || observed.status === "running")
+            throw Error(t("runtimeChat.collaborationRun.cancelFailed"));
+        } else {
+          // Preparation has no acknowledged executor yet. Retain the update in
+          // FIFO order rather than racing startup with a second dispatch.
+          setQueuedFollowUp((queue) => [
+            ...queue,
+            { text: continuation, attachments },
+          ]);
+          appendRuntimeControlMessage(t("runtimeChat.feedback.queuedFollowUp"));
+          return;
+        }
+        setQueuedFollowUp((queue) => [
+          ...queue,
+          { text: continuation, attachments },
+        ]);
+        appendRuntimeControlMessage(
+          t("runtimeChat.feedback.supplementResuming"),
+        );
+      } catch (error) {
+        chatInputRef.current?.restore(prompt, attachments);
+        appendRuntimeControlMessage(
+          t("runtimeChat.feedback.supplementFailed") +
+            " " +
+            String(error instanceof Error ? error.message : error),
+        );
+      } finally {
+        sendingSupplementRef.current = false;
       }
-      chatInputRef.current?.restore(prompt, attachments);
-      appendRuntimeControlMessage(
-        t("runtimeChat.feedback.steeringUnavailable"),
-      );
       return;
     }
     if (collaborativeMode && collaborationExecution?.status === "running") {
@@ -5175,9 +5256,9 @@ ${reason}`,
   }, [runId, runCollaboration, send, workspace]);
 
   useEffect(() => {
-    if (loading || !queuedFollowUp) return;
-    const followUp = queuedFollowUp;
-    setQueuedFollowUp(null);
+    if (loading || !queuedFollowUp.length) return;
+    const [followUp] = queuedFollowUp;
+    setQueuedFollowUp((queue) => queue.slice(1));
     void send(followUp.text, followUp.attachments);
   }, [loading, queuedFollowUp]);
 
@@ -5515,39 +5596,6 @@ ${reason}`,
                   </button>
                 </div>
               ) : null}
-              {pendingCancelResume ? (
-                <div
-                  className="runtime-compact-confirmation"
-                  role="dialog"
-                  aria-label={t("runtimeChat.cancelResume.dialog")}
-                >
-                  <strong>{t("runtimeChat.cancelResume.title")}</strong>
-                  <p>{t("runtimeChat.cancelResume.description")}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const pending = pendingCancelResume;
-                      setPendingCancelResume(null);
-                      setQueuedFollowUp(pending);
-                      void stop();
-                    }}
-                  >
-                    {t("runtimeChat.cancelResume.confirm")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      chatInputRef.current?.restore(
-                        pendingCancelResume.text,
-                        pendingCancelResume.attachments,
-                      );
-                      setPendingCancelResume(null);
-                    }}
-                  >
-                    {t("runtimeChat.cancel")}
-                  </button>
-                </div>
-              ) : null}
               {webAgentRuntime && taskRun?.userActionRequired ? (
                 <div
                   className="runtime-compact-confirmation"
@@ -5594,6 +5642,36 @@ ${reason}`,
                 </div>
               ) : null}
               <ChatInput
+                runningSendLabel={t(
+                  runningInputMode === "steer"
+                    ? "runtimeChat.feedback.adjustNow"
+                    : "runtimeChat.cancelResume.queue",
+                )}
+                leadingExtras={
+                  loading ? (
+                    <div className="runtime-input-options">
+                      <span>{t("runtimeChat.feedback.inputMode")}</span>
+                      <select
+                        className="runtime-input-mode"
+                        aria-label={t("runtimeChat.feedback.inputMode")}
+                        title={t("runtimeChat.feedback.inputModeHint")}
+                        value={runningInputMode}
+                        onChange={(event) =>
+                          setRunningInputMode(
+                            event.target.value as "steer" | "follow_up",
+                          )
+                        }
+                      >
+                        <option value="steer">
+                          {t("runtimeChat.feedback.adjustNow")}
+                        </option>
+                        <option value="follow_up">
+                          {t("runtimeChat.cancelResume.queue")}
+                        </option>
+                      </select>
+                    </div>
+                  ) : undefined
+                }
                 ref={chatInputRef}
                 isLoading={loading}
                 hasSession={Boolean(runtimeSessionIdRef.current)}
@@ -5605,7 +5683,7 @@ ${reason}`,
                     : undefined
                 }
                 attachmentsEnabled={attachmentInputs}
-                allowAttachmentsWhileLoading={webAgentRuntime}
+                allowAttachmentsWhileLoading={true}
                 placeholder={t("chat.typeMessage")}
                 onSubmit={(text, attachments) => void send(text, attachments)}
                 onQuickAsk={() => undefined}
