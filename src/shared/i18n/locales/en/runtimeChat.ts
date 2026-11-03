@@ -81,8 +81,21 @@ export default {
     emptyPrompt: "The Runtime command returned an empty prompt template.",
     commandNeedsInput: "This Runtime command needs further confirmation.",
     commandComplete: "Runtime command completed.",
+    adjustNow: "Adjust now",
+    inputMode: "Running input mode",
+    inputModeHint:
+      "Adjust now uses native input when available; otherwise it stops the current step and resumes the same conversation with your update. You can also queue a follow-up.",
+    supplementResuming:
+      "The current step stopped. Continuing the same conversation with your update.",
+    sendSupplement: "Send update",
+    supplementDelivered:
+      "Update delivered to the active agent. It will adjust when it can process input.",
+    sharedSupplement:
+      "Update shared with subsequent roles. Some active transports need stop-and-resume to apply it now.",
+    supplementFailed:
+      "Delivery could not be confirmed. Your input was preserved.",
     queuedFollowUp:
-      "This Runtime does not support mid-run steering. The message will be sent as a follow-up after the current run finishes.",
+      "Update queued. Follow-ups will be sent in order after the current run finishes.",
     steeringUnavailable:
       "This Runtime did not declare mid-run steering support. The message was preserved without being sent or interrupting the task.",
     readOnlyBranch:
@@ -194,6 +207,7 @@ export default {
     confirm: "Compact context",
   },
   cancelResume: {
+    queue: "Follow up after this round",
     dialog: "Confirm stop and resume with a new message",
     title: "Stop the current run and resume with a new message?",
     description:

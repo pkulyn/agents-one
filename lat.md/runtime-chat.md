@@ -529,3 +529,9 @@ Every role inherits the composer permission mode unless the user explicitly chos
 File candidates are keyed by their actual reference, content and file metadata, so unrelated live progress does not repeatedly remove and reload already resolved file cards.
 
 [[src/renderer/src/components/ConversationFiles.tsx]] retains real file/revision cards while suppressing the redundant internal OpenCode workspace snapshot summary. The original snapshot remains available to platform evidence and write protection; this is a display filter, not deletion of delivery records.
+
+## Running user updates
+
+Running tasks accept immediate updates or ordered follow-ups. Verified Pi RPC receives live text; other transports confirm termination before resuming. Collaboration passes updates to later roles.
+
+The update input keeps Stop available. Failed acknowledgement retains input and never claims delivery. Multiple queued messages remain FIFO, and a failed cancellation cannot start a replacement. The existing permission policy, session and workspace remain in force.

@@ -70,6 +70,8 @@ interface ChatInputProps {
   attachmentsEnabled?: boolean;
   /** Some transports queue a message while the current run is finishing. */
   allowAttachmentsWhileLoading?: boolean;
+  /** Shows a send action beside Stop while a Runtime accepts supplementary input. */
+  runningSendLabel?: string;
   placeholder?: string;
   sessionId?: string | null;
   remoteMode?: boolean;
@@ -106,6 +108,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       attachmentsEnabled = true,
       allowAttachmentsWhileLoading = false,
       placeholder,
+      runningSendLabel,
       sessionId,
       remoteMode,
       profile,
@@ -861,6 +864,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             {contextUsage && (
               <ContextGauge {...contextUsage} onClick={onContextUsageClick} />
             )}
+            {isLoading && runningSendLabel && canSend ? (
+              <button
+                className="chat-send-btn chat-supplement-btn"
+                onClick={handleSend}
+                title={runningSendLabel}
+                aria-label={runningSendLabel}
+              >
+                <ArrowUp size={20} />
+              </button>
+            ) : null}
             {isLoading ? (
               <button
                 className="chat-send-btn chat-stop-btn"

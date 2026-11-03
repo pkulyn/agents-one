@@ -249,6 +249,7 @@ interface RuntimeRunRecord {
     cancel: () => Promise<void>;
   };
   pi?: {
+    steer?: (text: string) => Promise<void>;
     cancel: () => Promise<void>;
   };
   opencode?: {
@@ -5976,7 +5977,7 @@ export async function startAgentRuntimeTask(
         },
         () => record.run.status === "running" && !record.cancelRequested,
       );
-      record.pi = { cancel: pi.cancel };
+      record.pi = { cancel: pi.cancel, steer: pi.steer };
       if (pi.inputArtifacts.length) {
         record.run = { ...record.run, inputArtifacts: pi.inputArtifacts };
       }
@@ -6285,6 +6286,27 @@ async function requestRemoteGatewayCancellation(
     );
     return false;
   }
+}
+
+/** Routes user text only to the already-authorized live process; never changes policy. */
+export async function sendAgentRuntimeInput(
+  runId: string,
+  text: string,
+): Promise<"accepted" | "unsupported" | "ended"> {
+  if (
+    typeof text !== "string" ||
+    !text.trim() ||
+    Buffer.byteLength(text, "utf8") > 100000
+  )
+    throw Error("Invalid runtime input.");
+  const record = runtimeRuns.get(runId);
+  if (!record || record.run.status !== "running" || record.cancelRequested)
+    return "ended";
+  const steer = record.pi?.steer;
+  if (!steer) return "unsupported";
+  await steer(text.trim());
+  noteRuntimeActivity(record);
+  return "accepted";
 }
 
 export async function cancelAgentRuntimeTask(runId: string): Promise<boolean> {
