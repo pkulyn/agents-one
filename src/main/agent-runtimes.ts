@@ -240,6 +240,7 @@ interface RuntimeRunRecord {
   remotePermissionRequests?: Set<string>;
   terminationStatus?: "cancelled" | "timed_out";
   codex?: {
+    steer?: (text: string) => Promise<void>;
     cancel: () => Promise<void>;
   };
   claudeCode?: {
@@ -253,6 +254,7 @@ interface RuntimeRunRecord {
     cancel: () => Promise<void>;
   };
   opencode?: {
+    steer?: (text: string) => Promise<void>;
     cancel: () => Promise<void>;
   };
   webAgent?: StartedWebAgentRun;
@@ -4222,7 +4224,7 @@ async function probeRuntimeDefinition(
             securityEvents: false,
             artifacts: true,
             workspaceAccess: result.workspaceAccess,
-            steering: "cancel_resume",
+            steering: "native",
             branching: "platform",
           }
         : NO_AGENT_RUNTIME_CAPABILITIES,
@@ -5400,7 +5402,11 @@ export async function startAgentRuntimeTask(
           appendLocalRuntimeMetadata(record, metadata);
         },
       );
-      record.opencode = { cancel: opencode.cancel };
+      record.opencode = { cancel: opencode.cancel, steer: opencode.steer };
+      if (record.cancelRequested || record.run.status !== "running") {
+        await opencode.cancel();
+        return { ...record.run };
+      }
       if (opencode.inputArtifacts.length) {
         record.run = { ...record.run, inputArtifacts: opencode.inputArtifacts };
       }
@@ -5702,7 +5708,14 @@ export async function startAgentRuntimeTask(
             ] as const)
           : ([] as const)),
       );
-      record.codex = { cancel: codex.cancel };
+      record.codex = { cancel: codex.cancel, steer: codex.steer };
+      if (
+        !mobileExecution &&
+        (record.cancelRequested || record.run.status !== "running")
+      ) {
+        await codex.cancel();
+        return { ...record.run };
+      }
       if (options?.codexMobileProjectWrite && record.terminationStatus) {
         await codex.cancel();
         const result = await codex.completion;
@@ -6302,10 +6315,11 @@ export async function sendAgentRuntimeInput(
   const record = runtimeRuns.get(runId);
   if (!record || record.run.status !== "running" || record.cancelRequested)
     return "ended";
-  const steer = record.pi?.steer;
+  const steer =
+    record.pi?.steer || record.codex?.steer || record.opencode?.steer;
   if (!steer) return "unsupported";
   await steer(text.trim());
-  noteRuntimeActivity(record);
+  if (record.run.status === "running") noteRuntimeActivity(record);
   return "accepted";
 }
 

@@ -308,7 +308,7 @@ When OpenCode has no explicit shell override, [[src/main/runtime-adapters/builti
 
 Claude Code and Codex preserve explicit attachment copies and complete final answers on both new and continued conversations, including when Chinese output spans process chunks.
 
-Claude attachments use the CLI staged-directory route, including read-only conversations; they never enter the SDK-only text control path. Codex grants the staged directory and passes image paths through native --image arguments, placing resumed images on exec resume. [[tests/claude-codex-attachments.test.ts]] launches process fixtures that read the copied bytes, emit a megabyte tool result and split a Chinese UTF-8 character in the final JSON event, then checks streaming and completed summaries plus the original session continuation.
+Claude attachments use the CLI staged-directory route, including read-only conversations; they never enter the SDK-only text control path. Codex desktop turns use App Server text and local-image input in both new and resumed threads; staged files remain available in the prompt context. Mobile execution retains its audited CLI boundary. [[tests/claude-codex-attachments.test.ts]] launches process fixtures that read the copied bytes, emit a megabyte tool result and split a Chinese UTF-8 character in the final JSON event, then checks streaming and completed summaries plus the original session continuation.
 
 [[src/main/claude-code-runtime.ts#startClaudeCodeProcess]] and [[src/main/codex-runtime.ts#startCodexProcess]] decode stdout and stderr independently with incremental UTF-8 decoders and flush them on close before terminal summarization. This prevents replacement characters at valid byte boundaries without changing permissions, native arguments, staged content or output limits.
 
@@ -532,6 +532,12 @@ File candidates are keyed by their actual reference, content and file metadata, 
 
 ## Running user updates
 
-Running tasks accept immediate updates or ordered follow-ups. Verified Pi RPC receives live text; other transports confirm termination before resuming. Collaboration passes updates to later roles.
+Running tasks accept native input or ordered follow-ups. Pi RPC, Codex App Server and verified OpenCode ACP append input to the active run. Unsupported or rejected input stays visible and never silently cancels a task.
 
-The update input keeps Stop available. Failed acknowledgement retains input and never claims delivery. Multiple queued messages remain FIFO, and a failed cancellation cannot start a replacement. The existing permission policy, session and workspace remain in force.
+User text is recorded before awaiting native acknowledgement, preserving submission order even when ACP responds only after updated work settles. Multiple native inputs retain separate requests. The composer shows pending, acknowledged and rejected states in the current language.
+
+Codex desktop execution uses the existing App Server approval bridge for all desktop permission modes. Read-only and workspace-write sandboxes remain explicit; automatic permissions retain per-tool authorization. Native steering binds both thread ID and expected turn ID. The independently audited mobile CLI path remains unchanged.
+
+OpenCode appends native ACP prompts within the same session and keeps the original process alive until every outstanding prompt settles. A rejected additional prompt does not cancel the original work. The installed OpenCode 1.19 protocol is verified separately from future ACP versions that may reject concurrent prompts.
+
+Collaboration shares user revisions with later roles. Follow-up mode remains FIFO, while native failure preserves the original task and input rather than invoking stop-and-resume.

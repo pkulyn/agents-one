@@ -60,6 +60,7 @@ export interface CodexProcessResult {
 }
 
 export interface StartedCodexProcess {
+  steer?: (text: string) => Promise<void>;
   worktreePath?: string;
   inputArtifacts: RuntimeInputArtifact[];
   /** Resolves only after the child has closed and its cleanup has completed. */
@@ -508,19 +509,86 @@ export async function startCodexProcess(
       `codex-${randomUUID()}`,
     );
     const runtimePrompt = `${input.prompt}${preparedInputs.promptContext}`;
-    if (mode === "safe_write" && config.permissionBridge && !mobileExecution) {
-      return startCodexPermissionTurn({
-        invocation,
-        cwd,
-        prompt: runtimePrompt,
-        model: config.model,
-        sessionId: input.sessionId,
-        imagePaths: preparedInputs.imagePaths,
-        inputArtifacts: preparedInputs.artifacts,
-        environment: await codexDesktopEnvironment(childEnvironment()),
-        bridge: config.permissionBridge,
-        onOutput,
-      });
+    if (!mobileExecution) {
+      const protection =
+        mode === "safe_write" && workspace && !config.permissionBridge
+          ? protectWorkspaceFromRemoval(workspace, input.profile)
+          : undefined;
+      let started: StartedCodexProcess;
+      try {
+        started = await startCodexPermissionTurn({
+          invocation,
+          cwd,
+          prompt: runtimePrompt,
+          model: config.model,
+          sessionId: input.sessionId,
+          imagePaths: preparedInputs.imagePaths,
+          inputArtifacts: preparedInputs.artifacts,
+          environment: await codexDesktopEnvironment(childEnvironment()),
+          bridge: mode === "safe_write" ? config.permissionBridge : undefined,
+          mode,
+          onOutput,
+        });
+      } catch (error) {
+        protection?.restoreAndDispose();
+        throw error;
+      }
+      return {
+        ...started,
+        ...(worktreePath ? { worktreePath } : {}),
+        completion: started.completion.then(async (result) => {
+          const restored = protection?.restoreAndDispose() || [];
+          const artifacts = [...result.artifacts];
+          let diffSummary: string | undefined;
+          if (worktreePath) {
+            artifacts.push({
+              kind: "worktree",
+              label: "Isolated worktree",
+              path: worktreePath,
+            });
+            try {
+              diffSummary = await command({ command: "git", prefix: [] }, [
+                "-C",
+                worktreePath,
+                "diff",
+                "--stat",
+              ]);
+              const diff = await command({ command: "git", prefix: [] }, [
+                "-C",
+                worktreePath,
+                "diff",
+                "--no-ext-diff",
+              ]);
+              if (diff)
+                artifacts.push({
+                  kind: "diff",
+                  label: "Git diff",
+                  content: diff.slice(0, MAX_OUTPUT),
+                });
+            } catch {
+              /* Preserve the native result if diff inspection fails. */
+            }
+          }
+          return {
+            ...result,
+            artifacts,
+            ...(worktreePath ? { worktreePath } : {}),
+            ...(diffSummary ? { diffSummary } : {}),
+            ...(restored.length
+              ? {
+                  output:
+                    result.output +
+                    "\n[Agents One] " +
+                    runtimeRemovalBlockedMessage(restored),
+                  error: runtimeRemovalBlockedMessage(restored),
+                }
+              : {}),
+            ...(protection?.recoveryError
+              ? { error: protection.recoveryError }
+              : {}),
+          };
+        }),
+      };
     }
     const workspaceProtection =
       mode === "safe_write" && workspace && !mobileWrite
