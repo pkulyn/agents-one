@@ -1,3 +1,7 @@
+import {
+  collaborationSharesContext,
+  findCollaborationRolePreset,
+} from "../../../../shared/task-collaboration-presets";
 import { recoverInterruptedCollaboration } from "./collaborationRecovery";
 import { CollaborationProgress } from "./CollaborationProgress";
 import { TaskModeControl } from "./TaskModeControl";
@@ -380,6 +384,8 @@ function roleCanModify(assignment: TaskCollaborationAssignment): boolean {
   // Role names are the authoritative intent. A testing/acceptance responsibility
   // may mention a delivery as evidence, but that must not make the role writable.
   const role = assignment.role || "";
+  const preset = findCollaborationRolePreset(role);
+  if (preset) return preset.key === "implementer" || preset.key === "writer";
   if (/测试|验收|复核|审核|审查|qa|review|accept/i.test(role)) return false;
   if (/项目负责人|主负责|主智能体|coordinator|orchestrat/i.test(role))
     return false;
@@ -393,8 +399,11 @@ function roleCanModify(assignment: TaskCollaborationAssignment): boolean {
 }
 
 function isCoordinator(assignment: TaskCollaborationAssignment): boolean {
-  return /项目负责人|主负责|主智能体|coordinator|orchestrat/i.test(
-    `${assignment.role} ${assignment.responsibility || ""}`,
+  return (
+    findCollaborationRolePreset(assignment.role)?.key === "coordinator" ||
+    /项目负责人|主负责|主智能体|coordinator|orchestrat/i.test(
+      `${assignment.role} ${assignment.responsibility || ""}`,
+    )
   );
 }
 
@@ -405,6 +414,7 @@ function isFinalReview(assignment: TaskCollaborationAssignment): boolean {
 function roleIsAcceptance(assignment: TaskCollaborationAssignment): boolean {
   return (
     isFinalReview(assignment) ||
+    findCollaborationRolePreset(assignment.role)?.key === "reviewer" ||
     (!isCoordinator(assignment) &&
       /验收|复核|审核|审查|accept|review|qa/i.test(
         `${assignment.role} ${assignment.responsibility || ""}`,
@@ -803,10 +813,11 @@ function artifactEvidence(
     .join("\n");
 }
 
-function acceptanceFromOutput(
+export function acceptanceFromOutput(
   assignmentId: string,
   output: string,
   artifacts: TaskCollaborationArtifact[],
+  handoffs?: TaskCollaborationRoleRun[],
 ): TaskCollaborationAcceptance {
   const markerIndex = output.indexOf("[验收结论]");
   const marker =
@@ -831,6 +842,25 @@ function acceptanceFromOutput(
       : declared === "不通过"
         ? "failed"
         : "needs_review";
+  if (handoffs) {
+    const reviewedHandoffIds = [
+      ...new Set(
+        [...marker.matchAll(/H\s*(\d{1,3})/gi)]
+          .map((match) => handoffs[Number(match[1]) - 1]?.assignmentId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    return {
+      assignmentId,
+      status: reviewedHandoffIds.length ? status : "needs_review",
+      conclusion: reviewedHandoffIds.length
+        ? marker.slice(0, 6000)
+        : "复核结论未引用平台提供的已完成交接 H1、H2，需人工复核。",
+      reviewedArtifactIds: [],
+      reviewedHandoffIds,
+      createdAt: Date.now(),
+    };
+  }
   const numbers = [...marker.matchAll(/#\s*(\d{1,3})/g)]
     .map((match) => Number(match[1]) - 1)
     .filter((index) => index >= 0 && index < artifacts.length);
@@ -890,7 +920,24 @@ function acceptanceFromOutput(
   };
 }
 
-function collaborationRolePrompt(
+function reviewableHandoffs(
+  assignments: TaskCollaborationAssignment[],
+  runs: TaskCollaborationRoleRun[],
+): TaskCollaborationRoleRun[] {
+  return runs.filter(
+    (run) =>
+      run.status === "succeeded" &&
+      run.handoff &&
+      !isCoordinator(
+        assignments.find(
+          (assignment, index) =>
+            assignmentKey(assignment, index) === run.assignmentId,
+        ) || { role: run.role },
+      ),
+  );
+}
+
+export function collaborationRolePrompt(
   brief: string,
   assignments: TaskCollaborationAssignment[],
   runtimes: Record<string, AgentRuntimeDefinition>,
@@ -935,11 +982,19 @@ function collaborationRolePrompt(
     })
     .join("\n\n")
     .slice(-8_000);
-  const completed = completedHandoffs
-    .filter((item) => item.status === "succeeded" && item.handoff)
-    .map(
+  const textReview =
+    roleIsAcceptance(recipient) && !assignments.some(roleCanModify);
+  const reviewHandoffs = reviewableHandoffs(assignments, completedHandoffs);
+  const completed = (textReview ? reviewHandoffs : completedHandoffs)
+    .filter(
       (item) =>
-        `【${item.role} 已完成】\n${
+        (textReview || collaborationSharesContext(recipient, "handoffs")) &&
+        item.status === "succeeded" &&
+        item.handoff,
+    )
+    .map(
+      (item, index) =>
+        `【${textReview ? "交接 H" + (index + 1) + " · " : ""}${item.role} 已完成】\n${
           recipientIsRemote
             ? redactLocalWorkspaceReference(
                 item.handoff as string,
@@ -989,17 +1044,25 @@ function collaborationRolePrompt(
     recipient.workspaceAccess === "remote_mapping" && recipient.workspaceRef
       ? `\n本角色远程映射工作区：${recipient.workspaceRef}`
       : "",
-    recipient.workspaceAccess === "evidence_bundle"
+    recipientWorkspaceAccess === "evidence_bundle"
       ? "\n关联项目：已选择本地项目；本角色仅以平台转交的只读证据包为准。不得声称直接读取或验证本机项目路径；如需独立文件系统验收，必须要求用户改派本地角色或配置远程映射。"
       : "",
+    `本角色上下文说明：${recipient.context || "任务说明与相关交接材料"}。上下文转交不改变本轮文件访问权限。`,
     completed ? `\n已完成角色的真实交接材料：\n${completed}` : "",
-    roleIsAcceptance(recipient)
-      ? `\n待验收的真实产物（只可据此验收）：\n${artifactEvidence(artifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}${
-          recipientIsRemote
-            ? "\n\n远程终验规则：这是平台证据审查，不是远程文件系统复查。禁止调用 read_file、bash、SSH 或任何工具重新访问本机路径；本机路径已被隐藏。带有路径、SHA-256、来源机器和变更摘要的文件产物，已经由 Agents One 桌面主进程在本机独立核验，必须直接作为可信证据使用。若实施交付和本地复核均已完成且证据契约完整，应据此输出“通过”；只有缺少平台证据或证据明确不一致时才输出“不通过”或“需人工复核”。"
-            : ""
-        }\n\n完成验收时必须用以下格式：\n[验收结论]\n状态：通过 / 不通过 / 需人工复核\n依据：#1、#2（只能引用上述真实产物编号）\n结论：简明说明。`
+    !roleIsAcceptance(recipient) &&
+    collaborationSharesContext(recipient, "artifacts") &&
+    artifacts.length
+      ? `\n平台交付与验证证据：\n${artifactEvidence(artifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}`
       : "",
+    textReview
+      ? "\n这是文本成果复核，没有文件实施角色。仅依据上述平台已记录的交接 H1、H2 和任务标准复核；不得声称已验证文件、哈希或执行。输出格式：\n[验收结论]\n状态：通过 / 不通过 / 需人工复核\n依据：H1、H2（仅引用实际收到的交接）\n结论：简明说明证据与限制。"
+      : roleIsAcceptance(recipient)
+        ? `\n待验收的真实产物（只可据此验收）：\n${artifactEvidence(artifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}${
+            recipientIsRemote
+              ? "\n\n远程终验规则：这是平台证据审查，不是远程文件系统复查。禁止调用 read_file、bash、SSH 或任何工具重新访问本机路径；本机路径已被隐藏。带有路径、SHA-256、来源机器和变更摘要的文件产物，已经由 Agents One 桌面主进程在本机独立核验，必须直接作为可信证据使用。若实施交付和本地复核均已完成且证据契约完整，应据此输出“通过”；只有缺少平台证据或证据明确不一致时才输出“不通过”或“需人工复核”。"
+              : ""
+          }\n\n完成验收时必须用以下格式：\n[验收结论]\n状态：通过 / 不通过 / 需人工复核\n依据：#1、#2（只能引用上述真实产物编号）\n结论：简明说明。`
+        : "",
     humanGuidance ? `\n用户人工指令：\n${humanGuidance}` : "",
     reviewFeedback
       ? `\n上一轮复核未通过，必须先修正以下问题再重新交付：\n${reviewFeedback.slice(0, 4_000)}`
@@ -2455,7 +2518,12 @@ export default function RuntimeChat({
           : undefined;
         return (
           assignedRuntime?.location === "remote" &&
-          assignment.workspaceAccess === "evidence_bundle"
+          effectiveWorkspaceAccess(
+            assignment,
+            assignedRuntime,
+            projectFolder,
+          ) === "evidence_bundle" &&
+          collaborationSharesContext(assignment, "project")
         );
       });
       let evidenceBundle: Attachment | undefined;
@@ -2694,7 +2762,12 @@ export default function RuntimeChat({
                     attachments:
                       !isFinalReview(assignment) &&
                       assignedRuntime.location === "remote" &&
-                      assignment.workspaceAccess === "evidence_bundle" &&
+                      effectiveWorkspaceAccess(
+                        assignment,
+                        assignedRuntime,
+                        projectFolder,
+                      ) === "evidence_bundle" &&
+                      collaborationSharesContext(assignment, "project") &&
                       evidenceBundle
                         ? [evidenceBundle]
                         : undefined,
@@ -2864,6 +2937,18 @@ ${reason}`,
                     roleRun.assignmentId,
                     output,
                     artifacts,
+                    configured.some(roleCanModify)
+                      ? undefined
+                      : reviewableHandoffs(
+                          configured,
+                          roleRuns.filter((run) =>
+                            (
+                              collaborationGraph.dependenciesById.get(
+                                roleRun.assignmentId,
+                              ) || []
+                            ).includes(run.assignmentId),
+                          ),
+                        ),
                   );
                   recordTimeline(
                     "acceptance",
@@ -3121,7 +3206,12 @@ ${reason}`,
               attachments:
                 !isFinalReview(assignment) &&
                 assignedRuntime.location === "remote" &&
-                assignment.workspaceAccess === "evidence_bundle" &&
+                effectiveWorkspaceAccess(
+                  assignment,
+                  assignedRuntime,
+                  projectFolder,
+                ) === "evidence_bundle" &&
+                collaborationSharesContext(assignment, "project") &&
                 evidenceBundle
                   ? [evidenceBundle]
                   : undefined,
@@ -3337,6 +3427,9 @@ ${reason}`,
               roleRun.assignmentId,
               output,
               artifacts,
+              configured.some(roleCanModify)
+                ? undefined
+                : reviewableHandoffs(configured, roleRuns.slice(0, index)),
             );
             recordTimeline(
               "acceptance",

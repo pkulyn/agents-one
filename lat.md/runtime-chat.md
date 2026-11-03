@@ -505,3 +505,13 @@ The intervention panel uses one compact typography scale and styled controls. Op
 The task sidebar places the collaboration badge beside the agent name, leaving the task title on the next line. This changes presentation only, retaining task identity, records and dispatch behavior.
 
 Saving an intervention preserves the unresolved error, records the instruction for later roles, and explains that only sending starts execution immediately. The role prompt includes the current local calendar date to resolve relative dates independently of older files.
+
+## Role presets and compact team setup
+
+The collaboration setup starts with role and agent choices. Eight bilingual role presets fill editable responsibilities and explicit context transfer selections; custom roles and existing assignments remain intact.
+
+[[src/shared/task-collaboration-presets.ts#COLLABORATION_ROLE_PRESETS]] defines the catalogue. The optional contextSources assignment field controls project attachment, prior handoff and artifact transfer; the brief and acceptance evidence remain required. Old records without a selection keep prior sharing behavior. [[src/main/task-collaboration-store.ts]] validates and round-trips bounded source values without rewriting legacy text. Context selection is not a filesystem permission boundary.
+
+[[src/renderer/src/screens/Layout/TaskCollaborationDialog.tsx]] keeps prerequisites and workspace overrides in a closed advanced disclosure. Unspecified workspace access is resolved from the current execution device and project at dispatch; remote project evidence is prepared and attached using the same resolution. Explicit dependencies keep DAG semantics, and editing preserves their stable ids. [[src/renderer/src/screens/Layout/CollaborationAgentPicker.tsx]] displays runtime avatars in a bounded popup with keyboard navigation, dismissal and selection feedback. Preset role meaning is consistent in Chinese and English; unknown roles retain legacy classification.
+
+New teams store an explicit serial chain so adding research or analysis does not invoke legacy role-name sorting. Text-only teams review actual completed handoffs using H references, recorded separately from file artifacts; file-producing teams retain the required delivery/hash contract. No ordinary model reply is promoted into a file artifact.
