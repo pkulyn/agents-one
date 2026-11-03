@@ -171,3 +171,17 @@ describe("ChatInput — attachments while a queued runtime run is finishing", ()
     expect(screen.getByRole("button", { name: "chat.attach" })).toBeEnabled();
   });
 });
+
+it("sends supplemental input while keeping Stop available", () => {
+  const onAbort = vi.fn();
+  const { onSubmit, textarea } = renderInput(undefined, {
+    isLoading: true,
+    runningSendLabel: "Send update",
+    onAbort,
+  });
+  fireEvent.change(textarea, { target: { value: "Use the revised scope" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send update" }));
+  expect(onSubmit).toHaveBeenCalledWith("Use the revised scope", []);
+  fireEvent.click(screen.getByTitle("common.stop"));
+  expect(onAbort).toHaveBeenCalledTimes(1);
+});
