@@ -896,7 +896,7 @@ function capabilitiesFromInitialize(
     workspaceAccess,
     modelSelection: false,
     compaction: "none",
-    steering: "cancel_resume",
+    steering: "native",
     branching: "none",
     ...(text(agentInfo.version)
       ? {
@@ -1211,6 +1211,7 @@ export interface OpenCodeProcessResult {
 }
 
 export interface StartedOpenCodeProcess {
+  steer: (text: string) => Promise<void>;
   inputArtifacts: RuntimeInputArtifact[];
   sessionId?: string;
   model?: AgentEventStreamModel;
@@ -1357,6 +1358,14 @@ async function startOpenCodeAttempt(
   let sessionId: string | undefined;
   let cancelRequested = false;
   let turnCompleted = false;
+  const pendingInputs = new Set<Promise<JsonRecord>>();
+  let ready!: () => void;
+  let rejectReady!: (error: unknown) => void;
+  const inputReady = new Promise<void>((resolve, reject) => {
+    ready = resolve;
+    rejectReady = reject;
+  });
+  void inputReady.catch(() => undefined);
   let model: AgentEventStreamModel | undefined;
   let usage: AgentEventStreamUsage | undefined;
   let thought = "";
@@ -1478,12 +1487,16 @@ async function startOpenCodeAttempt(
         model = { ...(model || {}), ...session.model };
       }
       onMetadata?.({ sessionId, ...(model ? { model } : {}) });
+      ready();
       const response = await client!.prompt(
         promptBlocks,
         input.disablePromptDeadline
           ? null
           : (input.timeoutMs ?? config.timeoutMs),
       );
+      // Additional native prompts share this process/session. An earlier
+      // response must not close it while another input is still processing.
+      while (pendingInputs.size) await Promise.allSettled([...pendingInputs]);
       const stopReason = text(response.stopReason);
       const responseUsage = usageFromOpenCodeValue(response);
       if (responseUsage) {
@@ -1534,6 +1547,7 @@ async function startOpenCodeAttempt(
           : {}),
       };
     } catch (error) {
+      rejectReady(error);
       const restored = protection?.restoreAndDispose() || [];
       const artifacts = changedArtifacts(
         deliveryWorkspace,
@@ -1563,6 +1577,23 @@ async function startOpenCodeAttempt(
   })();
 
   return {
+    steer: async (text: string) => {
+      await inputReady;
+      if (!sessionId || cancelRequested || turnCompleted)
+        throw Error("OpenCode session is not accepting live input.");
+      const pending = client.prompt([{ type: "text", text }], null);
+      pendingInputs.add(pending);
+      try {
+        const response = await pending;
+        if (
+          cancelRequested ||
+          String(response.stopReason || "") === "cancelled"
+        )
+          throw Error("OpenCode input was cancelled before confirmation.");
+      } finally {
+        pendingInputs.delete(pending);
+      }
+    },
     availableModels,
     inputArtifacts: preparedInputs.artifacts,
     get sessionId() {
@@ -1849,6 +1880,7 @@ export async function startOpenCodeProcess(
     return result;
   })();
   return {
+    steer: (text: string) => active.steer(text),
     get inputArtifacts() {
       return active.inputArtifacts;
     },
