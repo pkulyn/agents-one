@@ -100,3 +100,54 @@ describe("delivered documents", () => {
     expect(container.querySelector("code")?.textContent).toBe(path);
   });
 });
+
+it("keeps resolved file cards mounted when progress recreates equivalent delivery objects", async () => {
+  const content = "文件：`" + path + "`";
+  const view = render(
+    <ConversationFiles delivery={{ ...delivery }} content={content}>
+      <AgentMarkdown>{content}</AgentMarkdown>
+    </ConversationFiles>,
+  );
+  await waitFor(() =>
+    expect(view.container.querySelector(".chat-document-card")).not.toBeNull(),
+  );
+  const card = view.container.querySelector(".chat-document-card");
+  expect(window.agentsOneAPI.conversationFileInfo).toHaveBeenCalledTimes(1);
+  for (let i = 0; i < 5; i++)
+    view.rerender(
+      <ConversationFiles
+        delivery={{ ...delivery, artifacts: [] }}
+        content={content}
+      >
+        <AgentMarkdown>{content}</AgentMarkdown>
+      </ConversationFiles>,
+    );
+  expect(window.agentsOneAPI.conversationFileInfo).toHaveBeenCalledTimes(1);
+  expect(view.container.querySelector(".chat-document-card")).toBe(card);
+});
+it("hides the internal OpenCode snapshot summary while retaining actual revision diffs", () => {
+  render(
+    <ConversationFiles
+      delivery={{
+        ...delivery,
+        artifacts: [
+          {
+            kind: "diff",
+            label: "OpenCode 受控写入摘要",
+            content: "report.md\t123 bytes",
+          },
+          {
+            kind: "diff",
+            label: "代码修订",
+            content: "@@ -1 +1 @@\n-old\n+new",
+          },
+        ],
+      }}
+      content="完成"
+    >
+      <span>完成</span>
+    </ConversationFiles>,
+  );
+  expect(screen.queryByText("OpenCode 受控写入摘要")).not.toBeInTheDocument();
+  expect(screen.getByText("代码修订")).toBeVisible();
+});

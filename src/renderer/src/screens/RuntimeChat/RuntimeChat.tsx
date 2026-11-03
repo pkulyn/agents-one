@@ -557,12 +557,10 @@ function remoteRuntimeEnvironmentProtocol(): string {
 }
 
 function roleAccessMode(
-  assignment: TaskCollaborationAssignment,
   assignmentId: string,
   defaultAccessMode: "analysis" | "safe_write" | "full_access",
   interventions: TaskCollaborationIntervention[],
 ): "analysis" | "safe_write" | "full_access" {
-  if (!roleCanModify(assignment)) return "analysis";
   const override = [...interventions]
     .reverse()
     .find(
@@ -584,7 +582,6 @@ export function collaborationPermissionPreflight(
     if (
       !roleCanModify(assignment) ||
       roleAccessMode(
-        assignment,
         assignmentKey(assignment, index),
         defaultAccessMode,
         interventions,
@@ -1029,7 +1026,7 @@ export function collaborationRolePrompt(
             ? "本角色在智能体所在设备的原生环境中执行；不要要求用户关联 Agents One 本地项目，也不要把原生路径声称为用户电脑路径。"
             : "本角色可按当前任务权限在关联项目目录内交付文件或代码。"
         }完成时必须发布以下完整格式，路径和 SHA-256 必须来自实际写入后的工具输出：\n[交付物]\n路径：<实际绝对路径>\nSHA-256：<64 位哈希>\n来源机器：<执行机器或远程环境>\n变更摘要：<实际改动>\n没有完整交付物信息时，平台不会启动后续验收。`
-      : "本角色为非实施阶段：不得创建、修改或删除项目文件；请基于已经收到的交接材料做规划、测试、复核或验收。",
+      : "本角色负责规划、研究、测试或复核，执行权限继承本轮任务设置；需要检索、计算或修正交付物时，请在获准权限内实际调用工具并如实记录操作。不要因角色名称自行降为只读；只读任务仍禁止写入，删除仍须遵守任务确认规则。",
     "\n完整协作分工：\n" +
       assignments
         .filter((assignment) => assignment.runtimeId)
@@ -1319,6 +1316,20 @@ export default function RuntimeChat({
     collaboration && collaboration.taskMode !== "single",
   );
   const cancelledRef = useRef(false);
+  const collaborationRunActiveRef = useRef(false);
+  const collaborationCancelFailuresRef = useRef(new Set<string>());
+  const collaborationCancellationRef = useRef<Promise<void> | null>(null);
+  const cancelCollaborationRun = useCallback(
+    async (id: string): Promise<void> => {
+      try {
+        if ((await window.agentsOneAPI.cancelAgentRuntimeTask(id)) === false)
+          collaborationCancelFailuresRef.current.add(id);
+      } catch {
+        collaborationCancelFailuresRef.current.add(id);
+      }
+    },
+    [],
+  );
   const runtimeCommandInFlightRef = useRef(false);
   const runtimeCommandRequestIdRef = useRef<string | null>(null);
   const pauseAssignmentRef = useRef<string | null>(null);
@@ -1511,13 +1522,11 @@ export default function RuntimeChat({
 
   const updateActiveCollaborationRun = useCallback(
     (assignmentId: string, active?: ActiveCollaborationRun): void => {
-      setActiveCollaborationRuns((previous) => {
-        const next = { ...previous };
-        if (active) next[assignmentId] = active;
-        else delete next[assignmentId];
-        activeCollaborationRunsRef.current = next;
-        return next;
-      });
+      const next = { ...activeCollaborationRunsRef.current };
+      if (active) next[assignmentId] = active;
+      else delete next[assignmentId];
+      activeCollaborationRunsRef.current = next;
+      setActiveCollaborationRuns(next);
     },
     [],
   );
@@ -1576,6 +1585,33 @@ export default function RuntimeChat({
             ];
       });
       return [...history, ...liveMessages];
+    }
+    if (loading && collaborationRunActiveRef.current && !currentRunId) {
+      const pending =
+        collaborationExecution?.roleRuns.filter(
+          (item) => item.status === "running" || item.status === "retrying",
+        ) || [];
+      return [
+        ...history,
+        ...pending.map((item) => {
+          const agent =
+            runtimeCatalog[item.runtimeId || ""] || appearanceRuntime;
+          return {
+            id: `preparing:${item.assignmentId}`,
+            kind: "reasoning" as const,
+            role: "agent" as const,
+            text: t("runtimeChat.progress.agentPreparing", {
+              agent: agent.name,
+            }),
+            agentRuntimeId: agent.id,
+            agentName: agent.name,
+            agentAvatar: agent.avatar ?? null,
+            agentColor: agent.color ?? null,
+            collaborationRole: item.role,
+            collaborationAssignmentId: item.assignmentId,
+          };
+        }),
+      ];
     }
     if (!loading || !currentRunId) return history;
     const liveAssignmentId = collaborationExecution?.activeAssignmentId;
@@ -1791,6 +1827,7 @@ export default function RuntimeChat({
         .then((conversation) => {
           if (
             disposed ||
+            collaborationRunActiveRef.current ||
             !conversation ||
             conversation.id !== conversationIdRef.current
           ) {
@@ -2182,7 +2219,7 @@ export default function RuntimeChat({
     [persistConversation],
   );
 
-  const runCollaboration = useCallback(
+  const executeCollaboration = useCallback(
     async (
       brief: string,
       launch: CollaborationLaunch,
@@ -2367,14 +2404,29 @@ export default function RuntimeChat({
           activeAssignmentIds?: string[];
         } = {},
       ): Promise<void> => {
+        const cancellationFailed =
+          status === "cancelled" &&
+          collaborationCancelFailuresRef.current.size > 0;
         const nextExecution: TaskCollaborationExecution = {
-          status,
-          roleRuns,
+          status: cancellationFailed ? "waiting_for_user" : status,
+          roleRuns: roleRuns.map((item) =>
+            status === "cancelled" &&
+            item.runtimeRunId &&
+            collaborationCancelFailuresRef.current.has(item.runtimeRunId)
+              ? {
+                  ...item,
+                  status: "waiting_for_user",
+                  error: t("runtimeChat.collaborationRun.cancelFailed"),
+                }
+              : status === "cancelled" && item.status !== "succeeded"
+                ? { ...item, status: "cancelled", completedAt: Date.now() }
+                : { ...item },
+          ),
           brief: brief.slice(0, 12_000),
           ...(interventions.length ? { interventions } : {}),
           ...(artifacts.length ? { artifacts } : {}),
           ...(acceptance ? { acceptance } : {}),
-          ...(timeline.length ? { timeline } : {}),
+          ...(timeline.length ? { timeline: [...timeline] } : {}),
           ...(options.activeAssignmentId
             ? { activeAssignmentId: options.activeAssignmentId }
             : {}),
@@ -2382,7 +2434,9 @@ export default function RuntimeChat({
             ? { activeAssignmentIds: options.activeAssignmentIds }
             : {}),
           updatedAt: Date.now(),
-          ...(options.completed ? { completedAt: Date.now() } : {}),
+          ...(options.completed && !cancellationFailed
+            ? { completedAt: Date.now() }
+            : {}),
         };
         setCollaborationExecution(nextExecution);
         if (
@@ -2691,7 +2745,9 @@ export default function RuntimeChat({
               (item) => item.status === "running" || item.status === "retrying",
             )
             .map((item) => item.assignmentId);
-          await persistExecution("running", { activeAssignmentIds: activeIds });
+          await persistExecution("running", {
+            activeAssignmentIds: activeIds,
+          });
 
           await Promise.all(
             runnableIndexes.map(async (roleIndex) => {
@@ -2705,7 +2761,6 @@ export default function RuntimeChat({
               )
                 return;
               const roleMode = roleAccessMode(
-                assignment,
                 roleRun.assignmentId,
                 collaborationAccessMode,
                 interventions,
@@ -2777,6 +2832,15 @@ export default function RuntimeChat({
                   ...roleRuns[roleIndex],
                   runtimeRunId: started.id,
                 };
+                if (cancelledRef.current) {
+                  await cancelCollaborationRun(started.id);
+                  roleRuns[roleIndex] = {
+                    ...roleRuns[roleIndex],
+                    status: "cancelled",
+                    completedAt: Date.now(),
+                  };
+                  return;
+                }
                 setCurrentRunId(started.id);
                 setActiveCollaborationRuntimeId(assignedRuntime.id);
                 updateActiveCollaborationRun(roleRun.assignmentId, {
@@ -2807,6 +2871,27 @@ export default function RuntimeChat({
                   }
                   if (observed.status !== "running") break;
                   await new Promise((resolve) => setTimeout(resolve, 900));
+                }
+                if (cancelledRef.current) {
+                  await collaborationCancellationRef.current;
+                  roleRuns[roleIndex] = {
+                    ...roleRuns[roleIndex],
+                    status: "cancelled",
+                    completedAt: Date.now(),
+                  };
+                  if (observed)
+                    await appendCollaborationMessage(
+                      assignedRuntime,
+                      assignment,
+                      "agent",
+                      t(
+                        collaborationCancelFailuresRef.current.has(observed.id)
+                          ? "runtimeChat.collaborationRun.cancelFailed"
+                          : "runtimeChat.collaborationRun.cancelled",
+                      ),
+                      executionFromRun({ ...observed, status: "cancelled" }),
+                    );
+                  return;
                 }
                 if (pauseAssignmentRef.current === roleRun.assignmentId) {
                   roleRuns[roleIndex] = {
@@ -3049,6 +3134,7 @@ ${reason}`,
         activeCollaborationRunsRef.current = {};
         setActiveCollaborationRuns({});
         if (cancelledRef.current) {
+          await collaborationCancellationRef.current;
           await persistExecution("cancelled", { completed: true });
           return;
         }
@@ -3122,6 +3208,9 @@ ${reason}`,
         }
 
         pauseAssignmentRef.current = null;
+        setCurrentRunId(null);
+        taskRunRef.current = null;
+        setTaskRun(null);
         setActiveCollaborationRuntimeId(assignedRuntime.id);
         const attempt = (roleRun.attempt || 0) + 1;
         roleRuns[index] = {
@@ -3154,7 +3243,6 @@ ${reason}`,
           activeAssignmentId: roleRun.assignmentId,
         });
         const roleMode = roleAccessMode(
-          assignment,
           roleRun.assignmentId,
           collaborationAccessMode,
           interventions,
@@ -3221,6 +3309,7 @@ ${reason}`,
             },
           );
           roleRuns[index] = { ...roleRuns[index], runtimeRunId: started.id };
+          if (cancelledRef.current) await cancelCollaborationRun(started.id);
           setCurrentRunId(started.id);
           taskRunRef.current = started;
           setTaskRun(started);
@@ -3265,15 +3354,32 @@ ${reason}`,
             return;
           }
           if (!completed || cancelledRef.current) {
+            await collaborationCancellationRef.current;
             const reason = t(
               "runtimeChat.collaborationRun.cancelledBeforeCompletion",
             );
             roleRuns[index] = {
               ...roleRuns[index],
-              status: "failed",
+              status: "cancelled",
               completedAt: Date.now(),
               error: reason,
             };
+            await appendCollaborationMessage(
+              assignedRuntime,
+              assignment,
+              "agent",
+              t(
+                collaborationCancelFailuresRef.current.has(started.id)
+                  ? "runtimeChat.collaborationRun.cancelFailed"
+                  : "runtimeChat.collaborationRun.cancelled",
+              ),
+              executionFromRun({
+                ...(completed || started),
+                status: collaborationCancelFailuresRef.current.has(started.id)
+                  ? "running"
+                  : "cancelled",
+              }),
+            );
             blockRemaining(index + 1, reason);
             await persistExecution("cancelled", { completed: true });
             return;
@@ -3601,6 +3707,7 @@ ${reason}`,
     },
     [
       accessMode,
+      cancelCollaborationRun,
       appendCollaborationMessage,
       profile,
       runtime,
@@ -3609,6 +3716,29 @@ ${reason}`,
       updateActiveCollaborationRun,
       workspaceId,
     ],
+  );
+
+  const runCollaboration = useCallback(
+    async (...args: Parameters<typeof executeCollaboration>): Promise<void> => {
+      if (collaborationRunActiveRef.current) return;
+      collaborationRunActiveRef.current = true;
+      collaborationCancelFailuresRef.current.clear();
+      collaborationCancellationRef.current = null;
+      setLoading(true);
+      try {
+        await executeCollaboration(...args);
+      } finally {
+        collaborationRunActiveRef.current = false;
+        activeCollaborationRunsRef.current = {};
+        setActiveCollaborationRuns({});
+        setActiveCollaborationRuntimeId(null);
+        setCurrentRunId(null);
+        taskRunRef.current = null;
+        setTaskRun(null);
+        setLoading(false);
+      }
+    },
+    [executeCollaboration],
   );
 
   const persistIntervention = useCallback(
@@ -4073,7 +4203,12 @@ ${reason}`,
       void window.agentsOneAPI
         .getTaskCollaboration(collaboration.taskId as string, profile)
         .then(async (record) => {
-          if (disposed || !record?.execution) return;
+          if (
+            disposed ||
+            collaborationRunActiveRef.current ||
+            !record?.execution
+          )
+            return;
           const execution =
             recover &&
             !taskRunRef.current &&
@@ -4082,7 +4217,12 @@ ${reason}`,
                   window.agentsOneAPI.getAgentRuntimeRun(id),
                 )
               : record.execution;
-          if (disposed || (recover && taskRunRef.current)) return;
+          if (
+            disposed ||
+            collaborationRunActiveRef.current ||
+            (recover && taskRunRef.current)
+          )
+            return;
           if (recover && execution.status === "running") {
             recoveryTimer = setTimeout(() => {
               initialLoad = true;
@@ -4095,7 +4235,12 @@ ${reason}`,
               profile,
             );
           }
-          if (!disposed) setCollaborationExecution(execution);
+          if (!disposed && !collaborationRunActiveRef.current)
+            setCollaborationExecution((previous) =>
+              previous && previous.updatedAt > execution.updatedAt
+                ? previous
+                : execution,
+            );
         })
         .catch(() => {
           // The current transcript remains usable if optional collaboration
@@ -4689,7 +4834,8 @@ ${reason}`,
     // and waits for the Main/Renderer conversation checkpoint to unlock.
     if (
       currentRunId &&
-      !Object.keys(activeCollaborationRunsRef.current).length
+      !Object.keys(activeCollaborationRunsRef.current).length &&
+      !collaborationRunActiveRef.current
     ) {
       try {
         await window.agentsOneAPI.cancelAgentRuntimeTask(currentRunId);
@@ -4704,16 +4850,17 @@ ${reason}`,
         ...Object.values(activeCollaborationRunsRef.current).map(
           (active) => active.run.id,
         ),
-        ...(currentRunId ? [currentRunId] : []),
+        ...(currentRunId &&
+        (!collaborationRunActiveRef.current ||
+          taskRunRef.current?.status === "running")
+          ? [currentRunId]
+          : []),
       ]),
     ];
-    if (activeRunIds.length) {
-      await Promise.all(
-        activeRunIds.map((runId) =>
-          window.agentsOneAPI.cancelAgentRuntimeTask(runId),
-        ),
-      );
-    }
+    collaborationCancellationRef.current = Promise.allSettled(
+      activeRunIds.map((runId) => cancelCollaborationRun(runId)),
+    ).then(() => undefined);
+    await collaborationCancellationRef.current;
     if (currentRunId) {
       const cancelledRun =
         await window.agentsOneAPI.getAgentRuntimeRun(currentRunId);
@@ -4721,10 +4868,12 @@ ${reason}`,
         setTaskRun(cancelledRun);
       }
     }
-    setLoading(false);
-    setCurrentRunId(null);
-    activeCollaborationRunsRef.current = {};
-    setActiveCollaborationRuns({});
+    if (!collaborationRunActiveRef.current) {
+      setLoading(false);
+      setCurrentRunId(null);
+      activeCollaborationRunsRef.current = {};
+      setActiveCollaborationRuns({});
+    }
   }
 
   async function chooseWorkspace(): Promise<void> {

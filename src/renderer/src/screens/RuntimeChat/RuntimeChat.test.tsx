@@ -2850,6 +2850,259 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(startAgentRuntimeTask).not.toHaveBeenCalled();
   });
 
+  it.each([true, false])(
+    "retains live trace and stop across conversation refresh, then cancels owned branches (DAG=%s)",
+    async (dag) => {
+      const stopped = new Set<string>();
+      startAgentRuntimeTask.mockImplementation(async (runtimeId: string) => ({
+        id: "owned-" + runtimeId,
+        runtimeId,
+        status: "running",
+        output: "",
+        startedAt: Date.now(),
+      }));
+      getAgentRuntimeRun.mockImplementation(async (id: string) => ({
+        id,
+        runtimeId: id.slice(6),
+        status: stopped.has(id) ? "cancelled" : "running",
+        output: "",
+        startedAt: Date.now(),
+        events: [
+          {
+            id: "live-" + id,
+            type: "progress",
+            summary: "协作实时记录 " + id,
+            createdAt: Date.now(),
+          },
+        ],
+      }));
+      vi.mocked(window.agentsOneAPI.cancelAgentRuntimeTask).mockImplementation(
+        async (id) => {
+          stopped.add(id);
+          return true;
+        },
+      );
+      const assignments = [
+        {
+          id: "a",
+          role: "资料研究",
+          runtimeId: "pi-local",
+          ...(dag ? { dependsOn: [] } : {}),
+        },
+        {
+          id: "b",
+          role: "分析研判",
+          runtimeId: "claude-local",
+          ...(dag ? { dependsOn: [] } : {}),
+        },
+        {
+          id: "join",
+          role: "复核",
+          runtimeId: "codex-local",
+          ...(dag ? { dependsOn: ["a", "b"] } : {}),
+        },
+      ];
+      render(
+        <RuntimeChat
+          runId="owned-live"
+          runtime={piRuntime}
+          profile="default"
+          collaboration={{ assignments }}
+          runtimeCatalog={{
+            "pi-local": piRuntime,
+            "claude-local": claudeRuntime,
+            "codex-local": codexRuntime,
+          }}
+        />,
+      );
+      window.dispatchEvent(
+        new CustomEvent("agents-one:submit-task-message", {
+          detail: {
+            runId: "owned-live",
+            content: "协作观察与停止",
+            collaboration: { taskId: "owned-task", assignments },
+          },
+        }),
+      );
+      expect(
+        await screen.findByText("协作实时记录 owned-pi-local"),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(startAgentRuntimeTask).toHaveBeenCalledTimes(dag ? 2 : 1),
+      );
+      const persisted = saveRuntimeConversation.mock.calls.at(-1)![0];
+      getRuntimeConversation.mockResolvedValue({
+        ...persisted,
+        id: persisted.id,
+        revision: "999",
+        messages: [
+          {
+            id: "stale",
+            role: "agent",
+            content: "旧快照不得覆盖",
+            createdAt: 1,
+          },
+        ],
+        activeRuntimeRunId: undefined,
+      });
+      window.dispatchEvent(
+        new CustomEvent("agents-one:runtime-conversation-updated", {
+          detail: { profile: "default", conversationId: persisted.id },
+        }),
+      );
+      await waitFor(() => expect(getRuntimeConversation).toHaveBeenCalled());
+      expect(screen.queryByText("旧快照不得覆盖")).not.toBeInTheDocument();
+      expect(
+        screen.getByText("协作实时记录 owned-pi-local"),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "停止测试任务" }));
+      await waitFor(
+        () =>
+          expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+              execution: expect.objectContaining({
+                status: "cancelled",
+                completedAt: expect.any(Number),
+              }),
+            }),
+            "default",
+          ),
+        { timeout: 5000 },
+      );
+      expect(window.agentsOneAPI.cancelAgentRuntimeTask).toHaveBeenCalledWith(
+        "owned-pi-local",
+      );
+      if (dag)
+        expect(window.agentsOneAPI.cancelAgentRuntimeTask).toHaveBeenCalledWith(
+          "owned-claude-local",
+        );
+      expect(startAgentRuntimeTask).toHaveBeenCalledTimes(dag ? 2 : 1);
+      expect(
+        screen.queryByRole("button", { name: "停止测试任务" }),
+      ).not.toBeInTheDocument();
+      expect(
+        startAgentRuntimeTask.mock.calls.every(
+          ([, input]) => input.mode === "safe_write",
+        ),
+      ).toBe(true);
+    },
+  );
+  it("reports cancellation failure without declaring the still-running agent cancelled", async () => {
+    startAgentRuntimeTask.mockResolvedValue({
+      id: "cancel-fails",
+      runtimeId: "pi-local",
+      status: "running",
+      output: "",
+    });
+    getAgentRuntimeRun.mockResolvedValue({
+      id: "cancel-fails",
+      runtimeId: "pi-local",
+      status: "running",
+      output: "",
+    });
+    vi.mocked(window.agentsOneAPI.cancelAgentRuntimeTask).mockResolvedValue(
+      false,
+    );
+    const assignments = [
+      { id: "a", role: "资料研究", runtimeId: "pi-local", dependsOn: [] },
+      { id: "b", role: "复核", runtimeId: "codex-local", dependsOn: ["a"] },
+    ];
+    render(
+      <RuntimeChat
+        runId="cancel-failure"
+        runtime={piRuntime}
+        profile="default"
+        collaboration={{ assignments }}
+        runtimeCatalog={{ "pi-local": piRuntime, "codex-local": codexRuntime }}
+      />,
+    );
+    window.dispatchEvent(
+      new CustomEvent("agents-one:submit-task-message", {
+        detail: {
+          runId: "cancel-failure",
+          content: "停止失败反馈",
+          collaboration: { taskId: "cancel-failure-task", assignments },
+        },
+      }),
+    );
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "停止测试任务" }));
+    await waitFor(
+      () =>
+        expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            execution: expect.objectContaining({
+              status: "waiting_for_user",
+              roleRuns: expect.arrayContaining([
+                expect.objectContaining({
+                  assignmentId: "a",
+                  status: "waiting_for_user",
+                  error: expect.stringContaining("尚未确认停止"),
+                }),
+              ]),
+            }),
+          }),
+          "default",
+        ),
+      { timeout: 5000 },
+    );
+    expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a start that resolves after stop without dispatching downstream work", async () => {
+    let finishStart!: (value: unknown) => void;
+    startAgentRuntimeTask.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishStart = resolve;
+        }),
+    );
+    const assignments = [
+      { id: "a", role: "资料研究", runtimeId: "pi-local", dependsOn: [] },
+      { id: "b", role: "复核", runtimeId: "codex-local", dependsOn: ["a"] },
+    ];
+    render(
+      <RuntimeChat
+        runId="late-start"
+        runtime={piRuntime}
+        profile="default"
+        collaboration={{ assignments }}
+        runtimeCatalog={{ "pi-local": piRuntime, "codex-local": codexRuntime }}
+      />,
+    );
+    window.dispatchEvent(
+      new CustomEvent("agents-one:submit-task-message", {
+        detail: {
+          runId: "late-start",
+          content: "启动时停止",
+          collaboration: { taskId: "late-task", assignments },
+        },
+      }),
+    );
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "停止测试任务" }));
+    finishStart({
+      id: "late-native-run",
+      runtimeId: "pi-local",
+      status: "running",
+      output: "",
+    });
+    await waitFor(() =>
+      expect(window.agentsOneAPI.cancelAgentRuntimeTask).toHaveBeenCalledWith(
+        "late-native-run",
+      ),
+    );
+    await waitFor(() =>
+      expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          execution: expect.objectContaining({ status: "cancelled" }),
+        }),
+        "default",
+      ),
+    );
+    expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1);
+  });
+
   it("renders collaboration reasoning and tool events while the assigned runtime is still running", async () => {
     startAgentRuntimeTask.mockResolvedValueOnce({
       id: "live-collaboration-run",
@@ -3479,7 +3732,7 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(startAgentRuntimeTask.mock.calls[2][1].prompt).toContain(
       "【实施 已完成】",
     );
-    expect(startAgentRuntimeTask.mock.calls[2][1].mode).toBe("analysis");
+    expect(startAgentRuntimeTask.mock.calls[2][1].mode).toBe("full_access");
     expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
       expect.objectContaining({
         taskId: "collaboration-task",

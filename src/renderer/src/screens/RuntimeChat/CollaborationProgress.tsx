@@ -27,6 +27,7 @@ export function CollaborationProgress({
   if (
     !enabled ||
     !execution ||
+    Boolean(execution.completedAt) ||
     execution.status === "succeeded" ||
     execution.status === "cancelled"
   )

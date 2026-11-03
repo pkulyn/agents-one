@@ -227,12 +227,28 @@ export function ConversationFiles({
   content: string;
   children: React.ReactNode;
 }): React.JSX.Element {
+  const candidateKey = JSON.stringify({
+    conversationId: delivery.conversationId,
+    messageId: delivery.messageId,
+    content,
+    artifacts: delivery.artifacts
+      .filter((artifact) => artifact.kind === "file" && artifact.id)
+      .map(({ id, kind, label, changeSummary, sha256, size }) => ({
+        id,
+        kind,
+        label,
+        changeSummary,
+        sha256,
+        size,
+      })),
+  });
   const candidates = useMemo(() => {
+    const snapshot = JSON.parse(candidateKey) as Delivery & { content: string };
     const base = {
-      conversationId: delivery.conversationId,
-      messageId: delivery.messageId,
+      conversationId: snapshot.conversationId,
+      messageId: snapshot.messageId,
     };
-    const entries: FileEntry[] = delivery.artifacts
+    const entries: FileEntry[] = snapshot.artifacts
       .filter((a) => a.kind === "file" && a.id)
       .map((a) => ({
         ref: { ...base, artifactId: a.id },
@@ -240,7 +256,7 @@ export function ConversationFiles({
         info: null,
         summary: a.changeSummary,
       }));
-    for (const match of findDocumentReferences(content)) {
+    for (const match of findDocumentReferences(snapshot.content)) {
       if (entries.some((e) => e.ref.path && samePath(e.ref.path, match.path)))
         continue;
       // Artifact ids are authoritative for remote files; never resolve their prose against this PC.
@@ -256,7 +272,7 @@ export function ConversationFiles({
       });
     }
     return entries.slice(0, 40);
-  }, [delivery, content]);
+  }, [candidateKey]);
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -280,7 +296,8 @@ export function ConversationFiles({
     };
   }, [candidates]);
   const diffs = delivery.artifacts.filter(
-    (a) => a.kind === "diff" && a.content,
+    (a) =>
+      a.kind === "diff" && a.content && a.label !== "OpenCode 受控写入摘要",
   );
   return (
     <FileScope.Provider value={true}>
