@@ -84,10 +84,14 @@ export default {
     adjustNow: "Adjust now",
     inputMode: "Running input mode",
     inputModeHint:
-      "Adjust now uses native input when available; otherwise it stops the current step and resumes the same conversation with your update. You can also queue a follow-up.",
+      "Adjust now sends native input without stopping the task. If unavailable, your input is preserved with an explanation. You can also queue a follow-up.",
     supplementResuming:
       "The current step stopped. Continuing the same conversation with your update.",
     sendSupplement: "Send update",
+    nativeInputUnavailable:
+      "This run cannot accept this native update. Your input was preserved and the task was not interrupted. You can queue a follow-up instead.",
+    supplementSending:
+      "Submitting your update; waiting for the agent to acknowledge it.",
     supplementDelivered:
       "Update delivered to the active agent. It will adjust when it can process input.",
     sharedSupplement:

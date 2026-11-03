@@ -1248,7 +1248,6 @@ export default function RuntimeChat({
       attachments: Attachment[];
     }>
   >([]);
-  const sendingSupplementRef = useRef(false);
   const collaborationSupplementsRef = useRef<string[]>([]);
   const [runningInputMode, setRunningInputMode] = useState<
     "steer" | "follow_up"
@@ -4636,10 +4635,6 @@ ${reason}`,
       return;
     }
     if (loading) {
-      if (sendingSupplementRef.current) {
-        chatInputRef.current?.restore(prompt, attachments);
-        return;
-      }
       const collab = collaborationRunActiveRef.current;
       const continuation =
         collab && collaborationExecution?.brief
@@ -4668,7 +4663,6 @@ ${reason}`,
             : []),
         ]),
       ];
-      sendingSupplementRef.current = true;
       try {
         let accepted = 0;
         if (
@@ -4676,6 +4670,16 @@ ${reason}`,
           window.agentsOneAPI.sendAgentRuntimeInput &&
           targets.length
         ) {
+          // Record input in submission order before a native acknowledgement.
+          // ACP may acknowledge only after processing the updated turn.
+          if (collab) collaborationSupplementsRef.current.push(prompt);
+          const next = [...messagesRef.current, newMessage("user", prompt)];
+          messagesRef.current = next;
+          setMessages(next);
+          await persistConversation(next);
+          appendRuntimeControlMessage(
+            t("runtimeChat.feedback.supplementSending"),
+          );
           const results = await Promise.allSettled(
             targets.map((id) =>
               window.agentsOneAPI.sendAgentRuntimeInput(id, prompt),
@@ -4690,57 +4694,15 @@ ${reason}`,
           );
           if (rejected?.status === "rejected") throw rejected.reason;
           if (accepted === targets.length) {
-            if (collab) collaborationSupplementsRef.current.push(prompt);
-            const next = [...messagesRef.current, newMessage("user", prompt)];
-            messagesRef.current = next;
-            setMessages(next);
-            await persistConversation(next);
             appendRuntimeControlMessage(
               t("runtimeChat.feedback.supplementDelivered"),
             );
             return;
           }
         }
-        // Sending with "Adjust now" explicitly authorizes this fallback. Never
-        // start another task until the previous executor confirms termination.
-        if (collab) {
-          await stop();
-          const deadline = Date.now() + 30000;
-          while (collaborationRunActiveRef.current && Date.now() < deadline)
-            await new Promise((resolve) => setTimeout(resolve, 100));
-          if (
-            collaborationRunActiveRef.current ||
-            collaborationCancelFailuresRef.current.size
-          )
-            throw Error(t("runtimeChat.collaborationRun.cancelFailed"));
-        } else if (currentRunId) {
-          await window.agentsOneAPI.cancelAgentRuntimeTask(currentRunId);
-          const deadline = Date.now() + 15000;
-          let observed =
-            await window.agentsOneAPI.getAgentRuntimeRun(currentRunId);
-          while (observed?.status === "running" && Date.now() < deadline) {
-            await new Promise((resolve) => setTimeout(resolve, 100));
-            observed =
-              await window.agentsOneAPI.getAgentRuntimeRun(currentRunId);
-          }
-          if (!observed || observed.status === "running")
-            throw Error(t("runtimeChat.collaborationRun.cancelFailed"));
-        } else {
-          // Preparation has no acknowledged executor yet. Retain the update in
-          // FIFO order rather than racing startup with a second dispatch.
-          setQueuedFollowUp((queue) => [
-            ...queue,
-            { text: continuation, attachments },
-          ]);
-          appendRuntimeControlMessage(t("runtimeChat.feedback.queuedFollowUp"));
-          return;
-        }
-        setQueuedFollowUp((queue) => [
-          ...queue,
-          { text: continuation, attachments },
-        ]);
+        chatInputRef.current?.restore(prompt, attachments);
         appendRuntimeControlMessage(
-          t("runtimeChat.feedback.supplementResuming"),
+          t("runtimeChat.feedback.nativeInputUnavailable"),
         );
       } catch (error) {
         chatInputRef.current?.restore(prompt, attachments);
@@ -4749,8 +4711,6 @@ ${reason}`,
             " " +
             String(error instanceof Error ? error.message : error),
         );
-      } finally {
-        sendingSupplementRef.current = false;
       }
       return;
     }

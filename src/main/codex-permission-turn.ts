@@ -22,7 +22,8 @@ export async function startCodexPermissionTurn(options: {
   imagePaths: string[];
   inputArtifacts: RuntimeInputArtifact[];
   environment: NodeJS.ProcessEnv;
-  bridge: RuntimePermissionBridge;
+  bridge?: RuntimePermissionBridge;
+  mode?: "analysis" | "safe_write" | "implementation" | "full_access";
   onOutput(chunk: string): void;
 }): Promise<StartedCodexProcess> {
   const child = spawn(
@@ -45,6 +46,7 @@ export async function startCodexPermissionTurn(options: {
     stderr = "",
     nextId = 1,
     sessionId = options.sessionId,
+    turnId: string | undefined,
     cancelled = false,
     done = false;
   const items = new Map<string, RecordValue>();
@@ -121,10 +123,12 @@ export async function startCodexPermissionTurn(options: {
         if (
           /commandExecution\/requestApproval|execCommandApproval/.test(method)
         ) {
-          allowed = await options.bridge.authorize("command", {
-            command: params.command || [],
-            cwd: params.cwd,
-          });
+          allowed = Boolean(
+            await options.bridge?.authorize("command", {
+              command: params.command || [],
+              cwd: params.cwd,
+            }),
+          );
         } else if (
           /fileChange\/requestApproval|applyPatchApproval/.test(method)
         ) {
@@ -133,7 +137,9 @@ export async function startCodexPermissionTurn(options: {
           // Missing patch intent must not silently authorize an unknown deletion.
           allowed =
             Boolean(changes) &&
-            (await options.bridge.authorize("file_change", { changes }));
+            Boolean(
+              await options.bridge?.authorize("file_change", { changes }),
+            );
         } else {
           send({
             id: frame.id,
@@ -170,11 +176,12 @@ export async function startCodexPermissionTurn(options: {
       return;
     }
     const method = String(frame.method || "");
-    if (method === "thread/started") {
-      const id = record(params.thread).id;
-      if (typeof id === "string") sessionId = id;
-    }
+    // Only the thread start/resume response establishes thread identity.
     if (params.threadId && sessionId && params.threadId !== sessionId) return;
+    if (method === "turn/started" && params.threadId === sessionId) {
+      const id = record(params.turn).id;
+      if (typeof id === "string") turnId = id;
+    }
     if (method === "item/started" || method === "item/completed") {
       const item = record(params.item);
       items.set(String(item.id), item);
@@ -215,8 +222,9 @@ export async function startCodexPermissionTurn(options: {
         output_tokens: usage.outputTokens,
       };
     }
-    if (method === "turn/completed") {
+    if (method === "turn/completed" && params.threadId === sessionId) {
       const turn = record(params.turn);
+      if (turnId && turn.id !== turnId) return;
       const error = record(turn.error).message;
       emit({
         type: "turn.completed",
@@ -265,11 +273,18 @@ export async function startCodexPermissionTurn(options: {
       clientInfo: { name: "agents_one", title: "Agents One", version: "0.1.0" },
     });
     send({ method: "initialized", params: {} });
+    const approvalPolicy = options.bridge ? "untrusted" : "never";
+    const sandbox =
+      options.bridge || options.mode === "full_access"
+        ? "danger-full-access"
+        : !options.mode || options.mode === "analysis"
+          ? "read-only"
+          : "workspace-write";
     const config = {
       cwd: options.cwd,
-      approvalPolicy: "untrusted",
+      approvalPolicy,
       approvalsReviewer: "user",
-      sandbox: "danger-full-access",
+      sandbox,
       ...(options.model ? { model: options.model } : {}),
     };
     const response = record(
@@ -279,26 +294,52 @@ export async function startCodexPermissionTurn(options: {
       }),
     );
     const id = record(response.thread).id;
-    if (typeof id !== "string" || (sessionId && sessionId !== id))
-      throw Error("Codex returned a mismatched thread");
+    if (
+      typeof id !== "string" ||
+      (options.sessionId && options.sessionId !== id)
+    ) {
+      sessionId = undefined;
+      throw Error("Codex reported a different resumed session.");
+    }
     sessionId = id;
     emit({ type: "thread.started", thread_id: id });
-    if (cancelled || options.bridge.isActive?.() === false)
+    if (cancelled || options.bridge?.isActive?.() === false)
       throw Error("Codex task was cancelled before dispatch");
-    await request("turn/start", {
-      threadId: id,
-      cwd: options.cwd,
-      approvalPolicy: "untrusted",
-      approvalsReviewer: "user",
-      input: [
-        { type: "text", text: options.prompt },
-        ...options.imagePaths.map((path) => ({ type: "localImage", path })),
-      ],
-    });
+    const started = record(
+      await request("turn/start", {
+        threadId: id,
+        cwd: options.cwd,
+        approvalPolicy,
+        approvalsReviewer: "user",
+        input: [
+          { type: "text", text: options.prompt },
+          ...options.imagePaths.map((path) => ({ type: "localImage", path })),
+        ],
+      }),
+    );
+    const startedId = record(started.turn).id;
+    if (typeof startedId === "string") turnId = startedId;
+    if (!turnId) throw Error("Codex did not return an active turn ID");
   } catch (error) {
     void finish(error instanceof Error ? error.message : String(error));
   }
   return {
+    steer: async (text: string) => {
+      if (done || cancelled || !sessionId || !turnId)
+        throw Error("Codex turn is no longer accepting input.");
+      const expectedTurnId = turnId;
+      const response = record(
+        await request("turn/steer", {
+          threadId: sessionId,
+          expectedTurnId,
+          input: [{ type: "text", text }],
+        }),
+      );
+      if (response.turnId !== expectedTurnId)
+        throw Error(
+          "Codex steering acknowledgement did not match the active turn.",
+        );
+    },
     inputArtifacts: options.inputArtifacts,
     completion,
     cancel: async () => {

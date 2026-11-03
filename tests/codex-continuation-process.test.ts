@@ -33,6 +33,10 @@ vi.mock("child_process", async (original) => ({
   ...(await original<typeof import("node:child_process")>()),
   spawn: state.spawn,
 }));
+vi.mock("node:child_process", async (original) => ({
+  ...(await original<typeof import("node:child_process")>()),
+  spawn: state.spawn,
+}));
 vi.mock("../src/main/utils", () => {
   const mocked = {
     profileHome: () => state.root,
@@ -83,6 +87,65 @@ function processFor(chunks: string[], stderr = "", code = 0): void {
       for (const chunk of chunks) child.stdout.emit("data", Buffer.from(chunk));
       if (stderr) child.stderr.emit("data", Buffer.from(stderr));
       child.emit("close", code);
+    });
+    return child as unknown as ChildProcess;
+  });
+}
+
+const rpcFrames: Array<{ method?: string; params: Record<string, unknown> }> =
+  [];
+function rpcProcessFor(
+  id = "original-thread-id",
+  longOutput = false,
+  stderr = "",
+): void {
+  rpcFrames.length = 0;
+  state.spawn.mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      stdin: { destroyed: false, write: vi.fn() },
+      kill: vi.fn(),
+    });
+    child.kill.mockImplementation(() => {
+      queueMicrotask(() => child.emit("close", 0));
+      return true;
+    });
+    const emit = (frame: unknown): void => {
+      child.stdout.emit("data", Buffer.from(JSON.stringify(frame) + "\n"));
+    };
+    child.stdin.write.mockImplementation((line: string) => {
+      const frame = JSON.parse(line);
+      rpcFrames.push(frame);
+      queueMicrotask(() => {
+        if (frame.method === "initialize") emit({ id: frame.id, result: {} });
+        if (frame.method === "thread/resume" || frame.method === "thread/start")
+          emit({ id: frame.id, result: { thread: { id } } });
+        if (frame.method === "turn/start") {
+          emit({ id: frame.id, result: { turn: { id: "turn-one" } } });
+          if (stderr) child.stderr.emit("data", Buffer.from(stderr));
+          if (longOutput)
+            emit({
+              method: "item/completed",
+              params: {
+                threadId: id,
+                item: {
+                  id: "large",
+                  type: "agentMessage",
+                  text: "x".repeat(600000),
+                },
+              },
+            });
+          emit({
+            method: "turn/completed",
+            params: {
+              threadId: id,
+              turn: { id: "turn-one", status: "completed" },
+            },
+          });
+        }
+      });
+      return true;
     });
     return child as unknown as ChildProcess;
   });
@@ -431,11 +494,7 @@ describe("Codex continuation at the process boundary", () => {
     expect(readdirSync(state.root)).toEqual([]);
   });
   it("retains a chunked original thread id after the output tail window has discarded thread.started", async () => {
-    processFor([
-      '{"type":"thread.started","thread_',
-      'id":"original-thread-id"}\n',
-      "x".repeat(600_000),
-    ]);
+    rpcProcessFor("original-thread-id", true);
     const process = await startCodexProcess(
       { executablePath: "synthetic-codex" },
       { prompt: "Continue", sessionId: "original-thread-id", mode: "analysis" },
@@ -448,13 +507,10 @@ describe("Codex continuation at the process boundary", () => {
     expect(result.output.length).toBeLessThanOrEqual(512 * 1024);
     expect(state.configuration).not.toHaveBeenCalled();
     expect(state.identity).not.toHaveBeenCalled();
-    expect(state.spawn.mock.calls[0][1].slice(-5)).toEqual([
-      "resume",
-      "--json",
-      "--",
-      "original-thread-id",
-      "Continue",
-    ]);
+    expect(state.spawn.mock.calls[0][1]).toEqual(["app-server"]);
+    expect(
+      rpcFrames.find((f) => f.method === "thread/resume")?.params.threadId,
+    ).toBe("original-thread-id");
     expect(state.spawn.mock.calls[0][2]).toMatchObject({
       shell: false,
       windowsHide: true,
@@ -462,7 +518,7 @@ describe("Codex continuation at the process boundary", () => {
   });
 
   it("fails when the provider reports a different resumed thread and does not retry as a new conversation", async () => {
-    processFor(['{"type":"thread.started","thread_id":"different-thread"}\n']);
+    rpcProcessFor("different-thread");
     const process = await startCodexProcess(
       { executablePath: "synthetic-codex" },
       { prompt: "Continue", sessionId: "original-thread-id", mode: "analysis" },
@@ -475,8 +531,9 @@ describe("Codex continuation at the process boundary", () => {
   });
 
   it("does not accept a session id from stderr and preserves an explicit continuation after an ID-free successful event stream", async () => {
-    processFor(
-      ['{"type":"turn.completed","usage":{}}\n'],
+    rpcProcessFor(
+      "original-thread-id",
+      false,
       '{"thread_id":"untrusted-stderr"}\n',
     );
     const process = await startCodexProcess(
