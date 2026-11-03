@@ -54,6 +54,7 @@ export async function startCodexPermissionTurn(options: {
   const pending = new Map<
     number,
     {
+      method: string;
       resolve(value: unknown): void;
       reject(error: Error): void;
       timer: NodeJS.Timeout;
@@ -78,41 +79,45 @@ export async function startCodexPermissionTurn(options: {
         pending.delete(id);
         reject(Error("Codex control request timed out: " + method));
       }, 30000);
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { method, resolve, reject, timer });
       send({ id, method, params });
     });
-  const finish = async (error?: string): Promise<void> => {
-    if (done) return;
+  let finishing: Promise<void> | undefined;
+  const finish = (error?: string): Promise<void> => {
+    if (finishing) return finishing;
     done = true;
-    for (const value of pending.values()) {
-      clearTimeout(value.timer);
-      value.reject(Error(error || "Codex turn ended"));
-    }
-    pending.clear();
-    await terminateProcessTree(child).catch(() => undefined);
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        closed,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(Error("Codex process closure was not confirmed")),
-            5000,
-          );
-        }),
-      ]);
-    } catch (closeError) {
-      error = String(closeError);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-    resolveCompletion({
-      output,
-      ...(sessionId ? { sessionId } : {}),
-      ...(error ? { error } : {}),
-      artifacts: [],
-      inputArtifacts: options.inputArtifacts,
-    });
+    finishing = (async () => {
+      for (const value of pending.values()) {
+        clearTimeout(value.timer);
+        value.reject(Error(error || "Codex turn ended"));
+      }
+      pending.clear();
+      await terminateProcessTree(child).catch(() => undefined);
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          closed,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(Error("Codex process closure was not confirmed")),
+              5000,
+            );
+          }),
+        ]);
+      } catch (closeError) {
+        error = String(closeError);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      resolveCompletion({
+        output,
+        ...(sessionId ? { sessionId } : {}),
+        ...(error ? { error } : {}),
+        artifacts: [],
+        inputArtifacts: options.inputArtifacts,
+      });
+    })();
+    return finishing;
   };
   const handle = async (frame: RecordValue): Promise<void> => {
     const params = record(frame.params);
@@ -172,7 +177,15 @@ export async function startCodexPermissionTurn(options: {
         value.reject(
           Error(String(record(frame.error).message || "Codex control error")),
         );
-      else value.resolve(frame.result);
+      else {
+        // Capture the authoritative ID before dispatching the next line in a
+        // coalesced stdout chunk; the awaiting request resumes in a microtask.
+        if (value.method === "turn/start") {
+          const id = record(record(frame.result).turn).id;
+          if (typeof id === "string") turnId = id;
+        }
+        value.resolve(frame.result);
+      }
       return;
     }
     const method = String(frame.method || "");
@@ -224,7 +237,7 @@ export async function startCodexPermissionTurn(options: {
     }
     if (method === "turn/completed" && params.threadId === sessionId) {
       const turn = record(params.turn);
-      if (turnId && turn.id !== turnId) return;
+      if (!turnId || turn.id !== turnId) return;
       const error = record(turn.error).message;
       emit({
         type: "turn.completed",

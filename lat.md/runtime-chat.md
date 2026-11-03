@@ -534,6 +534,8 @@ File candidates are keyed by their actual reference, content and file metadata, 
 
 Running tasks accept native input or ordered follow-ups. Pi RPC, Codex App Server and verified OpenCode ACP append input to the active run. Unsupported or rejected input stays visible and never silently cancels a task.
 
+Codex binds the active turn before dispatching coalesced notifications and awaits shared cleanup so stale completion cannot end a new turn.
+
 User text is recorded before awaiting native acknowledgement, preserving submission order even when ACP responds only after updated work settles. Multiple native inputs retain separate requests. The composer shows pending, acknowledged and rejected states in the current language.
 
 Codex desktop execution uses the existing App Server approval bridge for all desktop permission modes. Read-only and workspace-write sandboxes remain explicit; automatic permissions retain per-tool authorization. Native steering binds both thread ID and expected turn ID. The independently audited mobile CLI path remains unchanged.
