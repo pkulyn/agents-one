@@ -6,7 +6,12 @@ import { startCodexPermissionTurn } from "../src/main/codex-permission-turn";
 const directories: string[] = [];
 afterEach(() => {
   for (const dir of directories.splice(0))
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
 });
 function fixture(badAck = false): { dir: string; file: string } {
   const dir = mkdtempSync(join(tmpdir(), "codex-live-"));
@@ -16,7 +21,7 @@ function fixture(badAck = false): { dir: string; file: string } {
     file,
     "const fs=require('node:fs'),r=require('node:readline').createInterface({input:process.stdin});const send=f=>process.stdout.write(JSON.stringify(f)+'\\n');const badAck=" +
       String(badAck) +
-      ";r.on('line',line=>{const m=JSON.parse(line);fs.appendFileSync('requests.jsonl',line+'\\n');if(m.method==='initialize')send({id:m.id,result:{}});if(m.method==='thread/start'||m.method==='thread/resume')send({id:m.id,result:{thread:{id:'thread-one'}}});if(m.method==='turn/start'){send({id:m.id,result:{turn:{id:'turn-one'}}});send({method:'turn/completed',params:{threadId:'thread-one',turn:{id:'stale-turn',status:'completed'}}});}if(m.method==='turn/steer'){send({id:m.id,result:{turnId:badAck?'wrong-turn':'turn-one'}});if(!badAck)setTimeout(()=>{send({method:'item/completed',params:{threadId:'thread-one',item:{id:'reply',type:'agentMessage',text:'AFTER'}}});send({method:'turn/completed',params:{threadId:'thread-one',turn:{id:'turn-one',status:'completed'}}});},50);}});",
+      ";r.on('line',line=>{const m=JSON.parse(line);fs.appendFileSync('requests.jsonl',line+'\\n');if(m.method==='initialize')send({id:m.id,result:{}});if(m.method==='thread/start'||m.method==='thread/resume')send({id:m.id,result:{thread:{id:'thread-one'}}});if(m.method==='turn/start'){process.stdout.write(JSON.stringify({id:m.id,result:{turn:{id:'turn-one'}}})+'\\n'+JSON.stringify({method:'turn/completed',params:{threadId:'thread-one',turn:{id:'stale-turn',status:'completed'}}})+'\\n');}if(m.method==='turn/steer'){send({id:m.id,result:{turnId:badAck?'wrong-turn':'turn-one'}});if(!badAck)setTimeout(()=>{send({method:'item/completed',params:{threadId:'thread-one',item:{id:'reply',type:'agentMessage',text:'AFTER'}}});send({method:'turn/completed',params:{threadId:'thread-one',turn:{id:'turn-one',status:'completed'}}});},50);}});",
   );
   return { dir, file };
 }
