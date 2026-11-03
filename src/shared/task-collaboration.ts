@@ -54,6 +54,11 @@ export interface TaskCollaborationIntervention {
   createdAt: number;
 }
 
+export type TaskCollaborationContextSource =
+  | "project"
+  | "handoffs"
+  | "artifacts";
+
 export interface TaskCollaborationAssignment {
   /** Stable row identity. Legacy records may not have one. */
   id?: string;
@@ -63,6 +68,8 @@ export interface TaskCollaborationAssignment {
   responsibility?: string;
   /** A short declaration of which task context this role receives. */
   context?: string;
+  /** Prompt/attachment transfer selection; never grants or restricts filesystem authority. Task brief is always included. */
+  contextSources?: TaskCollaborationContextSource[];
   /**
    * Declares how this role can reach the project workspace.  It is explicit
    * platform data rather than an assumption inferred from a path in a prompt.
@@ -150,6 +157,8 @@ export interface TaskCollaborationAcceptance {
   status: "passed" | "failed" | "needs_review";
   conclusion: string;
   reviewedArtifactIds: string[];
+  /** Actual completed role handoffs reviewed for a text-only team; never file artifacts. */
+  reviewedHandoffIds?: string[];
   createdAt: number;
 }
 

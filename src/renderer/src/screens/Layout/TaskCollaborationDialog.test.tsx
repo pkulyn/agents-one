@@ -29,6 +29,11 @@ function runtime(id: string, name: string): AgentRuntimeDefinition {
   };
 }
 
+function selectAgent(label: string, name: string): void {
+  fireEvent.click(screen.getByRole("combobox", { name: label }));
+  fireEvent.click(screen.getByRole("option", { name }));
+}
+
 describe("TaskCollaborationDialog", () => {
   beforeEach(() => {
     i18nTestState.locale = "zh-CN";
@@ -50,11 +55,11 @@ describe("TaskCollaborationDialog", () => {
     );
 
     expect(screen.getAllByText("docs").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("项目负责人智能体")).toHaveValue("hermes");
+    expect(screen.getByLabelText("项目负责人智能体")).toHaveTextContent(
+      "Hermes",
+    );
 
-    fireEvent.change(screen.getByLabelText("实施智能体"), {
-      target: { value: "codex" },
-    });
+    selectAgent("实施智能体", "Codex");
     fireEvent.change(screen.getByLabelText("任务说明"), {
       target: { value: "整理项目文档并给出验收结果" },
     });
@@ -88,10 +93,10 @@ describe("TaskCollaborationDialog", () => {
     expect(screen.getByText("Multi-agent collaboration")).toBeVisible();
     expect(screen.getByText("发布检查")).toBeVisible();
     expect(screen.getByDisplayValue("Project lead")).toBeVisible();
-    expect(screen.getByLabelText("Project lead agent")).toHaveValue("hermes");
-    fireEvent.change(screen.getByLabelText("Implementation agent"), {
-      target: { value: "codex" },
-    });
+    expect(screen.getByLabelText("Project lead agent")).toHaveTextContent(
+      "Hermes",
+    );
+    selectAgent("Implementation agent", "Codex");
     fireEvent.click(screen.getByRole("button", { name: "Send and start" }));
 
     expect(onStart).toHaveBeenCalledWith(
@@ -140,9 +145,7 @@ describe("TaskCollaborationDialog", () => {
     );
 
     expect(screen.getByLabelText("项目负责人工作区访问方式")).toHaveValue("");
-    expect(
-      screen.getByRole("option", { name: "智能体所在设备" }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("项目负责人工作区访问方式")).toHaveValue("");
 
     fireEvent.change(screen.getByLabelText("任务说明"), {
       target: { value: "在智能体所在设备执行备份任务" },
@@ -154,7 +157,6 @@ describe("TaskCollaborationDialog", () => {
         expect.objectContaining({
           role: "项目负责人",
           runtimeId: "hermes",
-          workspaceAccess: undefined,
         }),
       ],
       "在智能体所在设备执行备份任务",
@@ -179,12 +181,8 @@ describe("Configure task mode without dispatch", () => {
     );
     expect(screen.queryByLabelText("任务说明")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "启用协作" })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("实施智能体"), {
-      target: { value: "codex" },
-    });
-    fireEvent.change(screen.getByLabelText("测试智能体"), {
-      target: { value: "codex" },
-    });
+    selectAgent("实施智能体", "Codex");
+    selectAgent("测试智能体", "Codex");
     fireEvent.click(screen.getByRole("button", { name: "启用协作" }));
     expect(onStart).toHaveBeenCalledWith(
       expect.arrayContaining([
@@ -212,13 +210,11 @@ describe("English explicit mode", () => {
         onStart={onStart}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Implementation agent"), {
-      target: { value: "codex" },
-    });
-    fireEvent.change(screen.getByLabelText("Testing agent"), {
-      target: { value: "hermes" },
-    });
-    expect(screen.getByLabelText("Implementation agent")).toHaveValue("codex");
+    selectAgent("Implementation agent", "Codex");
+    selectAgent("Testing agent", "Hermes");
+    expect(screen.getByLabelText("Implementation agent")).toHaveTextContent(
+      "Codex",
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "Enable collaboration" }),
     );
@@ -229,5 +225,101 @@ describe("English explicit mode", () => {
       ]),
       "",
     );
+  });
+});
+
+describe("Role presets and compatibility", () => {
+  beforeEach(() => {
+    i18nTestState.locale = "zh-CN";
+  });
+  it("fills responsibilities and context when choosing a role, with no fixed workspace access", () => {
+    const onStart = vi.fn();
+    render(
+      <TaskCollaborationDialog
+        draft={{
+          title: "Team",
+          sourceRuntimeId: "hermes",
+          message: "Research",
+        }}
+        runtimes={[runtime("hermes", "Hermes"), runtime("codex", "Codex")]}
+        onClose={() => {}}
+        onStart={onStart}
+      />,
+    );
+    fireEvent.change(screen.getAllByLabelText("角色")[1], {
+      target: { value: "researcher" },
+    });
+    selectAgent("资料研究智能体", "Codex");
+    expect(
+      screen.getAllByText(
+        "检索并核对一手资料，记录来源、日期、证据与待确认事项。",
+      )[0],
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "发送并启动" }));
+    expect(onStart.mock.calls[0][0][1]).toEqual(
+      expect.objectContaining({
+        role: "资料研究",
+        responsibility: expect.stringContaining("一手资料"),
+        contextSources: ["project", "handoffs"],
+      }),
+    );
+    expect(onStart.mock.calls[0][0][1].workspaceAccess).toBeUndefined();
+  });
+  it("preserves a custom role, context, mapping and explicit DAG when reopened", () => {
+    const onStart = vi.fn();
+    const assignments = [
+      {
+        id: "lead",
+        role: "统筹研究",
+        runtimeId: "hermes",
+        responsibility: "保留原职责",
+        context: "保留原材料",
+        dependsOn: [],
+        workspaceAccess: "remote_mapping" as const,
+        workspaceRef: "/remote/research",
+      },
+      {
+        id: "work",
+        role: "数据核对",
+        runtimeId: "codex",
+        responsibility: "核对",
+        context: "指定材料",
+        dependsOn: ["lead"],
+      },
+    ];
+    render(
+      <TaskCollaborationDialog
+        draft={{ title: "Team", assignments, message: "继续" }}
+        runtimes={[runtime("hermes", "Hermes"), runtime("codex", "Codex")]}
+        onClose={() => {}}
+        onStart={onStart}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送并启动" }));
+    expect(onStart).toHaveBeenCalledWith(assignments, "继续");
+  });
+  it("shows avatar options and supports keyboard choice and Escape", () => {
+    render(
+      <TaskCollaborationDialog
+        draft={{ title: "Team" }}
+        runtimes={[
+          { ...runtime("codex", "Codex"), avatar: "data:image/png;base64,abc" },
+          runtime("hermes", "Hermes"),
+        ]}
+        onClose={() => {}}
+        onStart={() => {}}
+      />,
+    );
+    const trigger = screen.getByRole("combobox", { name: "实施智能体" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(
+      screen.getByRole("option", { name: "Codex" }).querySelector("img"),
+    ).toHaveAttribute("src", "data:image/png;base64,abc");
+    fireEvent.click(screen.getByRole("option", { name: "Codex" }));
+    expect(trigger).toHaveTextContent("Codex");
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 });

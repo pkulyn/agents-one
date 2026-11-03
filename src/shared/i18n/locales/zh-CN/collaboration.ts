@@ -82,6 +82,63 @@ export default {
     openTask: "打开任务对话",
   },
   dialog: {
+    presets: {
+      coordinator: {
+        role: "项目负责人",
+        responsibility:
+          "明确目标、拆分分工与验收标准，汇总结果；具体派发由平台完成。",
+      },
+      researcher: {
+        role: "资料研究",
+        responsibility:
+          "检索并核对一手资料，记录来源、日期、证据与待确认事项。",
+      },
+      analyst: {
+        role: "分析研判",
+        responsibility:
+          "比较资料和方案，区分事实与推断，给出结论、依据与风险。",
+      },
+      designer: {
+        role: "方案设计",
+        responsibility: "依据需求和约束提出方案，说明结构、取舍和实施建议。",
+      },
+      writer: {
+        role: "内容编写",
+        responsibility:
+          "根据资料与提纲编写内容，标明引用与待确认项；按要求交付文稿。",
+      },
+      implementer: {
+        role: "实施",
+        responsibility:
+          "按方案完成操作或文件、代码变更，交付真实成果与验证记录。",
+      },
+      tester: {
+        role: "测试",
+        responsibility: "依据验收标准执行检查，报告通过项、失败项与复现步骤。",
+      },
+      reviewer: {
+        role: "复核验收",
+        responsibility: "独立核对成果、来源与验收标准，给出结论和需修正事项。",
+      },
+    },
+    setupHint: "选定角色和智能体，职责与共享上下文会自动填入。",
+    advanced: "高级设置",
+    customRole: "自定义角色",
+    editDetails: "调整职责与上下文",
+    autoAccess: "自动（推荐）",
+    accessHint: "自动按执行设备与项目选择访问方式；读写权限仍跟随任务权限。",
+    contextHint:
+      "任务说明始终共享；以下设置控制平台转交的材料，不改变智能体的文件访问权限。",
+    orderHint: "默认按角色顺序交接。需要并行或汇合时，再设置前置角色。",
+    accessSummary: "访问方式",
+    sources: {
+      task: "任务说明",
+      project: "项目资料",
+      handoffs: "前序交接",
+      artifacts: "交付与验证证据",
+    },
+    resetPreset: "恢复角色默认值",
+    currentUnavailable: "当前智能体不可用，请重新选择。",
     enable: "启用协作",
     completeTeam: "请至少选择两个不同的智能体，并补齐每个角色、智能体和职责。",
     defaultRoles: {

@@ -83,6 +83,69 @@ export default {
     openTask: "Open task conversation",
   },
   dialog: {
+    presets: {
+      coordinator: {
+        role: "Project lead",
+        responsibility:
+          "Define goals, responsibilities and acceptance criteria; synthesize results. The platform dispatches roles.",
+      },
+      researcher: {
+        role: "Research",
+        responsibility:
+          "Find and verify primary sources; record dates, evidence and open questions.",
+      },
+      analyst: {
+        role: "Analysis",
+        responsibility:
+          "Compare evidence and options; separate facts from inference and explain conclusions and risks.",
+      },
+      designer: {
+        role: "Design",
+        responsibility:
+          "Develop a plan from requirements and constraints; explain structure, tradeoffs and implementation advice.",
+      },
+      writer: {
+        role: "Writing",
+        responsibility:
+          "Draft content from evidence and an outline; identify citations and open questions, and deliver the requested document.",
+      },
+      implementer: {
+        role: "Implementation",
+        responsibility:
+          "Carry out the plan and real operations, file or code changes; deliver results and verification records.",
+      },
+      tester: {
+        role: "Testing",
+        responsibility:
+          "Check results against acceptance criteria; report passes, failures and reproduction steps.",
+      },
+      reviewer: {
+        role: "Review and acceptance",
+        responsibility:
+          "Independently verify deliverables, sources and criteria; report conclusions and required corrections.",
+      },
+    },
+    setupHint:
+      "Choose roles and agents. Responsibilities and shared context are filled in automatically.",
+    advanced: "Advanced settings",
+    customRole: "Custom role",
+    editDetails: "Adjust responsibilities and context",
+    autoAccess: "Automatic (recommended)",
+    accessHint:
+      "Access follows the execution device and linked project. Read/write authority still follows task permissions.",
+    contextHint:
+      "The task brief is always shared. These options control transferred materials, not the agent’s filesystem authority.",
+    orderHint:
+      "Roles hand off in order by default. Set prerequisites only for parallel branches or joins.",
+    accessSummary: "Workspace access",
+    sources: {
+      task: "Task brief",
+      project: "Project materials",
+      handoffs: "Prior handoffs",
+      artifacts: "Deliverables and verification",
+    },
+    resetPreset: "Restore role defaults",
+    currentUnavailable: "This agent is unavailable. Choose another agent.",
     enable: "Enable collaboration",
     completeTeam:
       "Choose at least two distinct agents and complete every role and responsibility.",

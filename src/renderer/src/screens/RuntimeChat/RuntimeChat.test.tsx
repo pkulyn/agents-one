@@ -121,6 +121,8 @@ vi.mock("../Chat/ChatInput", () => ({
 
 import RuntimeChat, {
   collaborationPermissionPreflight,
+  collaborationRolePrompt,
+  acceptanceFromOutput,
   collaborationWorkspacePreflight,
 } from "./RuntimeChat";
 
@@ -3868,7 +3870,7 @@ describe("RuntimeChat inputs and persistence", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("allows a remote testing role to validate a read-only evidence bundle", async () => {
+  it("automatically transfers a read-only project evidence bundle to a remote testing role", async () => {
     render(
       <RuntimeChat
         runId="collaboration-remote-acceptance"
@@ -3881,7 +3883,6 @@ describe("RuntimeChat inputs and persistence", () => {
               role: "测试验收",
               responsibility: "基于实施交付逐项验收并输出结论",
               runtimeId: "hermes-gateway",
-              workspaceAccess: "evidence_bundle",
             },
           ],
         }}
@@ -3907,7 +3908,6 @@ describe("RuntimeChat inputs and persistence", () => {
                 role: "测试验收",
                 responsibility: "基于实施交付逐项验收并输出结论",
                 runtimeId: "hermes-gateway",
-                workspaceAccess: "evidence_bundle",
               },
             ],
           },
@@ -4722,5 +4722,150 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(startAgentRuntimeTask.mock.calls[2][1].prompt).toContain(
       "已完成第二轮确认并重新验证。",
     );
+  });
+});
+
+describe("Preset context transfer", () => {
+  it("keeps the brief while omitting deselected handoffs and keeps mandatory acceptance evidence", () => {
+    const recipient = {
+      id: "r",
+      role: "Analysis",
+      runtimeId: "pi-local",
+      contextSources: [],
+    };
+    const handoffs = [
+      {
+        assignmentId: "work",
+        role: "Research",
+        status: "succeeded" as const,
+        handoff: "PRIVATE_HANDOFF",
+        startedAt: Date.now(),
+      },
+    ];
+    const result = collaborationRolePrompt(
+      "TASK_BRIEF",
+      [recipient],
+      { "pi-local": piRuntime },
+      recipient,
+      0,
+      undefined,
+      handoffs,
+      [],
+      [],
+    );
+    expect(result).toContain("TASK_BRIEF");
+    expect(result).not.toContain("PRIVATE_HANDOFF");
+    const legacy = { ...recipient, contextSources: undefined };
+    expect(
+      collaborationRolePrompt(
+        "TASK_BRIEF",
+        [legacy],
+        { "pi-local": piRuntime },
+        legacy,
+        0,
+        undefined,
+        handoffs,
+        [],
+        [],
+      ),
+    ).toContain("PRIVATE_HANDOFF");
+    const reviewer = { ...recipient, role: "Review and acceptance" };
+    expect(
+      collaborationRolePrompt(
+        "TASK_BRIEF",
+        [reviewer],
+        { "pi-local": piRuntime },
+        reviewer,
+        0,
+        undefined,
+        handoffs,
+        [],
+        [],
+      ),
+    ).toContain("[验收结论]");
+  });
+  it("does not turn design advice into a file-writing role and recognizes bilingual leads", () => {
+    expect(
+      collaborationPermissionPreflight(
+        [
+          {
+            role: "Design",
+            responsibility: "implementation advice",
+            runtimeId: "pi-local",
+          },
+        ],
+        "analysis",
+      ),
+    ).toEqual([]);
+    const lead = { id: "lead", role: "Project lead", runtimeId: "pi-local" };
+    expect(
+      collaborationRolePrompt(
+        "brief",
+        [lead],
+        { "pi-local": piRuntime },
+        lead,
+        0,
+        undefined,
+        [],
+        [],
+        [],
+      ),
+    ).toContain("当前是起始规划阶段");
+  });
+});
+
+describe("Text-only team review", () => {
+  it("uses actual handoff references without fabricating file artifacts", () => {
+    const handoffs = [
+      {
+        assignmentId: "research",
+        role: "Research",
+        status: "succeeded" as const,
+        handoff: "Sources and findings.",
+      },
+    ];
+    const result = acceptanceFromOutput(
+      "review",
+      "[验收结论]\n状态：通过\n依据：H1\n结论：依据来源完成复核。",
+      [],
+      handoffs,
+    );
+    expect(result).toMatchObject({
+      status: "passed",
+      reviewedArtifactIds: [],
+      reviewedHandoffIds: ["research"],
+    });
+    expect(
+      acceptanceFromOutput(
+        "review",
+        "[验收结论]\n状态：通过\n依据：H99",
+        [],
+        handoffs,
+      ).status,
+    ).toBe("needs_review");
+    expect(
+      acceptanceFromOutput("review", "[验收结论]\n状态：通过\n依据：H1", [])
+        .status,
+    ).toBe("needs_review");
+    const reviewer = {
+      id: "review",
+      role: "Review and acceptance",
+      runtimeId: "pi-local",
+      contextSources: [],
+    };
+    const prompt = collaborationRolePrompt(
+      "Review research",
+      [{ id: "research", role: "Research" }, reviewer],
+      { "pi-local": piRuntime },
+      reviewer,
+      1,
+      undefined,
+      handoffs,
+      [],
+      [],
+    );
+    expect(prompt).toContain("交接 H1");
+    expect(prompt).toContain("Sources and findings.");
+    expect(prompt).not.toContain("待验收的真实产物");
   });
 });
