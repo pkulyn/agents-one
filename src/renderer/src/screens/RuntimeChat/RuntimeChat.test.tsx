@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Attachment } from "../../../../shared/attachments";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
@@ -4976,37 +4982,21 @@ describe("RuntimeChat inputs and persistence", () => {
       "已完成第二轮确认并重新验证。",
     );
   });
-  it("adjusts a non-native run only after confirmed termination and resumes its session", async () => {
-    let cancelled = false;
-    getAgentRuntimeRun.mockImplementation(async () => ({
-      id: "run-1",
-      runtimeId: gatewayRuntime.id,
-      status: cancelled ? "cancelled" : "running",
-      output: "partial",
-      sessionId: "same-session",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    }));
-    window.agentsOneAPI.sendAgentRuntimeInput = vi
-      .fn()
-      .mockResolvedValue("unsupported");
-    vi.mocked(window.agentsOneAPI.cancelAgentRuntimeTask).mockImplementation(
-      async () => {
-        cancelled = true;
-        return true;
-      },
-    );
-    startAgentRuntimeTask.mockResolvedValue({
+  it("keeps unsupported native input from cancelling or restarting the active run", async () => {
+    getAgentRuntimeRun.mockResolvedValue({
       id: "run-1",
       runtimeId: gatewayRuntime.id,
       status: "running",
-      sessionId: "same-session",
+      output: "",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
+    window.agentsOneAPI.sendAgentRuntimeInput = vi
+      .fn()
+      .mockResolvedValue("unsupported");
     render(
       <RuntimeChat
-        runId="steer-fallback"
+        runId="native-unavailable"
         runtime={gatewayRuntime}
         profile="default"
       />,
@@ -5014,19 +5004,13 @@ describe("RuntimeChat inputs and persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
-    await waitFor(
-      () => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2),
-      { timeout: 5000 },
+    await waitFor(() =>
+      expect(
+        screen.getByText(/当前运行暂不接受这类原生补充/),
+      ).toBeInTheDocument(),
     );
-    expect(window.agentsOneAPI.cancelAgentRuntimeTask).toHaveBeenCalledWith(
-      "run-1",
-    );
-    expect(startAgentRuntimeTask.mock.calls[1][1]).toMatchObject({
-      sessionId: "same-session",
-    });
-    expect(
-      screen.queryByRole("dialog", { name: /停止当前运行/ }),
-    ).not.toBeInTheDocument();
+    expect(window.agentsOneAPI.cancelAgentRuntimeTask).not.toHaveBeenCalled();
+    expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1);
   });
   it("delivers running input through the live channel without cancelling or starting another run", async () => {
     getAgentRuntimeRun.mockResolvedValue({
@@ -5037,7 +5021,13 @@ describe("RuntimeChat inputs and persistence", () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
-    const nativeInput = vi.fn().mockResolvedValue("accepted");
+    let acceptInput!: (value: "accepted") => void;
+    const nativeInput = vi.fn(
+      () =>
+        new Promise<"accepted">((resolve) => {
+          acceptInput = resolve;
+        }),
+    );
     window.agentsOneAPI.sendAgentRuntimeInput = nativeInput;
     render(
       <RuntimeChat
@@ -5060,6 +5050,21 @@ describe("RuntimeChat inputs and persistence", () => {
         "请使用多智能体协作完成这个任务。",
       ),
     );
+    await waitFor(() =>
+      expect(
+        saveRuntimeConversation.mock.calls.some(
+          ([input]) =>
+            input.messages.filter((m: { role: string }) => m.role === "user")
+              .length === 2,
+        ),
+      ).toBe(true),
+    );
+    expect(
+      screen.queryByText(/补充说明已送达正在执行/),
+    ).not.toBeInTheDocument();
+    await act(async () => {
+      acceptInput("accepted");
+    });
     await waitFor(() =>
       expect(screen.getByText(/补充说明已送达/)).toBeInTheDocument(),
     );

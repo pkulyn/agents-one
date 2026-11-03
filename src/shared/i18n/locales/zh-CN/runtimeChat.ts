@@ -74,9 +74,12 @@ export default {
     adjustNow: "立即纠偏",
     inputMode: "运行中补充方式",
     inputModeHint:
-      "立即纠偏优先原生送达；不支持时会停止当前步骤，在原会话按补充说明继续。也可选择完成本轮后跟进。",
+      "立即纠偏原生发送到当前任务，不停止任务；不可用时保留输入并提示。也可选择完成本轮后跟进。",
     supplementResuming: "当前步骤已停止，将在原会话按补充说明继续。",
     sendSupplement: "发送补充说明",
+    nativeInputUnavailable:
+      "当前运行暂不接受这类原生补充。输入已保留，任务未中断；可以选择完成本轮后跟进。",
+    supplementSending: "正在提交补充说明，等待智能体确认。",
     supplementDelivered:
       "补充说明已送达正在执行的智能体，将在可处理输入时调整。",
     sharedSupplement:

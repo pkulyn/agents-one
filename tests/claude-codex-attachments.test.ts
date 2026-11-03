@@ -7,9 +7,27 @@ vi.mock("../src/main/claude-capabilities", () => ({
 import { describe, expect, it, vi } from "vitest";
 import { summarizeTaskOutput } from "../src/shared/runtime-output";
 
-const fixture = vi.hoisted(() => ({ script: "", args: [] as string[] }));
+const fixture = vi.hoisted(() => ({
+  script: "",
+  args: [] as string[],
+  resumed: false,
+}));
 vi.mock("child_process", async (original) => {
   const actual = await original<typeof import("child_process")>();
+  return {
+    ...actual,
+    spawn: (_command: string, args: string[], options: object) => {
+      fixture.args = args;
+      return actual.spawn(
+        process.execPath,
+        ["-e", fixture.script, "--", ...args],
+        options,
+      );
+    },
+  };
+});
+vi.mock("node:child_process", async (original) => {
+  const actual = await original<typeof import("node:child_process")>();
   return {
     ...actual,
     spawn: (_command: string, args: string[], options: object) => {
@@ -64,6 +82,19 @@ describe("Claude and Codex attachment process boundary", () => {
         "const answer='图片是开机素材，文本是联调测试。';const final=Buffer.from(JSON.stringify(kind==='claude'?{type:'result',subtype:'success',result:answer}:{type:'item.completed',item:{type:'agent_message',text:answer}})+'\\n');",
         "const split=final.indexOf(Buffer.from('图片'))+1;process.stdout.write(final.subarray(0,split));setTimeout(()=>process.stdout.write(final.subarray(split)),20);",
       ].join("");
+      if (kind === "codex")
+        fixture.script = [
+          "const fs=require('node:fs'),path=require('node:path'),rl=require('node:readline').createInterface({input:process.stdin});",
+          "const send=x=>process.stdout.write(JSON.stringify(x)+'\\n');",
+          "rl.on('line',line=>{const f=JSON.parse(line);if(f.method==='initialize')send({id:f.id,result:{}});",
+          "if(f.method==='thread/start'||f.method==='thread/resume')send({id:f.id,result:{thread:{id:'11111111-1111-4111-8111-111111111111'}}});",
+          "if(f.method==='turn/start'){const img=f.params.input.find(x=>x.type==='localImage'),dir=path.dirname(img.path);",
+          "if(fs.readFileSync(path.join(dir,'测试文档.txt'),'utf8')!=='联调测试正文'||!fs.readFileSync(img.path).equals(Buffer.from('image fixture')))process.exit(2);",
+          "send({id:f.id,result:{turn:{id:'turn-one'}}});const threadId=f.params.threadId;",
+          "send({method:'item/completed',params:{threadId,item:{id:'large',type:'commandExecution',aggregatedOutput:'A'.repeat(1024*1024)}}});",
+          "const final=Buffer.from(JSON.stringify({method:'item/completed',params:{threadId,item:{id:'answer',type:'agentMessage',text:'图片是开机素材，文本是联调测试。'}}})+'\\n');",
+          "const split=final.indexOf(Buffer.from('图片'))+1;process.stdout.write(final.subarray(0,split));setTimeout(()=>{process.stdout.write(final.subarray(split));send({method:'turn/completed',params:{threadId,turn:{id:'turn-one',status:'completed'}}});},20);}});",
+        ].join("");
       const start =
         kind === "claude" ? startClaudeCodeProcess : startCodexProcess;
       let sessionId: string | undefined;
@@ -108,7 +139,7 @@ describe("Claude and Codex attachment process boundary", () => {
             ? session
             : (sessionId ?? expect.stringMatching(/^[0-9a-f-]{36}$/)),
         );
-        if (phase === "resume") {
+        if (phase === "resume" && kind === "claude") {
           expect(fixture.args).toContain(
             kind === "codex" ? "resume" : "--resume",
           );
