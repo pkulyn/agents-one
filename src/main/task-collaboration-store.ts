@@ -1,3 +1,4 @@
+import { COLLABORATION_CONTEXT_SOURCES } from "../shared/task-collaboration-presets";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import {
@@ -154,6 +155,13 @@ function assignments(value: unknown): TaskCollaborationAssignment[] {
       ...(runtimeId ? { runtimeId } : {}),
       ...(responsibility ? { responsibility } : {}),
       ...(context ? { context } : {}),
+      ...(Array.isArray(item.contextSources)
+        ? {
+            contextSources: COLLABORATION_CONTEXT_SOURCES.filter((source) =>
+              item.contextSources.includes(source),
+            ),
+          }
+        : {}),
       ...(workspaceAccess ? { workspaceAccess } : {}),
       ...(workspaceRef ? { workspaceRef } : {}),
       ...(dependsOn ? { dependsOn: dependsOn as string[] } : {}),
@@ -431,6 +439,7 @@ function acceptance(
   value: unknown,
   configuredAssignments: TaskCollaborationAssignment[],
   artifacts: TaskCollaborationArtifact[],
+  completedRuns: TaskCollaborationRoleRun[],
 ): TaskCollaborationAcceptance | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Partial<TaskCollaborationAcceptance>;
@@ -461,6 +470,22 @@ function acceptance(
     status,
     conclusion,
     reviewedArtifactIds,
+    ...(Array.isArray(raw.reviewedHandoffIds)
+      ? {
+          reviewedHandoffIds: [
+            ...new Set(
+              raw.reviewedHandoffIds.filter((id) =>
+                completedRuns.some(
+                  (run) =>
+                    run.assignmentId === id &&
+                    run.status === "succeeded" &&
+                    run.handoff,
+                ),
+              ),
+            ),
+          ].slice(0, 100),
+        }
+      : {}),
     createdAt: typeof raw.createdAt === "number" ? raw.createdAt : Date.now(),
   };
 }
@@ -487,6 +512,7 @@ function execution(
     raw.acceptance,
     configuredAssignments,
     normalizedArtifacts,
+    normalizedRoleRuns,
   );
   const normalizedTimeline = timeline(
     raw.timeline,
