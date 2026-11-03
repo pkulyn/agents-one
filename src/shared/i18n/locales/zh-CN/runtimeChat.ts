@@ -244,6 +244,8 @@ export default {
     briefRequired: "请先发送首条任务说明，平台才能安全恢复角色执行。",
   },
   collaborationRun: {
+    cancelFailed:
+      "智能体尚未确认停止。后续角色已暂停，请检查该智能体的运行状态后重试。",
     unrecoverable:
       "当前运行已不可恢复，可能是桌面应用在执行期间重启。请在本对话中重新发送任务。",
     singleAgent: "本轮按单智能体任务处理，未启动协作。",

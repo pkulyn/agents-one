@@ -82,6 +82,20 @@ describe("Inline collaboration progress", () => {
       />,
     );
     expect(screen.queryByLabelText("协作进展")).not.toBeInTheDocument();
+    view.rerender(
+      <CollaborationProgress
+        {...props}
+        execution={{ ...execution, status: "needs_review", completedAt: 2 }}
+      />,
+    );
+    expect(screen.queryByLabelText("协作进展")).not.toBeInTheDocument();
+    view.rerender(
+      <CollaborationProgress
+        {...props}
+        execution={{ ...execution, status: "failed", completedAt: 2 }}
+      />,
+    );
+    expect(screen.queryByLabelText("协作进展")).not.toBeInTheDocument();
     view.rerender(<CollaborationProgress {...props} enabled={false} />);
     expect(screen.queryByLabelText("协作进展")).not.toBeInTheDocument();
     view.rerender(

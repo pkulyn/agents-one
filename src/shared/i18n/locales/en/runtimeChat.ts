@@ -276,6 +276,8 @@ export default {
       "Send and save the initial task brief before the platform can safely resume this role.",
   },
   collaborationRun: {
+    cancelFailed:
+      "The agent has not confirmed cancellation. Downstream roles are paused; check this agent’s running state before retrying.",
     unrecoverable:
       "This run cannot be recovered, possibly because the desktop app restarted while it was running. Send the task again in this conversation.",
     singleAgent:

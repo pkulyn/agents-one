@@ -515,3 +515,17 @@ The collaboration setup starts with role and agent choices. Eight bilingual role
 [[src/renderer/src/screens/Layout/TaskCollaborationDialog.tsx]] keeps prerequisites and workspace overrides in a closed advanced disclosure. Unspecified workspace access is resolved from the current execution device and project at dispatch; remote project evidence is prepared and attached using the same resolution. Explicit dependencies keep DAG semantics, and editing preserves their stable ids. [[src/renderer/src/screens/Layout/CollaborationAgentPicker.tsx]] displays runtime avatars in a bounded popup with keyboard navigation, dismissal and selection feedback. Preset role meaning is consistent in Chinese and English; unknown roles retain legacy classification.
 
 New teams store an explicit serial chain so adding research or analysis does not invoke legacy role-name sorting. Text-only teams review actual completed handoffs using H references, recorded separately from file artifacts; file-producing teams retain the required delivery/hash contract. No ordinary model reply is promoted into a file artifact.
+
+## Collaboration live turn ownership
+
+The Renderer scheduler owns a collaboration turn from preflight to durable completion. Ordinary conversation refresh and collaboration recovery cannot clear its busy state or replace its live role progress with an older snapshot.
+
+[[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]] guards both asynchronous readback paths while a turn is owned, snapshots role state before publication, and rejects older execution readbacks. Live thinking/tool rows and the composer stop action remain active across Main conversation notifications. Stopping fans out to every active branch, catches runs whose start resolves after stop, waits for cancellation acknowledgements, and blocks further role dispatch. Failed cancellation remains waiting with explicit feedback. Ordinary single-task terminal observation is unchanged.
+
+Every role inherits the composer permission mode unless the user explicitly chose a role-scoped intervention override. Role responsibility determines delivery expectations, not an automatic read-only downgrade; task read-only and deletion protections still apply. Completed progress is hidden for success, cancellation and completed review/failure outcomes while actionable unfinished intervention remains visible.
+
+## Stable delivered file rendering
+
+File candidates are keyed by their actual reference, content and file metadata, so unrelated live progress does not repeatedly remove and reload already resolved file cards.
+
+[[src/renderer/src/components/ConversationFiles.tsx]] retains real file/revision cards while suppressing the redundant internal OpenCode workspace snapshot summary. The original snapshot remains available to platform evidence and write protection; this is a display filter, not deletion of delivery records.
