@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Folder, Plus, Send, Trash2, Users, X } from "lucide-react";
+import { Folder, Plus, Send, Trash2, Users, X } from "lucide-react";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
 import type { TaskCollaborationAssignment } from "../../../../shared/task-collaboration";
 import { buildTaskCollaborationGraph } from "../../../../shared/task-collaboration-graph";
 import { t as translate, type AppLocale } from "../../../../shared/i18n";
 import { useI18n } from "../../components/useI18n";
+
+import CollaborationAgentPicker from "./CollaborationAgentPicker";
+import {
+  COLLABORATION_ROLE_PRESETS,
+  findCollaborationRolePreset,
+  COLLABORATION_CONTEXT_SOURCES,
+} from "../../../../shared/task-collaboration-presets";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 const DEFAULT_ROLE_KEYS = ["coordinator", "implementer", "tester"] as const;
@@ -41,7 +48,7 @@ function defaultAssignments(
       id: item.id || crypto.randomUUID(),
     }));
   }
-  return DEFAULT_ROLE_KEYS.map((key, index) => {
+  const team = DEFAULT_ROLE_KEYS.map((key, index) => {
     const prefix = `collaboration.dialog.defaultRoles.${key}`;
     return {
       role: t(`${prefix}.role`),
@@ -51,14 +58,23 @@ function defaultAssignments(
           }
         : {}),
       id: crypto.randomUUID(),
-      responsibility: t(`${prefix}.responsibility`),
-      context: t(`${prefix}.context`),
-      workspaceAccess:
-        index === 0 && (draft.projectWorkspaceId || draft.projectFolder)
-          ? "evidence_bundle"
-          : undefined,
+      responsibility: t(`collaboration.dialog.presets.${key}.responsibility`),
+      context: [
+        t("collaboration.dialog.sources.task"),
+        ...COLLABORATION_CONTEXT_SOURCES.map((source) =>
+          t(`collaboration.dialog.sources.${source}`),
+        ),
+      ].join("、"),
+      contextSources: [
+        ...COLLABORATION_ROLE_PRESETS.find((preset) => preset.key === key)!
+          .contextSources,
+      ],
     };
   });
+  return team.map((assignment, index) => ({
+    ...assignment,
+    dependsOn: index ? [team[index - 1].id] : [],
+  }));
 }
 
 function localizedDefaultAssignments(
@@ -108,6 +124,12 @@ export default function TaskCollaborationDialog({
         configured.some((item) => !item.responsibility?.trim()))
     )
       return t("collaboration.dialog.completeTeam");
+    if (
+      configured.some(
+        (item) => !available.some((agent) => agent.id === item.runtimeId),
+      )
+    )
+      return t("collaboration.dialog.currentUnavailable");
     if (configured.length === 0)
       return t("collaboration.dialog.assignAgentError");
     try {
@@ -118,7 +140,7 @@ export default function TaskCollaborationDialog({
         ? error.message
         : t("collaboration.dialog.invalidDependencies");
     }
-  }, [assignments, draft.configureOnly, t]);
+  }, [assignments, available, draft.configureOnly, t]);
 
   useEffect(() => {
     setAssignments(defaultTeam);
@@ -138,12 +160,22 @@ export default function TaskCollaborationDialog({
 
   const addRole = (): void => {
     setAssignments((current) => [
-      ...current,
+      ...current.map((item, index) => ({
+        ...item,
+        dependsOn: current.some(
+          (assignment) => assignment.dependsOn !== undefined,
+        )
+          ? item.dependsOn || []
+          : index
+            ? [current[index - 1].id!]
+            : [],
+      })),
       {
         id: crypto.randomUUID(),
         role: t("collaboration.dialog.newRole"),
         responsibility: "",
         context: t("collaboration.dialog.taskContext"),
+        dependsOn: current.length ? [current.at(-1)!.id!] : [],
       },
     ]);
   };
@@ -165,13 +197,55 @@ export default function TaskCollaborationDialog({
     );
   };
 
-  const workspaceAccessFor = (
-    assignment: TaskCollaborationAssignment,
-  ): "" | "local_direct" | "remote_mapping" | "evidence_bundle" => {
-    if (assignment.workspaceAccess) return assignment.workspaceAccess;
-    const selected = available.find((item) => item.id === assignment.runtimeId);
-    if (selected?.location !== "remote") return "local_direct";
-    return draft.projectFolder ? "evidence_bundle" : "";
+  const presetFor = (role: string): string =>
+    findCollaborationRolePreset(role)?.key || "custom";
+  const choosePreset = (id: string | undefined, key: string): void => {
+    const preset = COLLABORATION_ROLE_PRESETS.find((item) => item.key === key);
+    if (!preset) {
+      updateAssignment(id, {
+        role: t("collaboration.dialog.newRole"),
+        responsibility: "",
+      });
+      return;
+    }
+    const contextSources = [...preset.contextSources];
+    updateAssignment(id, {
+      role: t("collaboration.dialog.presets." + key + ".role"),
+      responsibility: t(
+        "collaboration.dialog.presets." + key + ".responsibility",
+      ),
+      contextSources,
+      context: [
+        t("collaboration.dialog.sources.task"),
+        ...contextSources.map((source) =>
+          t("collaboration.dialog.sources." + source),
+        ),
+      ].join(" · "),
+    });
+  };
+  const toggleDependency = (
+    id: string | undefined,
+    dependency: string,
+  ): void => {
+    setAssignments((current) => {
+      const explicit = current.some((item) => item.dependsOn !== undefined);
+      return current.map((item, index) => {
+        const dependencies = explicit
+          ? item.dependsOn || []
+          : index
+            ? [current[index - 1].id!]
+            : [];
+        return {
+          ...item,
+          dependsOn:
+            item.id === id
+              ? dependencies.includes(dependency)
+                ? dependencies.filter((value) => value !== dependency)
+                : [...dependencies, dependency]
+              : dependencies,
+        };
+      });
+    });
   };
 
   const start = (): void => {
@@ -231,205 +305,298 @@ export default function TaskCollaborationDialog({
             </strong>
           </div>
 
+          <p className="collaboration-setup-hint">
+            {t("collaboration.dialog.setupHint")}
+          </p>
           <section
-            className="task-collaboration-role-table"
+            className="collaboration-setup-roles"
             aria-label={t("collaboration.dialog.roleSettings")}
           >
-            <div className="task-collaboration-role-head" aria-hidden="true">
-              <span>{t("collaboration.dialog.columns.role")}</span>
-              <span>{t("collaboration.dialog.columns.agent")}</span>
-              <span>{t("collaboration.dialog.columns.responsibility")}</span>
-              <span>{t("collaboration.dialog.columns.context")}</span>
-              <span>{t("collaboration.dialog.columns.dependencies")}</span>
-              <span>{t("collaboration.dialog.columns.workspace")}</span>
-              <span />
-            </div>
             {assignments.map((assignment) => {
-              const selectedRuntime = available.find(
-                (item) => item.id === assignment.runtimeId,
-              );
+              const preset = presetFor(assignment.role);
+              const role =
+                assignment.role || t("collaboration.dialog.roleFallback");
               return (
-                <div
-                  className="task-collaboration-role-row"
-                  key={assignment.id || assignment.role}
+                <article
+                  className="collaboration-setup-role"
+                  key={assignment.id}
                 >
-                  <input
-                    aria-label={t("collaboration.dialog.role")}
-                    value={assignment.role}
-                    onChange={(event) =>
-                      updateAssignment(assignment.id, {
-                        role: event.target.value,
-                      })
-                    }
-                  />
-                  <label className="task-collaboration-agent-picker">
-                    <span
-                      className="task-collaboration-agent-avatar"
-                      style={
-                        selectedRuntime?.color
-                          ? { background: selectedRuntime.color }
-                          : undefined
-                      }
+                  <div className="collaboration-setup-main">
+                    <label>
+                      <span>{t("collaboration.dialog.columns.role")}</span>
+                      <select
+                        aria-label={t("collaboration.dialog.role")}
+                        value={preset}
+                        onChange={(event) =>
+                          choosePreset(assignment.id, event.target.value)
+                        }
+                      >
+                        {COLLABORATION_ROLE_PRESETS.map((item) => (
+                          <option key={item.key} value={item.key}>
+                            {t(
+                              "collaboration.dialog.presets." +
+                                item.key +
+                                ".role",
+                            )}
+                          </option>
+                        ))}
+                        <option value="custom">
+                          {t("collaboration.dialog.customRole")}
+                        </option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>{t("collaboration.dialog.columns.agent")}</span>
+                      <CollaborationAgentPicker
+                        label={t("collaboration.dialog.agentLabel", { role })}
+                        value={assignment.runtimeId}
+                        runtimes={runtimes}
+                        placeholder={t("collaboration.dialog.leaveUnassigned")}
+                        onChange={(runtimeId) =>
+                          updateAssignment(assignment.id, {
+                            runtimeId,
+                            ...(runtimeId !== assignment.runtimeId
+                              ? {
+                                  workspaceAccess: undefined,
+                                  workspaceRef: undefined,
+                                }
+                              : {}),
+                          })
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="icon-btn task-collaboration-remove-role"
+                      aria-label={t("collaboration.dialog.removeRole")}
+                      title={t("collaboration.dialog.removeRole")}
+                      onClick={() => removeRole(assignment.id)}
                     >
-                      {selectedRuntime?.avatar ? (
-                        <img src={selectedRuntime.avatar} alt="" />
-                      ) : (
-                        <Bot size={15} />
-                      )}
-                    </span>
-                    <select
-                      aria-label={t("collaboration.dialog.agentLabel", {
-                        role:
-                          assignment.role ||
-                          t("collaboration.dialog.roleFallback"),
-                      })}
-                      value={assignment.runtimeId || ""}
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  {preset === "custom" ? (
+                    <input
+                      aria-label={t("collaboration.dialog.role")}
+                      value={assignment.role}
                       onChange={(event) =>
                         updateAssignment(assignment.id, {
-                          runtimeId: event.target.value || undefined,
+                          role: event.target.value,
                         })
                       }
-                    >
-                      <option value="">
-                        {t("collaboration.dialog.leaveUnassigned")}
-                      </option>
-                      {available.map((runtime) => (
-                        <option value={runtime.id} key={runtime.id}>
-                          {runtime.name}
-                        </option>
+                    />
+                  ) : null}
+                  <dl className="collaboration-setup-description">
+                    <div>
+                      <dt>
+                        {t("collaboration.dialog.columns.responsibility")}
+                      </dt>
+                      <dd>{assignment.responsibility || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("collaboration.dialog.columns.context")}</dt>
+                      <dd>
+                        {assignment.context ||
+                          t("collaboration.dialog.taskContext")}
+                      </dd>
+                    </div>
+                  </dl>
+                  <details className="collaboration-setup-customize">
+                    <summary>{t("collaboration.dialog.editDetails")}</summary>
+                    <label>
+                      {t("collaboration.dialog.columns.responsibility")}
+                      <textarea
+                        aria-label={t(
+                          "collaboration.dialog.responsibilityLabel",
+                          { role },
+                        )}
+                        value={assignment.responsibility || ""}
+                        onChange={(event) =>
+                          updateAssignment(assignment.id, {
+                            responsibility: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      {t("collaboration.dialog.columns.context")}
+                      <input
+                        aria-label={t("collaboration.dialog.contextLabel", {
+                          role,
+                        })}
+                        value={assignment.context || ""}
+                        onChange={(event) =>
+                          updateAssignment(assignment.id, {
+                            context: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <div className="collaboration-setup-context-options">
+                      {COLLABORATION_CONTEXT_SOURCES.map((source) => (
+                        <label key={source}>
+                          <input
+                            type="checkbox"
+                            checked={
+                              !assignment.contextSources ||
+                              assignment.contextSources.includes(source)
+                            }
+                            onChange={(event) => {
+                              const sources =
+                                assignment.contextSources ||
+                                COLLABORATION_CONTEXT_SOURCES;
+                              const contextSources = event.target.checked
+                                ? [...sources, source]
+                                : sources.filter((item) => item !== source);
+                              updateAssignment(assignment.id, {
+                                contextSources,
+                                context: [
+                                  t("collaboration.dialog.sources.task"),
+                                  ...contextSources.map((item) =>
+                                    t("collaboration.dialog.sources." + item),
+                                  ),
+                                ].join(" · "),
+                              });
+                            }}
+                          />
+                          {t("collaboration.dialog.sources." + source)}
+                        </label>
                       ))}
-                    </select>
-                  </label>
-                  <input
-                    aria-label={t("collaboration.dialog.responsibilityLabel", {
-                      role:
-                        assignment.role ||
-                        t("collaboration.dialog.roleFallback"),
-                    })}
-                    value={assignment.responsibility || ""}
-                    onChange={(event) =>
-                      updateAssignment(assignment.id, {
-                        responsibility: event.target.value,
-                      })
-                    }
-                  />
-                  <input
-                    aria-label={t("collaboration.dialog.contextLabel", {
-                      role:
-                        assignment.role ||
-                        t("collaboration.dialog.roleFallback"),
-                    })}
-                    value={assignment.context || ""}
-                    onChange={(event) =>
-                      updateAssignment(assignment.id, {
-                        context: event.target.value,
-                      })
-                    }
-                  />
-                  <select
-                    multiple
-                    className="task-collaboration-dependency-picker"
-                    aria-label={t("collaboration.dialog.dependenciesLabel", {
-                      role:
-                        assignment.role ||
-                        t("collaboration.dialog.roleFallback"),
-                    })}
-                    title={t("collaboration.dialog.dependenciesTitle")}
-                    value={assignment.dependsOn || []}
-                    onChange={(event) =>
-                      updateAssignment(assignment.id, {
-                        dependsOn: Array.from(
-                          event.currentTarget.selectedOptions,
-                        ).map((option) => option.value),
-                      })
-                    }
-                  >
+                    </div>
+                    <small>{t("collaboration.dialog.contextHint")}</small>
+                    {preset !== "custom" ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => choosePreset(assignment.id, preset)}
+                      >
+                        {t("collaboration.dialog.resetPreset")}
+                      </button>
+                    ) : null}
+                  </details>
+                </article>
+              );
+            })}
+          </section>
+          <details className="collaboration-setup-advanced">
+            <summary>{t("collaboration.dialog.advanced")}</summary>
+            <p>{t("collaboration.dialog.orderHint")}</p>
+            {assignments.map((assignment, index) => {
+              const selected = runtimes.find(
+                (item) => item.id === assignment.runtimeId,
+              );
+              const role =
+                assignment.role || t("collaboration.dialog.roleFallback");
+              const explicit = assignments.some(
+                (item) => item.dependsOn !== undefined,
+              );
+              const dependencies = explicit
+                ? assignment.dependsOn || []
+                : index
+                  ? [assignments[index - 1].id!]
+                  : [];
+              return (
+                <div
+                  className="collaboration-setup-advanced-row"
+                  key={assignment.id}
+                >
+                  <strong>{role}</strong>
+                  <fieldset>
+                    <legend>
+                      {t("collaboration.dialog.columns.dependencies")}
+                    </legend>
                     {assignments
-                      .filter((candidate) => candidate.id !== assignment.id)
+                      .filter((item) => item.id !== assignment.id)
                       .map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {candidate.role ||
-                            t("collaboration.dialog.unnamedRole")}
-                        </option>
+                        <label key={candidate.id}>
+                          <input
+                            type="checkbox"
+                            checked={dependencies.includes(candidate.id!)}
+                            onChange={() =>
+                              toggleDependency(assignment.id, candidate.id!)
+                            }
+                          />
+                          {candidate.role}
+                        </label>
                       ))}
-                  </select>
-                  <div className="task-collaboration-workspace-access">
+                  </fieldset>
+                  <label>
+                    {t("collaboration.dialog.accessSummary")}
                     <select
                       aria-label={t("collaboration.dialog.workspaceLabel", {
-                        role:
-                          assignment.role ||
-                          t("collaboration.dialog.roleFallback"),
+                        role,
                       })}
-                      value={workspaceAccessFor(assignment)}
+                      value={assignment.workspaceAccess || ""}
                       onChange={(event) =>
                         updateAssignment(assignment.id, {
                           workspaceAccess: (event.target.value ||
                             undefined) as TaskCollaborationAssignment["workspaceAccess"],
-                          ...(event.target.value !== "remote_mapping"
-                            ? { workspaceRef: undefined }
-                            : {}),
+                          workspaceRef:
+                            event.target.value === "remote_mapping"
+                              ? assignment.workspaceRef
+                              : undefined,
                         })
                       }
                     >
-                      {selectedRuntime?.location !== "remote" ? (
+                      <option value="">
+                        {t("collaboration.dialog.autoAccess")}
+                      </option>
+                      {selected?.location !== "remote" ? (
                         <option value="local_direct">
                           {t("collaboration.dialog.localDirect")}
                         </option>
-                      ) : null}
-                      {selectedRuntime?.location === "remote" ? (
-                        <option value="">
-                          {t("collaboration.dialog.runtimeDevice")}
+                      ) : (
+                        <>
+                          <option value="remote_mapping">
+                            {t("collaboration.dialog.remoteMapping")}
+                          </option>
+                          <option value="evidence_bundle">
+                            {t("collaboration.dialog.evidenceBundle")}
+                          </option>
+                        </>
+                      )}
+                      {selected?.location !== "remote" &&
+                      assignment.workspaceAccess === "evidence_bundle" ? (
+                        <option value="evidence_bundle">
+                          {t("collaboration.dialog.evidenceBundle")}
                         </option>
                       ) : null}
-                      {selectedRuntime?.location === "remote" ? (
-                        <option value="remote_mapping">
-                          {t("collaboration.dialog.remoteMapping")}
-                        </option>
-                      ) : null}
-                      <option value="evidence_bundle">
-                        {t("collaboration.dialog.evidenceBundle")}
-                      </option>
                     </select>
-                    {workspaceAccessFor(assignment) === "remote_mapping" ? (
-                      <input
-                        aria-label={t(
-                          "collaboration.dialog.remoteMappingLabel",
-                          {
-                            role:
-                              assignment.role ||
-                              t("collaboration.dialog.roleFallback"),
-                          },
-                        )}
-                        placeholder={t(
-                          "collaboration.dialog.remoteMappingPlaceholder",
-                        )}
-                        value={assignment.workspaceRef || ""}
-                        onChange={(event) =>
-                          updateAssignment(assignment.id, {
-                            workspaceRef: event.target.value,
-                          })
-                        }
-                      />
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    className="icon-btn task-collaboration-remove-role"
-                    title={t("collaboration.dialog.removeRole")}
-                    aria-label={t("collaboration.dialog.removeRole")}
-                    onClick={() => removeRole(assignment.id)}
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  </label>
+                  {assignment.workspaceAccess === "remote_mapping" ? (
+                    <input
+                      aria-label={t("collaboration.dialog.remoteMappingLabel", {
+                        role,
+                      })}
+                      placeholder={t(
+                        "collaboration.dialog.remoteMappingPlaceholder",
+                      )}
+                      value={assignment.workspaceRef || ""}
+                      onChange={(event) =>
+                        updateAssignment(assignment.id, {
+                          workspaceRef: event.target.value,
+                        })
+                      }
+                    />
+                  ) : null}
                 </div>
               );
             })}
-          </section>
-          <p className="task-collaboration-dag-hint">
-            {t("collaboration.dialog.dagHint")}
-          </p>
+            <p>{t("collaboration.dialog.accessHint")}</p>
+          </details>
           {orchestrationError ? (
-            <p className="task-collaboration-dag-error" role="alert">
+            <p
+              className={
+                orchestrationError === t("collaboration.dialog.completeTeam")
+                  ? "collaboration-setup-hint"
+                  : "task-collaboration-dag-error"
+              }
+              role={
+                orchestrationError === t("collaboration.dialog.completeTeam")
+                  ? "status"
+                  : "alert"
+              }
+            >
               {orchestrationError}
             </p>
           ) : null}
@@ -461,20 +628,6 @@ export default function TaskCollaborationDialog({
             </>
           )}
           <div className="task-collaboration-composer-tools">
-            <span
-              title={
-                draft.projectName ||
-                draft.projectFolder ||
-                t("collaboration.dialog.noProject")
-              }
-            >
-              <Folder size={16} />{" "}
-              {draft.projectName ||
-                projectName(
-                  draft.projectFolder,
-                  t("collaboration.dialog.noProject"),
-                )}
-            </span>
             <span>{t("collaboration.dialog.startHint")}</span>
             <button
               type="button"

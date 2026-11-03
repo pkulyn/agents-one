@@ -39,6 +39,78 @@ describe("task collaboration store", () => {
     rmSync(testHome, { recursive: true, force: true });
   });
 
+  it("round-trips bounded context selections without changing legacy context", async () => {
+    const store = await loadStore();
+    const saved = store.saveTaskCollaboration({
+      taskId: "scopes",
+      title: "Scopes",
+      assignments: [
+        {
+          id: "r",
+          role: "Research",
+          runtimeId: "pi",
+          context: "Custom text",
+          contextSources: ["project", "project", "invalid"] as never,
+        },
+        { id: "legacy", role: "Legacy", runtimeId: "pi", context: "All" },
+      ],
+    });
+    expect(saved.assignments[0].contextSources).toEqual(["project"]);
+    expect(store.getTaskCollaboration("scopes")?.assignments[0].context).toBe(
+      "Custom text",
+    );
+    expect(
+      store.getTaskCollaboration("scopes")?.assignments[1].contextSources,
+    ).toBeUndefined();
+  });
+
+  it("records text review references only for actual succeeded handoffs", async () => {
+    const store = await loadStore();
+    store.saveTaskCollaboration({
+      taskId: "text-review",
+      title: "Text",
+      assignments: [
+        { id: "research", role: "Research", runtimeId: "pi" },
+        { id: "review", role: "Review and acceptance", runtimeId: "codex" },
+      ],
+    });
+    const record = store.updateTaskCollaborationExecution({
+      taskId: "text-review",
+      execution: {
+        status: "succeeded",
+        updatedAt: Date.now(),
+        roleRuns: [
+          {
+            assignmentId: "research",
+            role: "Research",
+            status: "succeeded",
+            handoff: "Verified sources",
+          },
+          {
+            assignmentId: "review",
+            role: "Review and acceptance",
+            status: "succeeded",
+            handoff: "Review",
+          },
+        ],
+        acceptance: {
+          assignmentId: "review",
+          status: "passed",
+          conclusion: "Reviewed H1",
+          reviewedArtifactIds: [],
+          reviewedHandoffIds: ["research", "unknown"],
+          createdAt: Date.now(),
+        },
+      },
+    });
+    expect(record?.execution?.acceptance?.reviewedHandoffIds).toEqual([
+      "research",
+    ]);
+    expect(
+      store.getTaskCollaboration("text-review")?.execution?.artifacts || [],
+    ).toEqual([]);
+  });
+
   it("keeps configured roles when a late session update has no assignments", async () => {
     const store = await loadStore();
     store.saveTaskCollaboration({
