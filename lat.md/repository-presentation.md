@@ -28,7 +28,7 @@ The root `LICENSE` covers licensor-owned Agents One contributions. `THIRD_PARTY_
 
 Publishing development source and certifying a Windows installer are separate decisions with explicit evidence and known integration limits.
 
-Both READMEs link the public known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The README identifies Windows 0.2.0 as the current desktop release and retains the distinction between released binaries and later main-branch changes. Android 0.1.13-dev-debug is distributed separately as a debuggable prerelease with its own source identity and checksum; it does not change the Windows release.
+Both READMEs link the public known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The README identifies Windows 0.1.2 as the current desktop release and retains the distinction between released binaries and later main-branch changes. Android 0.1.13-dev-debug is distributed separately as a debuggable prerelease with its own source identity and checksum; it does not change the Windows release.
 
 ## Dependency audit gate
 
