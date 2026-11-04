@@ -6,7 +6,7 @@ Notable changes to Agents One are recorded here. Versions follow Semantic Versio
 
 Further Runtime and platform compatibility work is tracked in [known issues](KNOWN_ISSUES.md).
 
-## [0.2.0] - 2026-11-03
+## [0.1.2] - 2026-11-04
 
 ### Added
 
@@ -63,7 +63,7 @@ Further Runtime and platform compatibility work is tracked in [known issues](KNO
 - Windows household core acceptance passed, including installer startup, native OpenCode tasks, permissions, cancellation, tray recovery and same-version project-registration backup/restore. The final tray gesture change has additional focused automated regression coverage.
 - Cross-version upgrades and downgrades, every Runtime/model combination, macOS and Linux remain unqualified. See [known issues](KNOWN_ISSUES.md).
 
-[Unreleased]: https://github.com/pkulyn/agents-one/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/pkulyn/agents-one/releases/tag/v0.2.0
+[Unreleased]: https://github.com/pkulyn/agents-one/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/pkulyn/agents-one/releases/tag/v0.1.2
 [0.1.1]: https://github.com/pkulyn/agents-one/releases/tag/v0.1.1
 [0.1.0]: https://github.com/pkulyn/agents-one/releases/tag/v0.1.0

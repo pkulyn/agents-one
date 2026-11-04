@@ -78,6 +78,6 @@ This supplements the generated originals without assigning project MIT terms to 
 
 ## Stable version promotion
 
-Version 0.2.0 promotes the cumulative collaboration, attachment and native-input improvements into a new immutable Windows release, with matching root package and lockfile metadata.
+Version 0.1.2 promotes the cumulative collaboration, attachment and native-input improvements into a new immutable Windows release, with matching root package and lockfile metadata.
 
 A stable version number does not enable unsigned automatic updates. The release build still requires the signed-update build flag before updater code is loaded, and new installer hashes and source receipts identify the promoted package separately from its accepted candidate.
