@@ -75,7 +75,7 @@ The [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) lets additional agents implement
 
 | Component         | Current status                                                                                                                                                                     |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows desktop   | [0.2.0 stable Release](https://github.com/pkulyn/agents-one/releases/tag/v0.2.0), with x64 installer and portable EXE.                                                             |
+| Windows desktop   | [0.1.2 stable Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.2), with x64 installer and portable EXE.                                                             |
 | Android           | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev), Android 8.0 / API 26 or newer. Debug-signed, debuggable prerelease.                 |
 | Remote components | Plugin SDK **0.1.6**, Connector CLI **0.1.0**, Connect service **0.1.1**. Deploy from this repository; do not assume a published npm package or a project-operated public service. |
 | Other platforms   | No public macOS/Linux desktop or iOS binaries. Linux can host self-managed remote services.                                                                                        |
@@ -85,12 +85,12 @@ Windows core flows have passed acceptance within a limited scope; other models, 
 ### Install and verify on Windows
 
 1. Download one package and the matching `SHA256SUMS.txt` from the [official Release](https://github.com/pkulyn/agents-one/releases/latest):
-   - `agents-one-0.2.0-setup.exe`: recommended for most users; installs for the current Windows user without a system-wide installation requirement.
-   - `agents-one-0.2.0-portable.exe`: run from a writable local directory without installing. **Portable means no installer, not that data is stored beside the EXE**; see data locations below.
+   - `agents-one-0.1.2-setup.exe`: recommended for most users; installs for the current Windows user without a system-wide installation requirement.
+   - `agents-one-0.1.2-portable.exe`: run from a writable local directory without installing. **Portable means no installer, not that data is stored beside the EXE**; see data locations below.
 2. In your download directory, compare the SHA-256 against the **same filename** in the checksum file:
 
    ```powershell
-   Get-FileHash .\agents-one-0.2.0-setup.exe -Algorithm SHA256
+   Get-FileHash .\agents-one-0.1.2-setup.exe -Algorithm SHA256
    # For the portable package, use the matching portable.exe filename instead
    Get-Content .\SHA256SUMS.txt
    ```
