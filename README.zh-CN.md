@@ -73,7 +73,7 @@
 
 | 组件           | 当前情况                                                                                                                                               |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Windows 桌面端 | [0.2.0 正式 Release](https://github.com/pkulyn/agents-one/releases/tag/v0.2.0)，提供 x64 安装版和便携版。                                              |
+| Windows 桌面端 | [0.1.2 正式 Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.2)，提供 x64 安装版和便携版。                                              |
 | Android        | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev)，Android 8.0 / API 26 起；开发签名、可调试的预发布版本。 |
 | 远程接入组件   | Plugin SDK **0.1.6**、Connector CLI **0.1.0**、Connect 服务 **0.1.1**，均从本仓库部署；当前不依赖已发布的 npm 包或项目托管公共服务。                   |
 | 其他平台       | 当前不提供 macOS、Linux 桌面端及 iOS 的公开安装包。Linux 可用于自行部署远程服务。                                                                      |
@@ -83,12 +83,12 @@ Windows 核心流程已通过限定范围的验收；其他模型、远程服务
 ### Windows 安装与校验
 
 1. 从[官方 Release](https://github.com/pkulyn/agents-one/releases/latest)下载以下两种包之一，同时下载同一版本的 `SHA256SUMS.txt`：
-   - `agents-one-0.2.0-setup.exe`：普通用户推荐，按向导安装到当前用户目录，不要求系统级安装权限。
-   - `agents-one-0.2.0-portable.exe`：无需安装，放在可写的本地目录后运行。**便携指程序免安装，不代表数据保存在 EXE 旁边**；默认数据位置见下文。
+   - `agents-one-0.1.2-setup.exe`：普通用户推荐，按向导安装到当前用户目录，不要求系统级安装权限。
+   - `agents-one-0.1.2-portable.exe`：无需安装，放在可写的本地目录后运行。**便携指程序免安装，不代表数据保存在 EXE 旁边**；默认数据位置见下文。
 2. 在下载目录打开 PowerShell，检查哈希是否与清单中**相同文件名**的一行一致：
 
    ```powershell
-   Get-FileHash .\agents-one-0.2.0-setup.exe -Algorithm SHA256
+   Get-FileHash .\agents-one-0.1.2-setup.exe -Algorithm SHA256
    # 选择便携版时，改为对应的 portable.exe 文件名
    Get-Content .\SHA256SUMS.txt
    ```
