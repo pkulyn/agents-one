@@ -9,6 +9,8 @@ export interface RuntimeSkillDescriptor {
   trust: "local-user" | "project-unreviewed" | "runtime-managed";
   /** Discovery never grants executable Electron-main privileges. */
   executionBoundary: "runtime-subprocess" | "documentation-only";
+  /** One-specific preflight; the loader rechecks the file before use. */
+  oneIssue?: "invalid_name" | "unsafe_file" | "too_large" | "unreadable";
 }
 
 export interface RuntimeConnectorDescriptor {

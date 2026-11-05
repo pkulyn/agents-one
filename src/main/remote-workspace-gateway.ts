@@ -474,7 +474,7 @@ function ensureOperationSize(
   grant: RemoteWorkspaceGrant,
 ): Buffer {
   const bytes = Buffer.from(value, "utf8");
-  if (!bytes.length || bytes.length > grant.maxOperationBytes) {
+  if (bytes.length > grant.maxOperationBytes) {
     throw new Error("Workspace operation exceeds its approved size limit.");
   }
   return bytes;
@@ -590,6 +590,60 @@ export function createRemoteWorkspaceGrant(
   };
 }
 
+/** Main-only binary access used by controlled local document tools. */
+export function readWorkspaceBinary(
+  grant: RemoteWorkspaceGrant,
+  path: string,
+): { bytes: Buffer; relativePath: string; sha256: string } {
+  checkGrant(grant);
+  if (!grantOperations(grant).includes("read"))
+    throw new Error("Workspace read is not permitted.");
+  const target = ensureWithinGrant(grant, path, "Workspace path");
+  const info = lstatSync(target.absolutePath);
+  if (!info.isFile() || info.size > grant.maxOperationBytes)
+    throw new Error(
+      "Workspace file exceeds its approved read limit or is not a file.",
+    );
+  const bytes = readFileSync(target.absolutePath);
+  if (bytes.length > grant.maxOperationBytes)
+    throw new Error("Workspace file exceeds its approved read limit.");
+  return { bytes, relativePath: target.relativePath, sha256: sha256(bytes) };
+}
+
+/** Main-only binary write with the same grant and checksum policy as text. */
+export function writeWorkspaceBinary(
+  grant: RemoteWorkspaceGrant,
+  path: string,
+  bytes: Buffer,
+  expectedSha256?: string,
+  requireExpectedForExisting = false,
+): { relativePath: string; sha256: string; bytes: number } {
+  checkGrant(grant);
+  ensureWritable(grant);
+  if (!grantOperations(grant).includes("write"))
+    throw new Error("Workspace write is not permitted.");
+  if (!Buffer.isBuffer(bytes) || bytes.length > grant.maxOperationBytes)
+    throw new Error("Workspace operation exceeds its approved size limit.");
+  const target = ensureWithinGrant(grant, path, "Workspace path");
+  const info = lstatSync(target.absolutePath, { throwIfNoEntry: false });
+  if (info && (!info.isFile() || info.size > grant.maxOperationBytes))
+    throw new Error("Workspace destination is invalid or too large.");
+  const current = info ? readFileSync(target.absolutePath) : null;
+  if (current && requireExpectedForExisting && !expectedSha256)
+    throw new Error(
+      "Read the existing file and provide its checksum before replacement.",
+    );
+  assertExpectedHash(current, expectedSha256);
+  mkdirSync(dirname(target.absolutePath), { recursive: true });
+  assertNoSymlink(grant.rootPath, dirname(target.absolutePath));
+  writeFileSync(target.absolutePath, bytes, { flag: "w" });
+  return {
+    relativePath: target.relativePath,
+    sha256: sha256(bytes),
+    bytes: bytes.length,
+  };
+}
+
 /**
  * Executes exactly one request. Deletion never happens here: the result is a
  * confirmation requirement so the renderer can ask the local user first.
@@ -597,6 +651,7 @@ export function createRemoteWorkspaceGrant(
 export function executeRemoteWorkspaceRequest(
   grant: RemoteWorkspaceGrant,
   request: RemoteWorkspaceRequest,
+  options?: { requireExpectedForExisting?: boolean },
 ): RemoteWorkspaceResult {
   const finish = (
     status: RemoteWorkspaceResult["status"],
@@ -660,17 +715,23 @@ export function executeRemoteWorkspaceRequest(
       );
     }
     if (operation === "write") {
-      const bytes = ensureOperationSize(
-        assertText(
-          request.content,
-          "Workspace file content",
-          grant.maxOperationBytes,
-        ),
-        grant,
-      );
+      if (typeof request.content !== "string") {
+        throw new Error("Workspace file content is invalid.");
+      }
+      // File content is data, not an identifier: preserve leading/trailing
+      // whitespace and permit an intentionally empty file.
+      const bytes = ensureOperationSize(request.content, grant);
       const current = lstatSync(target.absolutePath, { throwIfNoEntry: false })
         ? readFileSync(target.absolutePath)
         : null;
+      if (
+        current &&
+        options?.requireExpectedForExisting &&
+        !request.expectedSha256
+      )
+        throw new Error(
+          "Read the existing file and provide its checksum before replacement.",
+        );
       assertExpectedHash(current, request.expectedSha256);
       mkdirSync(dirname(target.absolutePath), { recursive: true });
       assertNoSymlink(grant.rootPath, dirname(target.absolutePath));

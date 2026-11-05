@@ -14,6 +14,7 @@ const SUPPORTED_TRANSPORTS = new Set([
   "local-cli",
   "local-api",
   "local-web",
+  "local-sdk",
 ]);
 
 /** Independent rollout switch for the first real remote CLI adapter. It is

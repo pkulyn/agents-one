@@ -1,0 +1,78 @@
+import { randomUUID } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
+
+const idPattern = /^[a-z][a-z0-9-]{1,63}$/;
+const maximumBytes = 100 * 1024;
+function memoryPath(profileRoot: string, runtimeId: string): string {
+  if (!idPattern.test(runtimeId)) throw new Error("One runtime ID is invalid");
+  return join(profileRoot, "desktop", "one", runtimeId, "memory.md");
+}
+function assertNotSymlink(path: string): void {
+  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink())
+    throw new Error("One memory path cannot be a symbolic link");
+}
+export function readOneMemoryFile(
+  profileRoot: string,
+  runtimeId: string,
+): string {
+  const path = memoryPath(profileRoot, runtimeId);
+  for (const part of [
+    join(profileRoot, "desktop"),
+    join(profileRoot, "desktop", "one"),
+    dirname(path),
+    path,
+  ])
+    assertNotSymlink(part);
+  if (!existsSync(path)) return "";
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.size > maximumBytes)
+    throw new Error("One memory is invalid or too large");
+  return readFileSync(path, "utf8");
+}
+export function writeOneMemoryFile(
+  profileRoot: string,
+  runtimeId: string,
+  content: string,
+): void {
+  if (
+    typeof content !== "string" ||
+    Buffer.byteLength(content, "utf8") > maximumBytes ||
+    content.includes("\0")
+  )
+    throw new Error("One memory is invalid or too large");
+  const path = memoryPath(profileRoot, runtimeId);
+  const directory = dirname(path);
+  for (const part of [
+    join(profileRoot, "desktop"),
+    join(profileRoot, "desktop", "one"),
+    directory,
+    path,
+  ])
+    assertNotSymlink(part);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const temporary = join(directory, ".memory-" + randomUUID() + ".tmp");
+  try {
+    writeFileSync(temporary, content, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    renameSync(temporary, path);
+  } catch (error) {
+    try {
+      unlinkSync(temporary);
+    } catch {
+      /* Preserve the original error. */
+    }
+    throw error;
+  }
+}

@@ -1,3 +1,4 @@
+import type { RuntimeSkillDescriptor } from "../../../../shared/runtime-skills";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
@@ -46,6 +47,7 @@ type NewAgentType = "local" | "remote" | "web";
 
 const KIND_LABELS: Record<string, string> = {
   hermes: "Hermes Agent Runtime",
+  one: "One",
   codex: "Codex",
   "claude-code": "Claude Code",
   pi: "Pi Agent CLI",
@@ -107,6 +109,23 @@ function runtimeTemplate(
         adapterVersion: manifest.adapterVersion,
       }
     : {};
+  if (kind === "one") {
+    return {
+      id: "one-local",
+      name: "One",
+      kind,
+      connectionProfile: "local",
+      ...metadata,
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "",
+        model: "",
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+    };
+  }
   if (kind === "web-agent") {
     return {
       id: "doubao-web",
@@ -404,6 +423,88 @@ export default function AgentRuntimesPane({
   const remoteConnectionProfile = isRemoteConnection
     ? deriveAgentRuntimeConnectionProfile(draft)
     : undefined;
+  const isOne = draft.kind === "one" && draft.location === "local";
+  const [oneSkillOptions, setOneSkillOptions] = useState<
+    RuntimeSkillDescriptor[]
+  >([]);
+  const [oneSkillsState, setOneSkillsState] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [oneSkillsRefresh, setOneSkillsRefresh] = useState(0);
+  const oneMemoryRuntimeId = isOne ? selectedRuntime?.id : undefined;
+  const [oneMemory, setOneMemory] = useState("");
+  const [oneMemorySaved, setOneMemorySaved] = useState("");
+  const [oneMemoryLoadedFor, setOneMemoryLoadedFor] = useState<string | null>(
+    null,
+  );
+  const [oneMemoryError, setOneMemoryError] = useState<string | null>(null);
+  const [oneMemoryRefresh, setOneMemoryRefresh] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setOneMemoryLoadedFor(null);
+    setOneMemory("");
+    setOneMemorySaved("");
+    setOneMemoryError(null);
+    if (!oneMemoryRuntimeId || !window.agentsOneAPI.getOneRuntimeMemory) return;
+    void window.agentsOneAPI
+      .getOneRuntimeMemory(oneMemoryRuntimeId)
+      .then((value) => {
+        if (active) {
+          setOneMemory(value);
+          setOneMemorySaved(value);
+          setOneMemoryLoadedFor(oneMemoryRuntimeId);
+        }
+      })
+      .catch((error) => {
+        if (active)
+          setOneMemoryError(
+            error instanceof Error ? error.message : String(error),
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [oneMemoryRuntimeId, oneMemoryRefresh]);
+  async function saveOneMemory(): Promise<void> {
+    if (!selectedRuntime || oneMemoryLoadedFor !== selectedRuntime.id) return;
+    try {
+      await window.agentsOneAPI.saveOneRuntimeMemory(
+        selectedRuntime.id,
+        oneMemory,
+      );
+      setOneMemorySaved(oneMemory);
+      setOneMemoryError(null);
+    } catch (error) {
+      setOneMemoryError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    if (!isOne) return;
+    if (!window.agentsOneAPI.listRuntimeSkills) {
+      setOneSkillsState("error");
+      return;
+    }
+    setOneSkillsState("loading");
+    void window.agentsOneAPI
+      .listRuntimeSkills()
+      .then((skills) => {
+        if (active) {
+          setOneSkillOptions(skills.filter((skill) => skill.source === "user"));
+          setOneSkillsState("ready");
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setOneSkillOptions([]);
+          setOneSkillsState("error");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOne, oneSkillsRefresh]);
   const isWebAgent =
     draft.kind === "web-agent" && Boolean(draft.config.webAgent);
 
@@ -448,7 +549,8 @@ export default function AgentRuntimesPane({
         return (
           (manifest.locations.includes("local") &&
             Boolean(manifest.localCliCommand)) ||
-          manifest.adapterId === "hermes"
+          manifest.adapterId === "hermes" ||
+          manifest.adapterId === "one"
         );
       }
       if (newAgentType === "remote") {
@@ -469,7 +571,11 @@ export default function AgentRuntimesPane({
     remoteConnectionProfile === "self-hosted-gateway";
   const supportsRemoteWorkspaceGateway =
     !isBuiltin && isRemoteConnection && usesUnifiedGateway;
-  const credentialLabel = usesUnifiedGateway ? "Gateway Token" : "";
+  const credentialLabel = isOne
+    ? t("settings.runtimeManager.oneApiKey")
+    : usesUnifiedGateway
+      ? "Gateway Token"
+      : "";
   const credentialActionLabel = usesUnifiedGateway
     ? t("settings.runtimeManager.gatewayTokenSave")
     : "";
@@ -505,6 +611,10 @@ export default function AgentRuntimesPane({
     draft.id.trim().length > 0 &&
     draft.name.trim().length > 0 &&
     (draft.location === "local" || !!draft.config.endpoint?.trim()) &&
+    (!isOne ||
+      (!!draft.config.endpoint?.trim() &&
+        !!draft.config.model?.trim() &&
+        (credentialConfigured || !!bearerToken.trim()))) &&
     (!draft.needsReauthorization || bearerToken.trim().length >= 8) &&
     (!requiresSelfHostedGatewayProbe || selfHostedGatewayProbeReady) &&
     (!isNew ||
@@ -565,7 +675,9 @@ export default function AgentRuntimesPane({
   async function probeEnabledRuntimes(
     items: AgentRuntimeDefinition[],
   ): Promise<void> {
-    const enabled = items.filter((runtime) => runtime.enabled);
+    const enabled = items.filter(
+      (runtime) => runtime.enabled && runtime.kind !== "one",
+    );
     const ids = enabled.map((runtime) => runtime.id);
     setProbingRuntimeIds(ids);
     setProbeFailures([]);
@@ -942,7 +1054,8 @@ export default function AgentRuntimesPane({
         });
       }
       if (
-        saved.config.remoteGateway?.protocol === "agents-one-v1" &&
+        (saved.config.remoteGateway?.protocol === "agents-one-v1" ||
+          saved.kind === "one") &&
         bearerToken.trim()
       ) {
         await window.agentsOneAPI.setAgentRuntimeBearerToken(
@@ -962,6 +1075,9 @@ export default function AgentRuntimesPane({
           workspaceGatewayToken.trim(),
         );
         setWorkspaceGatewayToken("");
+      }
+      if (saved.kind === "one") {
+        await window.agentsOneAPI.probeAgentRuntime(saved.id);
       }
       setFlash(t("settings.runtimeManager.configurationSaved"));
       await load(saved.id);
@@ -1116,7 +1232,9 @@ export default function AgentRuntimesPane({
             workspace: draft.config.workspace?.trim() || undefined,
           },
         },
-        requiresRemoteCredential ? bearerToken.trim() || undefined : undefined,
+        requiresRemoteCredential || isOne
+          ? bearerToken.trim() || undefined
+          : undefined,
       );
       setDraftProbe(probe);
       setDraftProbeKey(draftConnectionKey);
@@ -1226,7 +1344,15 @@ export default function AgentRuntimesPane({
   ): void {
     setDraft((current) => ({
       ...current,
-      config: { ...current.config, [key]: value },
+      config: {
+        ...current.config,
+        ...(current.kind === "one" &&
+        (key === "model" || key === "endpoint") &&
+        value !== current.config[key]
+          ? { oneContextWindow: undefined, oneImageInput: undefined }
+          : {}),
+        [key]: value,
+      },
     }));
   }
 
@@ -1768,17 +1894,19 @@ export default function AgentRuntimesPane({
                         };
                       });
                     }}
-                    disabled={isBuiltin}
+                    disabled={isBuiltin || (!isNew && isOne)}
                   >
                     {(isNew
                       ? newRuntimeKinds
                       : Array.from(
-                          new Set([
-                            ...adapterManifests.flatMap(
-                              (manifest) => manifest.kinds,
-                            ),
-                            draft.kind,
-                          ]),
+                          new Set(
+                            [
+                              ...adapterManifests.flatMap(
+                                (manifest) => manifest.kinds,
+                              ),
+                              draft.kind,
+                            ].filter((kind) => kind !== "one" || isOne),
+                          ),
                         )
                     ).map((kind) => (
                       <option key={kind} value={kind}>
@@ -1794,7 +1922,7 @@ export default function AgentRuntimesPane({
                   )}
                 </label>
 
-                {!isWebAgent && !isNew && (
+                {!isWebAgent && !isOne && !isNew && (
                   <label className="settings-field">
                     <span className="settings-field-label">
                       {t("settings.runtimeManager.transport")}
@@ -2026,6 +2154,378 @@ export default function AgentRuntimesPane({
                     )}
                   </>
                 )}
+              </div>
+            ) : isOne ? (
+              <div className="agent-runtime-form-grid">
+                <label className="settings-field">
+                  <span className="settings-field-label">
+                    {t("settings.runtimeManager.oneProvider")}
+                  </span>
+                  <select
+                    className="input"
+                    aria-label={t("settings.runtimeManager.oneProvider")}
+                    value={
+                      draft.config.endpoint ===
+                      "https://ark.cn-beijing.volces.com/api/plan/v3"
+                        ? "ark-agent-plan"
+                        : draft.config.endpoint === "https://api.deepseek.com"
+                          ? "deepseek"
+                          : draft.config.endpoint ===
+                              "https://api.openai.com/v1"
+                            ? "openai"
+                            : "custom"
+                    }
+                    onChange={(event) => {
+                      const preset =
+                        event.target.value === "ark-agent-plan"
+                          ? {
+                              endpoint:
+                                "https://ark.cn-beijing.volces.com/api/plan/v3",
+                              model: "doubao-seed-2.0-mini",
+                              oneContextWindow: 262144,
+                              oneImageInput: true,
+                            }
+                          : event.target.value === "deepseek"
+                            ? {
+                                endpoint: "https://api.deepseek.com",
+                                model: "deepseek-flash",
+                              }
+                            : event.target.value === "openai"
+                              ? {
+                                  endpoint: "https://api.openai.com/v1",
+                                  model: "gpt-4.1-mini",
+                                  oneImageInput: true,
+                                }
+                              : { endpoint: "", model: "" };
+                      setDraft((current) => ({
+                        ...current,
+                        config: {
+                          ...current.config,
+                          ...(preset.model !== current.config.model ||
+                          preset.endpoint !== current.config.endpoint
+                            ? {
+                                oneContextWindow: undefined,
+                                oneImageInput: undefined,
+                              }
+                            : {}),
+                          ...preset,
+                        },
+                      }));
+                    }}
+                  >
+                    <option value="custom">
+                      {t("settings.runtimeManager.oneCustomProvider")}
+                    </option>
+                    <option value="ark-agent-plan">火山方舟 Agent Plan</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="openai">OpenAI</option>
+                  </select>
+                </label>
+                <label className="settings-field">
+                  <span className="settings-field-label">
+                    {t("settings.runtimeManager.oneEndpoint")}
+                  </span>
+                  <input
+                    className="input"
+                    type="url"
+                    aria-label={t("settings.runtimeManager.oneEndpoint")}
+                    value={draft.config.endpoint || ""}
+                    onChange={(event) =>
+                      updateConfig("endpoint", event.target.value)
+                    }
+                    placeholder="https://api.example.com/v1"
+                  />
+                  <span className="settings-field-hint">
+                    {t("settings.runtimeManager.oneEndpointHint")}
+                  </span>
+                </label>
+                <label className="settings-field">
+                  <span className="settings-field-label">
+                    {t("settings.runtimeManager.oneModel")}
+                  </span>
+                  <input
+                    className="input"
+                    aria-label={t("settings.runtimeManager.oneModel")}
+                    value={draft.config.model || ""}
+                    onChange={(event) =>
+                      updateConfig("model", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="settings-field">
+                  <span className="settings-field-label">
+                    {t("settings.runtimeManager.oneApiKey")}
+                  </span>
+                  <input
+                    className="input"
+                    type="password"
+                    autoComplete="new-password"
+                    aria-label={t("settings.runtimeManager.oneApiKey")}
+                    value={bearerToken}
+                    placeholder={
+                      credentialConfigured
+                        ? t("settings.runtimeManager.configured")
+                        : "API Key"
+                    }
+                    onChange={(event) => {
+                      setBearerToken(event.target.value);
+                      setCredentialRevision((current) => current + 1);
+                    }}
+                  />
+                  <span className="settings-field-hint">
+                    {t("settings.runtimeManager.oneCredentialHint")}
+                  </span>
+                  {selectedRuntime && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => void saveBearerToken()}
+                      disabled={savingCredential || !bearerToken.trim()}
+                    >
+                      {t("settings.runtimeManager.oneSaveKey")}
+                    </button>
+                  )}
+                </label>
+                <details
+                  className="agent-runtime-advanced"
+                  style={{ gridColumn: "1 / -1" }}
+                >
+                  <summary>{t("settings.runtimeManager.oneAdvanced")}</summary>
+                  <div className="agent-runtime-form-grid">
+                    <label className="settings-field">
+                      <span className="settings-field-label">
+                        {t("settings.runtimeManager.oneContextWindow")}
+                      </span>
+                      <input
+                        className="input"
+                        type="number"
+                        min={4096}
+                        max={2000000}
+                        step={1}
+                        aria-label={t(
+                          "settings.runtimeManager.oneContextWindow",
+                        )}
+                        value={draft.config.oneContextWindow ?? ""}
+                        placeholder="32768"
+                        onChange={(event) =>
+                          updateConfig(
+                            "oneContextWindow",
+                            event.target.value === ""
+                              ? undefined
+                              : Number(event.target.value),
+                          )
+                        }
+                      />
+                      <span className="settings-field-hint">
+                        {t("settings.runtimeManager.oneContextWindowHint")}
+                      </span>
+                    </label>
+                    <div className="settings-field">
+                      <label className="agent-runtime-enabled">
+                        <input
+                          type="checkbox"
+                          checked={draft.config.oneImageInput === true}
+                          onChange={(event) =>
+                            updateConfig("oneImageInput", event.target.checked)
+                          }
+                        />
+                        {t("settings.runtimeManager.oneImageInput")}
+                      </label>
+                      <span className="settings-field-hint">
+                        {t("settings.runtimeManager.oneImageInputHint")}
+                      </span>
+                    </div>
+                    <div className="settings-field">
+                      <label className="agent-runtime-enabled">
+                        <input
+                          type="checkbox"
+                          checked={draft.config.oneMemoryEnabled === true}
+                          onChange={(event) =>
+                            updateConfig(
+                              "oneMemoryEnabled",
+                              event.target.checked,
+                            )
+                          }
+                        />
+                        {t("settings.runtimeManager.oneMemoryEnabled")}
+                      </label>
+                      <span className="settings-field-hint">
+                        {t("settings.runtimeManager.oneMemoryHint")}
+                      </span>
+                      {selectedRuntime ? (
+                        <>
+                          <textarea
+                            className="input"
+                            rows={4}
+                            aria-label={t("settings.runtimeManager.oneMemory")}
+                            value={oneMemory}
+                            maxLength={100000}
+                            disabled={oneMemoryLoadedFor !== selectedRuntime.id}
+                            onChange={(event) =>
+                              setOneMemory(event.target.value)
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={
+                              oneMemoryLoadedFor !== selectedRuntime.id ||
+                              oneMemory === oneMemorySaved
+                            }
+                            onClick={() => void saveOneMemory()}
+                          >
+                            {t("settings.runtimeManager.oneSaveMemory")}
+                          </button>
+                          {oneMemoryError && (
+                            <span role="alert">
+                              {oneMemoryError}
+                              {oneMemoryLoadedFor !== selectedRuntime.id && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  onClick={() =>
+                                    setOneMemoryRefresh((value) => value + 1)
+                                  }
+                                >
+                                  {t("common.retry")}
+                                </button>
+                              )}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="settings-field-hint">
+                          {t("settings.runtimeManager.oneMemoryAfterSave")}
+                        </span>
+                      )}
+                    </div>
+                    <fieldset className="settings-field">
+                      <legend className="settings-field-label">
+                        {t("settings.runtimeManager.oneSkills")}
+                      </legend>
+                      <span className="settings-field-hint">
+                        {t("settings.runtimeManager.oneSkillsHint")}
+                      </span>
+                      {oneSkillsState === "error" && (
+                        <span role="alert">
+                          {t("settings.runtimeManager.oneSkillsLoadError")}
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() =>
+                              setOneSkillsRefresh((value) => value + 1)
+                            }
+                          >
+                            {t("settings.runtimeManager.oneSkillsRetry")}
+                          </button>
+                        </span>
+                      )}
+                      {oneSkillsState === "loading" && (
+                        <span className="settings-field-hint">
+                          {t("settings.runtimeManager.oneSkillsLoading")}
+                        </span>
+                      )}
+                      {oneSkillsState === "ready" &&
+                        (draft.config.oneSkills || [])
+                          .filter(
+                            (id) =>
+                              !oneSkillOptions.some((skill) => skill.id === id),
+                          )
+                          .map((id) => (
+                            <label className="agent-runtime-enabled" key={id}>
+                              <input
+                                type="checkbox"
+                                checked
+                                onChange={() =>
+                                  setDraft((current) => ({
+                                    ...current,
+                                    config: {
+                                      ...current.config,
+                                      oneSkills: (
+                                        current.config.oneSkills || []
+                                      ).filter((item) => item !== id),
+                                    },
+                                  }))
+                                }
+                              />
+                              {t("settings.runtimeManager.oneSkillMissing", {
+                                id,
+                              })}
+                            </label>
+                          ))}
+                      {oneSkillsState === "ready" &&
+                        oneSkillOptions.length === 0 && (
+                          <span className="settings-field-hint">
+                            {t("settings.runtimeManager.oneSkillsEmpty")}
+                          </span>
+                        )}
+                      {oneSkillOptions.map((skill) => (
+                        <label className="agent-runtime-enabled" key={skill.id}>
+                          <input
+                            type="checkbox"
+                            checked={(draft.config.oneSkills || []).includes(
+                              skill.id,
+                            )}
+                            disabled={
+                              Boolean(skill.oneIssue) &&
+                              !(draft.config.oneSkills || []).includes(skill.id)
+                            }
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                config: {
+                                  ...current.config,
+                                  oneSkills: event.target.checked
+                                    ? [
+                                        ...(current.config.oneSkills || []),
+                                        skill.id,
+                                      ]
+                                    : (current.config.oneSkills || []).filter(
+                                        (id) => id !== skill.id,
+                                      ),
+                                },
+                              }))
+                            }
+                          />
+                          {skill.name}
+                          {skill.oneIssue && (
+                            <small className="settings-field-hint">
+                              {t(
+                                "settings.runtimeManager.oneSkillIssue." +
+                                  skill.oneIssue,
+                              )}
+                            </small>
+                          )}
+                          <small className="settings-field-hint">
+                            {skill.id.startsWith("agents-user:")
+                              ? "~/.agents/skills"
+                              : "~/.codex/skills"}
+                          </small>
+                        </label>
+                      ))}
+                    </fieldset>
+                    <label className="settings-field">
+                      <span className="settings-field-label">
+                        {t("settings.runtimeManager.oneInstructions")}
+                      </span>
+                      <textarea
+                        className="input"
+                        aria-label={t(
+                          "settings.runtimeManager.oneInstructions",
+                        )}
+                        rows={4}
+                        maxLength={100000}
+                        value={draft.config.oneInstructions || ""}
+                        onChange={(event) =>
+                          updateConfig("oneInstructions", event.target.value)
+                        }
+                      />
+                      <span className="settings-field-hint">
+                        {t("settings.runtimeManager.oneInstructionsHint")}
+                      </span>
+                    </label>
+                  </div>
+                </details>
               </div>
             ) : isRemoteConnection ? (
               <>
