@@ -122,6 +122,30 @@ const machine = [
   "PATHEXT",
 ];
 Promise.all([
+  probe(
+    "powershell-modulepath",
+    "powershell.exe",
+    psArgs,
+    withKeys(["PSModulePath"]),
+  ),
+  probe(
+    "powershell-home",
+    "powershell.exe",
+    psArgs,
+    withKeys(["HOMEDRIVE", "HOMEPATH"]),
+  ),
+  probe(
+    "powershell-identity",
+    "powershell.exe",
+    psArgs,
+    withKeys(["USERNAME", "USERDOMAIN", "USERDOMAIN_ROAMINGPROFILE"]),
+  ),
+  probe(
+    "powershell-session",
+    "powershell.exe",
+    psArgs,
+    withKeys(["LOGONSERVER", "SESSIONNAME"]),
+  ),
   probe("powershell-paths", "powershell.exe", psArgs, withKeys(paths)),
   probe("powershell-user", "powershell.exe", psArgs, withKeys(user)),
   probe("powershell-machine", "powershell.exe", psArgs, withKeys(machine)),
