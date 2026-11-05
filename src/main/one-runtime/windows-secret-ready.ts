@@ -10,7 +10,7 @@ export async function waitForWindowsSecretMetadata(
   const pollMs = options.pollMs ?? 100;
   const deadline = Date.now() + timeoutMs;
   const path = join(userData, "Local State");
-  do {
+  while (Date.now() <= deadline) {
     try {
       const metadata = await stat(path);
       if (metadata.isFile() && metadata.size <= 2 * 1024 * 1024) {
@@ -28,6 +28,6 @@ export async function waitForWindowsSecretMetadata(
     }
     if (Date.now() >= deadline) break;
     await new Promise<void>((resolve) => setTimeout(resolve, pollMs));
-  } while (true);
+  }
   throw new Error("系统凭据保护尚未完成持久化，请稍候重试保存。");
 }
