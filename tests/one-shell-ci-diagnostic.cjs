@@ -81,7 +81,50 @@ const psArgs = [
   "-Command",
   "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Write-Output 'one-probe-ok'",
 ];
+const withKeys = (keys) => ({
+  ...restricted,
+  ...Object.fromEntries(
+    keys
+      .filter((key) => process.env[key] !== undefined)
+      .map((key) => [key, process.env[key]]),
+  ),
+});
+const paths = [
+  "SystemDrive",
+  "ComSpec",
+  "ProgramFiles",
+  "ProgramFiles(x86)",
+  "ProgramW6432",
+  "ProgramData",
+  "CommonProgramFiles",
+  "CommonProgramFiles(x86)",
+  "CommonProgramW6432",
+  "PUBLIC",
+  "ALLUSERSPROFILE",
+];
+const user = [
+  "PSModulePath",
+  "USERDOMAIN",
+  "USERNAME",
+  "USERDOMAIN_ROAMINGPROFILE",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "LOGONSERVER",
+  "SESSIONNAME",
+];
+const machine = [
+  "NUMBER_OF_PROCESSORS",
+  "PROCESSOR_ARCHITECTURE",
+  "PROCESSOR_IDENTIFIER",
+  "PROCESSOR_LEVEL",
+  "PROCESSOR_REVISION",
+  "OS",
+  "PATHEXT",
+];
 Promise.all([
+  probe("powershell-paths", "powershell.exe", psArgs, withKeys(paths)),
+  probe("powershell-user", "powershell.exe", psArgs, withKeys(user)),
+  probe("powershell-machine", "powershell.exe", psArgs, withKeys(machine)),
   probe("powershell-restricted", "powershell.exe", psArgs, restricted),
   probe("powershell-full", "powershell.exe", psArgs, process.env),
   probe(
