@@ -4982,6 +4982,183 @@ describe("RuntimeChat inputs and persistence", () => {
       "已完成第二轮确认并重新验证。",
     );
   });
+  it.each([false, true])(
+    "keeps private guided replies out of downstream prompts (DAG=%s)",
+    async (dag) => {
+      let implementationAttempt = 0;
+      startAgentRuntimeTask.mockImplementation(async (runtimeId: string) => ({
+        id:
+          runtimeId === "codex-local"
+            ? `run-implement-dialogue-${++implementationAttempt}`
+            : "run-test-after-dialogue",
+        runtimeId,
+        status: "running",
+        output: "",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }));
+      getAgentRuntimeRun.mockImplementation(async (id: string) => ({
+        id,
+        runtimeId: id.startsWith("run-implement-dialogue")
+          ? "codex-local"
+          : "claude-local",
+        status: "succeeded",
+        output:
+          id === "run-implement-dialogue-1"
+            ? "已按第一轮人工指令完成实施。"
+            : id === "run-implement-dialogue-2"
+              ? "已完成第二轮确认并重新验证。"
+              : "测试通过。",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        ...(id.startsWith("run-implement-dialogue")
+          ? { sessionId: "codex-dialogue-session" }
+          : {}),
+        ...(id.startsWith("run-implement-dialogue")
+          ? {
+              artifacts: [
+                {
+                  kind: "diff",
+                  label: "Git diff",
+                  content: "diff --git a/docs/guide.md PRIVATE_ARTIFACT_MARKER",
+                },
+              ],
+            }
+          : {}),
+      }));
+      render(
+        <RuntimeChat
+          runId="collaboration-resume"
+          runtime={piRuntime}
+          profile="default"
+          collaboration={{
+            taskId: "collaboration-resume-task",
+            assignments: [
+              {
+                id: "implement",
+                role: "实施",
+                runtimeId: "codex-local",
+                ...(dag ? { dependsOn: [] } : {}),
+              },
+              {
+                id: "test",
+                role: "测试",
+                runtimeId: "claude-local",
+                ...(dag ? { dependsOn: ["implement"] } : {}),
+              },
+            ],
+            execution: {
+              status: "waiting_for_user",
+              brief: "完成一个需要实施和测试的任务",
+              updatedAt: Date.now(),
+              activeAssignmentId: "implement",
+              roleRuns: [
+                {
+                  assignmentId: "implement",
+                  role: "实施",
+                  runtimeId: "codex-local",
+                  status: "waiting_for_user",
+                },
+                {
+                  assignmentId: "test",
+                  role: "测试",
+                  runtimeId: "claude-local",
+                  status: "blocked",
+                },
+              ],
+            },
+          }}
+          runtimeCatalog={{
+            "pi-local": piRuntime,
+            "codex-local": codexRuntime,
+            "claude-local": claudeRuntime,
+          }}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "与 Codex（实施）沟通" }),
+      );
+      fireEvent.click(screen.getByRole("checkbox"));
+      fireEvent.change(screen.getByLabelText("给当前角色的人工指令"), {
+        target: { value: "只修改 docs 目录，并说明改动文件。" },
+      });
+      fireEvent.change(screen.getByLabelText("本角色权限"), {
+        target: { value: "full_access" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "发送给此智能体" }));
+
+      await waitFor(() =>
+        expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1),
+      );
+      expect(startAgentRuntimeTask.mock.calls[0][0]).toBe("codex-local");
+      expect(startAgentRuntimeTask.mock.calls[0][1].prompt).toContain(
+        "【仅给本角色的人工指令】只修改 docs 目录",
+      );
+      expect(startAgentRuntimeTask.mock.calls[0][1]).toEqual(
+        expect.objectContaining({
+          mode: "full_access",
+          fullAccessConfirmed: true,
+        }),
+      );
+      await waitFor(() =>
+        expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            taskId: "collaboration-resume-task",
+            execution: expect.objectContaining({
+              status: "paused",
+              interventions: expect.arrayContaining([
+                expect.objectContaining({
+                  visibility: "role",
+                  assignmentId: "implement",
+                  accessMode: "full_access",
+                  response: "已按第一轮人工指令完成实施。",
+                }),
+              ]),
+            }),
+          }),
+          "default",
+        ),
+      );
+      expect(
+        screen.getAllByText("已按第一轮人工指令完成实施。").length,
+      ).toBeGreaterThan(0);
+
+      fireEvent.change(screen.getByLabelText("给当前角色的人工指令"), {
+        target: { value: "再确认一次测试结果。" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "发送给此智能体" }));
+      await waitFor(() =>
+        expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2),
+      );
+      expect(
+        startAgentRuntimeTask.mock.calls.map(([runtimeId]) => runtimeId),
+      ).toEqual(["codex-local", "codex-local"]);
+      expect(startAgentRuntimeTask.mock.calls[1][1]).toEqual(
+        expect.objectContaining({ sessionId: "codex-dialogue-session" }),
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "继续后续任务" }),
+        ).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "继续后续任务" }));
+      await waitFor(() =>
+        expect(startAgentRuntimeTask).toHaveBeenCalledTimes(3),
+      );
+      expect(startAgentRuntimeTask.mock.calls[2][0]).toBe("claude-local");
+      expect(startAgentRuntimeTask.mock.calls[2][1].prompt).not.toContain(
+        "只修改 docs 目录",
+      );
+      expect(startAgentRuntimeTask.mock.calls[2][1].prompt).not.toContain(
+        "已完成第二轮确认并重新验证。",
+      );
+      expect(startAgentRuntimeTask.mock.calls[2][1].prompt).not.toContain(
+        "PRIVATE_ARTIFACT_MARKER",
+      );
+    },
+  );
   it("keeps unsupported native input from cancelling or restarting the active run", async () => {
     getAgentRuntimeRun.mockResolvedValue({
       id: "run-1",
@@ -5111,6 +5288,67 @@ describe("RuntimeChat inputs and persistence", () => {
 });
 
 describe("Preset context transfer", () => {
+  it("filters historical private replies while retaining shared guidance and same-role context", () => {
+    const author = { id: "author", role: "Research", runtimeId: "pi-local" };
+    const reader = { id: "reader", role: "Analysis", runtimeId: "codex-local" };
+    const roles = [author, reader];
+    const intervention = {
+      id: "private",
+      assignmentId: "author",
+      visibility: "role" as const,
+      content: "PRIVATE_INSTRUCTION",
+      response: "PRIVATE_RESPONSE",
+      createdAt: 1,
+    };
+    const shared = {
+      id: "shared",
+      assignmentId: "author",
+      visibility: "shared" as const,
+      content: "SHARED_INSTRUCTION",
+      response: "SHARED_RESPONSE",
+      createdAt: 2,
+    };
+    const history = [
+      {
+        assignmentId: "author",
+        role: "Research",
+        status: "succeeded" as const,
+        handoff: "PRIVATE_RESPONSE",
+        runtimeRunId: "private-run",
+      },
+    ];
+    const privateArtifacts = [
+      {
+        id: "artifact",
+        assignmentId: "author",
+        role: "Research",
+        kind: "file" as const,
+        label: "PRIVATE_ARTIFACT",
+        source: "runtime_artifact" as const,
+        sourceRunId: "private-run",
+        createdAt: 1,
+      },
+    ];
+    const prompt = (recipient: typeof author, index: number): string =>
+      collaborationRolePrompt(
+        "BRIEF",
+        roles,
+        { "pi-local": piRuntime, "codex-local": codexRuntime },
+        recipient,
+        index,
+        undefined,
+        history,
+        [intervention, shared],
+        privateArtifacts,
+      );
+    expect(prompt(reader, 1)).not.toContain("PRIVATE_ARTIFACT");
+    expect(prompt(reader, 1)).not.toContain("PRIVATE_INSTRUCTION");
+    expect(prompt(reader, 1)).not.toContain("PRIVATE_RESPONSE");
+    expect(prompt(reader, 1)).toContain("SHARED_INSTRUCTION");
+    expect(prompt(author, 0)).toContain("PRIVATE_INSTRUCTION");
+    expect(prompt(author, 0)).toContain("PRIVATE_RESPONSE");
+  });
+
   it("keeps the brief while omitting deselected handoffs and keeps mandatory acceptance evidence", () => {
     const recipient = {
       id: "r",

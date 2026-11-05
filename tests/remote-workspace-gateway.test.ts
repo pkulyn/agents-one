@@ -84,6 +84,15 @@ describe("remote workspace gateway", () => {
       summary: expect.stringMatching(/changed/i),
     });
     expect(readFileSync(join(root, "existing.txt"), "utf8")).toBe("before");
+    expect(
+      executeRemoteWorkspaceRequest(active, {
+        id: "legacy-overwrite",
+        operation: "write",
+        path: "existing.txt",
+        content: "legacy",
+      }).status,
+    ).toBe("succeeded");
+    expect(readFileSync(join(root, "existing.txt"), "utf8")).toBe("legacy");
 
     expect(
       executeRemoteWorkspaceRequest(active, {
@@ -96,6 +105,24 @@ describe("remote workspace gateway", () => {
       status: "succeeded",
       data: { path: "nested/result.txt", sha256: hash("accepted result") },
     });
+  });
+
+  it("preserves whitespace and empty file contents during writes", () => {
+    const active = grant();
+    for (const [path, content] of [
+      ["spaces.txt", "  first\nsecond  \n"],
+      ["empty.txt", ""],
+    ]) {
+      const result = executeRemoteWorkspaceRequest(active, {
+        id: path,
+        operation: "write",
+        path,
+        content,
+      });
+      expect(result.status).toBe("succeeded");
+      expect(readFileSync(join(root, path), "utf8")).toBe(content);
+      expect(result.data?.sha256).toBe(hash(content));
+    }
   });
 
   it("treats a remote POSIX root slash as the granted project root", () => {

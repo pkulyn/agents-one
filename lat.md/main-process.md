@@ -277,3 +277,63 @@ The worker RPC carries unknown results until its caller selects a response type;
 A failed or destroyed native tray cannot turn closing the main window into an unreachable hidden process.
 
 The tray controller exposes actual availability. Closing without a tray minimizes the visible taskbar window while work is active and uses the existing graceful shutdown when idle; normal tray-backed background work keeps its close-to-tray behavior. A second instance restores the current main window or creates it again if destroyed. Main lifecycle and tray tests cover both native creation outcomes and subsequent recovery.
+
+## One SDK session foundation
+
+One is a separately registered local SDK runtime with an isolated Pi session and its own model configuration.
+
+[[src/main/one-runtime/session.ts#createOneSession]] requires an explicit workspace, app-owned state directory, model endpoint and runtime API key. It disables automatic Pi resource discovery and built-in tools, accepts only explicitly supplied host tools, and stores resumable sessions under the specified directory. Callers must enforce tool authorization and protect credentials; the SDK session alone is not a sandbox. External Pi CLI configuration and sessions remain independent.
+
+The app-owned worker protocol delegates tool requests to a Main-side callback; the worker cannot grant its own permissions. [[src/main/one-runtime/controller.ts#startOneWorker]] manages process exit and cancellation and passes credentials only through its private IPC channel. The One runtime and configuration form use this boundary; broader skills, memory, collaboration and delivery acceptance remain under development.
+
+[[src/main/one-runtime/workspace-tools.ts#createOneWorkspaceTools]] adapts the existing task-scoped workspace grant to One file tools. Read-only grants allow listing, reading and bounded search; write grants also allow writing, and deletion requires an explicit Main-side callback and a fresh file checksum. Authorization must be established by its Main caller.
+
+[[src/main/one-runtime/credentials.ts#setOneCredential]] uses an independent per-runtime key in OS-protected desktop secret storage and rejects plaintext fallback. Credential values are Main-only and must not be placed in runtime configuration or renderer responses.
+
+On Windows, the One credential-save IPC waits for [[src/main/one-runtime/windows-secret-ready.ts#waitForWindowsSecretMetadata]] before reporting success. This allows Chromium's OS-crypt metadata to reach the user-data directory after first use; a timeout reports an error instead of silently falling back to plaintext.
+
+One definitions are stored in the separate `oneAgentRuntimes` desktop configuration key. The registry reads experimental shared-array definitions and moves them on its next write; older versions preserve the separate top-level key when updating their own Runtime list. Backup restore disables One and requires new authorization when its endpoint is new, changed, or already requires reauthorization.
+
+[[src/main/one-runtime/workspace-binding.ts#resolveOneConversationWorkspace]] gives projectless conversations separate application-owned workspaces and binds SDK sessions before model dispatch. Model connectivity tests request a harmless real tool call; cached results prevent repeated automatic paid probes.
+
+[[src/main/one-runtime/revision.ts#oneDefinitionRevision]] fingerprints One's model configuration, instructions and selected skill contents. [[src/main/one-runtime/revision.ts#persistOneRunBinding]] saves a prepared Run-to-session binding before worker acknowledgement; Pi then appends matching metadata to its session. A prepared record alone does not prove that Pi persisted a user message or completed the Run.
+
+[[src/main/one-runtime/revision.ts#reconcileOneSessionBinding]] inspects a persisted Pi session tree for a matching binding and descendant user message. Successful Runtime completion requires this check against the agent's session directory and writes a separate committed receipt. [[src/main/one-runtime/revision.ts#reconcileEarlierOneBindings]] checks earlier prepared records on successful session resumption, recording only that the session message exists without inferring the prior Run outcome.
+
+[[src/main/one-runtime/skills.ts#loadOneSkills]] loads only explicitly selected user skill documents, without executing their scripts. [[src/main/one-runtime/memory.ts#readOneMemoryFile]] and [[src/main/one-runtime/memory.ts#writeOneMemoryFile]] keep editable One memory under the current profile and runtime; it is sent to the selected model only when enabled.
+
+The settings editor enables One memory changes only after the selected runtime's existing memory has loaded successfully. A delayed or failed read cannot replace a user's in-progress edit or authorize saving an unknown blank value. A failed read can be retried before editing.
+
+[[src/main/one-runtime/shell-tool.ts#executeOneShell]] is exposed only to explicitly confirmed full-access One runs; read-only and automatic modes use scoped workspace tools without arbitrary shell. Cancellation aborts host tools and waits for their cleanup; the process runs with normal user privileges and is not an OS sandbox.
+
+The host shell receives a restricted environment including the PowerShell module search path where available, while unrelated variables such as model credentials are not inherited.
+
+On Windows, a failed or stalled `taskkill` falls back to terminating the direct child and reports unconfirmed cleanup rather than claiming successful cancellation. A bounded cleanup deadline prevents an unresponsive child or inherited pipe from hanging the caller indefinitely.
+
+[[src/main/one-runtime/document-tools.ts#createOneDocumentTools]] provides scoped Word reading and creation with size limits and checksum-based replacement. One uses the existing Main-validated collaboration workspace when assigned to a projectless team, while individual projectless conversations retain private workspaces.
+
+One enables Pi session compaction using the configured model context window; absent an override, 32,768 tokens is a conservative estimate rather than provider metadata. The setting applies only to the configured default model. Session summaries persist in the One session store, automatic summaries may incur model calls, and cancellation must not save a partial summary.
+
+One model presets include Ark Agent Plan with its documented OpenAI-compatible endpoint and Doubao Seed 2.0 Mini context value; choosing a different provider or model clears a stale override.
+
+One limits each worker run to 64 logical model requests, counting automatic summaries and tool-result continuation calls at the SDK model runtime boundary. The progress stream exposes the current count; provider-internal HTTP retries are not included. One also supports session-scoped model IDs on its configured endpoint without changing its default model.
+
+The One settings form distinguishes skill discovery failure from an empty directory and allows removing selections that are no longer present. Discovery and explicit selection remain documentation-only and do not execute skill scripts.
+
+[[src/main/one-runtime/pdf-extract.ts#extractOnePdf]] parses workspace PDFs in a separate bounded process without model credentials. PDF text extraction limits file size, page count, output and duration; empty text is reported as possibly requiring OCR. One also extracts explicitly staged PDF attachments and retains their input hashes; the model receives extracted text as untrusted attachment data.
+
+[[src/main/one-runtime/attachments.ts#prepareOneAttachments]] validates and stages text/PDF inputs before dispatch, bounds extracted text and treats attachments as data. A cancellable preparation handle prevents PDF parsing from continuing after confirmed cancellation.
+
+One may send explicitly supplied image attachments only when image input is enabled for the configured default model. Staged copies retain input hashes; the SDK session stores image data, while runtime events omit it. Switching model or endpoint clears the setting, and session-only model overrides do not inherit it. Images are sent to the model provider and remain subject to its capabilities.
+
+One supports text steering through its existing live Runtime input entry. Pi consumes a queued update after the current tool calls and before the next model request; the host confirms delivery only after the SDK emits the corresponding user message. Pending confirmations reject on cancellation or worker termination.
+
+One requires the current SHA-256 from a prior read when replacing an existing workspace text or Word file; new files do not require a checksum. This stricter option applies only to One, while existing Gateway clients retain their prior write contract. Workspace search marks results incomplete when bounded, oversized or unreadable inputs are skipped.
+
+One discovers explicitly selectable user skill documents in both `~/.codex/skills` and `~/.agents/skills`. Their stable source-specific IDs distinguish same-named skills and prevent silent fallback when one source disappears; discovery and loading do not execute skill scripts.
+
+One skill discovery reports unsupported names, unsafe files, oversized documents and read errors per item. Invalid entries cannot be newly selected, while an existing invalid selection remains removable. Loading rechecks each file before dispatch.
+
+One worker integration tests exercise interrupted model streams followed by same-session recovery, malformed tool JSON rejected before host execution, and successful reconstruction of split tool arguments. These provider fault cases use a controlled local OpenAI-compatible test server.
+
+One memory path validation rejects both live and dangling symbolic links before reading or writing. Desktop integration checks that disabled memory is omitted from provider requests and each One identity sends only its own enabled memory.

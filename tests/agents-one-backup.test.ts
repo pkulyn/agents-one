@@ -842,6 +842,74 @@ describe("Agents One backup round trip", { timeout: 30_000 }, () => {
     }
   });
 
+  it("requires One reauthorization when a restored model endpoint is new or changed", async () => {
+    const one = (id: string, endpoint: string): Record<string, unknown> => ({
+      id,
+      name: id,
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: { agentTransport: "local-sdk", endpoint, model: "example" },
+    });
+    const source = readJson(join(sourceHome, "desktop.json"));
+    source.oneAgentRuntimes = [
+      one("one-same", "https://same.example/v1"),
+      one("one-changed", "https://new.example/v1"),
+      one("one-new", "https://new.example/v1"),
+      one("one-blocked", "https://blocked.example/v1"),
+    ];
+    (source.agentRuntimes as unknown[]).push(
+      one("one-legacy", "https://legacy.example/v1"),
+    );
+    writeFileSync(join(sourceHome, "desktop.json"), JSON.stringify(source));
+    writeFileSync(
+      join(targetHome, "desktop.json"),
+      JSON.stringify({
+        oneAgentRuntimes: [
+          one("one-same", "https://same.example/v1"),
+          one("one-changed", "https://old.example/v1"),
+          {
+            ...one("one-blocked", "https://blocked.example/v1"),
+            needsReauthorization: true,
+          },
+        ],
+        agentRuntimes: [one("one-legacy", "https://legacy.example/v1")],
+      }),
+    );
+    const archive = join(testRoot, "one-restore.agents-one-backup");
+    expect(
+      await exportAgentsOneBackupTo(archive, {
+        sourceHome,
+        appVersion: "test",
+      }),
+    ).toMatchObject({ success: true });
+    expect(
+      await restoreAgentsOneBackupFrom(archive, { targetHome }),
+    ).toMatchObject({ success: true });
+    const result = readJson(join(targetHome, "desktop.json"));
+    const entries = result.oneAgentRuntimes as Array<Record<string, unknown>>;
+    expect(entries.find((x) => x.id === "one-same")).toMatchObject({
+      enabled: true,
+    });
+    expect(entries.find((x) => x.id === "one-changed")).toMatchObject({
+      enabled: false,
+      needsReauthorization: true,
+    });
+    expect(entries.find((x) => x.id === "one-new")).toMatchObject({
+      enabled: false,
+      needsReauthorization: true,
+    });
+    expect(entries.find((x) => x.id === "one-blocked")).toMatchObject({
+      enabled: false,
+      needsReauthorization: true,
+    });
+    expect(
+      (result.agentRuntimes as Array<Record<string, unknown>>).find(
+        (x) => x.id === "one-legacy",
+      ),
+    ).toMatchObject({ enabled: true });
+  });
+
   it("exports, inspects, and restores default plus named-profile data", async () => {
     const archivePath = join(testRoot, "Agents One 迁移.agents-one-backup");
     const sourceDesktopHash = sha256(join(sourceHome, "desktop.json"));

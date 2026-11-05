@@ -27,3 +27,5 @@ Agents One 的桌面定时任务以稳定 `runtimeId` 关联智能体，在应�
 扩展不改变 `task-schedules.json` 的记录结构，也不重写未知字段或批量迁移历史计划。
 
 旧计划继续按其 `runtimeId` 解析；只要对应远程 Gateway 或 Web Agent 现已满足资格门禁，旧记录也能在下一次到期时执行。既有本地 CLI 计划、项目 `workspaceId`、并发游标和运行历史保持原语义。
+
+One is eligible as a local SDK target when its endpoint and model are configured. It continues to use the existing task queue and its explicit access mode.

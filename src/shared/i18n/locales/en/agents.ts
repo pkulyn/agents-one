@@ -125,6 +125,8 @@ export default {
   close: "Close",
   kindWebAgent: "Web Agent",
   transportLocalCli: "Local CLI",
+  connectionModelApi: "Model API",
+  transportLocalSdk: "Local SDK",
   transportLocalApi: "Local API",
   transportLocalWeb: "Embedded web",
   sectionLocal: "Local Agents",

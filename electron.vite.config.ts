@@ -75,6 +75,39 @@ export default defineConfig({
               source: bundle.outputFiles[0].text,
             });
           }
+          // Pi is ESM but has CommonJS dependencies that dynamically require Node
+          // built-ins. The banner supplies require inside the isolated ESM worker.
+          const oneWorker = buildSync({
+            entryPoints: [resolve("src/main/one-runtime/worker.ts")],
+            bundle: true,
+            platform: "node",
+            format: "esm",
+            banner: {
+              js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
+            },
+            write: false,
+          });
+          this.emitFile({
+            type: "asset",
+            fileName: "one-runtime-worker.mjs",
+            source: oneWorker.outputFiles[0].text,
+          });
+          const pdfWorker = buildSync({
+            entryPoints: [resolve("src/main/one-runtime/pdf-worker.ts")],
+            bundle: true,
+            platform: "node",
+            format: "esm",
+            external: ["@napi-rs/canvas"],
+            banner: {
+              js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
+            },
+            write: false,
+          });
+          this.emitFile({
+            type: "asset",
+            fileName: "one-pdf-worker.mjs",
+            source: pdfWorker.outputFiles[0].text,
+          });
         },
       },
     ],
@@ -96,6 +129,8 @@ export default defineConfig({
           "electron-updater",
           "i18next",
           "mammoth",
+          "docx",
+          "jszip",
           "tar",
           "ws",
           "yaml",
