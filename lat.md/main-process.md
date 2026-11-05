@@ -302,6 +302,8 @@ One definitions are stored in the separate `oneAgentRuntimes` desktop configurat
 
 [[src/main/one-runtime/skills.ts#loadOneSkills]] loads only explicitly selected user skill documents, without executing their scripts. [[src/main/one-runtime/memory.ts#readOneMemoryFile]] and [[src/main/one-runtime/memory.ts#writeOneMemoryFile]] keep editable One memory under the current profile and runtime; it is sent to the selected model only when enabled.
 
+A new runtime connection probe is bound to its runtime ID as well as its model connection and credential revision; changing the ID requires a fresh probe.
+
 The settings editor enables One memory changes only after the selected runtime's existing memory has loaded successfully. A delayed or failed read cannot replace a user's in-progress edit or authorize saving an unknown blank value. A failed read can be retried before editing.
 
 [[src/main/one-runtime/shell-tool.ts#executeOneShell]] is exposed only to explicitly confirmed full-access One runs; read-only and automatic modes use scoped workspace tools without arbitrary shell. Cancellation aborts host tools and waits for their cleanup; the process runs with normal user privileges and is not an OS sandbox.
