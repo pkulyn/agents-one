@@ -434,9 +434,13 @@ export default function AgentRuntimesPane({
   const oneMemoryRuntimeId = isOne ? selectedRuntime?.id : undefined;
   const [oneMemory, setOneMemory] = useState("");
   const [oneMemorySaved, setOneMemorySaved] = useState("");
+  const [oneMemoryLoadedFor, setOneMemoryLoadedFor] = useState<string | null>(
+    null,
+  );
   const [oneMemoryError, setOneMemoryError] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
+    setOneMemoryLoadedFor(null);
     setOneMemory("");
     setOneMemorySaved("");
     setOneMemoryError(null);
@@ -447,6 +451,7 @@ export default function AgentRuntimesPane({
         if (active) {
           setOneMemory(value);
           setOneMemorySaved(value);
+          setOneMemoryLoadedFor(oneMemoryRuntimeId);
         }
       })
       .catch((error) => {
@@ -460,7 +465,7 @@ export default function AgentRuntimesPane({
     };
   }, [oneMemoryRuntimeId]);
   async function saveOneMemory(): Promise<void> {
-    if (!selectedRuntime) return;
+    if (!selectedRuntime || oneMemoryLoadedFor !== selectedRuntime.id) return;
     try {
       await window.agentsOneAPI.saveOneRuntimeMemory(
         selectedRuntime.id,
@@ -2354,6 +2359,7 @@ export default function AgentRuntimesPane({
                             aria-label={t("settings.runtimeManager.oneMemory")}
                             value={oneMemory}
                             maxLength={100000}
+                            disabled={oneMemoryLoadedFor !== selectedRuntime.id}
                             onChange={(event) =>
                               setOneMemory(event.target.value)
                             }
@@ -2361,7 +2367,10 @@ export default function AgentRuntimesPane({
                           <button
                             type="button"
                             className="btn btn-secondary"
-                            disabled={oneMemory === oneMemorySaved}
+                            disabled={
+                              oneMemoryLoadedFor !== selectedRuntime.id ||
+                              oneMemory === oneMemorySaved
+                            }
                             onClick={() => void saveOneMemory()}
                           >
                             {t("settings.runtimeManager.oneSaveMemory")}

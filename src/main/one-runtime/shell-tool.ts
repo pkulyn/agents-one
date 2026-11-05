@@ -56,6 +56,7 @@ export async function executeOneShell(
     "APPDATA",
     "LOCALAPPDATA",
     "HOME",
+    "PSModulePath",
     "LANG",
     "LC_ALL",
   ]) {

@@ -21,7 +21,7 @@
     "format:check": "prettier --check .",
     "install:clean": "npm ci --ignore-scripts && node node_modules/electron/install.js && node scripts/verify-runtime-dependencies.mjs",
     "lint": "eslint --cache .",
-    "test": "node tests/one-shell-ci-diagnostic.cjs && vitest run --project main src/main/one-runtime/shell-tool.test.ts && vitest run --exclude src/main/one-runtime/shell-tool.test.ts",
+    "test": "vitest run",
     "test:subprojects": "npm test --prefix plugins/agents-one-plugin && npm test --prefix plugins/agents-one-connector && npm test --prefix services/agents-one-connect",
     "test:all": "npm test && npm run test:subprojects",
     "audit:ci": "node scripts/check-dependency-audit.mjs",
