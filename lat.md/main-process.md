@@ -302,7 +302,11 @@ One definitions are stored in the separate `oneAgentRuntimes` desktop configurat
 
 [[src/main/one-runtime/skills.ts#loadOneSkills]] loads only explicitly selected user skill documents, without executing their scripts. [[src/main/one-runtime/memory.ts#readOneMemoryFile]] and [[src/main/one-runtime/memory.ts#writeOneMemoryFile]] keep editable One memory under the current profile and runtime; it is sent to the selected model only when enabled.
 
+The settings editor enables One memory changes only after the selected runtime's existing memory has loaded successfully. A delayed or failed read cannot replace a user's in-progress edit or authorize saving an unknown blank value.
+
 [[src/main/one-runtime/shell-tool.ts#executeOneShell]] is exposed only to explicitly confirmed full-access One runs; read-only and automatic modes use scoped workspace tools without arbitrary shell. Cancellation aborts host tools and waits for their cleanup; the process runs with normal user privileges and is not an OS sandbox.
+
+The host shell receives a restricted environment including the PowerShell module search path where available, while unrelated variables such as model credentials are not inherited.
 
 On Windows, a failed or stalled `taskkill` falls back to terminating the direct child and reports unconfirmed cleanup rather than claiming successful cancellation. A bounded cleanup deadline prevents an unresponsive child or inherited pipe from hanging the caller indefinitely.
 
