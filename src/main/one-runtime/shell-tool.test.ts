@@ -30,9 +30,11 @@ it("runs a host command only when called and terminates it on cancellation", asy
       root,
       abort.signal,
     );
+    const cancellationStarted = Date.now();
     setTimeout(() => abort.abort(), 300);
     await expect(pending).rejects.toThrow("cancelled");
+    expect(Date.now() - cancellationStarted).toBeLessThan(12000);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
-}, 15000);
+}, 30000);

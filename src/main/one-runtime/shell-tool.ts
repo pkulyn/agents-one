@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { OneToolCleanupError } from "./cleanup-error";
 import type { OneWorkerTool } from "./protocol";
 
 const maxOutputBytes = 256 * 1024;
@@ -81,6 +82,8 @@ export async function executeOneShell(
     let outputBytes = 0;
     let truncated = false;
     let stopping = false;
+    let terminationUnconfirmed = false;
+    let cleanupDeadline: ReturnType<typeof setTimeout> | undefined;
     let termination: Promise<void> | undefined;
     const append = (chunk: Buffer): void => {
       const remaining = maxOutputBytes - outputBytes;
@@ -96,6 +99,10 @@ export async function executeOneShell(
     const stop = (): void => {
       if (stopping) return;
       stopping = true;
+      cleanupDeadline = setTimeout(() => {
+        terminationUnconfirmed = true;
+        reject(new OneToolCleanupError());
+      }, 8000);
       termination = new Promise<void>((done) => {
         if (!child.pid || child.exitCode !== null) {
           done();
@@ -107,11 +114,25 @@ export async function executeOneShell(
             ["/PID", String(child.pid), "/T", "/F"],
             { windowsHide: true, stdio: "ignore", env },
           );
-          killer.once("error", () => {
+          const fallback = (): void => {
+            terminationUnconfirmed = true;
             child.kill();
+          };
+          const killerDeadline = setTimeout(() => {
+            killer.kill();
+            fallback();
+            done();
+          }, 5000);
+          killer.once("error", () => {
+            clearTimeout(killerDeadline);
+            fallback();
             done();
           });
-          killer.once("exit", () => done());
+          killer.once("exit", (code) => {
+            clearTimeout(killerDeadline);
+            if (code !== 0 && child.exitCode === null) fallback();
+            done();
+          });
         } else {
           try {
             process.kill(-child.pid, "SIGKILL");
@@ -126,13 +147,16 @@ export async function executeOneShell(
     const timer = setTimeout(stop, 120_000);
     child.once("error", (error) => {
       clearTimeout(timer);
+      if (cleanupDeadline) clearTimeout(cleanupDeadline);
       signal.removeEventListener("abort", stop);
       reject(error);
     });
     child.once("close", (code) => {
       clearTimeout(timer);
+      if (cleanupDeadline) clearTimeout(cleanupDeadline);
       signal.removeEventListener("abort", stop);
       void (termination || Promise.resolve()).then(() => {
+        if (terminationUnconfirmed) return reject(new OneToolCleanupError());
         if (signal.aborted) return reject(new Error("Task was cancelled"));
         if (stopping) return reject(new Error("Command timed out"));
         resolve(JSON.stringify({ exitCode: code, output, truncated }));
