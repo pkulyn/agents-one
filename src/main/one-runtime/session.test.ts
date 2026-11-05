@@ -9,6 +9,7 @@ import { createOneSession } from "./session";
 import { startOneWorker } from "./controller";
 import { probeOneProvider } from "./probe";
 import { reconcileOneSessionBinding } from "./revision";
+import { OneToolCleanupError } from "./cleanup-error";
 
 let dir = "";
 let server: Server | undefined;
@@ -671,6 +672,30 @@ describe("One SDK session isolation", () => {
     await unconfirmedResult;
     await cancelledCompletion;
     expect(cleaned).toBe(true);
+    let announceUnconfirmed!: () => void;
+    const unconfirmedStarted = new Promise<void>((resolve) => {
+      announceUnconfirmed = resolve;
+    });
+    const failedCleanup = startOneWorker({
+      ...options,
+      stateDir: join(dir, "cleanup-failed-state"),
+      executeTool: async (_name, _params, signal) => {
+        announceUnconfirmed();
+        return new Promise<string>((_resolve, reject) =>
+          signal.addEventListener(
+            "abort",
+            () => reject(new OneToolCleanupError()),
+            { once: true },
+          ),
+        );
+      },
+    });
+    await unconfirmedStarted;
+    const failure = expect(failedCleanup.completion).rejects.toThrow(
+      "cleanup could not be confirmed",
+    );
+    failedCleanup.cancel();
+    await failure;
   }, 30000);
   it("automatically compacts a long session and restores its saved summary", async () => {
     dir = await mkdtemp(join(tmpdir(), "agents-one-compact-"));

@@ -304,6 +304,8 @@ One definitions are stored in the separate `oneAgentRuntimes` desktop configurat
 
 [[src/main/one-runtime/shell-tool.ts#executeOneShell]] is exposed only to explicitly confirmed full-access One runs; read-only and automatic modes use scoped workspace tools without arbitrary shell. Cancellation aborts host tools and waits for their cleanup; the process runs with normal user privileges and is not an OS sandbox.
 
+On Windows, a failed or stalled `taskkill` falls back to terminating the direct child and reports unconfirmed cleanup rather than claiming successful cancellation. A bounded cleanup deadline prevents an unresponsive child or inherited pipe from hanging the caller indefinitely.
+
 [[src/main/one-runtime/document-tools.ts#createOneDocumentTools]] provides scoped Word reading and creation with size limits and checksum-based replacement. One uses the existing Main-validated collaboration workspace when assigned to a projectless team, while individual projectless conversations retain private workspaces.
 
 One enables Pi session compaction using the configured model context window; absent an override, 32,768 tokens is a conservative estimate rather than provider metadata. The setting applies only to the configured default model. Session summaries persist in the One session store, automatic summaries may incur model calls, and cancellation must not save a partial summary.

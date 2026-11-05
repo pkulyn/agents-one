@@ -1,5 +1,6 @@
 import { fork, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { OneToolCleanupError } from "./cleanup-error";
 import type {
   OneWorkerInput,
   OneWorkerOutput,
@@ -78,6 +79,7 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
     { resolve: () => void; reject: (error: Error) => void }
   >();
   const activeTools = new Set<Promise<void>>();
+  let cleanupFailed = false;
   let resolveCompletion!: (result: OneWorkerResult) => void;
   let rejectCompletion!: (error: Error) => void;
   const completion = new Promise<OneWorkerResult>((resolve, reject) => {
@@ -100,7 +102,13 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
     stop();
     const pending = [...activeTools];
     if (!pending.length) {
-      rejectCompletion(new Error(redact(message)));
+      rejectCompletion(
+        new Error(
+          cleanupFailed
+            ? "One tool cleanup could not be confirmed"
+            : redact(message),
+        ),
+      );
       return;
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -114,7 +122,9 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
       if (timer) clearTimeout(timer);
       rejectCompletion(
         new Error(
-          cleaned ? redact(message) : "One tool cleanup could not be confirmed",
+          cleaned && !cleanupFailed
+            ? redact(message)
+            : "One tool cleanup could not be confirmed",
         ),
       );
     });
@@ -185,14 +195,16 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
               requestId: message.requestId,
               content,
             }),
-          (error: unknown) =>
+          (error: unknown) => {
+            if (error instanceof OneToolCleanupError) cleanupFailed = true;
             send({
               type: "tool-result",
               requestId: message.requestId,
               error: redact(
                 error instanceof Error ? error.message : String(error),
               ),
-            }),
+            });
+          },
         );
       activeTools.add(pendingTool);
       void pendingTool.finally(() => activeTools.delete(pendingTool));
