@@ -15,6 +15,8 @@ import { sanitizeEventText } from "../event-stream.mjs";
 
 const MAX_OUTPUT = 512 * 1024;
 const MAX_RPC_TIMEOUT_MS = 30_000;
+const DEFAULT_PROMPT_TIMEOUT_MS = 300_000;
+const MAX_PROMPT_TIMEOUT_MS = 3_600_000;
 const MAX_WORKSPACE_FILES = 1_000;
 const MAX_ARTIFACT_BYTES = 4 * 1024 * 1024;
 const DEFAULT_ENV_KEYS = [
@@ -462,12 +464,16 @@ class AcpClient {
     return { sessionId, init, result };
   }
 
-  prompt(value) {
+  prompt(value, timeoutMs) {
     if (!this.sessionId) throw new Error("OpenCode ACP session 尚未创建。");
-    return this.request("session/prompt", {
-      sessionId: this.sessionId,
-      prompt: [{ type: "text", text: value }],
-    });
+    return this.request(
+      "session/prompt",
+      {
+        sessionId: this.sessionId,
+        prompt: [{ type: "text", text: value }],
+      },
+      timeoutMs,
+    );
   }
 
   cancel() {
@@ -689,7 +695,14 @@ async function executeRun(run, input, context, options) {
     run.model =
       run.model || modelFromInit(session.init) || model(session.result.model);
     const result = record(
-      await run.client.prompt(input.input?.text || input.text || ""),
+      await run.client.prompt(
+        input.input?.text || input.text || "",
+        boundedLimit(
+          options.promptTimeoutMs,
+          DEFAULT_PROMPT_TIMEOUT_MS,
+          MAX_PROMPT_TIMEOUT_MS,
+        ),
+      ),
     );
     run.model = run.model || model(result.model);
     run.usage = run.usage || usage(result);

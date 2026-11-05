@@ -26,6 +26,8 @@ OpenCode runtime version; it is not satisfied by a standalone executable
 inside the configured Host root, including when a requested directory is a
 symbolic link.
 
+OpenCode ACP handshake requests use a short deadline; a model turn has a separate five-minute default, configurable by the trusted Host up to one hour. Cancellation remains available while the turn is running.
+
 Analysis-only runs cancel permission requests; file or tool runs require the Host's configured workspace and keep workspace evidence relative, bounded, and hashable. The Adapter does not expose raw chain of thought, credentials, environment variables, absolute paths, or an unregistered executable.
 
 ## Multi-Runtime Connector contract
