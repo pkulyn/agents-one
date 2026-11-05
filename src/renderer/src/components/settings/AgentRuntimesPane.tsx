@@ -438,6 +438,7 @@ export default function AgentRuntimesPane({
     null,
   );
   const [oneMemoryError, setOneMemoryError] = useState<string | null>(null);
+  const [oneMemoryRefresh, setOneMemoryRefresh] = useState(0);
   useEffect(() => {
     let active = true;
     setOneMemoryLoadedFor(null);
@@ -463,7 +464,7 @@ export default function AgentRuntimesPane({
     return () => {
       active = false;
     };
-  }, [oneMemoryRuntimeId]);
+  }, [oneMemoryRuntimeId, oneMemoryRefresh]);
   async function saveOneMemory(): Promise<void> {
     if (!selectedRuntime || oneMemoryLoadedFor !== selectedRuntime.id) return;
     try {
@@ -2376,7 +2377,20 @@ export default function AgentRuntimesPane({
                             {t("settings.runtimeManager.oneSaveMemory")}
                           </button>
                           {oneMemoryError && (
-                            <span role="alert">{oneMemoryError}</span>
+                            <span role="alert">
+                              {oneMemoryError}
+                              {oneMemoryLoadedFor !== selectedRuntime.id && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  onClick={() =>
+                                    setOneMemoryRefresh((value) => value + 1)
+                                  }
+                                >
+                                  {t("common.retry")}
+                                </button>
+                              )}
+                            </span>
                           )}
                         </>
                       ) : (

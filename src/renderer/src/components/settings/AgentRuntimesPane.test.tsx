@@ -711,6 +711,10 @@ describe("AgentRuntimesPane", () => {
     expect(editor).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存记忆" })).toBeDisabled();
     expect(window.agentsOneAPI.saveOneRuntimeMemory).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(editor).toHaveValue("existing memory"));
+    expect(editor).toBeEnabled();
+    expect(window.agentsOneAPI.saveOneRuntimeMemory).not.toHaveBeenCalled();
   });
 
   it("reports skill discovery errors and lets users remove unavailable selections", async () => {
