@@ -580,6 +580,7 @@ export default function AgentRuntimesPane({
     ? t("settings.runtimeManager.gatewayTokenSave")
     : "";
   const draftConnectionKey = JSON.stringify({
+    id: draft.id.trim(),
     kind: draft.kind,
     location: draft.location,
     endpoint: draft.config.endpoint?.trim() || "",

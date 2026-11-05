@@ -926,6 +926,40 @@ describe("AgentRuntimesPane", () => {
     );
   });
 
+  it("requires a new One probe after changing its runtime ID", async () => {
+    const api = installHermesAPI([]);
+    render(<AgentRuntimesPane />);
+    await openNewAgentWizard("local", 2);
+    fireEvent.change(screen.getByLabelText("类型"), {
+      target: { value: "one" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.change(screen.getByLabelText("模型 API 地址"), {
+      target: { value: "https://example.test/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("模型 ID"), {
+      target: { value: "model-test" },
+    });
+    fireEvent.change(screen.getByLabelText("模型 API Key"), {
+      target: { value: "test-one-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "连接测试" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+    fireEvent.change(screen.getByLabelText("智能体 ID"), {
+      target: { value: "one-other" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "连接测试" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
+    );
+    expect(api.probeAgentRuntimeDraft).toHaveBeenCalledTimes(2);
+  });
+
   it("offers Pi Agent CLI as a configurable local runtime template", async () => {
     const api = installHermesAPI([]);
     render(<AgentRuntimesPane />);
