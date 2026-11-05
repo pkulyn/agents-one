@@ -116,7 +116,7 @@ Human intervention is a multi-turn role conversation inside the shared transcrip
 
 [[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]] cancels the currently active dependency-chain run when directed dialogue opens. Each sent instruction is persisted in the main conversation and reruns only the target assignment; its native reasoning, tools, artifacts, and final reply use the ordinary message renderer. A successful guided turn marks that role complete but keeps later roles blocked in `paused` state. `继续后续任务` resumes from the following assignment, while another message reruns the same role for an additional turn.
 
-[[src/shared/task-collaboration.ts#TaskCollaborationIntervention]] stores a bounded user instruction and optional role response. `shared` turns are injected into subsequent role prompts as both sides of the exchange; `role` turns remain visible only to the target role. [[src/shared/task-collaboration.ts#TaskCollaborationRoleRun]] also retains an optional provider session id so repeated guided turns continue the same underlying agent conversation when the Runtime supports sessions. Rerunning a role invalidates its and downstream roles' stale artifact evidence before review resumes.
+[[src/shared/task-collaboration.ts#TaskCollaborationIntervention]] stores a bounded user instruction and optional role response. `shared` turns are injected into subsequent role prompts as both sides of the exchange; `role` turns and their generated artifact summaries are not automatically forwarded to other roles. Files in the shared workspace remain accessible to authorized members. [[src/shared/task-collaboration.ts#TaskCollaborationRoleRun]] also retains an optional provider session id so repeated guided turns continue the same underlying agent conversation when the Runtime supports sessions. Rerunning a role invalidates its and downstream roles' stale artifact evidence before review resumes.
 
 ## Artifact rendering
 
@@ -543,3 +543,5 @@ Codex desktop execution uses the existing App Server approval bridge for all des
 OpenCode appends native ACP prompts within the same session and keeps the original process alive until every outstanding prompt settles. A rejected additional prompt does not cancel the original work. The installed OpenCode 1.19 protocol is verified separately from future ACP versions that may reject concurrent prompts.
 
 Collaboration shares user revisions with later roles. Follow-up mode remains FIFO, while native failure preserves the original task and input rather than invoking stop-and-resume.
+
+Directed dialogue in both serial and DAG execution resumes the targeted role’s recorded provider session when available. Historical handoffs matching a private intervention reply and their associated artifacts are excluded from other roles’ context.

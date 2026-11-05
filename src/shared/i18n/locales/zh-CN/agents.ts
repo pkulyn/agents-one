@@ -85,6 +85,8 @@ export default {
   close: "关闭",
   kindWebAgent: "网页智能体",
   transportLocalCli: "本地 CLI",
+  connectionModelApi: "模型 API",
+  transportLocalSdk: "本地 SDK",
   transportLocalApi: "本地 API",
   transportLocalWeb: "内嵌网页",
   sectionLocal: "本地智能体",

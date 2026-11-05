@@ -12,6 +12,7 @@ import type {
 
 export const AGENT_RUNTIME_KINDS = [
   "hermes",
+  "one",
   "codex",
   "claude-code",
   "pi",
@@ -141,7 +142,12 @@ export interface AgentRuntimeConfig {
    * (built-in Hermes).  Derived from legacy fields when absent, so old
    * persisted configs keep working without a data migration.
    */
-  agentTransport?: "gateway-v1" | "local-cli" | "local-api" | "local-web";
+  agentTransport?:
+    | "gateway-v1"
+    | "local-cli"
+    | "local-api"
+    | "local-web"
+    | "local-sdk";
   /** Browser-backed provider settings. Credentials remain in Chromium's
    * encrypted profile, never in desktop.json or the renderer. */
   webAgent?: WebAgentRuntimeSettings;
@@ -152,6 +158,16 @@ export interface AgentRuntimeConfig {
   agent?: string;
   /** Forward-compatible non-secret values declared by an Adapter Manifest. */
   adapterOptions?: Record<string, string | number | boolean>;
+  /** User-authored instructions for One; credentials must never be stored here. */
+  oneInstructions?: string;
+  /** Explicitly selected local user skill IDs; never executable by themselves. */
+  oneSkills?: string[];
+  /** Explicit opt-in to this One agent’s private profile memory. */
+  oneMemoryEnabled?: boolean;
+  /** Context capacity of One’s configured default model. */
+  oneContextWindow?: number;
+  /** User-confirmed image input support for this exact default model and endpoint. */
+  oneImageInput?: boolean;
   /** Optional CLI model override. Empty keeps the CLI's own default. */
   model?: string;
   workspace?: string;
@@ -525,7 +541,8 @@ export type AgentRuntimeTransport =
   | "gateway-v1"
   | "local-cli"
   | "local-api"
-  | "local-web";
+  | "local-web"
+  | "local-sdk";
 
 /**
  * Derive the canonical Agents One transport from a runtime definition.
@@ -536,6 +553,8 @@ export function deriveAgentTransport(
   runtime: Pick<AgentRuntimeDefinition, "location" | "kind" | "config">,
 ): AgentRuntimeTransport {
   if (runtime.config?.agentTransport) return runtime.config.agentTransport;
+  if (runtime.kind === "one" && runtime.location === "local")
+    return "local-sdk";
   if (runtime.kind === "web-agent" || runtime.config?.webAgent) {
     return "local-web";
   }

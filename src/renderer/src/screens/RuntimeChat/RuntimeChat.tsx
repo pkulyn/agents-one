@@ -932,6 +932,24 @@ function reviewableHandoffs(
   );
 }
 
+function visibleCollaborationHandoffs(
+  runs: TaskCollaborationRoleRun[],
+  interventions: TaskCollaborationIntervention[],
+  recipientId: string,
+): TaskCollaborationRoleRun[] {
+  return runs.filter(
+    (run) =>
+      run.assignmentId === recipientId ||
+      !interventions.some(
+        (item) =>
+          item.visibility === "role" &&
+          item.assignmentId === run.assignmentId &&
+          Boolean(item.response) &&
+          item.response === run.handoff,
+      ),
+  );
+}
+
 export function collaborationRolePrompt(
   brief: string,
   assignments: TaskCollaborationAssignment[],
@@ -979,8 +997,22 @@ export function collaborationRolePrompt(
     .slice(-8_000);
   const textReview =
     roleIsAcceptance(recipient) && !assignments.some(roleCanModify);
-  const reviewHandoffs = reviewableHandoffs(assignments, completedHandoffs);
-  const completed = (textReview ? reviewHandoffs : completedHandoffs)
+  const visibleHandoffs = visibleCollaborationHandoffs(
+    completedHandoffs,
+    interventions,
+    recipientKey,
+  );
+  const privateRunIds = new Set(
+    completedHandoffs
+      .filter((run) => !visibleHandoffs.includes(run))
+      .map((run) => run.runtimeRunId)
+      .filter(Boolean),
+  );
+  const visibleArtifacts = artifacts.filter(
+    (artifact) => !privateRunIds.has(artifact.sourceRunId),
+  );
+  const reviewHandoffs = reviewableHandoffs(assignments, visibleHandoffs);
+  const completed = (textReview ? reviewHandoffs : visibleHandoffs)
     .filter(
       (item) =>
         (textReview || collaborationSharesContext(recipient, "handoffs")) &&
@@ -1046,13 +1078,13 @@ export function collaborationRolePrompt(
     completed ? `\n已完成角色的真实交接材料：\n${completed}` : "",
     !roleIsAcceptance(recipient) &&
     collaborationSharesContext(recipient, "artifacts") &&
-    artifacts.length
-      ? `\n平台交付与验证证据：\n${artifactEvidence(artifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}`
+    visibleArtifacts.length
+      ? `\n平台交付与验证证据：\n${artifactEvidence(visibleArtifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}`
       : "",
     textReview
       ? "\n这是文本成果复核，没有文件实施角色。仅依据上述平台已记录的交接 H1、H2 和任务标准复核；不得声称已验证文件、哈希或执行。输出格式：\n[验收结论]\n状态：通过 / 不通过 / 需人工复核\n依据：H1、H2（仅引用实际收到的交接）\n结论：简明说明证据与限制。"
       : roleIsAcceptance(recipient)
-        ? `\n待验收的真实产物（只可据此验收）：\n${artifactEvidence(artifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}${
+        ? `\n待验收的真实产物（只可据此验收）：\n${artifactEvidence(visibleArtifacts, recipientIsRemote ? { redactProjectFolder: projectFolder, hideAllLocalPaths: true } : undefined)}${
             recipientIsRemote
               ? "\n\n远程终验规则：这是平台证据审查，不是远程文件系统复查。禁止调用 read_file、bash、SSH 或任何工具重新访问本机路径；本机路径已被隐藏。带有路径、SHA-256、来源机器和变更摘要的文件产物，已经由 Agents One 桌面主进程在本机独立核验，必须直接作为可信证据使用。若实施交付和本地复核均已完成且证据契约完整，应据此输出“通过”；只有缺少平台证据或证据明确不一致时才输出“不通过”或“需人工复核”。"
               : ""
@@ -1200,7 +1232,8 @@ export default function RuntimeChat({
         candidate.location === "local" &&
         (candidate.kind === "codex" ||
           candidate.kind === "claude-code" ||
-          candidate.kind === "pi"),
+          candidate.kind === "pi" ||
+          candidate.kind === "one"),
     );
   const [messages, setMessages] =
     useState<RuntimeConversationMessage[]>(initialMessages);
@@ -2289,7 +2322,20 @@ export default function RuntimeChat({
       }
       const startIndex = resume?.startAfter ? resumeIndex + 1 : resumeIndex;
       const interventions = [...(resume?.execution.interventions ?? [])];
-      let artifacts = [...(resume?.execution.artifacts ?? [])];
+      const historicalVisible = visibleCollaborationHandoffs(
+        roleRuns,
+        interventions,
+        "",
+      );
+      const historicalPrivateRuns = new Set(
+        roleRuns
+          .filter((run) => !historicalVisible.includes(run))
+          .map((run) => run.runtimeRunId)
+          .filter(Boolean),
+      );
+      let artifacts = (resume?.execution.artifacts ?? []).filter(
+        (artifact) => !historicalPrivateRuns.has(artifact.sourceRunId),
+      );
       let acceptance = resume?.execution.acceptance;
       const timeline = [...(resume?.execution.timeline ?? [])];
       const retryFeedback = new Map<string, string>();
@@ -2798,6 +2844,9 @@ export default function RuntimeChat({
                       evidenceBundle
                         ? [evidenceBundle]
                         : undefined,
+                    ...(roleRun.runtimeSessionId
+                      ? { sessionId: roleRun.runtimeSessionId }
+                      : {}),
                   },
                 );
                 roleRuns[roleIndex] = {
@@ -2914,14 +2963,21 @@ export default function RuntimeChat({
                   return;
                 }
                 const output = responseText(observed, t);
+                const guidedTurn = resume?.interventionId
+                  ? interventions.find(
+                      (item) => item.id === resume.interventionId,
+                    )
+                  : undefined;
                 const producedArtifacts = collectRuntimeArtifacts(
                   assignment,
                   roleRun.assignmentId,
                   observed,
                   assignedRuntime,
                 );
-                artifacts = appendArtifacts(artifacts, producedArtifacts);
-                for (const artifact of producedArtifacts) {
+                const sharedArtifacts =
+                  guidedTurn?.visibility === "role" ? [] : producedArtifacts;
+                artifacts = appendArtifacts(artifacts, sharedArtifacts);
+                for (const artifact of sharedArtifacts) {
                   recordTimeline(
                     "artifact",
                     t("runtimeChat.collaborationRun.deliveryPublished", {
@@ -2965,13 +3021,11 @@ ${reason}`,
                   ...roleRuns[roleIndex],
                   status: "succeeded",
                   completedAt: Date.now(),
-                  handoff: output.slice(0, 6_000),
+                  handoff:
+                    guidedTurn?.visibility === "role"
+                      ? undefined
+                      : output.slice(0, 6_000),
                 };
-                const guidedTurn = resume?.interventionId
-                  ? interventions.find(
-                      (item) => item.id === resume.interventionId,
-                    )
-                  : undefined;
                 if (guidedTurn) {
                   guidedTurn.response = output.slice(0, 6_000);
                   guidedTurn.respondedAt = Date.now();
@@ -2998,12 +3052,16 @@ ${reason}`,
                       ? undefined
                       : reviewableHandoffs(
                           configured,
-                          roleRuns.filter((run) =>
-                            (
-                              collaborationGraph.dependenciesById.get(
-                                roleRun.assignmentId,
-                              ) || []
-                            ).includes(run.assignmentId),
+                          visibleCollaborationHandoffs(
+                            roleRuns.filter((run) =>
+                              (
+                                collaborationGraph.dependenciesById.get(
+                                  roleRun.assignmentId,
+                                ) || []
+                              ).includes(run.assignmentId),
+                            ),
+                            interventions,
+                            roleRun.assignmentId,
                           ),
                         ),
                   );
@@ -3405,14 +3463,19 @@ ${reason}`,
             return;
           }
 
+          const guidedTurn = resume?.interventionId
+            ? interventions.find((item) => item.id === resume.interventionId)
+            : undefined;
           const producedArtifacts = collectRuntimeArtifacts(
             assignment,
             roleRun.assignmentId,
             completed,
             assignedRuntime,
           );
-          artifacts = appendArtifacts(artifacts, producedArtifacts);
-          for (const artifact of producedArtifacts) {
+          const sharedArtifacts =
+            guidedTurn?.visibility === "role" ? [] : producedArtifacts;
+          artifacts = appendArtifacts(artifacts, sharedArtifacts);
+          for (const artifact of sharedArtifacts) {
             recordTimeline(
               "artifact",
               artifact.kind === "test_result"
@@ -3496,11 +3559,11 @@ ${reason}`,
             ...roleRuns[index],
             status: "succeeded",
             completedAt: Date.now(),
-            handoff: output.slice(0, 6_000),
+            handoff:
+              guidedTurn?.visibility === "role"
+                ? undefined
+                : output.slice(0, 6_000),
           };
-          const guidedTurn = resume?.interventionId
-            ? interventions.find((item) => item.id === resume.interventionId)
-            : undefined;
           if (guidedTurn) {
             guidedTurn.response = output.slice(0, 6_000);
             guidedTurn.respondedAt = Date.now();
@@ -3512,7 +3575,14 @@ ${reason}`,
               artifacts,
               configured.some(roleCanModify)
                 ? undefined
-                : reviewableHandoffs(configured, roleRuns.slice(0, index)),
+                : reviewableHandoffs(
+                    configured,
+                    visibleCollaborationHandoffs(
+                      roleRuns.slice(0, index),
+                      interventions,
+                      roleRun.assignmentId,
+                    ),
+                  ),
             );
             recordTimeline(
               "acceptance",
@@ -4959,13 +5029,19 @@ ${reason}`,
       runtime.kind === "claude-code" ||
       runtime.kind === "pi" ||
       runtime.kind === "opencode");
+  const oneWorkspaceInputs =
+    runtime.kind === "one" && runtime.location === "local";
   // Remote runtimes receive a short-lived outbound workspace grant instead of
   // a local path. Gateway v1 advertises that support through its probe.
   const remoteWorkspaceGatewayRuntime =
     runtime.location === "remote" && remoteWorkspaceSupported;
   const attachmentInputs =
-    localFileInputs || remoteArtifactsSupported || webAgentRuntime;
+    oneWorkspaceInputs ||
+    localFileInputs ||
+    remoteArtifactsSupported ||
+    webAgentRuntime;
   const accessControlAvailable =
+    oneWorkspaceInputs ||
     localFileInputs ||
     unifiedRemoteGatewayRuntime ||
     remoteWorkspaceGatewayRuntime ||
@@ -5653,7 +5729,11 @@ ${reason}`,
                   <>
                     <ContextFolderChip
                       contextFolder={workspace || null}
-                      show={localFileInputs || remoteWorkspaceGatewayRuntime}
+                      show={
+                        oneWorkspaceInputs ||
+                        localFileInputs ||
+                        remoteWorkspaceGatewayRuntime
+                      }
                       worktreeVisible={worktreeVisible}
                       onPickFolder={() => void chooseWorkspace()}
                       onClearFolder={clearWorkspace}
@@ -5721,11 +5801,13 @@ ${reason}`,
                               role="menuitemradio"
                               aria-checked={accessMode === "full_access"}
                               disabled={
+                                !oneWorkspaceInputs &&
                                 !localFileInputs &&
                                 !unifiedRemoteGatewayRuntime &&
                                 !collaborationWriteRuntimeAvailable
                               }
                               title={
+                                !oneWorkspaceInputs &&
                                 !localFileInputs &&
                                 !unifiedRemoteGatewayRuntime &&
                                 !collaborationWriteRuntimeAvailable
@@ -5734,6 +5816,7 @@ ${reason}`,
                               }
                               onClick={() => {
                                 if (
+                                  !oneWorkspaceInputs &&
                                   !localFileInputs &&
                                   !unifiedRemoteGatewayRuntime &&
                                   !collaborationWriteRuntimeAvailable
@@ -6102,6 +6185,11 @@ ${reason}`,
                         />
                         {t("runtimeChat.collaboration.shareHint")}
                       </label>
+                      {!interventionShared && (
+                        <p className="collaboration-intervention-status">
+                          {t("runtimeChat.collaboration.privateWorkspaceHint")}
+                        </p>
+                      )}
                       <details className="collaboration-intervention-options">
                         <summary>
                           {t("runtimeChat.collaboration.executionSettings")}
@@ -6367,7 +6455,9 @@ ${reason}`,
           </div>
           {(workspace || workspaceId) &&
           worktreeVisible &&
-          (localFileInputs || remoteWorkspaceGatewayRuntime) ? (
+          (oneWorkspaceInputs ||
+            localFileInputs ||
+            remoteWorkspaceGatewayRuntime) ? (
             <WorktreePanel
               folderPath={workspace || undefined}
               workspaceId={workspaceId || undefined}

@@ -281,6 +281,8 @@ export default {
     inheritPermission: "Inherit task permission (current: {{permission}})",
     fullAccessOption:
       "Full access (read, create and edit; no further deletion confirmation)",
+    privateWorkspaceHint:
+      "Private exchanges and this turn’s artifact summaries are not shared automatically. Authorized members can still read files in the shared workspace.",
     shareHint:
       "Share with the collaboration so later roles can read this exchange",
     currentAgent: "Current agent",

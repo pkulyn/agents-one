@@ -27,6 +27,12 @@ export function taskScheduleRuntimeCategory(
   if (transport === "gateway-v1" && runtime.location === "remote") {
     return "remote";
   }
+  if (
+    transport === "local-sdk" &&
+    runtime.kind === "one" &&
+    runtime.location === "local"
+  )
+    return "local";
   if (transport === "local-cli" && runtime.location === "local") {
     return "local";
   }
@@ -43,6 +49,10 @@ export function isTaskScheduleRuntimeEligible(
     !runtime.configurationIssue &&
     !runtime.needsReauthorization &&
     (category !== "web" || runtime.config.webAgent?.enabled) &&
+    (runtime.kind !== "one" ||
+      Boolean(
+        runtime.config.endpoint?.trim() && runtime.config.model?.trim(),
+      )) &&
     (category !== "remote" ||
       (runtime.config.remoteGateway?.protocol === "agents-one-v1" &&
         runtime.config.endpoint?.trim())),

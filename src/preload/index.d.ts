@@ -380,6 +380,8 @@ interface AgentsOneAPI {
     appearance: AgentRuntimeAppearance,
   ) => Promise<AgentRuntimeDefinition>;
   removeAgentRuntime: (id: string) => Promise<boolean>;
+  getOneRuntimeMemory: (id: string) => Promise<string>;
+  saveOneRuntimeMemory: (id: string, content: string) => Promise<void>;
   getAgentRuntimeCredentialStatus: (id: string) => Promise<{
     required: boolean;
     configured: boolean;

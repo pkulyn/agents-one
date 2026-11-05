@@ -177,6 +177,8 @@ function installHermesAPI(
     configurable: true,
     value: {
       listAgentRuntimes,
+      getOneRuntimeMemory: vi.fn(async () => "existing memory"),
+      saveOneRuntimeMemory: vi.fn(async () => undefined),
       saveAgentRuntime,
       saveAgentRuntimeAppearance,
       removeAgentRuntime: vi.fn(async () => true),
@@ -197,6 +199,17 @@ function installHermesAPI(
       adoptHermesHome,
       relaunchApp,
       listAgentRuntimeAdapters,
+      listRuntimeSkills: vi.fn(async () => [
+        {
+          id: "user:chosen",
+          name: "chosen",
+          source: "user",
+          location: "/test/chosen/SKILL.md",
+          enabled: true,
+          trust: "local-user",
+          executionBoundary: "documentation-only",
+        },
+      ]),
       getWebAgentPolicyStatus,
       setWebAgentPolicyEnabled,
     },
@@ -629,6 +642,246 @@ describe("AgentRuntimesPane", () => {
     expect(
       screen.queryByRole("button", { name: "取消" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("edits memory only for the selected One agent", async () => {
+    installHermesAPI([
+      {
+        id: "one-test",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {
+          agentTransport: "local-sdk",
+          endpoint: "https://example.test/v1",
+          model: "test",
+          oneMemoryEnabled: true,
+        },
+      },
+    ]);
+    render(<AgentRuntimesPane />);
+    fireEvent.click(await screen.findByText("模型上下文、个性化、技能与记忆"));
+    const editor = await screen.findByLabelText("One 私有记忆内容");
+    await waitFor(() => expect(editor).toHaveValue("existing memory"));
+    fireEvent.change(editor, { target: { value: "new private memory" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存记忆" }));
+    await waitFor(() =>
+      expect(window.agentsOneAPI.saveOneRuntimeMemory).toHaveBeenCalledWith(
+        "one-test",
+        "new private memory",
+      ),
+    );
+  });
+
+  it("reports skill discovery errors and lets users remove unavailable selections", async () => {
+    const api = installHermesAPI([
+      {
+        id: "one-test",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {
+          agentTransport: "local-sdk",
+          endpoint: "https://example.test/v1",
+          model: "test",
+          oneSkills: ["user:missing"],
+        },
+      },
+    ]);
+    vi.mocked(window.agentsOneAPI.listRuntimeSkills).mockRejectedValueOnce(
+      new Error("permission denied"),
+    );
+    vi.mocked(
+      window.agentsOneAPI.getAgentRuntimeCredentialStatus,
+    ).mockResolvedValue({ required: true, configured: true });
+    render(<AgentRuntimesPane />);
+    fireEvent.click(await screen.findByText("模型上下文、个性化、技能与记忆"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "技能目录读取失败",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    const missing = await screen.findByLabelText(
+      "已选技能不可用：user:missing（取消勾选可移除）",
+    );
+    expect(missing).toBeChecked();
+    fireEvent.click(missing);
+    expect(
+      screen.queryByLabelText("已选技能不可用：user:missing（取消勾选可移除）"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存更改" }));
+    await waitFor(() =>
+      expect(api.saveAgentRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({ oneSkills: [] }),
+        }),
+      ),
+    );
+  });
+
+  it("explains unusable skills while allowing an existing selection to be removed", async () => {
+    const api = installHermesAPI([
+      {
+        id: "one-test",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {
+          agentTransport: "local-sdk",
+          endpoint: "https://example.test/v1",
+          model: "test",
+          oneSkills: ["user:bad"],
+        },
+      },
+    ]);
+    vi.mocked(
+      window.agentsOneAPI.getAgentRuntimeCredentialStatus,
+    ).mockResolvedValue({ required: true, configured: true });
+    vi.mocked(window.agentsOneAPI.listRuntimeSkills).mockResolvedValue([
+      {
+        id: "user:bad",
+        name: "bad",
+        source: "user",
+        location: "/bad/SKILL.md",
+        enabled: true,
+        trust: "local-user",
+        executionBoundary: "documentation-only",
+        oneIssue: "too_large",
+      },
+      {
+        id: "user:unsafe",
+        name: "unsafe",
+        source: "user",
+        location: "/unsafe/SKILL.md",
+        enabled: true,
+        trust: "local-user",
+        executionBoundary: "documentation-only",
+        oneIssue: "unsafe_file",
+      },
+    ]);
+    render(<AgentRuntimesPane />);
+    fireEvent.click(await screen.findByText("模型上下文、个性化、技能与记忆"));
+    const bad = await screen.findByLabelText(/bad.*超过 64 KiB/);
+    expect(bad).toBeChecked();
+    expect(bad).toBeEnabled();
+    expect(screen.getByLabelText(/unsafe.*普通文件/)).toBeDisabled();
+    fireEvent.click(bad);
+    expect(bad).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "保存更改" }));
+    await waitFor(() =>
+      expect(api.saveAgentRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({ oneSkills: [] }),
+        }),
+      ),
+    );
+  });
+
+  it("creates One with its own model endpoint and protected key", async () => {
+    const api = installHermesAPI([]);
+    vi.mocked(window.agentsOneAPI.listRuntimeSkills).mockResolvedValue([
+      {
+        id: "user:chosen",
+        name: "chosen",
+        source: "user",
+        location: "/codex/chosen/SKILL.md",
+        enabled: true,
+        trust: "local-user",
+        executionBoundary: "documentation-only",
+      },
+      {
+        id: "agents-user:chosen",
+        name: "chosen",
+        source: "user",
+        location: "/agents/chosen/SKILL.md",
+        enabled: true,
+        trust: "local-user",
+        executionBoundary: "documentation-only",
+      },
+    ]);
+    render(<AgentRuntimesPane />);
+    await openNewAgentWizard("local", 2);
+    fireEvent.change(screen.getByLabelText("类型"), {
+      target: { value: "one" },
+    });
+    expect(screen.getByLabelText("名称")).toHaveValue("One");
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByText("模型上下文、个性化、技能与记忆"));
+    fireEvent.click(await screen.findByLabelText(/chosen.*\.codex/));
+    fireEvent.click(await screen.findByLabelText(/chosen.*\.agents/));
+    fireEvent.change(screen.getByLabelText("个性化指令"), {
+      target: { value: "请用中文回复\n简洁" },
+    });
+    fireEvent.change(screen.getByLabelText("模型供应商"), {
+      target: { value: "ark-agent-plan" },
+    });
+    expect(screen.getByLabelText("模型 API 地址")).toHaveValue(
+      "https://ark.cn-beijing.volces.com/api/plan/v3",
+    );
+    expect(screen.getByLabelText("模型 ID")).toHaveValue(
+      "doubao-seed-2.0-mini",
+    );
+    expect(screen.getByLabelText("模型上下文窗口（Token）")).toHaveValue(
+      262144,
+    );
+    expect(screen.getByLabelText("模型支持图片输入")).toBeChecked();
+    fireEvent.change(screen.getByLabelText("模型 ID"), {
+      target: { value: "other-model" },
+    });
+    expect(screen.getByLabelText("模型上下文窗口（Token）")).toHaveValue(null);
+    expect(screen.getByLabelText("模型支持图片输入")).not.toBeChecked();
+    fireEvent.change(screen.getByLabelText("模型供应商"), {
+      target: { value: "deepseek" },
+    });
+    expect(screen.getByLabelText("模型 API 地址")).toHaveValue(
+      "https://api.deepseek.com",
+    );
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("deepseek-flash");
+    fireEvent.change(screen.getByLabelText("模型 API 地址"), {
+      target: { value: "https://api.example.test/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("模型 ID"), {
+      target: { value: "model-test" },
+    });
+    fireEvent.change(screen.getByLabelText("模型上下文窗口（Token）"), {
+      target: { value: "65536" },
+    });
+    fireEvent.change(screen.getByLabelText("模型 API Key"), {
+      target: { value: "test-one-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "连接测试" }));
+    await waitFor(() =>
+      expect(api.probeAgentRuntimeDraft).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "one" }),
+        "test-one-key",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(api.setAgentRuntimeBearerToken).toHaveBeenCalledWith(
+        "one-local",
+        "test-one-key",
+      ),
+    );
+    expect(api.saveAgentRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "one",
+        config: expect.objectContaining({
+          agentTransport: "local-sdk",
+          model: "model-test",
+          oneContextWindow: 65536,
+          oneSkills: ["user:chosen", "agents-user:chosen"],
+        }),
+      }),
+    );
+    expect(JSON.stringify(api.saveAgentRuntime.mock.calls)).not.toContain(
+      "test-one-key",
+    );
   });
 
   it("offers Pi Agent CLI as a configurable local runtime template", async () => {

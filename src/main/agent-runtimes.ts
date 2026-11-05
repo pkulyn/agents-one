@@ -1,3 +1,27 @@
+import { prepareOneAttachments } from "./one-runtime/attachments";
+import { createOneDocumentTools } from "./one-runtime/document-tools";
+import { executeOneShell, oneShellTool } from "./one-runtime/shell-tool";
+import { readOneMemoryFile, writeOneMemoryFile } from "./one-runtime/memory";
+import { homedir } from "node:os";
+import { loadOneSkills } from "./one-runtime/skills";
+import { resolveOneConversationWorkspace } from "./one-runtime/workspace-binding";
+import {
+  commitOneRunBinding,
+  oneDefinitionRevision,
+  oneRunSnapshotHash,
+  persistOneRunBinding,
+  reconcileEarlierOneBindings,
+  verifyOneSessionBinding,
+} from "./one-runtime/revision";
+import { probeOneProvider } from "./one-runtime/probe";
+import { agentsOneProfileHome } from "./agents-one-data-root";
+import { startOneWorker } from "./one-runtime/controller";
+import { createOneWorkspaceTools } from "./one-runtime/workspace-tools";
+import {
+  getOneCredential,
+  oneCredentialStatus,
+  setOneCredential,
+} from "./one-runtime/credentials";
 import {
   bindCollaborationWorkingDirectory,
   collaborationWorkingDirectory,
@@ -176,6 +200,9 @@ import type { RuntimeAdapter } from "./runtime-adapters/types";
 import { getAgentsOneConnectDeviceStatus } from "./agents-one-connect";
 
 const RUNTIME_CONFIG_KEY = "agentRuntimes";
+// Older releases rewrite agentRuntimes after filtering unsupported transports.
+// Keep One definitions in an unknown top-level key that those releases retain.
+const ONE_RUNTIME_CONFIG_KEY = "oneAgentRuntimes";
 const RUNTIME_APPEARANCE_KEY = "agentRuntimeAppearances";
 const RESERVED_RUNTIME_IDS = new Set(["hermes-local"]);
 const RUNTIME_ID = /^[a-z][a-z0-9-]{1,63}$/;
@@ -252,6 +279,10 @@ interface RuntimeRunRecord {
   pi?: {
     steer?: (text: string) => Promise<void>;
     cancel: () => Promise<void>;
+  };
+  one?: {
+    cancel: () => Promise<void>;
+    steer?: (text: string) => Promise<void>;
   };
   opencode?: {
     steer?: (text: string) => Promise<void>;
@@ -439,6 +470,7 @@ async function terminateLocalRuntime(
     record.claudeSdk?.cancel ||
     record.claudeCode?.cancel ||
     record.pi?.cancel ||
+    record.one?.cancel ||
     record.opencode?.cancel;
   if (!cancel) return false;
   let timer: NodeJS.Timeout | undefined;
@@ -1655,7 +1687,8 @@ function appendOutputEvent(
     return;
   }
 
-  if (kind === "pi") {
+  if (kind === "pi" || kind === "one") {
+    const label = kind === "one" ? "One" : "Pi Agent";
     for (const line of lines) {
       try {
         const frame = JSON.parse(line) as Record<string, unknown>;
@@ -1682,8 +1715,8 @@ function appendOutputEvent(
                 record,
                 "tool_call",
                 target
-                  ? `Pi Agent 调用 ${name}：${target}`
-                  : `Pi Agent 调用 ${name}。`,
+                  ? `${label} 调用 ${name}：${target}`
+                  : `${label} 调用 ${name}。`,
                 {
                   tool: toolEvidence(name, item.arguments, undefined, id),
                 },
@@ -1706,15 +1739,15 @@ function appendOutputEvent(
             record,
             isError ? "error" : "tool_result",
             result
-              ? `Pi Agent ${name} 结果：${result}`
-              : `Pi Agent 已收到 ${name} 结果。`,
+              ? `${label} ${name} 结果：${result}`
+              : `${label} 已收到 ${name} 结果。`,
             {
               detail: result || undefined,
               tool: toolEvidence(name, undefined, result, id),
             },
           );
         } else if (frame.type === "agent_end") {
-          appendRuntimeEvent(record, "message", "Pi Agent 已生成本轮答复。");
+          appendRuntimeEvent(record, "message", `${label} 已生成本轮答复。`);
         }
       } catch {
         // Keep provider frames in the raw log; they are not user-facing text.
@@ -1806,7 +1839,8 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     agentTransport !== "gateway-v1" &&
     agentTransport !== "local-cli" &&
     agentTransport !== "local-api" &&
-    agentTransport !== "local-web"
+    agentTransport !== "local-web" &&
+    agentTransport !== "local-sdk"
   ) {
     throw new Error("Runtime agent transport is invalid.");
   }
@@ -1894,6 +1928,25 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
       enabled: rawWebAgent.enabled !== false,
     };
   }
+  if (
+    value.oneMemoryEnabled !== undefined &&
+    typeof value.oneMemoryEnabled !== "boolean"
+  )
+    throw new Error("One memory setting is invalid.");
+  if (
+    value.oneImageInput !== undefined &&
+    typeof value.oneImageInput !== "boolean"
+  )
+    throw new Error("One image input setting is invalid.");
+  if (
+    value.oneContextWindow !== undefined &&
+    (!Number.isSafeInteger(value.oneContextWindow) ||
+      (value.oneContextWindow as number) < 4096 ||
+      (value.oneContextWindow as number) > 2000000)
+  )
+    throw new Error(
+      "One context window must be between 4096 and 2000000 tokens.",
+    );
   const knownKeys = new Set([
     "endpoint",
     "remoteGateway",
@@ -1905,6 +1958,11 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     "acpArgs",
     "agent",
     "adapterOptions",
+    "oneInstructions",
+    "oneSkills",
+    "oneMemoryEnabled",
+    "oneContextWindow",
+    "oneImageInput",
     "model",
     "workspace",
     "timeoutMs",
@@ -1929,6 +1987,17 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     ...(acpArgs ? { acpArgs } : {}),
     ...(agent ? { agent } : {}),
     ...(adapterOptions ? { adapterOptions } : {}),
+    oneInstructions: optionalString(value.oneInstructions, 100_000),
+    oneSkills: optionalStringArray(value.oneSkills, 32, 160),
+    ...(value.oneMemoryEnabled !== undefined
+      ? { oneMemoryEnabled: value.oneMemoryEnabled as boolean }
+      : {}),
+    ...(value.oneContextWindow !== undefined
+      ? { oneContextWindow: value.oneContextWindow as number }
+      : {}),
+    ...(value.oneImageInput !== undefined
+      ? { oneImageInput: value.oneImageInput as boolean }
+      : {}),
     model: optionalString(value.model, 256),
     workspace: optionalString(value.workspace, 4096),
     timeoutMs: timeoutMs as number | undefined,
@@ -2299,6 +2368,15 @@ function normalizeUserRuntime(value: unknown): AgentRuntimeDefinition | null {
       };
     }
     if (
+      (runtime.kind === "one") !==
+        (runtime.config.agentTransport === "local-sdk") ||
+      (runtime.kind === "one" &&
+        (runtime.location !== "local" ||
+          runtime.adapterId !== "one" ||
+          Boolean(runtime.config.remoteGateway)))
+    )
+      return null;
+    if (
       (runtime.kind === "web-agent" &&
         (!runtime.config.webAgent ||
           runtime.config.agentTransport !== "local-web")) ||
@@ -2315,11 +2393,28 @@ function normalizeUserRuntime(value: unknown): AgentRuntimeDefinition | null {
 }
 
 function userRuntimes(): AgentRuntimeDefinition[] {
-  const raw = readDesktopConfig()[RUNTIME_CONFIG_KEY];
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map(normalizeUserRuntime)
-    .filter((runtime): runtime is AgentRuntimeDefinition => runtime !== null);
+  const config = readDesktopConfig();
+  const legacy = Array.isArray(config[RUNTIME_CONFIG_KEY])
+    ? config[RUNTIME_CONFIG_KEY]
+    : [];
+  const one = Array.isArray(config[ONE_RUNTIME_CONFIG_KEY])
+    ? config[ONE_RUNTIME_CONFIG_KEY]
+    : [];
+  const result: AgentRuntimeDefinition[] = [];
+  const seen = new Set<string>();
+  // Existing non-One identities win collisions. The isolated One namespace
+  // wins over the experimental shared-array layout for the same One ID.
+  for (const value of [
+    ...legacy.filter((item) => !isRecord(item) || item.kind !== "one"),
+    ...one.filter((item) => isRecord(item) && item.kind === "one"),
+    ...legacy.filter((item) => isRecord(item) && item.kind === "one"),
+  ]) {
+    const runtime = normalizeUserRuntime(value);
+    if (!runtime || (runtime.kind === "one" && seen.has(runtime.id))) continue;
+    seen.add(runtime.id);
+    result.push(runtime);
+  }
+  return result;
 }
 
 /** Persist probe metadata serially so concurrent Settings probes cannot lose updates. */
@@ -2396,6 +2491,10 @@ function isLocalApiTransport(runtime: AgentRuntimeDefinition): boolean {
   return deriveAgentTransport(runtime) === "local-api";
 }
 
+function isLocalSdkTransport(runtime: AgentRuntimeDefinition): boolean {
+  return deriveAgentTransport(runtime) === "local-sdk";
+}
+
 function isLocalWebTransport(runtime: AgentRuntimeDefinition): boolean {
   return deriveAgentTransport(runtime) === "local-web";
 }
@@ -2432,6 +2531,10 @@ function runtimeAuth(
   runtime: AgentRuntimeDefinition,
 ): { bearerToken?: string } | undefined {
   if (runtime.needsReauthorization) return undefined;
+  if (runtime.kind === "one" && runtime.location === "local") {
+    const token = getOneCredential(runtime.id);
+    return token ? { bearerToken: token } : undefined;
+  }
   if (isAgentsOneGatewayRuntime(runtime)) {
     const key = agentsOneGatewayTokenSecretKey(runtime.id);
     const token = (readDesktopManagedRuntimeSecret(key) || "").trim();
@@ -2448,6 +2551,9 @@ export function getAgentRuntimeCredentialStatus(runtimeId: string): {
 } {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!runtime) throw new Error("Runtime was not found.");
+  if (runtime.kind === "one" && runtime.location === "local") {
+    return { required: true, ...oneCredentialStatus(runtime.id) };
+  }
   if (!isAgentsOneGatewayRuntime(runtime)) {
     return { required: false, configured: false };
   }
@@ -2502,6 +2608,29 @@ function markRuntimeReauthorized(runtimeId: string): void {
   writeUserRuntimes(runtimes);
 }
 
+function requireOneRuntime(runtimeId: string): AgentRuntimeDefinition {
+  const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
+  if (!runtime || runtime.kind !== "one" || runtime.location !== "local")
+    throw new Error("One runtime was not found.");
+  return runtime;
+}
+export function getOneRuntimeMemory(runtimeId: string): string {
+  requireOneRuntime(runtimeId);
+  return readOneMemoryFile(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    runtimeId,
+  );
+}
+export function saveOneRuntimeMemory(runtimeId: string, content: string): void {
+  assertAgentsOneWritesAllowed();
+  requireOneRuntime(runtimeId);
+  writeOneMemoryFile(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    runtimeId,
+    content,
+  );
+}
+
 export function setAgentRuntimeBearerToken(
   runtimeId: string,
   bearerToken: string,
@@ -2509,6 +2638,12 @@ export function setAgentRuntimeBearerToken(
   configured: true;
   storage?: DesktopSecretStatus;
 } {
+  const candidate = listAgentRuntimes().find((item) => item.id === runtimeId);
+  if (candidate?.kind === "one" && candidate.location === "local") {
+    const storage = setOneCredential(runtimeId, bearerToken);
+    markRuntimeReauthorized(runtimeId);
+    return { configured: true, storage };
+  }
   const runtime = remoteRuntimeForCredential(runtimeId);
   if (
     typeof bearerToken !== "string" ||
@@ -2605,9 +2740,56 @@ function startWorkspaceGatewayPolling(record: RuntimeRunRecord): void {
 
 function writeUserRuntimes(runtimes: AgentRuntimeDefinition[]): void {
   const config = readDesktopConfig();
-  config[RUNTIME_CONFIG_KEY] = runtimes.map(
+  const keepUnknown = (value: unknown): unknown[] =>
+    Array.isArray(value)
+      ? value.filter((item) => !normalizeUserRuntime(item))
+      : [];
+  const serializable = runtimes.map(
     ({ managed: _managed, ...runtime }) => runtime,
   );
+  const nonOneIds = new Set(
+    serializable
+      .filter((runtime) => runtime.kind !== "one")
+      .map((runtime) => runtime.id),
+  );
+  if (Array.isArray(config[RUNTIME_CONFIG_KEY])) {
+    for (const item of config[RUNTIME_CONFIG_KEY]) {
+      const runtime = normalizeUserRuntime(item);
+      if (runtime && runtime.kind !== "one") nonOneIds.add(runtime.id);
+    }
+  }
+  for (const source of [
+    config[RUNTIME_CONFIG_KEY],
+    config[ONE_RUNTIME_CONFIG_KEY],
+  ]) {
+    if (!Array.isArray(source)) continue;
+    if (
+      source.some(
+        (item) =>
+          isRecord(item) &&
+          item.kind === "one" &&
+          typeof item.id === "string" &&
+          nonOneIds.has(item.id),
+      )
+    ) {
+      throw new Error(
+        "One runtime ID conflicts with another runtime; configuration was not changed.",
+      );
+    }
+  }
+  config[RUNTIME_CONFIG_KEY] = [
+    ...serializable.filter((runtime) => runtime.kind !== "one"),
+    ...keepUnknown(config[RUNTIME_CONFIG_KEY]),
+  ];
+  const one = serializable.filter((runtime) => runtime.kind === "one");
+  const unknownOne = Array.isArray(config[ONE_RUNTIME_CONFIG_KEY])
+    ? config[ONE_RUNTIME_CONFIG_KEY].filter(
+        (item) =>
+          !isRecord(item) || item.kind !== "one" || !normalizeUserRuntime(item),
+      )
+    : [];
+  if (one.length || unknownOne.length || ONE_RUNTIME_CONFIG_KEY in config)
+    config[ONE_RUNTIME_CONFIG_KEY] = [...one, ...unknownOne];
   writeDesktopConfig(config);
 }
 
@@ -2955,7 +3137,10 @@ function baseRuntimeControlCommands(
       availability: "running",
     },
   ];
-  if (["pi", "codex"].includes(runtime.kind) || capabilities?.modelSelection) {
+  if (
+    ["pi", "codex", "one"].includes(runtime.kind) ||
+    capabilities?.modelSelection
+  ) {
     commands.push({
       name: "model",
       description: "选择当前会话模型",
@@ -2963,7 +3148,7 @@ function baseRuntimeControlCommands(
       source: "desktop",
       target: "runtime-control",
       availability: "any",
-      argumentHint: "<provider/model>",
+      argumentHint: runtime.kind === "one" ? "<模型 ID>" : "<provider/model>",
     });
   }
   if (runtime.kind === "pi") {
@@ -3483,6 +3668,19 @@ async function executeAgentRuntimeCommandOnce(
         };
       }
     }
+    if (
+      runtime.kind === "one" &&
+      (args.length > 256 ||
+        /\s/.test(args) ||
+        Array.from(args).some(
+          (character) =>
+            character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+        ))
+    )
+      return {
+        type: "error",
+        message: "One 模型 ID 无效，请输入当前供应商支持的模型 ID。",
+      };
     // Model ids come from the provider's own catalogue. Never accept an
     // arbitrary identifier for adapters that can enumerate candidates: a
     // successful control message must match what the next Runtime request
@@ -4126,6 +4324,63 @@ async function probeRuntimeDefinition(
       transientAuth,
       auth: transientAuth || runtimeAuth(runtime),
     });
+  }
+
+  if (runtime.kind === "one" && isLocalSdkTransport(runtime)) {
+    const baseUrl = runtime.config.endpoint?.trim();
+    const modelId = runtime.config.model?.trim();
+    const apiKey =
+      transientAuth?.bearerToken?.trim() || getOneCredential(runtime.id);
+    if (!baseUrl || !modelId || !apiKey) {
+      return {
+        runtimeId: runtime.id,
+        state: "degraded",
+        capabilities: NO_AGENT_RUNTIME_CAPABILITIES,
+        checkedAt,
+        message: "请配置模型 API 地址、模型 ID 和 API Key。",
+      };
+    }
+    try {
+      await probeOneProvider({
+        workerPath: join(__dirname, "one-runtime-worker.mjs"),
+        baseUrl,
+        modelId,
+        apiKey,
+        timeoutMs: runtime.config.timeoutMs,
+      });
+      return {
+        runtimeId: runtime.id,
+        state: "healthy",
+        checkedAt,
+        capabilities: {
+          chat: true,
+          taskDispatch: true,
+          streaming: true,
+          cancellation: true,
+          tools: true,
+          memory: true,
+          modelSelection: true,
+          orchestration: false,
+          readOnlyPlanning: true,
+          mailbox: false,
+          securityEvents: false,
+          artifacts: true,
+          workspaceAccess: true,
+          steering: "native",
+          branching: "none",
+        },
+        message: "模型连接及工具调用测试通过。",
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return {
+        runtimeId: runtime.id,
+        state: "unreachable",
+        capabilities: NO_AGENT_RUNTIME_CAPABILITIES,
+        checkedAt,
+        message: detail.replaceAll(apiKey, "[redacted]"),
+      };
+    }
   }
 
   if (runtime.kind === "web-agent" && isLocalWebTransport(runtime)) {
@@ -5047,6 +5302,7 @@ export async function startAgentRuntimeTask(
     !isGatewayTransport(runtime) &&
     !isLocalCliTransport(runtime) &&
     !isLocalApiTransport(runtime) &&
+    !isLocalSdkTransport(runtime) &&
     !isLocalWebTransport(runtime)
   ) {
     throw new Error(`${runtime.kind} task dispatch is not available yet.`);
@@ -5079,6 +5335,7 @@ export async function startAgentRuntimeTask(
     !(
       isLocalCliTransport(runtime) ||
       isLocalApiTransport(runtime) ||
+      isLocalSdkTransport(runtime) ||
       configuredRemoteGateway
     )
   ) {
@@ -5178,7 +5435,8 @@ export async function startAgentRuntimeTask(
     task.mode === "safe_write" &&
     !mobileExecution &&
     !isGatewayTransport(runtime) &&
-    !isLocalWebTransport(runtime)
+    !isLocalWebTransport(runtime) &&
+    !isLocalSdkTransport(runtime)
   ) {
     try {
       record.permissionBridge = await createRuntimePermissionBridge(
@@ -5357,6 +5615,349 @@ export async function startAgentRuntimeTask(
   if (task.workspace && unifiedGatewayRuntime && !dispatchWorkspaceRef) {
     gatewayPermission = "read";
     dispatchPrompt = `${dispatchPrompt}\n\n[Agents One 工作区状态]\n当前任务已在桌面端关联本地项目，但本轮尚未建立 Workspace Grant。本地项目路径与文件内容未发送给你。你可以继续处理普通对话；如果请求依赖本地文件，请明确说明需要用户启用受控工作区授权。`;
+  }
+
+  if (runtime.kind === "one" && isLocalSdkTransport(runtime)) {
+    try {
+      if (task.mode === "implementation") {
+        throw new Error("One 当前尚不支持隔离工作树模式。");
+      }
+      let textAttachmentContext = "";
+      let images: Array<{ type: "image"; data: string; mimeType: string }> = [];
+      const activeModel = task.model?.trim() || runtime.config.model?.trim();
+      const imageInputEnabled =
+        runtime.config.oneImageInput === true &&
+        activeModel === runtime.config.model?.trim();
+      if (task.attachments?.length) {
+        const preparationAbort = new AbortController();
+        const preparation = prepareOneAttachments(
+          task.profile,
+          task.attachments,
+          join(__dirname, "one-pdf-worker.mjs"),
+          preparationAbort.signal,
+          imageInputEnabled,
+        );
+        record.one = {
+          cancel: async () => {
+            preparationAbort.abort();
+            await preparation.catch(() => undefined);
+          },
+        };
+        const prepared = await preparation;
+        if (record.cancelRequested || record.run.status !== "running")
+          return { ...record.run };
+        record.one = undefined;
+        textAttachmentContext = prepared.context;
+        images = prepared.images;
+        record.run = {
+          ...record.run,
+          inputArtifacts: [
+            ...(record.run.inputArtifacts || []),
+            ...prepared.artifacts,
+          ],
+        };
+      }
+      const token = getOneCredential(runtime.id);
+      const endpoint = runtime.config.endpoint?.trim();
+      const modelId = task.model?.trim() || runtime.config.model?.trim();
+      if (!token || !endpoint || !modelId)
+        throw new Error("请先配置 One 的模型地址、模型 ID 和 API Key。");
+      const profileRoot = agentsOneProfileHome(
+        task.profile || getActiveProfileNameSync(),
+      );
+      const stateDir = join(profileRoot, "desktop", "one", runtime.id);
+      const collaborationWorkspace = collaborationWorkingDirectory(task);
+      const binding =
+        task.workspace || collaborationWorkspace
+          ? undefined
+          : resolveOneConversationWorkspace(stateDir, {
+              conversationId: input.conversationContext?.id,
+              sessionId: task.sessionId,
+              runId: id,
+            });
+      const workspace =
+        task.workspace || collaborationWorkspace || binding!.workspace;
+      const memory = runtime.config.oneMemoryEnabled
+        ? readOneMemoryFile(profileRoot, runtime.id)
+        : "";
+      const skillInstructions = loadOneSkills(
+        join(homedir(), ".codex", "skills"),
+        runtime.config.oneSkills || [],
+        join(homedir(), ".agents", "skills"),
+      );
+      const definitionRevision = oneDefinitionRevision({
+        instructions: runtime.config.oneInstructions || "",
+        skillIds: runtime.config.oneSkills || [],
+        skillInstructions,
+        endpoint,
+        defaultModel: runtime.config.model || "",
+        contextWindow: runtime.config.oneContextWindow,
+        imageInput: runtime.config.oneImageInput === true,
+        memoryEnabled: runtime.config.oneMemoryEnabled === true,
+      });
+      const snapshotHash = oneRunSnapshotHash({
+        definitionRevision,
+        modelId,
+        mode: task.mode,
+        workspace,
+        memory,
+      });
+      const hostTools = createOneWorkspaceTools({
+        workspace,
+        runtimeId: runtime.id,
+        taskId: id,
+        expiresAt: Date.now() + task.timeoutMs,
+        permission: task.mode === "analysis" ? "read" : "write",
+        ...(task.mode === "analysis"
+          ? {}
+          : {
+              confirmDelete: async (path: string) => {
+                if (record.run.status !== "running" || record.cancelRequested)
+                  return false;
+                if (task.mode === "full_access") return true;
+                appendRuntimeEvent(
+                  record,
+                  "progress",
+                  runtime.name + " 请求删除项目文件，等待本次确认。",
+                  { code: "deletion_confirmation" },
+                );
+                const approved = await promptRemoteWorkspaceDelete(
+                  runtime.name,
+                  path,
+                );
+                return (
+                  approved &&
+                  record.run.status === "running" &&
+                  !record.cancelRequested
+                );
+              },
+            }),
+      });
+      const documentTools = createOneDocumentTools({
+        pdfWorkerPath: join(__dirname, "one-pdf-worker.mjs"),
+        workspace,
+        runtimeId: runtime.id,
+        taskId: id,
+        expiresAt: Date.now() + task.timeoutMs,
+        permission: task.mode === "analysis" ? "read" : "write",
+      });
+      const worker = startOneWorker({
+        workerPath: join(__dirname, "one-runtime-worker.mjs"),
+        workspace,
+        stateDir,
+        baseUrl: endpoint,
+        modelId,
+        apiKey: token,
+        imageInput: imageInputEnabled,
+        images,
+        contextWindow:
+          modelId === runtime.config.model?.trim()
+            ? runtime.config.oneContextWindow
+            : undefined,
+        systemPrompt: [
+          "You are One, an assistant in Agents One.",
+          runtime.config.oneInstructions || "",
+          ...skillInstructions,
+          ...(memory ? ["[One private memory]\n" + memory] : []),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        sessionId: task.sessionId,
+        revisionBinding: { runId: id, definitionRevision, snapshotHash },
+        prompt:
+          dispatchPrompt +
+          textAttachmentContext +
+          "\n\n如果交付文件，请在最终答复中按以下格式逐个列出：\n[交付物]\n路径：文件相对路径\nSHA-256：文件工具返回的实际摘要\n变更摘要：简述；不要编造文件或摘要。",
+        tools:
+          task.mode === "full_access"
+            ? [...hostTools.tools, ...documentTools.tools, oneShellTool]
+            : [...hostTools.tools, ...documentTools.tools],
+        executeTool: (name, parameters, signal) =>
+          name.startsWith("document_")
+            ? documentTools.executeTool(name, parameters, signal)
+            : name === "host_shell" && task.mode === "full_access"
+              ? executeOneShell(parameters, workspace, signal)
+              : hostTools.executeTool(name, parameters, signal),
+        onReady: (sessionId) => {
+          if (record.run.status !== "running" || record.cancelRequested)
+            throw new Error("Task cancelled");
+          binding?.bind(sessionId);
+          persistOneRunBinding(stateDir, {
+            agentId: runtime.id,
+            runId: id,
+            sessionId,
+            ...(input.conversationContext?.id
+              ? { conversationId: input.conversationContext.id }
+              : {}),
+            definitionRevision,
+            snapshotHash,
+          });
+          record.run = { ...record.run, sessionId };
+        },
+        onEvent: (event) => {
+          if (record.run.status !== "running" || !isRecord(event)) return;
+          appendOutputEvent(record, "one", JSON.stringify(event) + "\n");
+          if (
+            event.type === "one_model_call" &&
+            typeof event.count === "number" &&
+            typeof event.limit === "number"
+          )
+            appendRuntimeEvent(
+              record,
+              "progress",
+              `One 模型调用 ${event.count}/${event.limit}（含上下文摘要）。`,
+              { code: "one_model_call" },
+            );
+          if (event.type === "compaction_start")
+            appendRuntimeEvent(
+              record,
+              "progress",
+              "One 正在压缩会话上下文，可能产生额外模型调用。",
+              { code: "one_compaction_started" },
+            );
+          if (event.type === "compaction_end")
+            appendRuntimeEvent(
+              record,
+              "progress",
+              typeof event.errorMessage === "string"
+                ? "One 上下文压缩失败：" + event.errorMessage
+                : event.aborted === true
+                  ? "One 上下文压缩已取消。"
+                  : event.result
+                    ? "One 已压缩会话上下文。"
+                    : "One 未生成上下文摘要。",
+              {
+                code:
+                  event.errorMessage || event.aborted || !event.result
+                    ? "one_compaction_failed"
+                    : "one_compaction_completed",
+              },
+            );
+          if (
+            event.type === "message_update" &&
+            isRecord(event.assistantMessageEvent) &&
+            event.assistantMessageEvent.type === "text_delta" &&
+            typeof event.assistantMessageEvent.delta === "string"
+          ) {
+            record.run = {
+              ...record.run,
+              output: (
+                (record.run.output || "") + event.assistantMessageEvent.delta
+              ).slice(-512 * 1024),
+            };
+          }
+        },
+      });
+      record.one = {
+        steer: worker.steer,
+        cancel: async () => {
+          worker.cancel();
+          try {
+            await worker.completion;
+          } catch (error) {
+            if (
+              !(error instanceof Error) ||
+              error.message !== "One task cancelled"
+            )
+              throw error;
+          }
+        },
+      };
+      if (record.cancelRequested || record.run.status !== "running") {
+        await record.one.cancel();
+        return { ...record.run };
+      }
+      if (!record.monitorInactivity)
+        record.timeout = setTimeout(() => {
+          void terminateLocalRuntime(record, "timed_out");
+        }, task.timeoutMs);
+      void worker.completion.then(
+        async (result) => {
+          if (record.run.status !== "running") return;
+          if (record.terminationStatus) {
+            finishRuntimeRun(
+              record,
+              record.terminationStatus,
+              localRuntimeTerminationDetails(
+                record,
+                record.terminationStatus,
+                result.output,
+              ),
+            );
+          } else {
+            try {
+              if (
+                !result.sessionFile ||
+                result.sessionId !== record.run.sessionId ||
+                !(await verifyOneSessionBinding(stateDir, result.sessionFile, {
+                  sessionId: result.sessionId,
+                  runId: id,
+                  definitionRevision,
+                  snapshotHash,
+                }))
+              )
+                throw new Error("One session binding could not be verified");
+              if (record.run.status !== "running" || record.cancelRequested)
+                return;
+              commitOneRunBinding(stateDir, id);
+              if (task.sessionId) {
+                const reconciled = await reconcileEarlierOneBindings(
+                  stateDir,
+                  runtime.id,
+                  result.sessionId,
+                  result.sessionFile,
+                  id,
+                );
+                if (reconciled && record.run.status === "running")
+                  appendRuntimeEvent(
+                    record,
+                    "progress",
+                    `One 已核对 ${reconciled} 条历史会话记录；原任务结果不变。`,
+                    { code: "one_session_reconciled" },
+                  );
+              }
+            } catch {
+              if (record.run.status === "running" && !record.cancelRequested)
+                finishRuntimeRun(record, "failed", {
+                  error: "One 会话记录核验失败；已保留运行记录，请检查后重试。",
+                });
+              return;
+            }
+            const artifacts = await verifyLocalDeliveryArtifacts(
+              result.output,
+              workspace,
+            );
+            if (record.run.status !== "running") return;
+            finishRuntimeRun(record, "succeeded", {
+              output: result.output,
+              sessionId: result.sessionId,
+              ...(artifacts.length ? { artifacts } : {}),
+            });
+          }
+        },
+        (error: unknown) => {
+          if (record.run.status !== "running") return;
+          if (record.terminationStatus) {
+            finishRuntimeRun(
+              record,
+              record.terminationStatus,
+              localRuntimeTerminationDetails(record, record.terminationStatus),
+            );
+          } else {
+            finishRuntimeRun(record, "failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        },
+      );
+      return { ...record.run };
+    } catch (error) {
+      if (record.cancelRequested || record.run.status !== "running")
+        return { ...record.run };
+      return finishRuntimeRun(record, "failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   if (runtime.kind === "opencode" && runtime.location === "local") {
@@ -6316,7 +6917,10 @@ export async function sendAgentRuntimeInput(
   if (!record || record.run.status !== "running" || record.cancelRequested)
     return "ended";
   const steer =
-    record.pi?.steer || record.codex?.steer || record.opencode?.steer;
+    record.one?.steer ||
+    record.pi?.steer ||
+    record.codex?.steer ||
+    record.opencode?.steer;
   if (!steer) return "unsupported";
   await steer(text.trim());
   if (record.run.status === "running") noteRuntimeActivity(record);
@@ -6343,6 +6947,7 @@ export async function cancelAgentRuntimeTask(runId: string): Promise<boolean> {
     record.claudeSdk ||
     record.claudeCode ||
     record.pi ||
+    record.one ||
     record.opencode
   )
     return terminateLocalRuntime(record, "cancelled");

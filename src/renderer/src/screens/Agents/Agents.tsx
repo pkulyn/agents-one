@@ -26,6 +26,7 @@ interface AgentsProps {
 
 const RUNTIME_LABELS: Record<string, string> = {
   hermes: "Hermes Agent",
+  one: "One",
   codex: "Codex",
   "claude-code": "Claude Code",
   pi: "Pi Agent",
@@ -40,6 +41,7 @@ const TRANSPORT_LABEL_KEY: Record<AgentRuntimeTransport, string> = {
   "gateway-v1": "Gateway v1",
   "local-cli": "agents.transportLocalCli",
   "local-api": "agents.transportLocalApi",
+  "local-sdk": "agents.transportLocalSdk",
   "local-web": "agents.transportLocalWeb",
 };
 
@@ -130,6 +132,9 @@ function runtimeConnectionHint(
   if (transport === "gateway-v1") {
     return runtime.config.endpoint?.trim() || t("agents.addressNotConfigured");
   }
+  if (transport === "local-sdk") {
+    return runtime.config.endpoint?.trim() || t("agents.addressNotConfigured");
+  }
   if (transport === "local-cli") {
     return (
       runtime.config.executablePath?.trim() ||
@@ -184,6 +189,19 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
     setRuntimeProbeLoading(true);
     void Promise.all(
       enabledRuntimes.map(async (runtime) => {
+        if (runtime.kind === "one") {
+          return [
+            runtime.id,
+            {
+              runtimeId: runtime.id,
+              state: runtime.lastProbe?.state || "unknown",
+              capabilities:
+                runtime.capabilitySnapshot || NO_AGENT_RUNTIME_CAPABILITIES,
+              checkedAt: runtime.lastProbe?.checkedAt || Date.now(),
+              message: runtime.lastProbe?.message,
+            },
+          ] as const;
+        }
         try {
           return [
             runtime.id,
@@ -310,11 +328,13 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
 
         <div className="agents-domain-card-connection">
           <span>
-            {section === "web"
-              ? t("agents.connectionSession")
-              : section === "remote"
-                ? t("agents.connectionGateway")
-                : t("agents.connectionPath")}
+            {runtime.kind === "one"
+              ? t("agents.connectionModelApi")
+              : section === "web"
+                ? t("agents.connectionSession")
+                : section === "remote"
+                  ? t("agents.connectionGateway")
+                  : t("agents.connectionPath")}
           </span>
           <strong title={runtimeConnectionHint(runtime, t)}>
             {runtimeConnectionHint(runtime, t)}

@@ -14,6 +14,30 @@ afterEach(() =>
 );
 
 describe("runtime skill discovery", () => {
+  it("reports individual invalid files without hiding valid skills", () => {
+    const root = mkdtempSync(join(tmpdir(), "agents-one-skill-diagnostics-"));
+    roots.push(root);
+    for (const name of ["good", "oversize", "bad name", "unsafe"])
+      mkdirSync(join(root, name));
+    writeFileSync(join(root, "good", "SKILL.md"), "---\nname: Good\n---\nbody");
+    writeFileSync(join(root, "oversize", "SKILL.md"), Buffer.alloc(65537, 65));
+    writeFileSync(join(root, "bad name", "SKILL.md"), "ignored");
+    mkdirSync(join(root, "unsafe", "SKILL.md"));
+    const entries = discoverRuntimeSkills(root, "user");
+    expect(entries.find((entry) => entry.id === "user:good")).toMatchObject({
+      name: "Good",
+    });
+    expect(
+      entries.find((entry) => entry.id === "user:oversize")?.oneIssue,
+    ).toBe("too_large");
+    expect(
+      entries.find((entry) => entry.id === "user:bad name")?.oneIssue,
+    ).toBe("invalid_name");
+    expect(entries.find((entry) => entry.id === "user:unsafe")?.oneIssue).toBe(
+      "unsafe_file",
+    );
+  });
+
   it("reads only SKILL.md metadata and assigns a non-main-process boundary", () => {
     const root = mkdtempSync(join(tmpdir(), "agents-one-skills-"));
     roots.push(root);
