@@ -843,7 +843,7 @@ describe("Agents One backup round trip", { timeout: 30_000 }, () => {
   });
 
   it("requires One reauthorization when a restored model endpoint is new or changed", async () => {
-    const one = (id: string, endpoint: string) => ({
+    const one = (id: string, endpoint: string): Record<string, unknown> => ({
       id,
       name: id,
       kind: "one",

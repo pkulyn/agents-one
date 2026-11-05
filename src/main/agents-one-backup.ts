@@ -537,7 +537,9 @@ function disableUntrustedRestoredRuntimes(
       .filter((runtime) => typeof runtime?.id === "string")
       .map((runtime) => [runtime.id as string, runtime]),
   );
-  const protectRuntime = (runtime: Record<string, unknown>) => {
+  const protectRuntime = (
+    runtime: Record<string, unknown>,
+  ): Record<string, unknown> => {
     const id = typeof runtime.id === "string" ? runtime.id : "";
     const existing = currentById.get(id);
     // A One API key is stored locally outside the archive. Never silently

@@ -16,6 +16,7 @@ import http from "http";
 import { tmpdir } from "os";
 import { join } from "path";
 import { deriveAgentTransport } from "../src/shared/agent-runtimes";
+import type { OneWorkerOptions } from "../src/main/one-runtime/controller";
 
 const startOneWorkerMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/main/one-runtime/controller", () => ({
@@ -1209,7 +1210,10 @@ describe("agent runtime registry", () => {
     );
     vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
     let oneRunSequence = 0;
-    const fakeOneSession = (options: any, sessionId: string) => {
+    const fakeOneSession = (
+      options: Pick<OneWorkerOptions, "stateDir" | "revisionBinding">,
+      sessionId: string,
+    ): string => {
       const dir = join(options.stateDir, "sessions");
       mkdirSync(dir, { recursive: true });
       const file = join(dir, sessionId + ".jsonl");

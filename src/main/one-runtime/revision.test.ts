@@ -44,7 +44,7 @@ describe("One definition and run bindings", () => {
           snapshotHash: expected.snapshotHash,
         },
       };
-      const save = (entries: unknown[]) =>
+      const save = (entries: unknown[]): void =>
         writeFileSync(
           file,
           entries.map((e) => JSON.stringify(e)).join("\n") + "\n",
