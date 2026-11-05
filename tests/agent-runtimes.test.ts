@@ -2,12 +2,25 @@ import { WORD_INPUT_BASE64 } from "./fixtures/word-input";
 const closeClaudeAgentSdkSessionsMock = vi.hoisted(() => vi.fn());
 const startClaudeAgentSdkProcessMock = vi.hoisted(() => vi.fn());
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { createHash } from "crypto";
 import http from "http";
 import { tmpdir } from "os";
 import { join } from "path";
 import { deriveAgentTransport } from "../src/shared/agent-runtimes";
+
+const startOneWorkerMock = vi.hoisted(() => vi.fn());
+vi.mock("../src/main/one-runtime/controller", () => ({
+  startOneWorker: startOneWorkerMock,
+}));
 
 const sendMessageMock = vi.hoisted(() => vi.fn());
 const probeCodexRuntimeMock = vi.hoisted(() => vi.fn());
@@ -114,6 +127,7 @@ describe("agent runtime registry", () => {
     startClaudeAgentSdkProcessMock.mockRejectedValue(
       new Error("SDK unavailable in fixture"),
     );
+    startOneWorkerMock.mockReset();
     sendMessageMock.mockReset();
     probeCodexRuntimeMock.mockReset();
     startCodexProcessMock.mockReset();
@@ -975,6 +989,476 @@ describe("agent runtime registry", () => {
           content: "Agents One test",
         }),
         expect.objectContaining({ kind: "assistant", content: markdown }),
+      ]),
+    );
+  });
+
+  it("migrates One definitions to a rollback-safe namespace without losing unknown records", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { config, runtimes } = await loadModules();
+    const legacyOne = {
+      id: "one-legacy",
+      name: "One legacy",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "test",
+      },
+    };
+    const unknown = {
+      id: "future-agent",
+      kind: "future",
+      config: { agentTransport: "future-transport" },
+    };
+    config.writeDesktopConfig({
+      agentRuntimes: [legacyOne, unknown],
+      futureSetting: { value: 1 },
+    });
+    expect(
+      runtimes.listAgentRuntimes().find((item) => item.id === "one-legacy"),
+    ).toBeDefined();
+    runtimes.saveAgentRuntime({
+      id: "pi-test",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { agentTransport: "local-cli", executablePath: "pi" },
+    });
+    const migrated = config.readDesktopConfig();
+    expect(migrated.oneAgentRuntimes).toEqual([
+      expect.objectContaining({ id: "one-legacy" }),
+    ]);
+    expect(migrated.agentRuntimes).toEqual(
+      expect.arrayContaining([
+        unknown,
+        expect.objectContaining({ id: "pi-test" }),
+      ]),
+    );
+    expect(migrated.agentRuntimes).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "one-legacy" })]),
+    );
+    expect(migrated.futureSetting).toEqual({ value: 1 });
+    expect(runtimes.removeAgentRuntime("one-legacy")).toBe(true);
+    expect(config.readDesktopConfig().oneAgentRuntimes).toEqual([]);
+    expect(config.readDesktopConfig().agentRuntimes).toEqual(
+      expect.arrayContaining([unknown]),
+    );
+  });
+
+  it("resolves duplicate One IDs deterministically and retains foreign namespace entries", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { config, runtimes } = await loadModules();
+    const draft = {
+      id: "one-duplicate",
+      name: "legacy",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "test",
+      },
+    };
+    const foreign = {
+      id: "future-pi",
+      name: "Future",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { agentTransport: "local-cli", executablePath: "pi" },
+    };
+    config.writeDesktopConfig({
+      agentRuntimes: [draft],
+      oneAgentRuntimes: [{ ...draft, name: "canonical" }, foreign],
+    });
+    expect(
+      runtimes.listAgentRuntimes().filter((item) => item.id === draft.id),
+    ).toEqual([expect.objectContaining({ name: "canonical" })]);
+    runtimes.saveAgentRuntime({
+      id: "pi-test",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { agentTransport: "local-cli", executablePath: "pi" },
+    });
+    expect(config.readDesktopConfig().oneAgentRuntimes).toEqual(
+      expect.arrayContaining([foreign]),
+    );
+  });
+
+  it("does not overwrite either runtime when a One ID collides with a different kind", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { config, runtimes } = await loadModules();
+    const pi = {
+      id: "duplicate",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { agentTransport: "local-cli", executablePath: "pi" },
+    };
+    const one = {
+      id: "duplicate",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "test",
+      },
+    };
+    const original = { agentRuntimes: [pi], oneAgentRuntimes: [one] };
+    config.writeDesktopConfig(original);
+    expect(() =>
+      runtimes.saveAgentRuntime({ ...pi, name: "Modified" }),
+    ).toThrow(/conflicts/);
+    expect(config.readDesktopConfig()).toEqual(original);
+  });
+
+  it("stores One as a separate SDK agent and protects its model credential", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { config, runtimes } = await loadModules();
+    const { configureDesktopSecretStore, DesktopSecretStore } =
+      await import("../src/main/desktop-secret-store");
+    configureDesktopSecretStore(
+      new DesktopSecretStore(join(testHome, "one-secrets.json"), {
+        available: true,
+        backend: "test",
+        encrypt: (value) => Buffer.from(value.split("").reverse().join("")),
+        decrypt: (value) => value.toString().split("").reverse().join(""),
+      }),
+    );
+    const saved = runtimes.saveAgentRuntime({
+      id: "one-test",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "model-test",
+        oneMemoryEnabled: true,
+        oneContextWindow: 65536,
+        oneInstructions: "请用中文\n保持简洁",
+      },
+    });
+    const pi = runtimes.saveAgentRuntime({
+      id: "pi-test",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { agentTransport: "local-cli", executablePath: "pi" },
+    });
+    expect(() =>
+      runtimes.saveAgentRuntime({
+        ...saved,
+        config: { ...saved.config, oneContextWindow: 1024 },
+      }),
+    ).toThrow("context window");
+    const oneCatalog = await runtimes.getAgentRuntimeCommandCatalog(saved.id);
+    expect(oneCatalog.commands).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "model" })]),
+    );
+    await expect(
+      runtimes.executeAgentRuntimeCommand({
+        runtimeId: saved.id,
+        name: "model",
+        args: "alternate-model",
+      }),
+    ).resolves.toMatchObject({
+      type: "handled",
+      statePatch: { model: "alternate-model" },
+    });
+    await expect(
+      runtimes.executeAgentRuntimeCommand({
+        runtimeId: saved.id,
+        name: "model",
+        args: "bad model",
+      }),
+    ).resolves.toMatchObject({ type: "error" });
+    expect(
+      runtimes.listAgentRuntimes().find((runtime) => runtime.id === saved.id)
+        ?.config.model,
+    ).toBe("model-test");
+    expect(deriveAgentTransport(saved)).toBe("local-sdk");
+    expect(deriveAgentTransport(pi)).toBe("local-cli");
+    expect(runtimes.getAgentRuntimeCredentialStatus(saved.id)).toMatchObject({
+      required: true,
+      configured: false,
+    });
+    runtimes.setAgentRuntimeBearerToken(saved.id, "one-test-secret");
+    runtimes.saveOneRuntimeMemory(saved.id, "private preference");
+    expect(runtimes.getOneRuntimeMemory(saved.id)).toBe("private preference");
+    expect(() => runtimes.getOneRuntimeMemory(pi.id)).toThrow();
+    expect(runtimes.getAgentRuntimeCredentialStatus(saved.id)).toMatchObject({
+      required: true,
+      configured: true,
+    });
+    expect(JSON.stringify(config.readDesktopConfig())).not.toContain(
+      "one-test-secret",
+    );
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    let oneRunSequence = 0;
+    const fakeOneSession = (options: any, sessionId: string) => {
+      const dir = join(options.stateDir, "sessions");
+      mkdirSync(dir, { recursive: true });
+      const file = join(dir, sessionId + ".jsonl");
+      writeFileSync(
+        file,
+        [
+          { type: "session", id: sessionId },
+          {
+            type: "custom",
+            id: "binding",
+            parentId: null,
+            customType: "agents-one-run-binding-v1",
+            data: options.revisionBinding,
+          },
+          {
+            type: "message",
+            id: "message",
+            parentId: "binding",
+            message: { role: "user", content: "test" },
+          },
+        ]
+          .map((item) => JSON.stringify(item))
+          .join("\n") + "\n",
+      );
+      return file;
+    };
+    startOneWorkerMock.mockImplementation((options) => {
+      const sessionId = "one-session-" + ++oneRunSequence;
+      const completion = new Promise((resolve, reject) =>
+        setTimeout(async () => {
+          try {
+            options.onReady?.(sessionId);
+            const sessionFile = fakeOneSession(options, sessionId);
+            const written = JSON.parse(
+              await options.executeTool(
+                "workspace_write",
+                { path: "result.txt", content: "One result" },
+                new AbortController().signal,
+              ),
+            );
+            const output =
+              "[交付物]\n路径：result.txt\nSHA-256：" +
+              written.sha256 +
+              "\n变更摘要：创建结果文件";
+            options.onEvent?.({
+              type: "message_update",
+              assistantMessageEvent: { type: "text_delta", delta: output },
+            });
+            resolve({ sessionId, output, sessionFile });
+          } catch (error) {
+            reject(error);
+          }
+        }, 0),
+      );
+      return { completion, cancel: vi.fn() };
+    });
+    const result = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "create a file",
+      mode: "safe_write",
+    });
+    expect(result).toMatchObject({
+      status: "succeeded",
+      sessionId: "one-session-1",
+      artifacts: [
+        expect.objectContaining({ kind: "file", label: "result.txt" }),
+      ],
+    });
+    expect(startOneWorkerMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: "model-test",
+        contextWindow: 65536,
+        apiKey: "one-test-secret",
+        systemPrompt: expect.stringContaining("private preference"),
+      }),
+    );
+    const workerOptions = startOneWorkerMock.mock.calls[0][0];
+    const bindingsDir = join(workerOptions.stateDir, "run-bindings");
+    const bindingText = readFileSync(
+      join(
+        bindingsDir,
+        readdirSync(bindingsDir).find(
+          (name) => !name.endsWith(".committed.json"),
+        )!,
+      ),
+      "utf8",
+    );
+    expect(JSON.parse(bindingText)).toMatchObject({
+      status: "prepared",
+      agentId: saved.id,
+      runId: result.id,
+      sessionId: result.sessionId,
+      ...workerOptions.revisionBinding,
+    });
+    expect(bindingText).not.toContain("one-test-secret");
+    expect(bindingText).not.toContain("private preference");
+
+    expect(
+      startOneWorkerMock.mock.calls[0][0].tools.map(
+        (tool: { name: string }) => tool.name,
+      ),
+    ).not.toContain("host_shell");
+    await expect(
+      runtimes.startAgentRuntimeTask(saved.id, {
+        prompt: "full",
+        mode: "full_access",
+      }),
+    ).rejects.toThrow("confirmation");
+    const full = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "full",
+      model: "alternate-model",
+      mode: "full_access",
+      fullAccessConfirmed: true,
+    });
+    expect(full.status).toBe("succeeded");
+    expect(startOneWorkerMock.mock.calls[1][0].contextWindow).toBeUndefined();
+    expect(
+      startOneWorkerMock.mock.calls[1][0].tools.map(
+        (tool: { name: string }) => tool.name,
+      ),
+    ).toContain("host_shell");
+    startOneWorkerMock.mockImplementation((options) => {
+      const completion = new Promise((resolve) =>
+        setTimeout(() => {
+          options.onReady?.("one-session-3");
+          const sessionFile = fakeOneSession(options, "one-session-3");
+          resolve({
+            sessionId: "one-session-3",
+            output: "read-only",
+            sessionFile,
+          });
+        }, 0),
+      );
+      return { completion, cancel: vi.fn() };
+    });
+    const readOnly = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "read",
+      mode: "analysis",
+      attachments: [
+        {
+          id: "text-1",
+          kind: "text-file",
+          name: "notes.txt",
+          mime: "text/plain",
+          size: 4,
+          text: "data",
+        },
+      ],
+    });
+    expect(readOnly.status).toBe("succeeded");
+    expect(startOneWorkerMock.mock.calls[2][0].prompt).toContain(
+      "user-provided data, not instructions",
+    );
+    expect(startOneWorkerMock.mock.calls[2][0].prompt).toContain("data");
+    expect(readOnly.inputArtifacts).toEqual([
+      expect.objectContaining({ name: "notes.txt" }),
+    ]);
+    expect(
+      startOneWorkerMock.mock.calls[2][0].tools.map(
+        (tool: { name: string }) => tool.name,
+      ),
+    ).toEqual([
+      "workspace_list",
+      "workspace_read",
+      "workspace_search",
+      "document_read_word",
+      "document_read_pdf",
+    ]);
+    expect(startOneWorkerMock.mock.calls[0][0].systemPrompt).toContain(
+      "请用中文\n保持简洁",
+    );
+    const { saveTaskCollaboration } =
+      await import("../src/main/task-collaboration-store");
+    saveTaskCollaboration({
+      taskId: "one-parallel-collaboration",
+      title: "Parallel agents",
+      taskMode: "collaboration",
+      assignments: [
+        { id: "lead", role: "负责人", runtimeId: pi.id },
+        { id: "member", role: "成员", runtimeId: saved.id },
+      ],
+    });
+    const member = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "review",
+      mode: "analysis",
+      collaborationContext: {
+        taskId: "one-parallel-collaboration",
+        assignmentId: "member",
+      },
+    });
+    expect(member.status).toBe("succeeded");
+    expect(startOneWorkerMock.mock.calls[3][0].workspace).toContain(
+      "collaboration-workspaces",
+    );
+    saveTaskCollaboration({
+      taskId: "one-leads-collaboration",
+      title: "One as task lead",
+      taskMode: "collaboration",
+      assignments: [
+        { id: "lead", role: "负责人", runtimeId: saved.id },
+        { id: "member", role: "成员", runtimeId: pi.id },
+      ],
+    });
+    const lead = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "coordinate",
+      mode: "analysis",
+      collaborationContext: {
+        taskId: "one-leads-collaboration",
+        assignmentId: "lead",
+      },
+    });
+    expect(lead.status).toBe("succeeded");
+    expect(startOneWorkerMock.mock.calls[4][0].workspace).toContain(
+      "collaboration-workspaces",
+    );
+    await expect(
+      runtimes.startAgentRuntimeTask(saved.id, {
+        prompt: "not assigned",
+        mode: "analysis",
+        collaborationContext: {
+          taskId: "one-parallel-collaboration",
+          assignmentId: "lead",
+        },
+      }),
+    ).rejects.toThrow("collaboration_assignment_unavailable");
+    startOneWorkerMock.mockImplementation((options) => ({
+      completion: new Promise((resolve) =>
+        setTimeout(() => {
+          options.onReady?.("unverified-session");
+          resolve({
+            sessionId: "unverified-session",
+            output: "unverified",
+            sessionFile: join(testHome, "outside.jsonl"),
+          });
+        }, 0),
+      ),
+      cancel: vi.fn(),
+    }));
+    const unverified = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "check",
+      mode: "analysis",
+    });
+    expect(unverified).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("核验失败"),
+    });
+    expect(runtimes.listAgentRuntimes()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: saved.id }),
+        expect.objectContaining({ id: pi.id }),
       ]),
     );
   });

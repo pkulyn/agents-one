@@ -100,6 +100,63 @@ describe("Runtime schedules", () => {
     rmSync(testHome, { recursive: true, force: true });
   });
 
+  it("schedules One through the existing runtime queue without changing Pi", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "one-local",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "test",
+      },
+    });
+    runtimes.saveAgentRuntime({
+      id: "pi-local",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { transport: "cli", executablePath: "pi" },
+    });
+    startAgentRuntimeTaskMock.mockResolvedValueOnce({
+      id: "one-run",
+      runtimeId: "one-local",
+      status: "running",
+      startedAt: Date.now(),
+      events: [],
+    });
+    const schedule = await schedules.createTaskSchedule({
+      name: "One task",
+      schedule: "5m",
+      prompt: "Summarize",
+      runtimeId: "one-local",
+      mode: "analysis",
+    });
+    await schedules.triggerTaskSchedule(schedule.id);
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledWith(
+      "one-local",
+      expect.objectContaining({ mode: "analysis", prompt: "Summarize" }),
+    );
+    await expect(
+      schedules.createTaskSchedule({
+        name: "unsafe",
+        schedule: "5m",
+        prompt: "x",
+        runtimeId: "one-local",
+        mode: "full_access",
+      }),
+    ).resolves.toMatchObject({ mode: "full_access" });
+    expect(runtimes.listAgentRuntimes()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "pi-local", kind: "pi" }),
+      ]),
+    );
+  }, 15000);
+
   // Cold-loading the Runtime module graph can exceed Vitest's 5 s default
   // when the full suite runs many worker processes on Windows.
   it("keeps a queued trigger behind its active direct Runtime run", async () => {

@@ -488,6 +488,10 @@ const agentsOneAPI = {
     ipcRenderer.invoke("save-agent-runtime-appearance", id, appearance),
   removeAgentRuntime: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("remove-agent-runtime", id),
+  getOneRuntimeMemory: (id: string): Promise<string> =>
+    ipcRenderer.invoke("get-one-runtime-memory", id),
+  saveOneRuntimeMemory: (id: string, content: string): Promise<void> =>
+    ipcRenderer.invoke("save-one-runtime-memory", id, content),
   getAgentRuntimeCredentialStatus: (
     id: string,
   ): Promise<{

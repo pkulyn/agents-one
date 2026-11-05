@@ -523,14 +523,36 @@ function disableUntrustedRestoredRuntimes(
           Record<string, unknown>
         >)
       : [];
+  const currentOneRuntimes =
+    current &&
+    typeof current === "object" &&
+    !Array.isArray(current) &&
+    Array.isArray((current as Record<string, unknown>).oneAgentRuntimes)
+      ? ((current as Record<string, unknown>).oneAgentRuntimes as Array<
+          Record<string, unknown>
+        >)
+      : [];
   const currentById = new Map(
-    currentRuntimes
+    [...currentRuntimes, ...currentOneRuntimes]
       .filter((runtime) => typeof runtime?.id === "string")
       .map((runtime) => [runtime.id as string, runtime]),
   );
-  restored.agentRuntimes = restoredRuntimes.map((runtime) => {
+  const protectRuntime = (runtime: Record<string, unknown>) => {
     const id = typeof runtime.id === "string" ? runtime.id : "";
     const existing = currentById.get(id);
+    // A One API key is stored locally outside the archive. Never silently
+    // reuse it with an endpoint supplied by an unrelated backup.
+    if (runtime.kind === "one") {
+      const sameEndpoint = Boolean(
+        existing &&
+        existing.kind === "one" &&
+        existing.needsReauthorization !== true &&
+        endpointFingerprint(existing) === endpointFingerprint(runtime),
+      );
+      return sameEndpoint
+        ? runtime
+        : { ...runtime, enabled: false, needsReauthorization: true };
+    }
     const remote =
       runtime.location === "remote" ||
       (
@@ -579,7 +601,13 @@ function disableUntrustedRestoredRuntimes(
       return protectedRuntime;
     }
     return runtime;
-  });
+  };
+  restored.agentRuntimes = restoredRuntimes.map(protectRuntime);
+  if (Array.isArray(restored.oneAgentRuntimes)) {
+    restored.oneAgentRuntimes = (
+      restored.oneAgentRuntimes as Array<Record<string, unknown>>
+    ).map(protectRuntime);
+  }
 
   const currentRecord =
     current && typeof current === "object" && !Array.isArray(current)

@@ -79,6 +79,32 @@ export const BUILTIN_AGENT_RUNTIME_ADAPTER_MANIFESTS: readonly AgentRuntimeAdapt
       ],
     },
     {
+      adapterId: "one",
+      vendorId: "agents-one",
+      adapterVersion: "1.0.0",
+      displayName: "One",
+      description: "使用 Pi SDK 的独立本地智能体。",
+      locations: ["local"],
+      transports: ["local-sdk"],
+      kinds: ["one"],
+      requiresCredential: true,
+      fields: [
+        {
+          key: "endpoint",
+          label: "模型 API 地址",
+          type: "text",
+          required: true,
+        },
+        { key: "model", label: "模型 ID", type: "text", required: true },
+        {
+          key: "bearerToken",
+          label: "模型 API Key",
+          type: "password",
+          secret: true,
+        },
+      ],
+    },
+    {
       adapterId: "codex",
       vendorId: "openai",
       adapterVersion: "1.0.0",

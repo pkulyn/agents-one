@@ -144,6 +144,47 @@ export default {
     waitingConnector: "Waiting for Connector",
     paired: "Paired",
     expired: "Expired",
+    oneAdvanced: "Model context, personalization, skills and memory",
+    oneSkillsLoading: "Loading skills…",
+    oneSkillsRetry: "Retry",
+    oneSkillsLoadError:
+      "Could not read the skills directory. Check its permissions and try again.",
+    oneSkillMissing: "Selected skill unavailable: {{id}} (uncheck to remove)",
+    oneContextWindow: "Model context window (tokens)",
+    oneContextWindowHint:
+      "Enter the default model’s actual capacity, or leave blank to estimate 32,768 tokens. Long conversations are summarized automatically and may incur extra model charges; enter the actual value for smaller models.",
+    oneImageInput: "Model supports image input",
+    oneImageInputHint:
+      "Enable only when the model and endpoint support images. Reconfirm after changing either. Images are sent to the provider and stored in the One session.",
+    oneSkillIssue: {
+      invalid_name: "Unavailable: unsupported directory name",
+      unsafe_file: "Unavailable: skill file is not a regular file or is a link",
+      too_large: "Unavailable: skill file exceeds 64 KiB",
+      unreadable: "Unavailable: skill file cannot be read",
+    },
+    oneMemoryEnabled: "Enable One private memory",
+    oneMemory: "One private memory",
+    oneMemoryHint:
+      "Memory is scoped to this profile and agent. When enabled, it is sent to its model and is not automatically shared with other agents.",
+    oneSaveMemory: "Save memory",
+    oneMemoryAfterSave: "Save the agent before editing its memory.",
+    oneSkills: "Selected skills",
+    oneSkillsHint:
+      "Only selected skill instructions are sent to the model; their scripts do not run automatically.",
+    oneSkillsEmpty: "No local user skills found.",
+    oneInstructions: "Personal instructions",
+    oneInstructionsHint:
+      "Define One’s role and response preferences for future requests.",
+    oneProvider: "Model provider",
+    oneCustomProvider: "Custom compatible endpoint",
+    oneEndpoint: "Model API URL",
+    oneEndpointHint:
+      "Use an OpenAI Chat Completions compatible endpoint; remote services require HTTPS.",
+    oneModel: "Model ID",
+    oneApiKey: "Model API Key",
+    oneCredentialHint:
+      "The key is protected by the operating system. The connection test calls the model and may incur a small charge.",
+    oneSaveKey: "Save model key",
     gatewayAddress: "Gateway Address",
     gatewayAddressHint:
       "HTTPS base address of a self-hosted Gateway v1. This path does not create a Connect pairing record.",

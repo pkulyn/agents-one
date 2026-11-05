@@ -1,3 +1,5 @@
+import { getOneRuntimeMemory, saveOneRuntimeMemory } from "../agent-runtimes";
+import { waitForWindowsSecretMetadata } from "../one-runtime/windows-secret-ready";
 import { createScopedIpcMain } from "./sender-scope";
 import { registerConversationFileIpc } from "./conversation-files";
 import {
@@ -989,6 +991,13 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("remove-agent-runtime", (_event, id: string) =>
     removeAgentRuntime(id),
   );
+  ipcMain.handle("get-one-runtime-memory", (_event, id: string) =>
+    getOneRuntimeMemory(id),
+  );
+  ipcMain.handle(
+    "save-one-runtime-memory",
+    (_event, id: string, content: string) => saveOneRuntimeMemory(id, content),
+  );
   ipcMain.handle("get-agent-runtime-credential-status", (_event, id: string) =>
     getAgentRuntimeCredentialStatus(id),
   );
@@ -997,8 +1006,18 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle(
     "set-agent-runtime-bearer-token",
-    (_event, id: string, bearerToken: string) =>
-      setAgentRuntimeBearerToken(id, bearerToken),
+    async (_event, id: string, bearerToken: string) => {
+      const isOne = listAgentRuntimes().some(
+        (runtime) =>
+          runtime.id === id &&
+          runtime.kind === "one" &&
+          runtime.location === "local",
+      );
+      const result = setAgentRuntimeBearerToken(id, bearerToken);
+      if (isOne && process.platform === "win32")
+        await waitForWindowsSecretMetadata(app.getPath("userData"));
+      return result;
+    },
   );
   ipcMain.handle(
     "set-agent-runtime-workspace-gateway-token",
@@ -2029,6 +2048,12 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle("list-runtime-skills", () => [
     ...discoverRuntimeSkills(join(homedir(), ".codex", "skills"), "user"),
+    ...discoverRuntimeSkills(join(homedir(), ".agents", "skills"), "user").map(
+      (skill) => ({
+        ...skill,
+        id: `agents-user:${skill.id.slice(5)}`,
+      }),
+    ),
     ...discoverRuntimeSkills(
       join(process.cwd(), ".agents", "skills"),
       "project",

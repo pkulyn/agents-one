@@ -248,6 +248,8 @@ export default {
     inheritPermission: "继承任务权限（当前：{{permission}}）",
     fullAccessOption: "完全访问（可读取、创建和编辑，删除无需再次确认）",
     shareHint: "共享给协作组，供后续角色读取本轮问答",
+    privateWorkspaceHint:
+      "私有问答和本轮产物摘要不会自动共享；共享工作区中的文件仍可由有权限的成员读取。",
     currentAgent: "当前智能体",
     reassignRole: "改派当前角色",
     pauseRole: "暂停此角色",

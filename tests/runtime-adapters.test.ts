@@ -20,6 +20,7 @@ describe("Runtime Adapter Registry", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([
       "hermes",
+      "one",
       "codex",
       "claude-code",
       "pi",
