@@ -2371,6 +2371,34 @@ export default function AgentRuntimesPane({
                         {t("settings.runtimeManager.oneContextWindowHint")}
                       </span>
                     </label>
+                    <label className="settings-field">
+                      <span className="settings-field-label">
+                        {t("settings.runtimeManager.oneMaxModelCalls")}
+                      </span>
+                      <input
+                        className="input"
+                        type="number"
+                        min={1}
+                        max={64}
+                        step={1}
+                        aria-label={t(
+                          "settings.runtimeManager.oneMaxModelCalls",
+                        )}
+                        value={draft.config.oneMaxModelCalls ?? ""}
+                        placeholder="64"
+                        onChange={(event) =>
+                          updateConfig(
+                            "oneMaxModelCalls",
+                            event.target.value === ""
+                              ? undefined
+                              : Number(event.target.value),
+                          )
+                        }
+                      />
+                      <span className="settings-field-hint">
+                        {t("settings.runtimeManager.oneMaxModelCallsHint")}
+                      </span>
+                    </label>
                     <div className="settings-field">
                       <label className="agent-runtime-enabled">
                         <input

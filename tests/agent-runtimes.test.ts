@@ -1373,6 +1373,7 @@ describe("agent runtime registry", () => {
         oneApiType: "anthropic-messages",
         oneMemoryEnabled: true,
         oneContextWindow: 65536,
+        oneMaxModelCalls: 18,
         oneInstructions: "请用中文\n保持简洁",
       },
     });
@@ -1390,6 +1391,28 @@ describe("agent runtime registry", () => {
         config: { ...saved.config, oneContextWindow: 1024 },
       }),
     ).toThrow("context window");
+    expect(() =>
+      runtimes.saveAgentRuntime({
+        ...saved,
+        config: { ...saved.config, oneMaxModelCalls: 0 },
+      }),
+    ).toThrow("model call limit");
+    expect(() =>
+      runtimes.saveAgentRuntime({
+        ...saved,
+        config: { ...saved.config, oneMaxModelCalls: 64.5 },
+      }),
+    ).toThrow("model call limit");
+    expect(() =>
+      runtimes.saveAgentRuntime({
+        ...saved,
+        config: { ...saved.config, oneMaxModelCalls: 65 },
+      }),
+    ).toThrow("model call limit");
+    expect(
+      runtimes.listAgentRuntimes().find((runtime) => runtime.id === saved.id)
+        ?.config.oneMaxModelCalls,
+    ).toBe(18);
     expect(() =>
       runtimes.saveAgentRuntime({
         ...saved,
@@ -1533,6 +1556,7 @@ describe("agent runtime registry", () => {
         modelId: "model-test",
         apiType: "anthropic-messages",
         contextWindow: 65536,
+        maxModelCalls: 18,
         apiKey: "one-test-secret",
         systemPrompt: expect.stringContaining("private preference"),
       }),
