@@ -204,7 +204,7 @@ Version health discovery runs without user loader controls, credentials or nativ
 
 Restricted Pi tasks require a reviewed native CLI version before any task content, attachments or workspace preparation reaches the executor. Unknown versions fail with a fixed diagnostic.
 
-[[src/main/pi-capabilities.ts#verifyPiStrictCapabilities]] resolves and binds the actual command and wrapper entry, queries version in a temporary isolated home/config with minimal OS environment and offline resource-disabled flags, and accepts only Pi 1.4.0 whose native policy was verified. Each task rechecks file identity after metadata and before dispatch without a cached approval. Main checks task cancellation across startup waits so Stop cannot be followed by delayed prompt dispatch. Full access retains its explicit project requirement. Version metadata is compatibility evidence for a trusted user-selected CLI; it cannot sandbox a malicious binary or concurrent same-user filesystem changes.
+[[src/main/pi-capabilities.ts#verifyPiStrictCapabilities]] resolves and binds the actual command and wrapper entry, queries version in a temporary isolated home/config with minimal OS environment and offline resource-disabled flags, and accepts only reviewed Pi 1.4.0 or 1.5.0. Each task rechecks file identity after metadata and before dispatch without a cached approval. Main checks task cancellation across startup waits so Stop cannot be followed by delayed prompt dispatch. Full access retains its explicit project requirement. Version metadata is compatibility evidence for a trusted user-selected CLI; it cannot sandbox a malicious binary or concurrent same-user filesystem changes.
 
 ## Pi restricted task environment
 
