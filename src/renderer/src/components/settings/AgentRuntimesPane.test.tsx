@@ -179,6 +179,9 @@ function installHermesAPI(
       listAgentRuntimes,
       getOneRuntimeMemory: vi.fn(async () => "existing memory"),
       saveOneRuntimeMemory: vi.fn(async () => undefined),
+      listProjectWorkspaces: vi.fn(async () => []),
+      getOneProjectMemory: vi.fn(async () => ""),
+      saveOneProjectMemory: vi.fn(async () => undefined),
       saveAgentRuntime,
       saveAgentRuntimeAppearance,
       removeAgentRuntime: vi.fn(async () => true),
@@ -762,6 +765,114 @@ describe("AgentRuntimesPane", () => {
     await waitFor(() => expect(editor).toHaveValue("existing memory"));
     expect(editor).toBeEnabled();
     expect(window.agentsOneAPI.saveOneRuntimeMemory).not.toHaveBeenCalled();
+  });
+
+  it("edits and clears memory for the selected registered project", async () => {
+    installHermesAPI([
+      {
+        id: "one-test",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {
+          agentTransport: "local-sdk",
+          endpoint: "https://example.test/v1",
+          model: "test",
+          oneMemoryEnabled: true,
+        },
+      },
+    ]);
+    vi.mocked(window.agentsOneAPI.listProjectWorkspaces).mockResolvedValue([
+      { id: "project-aaaaaaaaaaaaaaaaaaaaaaaa", name: "Project A" },
+      { id: "project-bbbbbbbbbbbbbbbbbbbbbbbb", name: "Project B" },
+    ]);
+    vi.mocked(window.agentsOneAPI.getOneProjectMemory).mockImplementation(
+      async (_runtimeId, workspaceId) => "memory:" + workspaceId,
+    );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      render(<AgentRuntimesPane />);
+      fireEvent.click(
+        await screen.findByText("模型上下文、个性化、技能与记忆"),
+      );
+      const projectSelect = await screen.findByLabelText("选择项目");
+      const editor = await screen.findByLabelText("One 项目记忆内容");
+      await waitFor(() =>
+        expect(editor).toHaveValue("memory:project-aaaaaaaaaaaaaaaaaaaaaaaa"),
+      );
+
+      fireEvent.change(editor, {
+        target: { value: "unsaved Project A notes" },
+      });
+      fireEvent.change(projectSelect, {
+        target: { value: "project-bbbbbbbbbbbbbbbbbbbbbbbb" },
+      });
+      expect(confirm).toHaveBeenCalledWith(
+        "放弃当前项目记忆的未保存修改并切换项目吗？",
+      );
+      expect(projectSelect).toHaveValue("project-aaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(editor).toHaveValue("unsaved Project A notes");
+
+      confirm.mockReturnValue(true);
+      fireEvent.change(projectSelect, {
+        target: { value: "project-bbbbbbbbbbbbbbbbbbbbbbbb" },
+      });
+      await waitFor(() =>
+        expect(editor).toHaveValue("memory:project-bbbbbbbbbbbbbbbbbbbbbbbb"),
+      );
+      fireEvent.change(editor, { target: { value: "Project B notes" } });
+      fireEvent.click(screen.getByRole("button", { name: "保存项目记忆" }));
+      await waitFor(() =>
+        expect(window.agentsOneAPI.saveOneProjectMemory).toHaveBeenCalledWith(
+          "one-test",
+          "project-bbbbbbbbbbbbbbbbbbbbbbbb",
+          "Project B notes",
+        ),
+      );
+
+      const clear = screen.getByRole("button", { name: "清空项目记忆" });
+      confirm.mockReturnValue(false);
+      fireEvent.click(clear);
+      expect(window.agentsOneAPI.saveOneProjectMemory).toHaveBeenCalledTimes(1);
+      expect(editor).toHaveValue("Project B notes");
+
+      confirm.mockReturnValue(true);
+      fireEvent.click(clear);
+      await waitFor(() =>
+        expect(
+          window.agentsOneAPI.saveOneProjectMemory,
+        ).toHaveBeenLastCalledWith(
+          "one-test",
+          "project-bbbbbbbbbbbbbbbbbbbbbbbb",
+          "",
+        ),
+      );
+      await waitFor(() => expect(editor).toHaveValue(""));
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  it("does not show a project memory editor when there are no registered projects", async () => {
+    installHermesAPI([
+      {
+        id: "one-test",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: { agentTransport: "local-sdk", model: "test" },
+      },
+    ]);
+    render(<AgentRuntimesPane />);
+    fireEvent.click(await screen.findByText("模型上下文、个性化、技能与记忆"));
+    expect(
+      await screen.findByText("暂无已注册项目，请先选择或注册项目文件夹。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("One 项目记忆内容")).not.toBeInTheDocument();
   });
 
   it("reports skill discovery errors and lets users remove unavailable selections", async () => {

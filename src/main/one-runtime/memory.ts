@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   lstatSync,
@@ -12,22 +12,50 @@ import { dirname, join } from "node:path";
 
 const idPattern = /^[a-z][a-z0-9-]{1,63}$/;
 const maximumBytes = 100 * 1024;
-function memoryPath(profileRoot: string, runtimeId: string): string {
+function runtimeMemoryDirectory(
+  profileRoot: string,
+  runtimeId: string,
+): string {
   if (!idPattern.test(runtimeId)) throw new Error("One runtime ID is invalid");
-  return join(profileRoot, "desktop", "one", runtimeId, "memory.md");
+  return join(profileRoot, "desktop", "one", runtimeId);
+}
+function memoryPath(profileRoot: string, runtimeId: string): string {
+  return join(runtimeMemoryDirectory(profileRoot, runtimeId), "memory.md");
+}
+function projectMemoryPath(
+  profileRoot: string,
+  runtimeId: string,
+  workspaceId: string,
+): string {
+  if (
+    typeof workspaceId !== "string" ||
+    !workspaceId.trim() ||
+    workspaceId.trim() !== workspaceId ||
+    Buffer.byteLength(workspaceId, "utf8") > 512 ||
+    /[\0\r\n]/.test(workspaceId)
+  )
+    throw new Error("One project memory workspace ID is invalid");
+  const directory = join(
+    runtimeMemoryDirectory(profileRoot, runtimeId),
+    "project-memory",
+  );
+  const key = createHash("sha256").update(workspaceId).digest("hex");
+  return join(directory, key + ".md");
 }
 function assertNotSymlink(path: string): void {
   if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink())
     throw new Error("One memory path cannot be a symbolic link");
 }
-export function readOneMemoryFile(
+function readMemoryPath(
   profileRoot: string,
   runtimeId: string,
+  path: string,
 ): string {
-  const path = memoryPath(profileRoot, runtimeId);
+  const runtimeDirectory = runtimeMemoryDirectory(profileRoot, runtimeId);
   for (const part of [
     join(profileRoot, "desktop"),
     join(profileRoot, "desktop", "one"),
+    runtimeDirectory,
     dirname(path),
     path,
   ])
@@ -38,9 +66,10 @@ export function readOneMemoryFile(
     throw new Error("One memory is invalid or too large");
   return readFileSync(path, "utf8");
 }
-export function writeOneMemoryFile(
+function writeMemoryPath(
   profileRoot: string,
   runtimeId: string,
+  path: string,
   content: string,
 ): void {
   if (
@@ -49,11 +78,11 @@ export function writeOneMemoryFile(
     content.includes("\0")
   )
     throw new Error("One memory is invalid or too large");
-  const path = memoryPath(profileRoot, runtimeId);
   const directory = dirname(path);
   for (const part of [
     join(profileRoot, "desktop"),
     join(profileRoot, "desktop", "one"),
+    runtimeMemoryDirectory(profileRoot, runtimeId),
     directory,
     path,
   ])
@@ -75,4 +104,50 @@ export function writeOneMemoryFile(
     }
     throw error;
   }
+}
+export function readOneMemoryFile(
+  profileRoot: string,
+  runtimeId: string,
+): string {
+  return readMemoryPath(
+    profileRoot,
+    runtimeId,
+    memoryPath(profileRoot, runtimeId),
+  );
+}
+export function writeOneMemoryFile(
+  profileRoot: string,
+  runtimeId: string,
+  content: string,
+): void {
+  writeMemoryPath(
+    profileRoot,
+    runtimeId,
+    memoryPath(profileRoot, runtimeId),
+    content,
+  );
+}
+export function readOneProjectMemoryFile(
+  profileRoot: string,
+  runtimeId: string,
+  workspaceId: string,
+): string {
+  return readMemoryPath(
+    profileRoot,
+    runtimeId,
+    projectMemoryPath(profileRoot, runtimeId, workspaceId),
+  );
+}
+export function writeOneProjectMemoryFile(
+  profileRoot: string,
+  runtimeId: string,
+  workspaceId: string,
+  content: string,
+): void {
+  writeMemoryPath(
+    profileRoot,
+    runtimeId,
+    projectMemoryPath(profileRoot, runtimeId, workspaceId),
+    content,
+  );
 }

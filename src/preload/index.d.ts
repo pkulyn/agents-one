@@ -382,6 +382,15 @@ interface AgentsOneAPI {
   removeAgentRuntime: (id: string) => Promise<boolean>;
   getOneRuntimeMemory: (id: string) => Promise<string>;
   saveOneRuntimeMemory: (id: string, content: string) => Promise<void>;
+  getOneProjectMemory: (
+    runtimeId: string,
+    workspaceId: string,
+  ) => Promise<string>;
+  saveOneProjectMemory: (
+    runtimeId: string,
+    workspaceId: string,
+    content: string,
+  ) => Promise<void>;
   getAgentRuntimeCredentialStatus: (id: string) => Promise<{
     required: boolean;
     configured: boolean;
