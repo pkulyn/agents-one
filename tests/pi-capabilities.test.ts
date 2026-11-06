@@ -26,6 +26,7 @@ it.each([
   "0.61.0",
   "1.3.9",
   "1.4.1",
+  "1.5.1",
   "2.0.0",
   "v1.4.0",
   "1.4.0-beta",
@@ -67,6 +68,12 @@ it("uses an isolated environment, native metadata flags and an ephemeral cwd", a
     "--no-context-files",
   ]);
   expect(fs.existsSync(state.cwd)).toBe(false);
+});
+it("accepts the reviewed Pi 1.5.0 CLI for restricted tasks", async () => {
+  const invocation = script("process.stdout.write('1.5.0\\n')");
+  const verified = await verifyPiStrictCapabilities(invocation);
+  expect(verified.invocation).toEqual(invocation);
+  expect(() => verified.assertUnchanged()).not.toThrow();
 });
 it.each([
   "process.stderr.write('secret-fixture');process.stdout.write('1.4.0')",
