@@ -46,6 +46,7 @@ import { useI18n } from "../useI18n";
 import ConnectionPane from "./ConnectionPane";
 import { SettingsDataContext } from "./SettingsDataContext";
 import { useSettingsData } from "./useSettingsData";
+import OneProjectMemoryEditor from "./OneProjectMemoryEditor";
 
 const DEFAULT_TIMEOUT_MS = 300_000;
 type NewAgentType = "local" | "remote" | "web";
@@ -2507,6 +2508,12 @@ export default function AgentRuntimesPane({
                         </span>
                       )}
                     </div>
+                    {selectedRuntime && (
+                      <OneProjectMemoryEditor
+                        key={selectedRuntime.id}
+                        runtimeId={selectedRuntime.id}
+                      />
+                    )}
                     <fieldset className="settings-field">
                       <legend className="settings-field-label">
                         {t("settings.runtimeManager.oneSkills")}

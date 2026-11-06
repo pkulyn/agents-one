@@ -168,12 +168,27 @@ export default {
     oneMemoryEnabled: "Enable One private memory",
     oneMemory: "One private memory",
     oneMemoryHint:
-      "Memory is scoped to this profile and agent. When enabled, it is sent to its model and is not automatically shared with other agents.",
+      "Private memory is scoped to this profile and One. Project memory is scoped to the selected project and One. When enabled, matching memory is sent as model context and is not automatically shared with other agents.",
     oneSaveMemory: "Save memory",
     oneClearMemory: "Clear memory",
     oneClearMemoryConfirm:
       "Clear this One agent's saved private memory and current edits? This cannot be undone.",
     oneMemoryAfterSave: "Save the agent before editing its memory.",
+    oneProjectMemoryHeading: "Project memory",
+    oneProjectMemoryHint:
+      "Scoped to this profile, One, and the selected project. It is sent only for One tasks using that registered project while One memory is enabled.",
+    oneProjectMemoryProject: "Select project",
+    oneProjectMemory: "One project memory",
+    oneProjectMemoryDiscardConfirm:
+      "Discard unsaved edits to this project's memory and switch projects?",
+    oneProjectMemoryLoading: "Loading projects…",
+    oneProjectMemoryLoadError: "Project memory is unavailable.",
+    oneProjectMemoryNoProjects:
+      "No registered projects yet. Select or register a project folder first.",
+    oneSaveProjectMemory: "Save project memory",
+    oneClearProjectMemory: "Clear project memory",
+    oneProjectMemoryConfirm:
+      "Clear this One agent's saved memory and current edits for the selected project? This cannot be undone.",
     oneSkills: "Selected skills",
     oneSkillsHint:
       "Only selected skill instructions are sent to the model; their scripts do not run automatically.",
