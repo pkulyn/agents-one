@@ -167,6 +167,8 @@ export interface AgentRuntimeConfig {
   oneMemoryEnabled?: boolean;
   /** Context capacity of One’s configured default model. */
   oneContextWindow?: number;
+  /** Maximum model API requests per One run, including automatic summaries. */
+  oneMaxModelCalls?: number;
   /** User-confirmed image input support for this exact default model and endpoint. */
   oneImageInput?: boolean;
   /** One's model wire protocol. Missing means legacy OpenAI Chat Completions. */
