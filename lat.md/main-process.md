@@ -316,7 +316,7 @@ On Windows, a failed or stalled `taskkill` falls back to terminating the direct 
 
 One enables Pi session compaction using the configured model context window; absent an override, 32,768 tokens is a conservative estimate rather than provider metadata. The setting applies only to the configured default model. Session summaries persist in the One session store, automatic summaries may incur model calls, and cancellation must not save a partial summary.
 
-One model presets include Ark Agent Plan with its documented OpenAI-compatible endpoint and Doubao Seed 2.0 Mini context value; choosing a different provider or model clears a stale override.
+One model presets provide curated quick-fill endpoints for common providers alongside a custom endpoint. Selecting a template fills its API endpoint, example model and protocol; it does not certify connectivity or tool support, so the same real harmless-tool probe remains required before saving. Ark Agent Plan and OpenAI also set their known model-specific context/image defaults; switching provider or model clears stale overrides. The preset identity is derived from endpoint and API type rather than stored as another configuration field.
 
 One limits each worker run to 64 logical model requests, counting automatic summaries and tool-result continuation calls at the SDK model runtime boundary. The progress stream exposes the current count; provider-internal HTTP retries are not included. One also supports session-scoped model IDs on its configured endpoint without changing its default model.
 
