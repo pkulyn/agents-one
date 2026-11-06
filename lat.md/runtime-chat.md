@@ -496,7 +496,7 @@ A persisted collaboration assignment binds local CLI roles to one Main-owned, ca
 
 [[src/main/collaboration-working-directory.ts#bindCollaborationWorkingDirectory]] verifies task mode, assignment and Runtime before attaching a non-serializable internal directory marker; explicit user-selected workspaces keep precedence. Physical aliases are rejected, and adapters recheck the marker at startup. OpenCode snapshots the bound directory even without a user project. Automatic-mode collaboration deliveries use the existing Main file/hash verifier, which now accepts Markdown-quoted paths and multiple contracts and exposes a verified relative path alongside the native path. Invalid or out-of-root files remain untrusted. [[tests/collaboration-working-directory.test.ts]] and [[tests/agent-runtimes.test.ts]] cover the boundary and an actual ACP child process writing a verified file.
 
-DAG role runs are observed only by their collaboration scheduler; ordinary polling cannot overwrite the owner conversation with a child Runtime session. A blocked delivery still retains its actual reply and handoff. Starting coordinators receive a planning-only stage and current task time; they must not inspect stale task directories or judge downstream results before dispatch.
+DAG role runs are observed only by their collaboration scheduler; ordinary polling cannot overwrite the owner conversation with a child Runtime session. A blocked delivery retains its actual reply; a private guided reply stays in its role-scoped intervention rather than the shared handoff. Starting coordinators receive a planning-only stage and current task time; they must not inspect stale task directories or judge downstream results before dispatch.
 
 ## Compact intervention controls
 
