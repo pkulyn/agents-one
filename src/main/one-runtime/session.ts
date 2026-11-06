@@ -10,6 +10,10 @@ import {
   type CreateAgentSessionResult,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import {
+  isOneModelApiType,
+  type OneModelApiType,
+} from "../../shared/one-model-api";
 
 /** Explicit inputs for an isolated One session. Never persist apiKey in config. */
 export interface OneSessionOptions {
@@ -18,6 +22,7 @@ export interface OneSessionOptions {
   baseUrl: string;
   modelId: string;
   apiKey: string;
+  apiType?: OneModelApiType;
   /** Model context capacity; absent values use a conservative estimate. */
   contextWindow?: number;
   imageInput?: boolean;
@@ -55,6 +60,9 @@ export async function createOneSession(
   if (!options.modelId.trim() || !options.apiKey.trim()) {
     throw new Error("Model ID and API key are required");
   }
+  const apiType = options.apiType ?? "openai-completions";
+  if (!isOneModelApiType(apiType))
+    throw new Error("Invalid One model API type");
   const contextWindow = options.contextWindow ?? 32768;
   if (
     !Number.isSafeInteger(contextWindow) ||
@@ -111,7 +119,7 @@ export async function createOneSession(
   const provider = "agents-one-model";
   modelRuntime.registerProvider(provider, {
     baseUrl: url.toString().replace(/\/$/, ""),
-    api: "openai-completions",
+    api: apiType,
     models: [
       {
         id: options.modelId,
