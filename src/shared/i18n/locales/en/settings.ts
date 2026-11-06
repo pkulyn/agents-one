@@ -352,6 +352,7 @@ export default {
     connectionTest: "Connection Test",
     save: "Save",
     saveChanges: "Save Changes",
+    discardChanges: "Discard changes",
     remove: "Remove",
     hermesConnection: "Hermes Connection",
   },

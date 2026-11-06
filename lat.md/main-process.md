@@ -306,6 +306,8 @@ A new runtime connection probe is bound to its runtime ID as well as its model c
 
 The settings editor enables One memory changes only after the selected runtime's existing memory has loaded successfully. A delayed or failed read cannot replace a user's in-progress edit or authorize saving an unknown blank value. A failed read can be retried before editing.
 
+The One definition editor keeps personal instructions and model/skill choices in a renderer draft until the existing Runtime save succeeds. “Discard changes” rebuilds that draft from the selected saved definition, clears unsaved credentials and probe state, and performs no persistence write; One memory continues to use its separate explicit save action. [[src/renderer/src/components/settings/AgentRuntimesPane.tsx#AgentRuntimesPane]] and its component tests cover the discard path.
+
 [[src/main/one-runtime/shell-tool.ts#executeOneShell]] is exposed only to explicitly confirmed full-access One runs; read-only and automatic modes use scoped workspace tools without arbitrary shell. Cancellation aborts host tools and waits for their cleanup; the process runs with normal user privileges and is not an OS sandbox.
 
 The host shell receives a restricted environment including the PowerShell module search path where available, while unrelated variables such as model credentials are not inherited.

@@ -824,6 +824,53 @@ describe("AgentRuntimesPane", () => {
     );
   });
 
+  it("discards unsaved One instruction, model, and skill changes", async () => {
+    const api = installHermesAPI([
+      {
+        id: "one-test",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {
+          agentTransport: "local-sdk",
+          endpoint: "https://example.test/v1",
+          model: "test-model",
+          oneInstructions: "Keep the saved instruction.",
+          oneSkills: [],
+        },
+      },
+    ]);
+    render(<AgentRuntimesPane />);
+    fireEvent.click(await screen.findByText("模型上下文、个性化、技能与记忆"));
+
+    const instructions = await screen.findByLabelText("个性化指令");
+    fireEvent.change(instructions, {
+      target: { value: "Unsaved instruction." },
+    });
+    const skill = await screen.findByLabelText(/chosen.*\.codex/);
+    fireEvent.click(skill);
+    fireEvent.change(screen.getByLabelText("模型供应商"), {
+      target: { value: "kimi" },
+    });
+    expect(screen.getByLabelText("模型 API 地址")).toHaveValue(
+      "https://api.moonshot.cn/v1",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "取消更改" }));
+
+    expect(instructions).toHaveValue("Keep the saved instruction.");
+    expect(screen.getByLabelText("模型供应商")).toHaveValue("custom");
+    expect(screen.getByLabelText("模型 API 地址")).toHaveValue(
+      "https://example.test/v1",
+    );
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("test-model");
+    expect(skill).not.toBeChecked();
+    expect(api.saveAgentRuntime).not.toHaveBeenCalled();
+    expect(api.setAgentRuntimeBearerToken).not.toHaveBeenCalled();
+  });
+
   it("creates One with its own model endpoint and protected key", async () => {
     const api = installHermesAPI([]);
     vi.mocked(window.agentsOneAPI.listRuntimeSkills).mockResolvedValue([
@@ -916,6 +963,7 @@ describe("AgentRuntimesPane", () => {
         config: expect.objectContaining({
           agentTransport: "local-sdk",
           model: "model-test",
+          oneInstructions: "请用中文回复\n简洁",
           oneContextWindow: 65536,
           oneSkills: ["user:chosen", "agents-user:chosen"],
         }),
