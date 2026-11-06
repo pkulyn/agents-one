@@ -117,7 +117,11 @@ async function start(
   });
   await new Promise<void>((resolve, reject) => {
     readyAck = { resolve, reject };
-    send({ type: "ready", sessionId: session!.sessionId });
+    send({
+      type: "ready",
+      sessionId: session!.sessionId,
+      sessionFile: session!.sessionManager.getSessionFile(),
+    });
   });
   if (message.options.revisionBinding) {
     session.sessionManager.appendCustomEntry(
