@@ -38,6 +38,10 @@ import { PROFILE_COLORS } from "../../../../shared/profileColors";
 import type { WebAgentPolicyStatus } from "../../../../shared/web-agent";
 import { dispatchAgentsOneEvent } from "../../utils/brandMigration";
 import { fileToAvatarDataUrl } from "../../utils/imageResize";
+import {
+  getOneModelProviderPresetId,
+  ONE_MODEL_PROVIDER_PRESETS,
+} from "./one-model-provider-presets";
 import { useI18n } from "../useI18n";
 import ConnectionPane from "./ConnectionPane";
 import { SettingsDataContext } from "./SettingsDataContext";
@@ -2167,61 +2171,45 @@ export default function AgentRuntimesPane({
                   <select
                     className="input"
                     aria-label={t("settings.runtimeManager.oneProvider")}
-                    value={
-                      (draft.config.oneApiType || "openai-completions") ===
-                        "openai-completions" &&
-                      draft.config.endpoint ===
-                        "https://ark.cn-beijing.volces.com/api/plan/v3"
-                        ? "ark-agent-plan"
-                        : (draft.config.oneApiType || "openai-completions") ===
-                              "openai-completions" &&
-                            draft.config.endpoint === "https://api.deepseek.com"
-                          ? "deepseek"
-                          : (draft.config.oneApiType ||
-                                "openai-completions") ===
-                                "openai-completions" &&
-                              draft.config.endpoint ===
-                                "https://api.openai.com/v1"
-                            ? "openai"
-                            : "custom"
-                    }
+                    value={getOneModelProviderPresetId(
+                      draft.config.endpoint,
+                      draft.config.oneApiType,
+                    )}
                     onChange={(event) => {
-                      const preset =
-                        event.target.value === "ark-agent-plan"
-                          ? {
-                              endpoint:
-                                "https://ark.cn-beijing.volces.com/api/plan/v3",
-                              model: "doubao-seed-2.0-mini",
-                              oneContextWindow: 262144,
-                              oneImageInput: true,
-                            }
-                          : event.target.value === "deepseek"
-                            ? {
-                                endpoint: "https://api.deepseek.com",
-                                model: "deepseek-flash",
-                              }
-                            : event.target.value === "openai"
-                              ? {
-                                  endpoint: "https://api.openai.com/v1",
-                                  model: "gpt-4.1-mini",
-                                  oneImageInput: true,
-                                }
-                              : { endpoint: "", model: "" };
+                      const preset = ONE_MODEL_PROVIDER_PRESETS.find(
+                        (item) => item.id === event.target.value,
+                      );
+                      const nextProvider = preset
+                        ? {
+                            endpoint: preset.endpoint,
+                            model: preset.model,
+                            oneApiType: preset.apiType,
+                            ...(preset.contextWindow
+                              ? { oneContextWindow: preset.contextWindow }
+                              : {}),
+                            ...(preset.imageInput
+                              ? { oneImageInput: true }
+                              : {}),
+                          }
+                        : {
+                            endpoint: "",
+                            model: "",
+                            oneApiType: undefined,
+                          };
                       setDraft((current) => ({
                         ...current,
                         config: {
                           ...current.config,
-                          oneApiType: undefined,
-                          ...(preset.model !== current.config.model ||
-                          preset.endpoint !== current.config.endpoint ||
-                          (current.config.oneApiType ||
-                            "openai-completions") !== "openai-completions"
+                          ...(nextProvider.model !== current.config.model ||
+                          nextProvider.endpoint !== current.config.endpoint ||
+                          (nextProvider.oneApiType || "openai-completions") !==
+                            (current.config.oneApiType || "openai-completions")
                             ? {
                                 oneContextWindow: undefined,
                                 oneImageInput: undefined,
                               }
                             : {}),
-                          ...preset,
+                          ...nextProvider,
                         },
                       }));
                     }}
@@ -2229,9 +2217,11 @@ export default function AgentRuntimesPane({
                     <option value="custom">
                       {t("settings.runtimeManager.oneCustomProvider")}
                     </option>
-                    <option value="ark-agent-plan">火山方舟 Agent Plan</option>
-                    <option value="deepseek">DeepSeek</option>
-                    <option value="openai">OpenAI</option>
+                    {ONE_MODEL_PROVIDER_PRESETS.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="settings-field">
