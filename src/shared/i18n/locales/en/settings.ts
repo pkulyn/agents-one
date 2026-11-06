@@ -177,9 +177,14 @@ export default {
       "Define One’s role and response preferences for future requests.",
     oneProvider: "Model provider",
     oneCustomProvider: "Custom compatible endpoint",
+    oneApiType: "API protocol",
     oneEndpoint: "Model API URL",
     oneEndpointHint:
-      "Use an OpenAI Chat Completions compatible endpoint; remote services require HTTPS.",
+      "Use the selected OpenAI protocol's base URL (usually ending in /v1); remote services require HTTPS.",
+    oneEndpointHintAnthropic:
+      "Use the Anthropic service base URL (for example https://api.anthropic.com, without /v1/messages); remote services require HTTPS.",
+    oneEndpointHintGoogle:
+      "Use the Google Generative AI versioned base URL (for example https://generativelanguage.googleapis.com/v1beta); remote services require HTTPS.",
     oneModel: "Model ID",
     oneApiKey: "Model API Key",
     oneCredentialHint:

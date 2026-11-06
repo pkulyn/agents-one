@@ -1124,6 +1124,79 @@ describe("agent runtime registry", () => {
     expect(config.readDesktopConfig()).toEqual(original);
   });
 
+  it("does not persist a late One probe after its model connection changes", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { runtimes } = await loadModules();
+    const { configureDesktopSecretStore, DesktopSecretStore } =
+      await import("../src/main/desktop-secret-store");
+    configureDesktopSecretStore(
+      new DesktopSecretStore(join(testHome, "one-probe-race-secrets.json"), {
+        available: true,
+        backend: "test",
+        encrypt: (value) => Buffer.from(value.split("").reverse().join("")),
+        decrypt: (value) => value.toString().split("").reverse().join(""),
+      }),
+    );
+    const saved = runtimes.saveAgentRuntime({
+      id: "one-probe-race",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://old.example/v1",
+        model: "old-model",
+        oneApiType: "openai-completions",
+      },
+    });
+    runtimes.setAgentRuntimeBearerToken(saved.id, "one-probe-race-secret");
+
+    let finishWorker!: () => void;
+    let markToolCalled!: () => void;
+    const toolCalled = new Promise<void>((resolve) => {
+      markToolCalled = resolve;
+    });
+    startOneWorkerMock.mockImplementation((options: OneWorkerOptions) => ({
+      completion: options
+        .executeTool("one_probe", {}, new AbortController().signal)
+        .then(
+          () =>
+            new Promise<{ sessionId: string; output: string }>((resolve) => {
+              markToolCalled();
+              finishWorker = () =>
+                resolve({ sessionId: "probe-session", output: "OK" });
+            }),
+        ),
+      cancel: vi.fn(),
+    }));
+
+    const pendingProbe = runtimes.probeAgentRuntime(saved.id);
+    await toolCalled;
+    runtimes.saveAgentRuntime({
+      ...saved,
+      config: {
+        ...saved.config,
+        endpoint: "https://new.example/v1",
+        model: "new-model",
+        oneApiType: "openai-responses",
+      },
+    });
+    finishWorker();
+
+    await expect(pendingProbe).resolves.toMatchObject({ state: "healthy" });
+    const updated = runtimes
+      .listAgentRuntimes()
+      .find((item) => item.id === saved.id);
+    expect(updated?.config).toMatchObject({
+      endpoint: "https://new.example/v1",
+      model: "new-model",
+      oneApiType: "openai-responses",
+    });
+    expect(updated?.lastProbe).toBeUndefined();
+    expect(updated?.capabilitySnapshot).toBeUndefined();
+  });
+
   it("stores One as a separate SDK agent and protects its model credential", async () => {
     vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
     const { config, runtimes } = await loadModules();
@@ -1147,6 +1220,7 @@ describe("agent runtime registry", () => {
         agentTransport: "local-sdk",
         endpoint: "https://example.test/v1",
         model: "model-test",
+        oneApiType: "anthropic-messages",
         oneMemoryEnabled: true,
         oneContextWindow: 65536,
         oneInstructions: "请用中文\n保持简洁",
@@ -1166,6 +1240,16 @@ describe("agent runtime registry", () => {
         config: { ...saved.config, oneContextWindow: 1024 },
       }),
     ).toThrow("context window");
+    expect(() =>
+      runtimes.saveAgentRuntime({
+        ...saved,
+        config: { ...saved.config, oneApiType: "unsupported" as never },
+      }),
+    ).toThrow("model API type");
+    expect(
+      runtimes.listAgentRuntimes().find((runtime) => runtime.id === saved.id)
+        ?.config.oneApiType,
+    ).toBe("anthropic-messages");
     const oneCatalog = await runtimes.getAgentRuntimeCommandCatalog(saved.id);
     expect(oneCatalog.commands).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "model" })]),
@@ -1208,6 +1292,19 @@ describe("agent runtime registry", () => {
     expect(JSON.stringify(config.readDesktopConfig())).not.toContain(
       "one-test-secret",
     );
+    startOneWorkerMock.mockImplementation((options) => ({
+      completion: options
+        .executeTool("one_probe", {}, new AbortController().signal)
+        .then(() => ({ sessionId: "probe-session", output: "OK" })),
+      cancel: vi.fn(),
+    }));
+    await expect(runtimes.probeAgentRuntime(saved.id)).resolves.toMatchObject({
+      state: "healthy",
+    });
+    expect(startOneWorkerMock).toHaveBeenCalledWith(
+      expect.objectContaining({ apiType: "anthropic-messages" }),
+    );
+    startOneWorkerMock.mockClear();
     vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
     let oneRunSequence = 0;
     const fakeOneSession = (
@@ -1284,6 +1381,7 @@ describe("agent runtime registry", () => {
     expect(startOneWorkerMock).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: "model-test",
+        apiType: "anthropic-messages",
         contextWindow: 65536,
         apiKey: "one-test-secret",
         systemPrompt: expect.stringContaining("private preference"),

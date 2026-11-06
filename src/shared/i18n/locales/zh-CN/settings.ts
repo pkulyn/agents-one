@@ -169,9 +169,14 @@ export default {
     oneInstructionsHint: "自定义 One 的职责和回复偏好；保存后用于后续请求。",
     oneProvider: "模型供应商",
     oneCustomProvider: "自定义兼容接口",
+    oneApiType: "API 协议",
     oneEndpoint: "模型 API 地址",
     oneEndpointHint:
-      "填写兼容 OpenAI Chat Completions 的地址，远程服务使用 HTTPS。",
+      "填写所选 OpenAI 协议的基础地址（通常以 /v1 结尾）；远程服务使用 HTTPS。",
+    oneEndpointHintAnthropic:
+      "填写 Anthropic 服务基础地址（例如 https://api.anthropic.com，不含 /v1/messages）；远程服务使用 HTTPS。",
+    oneEndpointHintGoogle:
+      "填写 Google Generative AI 的版本基础地址（例如 https://generativelanguage.googleapis.com/v1beta）；远程服务使用 HTTPS。",
     oneModel: "模型 ID",
     oneApiKey: "模型 API Key",
     oneCredentialHint:

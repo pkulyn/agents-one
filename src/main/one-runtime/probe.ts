@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startOneWorker } from "./controller";
+import type { OneModelApiType } from "../../shared/one-model-api";
 
 /** Test the configured provider with an actual, harmless tool call. */
 export async function probeOneProvider(options: {
@@ -9,6 +10,7 @@ export async function probeOneProvider(options: {
   baseUrl: string;
   modelId: string;
   apiKey: string;
+  apiType?: OneModelApiType;
   timeoutMs?: number;
 }): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "agents-one-probe-"));
@@ -21,6 +23,7 @@ export async function probeOneProvider(options: {
       baseUrl: options.baseUrl,
       modelId: options.modelId,
       apiKey: options.apiKey,
+      apiType: options.apiType,
       prompt:
         "For this connectivity test, call the one_probe tool once, then reply OK.",
       tools: [

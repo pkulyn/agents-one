@@ -145,6 +145,12 @@ describe("One definition and run bindings", () => {
       const revision = oneDefinitionRevision(definition);
       expect(oneDefinitionRevision(definition)).toBe(revision);
       expect(
+        oneDefinitionRevision({ ...definition, apiType: "openai-completions" }),
+      ).toBe(revision);
+      expect(
+        oneDefinitionRevision({ ...definition, apiType: "anthropic-messages" }),
+      ).not.toBe(revision);
+      expect(
         oneDefinitionRevision({ ...definition, instructions: "changed" }),
       ).not.toBe(revision);
       expect(
