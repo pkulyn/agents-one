@@ -308,7 +308,11 @@ export interface RuntimeInputArtifact {
 
 export interface AgentRuntimeTaskInput {
   /** Persisted collaboration assignment; Main validates it before using a managed task directory. */
-  collaborationContext?: { taskId: string; assignmentId: string };
+  collaborationContext?: {
+    taskId: string;
+    assignmentId: string;
+    interventionId?: string;
+  };
   prompt: string;
   /** Conversation-scoped model selection. It overrides the Runtime default for
    * this request without writing user-managed Runtime configuration. */
