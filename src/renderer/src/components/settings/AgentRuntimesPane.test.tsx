@@ -960,6 +960,52 @@ describe("AgentRuntimesPane", () => {
     expect(api.probeAgentRuntimeDraft).toHaveBeenCalledTimes(2);
   });
 
+  it("retests One when its model API protocol changes", async () => {
+    const api = installHermesAPI([]);
+    render(<AgentRuntimesPane />);
+    await openNewAgentWizard("local", 2);
+    fireEvent.change(screen.getByLabelText("类型"), {
+      target: { value: "one" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.change(screen.getByLabelText("模型 API 地址"), {
+      target: { value: "https://example.test" },
+    });
+    fireEvent.change(screen.getByLabelText("模型 ID"), {
+      target: { value: "model-test" },
+    });
+    fireEvent.change(screen.getByLabelText("模型 API Key"), {
+      target: { value: "test-one-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "连接测试" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
+    );
+    fireEvent.change(screen.getByLabelText("API 协议"), {
+      target: { value: "anthropic-messages" },
+    });
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(screen.getByText(/不含 \/v1\/messages/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "连接测试" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
+    );
+    expect(api.probeAgentRuntimeDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({ oneApiType: "anthropic-messages" }),
+      }),
+      "test-one-key",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(api.saveAgentRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({ oneApiType: "anthropic-messages" }),
+        }),
+      ),
+    );
+  });
+
   it("offers Pi Agent CLI as a configurable local runtime template", async () => {
     const api = installHermesAPI([]);
     render(<AgentRuntimesPane />);

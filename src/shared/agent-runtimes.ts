@@ -1,4 +1,5 @@
 import type { Attachment } from "./attachments";
+import type { OneModelApiType } from "./one-model-api";
 import type {
   AgentEventStreamModel,
   AgentEventStreamSupport,
@@ -168,6 +169,8 @@ export interface AgentRuntimeConfig {
   oneContextWindow?: number;
   /** User-confirmed image input support for this exact default model and endpoint. */
   oneImageInput?: boolean;
+  /** One's model wire protocol. Missing means legacy OpenAI Chat Completions. */
+  oneApiType?: OneModelApiType;
   /** Optional CLI model override. Empty keeps the CLI's own default. */
   model?: string;
   workspace?: string;

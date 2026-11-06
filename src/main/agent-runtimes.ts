@@ -29,6 +29,7 @@ import {
 } from "./collaboration-working-directory";
 import { stageRemoteCollaborationArtifact } from "./remote-collaboration-artifact";
 import { runtimeModelFailureKind } from "../shared/runtime-model-errors";
+import { isOneModelApiType } from "../shared/one-model-api";
 import { respondToAgentsOneRemotePermission } from "./agents-one-remote-gateway";
 import {
   createRuntimePermissionBridge,
@@ -1947,6 +1948,8 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     typeof value.oneImageInput !== "boolean"
   )
     throw new Error("One image input setting is invalid.");
+  if (value.oneApiType !== undefined && !isOneModelApiType(value.oneApiType))
+    throw new Error("One model API type is invalid.");
   if (
     value.oneContextWindow !== undefined &&
     (!Number.isSafeInteger(value.oneContextWindow) ||
@@ -1972,6 +1975,7 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     "oneMemoryEnabled",
     "oneContextWindow",
     "oneImageInput",
+    "oneApiType",
     "model",
     "workspace",
     "timeoutMs",
@@ -2006,6 +2010,9 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
       : {}),
     ...(value.oneImageInput !== undefined
       ? { oneImageInput: value.oneImageInput as boolean }
+      : {}),
+    ...(isOneModelApiType(value.oneApiType)
+      ? { oneApiType: value.oneApiType }
       : {}),
     model: optionalString(value.model, 256),
     workspace: optionalString(value.workspace, 4096),
@@ -2427,14 +2434,32 @@ function userRuntimes(): AgentRuntimeDefinition[] {
 }
 
 /** Persist probe metadata serially so concurrent Settings probes cannot lose updates. */
+function runtimeProbeDefinitionIdentity(
+  runtime: AgentRuntimeDefinition,
+): string {
+  const {
+    capabilitySnapshot: _capabilitySnapshot,
+    lastProbe: _lastProbe,
+    ...definition
+  } = runtime;
+  return JSON.stringify(definition);
+}
+
 async function persistRuntimeProbe(
   runtimeId: string,
   probe: AgentRuntimeProbe,
+  expectedDefinitionIdentity: string,
 ): Promise<void> {
   const write = async (): Promise<void> => {
     const runtimes = userRuntimes();
     const index = runtimes.findIndex((runtime) => runtime.id === runtimeId);
     if (index < 0) return;
+    if (
+      runtimeProbeDefinitionIdentity(runtimes[index]) !==
+      expectedDefinitionIdentity
+    ) {
+      return;
+    }
     runtimes[index] = {
       ...runtimes[index],
       capabilitySnapshot: probe.capabilities,
@@ -4355,6 +4380,7 @@ async function probeRuntimeDefinition(
         baseUrl,
         modelId,
         apiKey,
+        apiType: runtime.config.oneApiType,
         timeoutMs: runtime.config.timeoutMs,
       });
       return {
@@ -4610,8 +4636,9 @@ export async function probeAgentRuntime(
 ): Promise<AgentRuntimeProbe> {
   const runtime = listAgentRuntimes().find((item) => item.id === id);
   if (!runtime) throw new Error("Runtime was not found.");
+  const definitionIdentity = runtimeProbeDefinitionIdentity(runtime);
   const probe = await probeRuntimeDefinition(runtime);
-  await persistRuntimeProbe(runtime.id, probe);
+  await persistRuntimeProbe(runtime.id, probe, definitionIdentity);
   return probe;
 }
 
@@ -5739,6 +5766,7 @@ export async function startAgentRuntimeTask(
         skillInstructions,
         endpoint,
         defaultModel: runtime.config.model || "",
+        apiType: runtime.config.oneApiType,
         contextWindow: runtime.config.oneContextWindow,
         imageInput: runtime.config.oneImageInput === true,
         memoryEnabled: runtime.config.oneMemoryEnabled === true,
@@ -5796,6 +5824,7 @@ export async function startAgentRuntimeTask(
         baseUrl: endpoint,
         modelId,
         apiKey: token,
+        apiType: runtime.config.oneApiType,
         imageInput: imageInputEnabled,
         images,
         contextWindow:

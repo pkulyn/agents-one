@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { createInterface } from "node:readline";
+import type { OneModelApiType } from "../../shared/one-model-api";
 
 /** Inputs deliberately exclude credentials and raw conversation messages. */
 export interface OneRevisionInputs {
@@ -19,6 +20,7 @@ export interface OneRevisionInputs {
   skillInstructions: string[];
   endpoint: string;
   defaultModel: string;
+  apiType?: OneModelApiType;
   contextWindow?: number;
   imageInput: boolean;
   memoryEnabled: boolean;
@@ -30,7 +32,12 @@ function digest(value: unknown): string {
 
 /** Content-addressed definition revision; selected skill contents are included. */
 export function oneDefinitionRevision(input: OneRevisionInputs): string {
-  return digest({ schema: 1, ...input });
+  const { apiType, ...definition } = input;
+  return digest({
+    schema: 1,
+    ...definition,
+    ...(apiType && apiType !== "openai-completions" ? { apiType } : {}),
+  });
 }
 
 /** Persist a prepared run/session binding before acknowledging the worker. */
