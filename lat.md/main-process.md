@@ -326,7 +326,7 @@ If Main cannot validate or persist the resumed session binding, the Worker must 
 
 [[src/main/one-runtime/controller.test.ts]] rejects the Main readiness callback and verifies that the Worker never emits its post-ack event.
 
-[[src/main/one-runtime/skills.ts#loadOneSkills]] loads only explicitly selected user skill documents, without executing their scripts. [[src/main/one-runtime/memory.ts#readOneMemoryFile]] and [[src/main/one-runtime/memory.ts#writeOneMemoryFile]] keep editable One memory under the current profile and runtime; it is sent to the selected model only when enabled.
+[[src/main/one-runtime/skills.ts#loadOneSkills]] loads only explicitly selected user skill documents, without executing their scripts. [[src/main/one-runtime/memory.ts#readOneMemoryFile]] and [[src/main/one-runtime/memory.ts#writeOneMemoryFile]] keep editable One private memory under the current profile and runtime. Project memory uses separate read/write helpers under the same app-owned One namespace, keyed by a hash of the registered project's opaque capability; it never writes into the user's project directory.
 
 A new runtime connection probe is bound to its runtime ID as well as its model connection and credential revision; changing the ID requires a fresh probe.
 
@@ -366,7 +366,7 @@ One skill discovery reports unsupported names, unsafe files, oversized documents
 
 One worker integration tests exercise interrupted model streams followed by same-session recovery, malformed tool JSON rejected before host execution, and successful reconstruction of split tool arguments. These provider fault cases use a controlled local OpenAI-compatible test server.
 
-One memory path validation rejects both live and dangling symbolic links before reading or writing. Desktop integration checks that disabled memory is omitted from provider requests and each One identity sends only its own enabled memory.
+One private and project memory path validation rejects live and dangling symbolic links before reading or writing. [[src/main/agent-runtimes.ts#getOneProjectMemory]] and [[src/main/agent-runtimes.ts#saveOneProjectMemory]] revalidate the registered workspace capability at every Main IPC read/write; the settings UI lists only renderer-safe project capabilities. A project memory is injected only when the selected One has memory enabled and a validated project ID is carried by that run; path-only, projectless, revoked-project, and memory-disabled runs do not receive it. The per-run snapshot hash includes the effective project memory without persisting its text in the run-binding receipt. Storage and desktop integration tests cover profile/One/project isolation, capability revocation, safe clear/edit, path-only compatibility, and disabled-memory omission.
 
 ### One per-run model call limit
 

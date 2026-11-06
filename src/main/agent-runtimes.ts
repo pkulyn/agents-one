@@ -1,7 +1,12 @@
 import { prepareOneAttachments } from "./one-runtime/attachments";
 import { createOneDocumentTools } from "./one-runtime/document-tools";
 import { executeOneShell, oneShellTool } from "./one-runtime/shell-tool";
-import { readOneMemoryFile, writeOneMemoryFile } from "./one-runtime/memory";
+import {
+  readOneMemoryFile,
+  readOneProjectMemoryFile,
+  writeOneMemoryFile,
+  writeOneProjectMemoryFile,
+} from "./one-runtime/memory";
 import { homedir } from "node:os";
 import { loadOneSkills } from "./one-runtime/skills";
 import { resolveOneConversationWorkspace } from "./one-runtime/workspace-binding";
@@ -2672,6 +2677,40 @@ export function saveOneRuntimeMemory(runtimeId: string, content: string): void {
   writeOneMemoryFile(
     agentsOneProfileHome(getActiveProfileNameSync()),
     runtimeId,
+    content,
+  );
+}
+function requireOneProjectMemoryWorkspace(workspaceId: string): string {
+  if (!resolveAuthorizedWorkspaceId(workspaceId))
+    throw new Error(
+      "One project memory workspace is unavailable or unauthorized.",
+    );
+  return workspaceId;
+}
+export function getOneProjectMemory(
+  runtimeId: string,
+  workspaceId: string,
+): string {
+  requireOneRuntime(runtimeId);
+  const authorizedWorkspaceId = requireOneProjectMemoryWorkspace(workspaceId);
+  return readOneProjectMemoryFile(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    runtimeId,
+    authorizedWorkspaceId,
+  );
+}
+export function saveOneProjectMemory(
+  runtimeId: string,
+  workspaceId: string,
+  content: string,
+): void {
+  assertAgentsOneWritesAllowed();
+  requireOneRuntime(runtimeId);
+  const authorizedWorkspaceId = requireOneProjectMemoryWorkspace(workspaceId);
+  writeOneProjectMemoryFile(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    runtimeId,
+    authorizedWorkspaceId,
     content,
   );
 }
@@ -5766,6 +5805,14 @@ export async function startAgentRuntimeTask(
       const memory = runtime.config.oneMemoryEnabled
         ? readOneMemoryFile(profileRoot, runtime.id)
         : "";
+      const projectMemory =
+        runtime.config.oneMemoryEnabled && task.workspaceId
+          ? readOneProjectMemoryFile(
+              profileRoot,
+              runtime.id,
+              requireOneProjectMemoryWorkspace(task.workspaceId),
+            )
+          : "";
       const skillInstructions = loadOneSkills(
         join(homedir(), ".codex", "skills"),
         runtime.config.oneSkills || [],
@@ -5787,7 +5834,9 @@ export async function startAgentRuntimeTask(
         modelId,
         mode: task.mode,
         workspace,
-        memory,
+        memory: projectMemory
+          ? JSON.stringify({ private: memory, project: projectMemory })
+          : memory,
       });
       const hostTools = createOneWorkspaceTools({
         workspace,
@@ -5848,6 +5897,9 @@ export async function startAgentRuntimeTask(
           runtime.config.oneInstructions || "",
           ...skillInstructions,
           ...(memory ? ["[One private memory]\n" + memory] : []),
+          ...(projectMemory
+            ? ["[Project memory for the selected workspace]\n" + projectMemory]
+            : []),
         ]
           .filter(Boolean)
           .join("\n\n"),

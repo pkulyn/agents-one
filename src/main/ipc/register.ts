@@ -1,4 +1,9 @@
-import { getOneRuntimeMemory, saveOneRuntimeMemory } from "../agent-runtimes";
+import {
+  getOneProjectMemory,
+  getOneRuntimeMemory,
+  saveOneProjectMemory,
+  saveOneRuntimeMemory,
+} from "../agent-runtimes";
 import { waitForWindowsSecretMetadata } from "../one-runtime/windows-secret-ready";
 import { createScopedIpcMain } from "./sender-scope";
 import { registerConversationFileIpc } from "./conversation-files";
@@ -997,6 +1002,16 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     "save-one-runtime-memory",
     (_event, id: string, content: string) => saveOneRuntimeMemory(id, content),
+  );
+  ipcMain.handle(
+    "get-one-project-memory",
+    (_event, runtimeId: string, workspaceId: string) =>
+      getOneProjectMemory(runtimeId, workspaceId),
+  );
+  ipcMain.handle(
+    "save-one-project-memory",
+    (_event, runtimeId: string, workspaceId: string, content: string) =>
+      saveOneProjectMemory(runtimeId, workspaceId, content),
   );
   ipcMain.handle("get-agent-runtime-credential-status", (_event, id: string) =>
     getAgentRuntimeCredentialStatus(id),

@@ -104,6 +104,7 @@ vi.mock("electron", () => ({
 }));
 
 let testHome: string;
+let testProjectRoot: string | undefined;
 
 async function loadModules(): Promise<{
   config: typeof import("../src/main/config");
@@ -122,6 +123,7 @@ async function loadModules(): Promise<{
 describe("agent runtime registry", () => {
   beforeEach(() => {
     testHome = mkdtempSync(join(tmpdir(), "hermes-agent-runtimes-"));
+    testProjectRoot = undefined;
     closeClaudeAgentSdkSessionsMock.mockReset();
     closeClaudeAgentSdkSessionsMock.mockResolvedValue(undefined);
     startClaudeAgentSdkProcessMock.mockReset();
@@ -152,6 +154,8 @@ describe("agent runtime registry", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     rmSync(testHome, { recursive: true, force: true });
+    if (testProjectRoot)
+      rmSync(testProjectRoot, { recursive: true, force: true });
   });
 
   // @lat: [[runtime-chat#Universal Word attachment dispatch]]
@@ -1458,6 +1462,18 @@ describe("agent runtime registry", () => {
     runtimes.saveOneRuntimeMemory(saved.id, "private preference");
     expect(runtimes.getOneRuntimeMemory(saved.id)).toBe("private preference");
     expect(() => runtimes.getOneRuntimeMemory(pi.id)).toThrow();
+    testProjectRoot = mkdtempSync(join(tmpdir(), "one-project-memory-root-"));
+    const { registerProjectFolder } =
+      await import("../src/main/project-folders");
+    const project = registerProjectFolder(testProjectRoot)!;
+    runtimes.saveOneProjectMemory(saved.id, project.id!, "project preference");
+    expect(runtimes.getOneProjectMemory(saved.id, project.id!)).toBe(
+      "project preference",
+    );
+    expect(() => runtimes.getOneProjectMemory(pi.id, project.id!)).toThrow();
+    expect(() =>
+      runtimes.getOneProjectMemory(saved.id, "project-stale"),
+    ).toThrow("unavailable or unauthorized");
     expect(runtimes.getAgentRuntimeCredentialStatus(saved.id)).toMatchObject({
       required: true,
       configured: true,
@@ -1543,6 +1559,7 @@ describe("agent runtime registry", () => {
     const result = await runtimes.runAgentRuntimeTask(saved.id, {
       prompt: "create a file",
       mode: "safe_write",
+      workspace: testProjectRoot,
     });
     expect(result).toMatchObject({
       status: "succeeded",
@@ -1560,6 +1577,9 @@ describe("agent runtime registry", () => {
         apiKey: "one-test-secret",
         systemPrompt: expect.stringContaining("private preference"),
       }),
+    );
+    expect(startOneWorkerMock.mock.calls[0][0].systemPrompt).not.toContain(
+      "project preference",
     );
     const workerOptions = startOneWorkerMock.mock.calls[0][0];
     const bindingsDir = join(workerOptions.stateDir, "run-bindings");
@@ -1587,6 +1607,7 @@ describe("agent runtime registry", () => {
         (tool: { name: string }) => tool.name,
       ),
     ).not.toContain("host_shell");
+    rmSync(join(testProjectRoot!, "result.txt"), { force: true });
     await expect(
       runtimes.startAgentRuntimeTask(saved.id, {
         prompt: "full",
@@ -1598,8 +1619,12 @@ describe("agent runtime registry", () => {
       model: "alternate-model",
       mode: "full_access",
       fullAccessConfirmed: true,
+      workspaceId: project.id,
     });
     expect(full.status).toBe("succeeded");
+    expect(startOneWorkerMock.mock.calls[1][0].systemPrompt).toContain(
+      "[Project memory for the selected workspace]\nproject preference",
+    );
     expect(startOneWorkerMock.mock.calls[1][0].contextWindow).toBeUndefined();
     expect(
       startOneWorkerMock.mock.calls[1][0].tools.map(
@@ -1699,6 +1724,28 @@ describe("agent runtime registry", () => {
     expect(lead.status).toBe("succeeded");
     expect(startOneWorkerMock.mock.calls[4][0].workspace).toContain(
       "collaboration-workspaces",
+    );
+    runtimes.saveAgentRuntime({
+      ...saved,
+      config: { ...saved.config, oneMemoryEnabled: false },
+    });
+    const memoryDisabled = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "work without memory",
+      mode: "analysis",
+      workspaceId: project.id,
+    });
+    expect(memoryDisabled.status).toBe("succeeded");
+    expect(startOneWorkerMock.mock.calls[5][0].systemPrompt).not.toContain(
+      "private preference",
+    );
+    expect(startOneWorkerMock.mock.calls[5][0].systemPrompt).not.toContain(
+      "project preference",
+    );
+    const { removeProjectWorkspace } =
+      await import("../src/main/project-folders");
+    expect(removeProjectWorkspace(project.id!)).toBe(true);
+    expect(() => runtimes.getOneProjectMemory(saved.id, project.id!)).toThrow(
+      "unavailable or unauthorized",
     );
     await expect(
       runtimes.startAgentRuntimeTask(saved.id, {

@@ -162,12 +162,26 @@ export default {
     oneMemoryEnabled: "启用 One 的私有记忆",
     oneMemory: "One 私有记忆内容",
     oneMemoryHint:
-      "记忆按用户配置和智能体分别保存；启用后发送给此智能体使用的模型，不自动共享给其他智能体。",
+      "私有记忆按配置档案和此 One 保存；项目记忆只属于所选项目和此 One。启用后，相关记忆会作为上下文发送给模型，不自动共享给其他智能体。",
     oneSaveMemory: "保存记忆",
     oneClearMemory: "清空记忆",
     oneClearMemoryConfirm:
       "确定清空此 One 已保存的私有记忆和当前编辑内容吗？此操作无法撤销。",
     oneMemoryAfterSave: "保存智能体后可编辑记忆。",
+    oneProjectMemoryHeading: "项目记忆",
+    oneProjectMemoryHint:
+      "只属于此配置档案、One 和所选项目；只有使用该已注册项目执行 One 任务且启用 One 记忆时才会发送给模型。",
+    oneProjectMemoryProject: "选择项目",
+    oneProjectMemory: "One 项目记忆内容",
+    oneProjectMemoryDiscardConfirm:
+      "放弃当前项目记忆的未保存修改并切换项目吗？",
+    oneProjectMemoryLoading: "正在读取项目列表…",
+    oneProjectMemoryLoadError: "项目记忆不可用。",
+    oneProjectMemoryNoProjects: "暂无已注册项目，请先选择或注册项目文件夹。",
+    oneSaveProjectMemory: "保存项目记忆",
+    oneClearProjectMemory: "清空项目记忆",
+    oneProjectMemoryConfirm:
+      "确定清空此 One 在所选项目中的已保存记忆和当前编辑内容吗？此操作无法撤销。",
     oneSkills: "选用技能",
     oneSkillsHint: "仅加载所选技能说明并发送给模型；技能中的脚本不会自动执行。",
     oneSkillsEmpty: "没有发现可选的本地用户技能。",
