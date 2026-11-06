@@ -43,7 +43,7 @@ export type OneWorkerInput =
     };
 
 export type OneWorkerOutput =
-  | { type: "ready"; sessionId: string }
+  | { type: "ready"; sessionId: string; sessionFile?: string }
   | { type: "event"; event: unknown }
   | {
       type: "tool-call";
