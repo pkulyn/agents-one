@@ -25,7 +25,9 @@ import {
 import {
   bindCollaborationWorkingDirectory,
   collaborationWorkingDirectory,
+  remoteCollaborationStagingDirectory,
 } from "./collaboration-working-directory";
+import { stageRemoteCollaborationArtifact } from "./remote-collaboration-artifact";
 import { runtimeModelFailureKind } from "../shared/runtime-model-errors";
 import { respondToAgentsOneRemotePermission } from "./agents-one-remote-gateway";
 import {
@@ -298,6 +300,13 @@ interface RuntimeRunRecord {
     terminalReconciliationAttempts: number;
     cancelRequestedAt?: number;
     artifactRetryAttempts: Map<string, number>;
+    collaboration?: {
+      taskId: string;
+      assignmentId: string;
+      runtimeId: string;
+      profile: string;
+      interventionId?: string;
+    };
   };
   workspaceGateway?: {
     gateway: OutboundRemoteWorkspaceGateway;
@@ -4838,6 +4847,7 @@ async function hydrateAgentsOneRemoteGatewayArtifacts(
   config: AgentsOneRemoteGatewayConfig,
   auth: { bearerToken?: string } | undefined,
   artifacts: AgentRuntimeArtifact[] | undefined,
+  record?: RuntimeRunRecord,
 ): Promise<{
   artifacts: AgentRuntimeArtifact[] | undefined;
   failures: string[];
@@ -4856,6 +4866,43 @@ async function hydrateAgentsOneRemoteGatewayArtifacts(
         artifact.id,
         auth,
       );
+      const collaboration = record?.remoteGateway?.collaboration;
+      if (
+        collaboration &&
+        !record.cancelRequested &&
+        record.run.status === "running"
+      ) {
+        const workspace = remoteCollaborationStagingDirectory(collaboration);
+        if (workspace) {
+          if (
+            downloaded.id !== artifact.id ||
+            !artifact.sha256 ||
+            !downloaded.sha256 ||
+            downloaded.sha256.toLowerCase() !== artifact.sha256.toLowerCase() ||
+            (artifact.size !== undefined && artifact.size !== downloaded.size)
+          )
+            throw new Error("远程协作产物元数据校验失败。");
+          const staged = stageRemoteCollaborationArtifact({
+            workspace,
+            runId: record.run.id,
+            artifactId: artifact.id,
+            name: downloaded.name,
+            bytes: downloaded.bytes,
+            sha256: artifact.sha256,
+          });
+          hydrated.push({
+            ...artifact,
+            kind: "file",
+            label: downloaded.name,
+            relativePath: staged.relativePath,
+            size: staged.size,
+            sha256: staged.sha256,
+            sourceMachine: "远程运行环境",
+            changeSummary: `远程任务交付 ${downloaded.name}`,
+          });
+          continue;
+        }
+      }
       const path = materializeBytesToTemp(
         downloaded.bytes,
         downloaded.name,
@@ -4902,6 +4949,7 @@ async function applyHydratedAgentsOneRemoteGatewayRun(
           record.remoteGateway?.config || { endpoint: "" },
           auth,
           remoteRun.artifacts,
+          remoteRun.status === "succeeded" ? record : undefined,
         );
   for (const failure of hydrated.failures) {
     appendRuntimeEvent(record, "progress", failure);
@@ -6142,6 +6190,15 @@ export async function startAgentRuntimeTask(
         nextPollAt: 0,
         terminalReconciliationAttempts: 0,
         artifactRetryAttempts: new Map(),
+        ...(input.collaborationContext && task.mode !== "analysis"
+          ? {
+              collaboration: {
+                ...input.collaborationContext,
+                runtimeId: runtime.id,
+                profile: task.profile || getActiveProfileNameSync(),
+              },
+            }
+          : {}),
       };
       record.timeout = setTimeout(() => {
         void requestRemoteGatewayCancellation(record, "timed_out");
