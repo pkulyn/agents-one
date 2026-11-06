@@ -492,6 +492,22 @@ const agentsOneAPI = {
     ipcRenderer.invoke("get-one-runtime-memory", id),
   saveOneRuntimeMemory: (id: string, content: string): Promise<void> =>
     ipcRenderer.invoke("save-one-runtime-memory", id, content),
+  getOneProjectMemory: (
+    runtimeId: string,
+    workspaceId: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke("get-one-project-memory", runtimeId, workspaceId),
+  saveOneProjectMemory: (
+    runtimeId: string,
+    workspaceId: string,
+    content: string,
+  ): Promise<void> =>
+    ipcRenderer.invoke(
+      "save-one-project-memory",
+      runtimeId,
+      workspaceId,
+      content,
+    ),
   getAgentRuntimeCredentialStatus: (
     id: string,
   ): Promise<{
