@@ -298,7 +298,33 @@ One definitions are stored in the separate `oneAgentRuntimes` desktop configurat
 
 [[src/main/one-runtime/revision.ts#oneDefinitionRevision]] fingerprints One's model configuration, instructions and selected skill contents. [[src/main/one-runtime/revision.ts#persistOneRunBinding]] saves a prepared Run-to-session binding before worker acknowledgement; Pi then appends matching metadata to its session. A prepared record alone does not prove that Pi persisted a user message or completed the Run.
 
-[[src/main/one-runtime/revision.ts#reconcileOneSessionBinding]] inspects a persisted Pi session tree for a matching binding and descendant user message. Successful Runtime completion requires this check against the agent's session directory and writes a separate committed receipt. [[src/main/one-runtime/revision.ts#reconcileEarlierOneBindings]] checks earlier prepared records on successful session resumption, recording only that the session message exists without inferring the prior Run outcome.
+[[src/main/one-runtime/revision.ts#reconcileOneSessionBinding]] inspects a persisted Pi session tree for a matching binding and descendant user message. Successful Runtime completion requires this check against the agent's session directory and writes a separate committed receipt.
+
+## One session resume reconciliation
+
+Resumed One sessions reconcile earlier persisted input before dispatching a new prompt, keeping task outcome and durable session evidence separate.
+
+[[src/main/one-runtime/worker.ts#start]] reports the current Pi session file to [[src/main/one-runtime/controller.ts#startOneWorker]], which awaits Main's readiness callback before acknowledging the Worker. [[src/main/one-runtime/revision.ts#reconcileEarlierOneBindings]] writes only a separate session-persisted receipt after validating an older prepared binding against that session tree.
+
+### Reconciles an interrupted binding before a resumed prompt is dispatched
+
+Before a resumed One prompt is dispatched, Main reconciles persisted messages from earlier prepared runs in the same session without changing their outcomes.
+
+[[src/main/agent-runtimes.ts]] performs the check, and a post-completion retry covers sessions without an early file path. The receipt does not infer whether the earlier Run succeeded, failed, or should be retried.
+
+[[tests/agent-runtimes.test.ts]] simulates a persisted earlier user message with no completion receipt and verifies that the session-persisted receipt exists before the resumed prompt is appended.
+
+### Waits for Main before dispatching a resumed prompt
+
+The Main-to-Worker ready callback may perform asynchronous validation; the Worker receives ready-ack only after that callback finishes. A failed callback does not acknowledge the prompt.
+
+[[src/main/one-runtime/controller.test.ts]] verifies that the resumed Worker remains paused until Main releases the readiness callback.
+
+### Does not acknowledge a resumed prompt when Main rejects validation
+
+If Main cannot validate or persist the resumed session binding, the Worker must not receive a ready acknowledgement and must not dispatch the prompt.
+
+[[src/main/one-runtime/controller.test.ts]] rejects the Main readiness callback and verifies that the Worker never emits its post-ack event.
 
 [[src/main/one-runtime/skills.ts#loadOneSkills]] loads only explicitly selected user skill documents, without executing their scripts. [[src/main/one-runtime/memory.ts#readOneMemoryFile]] and [[src/main/one-runtime/memory.ts#writeOneMemoryFile]] keep editable One memory under the current profile and runtime; it is sent to the selected model only when enabled.
 
