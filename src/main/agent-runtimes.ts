@@ -21,6 +21,10 @@ import {
 import { probeOneProvider } from "./one-runtime/probe";
 import { agentsOneProfileHome } from "./agents-one-data-root";
 import { startOneWorker } from "./one-runtime/controller";
+import {
+  oneSessionProgress,
+  type OneSessionProgressCounters,
+} from "./one-runtime/run-progress";
 import { createOneWorkspaceTools } from "./one-runtime/workspace-tools";
 import {
   getOneCredential,
@@ -5877,6 +5881,11 @@ export async function startAgentRuntimeTask(
         expiresAt: Date.now() + task.timeoutMs,
         permission: task.mode === "analysis" ? "read" : "write",
       });
+      const oneProgressCounters: OneSessionProgressCounters = {
+        compactions: 0,
+        requestRetries: 0,
+        summaryRetries: 0,
+      };
       const worker = startOneWorker({
         workerPath: join(__dirname, "one-runtime-worker.mjs"),
         workspace,
@@ -5964,42 +5973,11 @@ export async function startAgentRuntimeTask(
         onEvent: (event) => {
           if (record.run.status !== "running" || !isRecord(event)) return;
           appendOutputEvent(record, "one", JSON.stringify(event) + "\n");
-          if (
-            event.type === "one_model_call" &&
-            typeof event.count === "number" &&
-            typeof event.limit === "number"
-          )
-            appendRuntimeEvent(
-              record,
-              "progress",
-              `One 模型调用 ${event.count}/${event.limit}（含上下文摘要）。`,
-              { code: "one_model_call" },
-            );
-          if (event.type === "compaction_start")
-            appendRuntimeEvent(
-              record,
-              "progress",
-              "One 正在压缩会话上下文，可能产生额外模型调用。",
-              { code: "one_compaction_started" },
-            );
-          if (event.type === "compaction_end")
-            appendRuntimeEvent(
-              record,
-              "progress",
-              typeof event.errorMessage === "string"
-                ? "One 上下文压缩失败：" + event.errorMessage
-                : event.aborted === true
-                  ? "One 上下文压缩已取消。"
-                  : event.result
-                    ? "One 已压缩会话上下文。"
-                    : "One 未生成上下文摘要。",
-              {
-                code:
-                  event.errorMessage || event.aborted || !event.result
-                    ? "one_compaction_failed"
-                    : "one_compaction_completed",
-              },
-            );
+          const progress = oneSessionProgress(event, oneProgressCounters);
+          if (progress)
+            appendRuntimeEvent(record, "progress", progress.summary, {
+              code: progress.code,
+            });
           if (
             event.type === "message_update" &&
             isRecord(event.assistantMessageEvent) &&

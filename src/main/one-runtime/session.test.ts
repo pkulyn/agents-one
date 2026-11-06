@@ -24,6 +24,127 @@ afterEach(async () => {
 });
 
 describe("One SDK session isolation", () => {
+  it("retries a transient provider failure and counts every actual model request", async () => {
+    dir = await mkdtemp(join(tmpdir(), "agents-one-retry-"));
+    let requests = 0;
+    server = createServer((_req, res) => {
+      requests += 1;
+      if (requests === 1) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({ error: { message: "temporarily unavailable" } }),
+        );
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.end(
+        `data: ${JSON.stringify({
+          id: "retry-success",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "test-model",
+          choices: [
+            {
+              index: 0,
+              delta: { content: "Recovered response" },
+              finish_reason: "stop",
+            },
+          ],
+        })}\n\ndata: [DONE]\n\n`,
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server!.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No test address");
+    const modelCalls: number[] = [];
+    const { session } = await createOneSession({
+      workspace: dir,
+      stateDir: join(dir, "state"),
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      modelId: "test-model",
+      apiKey: "retry-test-key",
+      onModelCall: (count) => modelCalls.push(count),
+    });
+    const events: Array<Record<string, unknown>> = [];
+    session.subscribe((event) =>
+      events.push(event as unknown as Record<string, unknown>),
+    );
+    try {
+      await session.prompt("retry the transient request");
+      expect(requests).toBe(2);
+      expect(modelCalls).toEqual([1, 2]);
+      expect(session.getLastAssistantText()).toContain("Recovered response");
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "auto_retry_start",
+          attempt: 1,
+          maxAttempts: 2,
+        }),
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: "auto_retry_end", success: true }),
+      );
+      expect(JSON.stringify(events)).not.toContain("retry-test-key");
+    } finally {
+      session.dispose();
+    }
+  }, 30000);
+
+  it("stops retrying at the configured attempt bound and retains the final provider error", async () => {
+    dir = await mkdtemp(join(tmpdir(), "agents-one-retry-limit-"));
+    let requests = 0;
+    server = createServer((_req, res) => {
+      requests += 1;
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: { message: "service temporarily unavailable" },
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server!.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No test address");
+    const modelCalls: number[] = [];
+    const { session } = await createOneSession({
+      workspace: dir,
+      stateDir: join(dir, "state"),
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      modelId: "test-model",
+      apiKey: "retry-limit-test-key",
+      onModelCall: (count) => modelCalls.push(count),
+    });
+    const events: Array<Record<string, unknown>> = [];
+    session.subscribe((event) =>
+      events.push(event as unknown as Record<string, unknown>),
+    );
+    try {
+      await session.prompt("fail after bounded retries");
+      expect(requests).toBe(3);
+      expect(modelCalls).toEqual([1, 2, 3]);
+      expect(session.messages.at(-1)).toMatchObject({
+        role: "assistant",
+        stopReason: "error",
+      });
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "auto_retry_end",
+          success: false,
+          finalError: expect.any(String),
+        }),
+      );
+      expect(JSON.stringify(events)).not.toContain("retry-limit-test-key");
+    } finally {
+      session.dispose();
+    }
+  }, 30000);
+
   it("runs a real provider tool loop and resumes only its own saved session", async () => {
     dir = await mkdtemp(join(tmpdir(), "agents-one-sdk-"));
     const requests: Array<{
