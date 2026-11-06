@@ -147,6 +147,9 @@ export default {
     oneContextWindow: "模型上下文窗口（Token）",
     oneContextWindowHint:
       "填写当前默认模型的实际窗口；留空按 32768 估计。长对话会自动摘要并可能产生额外模型费用，模型较小时请填写实际数值。",
+    oneMaxModelCalls: "每轮模型调用上限",
+    oneMaxModelCallsHint:
+      "限制每轮运行中的模型 API 请求次数，自动上下文摘要也计入。范围 1–64；留空使用默认值 64。",
     oneImageInput: "模型支持图片输入",
     oneImageInputHint:
       "仅在模型和接口支持图片输入时开启。切换模型或地址后需重新确认。图片会发送给模型供应商并保存在 One 会话中。",

@@ -1959,6 +1959,13 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     throw new Error(
       "One context window must be between 4096 and 2000000 tokens.",
     );
+  if (
+    value.oneMaxModelCalls !== undefined &&
+    (!Number.isSafeInteger(value.oneMaxModelCalls) ||
+      (value.oneMaxModelCalls as number) < 1 ||
+      (value.oneMaxModelCalls as number) > 64)
+  )
+    throw new Error("One model call limit must be between 1 and 64.");
   const knownKeys = new Set([
     "endpoint",
     "remoteGateway",
@@ -1974,6 +1981,7 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     "oneSkills",
     "oneMemoryEnabled",
     "oneContextWindow",
+    "oneMaxModelCalls",
     "oneImageInput",
     "oneApiType",
     "model",
@@ -2007,6 +2015,9 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
       : {}),
     ...(value.oneContextWindow !== undefined
       ? { oneContextWindow: value.oneContextWindow as number }
+      : {}),
+    ...(value.oneMaxModelCalls !== undefined
+      ? { oneMaxModelCalls: value.oneMaxModelCalls as number }
       : {}),
     ...(value.oneImageInput !== undefined
       ? { oneImageInput: value.oneImageInput as boolean }
@@ -5831,6 +5842,7 @@ export async function startAgentRuntimeTask(
           modelId === runtime.config.model?.trim()
             ? runtime.config.oneContextWindow
             : undefined,
+        maxModelCalls: runtime.config.oneMaxModelCalls,
         systemPrompt: [
           "You are One, an assistant in Agents One.",
           runtime.config.oneInstructions || "",

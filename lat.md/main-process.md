@@ -368,6 +368,12 @@ One worker integration tests exercise interrupted model streams followed by same
 
 One memory path validation rejects both live and dangling symbolic links before reading or writing. Desktop integration checks that disabled memory is omitted from provider requests and each One identity sends only its own enabled memory.
 
+### One per-run model call limit
+
+Each One runtime can set a 1–64 model-request cap per run; old definitions that omit it retain the existing default of 64, and automatic compaction requests count toward the same cap.
+
+The settings editor persists `oneMaxModelCalls` as an optional Runtime config field. Main validates the integer range and passes it through the private Worker protocol to [[src/main/one-runtime/session.ts#createOneSession]], where the existing request counter enforces it. This is an operational limit for newly started runs; it does not rewrite session history or change agent identity. Clearing the field restores the default.
+
 ### One model API protocol selection
 
 One offers four Pi 1.5.0 API protocols, defaults older configurations to Chat Completions, and binds probe results to the model definition they tested.
