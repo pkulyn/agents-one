@@ -153,6 +153,9 @@ export default {
     oneContextWindow: "Model context window (tokens)",
     oneContextWindowHint:
       "Enter the default model’s actual capacity, or leave blank to estimate 32,768 tokens. Long conversations are summarized automatically and may incur extra model charges; enter the actual value for smaller models.",
+    oneMaxModelCalls: "Per-run model call limit",
+    oneMaxModelCallsHint:
+      "Limit model API requests for each run; automatic context summaries count too. Choose 1–64, or leave blank for the default of 64.",
     oneImageInput: "Model supports image input",
     oneImageInputHint:
       "Enable only when the model and endpoint support images. Reconfirm after changing either. Images are sent to the provider and stored in the One session.",

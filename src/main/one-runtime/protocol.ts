@@ -19,6 +19,7 @@ export type OneWorkerInput =
         apiKey: string;
         apiType?: OneModelApiType;
         contextWindow?: number;
+        maxModelCalls?: number;
         imageInput?: boolean;
         systemPrompt?: string;
         sessionId?: string;
