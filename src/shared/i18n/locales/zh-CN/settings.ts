@@ -164,6 +164,9 @@ export default {
     oneMemoryHint:
       "记忆按用户配置和智能体分别保存；启用后发送给此智能体使用的模型，不自动共享给其他智能体。",
     oneSaveMemory: "保存记忆",
+    oneClearMemory: "清空记忆",
+    oneClearMemoryConfirm:
+      "确定清空此 One 已保存的私有记忆和当前编辑内容吗？此操作无法撤销。",
     oneMemoryAfterSave: "保存智能体后可编辑记忆。",
     oneSkills: "选用技能",
     oneSkillsHint: "仅加载所选技能说明并发送给模型；技能中的脚本不会自动执行。",

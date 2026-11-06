@@ -170,6 +170,9 @@ export default {
     oneMemoryHint:
       "Memory is scoped to this profile and agent. When enabled, it is sent to its model and is not automatically shared with other agents.",
     oneSaveMemory: "Save memory",
+    oneClearMemory: "Clear memory",
+    oneClearMemoryConfirm:
+      "Clear this One agent's saved private memory and current edits? This cannot be undone.",
     oneMemoryAfterSave: "Save the agent before editing its memory.",
     oneSkills: "Selected skills",
     oneSkillsHint:

@@ -483,6 +483,24 @@ export default function AgentRuntimesPane({
       setOneMemoryError(error instanceof Error ? error.message : String(error));
     }
   }
+  async function clearOneMemory(): Promise<void> {
+    if (
+      !selectedRuntime ||
+      oneMemoryLoadedFor !== selectedRuntime.id ||
+      !oneMemorySaved
+    )
+      return;
+    if (!window.confirm(t("settings.runtimeManager.oneClearMemoryConfirm")))
+      return;
+    try {
+      await window.agentsOneAPI.saveOneRuntimeMemory(selectedRuntime.id, "");
+      setOneMemory("");
+      setOneMemorySaved("");
+      setOneMemoryError(null);
+    } catch (error) {
+      setOneMemoryError(error instanceof Error ? error.message : String(error));
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -2454,6 +2472,17 @@ export default function AgentRuntimesPane({
                             onClick={() => void saveOneMemory()}
                           >
                             {t("settings.runtimeManager.oneSaveMemory")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={
+                              oneMemoryLoadedFor !== selectedRuntime.id ||
+                              !oneMemorySaved
+                            }
+                            onClick={() => void clearOneMemory()}
+                          >
+                            {t("settings.runtimeManager.oneClearMemory")}
                           </button>
                           {oneMemoryError && (
                             <span role="alert">
