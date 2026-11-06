@@ -2,15 +2,20 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TaskCollaborationExecution } from "../src/shared/task-collaboration";
 import type {
   AgentRuntimeDefinition,
   AgentRuntimeTaskInput,
 } from "../src/shared/agent-runtimes";
 const state = vi.hoisted(() => ({
   home: "",
+  authorizedProject: "",
   record: {
     taskId: "task-a",
     taskMode: "collaboration",
+    execution: undefined as TaskCollaborationExecution | undefined,
+    projectFolder: undefined as string | undefined,
+    projectWorkspaceId: undefined as string | undefined,
     assignments: [
       { id: "lead", runtimeId: "pi" },
       { id: "work", runtimeId: "opencode" },
@@ -22,6 +27,14 @@ vi.mock("../src/main/utils", () => ({
   agentsOneProfileHome: (profile?: string) =>
     join(state.home, profile || "default"),
 }));
+vi.mock("../src/main/workspace-authority", () => ({
+  resolveAuthorizedWorkspaceId: (id: string) =>
+    id === "project-1" && state.authorizedProject
+      ? state.authorizedProject
+      : null,
+  isAuthorizedWorkspaceRoot: (path: string) =>
+    !!state.authorizedProject && path === state.authorizedProject,
+}));
 vi.mock("../src/main/task-collaboration-store", () => ({
   getTaskCollaboration: (id: string) =>
     id === state.record.taskId ? state.record : null,
@@ -29,6 +42,7 @@ vi.mock("../src/main/task-collaboration-store", () => ({
 import {
   bindCollaborationWorkingDirectory,
   collaborationWorkingDirectory,
+  remoteCollaborationStagingDirectory,
 } from "../src/main/collaboration-working-directory";
 const runtime = (id: string): AgentRuntimeDefinition => ({
   id,
@@ -47,7 +61,11 @@ const bind = (runtimeId: string, profile = "default"): AgentRuntimeTaskInput =>
 describe("Main-owned collaboration directory", () => {
   beforeEach(() => {
     state.home = mkdtempSync(join(tmpdir(), "collab-cwd-"));
+    state.authorizedProject = "";
     state.record.taskMode = "collaboration";
+    state.record.execution = undefined;
+    state.record.projectFolder = undefined;
+    state.record.projectWorkspaceId = undefined;
   });
   afterEach(() => rmSync(state.home, { recursive: true, force: true }));
   it("shares only the same task/profile across roles and survives object spread", () => {
@@ -91,6 +109,85 @@ describe("Main-owned collaboration directory", () => {
     ).toBe(input);
     expect(collaborationWorkingDirectory(input)).toBeUndefined();
   });
+  it("only stages remote output for the active assigned role with shared scope", () => {
+    const options = {
+      taskId: "task-a",
+      assignmentId: "work",
+      runtimeId: "opencode",
+    };
+    expect(remoteCollaborationStagingDirectory(options)).toBeUndefined();
+    state.record.execution = {
+      status: "running",
+      roleRuns: [
+        {
+          assignmentId: "work",
+          role: "实施",
+          runtimeId: "opencode",
+          status: "running",
+        },
+      ],
+      activeAssignmentId: "work",
+      updatedAt: Date.now(),
+    };
+    expect(remoteCollaborationStagingDirectory(options)).toBe(
+      collaborationWorkingDirectory(bind("pi")),
+    );
+    state.record.execution.roleRuns[0].status = "succeeded";
+    expect(remoteCollaborationStagingDirectory(options)).toBeUndefined();
+    state.record.execution.roleRuns[0].status = "running";
+    expect(
+      remoteCollaborationStagingDirectory({ ...options, runtimeId: "pi" }),
+    ).toBeUndefined();
+    state.record.execution.interventions = [
+      {
+        id: "i",
+        assignmentId: "work",
+        content: "private",
+        visibility: "role",
+        createdAt: Date.now(),
+      },
+    ];
+    expect(remoteCollaborationStagingDirectory(options)).toBeUndefined();
+    expect(
+      remoteCollaborationStagingDirectory({ ...options, interventionId: "i" }),
+    ).toBeUndefined();
+    state.record.execution.interventions[0].visibility = "shared";
+    expect(remoteCollaborationStagingDirectory(options)).toBeUndefined();
+    expect(
+      remoteCollaborationStagingDirectory({ ...options, interventionId: "i" }),
+    ).toBeTruthy();
+    state.record.execution.activeAssignmentId = "lead";
+    expect(
+      remoteCollaborationStagingDirectory({ ...options, interventionId: "i" }),
+    ).toBeUndefined();
+    state.record.execution.activeAssignmentId = "work";
+    state.record.projectFolder = "existing-project";
+    expect(
+      remoteCollaborationStagingDirectory({ ...options, interventionId: "i" }),
+    ).toBeUndefined();
+    const project = join(state.home, "selected-project");
+    mkdirSync(project);
+    state.authorizedProject = project;
+    state.record.projectFolder = project;
+    expect(
+      remoteCollaborationStagingDirectory({ ...options, interventionId: "i" }),
+    ).toBe(project);
+    state.record.projectFolder = undefined;
+    state.record.projectWorkspaceId = "project-1";
+    expect(
+      remoteCollaborationStagingDirectory({ ...options, interventionId: "i" }),
+    ).toBe(project);
+    state.record.execution.interventions[0].visibility = "role";
+    expect(
+      remoteCollaborationStagingDirectory({ ...options, interventionId: "i" }),
+    ).toBeUndefined();
+    state.record.execution.interventions[0].visibility = "shared";
+    state.authorizedProject = "";
+    expect(
+      remoteCollaborationStagingDirectory({ ...options, interventionId: "i" }),
+    ).toBeUndefined();
+  });
+
   it("rejects physical aliases before another role starts", () => {
     const first = bind("pi");
     const directory = collaborationWorkingDirectory(first)!;

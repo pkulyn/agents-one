@@ -2810,6 +2810,10 @@ export default function RuntimeChat({
                           collaborationContext: {
                             taskId: launch.taskId,
                             assignmentId: roleRun.assignmentId,
+                            ...(resume?.assignmentId === roleRun.assignmentId &&
+                            resume.interventionId
+                              ? { interventionId: resume.interventionId }
+                              : {}),
                           },
                         }
                       : {}),
@@ -2998,12 +3002,19 @@ export default function RuntimeChat({
                     "runtimeChat.collaborationRun.noVerifiableDelivery",
                     { role: assignment.role },
                   );
+                  if (guidedTurn?.visibility === "role") {
+                    guidedTurn.response = output.slice(0, 6_000);
+                    guidedTurn.respondedAt = Date.now();
+                  }
                   roleRuns[roleIndex] = {
                     ...roleRuns[roleIndex],
                     status: "waiting_for_user",
                     completedAt: Date.now(),
                     error: reason,
-                    handoff: output.slice(0, 6000),
+                    handoff:
+                      guidedTurn?.visibility === "role"
+                        ? undefined
+                        : output.slice(0, 6000),
                   };
                   firstProblemId ??= roleRun.assignmentId;
                   await appendCollaborationMessage(
@@ -3304,6 +3315,10 @@ ${reason}`,
                     collaborationContext: {
                       taskId: launch.taskId,
                       assignmentId: roleRun.assignmentId,
+                      ...(resume?.assignmentId === roleRun.assignmentId &&
+                      resume.interventionId
+                        ? { interventionId: resume.interventionId }
+                        : {}),
                     },
                   }
                 : {}),
@@ -3500,12 +3515,19 @@ ${reason}`,
               "runtimeChat.collaborationRun.noDeliveryDownstream",
               { role: assignment.role },
             );
+            if (guidedTurn?.visibility === "role") {
+              guidedTurn.response = output.slice(0, 6_000);
+              guidedTurn.respondedAt = Date.now();
+            }
             roleRuns[index] = {
               ...roleRuns[index],
               status: "waiting_for_user",
               completedAt: Date.now(),
               error: reason,
-              handoff: output.slice(0, 6000),
+              handoff:
+                guidedTurn?.visibility === "role"
+                  ? undefined
+                  : output.slice(0, 6000),
             };
             blockRemaining(
               index + 1,

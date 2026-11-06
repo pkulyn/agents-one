@@ -3044,6 +3044,184 @@ describe("agent runtime registry", () => {
     }
   });
 
+  it.each([
+    "shared",
+    "private",
+    "mismatch",
+    "project",
+    "private-project",
+  ] as const)(
+    "gates remote collaboration artifact staging for %s runs",
+    async (scenario) => {
+      vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+      const bytes = Buffer.from("remote collaboration file");
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(async (input) => {
+          const url = String(input);
+          if (url.endsWith("/runs"))
+            return new Response(
+              JSON.stringify({
+                id: "remote-run",
+                status: "succeeded",
+                output: "done",
+                artifacts: [
+                  {
+                    id: "remote-file",
+                    name: "result.txt",
+                    mime: "text/plain",
+                    size: bytes.length,
+                    sha256: scenario === "mismatch" ? "0".repeat(64) : hash,
+                  },
+                ],
+              }),
+              { status: 202 },
+            );
+          return new Response(
+            JSON.stringify({
+              id: "remote-file",
+              name: "result.txt",
+              mime: "text/plain",
+              size: bytes.length,
+              sha256: hash,
+              contentBase64: bytes.toString("base64"),
+            }),
+            { status: 200 },
+          );
+        });
+      try {
+        const { runtimes } = await loadModules();
+        runtimes.saveAgentRuntime({
+          id: "remote-worker",
+          name: "Remote worker",
+          kind: "hermes",
+          location: "remote",
+          enabled: true,
+          config: {
+            endpoint: "https://relay.example/agents-one/v1",
+            remoteGateway: { protocol: "agents-one-v1" },
+            timeoutMs: 10_000,
+          },
+        });
+        runtimes.setAgentRuntimeBearerToken(
+          "remote-worker",
+          "test-gateway-token",
+        );
+        const { saveTaskCollaboration, updateTaskCollaborationExecution } =
+          await import("../src/main/task-collaboration-store");
+        const projectRoot = join(testHome, "project");
+        let projectWorkspaceId: string | undefined;
+        if (scenario === "project" || scenario === "private-project") {
+          mkdirSync(projectRoot);
+          writeFileSync(join(projectRoot, "existing.txt"), "untouched");
+          const { registerProjectFolder } =
+            await import("../src/main/project-folders");
+          projectWorkspaceId = registerProjectFolder(projectRoot)?.id;
+          expect(projectWorkspaceId).toBeTruthy();
+        }
+        saveTaskCollaboration({
+          ...(projectWorkspaceId ? { projectWorkspaceId } : {}),
+          taskId: "remote-test",
+          title: "Remote test",
+          taskMode: "collaboration",
+          assignments: [
+            { id: "work", role: "实施", runtimeId: "remote-worker" },
+          ],
+        });
+        updateTaskCollaborationExecution({
+          taskId: "remote-test",
+          execution: {
+            status: "running",
+            roleRuns: [
+              {
+                assignmentId: "work",
+                role: "实施",
+                runtimeId: "remote-worker",
+                status: "running",
+              },
+            ],
+            activeAssignmentId: "work",
+            updatedAt: Date.now(),
+            ...(scenario === "private" || scenario === "private-project"
+              ? {
+                  interventions: [
+                    {
+                      id: "private-turn",
+                      assignmentId: "work",
+                      content: "private",
+                      visibility: "role",
+                      createdAt: Date.now(),
+                    },
+                  ],
+                }
+              : {}),
+          },
+        });
+        const run = await runtimes.startAgentRuntimeTask("remote-worker", {
+          prompt: "create file",
+          mode: "safe_write",
+          collaborationContext: {
+            taskId: "remote-test",
+            assignmentId: "work",
+            ...(scenario === "private" || scenario === "private-project"
+              ? { interventionId: "private-turn" }
+              : {}),
+          },
+        });
+        const artifact = run.artifacts?.[0];
+        const root = join(
+          testHome,
+          "data",
+          "profiles",
+          "default",
+          "desktop",
+          "collaboration-workspaces",
+          createHash("sha256").update("remote-test").digest("hex"),
+        );
+        if (scenario === "shared" || scenario === "project") {
+          expect(artifact).toMatchObject({
+            kind: "file",
+            sha256: hash,
+            relativePath: expect.any(String),
+          });
+          expect(
+            readFileSync(
+              join(
+                scenario === "project" ? projectRoot : root,
+                artifact!.relativePath!,
+              ),
+            ),
+          ).toEqual(bytes);
+          if (scenario === "project")
+            expect(
+              readFileSync(join(projectRoot, "existing.txt"), "utf8"),
+            ).toBe("untouched");
+          const safe = runtimes.toRendererAgentRuntimeRun(run);
+          expect(safe?.artifacts?.[0]?.relativePath).toBe(
+            artifact?.relativePath,
+          );
+        } else {
+          expect(artifact?.kind).not.toBe("file");
+          expect(existsSync(join(root, ".remote-deliveries"))).toBe(false);
+          if (scenario === "private-project") {
+            expect(existsSync(join(projectRoot, ".remote-deliveries"))).toBe(
+              false,
+            );
+            expect(
+              readFileSync(join(projectRoot, "existing.txt"), "utf8"),
+            ).toBe("untouched");
+          }
+          if (artifact?.path) rmSync(artifact.path, { force: true });
+          if (scenario === "mismatch")
+            expect(artifact?.unavailableReason).toContain("元数据校验失败");
+        }
+      } finally {
+        fetchMock.mockRestore();
+      }
+    },
+  );
+
   it("hydrates a completed Gateway artifact in the main process", async () => {
     const bytes = Buffer.from("remote chart bytes");
     const sha256 = createHash("sha256").update(bytes).digest("hex");

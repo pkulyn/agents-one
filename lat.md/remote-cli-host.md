@@ -12,6 +12,8 @@ Host state may be persisted through `statePath` using the Gateway SDK's atomic s
 
 Production Hosts should pass `trustedAdapterIds` and `requireAdapterManifest: true`; a manifest ID must match the Runtime registration, and `verifyAdapter` can add signature or local trust-store checks. Runtime-specific `limits.maxConcurrentRuns` is enforced before dispatch. OpenCode only receives the default safe process environment plus explicitly allowlisted keys (`allowedEnv`); arbitrary Gateway input cannot add environment variables, commands, or paths.
 
+A Main-only staging helper validates a remote artifact checksum and filename, uses isolated run and artifact directories, rejects aliases and conflicts, and permits identical retries. A separate fail-closed scope decision treats missing, unmatched, private or ambiguous intervention state as private. For active remote roles, Main rechecks the persisted assignment and scope after authenticated download, verifies the run and download checksums, and stages the file before exposing a relative delivery path. Projectless tasks use a Main-owned directory; project tasks resolve the saved workspace capability or an authorized legacy project root on each delivery. Revoked or unknown project authorization prevents shared staging.
+
 Published Artifact bytes are stored beside the atomic Host state when `statePath` is configured, so completed output remains downloadable after a Host restart. The persisted state contains metadata only; credentials, absolute paths, and raw provider output are not placed in the journal or diagnostic payload.
 
 ## OpenCode ACP remote Adapter

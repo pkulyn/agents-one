@@ -7,6 +7,11 @@ import type {
 } from "../shared/agent-runtimes";
 import { agentsOneProfileHome, getActiveProfileNameSync } from "./utils";
 import { getTaskCollaboration } from "./task-collaboration-store";
+import { remoteCollaborationArtifactScope } from "./remote-collaboration-scope";
+import {
+  isAuthorizedWorkspaceRoot,
+  resolveAuthorizedWorkspaceId,
+} from "./workspace-authority";
 const ownedDirectory = Symbol("Main-owned collaboration directory");
 type BoundInput = AgentRuntimeTaskInput & {
   [ownedDirectory]?: { profile?: string; taskId: string };
@@ -82,4 +87,51 @@ export function collaborationWorkingDirectory(
 ): string | undefined {
   const owned = (input as BoundInput)[ownedDirectory];
   return owned ? canonicalDirectory(owned.taskId, owned.profile) : undefined;
+}
+
+/** Resolve a shared destination only for a currently active, persisted remote role. */
+export function remoteCollaborationStagingDirectory(options: {
+  taskId: string;
+  assignmentId: string;
+  runtimeId: string;
+  profile?: string;
+  interventionId?: string;
+}): string | undefined {
+  const record = getTaskCollaboration(options.taskId, options.profile);
+  const execution = record?.execution;
+  if (
+    !record ||
+    record.taskMode === "single" ||
+    !execution ||
+    execution.status !== "running" ||
+    options.assignmentId.endsWith("::final-review") ||
+    !record.assignments.some(
+      (item, index) =>
+        (item.id || `legacy:${index}:${item.role}`) === options.assignmentId &&
+        item.runtimeId === options.runtimeId,
+    ) ||
+    !execution.roleRuns.some(
+      (item) =>
+        item.assignmentId === options.assignmentId &&
+        item.runtimeId === options.runtimeId &&
+        item.status === "running",
+    ) ||
+    !(
+      execution.activeAssignmentId === options.assignmentId ||
+      execution.activeAssignmentIds?.includes(options.assignmentId)
+    ) ||
+    remoteCollaborationArtifactScope(
+      record,
+      options.assignmentId,
+      options.interventionId,
+    ) !== "shared"
+  )
+    return undefined;
+  if (record.projectWorkspaceId)
+    return resolveAuthorizedWorkspaceId(record.projectWorkspaceId) || undefined;
+  if (record.projectFolder)
+    return isAuthorizedWorkspaceRoot(record.projectFolder)
+      ? realpathSync.native(record.projectFolder)
+      : undefined;
+  return canonicalDirectory(record.taskId, options.profile);
 }

@@ -5159,6 +5159,130 @@ describe("RuntimeChat inputs and persistence", () => {
       );
     },
   );
+  it.each([false, true])(
+    "keeps private replies out of handoff when no artifact is produced (DAG=%s)",
+    async (dag) => {
+      let implementationAttempt = 0;
+      startAgentRuntimeTask.mockImplementation(async (runtimeId: string) => ({
+        id:
+          runtimeId === "codex-local"
+            ? `run-implement-dialogue-${++implementationAttempt}`
+            : "run-test-after-dialogue",
+        runtimeId,
+        status: "running",
+        output: "",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }));
+      getAgentRuntimeRun.mockImplementation(async (id: string) => ({
+        id,
+        runtimeId: id.startsWith("run-implement-dialogue")
+          ? "codex-local"
+          : "claude-local",
+        status: "succeeded",
+        output:
+          id === "run-implement-dialogue-1"
+            ? "PRIVATE_NO_ARTIFACT_RESPONSE"
+            : id === "run-implement-dialogue-2"
+              ? "已完成第二轮确认并重新验证。"
+              : "测试通过。",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        ...(id.startsWith("run-implement-dialogue")
+          ? { sessionId: "codex-dialogue-session" }
+          : {}),
+      }));
+      render(
+        <RuntimeChat
+          runId="collaboration-resume"
+          runtime={piRuntime}
+          profile="default"
+          collaboration={{
+            taskId: "collaboration-resume-task",
+            assignments: [
+              {
+                id: "implement",
+                role: "实施",
+                runtimeId: "codex-local",
+                ...(dag ? { dependsOn: [] } : {}),
+              },
+              {
+                id: "test",
+                role: "测试",
+                runtimeId: "claude-local",
+                ...(dag ? { dependsOn: ["implement"] } : {}),
+              },
+            ],
+            execution: {
+              status: "waiting_for_user",
+              brief: "完成一个需要实施和测试的任务",
+              updatedAt: Date.now(),
+              activeAssignmentId: "implement",
+              roleRuns: [
+                {
+                  assignmentId: "implement",
+                  role: "实施",
+                  runtimeId: "codex-local",
+                  status: "waiting_for_user",
+                },
+                {
+                  assignmentId: "test",
+                  role: "测试",
+                  runtimeId: "claude-local",
+                  status: "blocked",
+                },
+              ],
+            },
+          }}
+          runtimeCatalog={{
+            "pi-local": piRuntime,
+            "codex-local": codexRuntime,
+            "claude-local": claudeRuntime,
+          }}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "与 Codex（实施）沟通" }),
+      );
+      fireEvent.click(screen.getByRole("checkbox"));
+      fireEvent.change(screen.getByLabelText("给当前角色的人工指令"), {
+        target: { value: "只修改 docs 目录，并说明改动文件。" },
+      });
+      fireEvent.change(screen.getByLabelText("本角色权限"), {
+        target: { value: "full_access" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "发送给此智能体" }));
+
+      await waitFor(() =>
+        expect(updateTaskCollaborationExecution).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            execution: expect.objectContaining({
+              status: "waiting_for_user",
+              interventions: expect.arrayContaining([
+                expect.objectContaining({
+                  visibility: "role",
+                  response: "PRIVATE_NO_ARTIFACT_RESPONSE",
+                }),
+              ]),
+              roleRuns: expect.arrayContaining([
+                expect.objectContaining({
+                  assignmentId: "implement",
+                  handoff: undefined,
+                }),
+              ]),
+            }),
+          }),
+          "default",
+        ),
+      );
+      const last =
+        updateTaskCollaborationExecution.mock.calls.at(-1)?.[0].execution;
+      expect(JSON.stringify(last?.artifacts || [])).not.toContain(
+        "PRIVATE_NO_ARTIFACT_RESPONSE",
+      );
+    },
+  );
   it("keeps unsupported native input from cancelling or restarting the active run", async () => {
     getAgentRuntimeRun.mockResolvedValue({
       id: "run-1",
