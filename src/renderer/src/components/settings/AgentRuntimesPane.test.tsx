@@ -675,6 +675,51 @@ describe("AgentRuntimesPane", () => {
     );
   });
 
+  it("requires confirmation before clearing the selected One private memory", async () => {
+    installHermesAPI([
+      {
+        id: "one-test",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {
+          agentTransport: "local-sdk",
+          endpoint: "https://example.test/v1",
+          model: "test",
+          oneMemoryEnabled: true,
+        },
+      },
+    ]);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      render(<AgentRuntimesPane />);
+      fireEvent.click(
+        await screen.findByText("模型上下文、个性化、技能与记忆"),
+      );
+      const editor = await screen.findByLabelText("One 私有记忆内容");
+      await waitFor(() => expect(editor).toHaveValue("existing memory"));
+      const clearButton = screen.getByRole("button", { name: "清空记忆" });
+      fireEvent.click(clearButton);
+      expect(window.agentsOneAPI.saveOneRuntimeMemory).not.toHaveBeenCalled();
+      expect(editor).toHaveValue("existing memory");
+
+      confirm.mockReturnValue(true);
+      fireEvent.click(clearButton);
+      await waitFor(() =>
+        expect(window.agentsOneAPI.saveOneRuntimeMemory).toHaveBeenCalledWith(
+          "one-test",
+          "",
+        ),
+      );
+      await waitFor(() => expect(editor).toHaveValue(""));
+      expect(confirm).toHaveBeenCalledTimes(2);
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
   it("protects One memory while its existing contents are loading or unavailable", async () => {
     installHermesAPI([
       {
@@ -704,12 +749,14 @@ describe("AgentRuntimesPane", () => {
     const editor = await screen.findByLabelText("One 私有记忆内容");
     expect(editor).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存记忆" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "清空记忆" })).toBeDisabled();
     rejectRead(new Error("memory read failed"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "memory read failed",
     );
     expect(editor).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存记忆" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "清空记忆" })).toBeDisabled();
     expect(window.agentsOneAPI.saveOneRuntimeMemory).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(editor).toHaveValue("existing memory"));
