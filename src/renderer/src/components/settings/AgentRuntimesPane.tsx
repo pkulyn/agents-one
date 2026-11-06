@@ -742,6 +742,23 @@ export default function AgentRuntimesPane({
     void loadCredentialStatus(runtime.id);
   }
 
+  function discardOneChanges(): void {
+    if (
+      !selectedRuntime ||
+      selectedRuntime.kind !== "one" ||
+      selectedRuntime.location !== "local"
+    ) {
+      return;
+    }
+    setDraft(draftFromRuntime(selectedRuntime));
+    setBearerToken("");
+    setCredentialRevision(0);
+    setDraftProbe(null);
+    setDraftProbeKey(null);
+    setDiagnostics(null);
+    setFlash(null);
+  }
+
   function startNewRuntime(): void {
     setSelectedId(null);
     setDraft(emptyDraft(t));
@@ -3460,6 +3477,16 @@ export default function AgentRuntimesPane({
                         <RefreshCw size={14} />
                       )}
                       {t("settings.runtimeManager.connectionTest")}
+                    </button>
+                  )}
+                  {isOne && selectedRuntime && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={discardOneChanges}
+                      disabled={busy !== null}
+                    >
+                      {t("settings.runtimeManager.discardChanges")}
                     </button>
                   )}
                   <button

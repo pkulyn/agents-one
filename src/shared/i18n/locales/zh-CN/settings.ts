@@ -327,6 +327,7 @@ export default {
     connectionTest: "连接测试",
     save: "保存",
     saveChanges: "保存更改",
+    discardChanges: "取消更改",
     remove: "移除",
     hermesConnection: "Hermes 连接",
   },
