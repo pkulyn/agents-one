@@ -22,6 +22,8 @@ it("keeps editable memory scoped by profile and One identity", () => {
     expect(() => writeOneMemoryFile(a, "../bad", "x")).toThrow();
     expect(() => writeOneMemoryFile(a, "one-a", "x".repeat(110000))).toThrow();
     expect(readOneMemoryFile(a, "one-a")).toBe("  Preference\n");
+    writeOneMemoryFile(a, "one-a", "");
+    expect(readOneMemoryFile(a, "one-a")).toBe("");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
