@@ -19,7 +19,7 @@ const inspectionUnavailable =
   "Pi 版本探测失败，无法安全确认版本元数据；请检查执行器安装。 / Pi version metadata could not be safely verified; check the CLI installation.";
 const exec = promisify(execFile);
 const unavailable =
-  "[Agents One 权限不足] 无法确认 Pi 执行器的严格权限能力，本轮任务未发送。只读和自动模式目前支持已验证的 Pi 1.4.0；请检查执行器安装，或明确选择完全访问。 / Pi strict capabilities could not be verified; the task was not sent. Read-only and automatic modes currently require verified Pi 1.4.0. Check the CLI installation or explicitly choose full access.";
+  "[Agents One 权限不足] 无法确认 Pi 执行器的严格权限能力，本轮任务未发送。只读和自动模式目前支持已验证的 Pi 1.4.0 或 1.5.0；请检查执行器安装，或明确选择完全访问。 / Pi strict capabilities could not be verified; the task was not sent. Read-only and automatic modes currently require verified Pi 1.4.0 or 1.5.0. Check the CLI installation or explicitly choose full access.";
 
 function executableFile(command: string): string {
   if (isAbsolute(command) || command.includes("/") || command.includes("\\"))
@@ -160,7 +160,8 @@ export async function verifyPiStrictCapabilities(
 ): Promise<VerifiedPiInvocation> {
   try {
     const inspected = await inspectPiVersion(requested);
-    if (inspected.version !== "1.4.0") throw Error(unavailable);
+    if (inspected.version !== "1.4.0" && inspected.version !== "1.5.0")
+      throw Error(unavailable);
     return {
       invocation: inspected.invocation,
       assertUnchanged: (): void => {
