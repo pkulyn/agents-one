@@ -330,7 +330,7 @@ If Main cannot validate or persist the resumed session binding, the Worker must 
 
 A new runtime connection probe is bound to its runtime ID as well as its model connection and credential revision; changing the ID requires a fresh probe.
 
-The settings editor enables One memory changes only after the selected runtime's existing memory has loaded successfully. A delayed or failed read cannot replace a user's in-progress edit or authorize saving an unknown blank value. A failed read can be retried before editing.
+The settings editor enables One memory changes only after the selected runtime's existing memory has loaded successfully. A delayed or failed read cannot replace a user's in-progress edit or authorize saving an unknown blank value. A failed read can be retried before editing. Clearing saved private memory requires confirmation and writes an empty value only for the selected One runtime; cancelling leaves both the file and editor unchanged.
 
 The One definition editor keeps personal instructions and model/skill choices in a renderer draft until the existing Runtime save succeeds. “Discard changes” rebuilds that draft from the selected saved definition, clears unsaved credentials and probe state, and performs no persistence write; One memory continues to use its separate explicit save action. [[src/renderer/src/components/settings/AgentRuntimesPane.tsx#AgentRuntimesPane]] and its component tests cover the discard path.
 
