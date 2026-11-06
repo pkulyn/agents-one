@@ -926,6 +926,80 @@ describe("AgentRuntimesPane", () => {
     );
   });
 
+  it("offers common provider quick fills and clears model-specific overrides", async () => {
+    const api = installHermesAPI([]);
+    render(<AgentRuntimesPane />);
+    await openNewAgentWizard("local", 2);
+    fireEvent.change(screen.getByLabelText("类型"), {
+      target: { value: "one" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    fireEvent.change(screen.getByLabelText("模型供应商"), {
+      target: { value: "ark-agent-plan" },
+    });
+    expect(screen.getByLabelText("模型上下文窗口（Token）")).toHaveValue(
+      262144,
+    );
+    expect(screen.getByLabelText("模型支持图片输入")).toBeChecked();
+
+    fireEvent.change(screen.getByLabelText("模型供应商"), {
+      target: { value: "kimi" },
+    });
+    expect(screen.getByLabelText("模型 API 地址")).toHaveValue(
+      "https://api.moonshot.cn/v1",
+    );
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("kimi-k3.1-pro");
+    expect(screen.getByLabelText("模型上下文窗口（Token）")).toHaveValue(null);
+    expect(screen.getByLabelText("模型支持图片输入")).not.toBeChecked();
+
+    fireEvent.change(screen.getByLabelText("API 协议"), {
+      target: { value: "anthropic-messages" },
+    });
+    fireEvent.change(screen.getByLabelText("模型供应商"), {
+      target: { value: "bigmodel" },
+    });
+    expect(screen.getByLabelText("模型 API 地址")).toHaveValue(
+      "https://open.bigmodel.cn/api/paas/v4",
+    );
+    expect(screen.getByLabelText("模型 ID")).toHaveValue("glm-5-turbo");
+    expect(screen.getByLabelText("API 协议")).toHaveValue("openai-completions");
+
+    fireEvent.change(screen.getByLabelText("模型 API Key"), {
+      target: { value: "test-one-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "连接测试" }));
+    await waitFor(() =>
+      expect(api.probeAgentRuntimeDraft).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          kind: "one",
+          config: expect.objectContaining({
+            endpoint: "https://open.bigmodel.cn/api/paas/v4",
+            model: "glm-5-turbo",
+            oneApiType: "openai-completions",
+          }),
+        }),
+        "test-one-key",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(api.saveAgentRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "one",
+          config: expect.objectContaining({
+            endpoint: "https://open.bigmodel.cn/api/paas/v4",
+            model: "glm-5-turbo",
+            oneApiType: "openai-completions",
+          }),
+        }),
+      ),
+    );
+    expect(JSON.stringify(api.saveAgentRuntime.mock.calls)).not.toContain(
+      "test-one-key",
+    );
+  });
+
   it("requires a new One probe after changing its runtime ID", async () => {
     const api = installHermesAPI([]);
     render(<AgentRuntimesPane />);
