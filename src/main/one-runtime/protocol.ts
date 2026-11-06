@@ -1,3 +1,5 @@
+import type { OneModelApiType } from "../../shared/one-model-api";
+
 /** Private Main-to-worker protocol; this is not exposed to the renderer. */
 export interface OneWorkerTool {
   name: string;
@@ -15,6 +17,7 @@ export type OneWorkerInput =
         baseUrl: string;
         modelId: string;
         apiKey: string;
+        apiType?: OneModelApiType;
         contextWindow?: number;
         imageInput?: boolean;
         systemPrompt?: string;

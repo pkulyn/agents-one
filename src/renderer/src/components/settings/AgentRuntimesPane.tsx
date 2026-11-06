@@ -1,4 +1,5 @@
 import type { RuntimeSkillDescriptor } from "../../../../shared/runtime-skills";
+import { isOneModelApiType } from "../../../../shared/one-model-api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
@@ -584,6 +585,7 @@ export default function AgentRuntimesPane({
     kind: draft.kind,
     location: draft.location,
     endpoint: draft.config.endpoint?.trim() || "",
+    oneApiType: isOne ? draft.config.oneApiType || "openai-completions" : null,
     remoteGateway: draft.config.remoteGateway?.protocol || null,
     executablePath: draft.config.executablePath?.trim() || "",
     workspace: draft.config.workspace?.trim() || "",
@@ -1348,7 +1350,7 @@ export default function AgentRuntimesPane({
       config: {
         ...current.config,
         ...(current.kind === "one" &&
-        (key === "model" || key === "endpoint") &&
+        (key === "model" || key === "endpoint" || key === "oneApiType") &&
         value !== current.config[key]
           ? { oneContextWindow: undefined, oneImageInput: undefined }
           : {}),
@@ -2166,13 +2168,20 @@ export default function AgentRuntimesPane({
                     className="input"
                     aria-label={t("settings.runtimeManager.oneProvider")}
                     value={
+                      (draft.config.oneApiType || "openai-completions") ===
+                        "openai-completions" &&
                       draft.config.endpoint ===
-                      "https://ark.cn-beijing.volces.com/api/plan/v3"
+                        "https://ark.cn-beijing.volces.com/api/plan/v3"
                         ? "ark-agent-plan"
-                        : draft.config.endpoint === "https://api.deepseek.com"
+                        : (draft.config.oneApiType || "openai-completions") ===
+                              "openai-completions" &&
+                            draft.config.endpoint === "https://api.deepseek.com"
                           ? "deepseek"
-                          : draft.config.endpoint ===
-                              "https://api.openai.com/v1"
+                          : (draft.config.oneApiType ||
+                                "openai-completions") ===
+                                "openai-completions" &&
+                              draft.config.endpoint ===
+                                "https://api.openai.com/v1"
                             ? "openai"
                             : "custom"
                     }
@@ -2202,8 +2211,11 @@ export default function AgentRuntimesPane({
                         ...current,
                         config: {
                           ...current.config,
+                          oneApiType: undefined,
                           ...(preset.model !== current.config.model ||
-                          preset.endpoint !== current.config.endpoint
+                          preset.endpoint !== current.config.endpoint ||
+                          (current.config.oneApiType ||
+                            "openai-completions") !== "openai-completions"
                             ? {
                                 oneContextWindow: undefined,
                                 oneImageInput: undefined,
@@ -2224,6 +2236,31 @@ export default function AgentRuntimesPane({
                 </label>
                 <label className="settings-field">
                   <span className="settings-field-label">
+                    {t("settings.runtimeManager.oneApiType")}
+                  </span>
+                  <select
+                    className="input"
+                    aria-label={t("settings.runtimeManager.oneApiType")}
+                    value={draft.config.oneApiType || "openai-completions"}
+                    onChange={(event) => {
+                      if (isOneModelApiType(event.target.value))
+                        updateConfig("oneApiType", event.target.value);
+                    }}
+                  >
+                    <option value="openai-completions">
+                      OpenAI Chat Completions
+                    </option>
+                    <option value="openai-responses">OpenAI Responses</option>
+                    <option value="anthropic-messages">
+                      Anthropic Messages
+                    </option>
+                    <option value="google-generative-ai">
+                      Google Generative AI
+                    </option>
+                  </select>
+                </label>
+                <label className="settings-field">
+                  <span className="settings-field-label">
                     {t("settings.runtimeManager.oneEndpoint")}
                   </span>
                   <input
@@ -2237,7 +2274,13 @@ export default function AgentRuntimesPane({
                     placeholder="https://api.example.com/v1"
                   />
                   <span className="settings-field-hint">
-                    {t("settings.runtimeManager.oneEndpointHint")}
+                    {t(
+                      draft.config.oneApiType === "anthropic-messages"
+                        ? "settings.runtimeManager.oneEndpointHintAnthropic"
+                        : draft.config.oneApiType === "google-generative-ai"
+                          ? "settings.runtimeManager.oneEndpointHintGoogle"
+                          : "settings.runtimeManager.oneEndpointHint",
+                    )}
                   </span>
                 </label>
                 <label className="settings-field">

@@ -1,6 +1,7 @@
 import { fork, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { OneToolCleanupError } from "./cleanup-error";
+import type { OneModelApiType } from "../../shared/one-model-api";
 import type {
   OneWorkerInput,
   OneWorkerOutput,
@@ -14,6 +15,7 @@ export interface OneWorkerOptions {
   baseUrl: string;
   modelId: string;
   apiKey: string;
+  apiType?: OneModelApiType;
   contextWindow?: number;
   imageInput?: boolean;
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
@@ -236,6 +238,7 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
     baseUrl,
     modelId,
     apiKey,
+    apiType,
     contextWindow,
     imageInput,
     images,
@@ -253,6 +256,7 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
       baseUrl,
       modelId,
       apiKey,
+      apiType,
       contextWindow,
       imageInput,
       systemPrompt,

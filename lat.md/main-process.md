@@ -284,7 +284,7 @@ One is a separately registered local SDK runtime with an isolated Pi session and
 
 [[src/main/one-runtime/session.ts#createOneSession]] requires an explicit workspace, app-owned state directory, model endpoint and runtime API key. It disables automatic Pi resource discovery and built-in tools, accepts only explicitly supplied host tools, and stores resumable sessions under the specified directory. Callers must enforce tool authorization and protect credentials; the SDK session alone is not a sandbox. External Pi CLI configuration and sessions remain independent.
 
-The app-owned worker protocol delegates tool requests to a Main-side callback; the worker cannot grant its own permissions. [[src/main/one-runtime/controller.ts#startOneWorker]] manages process exit and cancellation and passes credentials only through its private IPC channel. The One runtime and configuration form use this boundary; broader skills, memory, collaboration and delivery acceptance remain under development.
+The app-owned worker protocol delegates tool requests to a Main-side callback; the worker cannot grant its own permissions. [[src/main/one-runtime/controller.ts#startOneWorker]] manages process exit and cancellation and passes credentials only through its private IPC channel. One's settings, explicit skills, memory, collaboration and file delivery use this boundary; package, visual, cross-machine and mobile acceptance remain separate.
 
 [[src/main/one-runtime/workspace-tools.ts#createOneWorkspaceTools]] adapts the existing task-scoped workspace grant to One file tools. Read-only grants allow listing, reading and bounded search; write grants also allow writing, and deletion requires an explicit Main-side callback and a fresh file checksum. Authorization must be established by its Main caller.
 
@@ -339,3 +339,9 @@ One skill discovery reports unsupported names, unsafe files, oversized documents
 One worker integration tests exercise interrupted model streams followed by same-session recovery, malformed tool JSON rejected before host execution, and successful reconstruction of split tool arguments. These provider fault cases use a controlled local OpenAI-compatible test server.
 
 One memory path validation rejects both live and dangling symbolic links before reading or writing. Desktop integration checks that disabled memory is omitted from provider requests and each One identity sends only its own enabled memory.
+
+### One model API protocol selection
+
+One offers four Pi 1.5.0 API protocols, defaults older configurations to Chat Completions, and binds probe results to the model definition they tested.
+
+Supported values are `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`. The selected type flows through probing and worker execution and enters non-default definition revisions. A late probe cannot mark a changed definition healthy.
