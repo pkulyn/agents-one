@@ -5855,7 +5855,7 @@ export async function startAgentRuntimeTask(
             : name === "host_shell" && task.mode === "full_access"
               ? executeOneShell(parameters, workspace, signal)
               : hostTools.executeTool(name, parameters, signal),
-        onReady: (sessionId) => {
+        onReady: async (sessionId, sessionFile) => {
           if (record.run.status !== "running" || record.cancelRequested)
             throw new Error("Task cancelled");
           binding?.bind(sessionId);
@@ -5870,6 +5870,32 @@ export async function startAgentRuntimeTask(
             snapshotHash,
           });
           record.run = { ...record.run, sessionId };
+          if (task.sessionId && sessionFile) {
+            try {
+              const reconciled = await reconcileEarlierOneBindings(
+                stateDir,
+                runtime.id,
+                sessionId,
+                sessionFile,
+                id,
+              );
+              if (reconciled && record.run.status === "running")
+                appendRuntimeEvent(
+                  record,
+                  "progress",
+                  `One 已核对 ${reconciled} 条历史会话记录；原任务结果不变。`,
+                  { code: "one_session_reconciled" },
+                );
+            } catch {
+              if (record.run.status === "running" && !record.cancelRequested)
+                appendRuntimeEvent(
+                  record,
+                  "progress",
+                  "One 历史会话记录暂无法核对；当前任务仍可继续，后续续聊会重试。",
+                  { code: "one_session_reconcile_pending" },
+                );
+            }
+          }
         },
         onEvent: (event) => {
           if (record.run.status !== "running" || !isRecord(event)) return;
@@ -5977,7 +6003,15 @@ export async function startAgentRuntimeTask(
               if (record.run.status !== "running" || record.cancelRequested)
                 return;
               commitOneRunBinding(stateDir, id);
-              if (task.sessionId) {
+            } catch {
+              if (record.run.status === "running" && !record.cancelRequested)
+                finishRuntimeRun(record, "failed", {
+                  error: "One 会话记录核验失败；已保留运行记录，请检查后重试。",
+                });
+              return;
+            }
+            if (task.sessionId) {
+              try {
                 const reconciled = await reconcileEarlierOneBindings(
                   stateDir,
                   runtime.id,
@@ -5992,13 +6026,15 @@ export async function startAgentRuntimeTask(
                     `One 已核对 ${reconciled} 条历史会话记录；原任务结果不变。`,
                     { code: "one_session_reconciled" },
                   );
+              } catch {
+                if (record.run.status === "running" && !record.cancelRequested)
+                  appendRuntimeEvent(
+                    record,
+                    "progress",
+                    "One 历史会话记录暂无法核对；后续续聊会重试。",
+                    { code: "one_session_reconcile_pending" },
+                  );
               }
-            } catch {
-              if (record.run.status === "running" && !record.cancelRequested)
-                finishRuntimeRun(record, "failed", {
-                  error: "One 会话记录核验失败；已保留运行记录，请检查后重试。",
-                });
-              return;
             }
             const artifacts = await verifyLocalDeliveryArtifacts(
               result.output,

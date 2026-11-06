@@ -35,7 +35,7 @@ export interface OneWorkerOptions {
     signal: AbortSignal,
   ) => Promise<string>;
   onEvent?: (event: unknown) => void;
-  onReady?: (sessionId: string) => void;
+  onReady?: (sessionId: string, sessionFile?: string) => void | Promise<void>;
 }
 export interface OneWorkerResult {
   sessionId: string;
@@ -148,13 +148,18 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
   child.on("message", (message: OneWorkerOutput) => {
     if (settled || !message || typeof message !== "object") return;
     if (message.type === "ready") {
-      try {
-        options.onReady?.(message.sessionId);
-      } catch {
-        fail("Could not save the One session binding");
-        return;
-      }
-      send({ type: "ready-ack" });
+      void (async () => {
+        try {
+          await options.onReady?.(message.sessionId, message.sessionFile);
+          if (!cancelled) send({ type: "ready-ack" });
+        } catch {
+          fail(
+            cancelled
+              ? "One task cancelled"
+              : "Could not save the One session binding",
+          );
+        }
+      })();
     } else if (message.type === "event") {
       try {
         options.onEvent?.(message.event);

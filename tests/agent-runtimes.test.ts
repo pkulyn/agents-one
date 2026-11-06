@@ -1124,6 +1124,156 @@ describe("agent runtime registry", () => {
     expect(config.readDesktopConfig()).toEqual(original);
   });
 
+  // @lat: [[main-process#One session resume reconciliation#Reconciles an interrupted binding before a resumed prompt is dispatched]]
+  it("reconciles an interrupted One binding before a resumed prompt is dispatched", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { runtimes } = await loadModules();
+    const { configureDesktopSecretStore, DesktopSecretStore } =
+      await import("../src/main/desktop-secret-store");
+    configureDesktopSecretStore(
+      new DesktopSecretStore(
+        join(testHome, "one-resume-reconcile-secrets.json"),
+        {
+          available: true,
+          backend: "test",
+          encrypt: (value) => Buffer.from(value.split("").reverse().join("")),
+          decrypt: (value) => value.toString().split("").reverse().join(""),
+        },
+      ),
+    );
+    const saved = runtimes.saveAgentRuntime({
+      id: "one-resume-reconcile",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "resume-model",
+        oneApiType: "openai-completions",
+      },
+    });
+    runtimes.setAgentRuntimeBearerToken(
+      saved.id,
+      "one-resume-reconcile-secret",
+    );
+    const sessionId = "one-resume-session";
+    const interruptedRunId = "interrupted-one-run";
+    const interruptedRevision = "a".repeat(64);
+    const interruptedSnapshot = "b".repeat(64);
+    let reconciledBeforePrompt = false;
+    let receiptPath = "";
+    let stateDir = "";
+    let sessionFile = "";
+    let runCount = 0;
+    const sessionEntries: unknown[] = [];
+
+    startOneWorkerMock.mockImplementation((options: OneWorkerOptions) => {
+      stateDir = options.stateDir;
+      const sessionDirectory = join(options.stateDir, "sessions");
+      mkdirSync(sessionDirectory, { recursive: true });
+      sessionFile ||= join(sessionDirectory, sessionId + ".jsonl");
+      const runNumber = ++runCount;
+      const completion = (async () => {
+        await options.onReady?.(sessionId, sessionFile);
+        if (runNumber === 2) reconciledBeforePrompt = existsSync(receiptPath);
+        if (!options.revisionBinding)
+          throw new Error("Missing current revision binding");
+        const bindingId = `run-${runNumber}-binding`;
+        sessionEntries.push({
+          type: "custom",
+          id: bindingId,
+          parentId: null,
+          customType: "agents-one-run-binding-v1",
+          data: options.revisionBinding,
+        });
+        sessionEntries.push({
+          type: "message",
+          id: `run-${runNumber}-user`,
+          parentId: bindingId,
+          message: {
+            role: "user",
+            content: runNumber === 1 ? "initial request" : "continue request",
+          },
+        });
+        writeFileSync(
+          sessionFile,
+          [{ type: "session", id: sessionId }, ...sessionEntries]
+            .map((entry) => JSON.stringify(entry))
+            .join("\n") + "\n",
+        );
+        return { sessionId, output: "continued", sessionFile };
+      })();
+      return { completion, cancel: vi.fn() };
+    });
+
+    const first = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "initial",
+      mode: "analysis",
+    });
+    if (first.status !== "succeeded")
+      throw new Error("Initial task failed: " + JSON.stringify(first));
+
+    const { persistOneRunBinding } =
+      await import("../src/main/one-runtime/revision");
+    persistOneRunBinding(stateDir, {
+      agentId: saved.id,
+      runId: interruptedRunId,
+      sessionId,
+      definitionRevision: interruptedRevision,
+      snapshotHash: interruptedSnapshot,
+    });
+    const interruptedBinding = {
+      type: "custom",
+      id: "interrupted-binding",
+      parentId: null,
+      customType: "agents-one-run-binding-v1",
+      data: {
+        runId: interruptedRunId,
+        definitionRevision: interruptedRevision,
+        snapshotHash: interruptedSnapshot,
+      },
+    };
+    const interruptedUser = {
+      type: "message",
+      id: "interrupted-user",
+      parentId: "interrupted-binding",
+      message: { role: "user", content: "previous request" },
+    };
+    sessionEntries.push(interruptedBinding, interruptedUser);
+    writeFileSync(
+      sessionFile,
+      [{ type: "session", id: sessionId }, ...sessionEntries]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    const interruptedStem = createHash("sha256")
+      .update(JSON.stringify(interruptedRunId))
+      .digest("hex");
+    receiptPath = join(
+      stateDir,
+      "run-bindings",
+      interruptedStem + ".session.json",
+    );
+
+    const result = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "continue",
+      mode: "analysis",
+      sessionId,
+    });
+    if (result.status !== "succeeded")
+      throw new Error("Resume task failed: " + JSON.stringify(result));
+    expect(reconciledBeforePrompt).toBe(true);
+    expect(JSON.parse(readFileSync(receiptPath, "utf8"))).toMatchObject({
+      status: "session-persisted",
+      runId: interruptedRunId,
+    });
+    expect(
+      existsSync(receiptPath.replace(/\.session\.json$/, ".committed.json")),
+    ).toBe(false);
+  });
+
   it("does not persist a late One probe after its model connection changes", async () => {
     vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
     const { runtimes } = await loadModules();
