@@ -374,6 +374,12 @@ Each One runtime can set a 1–64 model-request cap per run; old definitions tha
 
 The settings editor persists `oneMaxModelCalls` as an optional Runtime config field. Main validates the integer range and passes it through the private Worker protocol to [[src/main/one-runtime/session.ts#createOneSession]], where the existing request counter enforces it. This is an operational limit for newly started runs; it does not rewrite session history or change agent identity. Clearing the field restores the default.
 
+### One bounded retries and compaction diagnostics
+
+One retries transient model failures at most twice, counts each actual provider attempt against the existing per-run model-call limit, and reports retry/compaction lifecycle progress in the Runtime timeline.
+
+[[src/main/one-runtime/session.ts#createOneSession]] enables only Pi agent-level retries with a bounded delay; provider-level retries stay disabled so request accounting and quota errors remain visible. [[src/main/one-runtime/run-progress.ts#oneSessionProgress]] maps SDK retry, summary-retry, compaction, and model-call events to bounded Runtime diagnostics, including attempt totals, compaction sequence, token estimates, overflow recovery, and final failure detail. The Worker redacts the configured key before events cross IPC. [[src/main/one-runtime/run-progress.test.ts]] verifies lifecycle mapping; [[src/main/one-runtime/session.test.ts]] exercises real SDK retry events against a local HTTP server.
+
 ### One model API protocol selection
 
 One offers four Pi 1.5.0 API protocols, defaults older configurations to Chat Completions, and binds probe results to the model definition they tested.
