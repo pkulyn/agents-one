@@ -1,5 +1,5 @@
 import { useRuntimeOrder } from "../../components/RuntimeMenu";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Plus, ChatBubble } from "../../assets/icons";
 import {
   AlertTriangle,
@@ -15,10 +15,15 @@ import {
   Sparkles,
   Terminal,
   X,
+  Pencil,
+  Save,
 } from "lucide-react";
 import { AppModal, AppModalTitle } from "../../components/modal/AppModal";
 import { useI18n } from "../../components/useI18n";
 import AgentRuntimesPane from "../../components/settings/AgentRuntimesPane";
+import OneAgentConfigurationPane, {
+  type OneAgentConfigSection,
+} from "../../components/settings/OneAgentConfigurationPane";
 import {
   LocalAgentGlyph,
   OneAgentGlyph,
@@ -27,9 +32,11 @@ import {
   deriveAgentTransport,
   NO_AGENT_RUNTIME_CAPABILITIES,
   type AgentRuntimeDefinition,
+  type AgentRuntimeAppearance,
   type AgentRuntimeProbe,
   type AgentRuntimeTransport,
 } from "../../../../shared/agent-runtimes";
+import { PROFILE_COLORS } from "../../../../shared/profileColors";
 
 interface AgentsProps {
   onChatWithRuntime?: (runtime: AgentRuntimeDefinition) => void;
@@ -93,8 +100,7 @@ const AGENT_SECTION_META: Record<
   },
 };
 
-const AGENT_SECTION_ORDER: readonly AgentSectionKey[] = [
-  "one",
+const AGENT_SECTION_ORDER: readonly Exclude<AgentSectionKey, "one">[] = [
   "local",
   "remote",
   "web",
@@ -172,6 +178,139 @@ function runtimeConnectionHint(
   return t("agents.localApiLoopback");
 }
 
+function AgentProfileEditorDialog({
+  runtime,
+  onClose,
+  onSaved,
+}: {
+  runtime: AgentRuntimeDefinition;
+  onClose: () => void;
+  onSaved: (runtime: AgentRuntimeDefinition) => void;
+}): React.JSX.Element {
+  const { t } = useI18n();
+  const [name, setName] = useState(runtime.name);
+  const [color, setColor] = useState(runtime.color || PROFILE_COLORS[0]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(): Promise<void> {
+    const displayName = name.trim();
+    if (!displayName) {
+      setError(t("agents.configProfileNameRequired"));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const appearance: AgentRuntimeAppearance = {
+      name: displayName,
+      color,
+      avatar: runtime.avatar ?? null,
+    };
+    try {
+      onSaved(
+        await window.agentsOneAPI.saveAgentRuntimeAppearance(
+          runtime.id,
+          appearance,
+        ),
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AppModal
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      className="agents-profile-edit-modal"
+      labelledBy="agent-profile-edit-title"
+    >
+      <div className="agents-create-modal-header">
+        <AppModalTitle
+          id="agent-profile-edit-title"
+          className="agents-create-modal-title"
+        >
+          {t("agents.configEditProfile", { name: runtime.name })}
+        </AppModalTitle>
+        <button
+          className="profile-modal-close"
+          type="button"
+          onClick={onClose}
+          aria-label={t("agents.close")}
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <div className="agents-profile-edit-body">
+        <label className="settings-field">
+          <span className="settings-field-label">
+            {t("agents.configProfileName")}
+          </span>
+          <input
+            className="input"
+            autoFocus
+            maxLength={80}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
+        <div className="settings-field">
+          <span className="settings-field-label">
+            {t("agents.configProfileColor")}
+          </span>
+          <div className="agents-profile-edit-colors">
+            {PROFILE_COLORS.slice(0, 10).map((profileColor) => (
+              <button
+                type="button"
+                key={profileColor}
+                aria-label={t("agents.configSelectProfileColor", {
+                  color: profileColor,
+                })}
+                aria-pressed={color === profileColor}
+                className={`agents-profile-edit-color${color === profileColor ? " is-active" : ""}`}
+                style={{ background: profileColor }}
+                onClick={() => setColor(profileColor)}
+              />
+            ))}
+          </div>
+        </div>
+        {error && (
+          <div className="agents-profile-edit-error" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="agents-profile-edit-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onClose}
+            disabled={busy}
+          >
+            {t("common.cancel")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void save()}
+            disabled={busy || !name.trim()}
+          >
+            {busy ? (
+              <span className="agents-loading-spinner" />
+            ) : (
+              <Save size={15} />
+            )}
+            {t("agents.configSaveProfile")}
+          </button>
+        </div>
+      </div>
+    </AppModal>
+  );
+}
+
 function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
   const { t } = useI18n();
   const [managerView, setManagerView] = useState<"configuration" | "access">(
@@ -180,10 +319,14 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
   const [selectedConfigRuntimeId, setSelectedConfigRuntimeId] = useState<
     string | null
   >(null);
-  const [activeConfigSection, setActiveConfigSection] = useState<
-    "model" | "personality" | "memory" | "skills"
-  >("model");
-  const configEditorRef = useRef<HTMLDivElement>(null);
+  const [activeConfigSection, setActiveConfigSection] =
+    useState<OneAgentConfigSection>("model");
+  const [profileTarget, setProfileTarget] =
+    useState<AgentRuntimeDefinition | null>(null);
+  const [credentialStates, setCredentialStates] = useState<
+    Record<string, boolean>
+  >({});
+  const [credentialStatesLoaded, setCredentialStatesLoaded] = useState(false);
   const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
   const [runtimesLoaded, setRuntimesLoaded] = useState(false);
   const [runtimeProbes, setRuntimeProbes] = useState<
@@ -216,7 +359,13 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
 
   useEffect(() => {
     let cancelled = false;
-    const enabledRuntimes = runtimes.filter((runtime) => runtime.enabled);
+    const enabledRuntimes = runtimes.filter(
+      (runtime) => runtime.enabled && runtime.kind !== "one",
+    );
+    if (managerView !== "access") {
+      setRuntimeProbeLoading(false);
+      return;
+    }
     if (enabledRuntimes.length === 0) {
       setRuntimeProbeLoading(false);
       return;
@@ -224,19 +373,6 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
     setRuntimeProbeLoading(true);
     void Promise.all(
       enabledRuntimes.map(async (runtime) => {
-        if (runtime.kind === "one") {
-          return [
-            runtime.id,
-            {
-              runtimeId: runtime.id,
-              state: runtime.lastProbe?.state || "unknown",
-              capabilities:
-                runtime.capabilitySnapshot || NO_AGENT_RUNTIME_CAPABILITIES,
-              checkedAt: runtime.lastProbe?.checkedAt || Date.now(),
-              message: runtime.lastProbe?.message,
-            },
-          ] as const;
-        }
         try {
           return [
             runtime.id,
@@ -276,16 +412,17 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [runtimes, t]);
+  }, [managerView, runtimes, t]);
 
   const { sorted, dragProps } = useRuntimeOrder(runtimes);
+  const connectedRuntimes = sorted.filter((runtime) => runtime.kind !== "one");
   const groupedRuntimes: Record<AgentSectionKey, AgentRuntimeDefinition[]> = {
     one: [],
     local: [],
     remote: [],
     web: [],
   };
-  sorted.forEach((runtime) => {
+  connectedRuntimes.forEach((runtime) => {
     groupedRuntimes[sectionForRuntime(runtime)].push(runtime);
   });
   const configurableRuntimes = runtimes.filter(
@@ -296,16 +433,36 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
       (runtime) => runtime.id === selectedConfigRuntimeId,
     ) || configurableRuntimes[0];
 
-  function focusAgentConfigSection(
-    section: "model" | "personality" | "memory" | "skills",
-  ): void {
-    setActiveConfigSection(section);
-    const target = configEditorRef.current?.querySelector<HTMLElement>(
-      `[data-agent-config-section="${section}"]`,
-    );
-    target?.closest("details")?.setAttribute("open", "");
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
+  useEffect(() => {
+    let cancelled = false;
+    const oneRuntimes = runtimes.filter((runtime) => runtime.kind === "one");
+    setCredentialStatesLoaded(false);
+    if (!window.agentsOneAPI.getAgentRuntimeCredentialStatus) {
+      setCredentialStates({});
+      setCredentialStatesLoaded(true);
+      return;
+    }
+    void Promise.all(
+      oneRuntimes.map(async (runtime) => {
+        try {
+          const status =
+            await window.agentsOneAPI.getAgentRuntimeCredentialStatus(
+              runtime.id,
+            );
+          return [runtime.id, status.configured] as const;
+        } catch {
+          return [runtime.id, false] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setCredentialStates(Object.fromEntries(entries));
+      setCredentialStatesLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [runtimes]);
 
   function notifyRuntimeChanged(): void {
     void loadRuntimes();
@@ -551,35 +708,57 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                         (selectedConfigRuntime?.id || null) === runtime.id;
                       const configured = Boolean(
                         runtime.config.endpoint?.trim() &&
-                        runtime.config.model?.trim(),
+                        runtime.config.model?.trim() &&
+                        credentialStates[runtime.id],
                       );
                       return (
-                        <button
-                          type="button"
-                          className={`agents-config-runtime${isSelected ? " is-active" : ""}`}
-                          aria-pressed={isSelected}
+                        <div
+                          className="agents-config-runtime-row"
                           key={runtime.id}
-                          onClick={() => setSelectedConfigRuntimeId(runtime.id)}
                         >
-                          <span className="agents-config-runtime-icon">
-                            {runtime.avatar ? (
-                              <img src={runtime.avatar} alt="" />
-                            ) : (
-                              <OneAgentGlyph size={19} />
-                            )}
-                          </span>
-                          <span className="agents-config-runtime-copy">
-                            <strong>{runtime.name}</strong>
-                            <small>{runtime.id}</small>
-                          </span>
-                          <span
-                            className={`agents-config-runtime-state${configured ? " is-ready" : " is-pending"}`}
+                          <button
+                            type="button"
+                            className={`agents-config-runtime${isSelected ? " is-active" : ""}`}
+                            aria-pressed={isSelected}
+                            onClick={() =>
+                              setSelectedConfigRuntimeId(runtime.id)
+                            }
                           >
-                            {configured
-                              ? t("agents.configAgentReady")
-                              : t("agents.configAgentNeedsSetup")}
-                          </span>
-                        </button>
+                            <span className="agents-config-runtime-icon">
+                              {runtime.avatar ? (
+                                <img src={runtime.avatar} alt="" />
+                              ) : (
+                                <OneAgentGlyph size={19} />
+                              )}
+                            </span>
+                            <span className="agents-config-runtime-copy">
+                              <strong>{runtime.name}</strong>
+                              <small>{runtime.id}</small>
+                            </span>
+                            <span
+                              className={`agents-config-runtime-state${configured ? " is-ready" : " is-pending"}`}
+                            >
+                              {!credentialStatesLoaded &&
+                              runtime.config.endpoint?.trim() &&
+                              runtime.config.model?.trim()
+                                ? t("agents.configCheckingCredential")
+                                : configured
+                                  ? t("agents.configAgentReady")
+                                  : t("agents.configAgentNeedsSetup")}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="agents-config-profile-edit"
+                            aria-label={t("agents.configEditProfile", {
+                              name: runtime.name,
+                            })}
+                            onClick={() => setProfileTarget(runtime)}
+                          >
+                            <Pencil size={13} aria-hidden="true" />
+                            <span>{t("agents.configEditProfileShort")}</span>
+                          </button>
+                        </div>
                       );
                     })
                   ) : (
@@ -602,7 +781,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     className={
                       activeConfigSection === "model" ? "is-active" : ""
                     }
-                    onClick={() => focusAgentConfigSection("model")}
+                    onClick={() => setActiveConfigSection("model")}
                   >
                     <Settings2 size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
@@ -615,7 +794,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     className={
                       activeConfigSection === "personality" ? "is-active" : ""
                     }
-                    onClick={() => focusAgentConfigSection("personality")}
+                    onClick={() => setActiveConfigSection("personality")}
                   >
                     <UserRound size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
@@ -628,7 +807,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     className={
                       activeConfigSection === "memory" ? "is-active" : ""
                     }
-                    onClick={() => focusAgentConfigSection("memory")}
+                    onClick={() => setActiveConfigSection("memory")}
                   >
                     <Brain size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
@@ -638,19 +817,23 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                   </button>
                   <button
                     type="button"
-                    disabled
-                    title={t("agents.configNotAvailablePerAgent")}
+                    className={
+                      activeConfigSection === "subagents" ? "is-active" : ""
+                    }
+                    onClick={() => setActiveConfigSection("subagents")}
                   >
                     <Bot size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
                       <span>{t("agents.configSubagents")}</span>
-                      <small>{t("agents.configNotAvailablePerAgent")}</small>
+                      <small>{t("agents.configSubagentsHint")}</small>
                     </span>
                   </button>
                   <button
                     type="button"
-                    disabled
-                    title={t("agents.configAppManagedTools")}
+                    className={
+                      activeConfigSection === "tools" ? "is-active" : ""
+                    }
+                    onClick={() => setActiveConfigSection("tools")}
                   >
                     <Link2 size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
@@ -663,7 +846,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     className={
                       activeConfigSection === "skills" ? "is-active" : ""
                     }
-                    onClick={() => focusAgentConfigSection("skills")}
+                    onClick={() => setActiveConfigSection("skills")}
                   >
                     <Sparkles size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
@@ -676,12 +859,12 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                   {t("agents.configIndependenceHint")}
                 </div>
               </aside>
-              <div className="agents-config-editor" ref={configEditorRef}>
+              <div className="agents-config-editor">
                 {selectedConfigRuntime ? (
-                  <AgentRuntimesPane
-                    key={`config:${selectedConfigRuntime.id}`}
-                    embedded
-                    initialRuntimeId={selectedConfigRuntime.id}
+                  <OneAgentConfigurationPane
+                    key={`one-config:${selectedConfigRuntime.id}`}
+                    runtime={selectedConfigRuntime}
+                    section={activeConfigSection}
                     onChanged={notifyRuntimeChanged}
                   />
                 ) : !runtimesLoaded ? (
@@ -735,7 +918,9 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                 <h2 className="agents-title">{t("agents.dashboardTitle")}</h2>
                 <div className="agents-domain-summary">
                   <strong>
-                    {t("agents.runtimeCount", { count: runtimes.length })}
+                    {t("agents.runtimeCount", {
+                      count: connectedRuntimes.length,
+                    })}
                   </strong>
                   <span>{t("agents.accessTypeCount")}</span>
                 </div>
@@ -786,9 +971,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     <div className="agents-domain-heading">
                       <div className="agents-domain-heading-label">
                         <span className="agents-domain-icon">
-                          {section === "one" ? (
-                            <OneAgentGlyph size={20} />
-                          ) : section === "local" ? (
+                          {section === "local" ? (
                             <LocalAgentGlyph size={20} />
                           ) : (
                             <SectionIcon size={16} aria-hidden="true" />
@@ -864,6 +1047,23 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
           </div>
         )}
       </AppModal>
+
+      {profileTarget && (
+        <AgentProfileEditorDialog
+          runtime={profileTarget}
+          onClose={() => setProfileTarget(null)}
+          onSaved={(saved) => {
+            setProfileTarget(null);
+            void loadRuntimes();
+            window.dispatchEvent(
+              new CustomEvent("agents-one:runtime-appearance-changed"),
+            );
+            if (selectedConfigRuntimeId === saved.id) {
+              setSelectedConfigRuntimeId(saved.id);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -6,13 +6,13 @@
 
 The agent manager separates configuring self-hosted One runtimes from managing connected local, remote, and web runtimes.
 
-The configuration destination lists only `kind: one` runtimes and reuses the existing runtime editor for model API, personalization instructions, memory, and per-agent skills. Its local navigation follows the ZCode-style categories; subagent settings are marked unavailable per agent, while plugins and MCP retain Agents One's app-level configuration. The access destination retains the existing connected-runtime dashboard, including connection probes and direct chat actions. The application-level left navigation remains owned by the layout and is not changed by this screen. See [[src/renderer/src/screens/Agents/Agents.tsx#Agents]] and [[src/renderer/src/components/settings/AgentRuntimesPane.tsx#AgentRuntimesPane]].
+The configuration destination lists only `kind: one` runtimes and uses a dedicated ZCode-inspired workspace: model provider and protocol, protected API key entry, a bounded provider-model list with a selectable default, personalization, memory, and per-agent skills. The selected default remains `config.model`, the only model sent to One execution; optional `oneModels` stores non-secret provider choices. Subagent settings explain the current per-task collaboration boundary, while plugins and MCP retain Agents One's app-level configuration. Existing runtime identity and transport management stay in the separate access-management flow. The access destination lists only connected local, remote, and web runtimes, with counts and live probes scoped to those runtimes; One remains parallel and configurable from its own destination, never represented as a connected agent. The application-level left navigation remains owned by the layout and is not changed by this screen. New surfaces use app-wide theme tokens so their selected, hover, and provider states remain legible in each supported theme. See [[src/renderer/src/screens/Agents/Agents.tsx#Agents]] and [[src/renderer/src/components/settings/OneAgentConfigurationPane.tsx#OneAgentConfigurationPane]].
 
 ## Three-step flow
 
 第一步可选择配置内置 One 智能体，或按运行位置选择本地、远程、网页智能体；第二步配置头像、颜色、可自定义名称、智能体 ID 和接入类型；第三步才展示连接所需字段。One 已随应用内置，配置模型供应商、API 地址、模型 ID 和 API Key 后即可使用内置工具与执行能力。多个 One Runtime 使用独立 ID 和凭据；默认 ID 会避让已有项，重复 ID 会在探测与保存前阻止。已接入智能体仍使用原有管理表单，不进入该向导。
 
-One 与本地、远程、网页接入在智能体列表中各自分组，用户可直接选择任何一张卡片开始会话；One 不负责替其他 Runtime 调度任务，见 [[sidebar-navigation#Parallel Runtime selection]]。One 类型卡片使用独立 SVG 标识，本地接入卡片改用带终端与状态提示的 SVG 标识。
+One 在独立的智能体配置入口中管理；智能体接入管理仅列出本地、远程和网页 Runtime。任务对话时，One 与已接入 Runtime 仍是由用户选择的平行对象，One 不默认调度其他 Runtime，见 [[sidebar-navigation#Parallel Runtime selection]]。One 类型卡片使用独立 SVG 标识，本地接入卡片改用带终端与状态提示的 SVG 标识。
 
 ## Minimal connection data
 
