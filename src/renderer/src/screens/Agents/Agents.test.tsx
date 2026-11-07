@@ -20,6 +20,19 @@ vi.mock("../../components/useI18n", async () => {
   };
 });
 
+vi.mock("../../components/settings/AgentRuntimesPane", () => ({
+  default: (props: {
+    initialRuntimeId?: string;
+    startNew?: boolean;
+  }): React.JSX.Element => (
+    <div
+      data-testid="agent-runtime-pane"
+      data-initial-runtime-id={props.initialRuntimeId || ""}
+      data-start-new={props.startNew ? "true" : "false"}
+    />
+  ),
+}));
+
 import { NO_AGENT_RUNTIME_CAPABILITIES } from "../../../../shared/agent-runtimes";
 import Agents from "./Agents";
 
@@ -42,15 +55,97 @@ function installHermesAPI(): {
   return api;
 }
 
+function showAccessManagement(): void {
+  fireEvent.click(
+    screen.getByRole("tab", {
+      name: /智能体接入管理|Agent access management/,
+    }),
+  );
+}
+
 describe("Agents", () => {
   beforeEach(() => {
     activeLocale.value = "zh-CN";
+  });
+
+  it("opens One configuration by default and keeps connected-agent management separate", async () => {
+    const api = installHermesAPI();
+    api.listAgentRuntimes.mockResolvedValue([
+      {
+        id: "one-agent",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: { agentTransport: "local-sdk", model: "doubao-seed-2.0-mini" },
+      },
+      {
+        id: "research-one",
+        name: "研究助手",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: { agentTransport: "local-sdk", model: "other-model" },
+      },
+    ]);
+
+    render(<Agents onChatWithRuntime={() => {}} />);
+
+    const editor = await screen.findByTestId("agent-runtime-pane");
+    expect(editor).toHaveAttribute("data-initial-runtime-id", "one-agent");
+    expect(screen.getByRole("tab", { name: /智能体配置/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(document.getElementById("agents-configuration-panel")).toBeTruthy();
+    expect(document.getElementById("agents-access-panel")).toHaveAttribute(
+      "hidden",
+    );
+    expect(screen.queryByRole("button", { name: /本机.*用户/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "刷新" })).toBeNull();
+    expect(screen.getByRole("button", { name: /个性化/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /记忆/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /技能与命令/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /子智能体/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /插件与 MCP/ })).toBeDisabled();
+    const memorySection = screen.getByRole("button", { name: /记忆/ });
+    fireEvent.click(memorySection);
+    expect(memorySection).toHaveClass("is-active");
+
+    fireEvent.click(screen.getByRole("button", { name: /研究助手/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId("agent-runtime-pane")).toHaveAttribute(
+        "data-initial-runtime-id",
+        "research-one",
+      ),
+    );
+
+    showAccessManagement();
+    expect(
+      await screen.findByRole("heading", { name: "本地智能体" }),
+    ).toBeTruthy();
+    expect(document.getElementById("agents-access-panel")).toBeTruthy();
+    expect(
+      document.getElementById("agents-configuration-panel"),
+    ).toHaveAttribute("hidden");
+    expect(screen.getByRole("button", { name: "刷新" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: /智能体配置/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId("agent-runtime-pane")).toHaveAttribute(
+        "data-initial-runtime-id",
+        "research-one",
+      ),
+    );
   });
 
   it("renders the agent dashboard in English", async () => {
     activeLocale.value = "en";
     installHermesAPI();
     render(<Agents onChatWithRuntime={() => {}} />);
+    showAccessManagement();
 
     expect(
       await screen.findByText(
@@ -64,6 +159,7 @@ describe("Agents", () => {
   it("shows distinct descriptions for One and all connected-agent locations", async () => {
     installHermesAPI();
     render(<Agents onChatWithRuntime={() => {}} />);
+    showAccessManagement();
 
     expect(
       await screen.findByText("在当前电脑运行的智能体CLI或服务"),
@@ -90,6 +186,7 @@ describe("Agents", () => {
     ]);
 
     render(<Agents onChatWithRuntime={() => {}} />);
+    showAccessManagement();
 
     await waitFor(() => {
       expect(screen.getByText("Pi")).toBeTruthy();
@@ -114,6 +211,7 @@ describe("Agents", () => {
 
     const onChatWithRuntime = vi.fn();
     render(<Agents onChatWithRuntime={onChatWithRuntime} />);
+    showAccessManagement();
 
     await screen.findByText("Codex");
     expect(screen.getByRole("button", { name: "管理" })).toBeTruthy();
@@ -171,6 +269,7 @@ describe("Agents", () => {
 
     const onChatWithRuntime = vi.fn();
     render(<Agents onChatWithRuntime={onChatWithRuntime} />);
+    showAccessManagement();
 
     await screen.findByText("One");
     await screen.findByText("Codex");
@@ -247,6 +346,7 @@ describe("Agents", () => {
     });
 
     render(<Agents onChatWithRuntime={() => {}} />);
+    showAccessManagement();
 
     await screen.findByText("Hermes Gateway");
     // Unified access label (plan 1.1/1.5).
@@ -282,6 +382,7 @@ describe("Agents", () => {
     ]);
 
     render(<Agents onChatWithRuntime={() => {}} />);
+    showAccessManagement();
 
     await screen.findByText("豆包网页版");
     const localSection = screen
@@ -320,6 +421,7 @@ describe("Agents", () => {
     });
 
     render(<Agents onChatWithRuntime={() => {}} />);
+    showAccessManagement();
 
     await screen.findByText("Hers");
     await waitFor(() => {
@@ -369,6 +471,7 @@ describe("Agents", () => {
       });
 
       render(<Agents onChatWithRuntime={() => {}} />);
+      showAccessManagement();
 
       await screen.findByText("豆包网页版");
       await waitFor(() => {
@@ -411,6 +514,7 @@ describe("Agents", () => {
     api.probeAgentRuntime.mockRejectedValue(new Error("网页窗口启动失败"));
 
     render(<Agents onChatWithRuntime={() => {}} />);
+    showAccessManagement();
 
     await screen.findByText("ChatGPT 网页版");
     await waitFor(() => {

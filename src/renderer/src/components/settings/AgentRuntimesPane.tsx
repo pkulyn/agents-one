@@ -2273,7 +2273,10 @@ export default function AgentRuntimesPane({
                 )}
               </div>
             ) : isOne ? (
-              <div className="agent-runtime-form-grid">
+              <div
+                className="agent-runtime-form-grid"
+                data-agent-config-section="model"
+              >
                 <label className="settings-field">
                   <span className="settings-field-label">
                     {t("settings.runtimeManager.oneProvider")}
@@ -2507,7 +2510,10 @@ export default function AgentRuntimesPane({
                         {t("settings.runtimeManager.oneImageInputHint")}
                       </span>
                     </div>
-                    <div className="settings-field">
+                    <div
+                      className="settings-field"
+                      data-agent-config-section="memory"
+                    >
                       <label className="agent-runtime-enabled">
                         <input
                           type="checkbox"
@@ -2583,12 +2589,20 @@ export default function AgentRuntimesPane({
                       )}
                     </div>
                     {selectedRuntime && (
-                      <OneProjectMemoryEditor
-                        key={selectedRuntime.id}
-                        runtimeId={selectedRuntime.id}
-                      />
+                      <div
+                        data-agent-config-section="memory"
+                        style={{ gridColumn: "1 / -1" }}
+                      >
+                        <OneProjectMemoryEditor
+                          key={selectedRuntime.id}
+                          runtimeId={selectedRuntime.id}
+                        />
+                      </div>
                     )}
-                    <fieldset className="settings-field">
+                    <fieldset
+                      className="settings-field"
+                      data-agent-config-section="skills"
+                    >
                       <legend className="settings-field-label">
                         {t("settings.runtimeManager.oneSkills")}
                       </legend>
@@ -2693,7 +2707,10 @@ export default function AgentRuntimesPane({
                         </label>
                       ))}
                     </fieldset>
-                    <label className="settings-field">
+                    <label
+                      className="settings-field"
+                      data-agent-config-section="personality"
+                    >
                       <span className="settings-field-label">
                         {t("settings.runtimeManager.oneInstructions")}
                       </span>

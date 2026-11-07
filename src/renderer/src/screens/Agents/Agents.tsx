@@ -1,11 +1,18 @@
 import { useRuntimeOrder } from "../../components/RuntimeMenu";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, ChatBubble } from "../../assets/icons";
 import {
   AlertTriangle,
   Cloud,
   Globe2,
   RefreshCw,
+  Bot,
+  ChevronRight,
+  Link2,
+  Settings2,
+  UserRound,
+  Brain,
+  Sparkles,
   Terminal,
   X,
 } from "lucide-react";
@@ -167,7 +174,18 @@ function runtimeConnectionHint(
 
 function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
   const { t } = useI18n();
+  const [managerView, setManagerView] = useState<"configuration" | "access">(
+    "configuration",
+  );
+  const [selectedConfigRuntimeId, setSelectedConfigRuntimeId] = useState<
+    string | null
+  >(null);
+  const [activeConfigSection, setActiveConfigSection] = useState<
+    "model" | "personality" | "memory" | "skills"
+  >("model");
+  const configEditorRef = useRef<HTMLDivElement>(null);
   const [runtimes, setRuntimes] = useState<AgentRuntimeDefinition[]>([]);
+  const [runtimesLoaded, setRuntimesLoaded] = useState(false);
   const [runtimeProbes, setRuntimeProbes] = useState<
     Record<string, AgentRuntimeProbe>
   >({});
@@ -177,13 +195,18 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
     runtimeId?: string;
   } | null>(null);
   const loadRuntimes = useCallback(async (): Promise<void> => {
-    if (!window.agentsOneAPI.listAgentRuntimes) return;
+    if (!window.agentsOneAPI.listAgentRuntimes) {
+      setRuntimesLoaded(true);
+      return;
+    }
     setRuntimeProbeLoading(true);
     try {
       setRuntimes(await window.agentsOneAPI.listAgentRuntimes());
+      setRuntimesLoaded(true);
     } catch {
       setRuntimes([]);
       setRuntimeProbeLoading(false);
+      setRuntimesLoaded(true);
     }
   }, []);
 
@@ -265,6 +288,31 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
   sorted.forEach((runtime) => {
     groupedRuntimes[sectionForRuntime(runtime)].push(runtime);
   });
+  const configurableRuntimes = runtimes.filter(
+    (runtime) => runtime.kind === "one",
+  );
+  const selectedConfigRuntime =
+    configurableRuntimes.find(
+      (runtime) => runtime.id === selectedConfigRuntimeId,
+    ) || configurableRuntimes[0];
+
+  function focusAgentConfigSection(
+    section: "model" | "personality" | "memory" | "skills",
+  ): void {
+    setActiveConfigSection(section);
+    const target = configEditorRef.current?.querySelector<HTMLElement>(
+      `[data-agent-config-section="${section}"]`,
+    );
+    target?.closest("details")?.setAttribute("open", "");
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function notifyRuntimeChanged(): void {
+    void loadRuntimes();
+    window.dispatchEvent(
+      new CustomEvent("agents-one:runtime-appearance-changed"),
+    );
+  }
 
   function renderRuntimeCard(
     runtime: AgentRuntimeDefinition,
@@ -420,90 +468,360 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
   }
 
   return (
-    <div className="agents-container">
-      <div className="agents-header">
+    <div className="agents-container agents-manager-container">
+      <header className="agents-manager-heading">
         <div>
-          <h2 className="agents-title">{t("agents.dashboardTitle")}</h2>
-          <div className="agents-domain-summary">
-            <strong>
-              {t("agents.runtimeCount", { count: runtimes.length })}
-            </strong>
-            <span>{t("agents.accessTypeCount")}</span>
-          </div>
+          <h2 className="agents-title">{t("agents.managerTitle")}</h2>
+          <p>{t("agents.managerDescription")}</p>
         </div>
-        <div className="agents-header-actions">
-          <button
-            className="btn btn-secondary btn-sm"
-            type="button"
-            onClick={() => void loadRuntimes()}
-            disabled={runtimeProbeLoading}
-          >
-            <RefreshCw
-              size={14}
-              className={runtimeProbeLoading ? "settings-spin" : undefined}
-            />
-            {runtimeProbeLoading ? t("agents.checking") : t("agents.refresh")}
-          </button>
-          <button
-            className="btn btn-primary btn-sm"
-            type="button"
-            onClick={() => setManagerTarget({ mode: "new" })}
-          >
-            <Plus size={14} />
-            {t("agents.addAgent")}
-          </button>
-        </div>
+      </header>
+
+      <div
+        className="agents-manager-modes"
+        role="tablist"
+        aria-label={t("agents.managerModes")}
+      >
+        <button
+          type="button"
+          id="agents-configuration-tab"
+          role="tab"
+          aria-selected={managerView === "configuration"}
+          aria-controls="agents-configuration-panel"
+          className={`agents-manager-mode${managerView === "configuration" ? " is-active" : ""}`}
+          onClick={() => setManagerView("configuration")}
+        >
+          <span className="agents-manager-mode-icon agents-manager-mode-icon--config">
+            <Settings2 size={19} aria-hidden="true" />
+          </span>
+          <span className="agents-manager-mode-copy">
+            <strong>{t("agents.configurationMode")}</strong>
+            <small>{t("agents.configurationModeDescription")}</small>
+          </span>
+          <ChevronRight size={17} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          id="agents-access-tab"
+          role="tab"
+          aria-selected={managerView === "access"}
+          aria-controls="agents-access-panel"
+          className={`agents-manager-mode${managerView === "access" ? " is-active" : ""}`}
+          onClick={() => setManagerView("access")}
+        >
+          <span className="agents-manager-mode-icon agents-manager-mode-icon--access">
+            <Link2 size={19} aria-hidden="true" />
+          </span>
+          <span className="agents-manager-mode-copy">
+            <strong>{t("agents.accessManagementMode")}</strong>
+            <small>{t("agents.accessManagementModeDescription")}</small>
+          </span>
+          <ChevronRight size={17} aria-hidden="true" />
+        </button>
       </div>
 
-      <div className="agents-domain-board">
-        {AGENT_SECTION_ORDER.map((section) => {
-          const group = groupedRuntimes[section];
-          const meta = AGENT_SECTION_META[section];
-          const SectionIcon = meta.icon;
-          const emptyLabel =
-            section === "web"
-              ? t("agents.emptyWeb")
-              : t("agents.emptySection", { section: t(meta.titleKey) });
-
-          return (
-            <section
-              className={`agents-domain agents-domain--${meta.className}`}
-              key={section}
-            >
-              <div className="agents-domain-heading">
-                <div className="agents-domain-heading-label">
-                  <span className="agents-domain-icon">
-                    {section === "one" ? (
-                      <OneAgentGlyph size={20} />
-                    ) : section === "local" ? (
-                      <LocalAgentGlyph size={20} />
-                    ) : (
-                      <SectionIcon size={16} aria-hidden="true" />
-                    )}
-                  </span>
-                  <div>
-                    <h3>{t(meta.titleKey)}</h3>
-                    <small>{t(meta.descriptionKey)}</small>
-                  </div>
-                </div>
-                <span className="agents-domain-count">
-                  {t("agents.itemCount", { count: group.length })}
+      {managerView === "configuration" ? (
+        <>
+          <section
+            id="agents-configuration-panel"
+            className="agents-config-view"
+            role="tabpanel"
+            aria-labelledby="agents-configuration-tab"
+          >
+            <header className="agents-config-heading">
+              <div>
+                <h3>{t("agents.configuredAgentsTitle")}</h3>
+                <span>
+                  {t("agents.configuredAgentsCount", {
+                    count: configurableRuntimes.length,
+                  })}
                 </span>
               </div>
-              <div className="agents-domain-list">
-                {group.length > 0 ? (
-                  group.map((runtime) => renderRuntimeCard(runtime, section))
+              <small>{t("agents.configuredAgentsHint")}</small>
+            </header>
+            <div className="agents-config-layout">
+              <aside className="agents-config-sidebar">
+                <div className="agents-config-sidebar-title">
+                  <span>{t("agents.oneConfigListTitle")}</span>
+                  <span>{configurableRuntimes.length}</span>
+                </div>
+                <div className="agents-config-runtime-list">
+                  {configurableRuntimes.length ? (
+                    configurableRuntimes.map((runtime) => {
+                      const isSelected =
+                        (selectedConfigRuntime?.id || null) === runtime.id;
+                      const configured = Boolean(
+                        runtime.config.endpoint?.trim() &&
+                        runtime.config.model?.trim(),
+                      );
+                      return (
+                        <button
+                          type="button"
+                          className={`agents-config-runtime${isSelected ? " is-active" : ""}`}
+                          aria-pressed={isSelected}
+                          key={runtime.id}
+                          onClick={() => setSelectedConfigRuntimeId(runtime.id)}
+                        >
+                          <span className="agents-config-runtime-icon">
+                            {runtime.avatar ? (
+                              <img src={runtime.avatar} alt="" />
+                            ) : (
+                              <OneAgentGlyph size={19} />
+                            )}
+                          </span>
+                          <span className="agents-config-runtime-copy">
+                            <strong>{runtime.name}</strong>
+                            <small>{runtime.id}</small>
+                          </span>
+                          <span
+                            className={`agents-config-runtime-state${configured ? " is-ready" : " is-pending"}`}
+                          >
+                            {configured
+                              ? t("agents.configAgentReady")
+                              : t("agents.configAgentNeedsSetup")}
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="agents-config-empty-list">
+                      {!runtimesLoaded
+                        ? t("agents.configLoading")
+                        : t("agents.configEmptyList")}
+                    </p>
+                  )}
+                </div>
+                <div className="agents-config-nav-heading">
+                  {t("agents.configSectionsTitle")}
+                </div>
+                <nav
+                  className="agents-config-sections"
+                  aria-label={t("agents.configSectionsTitle")}
+                >
+                  <button
+                    type="button"
+                    className={
+                      activeConfigSection === "model" ? "is-active" : ""
+                    }
+                    onClick={() => focusAgentConfigSection("model")}
+                  >
+                    <Settings2 size={15} aria-hidden="true" />
+                    <span className="agents-config-section-copy">
+                      <span>{t("agents.configModelSettings")}</span>
+                      <small>{t("agents.configModelSummary")}</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      activeConfigSection === "personality" ? "is-active" : ""
+                    }
+                    onClick={() => focusAgentConfigSection("personality")}
+                  >
+                    <UserRound size={15} aria-hidden="true" />
+                    <span className="agents-config-section-copy">
+                      <span>{t("agents.configPersonalization")}</span>
+                      <small>{t("agents.configPersonalitySummary")}</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      activeConfigSection === "memory" ? "is-active" : ""
+                    }
+                    onClick={() => focusAgentConfigSection("memory")}
+                  >
+                    <Brain size={15} aria-hidden="true" />
+                    <span className="agents-config-section-copy">
+                      <span>{t("agents.configMemory")}</span>
+                      <small>{t("agents.configMemorySummary")}</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title={t("agents.configNotAvailablePerAgent")}
+                  >
+                    <Bot size={15} aria-hidden="true" />
+                    <span className="agents-config-section-copy">
+                      <span>{t("agents.configSubagents")}</span>
+                      <small>{t("agents.configNotAvailablePerAgent")}</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title={t("agents.configAppManagedTools")}
+                  >
+                    <Link2 size={15} aria-hidden="true" />
+                    <span className="agents-config-section-copy">
+                      <span>{t("agents.configPluginsMcp")}</span>
+                      <small>{t("agents.configAppManagedTools")}</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      activeConfigSection === "skills" ? "is-active" : ""
+                    }
+                    onClick={() => focusAgentConfigSection("skills")}
+                  >
+                    <Sparkles size={15} aria-hidden="true" />
+                    <span className="agents-config-section-copy">
+                      <span>{t("agents.configSkillsCommands")}</span>
+                      <small>{t("agents.configSkillsSummary")}</small>
+                    </span>
+                  </button>
+                </nav>
+                <div className="agents-config-sidebar-note">
+                  {t("agents.configIndependenceHint")}
+                </div>
+              </aside>
+              <div className="agents-config-editor" ref={configEditorRef}>
+                {selectedConfigRuntime ? (
+                  <AgentRuntimesPane
+                    key={`config:${selectedConfigRuntime.id}`}
+                    embedded
+                    initialRuntimeId={selectedConfigRuntime.id}
+                    onChanged={notifyRuntimeChanged}
+                  />
+                ) : !runtimesLoaded ? (
+                  <div className="agents-config-state">
+                    <span className="agents-loading-spinner" />
+                    {t("agents.configLoading")}
+                  </div>
                 ) : (
-                  <div className="agents-domain-empty">
-                    <span>{emptyLabel}</span>
-                    <small>{t("agents.emptyHint")}</small>
+                  <div className="agents-config-state agents-config-state--empty">
+                    <span className="agents-manager-mode-icon agents-manager-mode-icon--config">
+                      <Settings2 size={21} aria-hidden="true" />
+                    </span>
+                    <strong>{t("agents.configEmptyTitle")}</strong>
+                    <p>{t("agents.configEmptyDescription")}</p>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => setManagerTarget({ mode: "new" })}
+                    >
+                      <Plus size={14} />
+                      {t("agents.configEmptyAction")}
+                    </button>
                   </div>
                 )}
               </div>
-            </section>
-          );
-        })}
-      </div>
+            </div>
+          </section>
+          <div
+            id="agents-access-panel"
+            role="tabpanel"
+            aria-labelledby="agents-access-tab"
+            hidden
+          />
+        </>
+      ) : (
+        <>
+          <div
+            id="agents-configuration-panel"
+            role="tabpanel"
+            aria-labelledby="agents-configuration-tab"
+            hidden
+          />
+          <section
+            id="agents-access-panel"
+            className="agents-access-view"
+            role="tabpanel"
+            aria-labelledby="agents-access-tab"
+          >
+            <div className="agents-header">
+              <div>
+                <h2 className="agents-title">{t("agents.dashboardTitle")}</h2>
+                <div className="agents-domain-summary">
+                  <strong>
+                    {t("agents.runtimeCount", { count: runtimes.length })}
+                  </strong>
+                  <span>{t("agents.accessTypeCount")}</span>
+                </div>
+              </div>
+              <div className="agents-header-actions">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
+                  onClick={() => void loadRuntimes()}
+                  disabled={runtimeProbeLoading}
+                >
+                  <RefreshCw
+                    size={14}
+                    className={
+                      runtimeProbeLoading ? "settings-spin" : undefined
+                    }
+                  />
+                  {runtimeProbeLoading
+                    ? t("agents.checking")
+                    : t("agents.refresh")}
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  type="button"
+                  onClick={() => setManagerTarget({ mode: "new" })}
+                >
+                  <Plus size={14} />
+                  {t("agents.addAgent")}
+                </button>
+              </div>
+            </div>
+
+            <div className="agents-domain-board">
+              {AGENT_SECTION_ORDER.map((section) => {
+                const group = groupedRuntimes[section];
+                const meta = AGENT_SECTION_META[section];
+                const SectionIcon = meta.icon;
+                const emptyLabel =
+                  section === "web"
+                    ? t("agents.emptyWeb")
+                    : t("agents.emptySection", { section: t(meta.titleKey) });
+
+                return (
+                  <section
+                    className={`agents-domain agents-domain--${meta.className}`}
+                    key={section}
+                  >
+                    <div className="agents-domain-heading">
+                      <div className="agents-domain-heading-label">
+                        <span className="agents-domain-icon">
+                          {section === "one" ? (
+                            <OneAgentGlyph size={20} />
+                          ) : section === "local" ? (
+                            <LocalAgentGlyph size={20} />
+                          ) : (
+                            <SectionIcon size={16} aria-hidden="true" />
+                          )}
+                        </span>
+                        <div>
+                          <h3>{t(meta.titleKey)}</h3>
+                          <small>{t(meta.descriptionKey)}</small>
+                        </div>
+                      </div>
+                      <span className="agents-domain-count">
+                        {t("agents.itemCount", { count: group.length })}
+                      </span>
+                    </div>
+                    <div className="agents-domain-list">
+                      {group.length > 0 ? (
+                        group.map((runtime) =>
+                          renderRuntimeCard(runtime, section),
+                        )
+                      ) : (
+                        <div className="agents-domain-empty">
+                          <span>{emptyLabel}</span>
+                          <small>{t("agents.emptyHint")}</small>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </section>
+        </>
+      )}
 
       <AppModal
         open={Boolean(managerTarget)}
@@ -540,10 +858,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
               initialRuntimeId={managerTarget.runtimeId}
               onCancel={() => setManagerTarget(null)}
               onChanged={() => {
-                void loadRuntimes();
-                window.dispatchEvent(
-                  new CustomEvent("agents-one:runtime-appearance-changed"),
-                );
+                notifyRuntimeChanged();
               }}
             />
           </div>
