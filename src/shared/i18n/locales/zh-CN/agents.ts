@@ -89,6 +89,8 @@ export default {
   transportLocalSdk: "本地 SDK",
   transportLocalApi: "本地 API",
   transportLocalWeb: "内嵌网页",
+  sectionOne: "One 智能体",
+  sectionOneDescription: "配置模型 API 后独立运行，可自定义名称并直接对话",
   sectionLocal: "本地智能体",
   sectionLocalDescription: "在当前电脑运行的智能体CLI或服务",
   sectionRemote: "远程智能体",
