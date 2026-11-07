@@ -392,6 +392,12 @@ The shared policy identifies declared deletion operations, destructive command f
 
 The loopback permission capability belongs to one live Run, is never saved in user config, rejects wrong tokens and browser-origin requests, and denies unresolved work on disposal. Main rechecks task state after each confirmation. Full-access tasks use native host permissions without choosing a project; read-only and controlled mobile policies remain distinct.
 
+### One deletion consent revoked by cancellation
+
+If a One Run is cancelled while one-time deletion confirmation is pending, a later approval must not delete the file.
+
+[[src/main/one-runtime/workspace-tools.test.ts]] resolves the confirmation only after aborting the Run and verifies the original workspace file remains unchanged.
+
 ## No-project full access
 
 A local full-access turn may start without linking a project folder and can operate on an explicit path on its execution host. The implicit working directory does not restrict this host authority.
