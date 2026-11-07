@@ -333,6 +333,7 @@ describe("One SDK session isolation", () => {
     ).rejects.toThrow("reserved");
   });
 
+  // @lat: [[main-process#Main Process#One session resume reconciliation#One model API protocol selection#Provider and tool failure diagnostics]]
   it("runs an isolated worker and delegates each tool call to its host", async () => {
     dir = await mkdtemp(join(tmpdir(), "agents-one-worker-"));
     const receivedBodies: string[] = [];
@@ -359,7 +360,13 @@ describe("One SDK session isolation", () => {
               : 503,
           { "Content-Type": "application/json" },
         );
-        res.end(JSON.stringify({ error: { message: "invalid credential" } }));
+        const message =
+          behavior === "unauthorized"
+            ? "invalid credential"
+            : behavior === "rate-limited"
+              ? "rate limit exceeded"
+              : "provider unavailable";
+        res.end(JSON.stringify({ error: { message } }));
         return;
       }
       let body = "";
@@ -667,6 +674,7 @@ describe("One SDK session isolation", () => {
       apiKey: options.apiKey,
     }).catch((error: Error) => error);
     expect(authError).toBeInstanceOf(Error);
+    expect(String(authError)).toMatch(/401|unauthorized|invalid credential/i);
     expect(String(authError)).not.toContain(options.apiKey);
     for (const status of ["rate-limited", "unavailable"] as const) {
       behavior = status;
@@ -677,6 +685,11 @@ describe("One SDK session isolation", () => {
         apiKey: options.apiKey,
       }).catch((error: Error) => error);
       expect(failure).toBeInstanceOf(Error);
+      expect(String(failure)).toMatch(
+        status === "rate-limited"
+          ? /429|rate limit/i
+          : /503|provider unavailable/i,
+      );
       expect(String(failure)).not.toContain(options.apiKey);
     }
     behavior = "interrupted";
@@ -688,7 +701,14 @@ describe("One SDK session isolation", () => {
         interruptedSession = id;
       },
     });
-    await expect(interrupted.completion).rejects.toThrow();
+    const streamFailure = await interrupted.completion.catch(
+      (error: Error) => error,
+    );
+    expect(streamFailure).toBeInstanceOf(Error);
+    expect(String(streamFailure)).toMatch(
+      /stream|fetch|terminated|socket|closed|aborted/i,
+    );
+    expect(String(streamFailure)).not.toContain(options.apiKey);
     expect(interruptedSession).not.toBe("");
     behavior = "normal";
     const recovered = await startOneWorker({
