@@ -13750,7 +13750,11 @@ button.task-collaboration-inline-avatar:focus-visible {
   color: var(--accent-text, #315fe3);
 }
 .agent-one-provider-mark--openai {
-  background: color-mix(in srgb, var(--success, #137b54) 16%, var(--bg-primary, #fff));
+  background: color-mix(
+    in srgb,
+    var(--success, #137b54) 16%,
+    var(--bg-primary, #fff)
+  );
   color: var(--success, #137b54);
 }
 .agent-one-provider-mark--deepseek {
@@ -13758,7 +13762,11 @@ button.task-collaboration-inline-avatar:focus-visible {
   color: var(--accent-text, #1674d1);
 }
 .agent-one-provider-mark--anthropic {
-  background: color-mix(in srgb, var(--warning, #af6735) 16%, var(--bg-primary, #fff));
+  background: color-mix(
+    in srgb,
+    var(--warning, #af6735) 16%,
+    var(--bg-primary, #fff)
+  );
   color: var(--warning, #af6735);
 }
 .agent-one-provider-mark--custom {
