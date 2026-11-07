@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createOneWorkspaceTools } from "./workspace-tools";
 
 it("limits One workspace tools to the task grant and preserves file content", async () => {
@@ -135,6 +135,55 @@ it("preserves file data and requires a fresh approved deletion", async () => {
       signal,
     );
     await expect(readFile(join(root, "note.txt"))).rejects.toThrow();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// @lat: [[runtime-chat#Automatic tool execution and deletion confirmation#One deletion consent revoked by cancellation]]
+it("does not delete a file when its One task is cancelled while confirmation is pending", async () => {
+  const root = await mkdtemp(join(tmpdir(), "one-workspace-delete-cancel-"));
+  try {
+    const file = join(root, "report.docx");
+    await writeFile(file, "keep this document", "utf8");
+
+    let confirmRequested!: () => void;
+    let resolveConfirmation!: (approved: boolean) => void;
+    const confirmationRequested = new Promise<void>((resolve) => {
+      confirmRequested = resolve;
+    });
+    const confirmDelete = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConfirmation = resolve;
+          confirmRequested();
+        }),
+    );
+    const { executeTool } = createOneWorkspaceTools({
+      workspace: root,
+      runtimeId: "one-test",
+      taskId: "task-test",
+      expiresAt: Date.now() + 60000,
+      permission: "write",
+      confirmDelete,
+    });
+    const run = new AbortController();
+    const read = JSON.parse(
+      await executeTool("workspace_read", { path: "report.docx" }, run.signal),
+    );
+    const deletion = executeTool(
+      "workspace_delete",
+      { path: "report.docx", expectedSha256: read.sha256 },
+      run.signal,
+    );
+
+    await confirmationRequested;
+    run.abort();
+    resolveConfirmation(true);
+
+    await expect(deletion).rejects.toThrow("not approved");
+    expect(await readFile(file, "utf8")).toBe("keep this document");
+    expect(confirmDelete).toHaveBeenCalledTimes(1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
