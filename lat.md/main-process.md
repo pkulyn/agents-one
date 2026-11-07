@@ -385,3 +385,9 @@ One retries transient model failures at most twice, counts each actual provider 
 One offers four Pi 1.5.0 API protocols, defaults older configurations to Chat Completions, and binds probe results to the model definition they tested.
 
 Supported values are `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`. The selected type flows through probing and worker execution and enters non-default definition revisions. A late probe cannot mark a changed definition healthy.
+
+### One capability probe and persisted snapshot
+
+A healthy One probe returns the integration capability set only after the configured provider completes the actual harmless-tool probe; a failed probe advertises no enabled capabilities.
+
+[[src/main/agent-runtimes.ts#probeAgentRuntime]] persists the capability snapshot against the tested Runtime definition. A later settings change invalidates that snapshot, and a stale asynchronous probe cannot restore it. [[src/main/one-runtime/probe.ts#probeOneProvider]] exercises the provider/tool path. [[tests/agent-runtimes.test.ts]] verifies successful and failed probe declarations and the persisted snapshot.
