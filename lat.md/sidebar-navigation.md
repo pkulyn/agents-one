@@ -164,6 +164,6 @@ Registry identity is resolved by the archived runtime ID or conversation metadat
 
 ## Parallel Runtime selection
 
-The Agents directory presents each configured One instance alongside local, remote, and web-connected Runtimes as peer choices, and starts a conversation through the Runtime selected by the user.
+One has its own configuration view; access management lists only connected local, remote, and web Runtimes. Users choose One or a connected Runtime directly for each task; One does not dispatch work automatically.
 
-[[src/renderer/src/screens/Agents/Agents.tsx]] gives One, local, remote, and web agents separate groups, then passes the selected definition to `onChatWithRuntime`. Every card remains independently addressable; choosing One does not route another Runtime's task through One.
+[[src/renderer/src/screens/Agents/Agents.tsx]] keeps `kind: one` records in the configuration view and excludes them from access-manager grouping, counts, and probes. Connected runtime cards pass their selected definition to `onChatWithRuntime`; One remains an independently addressable task peer outside this connected-agent dashboard.

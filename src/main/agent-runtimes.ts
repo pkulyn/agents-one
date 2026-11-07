@@ -38,7 +38,10 @@ import {
 } from "./collaboration-working-directory";
 import { stageRemoteCollaborationArtifact } from "./remote-collaboration-artifact";
 import { runtimeModelFailureKind } from "../shared/runtime-model-errors";
-import { isOneModelApiType } from "../shared/one-model-api";
+import {
+  isOneModelApiType,
+  normalizeOneModelChoices,
+} from "../shared/one-model-api";
 import { respondToAgentsOneRemotePermission } from "./agents-one-remote-gateway";
 import {
   createRuntimePermissionBridge,
@@ -1975,6 +1978,7 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
       (value.oneMaxModelCalls as number) > 64)
   )
     throw new Error("One model call limit must be between 1 and 64.");
+  const oneModels = normalizeOneModelChoices(value.oneModels);
   const knownKeys = new Set([
     "endpoint",
     "remoteGateway",
@@ -1989,6 +1993,7 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     "oneInstructions",
     "oneSkills",
     "oneMemoryEnabled",
+    "oneModels",
     "oneContextWindow",
     "oneMaxModelCalls",
     "oneImageInput",
@@ -2022,6 +2027,7 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     ...(value.oneMemoryEnabled !== undefined
       ? { oneMemoryEnabled: value.oneMemoryEnabled as boolean }
       : {}),
+    ...(oneModels ? { oneModels } : {}),
     ...(value.oneContextWindow !== undefined
       ? { oneContextWindow: value.oneContextWindow as number }
       : {}),

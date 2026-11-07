@@ -33,6 +33,19 @@ vi.mock("../../components/settings/AgentRuntimesPane", () => ({
   ),
 }));
 
+vi.mock("../../components/settings/OneAgentConfigurationPane", () => ({
+  default: (props: {
+    runtime: { id: string };
+    section: string;
+  }): React.JSX.Element => (
+    <div
+      data-testid="one-agent-config-pane"
+      data-runtime-id={props.runtime.id}
+      data-section={props.section}
+    />
+  ),
+}));
+
 import { NO_AGENT_RUNTIME_CAPABILITIES } from "../../../../shared/agent-runtimes";
 import Agents from "./Agents";
 
@@ -93,8 +106,8 @@ describe("Agents", () => {
 
     render(<Agents onChatWithRuntime={() => {}} />);
 
-    const editor = await screen.findByTestId("agent-runtime-pane");
-    expect(editor).toHaveAttribute("data-initial-runtime-id", "one-agent");
+    const editor = await screen.findByTestId("one-agent-config-pane");
+    expect(editor).toHaveAttribute("data-runtime-id", "one-agent");
     expect(screen.getByRole("tab", { name: /智能体配置/ })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -108,16 +121,20 @@ describe("Agents", () => {
     expect(screen.getByRole("button", { name: /个性化/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /记忆/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /技能与命令/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /子智能体/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /插件与 MCP/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /子智能体/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /插件与 MCP/ })).toBeEnabled();
     const memorySection = screen.getByRole("button", { name: /记忆/ });
     fireEvent.click(memorySection);
     expect(memorySection).toHaveClass("is-active");
+    expect(screen.getByTestId("one-agent-config-pane")).toHaveAttribute(
+      "data-section",
+      "memory",
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: /研究助手/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: /研究助手/ })[0]);
     await waitFor(() =>
-      expect(screen.getByTestId("agent-runtime-pane")).toHaveAttribute(
-        "data-initial-runtime-id",
+      expect(screen.getByTestId("one-agent-config-pane")).toHaveAttribute(
+        "data-runtime-id",
         "research-one",
       ),
     );
@@ -134,8 +151,8 @@ describe("Agents", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /智能体配置/ }));
     await waitFor(() =>
-      expect(screen.getByTestId("agent-runtime-pane")).toHaveAttribute(
-        "data-initial-runtime-id",
+      expect(screen.getByTestId("one-agent-config-pane")).toHaveAttribute(
+        "data-runtime-id",
         "research-one",
       ),
     );
@@ -156,7 +173,7 @@ describe("Agents", () => {
     expect(screen.getByRole("button", { name: "Add Agent" })).toBeTruthy();
   });
 
-  it("shows distinct descriptions for One and all connected-agent locations", async () => {
+  it("shows only the connected-agent location descriptions in access management", async () => {
     installHermesAPI();
     render(<Agents onChatWithRuntime={() => {}} />);
     showAccessManagement();
@@ -165,8 +182,8 @@ describe("Agents", () => {
       await screen.findByText("在当前电脑运行的智能体CLI或服务"),
     ).toBeTruthy();
     expect(
-      screen.getByText("配置模型 API 后独立运行，可自定义名称并直接对话"),
-    ).toBeTruthy();
+      screen.queryByText("配置模型 API 后独立运行，可自定义名称并直接对话"),
+    ).toBeNull();
     expect(screen.getByText("连接远端服务器或电脑上的智能体")).toBeTruthy();
     expect(screen.getByText("在隔离浏览器中连接网页端智能体服务")).toBeTruthy();
   });
@@ -226,7 +243,7 @@ describe("Agents", () => {
   });
 
   // @lat: [[sidebar-navigation#Parallel Runtime selection]]
-  it("keeps One parallel with local and remote agents and starts each selected runtime directly", async () => {
+  it("keeps One out of connected-agent management while listing local and remote agents", async () => {
     const api = installHermesAPI();
     api.listAgentRuntimes.mockResolvedValue([
       {
@@ -237,7 +254,11 @@ describe("Agents", () => {
         enabled: true,
         managed: "user",
         config: {},
-        lastProbe: { state: "healthy", checkedAt: Date.now() },
+        lastProbe: {
+          state: "unreachable",
+          checkedAt: Date.now() - 60_000,
+          message: "旧检测结果",
+        },
         capabilitySnapshot: {
           ...NO_AGENT_RUNTIME_CAPABILITIES,
           chat: true,
@@ -271,32 +292,31 @@ describe("Agents", () => {
     render(<Agents onChatWithRuntime={onChatWithRuntime} />);
     showAccessManagement();
 
-    await screen.findByText("One");
     await screen.findByText("Codex");
     await screen.findByText("Remote Hermes");
+    expect(screen.getByText("2 个智能体")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "One 智能体" })).toBeNull();
+    expect(screen.queryByText("One")).toBeNull();
+    await waitFor(() => {
+      expect(api.probeAgentRuntime).toHaveBeenCalledWith("codex-local");
+      expect(api.probeAgentRuntime).toHaveBeenCalledWith("hermes-remote");
+    });
+    expect(api.probeAgentRuntime).not.toHaveBeenCalledWith("one-main");
 
-    const oneSection = screen
-      .getByRole("heading", { name: "One 智能体" })
-      .closest("section");
     const localSection = screen
       .getByRole("heading", { name: "本地智能体" })
       .closest("section");
     const remoteSection = screen
       .getByRole("heading", { name: "远程智能体" })
       .closest("section");
-    expect(oneSection).not.toBeNull();
     expect(localSection).not.toBeNull();
     expect(remoteSection).not.toBeNull();
-    expect(within(oneSection as HTMLElement).getByText("One")).toBeTruthy();
-    expect(within(localSection as HTMLElement).queryByText("One")).toBeNull();
     expect(within(localSection as HTMLElement).getByText("Codex")).toBeTruthy();
     expect(
       within(remoteSection as HTMLElement).getByText("Remote Hermes"),
     ).toBeTruthy();
     expect(within(remoteSection as HTMLElement).queryByText("One")).toBeNull();
-
     for (const [runtimeName, runtimeId] of [
-      ["One", "one-main"],
       ["Codex", "codex-local"],
       ["Remote Hermes", "hermes-remote"],
     ]) {
@@ -312,7 +332,7 @@ describe("Agents", () => {
       );
     }
 
-    expect(onChatWithRuntime).toHaveBeenCalledTimes(3);
+    expect(onChatWithRuntime).toHaveBeenCalledTimes(2);
   });
 
   it("shows the unified transport label and connection hint without capability badges", async () => {
