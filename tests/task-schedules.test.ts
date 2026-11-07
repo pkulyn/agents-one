@@ -157,6 +157,84 @@ describe("Runtime schedules", () => {
     );
   }, 15000);
 
+  // @lat: [[task-schedules#One 定时任务取消后不重复派发]]
+  it("does not redispatch a cancelled One schedule occurrence", async () => {
+    const { runtimes, schedules } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "one-local",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "test",
+      },
+    });
+    const schedule = await schedules.createTaskSchedule({
+      name: "One cancellation cursor",
+      schedule: "5m",
+      prompt: "Run once at this due time.",
+      runtimeId: "one-local",
+      mode: "analysis",
+    });
+    const dueAt = schedule.nextRunAt;
+    expect(dueAt).toEqual(expect.any(Number));
+    startAgentRuntimeTaskMock.mockResolvedValueOnce({
+      id: "one-scheduled-run",
+      runtimeId: "one-local",
+      status: "running",
+      startedAt: dueAt,
+      output: "",
+      events: [],
+    });
+
+    await schedules.tickTaskSchedules(undefined, dueAt!);
+
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledTimes(1);
+    const active = schedules.listTaskSchedules()[0];
+    expect(active.activeRuntimeRunId).toBe("one-scheduled-run");
+    const cancellation = await schedules.cancelTaskScheduleActiveRun(
+      schedule.id,
+      "default",
+      active.revision,
+    );
+    expect(cancellation.runId).toBe("one-scheduled-run");
+    expect(cancelAgentRuntimeTaskMock).toHaveBeenCalledWith(
+      "one-scheduled-run",
+    );
+
+    getAgentRuntimeRunMock.mockResolvedValue({
+      id: "one-scheduled-run",
+      runtimeId: "one-local",
+      status: "cancelled",
+      startedAt: dueAt!,
+      completedAt: dueAt! + 1_000,
+      output: "",
+      events: [],
+    });
+    await schedules.tickTaskSchedules(undefined, dueAt! + 1_000);
+    await schedules.tickTaskSchedules(undefined, dueAt! + 1_000);
+
+    expect(startAgentRuntimeTaskMock).toHaveBeenCalledTimes(1);
+    expect(schedules.listTaskSchedules()[0]).not.toHaveProperty(
+      "activeRuntimeRunId",
+    );
+    expect(schedules.listTaskSchedules()[0]).toMatchObject({
+      pendingRuns: 0,
+      runs: [
+        expect.objectContaining({
+          runtimeRunId: "one-scheduled-run",
+          status: "cancelled",
+        }),
+      ],
+    });
+    expect(schedules.listTaskSchedules()[0].nextRunAt).toBeGreaterThan(
+      dueAt! + 1_000,
+    );
+  }, 15_000);
+
   // Cold-loading the Runtime module graph can exceed Vitest's 5 s default
   // when the full suite runs many worker processes on Windows.
   it("keeps a queued trigger behind its active direct Runtime run", async () => {
