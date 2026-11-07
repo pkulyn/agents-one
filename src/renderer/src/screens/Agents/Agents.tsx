@@ -13,6 +13,10 @@ import { AppModal, AppModalTitle } from "../../components/modal/AppModal";
 import { useI18n } from "../../components/useI18n";
 import AgentRuntimesPane from "../../components/settings/AgentRuntimesPane";
 import {
+  LocalAgentGlyph,
+  OneAgentGlyph,
+} from "../../components/AgentTypeGlyphs";
+import {
   deriveAgentTransport,
   NO_AGENT_RUNTIME_CAPABILITIES,
   type AgentRuntimeDefinition,
@@ -45,7 +49,7 @@ const TRANSPORT_LABEL_KEY: Record<AgentRuntimeTransport, string> = {
   "local-web": "agents.transportLocalWeb",
 };
 
-type AgentSectionKey = "local" | "remote" | "web";
+type AgentSectionKey = "one" | "local" | "remote" | "web";
 
 const AGENT_SECTION_META: Record<
   AgentSectionKey,
@@ -56,6 +60,12 @@ const AGENT_SECTION_META: Record<
     icon: typeof Terminal;
   }
 > = {
+  one: {
+    titleKey: "agents.sectionOne",
+    descriptionKey: "agents.sectionOneDescription",
+    className: "one",
+    icon: Terminal,
+  },
   local: {
     titleKey: "agents.sectionLocal",
     descriptionKey: "agents.sectionLocalDescription",
@@ -77,12 +87,14 @@ const AGENT_SECTION_META: Record<
 };
 
 const AGENT_SECTION_ORDER: readonly AgentSectionKey[] = [
+  "one",
   "local",
   "remote",
   "web",
 ];
 
 function sectionForRuntime(runtime: AgentRuntimeDefinition): AgentSectionKey {
+  if (runtime.kind === "one") return "one";
   if (runtime.kind === "web-agent") return "web";
   return runtime.location === "remote" ? "remote" : "local";
 }
@@ -245,6 +257,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
 
   const { sorted, dragProps } = useRuntimeOrder(runtimes);
   const groupedRuntimes: Record<AgentSectionKey, AgentRuntimeDefinition[]> = {
+    one: [],
     local: [],
     remote: [],
     web: [],
@@ -292,6 +305,10 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
             <span className={`agents-runtime-icon ${runtime.kind}`}>
               {runtime.avatar ? (
                 <img src={runtime.avatar} alt="" />
+              ) : section === "one" ? (
+                <OneAgentGlyph size={22} />
+              ) : section === "local" ? (
+                <LocalAgentGlyph size={22} />
               ) : (
                 <SectionIcon size={18} aria-hidden="true" />
               )}
@@ -456,7 +473,13 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
               <div className="agents-domain-heading">
                 <div className="agents-domain-heading-label">
                   <span className="agents-domain-icon">
-                    <SectionIcon size={16} aria-hidden="true" />
+                    {section === "one" ? (
+                      <OneAgentGlyph size={20} />
+                    ) : section === "local" ? (
+                      <LocalAgentGlyph size={20} />
+                    ) : (
+                      <SectionIcon size={16} aria-hidden="true" />
+                    )}
                   </span>
                   <div>
                     <h3>{t(meta.titleKey)}</h3>

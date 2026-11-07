@@ -129,6 +129,9 @@ export default {
   transportLocalSdk: "Local SDK",
   transportLocalApi: "Local API",
   transportLocalWeb: "Embedded web",
+  sectionOne: "One Agents",
+  sectionOneDescription:
+    "Configure a model API, choose a name, and chat with each agent directly",
   sectionLocal: "Local Agents",
   sectionLocalDescription: "Agents, CLIs, or services running on this computer",
   sectionRemote: "Remote Agents",
