@@ -358,6 +358,12 @@ One may send explicitly supplied image attachments only when image input is enab
 
 One supports text steering through its existing live Runtime input entry. Pi consumes a queued update after the current tool calls and before the next model request; the host confirms delivery only after the SDK emits the corresponding user message. Pending confirmations reject on cancellation or worker termination.
 
+### One explicit skill resource loading
+
+One loads only selected user-authored SKILL.md documents as prompt text; it never imports or executes scripts or other extensions, and it rejects unavailable, unsafe, or out-of-scope selections.
+
+[[src/main/one-runtime/skills.ts#loadOneSkills]] resolves the selected source and reads only its SKILL.md within size limits. [[src/main/one-runtime/skills.test.ts]] verifies selected-source behavior and that an adjacent JavaScript file remains inert.
+
 One requires the current SHA-256 from a prior read when replacing an existing workspace text or Word file; new files do not require a checksum. This stricter option applies only to One, while existing Gateway clients retain their prior write contract. Workspace search marks results incomplete when bounded, oversized or unreadable inputs are skipped.
 
 One discovers explicitly selectable user skill documents in both `~/.codex/skills` and `~/.agents/skills`. Their stable source-specific IDs distinguish same-named skills and prevent silent fallback when one source disappears; discovery and loading do not execute skill scripts.

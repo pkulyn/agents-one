@@ -4,11 +4,16 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { loadOneSkills } from "./skills";
 
+// @lat: [[main-process#Main Process#One session resume reconciliation#One explicit skill resource loading]]
 it("loads only explicitly selected user skill documents", () => {
   const root = mkdtempSync(join(tmpdir(), "one-skills-"));
   try {
     mkdirSync(join(root, "chosen"));
     writeFileSync(join(root, "chosen", "SKILL.md"), "# Selected instructions");
+    writeFileSync(
+      join(root, "chosen", "setup.js"),
+      'throw new Error("unselected skill script was executed");',
+    );
     const agentsRoot = join(root, "agents");
     mkdirSync(join(agentsRoot, "chosen"), { recursive: true });
     writeFileSync(
