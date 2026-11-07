@@ -11084,6 +11084,11 @@ button.task-collaboration-inline-avatar:focus-visible {
   height: 34px;
   border-radius: 10px;
 }
+.agents-runtime-icon.one {
+  color: #fff;
+  background: linear-gradient(135deg, #5668e8, #8b5cf6);
+  border-color: transparent;
+}
 .agents-runtime-icon img {
   width: 100%;
   height: 100%;
@@ -11182,6 +11187,12 @@ button.task-collaboration-inline-avatar:focus-visible {
   border: 1px solid var(--border-bright);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
+}
+
+.agents-domain--one {
+  --domain-accent: #6558cf;
+  --domain-soft: rgba(101, 88, 207, 0.11);
+  border-color: rgba(101, 88, 207, 0.28);
 }
 
 .agents-domain--remote {
@@ -17396,7 +17407,7 @@ button.task-collaboration-inline-avatar:focus-visible {
 
 .agent-onboarding-type-options {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -17461,6 +17472,12 @@ button.task-collaboration-inline-avatar:focus-visible {
 .agent-onboarding-type-icon--web {
   background: #f8eadf;
   color: #b85d12;
+}
+
+.agent-onboarding-type-icon--one {
+  color: #fff;
+  background: linear-gradient(135deg, #5668e8, #8b5cf6);
+  box-shadow: 0 8px 18px rgba(101, 88, 207, 0.2);
 }
 
 .agent-onboarding-type-options strong {

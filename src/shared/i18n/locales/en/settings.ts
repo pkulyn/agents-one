@@ -68,8 +68,13 @@ export default {
     stepType: "Choose Type",
     stepBasics: "Basic Information",
     stepConnection: "Connection Settings",
-    chooseTypeTitle: "Choose the agent to connect",
-    chooseTypeHint: "Choose where it runs; only required settings appear next.",
+    chooseTypeTitle: "Choose an agent type",
+    chooseTypeHint:
+      "Configure the built-in agent or connect an agent by location.",
+    oneAgent: "Configure Agent",
+    oneAgentDescription:
+      "Configure a model API to use the built-in tools and execution features",
+    oneAgentDefaultName: "My Agent",
     localAgent: "Local Agent",
     localAgentDescription: "An agent, CLI, or service running on this computer",
     remoteAgent: "Remote Agent",
@@ -79,6 +84,8 @@ export default {
     nextRequires: "Next, you will provide",
     basicsPreview: "Basic information: avatar, name, and agent ID",
     localConnectionPreview: "Local connection: executable",
+    oneConnectionPreview:
+      "Model API: provider, endpoint, model ID, and API key",
     webConnectionPreview: "Web connection: provider",
     remoteConnectionPreview:
       "Remote connection: verification-code pairing or self-hosted Gateway",
@@ -88,6 +95,7 @@ export default {
     saveDisplayInformation: "Save display information",
     name: "Name",
     agentId: "Agent ID",
+    duplicateRuntimeId: "This agent ID is already in use. Choose another ID.",
     type: "Type",
     templateHint:
       "You can customize the name, icon, connection settings, and timeout after choosing a template.",

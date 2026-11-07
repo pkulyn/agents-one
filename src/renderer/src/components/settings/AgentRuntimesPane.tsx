@@ -12,7 +12,6 @@ import {
   RefreshCw,
   Save,
   Signal,
-  Terminal,
   Trash2,
   UserRound,
 } from "lucide-react";
@@ -47,9 +46,10 @@ import ConnectionPane from "./ConnectionPane";
 import { SettingsDataContext } from "./SettingsDataContext";
 import { useSettingsData } from "./useSettingsData";
 import OneProjectMemoryEditor from "./OneProjectMemoryEditor";
+import { LocalAgentGlyph, OneAgentGlyph } from "../AgentTypeGlyphs";
 
 const DEFAULT_TIMEOUT_MS = 300_000;
-type NewAgentType = "local" | "remote" | "web";
+type NewAgentType = "one" | "local" | "remote" | "web";
 
 const KIND_LABELS: Record<string, string> = {
   hermes: "Hermes Agent Runtime",
@@ -117,8 +117,8 @@ function runtimeTemplate(
     : {};
   if (kind === "one") {
     return {
-      id: "one-local",
-      name: "One",
+      id: "one-agent",
+      name: t?.("settings.runtimeManager.oneAgentDefaultName") || "My Agent",
       kind,
       connectionProfile: "local",
       ...metadata,
@@ -210,6 +210,19 @@ function runtimeTemplate(
 
 function emptyDraft(t?: Translate): AgentRuntimeDraft {
   return runtimeTemplate("hermes", {}, undefined, undefined, t);
+}
+
+function nextRuntimeId(
+  base: string,
+  runtimes: readonly Pick<AgentRuntimeDefinition, "id">[],
+): string {
+  const usedIds = new Set(
+    runtimes.map((runtime) => runtime.id.trim().toLocaleLowerCase()),
+  );
+  if (!usedIds.has(base.toLocaleLowerCase())) return base;
+  let suffix = 2;
+  while (usedIds.has(`${base}-${suffix}`.toLocaleLowerCase())) suffix += 1;
+  return `${base}-${suffix}`;
 }
 
 function draftFromRuntime(runtime: AgentRuntimeDefinition): AgentRuntimeDraft {
@@ -423,6 +436,14 @@ export default function AgentRuntimesPane({
   const selectedProbe = selectedId ? probes[selectedId] : undefined;
   const isNew = selectedId === null;
   const isBuiltin = selectedRuntime?.managed === "builtin";
+  const duplicateRuntimeId =
+    isNew &&
+    draft.kind === "one" &&
+    runtimes.some(
+      (runtime) =>
+        runtime.id.trim().toLocaleLowerCase() ===
+        draft.id.trim().toLocaleLowerCase(),
+    );
   const isRemoteConnection = draft.location === "remote";
   const isLocalHermesAdoption =
     isNew && newAgentType === "local" && draft.kind === "hermes";
@@ -568,13 +589,13 @@ export default function AgentRuntimesPane({
     [draft.location, isNew, manifestForDraft],
   );
   const newRuntimeKinds = useMemo<AgentRuntimeKind[]>(() => {
+    if (newAgentType === "one") return ["one"];
     const manifests = adapterManifests.filter((manifest) => {
       if (newAgentType === "local") {
         return (
           (manifest.locations.includes("local") &&
             Boolean(manifest.localCliCommand)) ||
-          manifest.adapterId === "hermes" ||
-          manifest.adapterId === "one"
+          manifest.adapterId === "hermes"
         );
       }
       if (newAgentType === "remote") {
@@ -633,6 +654,7 @@ export default function AgentRuntimesPane({
     draftProbe?.state === "healthy" && draftProbeKey === draftConnectionKey;
   const canSave =
     !isBuiltin &&
+    !duplicateRuntimeId &&
     !pairingNotCompleted &&
     draft.id.trim().length > 0 &&
     draft.name.trim().length > 0 &&
@@ -799,16 +821,29 @@ export default function AgentRuntimesPane({
 
   function selectNewAgentType(type: NewAgentType): void {
     const kind =
-      type === "local" ? "codex" : type === "web" ? "web-agent" : "hermes";
+      type === "one"
+        ? "one"
+        : type === "local"
+          ? "codex"
+          : type === "web"
+            ? "web-agent"
+            : "hermes";
     setNewAgentType(type);
+    const nextDraft = runtimeTemplate(
+      kind,
+      localCliPaths,
+      undefined,
+      type === "local" || type === "one"
+        ? "local"
+        : type === "remote"
+          ? "remote"
+          : undefined,
+      t,
+    );
     setDraft(
-      runtimeTemplate(
-        kind,
-        localCliPaths,
-        undefined,
-        type === "local" ? "local" : type === "remote" ? "remote" : undefined,
-        t,
-      ),
+      type === "one"
+        ? { ...nextDraft, id: nextRuntimeId("one-agent", runtimes) }
+        : nextDraft,
     );
     setDraftProbe(null);
     setDraftProbeKey(null);
@@ -1074,6 +1109,19 @@ export default function AgentRuntimesPane({
     if (!canSave) return;
     setBusy("save");
     try {
+      if (isNew && draft.kind === "one") {
+        const latestRuntimes = await window.agentsOneAPI.listAgentRuntimes();
+        setRuntimes(latestRuntimes);
+        const id = draft.id.trim().toLocaleLowerCase();
+        if (
+          latestRuntimes.some(
+            (runtime) => runtime.id.trim().toLocaleLowerCase() === id,
+          )
+        ) {
+          setFlash(t("settings.runtimeManager.duplicateRuntimeId"));
+          return;
+        }
+      }
       const saved = await window.agentsOneAPI.saveAgentRuntime({
         ...draft,
         id: draft.id.trim(),
@@ -1710,12 +1758,27 @@ export default function AgentRuntimesPane({
                   <div className="agent-onboarding-type-options">
                     <button
                       type="button"
+                      className={newAgentType === "one" ? "is-selected" : ""}
+                      aria-pressed={newAgentType === "one"}
+                      onClick={() => selectNewAgentType("one")}
+                    >
+                      <span className="agent-onboarding-type-icon agent-onboarding-type-icon--one">
+                        <OneAgentGlyph size={28} />
+                      </span>
+                      <strong>{t("settings.runtimeManager.oneAgent")}</strong>
+                      <small>
+                        {t("settings.runtimeManager.oneAgentDescription")}
+                      </small>
+                      {newAgentType === "one" && <i aria-hidden="true">✓</i>}
+                    </button>
+                    <button
+                      type="button"
                       className={newAgentType === "local" ? "is-selected" : ""}
                       aria-pressed={newAgentType === "local"}
                       onClick={() => selectNewAgentType("local")}
                     >
                       <span className="agent-onboarding-type-icon agent-onboarding-type-icon--local">
-                        <Terminal size={22} />
+                        <LocalAgentGlyph size={28} />
                       </span>
                       <strong>{t("settings.runtimeManager.localAgent")}</strong>
                       <small>
@@ -1768,13 +1831,15 @@ export default function AgentRuntimesPane({
                       <span className="agent-onboarding-preview-icon">
                         <Link2 size={16} aria-hidden="true" />
                       </span>
-                      {newAgentType === "local"
-                        ? t("settings.runtimeManager.localConnectionPreview")
-                        : newAgentType === "web"
-                          ? t("settings.runtimeManager.webConnectionPreview")
-                          : t(
-                              "settings.runtimeManager.remoteConnectionPreview",
-                            )}
+                      {newAgentType === "one"
+                        ? t("settings.runtimeManager.oneConnectionPreview")
+                        : newAgentType === "local"
+                          ? t("settings.runtimeManager.localConnectionPreview")
+                          : newAgentType === "web"
+                            ? t("settings.runtimeManager.webConnectionPreview")
+                            : t(
+                                "settings.runtimeManager.remoteConnectionPreview",
+                              )}
                     </span>
                   </div>
                 </section>
@@ -1874,6 +1939,11 @@ export default function AgentRuntimesPane({
                     }
                     disabled={!!selectedRuntime}
                   />
+                  {duplicateRuntimeId && (
+                    <span className="settings-field-hint" role="alert">
+                      {t("settings.runtimeManager.duplicateRuntimeId")}
+                    </span>
+                  )}
                 </label>
 
                 <label className="settings-field">
@@ -1937,7 +2007,11 @@ export default function AgentRuntimesPane({
                         };
                       });
                     }}
-                    disabled={isBuiltin || (!isNew && isOne)}
+                    disabled={
+                      isBuiltin ||
+                      (!isNew && isOne) ||
+                      (isNew && newAgentType === "one")
+                    }
                   >
                     {(isNew
                       ? newRuntimeKinds
@@ -3528,6 +3602,7 @@ export default function AgentRuntimesPane({
                         (isWebAgent && !webAgentPolicy?.enabled) ||
                         isLocalHermesAdoption ||
                         !draft.id.trim() ||
+                        duplicateRuntimeId ||
                         !draft.name.trim() ||
                         (draft.location === "remote" &&
                           remoteConnectionProfile !== "self-hosted-gateway") ||
