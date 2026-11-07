@@ -13231,7 +13231,9 @@ button.task-collaboration-inline-avatar:focus-visible {
   background: var(--surface, #fff);
   color: var(--text-primary, #242932);
   text-align: left;
-  transition: border-color 120ms ease, background 120ms ease,
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
     box-shadow 120ms ease;
 }
 
