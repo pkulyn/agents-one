@@ -1351,7 +1351,8 @@ describe("agent runtime registry", () => {
     expect(updated?.capabilitySnapshot).toBeUndefined();
   });
 
-  it("stores One as a separate SDK agent and protects its model credential", async () => {
+  // @lat: [[main-process#One session resume reconciliation#One capability probe and persisted snapshot]]
+  it("stores One as a separate SDK agent, protects its credential, and reports probed capabilities", async () => {
     vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
     const { config, runtimes } = await loadModules();
     const { configureDesktopSecretStore, DesktopSecretStore } =
@@ -1487,9 +1488,59 @@ describe("agent runtime registry", () => {
         .then(() => ({ sessionId: "probe-session", output: "OK" })),
       cancel: vi.fn(),
     }));
-    await expect(runtimes.probeAgentRuntime(saved.id)).resolves.toMatchObject({
+    const healthyProbe = await runtimes.probeAgentRuntime(saved.id);
+    expect(healthyProbe).toMatchObject({
       state: "healthy",
+      capabilities: {
+        chat: true,
+        taskDispatch: true,
+        streaming: true,
+        cancellation: true,
+        tools: true,
+        memory: true,
+        modelSelection: true,
+        orchestration: false,
+        readOnlyPlanning: true,
+        mailbox: false,
+        securityEvents: false,
+        artifacts: true,
+        workspaceAccess: true,
+        steering: "native",
+        branching: "none",
+      },
     });
+    expect(
+      runtimes.listAgentRuntimes().find((runtime) => runtime.id === saved.id)
+        ?.capabilitySnapshot,
+    ).toEqual(healthyProbe.capabilities);
+    startOneWorkerMock.mockImplementationOnce(() => ({
+      completion: Promise.reject(new Error("provider tool probe failed")),
+      cancel: vi.fn(),
+    }));
+    const failedProbe = await runtimes.probeAgentRuntime(saved.id);
+    expect(failedProbe).toMatchObject({
+      state: "unreachable",
+      capabilities: {
+        chat: false,
+        taskDispatch: false,
+        streaming: false,
+        cancellation: false,
+        tools: false,
+        memory: false,
+        orchestration: false,
+        readOnlyPlanning: false,
+        mailbox: false,
+        securityEvents: false,
+        artifacts: false,
+        workspaceAccess: false,
+        steering: "none",
+        branching: "none",
+      },
+    });
+    expect(
+      runtimes.listAgentRuntimes().find((runtime) => runtime.id === saved.id)
+        ?.capabilitySnapshot,
+    ).toEqual(failedProbe.capabilities);
     expect(startOneWorkerMock).toHaveBeenCalledWith(
       expect.objectContaining({ apiType: "anthropic-messages" }),
     );
