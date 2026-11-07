@@ -386,6 +386,12 @@ One offers four Pi 1.5.0 API protocols, defaults older configurations to Chat Co
 
 Supported values are `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`. The selected type flows through probing and worker execution and enters non-default definition revisions. A late probe cannot mark a changed definition healthy.
 
+#### Provider and tool failure diagnostics
+
+The harmless-tool probe reports provider authentication/rate-limit failures without leaking credentials; interrupted streams fail and can resume, and models that skip the probe tool are not marked connected.
+
+[[src/main/one-runtime/probe.ts#probeOneProvider]] turns a failed or no-tool connectivity check into a failed result; [[src/main/one-runtime/worker.ts#safeError]] redacts credentials before errors cross IPC. [[src/main/one-runtime/session.test.ts]] covers 401, 429, 503, interrupted-stream recovery, credential redaction, and a missing probe-tool call.
+
 ### One capability probe and persisted snapshot
 
 A healthy One probe returns the integration capability set only after the configured provider completes the actual harmless-tool probe; a failed probe advertises no enabled capabilities.
