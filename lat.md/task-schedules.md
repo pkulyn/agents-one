@@ -1,18 +1,18 @@
 # Runtime Schedules
 
-Agents One 的桌面定时任务以稳定 `runtimeId` 关联智能体，在应用运行期间按 Cron 或间隔启动独立 Runtime 对话，并保留每轮状态、结果与会话入口。
+Agents One 的桌面定时任务以稳定 `runtimeId` 关联智能体，在应用运行期间可调度已配置模型端点的本地 One SDK、CLI、Web Agent 或远程 Runtime，并保留每轮状态、结果与会话入口。
 
 ## Eligible Runtime boundary
 
-定时任务只接受当前已启用、配置无冲突且无需重新授权的本地 CLI、Web Agent 或远程 Gateway v1 Runtime，前端选项与主进程执行门禁共用同一判定。
+定时任务只接受当前已启用、配置无冲突且无需重新授权的本地 One SDK、CLI、Web Agent 或远程 Gateway v1 Runtime，前端选项与主进程执行门禁共用同一判定。
 
-[[src/shared/task-schedules.ts#taskScheduleRuntimeCategory]] 负责区分 `local`、`web`、`remote` 三类目标，[[src/shared/task-schedules.ts#isTaskScheduleRuntimeEligible]] 再叠加启用状态、网页适配器开关、远程端点和重新授权状态。已删除或暂不可用 Runtime 的计划记录继续保留并可暂停或删除，但不会自动派发。
+[[src/shared/task-schedules.ts#taskScheduleRuntimeCategory]] 负责区分 `local`、`web`、`remote` 三类目标；本地 One SDK 还必须配置模型端点与模型 ID。[[src/shared/task-schedules.ts#isTaskScheduleRuntimeEligible]] 再叠加启用状态、网页适配器开关、远程端点和重新授权状态。已删除或暂不可用 Runtime 的计划记录继续保留并可暂停或删除，但不会自动派发。
 
 ## Execution semantics
 
 每次手动、到期或错过补跑都通过统一 Runtime 任务入口启动，沿用并发策略、超时、运行事件、产物和可见对话对账。
 
-[[src/main/task-schedules.ts#startRun]] 对本地 CLI 和远程 Gateway 保留计划配置的访问模式与可选项目 capability。Web Agent 固定使用 `analysis`，不携带工作区；若登录态失效，其 Runtime 可进入现有用户接管流程。远程任务继续由 Gateway v1 执行，离线或鉴权失败作为本轮失败结果记录，不删除计划。
+[[src/main/task-schedules.ts#startRun]] 对本地 One SDK、CLI 和远程 Gateway 保留计划配置的访问模式与可选项目 capability。Web Agent 固定使用 `analysis`，不携带工作区；若登录态失效，其 Runtime 可进入现有用户接管流程。远程任务继续由 Gateway v1 执行，离线或鉴权失败作为本轮失败结果记录，不删除计划。
 
 ## Renderer behavior
 
@@ -26,6 +26,8 @@ Agents One 的桌面定时任务以稳定 `runtimeId` 关联智能体，在应�
 
 扩展不改变 `task-schedules.json` 的记录结构，也不重写未知字段或批量迁移历史计划。
 
-旧计划继续按其 `runtimeId` 解析；只要对应远程 Gateway 或 Web Agent 现已满足资格门禁，旧记录也能在下一次到期时执行。既有本地 CLI 计划、项目 `workspaceId`、并发游标和运行历史保持原语义。
+旧计划继续按其 `runtimeId` 解析；只要对应远程 Gateway 或 Web Agent 现已满足资格门禁，旧记录也能在下一次到期时执行。既有 One 与本地 CLI 计划、项目 `workspaceId`、并发游标和运行历史保持原语义。
 
-One is eligible as a local SDK target when its endpoint and model are configured. It continues to use the existing task queue and its explicit access mode.
+## One 定时任务取消后不重复派发
+
+取消正在运行的 One 定时任务后，现有调度器对账 Runtime 的终态并保留已推进的到期游标；对同一到期时刻重复 tick 不会再次派发模型任务。
