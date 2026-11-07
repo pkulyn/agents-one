@@ -161,3 +161,9 @@ Archived task rows and expanded project children retain their agent avatars, usi
 Registry identity is resolved by the archived runtime ID or conversation metadata; historical snapshots survive removed runtimes and registry read failures. Native conversations use the Hermes identity.
 
 [[src/renderer/src/components/settings/ArchivePane.tsx]] loads appearance metadata through existing read APIs, including tasks without a workspace. Project cards retain folder icons; missing task avatars fall back to a bot icon. Archive markers, conversation data and restore/delete behavior are unchanged.
+
+## Parallel Runtime selection
+
+The Agents directory presents One and connected Runtimes as peer choices, and starts a conversation through the Runtime selected by the user.
+
+[[src/renderer/src/screens/Agents/Agents.tsx]] groups cards by execution location and passes the selected definition to `onChatWithRuntime`. One, local agents, and remote agents remain independently addressable; choosing One does not route another Runtime's task through One.
