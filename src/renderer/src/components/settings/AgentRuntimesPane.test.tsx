@@ -241,16 +241,18 @@ function installHermesAPI(
 }
 
 async function openNewAgentWizard(
-  type: "local" | "remote" | "web" = "remote",
+  type: "one" | "local" | "remote" | "web" = "remote",
   step: 2 | 3 = 3,
 ): Promise<void> {
   fireEvent.click(await screen.findByRole("button", { name: "接入" }));
   const label =
-    type === "local"
-      ? "本地智能体"
-      : type === "web"
-        ? "网页智能体"
-        : "远程智能体";
+    type === "one"
+      ? "配置智能体"
+      : type === "local"
+        ? "本地智能体"
+        : type === "web"
+          ? "网页智能体"
+          : "远程智能体";
   fireEvent.click(screen.getByText(label).closest("button")!);
   fireEvent.click(screen.getByRole("button", { name: "下一步" }));
   if (step === 3)
@@ -269,7 +271,7 @@ describe("AgentRuntimesPane", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
     expect(
-      screen.getByRole("heading", { name: "Choose the agent to connect" }),
+      screen.getByRole("heading", { name: "Choose an agent type" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Remote Agent")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
@@ -383,7 +385,7 @@ describe("AgentRuntimesPane", () => {
     expect(screen.getByLabelText("连接超时（秒）")).toHaveValue(300);
   });
 
-  it("starts with three runtime domains and keeps custom remote agents on Gateway v1", async () => {
+  it("offers One configuration alongside local, remote, and web agent onboarding", async () => {
     installHermesAPI([]);
     render(<AgentRuntimesPane />);
 
@@ -391,6 +393,12 @@ describe("AgentRuntimesPane", () => {
 
     expect(
       screen.getByText("本地智能体").closest("button"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("配置智能体").closest("button"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("配置模型 API 后即可使用内置工具与执行能力"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("远程智能体").closest("button"),
@@ -412,6 +420,57 @@ describe("AgentRuntimesPane", () => {
     expect(
       screen.queryByRole("button", { name: "兼容模式" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("gives each configured One agent a unique ID and allows a custom name", async () => {
+    installHermesAPI([
+      {
+        id: "one-agent",
+        name: "Existing agent",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: { agentTransport: "local-sdk", model: "existing-model" },
+      },
+    ]);
+    render(<AgentRuntimesPane />);
+
+    await openNewAgentWizard("one", 2);
+    expect(screen.getByLabelText("名称")).toHaveValue("我的智能体");
+    expect(screen.getByLabelText("智能体 ID")).toHaveValue("one-agent-2");
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "资料研究员" },
+    });
+    expect(screen.getByLabelText("名称")).toHaveValue("资料研究员");
+  });
+
+  it("blocks a duplicate One runtime ID before probing or saving", async () => {
+    const api = installHermesAPI([
+      {
+        id: "one-agent",
+        name: "Existing agent",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: { agentTransport: "local-sdk", model: "existing-model" },
+      },
+    ]);
+    render(<AgentRuntimesPane />);
+
+    await openNewAgentWizard("one", 2);
+    fireEvent.change(screen.getByLabelText("智能体 ID"), {
+      target: { value: "ONE-AGENT" },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "此智能体 ID 已被占用，请换一个 ID。",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(screen.getByRole("button", { name: "连接测试" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(api.probeAgentRuntimeDraft).not.toHaveBeenCalled();
+    expect(api.saveAgentRuntime).not.toHaveBeenCalled();
   });
 
   // @lat: [[agent-onboarding#Agent Onboarding#Web agent opt-in]]
@@ -1052,11 +1111,11 @@ describe("AgentRuntimesPane", () => {
       },
     ]);
     render(<AgentRuntimesPane />);
-    await openNewAgentWizard("local", 2);
-    fireEvent.change(screen.getByLabelText("类型"), {
-      target: { value: "one" },
+    await openNewAgentWizard("one", 2);
+    expect(screen.getByLabelText("名称")).toHaveValue("我的智能体");
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "研究助手" },
     });
-    expect(screen.getByLabelText("名称")).toHaveValue("One");
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     fireEvent.click(screen.getByText("模型上下文、个性化、技能与记忆"));
     fireEvent.click(await screen.findByLabelText(/chosen.*\.codex/));
@@ -1114,12 +1173,14 @@ describe("AgentRuntimesPane", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() =>
       expect(api.setAgentRuntimeBearerToken).toHaveBeenCalledWith(
-        "one-local",
+        "one-agent",
         "test-one-key",
       ),
     );
     expect(api.saveAgentRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: "one-agent",
+        name: "研究助手",
         kind: "one",
         config: expect.objectContaining({
           agentTransport: "local-sdk",
@@ -1139,10 +1200,7 @@ describe("AgentRuntimesPane", () => {
   it("offers common provider quick fills and clears model-specific overrides", async () => {
     const api = installHermesAPI([]);
     render(<AgentRuntimesPane />);
-    await openNewAgentWizard("local", 2);
-    fireEvent.change(screen.getByLabelText("类型"), {
-      target: { value: "one" },
-    });
+    await openNewAgentWizard("one", 2);
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
 
     fireEvent.change(screen.getByLabelText("模型供应商"), {
@@ -1213,10 +1271,7 @@ describe("AgentRuntimesPane", () => {
   it("requires a new One probe after changing its runtime ID", async () => {
     const api = installHermesAPI([]);
     render(<AgentRuntimesPane />);
-    await openNewAgentWizard("local", 2);
-    fireEvent.change(screen.getByLabelText("类型"), {
-      target: { value: "one" },
-    });
+    await openNewAgentWizard("one", 2);
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     fireEvent.change(screen.getByLabelText("模型 API 地址"), {
       target: { value: "https://example.test/v1" },
@@ -1247,10 +1302,7 @@ describe("AgentRuntimesPane", () => {
   it("retests One when its model API protocol changes", async () => {
     const api = installHermesAPI([]);
     render(<AgentRuntimesPane />);
-    await openNewAgentWizard("local", 2);
-    fireEvent.change(screen.getByLabelText("类型"), {
-      target: { value: "one" },
-    });
+    await openNewAgentWizard("one", 2);
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     fireEvent.change(screen.getByLabelText("模型 API 地址"), {
       target: { value: "https://example.test" },

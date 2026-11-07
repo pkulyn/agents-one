@@ -61,12 +61,15 @@ describe("Agents", () => {
     expect(screen.getByRole("button", { name: "Add Agent" })).toBeTruthy();
   });
 
-  it("uses the shared runtime-location descriptions for all three agent domains", async () => {
+  it("shows distinct descriptions for One and all connected-agent locations", async () => {
     installHermesAPI();
     render(<Agents onChatWithRuntime={() => {}} />);
 
     expect(
       await screen.findByText("在当前电脑运行的智能体CLI或服务"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("配置模型 API 后独立运行，可自定义名称并直接对话"),
     ).toBeTruthy();
     expect(screen.getByText("连接远端服务器或电脑上的智能体")).toBeTruthy();
     expect(screen.getByText("在隔离浏览器中连接网页端智能体服务")).toBeTruthy();
@@ -173,15 +176,20 @@ describe("Agents", () => {
     await screen.findByText("Codex");
     await screen.findByText("Remote Hermes");
 
+    const oneSection = screen
+      .getByRole("heading", { name: "One 智能体" })
+      .closest("section");
     const localSection = screen
       .getByRole("heading", { name: "本地智能体" })
       .closest("section");
     const remoteSection = screen
       .getByRole("heading", { name: "远程智能体" })
       .closest("section");
+    expect(oneSection).not.toBeNull();
     expect(localSection).not.toBeNull();
     expect(remoteSection).not.toBeNull();
-    expect(within(localSection as HTMLElement).getByText("One")).toBeTruthy();
+    expect(within(oneSection as HTMLElement).getByText("One")).toBeTruthy();
+    expect(within(localSection as HTMLElement).queryByText("One")).toBeNull();
     expect(within(localSection as HTMLElement).getByText("Codex")).toBeTruthy();
     expect(
       within(remoteSection as HTMLElement).getByText("Remote Hermes"),
