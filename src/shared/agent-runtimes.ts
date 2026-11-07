@@ -165,6 +165,8 @@ export interface AgentRuntimeConfig {
   oneSkills?: string[];
   /** Explicit opt-in to this One agent’s private profile memory. */
   oneMemoryEnabled?: boolean;
+  /** Model IDs configured as choices in this One model connection. */
+  oneModels?: string[];
   /** Context capacity of One’s configured default model. */
   oneContextWindow?: number;
   /** Maximum model API requests per One run, including automatic summaries. */
