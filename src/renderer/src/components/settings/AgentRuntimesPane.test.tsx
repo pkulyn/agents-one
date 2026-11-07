@@ -1063,6 +1063,16 @@ describe("AgentRuntimesPane", () => {
     fireEvent.click(await screen.findByText("模型上下文、个性化、技能与记忆"));
 
     const instructions = await screen.findByLabelText("个性化指令");
+    const oneSettings = instructions.closest("details");
+    expect(
+      oneSettings?.querySelector('[data-agent-config-section="memory"]'),
+    ).not.toBeNull();
+    expect(
+      oneSettings?.querySelector('[data-agent-config-section="skills"]'),
+    ).not.toBeNull();
+    expect(
+      oneSettings?.querySelector('[data-agent-config-section="personality"]'),
+    ).not.toBeNull();
     fireEvent.change(instructions, {
       target: { value: "Unsaved instruction." },
     });

@@ -2,6 +2,12 @@
 
 新增智能体采用仅影响 Renderer 的三步向导，将 One 模型 API 配置与本地、远程、网页智能体接入并列呈现，而不改变既有 Runtime 保存、凭据存储或连接探测契约。
 
+## Agent management modes
+
+The agent manager separates configuring self-hosted One runtimes from managing connected local, remote, and web runtimes.
+
+The configuration destination lists only `kind: one` runtimes and reuses the existing runtime editor for model API, personalization instructions, memory, and per-agent skills. Its local navigation follows the ZCode-style categories; subagent settings are marked unavailable per agent, while plugins and MCP retain Agents One's app-level configuration. The access destination retains the existing connected-runtime dashboard, including connection probes and direct chat actions. The application-level left navigation remains owned by the layout and is not changed by this screen. See [[src/renderer/src/screens/Agents/Agents.tsx#Agents]] and [[src/renderer/src/components/settings/AgentRuntimesPane.tsx#AgentRuntimesPane]].
+
 ## Three-step flow
 
 第一步可选择配置内置 One 智能体，或按运行位置选择本地、远程、网页智能体；第二步配置头像、颜色、可自定义名称、智能体 ID 和接入类型；第三步才展示连接所需字段。One 已随应用内置，配置模型供应商、API 地址、模型 ID 和 API Key 后即可使用内置工具与执行能力。多个 One Runtime 使用独立 ID 和凭据；默认 ID 会避让已有项，重复 ID 会在探测与保存前阻止。已接入智能体仍使用原有管理表单，不进入该向导。

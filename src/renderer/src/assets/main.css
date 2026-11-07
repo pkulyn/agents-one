@@ -13189,6 +13189,437 @@ button.task-collaboration-inline-avatar:focus-visible {
   padding: 0;
 }
 
+/* Agent management keeps One configuration and connected-runtime access as
+   parallel destinations inside the existing app content area. */
+.agents-manager-container {
+  gap: 0;
+}
+
+.agents-manager-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 8px 0 18px;
+}
+
+.agents-manager-heading .agents-title {
+  margin: 0 0 5px;
+}
+
+.agents-manager-heading p {
+  margin: 0;
+  color: var(--text-secondary, #7c8591);
+  font-size: 13px;
+}
+
+.agents-manager-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 21px;
+}
+
+.agents-manager-mode {
+  min-width: 0;
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--border, #dce1e7);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  color: var(--text-primary, #242932);
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.agents-manager-mode:hover {
+  border-color: #aabfe9;
+}
+
+.agents-manager-mode.is-active {
+  border-color: #3973e8;
+  background: #f1f6ff;
+  box-shadow: inset 0 0 0 1px #3973e8;
+}
+
+.agents-manager-mode-icon {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+}
+
+.agents-manager-mode-icon--config {
+  color: #3269df;
+  background: #e5edfc;
+}
+
+.agents-manager-mode-icon--access {
+  color: #657486;
+  background: #edf1f5;
+}
+
+.agents-manager-mode-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agents-manager-mode-copy strong {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.agents-manager-mode-copy small {
+  color: var(--text-secondary, #7e8793);
+  font-size: 12px;
+}
+
+.agents-manager-mode > svg:last-child {
+  flex: 0 0 auto;
+  color: #9099a5;
+}
+
+.agents-config-view {
+  min-width: 0;
+  padding-bottom: 16px;
+}
+
+.agents-config-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 2px 12px;
+}
+
+.agents-config-heading > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.agents-config-heading h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.agents-config-heading span,
+.agents-config-heading small {
+  color: var(--text-secondary, #828b97);
+  font-size: 12px;
+}
+
+.agents-config-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 285px) minmax(0, 1fr);
+  align-items: start;
+  gap: 15px;
+}
+
+.agents-config-sidebar {
+  min-width: 0;
+  padding: 16px 13px 14px;
+  border: 1px solid var(--border, #dfe3e8);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+}
+
+.agents-config-sidebar-title,
+.agents-config-nav-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 7px;
+  color: #7f8894;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.agents-config-runtime-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 9px 0 18px;
+}
+
+.agents-config-runtime {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary, #252a32);
+  text-align: left;
+}
+
+.agents-config-runtime:hover {
+  background: #f6f8fb;
+}
+
+.agents-config-runtime.is-active {
+  border-color: #dbe5f7;
+  background: #f0f5ff;
+}
+
+.agents-config-runtime-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #e7eefc;
+  color: #386fe0;
+}
+
+.agents-config-runtime-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.agents-config-runtime-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agents-config-runtime-copy strong,
+.agents-config-runtime-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-config-runtime-copy strong {
+  font-size: 13px;
+}
+
+.agents-config-runtime-copy small {
+  color: #929aa5;
+  font-size: 10px;
+}
+
+.agents-config-runtime-state {
+  flex: 0 0 auto;
+  color: #9a7a46;
+  font-size: 10px;
+}
+
+.agents-config-runtime-state.is-ready {
+  color: #328957;
+}
+
+.agents-config-runtime-state.is-pending {
+  color: #a27636;
+}
+
+.agents-config-empty-list {
+  margin: 4px 7px 0;
+  padding: 13px 10px;
+  border: 1px dashed #dce1e7;
+  border-radius: 9px;
+  color: #8b949f;
+  font-size: 12px;
+  text-align: center;
+}
+
+.agents-config-nav-heading {
+  justify-content: flex-start;
+  padding-top: 14px;
+  border-top: 1px solid #edf0f3;
+}
+
+.agents-config-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+}
+
+.agents-config-sections button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #626c78;
+  text-align: left;
+  font-size: 12px;
+}
+
+.agents-config-section-copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agents-config-section-copy small {
+  overflow: hidden;
+  color: #929aa5;
+  font-size: 10px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-config-sections button:hover {
+  background: #f6f8fb;
+}
+
+.agents-config-sections button.is-active {
+  background: #edf3ff;
+  color: #3068dc;
+  font-weight: 650;
+}
+
+.agents-config-sections button:disabled {
+  color: #9ba3ae;
+  cursor: not-allowed;
+}
+
+.agents-config-sections button:disabled small {
+  color: #a7aeb8;
+}
+
+.agents-config-sidebar-note {
+  margin: 14px 5px 0;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f3;
+  color: #87909c;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.agents-config-editor {
+  min-width: 0;
+  scroll-margin-top: 14px;
+}
+
+.agents-config-editor .settings-modal-pane {
+  min-width: 0;
+  gap: 13px;
+  padding: 0;
+}
+
+.agents-config-editor .settings-card {
+  min-width: 0;
+  border-radius: 14px;
+}
+
+.agents-config-editor [data-agent-config-section] {
+  scroll-margin-top: 18px;
+}
+
+.agents-config-state {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  border: 1px solid var(--border, #dfe3e8);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  color: #7d8793;
+  font-size: 13px;
+}
+
+.agents-config-state--empty {
+  flex-direction: column;
+  text-align: center;
+}
+
+.agents-config-state--empty strong {
+  color: var(--text-primary, #252a32);
+  font-size: 16px;
+}
+
+.agents-config-state--empty p {
+  max-width: 420px;
+  margin: 0 0 5px;
+  color: #818a96;
+}
+
+.agents-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #dce5f6;
+  border-top-color: #3973e8;
+  border-radius: 50%;
+  animation: settings-spin 700ms linear infinite;
+}
+
+@media (max-width: 1100px) {
+  .agents-config-layout {
+    grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 850px) {
+  .agents-manager-modes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agents-manager-mode {
+    min-height: 78px;
+  }
+
+  .agents-config-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agents-config-runtime-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .agents-config-sections {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .agents-manager-container {
+    padding: 10px 12px;
+  }
+
+  .agents-config-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .agents-config-runtime-list,
+  .agents-config-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ========================================================================
    SESSIONS
    ======================================================================== */
