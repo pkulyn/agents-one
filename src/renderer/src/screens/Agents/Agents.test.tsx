@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const activeLocale = vi.hoisted(() => ({ value: "zh-CN" as "en" | "zh-CN" }));
@@ -7,14 +13,14 @@ vi.mock("../../components/useI18n", async () => {
   const { t } = await vi.importActual<typeof import("../../../../shared/i18n")>(
     "../../../../shared/i18n",
   );
+  const translate = (key: string, options?: Record<string, unknown>): string =>
+    t(key, activeLocale.value, options);
   return {
-    useI18n: () => ({
-      t: (key: string, options?: Record<string, unknown>) =>
-        t(key, activeLocale.value, options),
-    }),
+    useI18n: () => ({ t: translate }),
   };
 });
 
+import { NO_AGENT_RUNTIME_CAPABILITIES } from "../../../../shared/agent-runtimes";
 import Agents from "./Agents";
 
 function installHermesAPI(): {
@@ -116,6 +122,90 @@ describe("Agents", () => {
     expect(onChatWithRuntime).toHaveBeenCalledWith(
       expect.objectContaining({ id: "codex-local" }),
     );
+  });
+
+  // @lat: [[sidebar-navigation#Parallel Runtime selection]]
+  it("keeps One parallel with local and remote agents and starts each selected runtime directly", async () => {
+    const api = installHermesAPI();
+    api.listAgentRuntimes.mockResolvedValue([
+      {
+        id: "one-main",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: {},
+        lastProbe: { state: "healthy", checkedAt: Date.now() },
+        capabilitySnapshot: {
+          ...NO_AGENT_RUNTIME_CAPABILITIES,
+          chat: true,
+        },
+      },
+      {
+        id: "codex-local",
+        name: "Codex",
+        kind: "codex",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: { transport: "cli" },
+      },
+      {
+        id: "hermes-remote",
+        name: "Remote Hermes",
+        kind: "hermes",
+        location: "remote",
+        enabled: true,
+        managed: "user",
+        config: {
+          endpoint: "https://gateway.example/agents-one/v1",
+          remoteGateway: { protocol: "agents-one-v1" },
+          transport: "http",
+        },
+      },
+    ]);
+
+    const onChatWithRuntime = vi.fn();
+    render(<Agents onChatWithRuntime={onChatWithRuntime} />);
+
+    await screen.findByText("One");
+    await screen.findByText("Codex");
+    await screen.findByText("Remote Hermes");
+
+    const localSection = screen
+      .getByRole("heading", { name: "本地智能体" })
+      .closest("section");
+    const remoteSection = screen
+      .getByRole("heading", { name: "远程智能体" })
+      .closest("section");
+    expect(localSection).not.toBeNull();
+    expect(remoteSection).not.toBeNull();
+    expect(within(localSection as HTMLElement).getByText("One")).toBeTruthy();
+    expect(within(localSection as HTMLElement).getByText("Codex")).toBeTruthy();
+    expect(
+      within(remoteSection as HTMLElement).getByText("Remote Hermes"),
+    ).toBeTruthy();
+    expect(within(remoteSection as HTMLElement).queryByText("One")).toBeNull();
+
+    for (const [runtimeName, runtimeId] of [
+      ["One", "one-main"],
+      ["Codex", "codex-local"],
+      ["Remote Hermes", "hermes-remote"],
+    ]) {
+      const card = screen.getByText(runtimeName).closest("article");
+      expect(card).not.toBeNull();
+      const chatButton = within(card as HTMLElement).getByRole("button", {
+        name: "对话",
+      });
+      await waitFor(() => expect(chatButton).toBeEnabled());
+      fireEvent.click(chatButton);
+      expect(onChatWithRuntime).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: runtimeId }),
+      );
+    }
+
+    expect(onChatWithRuntime).toHaveBeenCalledTimes(3);
   });
 
   it("shows the unified transport label and connection hint without capability badges", async () => {
