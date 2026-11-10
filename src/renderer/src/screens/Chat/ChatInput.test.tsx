@@ -102,6 +102,37 @@ describe("ChatInput — slash command palette", () => {
     expect(screen.queryByText("agents")).toBeNull();
   });
 
+  it("keeps the palette non-modal and lets a skill command be selected", () => {
+    const { onSubmit, textarea } = renderInput([
+      {
+        name: "/skill-creator",
+        description: "Create or update a reusable skill",
+        category: "tools",
+      },
+    ]);
+
+    fireEvent.change(textarea, { target: { value: "/skill" } });
+    expect(
+      screen.getByRole("dialog", { name: "chat.commandsTitle" }),
+    ).toHaveAttribute("aria-modal", "false");
+
+    fireEvent.click(screen.getByRole("option", { name: /skill-creator/i }));
+    expect(onSubmit).toHaveBeenCalledWith("/skill-creator", []);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("dismisses the palette on outside pointer input without blocking it", () => {
+    const { textarea } = renderInput();
+    const outside = document.createElement("button");
+    document.body.append(outside);
+
+    fireEvent.change(textarea, { target: { value: "/lea" } });
+    fireEvent.pointerDown(outside);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    outside.remove();
+  });
+
   it("closes with Escape from anywhere in the modal while keeping the draft", () => {
     const { textarea } = renderInput();
 

@@ -356,9 +356,27 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         setSlashMenuOpen(false);
         inputRef.current?.focus();
       }
+      function handleOutsidePointerDown(event: PointerEvent): void {
+        const target = event.target;
+        if (!(target instanceof Node)) return;
+        if (
+          slashMenuRef.current?.contains(target) ||
+          inputRef.current?.contains(target)
+        ) {
+          return;
+        }
+        setSlashMenuOpen(false);
+      }
       document.addEventListener("keydown", handleGlobalEscape, true);
-      return () =>
+      document.addEventListener("pointerdown", handleOutsidePointerDown, true);
+      return () => {
         document.removeEventListener("keydown", handleGlobalEscape, true);
+        document.removeEventListener(
+          "pointerdown",
+          handleOutsidePointerDown,
+          true,
+        );
+      };
     }, [slashMenuOpen]);
 
     const searchableSlashCommands = useMemo(
@@ -607,7 +625,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               className="slash-menu"
               ref={slashMenuRef}
               role="dialog"
-              aria-modal="true"
+              aria-modal="false"
               aria-label={t("chat.commandsTitle")}
               onMouseDown={(event) => event.stopPropagation()}
             >
