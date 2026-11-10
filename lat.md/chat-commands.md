@@ -114,7 +114,7 @@ Visual presentation in the autocomplete popup is handled by [[src/renderer/src/s
 
 Custom icons render via `dangerouslySetInnerHTML`, so string SVGs passed to [[src/renderer/src/screens/Chat/slash/SlashCommandIcon.tsx#registerCustomSlashSvg]] are stripped of `<script>`/`<foreignObject>`, inline `on*` handlers, and `javascript:` URIs before storage — a defensive guard (real icons never need them), not a full sanitizer. Only register trusted markup; route remote/plugin-sourced SVG through a proper sanitizer first.
 
-Typing `/` opens a centered command palette in [[src/renderer/src/screens/Chat/ChatInput.tsx#ChatInput]] while the composer retains keyboard focus. Results filter by name or description, stay grouped by category, and support arrows, Enter or Tab, and Escape.
+Typing `/` opens a non-modal command picker above the composer in [[src/renderer/src/screens/Chat/ChatInput.tsx#ChatInput]]. It does not dim or block the conversation, so the user can keep working outside the results while the composer retains keyboard focus; clicking outside dismisses the picker. Results filter by name or description, stay grouped by category, and support mouse selection, arrows, Enter or Tab, and Escape.
 
 Escape is captured at the document level while the palette is open, so it closes even if focus has moved from the composer into a command row. Dismissal preserves the slash draft and returns focus to the composer.
 
