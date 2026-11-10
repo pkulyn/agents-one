@@ -148,7 +148,11 @@ describe("One SDK session isolation", () => {
   it("runs a real provider tool loop and resumes only its own saved session", async () => {
     dir = await mkdtemp(join(tmpdir(), "agents-one-sdk-"));
     const requests: Array<{
-      body: { messages: Array<{ role: string }> };
+      body: {
+        messages: Array<{ role: string }>;
+        max_tokens?: number;
+        max_completion_tokens?: number;
+      };
       authorization: string | undefined;
     }> = [];
     server = createServer((req, res) => {
@@ -222,6 +226,8 @@ describe("One SDK session isolation", () => {
       baseUrl: `http://127.0.0.1:${address.port}/v1`,
       modelId: "test-model",
       apiKey: "test-key",
+      contextWindow: 32768,
+      maxOutputTokens: 16000,
       tools: [
         {
           name: "lookup_answer",
@@ -246,6 +252,9 @@ describe("One SDK session isolation", () => {
       expect(toolCalls).toBe(1);
       expect(session.getLastAssistantText()).toContain("42");
       expect(requests).toHaveLength(2);
+      expect(
+        requests[0].body.max_tokens ?? requests[0].body.max_completion_tokens,
+      ).toBe(16000);
       expect(requests[0].authorization).toBe("Bearer test-key");
       expect(
         requests[1].body.messages.some(
@@ -288,9 +297,17 @@ describe("One SDK session isolation", () => {
       createOneSession({ ...options, sessionId: "missing" }),
     ).rejects.toThrow("session not found");
     const otherWorkspace = join(dir, "other");
-    await expect(
-      createOneSession({ ...options, workspace: otherWorkspace, sessionId }),
-    ).rejects.toThrow("session not found");
+    const rebound = await createOneSession({
+      ...options,
+      workspace: otherWorkspace,
+      sessionId,
+    });
+    try {
+      expect(rebound.session.sessionManager.getCwd()).toBe(otherWorkspace);
+      expect(rebound.session.getLastAssistantText()).toContain("42");
+    } finally {
+      rebound.session.dispose();
+    }
   }, 30000);
 
   it("does not enable builtin tools and rejects reserved names", async () => {

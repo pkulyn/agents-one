@@ -1,22 +1,22 @@
 import { useRuntimeOrder } from "../../components/RuntimeMenu";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, ChatBubble } from "../../assets/icons";
 import {
   AlertTriangle,
   Cloud,
   Globe2,
   RefreshCw,
-  Bot,
-  ChevronRight,
   Link2,
   Settings2,
+  SlidersHorizontal,
   UserRound,
   Brain,
-  Sparkles,
+  Puzzle,
   Terminal,
   X,
   Pencil,
   Save,
+  ImagePlus,
 } from "lucide-react";
 import { AppModal, AppModalTitle } from "../../components/modal/AppModal";
 import { useI18n } from "../../components/useI18n";
@@ -190,8 +190,36 @@ function AgentProfileEditorDialog({
   const { t } = useI18n();
   const [name, setName] = useState(runtime.name);
   const [color, setColor] = useState(runtime.color || PROFILE_COLORS[0]);
+  const [avatar, setAvatar] = useState<string | null>(runtime.avatar ?? null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function selectAvatar(file: File | undefined): void {
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
+      setAvatarError(t("agents.configProfileAvatarInvalid"));
+      return;
+    }
+    if (file.size > 480 * 1024) {
+      setAvatarError(t("agents.configProfileAvatarTooLarge"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = typeof reader.result === "string" ? reader.result : "";
+      if (!value) {
+        setAvatarError(t("agents.configProfileAvatarInvalid"));
+        return;
+      }
+      setAvatar(value);
+      setAvatarError(null);
+    };
+    reader.onerror = () =>
+      setAvatarError(t("agents.configProfileAvatarInvalid"));
+    reader.readAsDataURL(file);
+  }
 
   async function save(): Promise<void> {
     const displayName = name.trim();
@@ -204,7 +232,7 @@ function AgentProfileEditorDialog({
     const appearance: AgentRuntimeAppearance = {
       name: displayName,
       color,
-      avatar: runtime.avatar ?? null,
+      avatar,
     };
     try {
       onSaved(
@@ -226,7 +254,7 @@ function AgentProfileEditorDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      className="agents-profile-edit-modal"
+      className="agents-create-modal agents-profile-edit-modal"
       labelledBy="agent-profile-edit-title"
     >
       <div className="agents-create-modal-header">
@@ -246,6 +274,58 @@ function AgentProfileEditorDialog({
         </button>
       </div>
       <div className="agents-profile-edit-body">
+        <div className="agents-profile-edit-avatar">
+          <span className="agents-profile-edit-avatar-preview">
+            {avatar ? (
+              <img src={avatar} alt={t("agents.configProfileAvatarPreview")} />
+            ) : (
+              <OneAgentGlyph size={26} />
+            )}
+          </span>
+          <div className="agents-profile-edit-avatar-actions">
+            <div className="agents-profile-edit-avatar-buttons">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={busy}
+                onClick={() => avatarInputRef.current?.click()}
+              >
+                <ImagePlus size={14} aria-hidden="true" />
+                {t("agents.configProfileAvatarChange")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={busy || !avatar}
+                onClick={() => {
+                  setAvatar(null);
+                  setAvatarError(null);
+                }}
+              >
+                <X size={14} aria-hidden="true" />
+                {t("agents.configProfileAvatarRemove")}
+              </button>
+            </div>
+            <small>{t("agents.configProfileAvatarHint")}</small>
+            {avatarError && (
+              <small role="alert" className="agents-profile-edit-avatar-error">
+                {avatarError}
+              </small>
+            )}
+          </div>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            hidden
+            aria-label={t("agents.configProfileAvatar")}
+            disabled={busy}
+            onChange={(event) => {
+              selectAvatar(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+        </div>
         <label className="settings-field">
           <span className="settings-field-label">
             {t("agents.configProfileName")}
@@ -624,57 +704,49 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
     );
   }
 
+  const isExtensionSection =
+    activeConfigSection === "plugins" ||
+    activeConfigSection === "mcp" ||
+    activeConfigSection === "skills";
+
   return (
     <div className="agents-container agents-manager-container">
       <header className="agents-manager-heading">
-        <div>
+        <div className="agents-manager-heading-copy">
           <h2 className="agents-title">{t("agents.managerTitle")}</h2>
           <p>{t("agents.managerDescription")}</p>
         </div>
-      </header>
-
-      <div
-        className="agents-manager-modes"
-        role="tablist"
-        aria-label={t("agents.managerModes")}
-      >
-        <button
-          type="button"
-          id="agents-configuration-tab"
-          role="tab"
-          aria-selected={managerView === "configuration"}
-          aria-controls="agents-configuration-panel"
-          className={`agents-manager-mode${managerView === "configuration" ? " is-active" : ""}`}
-          onClick={() => setManagerView("configuration")}
+        <div
+          className="agents-manager-modes"
+          role="tablist"
+          aria-label={t("agents.managerModes")}
         >
-          <span className="agents-manager-mode-icon agents-manager-mode-icon--config">
-            <Settings2 size={19} aria-hidden="true" />
-          </span>
-          <span className="agents-manager-mode-copy">
+          <button
+            type="button"
+            id="agents-configuration-tab"
+            role="tab"
+            aria-selected={managerView === "configuration"}
+            aria-controls="agents-configuration-panel"
+            className={`agents-manager-mode${managerView === "configuration" ? " is-active" : ""}`}
+            onClick={() => setManagerView("configuration")}
+          >
+            <Settings2 size={14} aria-hidden="true" />
             <strong>{t("agents.configurationMode")}</strong>
-            <small>{t("agents.configurationModeDescription")}</small>
-          </span>
-          <ChevronRight size={17} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          id="agents-access-tab"
-          role="tab"
-          aria-selected={managerView === "access"}
-          aria-controls="agents-access-panel"
-          className={`agents-manager-mode${managerView === "access" ? " is-active" : ""}`}
-          onClick={() => setManagerView("access")}
-        >
-          <span className="agents-manager-mode-icon agents-manager-mode-icon--access">
-            <Link2 size={19} aria-hidden="true" />
-          </span>
-          <span className="agents-manager-mode-copy">
+          </button>
+          <button
+            type="button"
+            id="agents-access-tab"
+            role="tab"
+            aria-selected={managerView === "access"}
+            aria-controls="agents-access-panel"
+            className={`agents-manager-mode${managerView === "access" ? " is-active" : ""}`}
+            onClick={() => setManagerView("access")}
+          >
+            <Link2 size={14} aria-hidden="true" />
             <strong>{t("agents.accessManagementMode")}</strong>
-            <small>{t("agents.accessManagementModeDescription")}</small>
-          </span>
-          <ChevronRight size={17} aria-hidden="true" />
-        </button>
-      </div>
+          </button>
+        </div>
+      </header>
 
       {managerView === "configuration" ? (
         <>
@@ -684,23 +756,8 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
             role="tabpanel"
             aria-labelledby="agents-configuration-tab"
           >
-            <header className="agents-config-heading">
-              <div>
-                <h3>{t("agents.configuredAgentsTitle")}</h3>
-                <span>
-                  {t("agents.configuredAgentsCount", {
-                    count: configurableRuntimes.length,
-                  })}
-                </span>
-              </div>
-              <small>{t("agents.configuredAgentsHint")}</small>
-            </header>
             <div className="agents-config-layout">
               <aside className="agents-config-sidebar">
-                <div className="agents-config-sidebar-title">
-                  <span>{t("agents.oneConfigListTitle")}</span>
-                  <span>{configurableRuntimes.length}</span>
-                </div>
                 <div className="agents-config-runtime-list">
                   {configurableRuntimes.length ? (
                     configurableRuntimes.map((runtime) => {
@@ -733,18 +790,17 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                             </span>
                             <span className="agents-config-runtime-copy">
                               <strong>{runtime.name}</strong>
-                              <small>{runtime.id}</small>
-                            </span>
-                            <span
-                              className={`agents-config-runtime-state${configured ? " is-ready" : " is-pending"}`}
-                            >
-                              {!credentialStatesLoaded &&
-                              runtime.config.endpoint?.trim() &&
-                              runtime.config.model?.trim()
-                                ? t("agents.configCheckingCredential")
-                                : configured
-                                  ? t("agents.configAgentReady")
-                                  : t("agents.configAgentNeedsSetup")}
+                              <small
+                                className={`agents-config-runtime-state${configured ? " is-ready" : " is-pending"}`}
+                              >
+                                {!credentialStatesLoaded &&
+                                runtime.config.endpoint?.trim() &&
+                                runtime.config.model?.trim()
+                                  ? t("agents.configCheckingCredential")
+                                  : configured
+                                    ? t("agents.configAgentReady")
+                                    : t("agents.configAgentNeedsSetup")}
+                              </small>
                             </span>
                           </button>
                           <button
@@ -756,7 +812,6 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                             onClick={() => setProfileTarget(runtime)}
                           >
                             <Pencil size={13} aria-hidden="true" />
-                            <span>{t("agents.configEditProfileShort")}</span>
                           </button>
                         </div>
                       );
@@ -783,10 +838,9 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     }
                     onClick={() => setActiveConfigSection("model")}
                   >
-                    <Settings2 size={15} aria-hidden="true" />
+                    <SlidersHorizontal size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
                       <span>{t("agents.configModelSettings")}</span>
-                      <small>{t("agents.configModelSummary")}</small>
                     </span>
                   </button>
                   <button
@@ -799,7 +853,6 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     <UserRound size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
                       <span>{t("agents.configPersonalization")}</span>
-                      <small>{t("agents.configPersonalitySummary")}</small>
                     </span>
                   </button>
                   <button
@@ -812,46 +865,16 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     <Brain size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
                       <span>{t("agents.configMemory")}</span>
-                      <small>{t("agents.configMemorySummary")}</small>
                     </span>
                   </button>
                   <button
                     type="button"
-                    className={
-                      activeConfigSection === "subagents" ? "is-active" : ""
-                    }
-                    onClick={() => setActiveConfigSection("subagents")}
+                    className={isExtensionSection ? "is-active" : ""}
+                    onClick={() => setActiveConfigSection("plugins")}
                   >
-                    <Bot size={15} aria-hidden="true" />
+                    <Puzzle size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
-                      <span>{t("agents.configSubagents")}</span>
-                      <small>{t("agents.configSubagentsHint")}</small>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      activeConfigSection === "tools" ? "is-active" : ""
-                    }
-                    onClick={() => setActiveConfigSection("tools")}
-                  >
-                    <Link2 size={15} aria-hidden="true" />
-                    <span className="agents-config-section-copy">
-                      <span>{t("agents.configPluginsMcp")}</span>
-                      <small>{t("agents.configAppManagedTools")}</small>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      activeConfigSection === "skills" ? "is-active" : ""
-                    }
-                    onClick={() => setActiveConfigSection("skills")}
-                  >
-                    <Sparkles size={15} aria-hidden="true" />
-                    <span className="agents-config-section-copy">
-                      <span>{t("agents.configSkillsCommands")}</span>
-                      <small>{t("agents.configSkillsSummary")}</small>
+                      <span>{t("agents.configExtensions")}</span>
                     </span>
                   </button>
                 </nav>
@@ -866,6 +889,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     runtime={selectedConfigRuntime}
                     section={activeConfigSection}
                     onChanged={notifyRuntimeChanged}
+                    onSectionChange={setActiveConfigSection}
                   />
                 ) : !runtimesLoaded ? (
                   <div className="agents-config-state">

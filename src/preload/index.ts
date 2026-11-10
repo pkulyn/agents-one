@@ -490,6 +490,45 @@ const agentsOneAPI = {
     ipcRenderer.invoke("remove-agent-runtime", id),
   getOneRuntimeMemory: (id: string): Promise<string> =>
     ipcRenderer.invoke("get-one-runtime-memory", id),
+  getOneAgentAgentsMd: (id: string): Promise<string> =>
+    ipcRenderer.invoke("get-one-agent-agents-md", id),
+  saveOneAgentAgentsMd: (id: string, content: string): Promise<void> =>
+    ipcRenderer.invoke("save-one-agent-agents-md", id, content),
+  selectOnePluginDirectory: (): Promise<string | null> =>
+    ipcRenderer.invoke("select-one-plugin-directory"),
+  inspectOnePluginDirectory: (
+    directory: string,
+  ): Promise<{
+    id: string;
+    name: string;
+    version?: string;
+    directory: string;
+    skillCount: number;
+  }> => ipcRenderer.invoke("inspect-one-plugin-directory", directory),
+  listOneProviderModels: (
+    runtimeId: string,
+    endpoint: string,
+    apiType: string,
+    bearerToken?: string,
+  ): Promise<string[]> =>
+    ipcRenderer.invoke(
+      "list-one-provider-models",
+      runtimeId,
+      endpoint,
+      apiType,
+      bearerToken,
+    ),
+  setOneMcpSecrets: (
+    runtimeId: string,
+    serverId: string,
+    values: Record<string, string>,
+  ): Promise<void> =>
+    ipcRenderer.invoke("set-one-mcp-secrets", runtimeId, serverId, values),
+  testOneMcpServer: (
+    runtimeId: string,
+    serverId: string,
+  ): Promise<Array<{ name: string; description: string; readOnly: boolean }>> =>
+    ipcRenderer.invoke("test-one-mcp-server", runtimeId, serverId),
   saveOneRuntimeMemory: (id: string, content: string): Promise<void> =>
     ipcRenderer.invoke("save-one-runtime-memory", id, content),
   getOneProjectMemory: (
@@ -520,13 +559,37 @@ const agentsOneAPI = {
       unreadable?: boolean;
     };
   }> => ipcRenderer.invoke("get-agent-runtime-credential-status", id),
+  getOneProviderCredentialStatus: (
+    runtimeId: string,
+    providerId: string,
+  ): Promise<{
+    required: boolean;
+    configured: boolean;
+    storage?: {
+      protection: "os-protected" | "legacy-fallback" | "unavailable";
+      backend: string;
+      warning?: string;
+      unreadable?: boolean;
+    };
+  }> =>
+    ipcRenderer.invoke(
+      "get-one-provider-credential-status",
+      runtimeId,
+      providerId,
+    ),
   getAgentRuntimeDiagnostics: (id: string): Promise<AgentRuntimeDiagnostics> =>
     ipcRenderer.invoke("get-agent-runtime-diagnostics", id),
   setAgentRuntimeBearerToken: (
     id: string,
     bearerToken: string,
+    providerId?: string,
   ): Promise<{ configured: true; storage?: { warning?: string } }> =>
-    ipcRenderer.invoke("set-agent-runtime-bearer-token", id, bearerToken),
+    ipcRenderer.invoke(
+      "set-agent-runtime-bearer-token",
+      id,
+      bearerToken,
+      providerId,
+    ),
   setAgentRuntimeWorkspaceGatewayToken: (
     id: string,
     bearerToken: string,
@@ -1410,8 +1473,15 @@ const agentsOneAPI = {
     profile?: string,
   ): Promise<RuntimeConversation> =>
     ipcRenderer.invoke("fork-runtime-conversation", parentId, input, profile),
-  listRuntimeSkills: (): Promise<RuntimeSkillDescriptor[]> =>
-    ipcRenderer.invoke("list-runtime-skills"),
+  listRuntimeSkills: (runtimeId?: string): Promise<RuntimeSkillDescriptor[]> =>
+    ipcRenderer.invoke("list-runtime-skills", runtimeId),
+  importOneSkill: (
+    runtimeId: string,
+    skillId: string,
+  ): Promise<{ id: string; name: string }> =>
+    ipcRenderer.invoke("import-one-skill", runtimeId, skillId),
+  removeOneSkill: (runtimeId: string, name: string): Promise<void> =>
+    ipcRenderer.invoke("remove-one-skill", runtimeId, name),
   listQuickChats: (profile?: string): Promise<QuickChatConversation[]> =>
     ipcRenderer.invoke("list-quick-chats", profile),
   saveQuickChats: (

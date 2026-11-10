@@ -8,9 +8,12 @@ import {
 } from "../desktop-secret-store";
 import {
   getOneCredential,
+  getOneProviderCredential,
   oneCredentialKey,
   oneCredentialStatus,
+  oneProviderCredentialStatus,
   setOneCredential,
+  setOneProviderCredential,
 } from "./credentials";
 
 it("keeps distinct One credentials in the protected store and refuses plaintext fallback", () => {
@@ -48,6 +51,32 @@ it("keeps distinct One credentials in the protected store and refuses plaintext 
       "unavailable",
     );
     expect(getOneCredential("one-a")).toBeNull();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("keeps provider credentials isolated from the runtime credential", () => {
+  const root = mkdtempSync(join(tmpdir(), "one-provider-secrets-"));
+  const file = join(root, "secrets.json");
+  try {
+    configureDesktopSecretStore(
+      new DesktopSecretStore(file, {
+        available: true,
+        backend: "test",
+        encrypt: (value) => Buffer.from(value.split("").reverse().join("")),
+        decrypt: (value) => value.toString().split("").reverse().join(""),
+      }),
+    );
+    setOneCredential("one-a", "legacy-key");
+    setOneProviderCredential("one-a", "p-ark", "ark-key");
+    setOneProviderCredential("one-a", "p-openai", "openai-key");
+    expect(getOneProviderCredential("one-a", "p-ark")).toBe("ark-key");
+    expect(getOneProviderCredential("one-a", "p-openai")).toBe("openai-key");
+    expect(getOneProviderCredential("one-a", "p-missing")).toBeNull();
+    expect(oneProviderCredentialStatus("one-a", "p-ark").configured).toBe(true);
+    expect(getOneCredential("one-a")).toBe("legacy-key");
+    expect(readFileSync(file, "utf8")).not.toContain("ark-key");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

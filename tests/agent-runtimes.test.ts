@@ -1837,6 +1837,243 @@ describe("agent runtime registry", () => {
     );
   });
 
+  it("does not dispatch a One model when the active provider explicitly disables all models", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { runtimes } = await loadModules();
+    const saved = runtimes.saveAgentRuntime({
+      id: "one-empty",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "old-model",
+        oneActiveProviderId: "p-main",
+        oneProviders: [
+          {
+            id: "p-main",
+            name: "Main",
+            endpoint: "https://example.test/v1",
+            apiType: "openai-completions",
+            enabled: true,
+            models: ["old-model"],
+          },
+        ],
+        oneModelsByProvider: {
+          "openai-completions::https://example.test/v1": [],
+        },
+      },
+    });
+    expect((await runtimes.probeAgentRuntime(saved.id)).state).toBe("degraded");
+    const run = await runtimes.runAgentRuntimeTask(saved.id, {
+      prompt: "hello",
+      mode: "analysis",
+      model: "old-model",
+    });
+    expect(run.status).toBe("failed");
+    expect(startOneWorkerMock).not.toHaveBeenCalled();
+  });
+
+  it("runs and probes a text-only model without exposing tools or claiming workspace capabilities", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { runtimes } = await loadModules();
+    const { configureDesktopSecretStore, DesktopSecretStore } =
+      await import("../src/main/desktop-secret-store");
+    configureDesktopSecretStore(
+      new DesktopSecretStore(join(testHome, "secrets.json"), {
+        available: true,
+        backend: "test",
+        encrypt: (v) => Buffer.from(v),
+        decrypt: (v) => v.toString(),
+      }),
+    );
+    const saved = runtimes.saveAgentRuntime({
+      id: "one-text",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "text-model",
+        oneModelMetadata: {
+          "openai-completions::https://example.test/v1::text-model": {
+            contextWindow: 32768,
+            maxOutputTokens: 16000,
+            input: {
+              text: true,
+              image: false,
+              video: false,
+              pdf: false,
+              audio: false,
+            },
+            supportsToolCall: false,
+            supportsStructuredOutput: false,
+            source: "manual",
+          },
+        },
+      },
+    });
+    runtimes.setAgentRuntimeBearerToken(saved.id, "fake-review-key");
+    startOneWorkerMock.mockImplementationOnce(() => ({
+      completion: Promise.resolve({ sessionId: "probe", output: "OK" }),
+      cancel: vi.fn(),
+    }));
+    expect(await runtimes.probeAgentRuntime(saved.id)).toMatchObject({
+      state: "healthy",
+      capabilities: {
+        chat: true,
+        tools: false,
+        workspaceAccess: false,
+        artifacts: false,
+      },
+    });
+    expect(startOneWorkerMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      tools: [],
+      maxOutputTokens: 16000,
+      contextWindow: 32768,
+    });
+    let rejectRun!: (e: Error) => void;
+    startOneWorkerMock.mockImplementationOnce(() => ({
+      completion: new Promise((_r, reject) => {
+        rejectRun = reject;
+      }),
+      cancel: () => rejectRun(new Error("One task cancelled")),
+    }));
+    const run = await runtimes.startAgentRuntimeTask(saved.id, {
+      prompt: "hello",
+      mode: "analysis",
+    });
+    expect(startOneWorkerMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      tools: [],
+      maxOutputTokens: 16000,
+    });
+    await runtimes.cancelAgentRuntimeTask(run.id);
+  });
+
+  it("enumerates installed One copies even when no shared skill exists", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { runtimes } = await loadModules();
+    const saved = runtimes.saveAgentRuntime({
+      id: "one-owned",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: { agentTransport: "local-sdk" },
+    });
+    const { agentsOneProfileHome } =
+      await import("../src/main/agents-one-data-root");
+    const folder = join(
+      agentsOneProfileHome("default"),
+      "desktop",
+      "one",
+      saved.id,
+      "skills",
+      "owned",
+    );
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, "SKILL.md"),
+      "---\nname: My owned skill\n---\nInstructions",
+    );
+    expect(runtimes.listOneOwnedSkills(saved.id)).toEqual([
+      expect.objectContaining({ id: "one:owned", name: "My owned skill" }),
+    ]);
+    expect(() => runtimes.listOneOwnedSkills("unknown")).toThrow();
+  });
+
+  it("keeps multiple One providers and inherits the legacy runtime credential", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { runtimes } = await loadModules();
+    const { configureDesktopSecretStore, DesktopSecretStore } =
+      await import("../src/main/desktop-secret-store");
+    configureDesktopSecretStore(
+      new DesktopSecretStore(join(testHome, "one-provider-secrets.json"), {
+        available: true,
+        backend: "test",
+        encrypt: (value) => Buffer.from(value.split("").reverse().join("")),
+        decrypt: (value) => value.toString().split("").reverse().join(""),
+      }),
+    );
+    const saved = runtimes.saveAgentRuntime({
+      id: "one-provider-test",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        endpoint: "https://example.test/v1",
+        model: "model-test",
+        oneApiType: "openai-completions",
+      },
+    });
+    const {
+      getOneProviderCredential,
+      setOneCredential,
+      setOneProviderCredential,
+    } = await import("../src/main/one-runtime/credentials");
+    setOneCredential(saved.id, "legacy-key");
+    const withProviders = runtimes.saveAgentRuntime({
+      ...saved,
+      config: {
+        ...saved.config,
+        oneProviders: [
+          {
+            id: "p-ark",
+            name: "火山方舟",
+            endpoint: "https://example.test/v1",
+            apiType: "openai-completions",
+            enabled: true,
+            models: ["model-test"],
+          },
+        ],
+        oneActiveProviderId: "p-ark",
+      },
+    });
+    expect(withProviders.config.oneProviders).toHaveLength(1);
+    expect(withProviders.config.oneLegacyProviderId).toBe("p-ark");
+    expect(runtimes.getAgentRuntimeCredentialStatus(saved.id).configured).toBe(
+      true,
+    );
+    expect(() =>
+      runtimes.saveAgentRuntime({
+        ...withProviders,
+        config: {
+          ...withProviders.config,
+          oneProviders: [
+            {
+              id: "bad id",
+              name: "Broken",
+              endpoint: "https://example.test/v2",
+              apiType: "openai-completions",
+              enabled: true,
+              models: ["model-test"],
+            },
+          ],
+        },
+      }),
+    ).toThrow("provider identity");
+    expect(() =>
+      runtimes.saveAgentRuntime({
+        ...withProviders,
+        config: {
+          ...withProviders.config,
+          oneActiveProviderId: "p-missing",
+        },
+      }),
+    ).toThrow("active model provider");
+    setOneProviderCredential(saved.id, "p-ark", "provider-key");
+    expect(getOneProviderCredential(saved.id, "p-ark")).toBe("provider-key");
+    expect(
+      runtimes.getOneProviderCredentialStatus(saved.id, "p-ark").configured,
+    ).toBe(true);
+  });
+
   it("does not advertise the managed Hermes runtime when the local executable is absent", async () => {
     const { config, runtimes } = await loadModules();
     config.setConnectionConfig();

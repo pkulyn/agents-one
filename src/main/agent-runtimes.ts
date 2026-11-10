@@ -1,14 +1,20 @@
+import type { RuntimeSkillDescriptor } from "../shared/runtime-skills";
+import { discoverRuntimeSkills } from "./runtime-skills";
 import { prepareOneAttachments } from "./one-runtime/attachments";
 import { createOneDocumentTools } from "./one-runtime/document-tools";
 import { executeOneShell, oneShellTool } from "./one-runtime/shell-tool";
 import {
   readOneMemoryFile,
+  readOneAgentsMdFile,
   readOneProjectMemoryFile,
+  writeOneAgentsMdFile,
   writeOneMemoryFile,
   writeOneProjectMemoryFile,
 } from "./one-runtime/memory";
 import { homedir } from "node:os";
 import { loadOneSkills } from "./one-runtime/skills";
+import { loadOnePluginInstructions } from "./one-runtime/plugins";
+import { connectOneMcpTools } from "./one-runtime/mcp";
 import { resolveOneConversationWorkspace } from "./one-runtime/workspace-binding";
 import {
   commitOneRunBinding,
@@ -27,9 +33,16 @@ import {
 } from "./one-runtime/run-progress";
 import { createOneWorkspaceTools } from "./one-runtime/workspace-tools";
 import {
+  copyOneSkillDirectory,
+  removeOneSkillDirectory,
+} from "./one-runtime/skill-copy";
+import {
   getOneCredential,
+  getOneProviderCredential,
   oneCredentialStatus,
+  oneProviderCredentialStatus,
   setOneCredential,
+  setOneProviderCredential,
 } from "./one-runtime/credentials";
 import {
   bindCollaborationWorkingDirectory,
@@ -41,7 +54,14 @@ import { runtimeModelFailureKind } from "../shared/runtime-model-errors";
 import {
   isOneModelApiType,
   normalizeOneModelChoices,
+  normalizeOneModelLists,
+  normalizeOneModelMetadata,
+  oneModelProviderKey,
 } from "../shared/one-model-api";
+import {
+  normalizeOneMcpServers,
+  normalizeOnePlugins,
+} from "../shared/one-agent-extensions";
 import { respondToAgentsOneRemotePermission } from "./agents-one-remote-gateway";
 import {
   createRuntimePermissionBridge,
@@ -100,7 +120,7 @@ import {
 import { readDesktopConfig, writeDesktopConfig } from "./config";
 import { sendMessage, testRemoteConnection } from "./hermes";
 import { HERMES_SCRIPT } from "./installer";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, lstatSync, readFileSync } from "fs";
 import { delimiter, join } from "path";
 import {
   prepareRuntimeInputs,
@@ -1842,6 +1862,43 @@ function runtimeAdapterOptionsFrom(
   return options;
 }
 
+const ONE_PROVIDER_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+
+function normalizeOneProviders(
+  value: unknown,
+): AgentRuntimeConfig["oneProviders"] {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.length > 16)
+    throw new Error("One model providers are invalid.");
+  const seen = new Set<string>();
+  return value.map((raw) => {
+    if (!isRecord(raw)) throw new Error("One model providers are invalid.");
+    const id = typeof raw.id === "string" ? raw.id.trim() : "";
+    const name = typeof raw.name === "string" ? raw.name.trim() : "";
+    if (!ONE_PROVIDER_ID_PATTERN.test(id) || seen.has(id))
+      throw new Error("One model provider identity is invalid.");
+    seen.add(id);
+    if (!name || name.length > 80 || /[\0\r\n]/.test(name))
+      throw new Error("One model provider name is invalid.");
+    const endpoint =
+      typeof raw.endpoint === "string" ? raw.endpoint.trim() : "";
+    if (endpoint.length > 4096 || !/^https?:\/\/[^\s]+$/i.test(endpoint))
+      throw new Error("One model provider endpoint is invalid.");
+    if (!isOneModelApiType(raw.apiType))
+      throw new Error("One model provider API type is invalid.");
+    if (typeof raw.enabled !== "boolean")
+      throw new Error("One model provider enabled state is invalid.");
+    return {
+      id,
+      name,
+      endpoint,
+      apiType: raw.apiType,
+      enabled: raw.enabled,
+      models: normalizeOneModelChoices(raw.models) || [],
+    };
+  });
+}
+
 function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
   if (!isRecord(value)) return {};
   for (const key of Object.keys(value)) {
@@ -1979,6 +2036,31 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
   )
     throw new Error("One model call limit must be between 1 and 64.");
   const oneModels = normalizeOneModelChoices(value.oneModels);
+  const oneModelsByProvider = normalizeOneModelLists(value.oneModelsByProvider);
+  const oneProviders = normalizeOneProviders(value.oneProviders);
+  const oneActiveProviderId =
+    typeof value.oneActiveProviderId === "string"
+      ? value.oneActiveProviderId.trim()
+      : undefined;
+  const oneLegacyProviderId =
+    typeof value.oneLegacyProviderId === "string"
+      ? value.oneLegacyProviderId.trim()
+      : undefined;
+  if (
+    oneActiveProviderId &&
+    (!ONE_PROVIDER_ID_PATTERN.test(oneActiveProviderId) ||
+      !oneProviders?.some((provider) => provider.id === oneActiveProviderId))
+  )
+    throw new Error("One active model provider is invalid.");
+  if (
+    oneLegacyProviderId &&
+    (!ONE_PROVIDER_ID_PATTERN.test(oneLegacyProviderId) ||
+      !oneProviders?.some((provider) => provider.id === oneLegacyProviderId))
+  )
+    throw new Error("One legacy model provider is invalid.");
+  const oneModelMetadata = normalizeOneModelMetadata(value.oneModelMetadata);
+  const onePlugins = normalizeOnePlugins(value.onePlugins);
+  const oneMcpServers = normalizeOneMcpServers(value.oneMcpServers);
   const knownKeys = new Set([
     "endpoint",
     "remoteGateway",
@@ -1994,6 +2076,13 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     "oneSkills",
     "oneMemoryEnabled",
     "oneModels",
+    "oneModelsByProvider",
+    "oneProviders",
+    "oneActiveProviderId",
+    "oneLegacyProviderId",
+    "oneModelMetadata",
+    "onePlugins",
+    "oneMcpServers",
     "oneContextWindow",
     "oneMaxModelCalls",
     "oneImageInput",
@@ -2023,11 +2112,18 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
     ...(agent ? { agent } : {}),
     ...(adapterOptions ? { adapterOptions } : {}),
     oneInstructions: optionalString(value.oneInstructions, 100_000),
-    oneSkills: optionalStringArray(value.oneSkills, 32, 160),
+    oneSkills: optionalStringArray(value.oneSkills, 128, 160),
     ...(value.oneMemoryEnabled !== undefined
       ? { oneMemoryEnabled: value.oneMemoryEnabled as boolean }
       : {}),
     ...(oneModels ? { oneModels } : {}),
+    ...(oneModelsByProvider ? { oneModelsByProvider } : {}),
+    ...(oneProviders ? { oneProviders } : {}),
+    ...(oneActiveProviderId ? { oneActiveProviderId } : {}),
+    ...(oneLegacyProviderId ? { oneLegacyProviderId } : {}),
+    ...(oneModelMetadata ? { oneModelMetadata } : {}),
+    ...(onePlugins ? { onePlugins } : {}),
+    ...(oneMcpServers ? { oneMcpServers } : {}),
     ...(value.oneContextWindow !== undefined
       ? { oneContextWindow: value.oneContextWindow as number }
       : {}),
@@ -2587,12 +2683,91 @@ function remoteRuntimeForCredential(runtimeId: string): AgentRuntimeDefinition {
   return runtime;
 }
 
+function activeOneProviderId(
+  runtime: AgentRuntimeDefinition,
+): string | undefined {
+  const providerId = runtime.config.oneActiveProviderId;
+  if (!providerId || !runtime.config.oneProviders?.length) return undefined;
+  return runtime.config.oneProviders.some((item) => item.id === providerId)
+    ? providerId
+    : undefined;
+}
+
+function activeOneModelChoices(runtime: AgentRuntimeDefinition): string[] {
+  const providerId = activeOneProviderId(runtime);
+  if (providerId) {
+    const provider = runtime.config.oneProviders?.find(
+      (item) => item.id === providerId,
+    );
+    if (provider) {
+      const key = oneModelProviderKey(provider.endpoint, provider.apiType);
+      const enabled = runtime.config.oneModelsByProvider?.[key];
+      if (enabled !== undefined) return enabled;
+      return provider.models;
+    }
+  }
+  return runtime.config.oneModels || [];
+}
+
+function allOneModelChoices(runtime: AgentRuntimeDefinition): string[] {
+  const choices = new Set<string>(runtime.config.oneModels || []);
+  for (const provider of runtime.config.oneProviders || []) {
+    for (const model of provider.models) choices.add(model);
+  }
+  for (const models of Object.values(
+    runtime.config.oneModelsByProvider || {},
+  )) {
+    for (const model of models) choices.add(model);
+  }
+  return Array.from(choices);
+}
+
+/** Ignore a stale session/model override that the active provider no longer lists. */
+function resolveOneActiveModel(
+  runtime: AgentRuntimeDefinition,
+  requested?: string,
+): string | undefined {
+  const choices = activeOneModelChoices(runtime);
+  const providerId = activeOneProviderId(runtime);
+  if (providerId) {
+    const provider = runtime.config.oneProviders!.find(
+      (item) => item.id === providerId,
+    )!;
+    const enabled =
+      runtime.config.oneModelsByProvider?.[
+        oneModelProviderKey(provider.endpoint, provider.apiType)
+      ];
+    if (!provider.enabled || enabled?.length === 0) return undefined;
+  }
+  const candidate = requested?.trim();
+  if (candidate && choices.includes(candidate)) return candidate;
+  if (candidate && !allOneModelChoices(runtime).includes(candidate))
+    return candidate;
+  const configured = runtime.config.model?.trim();
+  if (configured && choices.includes(configured)) return configured;
+  return choices[0] || configured || candidate;
+}
+
+function oneCredentialForRuntime(
+  runtime: AgentRuntimeDefinition,
+): string | null {
+  const providerId = activeOneProviderId(runtime);
+  if (providerId) {
+    const scoped = getOneProviderCredential(runtime.id, providerId);
+    if (scoped) return scoped;
+    if (runtime.config.oneLegacyProviderId === providerId)
+      return getOneCredential(runtime.id);
+    return null;
+  }
+  return getOneCredential(runtime.id);
+}
+
 function runtimeAuth(
   runtime: AgentRuntimeDefinition,
 ): { bearerToken?: string } | undefined {
   if (runtime.needsReauthorization) return undefined;
   if (runtime.kind === "one" && runtime.location === "local") {
-    const token = getOneCredential(runtime.id);
+    const token = oneCredentialForRuntime(runtime);
     return token ? { bearerToken: token } : undefined;
   }
   if (isAgentsOneGatewayRuntime(runtime)) {
@@ -2612,6 +2787,16 @@ export function getAgentRuntimeCredentialStatus(runtimeId: string): {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!runtime) throw new Error("Runtime was not found.");
   if (runtime.kind === "one" && runtime.location === "local") {
+    const providerId = activeOneProviderId(runtime);
+    if (providerId) {
+      const scoped = oneProviderCredentialStatus(runtime.id, providerId);
+      if (
+        scoped.configured ||
+        runtime.config.oneLegacyProviderId !== providerId
+      )
+        return { required: true, ...scoped };
+      return { required: true, ...oneCredentialStatus(runtime.id) };
+    }
     return { required: true, ...oneCredentialStatus(runtime.id) };
   }
   if (!isAgentsOneGatewayRuntime(runtime)) {
@@ -2626,6 +2811,21 @@ export function getAgentRuntimeCredentialStatus(runtimeId: string): {
       runtime.needsReauthorization !== true && Boolean(configuredValue),
     ...(storage ? { storage } : {}),
   };
+}
+
+export function getOneProviderCredentialStatus(
+  runtimeId: string,
+  providerId: string,
+): { required: true; configured: boolean; storage?: DesktopSecretStatus } {
+  const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
+  if (!runtime || runtime.kind !== "one" || runtime.location !== "local")
+    throw new Error("One model provider was not found.");
+  if (!runtime.config.oneProviders?.some((item) => item.id === providerId))
+    throw new Error("One model provider was not found.");
+  const scoped = oneProviderCredentialStatus(runtimeId, providerId);
+  if (!scoped.configured && runtime.config.oneLegacyProviderId === providerId)
+    return { required: true, ...oneCredentialStatus(runtimeId) };
+  return { required: true, ...scoped };
 }
 
 function readDesktopManagedRuntimeSecret(key: string): string | null {
@@ -2681,6 +2881,23 @@ export function getOneRuntimeMemory(runtimeId: string): string {
     runtimeId,
   );
 }
+export function getOneAgentAgentsMd(runtimeId: string): string {
+  const runtime = requireOneRuntime(runtimeId);
+  const content = readOneAgentsMdFile(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    runtimeId,
+  );
+  return content ?? runtime.config.oneInstructions ?? "";
+}
+export function saveOneAgentAgentsMd(runtimeId: string, content: string): void {
+  assertAgentsOneWritesAllowed();
+  requireOneRuntime(runtimeId);
+  writeOneAgentsMdFile(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    runtimeId,
+    content,
+  );
+}
 export function saveOneRuntimeMemory(runtimeId: string, content: string): void {
   assertAgentsOneWritesAllowed();
   requireOneRuntime(runtimeId);
@@ -2725,19 +2942,90 @@ export function saveOneProjectMemory(
   );
 }
 
+function oneSkillsRoot(runtimeId: string): string {
+  return join(
+    agentsOneProfileHome(getActiveProfileNameSync()),
+    "desktop",
+    "one",
+    runtimeId,
+    "skills",
+  );
+}
+
+/** Enumerate installed One copies independently of their shared source. */
+export function listOneOwnedSkills(
+  runtimeId: string,
+): RuntimeSkillDescriptor[] {
+  requireOneRuntime(runtimeId);
+  const directory = oneSkillsRoot(runtimeId);
+  if (lstatSync(directory, { throwIfNoEntry: false })?.isSymbolicLink())
+    throw new Error("One skill directory is unsafe");
+  return discoverRuntimeSkills(directory, "user").map((skill) => ({
+    ...skill,
+    id: `one:${skill.id.slice(5)}`,
+  }));
+}
+
+/** Copy a shared user skill into One's own directory for safe ownership. */
+export function importOneSkill(
+  runtimeId: string,
+  skillId: string,
+): { id: string; name: string } {
+  assertAgentsOneWritesAllowed();
+  requireOneRuntime(runtimeId);
+  const isCodex = skillId.startsWith("user:");
+  const isAgents = skillId.startsWith("agents-user:");
+  if (!isCodex && !isAgents)
+    throw new Error("Only local user skills can be copied into One");
+  const name = skillId.slice(isCodex ? 5 : 12);
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(name))
+    throw new Error("One skill name is invalid");
+  const sourceRoot = isCodex
+    ? join(homedir(), ".codex", "skills")
+    : join(homedir(), ".agents", "skills");
+  copyOneSkillDirectory(
+    join(sourceRoot, name),
+    join(oneSkillsRoot(runtimeId), name),
+  );
+  return { id: "one:" + name, name };
+}
+
+/** Remove only One's copy; skills shared with other agents remain intact. */
+export function removeOneSkill(runtimeId: string, name: string): void {
+  assertAgentsOneWritesAllowed();
+  requireOneRuntime(runtimeId);
+  removeOneSkillDirectory(oneSkillsRoot(runtimeId), name);
+}
+
 export function setAgentRuntimeBearerToken(
   runtimeId: string,
   bearerToken: string,
+  providerId?: string,
 ): {
   configured: true;
   storage?: DesktopSecretStatus;
 } {
   const candidate = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (candidate?.kind === "one" && candidate.location === "local") {
+    if (providerId) {
+      if (
+        !candidate.config.oneProviders?.some((item) => item.id === providerId)
+      )
+        throw new Error("One model provider was not found.");
+      const storage = setOneProviderCredential(
+        runtimeId,
+        providerId,
+        bearerToken,
+      );
+      markRuntimeReauthorized(runtimeId);
+      return { configured: true, storage };
+    }
     const storage = setOneCredential(runtimeId, bearerToken);
     markRuntimeReauthorized(runtimeId);
     return { configured: true, storage };
   }
+  if (providerId)
+    throw new Error("Provider-scoped credentials require a local One runtime.");
   const runtime = remoteRuntimeForCredential(runtimeId);
   if (
     typeof bearerToken !== "string" ||
@@ -4297,6 +4585,21 @@ export function saveAgentRuntime(
 
   const runtimes = userRuntimes();
   const existingIndex = runtimes.findIndex((item) => item.id === runtime.id);
+  const previous = existingIndex >= 0 ? runtimes[existingIndex] : undefined;
+  if (
+    previous &&
+    !previous.config.oneProviders?.length &&
+    runtime.config.oneProviders?.length &&
+    runtime.config.oneActiveProviderId &&
+    !runtime.config.oneLegacyProviderId
+  ) {
+    // Preserve the pre-catalog credential by letting the active provider
+    // inherit the runtime-scoped secret until a provider key is saved.
+    runtime.config = {
+      ...runtime.config,
+      oneLegacyProviderId: runtime.config.oneActiveProviderId,
+    };
+  }
   if (existingIndex >= 0) runtimes[existingIndex] = runtime;
   else runtimes.push(runtime);
   writeUserRuntimes(runtimes);
@@ -4422,9 +4725,9 @@ async function probeRuntimeDefinition(
 
   if (runtime.kind === "one" && isLocalSdkTransport(runtime)) {
     const baseUrl = runtime.config.endpoint?.trim();
-    const modelId = runtime.config.model?.trim();
+    const modelId = resolveOneActiveModel(runtime);
     const apiKey =
-      transientAuth?.bearerToken?.trim() || getOneCredential(runtime.id);
+      transientAuth?.bearerToken?.trim() || oneCredentialForRuntime(runtime);
     if (!baseUrl || !modelId || !apiKey) {
       return {
         runtimeId: runtime.id,
@@ -4434,6 +4737,11 @@ async function probeRuntimeDefinition(
         message: "请配置模型 API 地址、模型 ID 和 API Key。",
       };
     }
+    const modelMetadata =
+      runtime.config.oneModelMetadata?.[
+        `${oneModelProviderKey(baseUrl, runtime.config.oneApiType)}::${modelId}`
+      ];
+    const toolsEnabled = modelMetadata?.supportsToolCall !== false;
     try {
       await probeOneProvider({
         workerPath: join(__dirname, "one-runtime-worker.mjs"),
@@ -4441,6 +4749,9 @@ async function probeRuntimeDefinition(
         modelId,
         apiKey,
         apiType: runtime.config.oneApiType,
+        supportsToolCall: toolsEnabled,
+        contextWindow: modelMetadata?.contextWindow,
+        maxOutputTokens: modelMetadata?.maxOutputTokens,
         timeoutMs: runtime.config.timeoutMs,
       });
       return {
@@ -4452,19 +4763,21 @@ async function probeRuntimeDefinition(
           taskDispatch: true,
           streaming: true,
           cancellation: true,
-          tools: true,
+          tools: toolsEnabled,
           memory: true,
           modelSelection: true,
           orchestration: false,
           readOnlyPlanning: true,
           mailbox: false,
           securityEvents: false,
-          artifacts: true,
-          workspaceAccess: true,
+          artifacts: toolsEnabled,
+          workspaceAccess: toolsEnabled,
           steering: "native",
           branching: "none",
         },
-        message: "模型连接及工具调用测试通过。",
+        message: toolsEnabled
+          ? "模型连接及工具调用测试通过。"
+          : "模型文本对话连接测试通过（未启用工具调用）。",
       };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -5753,16 +6066,26 @@ export async function startAgentRuntimeTask(
   }
 
   if (runtime.kind === "one" && isLocalSdkTransport(runtime)) {
+    let mcpBridge: Awaited<ReturnType<typeof connectOneMcpTools>> | undefined;
     try {
       if (task.mode === "implementation") {
         throw new Error("One 当前尚不支持隔离工作树模式。");
       }
       let textAttachmentContext = "";
       let images: Array<{ type: "image"; data: string; mimeType: string }> = [];
-      const activeModel = task.model?.trim() || runtime.config.model?.trim();
+      const activeModel = resolveOneActiveModel(runtime, task.model?.trim());
+      const providerKey = oneModelProviderKey(
+        runtime.config.endpoint,
+        runtime.config.oneApiType,
+      );
+      const activeModelMetadata = activeModel
+        ? runtime.config.oneModelMetadata?.[`${providerKey}::${activeModel}`]
+        : undefined;
+      const toolsEnabled = activeModelMetadata?.supportsToolCall !== false;
       const imageInputEnabled =
-        runtime.config.oneImageInput === true &&
-        activeModel === runtime.config.model?.trim();
+        activeModelMetadata?.input.image ??
+        (runtime.config.oneImageInput === true &&
+          activeModel === runtime.config.model?.trim());
       if (task.attachments?.length) {
         const preparationAbort = new AbortController();
         const preparation = prepareOneAttachments(
@@ -5792,15 +6115,19 @@ export async function startAgentRuntimeTask(
           ],
         };
       }
-      const token = getOneCredential(runtime.id);
+      const token = oneCredentialForRuntime(runtime);
       const endpoint = runtime.config.endpoint?.trim();
-      const modelId = task.model?.trim() || runtime.config.model?.trim();
+      const modelId = activeModel;
       if (!token || !endpoint || !modelId)
         throw new Error("请先配置 One 的模型地址、模型 ID 和 API Key。");
       const profileRoot = agentsOneProfileHome(
         task.profile || getActiveProfileNameSync(),
       );
       const stateDir = join(profileRoot, "desktop", "one", runtime.id);
+      const oneInstructions =
+        readOneAgentsMdFile(profileRoot, runtime.id) ??
+        runtime.config.oneInstructions ??
+        "";
       const collaborationWorkspace = collaborationWorkingDirectory(task);
       const binding =
         task.workspace || collaborationWorkspace
@@ -5823,21 +6150,34 @@ export async function startAgentRuntimeTask(
               requireOneProjectMemoryWorkspace(task.workspaceId),
             )
           : "";
-      const skillInstructions = loadOneSkills(
+      const skillLoad = loadOneSkills(
         join(homedir(), ".codex", "skills"),
         runtime.config.oneSkills || [],
         join(homedir(), ".agents", "skills"),
+        join(stateDir, "skills"),
+      );
+      const skillInstructions = skillLoad.instructions;
+      const pluginInstructions = loadOnePluginInstructions(
+        runtime.config.onePlugins || [],
+      );
+      const extensionToolIds = (runtime.config.oneMcpServers || []).map(
+        (server) =>
+          `${server.id}:${server.transport}:${server.enabled}:${server.allowedTools.join(",")}:${server.url || server.command || ""}`,
       );
       const definitionRevision = oneDefinitionRevision({
-        instructions: runtime.config.oneInstructions || "",
+        instructions: oneInstructions,
         skillIds: runtime.config.oneSkills || [],
-        skillInstructions,
+        skillInstructions: [...skillInstructions, ...pluginInstructions],
         endpoint,
         defaultModel: runtime.config.model || "",
         apiType: runtime.config.oneApiType,
-        contextWindow: runtime.config.oneContextWindow,
-        imageInput: runtime.config.oneImageInput === true,
+        contextWindow:
+          activeModelMetadata?.contextWindow ?? runtime.config.oneContextWindow,
+        maxOutputTokens: activeModelMetadata?.maxOutputTokens,
+        imageInput: imageInputEnabled,
+        supportsToolCall: toolsEnabled,
         memoryEnabled: runtime.config.oneMemoryEnabled === true,
+        extensionToolIds,
       });
       const snapshotHash = oneRunSnapshotHash({
         definitionRevision,
@@ -5887,6 +6227,38 @@ export async function startAgentRuntimeTask(
         expiresAt: Date.now() + task.timeoutMs,
         permission: task.mode === "analysis" ? "read" : "write",
       });
+      const mcpAbort = new AbortController();
+      const mcpPreparation = connectOneMcpTools(
+        runtime.id,
+        toolsEnabled ? runtime.config.oneMcpServers || [] : [],
+        // MCP tools may have arbitrary third-party side effects. Keep them
+        // read-only in analysis and safe-write modes; only the explicitly
+        // confirmed full-access task mode may expose user-allowlisted writes.
+        task.mode === "full_access" ? "write" : "read",
+        (serverName) => {
+          if (record.run.status === "running")
+            appendRuntimeEvent(
+              record,
+              "progress",
+              `MCP 服务「${serverName}」本轮未连接，One 将继续使用其他工具。`,
+              { code: "one_mcp_unavailable" },
+            );
+        },
+        mcpAbort.signal,
+      );
+      record.one = {
+        cancel: async () => {
+          mcpAbort.abort();
+          const pendingBridge = await mcpPreparation.catch(() => undefined);
+          await pendingBridge?.close();
+        },
+      };
+      mcpBridge = await mcpPreparation;
+      if (record.cancelRequested || record.run.status !== "running") {
+        await mcpBridge.close();
+        return { ...record.run };
+      }
+      record.one = undefined;
       const oneProgressCounters: OneSessionProgressCounters = {
         compactions: 0,
         requestRetries: 0,
@@ -5901,16 +6273,19 @@ export async function startAgentRuntimeTask(
         apiKey: token,
         apiType: runtime.config.oneApiType,
         imageInput: imageInputEnabled,
+        maxOutputTokens: activeModelMetadata?.maxOutputTokens,
         images,
         contextWindow:
-          modelId === runtime.config.model?.trim()
+          activeModelMetadata?.contextWindow ??
+          (modelId === runtime.config.model?.trim()
             ? runtime.config.oneContextWindow
-            : undefined,
+            : undefined),
         maxModelCalls: runtime.config.oneMaxModelCalls,
         systemPrompt: [
           "You are One, an assistant in Agents One.",
-          runtime.config.oneInstructions || "",
+          oneInstructions,
           ...skillInstructions,
+          ...pluginInstructions,
           ...(memory ? ["[One private memory]\n" + memory] : []),
           ...(projectMemory
             ? ["[Project memory for the selected workspace]\n" + projectMemory]
@@ -5924,16 +6299,24 @@ export async function startAgentRuntimeTask(
           dispatchPrompt +
           textAttachmentContext +
           "\n\n如果交付文件，请在最终答复中按以下格式逐个列出：\n[交付物]\n路径：文件相对路径\nSHA-256：文件工具返回的实际摘要\n变更摘要：简述；不要编造文件或摘要。",
-        tools:
-          task.mode === "full_access"
-            ? [...hostTools.tools, ...documentTools.tools, oneShellTool]
-            : [...hostTools.tools, ...documentTools.tools],
+        tools: !toolsEnabled
+          ? []
+          : task.mode === "full_access"
+            ? [
+                ...hostTools.tools,
+                ...documentTools.tools,
+                oneShellTool,
+                ...mcpBridge.tools,
+              ]
+            : [...hostTools.tools, ...documentTools.tools, ...mcpBridge.tools],
         executeTool: (name, parameters, signal) =>
           name.startsWith("document_")
             ? documentTools.executeTool(name, parameters, signal)
             : name === "host_shell" && task.mode === "full_access"
               ? executeOneShell(parameters, workspace, signal)
-              : hostTools.executeTool(name, parameters, signal),
+              : name.startsWith("mcp_")
+                ? mcpBridge!.executeTool(name, parameters, signal)
+                : hostTools.executeTool(name, parameters, signal),
         onReady: async (sessionId, sessionFile) => {
           if (record.run.status !== "running" || record.cancelRequested)
             throw new Error("Task cancelled");
@@ -6011,6 +6394,8 @@ export async function startAgentRuntimeTask(
               error.message !== "One task cancelled"
             )
               throw error;
+          } finally {
+            await mcpBridge?.close();
           }
         },
       };
@@ -6022,97 +6407,113 @@ export async function startAgentRuntimeTask(
         record.timeout = setTimeout(() => {
           void terminateLocalRuntime(record, "timed_out");
         }, task.timeoutMs);
-      void worker.completion.then(
-        async (result) => {
-          if (record.run.status !== "running") return;
-          if (record.terminationStatus) {
-            finishRuntimeRun(
-              record,
-              record.terminationStatus,
-              localRuntimeTerminationDetails(
+      void worker.completion
+        .then(
+          async (result) => {
+            if (record.run.status !== "running") return;
+            if (record.terminationStatus) {
+              finishRuntimeRun(
                 record,
                 record.terminationStatus,
-                result.output,
-              ),
-            );
-          } else {
-            try {
-              if (
-                !result.sessionFile ||
-                result.sessionId !== record.run.sessionId ||
-                !(await verifyOneSessionBinding(stateDir, result.sessionFile, {
-                  sessionId: result.sessionId,
-                  runId: id,
-                  definitionRevision,
-                  snapshotHash,
-                }))
-              )
-                throw new Error("One session binding could not be verified");
-              if (record.run.status !== "running" || record.cancelRequested)
-                return;
-              commitOneRunBinding(stateDir, id);
-            } catch {
-              if (record.run.status === "running" && !record.cancelRequested)
-                finishRuntimeRun(record, "failed", {
-                  error: "One 会话记录核验失败；已保留运行记录，请检查后重试。",
-                });
-              return;
-            }
-            if (task.sessionId) {
+                localRuntimeTerminationDetails(
+                  record,
+                  record.terminationStatus,
+                  result.output,
+                ),
+              );
+            } else {
               try {
-                const reconciled = await reconcileEarlierOneBindings(
-                  stateDir,
-                  runtime.id,
-                  result.sessionId,
-                  result.sessionFile,
-                  id,
-                );
-                if (reconciled && record.run.status === "running")
-                  appendRuntimeEvent(
-                    record,
-                    "progress",
-                    `One 已核对 ${reconciled} 条历史会话记录；原任务结果不变。`,
-                    { code: "one_session_reconciled" },
-                  );
+                if (
+                  !result.sessionFile ||
+                  result.sessionId !== record.run.sessionId ||
+                  !(await verifyOneSessionBinding(
+                    stateDir,
+                    result.sessionFile,
+                    {
+                      sessionId: result.sessionId,
+                      runId: id,
+                      definitionRevision,
+                      snapshotHash,
+                    },
+                  ))
+                )
+                  throw new Error("One session binding could not be verified");
+                if (record.run.status !== "running" || record.cancelRequested)
+                  return;
+                commitOneRunBinding(stateDir, id);
               } catch {
                 if (record.run.status === "running" && !record.cancelRequested)
-                  appendRuntimeEvent(
-                    record,
-                    "progress",
-                    "One 历史会话记录暂无法核对；后续续聊会重试。",
-                    { code: "one_session_reconcile_pending" },
-                  );
+                  finishRuntimeRun(record, "failed", {
+                    error:
+                      "One 会话记录核验失败；已保留运行记录，请检查后重试。",
+                  });
+                return;
               }
+              if (task.sessionId) {
+                try {
+                  const reconciled = await reconcileEarlierOneBindings(
+                    stateDir,
+                    runtime.id,
+                    result.sessionId,
+                    result.sessionFile,
+                    id,
+                  );
+                  if (reconciled && record.run.status === "running")
+                    appendRuntimeEvent(
+                      record,
+                      "progress",
+                      `One 已核对 ${reconciled} 条历史会话记录；原任务结果不变。`,
+                      { code: "one_session_reconciled" },
+                    );
+                } catch {
+                  if (
+                    record.run.status === "running" &&
+                    !record.cancelRequested
+                  )
+                    appendRuntimeEvent(
+                      record,
+                      "progress",
+                      "One 历史会话记录暂无法核对；后续续聊会重试。",
+                      { code: "one_session_reconcile_pending" },
+                    );
+                }
+              }
+              const artifacts = await verifyLocalDeliveryArtifacts(
+                result.output,
+                workspace,
+              );
+              if (record.run.status !== "running") return;
+              finishRuntimeRun(record, "succeeded", {
+                output: result.output,
+                sessionId: result.sessionId,
+                ...(artifacts.length ? { artifacts } : {}),
+              });
             }
-            const artifacts = await verifyLocalDeliveryArtifacts(
-              result.output,
-              workspace,
-            );
+          },
+          (error: unknown) => {
             if (record.run.status !== "running") return;
-            finishRuntimeRun(record, "succeeded", {
-              output: result.output,
-              sessionId: result.sessionId,
-              ...(artifacts.length ? { artifacts } : {}),
-            });
-          }
-        },
-        (error: unknown) => {
-          if (record.run.status !== "running") return;
-          if (record.terminationStatus) {
-            finishRuntimeRun(
-              record,
-              record.terminationStatus,
-              localRuntimeTerminationDetails(record, record.terminationStatus),
-            );
-          } else {
-            finishRuntimeRun(record, "failed", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        },
-      );
+            if (record.terminationStatus) {
+              finishRuntimeRun(
+                record,
+                record.terminationStatus,
+                localRuntimeTerminationDetails(
+                  record,
+                  record.terminationStatus,
+                ),
+              );
+            } else {
+              finishRuntimeRun(record, "failed", {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          },
+        )
+        .finally(() => {
+          void mcpBridge?.close();
+        });
       return { ...record.run };
     } catch (error) {
+      await mcpBridge?.close();
       if (record.cancelRequested || record.run.status !== "running")
         return { ...record.run };
       return finishRuntimeRun(record, "failed", {

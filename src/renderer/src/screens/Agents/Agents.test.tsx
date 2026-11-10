@@ -37,12 +37,15 @@ vi.mock("../../components/settings/OneAgentConfigurationPane", () => ({
   default: (props: {
     runtime: { id: string };
     section: string;
+    sectionTabs?: React.ReactNode;
   }): React.JSX.Element => (
     <div
       data-testid="one-agent-config-pane"
       data-runtime-id={props.runtime.id}
       data-section={props.section}
-    />
+    >
+      {props.sectionTabs}
+    </div>
   ),
 }));
 
@@ -52,6 +55,7 @@ import Agents from "./Agents";
 function installHermesAPI(): {
   listAgentRuntimes: ReturnType<typeof vi.fn>;
   probeAgentRuntime: ReturnType<typeof vi.fn>;
+  saveAgentRuntimeAppearance: ReturnType<typeof vi.fn>;
 } {
   const api = {
     listAgentRuntimes: vi.fn().mockResolvedValue([]),
@@ -60,6 +64,16 @@ function installHermesAPI(): {
       capabilities: {},
       checkedAt: Date.now(),
     }),
+    saveAgentRuntimeAppearance: vi.fn(async (id, appearance) => ({
+      id,
+      name: appearance.name,
+      kind: "one",
+      location: "local",
+      enabled: true,
+      managed: "user",
+      color: appearance.color,
+      config: {},
+    })),
   };
   Object.defineProperty(window, "agentsOneAPI", {
     configurable: true,
@@ -120,15 +134,21 @@ describe("Agents", () => {
     expect(screen.queryByRole("button", { name: "刷新" })).toBeNull();
     expect(screen.getByRole("button", { name: /个性化/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /记忆/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /技能与命令/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /子智能体/ })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /插件与 MCP/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /子智能体/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /命令/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /插件与扩展/ })).toBeEnabled();
     const memorySection = screen.getByRole("button", { name: /记忆/ });
     fireEvent.click(memorySection);
     expect(memorySection).toHaveClass("is-active");
     expect(screen.getByTestId("one-agent-config-pane")).toHaveAttribute(
       "data-section",
       "memory",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /插件与扩展/ }));
+    expect(screen.getByTestId("one-agent-config-pane")).toHaveAttribute(
+      "data-section",
+      "plugins",
     );
 
     fireEvent.click(screen.getAllByRole("button", { name: /研究助手/ })[0]);
@@ -154,6 +174,75 @@ describe("Agents", () => {
       expect(screen.getByTestId("one-agent-config-pane")).toHaveAttribute(
         "data-runtime-id",
         "research-one",
+      ),
+    );
+  });
+
+  it("opens a working profile editor with editable name and color", async () => {
+    const api = installHermesAPI();
+    api.listAgentRuntimes.mockResolvedValue([
+      {
+        id: "one-agent",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: { agentTransport: "local-sdk" },
+      },
+    ]);
+    render(<Agents />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "编辑 One 资料" }),
+    );
+    expect(await screen.findByLabelText("名称")).toHaveValue("One");
+    expect(screen.getByText("标识颜色")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "研究助手" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存资料" }));
+    await waitFor(() =>
+      expect(api.saveAgentRuntimeAppearance).toHaveBeenCalledWith(
+        "one-agent",
+        expect.objectContaining({ name: "研究助手" }),
+      ),
+    );
+  });
+
+  it("saves a selected avatar image from the profile editor", async () => {
+    const api = installHermesAPI();
+    api.listAgentRuntimes.mockResolvedValue([
+      {
+        id: "one-agent",
+        name: "One",
+        kind: "one",
+        location: "local",
+        enabled: true,
+        managed: "user",
+        config: { agentTransport: "local-sdk" },
+      },
+    ]);
+
+    render(<Agents onChatWithRuntime={() => {}} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "编辑 One 资料" }),
+    );
+    const fileInput = screen.getByLabelText("头像");
+    const file = new File([new Uint8Array([137, 80, 78, 71])], "avatar.png", {
+      type: "image/png",
+    });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    expect(await screen.findByAltText("头像预览")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "保存资料" }));
+    await waitFor(() =>
+      expect(api.saveAgentRuntimeAppearance).toHaveBeenCalledWith(
+        "one-agent",
+        expect.objectContaining({
+          avatar: expect.stringContaining("data:image/png;base64,"),
+        }),
       ),
     );
   });

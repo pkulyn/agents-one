@@ -127,6 +127,7 @@ export default defineConfig({
           "@anthropic-ai/claude-agent-sdk",
           "@electron-toolkit/utils",
           "electron-updater",
+          "@modelcontextprotocol/sdk",
           "i18next",
           "mammoth",
           "docx",
