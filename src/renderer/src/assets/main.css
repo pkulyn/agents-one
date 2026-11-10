@@ -22573,7 +22573,6 @@ body.tray-completion-document {
   }
 }
 
-
 /* Personalization editor. */
 .agent-one-personality-editor {
   overflow: hidden;
@@ -22642,7 +22641,11 @@ body.tray-completion-document {
   border-radius: 5px;
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  font: 500 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas,
+  font:
+    500 11.5px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
     monospace;
 }
 
@@ -22889,7 +22892,6 @@ body.tray-completion-document {
   }
 }
 
-
 /* Plugins, MCP and skills extension tabs. */
 .agent-one-ext-toolbar {
   display: flex;
@@ -23094,7 +23096,6 @@ body.tray-completion-document {
   }
 }
 
-
 /* Horizontal provider selector and bottom model actions. */
 .agent-one-provider-strip {
   display: flex;
@@ -23220,8 +23221,24 @@ body.tray-completion-document {
   margin-left: auto;
 }
 
-.agent-one-ext-diag .agent-one-memory-edit { margin-left: auto; flex: none; }
-.agent-one-ext-diag > span { min-width: 0; flex: 1; }
+.agent-one-ext-diag .agent-one-memory-edit {
+  margin-left: auto;
+  flex: none;
+}
+.agent-one-ext-diag > span {
+  min-width: 0;
+  flex: 1;
+}
 
-.agent-one-ext-head--available { margin-top: 18px; }
-.agent-one-ext-warn { margin-left: 7px; padding: 2px 6px; border-radius: 5px; background: var(--warning-bg); color: var(--warning); font-size: 10px; font-weight: 600; }
+.agent-one-ext-head--available {
+  margin-top: 18px;
+}
+.agent-one-ext-warn {
+  margin-left: 7px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 600;
+}
