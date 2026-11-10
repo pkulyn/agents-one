@@ -112,15 +112,86 @@ it("allows validated image attachments only for enabled models", async () => {
       size: bytes.length,
       sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
+    const mislabeled = await prepareOneAttachments(
+      undefined,
+      [
+        {
+          ...image,
+          name: "photo.jpg",
+          mime: "image/jpeg",
+          dataUrl: image.dataUrl.replace("image/png", "image/jpeg"),
+        },
+      ],
+      "",
+      signal,
+      true,
+    );
+    expect(mislabeled.images[0]).toEqual(prepared.images[0]);
+    expect(mislabeled.artifacts[0]).toMatchObject({
+      name: "photo.jpg",
+      mime: "image/png",
+      sha256: prepared.artifacts[0].sha256,
+    });
     await expect(
       prepareOneAttachments(
         undefined,
-        [{ ...image, mime: "image/jpeg" }],
+        [
+          {
+            ...image,
+            dataUrl:
+              "data:image/png;base64," +
+              Buffer.from("not an image").toString("base64"),
+          },
+        ],
         "",
         signal,
         true,
       ),
     ).rejects.toThrow("图片格式");
+  } finally {
+    vi.unstubAllEnvs();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  ["image/webp", "524946460c000000574542505650384c040000002f000000"],
+  ["image/jpeg", "ffd8ffe000104a46494600010100000100010000ffd9"],
+  [
+    "image/gif",
+    "47494638396101000100800000000000ffffff2c00000000010001000002024401003b",
+  ],
+])("uses %s content even when browser metadata says PNG", async (mime, hex) => {
+  const root = mkdtempSync(join(tmpdir(), "one-image-mime-"));
+  vi.resetModules();
+  vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", root);
+  try {
+    const { prepareOneAttachments } = await import("./attachments");
+    const bytes = Buffer.from(hex, "hex");
+    const result = await prepareOneAttachments(
+      undefined,
+      [
+        {
+          id: "image",
+          kind: "image",
+          name: "picture.png",
+          mime: "image/png",
+          size: bytes.length,
+          dataUrl: "data:image/png;base64," + bytes.toString("base64"),
+        },
+      ],
+      "",
+      new AbortController().signal,
+      true,
+    );
+    expect(result.images).toEqual([
+      { type: "image", mimeType: mime, data: bytes.toString("base64") },
+    ]);
+    expect(result.artifacts[0]).toMatchObject({
+      name: "picture.png",
+      mime,
+      size: bytes.length,
+    });
   } finally {
     vi.unstubAllEnvs();
     rmSync(root, { recursive: true, force: true });
