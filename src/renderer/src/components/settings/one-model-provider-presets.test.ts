@@ -13,6 +13,7 @@ describe("One model provider presets", () => {
       "ark-agent-plan",
       "deepseek",
       "openai",
+      "anthropic",
       "bigmodel",
       "zai",
       "kimi",
@@ -22,7 +23,9 @@ describe("One model provider presets", () => {
     for (const preset of ONE_MODEL_PROVIDER_PRESETS) {
       expect(preset.endpoint).toMatch(/^https:\/\//);
       expect(preset.model.trim()).not.toBe("");
-      expect(preset.apiType).toBe("openai-completions");
+      expect(preset.apiType).toBe(
+        preset.id === "anthropic" ? "anthropic-messages" : "openai-completions",
+      );
     }
   });
 

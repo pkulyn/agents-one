@@ -23,7 +23,7 @@ it("waits for asynchronous Main reconciliation before acknowledging a resumed se
       [
         "const path=require('node:path');let sessionFile;",
         "process.on('message',message=>{",
-        "if(message.type==='start'){sessionFile=path.join(message.options.stateDir,'sessions','resume.jsonl');process.send({type:'event',event:{type:'model-call-limit',value:message.options.maxModelCalls}});process.send({type:'ready',sessionId:'resume-session',sessionFile});}",
+        "if(message.type==='start'){sessionFile=path.join(message.options.stateDir,'sessions','resume.jsonl');process.send({type:'event',event:{type:'model-call-limit',value:message.options.maxModelCalls,maxOutputTokens:message.options.maxOutputTokens}});process.send({type:'ready',sessionId:'resume-session',sessionFile});}",
         "else if(message.type==='ready-ack'){process.send({type:'event',event:{type:'after-ready-ack'}});process.send({type:'complete',sessionId:'resume-session',output:'done',sessionFile});}",
         "else if(message.type==='cancel')process.send({type:'cancelled'});",
         "});",
@@ -41,6 +41,7 @@ it("waits for asynchronous Main reconciliation before acknowledging a resumed se
       modelId: "test-model",
       apiKey: "",
       maxModelCalls: 18,
+      maxOutputTokens: 16000,
       prompt: "continue",
       tools: [],
       executeTool: async () => "",
@@ -68,6 +69,7 @@ it("waits for asynchronous Main reconciliation before acknowledging a resumed se
     expect(events).toContainEqual({
       type: "model-call-limit",
       value: 18,
+      maxOutputTokens: 16000,
     });
     expect(events).toContainEqual({ type: "after-ready-ack" });
   } finally {

@@ -25,6 +25,8 @@ export interface OneSessionOptions {
   apiType?: OneModelApiType;
   /** Model context capacity; absent values use a conservative estimate. */
   contextWindow?: number;
+  /** Exact per-model output ceiling from the editable model capability entry. */
+  maxOutputTokens?: number;
   imageInput?: boolean;
   /** Per-run logical request limit; includes automatic summaries. */
   maxModelCalls?: number;
@@ -72,6 +74,16 @@ export async function createOneSession(
     throw new Error(
       "Model context window must be between 4096 and 2000000 tokens",
     );
+  if (
+    options.maxOutputTokens !== undefined &&
+    (!Number.isSafeInteger(options.maxOutputTokens) ||
+      options.maxOutputTokens < 1 ||
+      options.maxOutputTokens > 1_000_000 ||
+      options.maxOutputTokens >= contextWindow)
+  )
+    throw new Error("Model output token limit is invalid");
+  const maxTokens =
+    options.maxOutputTokens ?? Math.min(8192, Math.floor(contextWindow / 4));
   const tools = options.tools ?? [];
   const names = tools.map((tool) => tool.name);
   if (
@@ -128,7 +140,7 @@ export async function createOneSession(
         input: options.imageInput ? ["text", "image"] : ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow,
-        maxTokens: Math.min(8192, Math.floor(contextWindow / 4)),
+        maxTokens,
       },
     ],
   });
@@ -156,10 +168,20 @@ export async function createOneSession(
   const sessionPath = options.sessionId
     ? SessionManager.findById(workspace, options.sessionId, sessionsDir)
     : undefined;
-  if (options.sessionId && !sessionPath)
+  let resolvedSessionPath = sessionPath;
+  if (options.sessionId && !resolvedSessionPath) {
+    // A conversation can move from a projectless run to a project workspace.
+    // Find the existing session by ID across the runtime's session directory
+    // and re-open it under the current workspace so history is preserved.
+    const sessions = await SessionManager.listAll(sessionsDir);
+    resolvedSessionPath = sessions.find(
+      (item) => item.id === options.sessionId,
+    )?.path;
+  }
+  if (options.sessionId && !resolvedSessionPath)
     throw new Error("One session not found");
-  const sessionManager = sessionPath
-    ? SessionManager.open(sessionPath, sessionsDir)
+  const sessionManager = resolvedSessionPath
+    ? SessionManager.open(resolvedSessionPath, sessionsDir, workspace)
     : SessionManager.create(workspace, sessionsDir);
   if (resolve(sessionManager.getCwd()) !== workspace) {
     throw new Error("One session belongs to a different workspace");
@@ -174,7 +196,10 @@ export async function createOneSession(
       images: { autoResize: false },
       compaction: {
         enabled: true,
-        reserveTokens: Math.min(8192, Math.floor(contextWindow / 4)),
+        reserveTokens: Math.max(
+          maxTokens,
+          Math.min(8192, Math.floor(contextWindow / 4)),
+        ),
         keepRecentTokens: Math.min(8192, Math.floor(contextWindow / 4)),
       },
       retry: {

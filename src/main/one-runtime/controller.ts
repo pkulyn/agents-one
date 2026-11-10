@@ -17,6 +17,7 @@ export interface OneWorkerOptions {
   apiKey: string;
   apiType?: OneModelApiType;
   contextWindow?: number;
+  maxOutputTokens?: number;
   maxModelCalls?: number;
   imageInput?: boolean;
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
@@ -246,6 +247,7 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
     apiKey,
     apiType,
     contextWindow,
+    maxOutputTokens,
     maxModelCalls,
     imageInput,
     images,
@@ -265,6 +267,7 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
       apiKey,
       apiType,
       contextWindow,
+      maxOutputTokens,
       maxModelCalls,
       imageInput,
       systemPrompt,

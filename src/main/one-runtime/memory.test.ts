@@ -12,7 +12,9 @@ import { createHash } from "node:crypto";
 import { expect, it } from "vitest";
 import {
   readOneMemoryFile,
+  readOneAgentsMdFile,
   readOneProjectMemoryFile,
+  writeOneAgentsMdFile,
   writeOneMemoryFile,
   writeOneProjectMemoryFile,
 } from "./memory";
@@ -31,6 +33,26 @@ it("keeps editable memory scoped by profile and One identity", () => {
     expect(readOneMemoryFile(a, "one-a")).toBe("  Preference\n");
     writeOneMemoryFile(a, "one-a", "");
     expect(readOneMemoryFile(a, "one-a")).toBe("");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// @lat: [[main-process#Main Process#One session resume reconciliation#One AGENTS.md personalization#Loads and edits per-One AGENTS.md without changing connected agent instructions]]
+it("keeps each One AGENTS.md editable and isolated by profile and runtime", () => {
+  const root = mkdtempSync(join(tmpdir(), "one-agents-md-"));
+  try {
+    expect(readOneAgentsMdFile(root, "one-a")).toBeNull();
+    writeOneAgentsMdFile(root, "one-a", "# One A\nWork carefully.");
+    expect(readOneAgentsMdFile(root, "one-a")).toBe("# One A\nWork carefully.");
+    expect(readOneAgentsMdFile(root, "one-b")).toBeNull();
+    expect(
+      readOneAgentsMdFile(join(root, "other-profile"), "one-a"),
+    ).toBeNull();
+    expect(() => writeOneAgentsMdFile(root, "../other", "unsafe")).toThrow();
+    expect(() =>
+      writeOneAgentsMdFile(root, "one-a", "x".repeat(110000)),
+    ).toThrow();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

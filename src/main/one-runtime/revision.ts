@@ -22,8 +22,11 @@ export interface OneRevisionInputs {
   defaultModel: string;
   apiType?: OneModelApiType;
   contextWindow?: number;
+  maxOutputTokens?: number;
+  supportsToolCall?: boolean;
   imageInput: boolean;
   memoryEnabled: boolean;
+  extensionToolIds?: string[];
 }
 
 function digest(value: unknown): string {
@@ -32,10 +35,11 @@ function digest(value: unknown): string {
 
 /** Content-addressed definition revision; selected skill contents are included. */
 export function oneDefinitionRevision(input: OneRevisionInputs): string {
-  const { apiType, ...definition } = input;
+  const { apiType, supportsToolCall, ...definition } = input;
   return digest({
     schema: 1,
     ...definition,
+    ...(supportsToolCall === false ? { supportsToolCall: false } : {}),
     ...(apiType && apiType !== "openai-completions" ? { apiType } : {}),
   });
 }

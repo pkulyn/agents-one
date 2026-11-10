@@ -360,9 +360,9 @@ One supports text steering through its existing live Runtime input entry. Pi con
 
 ### One explicit skill resource loading
 
-One loads only selected user-authored SKILL.md documents as prompt text; it never imports or executes scripts or other extensions, and it rejects unavailable, unsafe, or out-of-scope selections.
+One loads only selected user-authored SKILL.md documents as prompt text; it never imports or executes scripts or other extensions. Missing, unsafe, or oversized selections are skipped so a stale skill ID cannot block an otherwise valid run.
 
-[[src/main/one-runtime/skills.ts#loadOneSkills]] resolves the selected source and reads only its SKILL.md within size limits. [[src/main/one-runtime/skills.test.ts]] verifies selected-source behavior and that an adjacent JavaScript file remains inert.
+[[src/main/one-runtime/skills.ts#loadOneSkills]] resolves the selected source and reads only its SKILL.md within size limits; up to 128 selected skills and 512 KB of prompt text are accepted. [[src/main/one-runtime/skills.test.ts]] verifies selected-source behavior, skipped missing entries, and that an adjacent JavaScript file remains inert. [[src/main/one-runtime/skill-copy.ts#copyOneSkillDirectory]] copies a shared user skill into One's runtime-owned `skills/` directory under a `one:` ID; [[src/main/one-runtime/skill-copy.ts#removeOneSkillDirectory]] removes only that copy, leaving the shared source intact for other agents.
 
 One requires the current SHA-256 from a prior read when replacing an existing workspace text or Word file; new files do not require a checksum. This stricter option applies only to One, while existing Gateway clients retain their prior write contract. Workspace search marks results incomplete when bounded, oversized or unreadable inputs are skipped.
 
@@ -403,3 +403,103 @@ The harmless-tool probe reports provider authentication/rate-limit failures with
 A healthy One probe returns the integration capability set only after the configured provider completes the actual harmless-tool probe; a failed probe advertises no enabled capabilities.
 
 [[src/main/agent-runtimes.ts#probeAgentRuntime]] persists the capability snapshot against the tested Runtime definition. A later settings change invalidates that snapshot, and a stale asynchronous probe cannot restore it. [[src/main/one-runtime/probe.ts#probeOneProvider]] exercises the provider/tool path. [[tests/agent-runtimes.test.ts]] verifies successful and failed probe declarations and the persisted snapshot.
+
+### One model provider catalog discovery
+
+One keeps model choices scoped to the selected provider endpoint and API protocol, and exposes model capability metadata per provider/model pair.
+
+[[src/main/one-runtime/model-catalog.ts#discoverOneProviderModels]] requests the provider's compatible model-list endpoint using protocol-specific authentication. The model settings UI combines the returned IDs with a small provider-specific starter list; unknown model IDs receive conservative editable metadata instead of guessed capabilities. Known metadata follows ZCode's public catalog and provider documentation, including Ark Agent Plan doubao-seed-2.0-mini at 262,144 context tokens with image input, and remains editable for gateway aliases.
+
+#### Lists models from the selected provider protocol
+
+Model discovery returns bounded, validated IDs from the endpoint and API protocol currently selected in One's model settings.
+
+[[src/main/one-runtime/model-catalog.ts#discoverOneProviderModels]] selects the `/models` route, rejects insecure remote HTTP and redirects, limits the response to 2 MB, and returns deduplicated model IDs. The renderer adds a discovered ID only after the user selects it.
+
+#### Uses API-specific discovery authentication
+
+The model catalog request uses the authentication header expected by the selected protocol without returning the API key to the renderer.
+
+OpenAI-compatible discovery uses a bearer token; Anthropic Messages uses `x-api-key` and `anthropic-version`; Google Generative AI uses `x-goog-api-key`. Tests verify the selected route and headers while credentials remain Main-process inputs.
+
+#### Prefills known model context and input capabilities
+
+Known model IDs populate context length, maximum output, and supported input modalities from the curated model catalog; other IDs remain marked for manual review.
+
+[[src/renderer/src/components/settings/one-model-catalog.ts#inferOneModelMetadata]] applies provider model rules, and the model editor stores changes against the provider/model key. The current catalog includes Ark, Kimi, DeepSeek, GLM, GPT, and Claude entries; it is a curated subset and not a live provider guarantee.
+
+#### Stores multiple providers with provider-scoped credentials
+
+One can keep several provider entries while the active provider remains projected into `endpoint`, `oneApiType`, and `model`, so execution keeps the original single-provider path.
+
+[[src/main/agent-runtimes.ts#runtimeConfigFrom]] validates provider ids, http(s) endpoints, protocols, and model lists, and requires `oneActiveProviderId` to reference a stored entry. [[src/main/agent-runtimes.ts#saveAgentRuntime]] records `oneLegacyProviderId` when a config first gains a provider catalog. [[src/main/one-runtime/credentials.ts#setOneProviderCredential]] stores each provider key in the protected store; `oneCredentialForRuntime` resolves the active provider's key and falls back to the pre-catalog runtime key only for the inherited provider. A requested model that belongs to another configured provider is ignored in favor of the active provider's configured model, while an explicit unknown override is still honored. [[src/renderer/src/components/settings/OneModelProvidersPane.tsx#OneModelProvidersPane]] manages the provider stack, active-model radio, per-provider API keys, and the add-model sheet.
+
+### One AGENTS.md personalization
+
+One reads a profile- and runtime-specific `AGENTS.md` as its editable system instructions, while retaining legacy `oneInstructions` as a fallback.
+
+[[src/main/one-runtime/memory.ts#readOneAgentsMdFile]] and [[src/main/one-runtime/memory.ts#writeOneAgentsMdFile]] store the bounded file under the selected Agents One profile and One runtime directory. Main revalidates the runtime before IPC reads and writes; One loads this content for each new task without altering connected agents or history.
+
+#### Loads and edits per-One AGENTS.md without changing connected agent instructions
+
+The personalization editor reads and saves one `AGENTS.md` for the selected One runtime, isolated from other profiles and connected runtimes.
+
+`memory.test.ts` verifies creation, readback, size limits, and profile/runtime isolation. Legacy `oneInstructions` remains readable until an `AGENTS.md` file is written.
+
+### One plugin import and execution boundary
+
+One imports compatible plugin directories as managed entries and loads only their declared skill documents; plugin scripts, hooks, and commands remain inert.
+
+[[src/main/one-runtime/plugins.ts#inspectOnePlugin]] validates the selected ZCode or Claude-style manifest. [[src/main/one-runtime/plugins.ts#loadOnePluginInstructions]] reads bounded `SKILL.md` files from declared folders only; plugin enable/disable state is persisted on the One runtime, and paths outside the imported folder or through symbolic links are rejected.
+
+#### Imports ZCode plugin skill instructions without running scripts or hooks
+
+An enabled imported plugin contributes its declared `SKILL.md` documents to One's system prompt, while adjacent plugin scripts and hooks are never executed.
+
+`plugins.test.ts` verifies manifest discovery, enabled/disabled behavior, and that a fixture hook remains inert.
+
+### One MCP tool connection and consent
+
+One connects only enabled MCP servers and exposes only tools explicitly allowlisted by the user; analysis and safe-write tasks receive only tools marked read-only, while writes require explicitly confirmed full access.
+
+[[src/main/one-runtime/mcp.ts#connectOneMcpTools]] supports stdio and Streamable HTTP transports, validates tool schemas, bounds tool descriptions/results, and closes transports with the task. MCP credentials stay in OS-protected Main storage; each server's approved tool names are stored with its One configuration.
+
+#### Restricts runtime tools to enabled and explicitly authorized server tools
+
+The runtime bridge filters discovered tools through the server's saved allowlist and the current task permission before registering them with One.
+
+`mcp.test.ts` starts a real local MCP server, calls an authorized read-only tool, and verifies that unapproved or write-only tools do not enter a read task.
+
+### One per-agent skill selection
+
+One can enable or disable discovered user skill documents independently for each local One runtime.
+
+The skills editor persists selected source-specific IDs in `oneSkills`, and One loads only those selected instructions for a new task. Selection does not execute skill scripts.
+
+#### Persists enabled and disabled local skills on One
+
+Saving the skills section stores enabled and disabled skill IDs on the selected One runtime without affecting other connected agents.
+
+`OneAgentConfigurationPane.test.tsx` verifies that selecting and then clearing a local skill persists both states.
+
+## One effective model and extension configuration
+
+One applies saved model and extension settings at every execution boundary; installed skill copies remain independent of shared source directories and enabled selections.
+
+### Installed skill ownership and enabled state
+
+Main enumerates the selected One runtime's private skill copies through the optional runtime id on the existing skill-list IPC; callers without an id retain shared discovery.
+
+[[src/main/agent-runtimes.ts#listOneOwnedSkills]] validates the One identity and lists private copies. [[src/renderer/src/components/settings/OneExtensionsPane.tsx#OneExtensionsPane]] separates installed copies from enabled selections and preserves valid selections when removing missing entries. Re-enabling a copy updates only the selection. [[src/main/one-runtime/skill-copy.ts#copyOneSkillDirectory]] preserves existing private content even if its shared source disappeared. Shared skills are never deleted by One uninstall.
+
+### Effective model limits and text-only execution
+
+An explicitly empty enabled-model list prevents execution, and explicit output-token limits pass through Main, controller IPC and the model request without a hidden proportional cap.
+
+[[src/main/one-runtime/controller.ts#startOneWorker]] forwards the output limit to [[src/main/one-runtime/session.ts#createOneSession]], which validates it against context capacity and reserves output space during compaction. The conservative default still applies when no limit is supplied. Main honors tool-call metadata: text-only models receive no host or MCP tools and use a plain-text connection probe; their capability snapshot does not claim tool or workspace access. Unsupported native video/audio/PDF inputs and structured-output requests are identified in settings rather than presented as functional switches. [[src/main/one-runtime/session.test.ts]] covers the actual HTTP token limit and authorized cross-workspace resume; [[tests/agent-runtimes.test.ts]] covers disabled models, text-only dispatch and private skill enumeration.
+
+### Bounded MCP discovery and cancellation
+
+MCP discovery follows bounded pages, expands local JSON pointers within bounded schemas, reports unsupported tools, and forwards cancellation to request initialization and tool calls.
+
+[[src/main/one-runtime/mcp.ts#connectOneMcpTools]] follows at most 32 distinct cursors and accepts at most 256 discovered tools per server. Local schema references are expanded under depth/node limits; remote references are rejected with a tool-specific diagnostic. Main registers a cancellation handle during MCP preparation before creating a model worker. SDK request signals transmit protocol cancellation, but an external server's already committed side effects cannot be undone by a local cancellation. [[src/main/one-runtime/mcp.test.ts]] uses real local MCP servers to verify pagination, local-reference tools, remote-reference diagnostics, repeated cursor rejection, and cancellation during initialization and calls.
