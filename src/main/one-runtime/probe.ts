@@ -12,6 +12,9 @@ export async function probeOneProvider(options: {
   apiKey: string;
   apiType?: OneModelApiType;
   timeoutMs?: number;
+  supportsToolCall?: boolean;
+  contextWindow?: number;
+  maxOutputTokens?: number;
 }): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "agents-one-probe-"));
   let called = false;
@@ -24,20 +27,27 @@ export async function probeOneProvider(options: {
       modelId: options.modelId,
       apiKey: options.apiKey,
       apiType: options.apiType,
+      contextWindow: options.contextWindow,
+      maxOutputTokens: options.maxOutputTokens,
       prompt:
-        "For this connectivity test, call the one_probe tool once, then reply OK.",
-      tools: [
-        {
-          name: "one_probe",
-          label: "Connection test",
-          description: "Confirm the model can call a tool.",
-          parameters: {
-            type: "object",
-            properties: {},
-            additionalProperties: false,
-          },
-        },
-      ],
+        options.supportsToolCall === false
+          ? "For this connectivity test, reply OK."
+          : "For this connectivity test, call the one_probe tool once, then reply OK.",
+      tools:
+        options.supportsToolCall === false
+          ? []
+          : [
+              {
+                name: "one_probe",
+                label: "Connection test",
+                description: "Confirm the model can call a tool.",
+                parameters: {
+                  type: "object",
+                  properties: {},
+                  additionalProperties: false,
+                },
+              },
+            ],
       executeTool: async (name) => {
         if (name !== "one_probe") throw new Error("Unexpected probe tool");
         called = true;
@@ -53,7 +63,12 @@ export async function probeOneProvider(options: {
       Math.min(Math.max(options.timeoutMs ?? 30000, 1000), 60000),
     );
     try {
-      await worker.completion;
+      const result = await worker.completion;
+      if (options.supportsToolCall === false) {
+        if (!result.output.trim())
+          throw new Error("The model returned an empty test reply");
+        return;
+      }
       if (!called) throw new Error("The model did not call the probe tool");
     } catch (error) {
       if (timedOut) throw new Error("Model connection test timed out");

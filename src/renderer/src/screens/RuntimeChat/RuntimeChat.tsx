@@ -47,6 +47,7 @@ import { RuntimeConversationWriter } from "./runtimeConversationWriter";
 import { TaskCollaborationArtifactPanel } from "../../components/TaskCollaborationArtifactPanel";
 import { TaskCollaborationTimeline } from "../../components/TaskCollaborationTimeline";
 import { useI18n } from "../../components/useI18n";
+import { oneActiveProviderLabel } from "../../components/settings/one-model-provider-presets";
 import { t as sharedTranslate } from "../../../../shared/i18n";
 import type { Attachment } from "../../../../shared/attachments";
 import type {
@@ -5148,18 +5149,27 @@ ${reason}`,
     runtimeModelProvider,
   ]);
 
-  const reportedModelLabel = [
-    lastReportedModel?.provider,
-    lastReportedModel?.id,
-  ]
+  const reportedProviderLabel =
+    lastReportedModel?.provider === "agents-one-model" &&
+    runtime.kind === "one" &&
+    runtime.location === "local"
+      ? oneActiveProviderLabel(runtime.config, t)
+      : lastReportedModel?.provider;
+  const reportedModelLabel = [reportedProviderLabel, lastReportedModel?.id]
     .filter((value): value is string => Boolean(value))
     .join(" / ");
+  const configuredModelLabel =
+    runtime.kind === "one" &&
+    runtime.location === "local" &&
+    configuredLocalModel
+      ? `${oneActiveProviderLabel(runtime.config, t)} / ${configuredLocalModel}`
+      : configuredLocalModel;
   // Once a Runtime reports the model it actually used, prefer that fact over
   // a requested/configured value that the provider may have rejected or
   // silently replaced with a fallback model.
   const runtimeModelLabel =
     reportedModelLabel ||
-    configuredLocalModel ||
+    configuredModelLabel ||
     t("runtimeChat.model.unavailable");
   const runtimeContextWindow =
     lastReportedUsage?.contextWindowTokens ??

@@ -92,6 +92,12 @@ Desktop builds preserve production dependency notices separately from the projec
 
 The build collector emits build assets copied to resources/notices by electron-builder. Missing required packages or version drift stop generation; commercial SDK terms remain distinct. [[tests/dependency-notices.test.ts]] checks preservation, reproducibility and refusal of incomplete build inputs.
 
+### Packaged main-process JavaScript dependencies
+
+Runtime-required JavaScript dependencies are bundled into the main-process output.
+
+electron-builder may omit JavaScript SDK entry files from `app.asar` when their published output is not collected. Native modules remain external and are packaged through the existing unpack rules. A release candidate must launch from its packaged directory with isolated user data before promotion, because source tests cannot detect a missing runtime entry file.
+
 ## Windows direct npm collection
 
 Windows packaging runs npm dependency collection through the active Node executable and its adjacent npm CLI. The build hook preserves the collector arguments and waits for process close and file flush before parsing JSON.

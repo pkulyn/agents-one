@@ -22,6 +22,9 @@ function runtimeMemoryDirectory(
 function memoryPath(profileRoot: string, runtimeId: string): string {
   return join(runtimeMemoryDirectory(profileRoot, runtimeId), "memory.md");
 }
+function agentsMdPath(profileRoot: string, runtimeId: string): string {
+  return join(runtimeMemoryDirectory(profileRoot, runtimeId), "AGENTS.md");
+}
 function projectMemoryPath(
   profileRoot: string,
   runtimeId: string,
@@ -124,6 +127,26 @@ export function writeOneMemoryFile(
     profileRoot,
     runtimeId,
     memoryPath(profileRoot, runtimeId),
+    content,
+  );
+}
+export function readOneAgentsMdFile(
+  profileRoot: string,
+  runtimeId: string,
+): string | null {
+  const path = agentsMdPath(profileRoot, runtimeId);
+  if (!existsSync(path)) return null;
+  return readMemoryPath(profileRoot, runtimeId, path);
+}
+export function writeOneAgentsMdFile(
+  profileRoot: string,
+  runtimeId: string,
+  content: string,
+): void {
+  writeMemoryPath(
+    profileRoot,
+    runtimeId,
+    agentsMdPath(profileRoot, runtimeId),
     content,
   );
 }

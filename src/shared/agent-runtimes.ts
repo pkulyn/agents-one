@@ -1,5 +1,5 @@
 import type { Attachment } from "./attachments";
-import type { OneModelApiType } from "./one-model-api";
+import type { OneModelApiType, OneModelMetadata } from "./one-model-api";
 import type {
   AgentEventStreamModel,
   AgentEventStreamSupport,
@@ -167,6 +167,20 @@ export interface AgentRuntimeConfig {
   oneMemoryEnabled?: boolean;
   /** Model IDs configured as choices in this One model connection. */
   oneModels?: string[];
+  /** Model choices grouped by their provider endpoint and API protocol. */
+  oneModelsByProvider?: Record<string, string[]>;
+  /** User-configured provider catalog; secrets remain in the protected store. */
+  oneProviders?: OneProviderConfig[];
+  /** Provider currently projected into endpoint/model for execution. */
+  oneActiveProviderId?: string;
+  /** Provider that inherits the pre-catalog runtime credential. */
+  oneLegacyProviderId?: string;
+  /** Editable context and input capabilities for configured models. */
+  oneModelMetadata?: Record<string, OneModelMetadata>;
+  /** User-imported declarative ZCode plugins; only their selected skill docs are read. */
+  onePlugins?: OnePluginConfig[];
+  /** One-scoped MCP servers and explicitly allowed tool names. */
+  oneMcpServers?: OneMcpServerConfig[];
   /** Context capacity of One’s configured default model. */
   oneContextWindow?: number;
   /** Maximum model API requests per One run, including automatic summaries. */
@@ -182,6 +196,35 @@ export interface AgentRuntimeConfig {
   /** Present only for independently configured Hermes agents. Secrets remain
    * in the protected store and are never embedded here. */
   hermes?: HermesRuntimeConnectionConfig;
+}
+
+export interface OneProviderConfig {
+  id: string;
+  name: string;
+  endpoint: string;
+  apiType: OneModelApiType;
+  enabled: boolean;
+  models: string[];
+}
+
+export interface OnePluginConfig {
+  id: string;
+  name: string;
+  version?: string;
+  directory: string;
+  enabled: boolean;
+}
+
+export interface OneMcpServerConfig {
+  id: string;
+  name: string;
+  transport: "stdio" | "http";
+  enabled: boolean;
+  command?: string;
+  args?: string[];
+  url?: string;
+  envNames?: string[];
+  allowedTools: string[];
 }
 
 export interface AgentRuntimeDefinition {

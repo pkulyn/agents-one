@@ -37,6 +37,14 @@ export const ONE_MODEL_PROVIDER_PRESETS: readonly OneModelProviderPreset[] = [
     imageInput: true,
   },
   {
+    id: "anthropic",
+    label: "Anthropic",
+    endpoint: "https://api.anthropic.com",
+    model: "claude-sonnet-5-5",
+    apiType: "anthropic-messages",
+    imageInput: true,
+  },
+  {
     id: "bigmodel",
     label: "智谱 BigModel API",
     endpoint: "https://open.bigmodel.cn/api/paas/v4",
@@ -84,4 +92,49 @@ export function getOneModelProviderPresetId(
         preset.endpoint === endpoint && preset.apiType === effectiveApiType,
     )?.id || "custom"
   );
+}
+
+/** User-facing provider name for the active One model connection. */
+export function oneProviderDisplayLabel(
+  endpoint: string | undefined,
+  apiType: OneModelApiType | undefined,
+  t: (key: string) => string,
+): string {
+  const presetId = getOneModelProviderPresetId(endpoint, apiType);
+  if (presetId === "ark-agent-plan") return t("agents.configProviderArk");
+  if (presetId === "deepseek") return t("agents.configProviderDeepSeek");
+  if (presetId === "openai") return t("agents.configProviderOpenAI");
+  if (presetId === "anthropic") return t("agents.configProviderAnthropic");
+  const preset = ONE_MODEL_PROVIDER_PRESETS.find(
+    (item) => item.id === presetId,
+  );
+  if (preset) return preset.label;
+  if (!endpoint?.trim()) return t("agents.configProviderCustom");
+  try {
+    return new URL(endpoint).hostname;
+  } catch {
+    return endpoint;
+  }
+}
+
+/** Prefer a user-renamed provider; fall back to the preset/host label. */
+export function oneActiveProviderLabel(
+  config: {
+    endpoint?: string;
+    oneApiType?: OneModelApiType;
+    oneProviders?: readonly {
+      id: string;
+      name: string;
+      endpoint: string;
+      apiType: OneModelApiType;
+    }[];
+    oneActiveProviderId?: string;
+  },
+  t: (key: string) => string,
+): string {
+  const provider = config.oneProviders?.find(
+    (item) => item.id === config.oneActiveProviderId,
+  );
+  if (provider?.name?.trim()) return provider.name.trim();
+  return oneProviderDisplayLabel(config.endpoint, config.oneApiType, t);
 }

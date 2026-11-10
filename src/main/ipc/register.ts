@@ -1,6 +1,8 @@
 import {
   getOneProjectMemory,
+  getOneAgentAgentsMd,
   getOneRuntimeMemory,
+  saveOneAgentAgentsMd,
   saveOneProjectMemory,
   saveOneRuntimeMemory,
 } from "../agent-runtimes";
@@ -230,6 +232,15 @@ import {
 import { detectLocalCliPaths } from "../local-cli-detect";
 import { listRuntimeAdapterManifests } from "../runtime-adapters/registry";
 import { discoverRuntimeSkills } from "../runtime-skills";
+import { inspectOnePlugin } from "../one-runtime/plugins";
+import {
+  getOneCredential,
+  getOneMcpSecrets,
+  setOneMcpSecrets,
+} from "../one-runtime/credentials";
+import { inspectOneMcpServer } from "../one-runtime/mcp";
+import { discoverOneProviderModels } from "../one-runtime/model-catalog";
+import { isOneModelApiType } from "../../shared/one-model-api";
 import { homedir } from "os";
 import {
   activeAgentRuntimeTaskCount,
@@ -240,6 +251,10 @@ import {
   executeAgentRuntimeCommand,
   stopAcceptingAgentRuntimeTasks,
   getAgentRuntimeCredentialStatus,
+  getOneProviderCredentialStatus,
+  importOneSkill,
+  listOneOwnedSkills,
+  removeOneSkill,
   getAgentRuntimeDiagnostics,
   getAgentRuntimeRun,
   getAgentRuntimeCommandCatalog,
@@ -999,6 +1014,95 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("get-one-runtime-memory", (_event, id: string) =>
     getOneRuntimeMemory(id),
   );
+  ipcMain.handle("get-one-agent-agents-md", (_event, id: string) =>
+    getOneAgentAgentsMd(id),
+  );
+  ipcMain.handle(
+    "save-one-agent-agents-md",
+    (_event, id: string, content: string) => saveOneAgentAgentsMd(id, content),
+  );
+  ipcMain.handle("select-one-plugin-directory", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = win
+      ? await dialog.showOpenDialog(win, {
+          title: "选择 ZCode 插件文件夹",
+          buttonLabel: "导入插件",
+          properties: ["openDirectory"],
+        })
+      : await dialog.showOpenDialog({
+          title: "选择 ZCode 插件文件夹",
+          buttonLabel: "导入插件",
+          properties: ["openDirectory"],
+        });
+    return result.canceled || !result.filePaths.length
+      ? null
+      : result.filePaths[0];
+  });
+  ipcMain.handle("inspect-one-plugin-directory", (_event, directory: string) =>
+    inspectOnePlugin(directory),
+  );
+  ipcMain.handle(
+    "list-one-provider-models",
+    (
+      _event,
+      runtimeId: string,
+      endpoint: string,
+      apiType: unknown,
+      bearerToken?: string,
+    ) => {
+      const runtime = listAgentRuntimes().find(
+        (item) =>
+          item.id === runtimeId &&
+          item.kind === "one" &&
+          item.location === "local",
+      );
+      if (!runtime) throw new Error("One runtime is not available.");
+      if (typeof endpoint !== "string" || endpoint.length > 4096)
+        throw new Error("模型 API 地址无效。");
+      if (!isOneModelApiType(apiType)) throw new Error("模型 API 协议无效。");
+      if (bearerToken !== undefined && typeof bearerToken !== "string")
+        throw new Error("模型 API key 无效。");
+      const apiKey = bearerToken?.trim() || getOneCredential(runtimeId) || "";
+      return discoverOneProviderModels(endpoint, apiType, apiKey);
+    },
+  );
+  ipcMain.handle(
+    "set-one-mcp-secrets",
+    (
+      _event,
+      runtimeId: string,
+      serverId: string,
+      values: Record<string, string>,
+    ) => {
+      const runtime = listAgentRuntimes().find(
+        (item) =>
+          item.id === runtimeId &&
+          item.kind === "one" &&
+          item.location === "local",
+      );
+      if (
+        !runtime?.config.oneMcpServers?.some((server) => server.id === serverId)
+      )
+        throw new Error("One MCP server is not configured.");
+      return setOneMcpSecrets(runtimeId, serverId, values);
+    },
+  );
+  ipcMain.handle(
+    "test-one-mcp-server",
+    async (_event, runtimeId: string, serverId: string) => {
+      const runtime = listAgentRuntimes().find(
+        (item) =>
+          item.id === runtimeId &&
+          item.kind === "one" &&
+          item.location === "local",
+      );
+      const server = runtime?.config.oneMcpServers?.find(
+        (item) => item.id === serverId,
+      );
+      if (!server) throw new Error("One MCP server is not configured.");
+      return inspectOneMcpServer(server, getOneMcpSecrets(runtimeId, serverId));
+    },
+  );
   ipcMain.handle(
     "save-one-runtime-memory",
     (_event, id: string, content: string) => saveOneRuntimeMemory(id, content),
@@ -1021,18 +1125,23 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle(
     "set-agent-runtime-bearer-token",
-    async (_event, id: string, bearerToken: string) => {
+    async (_event, id: string, bearerToken: string, providerId?: string) => {
       const isOne = listAgentRuntimes().some(
         (runtime) =>
           runtime.id === id &&
           runtime.kind === "one" &&
           runtime.location === "local",
       );
-      const result = setAgentRuntimeBearerToken(id, bearerToken);
+      const result = setAgentRuntimeBearerToken(id, bearerToken, providerId);
       if (isOne && process.platform === "win32")
         await waitForWindowsSecretMetadata(app.getPath("userData"));
       return result;
     },
+  );
+  ipcMain.handle(
+    "get-one-provider-credential-status",
+    (_event, id: string, providerId: string) =>
+      getOneProviderCredentialStatus(id, providerId),
   );
   ipcMain.handle(
     "set-agent-runtime-workspace-gateway-token",
@@ -2061,7 +2170,8 @@ export function registerIpcHandlers(context: IpcContext): void {
     ) => forkRuntimeConversation(parentId, input, profile),
   );
 
-  ipcMain.handle("list-runtime-skills", () => [
+  ipcMain.handle("list-runtime-skills", (_event, runtimeId?: string) => [
+    ...(runtimeId === undefined ? [] : listOneOwnedSkills(runtimeId)),
     ...discoverRuntimeSkills(join(homedir(), ".codex", "skills"), "user"),
     ...discoverRuntimeSkills(join(homedir(), ".agents", "skills"), "user").map(
       (skill) => ({
@@ -2074,6 +2184,17 @@ export function registerIpcHandlers(context: IpcContext): void {
       "project",
     ),
   ]);
+
+  ipcMain.handle(
+    "import-one-skill",
+    (_event, runtimeId: string, skillId: string) =>
+      importOneSkill(runtimeId, skillId),
+  );
+  ipcMain.handle(
+    "remove-one-skill",
+    (_event, runtimeId: string, name: string) =>
+      removeOneSkill(runtimeId, name),
+  );
 
   ipcMain.handle("list-quick-chats", (_event, profile?: string) =>
     listQuickChats(profile),

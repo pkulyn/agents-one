@@ -381,6 +381,31 @@ interface AgentsOneAPI {
   ) => Promise<AgentRuntimeDefinition>;
   removeAgentRuntime: (id: string) => Promise<boolean>;
   getOneRuntimeMemory: (id: string) => Promise<string>;
+  getOneAgentAgentsMd: (id: string) => Promise<string>;
+  saveOneAgentAgentsMd: (id: string, content: string) => Promise<void>;
+  selectOnePluginDirectory: () => Promise<string | null>;
+  inspectOnePluginDirectory: (directory: string) => Promise<{
+    id: string;
+    name: string;
+    version?: string;
+    directory: string;
+    skillCount: number;
+  }>;
+  listOneProviderModels: (
+    runtimeId: string,
+    endpoint: string,
+    apiType: string,
+    bearerToken?: string,
+  ) => Promise<string[]>;
+  setOneMcpSecrets: (
+    runtimeId: string,
+    serverId: string,
+    values: Record<string, string>,
+  ) => Promise<void>;
+  testOneMcpServer: (
+    runtimeId: string,
+    serverId: string,
+  ) => Promise<Array<{ name: string; description: string; readOnly: boolean }>>;
   saveOneRuntimeMemory: (id: string, content: string) => Promise<void>;
   getOneProjectMemory: (
     runtimeId: string,
@@ -401,10 +426,24 @@ interface AgentsOneAPI {
       unreadable?: boolean;
     };
   }>;
+  getOneProviderCredentialStatus: (
+    runtimeId: string,
+    providerId: string,
+  ) => Promise<{
+    required: boolean;
+    configured: boolean;
+    storage?: {
+      protection: "os-protected" | "legacy-fallback" | "unavailable";
+      backend: string;
+      warning?: string;
+      unreadable?: boolean;
+    };
+  }>;
   getAgentRuntimeDiagnostics: (id: string) => Promise<AgentRuntimeDiagnostics>;
   setAgentRuntimeBearerToken: (
     id: string,
     bearerToken: string,
+    providerId?: string,
   ) => Promise<{ configured: true; storage?: { warning?: string } }>;
   setAgentRuntimeWorkspaceGatewayToken: (
     id: string,
@@ -987,7 +1026,12 @@ interface AgentsOneAPI {
     },
     profile?: string,
   ) => Promise<RuntimeConversation>;
-  listRuntimeSkills: () => Promise<RuntimeSkillDescriptor[]>;
+  listRuntimeSkills: (runtimeId?: string) => Promise<RuntimeSkillDescriptor[]>;
+  importOneSkill: (
+    runtimeId: string,
+    skillId: string,
+  ) => Promise<{ id: string; name: string }>;
+  removeOneSkill: (runtimeId: string, name: string) => Promise<void>;
   listQuickChats: (profile?: string) => Promise<QuickChatConversation[]>;
   saveQuickChats: (
     chats: QuickChatConversation[],
