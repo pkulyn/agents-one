@@ -42,7 +42,6 @@ export async function prepareOneAttachments(
     const file = prepared.files[index];
     if (attachments[index].kind === "image") {
       const bytes = readFileSync(file.path);
-      const mime = attachments[index].mime.toLowerCase();
       const isPng = bytes
         .subarray(0, 8)
         .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
@@ -57,15 +56,19 @@ export async function prepareOneAttachments(
       const isWebp =
         bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
         bytes.subarray(8, 12).toString("ascii") === "WEBP";
-      if (
-        !(
-          (mime === "image/png" && isPng) ||
-          (mime === "image/jpeg" && isJpeg) ||
-          (mime === "image/gif" && isGif) ||
-          (mime === "image/webp" && isWebp)
-        )
-      )
-        throw new Error("图片格式与内容不匹配或不受支持。");
+      // Browser MIME may be inferred from an inaccurate filename (e.g. WebP
+      // saved as .jpg). Use the supported content signature for model input.
+      const mime = isPng
+        ? "image/png"
+        : isJpeg
+          ? "image/jpeg"
+          : isGif
+            ? "image/gif"
+            : isWebp
+              ? "image/webp"
+              : undefined;
+      if (!mime) throw new Error("图片格式无法识别或不受支持。");
+      file.artifact.mime = mime;
       imageBytes += bytes.length;
       if (imageBytes > 10 * 1024 * 1024)
         throw new Error("图片附件总大小超过 10 MiB 限制。");
