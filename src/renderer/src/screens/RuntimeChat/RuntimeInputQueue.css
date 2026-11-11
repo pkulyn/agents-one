@@ -28,7 +28,7 @@
   min-width: 0;
 }
 .runtime-pending-status {
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -94,7 +94,7 @@
   flex: none;
   border: 0;
   background: none;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   padding: 5px;
   border-radius: 6px;
   cursor: pointer;
@@ -142,7 +142,7 @@
 }
 .runtime-pending-edit-note {
   flex: 1;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   font-size: 11px;
 }
 .runtime-pending-edit-actions > button {
