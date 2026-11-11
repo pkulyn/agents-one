@@ -50,6 +50,7 @@ import { useI18n } from "../../components/useI18n";
 import { oneActiveProviderLabel } from "../../components/settings/one-model-provider-presets";
 import { t as sharedTranslate } from "../../../../shared/i18n";
 import type { Attachment } from "../../../../shared/attachments";
+import { deriveAgentTransport } from "../../../../shared/agent-runtimes";
 import type {
   AgentRuntimeDefinition,
   AgentRuntimeRun,
@@ -1268,7 +1269,6 @@ export default function RuntimeChat({
     useState("");
   const [thinkingCatalogLoading, setThinkingCatalogLoading] = useState(false);
   const [thinkingSwitching, setThinkingSwitching] = useState(false);
-  const [skillsPanelOpen, setSkillsPanelOpen] = useState(false);
   const [runtimeSkills, setRuntimeSkills] = useState<RuntimeSkillDescriptor[]>(
     [],
   );
@@ -1404,6 +1404,30 @@ export default function RuntimeChat({
       ? runtimeCatalog[activeCollaborationRuntimeId] || appearanceRuntime
       : appearanceRuntime;
 
+  const localSkillsAvailable = !["gateway-v1", "local-web"].includes(
+    deriveAgentTransport(runtime),
+  );
+  useEffect(() => {
+    let active = true;
+    setRuntimeSkills([]);
+    if (
+      localSkillsAvailable &&
+      typeof window.agentsOneAPI.listRuntimeSkills === "function"
+    ) {
+      void window.agentsOneAPI
+        .listRuntimeSkills(runtime.kind === "one" ? runtime.id : undefined)
+        .then((skills) => {
+          if (active) setRuntimeSkills(skills);
+        })
+        .catch(() => {
+          /* Native skills remain available if local discovery fails. */
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [runtime.id, runtime.kind, localSkillsAvailable]);
+
   const runtimeSlashCommands = useMemo<SlashCommand[]>(() => {
     const desktop: SlashCommand[] = [
       {
@@ -1427,16 +1451,38 @@ export default function RuntimeChat({
         argumentHint: t("runtimeChat.commands.branchHint"),
       },
       {
-        name: "/skills",
+        name: "/skill",
+        insertText: "/skill",
         description: t("runtimeChat.commands.skills"),
         category: "chat",
         local: true,
       },
     ];
+    desktop.push(
+      {
+        name: "/skills",
+        insertText: "/skill",
+        description: t("runtimeChat.commands.skills"),
+        category: "tools",
+        local: true,
+      },
+      {
+        name: "/help",
+        description: t("runtimeChat.commands.help"),
+        category: "info",
+        local: true,
+      },
+    );
     const runtimeEntries = runtimeCommands
       .filter(
         (command) =>
           command.target !== "desktop" &&
+          !desktop.some((entry) => entry.name === "/" + command.name) &&
+          !(
+            localSkillsAvailable &&
+            command.name === "skill" &&
+            command.source === "desktop"
+          ) &&
           (command.availability === "any" ||
             (command.availability === "running" && loading) ||
             (command.availability === "idle" && !loading)),
@@ -1445,13 +1491,49 @@ export default function RuntimeChat({
         name: `/${command.name}`,
         description: command.description,
         category: command.target === "runtime-native" ? "tools" : "agent",
-        takesArgs: Boolean(command.argumentHint),
+        takesArgs: command.source === "skill" || Boolean(command.argumentHint),
+        ...(command.source === "skill"
+          ? {
+              skillName: command.displayName || command.name,
+              insertText: "/" + command.name + " ",
+            }
+          : {}),
         ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
         source: command.source,
         availability: command.availability,
       }));
-    return [...desktop, ...runtimeEntries];
-  }, [loading, runtimeCommands, t]);
+    const seen = new Set(
+      runtimeEntries
+        .filter((item) => item.skillName)
+        .map((item) => item.skillName!.toLowerCase()),
+    );
+    const local =
+      localSkillsAvailable && !loading
+        ? runtimeSkills.flatMap<SlashCommand>((skill) => {
+            if (
+              skill.oneIssue ||
+              !/^(?:user:|agents-user:|one:)[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(
+                skill.id,
+              ) ||
+              seen.has(skill.name.toLowerCase())
+            )
+              return [];
+            seen.add(skill.name.toLowerCase());
+            return [
+              {
+                name: "/skill " + skill.id,
+                skillName: skill.name,
+                insertText: "/skill " + skill.id + " ",
+                description: skill.description || "",
+                category: "tools",
+                source: "skill",
+                takesArgs: true,
+              },
+            ];
+          })
+        : [];
+    return [...desktop, ...runtimeEntries, ...local];
+  }, [loading, runtimeCommands, runtimeSkills, localSkillsAvailable, t]);
   const modelCommandAvailable = runtimeCommands.some(
     (command) => command.name === "model" && command.availability !== "running",
   );
@@ -1571,6 +1653,7 @@ export default function RuntimeChat({
   const nativeMessages = useMemo(() => {
     const history = runtimeConversationToChatMessages(messages, {
       conversationId: conversationIdRef.current || undefined,
+      showTraceAvailability: unifiedRemoteGatewayRuntime,
       getAgentContent,
       translate: t,
     });
@@ -1689,6 +1772,7 @@ export default function RuntimeChat({
     runtimeCatalog,
     taskRun,
     t,
+    unifiedRemoteGatewayRuntime,
   ]);
 
   const handleNativeApprove = useCallback(() => undefined, []);
@@ -4471,14 +4555,14 @@ ${reason}`,
       restoreRejectedInput();
       return;
     }
-    if (name === "skills") {
-      try {
-        const skills = await window.agentsOneAPI.listRuntimeSkills();
-        setRuntimeSkills(skills);
-        setSkillsPanelOpen(true);
-      } catch {
-        appendRuntimeControlMessage(t("runtimeChat.feedback.skillsLoadFailed"));
-      }
+    if ((name === "skill" || name === "skills") && !args) {
+      chatInputRef.current?.restore("/skill", attachments);
+      chatInputRef.current?.openCommands("/skill");
+      return;
+    }
+    if (name === "help" || name === "commands") {
+      chatInputRef.current?.restore("/", attachments);
+      chatInputRef.current?.openCommands("/");
       return;
     }
     if (name === "new" || name === "clear") {
@@ -4641,6 +4725,12 @@ ${reason}`,
         // turn. It may itself begin with `/`; do not parse it a second time.
         await send(expandedPrompt, attachments, undefined, {
           treatLeadingSlashAsPrompt: true,
+          displayText:
+            name === "skill" ||
+            name === "skills" ||
+            descriptor?.source === "skill"
+              ? rawInput
+              : undefined,
         });
       }
       finishRuntimeCommand();
@@ -4719,9 +4809,10 @@ ${reason}`,
     text: string,
     attachments: Attachment[] = [],
     collaborationLaunch?: CollaborationLaunch,
-    options?: { treatLeadingSlashAsPrompt?: boolean },
+    options?: { treatLeadingSlashAsPrompt?: boolean; displayText?: string },
   ): Promise<void> {
     const prompt = text.trim();
+    const displayText = options?.displayText || prompt;
     if (!prompt) return;
     if (prompt.startsWith("/") && !options?.treatLeadingSlashAsPrompt) {
       await executeRuntimeSlashCommand(prompt, attachments);
@@ -4766,7 +4857,10 @@ ${reason}`,
           // Record input in submission order before a native acknowledgement.
           // ACP may acknowledge only after processing the updated turn.
           if (collab) collaborationSupplementsRef.current.push(prompt);
-          const next = [...messagesRef.current, newMessage("user", prompt)];
+          const next = [
+            ...messagesRef.current,
+            newMessage("user", displayText),
+          ];
           messagesRef.current = next;
           setMessages(next);
           await persistConversation(next);
@@ -4793,12 +4887,12 @@ ${reason}`,
             return;
           }
         }
-        chatInputRef.current?.restore(prompt, attachments);
+        chatInputRef.current?.restore(displayText, attachments);
         appendRuntimeControlMessage(
           t("runtimeChat.feedback.nativeInputUnavailable"),
         );
       } catch (error) {
-        chatInputRef.current?.restore(prompt, attachments);
+        chatInputRef.current?.restore(displayText, attachments);
         appendRuntimeControlMessage(
           t("runtimeChat.feedback.supplementFailed") +
             " " +
@@ -4808,7 +4902,7 @@ ${reason}`,
       return;
     }
     if (collaborativeMode && collaborationExecution?.status === "running") {
-      chatInputRef.current?.restore(prompt, attachments);
+      chatInputRef.current?.restore(displayText, attachments);
       appendRuntimeControlMessage(t("runtimeChat.taskMode.busy"));
       return;
     }
@@ -4819,7 +4913,7 @@ ${reason}`,
         ? automaticRuntimeTaskMode(runtime, hasSelectedWorkspace)
         : accessMode;
     if (analysisBranchRef.current && resolvedAccessMode !== "analysis") {
-      chatInputRef.current?.restore(prompt, attachments);
+      chatInputRef.current?.restore(displayText, attachments);
       appendRuntimeControlMessage(t("runtimeChat.feedback.readOnlyBranch"));
       return;
     }
@@ -4837,7 +4931,7 @@ ${reason}`,
     const nextMessages = [
       ...messages,
       {
-        ...newMessage("user", prompt),
+        ...newMessage("user", displayText),
         ...(displayAttachments.length
           ? { attachments: displayAttachments }
           : {}),
@@ -4848,7 +4942,7 @@ ${reason}`,
     setTaskRun(null);
     setActiveCollaborationRuntimeId(null);
     taskRunRef.current = null;
-    onTitleChange?.(runId, prompt.slice(0, 48));
+    onTitleChange?.(runId, displayText.slice(0, 48));
     setLoading(true);
     try {
       const checkpoint = await persistConversation(nextMessages);
@@ -5453,37 +5547,6 @@ ${reason}`,
                 ) : null}
                 <TaskCollaborationTimeline execution={collaborationExecution} />
               </CollaborationProgress>
-              {skillsPanelOpen ? (
-                <div
-                  className="runtime-model-picker"
-                  role="dialog"
-                  aria-label={t("runtimeChat.skills.title")}
-                >
-                  <strong>{t("runtimeChat.skills.title")}</strong>
-                  <p>{t("runtimeChat.skills.note")}</p>
-                  {runtimeSkills.length ? (
-                    <ul>
-                      {runtimeSkills.map((skill) => (
-                        <li key={skill.id}>
-                          <strong>{skill.name}</strong>
-                          {skill.description ? `：${skill.description}` : ""}
-                          <small>
-                            {` ${skill.source} · ${skill.trust} · ${skill.executionBoundary}`}
-                          </small>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p>{t("runtimeChat.skills.empty")}</p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setSkillsPanelOpen(false)}
-                  >
-                    {t("runtimeChat.close")}
-                  </button>
-                </div>
-              ) : null}
               {modelPickerOpen ? (
                 <div
                   className="runtime-model-picker runtime-model-picker--expanded"

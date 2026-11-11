@@ -1351,6 +1351,58 @@ describe("agent runtime registry", () => {
     expect(updated?.capabilitySnapshot).toBeUndefined();
   });
 
+  it("expands one configured plugin skill without executing it or changing Runtime configuration", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { runtimes } = await loadModules();
+    const directory = join(testHome, "registered-plugin");
+    mkdirSync(join(directory, "skills/a"), { recursive: true });
+    mkdirSync(join(directory, "skills/b"), { recursive: true });
+    writeFileSync(
+      join(directory, "plugin.json"),
+      JSON.stringify({ name: "test-plugin", skills: ["skills"] }),
+    );
+    writeFileSync(
+      join(directory, "skills/a/SKILL.md"),
+      "name: alpha\nALPHA INSTRUCTIONS",
+    );
+    writeFileSync(
+      join(directory, "skills/b/SKILL.md"),
+      "name: beta\nBETA INSTRUCTIONS",
+    );
+    const saved = runtimes.saveAgentRuntime({
+      id: "one-skill-command",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: {
+        agentTransport: "local-sdk",
+        onePlugins: [
+          { id: "test-plugin", name: "Test plugin", directory, enabled: true },
+        ],
+      },
+    });
+    const catalog = await runtimes.getAgentRuntimeCommandCatalog(saved.id);
+    const selected = catalog.commands.find(
+      (command) => command.displayName === "alpha",
+    )!;
+    expect(selected).toMatchObject({ source: "skill", target: "model" });
+    const result = await runtimes.executeAgentRuntimeCommand({
+      runtimeId: saved.id,
+      name: selected.name,
+      args: "review",
+    });
+    expect(result).toMatchObject({
+      type: "send-prompt",
+      prompt: expect.stringContaining("ALPHA INSTRUCTIONS"),
+    });
+    expect(JSON.stringify(result)).not.toContain("BETA INSTRUCTIONS");
+    expect(startOneWorkerMock).not.toHaveBeenCalled();
+    expect(
+      runtimes.listAgentRuntimes().find((item) => item.id === saved.id)?.config,
+    ).toEqual(saved.config);
+  });
+
   // @lat: [[main-process#One session resume reconciliation#One capability probe and persisted snapshot]]
   it("stores One as a separate SDK agent, protects its credential, and reports probed capabilities", async () => {
     vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
@@ -1429,6 +1481,22 @@ describe("agent runtime registry", () => {
         ?.config.oneApiType,
     ).toBe("anthropic-messages");
     const oneCatalog = await runtimes.getAgentRuntimeCommandCatalog(saved.id);
+    expect(oneCatalog.commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "skill",
+          target: "model",
+          supportsAttachments: true,
+        }),
+      ]),
+    );
+    await expect(
+      runtimes.executeAgentRuntimeCommand({
+        runtimeId: saved.id,
+        name: "skill",
+        args: "user:../private",
+      }),
+    ).resolves.toMatchObject({ type: "error" });
     expect(oneCatalog.commands).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "model" })]),
     );

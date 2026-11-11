@@ -222,6 +222,7 @@ export function listOnePluginSkills(plugins: OnePluginConfig[]): Array<{
 
 export function loadOnePluginInstructions(
   plugins: OnePluginConfig[],
+  selectedId?: string,
 ): string[] {
   const instructions: string[] = [];
   let totalBytes = 0;
@@ -239,6 +240,8 @@ export function loadOnePluginInstructions(
       )) {
         for (const entry of readdirSync(root, { withFileTypes: true })) {
           if (!entry.isDirectory() || !skillName.test(entry.name)) continue;
+          if (selectedId && selectedId !== `plugin:${plugin.id}:${entry.name}`)
+            continue;
           const path = join(root, entry.name, "SKILL.md");
           const directory = join(root, entry.name);
           const directoryStat = lstatSync(directory);
@@ -255,7 +258,7 @@ export function loadOnePluginInstructions(
           if (instructions.length >= 32 || totalBytes > 128 * 1024)
             return instructions;
           instructions.push(
-            `[Plugin skill ${plugin.name} / ${entry.name}]\n${readFileSync(path, "utf8")}`,
+            `[Plugin skill ${plugin.name} / ${entry.name}]\n${selectedId ? "Skill directory: " + directory + "\n" : ""}${readFileSync(path, "utf8")}`,
           );
         }
       }

@@ -1,4 +1,6 @@
 export default {
+  skillsEmpty:
+    "No callable skills are available for this agent right now. Remote skills must be provided by the remote agent.",
   executionTrace: {
     title: "Execution details",
     thoughts: "{{count}} thoughts",
