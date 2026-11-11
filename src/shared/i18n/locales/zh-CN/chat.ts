@@ -1,4 +1,5 @@
 export default {
+  skillsEmpty: "当前智能体暂无可调用技能。远程技能需由远程智能体提供。",
   executionTrace: {
     title: "执行过程",
     thoughts: "{{count}} 段思考",

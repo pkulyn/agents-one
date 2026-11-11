@@ -71,6 +71,18 @@ vi.mock("../Chat/ChatInput", () => ({
         </button>
       )}
       {props.toolbarExtras}
+      {props.slashCommands
+        ?.filter((command) => command.name.startsWith("/skill "))
+        .map((command) => (
+          <button
+            key={command.name}
+            onClick={() =>
+              props.onSubmit(command.name + " summarize", [testAttachment])
+            }
+          >
+            Invoke {command.name}
+          </button>
+        ))}
       {props.contextUsage && (
         <>
           <span data-testid="runtime-context">
@@ -373,6 +385,90 @@ describe("RuntimeChat inputs and persistence", () => {
         cancelAgentRuntimeTask: vi.fn(),
       },
     });
+  });
+
+  it("expands a selected skill into execution input while keeping the visible user turn concise", async () => {
+    window.agentsOneAPI.listRuntimeSkills = vi.fn().mockResolvedValue([
+      {
+        id: "user:demo",
+        name: "demo",
+        description: "Example",
+        enabled: true,
+        source: "user",
+      },
+    ]);
+    getAgentRuntimeCommandCatalog.mockResolvedValue({
+      commands: [
+        {
+          name: "skill",
+          target: "model",
+          source: "desktop",
+          availability: "idle",
+          description: "Skill",
+          category: "Skills",
+          supportsAttachments: true,
+        },
+      ],
+      fetchedAt: 1,
+    });
+    executeAgentRuntimeCommand.mockResolvedValue({
+      type: "send-prompt",
+      prompt: "PRIVATE SKILL DOCUMENT\nUser task: summarize",
+    });
+    render(
+      <RuntimeChat
+        runId="selected-skill"
+        runtime={codexRuntime}
+        profile="default"
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Invoke /skill user:demo" }),
+    );
+    await waitFor(() =>
+      expect(startAgentRuntimeTask).toHaveBeenCalledWith(
+        codexRuntime.id,
+        expect.objectContaining({
+          prompt: expect.stringContaining("PRIVATE SKILL DOCUMENT"),
+          attachments: [testAttachment],
+        }),
+      ),
+    );
+    expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "skill", args: "user:demo summarize" }),
+    );
+    expect(screen.getByText("/skill user:demo summarize")).toBeInTheDocument();
+    expect(
+      screen.queryByText("PRIVATE SKILL DOCUMENT"),
+    ).not.toBeInTheDocument();
+    expect(saveRuntimeConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            content: "/skill user:demo summarize",
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it("does not offer this machine's local skills in a remote agent's composer", async () => {
+    window.agentsOneAPI.listRuntimeSkills = vi
+      .fn()
+      .mockResolvedValue([{ id: "user:private", name: "private" }]);
+    render(
+      <RuntimeChat
+        runId="remote-skill-scope"
+        runtime={hers2Runtime}
+        profile="default"
+      />,
+    );
+    await waitFor(() =>
+      expect(getAgentRuntimeCommandCatalog).toHaveBeenCalled(),
+    );
+    expect(window.agentsOneAPI.listRuntimeSkills).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /Invoke/ })).toBeNull();
   });
 
   // @lat: [[runtime-chat#Cancellation terminal observation]]
