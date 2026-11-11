@@ -104,6 +104,7 @@ export default {
   contextTokens: "已使用 {{used}} / {{total}} 个令牌",
   contextCache: "缓存命中率 {{pct}}%（读取 {{read}} / 写入 {{write}}）",
   contextGauge: {
+    estimated: "压缩后估算，下一次模型响应后校准",
     label: "{{usage}}，窗口 {{window}}",
     compactLabel: "{{label}}；压缩当前会话上下文",
     title: "上下文窗口 {{window}}，已使用 {{used}}",
