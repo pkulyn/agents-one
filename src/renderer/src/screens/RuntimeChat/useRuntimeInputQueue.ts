@@ -25,6 +25,7 @@ export interface RuntimeInputQueueState {
   enqueue: (text: string, attachments: Attachment[]) => void;
   remove: (id: string) => void;
   retry: (id: string) => void;
+  pause: (message: string) => void;
 }
 
 export function useRuntimeInputQueue({
@@ -133,6 +134,15 @@ export function useRuntimeInputQueue({
   }, [items, running]);
   return {
     items,
+    pause(message: string) {
+      update((queue) =>
+        queue.map((item) =>
+          item.status === "pending"
+            ? { ...item, status: "failed", error: message }
+            : item,
+        ),
+      );
+    },
     change,
     enqueue(text: string, attachments: Attachment[]) {
       update((queue) => [

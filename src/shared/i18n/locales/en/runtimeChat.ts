@@ -59,6 +59,8 @@ export default {
     agentPreparing: "{{agent}} is thinking and preparing to execute…",
   },
   pendingInput: {
+    stopped:
+      "Task stopped. Pending messages are kept for editing, deletion or retry.",
     queue: "Pending supplementary messages",
     pending: "Pending",
     sending: "Awaiting receipt",

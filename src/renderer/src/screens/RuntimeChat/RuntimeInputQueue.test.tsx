@@ -142,3 +142,23 @@ describe("pending Runtime input delivery", () => {
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
   });
 });
+
+it("keeps stopped-task supplements paused instead of automatically starting a new run", async () => {
+  const dispatch = vi.fn().mockResolvedValue(undefined);
+  const { result, rerender } = renderHook(
+    ({ running }) => useRuntimeInputQueue({ running, onDispatch: dispatch }),
+    { initialProps: { running: true } },
+  );
+  act(() => result.current.enqueue("do not restart", []));
+  act(() => result.current.pause("task stopped"));
+  rerender({ running: false });
+  await advance();
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(result.current.items[0]).toMatchObject({
+    status: "failed",
+    text: "do not restart",
+  });
+  act(() => result.current.retry(result.current.items[0].id));
+  await advance();
+  expect(dispatch).toHaveBeenCalledTimes(1);
+});

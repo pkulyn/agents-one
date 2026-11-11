@@ -580,7 +580,7 @@ Editing pauses that item; saving replaces the pending text. Switching to follow-
 
 ### Failure retention and serial dispatch
 
-Failed inputs retain their text and require explicit retry. Native requests dispatch serially and do not cancel the original task.
+Failed inputs retain their text and require explicit retry. Native requests dispatch serially and do not cancel the original task. Stopping a task pauses unsent capsules so they cannot silently restart it.
 
 ## Verified One compaction usage
 
