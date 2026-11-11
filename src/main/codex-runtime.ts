@@ -521,6 +521,7 @@ export async function startCodexProcess(
           cwd,
           prompt: runtimePrompt,
           model: config.model,
+          thinkingLevel: input.thinkingLevel,
           sessionId: input.sessionId,
           imagePaths: preparedInputs.imagePaths,
           inputArtifacts: preparedInputs.artifacts,

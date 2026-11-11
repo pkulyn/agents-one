@@ -18,6 +18,7 @@ export async function startCodexPermissionTurn(options: {
   cwd: string;
   prompt: string;
   model?: string;
+  thinkingLevel?: string;
   sessionId?: string;
   imagePaths: string[];
   inputArtifacts: RuntimeInputArtifact[];
@@ -321,6 +322,7 @@ export async function startCodexPermissionTurn(options: {
     const started = record(
       await request("turn/start", {
         threadId: id,
+        ...(options.thinkingLevel ? { effort: options.thinkingLevel } : {}),
         cwd: options.cwd,
         approvalPolicy,
         approvalsReviewer: "user",
