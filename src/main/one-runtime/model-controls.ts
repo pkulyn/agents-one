@@ -70,6 +70,15 @@ export function oneRuntimeForModel(
     selection.startsWith("one-provider:" + p.id + ":"),
   )!;
   if (!provider) throw new Error("One 模型供应商不可用。");
+  const metadata =
+    runtime.config.oneModelMetadata?.[
+      oneModelProviderKey(provider.endpoint, provider.apiType) +
+        "::" +
+        option.displayName
+    ];
+  const isConfiguredDefault =
+    provider.id === runtime.config.oneActiveProviderId &&
+    option.displayName === runtime.config.model;
   return {
     ...runtime,
     config: {
@@ -78,6 +87,13 @@ export function oneRuntimeForModel(
       oneApiType: provider.apiType,
       oneActiveProviderId: provider.id,
       model: option.displayName,
+      // Legacy capability fields belong only to the configured default model.
+      oneContextWindow:
+        metadata?.contextWindow ??
+        (isConfiguredDefault ? runtime.config.oneContextWindow : undefined),
+      oneImageInput:
+        metadata?.input.image ??
+        (isConfiguredDefault ? runtime.config.oneImageInput : false),
     },
   };
 }

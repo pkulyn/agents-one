@@ -14,6 +14,8 @@ const runtime: AgentRuntimeDefinition = {
     model: "same-model",
     endpoint: "https://a.test/v1",
     oneActiveProviderId: "a",
+    oneContextWindow: 128000,
+    oneImageInput: true,
     oneProviders: [
       {
         id: "a",
@@ -62,6 +64,8 @@ it("lists every enabled provider choice with distinct identities and preserves c
     oneApiType: "anthropic-messages",
     oneActiveProviderId: "b",
     model: "same-model",
+    oneContextWindow: undefined,
+    oneImageInput: false,
   });
   expect(runtime).toEqual(before);
   expect(() =>
