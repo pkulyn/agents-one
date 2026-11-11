@@ -58,6 +58,20 @@ export default {
     preparing: "Thinking and preparing to execute…",
     agentPreparing: "{{agent}} is thinking and preparing to execute…",
   },
+  pendingInput: {
+    stopped:
+      "Task stopped. Pending messages are kept for editing, deletion or retry.",
+    queue: "Pending supplementary messages",
+    pending: "Pending",
+    sending: "Awaiting receipt",
+    failed: "Not delivered",
+    edit: "Edit pending message",
+    delete: "Delete pending message",
+    retry: "Retry delivery",
+    editText: "Edit supplementary message",
+    paused: "Delivery paused while editing",
+    save: "Save changes",
+  },
   feedback: {
     useToolbar:
       "This command was removed. Use the conversation or model controls.",

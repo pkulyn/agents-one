@@ -30,11 +30,7 @@ describe("One Pi lifecycle progress", () => {
       state,
     );
 
-    expect(call).toMatchObject({
-      code: "one_model_call",
-      summary: expect.stringContaining("2/64"),
-    });
-    expect(call?.summary).toContain("自动重试与上下文摘要");
+    expect(call).toBeUndefined();
     expect(retry).toMatchObject({ code: "one_request_retry_scheduled" });
     expect(retry?.summary).toContain("SDK 重试 1/2");
     expect(retry?.summary).toContain("503 temporarily unavailable");

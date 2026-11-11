@@ -4,6 +4,7 @@ import type {
   AgentSession,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { estimateTokens } from "@earendil-works/pi-coding-agent";
 import { createOneSession } from "./session";
 import type {
   OneWorkerInput,
@@ -87,8 +88,6 @@ async function start(
   apiKey = message.options.apiKey;
   const created = await createOneSession({
     ...message.options,
-    onModelCall: (count, limit) =>
-      send({ type: "event", event: { type: "one_model_call", count, limit } }),
     tools: message.tools.map(hostTool),
   });
   session = created.session;
@@ -123,14 +122,57 @@ async function start(
       sessionFile: session!.sessionManager.getSessionFile(),
     });
   });
+  // The selected provider may use SDK defaults different from the Runtime's
+  // configured default model. Report the window that this session really uses.
+  send({
+    type: "event",
+    event: {
+      type: "one_model_context",
+      model: {
+        id: session.model?.id,
+        provider: "agents-one-model",
+        contextWindowTokens: session.model?.contextWindow,
+      },
+    },
+  });
   if (message.options.revisionBinding) {
     session.sessionManager.appendCustomEntry(
       "agents-one-run-binding-v1",
       message.options.revisionBinding,
     );
   }
+  let compaction: Extract<OneWorkerOutput, { type: "complete" }>["compaction"];
   if (message.options.operation === "compact") {
-    await session.compact(message.options.customInstructions);
+    const historyBefore = session.messages.reduce(
+      (total, message) => total + estimateTokens(message),
+      0,
+    );
+    const result = await session.compact(message.options.customInstructions);
+    // Keep the observed system/tool overhead rather than pretending the
+    // message-only projection is the entire next provider request.
+    const overhead = Math.max(0, result.tokensBefore - historyBefore);
+    if (
+      !result.summary.trim() ||
+      !session.sessionManager
+        .getBranch()
+        .some(
+          (entry) =>
+            entry.type === "compaction" && entry.summary === result.summary,
+        )
+    )
+      throw new Error("One compaction did not persist a summary");
+    compaction = {
+      trigger: "manual",
+      tokensBefore: result.tokensBefore,
+      tokensAfter:
+        (result.estimatedTokensAfter ??
+          session.messages.reduce(
+            (total, message) => total + estimateTokens(message),
+            0,
+          )) + overhead,
+      tokensAfterEstimated: true,
+      contextWindowTokens: session.model?.contextWindow,
+    };
   } else {
     await session.prompt(message.prompt, { images: message.images });
   }
@@ -150,6 +192,7 @@ async function start(
     type: "complete",
     sessionId: session.sessionId,
     output: session.getLastAssistantText() || "",
+    ...(compaction ? { compaction } : {}),
     sessionFile: session.sessionManager.getSessionFile(),
   });
 }

@@ -20,7 +20,7 @@ export type OneWorkerInput =
         apiType?: OneModelApiType;
         contextWindow?: number;
         maxOutputTokens?: number;
-        maxModelCalls?: number;
+
         imageInput?: boolean;
         thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
         operation?: "compact";
@@ -60,6 +60,7 @@ export type OneWorkerOutput =
       type: "complete";
       sessionId: string;
       output: string;
+      compaction?: import("../../shared/runtime-commands").RuntimeCompactionMetadata;
       sessionFile?: string;
     }
   | { type: "steer-result"; requestId: string; error?: string }

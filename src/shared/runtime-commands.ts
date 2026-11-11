@@ -68,6 +68,9 @@ export interface RuntimeCompactionMetadata {
   trigger: "manual" | "auto" | "platform";
   tokensBefore?: number;
   tokensAfter?: number;
+  /** Post-compaction projection estimate until the next model usage report. */
+  tokensAfterEstimated?: boolean;
+  contextWindowTokens?: number;
   /** Opaque provider/platform reference; never the summary body itself. */
   summaryRef?: string;
 }

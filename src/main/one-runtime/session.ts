@@ -31,7 +31,7 @@ export interface OneSessionOptions {
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
   /** Per-run logical request limit; includes automatic summaries. */
   maxModelCalls?: number;
-  onModelCall?: (count: number, limit: number) => void;
+  onModelCall?: (count: number) => void;
   systemPrompt?: string;
   sessionId?: string;
   /** Only host-provided tools may be exposed; built-in shell/file tools are not implicit. */
@@ -113,20 +113,13 @@ export async function createOneSession(
     modelsPath: null,
     refreshOnCreate: false,
   });
-  const maxModelCalls = options.maxModelCalls ?? 64;
-  if (
-    !Number.isSafeInteger(maxModelCalls) ||
-    maxModelCalls < 1 ||
-    maxModelCalls > 64
-  )
-    throw new Error("Invalid One model call limit");
+  // Legacy maxModelCalls is ignored: a task ends on completion, cancellation
+  // or a real provider failure, never an arbitrary platform call count.
   let modelCalls = 0;
   const streamModel = modelRuntime.streamSimple.bind(modelRuntime);
   modelRuntime.streamSimple = (...args) => {
-    if (modelCalls >= maxModelCalls)
-      throw new Error("One reached the per-run model call limit");
     modelCalls++;
-    options.onModelCall?.(modelCalls, maxModelCalls);
+    options.onModelCall?.(modelCalls);
     return streamModel(...args);
   };
   const provider = "agents-one-model";

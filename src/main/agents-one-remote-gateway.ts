@@ -408,6 +408,12 @@ function gatewayCompactionMetadata(
     trigger,
     ...(tokensBefore !== undefined ? { tokensBefore } : {}),
     ...(tokensAfter !== undefined ? { tokensAfter } : {}),
+    ...(raw?.tokensAfterEstimated === true
+      ? { tokensAfterEstimated: true }
+      : {}),
+    ...(boundedTokenCount(raw?.contextWindowTokens) !== undefined
+      ? { contextWindowTokens: boundedTokenCount(raw?.contextWindowTokens) }
+      : {}),
     ...(summaryRef ? { summaryRef } : {}),
   };
 }

@@ -18,7 +18,7 @@ export interface OneWorkerOptions {
   apiType?: OneModelApiType;
   contextWindow?: number;
   maxOutputTokens?: number;
-  maxModelCalls?: number;
+
   imageInput?: boolean;
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
   operation?: "compact";
@@ -45,6 +45,7 @@ export interface OneWorkerOptions {
 export interface OneWorkerResult {
   sessionId: string;
   output: string;
+  compaction?: import("../../shared/runtime-commands").RuntimeCompactionMetadata;
   sessionFile?: string;
 }
 export interface OneWorkerHandle {
@@ -234,6 +235,7 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
       resolveCompletion({
         sessionId: message.sessionId,
         output: message.output,
+        ...(message.compaction ? { compaction: message.compaction } : {}),
         sessionFile: message.sessionFile,
       });
     } else if (message.type === "cancelled") {
@@ -251,7 +253,7 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
     apiType,
     contextWindow,
     maxOutputTokens,
-    maxModelCalls,
+
     imageInput,
     thinkingLevel,
     operation,
@@ -274,7 +276,7 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
       apiType,
       contextWindow,
       maxOutputTokens,
-      maxModelCalls,
+
       imageInput,
       thinkingLevel,
       operation,

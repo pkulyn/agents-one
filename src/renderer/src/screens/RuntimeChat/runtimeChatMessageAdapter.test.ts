@@ -879,3 +879,34 @@ describe("remote execution visibility", () => {
     expect(result[2]).toMatchObject({ callId: "read-1", content: "hello" });
   });
 });
+
+// @lat: [[runtime-chat#Verified One compaction usage]]
+it("excludes historical One call counters and diagnostics while retaining genuine reasoning and tools", () => {
+  const result = runtimeEventsToChatMessages([
+    event(
+      "count",
+      "progress",
+      "One 模型调用 1/59（含自动重试与上下文摘要）。",
+      { code: "one_model_call" },
+    ),
+    event(
+      "old-count",
+      "progress",
+      "One 模型调用 3/59（含自动重试与上下文摘要）。",
+    ),
+    event("retry", "progress", "retrying", {
+      code: "one_request_retry_scheduled",
+    }),
+    event("compact", "progress", "compacting", {
+      code: "one_compaction_started",
+    }),
+    event("real", "progress", "I should verify the file before answering."),
+    event("tool", "tool_call", "Workspace Read test.txt"),
+  ]);
+  expect(result.filter((message) => message.kind === "reasoning")).toHaveLength(
+    1,
+  );
+  expect(JSON.stringify(result)).toContain("verify the file");
+  expect(JSON.stringify(result)).not.toContain("模型调用");
+  expect(result.some((message) => message.kind === "tool_call")).toBe(true);
+});

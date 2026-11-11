@@ -51,17 +51,6 @@ export function oneSessionProgress(
 ): OneSessionProgress | undefined {
   if (!isRecord(event) || typeof event.type !== "string") return undefined;
 
-  if (
-    event.type === "one_model_call" &&
-    count(event.count) !== undefined &&
-    count(event.limit) !== undefined
-  ) {
-    return {
-      code: "one_model_call",
-      summary: `One 模型调用 ${event.count}/${event.limit}（含自动重试与上下文摘要）。`,
-    };
-  }
-
   if (event.type === "compaction_start") {
     counters.compactions += 1;
     return {

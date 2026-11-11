@@ -563,3 +563,27 @@ Remote execution histories preserve genuine reasoning and paired tool evidence, 
 Saved local file artifacts resolve through the conversation’s authorized project ID and exact relative path after transient run memory is gone.
 
 [[src/main/conversation-files.ts#resolveConversationFile]] verifies ownership by the saved assistant reply, the current project capability, and canonical containment before returning file information. It does not search unrelated folders or treat remote prose as a local file grant. Revoked projects, missing files and symlink escapes stay unavailable.
+
+## Pending running input capsules
+
+Running supplements use a separate queue above the unchanged composer. Each pending item owns its mode, editable text and delivery state.
+
+[[src/renderer/src/screens/RuntimeChat/useRuntimeInputQueue.ts#useRuntimeInputQueue]] defaults to native correction after a short review window. Deferred follow-ups wait for the round to finish. [[src/renderer/src/screens/RuntimeChat/RuntimeInputQueue.tsx#RuntimeInputQueue]] provides per-item mode, edit, delete and retry controls; dispatched messages become immutable until native receipt.
+
+### Default correction and mutable pending messages
+
+New supplements default to correction, can be deleted before dispatch, and leave the queue only after native acknowledgement.
+
+### Editing and deferred follow-up
+
+Editing pauses that item; saving replaces the pending text. Switching to follow-up defers delivery until the current round ends.
+
+### Failure retention and serial dispatch
+
+Failed inputs retain their text and require explicit retry. Native requests dispatch serially and do not cancel the original task. Stopping a task pauses unsent capsules so they cannot silently restart it.
+
+## Verified One compaction usage
+
+Manual One compaction returns persisted native summary metadata and a post-compaction estimate, preserving observed system and tool overhead. The context gauge uses the saved result until newer model usage arrives.
+
+[[src/main/one-runtime/worker.ts]] checks summary persistence before reporting completion and reports the effective SDK model window for normal tasks as well, avoiding a stale configured-default denominator after model selection. [[src/renderer/src/screens/Chat/ContextGauge.tsx#ContextGauge]] labels projection-based estimates until the next provider response calibrates them. Non-reducing summaries are reported honestly. Platform retry and model-call diagnostics never become model reasoning, including historical events. One has no platform-enforced model-call count; legacy configuration keys remain inert for compatibility.
