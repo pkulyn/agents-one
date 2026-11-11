@@ -5037,6 +5037,7 @@ ${reason}`,
   }
 
   async function stop(): Promise<void> {
+    inputQueue.pause(t("runtimeChat.pendingInput.stopped"));
     // Keep the single-task observer alive: it owns terminal UI convergence
     // and waits for the Main/Renderer conversation checkpoint to unlock.
     if (

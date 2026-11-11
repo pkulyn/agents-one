@@ -57,6 +57,7 @@ export default {
     agentPreparing: "{{agent}} 正在思考并准备执行……",
   },
   pendingInput: {
+    stopped: "任务已停止，待发送消息已保留；可编辑、删除或重试。",
     queue: "待发送补充消息",
     pending: "待发送",
     sending: "等待接收",
