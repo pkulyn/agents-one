@@ -21244,10 +21244,12 @@ body.tray-completion-document {
   transform: rotate(90deg);
 }
 .chat-execution-trace-items {
-  width: calc(100% - 5px);
-  margin: 10px 0 4px 5px;
-  padding-left: 16px;
-  border-left: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .chat-execution-trace-items[hidden] {
   display: none;
@@ -21258,7 +21260,7 @@ body.tray-completion-document {
   max-width: 100%;
   animation: none;
   margin: 0;
-  padding: 6px 0;
+  padding: 0;
 }
 .chat-execution-trace-items .chat-avatar[aria-hidden="true"] {
   display: none;
@@ -23248,4 +23250,12 @@ body.tray-completion-document {
   color: var(--warning);
   font-size: 10px;
   font-weight: 600;
+}
+
+.slash-menu-empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
 }

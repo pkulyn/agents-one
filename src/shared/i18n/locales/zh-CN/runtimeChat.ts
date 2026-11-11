@@ -49,7 +49,8 @@ export default {
     clear: "清空并新建当前 Runtime 对话",
     branch: "从当前对话创建只读分析分支",
     branchHint: "可选分支名称",
-    skills: "查看已发现 Skill 的来源与信任提示",
+    skills: "选择技能并填写任务",
+    help: "浏览当前智能体可用命令",
   },
   progress: {
     preparing: "正在思考并准备执行……",
@@ -120,6 +121,7 @@ export default {
     timedOut: "任务已超时，请重试。",
     inactive: "智能体已 10 分钟无响应，可继续等待或停止后重试。",
     traceUnavailable: "思考记录未上报",
+    executionTraceUnavailable: "执行记录 · 未上报思考或工具调用",
     toolsWithoutReasoning:
       "该智能体的运行服务本轮提供了工具调用记录，但没有提供可展示的思考摘要。",
     lifecycleOnly:

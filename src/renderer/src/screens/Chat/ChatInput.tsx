@@ -44,6 +44,7 @@ export interface ChatInputHandle {
   appendText(text: string): void;
   clear(): void;
   focus(): void;
+  openCommands(query?: string): void;
   /** Add files from external sources (drop overlay).  Returns errors. */
   addFiles(files: File[] | FileList): Promise<AttachmentError[]>;
 }
@@ -318,6 +319,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           setAttachmentError(null);
           if (inputRef.current) inputRef.current.style.height = "auto";
         },
+        openCommands(query = "/"): void {
+          setInput(query);
+          setSlashFilter(query);
+          setSlashMenuOpen(true);
+          setSlashSelectedIndex(0);
+          setSlashMenuScrollTop(0);
+          requestAnimationFrame(() => inputRef.current?.focus());
+        },
         focus(): void {
           inputRef.current?.focus();
         },
@@ -383,20 +392,31 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       () =>
         slashCommands.map((command) => ({
           command,
-          normalizedName: command.name.toLowerCase(),
+          normalizedName: (command.skillName || command.name).toLowerCase(),
           normalizedDescription: command.description.toLowerCase(),
         })),
       [slashCommands],
     );
 
+    const skillPickerAvailable = slashCommands.some(
+      (command) => Boolean(command.skillName) || command.name === "/skill",
+    );
     const filteredSlashCommands = useMemo(() => {
       if (!slashMenuOpen) return [];
-      const query = slashFilter.toLowerCase();
+      const skillQuery = skillPickerAvailable
+        ? /^\/skills?(?:\s+(.*))?$/i.exec(slashFilter)
+        : null;
+      const query = skillQuery
+        ? (skillQuery[1] || "").toLowerCase()
+        : slashFilter.toLowerCase();
       return searchableSlashCommands
-        .filter(({ normalizedName, normalizedDescription }) => {
+        .filter(({ command, normalizedName, normalizedDescription }) => {
+          if (skillQuery && !command.skillName) return false;
           return (
-            normalizedName.includes(query) ||
-            normalizedDescription.includes(query.slice(1))
+            normalizedName.includes(
+              command.skillName ? query.replace(/^\//, "") : query,
+            ) ||
+            normalizedDescription.includes(skillQuery ? query : query.slice(1))
           );
         })
         .sort((a, b) => {
@@ -406,7 +426,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           return a.normalizedName.localeCompare(b.normalizedName);
         })
         .map(({ command }) => command);
-    }, [searchableSlashCommands, slashMenuOpen, slashFilter]);
+    }, [
+      searchableSlashCommands,
+      slashMenuOpen,
+      slashFilter,
+      skillPickerAvailable,
+    ]);
 
     const slashVirtualLayout = useMemo(() => {
       return createSlashCommandVirtualLayout(filteredSlashCommands);
@@ -482,13 +507,19 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     function handleSlashSelect(cmd: SlashCommand): void {
       setSlashMenuOpen(false);
-      if (!cmd.takesArgs) {
+      if (!cmd.takesArgs && !cmd.skillName && !cmd.insertText) {
         setInput("");
         if (inputRef.current) inputRef.current.style.height = "auto";
         onSubmit(cmd.name, []);
         return;
       }
-      setInput(`${cmd.name} `);
+      const next = cmd.insertText || `${cmd.name} `;
+      setInput(next);
+      if (/^\/skills?$/.test(next)) {
+        setSlashMenuOpen(true);
+        setSlashFilter(next);
+        setSlashSelectedIndex(0);
+      }
       inputRef.current?.focus();
     }
 
@@ -499,7 +530,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setInput(value);
       // Height is handled by the useLayoutEffect on `input` above.
 
-      if (value.startsWith("/") && !value.includes(" ")) {
+      if (
+        (value.startsWith("/") && !/\s/.test(value)) ||
+        (skillPickerAvailable &&
+          /^\/skills?(?:\s+[^\n]*)?$/i.test(value) &&
+          !/^\/skills?\s+(?:user:|agents-user:|one:)/i.test(value))
+      ) {
         // No space yet, so the whole value is the command query.
         setSlashMenuOpen(true);
         setSlashFilter(value);
@@ -532,7 +568,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         }
         if (e.key === "Enter" || e.key === "Tab") {
           e.preventDefault();
-          handleSlashSelect(filteredSlashCommands[slashSelectedIndex]);
+          handleSlashSelect(
+            filteredSlashCommands[slashSelectedIndex] ||
+              filteredSlashCommands[0],
+          );
           return;
         }
         if (e.key === "Escape") {
@@ -540,6 +579,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           setSlashMenuOpen(false);
           return;
         }
+      }
+
+      if (
+        slashMenuOpen &&
+        skillPickerAvailable &&
+        /^\/skills?(?:\s|$)/i.test(slashFilter) &&
+        e.key === "Enter"
+      ) {
+        e.preventDefault();
+        return;
       }
 
       // History navigation: ArrowUp/Down when not in a multiline draft (or already navigating)
@@ -614,9 +663,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       }
     }
 
+    const showSlashMenu =
+      slashMenuOpen &&
+      (filteredSlashCommands.length > 0 ||
+        (skillPickerAvailable && /^\/skills?(?:\s|$)/i.test(slashFilter)));
     return (
       <>
-        {slashMenuOpen && filteredSlashCommands.length > 0 && (
+        {showSlashMenu && (
           <div
             className="slash-menu-overlay"
             onMouseDown={() => setSlashMenuOpen(false)}
@@ -645,6 +698,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   setSlashMenuScrollTop(event.currentTarget.scrollTop)
                 }
               >
+                {!filteredSlashCommands.length && (
+                  <p className="slash-menu-empty">{t("chat.skillsEmpty")}</p>
+                )}
                 <div
                   className="slash-menu-virtual-content"
                   style={{ height: slashVirtualLayout.totalHeight }}
@@ -683,7 +739,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                           size={10}
                         />
                         <span className="slash-menu-item-name">
-                          {row.command.name?.replace(/^\//, "")}
+                          {row.command.skillName
+                            ? `${row.command.skillName}`
+                            : row.command.name?.replace(/^\//, "")}
                         </span>
                         <span className="slash-menu-item-desc">
                           {row.command.description}

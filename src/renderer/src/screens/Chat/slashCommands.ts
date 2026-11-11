@@ -1,5 +1,8 @@
 export interface SlashCommand {
   name: string;
+  /** Skill choices complete a draft instead of executing an info command. */
+  skillName?: string;
+  insertText?: string;
   description: string;
   category: "chat" | "agent" | "tools" | "info";
   /** If true, the command is handled locally instead of sent to the backend */

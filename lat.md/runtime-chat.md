@@ -551,3 +551,9 @@ OpenCode appends native ACP prompts within the same session and keeps the origin
 Collaboration shares user revisions with later roles. Follow-up mode remains FIFO, while native failure preserves the original task and input rather than invoking stop-and-resume.
 
 Directed dialogue in both serial and DAG execution resumes the targeted role’s recorded provider session when available. Historical handoffs matching a private intervention reply and their associated artifacts are excluded from other roles’ context.
+
+## Remote trace availability and expanded alignment
+
+Remote execution histories preserve genuine reasoning and paired tool evidence, and expose an execution-details notice when a completed remote turn contains only lifecycle and final-answer events.
+
+[[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.ts#runtimeConversationToChatMessages]] retains actual tool events across history reload while suppressing final-answer copies masquerading as reasoning. Missing telemetry is described without inventing thoughts or tool calls. [[src/renderer/src/screens/Chat/ExecutionTraceGroup.tsx#ExecutionTraceGroup]] reuses the original reasoning/tool rows; expanded content has no extra left rail or indentation and maintains compact live-row spacing.

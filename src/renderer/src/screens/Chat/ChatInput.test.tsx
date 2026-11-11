@@ -216,3 +216,56 @@ it("sends supplemental input while keeping Stop available", () => {
   fireEvent.click(screen.getByTitle("common.stop"));
   expect(onAbort).toHaveBeenCalledTimes(1);
 });
+
+describe("skill selection in the shared composer", () => {
+  const commands = [
+    {
+      name: "/skills",
+      description: "Choose skills",
+      category: "tools" as const,
+      insertText: "/skill",
+    },
+    {
+      name: "/skill user:pdf",
+      skillName: "pdf",
+      insertText: "/skill user:pdf ",
+      description: "Read and create PDF files",
+      category: "tools" as const,
+      source: "skill" as const,
+    },
+    {
+      name: "/skill user:reader",
+      skillName: "reader",
+      insertText: "/skill user:reader ",
+      description: "Read documents",
+      category: "tools" as const,
+      source: "skill" as const,
+    },
+  ];
+  it("filters skill choices and completes a draft without executing the list command", () => {
+    const { textarea, onSubmit } = renderInput(commands);
+    fireEvent.change(textarea, { target: { value: "/skill" } });
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+    fireEvent.change(textarea, { target: { value: "/skill pdf" } });
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(textarea.value).toBe("/skill user:pdf ");
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.change(textarea, {
+      target: { value: "/skill user:pdf summarize this" },
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSubmit).toHaveBeenCalledWith("/skill user:pdf summarize this", []);
+  });
+  it("keeps an unmatched skill query editable and cancellable", () => {
+    const { textarea, onSubmit } = renderInput(commands);
+    fireEvent.change(textarea, { target: { value: "/skills missing" } });
+    expect(screen.getByText("chat.skillsEmpty")).toBeTruthy();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.keyDown(textarea, { key: "Escape" });
+    expect(textarea.value).toBe("/skills missing");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

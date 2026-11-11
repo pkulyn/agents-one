@@ -51,7 +51,8 @@ export default {
     clear: "Clear and start a new Runtime conversation",
     branch: "Create a read-only analysis branch from this conversation",
     branchHint: "Optional branch name",
-    skills: "View the source and trust information for discovered Skills",
+    skills: "Choose a skill for your next task",
+    help: "Browse commands available for this agent",
   },
   progress: {
     preparing: "Thinking and preparing to execute…",
@@ -143,6 +144,8 @@ export default {
     inactive:
       "No response for 10 minutes. You can keep waiting or stop and retry.",
     traceUnavailable: "Reasoning trace unavailable",
+    executionTraceUnavailable:
+      "Execution details · no reasoning or tool events reported",
     toolsWithoutReasoning:
       "The agent Runtime reported tool calls for this turn but did not provide a displayable reasoning summary.",
     lifecycleOnly:
