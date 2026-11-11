@@ -1,0 +1,197 @@
+.runtime-input-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  max-height: 232px;
+  overflow: auto;
+  margin-bottom: 8px;
+  scrollbar-width: thin;
+}
+.runtime-pending-input {
+  flex: none;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-secondary);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  animation: runtime-input-appear 0.14s ease-out;
+}
+.runtime-pending-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  min-width: 0;
+}
+.runtime-pending-status {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.runtime-pending-preview {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.runtime-pending-mode-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-primary);
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.runtime-pending-menu {
+  position: fixed;
+  z-index: 10000;
+  width: 230px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  box-shadow: 0 8px 28px #172c4822;
+}
+.runtime-pending-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.runtime-pending-menu button:hover,
+.runtime-pending-menu button[aria-checked="true"] {
+  background: var(--bg-secondary);
+  color: var(--accent);
+}
+.runtime-pending-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  padding: 5px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.runtime-pending-icon:hover {
+  background: var(--bg-primary);
+  color: var(--accent);
+}
+.runtime-pending-icon:disabled,
+.runtime-pending-mode-trigger:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.runtime-pending-full {
+  padding-top: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.runtime-pending-error {
+  padding-top: 5px;
+  color: var(--danger, #c74b54);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.runtime-pending-input textarea {
+  display: block;
+  width: 100%;
+  min-height: 64px;
+  max-height: 160px;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  user-select: text;
+}
+.runtime-pending-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.runtime-pending-edit-note {
+  flex: 1;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.runtime-pending-edit-actions > button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.runtime-pending-edit-actions > .runtime-pending-save {
+  background: var(--accent);
+  color: white;
+}
+.runtime-pending-save:disabled {
+  opacity: 0.5;
+}
+@keyframes runtime-input-appear {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .runtime-pending-input {
+    animation: none;
+  }
+}
+@media (max-width: 650px) {
+  .runtime-pending-row {
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .runtime-pending-preview {
+    flex-basis: calc(100% - 70px);
+  }
+  .runtime-pending-mode-trigger {
+    margin-left: auto;
+  }
+  .runtime-pending-edit-note {
+    display: none;
+  }
+  .runtime-pending-edit-actions {
+    flex-wrap: wrap;
+  }
+}

@@ -6,6 +6,11 @@ import { recoverInterruptedCollaboration } from "./collaborationRecovery";
 import { CollaborationProgress } from "./CollaborationProgress";
 import { TaskModeControl } from "./TaskModeControl";
 import { RuntimeModelPicker } from "./RuntimeModelPicker";
+import { RuntimeInputQueue } from "./RuntimeInputQueue";
+import {
+  useRuntimeInputQueue,
+  type PendingRuntimeInput,
+} from "./useRuntimeInputQueue";
 import {
   automaticRuntimeTaskMode,
   isRuntimePermissionFailure,
@@ -1279,16 +1284,29 @@ export default function RuntimeChat({
     rawInput: string;
     instructions: string;
   } | null>(null);
-  const [queuedFollowUp, setQueuedFollowUp] = useState<
-    Array<{
-      text: string;
-      attachments: Attachment[];
-    }>
-  >([]);
   const collaborationSupplementsRef = useRef<string[]>([]);
-  const [runningInputMode, setRunningInputMode] = useState<
-    "steer" | "follow_up"
-  >(webAgentRuntime ? "follow_up" : "steer");
+  const inputQueue = useRuntimeInputQueue({
+    running: loading,
+    onDispatch: async (input) => {
+      if (loading) await deliverRunningInput(input);
+      else {
+        const context =
+          collaborativeMode && collaborationExecution?.brief
+            ? [
+                collaborationExecution.brief,
+                ...collaborationSupplementsRef.current,
+                input.text,
+              ].join("\n\n[用户补充说明 / User update]\n")
+            : input.text;
+        await send(context, input.attachments, undefined, {
+          fromInputQueue: true,
+          messageId: input.id,
+          displayText: input.text,
+          treatLeadingSlashAsPrompt: true,
+        });
+      }
+    },
+  });
   const [webPreviewUrl, setWebPreviewUrl] = useState("about:blank");
 
   // Schedule records use opaque workspace capabilities. Resolve only the
@@ -4759,11 +4777,90 @@ ${reason}`,
     finishRuntimeCommand();
   }
 
+  async function deliverRunningInput(
+    input: PendingRuntimeInput,
+  ): Promise<void> {
+    const targets = [
+      ...new Set([
+        ...Object.values(activeCollaborationRunsRef.current).map(
+          (active) => active.run.id,
+        ),
+        ...(currentRunId && taskRunRef.current?.status === "running"
+          ? [currentRunId]
+          : []),
+      ]),
+    ];
+    if (
+      input.attachments.length ||
+      !window.agentsOneAPI.sendAgentRuntimeInput ||
+      !targets.length
+    )
+      throw new Error(t("runtimeChat.feedback.nativeInputUnavailable"));
+    const pendingTargets = targets.filter((id) => !input.deliveredTo.has(id));
+    if (!pendingTargets.length) return;
+    // Keep submission order in history while native channels await acknowledgement.
+    const recordedInput = messagesRef.current.find(
+      (message) => message.id === input.id,
+    );
+    if (!recordedInput || recordedInput.content !== input.text) {
+      const next = recordedInput
+        ? messagesRef.current.map((message) =>
+            message.id === input.id
+              ? { ...message, content: input.text }
+              : message,
+          )
+        : [
+            ...messagesRef.current,
+            { ...newMessage("user", input.text), id: input.id },
+          ];
+      messagesRef.current = next;
+      setMessages(next);
+      await persistConversation(next);
+    }
+    const results = await Promise.allSettled(
+      pendingTargets.map(async (id) => {
+        const outcome = await window.agentsOneAPI.sendAgentRuntimeInput(
+          id,
+          input.text,
+        );
+        if (outcome !== "accepted")
+          throw new Error(t("runtimeChat.feedback.nativeInputUnavailable"));
+        input.deliveredTo.add(id);
+      }),
+    );
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") {
+      if (!input.deliveredTo.size) {
+        const next = messagesRef.current.filter(
+          (message) => message.id !== input.id,
+        );
+        messagesRef.current = next;
+        setMessages(next);
+        await persistConversation(next);
+      }
+      throw new Error(
+        t("runtimeChat.feedback.supplementFailed") +
+          " " +
+          (failure.reason instanceof Error
+            ? failure.reason.message
+            : String(failure.reason)),
+      );
+    }
+    if (collaborationRunActiveRef.current)
+      collaborationSupplementsRef.current.push(input.text);
+    appendRuntimeControlMessage(t("runtimeChat.feedback.supplementDelivered"));
+  }
+
   async function send(
     text: string,
     attachments: Attachment[] = [],
     collaborationLaunch?: CollaborationLaunch,
-    options?: { treatLeadingSlashAsPrompt?: boolean; displayText?: string },
+    options?: {
+      treatLeadingSlashAsPrompt?: boolean;
+      displayText?: string;
+      fromInputQueue?: boolean;
+      messageId?: string;
+    },
   ): Promise<void> {
     const prompt = text.trim();
     const displayText = options?.displayText || prompt;
@@ -4773,86 +4870,7 @@ ${reason}`,
       return;
     }
     if (loading) {
-      const collab = collaborationRunActiveRef.current;
-      const continuation =
-        collab && collaborationExecution?.brief
-          ? [
-              collaborationExecution.brief,
-              ...collaborationSupplementsRef.current,
-              prompt,
-            ].join("\n\n[用户补充说明 / User update]\n")
-          : prompt;
-      if (runningInputMode === "follow_up") {
-        if (collab) collaborationSupplementsRef.current.push(prompt);
-        setQueuedFollowUp((queue) => [
-          ...queue,
-          { text: continuation, attachments },
-        ]);
-        appendRuntimeControlMessage(t("runtimeChat.feedback.queuedFollowUp"));
-        return;
-      }
-      const targets = [
-        ...new Set([
-          ...Object.values(activeCollaborationRunsRef.current).map(
-            (active) => active.run.id,
-          ),
-          ...(currentRunId && taskRunRef.current?.status === "running"
-            ? [currentRunId]
-            : []),
-        ]),
-      ];
-      try {
-        let accepted = 0;
-        if (
-          !attachments.length &&
-          window.agentsOneAPI.sendAgentRuntimeInput &&
-          targets.length
-        ) {
-          // Record input in submission order before a native acknowledgement.
-          // ACP may acknowledge only after processing the updated turn.
-          if (collab) collaborationSupplementsRef.current.push(prompt);
-          const next = [
-            ...messagesRef.current,
-            newMessage("user", displayText),
-          ];
-          messagesRef.current = next;
-          setMessages(next);
-          await persistConversation(next);
-          appendRuntimeControlMessage(
-            t("runtimeChat.feedback.supplementSending"),
-          );
-          const results = await Promise.allSettled(
-            targets.map((id) =>
-              window.agentsOneAPI.sendAgentRuntimeInput(id, prompt),
-            ),
-          );
-          accepted = results.filter(
-            (result) =>
-              result.status === "fulfilled" && result.value === "accepted",
-          ).length;
-          const rejected = results.find(
-            (result) => result.status === "rejected",
-          );
-          if (rejected?.status === "rejected") throw rejected.reason;
-          if (accepted === targets.length) {
-            appendRuntimeControlMessage(
-              t("runtimeChat.feedback.supplementDelivered"),
-            );
-            return;
-          }
-        }
-        chatInputRef.current?.restore(displayText, attachments);
-        appendRuntimeControlMessage(
-          t("runtimeChat.feedback.nativeInputUnavailable"),
-        );
-      } catch (error) {
-        chatInputRef.current?.restore(displayText, attachments);
-        appendRuntimeControlMessage(
-          t("runtimeChat.feedback.supplementFailed") +
-            " " +
-            String(error instanceof Error ? error.message : error),
-        );
-      }
+      inputQueue.enqueue(displayText, attachments);
       return;
     }
     if (collaborativeMode && collaborationExecution?.status === "running") {
@@ -4883,9 +4901,12 @@ ${reason}`,
       }),
     );
     const nextMessages = [
-      ...messages,
+      ...messagesRef.current.filter(
+        (message) => message.id !== options?.messageId,
+      ),
       {
         ...newMessage("user", displayText),
+        ...(options?.messageId ? { id: options.messageId } : {}),
         ...(displayAttachments.length
           ? { attachments: displayAttachments }
           : {}),
@@ -5011,6 +5032,7 @@ ${reason}`,
       void persistConversation(failedMessages).catch(() => undefined);
       setLoading(false);
       setCurrentRunId(null);
+      if (options?.fromInputQueue) throw err;
     }
   }
 
@@ -5248,7 +5270,25 @@ ${reason}`,
     (runtime.location === "local" && resolvedRuntimeContextWindow !== undefined
       ? (resolvedRuntimeContextWindow ?? contextWindowForModel(runtimeModelId))
       : undefined);
-  const runtimeContextUsed = lastReportedUsage?.contextUsedTokens;
+  const latestCompactionMessage = [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.controlAudit?.outcome === "handled" &&
+        message.controlAudit.compaction?.tokensAfter !== undefined,
+    );
+  const latestCompaction = latestCompactionMessage?.controlAudit?.compaction;
+  const compactedAt =
+    latestCompactionMessage?.controlAudit?.completedAt ||
+    latestCompactionMessage?.createdAt ||
+    0;
+  const usageReportedAt = taskRun?.usage
+    ? taskRun.startedAt || 0
+    : lastReportedMessage?.createdAt || 0;
+  const useCompactedUsage = !!latestCompaction && compactedAt > usageReportedAt;
+  const runtimeContextUsed = useCompactedUsage
+    ? latestCompaction.tokensAfter
+    : lastReportedUsage?.contextUsedTokens;
   const runtimeContextUsage: ContextUsage | null =
     typeof runtimeContextWindow === "number" &&
     runtimeContextWindow > 0 &&
@@ -5256,7 +5296,12 @@ ${reason}`,
     runtimeContextUsed >= 0
       ? {
           used: runtimeContextUsed,
-          window: runtimeContextWindow,
+          window: useCompactedUsage
+            ? latestCompaction?.contextWindowTokens || runtimeContextWindow
+            : runtimeContextWindow,
+          estimated:
+            useCompactedUsage &&
+            latestCompaction?.tokensAfterEstimated === true,
         }
       : null;
   const unavailableRuntimeArtifacts = (taskRun?.artifacts || []).filter(
@@ -5393,13 +5438,6 @@ ${reason}`,
         handleCollaborationSubmit,
       );
   }, [runId, runCollaboration, send, workspace]);
-
-  useEffect(() => {
-    if (loading || !queuedFollowUp.length) return;
-    const [followUp] = queuedFollowUp;
-    setQueuedFollowUp((queue) => queue.slice(1));
-    void send(followUp.text, followUp.attachments);
-  }, [loading, queuedFollowUp]);
 
   return (
     <div className="runtime-chat chat-container" aria-hidden={!active}>
@@ -5711,37 +5749,9 @@ ${reason}`,
                   </button>
                 </div>
               ) : null}
+              <RuntimeInputQueue {...inputQueue} />
               <ChatInput
-                runningSendLabel={t(
-                  runningInputMode === "steer"
-                    ? "runtimeChat.feedback.adjustNow"
-                    : "runtimeChat.cancelResume.queue",
-                )}
-                leadingExtras={
-                  loading ? (
-                    <div className="runtime-input-options">
-                      <span>{t("runtimeChat.feedback.inputMode")}</span>
-                      <select
-                        className="runtime-input-mode"
-                        aria-label={t("runtimeChat.feedback.inputMode")}
-                        title={t("runtimeChat.feedback.inputModeHint")}
-                        value={runningInputMode}
-                        onChange={(event) =>
-                          setRunningInputMode(
-                            event.target.value as "steer" | "follow_up",
-                          )
-                        }
-                      >
-                        <option value="steer">
-                          {t("runtimeChat.feedback.adjustNow")}
-                        </option>
-                        <option value="follow_up">
-                          {t("runtimeChat.cancelResume.queue")}
-                        </option>
-                      </select>
-                    </div>
-                  ) : undefined
-                }
+                runningSendLabel={t("runtimeChat.feedback.sendSupplement")}
                 ref={chatInputRef}
                 isLoading={loading}
                 hasSession={Boolean(runtimeSessionIdRef.current)}

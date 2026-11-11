@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { RUNTIME_INPUT_REVIEW_MS } from "./useRuntimeInputQueue";
 import type { Attachment } from "../../../../shared/attachments";
 import type { AgentRuntimeDefinition } from "../../../../shared/agent-runtimes";
 import { t as translate } from "../../../../shared/i18n";
@@ -2452,7 +2453,21 @@ describe("RuntimeChat inputs and persistence", () => {
       fetchedAt: Date.now(),
     });
     getAgentRuntimeModelContextWindow.mockResolvedValueOnce(1_000_000);
-    render(
+    executeAgentRuntimeCommand.mockResolvedValue({
+      type: "handled",
+      message: "compressed",
+      statePatch: {
+        compacted: true,
+        compaction: {
+          trigger: "manual",
+          tokensBefore: 3680,
+          tokensAfter: 450,
+          tokensAfterEstimated: true,
+          contextWindowTokens: 1_000_000,
+        },
+      },
+    });
+    const view = render(
       <RuntimeChat
         runId="runtime-context-compact"
         runtime={{
@@ -2485,6 +2500,57 @@ describe("RuntimeChat inputs and persistence", () => {
     await waitFor(() =>
       expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
         expect.objectContaining({ name: "compact", runtimeId: "pi-local" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("runtime-context")).toHaveTextContent(
+        "450/1000000",
+      ),
+    );
+    const savedMessages =
+      saveRuntimeConversation.mock.calls.at(-1)![0].messages;
+    view.unmount();
+    const reopened = render(
+      <RuntimeChat
+        runId="compact-reopened"
+        runtime={piRuntime}
+        profile="default"
+        initialMessages={savedMessages}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("runtime-context")).toHaveTextContent(
+        "450/1000000",
+      ),
+    );
+    reopened.unmount();
+    render(
+      <RuntimeChat
+        runId="compact-calibrated"
+        runtime={piRuntime}
+        profile="default"
+        initialMessages={[
+          ...savedMessages,
+          {
+            id: "after-compact",
+            role: "agent",
+            content: "continued",
+            createdAt: Date.now() + 1000,
+            execution: {
+              runId: "newer-run",
+              model: {
+                id: "deepseek-v4-flash",
+                contextWindowTokens: 1_000_000,
+              },
+              usage: { contextUsedTokens: 600 },
+            },
+          },
+        ]}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("runtime-context")).toHaveTextContent(
+        "600/1000000",
       ),
     );
   });
@@ -5384,10 +5450,12 @@ describe("RuntimeChat inputs and persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
-    await waitFor(() =>
-      expect(
-        screen.getByText(/当前运行暂不接受这类原生补充/),
-      ).toBeInTheDocument(),
+    await waitFor(
+      () =>
+        expect(
+          screen.getByText(/当前运行暂不接受这类原生补充/),
+        ).toBeInTheDocument(),
+      { timeout: RUNTIME_INPUT_REVIEW_MS + 2000 },
     );
     expect(window.agentsOneAPI.cancelAgentRuntimeTask).not.toHaveBeenCalled();
     expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1);
@@ -5424,11 +5492,13 @@ describe("RuntimeChat inputs and persistence", () => {
       ).toBeInTheDocument(),
     );
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
-    await waitFor(() =>
-      expect(nativeInput).toHaveBeenCalledWith(
-        "run-1",
-        "请使用多智能体协作完成这个任务。",
-      ),
+    await waitFor(
+      () =>
+        expect(nativeInput).toHaveBeenCalledWith(
+          "run-1",
+          "请使用多智能体协作完成这个任务。",
+        ),
+      { timeout: RUNTIME_INPUT_REVIEW_MS + 2000 },
     );
     await waitFor(() =>
       expect(
@@ -5480,8 +5550,10 @@ describe("RuntimeChat inputs and persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
-    await waitFor(() =>
-      expect(screen.getByText(/无法确认补充说明已送达/)).toBeInTheDocument(),
+    await waitFor(
+      () =>
+        expect(screen.getByText(/无法确认补充说明已送达/)).toBeInTheDocument(),
+      { timeout: RUNTIME_INPUT_REVIEW_MS + 2000 },
     );
     expect(window.agentsOneAPI.cancelAgentRuntimeTask).not.toHaveBeenCalled();
     expect(

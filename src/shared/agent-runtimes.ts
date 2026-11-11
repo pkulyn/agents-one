@@ -184,6 +184,7 @@ export interface AgentRuntimeConfig {
   /** Context capacity of One’s configured default model. */
   oneContextWindow?: number;
   /** Maximum model API requests per One run, including automatic summaries. */
+  /** Legacy key retained for config compatibility; no longer enforced. */
   oneMaxModelCalls?: number;
   /** User-confirmed image input support for this exact default model and endpoint. */
   oneImageInput?: boolean;
