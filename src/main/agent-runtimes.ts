@@ -3751,6 +3751,9 @@ async function piRuntimeModels(
       id: `${model.provider}/${model.id}`,
       provider: model.provider,
       ...(model.displayName ? { displayName: model.displayName } : {}),
+      ...(model.imageInput !== undefined
+        ? { imageInput: model.imageInput }
+        : {}),
       ...(model.reasoningEfforts?.length
         ? { reasoningEfforts: model.reasoningEfforts }
         : {}),
@@ -4302,9 +4305,23 @@ async function executeAgentRuntimeCommandOnce(
       };
     }
     if (!request.sessionId?.trim()) {
+      const models = await piRuntimeModels(runtime);
+      const model = models.find(
+        (item) => item.id === (request.model || runtime.config.model),
+      );
+      const levels = model?.reasoningEfforts || [];
+      if (!args)
+        return {
+          type: "needs-input",
+          input: "thinking-picker",
+          thinkingLevels: levels,
+          thinkingLevel: request.thinkingLevel || "",
+        };
+      if (levels.includes(args))
+        return { type: "handled", statePatch: { thinkingLevel: args } };
       return {
         type: "error",
-        message: "请先发送一条消息以创建 Pi 会话后，再设置思考等级。",
+        message: "该 Pi 模型未声明此思考等级，请选择支持的模型或先建立会话。",
       };
     }
     if (!args) {

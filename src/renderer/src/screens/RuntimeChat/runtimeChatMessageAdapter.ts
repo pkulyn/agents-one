@@ -508,6 +508,11 @@ export function runtimeConversationToChatMessages(
   const result: ChatMessage[] = [];
   for (const message of messages) {
     if (
+      message.controlAudit?.outcome === "handled" &&
+      ["model", "thinking"].includes(message.controlAudit.command)
+    )
+      continue;
+    if (
       message.role === "agent" &&
       message.execution &&
       message.execution.events?.length

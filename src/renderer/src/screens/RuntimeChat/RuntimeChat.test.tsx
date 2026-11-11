@@ -1111,7 +1111,11 @@ describe("RuntimeChat inputs and persistence", () => {
       message: "当前会话已切换到模型：ark/doubao-seed-2.1-turbo",
       statePatch: { model: "ark/doubao-seed-2.1-turbo" },
     });
-    await screen.findByText("当前会话已切换到模型：ark/doubao-seed-2.1-turbo");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "模型：ark/doubao-seed-2.1-turbo" }),
+      ).toBeEnabled(),
+    );
   });
 
   it("renders only matching native command progress as system feedback", async () => {
