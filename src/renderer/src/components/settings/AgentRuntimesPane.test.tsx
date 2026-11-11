@@ -1167,9 +1167,7 @@ describe("AgentRuntimesPane", () => {
     fireEvent.change(screen.getByLabelText("模型上下文窗口（Token）"), {
       target: { value: "65536" },
     });
-    fireEvent.change(screen.getByLabelText("每轮模型调用上限"), {
-      target: { value: "18" },
-    });
+    expect(screen.queryByLabelText("每轮模型调用上限")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("模型 API Key"), {
       target: { value: "test-one-key" },
     });
@@ -1197,7 +1195,6 @@ describe("AgentRuntimesPane", () => {
           model: "model-test",
           oneInstructions: "请用中文回复\n简洁",
           oneContextWindow: 65536,
-          oneMaxModelCalls: 18,
           oneSkills: ["user:chosen", "agents-user:chosen"],
         }),
       }),

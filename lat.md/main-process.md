@@ -346,7 +346,7 @@ One enables Pi session compaction using the configured model context window; abs
 
 One model presets provide curated quick-fill endpoints for common providers alongside a custom endpoint. Selecting a template fills its API endpoint, example model and protocol; it does not certify connectivity or tool support, so the same real harmless-tool probe remains required before saving. Ark Agent Plan and OpenAI also set their known model-specific context/image defaults; switching provider or model clears stale overrides. The preset identity is derived from endpoint and API type rather than stored as another configuration field.
 
-One limits each worker run to 64 logical model requests, counting automatic summaries and tool-result continuation calls at the SDK model runtime boundary. The progress stream exposes the current count; provider-internal HTTP retries are not included. One also supports session-scoped model IDs on its configured endpoint without changing its default model.
+One continues model/tool loops until completion, user cancellation or a real runtime failure, without a platform model-call cap. Platform call counters are not reasoning. Session-scoped models do not change configured defaults.
 
 The One settings form distinguishes skill discovery failure from an empty directory and allows removing selections that are no longer present. Discovery and explicit selection remain documentation-only and do not execute skill scripts.
 
@@ -376,15 +376,15 @@ One private and project memory path validation rejects live and dangling symboli
 
 ### One per-run model call limit
 
-Each One runtime can set a 1–64 model-request cap per run; old definitions that omit it retain the existing default of 64, and automatic compaction requests count toward the same cap.
+The former fixed model-call cap is retired. One tool loops and summary calls have no platform-enforced request-count ceiling.
 
-The settings editor persists `oneMaxModelCalls` as an optional Runtime config field. Main validates the integer range and passes it through the private Worker protocol to [[src/main/one-runtime/session.ts#createOneSession]], where the existing request counter enforces it. This is an operational limit for newly started runs; it does not rewrite session history or change agent identity. Clearing the field restores the default.
+The old `oneMaxModelCalls` key is preserved as inert legacy data; it is neither exposed in settings nor forwarded to workers. [[src/main/one-runtime/session.ts#createOneSession]] ignores legacy caps. The SDK regression completes 66 provider requests despite an old cap of one, without rewriting user configuration or history.
 
 ### One bounded retries and compaction diagnostics
 
-One retries transient model failures at most twice, counts each actual provider attempt against the existing per-run model-call limit, and reports retry/compaction lifecycle progress in the Runtime timeline.
+One retries a transient provider failure at most twice. Retry and compaction diagnostics remain platform metadata and never become model reasoning.
 
-[[src/main/one-runtime/session.ts#createOneSession]] enables only Pi agent-level retries with a bounded delay; provider-level retries stay disabled so request accounting and quota errors remain visible. [[src/main/one-runtime/run-progress.ts#oneSessionProgress]] maps SDK retry, summary-retry, compaction, and model-call events to bounded Runtime diagnostics, including attempt totals, compaction sequence, token estimates, overflow recovery, and final failure detail. The Worker redacts the configured key before events cross IPC. [[src/main/one-runtime/run-progress.test.ts]] verifies lifecycle mapping; [[src/main/one-runtime/session.test.ts]] exercises real SDK retry events against a local HTTP server.
+[[src/main/one-runtime/session.ts#createOneSession]] enables only Pi agent-level retries with a bounded delay; provider-level retries stay disabled so request accounting and quota errors remain visible. [[src/main/one-runtime/run-progress.ts#oneSessionProgress]] maps SDK retry, summary-retry and compaction events to bounded Runtime diagnostics, including attempt totals, compaction sequence, token estimates, overflow recovery, and final failure detail. The Worker redacts the configured key before events cross IPC. [[src/main/one-runtime/run-progress.test.ts]] verifies lifecycle mapping; [[src/main/one-runtime/session.test.ts]] exercises real SDK retry events against a local HTTP server.
 
 ### One model API protocol selection
 

@@ -2048,8 +2048,7 @@ function runtimeConfigFrom(value: unknown): AgentRuntimeConfig {
   if (
     value.oneMaxModelCalls !== undefined &&
     (!Number.isSafeInteger(value.oneMaxModelCalls) ||
-      (value.oneMaxModelCalls as number) < 1 ||
-      (value.oneMaxModelCalls as number) > 64)
+      (value.oneMaxModelCalls as number) < 1)
   )
     throw new Error("One model call limit must be between 1 and 64.");
   const oneModels = normalizeOneModelChoices(value.oneModels);
@@ -4487,7 +4486,7 @@ async function executeAgentRuntimeCommandOnce(
             throw new Error("Compaction cannot execute tools");
           },
         });
-        await Promise.race([
+        const compacted = await Promise.race([
           worker.completion,
           new Promise<never>((_, reject) => {
             timer = setTimeout(
@@ -4496,16 +4495,29 @@ async function executeAgentRuntimeCommandOnce(
             );
           }),
         ]);
+        const compaction = compacted.compaction;
+        if (
+          !compaction ||
+          compaction.tokensAfter === undefined ||
+          compaction.tokensBefore === undefined
+        )
+          throw new Error("One 压缩未返回可验证的摘要用量，请重试。");
         return {
           type: "handled",
-          message: "One 上下文压缩已完成。",
-          statePatch: { compacted: true, compaction: { trigger: "manual" } },
+          message:
+            compaction.tokensAfter < compaction.tokensBefore
+              ? `One 上下文压缩已完成：${compaction.tokensBefore} → 约 ${compaction.tokensAfter} tokens，下一次模型响应后校准。`
+              : `One 已保存上下文摘要，但保留内容较多，用量未减少（${compaction.tokensBefore} → 约 ${compaction.tokensAfter} tokens）。`,
+          statePatch: { compacted: true, compaction },
         };
       } catch (error) {
         worker?.cancel();
+        await worker?.completion.catch(() => undefined);
         if (
           error instanceof Error &&
-          /Nothing to compact|session too small/i.test(error.message)
+          /Nothing to compact|session too small|Already compacted/i.test(
+            error.message,
+          )
         )
           return {
             type: "handled",
@@ -6586,7 +6598,6 @@ export async function startAgentRuntimeTask(
           (modelId === runtime.config.model?.trim()
             ? runtime.config.oneContextWindow
             : undefined),
-        maxModelCalls: runtime.config.oneMaxModelCalls,
         systemPrompt: [
           "You are One, an assistant in Agents One.",
           oneInstructions,

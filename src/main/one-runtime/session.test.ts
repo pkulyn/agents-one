@@ -156,6 +156,7 @@ describe("One SDK session isolation", () => {
       };
       authorization: string | undefined;
     }> = [];
+    let toolRounds = 1;
     server = createServer((req, res) => {
       let body = "";
       req.on("data", (chunk) => {
@@ -167,9 +168,9 @@ describe("One SDK session isolation", () => {
           body: parsed,
           authorization: req.headers.authorization,
         });
-        const isToolResult = parsed.messages.some(
-          (m: { role: string }) => m.role === "tool",
-        );
+        const isToolResult =
+          parsed.messages.filter((m: { role: string }) => m.role === "tool")
+            .length >= toolRounds;
         const delta = isToolResult
           ? { content: "The answer is 42." }
           : {
@@ -267,23 +268,26 @@ describe("One SDK session isolation", () => {
     } finally {
       session.dispose();
     }
-    const beforeLimit = requests.length;
-    const capped = await createOneSession({
+    const beforeUnlimited = requests.length;
+    toolRounds = 65;
+    const unlimited = await createOneSession({
       ...options,
-      stateDir: join(dir, "capped-state"),
+      stateDir: join(dir, "legacy-cap-ignored"),
       maxModelCalls: 1,
     });
     try {
-      await capped.session.prompt("Find the answer");
-      expect(requests.length - beforeLimit).toBe(1);
-      expect(capped.session.messages.at(-1)).toMatchObject({
-        role: "assistant",
-        stopReason: "error",
-        errorMessage: expect.stringContaining("model call limit"),
+      await unlimited.session.prompt(
+        "Continue until the tool work is complete",
+      );
+      expect(requests.length - beforeUnlimited).toBe(66);
+      expect(unlimited.session.getLastAssistantText()).toContain("42");
+      expect(unlimited.session.messages.at(-1)).toMatchObject({
+        stopReason: "stop",
       });
     } finally {
-      capped.session.dispose();
+      unlimited.session.dispose();
     }
+    toolRounds = 1;
     const saved = await readFile(
       join(options.stateDir, "auth.json"),
       "utf8",
@@ -953,7 +957,15 @@ describe("One SDK session isolation", () => {
         "Additional project requirements ".repeat(1800),
       );
       const summariesBeforeManual = summaryRequests;
-      await reopened.session.compact("Keep project requirements");
+      const compacted = await reopened.session.compact(
+        "Keep project requirements",
+      );
+      expect(compacted.summary).toBeTruthy();
+      expect(compacted.estimatedTokensAfter).toBeLessThan(
+        compacted.tokensBefore,
+      );
+      await reopened.session.prompt("Verify the compacted continuation");
+      expect(resumedSawSummary).toBe(true);
       expect(summaryRequests).toBeGreaterThan(summariesBeforeManual);
     } finally {
       reopened.session.dispose();

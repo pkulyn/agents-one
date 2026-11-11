@@ -102,6 +102,8 @@ export default {
   contextTokens: "{{used}} / {{total}} tokens used",
   contextCache: "Cache: {{pct}}% hit ({{read}} read / {{write}} write)",
   contextGauge: {
+    estimated:
+      "Estimated after compaction; calibrated by the next model response",
     label: "{{usage}}, window {{window}}",
     compactLabel: "{{label}}; compact the current conversation context",
     title: "Context window {{window}}, {{used}} used",

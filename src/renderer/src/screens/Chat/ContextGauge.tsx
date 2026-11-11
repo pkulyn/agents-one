@@ -6,6 +6,8 @@ export interface ContextUsage {
   used: number;
   /** Model context window in tokens. */
   window: number;
+  /** Saved post-compaction projection, calibrated by the next provider response. */
+  estimated?: boolean;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
 }
@@ -36,6 +38,7 @@ function fmtTokens(n: number): string {
 export const ContextGauge = memo(function ContextGauge({
   used,
   window: ctxWindow,
+  estimated,
   cacheReadTokens,
   cacheWriteTokens,
   onClick,
@@ -123,6 +126,7 @@ export const ContextGauge = memo(function ContextGauge({
             total: fmtTokens(ctxWindow),
           })}
         </div>
+        {estimated && <div>{t("chat.contextGauge.estimated")}</div>}
         {hasCache && (
           <div>
             {t("chat.contextCache", {

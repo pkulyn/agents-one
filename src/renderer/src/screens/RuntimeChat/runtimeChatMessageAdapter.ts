@@ -178,7 +178,13 @@ const HIDDEN_PLATFORM_PROGRESS = new Set([
 ]);
 
 function isPlatformLifecycleProgress(event: AgentRuntimeEvent): boolean {
-  return HIDDEN_PLATFORM_PROGRESS.has(normalizedSummary(event.summary));
+  return (
+    HIDDEN_PLATFORM_PROGRESS.has(normalizedSummary(event.summary)) ||
+    /^(?:one_model_call|one_compaction_|one_.*retry|one_session_)/.test(
+      event.code || "",
+    ) ||
+    /^One 模型调用 \d+\/\d+/.test(normalizedSummary(event.summary))
+  );
 }
 
 function isImageArtifact(artifact: AgentRuntimeArtifact): boolean {

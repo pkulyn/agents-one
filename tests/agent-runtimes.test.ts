@@ -1461,16 +1461,16 @@ describe("agent runtime registry", () => {
         config: { ...saved.config, oneMaxModelCalls: 64.5 },
       }),
     ).toThrow("model call limit");
-    expect(() =>
+    expect(
       runtimes.saveAgentRuntime({
         ...saved,
         config: { ...saved.config, oneMaxModelCalls: 65 },
-      }),
-    ).toThrow("model call limit");
+      }).config.oneMaxModelCalls,
+    ).toBe(65);
     expect(
       runtimes.listAgentRuntimes().find((runtime) => runtime.id === saved.id)
         ?.config.oneMaxModelCalls,
-    ).toBe(18);
+    ).toBe(65);
     expect(() =>
       runtimes.saveAgentRuntime({
         ...saved,
@@ -1693,7 +1693,6 @@ describe("agent runtime registry", () => {
         modelId: "model-test",
         apiType: "anthropic-messages",
         contextWindow: 65536,
-        maxModelCalls: 18,
         apiKey: "one-test-secret",
         systemPrompt: expect.stringContaining("private preference"),
       }),
@@ -1702,6 +1701,7 @@ describe("agent runtime registry", () => {
       "project preference",
     );
     const workerOptions = startOneWorkerMock.mock.calls[0][0];
+    expect(workerOptions).not.toHaveProperty("maxModelCalls");
     const bindingsDir = join(workerOptions.stateDir, "run-bindings");
     const bindingText = readFileSync(
       join(
