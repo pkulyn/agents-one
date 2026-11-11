@@ -5,6 +5,7 @@ import type { RuntimeModelOption } from "../../../../shared/runtime-commands";
 import { useI18n } from "../../components/useI18n";
 
 export function RuntimeModelPicker({
+  anchor,
   models,
   selected,
   thinking,
@@ -13,6 +14,7 @@ export function RuntimeModelPicker({
   onThinking,
   onClose,
 }: {
+  anchor?: HTMLButtonElement | null;
   models: RuntimeModelOption[];
   selected: string;
   thinking: string;
@@ -37,20 +39,18 @@ export function RuntimeModelPicker({
   });
   useEffect(() => {
     const place = (): void => {
-      const anchor = document
-        .querySelector(".runtime-chat-model-trigger")
-        ?.getBoundingClientRect();
-      if (anchor)
+      const rect = anchor?.getBoundingClientRect();
+      if (rect)
         setPosition({
           left: Math.max(
             12,
             Math.min(
-              anchor.left,
+              rect.left,
               window.innerWidth - Math.min(600, window.innerWidth - 24) - 12,
             ),
           ),
-          bottom: window.innerHeight - anchor.top + 10,
-          maxHeight: Math.max(180, anchor.top - 24),
+          bottom: window.innerHeight - rect.top + 10,
+          maxHeight: Math.max(180, rect.top - 24),
         });
     };
     const dismiss = (event: PointerEvent): void => {
@@ -76,7 +76,7 @@ export function RuntimeModelPicker({
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("keydown", escape);
     };
-  }, [onClose]);
+  }, [onClose, anchor]);
   const visible = models.filter(
     (m) =>
       (query || (m.provider || t("runtimeChat.model.title")) === group) &&

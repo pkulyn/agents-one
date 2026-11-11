@@ -1252,6 +1252,7 @@ export default function RuntimeChat({
   const [selectedRuntimeModel, setSelectedRuntimeModel] = useState(
     runtime.config.model?.trim() || "",
   );
+  const modelTriggerRef = useRef<HTMLButtonElement>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelSelectedAt, setModelSelectedAt] = useState(0);
   const [runtimeModels, setRuntimeModels] = useState<RuntimeModelOption[]>([]);
@@ -4505,6 +4506,12 @@ ${reason}`,
       return;
     }
     const restoreRejectedInput = (): void => {
+      if (
+        options?.toolbar ||
+        options?.optimisticModel ||
+        options?.optimisticThinking
+      )
+        return;
       chatInputRef.current?.restore(rawInput, attachments);
     };
     const settleOptimisticModel = (accepted: boolean): void => {
@@ -4637,7 +4644,11 @@ ${reason}`,
             : undefined,
         name,
         ...(args ? { args } : {}),
-        model: options?.model || selectedRuntimeModel || undefined,
+        model:
+          options?.model ||
+          selectedRuntimeModel ||
+          pendingRuntimeModel ||
+          undefined,
         thinkingLevel: selectedRuntimeThinkingLevel || undefined,
       });
     } catch (error) {
@@ -5515,6 +5526,7 @@ ${reason}`,
               </CollaborationProgress>
               {modelPickerOpen ? (
                 <RuntimeModelPicker
+                  anchor={modelTriggerRef.current}
                   models={runtimeModels}
                   selected={selectedRuntimeModel || pendingRuntimeModel}
                   thinking={selectedRuntimeThinkingLevel}
@@ -5865,6 +5877,7 @@ ${reason}`,
                     ) : null}
                     <button
                       className="chat-model-trigger runtime-chat-model-trigger"
+                      ref={modelTriggerRef}
                       type="button"
                       disabled={
                         !modelCommandAvailable ||

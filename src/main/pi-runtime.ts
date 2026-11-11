@@ -433,6 +433,7 @@ export interface PiConfiguredModel {
   id: string;
   displayName?: string;
   reasoningEfforts?: string[];
+  imageInput?: boolean;
 }
 
 /**
@@ -487,10 +488,15 @@ export function getPiConfiguredModels(
                 )
                 .map(([level]) => level.trim())
                 .filter(Boolean)
-            : [];
+            : item.reasoning === true
+              ? ["off", "minimal", "low", "medium", "high"]
+              : [];
         result.push({
           provider,
           id,
+          ...(Array.isArray(item.input)
+            ? { imageInput: item.input.includes("image") }
+            : {}),
           ...(displayName ? { displayName } : {}),
           ...(reasoningEfforts.length ? { reasoningEfforts } : {}),
         });
@@ -1296,6 +1302,20 @@ export async function startPiProcess(
     Boolean(workspace),
     config.model,
   );
+  if (input.thinkingLevel) {
+    if (
+      !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
+        input.thinkingLevel,
+      )
+    )
+      throw new Error("Invalid Pi thinking level");
+    executionArgs.splice(
+      executionArgs.length - 1,
+      0,
+      "--thinking",
+      input.thinkingLevel,
+    );
+  }
   if (liveRpc) {
     executionArgs.splice(0, 3, "--mode", "rpc");
     executionArgs.pop();

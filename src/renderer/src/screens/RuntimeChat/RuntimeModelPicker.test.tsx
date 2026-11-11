@@ -8,8 +8,11 @@ it("groups provider models, searches across groups and forwards only clicked mod
   const select = vi.fn(),
     think = vi.fn(),
     close = vi.fn();
+  const anchor = document.createElement("button");
+  anchor.getBoundingClientRect = () => new DOMRect(100, 600, 80, 30);
   render(
     <RuntimeModelPicker
+      anchor={anchor}
       models={[
         {
           id: "a/first",
@@ -32,6 +35,10 @@ it("groups provider models, searches across groups and forwards only clicked mod
       onClose={close}
     />,
   );
+  expect(screen.getByRole("dialog")).toHaveStyle({
+    left: "100px",
+    bottom: window.innerHeight - 600 + 10 + "px",
+  });
   expect(screen.getByRole("option", { name: "First" })).toHaveAttribute(
     "aria-selected",
     "true",
