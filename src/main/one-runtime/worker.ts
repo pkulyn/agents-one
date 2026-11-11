@@ -122,6 +122,19 @@ async function start(
       sessionFile: session!.sessionManager.getSessionFile(),
     });
   });
+  // The selected provider may use SDK defaults different from the Runtime's
+  // configured default model. Report the window that this session really uses.
+  send({
+    type: "event",
+    event: {
+      type: "one_model_context",
+      model: {
+        id: session.model?.id,
+        provider: "agents-one-model",
+        contextWindowTokens: session.model?.contextWindow,
+      },
+    },
+  });
   if (message.options.revisionBinding) {
     session.sessionManager.appendCustomEntry(
       "agents-one-run-binding-v1",

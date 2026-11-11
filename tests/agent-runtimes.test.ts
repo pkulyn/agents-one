@@ -1652,6 +1652,14 @@ describe("agent runtime registry", () => {
         setTimeout(async () => {
           try {
             options.onReady?.(sessionId);
+            options.onEvent?.({
+              type: "one_model_context",
+              model: {
+                id: options.modelId,
+                provider: "agents-one-model",
+                contextWindowTokens: 32768,
+              },
+            });
             const sessionFile = fakeOneSession(options, sessionId);
             const written = JSON.parse(
               await options.executeTool(
@@ -1684,6 +1692,7 @@ describe("agent runtime registry", () => {
     expect(result).toMatchObject({
       status: "succeeded",
       sessionId: "one-session-1",
+      model: expect.objectContaining({ contextWindowTokens: 32768 }),
       artifacts: [
         expect.objectContaining({ kind: "file", label: "result.txt" }),
       ],
