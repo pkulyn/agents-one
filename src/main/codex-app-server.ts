@@ -177,6 +177,8 @@ export interface CodexAppServerModel {
   id: string;
   displayName?: string;
   reasoningEfforts?: string[];
+  imageInput?: boolean;
+  defaultReasoningEffort?: string;
   isDefault?: boolean;
 }
 
@@ -186,18 +188,32 @@ export async function listCodexAppServerModels(
   return withCodexAppServer(config, async (request) => {
     const result = await request("model/list", {});
     const models =
-      isRecord(result) && Array.isArray(result.models) ? result.models : [];
+      isRecord(result) && Array.isArray(result.models)
+        ? result.models
+        : isRecord(result) && Array.isArray(result.data)
+          ? result.data
+          : [];
     return models.flatMap((item) => {
       if (!isRecord(item) || typeof item.id !== "string" || !item.id.trim())
         return [];
       const efforts = Array.isArray(item.supportedReasoningEfforts)
-        ? item.supportedReasoningEfforts.filter(
-            (value): value is string => typeof value === "string",
+        ? item.supportedReasoningEfforts.flatMap((value) =>
+            typeof value === "string"
+              ? [value]
+              : isRecord(value) && typeof value.reasoningEffort === "string"
+                ? [value.reasoningEffort]
+                : [],
           )
         : [];
       return [
         {
-          id: item.id,
+          id: typeof item.model === "string" ? item.model : item.id,
+          ...(Array.isArray(item.inputModalities)
+            ? { imageInput: item.inputModalities.includes("image") }
+            : {}),
+          ...(typeof item.defaultReasoningEffort === "string"
+            ? { defaultReasoningEffort: item.defaultReasoningEffort }
+            : {}),
           ...(typeof item.displayName === "string"
             ? { displayName: item.displayName }
             : {}),

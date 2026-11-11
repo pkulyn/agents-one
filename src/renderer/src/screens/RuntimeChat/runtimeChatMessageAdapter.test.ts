@@ -289,7 +289,7 @@ describe("runtimeChatMessageAdapter", () => {
     );
   });
 
-  it("labels a collaboration reply when its provider omitted detailed trace events", () => {
+  it("omits trace notices when a collaboration provider omitted detailed events", () => {
     const result = runtimeConversationToChatMessages([
       {
         id: "hers-reply",
@@ -310,8 +310,7 @@ describe("runtimeChatMessageAdapter", () => {
     ]);
 
     expect(result[0]).toMatchObject({
-      kind: "system",
-      title: "思考记录未上报",
+      kind: "assistant",
       agentRuntimeId: "hers",
       collaborationRole: "规划",
     });
@@ -356,10 +355,6 @@ describe("runtimeChatMessageAdapter", () => {
     ]);
 
     expect(result).toEqual([
-      expect.objectContaining({
-        kind: "system",
-        title: "思考记录未上报",
-      }),
       expect.objectContaining({ kind: "assistant", content: answer }),
     ]);
   });
@@ -810,30 +805,26 @@ it("shows a model failure immediately while native cleanup is pending", () => {
 });
 
 describe("remote execution visibility", () => {
-  it("shows a lifecycle-only record when the remote service did not report reasoning or tools", () => {
-    const result = runtimeConversationToChatMessages(
-      [
-        {
-          id: "remote-greeting",
-          role: "agent",
-          createdAt: 2,
-          content: "Hello",
-          execution: {
-            runId: "remote-run",
-            events: [
-              event("s", "started", "Remote task started"),
-              event("m", "message", "Hello"),
-              event("e", "completed", "Remote task completed"),
-            ],
-          },
+  it("shows only the reply when the remote service did not report reasoning or tools", () => {
+    const result = runtimeConversationToChatMessages([
+      {
+        id: "remote-greeting",
+        role: "agent",
+        createdAt: 2,
+        content: "Hello",
+        execution: {
+          runId: "remote-run",
+          events: [
+            event("s", "started", "Remote task started"),
+            event("m", "message", "Hello"),
+            event("e", "completed", "Remote task completed"),
+          ],
         },
-      ],
-      { showTraceAvailability: true },
-    );
+      },
+    ]);
     expect(result[0]).toMatchObject({
-      kind: "system",
-      title: "执行记录 · 未上报思考或工具调用",
-      detail: expect.stringContaining("Remote task completed"),
+      kind: "assistant",
+      content: "Hello",
     });
     expect(
       result.filter(
@@ -877,7 +868,6 @@ describe("remote execution visibility", () => {
     ];
     const result = runtimeConversationToChatMessages(
       JSON.parse(JSON.stringify(messages)),
-      { showTraceAvailability: true },
     );
     expect(result.map((item) => item.kind)).toEqual([
       "reasoning",

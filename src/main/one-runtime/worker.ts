@@ -129,13 +129,21 @@ async function start(
       message.options.revisionBinding,
     );
   }
-  await session.prompt(message.prompt, { images: message.images });
+  if (message.options.operation === "compact") {
+    await session.compact(message.options.customInstructions);
+  } else {
+    await session.prompt(message.prompt, { images: message.images });
+  }
   if (cancelled) {
     send({ type: "cancelled" });
     return;
   }
   const last = session.messages.at(-1);
-  if (last?.role === "assistant" && last.stopReason === "error") {
+  if (
+    !message.options.operation &&
+    last?.role === "assistant" &&
+    last.stopReason === "error"
+  ) {
     throw new Error(last.errorMessage || "Model request failed");
   }
   send({

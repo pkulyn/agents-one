@@ -1427,6 +1427,7 @@ describe("agent runtime registry", () => {
         agentTransport: "local-sdk",
         endpoint: "https://example.test/v1",
         model: "model-test",
+        oneModels: ["model-test", "alternate-model"],
         oneApiType: "anthropic-messages",
         oneMemoryEnabled: true,
         oneContextWindow: 65536,

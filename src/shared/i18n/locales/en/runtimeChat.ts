@@ -59,6 +59,8 @@ export default {
     agentPreparing: "{{agent}} is thinking and preparing to execute…",
   },
   feedback: {
+    useToolbar:
+      "This command was removed. Use the conversation or model controls.",
     newConversation: "New conversation",
     branchRequiresMessage:
       "Send and save at least one conversation message before creating a branch.",
@@ -158,6 +160,10 @@ export default {
     title: "Model",
     scope: "Applies only to this conversation and does not change defaults",
     list: "Model list",
+    search: "Search models",
+    manage: "Manage models",
+    providers: "Providers",
+    vision: "Vision",
     current: "{{model}} (current conversation)",
     empty: "This Runtime did not return any switchable models.",
     confirm: "Switch model",
@@ -172,6 +178,7 @@ export default {
     noMetadata: "The remote agent did not provide model metadata",
   },
   thinking: {
+    nativeDefault: "Managed by this Runtime or model",
     picker: "Choose a reasoning level for this conversation",
     title: "Reasoning",
     scope: "Only levels supported by the current Pi model are shown",

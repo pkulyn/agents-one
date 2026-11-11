@@ -152,6 +152,7 @@ describe("One SDK session isolation", () => {
         messages: Array<{ role: string }>;
         max_tokens?: number;
         max_completion_tokens?: number;
+        reasoning_effort?: string;
       };
       authorization: string | undefined;
     }> = [];
@@ -228,6 +229,7 @@ describe("One SDK session isolation", () => {
       apiKey: "test-key",
       contextWindow: 32768,
       maxOutputTokens: 16000,
+      thinkingLevel: "high" as const,
       tools: [
         {
           name: "lookup_answer",
@@ -256,6 +258,7 @@ describe("One SDK session isolation", () => {
         requests[0].body.max_tokens ?? requests[0].body.max_completion_tokens,
       ).toBe(16000);
       expect(requests[0].authorization).toBe("Bearer test-key");
+      expect(requests[0].body.reasoning_effort).toBe("high");
       expect(
         requests[1].body.messages.some(
           (m: { role: string }) => m.role === "tool",
@@ -937,11 +940,21 @@ describe("One SDK session isolation", () => {
     } finally {
       created.session.dispose();
     }
-    const reopened = await createOneSession({ ...options, sessionId: id });
+    const reopened = await createOneSession({
+      ...options,
+      contextWindow: 32768,
+      sessionId: id,
+    });
     try {
       await reopened.session.prompt("Continue the project");
       expect(resumedSawSummary).toBe(true);
       expect(reopened.session.getLastAssistantText()).toBe("done");
+      await reopened.session.prompt(
+        "Additional project requirements ".repeat(1800),
+      );
+      const summariesBeforeManual = summaryRequests;
+      await reopened.session.compact("Keep project requirements");
+      expect(summaryRequests).toBeGreaterThan(summariesBeforeManual);
     } finally {
       reopened.session.dispose();
     }
