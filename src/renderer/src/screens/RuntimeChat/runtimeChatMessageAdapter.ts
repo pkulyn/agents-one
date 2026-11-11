@@ -19,6 +19,8 @@ import { runtimeArtifactMediaUri } from "../Chat/mediaUtils";
 
 export interface RuntimeChatMessageAdapterOptions {
   conversationId?: string;
+  /** Remote turns must distinguish absent telemetry from a lost UI trace. */
+  showTraceAvailability?: boolean;
   /**
    * Runtime protocol markers (for example collaboration proposals) can be
    * removed before the native MessageRow renders the assistant bubble.
@@ -52,6 +54,8 @@ const DEFAULT_PLATFORM_TEXT: Record<string, string> = {
   "runtimeChat.events.inactive":
     "智能体已 10 分钟无响应，可继续等待或停止后重试。",
   "runtimeChat.events.traceUnavailable": "思考记录未上报",
+  "runtimeChat.events.executionTraceUnavailable":
+    "执行记录 · 未上报思考或工具调用",
   "runtimeChat.events.toolsWithoutReasoning":
     "该智能体的运行服务本轮提供了工具调用记录，但没有提供可展示的思考摘要。",
   "runtimeChat.events.lifecycleOnly":
@@ -506,22 +510,29 @@ export function runtimeConversationToChatMessages(
 ): ChatMessage[] {
   const result: ChatMessage[] = [];
   for (const message of messages) {
-    if (message.role === "agent" && message.execution?.events?.length) {
-      const visibleEvents = message.execution.events.filter(
+    if (
+      message.role === "agent" &&
+      message.execution &&
+      (message.execution.events?.length || options.showTraceAvailability)
+    ) {
+      const visibleEvents = (message.execution.events || []).filter(
         (event) =>
           event.type !== "progress" ||
           !isSyntheticRemoteReasoningSummary(event.summary, message.content),
       );
       const hasReasoning = visibleEvents.some(
-        (event) => event.type === "progress",
+        (event) =>
+          event.type === "progress" && !isPlatformLifecycleProgress(event),
       );
       const hasTools = visibleEvents.some((event) =>
         ["tool_call", "tool_result"].includes(event.type),
       );
       if (
-        message.collaborationRole &&
+        (message.collaborationRole ||
+          (options.showTraceAvailability && !hasTools)) &&
         !hasReasoning &&
         !taskNoticeKey(visibleEvents) &&
+        !fallbackTaskNoticeKey(message.content) &&
         !visibleEvents.some((event) => event.type === "error" && !event.tool)
       ) {
         result.push(
@@ -532,14 +543,23 @@ export function runtimeConversationToChatMessages(
               role: "agent",
               title: platformText(
                 options,
-                "runtimeChat.events.traceUnavailable",
+                message.collaborationRole
+                  ? "runtimeChat.events.traceUnavailable"
+                  : "runtimeChat.events.executionTraceUnavailable",
               ),
               detail: hasTools
                 ? platformText(
                     options,
                     "runtimeChat.events.toolsWithoutReasoning",
                   )
-                : platformText(options, "runtimeChat.events.lifecycleOnly"),
+                : [
+                    platformText(options, "runtimeChat.events.lifecycleOnly"),
+                    ...visibleEvents
+                      .filter((event) =>
+                        ["started", "completed"].includes(event.type),
+                      )
+                      .map((event) => event.summary),
+                  ].join("\n"),
             },
             identityForMessage(message),
           ),

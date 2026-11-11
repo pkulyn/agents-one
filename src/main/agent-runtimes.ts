@@ -1,3 +1,8 @@
+import {
+  runtimeSkillPrompt,
+  onePluginSkillCommands,
+  onePluginSkillPrompt,
+} from "./runtime-skill-prompt";
 import type { RuntimeSkillDescriptor } from "../shared/runtime-skills";
 import { discoverRuntimeSkills } from "./runtime-skills";
 import { prepareOneAttachments } from "./one-runtime/attachments";
@@ -3519,6 +3524,19 @@ function baseRuntimeControlCommands(
       availability: "running",
     },
   ];
+  if (!isAgentsOneGatewayRuntime(runtime) && runtime.kind !== "web-agent") {
+    commands.push({
+      name: "skill",
+      aliases: ["skills"],
+      description: "选择并调用本地技能",
+      category: "Skills",
+      source: "desktop",
+      target: "model",
+      availability: "idle",
+      argumentHint: "<技能> [任务]",
+      supportsAttachments: true,
+    });
+  }
   if (
     ["pi", "codex", "one"].includes(runtime.kind) ||
     capabilities?.modelSelection
@@ -3853,6 +3871,10 @@ export async function getAgentRuntimeCommandCatalog(
       // Legacy and degraded gateways retain their ordinary chat path.
     }
   }
+  if (runtime.kind === "one")
+    nativeCommands.push(
+      ...onePluginSkillCommands(runtime.config.onePlugins || []),
+    );
   const catalog = createRuntimeCommandCatalog({
     desktop: baseRuntimeControlCommands(runtime, capabilities),
     runtime: nativeCommands,
@@ -3967,6 +3989,26 @@ async function executeAgentRuntimeCommandOnce(
   }
   if (command.availability === "running" && activeRun?.status !== "running") {
     return { type: "error", message: `/${name} 仅在任务运行中可用。` };
+  }
+
+  if (command.name === "skill" && command.source === "desktop") {
+    return runtimeSkillPrompt(args, {
+      user: join(homedir(), ".codex", "skills"),
+      agents: join(homedir(), ".agents", "skills"),
+      ...(runtime.kind === "one" ? { one: oneSkillsRoot(runtime.id) } : {}),
+    });
+  }
+
+  if (
+    runtime.kind === "one" &&
+    command.source === "skill" &&
+    command.target === "model"
+  ) {
+    return onePluginSkillPrompt(
+      runtime.config.onePlugins || [],
+      command.name,
+      args,
+    );
   }
 
   if (name === "status") {

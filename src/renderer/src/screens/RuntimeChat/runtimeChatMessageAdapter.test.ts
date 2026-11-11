@@ -808,3 +808,84 @@ it("shows a model failure immediately while native cleanup is pending", () => {
     ),
   ).toEqual([]);
 });
+
+describe("remote execution visibility", () => {
+  it("shows a lifecycle-only record when the remote service did not report reasoning or tools", () => {
+    const result = runtimeConversationToChatMessages(
+      [
+        {
+          id: "remote-greeting",
+          role: "agent",
+          createdAt: 2,
+          content: "Hello",
+          execution: {
+            runId: "remote-run",
+            events: [
+              event("s", "started", "Remote task started"),
+              event("m", "message", "Hello"),
+              event("e", "completed", "Remote task completed"),
+            ],
+          },
+        },
+      ],
+      { showTraceAvailability: true },
+    );
+    expect(result[0]).toMatchObject({
+      kind: "system",
+      title: "执行记录 · 未上报思考或工具调用",
+      detail: expect.stringContaining("Remote task completed"),
+    });
+    expect(
+      result.filter(
+        (item) => item.kind === "reasoning" || item.kind === "tool_call",
+      ),
+    ).toHaveLength(0);
+    expect(result.at(-1)).toMatchObject({
+      kind: "assistant",
+      content: "Hello",
+    });
+  });
+  it("preserves real remote reasoning and paired tools after JSON persistence and reload", () => {
+    const messages: RuntimeConversationMessage[] = [
+      {
+        id: "remote-tools",
+        role: "agent",
+        content: "Done",
+        createdAt: 3,
+        execution: {
+          runId: "real-trace",
+          events: [
+            event("r", "progress", "Inspect the requested file"),
+            event("c", "tool_call", "read_file", {
+              tool: {
+                name: "read_file",
+                callId: "read-1",
+                inputSummary: "test.txt",
+              },
+            }),
+            event("t", "tool_result", "read complete", {
+              tool: {
+                name: "read_file",
+                callId: "read-1",
+                outputSummary: "hello",
+              },
+            }),
+            event("m", "message", "Done"),
+          ],
+        },
+      },
+    ];
+    const result = runtimeConversationToChatMessages(
+      JSON.parse(JSON.stringify(messages)),
+      { showTraceAvailability: true },
+    );
+    expect(result.map((item) => item.kind)).toEqual([
+      "reasoning",
+      "tool_call",
+      "tool_result",
+      "assistant",
+    ]);
+    expect(result[1]).toMatchObject({ callId: "read-1", args: "test.txt" });
+    expect(result[2]).toMatchObject({ callId: "read-1", content: "hello" });
+  });
+});

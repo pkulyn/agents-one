@@ -16,6 +16,7 @@ export type RuntimeCommandSource = "desktop" | "runtime" | "skill" | "plugin";
 
 export interface RuntimeCommandDescriptor {
   name: string;
+  displayName?: string;
   aliases?: string[];
   description: string;
   category: string;
@@ -185,6 +186,9 @@ function normalizeDescriptor(raw: unknown): RuntimeCommandDescriptor | null {
   );
   return {
     name,
+    ...(typeof candidate.displayName === "string"
+      ? { displayName: candidate.displayName.trim().slice(0, 128) }
+      : {}),
     description: description.slice(0, MAX_COMMAND_DESCRIPTION_LENGTH),
     category: category.slice(0, MAX_COMMAND_CATEGORY_LENGTH),
     source: candidate.source as RuntimeCommandSource,
