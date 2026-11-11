@@ -1427,6 +1427,7 @@ describe("agent runtime registry", () => {
         agentTransport: "local-sdk",
         endpoint: "https://example.test/v1",
         model: "model-test",
+        oneModels: ["model-test", "alternate-model"],
         oneApiType: "anthropic-messages",
         oneMemoryEnabled: true,
         oneContextWindow: 65536,
@@ -2550,6 +2551,41 @@ describe("agent runtime registry", () => {
         },
       ],
     });
+    expect(executePiRpcCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts a declared Pi reasoning choice before the first native session", async () => {
+    const { runtimes } = await loadModules();
+    runtimes.saveAgentRuntime({
+      id: "pi-first-thinking",
+      name: "Pi",
+      kind: "pi",
+      location: "local",
+      enabled: true,
+      config: { executablePath: "pi", transport: "cli", workspace: testHome },
+    });
+    getPiConfiguredModelsMock.mockReturnValue([
+      { provider: "p", id: "model", reasoningEfforts: ["off", "low", "high"] },
+    ]);
+    await expect(
+      runtimes.executeAgentRuntimeCommand({
+        runtimeId: "pi-first-thinking",
+        name: "thinking",
+        model: "p/model",
+        args: "high",
+      }),
+    ).resolves.toMatchObject({
+      type: "handled",
+      statePatch: { thinkingLevel: "high" },
+    });
+    await expect(
+      runtimes.executeAgentRuntimeCommand({
+        runtimeId: "pi-first-thinking",
+        name: "thinking",
+        model: "p/model",
+        args: "unknown",
+      }),
+    ).resolves.toMatchObject({ type: "error" });
     expect(executePiRpcCommandMock).not.toHaveBeenCalled();
   });
 

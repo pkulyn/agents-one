@@ -17,6 +17,10 @@ import {
 } from "./agent-runtimes";
 import { isAuthorizedMediaPath } from "./media";
 import { getActiveProfileNameSync } from "./utils";
+import {
+  isAuthorizedWorkspaceRoot,
+  resolveAuthorizedWorkspaceId,
+} from "./workspace-authority";
 
 const remoteDownloads = new Map<string, Promise<string | null>>();
 /** Read-only authority is tied to one saved assistant reply, never a directory grant. */
@@ -40,6 +44,10 @@ export async function resolveConversationFile(
   if (!conversation || !message) return null;
   let candidate: string | undefined;
   let name: string | undefined;
+  let projectRoot: string | undefined;
+  const workspace = conversation.workspaceId
+    ? resolveAuthorizedWorkspaceId(conversation.workspaceId)
+    : conversation.workspace;
   if (ref.artifactId) {
     const artifact = message.execution?.artifacts?.find(
       (item) => item.id === ref.artifactId && item.kind === "file",
@@ -64,6 +72,32 @@ export async function resolveConversationFile(
           .filter((path) => path.split(/[\\/]/).pop() === artifact.label);
         const unique = [...new Set(paths)];
         if (unique.length === 1) candidate = unique[0];
+        // Renderer snapshots omit transient artifact paths. A saved local
+        // delivery label can be resolved against its still-authorized project
+        // after restart, never against the process cwd or an unrelated folder.
+        const relativeFile = artifact.relativePath || artifact.label;
+        if (
+          !candidate &&
+          workspace &&
+          isAuthorizedWorkspaceRoot(workspace) &&
+          !isAbsolute(relativeFile) &&
+          !/[:\0\r\n]/.test(relativeFile)
+        ) {
+          projectRoot = await realpath(workspace).catch(() => undefined);
+          if (projectRoot) {
+            const file = resolve(projectRoot, relativeFile);
+            const rel = relative(projectRoot, file);
+            if (
+              rel &&
+              rel !== ".." &&
+              !rel.startsWith("..\\") &&
+              !rel.startsWith("../") &&
+              !isAbsolute(rel)
+            )
+              candidate = file;
+          }
+        }
+        if (!candidate) return null;
       }
     }
     if (!candidate) {
@@ -117,14 +151,29 @@ export async function resolveConversationFile(
     return null;
   try {
     const path = await realpath(candidate);
+    if (projectRoot) {
+      const rel = relative(projectRoot, path);
+      if (
+        !rel ||
+        rel === ".." ||
+        rel.startsWith("..\\") ||
+        rel.startsWith("../") ||
+        isAbsolute(rel)
+      )
+        return null;
+    }
     const info = await stat(path);
-    if (!info.isFile()) return null;
+    if (
+      !info.isFile() ||
+      profile !== getActiveProfileNameSync() ||
+      (projectRoot && (!workspace || !isAuthorizedWorkspaceRoot(workspace)))
+    )
+      return null;
     return {
       name: name || basename(path),
       path,
       relativePath:
-        relative(conversation.workspace || dirname(path), path) ||
-        basename(path),
+        relative(workspace || dirname(path), path) || basename(path),
       size: info.size,
       image: /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(path),
     };

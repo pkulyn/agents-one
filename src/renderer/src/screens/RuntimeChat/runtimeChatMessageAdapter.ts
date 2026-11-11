@@ -9,7 +9,6 @@ import type {
   ChatBubbleMessage,
   ChatMessage,
   ReasoningMessage,
-  SystemMessage,
   ToolCallMessage,
   ToolResultMessage,
   ChatMessageAgentIdentity,
@@ -19,8 +18,6 @@ import { runtimeArtifactMediaUri } from "../Chat/mediaUtils";
 
 export interface RuntimeChatMessageAdapterOptions {
   conversationId?: string;
-  /** Remote turns must distinguish absent telemetry from a lost UI trace. */
-  showTraceAvailability?: boolean;
   /**
    * Runtime protocol markers (for example collaboration proposals) can be
    * removed before the native MessageRow renders the assistant bubble.
@@ -511,60 +508,20 @@ export function runtimeConversationToChatMessages(
   const result: ChatMessage[] = [];
   for (const message of messages) {
     if (
+      message.controlAudit?.outcome === "handled" &&
+      ["model", "thinking"].includes(message.controlAudit.command)
+    )
+      continue;
+    if (
       message.role === "agent" &&
       message.execution &&
-      (message.execution.events?.length || options.showTraceAvailability)
+      message.execution.events?.length
     ) {
       const visibleEvents = (message.execution.events || []).filter(
         (event) =>
           event.type !== "progress" ||
           !isSyntheticRemoteReasoningSummary(event.summary, message.content),
       );
-      const hasReasoning = visibleEvents.some(
-        (event) =>
-          event.type === "progress" && !isPlatformLifecycleProgress(event),
-      );
-      const hasTools = visibleEvents.some((event) =>
-        ["tool_call", "tool_result"].includes(event.type),
-      );
-      if (
-        (message.collaborationRole ||
-          (options.showTraceAvailability && !hasTools)) &&
-        !hasReasoning &&
-        !taskNoticeKey(visibleEvents) &&
-        !fallbackTaskNoticeKey(message.content) &&
-        !visibleEvents.some((event) => event.type === "error" && !event.tool)
-      ) {
-        result.push(
-          withIdentity<SystemMessage>(
-            {
-              id: `${message.id}:${message.execution.runId}:trace-unavailable`,
-              kind: "system",
-              role: "agent",
-              title: platformText(
-                options,
-                message.collaborationRole
-                  ? "runtimeChat.events.traceUnavailable"
-                  : "runtimeChat.events.executionTraceUnavailable",
-              ),
-              detail: hasTools
-                ? platformText(
-                    options,
-                    "runtimeChat.events.toolsWithoutReasoning",
-                  )
-                : [
-                    platformText(options, "runtimeChat.events.lifecycleOnly"),
-                    ...visibleEvents
-                      .filter((event) =>
-                        ["started", "completed"].includes(event.type),
-                      )
-                      .map((event) => event.summary),
-                  ].join("\n"),
-            },
-            identityForMessage(message),
-          ),
-        );
-      }
       result.push(
         ...runtimeEventMessages(visibleEvents, {
           idPrefix: `${message.id}:${message.execution.runId}`,

@@ -22,6 +22,9 @@ export type OneWorkerInput =
         maxOutputTokens?: number;
         maxModelCalls?: number;
         imageInput?: boolean;
+        thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
+        operation?: "compact";
+        customInstructions?: string;
         systemPrompt?: string;
         sessionId?: string;
         revisionBinding?: {

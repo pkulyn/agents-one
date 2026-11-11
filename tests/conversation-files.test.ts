@@ -11,7 +11,12 @@ import type { RuntimeConversation } from "../src/shared/runtime-conversations";
 const state = vi.hoisted(() => ({
   conversation: {} as Pick<
     RuntimeConversation,
-    "id" | "runtimeId" | "runtimeLocation" | "messages"
+    | "id"
+    | "runtimeId"
+    | "runtimeLocation"
+    | "messages"
+    | "workspace"
+    | "workspaceId"
   >,
   location: "local",
   profile: "default",
@@ -31,6 +36,10 @@ vi.mock("../src/main/utils", () => ({
   getActiveProfileNameSync: () => state.profile,
 }));
 vi.mock("../src/main/media", () => ({ isAuthorizedMediaPath: () => false }));
+vi.mock("../src/main/workspace-authority", () => ({
+  resolveAuthorizedWorkspaceId: (id: string) => (id === "project" ? dir : null),
+  isAuthorizedWorkspaceRoot: (path: string) => path === dir,
+}));
 let dir: string;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "agents-one-file-"));
@@ -150,4 +159,32 @@ describe("conversation file references", () => {
       }),
     ).resolves.toBeNull();
   });
+});
+
+it("restores a saved local artifact inside the authorized project after in-memory runs are gone", async () => {
+  const path = join(dir, "weather_result.md");
+  await writeFile(path, "weather");
+  state.conversation.workspaceId = "project";
+  state.conversation.messages[0].content = "[交付物] 路径：weather_result.md";
+  state.conversation.messages[0].execution = {
+    runId: "old",
+    artifacts: [{ id: "local-file", kind: "file", label: "weather_result.md" }],
+  };
+  await expect(
+    resolveConversationFile({
+      conversationId: "c",
+      messageId: "m",
+      artifactId: "local-file",
+    }),
+  ).resolves.toMatchObject({ path: await realpath(path), size: 7 });
+  state.conversation.messages[0].execution!.artifacts![0].label =
+    "../outside.md";
+  await expect(
+    resolveConversationFile({
+      conversationId: "c",
+      messageId: "m",
+      artifactId: "local-file",
+    }),
+  ).resolves.toBeNull();
+  expect(state.restore).not.toHaveBeenCalled();
 });

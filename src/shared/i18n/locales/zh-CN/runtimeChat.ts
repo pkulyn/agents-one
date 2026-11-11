@@ -57,6 +57,7 @@ export default {
     agentPreparing: "{{agent}} 正在思考并准备执行……",
   },
   feedback: {
+    useToolbar: "此命令已移除，请使用对话入口或输入框下方的模型控件。",
     newConversation: "新对话",
     branchRequiresMessage: "请先发送并保存至少一条对话消息后再创建分支。",
     branchFromReply: "从选定答复继续；仅保留用户可见消息与执行摘要。",
@@ -134,6 +135,10 @@ export default {
     title: "模型",
     scope: "仅作用于当前会话，不会修改默认配置",
     list: "模型列表",
+    search: "搜索模型",
+    manage: "管理模型",
+    providers: "模型供应商",
+    vision: "视觉",
     current: "{{model}}（当前会话）",
     empty: "当前 Runtime 没有返回可切换的模型。",
     confirm: "确认切换",
@@ -148,6 +153,7 @@ export default {
     noMetadata: "远程智能体未提供模型元数据",
   },
   thinking: {
+    nativeDefault: "由当前智能体或模型自动管理",
     picker: "选择当前会话思考等级",
     title: "思考",
     scope: "仅显示当前 Pi 模型实际支持的等级",

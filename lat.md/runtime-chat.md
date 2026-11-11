@@ -554,6 +554,12 @@ Directed dialogue in both serial and DAG execution resumes the targeted role’s
 
 ## Remote trace availability and expanded alignment
 
-Remote execution histories preserve genuine reasoning and paired tool evidence, and expose an execution-details notice when a completed remote turn contains only lifecycle and final-answer events.
+Remote execution histories preserve genuine reasoning and paired tool evidence, and render only the answer when a completed turn contains no reasoning or tool events.
 
-[[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.ts#runtimeConversationToChatMessages]] retains actual tool events across history reload while suppressing final-answer copies masquerading as reasoning. Missing telemetry is described without inventing thoughts or tool calls. [[src/renderer/src/screens/Chat/ExecutionTraceGroup.tsx#ExecutionTraceGroup]] reuses the original reasoning/tool rows; expanded content has no extra left rail or indentation and maintains compact live-row spacing.
+[[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.ts#runtimeConversationToChatMessages]] retains actual tool events across history reload while suppressing final-answer copies masquerading as reasoning. Absent telemetry adds no synthetic execution notice or invented thoughts. [[src/renderer/src/screens/Chat/ExecutionTraceGroup.tsx#ExecutionTraceGroup]] reuses the original reasoning/tool rows; expanded content has no extra left rail or indentation and maintains compact live-row spacing.
+
+## Project file restoration after restart
+
+Saved local file artifacts resolve through the conversation’s authorized project ID and exact relative path after transient run memory is gone.
+
+[[src/main/conversation-files.ts#resolveConversationFile]] verifies ownership by the saved assistant reply, the current project capability, and canonical containment before returning file information. It does not search unrelated folders or treat remote prose as a local file grant. Revoked projects, missing files and symlink escapes stay unavailable.
