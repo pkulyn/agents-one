@@ -28,11 +28,16 @@ class FakeChild extends EventEmitter {
       this.respond({
         id: request.id,
         result: {
-          models: [
+          data: [
             {
               id: "gpt-test",
               displayName: "GPT Test",
-              supportedReasoningEfforts: ["low", "high"],
+              supportedReasoningEfforts: [
+                { reasoningEffort: "low", description: "Low" },
+                { reasoningEffort: "high", description: "High" },
+              ],
+              defaultReasoningEffort: "low",
+              inputModalities: ["text", "image"],
             },
           ],
         },
@@ -90,6 +95,8 @@ describe("Codex App Server controls", () => {
         id: "gpt-test",
         displayName: "GPT Test",
         reasoningEfforts: ["low", "high"],
+        defaultReasoningEffort: "low",
+        imageInput: true,
       },
     ]);
   });

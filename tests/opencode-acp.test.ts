@@ -1,10 +1,17 @@
 import { WORD_INPUT_BASE64 } from "./fixtures/word-input";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   opencodeInvocation,
+  openCodeRuntimeModelControls,
   openCodeImageModels,
   openCodeProviderFailure,
   openCodePermissionEnvironment,
@@ -1233,5 +1240,45 @@ it("does not repeat a task after tool activity when a later model call fails", a
     expect(result.sessionId).toBe("session-test");
   } finally {
     rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+it("discovers ACP models and applies only provider-declared reasoning options without prompting", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "opencode-model-controls-"));
+  try {
+    const script = join(dir, "controls.cjs"),
+      calls = join(dir, "calls.jsonl");
+    writeFileSync(
+      script,
+      [
+        "const fs=require('node:fs'),rl=require('node:readline').createInterface({input:process.stdin});",
+        "const send=x=>process.stdout.write(JSON.stringify(x)+'\\n');",
+        "const options=[{id:'model',category:'model',options:[{value:'p/one'},{value:'p/two'}]},{id:'variant',category:'thought_level',options:[{value:'low'},{value:'high'}]}];",
+        "rl.on('line',line=>{const m=JSON.parse(line);fs.appendFileSync(" +
+          JSON.stringify(calls) +
+          ",JSON.stringify(m)+'\\n');if(m.method==='initialize')send({id:m.id,result:{protocolVersion:1,agentCapabilities:{sessionCapabilities:{resume:true}}}});else if(m.method==='session/new'||m.method==='session/resume')send({id:m.id,result:{sessionId:'controls-session',configOptions:options}});else if(m.method==='session/set_config_option')send({id:m.id,result:{configOptions:options}});});",
+      ].join(""),
+    );
+    const result = await openCodeRuntimeModelControls(
+      { executablePath: process.execPath, acpArgs: [script], workspace: dir },
+      undefined,
+      "p/two",
+      "high",
+    );
+    expect(result.models.map((m) => m.id)).toEqual(["p/one", "p/two"]);
+    expect(result.levels).toEqual(["low", "high"]);
+    const frames = readFileSync(calls, "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(frames.some((f) => f.method === "session/prompt")).toBe(false);
+    expect(frames).toContainEqual(
+      expect.objectContaining({
+        method: "session/set_config_option",
+        params: expect.objectContaining({ configId: "variant", value: "high" }),
+      }),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

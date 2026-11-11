@@ -23259,3 +23259,136 @@ body.tray-completion-document {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* Conversation model menu anchored to the composer. */
+.runtime-model-menu {
+  position: fixed;
+  z-index: 1200;
+  width: min(600px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-bright);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px #0002;
+  overflow: hidden;
+}
+.runtime-model-menu header {
+  display: flex;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-bright);
+  gap: 8px;
+}
+.runtime-model-menu header label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+.runtime-model-menu header input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.runtime-model-menu button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.runtime-model-menu header button {
+  display: flex;
+  align-items: center;
+}
+.runtime-model-menu-body {
+  display: flex;
+  min-height: 90px;
+  overflow: auto;
+}
+.runtime-model-menu nav {
+  flex: 0 0 180px;
+  padding: 6px;
+  border-right: 1px solid var(--border-bright);
+  overflow: auto;
+}
+.runtime-model-menu nav button,
+.runtime-model-menu-options button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+.runtime-model-menu nav button.is-active,
+.runtime-model-menu button:hover,
+.runtime-model-menu button:focus-visible {
+  background: var(--bg-hover, #f0f2f5);
+}
+.runtime-model-menu-options {
+  flex: 1;
+  min-width: 0;
+  padding: 6px;
+  overflow: auto;
+  max-height: 280px;
+}
+.runtime-model-menu-options span {
+  overflow-wrap: anywhere;
+}
+.runtime-model-menu-options small {
+  font-size: 11px;
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  padding: 1px 4px;
+  margin-left: 8px;
+  color: var(--text-secondary);
+}
+.runtime-model-menu footer {
+  border-top: 1px solid var(--border-bright);
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+}
+.runtime-model-menu footer > div:first-child {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.runtime-model-menu footer small {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.runtime-thinking-segments {
+  display: flex;
+  border-radius: 18px;
+  background: var(--bg-hover, #eff2f6);
+  padding: 3px;
+  gap: 3px;
+}
+.runtime-thinking-segments button {
+  flex: 1;
+  padding: 6px 3px;
+  font-size: 12px;
+  border-radius: 16px;
+}
+.runtime-thinking-segments button[aria-pressed="true"] {
+  background: var(--accent);
+  color: white;
+}
+.runtime-model-menu button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+@media (max-width: 600px) {
+  .runtime-model-menu nav {
+    flex-basis: 120px;
+    font-size: 12px;
+  }
+}

@@ -5,6 +5,7 @@ import {
 import { recoverInterruptedCollaboration } from "./collaborationRecovery";
 import { CollaborationProgress } from "./CollaborationProgress";
 import { TaskModeControl } from "./TaskModeControl";
+import { RuntimeModelPicker } from "./RuntimeModelPicker";
 import {
   automaticRuntimeTaskMode,
   isRuntimePermissionFailure,
@@ -1252,6 +1253,7 @@ export default function RuntimeChat({
     runtime.config.model?.trim() || "",
   );
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelSelectedAt, setModelSelectedAt] = useState(0);
   const [runtimeModels, setRuntimeModels] = useState<RuntimeModelOption[]>([]);
   // Keep an uncommitted selection separate from the model actually forwarded
   // to the Runtime. Closing the picker must never make the toolbar claim a
@@ -1264,7 +1266,7 @@ export default function RuntimeChat({
     [],
   );
   const [selectedRuntimeThinkingLevel, setSelectedRuntimeThinkingLevel] =
-    useState("");
+    useState(runtime.kind === "one" ? "off" : "");
   const [pendingRuntimeThinkingLevel, setPendingRuntimeThinkingLevel] =
     useState("");
   const [thinkingCatalogLoading, setThinkingCatalogLoading] = useState(false);
@@ -1431,34 +1433,12 @@ export default function RuntimeChat({
   const runtimeSlashCommands = useMemo<SlashCommand[]>(() => {
     const desktop: SlashCommand[] = [
       {
-        name: "/new",
-        description: t("runtimeChat.commands.new"),
-        category: "chat",
-        local: true,
-      },
-      {
-        name: "/clear",
-        description: t("runtimeChat.commands.clear"),
-        category: "chat",
-        local: true,
-      },
-      {
-        name: "/branch",
-        description: t("runtimeChat.commands.branch"),
-        category: "chat",
-        local: true,
-        takesArgs: true,
-        argumentHint: t("runtimeChat.commands.branchHint"),
-      },
-      {
         name: "/skill",
         insertText: "/skill",
         description: t("runtimeChat.commands.skills"),
-        category: "chat",
+        category: "tools",
         local: true,
       },
-    ];
-    desktop.push(
       {
         name: "/skills",
         insertText: "/skill",
@@ -1466,16 +1446,20 @@ export default function RuntimeChat({
         category: "tools",
         local: true,
       },
-      {
-        name: "/help",
-        description: t("runtimeChat.commands.help"),
-        category: "info",
-        local: true,
-      },
-    );
+    ];
+    const removedCommands = new Set([
+      "branch",
+      "clear",
+      "new",
+      "help",
+      "commands",
+      "status",
+      "model",
+    ]);
     const runtimeEntries = runtimeCommands
       .filter(
         (command) =>
+          !removedCommands.has(command.name) &&
           command.target !== "desktop" &&
           !desktop.some((entry) => entry.name === "/" + command.name) &&
           !(
@@ -1653,7 +1637,7 @@ export default function RuntimeChat({
   const nativeMessages = useMemo(() => {
     const history = runtimeConversationToChatMessages(messages, {
       conversationId: conversationIdRef.current || undefined,
-      showTraceAvailability: unifiedRemoteGatewayRuntime,
+
       getAgentContent,
       translate: t,
     });
@@ -1772,7 +1756,6 @@ export default function RuntimeChat({
     runtimeCatalog,
     taskRun,
     t,
-    unifiedRemoteGatewayRuntime,
   ]);
 
   const handleNativeApprove = useCallback(() => undefined, []);
@@ -4450,23 +4433,6 @@ ${reason}`,
     });
   }, [runtime.id]);
 
-  function resetRuntimeConversation(): void {
-    const nextConversationId = newConversationId();
-    conversationIdRef.current = nextConversationId;
-    analysisBranchRef.current = false;
-    runtimeSessionIdRef.current = null;
-    taskRunRef.current = null;
-    setMessages([]);
-    messagesRef.current = [];
-    setTaskRun(null);
-    setCurrentRunId(null);
-    setSelectedRuntimeModel(runtime.config.model?.trim() || "");
-    setSelectedRuntimeThinkingLevel("");
-    onConversationIdChange?.(runId, nextConversationId);
-    onSessionIdChange?.(runId, null);
-    onTitleChange?.(runId, t("runtimeChat.feedback.newConversation"));
-  }
-
   async function branchFromMessage(messageId: string): Promise<void> {
     const parentId = conversationIdRef.current;
     if (
@@ -4516,6 +4482,8 @@ ${reason}`,
     attachments: Attachment[] = [],
     options?: {
       compactConfirmed?: boolean;
+      toolbar?: boolean;
+      model?: string;
       optimisticModel?: { previous: string };
       optimisticThinking?: { previous: string };
     },
@@ -4560,52 +4528,21 @@ ${reason}`,
       chatInputRef.current?.openCommands("/skill");
       return;
     }
-    if (name === "help" || name === "commands") {
-      chatInputRef.current?.restore("/", attachments);
-      chatInputRef.current?.openCommands("/");
-      return;
-    }
-    if (name === "new" || name === "clear") {
-      resetRuntimeConversation();
-      return;
-    }
-    if (name === "branch") {
-      const parentId = conversationIdRef.current;
-      if (
-        !parentId ||
-        typeof window.agentsOneAPI.forkRuntimeConversation !== "function"
-      ) {
-        appendRuntimeControlMessage(
-          t("runtimeChat.feedback.branchRequiresMessage"),
-        );
-        return;
-      }
-      try {
-        // Keep the current task as the immutable branch parent. The branch is
-        // opened in a new task tab below instead of replacing this tab.
-        await persistConversation(messagesRef.current);
-        const id = newConversationId();
-        const branch = await window.agentsOneAPI.forkRuntimeConversation(
-          parentId,
-          {
-            id,
-            ...(args ? { branchLabel: args } : {}),
-            branchSummary: t("runtimeChat.feedback.branchFromConversation"),
-          },
-          profile,
-        );
-        window.dispatchEvent(
-          new CustomEvent("agents-one:open-runtime-conversation", {
-            detail: branch.id,
-          }),
-        );
-      } catch (error) {
-        appendRuntimeControlMessage(
-          error instanceof Error
-            ? error.message
-            : t("runtimeChat.feedback.branchFailed"),
-        );
-      }
+    if (
+      [
+        "branch",
+        "clear",
+        "new",
+        "help",
+        "commands",
+        "status",
+        "model",
+      ].includes(name) &&
+      !options?.toolbar &&
+      !options?.optimisticModel
+    ) {
+      appendRuntimeControlMessage(t("runtimeChat.feedback.useToolbar"));
+      restoreRejectedInput();
       return;
     }
     const descriptor = runtimeCommands.find(
@@ -4626,6 +4563,7 @@ ${reason}`,
       (Boolean(descriptor) ||
         runtime.kind === "pi" ||
         runtime.kind === "codex" ||
+        runtime.kind === "one" ||
         runtime.kind === "claude-code");
     if (compactIsKnown && !options?.compactConfirmed) {
       if (pendingCompactCommand) {
@@ -4699,6 +4637,8 @@ ${reason}`,
             : undefined,
         name,
         ...(args ? { args } : {}),
+        model: options?.model || selectedRuntimeModel || undefined,
+        thinkingLevel: selectedRuntimeThinkingLevel || undefined,
       });
     } catch (error) {
       appendRuntimeControlMessage(
@@ -4739,6 +4679,8 @@ ${reason}`,
     if (result.type === "needs-input") {
       if (result.input === "model-picker") {
         setRuntimeModels(result.models || []);
+        if (result.thinkingLevel)
+          setSelectedRuntimeThinkingLevel(result.thinkingLevel);
         setPendingRuntimeModel(
           selectedRuntimeModel.trim() ||
             runtime.config.model?.trim() ||
@@ -4776,6 +4718,7 @@ ${reason}`,
     if (result.type === "handled") {
       if (result.statePatch?.model !== undefined) {
         setSelectedRuntimeModel(result.statePatch.model);
+        setModelSelectedAt(Date.now());
       }
       if (result.statePatch?.thinkingLevel !== undefined) {
         setSelectedRuntimeThinkingLevel(result.statePatch.thinkingLevel);
@@ -5000,6 +4943,9 @@ ${reason}`,
           expectedRevision: checkpoint.revision ?? "1",
         },
         ...(selectedRuntimeModel ? { model: selectedRuntimeModel } : {}),
+        ...(selectedRuntimeThinkingLevel
+          ? { thinkingLevel: selectedRuntimeThinkingLevel }
+          : {}),
         mode: webAgentRuntime
           ? "analysis"
           : collaborationCandidates.length > 1 &&
@@ -5168,7 +5114,7 @@ ${reason}`,
   const configuredLocalModel =
     selectedRuntimeModel.trim() ||
     (runtime.location === "local" ? runtime.config.model?.trim() : undefined);
-  const lastReportedExecution = [...messages]
+  const lastReportedMessage = [...messages]
     .reverse()
     .find(
       (message) =>
@@ -5176,7 +5122,8 @@ ${reason}`,
         message.execution?.actualModel ||
         message.execution?.usage ||
         message.execution?.isolation,
-    )?.execution;
+    );
+  const lastReportedExecution = lastReportedMessage?.execution;
   const lastReportedModel =
     taskRun?.actualModel ||
     taskRun?.model ||
@@ -5261,8 +5208,27 @@ ${reason}`,
   // Once a Runtime reports the model it actually used, prefer that fact over
   // a requested/configured value that the provider may have rejected or
   // silently replaced with a fallback model.
+  const selectedModelOption = runtimeModels.find(
+    (model) => model.id === selectedRuntimeModel,
+  );
+  const selectedModelLabel = selectedModelOption
+    ? [
+        selectedModelOption.provider,
+        selectedModelOption.displayName || selectedModelOption.id,
+      ]
+        .filter(Boolean)
+        .join(" / ")
+    : undefined;
   const runtimeModelLabel =
+    (modelSwitching ||
+    (runtime.kind === "one" &&
+      lastReportedModel?.id === selectedModelOption?.displayName) ||
+    modelSelectedAt >
+      (taskRun?.completedAt || lastReportedMessage?.createdAt || 0)
+      ? selectedModelLabel
+      : undefined) ||
     reportedModelLabel ||
+    selectedModelLabel ||
     configuredModelLabel ||
     t("runtimeChat.model.unavailable");
   const runtimeContextWindow =
@@ -5548,75 +5514,36 @@ ${reason}`,
                 <TaskCollaborationTimeline execution={collaborationExecution} />
               </CollaborationProgress>
               {modelPickerOpen ? (
-                <div
-                  className="runtime-model-picker runtime-model-picker--expanded"
-                  role="dialog"
-                  aria-label={t("runtimeChat.model.picker")}
-                >
-                  <div className="runtime-model-picker-heading">
-                    <span>
-                      <Bot size={15} /> {t("runtimeChat.model.title")}
-                    </span>
-                    <small>{t("runtimeChat.model.scope")}</small>
-                  </div>
-                  <label className="runtime-model-picker-select">
-                    <select
-                      value={pendingRuntimeModel}
-                      aria-label={t("runtimeChat.model.list")}
-                      onChange={(event) =>
-                        setPendingRuntimeModel(event.target.value)
-                      }
-                    >
-                      {selectedRuntimeModel &&
-                      !runtimeModels.some(
-                        (model) => model.id === selectedRuntimeModel,
-                      ) ? (
-                        <option value={selectedRuntimeModel}>
-                          {t("runtimeChat.model.current", {
-                            model: selectedRuntimeModel,
-                          })}
-                        </option>
-                      ) : null}
-                      {runtimeModels.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.displayName || model.id}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {!runtimeModels.length ? (
-                    <p className="runtime-model-picker-empty">
-                      {t("runtimeChat.model.empty")}
-                    </p>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="runtime-model-picker-confirm"
-                    disabled={!pendingRuntimeModel.trim()}
-                    onClick={() => {
-                      const model = pendingRuntimeModel.trim();
-                      if (!model) return;
-                      const previous = selectedRuntimeModel;
-                      setSelectedRuntimeModel(model);
-                      setModelSwitching(true);
-                      setModelPickerOpen(false);
-                      void executeRuntimeSlashCommand(`/model ${model}`, [], {
+                <RuntimeModelPicker
+                  models={runtimeModels}
+                  selected={selectedRuntimeModel || pendingRuntimeModel}
+                  thinking={selectedRuntimeThinkingLevel}
+                  disabled={loading || modelSwitching || thinkingSwitching}
+                  onClose={() => setModelPickerOpen(false)}
+                  onSelect={(model) => {
+                    const previous = selectedRuntimeModel;
+                    setSelectedRuntimeModel(model);
+                    setModelSwitching(true);
+                    void (async () => {
+                      await executeRuntimeSlashCommand(`/model ${model}`, [], {
                         optimisticModel: { previous },
                       });
-                    }}
-                  >
-                    {t("runtimeChat.model.confirm")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingRuntimeModel("");
-                      setModelPickerOpen(false);
-                    }}
-                  >
-                    {t("runtimeChat.cancel")}
-                  </button>
-                </div>
+                      if (runtime.kind === "opencode" || runtime.kind === "pi")
+                        await executeRuntimeSlashCommand("/model", [], {
+                          toolbar: true,
+                          model,
+                        });
+                    })();
+                  }}
+                  onThinking={(level) => {
+                    const previous = selectedRuntimeThinkingLevel;
+                    setSelectedRuntimeThinkingLevel(level);
+                    setThinkingSwitching(true);
+                    void executeRuntimeSlashCommand(`/thinking ${level}`, [], {
+                      optimisticThinking: { previous },
+                    });
+                  }}
+                />
               ) : null}
               {thinkingPickerOpen ? (
                 <div
@@ -5944,7 +5871,13 @@ ${reason}`,
                         modelCatalogLoading ||
                         modelSwitching
                       }
-                      onClick={() => void executeRuntimeSlashCommand("/model")}
+                      onClick={() => {
+                        if (modelPickerOpen) setModelPickerOpen(false);
+                        else
+                          void executeRuntimeSlashCommand("/model", [], {
+                            toolbar: true,
+                          });
+                      }}
                       aria-label={
                         modelCatalogLoading
                           ? t("runtimeChat.model.loading")

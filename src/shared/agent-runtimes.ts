@@ -367,6 +367,7 @@ export interface AgentRuntimeTaskInput {
   /** Conversation-scoped model selection. It overrides the Runtime default for
    * this request without writing user-managed Runtime configuration. */
   model?: string;
+  thinkingLevel?: string;
   profile?: string;
   sessionId?: string;
   /** Desktop original-record checkpoint; consumed by Main before dispatch. */

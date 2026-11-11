@@ -20,6 +20,9 @@ export interface OneWorkerOptions {
   maxOutputTokens?: number;
   maxModelCalls?: number;
   imageInput?: boolean;
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
+  operation?: "compact";
+  customInstructions?: string;
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
   prompt: string;
   systemPrompt?: string;
@@ -250,6 +253,9 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
     maxOutputTokens,
     maxModelCalls,
     imageInput,
+    thinkingLevel,
+    operation,
+    customInstructions,
     images,
     systemPrompt,
     sessionId,
@@ -270,6 +276,9 @@ export function startOneWorker(options: OneWorkerOptions): OneWorkerHandle {
       maxOutputTokens,
       maxModelCalls,
       imageInput,
+      thinkingLevel,
+      operation,
+      customInstructions,
       systemPrompt,
       sessionId,
       revisionBinding,

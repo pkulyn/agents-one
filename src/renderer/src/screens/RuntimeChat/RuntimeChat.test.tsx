@@ -761,7 +761,7 @@ describe("RuntimeChat inputs and persistence", () => {
     ).toBeInTheDocument();
   });
 
-  it("routes a slash control through IPC without starting a normal Runtime task", async () => {
+  it("rejects removed status commands without dispatching a task or native control", async () => {
     render(
       <RuntimeChat
         runId="runtime-command"
@@ -769,33 +769,14 @@ describe("RuntimeChat inputs and persistence", () => {
         profile="default"
       />,
     );
-
     fireEvent.click(
       screen.getByRole("button", { name: "提交 Runtime 状态命令" }),
     );
-
-    await waitFor(() => {
-      expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runtimeId: "hermes-gateway",
-          name: "status",
-          requestId: expect.stringMatching(/^runtime-command-/),
-        }),
-      );
-    });
+    await screen.findByText(
+      "此命令已移除，请使用对话入口或输入框下方的模型控件。",
+    );
+    expect(executeAgentRuntimeCommand).not.toHaveBeenCalled();
     expect(startAgentRuntimeTask).not.toHaveBeenCalled();
-    expect(screen.getByText("运行时：Hermes Gateway")).toBeInTheDocument();
-    await waitFor(() => {
-      const persisted = saveRuntimeConversation.mock.calls.at(-1)?.[0];
-      expect(persisted?.messages.at(-1)?.controlAudit).toMatchObject({
-        command: "status",
-        runtimeId: "hermes-gateway",
-        target: "runtime-control",
-        outcome: "handled",
-      });
-      const audit = persisted?.messages.at(-1)?.controlAudit;
-      expect(audit?.completedAt).toBeGreaterThanOrEqual(audit?.startedAt ?? 0);
-    });
   });
 
   it("opens a reply branch in a new task without replacing the parent conversation", async () => {
@@ -1022,15 +1003,14 @@ describe("RuntimeChat inputs and persistence", () => {
     expect(
       screen.getByRole("dialog", { name: "选择当前会话模型" }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("模型列表")).toHaveValue("ark/glm-5.2");
+    expect(
+      screen.getByRole("option", { name: "ark/glm-5.2" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText("Runtime 命令正在等待补充输入。"),
     ).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("模型列表"), {
-      target: { value: "ark/glm-5.2" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "确认切换" }));
+    fireEvent.click(screen.getByRole("option", { name: "ark/glm-5.2" }));
     await waitFor(() => {
       expect(executeAgentRuntimeCommand).toHaveBeenCalledWith(
         expect.objectContaining({ name: "model", args: "ark/glm-5.2" }),
@@ -1118,10 +1098,9 @@ describe("RuntimeChat inputs and persistence", () => {
       }),
     );
     await screen.findByRole("dialog", { name: "选择当前会话模型" });
-    fireEvent.change(screen.getByLabelText("模型列表"), {
-      target: { value: "ark/doubao-seed-2.1-turbo" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "确认切换" }));
+    fireEvent.click(
+      screen.getByRole("option", { name: "ark/doubao-seed-2.1-turbo" }),
+    );
 
     const trigger = screen.getByRole("button", {
       name: "正在切换模型：ark/doubao-seed-2.1-turbo",

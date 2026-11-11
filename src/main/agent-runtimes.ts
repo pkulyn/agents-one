@@ -85,7 +85,10 @@ import {
   MAX_RUNTIME_TRACE_EVENTS,
   retainRuntimeEvents,
 } from "../shared/runtime-event-retention";
-import { claimRuntimeConversationRun } from "./runtime-conversation-store";
+import {
+  claimRuntimeConversationRun,
+  getRuntimeConversation,
+} from "./runtime-conversation-store";
 import {
   NO_AGENT_RUNTIME_CAPABILITIES,
   deriveAgentTransport,
@@ -204,6 +207,11 @@ import {
   type AgentEventStreamEvent,
 } from "../shared/agent-event-stream";
 import { isAuthorizedMediaPath, materializeBytesToTemp } from "./media";
+import {
+  oneConversationModels,
+  oneRuntimeForModel,
+  ONE_THINKING_LEVELS,
+} from "./one-runtime/model-controls";
 import { hasValidTaskCollaborationProposal } from "../shared/task-collaboration-proposals";
 import { verifyLocalDeliveryArtifacts } from "./runtime-delivery";
 import { assertAgentsOneWritesAllowed } from "./restore-write-lock";
@@ -235,7 +243,10 @@ import {
   isRemoteOpenCodeAcpV1Enabled,
   resolveRuntimeAdapter,
 } from "./runtime-adapters/registry";
-import { startOpenCodeProcess } from "./runtime-adapters/builtin/opencode-acp";
+import {
+  startOpenCodeProcess,
+  openCodeRuntimeModelControls,
+} from "./runtime-adapters/builtin/opencode-acp";
 import type { RuntimeAdapter } from "./runtime-adapters/types";
 import { getAgentsOneConnectDeviceStatus } from "./agents-one-connect";
 
@@ -368,6 +379,7 @@ export interface AgentRuntimeRunFinishedEvent {
 }
 
 const runtimeRuns = new Map<string, RuntimeRunRecord>();
+const oneCompactingSessions = new Set<string>();
 const runtimeRunFinishedListeners = new Set<
   (event: AgentRuntimeRunFinishedEvent) => void
 >();
@@ -3539,6 +3551,7 @@ function baseRuntimeControlCommands(
   }
   if (
     ["pi", "codex", "one"].includes(runtime.kind) ||
+    (runtime.kind === "opencode" && runtime.location === "local") ||
     capabilities?.modelSelection
   ) {
     commands.push({
@@ -3551,7 +3564,10 @@ function baseRuntimeControlCommands(
       argumentHint: runtime.kind === "one" ? "<模型 ID>" : "<provider/model>",
     });
   }
-  if (runtime.kind === "pi") {
+  if (
+    ["pi", "one", "codex"].includes(runtime.kind) ||
+    (runtime.kind === "opencode" && runtime.location === "local")
+  ) {
     commands.push({
       name: "thinking",
       description: "查看或切换当前会话的思考等级",
@@ -3563,7 +3579,7 @@ function baseRuntimeControlCommands(
     });
   }
   if (
-    ["pi", "codex"].includes(runtime.kind) ||
+    ["pi", "codex", "one"].includes(runtime.kind) ||
     (capabilities?.compaction && capabilities.compaction !== "none")
   ) {
     commands.push({
@@ -3754,7 +3770,17 @@ async function piRuntimeModels(
 async function runtimeModels(
   runtime: AgentRuntimeDefinition,
   sessionId?: string,
+  selectedModel?: string,
 ): Promise<RuntimeModelOption[]> {
+  if (runtime.kind === "one") return oneConversationModels(runtime);
+  if (runtime.kind === "opencode" && runtime.location === "local")
+    return (
+      await openCodeRuntimeModelControls(
+        runtime.config,
+        sessionId,
+        selectedModel,
+      )
+    ).models;
   if (runtime.kind === "pi") return piRuntimeModels(runtime, sessionId);
   if (runtime.kind === "codex") {
     const models = await listCodexAppServerModels({
@@ -4083,8 +4109,43 @@ async function executeAgentRuntimeCommandOnce(
   if (name === "model") {
     if (!args) {
       try {
-        const models = await runtimeModels(runtime, request.sessionId);
-        return { type: "needs-input", input: "model-picker", models };
+        const models = await runtimeModels(
+          runtime,
+          request.sessionId,
+          request.model,
+        );
+        let thinkingLevel = request.thinkingLevel;
+        if (runtime.kind === "pi" && request.sessionId) {
+          const levels = await piAvailableThinkingLevels(
+            runtime,
+            request.sessionId,
+          ).catch(() => []);
+          const response = await executePiRpcCommand(
+            { executablePath: runtime.config.executablePath },
+            {
+              ...piControlScope(runtime.id, request.sessionId),
+              type: "get_state",
+              sessionId: request.sessionId,
+              timeoutMs: 2500,
+            },
+          ).catch(() => undefined);
+          const currentModel = response
+            ? piModelLabel(
+                isRecord(response.data) ? response.data.model : undefined,
+              )
+            : request.model;
+          thinkingLevel = response
+            ? stringField(response.data, "thinkingLevel") || thinkingLevel
+            : thinkingLevel;
+          const current = models.find((model) => model.id === currentModel);
+          if (current && levels.length) current.reasoningEfforts = levels;
+        }
+        return {
+          type: "needs-input",
+          input: "model-picker",
+          models,
+          ...(thinkingLevel ? { thinkingLevel } : {}),
+        };
       } catch (error) {
         return {
           type: "error",
@@ -4094,6 +4155,7 @@ async function executeAgentRuntimeCommandOnce(
     }
     if (
       runtime.kind === "one" &&
+      !args.startsWith("one-provider:") &&
       (args.length > 256 ||
         /\s/.test(args) ||
         Array.from(args).some(
@@ -4110,6 +4172,8 @@ async function executeAgentRuntimeCommandOnce(
     // successful control message must match what the next Runtime request
     // will actually receive.
     if (
+      runtime.kind === "one" ||
+      runtime.kind === "opencode" ||
       runtime.kind === "pi" ||
       runtime.kind === "codex" ||
       runtime.kind === "claude-code"
@@ -4194,6 +4258,43 @@ async function executeAgentRuntimeCommandOnce(
   }
 
   if (name === "thinking") {
+    if (runtime.kind === "opencode") {
+      const controls = await openCodeRuntimeModelControls(
+        runtime.config,
+        request.sessionId,
+        request.model,
+        args || undefined,
+      );
+      return args
+        ? { type: "handled", statePatch: { thinkingLevel: args } }
+        : {
+            type: "needs-input",
+            input: "thinking-picker",
+            thinkingLevels: controls.levels,
+          };
+    }
+    if (runtime.kind === "one" || runtime.kind === "codex") {
+      const levels =
+        runtime.kind === "one"
+          ? [...ONE_THINKING_LEVELS]
+          : (await runtimeModels(runtime, request.sessionId)).find(
+              (model) => model.id === (request.model || runtime.config.model),
+            )?.reasoningEfforts || [];
+      if (!args)
+        return {
+          type: "needs-input",
+          input: "thinking-picker",
+          thinkingLevels: levels,
+          thinkingLevel:
+            request.thinkingLevel || (runtime.kind === "one" ? "off" : ""),
+        };
+      if (!levels.includes(args))
+        return {
+          type: "error",
+          message: "该模型不支持所选思考等级，请重新选择。",
+        };
+      return { type: "handled", statePatch: { thinkingLevel: args } };
+    }
     if (runtime.kind !== "pi") {
       return {
         type: "unsupported",
@@ -4277,6 +4378,131 @@ async function executeAgentRuntimeCommandOnce(
   }
 
   if (name === "compact") {
+    if (runtime.kind === "one") {
+      const conversation = request.conversationId
+        ? getRuntimeConversation(request.conversationId)
+        : null;
+      if (
+        !conversation ||
+        conversation.runtimeId !== runtime.id ||
+        !request.sessionId ||
+        conversation.runtimeSessionId !== request.sessionId
+      )
+        return {
+          type: "error",
+          message: "请先建立当前 One 会话，再压缩上下文。",
+        };
+      if (
+        [...runtimeRuns.values()].some(
+          (record) =>
+            record.run.runtimeId === runtime.id &&
+            record.run.sessionId === request.sessionId &&
+            record.run.status === "running",
+        )
+      )
+        return { type: "error", message: "请等待当前任务完成后再压缩上下文。" };
+      let worker: ReturnType<typeof startOneWorker> | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const compactKey = JSON.stringify([
+        getActiveProfileNameSync(),
+        runtime.id,
+        request.sessionId,
+      ]);
+      if (oneCompactingSessions.has(compactKey))
+        return { type: "error", message: "当前 One 会话正在压缩，请稍候。" };
+      oneCompactingSessions.add(compactKey);
+      try {
+        const selected = oneRuntimeForModel(runtime, request.model);
+        const modelId = request.model?.startsWith("one-provider:")
+          ? selected.config.model
+          : resolveOneActiveModel(selected, request.model);
+        const token = oneCredentialForRuntime(selected);
+        if (!token || !selected.config.endpoint || !modelId)
+          throw new Error("请先配置 One 模型和凭据。");
+        const stateDir = join(
+          agentsOneProfileHome(getActiveProfileNameSync()),
+          "desktop",
+          "one",
+          runtime.id,
+        );
+        const projectWorkspace = conversation.workspaceId
+          ? resolveAuthorizedWorkspaceId(conversation.workspaceId)
+          : conversation.workspace;
+        if (
+          (conversation.workspaceId || conversation.workspace) &&
+          (!projectWorkspace || !isAuthorizedWorkspaceRoot(projectWorkspace))
+        )
+          throw new Error("当前项目已取消授权，请重新关联项目。");
+        const workspace =
+          projectWorkspace ||
+          resolveOneConversationWorkspace(stateDir, {
+            conversationId: conversation.id,
+            sessionId: request.sessionId,
+            runId: `compact-${randomUUID()}`,
+          }).workspace;
+        const metadata =
+          selected.config.oneModelMetadata?.[
+            `${oneModelProviderKey(selected.config.endpoint, selected.config.oneApiType)}::${modelId}`
+          ];
+        reportRuntimeCommandProgress(
+          request,
+          onProgress,
+          "started",
+          "One 正在压缩当前会话上下文…",
+        );
+        worker = startOneWorker({
+          workerPath: join(__dirname, "one-runtime-worker.mjs"),
+          workspace,
+          stateDir,
+          baseUrl: selected.config.endpoint,
+          modelId,
+          apiKey: token,
+          apiType: selected.config.oneApiType,
+          contextWindow:
+            metadata?.contextWindow || selected.config.oneContextWindow,
+          maxOutputTokens: metadata?.maxOutputTokens,
+          operation: "compact",
+          customInstructions: args || undefined,
+          sessionId: request.sessionId,
+          prompt: "",
+          tools: [],
+          executeTool: async () => {
+            throw new Error("Compaction cannot execute tools");
+          },
+        });
+        await Promise.race([
+          worker.completion,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error("One 上下文压缩超时，请稍后重试。")),
+              120_000,
+            );
+          }),
+        ]);
+        return {
+          type: "handled",
+          message: "One 上下文压缩已完成。",
+          statePatch: { compacted: true, compaction: { trigger: "manual" } },
+        };
+      } catch (error) {
+        worker?.cancel();
+        if (
+          error instanceof Error &&
+          /Nothing to compact|session too small/i.test(error.message)
+        )
+          return {
+            type: "handled",
+            message: "当前上下文较短，暂无需要压缩的内容。",
+          };
+        return {
+          type: "error",
+          message: runtimeCommandError(error, "One 上下文压缩失败。"),
+        };
+      } finally {
+        oneCompactingSessions.delete(compactKey);
+        if (timer) clearTimeout(timer);
+      }
+    }
     if (runtime.kind === "codex") {
       if (args) {
         return {
@@ -5603,6 +5829,7 @@ function validatedTaskInput(
 ): {
   prompt: string;
   model?: string;
+  thinkingLevel?: string;
   profile?: string;
   sessionId?: string;
   conversation?: boolean;
@@ -5671,6 +5898,7 @@ function validatedTaskInput(
   return {
     prompt,
     model,
+    thinkingLevel: optionalString(input.thinkingLevel, 32),
     profile,
     sessionId,
     conversation,
@@ -5742,8 +5970,22 @@ export async function startAgentRuntimeTask(
     );
   }
   assertAgentsOneWritesAllowed();
-  const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
+  let runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (!runtime) throw new Error("Runtime was not found.");
+  if (
+    runtime.kind === "one" &&
+    input.sessionId &&
+    oneCompactingSessions.has(
+      JSON.stringify([getActiveProfileNameSync(), runtime.id, input.sessionId]),
+    )
+  )
+    throw new Error("当前 One 会话正在压缩，请完成后再发送消息。");
+
+  if (runtime.kind === "one" && input.model?.startsWith("one-provider:")) {
+    runtime = oneRuntimeForModel(runtime, input.model);
+    input = { ...input, model: runtime.config.model };
+  }
+
   const mobileExecution =
     options?.codexMobileInspection || options?.codexMobileProjectWrite;
   if (options?.codexMobileProjectGuard && !mobileExecution)
@@ -6315,6 +6557,11 @@ export async function startAgentRuntimeTask(
         apiKey: token,
         apiType: runtime.config.oneApiType,
         imageInput: imageInputEnabled,
+        thinkingLevel: ONE_THINKING_LEVELS.includes(
+          task.thinkingLevel as (typeof ONE_THINKING_LEVELS)[number],
+        )
+          ? (task.thinkingLevel as (typeof ONE_THINKING_LEVELS)[number])
+          : "off",
         maxOutputTokens: activeModelMetadata?.maxOutputTokens,
         images,
         contextWindow:

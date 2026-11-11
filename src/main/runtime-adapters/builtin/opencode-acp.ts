@@ -259,6 +259,7 @@ class OpenCodeAcpClient {
   private nextId = 1;
   private readonly pending = new Map<string, PendingRequest>();
   private sessionId: string | undefined;
+  private configOptions: unknown[] = [];
   private replayingHistory = false;
   private closed = false;
 
@@ -507,6 +508,9 @@ class OpenCodeAcpClient {
       throw new Error("OpenCode ACP 未返回有效 sessionId。");
     }
     this.sessionId = sessionId;
+    this.configOptions = Array.isArray(result.configOptions)
+      ? result.configOptions
+      : [];
     const model = modelFromConfigOptions(result.configOptions);
     const modelOption = Array.isArray(result.configOptions)
       ? result.configOptions.find(
@@ -529,10 +533,44 @@ class OpenCodeAcpClient {
   }
 
   async setModel(model: string): Promise<void> {
-    await this.request("session/set_config_option", {
+    const result = await this.request("session/set_config_option", {
       sessionId: this.sessionId,
       configId: "model",
       value: model,
+    });
+    if (isRecord(result) && Array.isArray(result.configOptions))
+      this.configOptions = result.configOptions;
+  }
+
+  thinkingOptions(): { id: string; values: string[] } | undefined {
+    const option = this.configOptions.find(
+      (o) =>
+        isRecord(o) &&
+        (o.category === "thought_level" ||
+          o.id === "variant" ||
+          o.id === "thinking"),
+    );
+    if (
+      !isRecord(option) ||
+      typeof option.id !== "string" ||
+      !Array.isArray(option.options)
+    )
+      return undefined;
+    return {
+      id: option.id,
+      values: option.options.flatMap((o) =>
+        isRecord(o) && typeof o.value === "string" ? [o.value] : [],
+      ),
+    };
+  }
+  async setThinking(level: string): Promise<void> {
+    const option = this.thinkingOptions();
+    if (!option?.values.includes(level))
+      throw new Error("OpenCode ACP 未提供该思考等级。");
+    await this.request("session/set_config_option", {
+      sessionId: this.sessionId,
+      configId: option.id,
+      value: level,
     });
   }
 
@@ -1483,6 +1521,7 @@ async function startOpenCodeAttempt(
         await client.setModel(selectedModel);
         session.model = modelFromOpenCodeValue(selectedModel);
       }
+      if (input.thinkingLevel) await client.setThinking(input.thinkingLevel);
       if (session.model) {
         model = { ...(model || {}), ...session.model };
       }
@@ -1900,4 +1939,54 @@ export async function startOpenCodeProcess(
     },
     completion,
   };
+}
+
+/** Discover and apply only provider-declared ACP settings, without a model turn. */
+export async function openCodeRuntimeModelControls(
+  config: OpenCodeRuntimeConfig,
+  sessionId?: string,
+  model?: string,
+  thinking?: string,
+): Promise<{
+  models: import("../../../shared/runtime-commands").RuntimeModelOption[];
+  levels: string[];
+}> {
+  const cwd =
+    configuredWorkspace(config.workspace) || openCodeConversationWorkspace();
+  const invocation = opencodeInvocation(
+    configuredExecutable(config.executablePath),
+  );
+  let client: OpenCodeAcpClient | undefined;
+  const process = startLocalProcess({
+    command: invocation.command,
+    args: [...invocation.prefix, ...openCodeArgs(config)],
+    cwd,
+    env: await openCodeProcessEnvironment("analysis"),
+    onLine: (line) => {
+      if (line.json !== undefined) client?.handleLine(line.json);
+    },
+  });
+  try {
+    client = new OpenCodeAcpClient(process, {
+      mode: "analysis",
+      onUpdate: () => undefined,
+    });
+    const session = await client.createOrResumeSession(cwd, sessionId);
+    if (model) await client.setModel(model);
+    const levels = client.thinkingOptions()?.values || [];
+    if (thinking) await client.setThinking(thinking);
+    return {
+      models: session.availableModels.map((id) => ({
+        id,
+        provider: id.split("/")[0],
+        displayName: id.includes("/") ? id.slice(id.indexOf("/") + 1) : id,
+        ...(id === (model || session.model?.provider + "/" + session.model?.id)
+          ? { reasoningEfforts: levels, isDefault: true }
+          : {}),
+      })),
+      levels,
+    };
+  } finally {
+    await process.cancel();
+  }
 }

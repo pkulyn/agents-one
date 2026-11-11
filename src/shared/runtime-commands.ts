@@ -50,6 +50,8 @@ export interface RuntimeCommandRequest {
   runId?: string;
   name: string;
   args?: string;
+  model?: string;
+  thinkingLevel?: string;
 }
 
 /** Transient, provider-originated control-plane progress for the active request. */
@@ -102,6 +104,8 @@ export interface RuntimeModelOption {
   provider?: string;
   displayName?: string;
   reasoningEfforts?: string[];
+  imageInput?: boolean;
+  defaultReasoningEffort?: string;
   isDefault?: boolean;
 }
 
