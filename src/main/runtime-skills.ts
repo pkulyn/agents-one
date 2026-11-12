@@ -1,12 +1,21 @@
 import { existsSync, lstatSync, readdirSync, readFileSync } from "fs";
 import { join, resolve } from "path";
+import { parse } from "yaml";
 import type { RuntimeSkillDescriptor } from "../shared/runtime-skills";
 
 const MAX_SKILL_FILE_BYTES = 64 * 1024;
 
-function frontMatterValue(source: string, key: string): string | undefined {
-  const match = source.match(new RegExp(`^${key}:\\s*['"]?([^\\n'"]+)`, "m"));
-  return match?.[1]?.trim() || undefined;
+function skillMetadata(source: string): Record<string, unknown> {
+  const front = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source);
+  if (!front) return {};
+  try {
+    const value: unknown = parse(front[1]);
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -35,8 +44,15 @@ export function discoverRuntimeSkills(
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       oneIssue = "unreadable";
     }
-    const name = frontMatterValue(body, "name") || entry.name;
-    const description = frontMatterValue(body, "description");
+    const metadata = skillMetadata(body);
+    const name =
+      typeof metadata.name === "string" && metadata.name.trim()
+        ? metadata.name.trim()
+        : entry.name;
+    const description =
+      typeof metadata.description === "string"
+        ? metadata.description.trim()
+        : undefined;
     return [
       {
         id: source + ":" + entry.name,

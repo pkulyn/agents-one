@@ -6132,7 +6132,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--bg-primary);
@@ -6154,9 +6154,9 @@ body {
 .chat-document-icon {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 52px;
-  flex: 0 0 48px;
+  width: 40px;
+  height: 44px;
+  flex: 0 0 40px;
   color: var(--accent-text, var(--accent));
   background: var(--bg-hover);
   border-radius: 9px;

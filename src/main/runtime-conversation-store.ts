@@ -36,7 +36,6 @@ const MAX_MESSAGES = 500;
 const MAX_EXECUTION_EVENTS = MAX_RUNTIME_TRACE_EVENTS;
 const MAX_EVENT_SUMMARY_LENGTH = 800;
 const MAX_EVENT_DETAIL_LENGTH = 16_000;
-const MAX_AVATAR_DATA_URL_LENGTH = 700_000;
 const MAX_WORKSPACE_LENGTH = 4096;
 const MAX_QUICK_CHATS = 40;
 const MAX_QUICK_CHAT_MESSAGES = 80;
@@ -355,8 +354,7 @@ function cleanRuntimeAvatar(value: unknown): string | null | undefined {
   if (value === null) return null;
   const avatar = cleanText(value);
   if (!avatar) return undefined;
-  return /^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(avatar) &&
-    avatar.length <= MAX_AVATAR_DATA_URL_LENGTH
+  return /^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(avatar)
     ? avatar
     : undefined;
 }
