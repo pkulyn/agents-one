@@ -10,7 +10,7 @@ The product story starts with the current startup scene and verified release/CI/
 
 The top and footer website links in both languages target the English landing page at `https://www.agentsone.cn/en.html`. Release-preparation notices are omitted from the release-ready README.
 
-Both homepages follow the same order: brand scene, website/download navigation, value, product film, One capabilities, shared workspace, first use, folded connection guidance, trust boundaries, contribution and license. The startup image is captured from the production component at its settled frame without brightness edits. A short GIF excerpt links to the maintainer-provided full MP4; the film is identified as a designed product presentation.
+Both homepages follow the same order: brand scene, website/download navigation, value, product film, One capabilities, shared workspace, first use, folded connection guidance, trust boundaries, contribution and license. The startup image is captured from the production component at its settled frame without brightness edits. A short GIF excerpt links directly to the maintainer-provided full MP4 using GitHub’s raw-file query, avoiding the oversized blob preview; the film is identified as a designed product presentation.
 
 ## Installation and connection guidance
 
