@@ -1,3 +1,7 @@
+# Harness design principle
+
+Keep the Agents One harness thin. Prefer native agent capabilities, execution and presentation; do not inject generic workflows, mandatory deliverable formats or broad behavioral restrictions into ordinary conversations. Supply only necessary runtime facts and task context. Dangerous operations such as deletion still require clear notice and authorization at the execution boundary.
+
 # Before starting work
 
 - Run `lat search` to find sections relevant to your task. Read them to understand the design intent before writing code.

@@ -174,6 +174,8 @@ OpenCode tool rows are provider evidence, not generic activity placeholders. ACP
 
 Adapter tests protect both the quiet transcript and the actual artifact output path.
 
+One workspace tool IDs are presented as Read File, Write File, List Files and Search Files; the actual file arguments and call correlation remain intact, including archived events.
+
 Gateway attachment persistence waits for the tested conversation's terminal checkpoint, asserting its unique conversation ID, Runtime, user/agent messages and cleared active Run. Independent asynchronous conversations may save in any order, so the test does not infer persistence from rendered text or a global last-call ordering.
 
 [[src/renderer/src/screens/RuntimeChat/runtimeChatMessageAdapter.test.ts]] verifies that error, artifact, and workspace-authorization lifecycle notices are omitted while genuine reasoning and hydrated image artifacts remain. [[src/renderer/src/screens/RuntimeChat/RuntimeChat.test.tsx]] protects progressive collaboration events, terminal snapshot merging, avatar-triggered pause, repeated target-only guided turns, shared response context, session reuse, explicit downstream resume, collaboration consent, remote-native workspace semantics, and model-label continuity; MessageList and file-component tests protect per-agent identity, avatar routing, quiet typing state, and local artifact actions.

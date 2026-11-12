@@ -910,3 +910,26 @@ it("excludes historical One call counters and diagnostics while retaining genuin
   expect(JSON.stringify(result)).not.toContain("模型调用");
   expect(result.some((message) => message.kind === "tool_call")).toBe(true);
 });
+
+it.each([
+  ["workspace_read", "Read File"],
+  ["workspace_write", "Write File"],
+  ["workspace_list", "List Files"],
+  ["workspace_search", "Search Files"],
+])(
+  "labels %s as a file operation without hiding the real call",
+  (name, label) => {
+    const messages = runtimeEventsToChatMessages([
+      event("file-call", "tool_call", "One 调用 " + name + "：test.txt", {
+        tool: {
+          name,
+          callId: "actual-call",
+          kind: "workspace",
+          inputSummary: "test.txt",
+        },
+      }),
+    ]);
+    expect(JSON.stringify(messages)).toContain(label);
+    expect(JSON.stringify(messages)).toContain("test.txt");
+  },
+);

@@ -4962,7 +4962,9 @@ ${reason}`,
         runtime.location === "remote"
           ? remoteRuntimeEnvironmentProtocol()
           : undefined,
-        "当前是 Agents One 普通任务。由你独立完成。不得通过 Shell、CLI、脚本或工具启动 opencode、codex、claude、pi、hermes 等其他智能体；如需其他智能体，请让用户通过任务模式切换为协作任务。不得输出协作提案或自行派发。",
+        runtime.kind === "one"
+          ? undefined
+          : "当前是 Agents One 普通任务。由你独立完成。不得通过 Shell、CLI、脚本或工具启动 opencode、codex、claude、pi、hermes 等其他智能体；如需其他智能体，请让用户通过任务模式切换为协作任务。不得输出协作提案或自行派发。",
       ].filter((rule): rule is string => Boolean(rule));
       const runtimePrompt = platformRules.length
         ? `${platformRules.join("\n\n")}\n\n${t("runtimeChat.feedback.currentUserRequest", { prompt: basePrompt })}`
