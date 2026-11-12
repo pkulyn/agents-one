@@ -5580,7 +5580,6 @@ ${reason}`,
                   selected={selectedRuntimeModel || pendingRuntimeModel}
                   thinking={selectedRuntimeThinkingLevel}
                   disabled={loading || modelSwitching || thinkingSwitching}
-                  rememberThinking={runtime.kind === "one"}
                   onClose={() => {
                     setModelPickerOpen(false);
                     setModelToolbarSnapshot(null);
