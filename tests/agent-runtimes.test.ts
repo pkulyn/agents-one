@@ -1661,6 +1661,30 @@ describe("agent runtime registry", () => {
               },
             });
             const sessionFile = fakeOneSession(options, sessionId);
+            options.onEvent?.({
+              type: "message_end",
+              message: {
+                role: "assistant",
+                content: [
+                  { type: "text", text: "已检查项目，接下来创建文件。" },
+                  {
+                    type: "toolCall",
+                    id: "native-call",
+                    name: "workspace_write",
+                    arguments: { path: "result.txt" },
+                  },
+                ],
+                usage: { input: 4000, output: 100, totalTokens: 4100 },
+              },
+            });
+            options.onEvent?.({
+              type: "message_start",
+              message: {
+                role: "assistant",
+                content: [],
+                usage: { input: 0, output: 0, totalTokens: 0 },
+              },
+            });
             await options.executeTool(
               "workspace_write",
               { path: "result.txt", content: "One result" },
@@ -1688,6 +1712,14 @@ describe("agent runtime registry", () => {
       status: "succeeded",
       sessionId: "one-session-1",
       model: expect.objectContaining({ contextWindowTokens: 32768 }),
+      usage: expect.objectContaining({ contextUsedTokens: 4000 }),
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: "message",
+          code: "assistant_progress",
+          detail: "已检查项目，接下来创建文件。",
+        }),
+      ]),
       artifacts: [
         expect.objectContaining({ kind: "file", label: "result.txt" }),
       ],
@@ -2938,9 +2970,18 @@ describe("agent runtime registry", () => {
       runtimes.sendAgentRuntimeInput(run.id, "revised scope"),
     ).resolves.toBe("accepted");
     expect(steer).toHaveBeenCalledWith("revised scope");
+    expect((await runtimes.getAgentRuntimeRun(run.id))?.events).toContainEqual(
+      expect.objectContaining({ code: "user_input", detail: "revised scope" }),
+    );
     await expect(
       runtimes.sendAgentRuntimeInput("missing", "late"),
     ).resolves.toBe("ended");
+    await runtimes.sendAgentRuntimeInput(run.id, "revised scope");
+    expect(
+      (await runtimes.getAgentRuntimeRun(run.id))?.events.filter(
+        (e) => e.code === "user_input",
+      ),
+    ).toHaveLength(2);
     steer.mockRejectedValueOnce(new Error("not accepted"));
     await expect(
       runtimes.sendAgentRuntimeInput(run.id, "again"),

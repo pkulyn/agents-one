@@ -570,19 +570,25 @@ Saved local file artifacts resolve through the conversation’s authorized proje
 
 Running supplements use a separate queue above the unchanged composer. Each pending item owns its mode, editable text and delivery state.
 
-[[src/renderer/src/screens/RuntimeChat/useRuntimeInputQueue.ts#useRuntimeInputQueue]] defaults to native correction after a short review window. Deferred follow-ups wait for the round to finish. [[src/renderer/src/screens/RuntimeChat/RuntimeInputQueue.tsx#RuntimeInputQueue]] provides per-item mode, edit, delete and retry controls; dispatched messages become immutable until native receipt.
+[[src/renderer/src/screens/RuntimeChat/useRuntimeInputQueue.ts#useRuntimeInputQueue]] defaults to native correction but never dispatches until explicit confirmation. Confirmed deferred follow-ups wait for the round and complete answer persistence. [[src/renderer/src/screens/RuntimeChat/RuntimeInputQueue.tsx#RuntimeInputQueue]] provides per-item mode, edit, delete, retry and confirm-send controls; dispatched messages become immutable until native receipt.
 
 ### Default correction and mutable pending messages
 
-New supplements default to correction, can be deleted before dispatch, and leave the queue only after native acknowledgement.
+New supplements default to correction and remain unsent until Confirm send is clicked. They can be edited or deleted and leave the queue only after native acknowledgement.
 
 ### Editing and deferred follow-up
 
-Editing pauses that item; saving replaces the pending text. Switching to follow-up defers delivery until the current round ends.
+Editing or changing mode invalidates prior confirmation; saving changes never sends the message. Confirmed follow-up stays queued until the current answer is complete, then starts a new task.
 
 ### Failure retention and serial dispatch
 
 Failed inputs retain their text and require explicit retry. Native requests dispatch serially and do not cancel the original task. Stopping a task pauses unsent capsules so they cannot silently restart it.
+
+### Native receipt order
+
+Accepted corrections enter the execution timeline at native receipt, after preceding tools and before subsequent assistant commentary.
+
+One records its actual SDK user-message boundary before acknowledging input. Other live adapters record acceptance after their native acknowledgement. Replay maps this bounded event to a user bubble; no platform delivery notice or synthetic assistant acknowledgement is inserted. Native commentary and user input survive answer-fragment trimming within the existing event budget.
 
 ## Verified One compaction usage
 

@@ -933,3 +933,68 @@ it.each([
     expect(JSON.stringify(messages)).toContain("test.txt");
   },
 );
+
+// @lat: [[main-process#Main Process#One session resume reconciliation#One native progress presentation]]
+it("keeps native assistant commentary between its surrounding tool rounds", () => {
+  const result = runtimeEventsToChatMessages([
+    event("before", "tool_call", "search", {
+      tool: { callId: "first", name: "web_search", kind: "workspace" },
+    }),
+    event("commentary", "message", "Checked sources", {
+      code: "assistant_progress",
+      detail: "已核对来源，接下来整理结果。",
+      createdAt: 42,
+    }),
+    event("after", "tool_call", "fetch", {
+      tool: { callId: "second", name: "web_fetch", kind: "workspace" },
+    }),
+  ]);
+  expect(result.map((m) => m.kind)).toEqual([
+    "tool_call",
+    "assistant",
+    "tool_call",
+  ]);
+  expect(result[1]).toMatchObject({
+    role: "agent",
+    content: "已核对来源，接下来整理结果。",
+    timestamp: 42,
+  });
+});
+
+// @lat: [[runtime-chat#Pending running input capsules#Native receipt order]]
+it("replays accepted user corrections after completed tools and before native commentary", () => {
+  const result = runtimeConversationToChatMessages([
+    {
+      id: "answer",
+      role: "agent",
+      content: "完成",
+      createdAt: 9,
+      execution: {
+        runId: "r",
+        events: [
+          event("tool", "tool_call", "read", {
+            tool: { callId: "c", name: "workspace_read", kind: "workspace" },
+          }),
+          event("correction", "message", "分类", {
+            code: "user_input",
+            detail: "请按国内外分类",
+            createdAt: 3,
+          }),
+          event("ack", "message", "收到", {
+            code: "assistant_progress",
+            detail: "我会按国内外分类。",
+            createdAt: 4,
+          }),
+        ],
+      },
+    },
+  ]);
+  expect(result.map((m) => m.kind)).toEqual([
+    "tool_call",
+    "user",
+    "assistant",
+    "assistant",
+  ]);
+  expect(result[1]).toMatchObject({ role: "user", content: "请按国内外分类" });
+  expect(result[2]).toMatchObject({ content: "我会按国内外分类。" });
+});

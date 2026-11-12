@@ -610,6 +610,17 @@ describe("One SDK session isolation", () => {
     releaseTool();
     await steering;
     const result = await worker.completion;
+    const receiptIndex = events.findIndex(
+      (e) => (e as { type?: string })?.type === "one_steering_received",
+    );
+    const toolEndIndex = events.findIndex(
+      (e) => (e as { type?: string })?.type === "tool_execution_end",
+    );
+    expect(receiptIndex).toBeGreaterThan(toolEndIndex);
+    expect(toolEndIndex).toBeGreaterThanOrEqual(0);
+    expect(events[receiptIndex]).toMatchObject({
+      text: "please include steering marker 7391",
+    });
     expect(
       receivedBodies.some((body) =>
         body.includes("please include steering marker 7391"),

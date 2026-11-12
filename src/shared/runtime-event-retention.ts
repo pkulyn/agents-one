@@ -12,7 +12,12 @@ export function retainRuntimeEvents(
   let overflow = events.length - limit;
   if (overflow <= 0) return [...events];
   const evidence = events.filter((event) => {
-    if (event.type === "message" && overflow > 0) {
+    if (
+      event.type === "message" &&
+      event.code !== "user_input" &&
+      event.code !== "assistant_progress" &&
+      overflow > 0
+    ) {
       overflow -= 1;
       return false;
     }

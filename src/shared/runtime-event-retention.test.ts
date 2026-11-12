@@ -77,3 +77,26 @@ describe("Runtime trace retention", () => {
     expect(events).toHaveLength(85);
   });
 });
+
+it("retains accepted corrections and native commentary ahead of output fragments", () => {
+  const correction = {
+    id: "u",
+    type: "message" as const,
+    code: "user_input",
+    detail: "correct this",
+    summary: "correct",
+    createdAt: 1,
+  };
+  const commentary = { ...correction, id: "a", code: "assistant_progress" };
+  const fragments = Array.from({ length: 240 }, (_, i) => ({
+    ...correction,
+    id: "f" + i,
+    code: undefined,
+  }));
+  expect(
+    retainRuntimeEvents([correction, commentary, ...fragments], 200).slice(
+      0,
+      2,
+    ),
+  ).toEqual([correction, commentary]);
+});

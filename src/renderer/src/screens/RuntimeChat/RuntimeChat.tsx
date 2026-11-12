@@ -4798,25 +4798,6 @@ ${reason}`,
       throw new Error(t("runtimeChat.feedback.nativeInputUnavailable"));
     const pendingTargets = targets.filter((id) => !input.deliveredTo.has(id));
     if (!pendingTargets.length) return;
-    // Keep submission order in history while native channels await acknowledgement.
-    const recordedInput = messagesRef.current.find(
-      (message) => message.id === input.id,
-    );
-    if (!recordedInput || recordedInput.content !== input.text) {
-      const next = recordedInput
-        ? messagesRef.current.map((message) =>
-            message.id === input.id
-              ? { ...message, content: input.text }
-              : message,
-          )
-        : [
-            ...messagesRef.current,
-            { ...newMessage("user", input.text), id: input.id },
-          ];
-      messagesRef.current = next;
-      setMessages(next);
-      await persistConversation(next);
-    }
     const results = await Promise.allSettled(
       pendingTargets.map(async (id) => {
         const outcome = await window.agentsOneAPI.sendAgentRuntimeInput(
@@ -4830,14 +4811,6 @@ ${reason}`,
     );
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") {
-      if (!input.deliveredTo.size) {
-        const next = messagesRef.current.filter(
-          (message) => message.id !== input.id,
-        );
-        messagesRef.current = next;
-        setMessages(next);
-        await persistConversation(next);
-      }
       throw new Error(
         t("runtimeChat.feedback.supplementFailed") +
           " " +
@@ -4848,7 +4821,6 @@ ${reason}`,
     }
     if (collaborationRunActiveRef.current)
       collaborationSupplementsRef.current.push(input.text);
-    appendRuntimeControlMessage(t("runtimeChat.feedback.supplementDelivered"));
   }
 
   async function send(
