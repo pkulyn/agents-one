@@ -58,3 +58,39 @@ describe("runtime skill discovery", () => {
     ]);
   });
 });
+
+// @lat: [[main-process#Main Process#One session resume reconciliation#Skill metadata descriptions]]
+it("reads folded, literal and quoted YAML descriptions without treating body text as metadata", () => {
+  const root = mkdtempSync(join(tmpdir(), "skill-yaml-"));
+  roots.push(root);
+  const cases = {
+    folded: "description: >\n  提取视频字幕，\n  保存到知识库。",
+    literal: "description: |\n  制作演示文档。\n  保留格式。",
+    quoted: 'description: "Reader’s guide: Word and PDF"',
+    invalid: "description: [unclosed",
+  };
+  for (const [name, header] of Object.entries(cases)) {
+    mkdirSync(join(root, name));
+    writeFileSync(
+      join(root, name, "SKILL.md"),
+      "---\nname: " +
+        name +
+        "\n" +
+        header +
+        "\n---\n# Body\ndescription: not metadata",
+    );
+  }
+  const entries = discoverRuntimeSkills(root, "user");
+  expect(entries.find((e) => e.name === "folded")?.description).toBe(
+    "提取视频字幕， 保存到知识库。",
+  );
+  expect(entries.find((e) => e.name === "literal")?.description).toBe(
+    "制作演示文档。\n保留格式。",
+  );
+  expect(entries.find((e) => e.name === "quoted")?.description).toBe(
+    "Reader’s guide: Word and PDF",
+  );
+  expect(
+    entries.find((e) => e.id === "user:invalid")?.description,
+  ).toBeUndefined();
+});

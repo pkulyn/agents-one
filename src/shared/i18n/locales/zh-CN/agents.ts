@@ -345,8 +345,7 @@ export default {
   configProfileAvatarPreview: "头像预览",
   configProfileAvatarChange: "更换头像",
   configProfileAvatarRemove: "移除头像",
-  configProfileAvatarHint:
-    "支持 PNG、JPG、WebP 或 GIF，建议 1:1，最大 480 KB。",
+  configProfileAvatarHint: "支持 PNG、JPG、WebP 或 GIF，建议 1:1。",
   configProfileAvatarTooLarge: "头像图片不能超过 480 KB。",
   configProfileAvatarInvalid: "头像格式不支持，请使用 PNG、JPG、WebP 或 GIF。",
   configSelectProfileColor: "选择颜色 {{color}}",

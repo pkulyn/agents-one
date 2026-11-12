@@ -5009,6 +5009,29 @@ describe("agent runtime registry", () => {
     );
   });
 
+  // @lat: [[main-process#Main Process#One session resume reconciliation#Runtime avatar size acceptance]]
+  it("persists valid avatar data beyond the former length limit without changing runtime config", async () => {
+    const { runtimes } = await loadModules();
+    const avatar = "data:image/png;base64," + "A".repeat(1200000);
+    const saved = runtimes.saveAgentRuntime({
+      id: "one-large-avatar",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: { agentTransport: "local-sdk", model: "keep-model" },
+    });
+    runtimes.saveAgentRuntimeAppearance(saved.id, { avatar });
+    expect(
+      runtimes.listAgentRuntimes().find((r) => r.id === saved.id),
+    ).toMatchObject({ avatar, config: { model: "keep-model" } });
+    expect(() =>
+      runtimes.saveAgentRuntimeAppearance(saved.id, {
+        avatar: "data:text/html;base64,AAAA",
+      }),
+    ).toThrow();
+  });
+
   // @lat: [[main-process#App Lifecycle#Notification-area tray and quick task composer#Task completion toast]]
   it("emits one presentation-only event when a Runtime task succeeds", async () => {
     const { runtimes } = await loadModules();

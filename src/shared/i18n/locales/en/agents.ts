@@ -404,8 +404,7 @@ export default {
   configProfileAvatarPreview: "Avatar preview",
   configProfileAvatarChange: "Change avatar",
   configProfileAvatarRemove: "Remove avatar",
-  configProfileAvatarHint:
-    "PNG, JPG, WebP, or GIF; square images up to 480 KB work best.",
+  configProfileAvatarHint: "PNG, JPG, WebP, or GIF; square images work best.",
   configProfileAvatarTooLarge: "Avatar image must be 480 KB or smaller.",
   configProfileAvatarInvalid:
     "Unsupported avatar format. Use PNG, JPG, WebP, or GIF.",

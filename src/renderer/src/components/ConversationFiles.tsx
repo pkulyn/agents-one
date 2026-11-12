@@ -193,7 +193,6 @@ function FileCard({ entry }: { entry: FileEntry }): React.JSX.Element {
                 ? entry.info.size + " B"
                 : (entry.info.size / 1024).toFixed(1) + " KB"}
             </small>
-            {entry.summary && <small>{entry.summary}</small>}
           </span>
         </button>
         <div className="chat-document-actions">
