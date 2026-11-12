@@ -176,8 +176,6 @@ export default {
     picker: "Choose a model for this conversation",
     title: "Model",
     scope: "Applies only to this conversation and does not change defaults",
-    rememberThinkingScope:
-      "Model applies to this chat; thinking remembers your choice",
     list: "Model list",
     search: "Search models",
     manage: "Manage models",

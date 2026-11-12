@@ -13,7 +13,6 @@ export function RuntimeModelPicker({
   onSelect,
   onThinking,
   onClose,
-  rememberThinking = false,
 }: {
   anchor?: HTMLButtonElement | null;
   models: RuntimeModelOption[];
@@ -23,7 +22,6 @@ export function RuntimeModelPicker({
   onSelect: (id: string) => void;
   onThinking: (level: string) => void;
   onClose: () => void;
-  rememberThinking?: boolean;
 }): React.JSX.Element {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -92,9 +90,6 @@ export function RuntimeModelPicker({
         .includes(query.toLowerCase()),
   );
   const levels = current?.reasoningEfforts || [];
-  const effortIndex = Math.max(0, levels.indexOf(thinking));
-  const effortProgress =
-    levels.length > 1 ? effortIndex / (levels.length - 1) : 0;
   return createPortal(
     <div
       ref={panel}
@@ -237,22 +232,6 @@ export function RuntimeModelPicker({
         ) : (
           <small>{t("runtimeChat.thinking.nativeDefault")}</small>
         )}
-        {levels.length > 1 && (
-          <div
-            className="runtime-thinking-meter"
-            data-level={thinking}
-            aria-hidden="true"
-          >
-            <span style={{ width: effortProgress * 100 + "%" }} />
-          </div>
-        )}
-        <small>
-          {t(
-            rememberThinking
-              ? "runtimeChat.model.rememberThinkingScope"
-              : "runtimeChat.model.scope",
-          )}
-        </small>
         <button
           type="button"
           className="runtime-model-manage"

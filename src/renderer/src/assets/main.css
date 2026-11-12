@@ -23408,49 +23408,17 @@ body.tray-completion-document {
   background: linear-gradient(115deg, #149a7b, #168ff0 55%, #7163ed);
   box-shadow: 0 0 10px #3986ed50;
 }
-.runtime-thinking-meter {
-  height: 5px;
-  border-radius: 6px;
-  background: var(--bg-hover, #eff2f6);
-  --effort-gradient: linear-gradient(90deg, #7a9da2, #35a58a);
-  --effort-glow: transparent;
+.runtime-thinking-segments[data-level="medium"] {
+  background: linear-gradient(100deg, #229c781a, #168cca26);
 }
-.runtime-thinking-meter[data-level="medium"] {
-  --effort-gradient: linear-gradient(90deg, #2caa72, #189fc7);
-  --effort-glow: #189fc730;
+.runtime-thinking-segments[data-level="high"] {
+  background: linear-gradient(100deg, #159a8c26, #2878e82e);
+  box-shadow: 0 0 8px #2878e81f;
 }
-.runtime-thinking-meter[data-level="high"] {
-  --effort-gradient: linear-gradient(90deg, #2caa72, #149acb, #287be8);
-  --effort-glow: #287be850;
-}
-.runtime-thinking-meter[data-level="max"],
-.runtime-thinking-meter[data-level="xhigh"] {
-  --effort-gradient: linear-gradient(
-    90deg,
-    #2caa72,
-    #08a6bd 40%,
-    #238cf5 75%,
-    #8a6bf1
-  );
-  --effort-glow: #5385f580;
-}
-.runtime-thinking-meter > span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background:
-    radial-gradient(circle at 20% 50%, #ffffffa0 0 1px, transparent 2px),
-    radial-gradient(circle at 65% 35%, #ffffff80 0 1px, transparent 2px),
-    var(--effort-gradient);
-  box-shadow: 0 0 8px var(--effort-glow);
-  transition:
-    width 150ms ease,
-    box-shadow 150ms ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  .runtime-thinking-meter > span {
-    transition: none;
-  }
+.runtime-thinking-segments[data-level="max"],
+.runtime-thinking-segments[data-level="xhigh"] {
+  background: linear-gradient(100deg, #149a7b30, #168ff038 55%, #7163ed38);
+  box-shadow: 0 0 12px #3986ed30;
 }
 .runtime-model-menu button:disabled {
   cursor: wait;

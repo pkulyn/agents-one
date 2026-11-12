@@ -94,7 +94,7 @@ it("preserves search text, option focus and placement when control callbacks rer
   expect(max).toHaveFocus();
   expect(input).toHaveValue("first");
   expect(screen.getByRole("dialog").getAttribute("style")).toBe(before);
-  expect(document.querySelector(".runtime-thinking-meter")).toHaveAttribute(
+  expect(document.querySelector(".runtime-thinking-segments")).toHaveAttribute(
     "data-level",
     "max",
   );
