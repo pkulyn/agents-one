@@ -52,6 +52,14 @@ const runtime: AgentRuntimeDefinition = {
 it("lists every enabled provider choice with distinct identities and preserves configured defaults", () => {
   const before = structuredClone(runtime);
   const models = oneConversationModels(runtime);
+  expect(models[0].reasoningEfforts).toEqual([
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "max",
+  ]);
   expect(models.map((m) => m.displayName)).toEqual([
     "same-model",
     "a-second",

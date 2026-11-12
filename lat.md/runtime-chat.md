@@ -595,3 +595,7 @@ One records its actual SDK user-message boundary before acknowledging input. Oth
 Manual One compaction returns persisted native summary metadata and a post-compaction estimate, preserving observed system and tool overhead. The context gauge uses the saved result until newer model usage arrives.
 
 [[src/main/one-runtime/worker.ts]] checks summary persistence before reporting completion and reports the effective SDK model window for normal tasks as well, avoiding a stale configured-default denominator after model selection. [[src/renderer/src/screens/Chat/ContextGauge.tsx#ContextGauge]] labels projection-based estimates until the next provider response calibrates them. Non-reducing summaries are reported honestly. Platform retry and model-call diagnostics never become model reasoning, including historical events. One has no platform-enforced model-call count; legacy configuration keys remain inert for compatibility.
+
+## Execution boundary label
+
+The composer shows the execution boundary as an icon and text without an outlined badge, retaining its accessible label and native execution details.

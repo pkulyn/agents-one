@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronRight, Search, X } from "lucide-react";
 import type { RuntimeModelOption } from "../../../../shared/runtime-commands";
@@ -32,12 +32,16 @@ export function RuntimeModelPicker({
   );
   const [group, setGroup] = useState(current?.provider || groups[0] || "");
   const panel = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useLayoutEffect(() => {
+    closeRef.current = onClose;
+  });
   const [position, setPosition] = useState({
     left: 16,
     bottom: 90,
     maxHeight: 500,
   });
-  useEffect(() => {
+  useLayoutEffect(() => {
     const place = (): void => {
       const rect = anchor?.getBoundingClientRect();
       if (rect)
@@ -46,7 +50,7 @@ export function RuntimeModelPicker({
             12,
             Math.min(
               rect.left,
-              window.innerWidth - Math.min(600, window.innerWidth - 24) - 12,
+              window.innerWidth - Math.min(480, window.innerWidth - 24) - 12,
             ),
           ),
           bottom: window.innerHeight - rect.top + 10,
@@ -58,12 +62,12 @@ export function RuntimeModelPicker({
         !panel.current?.contains(event.target as Node) &&
         !(event.target as Element).closest?.(".runtime-chat-model-trigger")
       )
-        onClose();
+        closeRef.current();
     };
     const escape = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        closeRef.current();
       }
     };
     place();
@@ -76,7 +80,7 @@ export function RuntimeModelPicker({
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("keydown", escape);
     };
-  }, [onClose, anchor]);
+  }, [anchor]);
   const visible = models.filter(
     (m) =>
       (query || (m.provider || t("runtimeChat.model.title")) === group) &&
@@ -92,6 +96,7 @@ export function RuntimeModelPicker({
       className="runtime-model-menu"
       style={position}
       role="dialog"
+      aria-busy={disabled}
       aria-label={t("runtimeChat.model.picker")}
       onKeyDown={(event) => {
         if (
@@ -205,6 +210,7 @@ export function RuntimeModelPicker({
         {levels.length > 1 ? (
           <div
             className="runtime-thinking-segments"
+            data-level={thinking}
             role="group"
             aria-label={t("runtimeChat.thinking.list")}
           >
@@ -226,12 +232,11 @@ export function RuntimeModelPicker({
         ) : (
           <small>{t("runtimeChat.thinking.nativeDefault")}</small>
         )}
-        <small>{t("runtimeChat.model.scope")}</small>
         <button
           type="button"
           className="runtime-model-manage"
           onClick={() => {
-            onClose();
+            closeRef.current();
             window.dispatchEvent(
               new CustomEvent("navigation:goto", { detail: "agents" }),
             );

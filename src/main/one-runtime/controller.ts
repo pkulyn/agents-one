@@ -1,3 +1,4 @@
+import type { OneThinkingLevel } from "../../shared/one-thinking";
 import { fork, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { OneToolCleanupError } from "./cleanup-error";
@@ -20,7 +21,7 @@ export interface OneWorkerOptions {
   maxOutputTokens?: number;
 
   imageInput?: boolean;
-  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
+  thinkingLevel?: OneThinkingLevel;
   operation?: "compact";
   customInstructions?: string;
   images?: Array<{ type: "image"; data: string; mimeType: string }>;

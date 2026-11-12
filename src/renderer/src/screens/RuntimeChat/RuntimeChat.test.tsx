@@ -955,6 +955,91 @@ describe("RuntimeChat inputs and persistence", () => {
     });
   });
 
+  it("remembers accepted One thinking across remounts, rejects failed preferences and freezes toolbar while editing", async () => {
+    localStorage.clear();
+    const one: AgentRuntimeDefinition = {
+      ...piRuntime,
+      id: "one-preference-test",
+      name: "One",
+      kind: "one",
+      config: { agentTransport: "local-sdk", model: "first" },
+    };
+    const levels = ["off", "minimal", "low", "medium", "high", "max"];
+    getAgentRuntimeCommandCatalog.mockResolvedValue({
+      commands: ["model", "thinking"].map((name) => ({
+        name,
+        description: name,
+        category: "Runtime",
+        source: "desktop",
+        target: "runtime-control",
+        availability: "idle",
+      })),
+      fetchedAt: Date.now(),
+    });
+    executeAgentRuntimeCommand.mockImplementation(async (request) => {
+      if (request.name === "model" && !request.args)
+        return {
+          type: "needs-input",
+          input: "model-picker",
+          models: [
+            { id: "first", reasoningEfforts: levels },
+            { id: "second", reasoningEfforts: levels },
+          ],
+        };
+      if (request.args === "max")
+        return { type: "error", message: "Rejected preference" };
+      return { type: "handled", statePatch: { thinkingLevel: request.args } };
+    });
+    const view = render(
+      <RuntimeChat runId="thinking-persist" runtime={one} profile="default" />,
+    );
+    await screen.findByRole("button", { name: "思考等级：中" });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /模型：.*first/ }),
+    );
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "高" }));
+    await waitFor(() =>
+      expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "false"),
+    );
+    expect(
+      screen.getByRole("button", { name: "思考等级：中" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "高" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "最高" }));
+    await screen.findByText("Rejected preference");
+    expect(screen.getByRole("button", { name: "高" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(
+      screen.getByRole("button", { name: "思考等级：高" }),
+    ).toBeInTheDocument();
+    view.unmount();
+    render(
+      <RuntimeChat
+        runId="thinking-restarted"
+        runtime={one}
+        profile="default"
+      />,
+    );
+    expect(
+      await screen.findByRole("button", { name: "思考等级：高" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await waitFor(() =>
+      expect(startAgentRuntimeTask).toHaveBeenCalledWith(
+        "one-preference-test",
+        expect.objectContaining({ thinkingLevel: "high" }),
+      ),
+    );
+    localStorage.clear();
+  });
+
   it("routes the model label through the same Runtime /model handler", async () => {
     getAgentRuntimeCommandCatalog.mockResolvedValue({
       commands: [
@@ -1052,7 +1137,7 @@ describe("RuntimeChat inputs and persistence", () => {
     );
   });
 
-  it("optimistically shows the chosen model while Pi confirms the live session switch", async () => {
+  it("keeps the composer model stable until the picker closes after a native switch", async () => {
     let resolveSwitch: ((result: Record<string, unknown>) => void) | undefined;
     getAgentRuntimeCommandCatalog.mockResolvedValue({
       commands: [
@@ -1104,19 +1189,22 @@ describe("RuntimeChat inputs and persistence", () => {
     );
 
     const trigger = screen.getByRole("button", {
-      name: "正在切换模型：ark/doubao-seed-2.1-turbo",
+      name: "模型：ark/deepseek-v4-flash",
     });
-    expect(trigger).toBeDisabled();
+    expect(trigger).toBeEnabled();
     resolveSwitch?.({
       type: "handled",
       message: "当前会话已切换到模型：ark/doubao-seed-2.1-turbo",
       statePatch: { model: "ark/doubao-seed-2.1-turbo" },
     });
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "模型：ark/doubao-seed-2.1-turbo" }),
-      ).toBeEnabled(),
+      expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "false"),
     );
+    expect(trigger).toHaveTextContent("ark/deepseek-v4-flash");
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(
+      screen.getByRole("button", { name: "模型：ark/doubao-seed-2.1-turbo" }),
+    ).toBeEnabled();
   });
 
   it("renders only matching native command progress as system feedback", async () => {

@@ -24,6 +24,68 @@ afterEach(async () => {
 });
 
 describe("One SDK session isolation", () => {
+  it("sends medium by default, retains explicit off and lets the native SDK clamp Max", async () => {
+    dir = await mkdtemp(join(tmpdir(), "agents-one-thinking-"));
+    const requests: Array<Record<string, unknown>> = [];
+    server = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        requests.push(JSON.parse(raw));
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.end(
+          "data: " +
+            JSON.stringify({
+              id: "thinking",
+              object: "chat.completion.chunk",
+              choices: [
+                { index: 0, delta: { content: "Done" }, finish_reason: "stop" },
+              ],
+            }) +
+            "\n\ndata: [DONE]\n\n",
+        );
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server!.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw Error("No address");
+    for (const thinkingLevel of [undefined, "off", "max"] as const) {
+      const { session } = await createOneSession({
+        workspace: dir,
+        stateDir: join(dir, String(thinkingLevel)),
+        baseUrl: "http://127.0.0.1:" + address.port + "/v1",
+        modelId: "fixture",
+        apiKey: "fixture",
+        thinkingLevel,
+      });
+      try {
+        await session.prompt("Hello");
+      } finally {
+        session.dispose();
+      }
+    }
+    const nativeMax = await createOneSession({
+      workspace: dir,
+      stateDir: join(dir, "native-max"),
+      baseUrl: "http://127.0.0.1:" + address.port + "/v1",
+      modelId: "Ring-2.6-1T",
+      apiKey: "fixture",
+      thinkingLevel: "max",
+    });
+    try {
+      await nativeMax.session.prompt("Hello");
+    } finally {
+      nativeMax.session.dispose();
+    }
+    expect(requests.map((body) => body.reasoning_effort)).toEqual([
+      "medium",
+      undefined,
+      "high",
+      "xhigh",
+    ]);
+  });
   it("retries a transient provider failure and counts every actual model request", async () => {
     dir = await mkdtemp(join(tmpdir(), "agents-one-retry-"));
     let requests = 0;
