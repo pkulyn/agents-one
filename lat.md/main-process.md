@@ -346,6 +346,10 @@ One enables Pi session compaction using the configured model context window; abs
 
 One model presets provide curated quick-fill endpoints for common providers alongside a custom endpoint. Selecting a template fills its API endpoint, example model and protocol; it does not certify connectivity or tool support, so the same real harmless-tool probe remains required before saving. Ark Agent Plan and OpenAI also set their known model-specific context/image defaults; switching provider or model clears stale overrides. The preset identity is derived from endpoint and API type rather than stored as another configuration field.
 
+[[src/main/one-runtime/task-context.ts#oneTaskContext]] supplies a concise One-only context with configured model ID, provider host and current date. Ordinary questions are answered in chat; file creation follows user intent. One user turns no longer carry the general permission boilerplate, ordinary-task/delegation rules or mandatory delivery/hash template. Tool availability and dangerous-operation authorization are enforced by execution, not a repeated workflow prompt. Successful workspace/Word writes are independently verified for file cards even when the answer uses ordinary prose.
+
+[[src/main/one-runtime/web-tools.ts#createOneWebTools]] provides public web search, text-page fetching and up to 16-day city forecasts in read-only and automatic tasks, independently of skills or shell access. Sources and retrieval times are returned; service errors are not fabricated empty results. Public GET access checks every DNS address and redirect, pins the selected address, forwards no host credentials, and bounds duration, body and visible output.
+
 One continues model/tool loops until completion, user cancellation or a real runtime failure, without a platform model-call cap. Platform call counters are not reasoning. Session-scoped models do not change configured defaults.
 
 The One settings form distinguishes skill discovery failure from an empty directory and allows removing selections that are no longer present. Discovery and explicit selection remain documentation-only and do not execute skill scripts.

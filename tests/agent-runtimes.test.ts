@@ -1661,17 +1661,12 @@ describe("agent runtime registry", () => {
               },
             });
             const sessionFile = fakeOneSession(options, sessionId);
-            const written = JSON.parse(
-              await options.executeTool(
-                "workspace_write",
-                { path: "result.txt", content: "One result" },
-                new AbortController().signal,
-              ),
+            await options.executeTool(
+              "workspace_write",
+              { path: "result.txt", content: "One result" },
+              new AbortController().signal,
             );
-            const output =
-              "[交付物]\n路径：result.txt\nSHA-256：" +
-              written.sha256 +
-              "\n变更摘要：创建结果文件";
+            const output = "Created result.txt.";
             options.onEvent?.({
               type: "message_update",
               assistantMessageEvent: { type: "text_delta", delta: output },
@@ -1710,6 +1705,16 @@ describe("agent runtime registry", () => {
       "project preference",
     );
     const workerOptions = startOneWorkerMock.mock.calls[0][0];
+    expect(workerOptions.prompt).not.toContain("[交付物]");
+    expect(workerOptions.prompt).not.toContain("[Agents One 本轮权限]");
+    expect(workerOptions.systemPrompt).toContain(
+      "Configured model ID: model-test",
+    );
+    expect(
+      workerOptions.tools.map((tool: { name: string }) => tool.name),
+    ).toEqual(
+      expect.arrayContaining(["web_search", "web_fetch", "weather_forecast"]),
+    );
     expect(workerOptions).not.toHaveProperty("maxModelCalls");
     const bindingsDir = join(workerOptions.stateDir, "run-bindings");
     const bindingText = readFileSync(
@@ -1801,6 +1806,9 @@ describe("agent runtime registry", () => {
         (tool: { name: string }) => tool.name,
       ),
     ).toEqual([
+      "web_search",
+      "web_fetch",
+      "weather_forecast",
       "workspace_list",
       "workspace_read",
       "workspace_search",

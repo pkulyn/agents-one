@@ -122,8 +122,12 @@ function nativeToolName(name: string): string {
   if (/^(bash|cmd|shell|terminal|command|命令)$/i.test(name)) {
     return "Terminal";
   }
-  if (/^(read|read_file)$/i.test(name)) return "Read File";
-  if (/^(write|write_file|edit)$/i.test(name)) return "Write File";
+  if (/^(read|read_file|workspace_read)$/i.test(name)) return "Read File";
+  if (/^(write|write_file|edit|workspace_write)$/i.test(name))
+    return "Write File";
+  if (name === "workspace_list") return "List Files";
+  if (name === "workspace_search") return "Search Files";
+  if (name === "workspace_delete") return "Delete File";
   return name;
 }
 
