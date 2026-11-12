@@ -1,3 +1,4 @@
+import { DEFAULT_ONE_THINKING_LEVEL } from "../shared/one-thinking";
 import {
   runtimeSkillPrompt,
   onePluginSkillCommands,
@@ -4318,7 +4319,8 @@ async function executeAgentRuntimeCommandOnce(
           input: "thinking-picker",
           thinkingLevels: levels,
           thinkingLevel:
-            request.thinkingLevel || (runtime.kind === "one" ? "off" : ""),
+            request.thinkingLevel ||
+            (runtime.kind === "one" ? DEFAULT_ONE_THINKING_LEVEL : ""),
         };
       if (!levels.includes(args))
         return {
@@ -6636,7 +6638,7 @@ export async function startAgentRuntimeTask(
           task.thinkingLevel as (typeof ONE_THINKING_LEVELS)[number],
         )
           ? (task.thinkingLevel as (typeof ONE_THINKING_LEVELS)[number])
-          : "off",
+          : DEFAULT_ONE_THINKING_LEVEL,
         maxOutputTokens: activeModelMetadata?.maxOutputTokens,
         images,
         contextWindow:

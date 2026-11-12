@@ -57,3 +57,45 @@ it("groups provider models, searches across groups and forwards only clicked mod
   fireEvent.keyDown(document, { key: "Escape" });
   expect(close).toHaveBeenCalled();
 });
+
+it("preserves search text, option focus and placement when control callbacks rerender", () => {
+  const anchor = document.createElement("button");
+  anchor.getBoundingClientRect = () => new DOMRect(100, 600, 80, 30);
+  const models = [{ id: "first", reasoningEfforts: ["off", "medium", "max"] }];
+  const view = render(
+    <RuntimeModelPicker
+      anchor={anchor}
+      models={models}
+      selected="first"
+      thinking="medium"
+      disabled={false}
+      onSelect={() => {}}
+      onThinking={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  const input = screen.getByRole("textbox");
+  fireEvent.change(input, { target: { value: "first" } });
+  const max = screen.getByRole("button", { name: "max" });
+  max.focus();
+  const before = screen.getByRole("dialog").getAttribute("style");
+  view.rerender(
+    <RuntimeModelPicker
+      anchor={anchor}
+      models={models}
+      selected="first"
+      thinking="max"
+      disabled={false}
+      onSelect={() => {}}
+      onThinking={() => {}}
+      onClose={() => {}}
+    />,
+  );
+  expect(max).toHaveFocus();
+  expect(input).toHaveValue("first");
+  expect(screen.getByRole("dialog").getAttribute("style")).toBe(before);
+  expect(document.querySelector(".runtime-thinking-segments")).toHaveAttribute(
+    "data-level",
+    "max",
+  );
+});
