@@ -202,7 +202,7 @@
   border: 0;
   border-radius: 8px;
   background: var(--accent);
-  color: var(--accent-text, #fff);
+  color: var(--text-on-accent, #fff);
   padding: 7px 12px;
   font: inherit;
   font-size: 12px;
