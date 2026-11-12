@@ -1,7 +1,7 @@
 {
   "name": "agents-one",
-  "version": "0.1.2",
-  "description": "Agents One — a desktop workspace for coordinating conversations, tasks and artifacts across multiple AI agents (Pi, Claude Code, Codex, Hermes, OpenClaw and any Gateway v1 remote agent)",
+  "version": "1.0.0",
+  "description": "Agents One — a personal AI agent and a shared desktop workspace for conversations, projects and collaboration across One, Codex, Claude Code, Pi Agent, OpenCode and compatible remote agents",
   "main": "./out/main/index.js",
   "author": "pkulyn",
   "license": "MIT",

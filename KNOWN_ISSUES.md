@@ -1,6 +1,6 @@
 # Known issues and release limitations
 
-Agents One 0.1.0 is MIT-licensed. Windows core acceptance covers a bounded set of desktop flows; other Runtime and platform combinations require separate verification.
+Agents One 1.0.0 is MIT-licensed. Windows core acceptance covers a bounded set of desktop flows; other Runtime and platform combinations require separate verification.
 
 | ID           | Current limitation                                                                                                                                                   | Required before closing                                                                                            |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |

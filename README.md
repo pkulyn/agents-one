@@ -1,248 +1,155 @@
 # Agents One
 
 <p align="center">
-  <img src="assets/readme/hero.svg" width="100%" alt="Agents One manages and coordinates local and remote AI agents" />
+  <img src="assets/readme/startup.png" width="100%" alt="Agents One — the current startup scene, where a silver robot hand meets a human hand beneath the Dawn Ring wordmark" />
 </p>
 
 <p align="center">
-  <a href="README.zh-CN.md">简体中文</a> · <a href="#see-it-in-action">Preview</a> · <a href="#get-started">Get started</a> · <a href="#development">Develop</a> · <a href="#license">License</a>
+  <a href="https://github.com/pkulyn/agents-one/releases"><img src="https://img.shields.io/github/v/release/pkulyn/agents-one?style=flat-square&label=Release&color=8675e8" alt="Latest published release" /></a>
+  <a href="https://github.com/pkulyn/agents-one/actions/workflows/ci.yml"><img src="https://github.com/pkulyn/agents-one/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI build status" /></a>
+  <a href="https://github.com/pkulyn/agents-one/releases"><img src="https://img.shields.io/badge/Windows-x64-087fc2?style=flat-square" alt="Windows x64" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-5b657a?style=flat-square" alt="MIT license" /></a>
 </p>
-
-**Manage local and remote AI agents in one workspace.** Connect Pi Agent, Codex, Claude Code, OpenCode and more to organize conversations, tasks, collaboration and artifacts. Each agent keeps its own tools and permissions.
-
-## Ask an AI agent to help you get started
-
-You can send the prompt below to your agent so it can help install, configure and deploy Agents One for your needs.
-
-```text
-Please read https://github.com/pkulyn/agents-one/blob/main/README.md first,
-then help me install and configure Agents One for my environment. Check my system
-and existing tools, download the appropriate Windows or Android package from the
-official GitHub Releases, and verify its SHA-256. Help me connect the local or
-remote agents I need; if applicable, deploy the plugin, Connector and Connect,
-and help install, connect and pair the phone app. First ask what features I need;
-do not deploy components I do not need. Preserve existing configuration and data.
-Explain any steps that require my account, secrets, server access or my own action;
-do not write credentials to source files, documentation or logs. Verify each step
-and report what is complete, what was tested and what still needs my attention.
-```
-
-## See it in action
-
-The opening scene of the current app carries the Agents One Dawn Ring identity:
 
 <p align="center">
-  <img src="assets/readme/startup.png" width="100%" alt="Agents One startup scene: a robot hand and a fully visible human hand meet behind the Dawn Ring wordmark" />
+  <a href="https://www.agentsone.cn/en.html">Website</a> · <a href="https://github.com/pkulyn/agents-one/releases/latest">Download</a> · <a href="#see-it-in-motion">Watch the film</a> · <a href="#get-started">Get started</a> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-Conversations stay central, with projects, scheduled work and agent selection close at hand.
+<h2 align="center">Start with One. Bring your agents together.</h2>
+
+<p align="center">A personal AI agent. A shared workspace for the agents you already use.</p>
+
+**One is built in.** Choose a model, connect your API, and start researching, coding or working with files. Bring Codex, Claude Code, Pi Agent and OpenCode into the same workspace. Keep conversations, projects, tool activity and finished work together.
+
+## See it in motion
 
 <p align="center">
-  <img src="previews/chat.png" width="100%" alt="Agents One desktop chat with project navigation and task actions" />
+  <a href="assets/readme/product-film.mp4"><img src="assets/readme/product-film.gif" width="100%" alt="Watch the Agents One product film: conversations, agents, projects, collaboration and finished work" /></a>
 </p>
 
-<details>
-<summary>View the agent registry</summary>
+<p align="center"><a href="assets/readme/product-film.mp4"><strong>Watch the full film · 34 seconds · 1080p</strong></a></p>
 
-<p align="center">
-  <img src="previews/agents.png" width="100%" alt="Agents One agent registry showing local runtimes and their health state" />
-</p>
+A short excerpt plays here; open the full film above. This is a designed product presentation, not a recording of the current interface.
 
-</details>
+## Meet One
 
-Screenshots show development builds; labels and layout may change between releases.
+### Your model. Your agent. Your way of working.
 
-## What comes together
+One is Agents One’s own local agent, built on the Pi agent SDK. It works directly with your configured model API, so getting started does not require another agent CLI. Model access and usage come from your chosen provider.
 
-| Your work            | What Agents One adds                                                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------- |
-| **Conversations**    | Streaming replies, tool activity, artifacts, searchable history, retry/cancel controls and terminal fallback. |
-| **Agents**           | One registry for local CLIs and remote Gateway v1 agents, with health and reported capabilities.              |
-| **Projects & tasks** | Folder-scoped workspaces, scheduled runs, archives and multi-agent handoffs.                                  |
-| **Your data**        | Portable backup and restore with integrity checks and rollback safeguards.                                    |
+- **Research and get things done.** Search the web, read pages, check weather, work with project files, read Word/PDF documents and create Word files. Use images with a model that supports image input.
+- **Make it yours.** Edit One’s AGENTS.md, manage private and project memory, and enable the skills you need. Configure plugins and MCP servers to add capabilities.
+- **Choose how it thinks.** Manage providers and models, edit context and capability metadata, and switch reasoning from Off through Medium to Max. One remembers your accepted reasoning choice.
+- **Stay in the conversation.** Follow streamed replies, native progress, reasoning and tool activity. Confirm a steering message for the next tool boundary, or queue a follow-up for after the current answer.
 
-### Local power, one shared surface
+Tools, image input and reasoning depend on the model, enabled extensions and permission mode. Max uses the highest effort supported by the model integration.
 
-Local CLIs run as native processes and retain their models, tools, project instructions and permissions. Remote agents connect through Gateway v1, which negotiates capabilities and grants workspace access for bounded runs. Both use the same conversation interface.
+## One workspace. More possibilities.
 
-The [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) lets additional agents implement this contract without changing the desktop app. The [event stream](docs/AGENT_EVENT_STREAM_V1.md) carries tool activity, artifacts, and handoffs; the [Gateway protocol](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md) covers remote runs and workspace grants.
+### Keep the agents you trust
+
+Use One alongside **Codex, Claude Code, Pi Agent and OpenCode**. Local integrations keep their own models, tools and authentication. Compatible remote agents connect through **Gateway v1**. Agents One keeps its harness thin so each agent’s native capabilities can come through.
+
+### Give work a place to live
+
+Choose a project folder, continue an existing conversation, schedule recurring work, or assign a task to multiple registered agents. Review progress and handoffs in the conversation, then open the resulting files from artifact cards.
+
+### Stay close to the work
+
+See what is running, stop a task when needed, and continue from searchable history. Quick Chat keeps a lightweight entry nearby. The Android companion can access an authorized desktop through a separately configured connection service.
 
 ## Get started
 
-[Windows installation](#install-and-verify-on-windows) · [Local agents](#connect-a-local-agent) · [Remote agents and servers](#connect-a-remote-agent-components-and-deployment) · [Android](#android-install-and-connect-to-the-desktop)
+### 1. Install Agents One
 
-### Release status
-
-| Component         | Current status                                                                                                                                                                     |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows desktop   | [0.1.2 stable Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.2), with x64 installer and portable EXE.                                                             |
-| Android           | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev), Android 8.0 / API 26 or newer. Debug-signed, debuggable prerelease.                 |
-| Remote components | Plugin SDK **0.1.6**, Connector CLI **0.1.0**, Connect service **0.1.1**. Deploy from this repository; do not assume a published npm package or a project-operated public service. |
-| Other platforms   | No public macOS/Linux desktop or iOS binaries. Linux can host self-managed remote services.                                                                                        |
-
-Windows core flows have passed acceptance within a limited scope; other models, remote services, upgrade/restore paths and mobile combinations are not all qualified. See [known issues](KNOWN_ISSUES.md).
-
-### Install and verify on Windows
-
-1. Download one package and the matching `SHA256SUMS.txt` from the [official Release](https://github.com/pkulyn/agents-one/releases/latest):
-   - `agents-one-0.1.2-setup.exe`: recommended for most users; installs for the current Windows user without a system-wide installation requirement.
-   - `agents-one-0.1.2-portable.exe`: run from a writable local directory without installing. **Portable means no installer, not that data is stored beside the EXE**; see data locations below.
-2. In your download directory, compare the SHA-256 against the **same filename** in the checksum file:
-
-   ```powershell
-   Get-FileHash .\agents-one-0.1.2-setup.exe -Algorithm SHA256
-   # For the portable package, use the matching portable.exe filename instead
-   Get-Content .\SHA256SUMS.txt
-   ```
-
-3. **SmartScreen:** unsigned Windows packages may show a warning on first launch. Verify the official Release and SHA-256 first; if Windows offers it and you trust the file, choose **More info → Run anyway**. Stop if the hash differs, security software flags the file or your organization blocks it. [Microsoft guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
-4. Finish the installer and open the **Agents One** shortcut, or run the portable EXE directly. Use a normal user account for the desktop app and its CLIs. Single-click the tray icon to open the main window; double-click to toggle Quick Chat, then double-click again to close it. Use the tray context menu to quit normally.
-
-**Updates:** the 0.1.0 package has no in-app update check; use [Releases](https://github.com/pkulyn/agents-one/releases) and install updates manually. Version 0.1.1 and later can check from **Settings → About & Updates → Check for updates** and link to GitHub; they do not download or install updates automatically. Before upgrading, back up in **Settings → Data** and quit from the tray. Installer and portable builds use separate data directories. No winget or Microsoft Store package is available.
-
-### Connect a local agent
-
-Agents One does not provide a CLI subscription, sign in to a provider for you, or supply API keys. Install and configure each desired CLI under the **same Windows user** as the desktop app, and complete a normal conversation in its own terminal first.
-
-| Agent type  | Common command | Before connecting                                                                 |
-| ----------- | -------------- | --------------------------------------------------------------------------------- |
-| Codex       | `codex`        | Complete the CLI's own sign-in or provider configuration.                         |
-| Claude Code | `claude`       | Authenticate Claude Code and confirm access to the intended working folder.       |
-| Pi Agent    | `pi`           | Configure Pi's provider, model and credentials.                                   |
-| OpenCode    | `opencode`     | Confirm the selected provider/model works; the desktop uses native CLI protocols. |
-
-1. Open **Agents → Add agent**, choose **Local**, then set the agent type, name and appearance.
-2. Use the detected executable path, or select the actual CLI launcher. Do not select a project directory, installer or a whole shell command. On Windows, locate it with `where.exe codex`, `where.exe claude`, `where.exe pi` or `where.exe opencode`.
-3. Save and test the connection. Check its health/capabilities, open Chat, select the agent and send a simple message.
-4. For file work, create/select a **Project**, confirm its directory and choose the appropriate permission mode. **Read-only, Automatic and Full access** allow different operations. Automatic mode restricts moving or deleting existing files; use Full access only with an understood scope. Available tools depend on the Runtime's actual capabilities.
-
-Fully quit and reopen the desktop app after changing CLI paths or the user PATH. If terminal use works but probing fails, check the launcher path, inherited environment and same-user authentication. Existing local Hermes installations can be discovered and adopted through their management UI; a local Hermes Home is not a remote Gateway URL.
-
-### Connect a remote agent: components and deployment
-
-| Component                | Runs on                                           | Purpose                                                                                                                                                                    |
-| ------------------------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Gateway plugin / Adapter | The server running the agent                      | Maps native runs, events, files and cancellation to Agents One Gateway v1. The SDK provides a contract and host, not an automatic adapter for every agent.                 |
-| Connector CLI            | The remote agent server                           | Makes an outbound WSS connection to Connect and forwards requests to its configured local Gateway.                                                                         |
-| Connect service          | A server reachable by the desktop and remote host | Pairing, device authorization and tunnel routing; **it does not install or execute agents**. It may share a machine with the Gateway, with separate state and credentials. |
-
-Hermes, OpenClaw or another remote service must implement **Agents One Gateway v1**. An ordinary model API, OpenAI-compatible endpoint, chat website or arbitrary agent HTTP port is insufficient. The Hermes SDK example is an integration skeleton: the service maintainer must connect real runs and artifact interfaces. Remote OpenCode hosting has a separate experimental rollout gate; remote Pi/Codex/Claude Code adapters are not delivered integrations.
-
-#### A. Prepare the Gateway plugin on the agent server
-
-Use Node.js **24+** and components from the same repository revision. The SDK is not currently published to the public npm registry; do not assume `npm install @agents-one/plugin-sdk` will work.
-
-```bash
-# From the source repository root; npm.cmd also works on Windows
-npm --prefix plugins/agents-one-plugin run verify
-npm pack ./plugins/agents-one-plugin
-# In your own Gateway / Adapter project, install the generated local file:
-# npm install /absolute/path/to/agents-one/agents-one-plugin-sdk-0.1.6.tgz
-```
-
-Implement/start the Adapter using the [Plugin SDK guide](docs/AGENTS_ONE_PLUGIN_SDK.md) and [plugin deployment instructions](plugins/agents-one-plugin/README.zh-CN.md). Set a dedicated Gateway token, bounded workspace and persistent `statePath`. Verify a capability probe, conversation, cancellation and file exchange on the server first. Examples use `AGENTS_ONE_GATEWAY_TOKEN`; keep secrets out of source, documentation and prompts. Updating the desktop does not update a remote plugin.
-
-#### B. Deploy Connect
-
-The following starts a user-level Linux process **behind a reverse proxy**. It is a single-instance starting point, not a turnkey multi-tenant production service:
-
-```bash
-git clone https://github.com/pkulyn/agents-one.git
-cd agents-one
-npm ci --ignore-scripts --prefix services/agents-one-connect
-mkdir -p "$HOME/.agents-one-connect"
-chmod 700 "$HOME/.agents-one-connect"
-export CONNECT_HOST=127.0.0.1
-export CONNECT_PORT=8788
-export CONNECT_STATE_FILE="$HOME/.agents-one-connect/gateway-state.json"
-node services/agents-one-connect/bin/agents-one-connect.mjs
-```
-
-Reverse-proxy your own `https://connect.example.com` to `127.0.0.1:8788`, preserving request paths and WebSocket Upgrade, with a publicly trusted full TLS chain. The desktop, remote server and phone must each reach this address from their own networks.
-
-Health check: `https://connect.example.com/connect/v1/health`. Keep the process running and preserve its state across restarts. Direct TLS is also supported through `CONNECT_TLS_KEY_FILE` and `CONNECT_TLS_CERT_CHAIN_FILE`; see the [service deployment guide](services/agents-one-connect/README.zh-CN.md). Public deployments also need ingress access controls, rate limiting, backups and process supervision. This implementation does not provide a complete account system or shared multi-instance authorization database.
-
-#### C. Pair through the Connector
-
-On the **agent server**, from the repository root:
-
-```bash
-npm ci --ignore-scripts --prefix plugins/agents-one-connector
-node plugins/agents-one-connector/bin/agents-one-connector.mjs request-pairing --connect https://connect.example.com --runtime-id my-remote-agent --name "My remote agent" --wait true
-```
-
-On the **desktop**, quit the existing app from its tray first. Set the same Connect endpoint and launch your actual installed EXE from that PowerShell session:
+Download the Windows x64 **installer** or **portable EXE**, plus the matching SHA256SUMS.txt, from [GitHub Releases](https://github.com/pkulyn/agents-one/releases/latest). Verify the downloaded file before opening it:
 
 ```powershell
-$env:AGENTS_ONE_CONNECT_ENDPOINT = "https://connect.example.com"
-& "C:\path\to\agents-one.exe" # Replace with the real path; the variable applies only to this session
+Get-FileHash .\agents-one-<version>-setup.exe -Algorithm SHA256
+Get-Content .\SHA256SUMS.txt
 ```
 
-Choose **Agents → Add agent → Remote → Verification-code pairing**, enter the remote 10-character code, review the device fingerprint, Runtime list and expiry, then confirm. `--wait true` waits for completion and saves credentials; without it, run `complete-pairing` afterward. Use the same operating-system user for subsequent Connector commands.
+Use the filename you downloaded; the portable package ends in -portable.exe. The installer is per-user. The portable build runs without installation but stores data separately from the EXE. Current builds are unsigned, so Windows may show a SmartScreen warning. Updates are checked in **Settings → About & Updates** and installed manually.
 
-Once a compatible local Gateway is running on the remote host, configure the loopback adapter and leave the Connector running:
+### 2. Set up One
 
-```bash
-export AGENTS_ONE_LOOPBACK_GATEWAY=http://127.0.0.1:8787
-# Inject AGENTS_ONE_GATEWAY_TOKEN privately; it must match the local Gateway
-node plugins/agents-one-connector/bin/agents-one-connector.mjs run --adapter ./plugins/agents-one-connector/adapters/gateway-v1-loopback.mjs
+Open **Agents → Agent configuration → Model settings**. Choose a provider, set its API endpoint/protocol and key, select a model, then test and save. Open a conversation with One and send a simple message.
+
+One supports OpenAI Chat Completions, OpenAI Responses, Anthropic Messages and Google Generative AI protocols. Compatibility and capabilities vary by provider. API keys and subscriptions are supplied by you.
+
+### 3. Start with a real task
+
+Select a project folder for local files. Ask One to investigate a question, explain a codebase or prepare a document. Review the permission mode and approve destructive operations when prompted.
+
+<details>
+<summary><strong>Connect a local agent</strong></summary>
+
+Install and configure the desired CLI under the same Windows user, and verify a conversation in its own terminal first.
+
+| Agent       | Launcher |
+| ----------- | -------- |
+| Codex       | codex    |
+| Claude Code | claude   |
+| Pi Agent    | pi       |
+| OpenCode    | opencode |
+
+Open **Agents → Agent access management → Add agent → Local**, select the type and actual launcher path, then save and test. Use where.exe codex (or the matching command) to locate it. Reopen Agents One after changing PATH. Each CLI keeps its own login, provider configuration and service requirements.
+
+</details>
+
+<details>
+<summary><strong>Connect a remote agent</strong></summary>
+
+Remote integration uses a **Gateway Adapter** on the agent server, an outbound **Connector**, and a reachable **Connect** service for pairing and routing. Direct self-hosted Gateway connections are also supported.
+
+A normal model API URL or chat website is not a Gateway. The remote service must implement Gateway v1; pairing alone does not establish model readiness. Remote adapters and session continuation have integration-specific limits.
+
+Follow the [Plugin SDK guide](docs/AGENTS_ONE_PLUGIN_SDK.md), [Connector deployment guide](plugins/agents-one-connector/README.zh-CN.md) and [Connect deployment guide](services/agents-one-connect/README.zh-CN.md). Keep components on compatible revisions. The SDK is not currently published as a public npm package.
+
+</details>
+
+<details>
+<summary><strong>Use the Android companion</strong></summary>
+
+Android is released separately as [0.1.13-dev-debug](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev), for Android 8.0 / API 26 and newer. Verify the APK against that release’s checksum. It is a debug-signed, debuggable prerelease; there is no iOS or app-store build.
+
+The phone connects to an authorized desktop Owner, which must remain online. Configure the independent mobile service using the [Owner provisioning guide](services/agents-one-connect/README.zh-CN.md#english-operator-checklist), then use **Settings → Phone connection** on the desktop to invite and approve the device. Mobile invitations, remote Connector codes and Owner management keys are different credentials. Never give an Owner management key to the phone.
+
+</details>
+
+<details>
+<summary><strong>Ask your AI agent to help with setup</strong></summary>
+
+```text
+Read https://github.com/pkulyn/agents-one/blob/main/README.md and help me
+set up Agents One. Check my system and the currently published release first.
+Help configure One or connect the local/remote agents I need. Install only
+required components, preserve existing data, keep credentials out of files
+and logs, and verify the result. Explain any steps that need my action.
 ```
 
-Save/probe the remote agent in the desktop and test a real conversation. Pairing confirms device authorization, **not Gateway/model readiness**. Use `status` and `diagnose --connect https://connect.example.com` for diagnostics; see the [Connector guide](plugins/agents-one-connector/README.zh-CN.md) for parameters and user-level startup.
+</details>
 
-Advanced users may skip Connect: choose **Self-hosted Gateway**, enter a reachable HTTPS Gateway v1 URL and its dedicated bearer token, save and probe. This is a manual direct connection, not a Connect-paired device. Never expose an unauthenticated Gateway.
+## Built around your work
 
-### Android: install and connect to the desktop
+Project files stay in the folders you choose. Desktop state lives in Electron userData (normally %APPDATA%\agents-one on Windows); portable builds use %LOCALAPPDATA%\agents-one-portable by default. Model APIs, remote agents and enabled extensions receive the data needed for their tasks. Local execution is not an operating-system sandbox.
 
-The Android app connects to an authorized desktop **Owner**, which holds the data and runs agents. Keep the desktop online and awake; an online Connect service alone does not mean the desktop task channel is ready.
+Permissions depend on the agent and mode. Destructive operations need clear notice and authorization. Back up from **Settings → Data** before upgrading, then quit normally. Full cross-version upgrade/rollback combinations and all remote/model combinations are not yet qualified. Browser adapters are default-off experiments in public builds. See [known issues](KNOWN_ISSUES.md) and the [security policy](SECURITY.md).
 
-**Install:**
+## Build with us
 
-1. Download [agents-one-android-0.1.13-dev-debug.apk](https://github.com/pkulyn/agents-one/releases/download/android-v0.1.13-dev/agents-one-android-0.1.13-dev-debug.apk) and the matching [SHA256SUMS.txt](https://github.com/pkulyn/agents-one/releases/download/android-v0.1.13-dev/SHA256SUMS.txt) from the [Android release](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev); you do not need to build it yourself. The APK requires Android 8.0 (API 26) or newer.
-2. Before installing, compare the APK's SHA-256 with the matching filename in the checksum file:
-
-   ```text
-   533d61317743b40f9e584fabaa11b109b387ab1fbc2060894ccc4c2d8f5601f0
-   ```
-
-   For example, run `Get-FileHash .\agents-one-android-0.1.13-dev-debug.apk -Algorithm SHA256` in the Windows download directory, or use a trusted local hashing tool on the phone. Stop if the hashes differ.
-
-3. Transfer the APK to the phone or download it there. Follow Android's prompts to temporarily allow “Install unknown apps” for the browser or file manager used; you can turn that permission off after installation.
-
-This is a **debug-signed, debuggable** prerelease with package ID `one.agents.mobile.debug`. An authorized ADB debugging connection may access app data; turn off USB debugging when it is not needed and avoid using this build for sensitive data. An in-place update requires the same package ID and signing certificate; a differently signed build may not upgrade it. Uninstalling removes the phone's local state, so back up anything you need first. No iOS or app-store download is provided.
-
-**Connect:**
-
-1. The administrator must enable the independent mobile service using the [Owner provisioning instructions](services/agents-one-connect/README.zh-CN.md#english-operator-checklist), then provide the HTTPS base URL and a dedicated **Owner management key**. Gateway pairing alone is insufficient.
-2. On the desktop, open **Settings → Phone connection → Connection service setup**, enter the URL/key, choose **Save and connect**, and enable **Allow phone connections**. Gateway/Connector tokens cannot replace this key. Do not give the management key to the phone.
-3. Select **Generate invitation**. In the Android app's **Me** connection area, enter the same HTTPS URL, invitation and device name, and request access.
-4. Compare the verification phrase on both devices. Approve the device with only the required scopes on the desktop, then let the phone finish claiming access. This invitation is distinct from the remote Connector's 10-character code.
-5. View tasks/schedules on the phone. When starting work, choose an available, authorized desktop agent, project and execution mode. Review/approve execution policies on the desktop when required; pairing alone does not grant execution permission.
-6. Revoke lost or unused phones under **Paired devices** on the desktop. Revoking access does not cancel existing tasks; stop those separately if needed.
-
-For cached-only views, an offline Owner or an unready task channel, check the desktop process, connection switch, networking/WebSocket proxy and service health before deleting pairings or resetting data.
-
-## Data and trust boundaries
-
-Desktop state lives in Electron `userData` (normally `%APPDATA%\agents-one` on Windows); portable builds use `%LOCALAPPDATA%\agents-one-portable` by default. Launch arguments or explicit data-path overrides may change these locations. Project files stay in their selected folders; CLIs retain their own configuration and may store additional data outside the desktop directory. Backups omit known credentials and protected secrets, but user-authored chats, memories, skills, and attachments can still contain sensitive information.
-
-The built-in Doubao, ChatGPT, and Grok browser adapters are **default-off experiments** in public builds. Enabling them sends selected prompts and attachments through the signed-in provider webpage. See the [security policy](SECURITY.md), and [known issues](KNOWN_ISSUES.md) for the current boundaries and limitations.
-
-## Development
-
-Node.js **24 or newer** is required. From the repository root on Windows:
+Agents One is open source. Improve the workspace, build an adapter or extend the agent ecosystem.
 
 ```powershell
+# Node.js 24+ · from the repository root
 npm.cmd run install:clean
 npm.cmd run dev
-npm.cmd run typecheck
-npm.cmd test
 ```
 
-See the [contribution guide](CONTRIBUTING.md) for the full checks and the [runbook](docs/AGENTS_ONE_RUNBOOK.md) for usage and troubleshooting. Changes are tracked in the [changelog](CHANGELOG.md).
+[Contribute](CONTRIBUTING.md) · [Plugin SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) · [Gateway protocol](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md) · [Runbook](docs/AGENTS_ONE_RUNBOOK.md) · [Changelog](CHANGELOG.md)
 
 ## License
 
-Original Agents One contributions in this repository are offered under the [MIT License](LICENSE). MIT permits use, modification, distribution, and commercial use when the copyright and license notice is retained. Contributors keep their own copyright and submit only material they can license under MIT.
+Original Agents One contributions use the [MIT License](LICENSE). Inherited code, dependencies, assets and the Oxanium-derived wordmark retain their respective notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-The inherited `hermes-desktop` material retains its original author's MIT notice in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Third-party dependencies and assets retain their respective terms; the Oxanium-derived wordmark notice and font license are also linked there. This code license does not grant rights to impersonate the Agents One project or its maintainers.
+<p align="center"><a href="https://www.agentsone.cn/en.html"><strong>Explore Agents One → www.agentsone.cn</strong></a></p>
