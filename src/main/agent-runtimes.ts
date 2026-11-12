@@ -19,7 +19,7 @@ import {
   writeOneProjectMemoryFile,
 } from "./one-runtime/memory";
 import { homedir } from "node:os";
-import { loadOneSkills } from "./one-runtime/skills";
+import { createOneSkillReader, loadOneSkills } from "./one-runtime/skills";
 import { loadOnePluginInstructions } from "./one-runtime/plugins";
 import { connectOneMcpTools } from "./one-runtime/mcp";
 import { resolveOneConversationWorkspace } from "./one-runtime/workspace-binding";
@@ -801,6 +801,8 @@ function appendRuntimeEvent(
     }
   }
   if (
+    code !== "user_input" &&
+    code !== "assistant_progress" &&
     current
       .slice(-80)
       .some(
@@ -1753,9 +1755,23 @@ function appendOutputEvent(
     for (const line of lines) {
       try {
         const frame = JSON.parse(line) as Record<string, unknown>;
-        appendLocalRuntimeMetadata(record, frame);
+        if (
+          kind !== "one" ||
+          frame.type === "message_end" ||
+          frame.type === "one_model_context"
+        )
+          appendLocalRuntimeMetadata(record, frame);
         const message = isRecord(frame.message) ? frame.message : undefined;
         const items = contentItems(message);
+        if (
+          kind === "one" &&
+          frame.type === "one_steering_received" &&
+          typeof frame.text === "string"
+        )
+          appendRuntimeEvent(record, "message", compactText(frame.text), {
+            code: "user_input",
+            detail: frame.text,
+          });
         if (message?.role === "assistant" && message.stopReason === "error") {
           appendRuntimeEvent(
             record,
@@ -1782,6 +1798,18 @@ function appendOutputEvent(
                   tool: toolEvidence(name, item.arguments, undefined, id),
                 },
               );
+            } else if (
+              kind === "one" &&
+              frame.type === "message_end" &&
+              item.type === "text" &&
+              items.some((block) => block.type === "toolCall")
+            ) {
+              const text = piText(item);
+              if (text.trim())
+                appendRuntimeEvent(record, "message", compactText(text), {
+                  code: "assistant_progress",
+                  detail: text,
+                });
             } else if (item.type === "thinking") {
               const thought = piText(item);
               if (thought.trim()) {
@@ -6472,6 +6500,7 @@ export async function startAgentRuntimeTask(
         join(stateDir, "skills"),
       );
       const skillInstructions = skillLoad.instructions;
+      const skillReader = createOneSkillReader(skillLoad.resources);
       const pluginInstructions = loadOnePluginInstructions(
         runtime.config.onePlugins || [],
       );
@@ -6482,7 +6511,10 @@ export async function startAgentRuntimeTask(
       const definitionRevision = oneDefinitionRevision({
         instructions: oneInstructions,
         skillIds: runtime.config.oneSkills || [],
-        skillInstructions: [...skillInstructions, ...pluginInstructions],
+        skillInstructions: [
+          ...skillLoad.revisionInstructions,
+          ...pluginInstructions,
+        ],
         endpoint,
         defaultModel: runtime.config.model || "",
         apiType: runtime.config.oneApiType,
@@ -6579,6 +6611,7 @@ export async function startAgentRuntimeTask(
         ? []
         : [
             ...webTools.tools,
+            ...skillReader.tools,
             ...hostTools.tools,
             ...documentTools.tools,
             ...(task.mode === "full_access" ? [oneShellTool] : []),
@@ -6618,6 +6651,11 @@ export async function startAgentRuntimeTask(
             endpoint,
           }),
           oneInstructions,
+          ...(skillInstructions.length
+            ? [
+                "Selected skills are instruction resources, not callable tools. Use skill_read when relevant:",
+              ]
+            : []),
           ...skillInstructions,
           ...pluginInstructions,
           ...(memory ? ["[One private memory]\n" + memory] : []),
@@ -6633,17 +6671,19 @@ export async function startAgentRuntimeTask(
         tools: availableTools,
         executeTool: async (name, parameters, signal) => {
           const result =
-            name === "web_search" ||
-            name === "web_fetch" ||
-            name === "weather_forecast"
-              ? await webTools.executeTool(name, parameters, signal)
-              : name.startsWith("document_")
-                ? await documentTools.executeTool(name, parameters, signal)
-                : name === "host_shell" && task.mode === "full_access"
-                  ? await executeOneShell(parameters, workspace, signal)
-                  : name.startsWith("mcp_")
-                    ? await mcpBridge!.executeTool(name, parameters, signal)
-                    : await hostTools.executeTool(name, parameters, signal);
+            name === "skill_read"
+              ? await skillReader.executeTool(parameters, signal)
+              : name === "web_search" ||
+                  name === "web_fetch" ||
+                  name === "weather_forecast"
+                ? await webTools.executeTool(name, parameters, signal)
+                : name.startsWith("document_")
+                  ? await documentTools.executeTool(name, parameters, signal)
+                  : name === "host_shell" && task.mode === "full_access"
+                    ? await executeOneShell(parameters, workspace, signal)
+                    : name.startsWith("mcp_")
+                      ? await mcpBridge!.executeTool(name, parameters, signal)
+                      : await hostTools.executeTool(name, parameters, signal);
           if (name === "workspace_write" || name === "document_create_word") {
             try {
               const file = JSON.parse(result);
@@ -6708,6 +6748,21 @@ export async function startAgentRuntimeTask(
             appendRuntimeEvent(record, "progress", progress.summary, {
               code: progress.code,
             });
+          if (
+            event.type === "message_start" &&
+            isRecord(event.message) &&
+            event.message.role === "assistant"
+          )
+            record.run = { ...record.run, output: "" };
+          if (
+            event.type === "message_end" &&
+            isRecord(event.message) &&
+            Array.isArray(event.message.content) &&
+            event.message.content.some(
+              (part: unknown) => isRecord(part) && part.type === "toolCall",
+            )
+          )
+            record.run = { ...record.run, output: "" };
           if (
             event.type === "message_update" &&
             isRecord(event.assistantMessageEvent) &&
@@ -7849,6 +7904,11 @@ export async function sendAgentRuntimeInput(
     record.opencode?.steer;
   if (!steer) return "unsupported";
   await steer(text.trim());
+  if (!record.one)
+    appendRuntimeEvent(record, "message", text.trim().slice(0, 520), {
+      code: "user_input",
+      detail: text.trim(),
+    });
   if (record.run.status === "running") noteRuntimeActivity(record);
   return "accepted";
 }

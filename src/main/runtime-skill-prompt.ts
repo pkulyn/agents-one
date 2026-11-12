@@ -38,7 +38,7 @@ export function runtimeSkillPrompt(
     prompt: [
       "Use the explicitly selected skill below for this task. Resolve its relative resources from the skill directory. Use the Runtime's existing tools and permissions; the skill grants no additional access.",
       "Skill directory: " + dirname(location),
-      loaded.instructions[0],
+      loaded.revisionInstructions[0],
       "[User task]",
       match[3]?.trim() ||
         "Apply this skill to the current request. Ask for any required task input.",

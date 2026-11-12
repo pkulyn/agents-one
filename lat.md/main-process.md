@@ -362,11 +362,29 @@ One may send explicitly supplied image attachments only when image input is enab
 
 One supports text steering through its existing live Runtime input entry. Pi consumes a queued update after the current tool calls and before the next model request; the host confirms delivery only after the SDK emits the corresponding user message. Pending confirmations reject on cancellation or worker termination.
 
+### One progressive skill resources
+
+Selected skill descriptions enter the system prompt; full instructions and relative text resources are available through a scoped reader when relevant.
+
+[[src/main/one-runtime/skills.ts#createOneSkillReader]] bounds reads to the selected skill directory and 64 KB, rejects traversal and binary files, and never runs scripts. The full selected instructions still contribute to definition revisions so edits invalidate stale sessions.
+
+### One completion protocol validation
+
+A response consisting only of serialized pseudo tool-call delimiters is an execution failure, not a completed task or permission to execute generated text.
+
+[[src/main/one-runtime/completion.ts#validateOneCompletion]] rejects this malformed completion without creating files or invoking invented tools.
+
+### One native progress presentation
+
+One preserves assistant text accompanying native tool calls as chronological chat commentary, separate from hidden reasoning and the final answer.
+
+Main accepts One usage only from completed model messages and model context events, avoiding transient streaming zeros; subsequent genuine context reductions remain visible. Renderer presents commentary using the assistant identity and timestamp without generating acknowledgements or mandatory progress instructions. Execution trace rows use compact spacing.
+
 ### One explicit skill resource loading
 
-One loads only selected user-authored SKILL.md documents as prompt text; it never imports or executes scripts or other extensions. Missing, unsafe, or oversized selections are skipped so a stale skill ID cannot block an otherwise valid run.
+One advertises only selected skills in a compact catalog and reads instructions on demand. Missing or unsafe selections are skipped so stale IDs cannot block a run; discovery never executes scripts.
 
-[[src/main/one-runtime/skills.ts#loadOneSkills]] resolves the selected source and reads only its SKILL.md within size limits; up to 128 selected skills and 512 KB of prompt text are accepted. [[src/main/one-runtime/skills.test.ts]] verifies selected-source behavior, skipped missing entries, and that an adjacent JavaScript file remains inert. [[src/main/one-runtime/skill-copy.ts#copyOneSkillDirectory]] copies a shared user skill into One's runtime-owned `skills/` directory under a `one:` ID; [[src/main/one-runtime/skill-copy.ts#removeOneSkillDirectory]] removes only that copy, leaving the shared source intact for other agents.
+[[src/main/one-runtime/skills.ts#loadOneSkills]] resolves the selected source and reads its SKILL.md within size limits for catalog metadata and revision hashing; up to 128 selected skills and 512 KB of source text are accepted. [[src/main/one-runtime/skills.test.ts]] verifies selected-source behavior, skipped missing entries, and that an adjacent JavaScript file remains inert. [[src/main/one-runtime/skill-copy.ts#copyOneSkillDirectory]] copies a shared user skill into One's runtime-owned `skills/` directory under a `one:` ID; [[src/main/one-runtime/skill-copy.ts#removeOneSkillDirectory]] removes only that copy, leaving the shared source intact for other agents.
 
 One requires the current SHA-256 from a prior read when replacing an existing workspace text or Word file; new files do not require a checksum. This stricter option applies only to One, while existing Gateway clients retain their prior write contract. Workspace search marks results incomplete when bounded, oversized or unreadable inputs are skipped.
 

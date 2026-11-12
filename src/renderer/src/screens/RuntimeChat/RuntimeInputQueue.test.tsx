@@ -8,10 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { t } from "../../../../shared/i18n";
 import { RuntimeInputQueue } from "./RuntimeInputQueue";
-import {
-  useRuntimeInputQueue,
-  RUNTIME_INPUT_REVIEW_MS,
-} from "./useRuntimeInputQueue";
+import { useRuntimeInputQueue } from "./useRuntimeInputQueue";
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({ t: (key: string) => t(key, "zh-CN") }),
 }));
@@ -19,7 +16,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 const advance = (): Promise<void> =>
   act(async () => {
-    await vi.advanceTimersByTimeAsync(RUNTIME_INPUT_REVIEW_MS);
+    await vi.advanceTimersByTimeAsync(60_000);
   });
 
 describe("pending Runtime input delivery", () => {
@@ -41,6 +38,9 @@ describe("pending Runtime input delivery", () => {
     expect(dispatch).not.toHaveBeenCalled();
     act(() => result.current.enqueue("correct this", []));
     expect(result.current.items[0].mode).toBe("steer");
+    await advance();
+    expect(dispatch).not.toHaveBeenCalled();
+    act(() => result.current.confirm(result.current.items[0].id));
     await advance();
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(result.current.items[0].status).toBe("sending");
@@ -72,6 +72,9 @@ describe("pending Runtime input delivery", () => {
     );
     await advance();
     expect(dispatch).not.toHaveBeenCalled();
+    act(() => result.current.confirm(id));
+    await advance();
+    expect(dispatch).not.toHaveBeenCalled();
     rerender({ running: false });
     await advance();
     expect(dispatch).toHaveBeenCalledWith(
@@ -89,6 +92,7 @@ describe("pending Runtime input delivery", () => {
       useRuntimeInputQueue({ running: true, onDispatch: dispatch }),
     );
     act(() => result.current.enqueue("retry me", []));
+    act(() => result.current.confirm(result.current.items[0].id));
     await advance();
     expect(result.current.items[0]).toMatchObject({
       status: "failed",
@@ -131,6 +135,8 @@ describe("pending Runtime input delivery", () => {
       target: { value: "saved edit" },
     });
     fireEvent.click(screen.getByText("保存修改"));
+    await advance();
+    expect(dispatch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "运行中补充方式" }));
     fireEvent.click(
       screen.getByRole("menuitemradio", { name: "完成本轮后跟进" }),
@@ -140,6 +146,10 @@ describe("pending Runtime input delivery", () => {
     expect(screen.getByText("saved edit")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "删除待发送消息" }));
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Add"));
+    fireEvent.click(screen.getByRole("button", { name: "确认发送 ↑" }));
+    await advance();
+    expect(dispatch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -161,4 +171,27 @@ it("keeps stopped-task supplements paused instead of automatically starting a ne
   act(() => result.current.retry(result.current.items[0].id));
   await advance();
   expect(dispatch).toHaveBeenCalledTimes(1);
+});
+
+it("invalidates a queued confirmation when its text or mode changes", async () => {
+  const dispatch = vi.fn().mockResolvedValue(undefined);
+  const { result, rerender } = renderHook(
+    ({ running }) => useRuntimeInputQueue({ running, onDispatch: dispatch }),
+    { initialProps: { running: true } },
+  );
+  act(() => result.current.enqueue("before", []));
+  const id = result.current.items[0].id;
+  act(() => result.current.change(id, { mode: "follow_up" }));
+  act(() => result.current.confirm(id));
+  await advance();
+  expect(dispatch).not.toHaveBeenCalled();
+  act(() => result.current.change(id, { text: "after", editing: false }));
+  rerender({ running: false });
+  await advance();
+  expect(dispatch).not.toHaveBeenCalled();
+  act(() => result.current.confirm(id));
+  await advance();
+  expect(dispatch).toHaveBeenCalledWith(
+    expect.objectContaining({ text: "after" }),
+  );
 });
