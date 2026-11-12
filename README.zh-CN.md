@@ -24,10 +24,10 @@
 ## 产品宣传片
 
 <p align="center">
-  <a href="assets/readme/product-film.mp4"><img src="assets/readme/product-film.gif" width="100%" alt="观看 Agents One 产品宣传片：对话、智能体、项目、协作与工作成果" /></a>
+  <a href="assets/readme/product-film.mp4?raw=true"><img src="assets/readme/product-film.gif" width="100%" alt="观看 Agents One 产品宣传片：对话、智能体、项目、协作与工作成果" /></a>
 </p>
 
-<p align="center"><a href="assets/readme/product-film.mp4"><strong>观看完整版 · 34 秒 · 1080p</strong></a></p>
+<p align="center"><a href="assets/readme/product-film.mp4?raw=true"><strong>观看完整版 · 34 秒 · 1080p</strong></a></p>
 
 此处自动预览选段，点击上方入口观看完整版。宣传片用于呈现产品理念与场景，并非当前界面的实机录屏。
 
