@@ -2218,7 +2218,7 @@ function runtimeAppearanceFrom(value: unknown): AgentRuntimeAppearance {
   const name = optionalString(value.name, 80);
   const color = optionalString(value.color, 16);
   const avatar =
-    value.avatar === null ? null : optionalString(value.avatar, 700_000);
+    value.avatar === null ? null : optionalString(value.avatar, Infinity);
   if (color && !/^#[0-9a-f]{6}$/i.test(color)) {
     throw new Error("Runtime display color must be a hex value.");
   }

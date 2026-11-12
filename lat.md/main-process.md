@@ -492,6 +492,18 @@ The runtime bridge filters discovered tools through the server's saved allowlist
 
 `mcp.test.ts` starts a real local MCP server, calls an authorized read-only tool, and verifies that unapproved or write-only tools do not enter a read task.
 
+### Skill metadata descriptions
+
+Runtime skill discovery reads string name and description values from bounded YAML frontmatter, including folded and literal multiline descriptions.
+
+[[src/main/runtime-skills.ts#discoverRuntimeSkills]] preserves IDs, source and trust metadata, ignores invalid YAML fields without importing code, and never reads body text as frontmatter. One's skill view sorts each installed/available list alphabetically without reordering saved selections.
+
+### Runtime avatar size acceptance
+
+Runtime appearance saves and conversation identity snapshots accept supported image data URLs without a fixed upload byte or string length limit.
+
+The profile editor retains format validation and existing image bytes. Main preserves the existing appearance/config merge and MIME validation, while conversation cleaning keeps large valid avatars across reloads. No existing avatar or history is migrated or rewritten.
+
 ### One per-agent skill selection
 
 One can enable or disable discovered user skill documents independently for each local One runtime.

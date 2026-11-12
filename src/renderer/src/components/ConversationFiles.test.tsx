@@ -151,3 +151,37 @@ it("hides the internal OpenCode snapshot summary while retaining actual revision
   expect(screen.queryByText("OpenCode 受控写入摘要")).not.toBeInTheDocument();
   expect(screen.getByText("代码修订")).toBeVisible();
 });
+
+it("keeps verified file metadata and actions without the redundant artifact summary", async () => {
+  const { container } = render(
+    <ConversationFiles
+      delivery={{
+        ...delivery,
+        artifacts: [
+          {
+            id: "file1",
+            kind: "file",
+            label: "示例 周报(V1.0).md",
+            changeSummary: "Unnecessary generated document notes",
+          },
+        ],
+      }}
+      content="已完成"
+    >
+      <span>已完成</span>
+    </ConversationFiles>,
+  );
+  await waitFor(() =>
+    expect(container.querySelector(".chat-document-card")).not.toBeNull(),
+  );
+  expect(
+    container.querySelectorAll(".chat-document-description small"),
+  ).toHaveLength(1);
+  expect(screen.queryByText("Unnecessary generated document notes")).toBeNull();
+  fireEvent.click(container.querySelector(".chat-document-main")!);
+  expect(window.agentsOneAPI.conversationFileAction).toHaveBeenCalledWith(
+    expect.objectContaining({ artifactId: "file1" }),
+    "open",
+    expect.any(Object),
+  );
+});

@@ -169,6 +169,7 @@ describe("runtime conversation store", () => {
 
   it("preserves individual collaboration agent identity on disk", async () => {
     const store = await import("./runtime-conversation-store");
+    const largeAvatar = "data:image/png;base64," + "A".repeat(1200000);
     const saved = store.saveRuntimeConversation({
       id: "collaboration-1",
       title: "协作测试",
@@ -185,7 +186,7 @@ describe("runtime conversation store", () => {
           createdAt: 2,
           agentRuntimeId: "claude-code",
           agentName: "Claude",
-          agentAvatar: "data:image/png;base64,avatar",
+          agentAvatar: largeAvatar,
           agentColor: "#7357e8",
           collaborationRole: "实施交付",
         },
@@ -195,7 +196,7 @@ describe("runtime conversation store", () => {
     expect(saved.messages[1]).toMatchObject({
       agentRuntimeId: "claude-code",
       agentName: "Claude",
-      agentAvatar: "data:image/png;base64,avatar",
+      agentAvatar: largeAvatar,
       agentColor: "#7357e8",
       collaborationRole: "实施交付",
     });

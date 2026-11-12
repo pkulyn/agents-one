@@ -12,6 +12,7 @@ import {
   UserRound,
   Brain,
   Puzzle,
+  Sparkles,
   Terminal,
   X,
   Pencil,
@@ -200,10 +201,6 @@ function AgentProfileEditorDialog({
     if (!file) return;
     if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
       setAvatarError(t("agents.configProfileAvatarInvalid"));
-      return;
-    }
-    if (file.size > 480 * 1024) {
-      setAvatarError(t("agents.configProfileAvatarTooLarge"));
       return;
     }
     const reader = new FileReader();
@@ -705,9 +702,7 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
   }
 
   const isExtensionSection =
-    activeConfigSection === "plugins" ||
-    activeConfigSection === "mcp" ||
-    activeConfigSection === "skills";
+    activeConfigSection === "plugins" || activeConfigSection === "mcp";
 
   return (
     <div className="agents-container agents-manager-container">
@@ -865,6 +860,18 @@ function Agents({ onChatWithRuntime }: AgentsProps): React.JSX.Element {
                     <Brain size={15} aria-hidden="true" />
                     <span className="agents-config-section-copy">
                       <span>{t("agents.configMemory")}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      activeConfigSection === "skills" ? "is-active" : ""
+                    }
+                    onClick={() => setActiveConfigSection("skills")}
+                  >
+                    <Sparkles size={15} aria-hidden="true" />
+                    <span className="agents-config-section-copy">
+                      <span>{t("agents.configSkills")}</span>
                     </span>
                   </button>
                   <button

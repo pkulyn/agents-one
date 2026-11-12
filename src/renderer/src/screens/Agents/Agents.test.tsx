@@ -198,6 +198,10 @@ describe("Agents", () => {
     );
     expect(await screen.findByLabelText("名称")).toHaveValue("One");
     expect(screen.getByText("标识颜色")).toBeTruthy();
+    const nav = document.querySelector(".agents-config-sections")!;
+    expect(
+      Array.from(nav.querySelectorAll("button")).map((b) => b.textContent),
+    ).toEqual(["模型设置", "个性化", "记忆", "技能", "插件与扩展"]);
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: "研究助手" },
     });
@@ -210,7 +214,7 @@ describe("Agents", () => {
     );
   });
 
-  it("saves a selected avatar image from the profile editor", async () => {
+  it("saves an avatar larger than the former upload limit", async () => {
     const api = installHermesAPI();
     api.listAgentRuntimes.mockResolvedValue([
       {
@@ -230,12 +234,13 @@ describe("Agents", () => {
       await screen.findByRole("button", { name: "编辑 One 资料" }),
     );
     const fileInput = screen.getByLabelText("头像");
-    const file = new File([new Uint8Array([137, 80, 78, 71])], "avatar.png", {
+    const file = new File([new Uint8Array(1024 * 1024)], "avatar.png", {
       type: "image/png",
     });
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     expect(await screen.findByAltText("头像预览")).toBeTruthy();
+    expect(screen.queryByText(/480 KB/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "保存资料" }));
     await waitFor(() =>
       expect(api.saveAgentRuntimeAppearance).toHaveBeenCalledWith(

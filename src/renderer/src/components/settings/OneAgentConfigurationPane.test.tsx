@@ -233,7 +233,7 @@ describe("OneAgentConfigurationPane", () => {
     );
   });
 
-  it("offers plugin, MCP, and skill tabs inside the extensions destination", async () => {
+  it("keeps plugin and MCP tabs separate from the skills destination", async () => {
     installAPI();
     const onSectionChange = vi.fn();
     render(
@@ -250,6 +250,7 @@ describe("OneAgentConfigurationPane", () => {
       "aria-selected",
       "true",
     );
+    expect(screen.queryByRole("tab", { name: /技能/ })).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: /MCP/ }));
     expect(onSectionChange).toHaveBeenCalledWith("mcp");
   });
@@ -412,4 +413,32 @@ describe("One-owned skill lifecycle", () => {
       api.saveAgentRuntime.mock.calls.at(-1)?.[0].config.oneSkills,
     ).toEqual(["one:demo"]);
   });
+});
+
+it("shows standalone skills alphabetically without extension tabs", async () => {
+  const api = installAPI();
+  api.listRuntimeSkills.mockResolvedValue(
+    ["youtube2obsidian", "bili2obsidian", "agent-browser"].map((name) => ({
+      id: "one:" + name,
+      name,
+      description: "Description for " + name,
+      source: "user",
+      location: "C:/skills/" + name,
+    })),
+  );
+  const { container } = render(
+    <OneAgentConfigurationPane
+      runtime={createRuntime()}
+      section="skills"
+      onChanged={() => {}}
+    />,
+  );
+  await screen.findByRole("switch", { name: "启用技能 agent-browser" });
+  expect(screen.queryByRole("tablist")).toBeNull();
+  const names = Array.from(
+    container.querySelectorAll(
+      ".agent-one-ext-skill-list strong, .agent-one-ext-row strong",
+    ),
+  ).map((e) => e.textContent);
+  expect(names).toEqual(["agent-browser", "bili2obsidian", "youtube2obsidian"]);
 });
