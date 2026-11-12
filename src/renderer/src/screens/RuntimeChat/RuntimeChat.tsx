@@ -1,4 +1,8 @@
 import {
+  readOneThinkingPreference,
+  saveOneThinkingPreference,
+} from "./oneThinkingPreference";
+import {
   collaborationSharesContext,
   findCollaborationRolePreset,
 } from "../../../../shared/task-collaboration-presets";
@@ -1259,6 +1263,10 @@ export default function RuntimeChat({
   );
   const modelTriggerRef = useRef<HTMLButtonElement>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelToolbarSnapshot, setModelToolbarSnapshot] = useState<{
+    model: string;
+    thinking: string;
+  } | null>(null);
   const [modelSelectedAt, setModelSelectedAt] = useState(0);
   const [runtimeModels, setRuntimeModels] = useState<RuntimeModelOption[]>([]);
   // Keep an uncommitted selection separate from the model actually forwarded
@@ -1272,7 +1280,11 @@ export default function RuntimeChat({
     [],
   );
   const [selectedRuntimeThinkingLevel, setSelectedRuntimeThinkingLevel] =
-    useState(runtime.kind === "one" ? "off" : "");
+    useState(() =>
+      runtime.kind === "one"
+        ? readOneThinkingPreference(profile, runtime.id)
+        : "",
+    );
   const [pendingRuntimeThinkingLevel, setPendingRuntimeThinkingLevel] =
     useState("");
   const [thinkingCatalogLoading, setThinkingCatalogLoading] = useState(false);
@@ -4615,6 +4627,7 @@ ${reason}`,
       );
       restoreRejectedInput();
       settleOptimisticModel(false);
+      settleOptimisticThinking(false);
       return;
     }
     const requestId = `runtime-command-${crypto.randomUUID()}`;
@@ -4717,6 +4730,13 @@ ${reason}`,
             result.models?.[0]?.id ||
             "",
         );
+        setModelToolbarSnapshot(
+          (snapshot) =>
+            snapshot ?? {
+              model: runtimeModelLabel,
+              thinking: selectedRuntimeThinkingLevel,
+            },
+        );
         setModelPickerOpen(true);
         // The picker itself is the continuation UI. Do not write a durable,
         // generic "waiting" message into the transcript: after a reload it
@@ -4751,6 +4771,12 @@ ${reason}`,
       }
       if (result.statePatch?.thinkingLevel !== undefined) {
         setSelectedRuntimeThinkingLevel(result.statePatch.thinkingLevel);
+        if (runtime.kind === "one")
+          saveOneThinkingPreference(
+            profile,
+            runtime.id,
+            result.statePatch.thinkingLevel,
+          );
       }
       settleOptimisticModel(true);
       settleOptimisticThinking(true);
@@ -5239,6 +5265,16 @@ ${reason}`,
     selectedModelLabel ||
     configuredModelLabel ||
     t("runtimeChat.model.unavailable");
+  const toolbarRuntimeModelLabel =
+    modelPickerOpen && modelToolbarSnapshot
+      ? modelToolbarSnapshot.model
+      : runtimeModelLabel;
+  const toolbarThinkingLevel =
+    modelPickerOpen && modelToolbarSnapshot
+      ? modelToolbarSnapshot.thinking
+      : selectedRuntimeThinkingLevel;
+  const toolbarModelSwitching = !modelPickerOpen && modelSwitching;
+  const toolbarThinkingSwitching = !modelPickerOpen && thinkingSwitching;
   const runtimeContextWindow =
     lastReportedUsage?.contextWindowTokens ??
     lastReportedModel?.contextWindowTokens ??
@@ -5544,7 +5580,11 @@ ${reason}`,
                   selected={selectedRuntimeModel || pendingRuntimeModel}
                   thinking={selectedRuntimeThinkingLevel}
                   disabled={loading || modelSwitching || thinkingSwitching}
-                  onClose={() => setModelPickerOpen(false)}
+                  rememberThinking={runtime.kind === "one"}
+                  onClose={() => {
+                    setModelPickerOpen(false);
+                    setModelToolbarSnapshot(null);
+                  }}
                   onSelect={(model) => {
                     const previous = selectedRuntimeModel;
                     setSelectedRuntimeModel(model);
@@ -5867,11 +5907,13 @@ ${reason}`,
                       disabled={
                         !modelCommandAvailable ||
                         modelCatalogLoading ||
-                        modelSwitching
+                        toolbarModelSwitching
                       }
                       onClick={() => {
-                        if (modelPickerOpen) setModelPickerOpen(false);
-                        else
+                        if (modelPickerOpen) {
+                          setModelPickerOpen(false);
+                          setModelToolbarSnapshot(null);
+                        } else
                           void executeRuntimeSlashCommand("/model", [], {
                             toolbar: true,
                           });
@@ -5879,29 +5921,29 @@ ${reason}`,
                       aria-label={
                         modelCatalogLoading
                           ? t("runtimeChat.model.loading")
-                          : modelSwitching
+                          : toolbarModelSwitching
                             ? t("runtimeChat.model.switching", {
-                                model: runtimeModelLabel,
+                                model: toolbarRuntimeModelLabel,
                               })
                             : t("runtimeChat.model.label", {
-                                model: runtimeModelLabel,
+                                model: toolbarRuntimeModelLabel,
                               })
                       }
                       title={
                         modelCatalogLoading
                           ? t("runtimeChat.model.loadingTitle")
-                          : modelSwitching
+                          : toolbarModelSwitching
                             ? t("runtimeChat.model.switchingTitle", {
-                                model: runtimeModelLabel,
+                                model: toolbarRuntimeModelLabel,
                               })
-                            : runtimeModelLabel !==
+                            : toolbarRuntimeModelLabel !==
                                 t("runtimeChat.model.unavailable")
                               ? modelCommandAvailable
                                 ? t("runtimeChat.model.switchTitle", {
-                                    model: runtimeModelLabel,
+                                    model: toolbarRuntimeModelLabel,
                                   })
                                 : t("runtimeChat.model.label", {
-                                    model: runtimeModelLabel,
+                                    model: toolbarRuntimeModelLabel,
                                   })
                               : modelCommandAvailable
                                 ? t("runtimeChat.model.choose")
@@ -5914,42 +5956,39 @@ ${reason}`,
                       </span>
                       <span
                         className="chat-model-name"
-                        title={runtimeModelLabel}
+                        title={toolbarRuntimeModelLabel}
                       >
-                        {runtimeModelLabel}
+                        {toolbarRuntimeModelLabel}
                       </span>
                     </button>
                     {thinkingCommandAvailable ? (
                       <button
                         className="chat-model-trigger runtime-chat-model-trigger"
                         type="button"
-                        disabled={thinkingControlDisabled}
+                        disabled={thinkingControlDisabled && !modelPickerOpen}
                         onClick={() =>
                           void executeRuntimeSlashCommand("/thinking")
                         }
                         aria-label={
                           loading
                             ? t("runtimeChat.thinking.busyLabel", {
-                                level: selectedRuntimeThinkingLevel
-                                  ? thinkingLevelLabel(
-                                      selectedRuntimeThinkingLevel,
-                                      t,
-                                    )
+                                level: toolbarThinkingLevel
+                                  ? thinkingLevelLabel(toolbarThinkingLevel, t)
                                   : t("runtimeChat.thinking.auto"),
                               })
                             : thinkingCatalogLoading
                               ? t("runtimeChat.thinking.loading")
-                              : thinkingSwitching
+                              : toolbarThinkingSwitching
                                 ? t("runtimeChat.thinking.switching", {
                                     level: thinkingLevelLabel(
-                                      selectedRuntimeThinkingLevel,
+                                      toolbarThinkingLevel,
                                       t,
                                     ),
                                   })
                                 : t("runtimeChat.thinking.level", {
-                                    level: selectedRuntimeThinkingLevel
+                                    level: toolbarThinkingLevel
                                       ? thinkingLevelLabel(
-                                          selectedRuntimeThinkingLevel,
+                                          toolbarThinkingLevel,
                                           t,
                                         )
                                       : t("runtimeChat.thinking.auto"),
@@ -5960,7 +5999,7 @@ ${reason}`,
                             ? t("runtimeChat.thinking.busyTitle")
                             : thinkingCatalogLoading
                               ? t("runtimeChat.thinking.loadingTitle")
-                              : thinkingSwitching
+                              : toolbarThinkingSwitching
                                 ? t("runtimeChat.thinking.switchingTitle")
                                 : t("runtimeChat.thinking.switchTitle", {
                                     runtime: runtime.name,
@@ -5972,11 +6011,8 @@ ${reason}`,
                           {t("runtimeChat.thinking.title")}
                         </span>
                         <span className="chat-model-name">
-                          {selectedRuntimeThinkingLevel
-                            ? thinkingLevelLabel(
-                                selectedRuntimeThinkingLevel,
-                                t,
-                              )
+                          {toolbarThinkingLevel
+                            ? thinkingLevelLabel(toolbarThinkingLevel, t)
                             : t("runtimeChat.thinking.auto")}
                         </span>
                       </button>

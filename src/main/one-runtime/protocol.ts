@@ -1,3 +1,4 @@
+import type { OneThinkingLevel } from "../../shared/one-thinking";
 import type { OneModelApiType } from "../../shared/one-model-api";
 
 /** Private Main-to-worker protocol; this is not exposed to the renderer. */
@@ -22,7 +23,7 @@ export type OneWorkerInput =
         maxOutputTokens?: number;
 
         imageInput?: boolean;
-        thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
+        thinkingLevel?: OneThinkingLevel;
         operation?: "compact";
         customInstructions?: string;
         systemPrompt?: string;

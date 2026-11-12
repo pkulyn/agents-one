@@ -150,6 +150,7 @@ export default {
     picker: "选择当前会话模型",
     title: "模型",
     scope: "仅作用于当前会话，不会修改默认配置",
+    rememberThinkingScope: "模型仅用于当前会话；思考等级将记住你的选择",
     list: "模型列表",
     search: "搜索模型",
     manage: "管理模型",

@@ -1,3 +1,5 @@
+import { DEFAULT_ONE_THINKING_LEVEL } from "../../shared/one-thinking";
+import type { OneThinkingLevel } from "../../shared/one-thinking";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
@@ -28,7 +30,7 @@ export interface OneSessionOptions {
   /** Exact per-model output ceiling from the editable model capability entry. */
   maxOutputTokens?: number;
   imageInput?: boolean;
-  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
+  thinkingLevel?: OneThinkingLevel;
   /** Per-run logical request limit; includes automatic summaries. */
   maxModelCalls?: number;
   onModelCall?: (count: number) => void;
@@ -122,6 +124,13 @@ export async function createOneSession(
     options.onModelCall?.(modelCalls);
     return streamModel(...args);
   };
+  const catalogModel = modelRuntime
+    .getModels()
+    .find(
+      (candidate) =>
+        candidate.id === options.modelId && candidate.api === apiType,
+    );
+  const nativeThinkingMap = catalogModel?.thinkingLevelMap;
   const provider = "agents-one-model";
   modelRuntime.registerProvider(provider, {
     baseUrl: url.toString().replace(/\/$/, ""),
@@ -131,8 +140,20 @@ export async function createOneSession(
         id: options.modelId,
         name: options.modelId,
         reasoning: Boolean(
-          options.thinkingLevel && options.thinkingLevel !== "off",
+          (options.thinkingLevel ?? DEFAULT_ONE_THINKING_LEVEL) !== "off",
         ),
+        // Retain native effort mappings when wrapping a catalogued model.
+        // Max requests its highest native effort; unknown models retain SDK clamping.
+        thinkingLevelMap: nativeThinkingMap
+          ? {
+              ...nativeThinkingMap,
+              max:
+                nativeThinkingMap.max ??
+                nativeThinkingMap.xhigh ??
+                nativeThinkingMap.high ??
+                "high",
+            }
+          : undefined,
         input: options.imageInput ? ["text", "image"] : ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow,
@@ -207,7 +228,7 @@ export async function createOneSession(
       },
     }),
     sessionManager,
-    thinkingLevel: options.thinkingLevel || "off",
+    thinkingLevel: options.thinkingLevel ?? DEFAULT_ONE_THINKING_LEVEL,
     tools: names,
     customTools: tools,
   });

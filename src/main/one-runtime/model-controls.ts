@@ -2,14 +2,8 @@ import type { AgentRuntimeDefinition } from "../../shared/agent-runtimes";
 import type { RuntimeModelOption } from "../../shared/runtime-commands";
 import { oneModelProviderKey } from "../../shared/one-model-api";
 
-/** Explicit SDK request levels; off preserves existing non-reasoning requests. */
-export const ONE_THINKING_LEVELS = [
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-] as const;
+import { ONE_THINKING_LEVELS } from "../../shared/one-thinking";
+export { ONE_THINKING_LEVELS } from "../../shared/one-thinking";
 export function oneConversationModels(
   runtime: AgentRuntimeDefinition,
 ): RuntimeModelOption[] {
