@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { loadOneSkills } from "./skills";
+import { createOneSkillReader, loadOneSkills } from "./skills";
 
 // @lat: [[main-process#Main Process#One session resume reconciliation#One explicit skill resource loading]]
 it("loads only explicitly selected user skill documents", () => {
@@ -67,6 +67,56 @@ it("loads only explicitly selected user skill documents", () => {
     expect(
       loadOneSkills(root, ["user:missing", "user:chosen"]).skipped,
     ).toEqual(["user:missing"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// @lat: [[main-process#Main Process#One session resume reconciliation#One progressive skill resources]]
+it("uses compact catalogs and reads only selected bounded resources on demand", async () => {
+  const root = mkdtempSync(join(tmpdir(), "one-catalog-"));
+  try {
+    mkdirSync(join(root, "chosen", "references"), { recursive: true });
+    const body =
+      "---\nname: chosen\ndescription: Create Word files\n---\n# Instructions\n" +
+      "private full instructions\n".repeat(1000);
+    writeFileSync(join(root, "chosen", "SKILL.md"), body);
+    writeFileSync(
+      join(root, "chosen", "references", "guide.md"),
+      "Read this guide",
+    );
+    writeFileSync(join(root, "secret.txt"), "outside");
+    writeFileSync(join(root, "chosen", "large.txt"), "a".repeat(65537));
+    const loaded = loadOneSkills(root, ["user:chosen"]);
+    expect(loaded.instructions.join("\n")).toContain("Create Word files");
+    expect(loaded.instructions.join("\n")).not.toContain(
+      "private full instructions",
+    );
+    expect(loaded.revisionInstructions).toEqual([body]);
+    const reader = createOneSkillReader(loaded.resources);
+    const signal = new AbortController().signal;
+    expect(
+      JSON.parse(await reader.executeTool({ id: "user:chosen" }, signal))
+        .content,
+    ).toBe(body);
+    expect(
+      JSON.parse(
+        await reader.executeTool(
+          { id: "user:chosen", path: "references/guide.md" },
+          signal,
+        ),
+      ).content,
+    ).toBe("Read this guide");
+    await expect(
+      reader.executeTool({ id: "user:chosen", path: "../secret.txt" }, signal),
+    ).rejects.toThrow("outside");
+    await expect(
+      reader.executeTool({ id: "user:other" }, signal),
+    ).rejects.toThrow("Invalid");
+    await expect(
+      reader.executeTool({ id: "user:chosen", path: "large.txt" }, signal),
+    ).rejects.toThrow("bounded");
+    expect(createOneSkillReader([]).tools).toEqual([]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

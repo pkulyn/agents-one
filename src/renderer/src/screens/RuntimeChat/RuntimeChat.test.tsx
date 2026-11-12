@@ -1624,6 +1624,11 @@ describe("RuntimeChat inputs and persistence", () => {
     fireEvent.click(send);
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
     fireEvent.click(send);
+    fireEvent.click(screen.getByRole("button", { name: "运行中补充方式" }));
+    fireEvent.click(
+      screen.getByRole("menuitemradio", { name: "完成本轮后跟进" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "确认发送 ↑" }));
 
     await waitFor(
       () => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2),
@@ -5450,6 +5455,7 @@ describe("RuntimeChat inputs and persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认发送 ↑" }));
     await waitFor(
       () =>
         expect(
@@ -5492,6 +5498,7 @@ describe("RuntimeChat inputs and persistence", () => {
       ).toBeInTheDocument(),
     );
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认发送 ↑" }));
     await waitFor(
       () =>
         expect(nativeInput).toHaveBeenCalledWith(
@@ -5500,24 +5507,20 @@ describe("RuntimeChat inputs and persistence", () => {
         ),
       { timeout: RUNTIME_INPUT_REVIEW_MS + 2000 },
     );
-    await waitFor(() =>
-      expect(
-        saveRuntimeConversation.mock.calls.some(
-          ([input]) =>
-            input.messages.filter((m: { role: string }) => m.role === "user")
-              .length === 2,
-        ),
-      ).toBe(true),
-    );
+    expect(
+      saveRuntimeConversation.mock.calls.some(
+        ([input]) =>
+          input.messages.filter((m: { role: string }) => m.role === "user")
+            .length === 2,
+      ),
+    ).toBe(false);
     expect(
       screen.queryByText(/补充说明已送达正在执行/),
     ).not.toBeInTheDocument();
     await act(async () => {
       acceptInput("accepted");
     });
-    await waitFor(() =>
-      expect(screen.getByText(/补充说明已送达/)).toBeInTheDocument(),
-    );
+    expect(screen.queryByText(/补充说明已送达/)).not.toBeInTheDocument();
     expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1);
     expect(window.agentsOneAPI.cancelAgentRuntimeTask).not.toHaveBeenCalled();
     expect(
@@ -5526,7 +5529,7 @@ describe("RuntimeChat inputs and persistence", () => {
           input.messages.filter((m: { role: string }) => m.role === "user")
             .length === 2,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
   it("does not claim delivery or cancel when native input rejects", async () => {
     getAgentRuntimeRun.mockResolvedValue({
@@ -5550,6 +5553,7 @@ describe("RuntimeChat inputs and persistence", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "发送泛化协作输入" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认发送 ↑" }));
     await waitFor(
       () =>
         expect(screen.getByText(/无法确认补充说明已送达/)).toBeInTheDocument(),

@@ -288,6 +288,39 @@ function runtimeEventMessages(
   for (const event of events) {
     const id = `${prefix}:event:${event.id}`;
     if (event.code === "runtime_inactive") continue;
+    if (
+      event.type === "message" &&
+      event.code === "user_input" &&
+      event.detail?.trim()
+    ) {
+      messages.push({
+        id,
+        kind: "user",
+        role: "user",
+        content: event.detail,
+        timestamp: event.createdAt,
+      });
+      continue;
+    }
+    if (
+      event.type === "message" &&
+      event.code === "assistant_progress" &&
+      event.detail?.trim()
+    ) {
+      messages.push(
+        withIdentity(
+          {
+            id,
+            kind: "assistant",
+            role: "agent",
+            content: event.detail,
+            timestamp: event.createdAt,
+          },
+          options.agentIdentity,
+        ),
+      );
+      continue;
+    }
     if (event.type === "progress") {
       if (isPlatformLifecycleProgress(event)) continue;
       const previous = messages.at(-1);

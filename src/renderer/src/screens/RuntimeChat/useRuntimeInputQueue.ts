@@ -8,13 +8,14 @@ export interface PendingRuntimeInput {
   mode: "steer" | "follow_up";
   status: "pending" | "sending" | "failed";
   readyAt: number;
+  confirmed?: boolean;
   editing?: boolean;
   error?: string;
   deliveredTo: Set<string>;
 }
 
-// Leave a short, visible edit/switch window before native delivery begins.
-export const RUNTIME_INPUT_REVIEW_MS = 1800;
+// Dispatch is always user-confirmed; this constant only yields to the next tick.
+export const RUNTIME_INPUT_REVIEW_MS = 0;
 
 export interface RuntimeInputQueueState {
   items: PendingRuntimeInput[];
@@ -25,6 +26,7 @@ export interface RuntimeInputQueueState {
   enqueue: (text: string, attachments: Attachment[]) => void;
   remove: (id: string) => void;
   retry: (id: string) => void;
+  confirm: (id: string) => void;
   pause: (message: string) => void;
 }
 
@@ -63,6 +65,7 @@ export function useRuntimeInputQueue({
           ? {
               ...item,
               ...patch,
+              confirmed: false,
               error: undefined,
               status: "pending",
               readyAt: Date.now() + RUNTIME_INPUT_REVIEW_MS,
@@ -76,6 +79,7 @@ export function useRuntimeInputQueue({
     const item = items.find(
       (input) =>
         input.status === "pending" &&
+        input.confirmed &&
         !input.editing &&
         (input.mode === "steer" || !running),
     );
@@ -87,6 +91,7 @@ export function useRuntimeInputQueue({
           inFlight.current ||
           !current ||
           current.status !== "pending" ||
+          !current.confirmed ||
           current.editing
         )
           return;
@@ -144,6 +149,15 @@ export function useRuntimeInputQueue({
       );
     },
     change,
+    confirm(id: string) {
+      update((queue) =>
+        queue.map((item) =>
+          item.id === id && item.status === "pending" && !item.editing
+            ? { ...item, confirmed: true, readyAt: Date.now() }
+            : item,
+        ),
+      );
+    },
     enqueue(text: string, attachments: Attachment[]) {
       update((queue) => [
         ...queue,
@@ -170,6 +184,7 @@ export function useRuntimeInputQueue({
             ? {
                 ...item,
                 status: "pending",
+                confirmed: true,
                 error: undefined,
                 readyAt: Date.now() + RUNTIME_INPUT_REVIEW_MS,
               }
