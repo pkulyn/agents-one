@@ -81,3 +81,9 @@ This supplements the generated originals without assigning project MIT terms to 
 Version 0.1.2 promotes the cumulative collaboration, attachment and native-input improvements into a new immutable Windows release, with matching root package and lockfile metadata.
 
 A stable version number does not enable unsigned automatic updates. The release build still requires the signed-update build flag before updater code is loaded, and new installer hashes and source receipts identify the promoted package separately from its accepted candidate.
+
+## First major desktop release
+
+Version 1.0.0 promotes the verified One agent and shared workspace into the first major Windows release, with synchronized root package/lockfile metadata and a bilingual product README.
+
+The immutable Windows workflow remains responsible for checks, installer/portable packaging, smoke testing, checksums and source identity. Android versioning is independent; unsigned desktop packages continue to use manual updates.

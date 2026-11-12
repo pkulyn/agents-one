@@ -6,9 +6,11 @@ The repository homepage introduces Agents One through its product visuals and li
 
 The English and Chinese homepages follow the same sequence and use actual product visuals to explain Agents One.
 
-The hero and introduction describe AI agent management and collaboration, with conversations, tasks, collaboration and artifacts; local agent examples include Pi Agent, Codex, Claude Code and OpenCode alongside remote Gateway agents.
+The product story starts with the current startup scene and verified release/CI/platform/license badges, then introduces One as the built-in agent alongside existing local and compatible remote agents.
 
-`README.md` and `README.zh-CN.md` share the order of product overview, AI setup prompt, product visuals, core workflow, first-use path, trust boundaries, and license. Their SVG heroes reuse the Dawn Ring wordmark and depict local and remote agents converging on one workspace. The full original startup image and the existing chat screenshot provide visual proof; UI details may change between releases.
+The top and footer website links in both languages target the English landing page at `https://www.agentsone.cn/en.html`. Release-preparation notices are omitted from the release-ready README.
+
+Both homepages follow the same order: brand scene, website/download navigation, value, product film, One capabilities, shared workspace, first use, folded connection guidance, trust boundaries, contribution and license. The startup image is captured from the production component at its settled frame without brightness edits. A short GIF excerpt links to the maintainer-provided full MP4; the film is identified as a designed product presentation.
 
 ## Installation and connection guidance
 
@@ -28,7 +30,7 @@ The root `LICENSE` covers licensor-owned Agents One contributions. `THIRD_PARTY_
 
 Publishing development source and certifying a Windows installer are separate decisions with explicit evidence and known integration limits.
 
-Both READMEs link the public known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The README identifies Windows 0.1.2 as the current desktop release and retains the distinction between released binaries and later main-branch changes. Android 0.1.13-dev-debug is distributed separately as a debuggable prerelease with its own source identity and checksum; it does not change the Windows release.
+Both READMEs link the public known issues. Local OpenCode deadline and cancellation checks establish the adapter's tested behavior; remote Hermes transcript continuation remains experimental until its actual Connector contract is verified. The release-ready README describes the One-capable 1.0.0 feature set and links the published Release dynamically; internal publication state remains separate until validation and upload complete. Android 0.1.13-dev-debug is distributed separately as a debuggable prerelease with its own source identity and checksum; it does not change the Windows release.
 
 ## Dependency audit gate
 
