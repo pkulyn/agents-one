@@ -611,10 +611,10 @@ describe("One SDK session isolation", () => {
     await steering;
     const result = await worker.completion;
     const receiptIndex = events.findIndex(
-      (e: any) => e.type === "one_steering_received",
+      (e) => (e as { type?: string })?.type === "one_steering_received",
     );
     const toolEndIndex = events.findIndex(
-      (e: any) => e.type === "tool_execution_end",
+      (e) => (e as { type?: string })?.type === "tool_execution_end",
     );
     expect(receiptIndex).toBeGreaterThan(toolEndIndex);
     expect(toolEndIndex).toBeGreaterThanOrEqual(0);
