@@ -13,6 +13,7 @@ interface Props {
   ) => void;
   remove: (id: string) => void;
   retry: (id: string) => void;
+  confirm: (id: string) => void;
 }
 export function RuntimeInputQueue(props: Props): React.JSX.Element | null {
   const { t } = useI18n();
@@ -33,6 +34,7 @@ function PendingInputRow({
   change,
   remove,
   retry,
+  confirm,
 }: Props & { item: PendingRuntimeInput }): React.JSX.Element {
   const { t } = useI18n();
   const [draft, setDraft] = useState(item.text);
@@ -103,7 +105,9 @@ function PendingInputRow({
                 ? "runtimeChat.pendingInput.sending"
                 : item.status === "failed"
                   ? "runtimeChat.pendingInput.failed"
-                  : "runtimeChat.pendingInput.pending",
+                  : item.confirmed && item.mode === "follow_up"
+                    ? "runtimeChat.pendingInput.waiting"
+                    : "runtimeChat.pendingInput.pending",
             )}
           </span>
           <button
@@ -153,6 +157,20 @@ function PendingInputRow({
           >
             <Trash2 size={15} />
           </button>
+          {item.status !== "failed" && (
+            <button
+              type="button"
+              className="runtime-pending-confirm"
+              disabled={busy || item.confirmed}
+              onClick={() => confirm(item.id)}
+            >
+              {t(
+                item.confirmed
+                  ? "runtimeChat.pendingInput.confirmed"
+                  : "runtimeChat.pendingInput.confirm",
+              )}
+            </button>
+          )}
         </div>
       )}
       {expanded && !item.editing && (

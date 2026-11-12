@@ -21245,7 +21245,7 @@ body.tray-completion-document {
 }
 .chat-execution-trace-items {
   display: grid;
-  gap: 8px;
+  gap: 2px;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -21261,6 +21261,14 @@ body.tray-completion-document {
   animation: none;
   margin: 0;
   padding: 0;
+}
+.chat-execution-trace-items .chat-agent-message-content {
+  gap: 0;
+}
+.chat-execution-trace-items .chat-tool-group-summary,
+.chat-execution-trace-items .chat-reasoning-group-summary {
+  padding-block: 2px;
+  min-height: 24px;
 }
 .chat-execution-trace-items .chat-avatar[aria-hidden="true"] {
   display: none;

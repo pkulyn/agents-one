@@ -1,3 +1,4 @@
+import { validateOneCompletion } from "./completion";
 import { randomUUID } from "node:crypto";
 import { Type } from "typebox";
 import type {
@@ -109,6 +110,7 @@ async function start(
       const index = steering.findIndex((item) => item.text === text);
       if (index >= 0) {
         const [delivered] = steering.splice(index, 1);
+        send({ type: "event", event: { type: "one_steering_received", text } });
         send({ type: "steer-result", requestId: delivered.requestId });
       }
     }
@@ -188,6 +190,8 @@ async function start(
   ) {
     throw new Error(last.errorMessage || "Model request failed");
   }
+  if (!message.options.operation)
+    validateOneCompletion(session.getLastAssistantText() || "");
   send({
     type: "complete",
     sessionId: session.sessionId,
