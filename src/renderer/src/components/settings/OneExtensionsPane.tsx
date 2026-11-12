@@ -104,10 +104,16 @@ export default function OneExtensionsPane({
       .filter((skill) => skill.id.startsWith("one:"))
       .map((skill) => skillDirName(skill)),
   );
-  const displayedSkills = skills.filter(
-    (skill) =>
-      skill.id.startsWith("one:") || !ownedNames.has(skillDirName(skill)),
-  );
+  const displayedSkills = skills
+    .filter(
+      (skill) =>
+        skill.id.startsWith("one:") || !ownedNames.has(skillDirName(skill)),
+    )
+    .sort(
+      (a, b) =>
+        a.name.localeCompare(b.name, "en", { sensitivity: "base" }) ||
+        a.id.localeCompare(b.id, "en"),
+    );
   const visibleSkills = displayedSkills.filter(
     (skill) =>
       !search ||
@@ -346,41 +352,36 @@ export default function OneExtensionsPane({
           <Monitor size={14} aria-hidden="true" />
           {t("agents.configExtScope")}
         </span>
-        <div
-          className="agent-one-ext-tabs"
-          role="tablist"
-          aria-label={t("agents.configExtensions")}
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={section === "plugins"}
-            onClick={() => switchSection("plugins")}
+        {section !== "skills" ? (
+          <div
+            className="agent-one-ext-tabs"
+            role="tablist"
+            aria-label={t("agents.configExtensions")}
           >
-            {t("agents.configPlugins")}
-            <span className="agent-one-ext-count">{plugins.length}</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={section === "mcp"}
-            onClick={() => switchSection("mcp")}
-          >
-            {t("agents.configMcpTab")}
-            <span className="agent-one-ext-count">{mcpServers.length}</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={section === "skills"}
-            onClick={() => switchSection("skills")}
-          >
-            {t("agents.configSkills")}
-            <span className="agent-one-ext-count">
-              {installedSkills.length}
-            </span>
-          </button>
-        </div>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={section === "plugins"}
+              onClick={() => switchSection("plugins")}
+            >
+              {t("agents.configPlugins")}
+              <span className="agent-one-ext-count">{plugins.length}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={section === "mcp"}
+              onClick={() => switchSection("mcp")}
+            >
+              {t("agents.configMcpTab")}
+              <span className="agent-one-ext-count">{mcpServers.length}</span>
+            </button>
+          </div>
+        ) : (
+          <span className="agent-one-ext-skill-count">
+            {t("agents.configSkills")} {installedSkills.length}
+          </span>
+        )}
         <label className="agent-one-ext-search">
           <Search size={14} aria-hidden="true" />
           <input
