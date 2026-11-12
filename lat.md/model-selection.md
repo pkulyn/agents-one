@@ -33,3 +33,13 @@ Attachment turns must not be forced through the CLI override fallback because th
 Runtime conversations keep the most recently reported provider/model label visible while a new run has not yet returned metadata.
 
 [[src/renderer/src/screens/RuntimeChat/RuntimeChat.tsx]] reads the current run's model first, then falls back to the latest persisted execution model. Starting a reply therefore does not flash “model unavailable”; a later provider update replaces the retained label with the new real model.
+
+## One thinking preference and stable picker
+
+One remembers accepted thinking choices per desktop profile and runtime, defaults to medium, and keeps the composer stable while the compact model picker is open.
+
+[[src/renderer/src/screens/RuntimeChat/oneThinkingPreference.ts#readOneThinkingPreference]] restores a validated local UI preference; [[src/renderer/src/screens/RuntimeChat/oneThinkingPreference.ts#saveOneThinkingPreference]] stores only accepted choices, including explicit off. Runtime configuration, provider defaults and conversation history are not rewritten. A new One worker without a requested level also starts at medium.
+
+[[src/shared/one-thinking.ts#ONE_THINKING_LEVELS]] includes Max. [[src/main/one-runtime/session.ts#createOneSession]] preserves native catalogue thinking mappings for wrapped models and delegates unsupported effort clamping to the SDK. Max therefore requests the highest native mapped effort without inventing provider capabilities.
+
+[[src/renderer/src/screens/RuntimeChat/RuntimeModelPicker.tsx#RuntimeModelPicker]] positions and focuses once per anchor, preserving search and option focus across selection updates. The composer retains its opening labels until the picker closes; command errors still restore the last accepted selection. The compact six-level control uses stronger colour/glow at higher effort and honours reduced-motion settings.
