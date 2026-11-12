@@ -24,10 +24,10 @@
 ## See it in motion
 
 <p align="center">
-  <a href="assets/readme/product-film.mp4"><img src="assets/readme/product-film.gif" width="100%" alt="Watch the Agents One product film: conversations, agents, projects, collaboration and finished work" /></a>
+  <a href="assets/readme/product-film.mp4?raw=true"><img src="assets/readme/product-film.gif" width="100%" alt="Watch the Agents One product film: conversations, agents, projects, collaboration and finished work" /></a>
 </p>
 
-<p align="center"><a href="assets/readme/product-film.mp4"><strong>Watch the full film · 34 seconds · 1080p</strong></a></p>
+<p align="center"><a href="assets/readme/product-film.mp4?raw=true"><strong>Watch the full film · 34 seconds · 1080p</strong></a></p>
 
 A short excerpt plays here; open the full film above. This is a designed product presentation, not a recording of the current interface.
 
