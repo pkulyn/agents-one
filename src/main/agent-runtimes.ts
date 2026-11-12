@@ -7,6 +7,8 @@ import type { RuntimeSkillDescriptor } from "../shared/runtime-skills";
 import { discoverRuntimeSkills } from "./runtime-skills";
 import { prepareOneAttachments } from "./one-runtime/attachments";
 import { createOneDocumentTools } from "./one-runtime/document-tools";
+import { createOneWebTools } from "./one-runtime/web-tools";
+import { oneTaskContext } from "./one-runtime/task-context";
 import { executeOneShell, oneShellTool } from "./one-runtime/shell-tool";
 import {
   readOneMemoryFile,
@@ -6256,10 +6258,10 @@ export async function startAgentRuntimeTask(
   }
   if (record.run.status !== "running" || record.cancelRequested)
     return { ...record.run };
-  let dispatchPrompt = withRuntimePermissionContext(
-    task.prompt + documentContext,
-    task.mode,
-  );
+  let dispatchPrompt =
+    runtime.kind === "one"
+      ? task.prompt + documentContext
+      : withRuntimePermissionContext(task.prompt + documentContext, task.mode);
   let dispatchWorkspaceRef = task.workspaceRef;
   const unifiedGatewayRuntime = isAgentsOneGatewayRuntime(runtime);
   if (
@@ -6490,7 +6492,7 @@ export async function startAgentRuntimeTask(
         imageInput: imageInputEnabled,
         supportsToolCall: toolsEnabled,
         memoryEnabled: runtime.config.oneMemoryEnabled === true,
-        extensionToolIds,
+        extensionToolIds: ["one-builtins:web-and-chat-v1", ...extensionToolIds],
       });
       const snapshotHash = oneRunSnapshotHash({
         definitionRevision,
@@ -6572,6 +6574,17 @@ export async function startAgentRuntimeTask(
         return { ...record.run };
       }
       record.one = undefined;
+      const webTools = createOneWebTools();
+      const availableTools = !toolsEnabled
+        ? []
+        : [
+            ...webTools.tools,
+            ...hostTools.tools,
+            ...documentTools.tools,
+            ...(task.mode === "full_access" ? [oneShellTool] : []),
+            ...mcpBridge.tools,
+          ];
+      const writtenFiles = new Map<string, string>();
       const oneProgressCounters: OneSessionProgressCounters = {
         compactions: 0,
         requestRetries: 0,
@@ -6599,7 +6612,11 @@ export async function startAgentRuntimeTask(
             ? runtime.config.oneContextWindow
             : undefined),
         systemPrompt: [
-          "You are One, an assistant in Agents One.",
+          oneTaskContext({
+            name: runtime.name,
+            modelId,
+            endpoint,
+          }),
           oneInstructions,
           ...skillInstructions,
           ...pluginInstructions,
@@ -6612,28 +6629,35 @@ export async function startAgentRuntimeTask(
           .join("\n\n"),
         sessionId: task.sessionId,
         revisionBinding: { runId: id, definitionRevision, snapshotHash },
-        prompt:
-          dispatchPrompt +
-          textAttachmentContext +
-          "\n\n如果交付文件，请在最终答复中按以下格式逐个列出：\n[交付物]\n路径：文件相对路径\nSHA-256：文件工具返回的实际摘要\n变更摘要：简述；不要编造文件或摘要。",
-        tools: !toolsEnabled
-          ? []
-          : task.mode === "full_access"
-            ? [
-                ...hostTools.tools,
-                ...documentTools.tools,
-                oneShellTool,
-                ...mcpBridge.tools,
-              ]
-            : [...hostTools.tools, ...documentTools.tools, ...mcpBridge.tools],
-        executeTool: (name, parameters, signal) =>
-          name.startsWith("document_")
-            ? documentTools.executeTool(name, parameters, signal)
-            : name === "host_shell" && task.mode === "full_access"
-              ? executeOneShell(parameters, workspace, signal)
-              : name.startsWith("mcp_")
-                ? mcpBridge!.executeTool(name, parameters, signal)
-                : hostTools.executeTool(name, parameters, signal),
+        prompt: dispatchPrompt + textAttachmentContext,
+        tools: availableTools,
+        executeTool: async (name, parameters, signal) => {
+          const result =
+            name === "web_search" ||
+            name === "web_fetch" ||
+            name === "weather_forecast"
+              ? await webTools.executeTool(name, parameters, signal)
+              : name.startsWith("document_")
+                ? await documentTools.executeTool(name, parameters, signal)
+                : name === "host_shell" && task.mode === "full_access"
+                  ? await executeOneShell(parameters, workspace, signal)
+                  : name.startsWith("mcp_")
+                    ? await mcpBridge!.executeTool(name, parameters, signal)
+                    : await hostTools.executeTool(name, parameters, signal);
+          if (name === "workspace_write" || name === "document_create_word") {
+            try {
+              const file = JSON.parse(result);
+              if (
+                typeof file.path === "string" &&
+                /^[a-f0-9]{64}$/.test(file.sha256)
+              )
+                writtenFiles.set(file.path, file.sha256);
+            } catch {
+              /* Not a successful file receipt. */
+            }
+          }
+          return result;
+        },
         onReady: async (sessionId, sessionFile) => {
           if (record.run.status !== "running" || record.cancelRequested)
             throw new Error("Task cancelled");
@@ -6796,14 +6820,28 @@ export async function startAgentRuntimeTask(
                 }
               }
               const artifacts = await verifyLocalDeliveryArtifacts(
-                result.output,
+                result.output +
+                  [...writtenFiles]
+                    .map(
+                      ([path, hash]) =>
+                        `\n[交付物]\n路径：${path}\nSHA-256：${hash}\n变更摘要：${path}`,
+                    )
+                    .join(""),
                 workspace,
               );
               if (record.run.status !== "running") return;
               finishRuntimeRun(record, "succeeded", {
                 output: result.output,
                 sessionId: result.sessionId,
-                ...(artifacts.length ? { artifacts } : {}),
+                ...(artifacts.length
+                  ? {
+                      artifacts: artifacts.filter(
+                        (file, index, all) =>
+                          all.findIndex((other) => other.path === file.path) ===
+                          index,
+                      ),
+                    }
+                  : {}),
               });
             }
           },
