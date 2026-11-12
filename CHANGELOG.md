@@ -6,6 +6,31 @@ Notable changes to Agents One are recorded here. Versions follow Semantic Versio
 
 Further Runtime and platform compatibility work is tracked in [known issues](KNOWN_ISSUES.md).
 
+## [1.0.0] - 2026-11-13
+
+The first major release brings One, a built-in local agent, to the shared Agents One workspace.
+
+### Added
+
+- One, powered by the Pi agent SDK, with independent provider/API configuration, model capability metadata and session controls.
+- Public web search, page reading, weather, project file tools, Word/PDF reading, Word creation and image input with compatible models.
+- Editable per-One AGENTS.md, private/project memory, standalone skill management, plugins and MCP configuration.
+- Explicitly confirmed live steering and queued follow-ups, native progress commentary and compact execution traces.
+- A compact model/reasoning picker with remembered thinking preference, Medium default and Max mapped to native model support.
+
+### Improved
+
+- Thin harness behavior: preserve native agent capabilities and replies without mandatory deliverable formats or generic workflow instructions.
+- Provider-scoped models, tool failure reporting, session recovery, document delivery and context usage presentation.
+- One profile editing, custom avatars, skill descriptions and alphabetical ordering, and compact document cards.
+- Bilingual product README, a current startup capture, product film, verified status badges and official website links.
+
+### Distribution
+
+- Windows x64 installer and portable EXE, with SHA-256 checksums and independently fetchable source identity.
+- Windows packages remain unsigned; updates are manual. Android stays on its separate development release.
+- Model/provider compatibility, remote adapters and cross-version recovery retain the boundaries in [known issues](KNOWN_ISSUES.md).
+
 ## [0.1.2] - 2026-11-04
 
 ### Added
@@ -63,7 +88,8 @@ Further Runtime and platform compatibility work is tracked in [known issues](KNO
 - Windows household core acceptance passed, including installer startup, native OpenCode tasks, permissions, cancellation, tray recovery and same-version project-registration backup/restore. The final tray gesture change has additional focused automated regression coverage.
 - Cross-version upgrades and downgrades, every Runtime/model combination, macOS and Linux remain unqualified. See [known issues](KNOWN_ISSUES.md).
 
-[Unreleased]: https://github.com/pkulyn/agents-one/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/pkulyn/agents-one/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/pkulyn/agents-one/releases/tag/v1.0.0
 [0.1.2]: https://github.com/pkulyn/agents-one/releases/tag/v0.1.2
 [0.1.1]: https://github.com/pkulyn/agents-one/releases/tag/v0.1.1
 [0.1.0]: https://github.com/pkulyn/agents-one/releases/tag/v0.1.0

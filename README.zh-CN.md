@@ -1,246 +1,154 @@
 # Agents One
 
 <p align="center">
-  <img src="assets/readme/hero.zh-CN.svg" width="100%" alt="Agents One AI 智能体管理与协作平台，连接本地与远程智能体" />
+  <img src="assets/readme/startup.png" width="100%" alt="Agents One 当前启动动画：银色机械手与人类手指相遇，中央为晨曦之环字标" />
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="#产品一览">界面预览</a> · <a href="#快速开始">快速开始</a> · <a href="#参与开发">参与开发</a> · <a href="#许可协议">许可协议</a>
+  <a href="https://github.com/pkulyn/agents-one/releases"><img src="https://img.shields.io/github/v/release/pkulyn/agents-one?style=flat-square&label=Release&color=8675e8" alt="Latest published release" /></a>
+  <a href="https://github.com/pkulyn/agents-one/actions/workflows/ci.yml"><img src="https://github.com/pkulyn/agents-one/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI build status" /></a>
+  <a href="https://github.com/pkulyn/agents-one/releases"><img src="https://img.shields.io/badge/Windows-x64-087fc2?style=flat-square" alt="Windows x64" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-5b657a?style=flat-square" alt="MIT license" /></a>
 </p>
-
-**在一个工作区管理本地与远程智能体。** 接入 Pi Agent、Codex、Claude Code、OpenCode 等智能体，集中处理对话、任务、协作与产物；智能体保留各自的工具与权限。
-
-## 让智能体协助安装与配置
-
-可把下面内容发给你的智能体，让它按你的需要协助完成安装、配置和部署。
-
-```text
-请先阅读 https://github.com/pkulyn/agents-one/blob/main/README.zh-CN.md，
-根据我的实际环境协助我安装和配置 Agents One：检查系统和已有工具，
-从官方 GitHub Releases 下载适合我的 Windows 或 Android 安装包并核对 SHA-256；
-按我的需求接入本地或远程智能体，必要时部署插件、Connector 和 Connect，
-并协助手机端安装、连接和配对。先了解我需要哪些功能，不必部署不需要的组件。
-请保留现有配置和数据；涉及账号、密钥、服务器权限或必须由我操作的步骤时，
-说明需要我做什么，不要把凭据写入源码、文档或日志。
-完成后逐项验证，告诉我已完成的内容、验证结果和仍需我处理的事项。
-```
-
-## 产品一览
-
-当前版本的启动画面使用 Agents One 的 Dawn Ring 品牌标识：
 
 <p align="center">
-  <img src="assets/readme/startup.png" width="100%" alt="Agents One 完整启动画面：机械手与完整可见的人手在 Dawn Ring 字标后相接" />
+  <a href="https://www.agentsone.cn/en.html">官方网站</a> · <a href="https://github.com/pkulyn/agents-one/releases/latest">下载安装</a> · <a href="#产品宣传片">观看宣传片</a> · <a href="#快速开始">快速开始</a> · <a href="README.md">English</a>
 </p>
 
-对话是主要工作界面，项目、定时任务与智能体入口都围绕对话组织。
+<h2 align="center">从 One 开始，让智能体在此汇聚。</h2>
+
+<p align="center">一个为你工作的智能体，一个容纳更多智能体的工作空间。</p>
+
+**内置自建智能体 One。** 连接你选择的模型 API，即可开始研究、编程与文件处理。也可以接入 Codex、Claude Code、Pi Agent 和 OpenCode，将对话、项目、执行过程与工作成果放在同一个空间里。
+
+## 产品宣传片
 
 <p align="center">
-  <img src="previews/chat.png" width="100%" alt="Agents One 桌面对话界面，包含项目导航和任务入口" />
+  <a href="assets/readme/product-film.mp4"><img src="assets/readme/product-film.gif" width="100%" alt="观看 Agents One 产品宣传片：对话、智能体、项目、协作与工作成果" /></a>
 </p>
 
-<details>
-<summary>查看智能体注册表</summary>
+<p align="center"><a href="assets/readme/product-film.mp4"><strong>观看完整版 · 34 秒 · 1080p</strong></a></p>
 
-<p align="center">
-  <img src="previews/agents.png" width="100%" alt="Agents One 智能体注册表，展示本地 Runtime 与健康状态" />
-</p>
+此处自动预览选段，点击上方入口观看完整版。宣传片用于呈现产品理念与场景，并非当前界面的实机录屏。
 
-</details>
+## 认识 One
 
-截图来自开发构建，不同版本的文案与布局可能调整。
+### 你的模型，你的智能体，你的工作方式。
 
-## 核心体验
+One 是 Agents One 自建的本地智能体，基于 Pi agent SDK 运行，直接连接你配置的模型 API，无需先安装其他智能体 CLI。模型服务与用量由你选择的供应商提供。
 
-| 工作内容       | Agents One 提供什么                                               |
-| -------------- | ----------------------------------------------------------------- |
-| **对话**       | 流式回复、工具过程、产物、可搜索历史、重试与取消，以及终端回退。  |
-| **智能体**     | 本地 CLI 与远程 Gateway v1 共用注册表，并显示健康状态和实际能力。 |
-| **项目与任务** | 文件夹限定工作区、定时任务、归档与多智能体交接。                  |
-| **数据自主**   | 可移植备份与恢复，支持完整性校验和回滚保护。                      |
+- **查资料，也把事情做完。** 联网检索、读取网页、查询天气，处理项目文件，阅读 Word/PDF、创建 Word 文档；选择支持图片输入的模型，还能理解图片。
+- **按你的方式工作。** 编辑 One 的 AGENTS.md，管理专属记忆与项目记忆，启用需要的技能，通过插件和 MCP 扩展能力。
+- **自由选择模型与思考强度。** 管理供应商与模型，调整上下文和能力信息，按需切换关闭、极低、低、中、高、最高六档思考等级；已确认的思考选择会被记住。
+- **执行之中，也能继续交流。** 查看流式答复、原生进展、思考和工具调用；确认发送纠偏消息，在当前工具调用结束后调整方向，或排队到本轮答复后继续跟进。
 
-### 保留原生能力，汇入统一界面
+工具、图片输入和思考能力取决于所选模型、已启用扩展及权限模式；“最高”使用该模型接入所支持的最高强度。
 
-本地 CLI 由 Agents One 以原生进程启动，并保留各自的模型、工具、项目指令和权限。远程智能体通过 Gateway v1 接入，协商能力，并仅在限定任务期间获得工作区访问。两者共用同一对话界面。
+## 一个空间，更多可能
 
-[插件 SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) 允许新智能体实现统一契约，无需改动桌面端。[事件流协议](docs/AGENT_EVENT_STREAM_V1.md)承载工具过程、产物与交接；[Gateway 协议](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md)负责远程运行与工作区授权。
+### 留住你熟悉的智能体
+
+One 与 **Codex、Claude Code、Pi Agent、OpenCode** 并列使用。本地接入保留各智能体自己的模型、工具和认证方式，兼容的远程智能体通过 **Gateway v1** 接入。Agents One 尽量保持轻薄的接入层，让原生能力在统一界面中自然呈现。
+
+### 让工作有处可归
+
+选择项目文件夹，继续已有对话，安排定时任务，或将一项任务交给多个已接入的智能体。进展与交接留在对话中，生成的文件通过文档卡片直接打开。
+
+### 随时接近正在进行的工作
+
+查看执行状态，按需停止任务，从可搜索的历史中继续。快捷输入条提供轻量入口；Android 手机端可通过独立配置的连接服务，访问已经授权的桌面端。
 
 ## 快速开始
 
-[Windows 安装](#windows-安装与校验) · [本地智能体](#接入本地智能体) · [远程智能体与服务器](#接入远程智能体先分清组件) · [Android 手机端](#android-手机端安装与连接桌面)
+### 1. 安装 Agents One
 
-### 当前发布状态
-
-| 组件           | 当前情况                                                                                                                                               |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Windows 桌面端 | [0.1.2 正式 Release](https://github.com/pkulyn/agents-one/releases/tag/v0.1.2)，提供 x64 安装版和便携版。                                              |
-| Android        | [0.1.13-dev-debug APK](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev)，Android 8.0 / API 26 起；开发签名、可调试的预发布版本。 |
-| 远程接入组件   | Plugin SDK **0.1.6**、Connector CLI **0.1.0**、Connect 服务 **0.1.1**，均从本仓库部署；当前不依赖已发布的 npm 包或项目托管公共服务。                   |
-| 其他平台       | 当前不提供 macOS、Linux 桌面端及 iOS 的公开安装包。Linux 可用于自行部署远程服务。                                                                      |
-
-Windows 核心流程已通过限定范围的验收；其他模型、远程服务、升级恢复和手机组合尚未全部验证。详见[已知问题](KNOWN_ISSUES.md)。
-
-### Windows 安装与校验
-
-1. 从[官方 Release](https://github.com/pkulyn/agents-one/releases/latest)下载以下两种包之一，同时下载同一版本的 `SHA256SUMS.txt`：
-   - `agents-one-0.1.2-setup.exe`：普通用户推荐，按向导安装到当前用户目录，不要求系统级安装权限。
-   - `agents-one-0.1.2-portable.exe`：无需安装，放在可写的本地目录后运行。**便携指程序免安装，不代表数据保存在 EXE 旁边**；默认数据位置见下文。
-2. 在下载目录打开 PowerShell，检查哈希是否与清单中**相同文件名**的一行一致：
-
-   ```powershell
-   Get-FileHash .\agents-one-0.1.2-setup.exe -Algorithm SHA256
-   # 选择便携版时，改为对应的 portable.exe 文件名
-   Get-Content .\SHA256SUMS.txt
-   ```
-
-3. **SmartScreen：** Windows 安装包未签名，首次运行可能出现安全提示。确认来自官方 Release 且 SHA-256 一致后，如系统提供该选项，可选择“更多信息”→“仍要运行”。哈希不符、安全软件报毒或单位策略禁止时，请停止安装。[微软说明](https://learn.microsoft.com/zh-tw/windows/apps/package-and-deploy/smartscreen-reputation)
-4. 安装版按向导完成后，从 **Agents One** 快捷方式启动；便携版直接运行 EXE。应用与 CLI 都建议使用普通用户权限。托盘左键单击打开主窗，左键双击切换快捷输入条，再双击即可关闭；右键菜单可正常退出应用。
-
-**更新：** 0.1.0 安装包没有应用内更新检查，请手动查看 [Releases](https://github.com/pkulyn/agents-one/releases) 并下载安装。0.1.1 及后续版本可在**设置 → 关于与更新 → 检查更新**查询，发现新版后跳转 GitHub，由你校验并手动安装；应用不会自动下载或安装。升级前请在**设置 → 数据**备份并从托盘退出。安装版和便携版使用不同数据目录。当前没有 winget 或 Microsoft Store 安装包。
-
-### 接入本地智能体
-
-Agents One 不包含各 CLI 的服务订阅，也不会代替它们登录、配置模型或提供 API Key。先在运行桌面端的**同一 Windows 用户**下安装并配置所需 CLI，确认能在终端完成一次普通对话：
-
-| 智能体类型  | 常见命令   | 接入前检查                                               |
-| ----------- | ---------- | -------------------------------------------------------- |
-| Codex       | `codex`    | 已完成该 CLI 自身的登录或 Provider 配置。                |
-| Claude Code | `claude`   | 已完成 Claude Code 自身的认证，所选工作目录可访问。      |
-| Pi Agent    | `pi`       | Pi 的 Provider、模型与凭据已经配置。                     |
-| OpenCode    | `opencode` | Provider / 模型能正常使用；桌面端接入使用原生 CLI 协议。 |
-
-1. 打开侧栏**智能体 → 新增智能体**，选择**本地**，再选择对应类型、名称和头像。
-2. 在连接设置中使用自动检测到的可执行路径；检测失败时选取真实的 CLI 启动文件，而不是项目目录、安装器或一整段 Shell 命令。Windows 可先用 `where.exe codex`、`where.exe claude`、`where.exe pi` 或 `where.exe opencode`定位。
-3. 保存，执行连接检测，确认健康状态与能力；然后在聊天中新建对话，选择该智能体发送一条简单消息。
-4. 需要处理文件时，先创建并选择**项目**、确认项目目录，再选合适权限。**只读 / 自动 / 完全访问**的可用操作不同；自动模式限制移动或删除原有文件，完全访问应在理解影响后使用。具体工具是否可用以当前 Runtime 实际支持和检测结果为准。
-
-更改 CLI 安装路径或用户 PATH 后，请完全退出并重开桌面端。若终端正常而桌面检测失败，优先检查启动文件路径、桌面进程继承的环境和同一用户的认证状态。本地 Hermes 的已有安装可在对应管理页发现、选择和采用；不要用远程 Gateway 表单填写本地 Hermes Home。
-
-### 接入远程智能体：先分清组件
-
-| 组件                   | 部署位置                           | 作用                                                                                                                  |
-| ---------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Gateway 插件 / Adapter | 实际运行远程智能体的服务器         | 将原生任务、事件、文件和取消操作转换成 Agents One Gateway v1；SDK 提供契约与宿主，不会自动把任意 Agent 变成可用服务。 |
-| Connector CLI          | 远程智能体服务器                   | 通过出站 WSS 连接 Connect，把请求转给本机已配置的 Gateway。                                                           |
-| Connect 服务           | 桌面端和远程服务器均可访问的服务器 | 配对、设备授权和隧道路由；**不负责安装或执行智能体**。可与 Gateway 同机，状态与凭据需分别管理。                       |
-
-Hermes / OpenClaw 等服务必须已经实现 **Agents One Gateway v1**。普通模型 API、OpenAI 兼容接口、原生聊天网页或某个 Agent 的任意 HTTP 端口，都不能直接作为 Gateway。SDK 的 Hermes 示例是集成骨架，需要服务维护者接入真实运行和产物接口。远程 OpenCode Host 仍有独立的实验发布开关；远程 Pi / Codex / Claude Code 不能按已交付 Adapter 对待。
-
-#### A. 在智能体服务器准备 Gateway 插件
-
-使用 Node.js **24+**，从同一仓库版本取得组件。SDK 尚未发布到公共 npm 注册表；不要直接执行 `npm install @agents-one/plugin-sdk` 并假定可用。
-
-```bash
-# 在源码仓库根目录；Windows 使用 npm.cmd 也可
-npm --prefix plugins/agents-one-plugin run verify
-npm pack ./plugins/agents-one-plugin
-# 在你自己的 Gateway / Adapter 工程中安装生成的本地文件：
-# npm install /absolute/path/to/agents-one/agents-one-plugin-sdk-0.1.6.tgz
-```
-
-服务维护者按[插件 SDK 指南](docs/AGENTS_ONE_PLUGIN_SDK.md)和[插件部署说明](plugins/agents-one-plugin/README.zh-CN.md)实现 / 启动 Adapter：配置独立 Gateway Token、受控工作区和持久化 `statePath`，先在服务器本机验证能力探测、一次对话、取消和文件传输。示例 Token 变量名为 `AGENTS_ONE_GATEWAY_TOKEN`，不要把密钥写入 README、仓库或提示词。桌面端升级不会替你升级远端插件。
-
-#### B. 部署 Connect 服务
-
-可在 Linux 服务器以前台用户进程启动；以下是**反向代理后的单实例起点**，不是多租户生产平台的一键部署：
-
-```bash
-git clone https://github.com/pkulyn/agents-one.git
-cd agents-one
-npm ci --ignore-scripts --prefix services/agents-one-connect
-mkdir -p "$HOME/.agents-one-connect"
-chmod 700 "$HOME/.agents-one-connect"
-export CONNECT_HOST=127.0.0.1
-export CONNECT_PORT=8788
-export CONNECT_STATE_FILE="$HOME/.agents-one-connect/gateway-state.json"
-node services/agents-one-connect/bin/agents-one-connect.mjs
-```
-
-将你自己的 `https://connect.example.com` 反向代理到 `127.0.0.1:8788`，转发原始请求路径并支持 WebSocket Upgrade；配置受信任的完整 TLS 证书链。公开地址需从桌面端、远程服务器和手机各自网络可达。
-
-健康检查：`https://connect.example.com/connect/v1/health`。保持服务进程运行；重启时保留状态文件。也可使用 `CONNECT_TLS_KEY_FILE` 与 `CONNECT_TLS_CERT_CHAIN_FILE`启用进程内 TLS，详见[服务部署说明](services/agents-one-connect/README.zh-CN.md)。公网部署还需入口访问控制、限流、状态备份和进程管理；当前单实例实现不提供完整账户系统或跨实例共享授权库。
-
-#### C. Connector 校验码配对
-
-在**智能体服务器**的源码根目录安装 Connector 依赖并生成校验码：
-
-```bash
-npm ci --ignore-scripts --prefix plugins/agents-one-connector
-node plugins/agents-one-connector/bin/agents-one-connector.mjs request-pairing --connect https://connect.example.com --runtime-id my-remote-agent --name "My remote agent" --wait true
-```
-
-在**桌面端**启动前设置同一个 Connect 地址；先从托盘退出已有进程，再从此 PowerShell 会话启动你实际安装的 EXE：
+从 [GitHub Releases](https://github.com/pkulyn/agents-one/releases/latest) 下载 Windows x64 **安装版**或**便携版 EXE**，同时下载对应的 SHA256SUMS.txt。打开前核对文件的 SHA-256：
 
 ```powershell
-$env:AGENTS_ONE_CONNECT_ENDPOINT = "https://connect.example.com"
-& "C:\path\to\agents-one.exe" # 替换为实际路径；此变量只对本次会话有效
+Get-FileHash .\agents-one-<version>-setup.exe -Algorithm SHA256
+Get-Content .\SHA256SUMS.txt
 ```
 
-打开**智能体 → 新增智能体 → 远程 → 校验码配对**，输入远端显示的 10 位码，核对设备指纹、Runtime 清单和有效期后确认。`--wait true` 会等待并保存完成配对的凭据；若没有使用它，请另运行 `complete-pairing`。使用同一系统用户运行后续 Connector 命令。
+请替换为实际下载的文件名；便携版以 -portable.exe 结尾。安装版按当前用户安装；便携版无需安装，但数据不保存在 EXE 旁。当前安装包未签名，Windows 可能显示 SmartScreen 提示。可在**设置 → 关于与更新**检查新版，手动下载安装。
 
-确认远端本机已有兼容 Gateway 后，配置回环代理并保持 Connector 前台运行：
+### 2. 配置 One
 
-```bash
-export AGENTS_ONE_LOOPBACK_GATEWAY=http://127.0.0.1:8787
-# AGENTS_ONE_GATEWAY_TOKEN 由私有环境 / 密钥管理器注入，必须与本机 Gateway 一致
-node plugins/agents-one-connector/bin/agents-one-connector.mjs run --adapter ./plugins/agents-one-connector/adapters/gateway-v1-loopback.mjs
+打开**智能体 → 智能体配置 → 模型设置**，选择供应商，配置 API 地址、协议和密钥，选择模型，检测并保存。随后新建 One 对话，发送一条简单消息。
+
+One 支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Google Generative AI 四种协议；不同供应商的兼容性与可用能力有所不同。API Key 和服务订阅由你自行提供。
+
+### 3. 从一件真实的工作开始
+
+需要处理本地文件时，先选择项目文件夹。让 One 研究一个问题、解释代码，或准备一份文档；核对执行权限，在需要时确认危险操作授权。
+
+<details>
+<summary><strong>接入本地智能体</strong></summary>
+
+先在同一 Windows 用户下安装、配置所需 CLI，并确认能在它自己的终端中完成一次对话。
+
+| 智能体      | 启动命令 |
+| ----------- | -------- |
+| Codex       | codex    |
+| Claude Code | claude   |
+| Pi Agent    | pi       |
+| OpenCode    | opencode |
+
+打开**智能体 → 智能体接入管理 → 新增智能体 → 本地**，选择类型与真实启动文件路径，保存并检测。Windows 可用 where.exe codex（或对应命令）定位。修改 PATH 后需重新打开 Agents One；各 CLI 继续使用自己的登录、供应商配置与服务权限。
+
+</details>
+
+<details>
+<summary><strong>接入远程智能体</strong></summary>
+
+远程接入包含运行在智能体服务器上的 **Gateway Adapter**、主动向外连接的 **Connector**，以及负责配对与路由的 **Connect 服务**。也可直连自托管 Gateway。
+
+普通模型 API 地址或聊天网页不是 Gateway。远端需实现 Gateway v1；配对成功不代表模型已就绪，不同适配器的能力和会话续接支持各有边界。
+
+按[插件 SDK 指南](docs/AGENTS_ONE_PLUGIN_SDK.md)、[Connector 部署说明](plugins/agents-one-connector/README.zh-CN.md)和 [Connect 部署说明](services/agents-one-connect/README.zh-CN.md)配置，保持组件版本兼容。SDK 目前未发布到公共 npm 注册表。
+
+</details>
+
+<details>
+<summary><strong>使用 Android 手机端</strong></summary>
+
+Android 独立发布为 [0.1.13-dev-debug](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev)，支持 Android 8.0 / API 26 及以上。安装前核对该发布页的 APK 校验文件。这是开发签名、可调试的预发布包，当前无 iOS 或应用商店版本。
+
+手机连接已经授权的桌面 Owner，桌面需保持在线。先按 [Owner 初始化说明](services/agents-one-connect/README.zh-CN.md#手机连接服务与-owner-初始化)配置独立手机服务，再通过桌面端**设置 → 手机连接**邀请并批准设备。手机邀请、远程 Connector 配对码、Owner 管理密钥不是同一种凭据；不要把 Owner 管理密钥交给手机。
+
+</details>
+
+<details>
+<summary><strong>让你的智能体协助安装</strong></summary>
+
+```text
+请先阅读 https://github.com/pkulyn/agents-one/blob/main/README.zh-CN.md，
+协助我配置 Agents One。先检查系统环境与当前公开版本，按需配置 One
+或接入本地、远程智能体。只安装需要的组件，保留现有数据，不把密钥
+写入文件或日志；逐步核验结果，并说明哪些操作需要我亲自完成。
 ```
 
-在桌面端保存 / 检测远程智能体并测试真实对话。配对成功仅说明设备已授权，**不代表 Gateway 或模型已就绪**。排查时可运行 `status`、`diagnose --connect https://connect.example.com`；完整参数与用户级自启动方法见 [Connector 说明](plugins/agents-one-connector/README.zh-CN.md)。
+</details>
 
-高级用户可不经 Connect：选择**自托管 Gateway**，填写可达的 HTTPS Gateway v1 地址与独立 Bearer Token，保存并检测。这是“手动直连”，不会显示为 Connect 已配对。不要公开暴露未认证的 Gateway。
+## 围绕你的工作而构建
 
-### Android 手机端：安装与连接桌面
+项目文件保留在你选择的文件夹中。桌面数据使用 Electron userData，Windows 通常为 %APPDATA%\agents-one，便携版默认为 %LOCALAPPDATA%\agents-one-portable。模型 API、远程智能体与启用的扩展会接收完成任务所需的数据。本地执行不是操作系统级沙箱。
 
-手机端连接已授权的桌面 Owner（数据与执行宿主）。桌面端需保持运行、联网且不休眠；Connect 在线不代表桌面任务通道已就绪。
+权限取决于智能体与模式，删除等危险操作需要明确提醒与授权。升级前请在**设置 → 数据**备份，然后正常退出。完整跨版本升级、回退及全部远程/模型组合尚未完成验收；公开构建中的网页智能体默认关闭，属于实验功能。详见[已知问题](KNOWN_ISSUES.md)与[安全策略](SECURITY.md)。
 
-**安装：**
+## 一起构建
 
-1. 从 [Android 发布页](https://github.com/pkulyn/agents-one/releases/tag/android-v0.1.13-dev)下载 [agents-one-android-0.1.13-dev-debug.apk](https://github.com/pkulyn/agents-one/releases/download/android-v0.1.13-dev/agents-one-android-0.1.13-dev-debug.apk) 和对应的 [SHA256SUMS.txt](https://github.com/pkulyn/agents-one/releases/download/android-v0.1.13-dev/SHA256SUMS.txt)，无需自行构建。支持 Android 8.0（API 26）及更新版本。
-2. 安装前核对 APK 的 SHA-256 与校验文件中同名条目一致：
-
-   ```text
-   533d61317743b40f9e584fabaa11b109b387ab1fbc2060894ccc4c2d8f5601f0
-   ```
-
-   例如，在 Windows 下载目录运行 `Get-FileHash .\agents-one-android-0.1.13-dev-debug.apk -Algorithm SHA256`。也可以在手机上使用可信的本地文件哈希工具核对。哈希不一致时请停止安装。
-
-3. 将 APK 传到手机或直接在手机下载；按系统提示只为使用的浏览器 / 文件管理器临时允许“安装未知应用”，安装完成后可关闭该权限。
-
-这是**开发签名且可调试**的预发布包，包名为 `one.agents.mobile.debug`。已授权的 ADB 调试连接可能访问应用数据；无需调试时请关闭 USB 调试，避免在此版本中处理敏感数据。覆盖升级需要相同包名和签名证书；不同签名的包可能无法覆盖安装，卸载会删除该手机的本地状态，请先备份需要保留的数据。当前无 iOS 版或应用商店安装链接。
-
-**接入：**
-
-1. 管理员先按 [Connect 的手机授权部署说明](services/agents-one-connect/README.zh-CN.md#手机连接服务与-owner-初始化)启用独立手机服务，并提供 HTTPS 基础地址和该桌面专属的 **Owner 管理密钥**。仅部署 Gateway 配对服务还不够。
-2. 桌面端打开**设置 → 手机连接 → 连接服务设置**，填入地址与 Owner 管理密钥，点击**保存并连接**，开启**允许手机连接**。Owner 管理密钥不能使用 Gateway / Connector Token 代替，也不要交给手机。
-3. 点击**生成邀请**，在手机 **我的**的连接入口填写同一 HTTPS 地址、邀请和设备名称，发起连接。
-4. 核对桌面与手机显示的短语；在桌面端勾选所需权限并**批准设备**，手机完成领取。此邀请与远程智能体的 10 位 Connector 校验码不是同一种凭据。
-5. 回到手机查看任务 / 定时任务；发起任务时选择桌面上已配置且获准使用的智能体、项目与执行模式。若缺少执行授权或需要确认，请在桌面核查 / 批准对应策略，不以“已配对”代替执行权限。
-6. 手机遗失或停止使用时，在桌面**已配对设备**中撤销访问。撤销访问不等于取消已经运行的任务；已有任务需单独停止。
-
-只显示离线缓存、Owner 离线或“任务通道尚未就绪”时，先检查桌面进程、允许手机连接开关、网络 / WebSocket 转发和服务状态，不要反复删除配对或重置数据。
-
-## 数据与信任边界
-
-桌面状态存放于 Electron `userData`（Windows 通常为 `%APPDATA%\agents-one`）；便携版默认使用 `%LOCALAPPDATA%\agents-one-portable`。启动参数或显式数据路径配置可能改变该位置。项目实际文件仍在所选目录中；各 CLI 保留自己的配置，也可能在桌面数据目录外存储额外数据。备份排除已知凭据与受保护密文，但用户编写的对话、记忆、技能和附件仍可能含敏感信息。
-
-内置的豆包、ChatGPT 和 Grok 浏览器适配器在公开构建中是**默认关闭的实验功能**。启用后，选定的提示词和附件会通过已登录的第三方网页发送。当前边界与限制见[安全策略](SECURITY.md)和[已知问题](KNOWN_ISSUES.md)。
-
-## 参与开发
-
-需要 Node.js **24 或更新版本**。在 Windows 仓库根目录运行：
+Agents One 是开源项目。欢迎完善工作空间、开发适配器，或为智能体扩展更多能力。
 
 ```powershell
+# Node.js 24+ · 在仓库根目录执行
 npm.cmd run install:clean
 npm.cmd run dev
-npm.cmd run typecheck
-npm.cmd test
 ```
 
-完整检查流程见[贡献指南](CONTRIBUTING.zh-CN.md)，使用与排障见[运行手册](docs/AGENTS_ONE_RUNBOOK.md)，版本变化见[变更日志](CHANGELOG.md)。
+[贡献指南](CONTRIBUTING.zh-CN.md) · [插件 SDK](docs/AGENTS_ONE_PLUGIN_SDK.md) · [Gateway 协议](docs/AGENTS_ONE_REMOTE_GATEWAY_V1.md) · [运行手册](docs/AGENTS_ONE_RUNBOOK.md) · [变更日志](CHANGELOG.md)
 
 ## 许可协议
 
-本仓库中 Agents One 的原创贡献采用 [MIT License](LICENSE)。保留版权与许可声明即可使用、修改、分发及商用。贡献者保留其自身版权，并且只能提交有权按 MIT 授权的内容。
+Agents One 原创贡献采用 [MIT License](LICENSE)。继承代码、依赖、素材与 Oxanium 字体衍生字标保留各自协议及声明，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-继承自 `hermes-desktop` 的部分保留上游作者原有的 MIT 声明，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。第三方依赖和素材仍遵循各自协议；Oxanium 字体衍生字标的声明及字体协议也从该文件链接。代码许可不授予冒充 Agents One 项目或维护者身份的权利。
+<p align="center"><a href="https://www.agentsone.cn/en.html"><strong>探索 Agents One → www.agentsone.cn</strong></a></p>
