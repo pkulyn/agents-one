@@ -1,0 +1,80 @@
+{
+  "apps/android/app/src/main/res/drawable/app_icon.png": {
+    "sha256": "0dc1e4589ff161b3e6bf5b116817c21594b2d8dc897b689d2575472dadfdcfc4"
+  },
+  "assets/header.webp": {
+    "sha256": "288d191958329dc2cda64990fa1879eeba10b21f9ad6c1f98c9d486bcd9413fd"
+  },
+  "assets/partners/atlascloud.webp": {
+    "sha256": "b8223936e167bc63837622a07f81065c0675263eb8d931d8864fbb26393fcea5"
+  },
+  "assets/partners/greptile.webp": {
+    "sha256": "de2527c6900c1dec0f0e9ac236cbf7372c1148696d7cd6cc1c360b0d69264683"
+  },
+  "assets/readme/product-film.gif": {
+    "sha256": "3f9af36412158b5101f936240a5f9a8f483032f400eafc7ab841c0673d3172e5"
+  },
+  "assets/readme/product-film.mp4": {
+    "sha256": "5a1b0e3af101bed1cdacd5de2abdf6ab4d8a8dd6ff16f6ddb992816da66242fb"
+  },
+  "assets/readme/startup.png": {
+    "sha256": "5df6c5f2380de426b059fc4991c4d78e069f8d1d7622419187583f58569cc391"
+  },
+  "build/agents-one-dawn-v2.ico": {
+    "sha256": "10c9550b45440571b724c7bcdee07f1be7cc61acc470eb0f34c34367240fa154"
+  },
+  "build/agents-one-dawn.ico": {
+    "sha256": "10c9550b45440571b724c7bcdee07f1be7cc61acc470eb0f34c34367240fa154"
+  },
+  "build/icon.icns": {
+    "sha256": "bd88aeb36f524f17c8697b54d025cfa47b18e0733e873bcf4408bcd0221ebff8"
+  },
+  "build/icon.ico": {
+    "sha256": "10c9550b45440571b724c7bcdee07f1be7cc61acc470eb0f34c34367240fa154"
+  },
+  "build/icon.png": {
+    "sha256": "0dc1e4589ff161b3e6bf5b116817c21594b2d8dc897b689d2575472dadfdcfc4"
+  },
+  "resources/icon.png": {
+    "sha256": "0dc1e4589ff161b3e6bf5b116817c21594b2d8dc897b689d2575472dadfdcfc4"
+  },
+  "src/renderer/src/assets/icons/etherium.webp": {
+    "sha256": "7127b216eb036c930db6a0a38d726660ea65494daeaf0544aebebc8c14726d61"
+  },
+  "src/renderer/src/assets/icons/hdtoken.webp": {
+    "sha256": "2fdd7e39ed7c43207e7a13b2ee21a17af89f8a2361551cffd60833ae3ceba1e0"
+  },
+  "src/renderer/src/assets/loadingo.gif": {
+    "sha256": "c430e7f26d58ebfbc08b6fb9abd9b4283c9a0357138d7e435032f760e87a5a70"
+  },
+  "src/renderer/src/assets/startup-forearm-continuation-v1.png": {
+    "sha256": "07f47a62a73eee43a3e04227f82b236ee604167e0688ea26eaeade34c80a7af5"
+  },
+  "src/renderer/src/assets/startup-hands-background-v2.png": {
+    "sha256": "b1d6d2c29d73ab133fe40b81f439f8b7a5eae8ef2d89d680b77c8943cf025db4"
+  },
+  "src/renderer/src/assets/startup-hands-foreground-small-v4.png": {
+    "sha256": "5a692dcd3aab636b2e39d3549da35ee552f812c587e6842dd733c2328115a8ff"
+  },
+  "src/renderer/src/assets/startup-hands-foreground-v3.png": {
+    "sha256": "b28a3e6faaa130ae0aae53b9e61c24351610923198c03ba087f62848b2799e7a"
+  },
+  "src/renderer/src/assets/startup-hands-touch-v2.png": {
+    "sha256": "391d15e93e6f66e55749da1306dc6ad2c4c10b76a5e2f6a61a66fefaaccdda3e"
+  },
+  "src/renderer/src/assets/startup-hands.jpeg": {
+    "sha256": "aac39134bcb17e5eb13334eefd274e271a2ccc6e6ae782ed5b95100783828130"
+  },
+  "src/renderer/src/assets/startup-human-continuous-v1.png": {
+    "sha256": "dc0f9478336f5904a300f43453114704af3bcf5a65588a8253746c53438bc9a8"
+  },
+  "src/renderer/src/assets/startup-human-hand-alpha-v2.png": {
+    "sha256": "3d492edf071c495184a67bbf70104456569f0cd312a498e374cdc9c1eba96812"
+  },
+  "src/renderer/src/assets/startup-robot-hand-alpha-v2.png": {
+    "sha256": "5e46bdebe0a2ed9a09a15ab9dc681c5392ae7e734e7aeed8cbcae3a78b946a97"
+  },
+  "src/renderer/src/assets/startvid.mp4": {
+    "sha256": "b716d8b02602213383edc8b2d33e0b0c437e7e0f54e85a545da7d266e522ae73"
+  }
+}

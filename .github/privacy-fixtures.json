@@ -1,0 +1,158 @@
+[
+  {
+    "path": "apps/android/app/src/test/kotlin/one/agents/mobile/MessageMarkdownTest.kt",
+    "rule": "url-password",
+    "lineSha256": "524a8db2326c430e33ed8e97789e6c3df1b28ad17a9535236abf832a171af35c",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "apps/android/core/src/test/kotlin/one/agents/mobile/net/MobileControlClientTest.kt",
+    "rule": "url-password",
+    "lineSha256": "5947e65cb3e33a5d0e63edb76736b66ec1448c3775389c6aa9022bf9de15f33f",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "plugins/agents-one-connector/test/connector.test.mjs",
+    "rule": "private-key",
+    "lineSha256": "19f85324ad7c522b2cffba83b2b5604d17f040d590a5149b8ba6a52b3a4a51b2",
+    "reason": "Literal fake key body testing backup credential rejection"
+  },
+  {
+    "path": "plugins/agents-one-connector/test/connector.test.mjs",
+    "rule": "private-key",
+    "lineSha256": "aa0cdcc98c1c7227e06f0c8537534ef3fb58ac8a81d10874b46d71f9f9921ed8",
+    "reason": "Literal fake key body testing backup credential rejection"
+  },
+  {
+    "path": "src/main/hermes.test.ts",
+    "rule": "url-password",
+    "lineSha256": "b4c3ea39a63f7a3466402e9f13de28ed364522ad7fdf238b4af2d1b8db30f332",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "src/main/one-runtime/web-tools.test.ts",
+    "rule": "url-password",
+    "lineSha256": "ce9c686cfa002ee7458836dc933616570b6fd0d3ccfef0de05931505606143a0",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "src/renderer/src/components/settings/useSettingsData.proxy.test.tsx",
+    "rule": "url-password",
+    "lineSha256": "14859e927c0a2d37f03d818ed9a9f5c11cf0de25b14a7e4ae910d8e13772aae3",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "src/renderer/src/components/settings/useSettingsData.proxy.test.tsx",
+    "rule": "url-password",
+    "lineSha256": "5a54164782ce3cbcbb6664b246efc8225ee063978cc93b5b3e97ea58c6a0a37b",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "src/renderer/src/components/settings/useSettingsData.proxy.test.tsx",
+    "rule": "url-password",
+    "lineSha256": "c9fa2a52969842b1b8751cb7646fe53a6d867df62819b1e9ec5a689d92054ed1",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/agents-one-backup.test.ts",
+    "rule": "url-password",
+    "lineSha256": "5e7229d5281927423a94a46ce195d0f7dfb410bff3896cb649427fbf58936461",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/agents-one-backup.test.ts",
+    "rule": "url-password",
+    "lineSha256": "c335443d7da31984fc069b85a3ba13736e705d132c67b97f13aa9e1f21d8a0f4",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/agents-one-backup.test.ts",
+    "rule": "url-password",
+    "lineSha256": "39c4aaf663c4a4947cb15206bcb6c65fc523565522b32373b5ffa30275ccfd56",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/agents-one-backup.test.ts",
+    "rule": "url-password",
+    "lineSha256": "6bfb473a1b23a414a76e9989f6159a7c644295c14d895ef6e0884c795670c352",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/mobile-codex-effective-config.test.ts",
+    "rule": "url-password",
+    "lineSha256": "4ee519620e333311d9781d8cdbc03b8d7ca5341d20d498917e1da8819b1649ab",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "5aa7a94c7a9b7901a28285877e50d2ae3165447aa401002951d15343830b0890",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "9f43b3305c8f7272120b1b809eff00bc9ddfe7143006c0635e331eaf416f7194",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "53c831cec66455d68b1293079e3b42251febbdbabd1f1ee79a6e346651b79712",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "ebbe7d24080602e4cb6250ebd2a198a228637c71620324317b7a066a6375abf8",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "bfe6edb4775cebf720f3673c6ae0f0cd1686ca861913f08feae7a53ec9f7c50b",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "a19d977630cdb322a81ecf06e372c2cb94afad93ac9380073823c8bb409b8846",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "43a85452e56cd92122fe1b0afb01cc59a147eaf2e46fca1a13c31ca00cc143b8",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "ed824f135c100cacd883c35b025e5d211e0327508e15d54e937b45428b320bf5",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "6cc6add22a17d6f505328cf88d083e46d03cbfdc77601da5d0934670ec19c479",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/proxy-config-projection.test.ts",
+    "rule": "url-password",
+    "lineSha256": "d237c1c123e0b0655400722d05dca05f5b2c0a6f1f4697c588fd126a793236ee",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  },
+  {
+    "path": "tests/url-key-map.test.ts",
+    "rule": "public-ip-endpoint",
+    "lineSha256": "358279ced61834a6da704c5855051cf4f292347866ce681f6873cb43e0459fc4",
+    "reason": "Synthetic boundary value testing the end of the RFC1918 range"
+  },
+  {
+    "path": "tests/web-agent.test.ts",
+    "rule": "url-password",
+    "lineSha256": "be6b0d4422189a127b6b5a04ad4f7cd21121d20315fe9ff40745151197a35774",
+    "reason": "Synthetic URL credentials testing rejection or redaction"
+  }
+]
