@@ -3,16 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationFiles } from "./ConversationFiles";
 import { AgentMarkdown } from "./AgentMarkdown";
 vi.mock("./useI18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-const path = "D:/Users/chenfl/Desktop/AI 周报(V1.0).md";
+const path = "D:/Users/demo/Desktop/示例 周报(V1.0).md";
 const delivery = { conversationId: "c", messageId: "m", artifacts: [] };
 beforeEach(() => {
   Object.defineProperty(window, "agentsOneAPI", {
     configurable: true,
     value: {
       conversationFileInfo: vi.fn().mockResolvedValue({
-        name: "AI 周报(V1.0).md",
+        name: "示例 周报(V1.0).md",
         path,
-        relativePath: "../Desktop/AI 周报(V1.0).md",
+        relativePath: "../Desktop/示例 周报(V1.0).md",
         size: 1234,
         image: false,
       }),
@@ -33,7 +33,7 @@ describe("delivered documents", () => {
     );
     expect(container.querySelectorAll("ol li")).toHaveLength(2);
     const link = container.querySelector(".chat-document-link")!;
-    expect(link.textContent).toBe("AI 周报(V1.0).md");
+    expect(link.textContent).toBe("示例 周报(V1.0).md");
     expect(link.getAttribute("title")).toBe(path);
     fireEvent.click(link);
     expect(window.agentsOneAPI.conversationFileAction).toHaveBeenCalledWith(
@@ -161,7 +161,7 @@ it("keeps verified file metadata and actions without the redundant artifact summ
           {
             id: "file1",
             kind: "file",
-            label: "AI 周报(V1.0).md",
+            label: "示例 周报(V1.0).md",
             changeSummary: "Unnecessary generated document notes",
           },
         ],

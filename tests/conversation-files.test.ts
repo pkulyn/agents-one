@@ -61,15 +61,17 @@ describe("conversation file references", () => {
   // @lat: [[runtime-chat#Runtime Chat Rendering#Clickable delivered documents]]
   it("recognizes Chinese Windows names, inline code, file URLs and angle links without consuming prose", () => {
     const content =
-      "文件同时保存在本机： `D:\\Users\\chenfl\\Desktop\\AI 周报(V1.0).md`\n文件：[周报](<D:/Desktop/AI 周报(V1.0).docx>)\n位置：D:/Desktop/周报.md，已经完成。\n";
+      "文件同时保存在本机： `D:\\Users\\demo\\Desktop\\示例 周报(V1.0).md`\n文件：[周报](<D:/Desktop/示例 周报(V1.0).docx>)\n位置：D:/Desktop/周报.md，已经完成。\n";
     expect(findDocumentReferences(content).map((r) => r.path)).toEqual([
-      "D:\\Users\\chenfl\\Desktop\\AI 周报(V1.0).md",
-      "D:/Desktop/AI 周报(V1.0).docx",
+      "D:\\Users\\demo\\Desktop\\示例 周报(V1.0).md",
+      "D:/Desktop/示例 周报(V1.0).docx",
       "D:/Desktop/周报.md",
     ]);
-    expect(documentPath("file:///D:/Desktop/AI%20%E5%91%A8%E6%8A%A5.md")).toBe(
-      "D:/Desktop/AI 周报.md",
-    );
+    expect(
+      documentPath(
+        "file:///D:/Desktop/%E7%A4%BA%E4%BE%8B%20%E5%91%A8%E6%8A%A5.md",
+      ),
+    ).toBe("D:/Desktop/示例 周报.md");
   });
   it("does not turn commands, executable paths, HTTP URLs or UNC paths into local grants", () => {
     expect(
@@ -80,7 +82,7 @@ describe("conversation file references", () => {
     expect(documentPath("file://server/share/report.md")).toBeNull();
   });
   it("allows an existing document explicitly referenced by a saved local reply outside projects", async () => {
-    const path = join(dir, "AI 周报(V1.0).md");
+    const path = join(dir, "示例 周报(V1.0).md");
     await writeFile(path, "report");
     state.conversation.messages[0].content = "本机文件：`" + path + "`";
     await expect(
@@ -88,7 +90,7 @@ describe("conversation file references", () => {
     ).resolves.toMatchObject({
       path: await realpath(path),
       size: 6,
-      name: "AI 周报(V1.0).md",
+      name: "示例 周报(V1.0).md",
     });
     await expect(
       resolveConversationFile({
