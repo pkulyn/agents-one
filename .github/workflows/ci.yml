@@ -66,6 +66,9 @@ jobs:
       - name: Check public documentation scope
         run: npm run docs:check
 
+      - name: Check public privacy
+        run: npm run privacy:test && npm run privacy:check
+
       - name: Check formatting
         run: npm run format:check
 

@@ -111,6 +111,7 @@ jobs:
         run: |
           $commands = @(
             @{ Name = 'public documentation scope'; Run = { npm run docs:check } },
+            @{ Name = 'public privacy'; Run = { npm run privacy:test; if ($LASTEXITCODE -ne 0) { throw 'Privacy regression failed' }; npm run privacy:check } },
             @{ Name = 'release tooling'; Run = { node --test scripts/classify-ci-change.test.mjs scripts/write-windows-release-identity.test.mjs } },
             @{ Name = 'format'; Run = { npm run format:check } },
             @{ Name = 'typecheck'; Run = { npm run typecheck } },
