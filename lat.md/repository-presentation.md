@@ -77,3 +77,9 @@ The desktop launcher accepts an optional NodePath and otherwise uses PATH. Andro
 Repository lint and formatting gates exclude Gradle build and cache directories. Generated reports are not authored JavaScript or HTML and must not change source quality results after Android tests run.
 
 The exclusion is limited to Android build/cache output; Android source, development scripts and tracked contract inputs remain subject to the existing checks.
+
+## Public privacy gate
+
+Public source checks reject identifying literal home paths, selected credential formats and public IP endpoints; media changes require a reviewed SHA-256 entry and pass metadata checks.
+
+CI and Windows release validation run the gate. Synthetic security fixtures use exact file/rule/line fingerprints, so changed fixtures require review. The gate does not inspect pixel content or unpack archives; screenshots, films and downloadable packages still need separate review. Legacy unused previews are excluded from the public tree; tests use synthetic account and document names.
