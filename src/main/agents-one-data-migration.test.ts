@@ -28,6 +28,54 @@ afterEach(() => {
 });
 
 describe("Agents One data migration", () => {
+  it("initializes portable data without importing old configs, chats, profiles or credentials", () => {
+    const legacy = join(fixtureRoot, "old-hermes");
+    const userData = join(fixtureRoot, "portable");
+    mkdirSync(join(legacy, "desktop"), { recursive: true });
+    writeFileSync(
+      join(legacy, "desktop.json"),
+      JSON.stringify({
+        agentRuntimes: [{ id: "old-test" }],
+        futureKey: "keep",
+      }),
+    );
+    writeFileSync(
+      join(legacy, "desktop", "runtime-conversations.json"),
+      '{"conversations":[{"id":"old-chat"}]}',
+    );
+    writeFileSync(join(legacy, ".env"), "FIXTURE_KEY=not-a-real-key\n");
+    const original = readFileSync(join(legacy, "desktop.json"), "utf8");
+    expect(
+      migrateLegacyAgentsOneData({
+        legacyHermesHome: legacy,
+        userDataDirectory: userData,
+        importLegacy: false,
+      }),
+    ).toBe(true);
+    const data = join(userData, "data");
+    expect(existsSync(join(data, "desktop.json"))).toBe(false);
+    expect(
+      existsSync(
+        join(data, "profiles/default/desktop/runtime-conversations.json"),
+      ),
+    ).toBe(false);
+    expect(
+      JSON.parse(readFileSync(join(data, "migration-v1.json"), "utf8")),
+    ).toMatchObject({ sourceRoot: null, sourceFiles: [], files: [] });
+    expect(readFileSync(join(legacy, "desktop.json"), "utf8")).toBe(original);
+    // A portable profile which already exists is never reset by this policy.
+    writeFileSync(join(data, "desktop.json"), '{"userSetting":true}');
+    expect(
+      migrateLegacyAgentsOneData({
+        legacyHermesHome: legacy,
+        userDataDirectory: userData,
+        importLegacy: false,
+      }),
+    ).toBe(false);
+    expect(readFileSync(join(data, "desktop.json"), "utf8")).toBe(
+      '{"userSetting":true}',
+    );
+  });
   it("copies app-owned data and desktop tables without modifying Hermes state", () => {
     const legacy = join(fixtureRoot, "hermes");
     const userData = join(fixtureRoot, "user-data");

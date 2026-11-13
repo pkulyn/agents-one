@@ -36,6 +36,8 @@ const ATTACHMENT_REFERENCE_STORES = new Set([
 export interface AgentsOneDataMigrationOptions {
   legacyHermesHome: string;
   userDataDirectory?: string;
+  /** False creates a new empty store without reading any legacy home. */
+  importLegacy?: boolean;
 }
 
 function hashFile(path: string): string {
@@ -278,50 +280,52 @@ export function migrateLegacyAgentsOneData(
       copyVerifiedFile(from, join(stage, ...relativeTarget.split("/")));
       sourceFiles.push(relativeSource);
     };
-    copyFileIfPresent("desktop.json", "desktop.json");
-    copyFileIfPresent(
-      "profile-meta.json",
-      "profiles/default/profile-meta.json",
-    );
-    copyFileIfPresent("active_profile", "active_profile");
-    if (existsSync(join(sourceRoot, "desktop"))) {
-      copyDirectory(
-        join(sourceRoot, "desktop"),
-        join(stage, "profiles", "default", "desktop"),
-        RETAINED_LEGACY_DIRECTORIES,
+    if (options.importLegacy !== false) {
+      copyFileIfPresent("desktop.json", "desktop.json");
+      copyFileIfPresent(
+        "profile-meta.json",
+        "profiles/default/profile-meta.json",
       );
-    }
-    copyDirectory(
-      join(sourceRoot, "desktop-staging"),
-      join(stage, "desktop-staging"),
-    );
-    copyDesktopTables(
-      join(sourceRoot, "state.db"),
-      join(stage, "profiles", "default", "desktop.db"),
-    );
-    const profilesRoot = join(sourceRoot, "profiles");
-    if (existsSync(profilesRoot)) {
-      requireOrdinaryDirectory(profilesRoot);
-      for (const profile of readdirSync(profilesRoot, {
-        withFileTypes: true,
-      })) {
-        if (!profile.isDirectory() || !PROFILE_NAME_RE.test(profile.name))
-          continue;
-        const oldHome = join(profilesRoot, profile.name);
-        requireOrdinaryDirectory(oldHome);
-        const newHome = join(stage, "profiles", profile.name);
-        const oldMeta = join(oldHome, "profile-meta.json");
-        if (existsSync(oldMeta))
-          copyVerifiedFile(oldMeta, join(newHome, "profile-meta.json"));
+      copyFileIfPresent("active_profile", "active_profile");
+      if (existsSync(join(sourceRoot, "desktop"))) {
         copyDirectory(
-          join(oldHome, "desktop"),
-          join(newHome, "desktop"),
+          join(sourceRoot, "desktop"),
+          join(stage, "profiles", "default", "desktop"),
           RETAINED_LEGACY_DIRECTORIES,
         );
-        copyDesktopTables(
-          join(oldHome, "state.db"),
-          join(newHome, "desktop.db"),
-        );
+      }
+      copyDirectory(
+        join(sourceRoot, "desktop-staging"),
+        join(stage, "desktop-staging"),
+      );
+      copyDesktopTables(
+        join(sourceRoot, "state.db"),
+        join(stage, "profiles", "default", "desktop.db"),
+      );
+      const profilesRoot = join(sourceRoot, "profiles");
+      if (existsSync(profilesRoot)) {
+        requireOrdinaryDirectory(profilesRoot);
+        for (const profile of readdirSync(profilesRoot, {
+          withFileTypes: true,
+        })) {
+          if (!profile.isDirectory() || !PROFILE_NAME_RE.test(profile.name))
+            continue;
+          const oldHome = join(profilesRoot, profile.name);
+          requireOrdinaryDirectory(oldHome);
+          const newHome = join(stage, "profiles", profile.name);
+          const oldMeta = join(oldHome, "profile-meta.json");
+          if (existsSync(oldMeta))
+            copyVerifiedFile(oldMeta, join(newHome, "profile-meta.json"));
+          copyDirectory(
+            join(oldHome, "desktop"),
+            join(newHome, "desktop"),
+            RETAINED_LEGACY_DIRECTORIES,
+          );
+          copyDesktopTables(
+            join(oldHome, "state.db"),
+            join(newHome, "desktop.db"),
+          );
+        }
       }
     }
     const selectedFile = join(stage, "active_profile");
@@ -343,7 +347,7 @@ export function migrateLegacyAgentsOneData(
       JSON.stringify(
         {
           version: MIGRATION_VERSION,
-          sourceRoot,
+          sourceRoot: options.importLegacy === false ? null : sourceRoot,
           migratedAt: new Date().toISOString(),
           sourceFiles,
           retainedLegacyDirectories: [...RETAINED_LEGACY_DIRECTORIES],

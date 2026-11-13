@@ -163,6 +163,9 @@ function Layout(): React.JSX.Element {
     () =>
       runtimeList.find((runtime) => runtime.id === defaultRuntimeId) ??
       runtimeList.find(
+        (runtime) => runtime.kind === "one" && runtime.enabled,
+      ) ??
+      runtimeList.find(
         (runtime) => runtime.kind === "hermes" && runtime.enabled,
       ) ??
       runtimeList.find((runtime) => runtime.enabled) ??
@@ -322,6 +325,25 @@ function Layout(): React.JSX.Element {
         .listAgentRuntimes()
         .then((list) => {
           if (cancelled) return;
+          try {
+            const pendingOne = list.find(
+              (runtime) =>
+                runtime.kind === "one" &&
+                runtime.enabled &&
+                !runtime.config.endpoint?.trim() &&
+                !runtime.config.model?.trim(),
+            );
+            if (
+              pendingOne &&
+              !localStorage.getItem(DEFAULT_AGENT_RUNTIME_KEY) &&
+              !localStorage.getItem("agents-one.one-onboarding.seen.v1")
+            ) {
+              localStorage.setItem("agents-one.one-onboarding.seen.v1", "1");
+              setView("agents");
+            }
+          } catch {
+            /* Storage may be unavailable; keep normal navigation accessible. */
+          }
           setRuntimeCatalog(
             Object.fromEntries(list.map((runtime) => [runtime.id, runtime])),
           );

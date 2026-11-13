@@ -8,6 +8,14 @@ The Electron main process keeps the entrypoint small and separates app lifecycle
 
 [[src/main/index.ts]] applies GPU crash preferences, enables the optional CDP testing port, and calls [[src/main/app/start.ts#startMainProcess]]. This keeps one-off process boot concerns separate from windows, menus, updater wiring, and IPC.
 
+## One first-run defaults
+
+First launch provides a ready-to-configure One with the product avatar, without model addresses, API keys or demo conversations.
+
+[[src/main/one-default.ts#initializeDefaultOne]] seeds the dedicated registry once before windows and background work start. Existing One definitions, disabled state, custom appearance, unknown settings and explicit dedicated registries are preserved. The initialization marker prevents a later deletion from being undone. The renderer prefers One when no default agent was selected and opens configuration once for an unconfigured One; connected agents remain in their separate local, remote and web onboarding flow. Task-mode controls use list/workflow glyphs distinct from the model icon.
+
+[[src/main/startup-data-policy.ts#automaticLegacyImportAllowed]] disables both brand-directory and Hermes desktop-data adoption for portable launches, including launches with an explicit user-data override. A portable data root starts empty and receives its own migration marker; existing portable data is retained. Installed launches keep the verified legacy-copy upgrade path.
+
 ## GPU Fallback
 
 Hardware acceleration is disabled and persisted after a GPU-process crash so machines without a usable GPU avoid an infinite crash → relaunch loop — but only temporarily, so a transient crash can't strand a working GPU on SwiftShader.

@@ -70,7 +70,7 @@ export default {
     stepConnection: "Connection Settings",
     chooseTypeTitle: "Choose an agent type",
     chooseTypeHint:
-      "Configure the built-in agent or connect an agent by location.",
+      "Connect a local, remote, or web agent by location.",
     oneAgent: "Configure Agent",
     oneAgentDescription:
       "Configure a model API to use the built-in tools and execution features",
