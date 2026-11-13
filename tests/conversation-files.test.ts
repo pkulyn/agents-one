@@ -67,9 +67,11 @@ describe("conversation file references", () => {
       "D:/Desktop/示例 周报(V1.0).docx",
       "D:/Desktop/周报.md",
     ]);
-    expect(documentPath("file:///D:/Desktop/%E7%A4%BA%E4%BE%8B%20%E5%91%A8%E6%8A%A5.md")).toBe(
-      "D:/Desktop/示例 周报.md",
-    );
+    expect(
+      documentPath(
+        "file:///D:/Desktop/%E7%A4%BA%E4%BE%8B%20%E5%91%A8%E6%8A%A5.md",
+      ),
+    ).toBe("D:/Desktop/示例 周报.md");
   });
   it("does not turn commands, executable paths, HTTP URLs or UNC paths into local grants", () => {
     expect(
