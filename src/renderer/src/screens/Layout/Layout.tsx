@@ -339,6 +339,7 @@ function Layout(): React.JSX.Element {
               !localStorage.getItem("agents-one.one-onboarding.seen.v1")
             ) {
               localStorage.setItem("agents-one.one-onboarding.seen.v1", "1");
+              setVisitedViews((prev) => new Set(prev).add("agents"));
               setView("agents");
             }
           } catch {

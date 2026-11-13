@@ -38,6 +38,9 @@
   "resources/icon.png": {
     "sha256": "0dc1e4589ff161b3e6bf5b116817c21594b2d8dc897b689d2575472dadfdcfc4"
   },
+  "resources/one-avatar.png": {
+    "sha256": "8f6ab35583f1e3ef3bbd2e5ca5d6137fa6f84ee7d5085872db53a67a0c553e39"
+  },
   "src/renderer/src/assets/icons/etherium.webp": {
     "sha256": "7127b216eb036c930db6a0a38d726660ea65494daeaf0544aebebc8c14726d61"
   },

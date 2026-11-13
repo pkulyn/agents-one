@@ -42,6 +42,22 @@ export function initializeDefaultOne(): void {
       },
     };
     config.oneAgentRuntimes = [runtime];
+    const appearances = config.agentRuntimeAppearances;
+    // Appearance overrides are read separately from the runtime registry.
+    // Preserve existing overrides (including an explicit null avatar).
+    if (
+      !appearances ||
+      (typeof appearances === "object" && !Array.isArray(appearances))
+    ) {
+      config.agentRuntimeAppearances = {
+        ...(appearances as Record<string, unknown> | undefined),
+        [id]: {
+          avatar: runtime.avatar,
+          color: runtime.color,
+          ...(appearances as Record<string, object> | undefined)?.[id],
+        },
+      };
+    }
   }
   config.oneDefaultInitialized = true;
   writeDesktopConfig(config);

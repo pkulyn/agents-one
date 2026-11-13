@@ -30,6 +30,9 @@ describe("One first-run initialization", () => {
       }>
     )[0];
     expect(one.id).toBe("one");
+    expect(state.config.agentRuntimeAppearances).toMatchObject({
+      one: { avatar: one.avatar },
+    });
     expect(one.avatar).toBe(
       `data:image/png;base64,${readFileSync(join(__dirname, "../../resources/one-avatar.png")).toString("base64")}`,
     );
@@ -77,5 +80,18 @@ describe("One first-run initialization", () => {
     state.config.oneAgentRuntimes = [];
     initializeDefaultOne();
     expect(state.config.oneAgentRuntimes).toEqual([]);
+  });
+  it("preserves unrelated appearance entries and an explicit saved appearance", () => {
+    state.config = {
+      agentRuntimeAppearances: {
+        one: { avatar: null, name: "My One" },
+        codex: { color: "#123456" },
+      },
+    };
+    initializeDefaultOne();
+    expect(state.config.agentRuntimeAppearances).toMatchObject({
+      one: { avatar: null, name: "My One" },
+      codex: { color: "#123456" },
+    });
   });
 });
