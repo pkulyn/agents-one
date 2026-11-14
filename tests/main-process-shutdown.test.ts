@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => {
     closeDbConnection: vi.fn(),
     registerIpcHandlers: vi.fn(),
     setupUpdater: vi.fn(),
+    initializeDefaultOne: vi.fn(),
     stopTaskScheduleRunner: vi.fn(),
     stopTaskScheduleRunnerAndWait: vi.fn(async () => true),
     stopAcceptingAgentRuntimeTasks: vi.fn(),
@@ -221,6 +222,9 @@ vi.mock("../src/main/desktop-secret-store", () => ({
 vi.mock("../src/main/agents-one-data-migration", () => ({
   migrateLegacyAgentsOneData: vi.fn(() => false),
 }));
+vi.mock("../src/main/one-default", () => ({
+  initializeDefaultOne: mocks.initializeDefaultOne,
+}));
 vi.mock("../src/main/app/desktop-config-startup", () => ({
   verifyDesktopConfigurationAtStartup: vi.fn(() => true),
 }));
@@ -248,6 +252,7 @@ describe("main window recovery", () => {
       const { startMainProcess } = await import("../src/main/app/start");
       startMainProcess();
       await vi.waitFor(() => expect(mocks.windows).toHaveLength(1));
+      expect(mocks.initializeDefaultOne).toHaveBeenCalledOnce();
       const event = { preventDefault: vi.fn() };
       mocks.windows[0].handlers.get("close")?.(event);
       expect(event.preventDefault).toHaveBeenCalledOnce();
@@ -280,5 +285,18 @@ describe("main window recovery", () => {
     mocks.windows[0].destroyed = true;
     secondInstance?.();
     expect(mocks.windows).toHaveLength(2);
+  });
+  it("does not open a window when default One initialization cannot persist safely", async () => {
+    vi.resetModules();
+    mocks.handlers.clear();
+    mocks.windows.length = 0;
+    mocks.app.whenReady.mockResolvedValueOnce(undefined);
+    mocks.initializeDefaultOne.mockImplementationOnce(() => {
+      throw new Error("Configuration is read-only");
+    });
+    const { startMainProcess } = await import("../src/main/app/start");
+    startMainProcess();
+    await vi.waitFor(() => expect(mocks.app.exit).toHaveBeenCalledWith(1));
+    expect(mocks.windows).toHaveLength(0);
   });
 });

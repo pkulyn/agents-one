@@ -68,7 +68,7 @@ export default {
     stepBasics: "基础信息",
     stepConnection: "连接设置",
     chooseTypeTitle: "选择智能体类型",
-    chooseTypeHint: "配置内置智能体，或按运行位置接入其他智能体。",
+    chooseTypeHint: "按运行位置接入本地、远程或网页智能体。",
     oneAgent: "配置智能体",
     oneAgentDescription: "配置模型 API 后即可使用内置工具与执行能力",
     oneAgentDefaultName: "我的智能体",

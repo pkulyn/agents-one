@@ -11,6 +11,8 @@ import { cleanupTempMediaFiles } from "../media";
 import { closeDbConnection } from "../db";
 import { recoverInterruptedAgentsOneRestore } from "../agents-one-backup";
 import { migrateLegacyAgentsOneData } from "../agents-one-data-migration";
+import { automaticLegacyImportAllowed } from "../startup-data-policy";
+import { initializeDefaultOne } from "../one-default";
 import { HERMES_HOME } from "../installer";
 import { isAgentsOneRestoreWriteLocked } from "../restore-write-lock";
 import { startDesktopMobileOwner } from "../mobile-control/desktop-owner";
@@ -203,8 +205,17 @@ export function startMainProcess(): void {
       return;
     }
     try {
-      if (migrateLegacyAgentsOneData({ legacyHermesHome: HERMES_HOME })) {
-        logApplicationDiagnostic("data.migrated-from-hermes-home");
+      if (
+        migrateLegacyAgentsOneData({
+          legacyHermesHome: HERMES_HOME,
+          importLegacy: automaticLegacyImportAllowed(),
+        })
+      ) {
+        logApplicationDiagnostic(
+          automaticLegacyImportAllowed()
+            ? "data.migrated-from-hermes-home"
+            : "data.initialized-isolated",
+        );
       }
     } catch (error) {
       console.error("[DATA] Failed to migrate Agents One data", error);
@@ -214,6 +225,13 @@ export function startMainProcess(): void {
     }
     if (!verifyDesktopConfigurationAtStartup()) {
       logErrorDiagnostic("app.desktop-config-unavailable");
+      app.exit(1);
+      return;
+    }
+    try {
+      initializeDefaultOne();
+    } catch (error) {
+      logErrorDiagnostic("app.one-initialization-failed", error);
       app.exit(1);
       return;
     }

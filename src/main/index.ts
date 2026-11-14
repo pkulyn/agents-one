@@ -2,6 +2,7 @@ import { app } from "electron";
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import { applyGpuPreferences, installGpuCrashGuard } from "./gpu-fallback";
+import { automaticLegacyImportAllowed } from "./startup-data-policy";
 
 function configurePortableUserData(): void {
   // electron-builder's portable launcher marks the extracted app with this
@@ -34,6 +35,7 @@ function migrateLegacyUserData(): void {
   // selected Hermes home, GPU fallback and update settings. Desktop-owned
   // data is migrated separately into the effective Agents One userData path.
   if (
+    !automaticLegacyImportAllowed() ||
     process.env.AGENTS_ONE_USER_DATA_DIR?.trim() ||
     process.env.HERMES_DESKTOP_USER_DATA_DIR?.trim()
   )

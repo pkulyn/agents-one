@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Bot, Check, ChevronDown, Users, X } from "../../assets/icons";
+import { Check, ChevronDown, X } from "../../assets/icons";
+import { ListTodo, Workflow } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 export function TaskModeControl({
@@ -60,7 +61,11 @@ export function TaskModeControl({
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        {collaborative ? <Users size={14} /> : <Bot size={14} />}
+        {collaborative ? (
+          <Workflow size={14} aria-hidden="true" />
+        ) : (
+          <ListTodo size={14} aria-hidden="true" />
+        )}
         <span>
           {t(
             collaborative

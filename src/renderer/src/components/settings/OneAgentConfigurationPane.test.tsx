@@ -112,6 +112,43 @@ describe("OneAgentConfigurationPane", () => {
     installAPI();
   });
 
+  it("configures the default blank One directly without creating an agent", async () => {
+    const api = installAPI();
+    const runtime = createRuntime();
+    runtime.config = { agentTransport: "local-sdk", endpoint: "", model: "" };
+    render(
+      <OneAgentConfigurationPane
+        runtime={runtime}
+        section="model"
+        onChanged={() => {}}
+      />,
+    );
+    expect(await screen.findByLabelText("Base URL")).toHaveValue("");
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.queryByLabelText("智能体 ID")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Base URL"), {
+      target: { value: "https://models.example.test/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /添加模型/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("模型 ID"), {
+      target: { value: "my-model" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: /保存模型设置/ }));
+    await waitFor(() =>
+      expect(api.saveAgentRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: runtime.id,
+          config: expect.objectContaining({
+            endpoint: "https://models.example.test/v1",
+            model: "my-model",
+          }),
+        }),
+      ),
+    );
+  });
+
   it("renders provider settings and model choices without runtime identity fields", async () => {
     installAPI();
     render(
