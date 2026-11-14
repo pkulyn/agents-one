@@ -126,6 +126,30 @@ describe("project folder registry", () => {
     expect(readFileSync(legacyPath, "utf8")).toBe(legacyBefore);
   });
 
+  // @lat: [[main-process#One first-run defaults]]
+  it("never reads a Hermes project registry in portable mode, including after restart and removing the last local project", async () => {
+    const legacyPath = join(testHome, "desktop", "project-folders.json");
+    mkdirSync(join(testHome, "desktop"), { recursive: true });
+    const original = JSON.stringify({
+      version: 2,
+      folders: [
+        { path: "D:/Legacy", name: "Legacy", createdAt: 1, updatedAt: 1 },
+      ],
+    });
+    writeFileSync(legacyPath, original);
+    vi.stubEnv("PORTABLE_EXECUTABLE_DIR", "D:/portable");
+    let store = await loadStore();
+    expect(store.listProjectFolders()).toEqual([]);
+    const local = store.registerProjectFolder("D:/Selected");
+    store = await loadStore();
+    expect(store.listProjectFolders()).toHaveLength(1);
+    expect(store.listProjectFolders()[0].id).toBe(local!.id);
+    store.removeProjectWorkspace(local!.id!);
+    store = await loadStore();
+    expect(store.listProjectFolders()).toEqual([]);
+    expect(readFileSync(legacyPath, "utf8")).toBe(original);
+  });
+
   it("resolves a stable opaque id without exposing a caller-supplied path", async () => {
     const store = await loadStore();
     const registered = store.registerProjectFolder("D:/Projects/Alpha");

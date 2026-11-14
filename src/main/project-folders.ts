@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { basename, join, normalize } from "path";
 import { createHash } from "crypto";
+import { automaticLegacyImportAllowed } from "./startup-data-policy";
 import {
   getActiveProfileNameSync,
   agentsOneProfileHome,
@@ -73,7 +74,10 @@ function readStore(): ProjectFolderStore {
     const currentPath = storePath();
     const sourcePath = existsSync(currentPath)
       ? currentPath
-      : legacyStorePath();
+      : automaticLegacyImportAllowed()
+        ? legacyStorePath()
+        : undefined;
+    if (!sourcePath) return { version: STORE_VERSION, folders: [] };
     if (!existsSync(sourcePath)) return { version: STORE_VERSION, folders: [] };
     const parsed = JSON.parse(readFileSync(sourcePath, "utf8")) as unknown;
     const folders =

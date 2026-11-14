@@ -91,6 +91,7 @@ import {
 import {
   claimRuntimeConversationRun,
   getRuntimeConversation,
+  listRuntimeConversations,
 } from "./runtime-conversation-store";
 import {
   NO_AGENT_RUNTIME_CAPABILITIES,
@@ -3279,7 +3280,16 @@ export function listAgentRuntimes(): AgentRuntimeDefinition[] {
   const appearances = runtimeAppearances();
   const users = userRuntimes();
   const hasPi = users.some((runtime) => runtime.kind === "pi");
-  const defaults = hasPi ? [] : [defaultPiRuntime()];
+  // Fresh workspaces start with One. Keep the old implicit Pi identity only
+  // when app-owned history actually references it; explicit user entries,
+  // including disabled ones, always win and are never regenerated.
+  const needsLegacyPi =
+    !hasPi &&
+    listRuntimeConversations(
+      getActiveProfileNameSync(),
+      Number.MAX_SAFE_INTEGER,
+    ).some((conversation) => conversation.runtimeId === "pi");
+  const defaults = needsLegacyPi ? [defaultPiRuntime()] : [];
   // The legacy local Hermes entry is a built-in adapter, but it should not be
   // advertised when the actual Hermes executable is absent. A desktop.json
   // or other leftover data directory is not proof that Hermes is installed.
