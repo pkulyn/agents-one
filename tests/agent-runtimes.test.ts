@@ -158,6 +158,55 @@ describe("agent runtime registry", () => {
       rmSync(testProjectRoot, { recursive: true, force: true });
   });
 
+  // @lat: [[main-process#One first-run defaults]]
+  it("starts without an implicit Pi while preserving explicit disabled Pi and historic Pi identities", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    const { runtimes } = await loadModules();
+    expect(runtimes.listAgentRuntimes().some((r) => r.kind === "pi")).toBe(
+      false,
+    );
+    const history = await import("../src/main/runtime-conversation-store");
+    const folder = join(testHome, "data/profiles/default/desktop");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, "runtime-conversations.json"),
+      JSON.stringify({
+        conversations: [
+          {
+            id: "old-pi",
+            runtimeId: "pi",
+            runtimeKind: "pi",
+            title: "Historic Pi task",
+            createdAt: 1,
+            updatedAt: 1,
+            messages: [],
+          },
+        ],
+      }),
+    );
+    expect(history.listRuntimeConversations("default")).toHaveLength(1);
+    expect(runtimes.listAgentRuntimes()).toContainEqual(
+      expect.objectContaining({ id: "pi", kind: "pi" }),
+    );
+    runtimes.saveAgentRuntime({
+      id: "custom-pi",
+      kind: "pi",
+      name: "My Pi",
+      enabled: false,
+      location: "local",
+      config: { executablePath: "pi", transport: "cli" },
+    });
+    expect(runtimes.listAgentRuntimes().filter((r) => r.kind === "pi")).toEqual(
+      [
+        expect.objectContaining({
+          id: "custom-pi",
+          name: "My Pi",
+          enabled: false,
+        }),
+      ],
+    );
+  });
+
   // @lat: [[runtime-chat#Universal Word attachment dispatch]]
   it.each(["pi", "codex", "claude-code", "hermes"])(
     "dispatches Word text to %s without binary model parts",

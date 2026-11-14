@@ -1,4 +1,10 @@
 import { prepareRuntimeWordInputs, isWordAttachment } from "./runtime-inputs";
+import { automaticLegacyImportAllowed } from "./startup-data-policy";
+import {
+  readPortableVoiceEnvironment,
+  portableVoiceApiKey,
+  savePortableVoiceSettings,
+} from "./portable-voice-settings";
 import { ChildProcess, spawn } from "child_process";
 import { randomUUID } from "crypto";
 import {
@@ -292,6 +298,12 @@ function voiceSettingEnabled(env: Record<string, string>): boolean {
   );
 }
 
+function readVoiceEnvironment(profile?: string): Record<string, string> {
+  return automaticLegacyImportAllowed()
+    ? readEnv(profile) || {}
+    : readPortableVoiceEnvironment(profile);
+}
+
 function voiceUrlInput(env: Record<string, string>): string {
   return (
     env[VOICE_URL_ENV_KEY] ??
@@ -348,6 +360,7 @@ function transcriptionUrl(value: string): string {
 }
 
 function voiceApiKey(profile?: string): string {
+  if (!automaticLegacyImportAllowed()) return portableVoiceApiKey(profile);
   // A profile value saved from the Settings UI must remain usable even when a
   // command-based secrets provider is configured for other credentials. Keep
   // the process-environment override, then fall back to profile/provider keys.
@@ -391,7 +404,7 @@ function hasSavedVoiceMarker(value: string): boolean {
 function resolveVoiceUrlDraft(value: string, profile?: string): string {
   const draft = value.trim();
   if (!hasSavedVoiceMarker(draft)) return draft;
-  const current = voiceUrlInput(readEnv(profile) || {});
+  const current = voiceUrlInput(readVoiceEnvironment(profile));
   if (current && draft === publicVoiceUrl(current)) return current;
   throw new Error(
     "修改语音地址时请重新输入完整 URL；隐藏标记不能保存或连接。 / Re-enter the complete voice URL; retained markers cannot be saved or connected.",
@@ -401,7 +414,7 @@ function resolveVoiceUrlDraft(value: string, profile?: string): string {
 export function getVoiceInputPublicConfig(
   profile?: string,
 ): VoiceInputPublicConfig {
-  const env = readEnv(profile) || {};
+  const env = readVoiceEnvironment(profile);
   const rawUrl = voiceUrlInput(env);
   const url = publicVoiceUrl(rawUrl);
   const enabled = voiceSettingEnabled(env);
@@ -443,7 +456,7 @@ export function saveVoiceInputConfig(
       url = normalizedVoiceBaseUrl(rawUrl).toString().replace(/\/$/, "");
     } catch (error) {
       // Disabling an invalid saved endpoint must not require exposing or losing it.
-      const current = voiceUrlInput(readEnv(profile) || {});
+      const current = voiceUrlInput(readVoiceEnvironment(profile));
       if (
         input.enabled ||
         input.url.trim() !== publicVoiceUrl(current) ||
@@ -459,12 +472,24 @@ export function saveVoiceInputConfig(
     input.apiKey.trim()
       ? assertVoiceApiKey(input.apiKey)
       : undefined;
-  setEnvValue(VOICE_ENABLED_ENV_KEY, input.enabled ? "1" : "0", profile);
-  setEnvValue(VOICE_URL_ENV_KEY, url, profile);
-  if (input.clearApiKey === true) {
-    setEnvValue(VOICE_API_KEY_ENV_KEY, "", profile);
-  } else if (replacementKey !== undefined) {
-    setEnvValue(VOICE_API_KEY_ENV_KEY, replacementKey, profile);
+  if (!automaticLegacyImportAllowed()) {
+    savePortableVoiceSettings(
+      {
+        enabled: input.enabled,
+        url,
+        replacementKey,
+        clearApiKey: input.clearApiKey,
+      },
+      profile,
+    );
+  } else {
+    setEnvValue(VOICE_ENABLED_ENV_KEY, input.enabled ? "1" : "0", profile);
+    setEnvValue(VOICE_URL_ENV_KEY, url, profile);
+    if (input.clearApiKey === true) {
+      setEnvValue(VOICE_API_KEY_ENV_KEY, "", profile);
+    } else if (replacementKey !== undefined) {
+      setEnvValue(VOICE_API_KEY_ENV_KEY, replacementKey, profile);
+    }
   }
   invalidateSecretsCache();
   return getVoiceInputPublicConfig(profile);
@@ -529,7 +554,7 @@ export async function testVoiceInputService(
 export function getVoiceTranscriptionConfig(
   profile?: string,
 ): VoiceTranscriptionConfig {
-  const env = readEnv(profile) || {};
+  const env = readVoiceEnvironment(profile);
   if (!voiceSettingEnabled(env)) {
     throw new Error("语音输入尚未启用，请在设置中的“语音输入”完成服务接入。");
   }

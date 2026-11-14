@@ -16,6 +16,12 @@ The main process owns the transcription endpoint and optional Bearer credential 
 
 [[src/renderer/src/components/settings/VoiceInputPane.tsx#VoiceInputPane]] lets each Profile opt into a self-hosted or trusted compatible service. Its URL and enabled state are validated in [[src/main/hermes.ts#saveVoiceInputConfig]], while the optional key is accepted only for saving/testing and never returned to Renderer. New installations have no default service URL, so [[src/main/hermes.ts#getVoiceTranscriptionConfig]] rejects voice capture until the user explicitly enables a configured endpoint. [[src/main/voice-stream.ts#startStreamingTranscription]] then derives a `ws:`/`wss:` `/v1/audio/transcriptions/stream` endpoint, owns the WebSocket and optional Bearer credential, verifies the IPC sender for every audio chunk, and relays only validated v1.4 `final`, error, and end events through [[src/main/ipc/register.ts#registerIpcHandlers]]. The legacy file-upload [[src/main/hermes.ts#transcribeAudio]] remains available for API compatibility but composer voice input uses the stream. No Runtime, conversation, project, or history schema is modified.
 
+## Portable voice isolation
+
+Portable voice settings belong to the effective Agents One profile, never the host Hermes environment or credential provider. A missing local setting means voice is disabled with no endpoint or key.
+
+[[src/main/portable-voice-settings.ts#readPortableVoiceEnvironment]] supplies explicit empty defaults, and [[src/main/portable-voice-settings.ts#savePortableVoiceSettings]] preserves unknown fields in the app-owned `desktop/voice-input.json`. Profile-scoped keys use the existing OS-protected store and cannot fall back to plaintext or host environment credentials. Saving, retained endpoint resolution, health checks and transcription all use the same portable source. Installed legacy voice configuration remains compatible; no Hermes file is rewritten by portable reads or saves.
+
 ## Transport and privacy boundary
 
 Recording is an explicit user action, but transport security remains a deployment responsibility.

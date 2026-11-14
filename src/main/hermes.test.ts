@@ -36,6 +36,14 @@ vi.mock("./utils", () => ({
   getActiveProfileNameSync: vi.fn(() => undefined),
 }));
 vi.mock("./gateway-ports", () => ({ getProfilePort: vi.fn(() => 8642) }));
+vi.mock("./portable-voice-settings", () => ({
+  readPortableVoiceEnvironment: vi.fn(() => ({
+    AGENTS_ONE_VOICE_ENABLED: "0",
+    AGENTS_ONE_VOICE_API_URL: "",
+  })),
+  portableVoiceApiKey: vi.fn(() => ""),
+  savePortableVoiceSettings: vi.fn(),
+}));
 vi.mock("./models", () => ({ readModels: vi.fn(() => []) }));
 vi.mock("./secrets", () => ({
   getSecret: vi.fn(() => null),
@@ -47,6 +55,7 @@ vi.mock("child_process", () => {
 });
 
 import { spawn } from "child_process";
+import { savePortableVoiceSettings } from "./portable-voice-settings";
 import {
   getApiServerKey,
   getConnectionConfig,
@@ -126,6 +135,53 @@ describe("transcribeAudio API route", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     return fetchMock.mock.calls[0] as [string, RequestInit];
   }
+
+  // @lat: [[voice-input#Portable voice isolation]]
+  it("ignores host voice settings, keys and providers during a portable launch", async () => {
+    vi.stubEnv("PORTABLE_EXECUTABLE_DIR", "D:/portable");
+    vi.stubEnv("AGENTS_ONE_VOICE_ENABLED", "1");
+    vi.stubEnv("AGENTS_ONE_VOICE_API_URL", "https://host.example.test");
+    vi.stubEnv("AGENTS_ONE_VOICE_API_KEY", "host-fixture-key");
+    try {
+      mockedReadEnv.mockReturnValue({
+        AGENTS_ONE_VOICE_ENABLED: "1",
+        AGENTS_ONE_VOICE_API_URL: "https://legacy.example.test",
+      });
+      mockedGetSecret.mockReturnValue("legacy-fixture-key");
+      expect(getVoiceInputPublicConfig()).toEqual({
+        enabled: false,
+        url: "",
+        hasApiKey: false,
+        configured: false,
+      });
+      await expect(
+        transcribeAudio(new Uint8Array([1]), "audio/webm"),
+      ).rejects.toThrow("语音输入尚未启用");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mockedReadEnv).not.toHaveBeenCalled();
+      expect(mockedGetSecret).not.toHaveBeenCalled();
+      saveVoiceInputConfig(
+        {
+          enabled: true,
+          url: "https://selected.example.test",
+          apiKey: "selected-key",
+        },
+        "default",
+      );
+      expect(savePortableVoiceSettings).toHaveBeenCalledWith(
+        {
+          enabled: true,
+          url: "https://selected.example.test",
+          replacementKey: "selected-key",
+          clearApiKey: undefined,
+        },
+        "default",
+      );
+      expect(mockedSetEnvValue).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 
   it("keeps voice input disabled until an open-source user configures a service", async () => {
     // @lat: [[voice-input#Main-process service routing]]
