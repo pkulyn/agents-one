@@ -71,7 +71,7 @@ Get-Content .\SHA256SUMS.txt
 
 For the portable ZIP, extract the entire archive once and run `agents-one.exe` from the extracted folder. Keep all bundled files together. Subsequent launches start directly without extraction. Portable desktop data remains in `%LOCALAPPDATA%\agents-one-portable`, sharing this Windows account's previous portable data while staying separate from the installed app.
 
-Use the filename you downloaded; the portable package ends in -portable.exe. The installer is per-user. The portable build runs without installation but stores data separately from the EXE. Current builds are unsigned, so Windows may show a SmartScreen warning. Updates are checked in **Settings → About & Updates** and installed manually.
+Use the filename you downloaded; the portable package ends in -portable.zip. The installer is per-user. The portable build runs without installation but stores data separately from the program folder. Current builds are unsigned, so Windows may show a SmartScreen warning. Updates are checked in **Settings → About & Updates** and installed manually.
 
 ### 2. Set up One
 

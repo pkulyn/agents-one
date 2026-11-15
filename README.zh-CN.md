@@ -71,7 +71,7 @@ Get-Content .\SHA256SUMS.txt
 
 便携版 ZIP 请先完整解压一次，再运行解压目录中的 `agents-one.exe`，保留全部附带文件；后续启动不再解压。便携版数据仍保存在 `%LOCALAPPDATA%\agents-one-portable`，沿用本机旧便携版数据，与安装版隔离。
 
-请替换为实际下载的文件名；便携版以 -portable.exe 结尾。安装版按当前用户安装；便携版无需安装，但数据不保存在 EXE 旁。当前安装包未签名，Windows 可能显示 SmartScreen 提示。可在**设置 → 关于与更新**检查新版，手动下载安装。
+请替换为实际下载的文件名；便携版以 -portable.zip 结尾。安装版按当前用户安装；便携版无需安装，数据独立于程序目录保存。当前安装包未签名，Windows 可能显示 SmartScreen 提示。可在**设置 → 关于与更新**检查新版，手动下载安装。
 
 ### 2. 配置 One
 
