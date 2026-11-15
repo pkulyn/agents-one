@@ -66,6 +66,10 @@ jobs:
       - name: Check public documentation scope
         run: npm run docs:check
 
+      - name: Test ZIP portable packaging
+        if: steps.changes.outputs.docs_only != 'true'
+        run: node --test scripts/create-windows-portable.test.mjs
+
       - name: Check public privacy
         run: npm run privacy:test && npm run privacy:check
 

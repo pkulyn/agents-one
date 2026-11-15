@@ -76,7 +76,7 @@ An executable name that resolves outside the package output must be rejected bef
 
 Agents One removes the former desktop product identity while preserving Hermes Agent as an optional Runtime and keeping user preferences recoverable across upgrades.
 
-The single-file Windows portable launcher displays `build/portable-splash.bmp` during extraction before Electron can render its animation. Its native zlib packaging avoids staging an additional embedded 7z archive; every launch still extracts fresh program files into a temporary directory. It does not cache executable code or change profile isolation. The installed/unpacked application starts directly without this launcher stage.
+Windows portable distribution uses a ZIP folder rather than a self-extracting launcher; see [[brand-startup#ZIP folder portable distribution]]. The application startup animation remains unchanged.
 
 The preload bridge is exposed as `window.agentsOneAPI`; `window.hermesAPI` remains a deprecated alias for older automation during a migration window. Renderer preferences use versioned `agents-one.*` keys and copy old values on first read without deleting them, so rollback remains safe. New window events use the `agents-one:` namespace while listeners accept old event names temporarily.
 
@@ -113,3 +113,9 @@ The real portable npm integration test allows 30 seconds for Windows process sta
 Packaged Windows executables identify themselves as Agents One in native file descriptions and product metadata instead of retaining the Electron distribution name.
 
 The existing Windows resource hook writes the configured application name, executable identity and application versions alongside the icon, without external signing helpers. Electron copyright and unrelated resources remain intact. This applies to newly packaged executables; an app.asar-only update cannot replace old EXE metadata. The real-EXE packaging regression verifies all language tables and preservation of other resources.
+
+## ZIP folder portable distribution
+
+Windows portable ZIPs unpack once and launch the bundled executable directly. A ZIP-only resource marker preserves portable profile isolation before the single-instance lock without changing the installer payload.
+
+`scripts/create-windows-portable.mjs` copies the verified installer payload into one versioned folder, adds `resources/agents-one-portable.json` and bilingual usage instructions, and archives the complete folder. Installer payload files remain unmarked. [[src/main/startup-data-policy.ts#isPortableLaunch]] recognizes this marker and the legacy launcher environment. Both formats reuse `%LOCALAPPDATA%/agents-one-portable`; explicit data overrides retain precedence while automatic host-data imports stay disabled. Updater classification uses the same policy. Program files, configuration and history are never re-extracted or reset on launch.

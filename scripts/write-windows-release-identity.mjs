@@ -22,7 +22,7 @@ export function releaseIdentity({
     throw Error("Release source identity does not match the packaged receipt");
   if (
     !assets.some((a) => a.file === `agents-one-${version}-setup.exe`) ||
-    !assets.some((a) => a.file === `agents-one-${version}-portable.exe`)
+    !assets.some((a) => a.file === `agents-one-${version}-portable.zip`)
   )
     throw Error("Installer and portable assets must be released together");
   return {
@@ -68,7 +68,7 @@ if (
   ).version;
   const files = [
     `agents-one-${version}-setup.exe`,
-    `agents-one-${version}-portable.exe`,
+    `agents-one-${version}-portable.zip`,
   ];
   const identity = releaseIdentity({
     sourceCommit: git("rev-parse", "HEAD"),

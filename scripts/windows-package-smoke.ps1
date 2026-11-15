@@ -13,7 +13,7 @@ $executable = Join-Path $unpacked "agents-one.exe"
 $appAsar = Join-Path $unpacked "resources\app.asar"
 $trayIcon = Join-Path $unpacked "resources\app.asar.unpacked\resources\icon.png"
 $setup = Join-Path $dist "agents-one-$ExpectedVersion-setup.exe"
-$portable = Join-Path $dist "agents-one-$ExpectedVersion-portable.exe"
+$portable = Join-Path $dist "agents-one-$ExpectedVersion-portable.zip"
 
 foreach ($required in @($executable, $appAsar, $trayIcon, $setup, $portable)) {
   if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -197,4 +197,18 @@ function Invoke-StartupSmoke {
 }
 
 Invoke-StartupSmoke -Target $executable -Label "Unpacked application" -TimeoutSeconds 30
-Invoke-StartupSmoke -Target $portable -Label "Portable package" -TimeoutSeconds 60
+$zipSmoke = Join-Path $tempRoot ("agents-one-zip-smoke-" + [guid]::NewGuid().ToString("N"))
+try {
+  Expand-Archive -LiteralPath $portable -DestinationPath $zipSmoke
+  $portableFolder = Join-Path $zipSmoke "agents-one-$ExpectedVersion-portable"
+  $portableExe = Join-Path $portableFolder "agents-one.exe"
+  $marker = Join-Path $portableFolder "resources\agents-one-portable.json"
+  if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { throw "ZIP portable marker missing" }
+  if (Test-Path -LiteralPath (Join-Path $unpacked "resources\agents-one-portable.json")) { throw "Installer payload is marked portable" }
+  $before = (Get-FileHash -LiteralPath $portableExe -Algorithm SHA256).Hash
+  Invoke-StartupSmoke -Target $portableExe -Label "ZIP portable first launch" -TimeoutSeconds 30
+  Invoke-StartupSmoke -Target $portableExe -Label "ZIP portable repeat launch" -TimeoutSeconds 30
+  if ((Get-FileHash -LiteralPath $portableExe -Algorithm SHA256).Hash -ne $before) { throw "ZIP executable changed after startup" }
+} finally {
+  Remove-SmokeDirectory -Path $zipSmoke
+}

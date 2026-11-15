@@ -2,16 +2,19 @@ import { app } from "electron";
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import { applyGpuPreferences, installGpuCrashGuard } from "./gpu-fallback";
-import { automaticLegacyImportAllowed } from "./startup-data-policy";
+import {
+  automaticLegacyImportAllowed,
+  isPortableLaunch,
+} from "./startup-data-policy";
 
 function configurePortableUserData(): void {
-  // electron-builder's portable launcher marks the extracted app with this
-  // variable. Keep its desktop state separate from the installed build so
+  // Both folder ZIPs and legacy self-extracting launchers are portable.
+  // Keep their desktop state separate from the installed build so
   // portable use neither reads nor holds the installed app's single-instance
   // profile lock. An explicit test/admin override always wins.
   if (
     process.platform !== "win32" ||
-    !process.env.PORTABLE_EXECUTABLE_DIR?.trim() ||
+    !isPortableLaunch() ||
     process.env.AGENTS_ONE_USER_DATA_DIR?.trim() ||
     process.env.HERMES_DESKTOP_USER_DATA_DIR?.trim() ||
     process.argv.some((argument) => argument.startsWith("--user-data-dir="))

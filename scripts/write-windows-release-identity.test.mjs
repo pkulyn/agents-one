@@ -13,7 +13,7 @@ test("a release requires matching packaged source and both binary types", () => 
     version: "0.2.0",
     assets: [
       { file: "agents-one-0.2.0-setup.exe" },
-      { file: "agents-one-0.2.0-portable.exe" },
+      { file: "agents-one-0.2.0-portable.zip" },
     ],
   };
   assert.equal(releaseIdentity(input).automaticUpdates, false);

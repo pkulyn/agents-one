@@ -66,12 +66,6 @@ win:
   signAndEditExecutable: false
   target:
     - nsis
-    - portable
-portable:
-  artifactName: ${name}-${version}-portable.${ext}
-  # Native zlib extraction avoids staging a second large 7z archive on launch.
-  useZip: true
-  splashImage: build/portable-splash.bmp
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
