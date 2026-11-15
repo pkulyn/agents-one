@@ -231,7 +231,8 @@ export default {
     "After adding, configure models and an API key in the provider card, then save model settings.",
   configProviderSaveFirst:
     "Save model settings before configuring this provider's key.",
-  configSaveProvider: "Save model settings",
+  configRevealFailed: "Unable to reveal the saved credential. Try again.",
+  configSaveProvider: "Save settings",
   configToggleApiKeyVisibility: "Show or hide the API key",
   configSuggestedModels: "Common models for this provider",
   configSaveModel: "Save model settings",

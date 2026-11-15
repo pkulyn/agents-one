@@ -112,6 +112,35 @@ describe("OneAgentConfigurationPane", () => {
     installAPI();
   });
 
+  it("makes an unconfigured One usable with only a DeepSeek key and Save settings", async () => {
+    const api = installAPI();
+    const runtime = createRuntime();
+    runtime.config = { agentTransport: "local-sdk", endpoint: "", model: "" };
+    render(
+      <OneAgentConfigurationPane
+        runtime={runtime}
+        section="model"
+        onChanged={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "deepseek-test-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /保存设置/ }));
+    await waitFor(() =>
+      expect(api.setAgentRuntimeBearerToken).toHaveBeenCalledWith(
+        runtime.id,
+        "deepseek-test-key",
+        expect.any(String),
+      ),
+    );
+    expect(api.saveAgentRuntime.mock.calls[0][0].config).toMatchObject({
+      endpoint: "https://api.deepseek.com",
+      model: "deepseek-flash",
+      oneModels: ["deepseek-flash"],
+    });
+  });
+
   it("configures the default blank One directly without creating an agent", async () => {
     const api = installAPI();
     const runtime = createRuntime();
@@ -123,26 +152,23 @@ describe("OneAgentConfigurationPane", () => {
         onChanged={() => {}}
       />,
     );
-    expect(await screen.findByLabelText("Base URL")).toHaveValue("");
+    expect(await screen.findByLabelText("Base URL")).toHaveValue(
+      "https://api.deepseek.com",
+    );
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(screen.queryByLabelText("智能体 ID")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Base URL"), {
       target: { value: "https://models.example.test/v1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /添加模型/ }));
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("模型 ID"), {
-      target: { value: "my-model" },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
-    fireEvent.click(screen.getByRole("button", { name: /保存模型设置/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /deepseek-flash/ }));
+    fireEvent.click(screen.getByRole("button", { name: /保存设置/ }));
     await waitFor(() =>
       expect(api.saveAgentRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
           id: runtime.id,
           config: expect.objectContaining({
             endpoint: "https://models.example.test/v1",
-            model: "my-model",
+            model: "deepseek-flash",
           }),
         }),
       ),
@@ -190,7 +216,7 @@ describe("OneAgentConfigurationPane", () => {
       name: "将 doubao-seed-2.1-pro 设为当前模型",
     });
     fireEvent.click(modelRadio);
-    fireEvent.click(screen.getByRole("button", { name: /保存模型设置/ }));
+    fireEvent.click(screen.getByRole("button", { name: /保存设置/ }));
 
     await waitFor(() => expect(api.saveAgentRuntime).toHaveBeenCalledTimes(1));
     expect(api.saveAgentRuntime).toHaveBeenCalledWith(
@@ -224,15 +250,20 @@ describe("OneAgentConfigurationPane", () => {
     fireEvent.change(screen.getByLabelText("API Key"), {
       target: { value: "secret-test-key" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /保存密钥/ }));
+    fireEvent.click(screen.getByRole("button", { name: /保存设置/ }));
 
     await waitFor(() =>
       expect(api.setAgentRuntimeBearerToken).toHaveBeenCalledWith(
         "one-agent",
         "secret-test-key",
+        expect.any(String),
       ),
     );
-    expect(api.saveAgentRuntime).not.toHaveBeenCalled();
+    expect(api.saveAgentRuntime).toHaveBeenCalled();
+    expect(JSON.stringify(api.saveAgentRuntime.mock.calls)).not.toContain(
+      "secret-test-key",
+    );
+    expect(screen.queryByRole("button", { name: /保存密钥/ })).toBeNull();
   });
 
   it("adds a second provider and switches the current model to it", async () => {
@@ -255,7 +286,7 @@ describe("OneAgentConfigurationPane", () => {
       await screen.findByRole("button", { name: /OpenAI.*个模型/ }),
     );
     expect(await screen.findByText("gpt-6-astra")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /保存模型设置/ }));
+    fireEvent.click(screen.getByRole("button", { name: /保存设置/ }));
 
     await waitFor(() => expect(api.saveAgentRuntime).toHaveBeenCalled());
     expect(api.saveAgentRuntime).toHaveBeenLastCalledWith(
@@ -268,6 +299,71 @@ describe("OneAgentConfigurationPane", () => {
         }),
       }),
     );
+  });
+
+  it("probes a pasted key then saves settings and its scoped key in one action", async () => {
+    const api = installAPI();
+    const onChanged = vi.fn();
+    render(
+      <OneAgentConfigurationPane
+        runtime={createRuntime()}
+        section="model"
+        onChanged={onChanged}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "draft-test-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /检测连接/ }));
+    await waitFor(() =>
+      expect(api.probeAgentRuntimeDraft).toHaveBeenCalledWith(
+        expect.any(Object),
+        "draft-test-key",
+      ),
+    );
+    expect(api.setAgentRuntimeBearerToken).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /保存设置/ }),
+      ).not.toBeDisabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /保存设置/ }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    const providerId =
+      api.saveAgentRuntime.mock.calls[0][0].config.oneActiveProviderId;
+    expect(api.setAgentRuntimeBearerToken).toHaveBeenCalledWith(
+      "one-agent",
+      "draft-test-key",
+      providerId,
+    );
+    expect(api.saveAgentRuntime.mock.invocationCallOrder[0]).toBeLessThan(
+      api.setAgentRuntimeBearerToken.mock.invocationCallOrder[0],
+    );
+    expect(JSON.stringify(api.saveAgentRuntime.mock.calls)).not.toContain(
+      "draft-test-key",
+    );
+  });
+
+  it("retains the key draft and reports no success if protected storage fails", async () => {
+    const api = installAPI();
+    api.setAgentRuntimeBearerToken.mockRejectedValue(
+      new Error("Protected storage unavailable"),
+    );
+    const onChanged = vi.fn();
+    render(
+      <OneAgentConfigurationPane
+        runtime={createRuntime()}
+        section="model"
+        onChanged={onChanged}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "retry-test-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /保存设置/ }));
+    await screen.findByText("Protected storage unavailable");
+    expect(screen.getByLabelText("API Key")).toHaveValue("retry-test-key");
+    expect(onChanged).not.toHaveBeenCalled();
   });
 
   it("keeps plugin and MCP tabs separate from the skills destination", async () => {

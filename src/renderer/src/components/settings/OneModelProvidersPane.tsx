@@ -2,15 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
-  Eye,
-  EyeOff,
   Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
   Save,
-  ShieldCheck,
   Trash2,
   X,
 } from "lucide-react";
@@ -33,6 +30,8 @@ import {
   ONE_PROVIDER_MODEL_SUGGESTIONS,
   inferOneModelMetadata,
 } from "./one-model-catalog";
+import CredentialInput from "./CredentialInput";
+import OneProviderIcon from "./OneProviderIcon";
 import { useI18n } from "../useI18n";
 
 const API_TYPES: readonly { value: OneModelApiType; label: string }[] = [
@@ -138,13 +137,30 @@ function providersFromConfig(
     });
   });
   if (!result.length) {
+    const fresh =
+      !config.endpoint?.trim() &&
+      !config.model?.trim() &&
+      !config.oneModels?.length;
     result.push({
       id: `p-${providerHash("empty")}`,
-      name: t("agents.configProviderCustom"),
-      endpoint: config.endpoint?.trim() || "",
-      apiType: config.oneApiType || "openai-completions",
+      name: t(
+        fresh ? "agents.configProviderDeepSeek" : "agents.configProviderCustom",
+      ),
+      endpoint: fresh
+        ? "https://api.deepseek.com"
+        : config.endpoint?.trim() || "",
+      apiType: fresh
+        ? "openai-completions"
+        : config.oneApiType || "openai-completions",
       enabled: true,
-      models: [...(config.oneModels || [])],
+      models: fresh
+        ? ["deepseek-flash"]
+        : Array.from(
+            new Set([
+              ...(config.oneModels || []),
+              ...(config.model ? [config.model] : []),
+            ]),
+          ),
     });
   }
   return result;
@@ -211,7 +227,6 @@ export default function OneModelProvidersPane({
   >({});
   const [credentialWarning, setCredentialWarning] = useState("");
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
-  const [keyVisible, setKeyVisible] = useState<Record<string, boolean>>({});
   const [providerMenu, setProviderMenu] = useState<string | null>(null);
   const [providerModalOpen, setProviderModalOpen] = useState(false);
   const [providerError, setProviderError] = useState<string | null>(null);
@@ -658,6 +673,20 @@ export default function OneModelProvidersPane({
         ...runtime,
         config: nextConfig,
       });
+      // New providers must exist before their scoped secrets can be stored.
+      // Report success only after every edited key is saved; retain drafts on failure.
+      for (const provider of providers) {
+        const token = (keyInputs[provider.id] || "").trim();
+        if (!token) continue;
+        const result = await window.agentsOneAPI.setAgentRuntimeBearerToken(
+          runtime.id,
+          token,
+          provider.id,
+        );
+        setCredentialWarning(result.storage?.warning || "");
+        setCredentialStates((current) => ({ ...current, [provider.id]: true }));
+      }
+      setKeyInputs({});
       setConfig(saved.config);
       setProviders(providersFromConfig(saved.config, t));
       const savedActive = activeProviderFrom(
@@ -667,48 +696,6 @@ export default function OneModelProvidersPane({
       setActiveId(savedActive);
       setStatusVersion((current) => current + 1);
       setNotice(t("agents.configProviderSaved"));
-      onChanged();
-    } catch (error) {
-      setNotice(errorText(error));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function saveProviderKey(id: string): Promise<void> {
-    const token = (keyInputs[id] || "").trim();
-    if (!token) return;
-    const provider = providers.find((item) => item.id === id);
-    if (!provider) return;
-    const persisted = Boolean(
-      config.oneProviders?.some((item) => item.id === id),
-    );
-    const legacyOrigin =
-      !config.oneProviders?.length &&
-      id === activeId &&
-      provider.endpoint === runtime.config.endpoint?.trim() &&
-      provider.apiType === (runtime.config.oneApiType || "openai-completions");
-    if (!persisted && !legacyOrigin) {
-      setNotice(t("agents.configProviderSaveFirst"));
-      return;
-    }
-    setBusy(`key:${id}`);
-    setNotice(null);
-    try {
-      const result = persisted
-        ? await window.agentsOneAPI.setAgentRuntimeBearerToken(
-            runtime.id,
-            token,
-            id,
-          )
-        : await window.agentsOneAPI.setAgentRuntimeBearerToken(
-            runtime.id,
-            token,
-          );
-      setKeyInputs((current) => ({ ...current, [id]: "" }));
-      setCredentialStates((current) => ({ ...current, [id]: true }));
-      setCredentialWarning(result.storage?.warning || "");
-      setNotice(t("agents.configApiKeySaved"));
       onChanged();
     } catch (error) {
       setNotice(errorText(error));
@@ -736,6 +723,10 @@ export default function OneModelProvidersPane({
         config: {
           ...config,
           endpoint: activeProvider.endpoint,
+          model:
+            config.model && enabledModels.includes(config.model)
+              ? config.model
+              : enabledModels[0] || "",
           oneApiType: activeProvider.apiType,
           oneProviders: providers,
           oneActiveProviderId: activeId,
@@ -925,7 +916,10 @@ export default function OneModelProvidersPane({
               onClick={() => selectProviderChip(provider.id)}
             >
               <span className="agent-one-provider-chip-logo" aria-hidden="true">
-                {provider.name.slice(0, 1)}
+                <OneProviderIcon
+                  endpoint={provider.endpoint}
+                  apiType={provider.apiType}
+                />
               </span>
               <span className="agent-one-provider-chip-copy">
                 <strong>{provider.name}</strong>
@@ -976,7 +970,10 @@ export default function OneModelProvidersPane({
                       className="agent-one-provider-logo"
                       aria-hidden="true"
                     >
-                      {provider.name.slice(0, 1)}
+                      <OneProviderIcon
+                        endpoint={provider.endpoint}
+                        apiType={provider.apiType}
+                      />
                     </span>
                     <span className="agent-one-provider-copy">
                       <strong>{provider.name}</strong>
@@ -1107,68 +1104,32 @@ export default function OneModelProvidersPane({
                           >
                             {t("agents.configApiKey")}
                           </label>
-                          {status && (
-                            <span className="agent-one-credential-state is-ready">
-                              <ShieldCheck size={13} />{" "}
-                              {t("agents.configApiKeyConfigured")}
-                            </span>
-                          )}
                         </div>
-                        <div className="agent-one-api-key-row">
-                          <input
-                            id={`agent-one-provider-key-${provider.id}`}
-                            className="input"
-                            type={keyVisible[provider.id] ? "text" : "password"}
-                            autoComplete="new-password"
-                            value={keyInputs[provider.id] || ""}
-                            placeholder={
-                              status
-                                ? t("agents.configApiKeyReplace")
-                                : "API Key"
-                            }
-                            onChange={(event) =>
-                              setKeyInputs((current) => ({
-                                ...current,
-                                [provider.id]: event.target.value,
-                              }))
-                            }
-                          />
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm agent-one-key-visibility"
-                            aria-label={t(
-                              "agents.configToggleApiKeyVisibility",
-                            )}
-                            onClick={() =>
-                              setKeyVisible((current) => ({
-                                ...current,
-                                [provider.id]: !current[provider.id],
-                              }))
-                            }
-                          >
-                            {keyVisible[provider.id] ? (
-                              <EyeOff size={14} />
-                            ) : (
-                              <Eye size={14} />
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            disabled={
-                              busy !== null ||
-                              !(keyInputs[provider.id] || "").trim()
-                            }
-                            onClick={() => void saveProviderKey(provider.id)}
-                          >
-                            {busy === `key:${provider.id}` ? (
-                              <Loader2 size={14} className="settings-spin" />
-                            ) : (
-                              <Save size={14} />
-                            )}
-                            {t("agents.configSaveApiKey")}
-                          </button>
-                        </div>
+                        <CredentialInput
+                          key={`${provider.id}:${provider.endpoint}:${provider.apiType}:${status}:${busy === "save"}`}
+                          id={`agent-one-provider-key-${provider.id}`}
+                          value={keyInputs[provider.id] || ""}
+                          configured={status}
+                          disabled={busy !== null}
+                          reveal={() =>
+                            config.oneProviders?.some(
+                              (item) => item.id === provider.id,
+                            )
+                              ? window.agentsOneAPI.revealAgentRuntimeCredential(
+                                  runtime.id,
+                                  provider.id,
+                                )
+                              : window.agentsOneAPI.revealAgentRuntimeCredential(
+                                  runtime.id,
+                                )
+                          }
+                          onChange={(value) =>
+                            setKeyInputs((current) => ({
+                              ...current,
+                              [provider.id]: value,
+                            }))
+                          }
+                        />
                         <span className="settings-field-hint">
                           {t("agents.configApiKeyHint")}
                         </span>
@@ -1376,6 +1337,12 @@ export default function OneModelProvidersPane({
                     aria-pressed={providerDraft.presetId === preset.id}
                     onClick={() => applyProviderPreset(preset.id)}
                   >
+                    <span className="agent-one-preset-logo">
+                      <OneProviderIcon
+                        endpoint={preset.endpoint}
+                        apiType={preset.apiType}
+                      />
+                    </span>
                     <strong>
                       {providerLabel(preset.endpoint, preset.apiType, t)}
                     </strong>
@@ -1388,6 +1355,9 @@ export default function OneModelProvidersPane({
                   aria-pressed={providerDraft.presetId === "custom"}
                   onClick={() => applyProviderPreset("custom")}
                 >
+                  <span className="agent-one-preset-logo">
+                    <OneProviderIcon endpoint="" apiType="openai-completions" />
+                  </span>
                   <strong>{t("agents.configProviderCustom")}</strong>
                   <small>{t("agents.configProviderCustomHint")}</small>
                 </button>

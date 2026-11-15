@@ -1,5 +1,9 @@
 # Third-party notices
 
+## Model provider icons — MIT License
+
+Provider marks in model settings are from [Lobe Icons](https://github.com/lobehub/lobe-icons). Copyright (c) 2023 LobeHub. The complete license is in [providers/LICENSE](src/renderer/src/assets/providers/LICENSE). Logos identify the corresponding services and do not imply endorsement.
+
 Agents One is derived in part from [hermes-desktop](https://github.com/fathah/hermes-desktop). The inherited material remains available under its original MIT license. This notice does not change the licenses of other third-party dependencies or assets; consult their own distribution notices.
 
 ## hermes-desktop — MIT License

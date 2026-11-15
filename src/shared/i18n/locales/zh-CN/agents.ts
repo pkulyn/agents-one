@@ -181,7 +181,8 @@ export default {
   configProviderAddHint:
     "添加后在供应商卡片中填写模型与 API Key；保存模型设置后生效。",
   configProviderSaveFirst: "请先保存模型设置，再配置该供应商的密钥。",
-  configSaveProvider: "保存模型设置",
+  configRevealFailed: "无法显示已保存密钥，请重试。",
+  configSaveProvider: "保存设置",
   configToggleApiKeyVisibility: "显示或隐藏 API Key",
   configSuggestedModels: "该供应商常用模型",
   configSaveModel: "保存模型配置",

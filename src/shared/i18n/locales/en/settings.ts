@@ -603,7 +603,7 @@ export default {
     apiKeyPlaceholder: "Leave blank when the service does not require a key",
     apiKeyConfigured: "Configured (leave blank to retain the current key)",
     apiKeyHint:
-      "The key is never shown or written to chats, projects, or backups; after saving it can only be replaced or cleared.",
+      "The key is hidden by default. Use the eye button to reveal it, or enter a replacement and save. Keys are never written to chats or projects.",
     clearKey: "Clear saved key",
     keyWillClear: "Saving will clear the key stored for this profile.",
     test: "Test connection",

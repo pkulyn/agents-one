@@ -359,6 +359,11 @@ function transcriptionUrl(value: string): string {
   return url.toString();
 }
 
+/** Explicit user-requested reveal; ordinary voice config stays redacted. */
+export function revealVoiceInputCredential(profile?: string): string {
+  return voiceApiKey(profile);
+}
+
 function voiceApiKey(profile?: string): string {
   if (!automaticLegacyImportAllowed()) return portableVoiceApiKey(profile);
   // A profile value saved from the Settings UI must remain usable even when a

@@ -10,6 +10,7 @@ import { I18nProvider } from "../I18nProvider";
 import VoiceInputPane from "./VoiceInputPane";
 
 const api = {
+  revealVoiceInputCredential: vi.fn(),
   getVoiceInputConfig: vi.fn(),
   saveVoiceInputConfig: vi.fn(),
   testVoiceInputService: vi.fn(),
@@ -50,12 +51,14 @@ describe("VoiceInputPane", () => {
     });
     renderPane();
 
-    const keyInput = await screen.findByLabelText("API key (optional)");
-    expect(keyInput).toHaveValue("");
-    expect(keyInput).toHaveAttribute(
-      "placeholder",
-      "Configured (leave blank to retain the current key)",
+    await waitFor(() =>
+      expect(screen.getByLabelText("API key (optional)")).toHaveValue(
+        "••••••••••••••••",
+      ),
     );
+    const keyInput = screen.getByLabelText("API key (optional)");
+    expect(keyInput).toHaveAttribute("type", "password");
+    expect(keyInput).not.toHaveAttribute("placeholder");
     expect(
       screen.queryByText("Privacy and diagnostics"),
     ).not.toBeInTheDocument();
@@ -86,6 +89,42 @@ describe("VoiceInputPane", () => {
     });
     expect(api.saveVoiceInputConfig).not.toHaveBeenCalled();
     expect(screen.getByRole("status")).toHaveTextContent("qwen3");
+  });
+
+  it("reveals a saved profile key only on click without turning it into a replacement", async () => {
+    api.getVoiceInputConfig.mockResolvedValue({
+      enabled: false,
+      url: "",
+      hasApiKey: true,
+      configured: false,
+    });
+    api.revealVoiceInputCredential.mockResolvedValue("voice-test-key");
+    api.saveVoiceInputConfig.mockResolvedValue({
+      enabled: false,
+      url: "",
+      hasApiKey: true,
+      configured: false,
+    });
+    renderPane();
+    await waitFor(() =>
+      expect(screen.getByLabelText("API key (optional)")).toHaveValue(
+        "••••••••••••••••",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Show or hide/ }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("API key (optional)")).toHaveValue(
+        "voice-test-key",
+      ),
+    );
+    expect(api.revealVoiceInputCredential).toHaveBeenCalledWith("default");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.saveVoiceInputConfig).toHaveBeenCalledWith(
+        { enabled: false, url: "", apiKey: undefined, clearApiKey: false },
+        "default",
+      ),
+    );
   });
 
   it("saves the enablement, endpoint, and a replacement key", async () => {

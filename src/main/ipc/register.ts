@@ -140,6 +140,7 @@ import {
   sendMessage,
   getVoiceInputPublicConfig,
   saveVoiceInputConfig,
+  revealVoiceInputCredential,
   testVoiceInputService,
   transcribeAudio,
   startGateway,
@@ -252,6 +253,7 @@ import {
   stopAcceptingAgentRuntimeTasks,
   getAgentRuntimeCredentialStatus,
   getOneProviderCredentialStatus,
+  revealAgentRuntimeCredential,
   importOneSkill,
   listOneOwnedSkills,
   removeOneSkill,
@@ -1120,6 +1122,11 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("get-agent-runtime-credential-status", (_event, id: string) =>
     getAgentRuntimeCredentialStatus(id),
   );
+  ipcMain.handle(
+    "reveal-agent-runtime-credential",
+    (_event, id: string, providerId?: string) =>
+      revealAgentRuntimeCredential(id, providerId),
+  );
   ipcMain.handle("get-agent-runtime-diagnostics", (_event, id: string) =>
     getAgentRuntimeDiagnostics(id, app.getVersion()),
   );
@@ -1295,6 +1302,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("get-voice-input-config", (_event, profile?: string) => {
     return getVoiceInputPublicConfig(profile);
   });
+  ipcMain.handle("reveal-voice-input-credential", (_event, profile?: string) =>
+    revealVoiceInputCredential(profile),
+  );
 
   ipcMain.handle("save-voice-input-config", (_event, input, profile?: string) =>
     saveVoiceInputConfig(input, profile),
