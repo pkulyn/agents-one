@@ -55,6 +55,8 @@ extraResources:
     to: notices/Cairo-OFL.txt
   - from: src/renderer/src/assets/fonts/Manrope-OFL.txt
     to: notices/Manrope-OFL.txt
+  - from: src/renderer/src/assets/providers/LICENSE
+    to: notices/LobeIcons-LICENSE.txt
 win:
   executableName: agents-one
   icon: build/icon.ico
@@ -67,6 +69,9 @@ win:
     - portable
 portable:
   artifactName: ${name}-${version}-portable.${ext}
+  # Native zlib extraction avoids staging a second large 7z archive on launch.
+  useZip: true
+  splashImage: build/portable-splash.bmp
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}

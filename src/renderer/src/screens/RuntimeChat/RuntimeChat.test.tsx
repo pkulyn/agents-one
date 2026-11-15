@@ -635,6 +635,57 @@ describe("RuntimeChat inputs and persistence", () => {
     await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(1));
   });
 
+  it("keeps the original conversation after a missing-key failure and a configuration refresh", async () => {
+    const one: AgentRuntimeDefinition = {
+      id: "one",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      managed: "user",
+      config: {},
+    };
+    startAgentRuntimeTask.mockRejectedValueOnce(
+      new Error("Configure One model and API key first"),
+    );
+    const changed = vi.fn();
+    const { rerender } = render(
+      <RuntimeChat
+        runId="configuration-retry"
+        runtime={one}
+        profile="default"
+        onConversationIdChange={changed}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await screen.findByText("Configure One model and API key first");
+    const id = saveRuntimeConversation.mock.calls[0][0].id;
+    rerender(
+      <RuntimeChat
+        runId="configuration-retry"
+        runtime={{
+          ...one,
+          config: {
+            endpoint: "https://api.deepseek.com",
+            model: "deepseek-flash",
+          },
+        }}
+        profile="default"
+        initialConversationId={id}
+        onConversationIdChange={changed}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送测试输入" }));
+    await waitFor(() => expect(startAgentRuntimeTask).toHaveBeenCalledTimes(2));
+    expect(
+      new Set(saveRuntimeConversation.mock.calls.map(([input]) => input.id)),
+    ).toEqual(new Set([id]));
+    expect(startAgentRuntimeTask.mock.calls[1][1].conversationContext.id).toBe(
+      id,
+    );
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a Main-owned reply only after original storage commits and never writes a second final reply", async () => {
     let original = {
       id: "main-owned-conversation",

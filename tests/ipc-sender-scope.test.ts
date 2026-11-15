@@ -225,6 +225,8 @@ describe("native auxiliary roles", () => {
         "set-config",
         "restore-agents-one-backup",
         "save-agent-runtime",
+        "reveal-agent-runtime-credential",
+        "reveal-voice-input-credential",
         "mobile-execution-manage",
         "unknown-future-channel",
       ])

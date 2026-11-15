@@ -2861,6 +2861,33 @@ export function getAgentRuntimeCredentialStatus(runtimeId: string): {
   };
 }
 
+/** Explicit settings reveal only; never include secrets in catalog/status reads. */
+export function revealAgentRuntimeCredential(
+  runtimeId: string,
+  providerId?: string,
+): string {
+  const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
+  if (!runtime || runtime.needsReauthorization)
+    throw new Error("Runtime credential is unavailable.");
+  if (runtime.kind === "one" && runtime.location === "local") {
+    if (providerId) {
+      getOneProviderCredentialStatus(runtimeId, providerId);
+      return (
+        getOneProviderCredential(runtimeId, providerId) ||
+        (runtime.config.oneLegacyProviderId === providerId
+          ? getOneCredential(runtimeId)
+          : null) ||
+        ""
+      );
+    }
+    return oneCredentialForRuntime(runtime) || "";
+  }
+  if (providerId)
+    throw new Error("Provider-scoped credentials require a local One runtime.");
+  remoteRuntimeForCredential(runtimeId);
+  return runtimeAuth(runtime)?.bearerToken || "";
+}
+
 export function getOneProviderCredentialStatus(
   runtimeId: string,
   providerId: string,

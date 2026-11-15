@@ -2239,6 +2239,21 @@ describe("agent runtime registry", () => {
     expect(
       runtimes.getOneProviderCredentialStatus(saved.id, "p-ark").configured,
     ).toBe(true);
+    expect(runtimes.revealAgentRuntimeCredential(saved.id, "p-ark")).toBe(
+      "provider-key",
+    );
+    expect(runtimes.revealAgentRuntimeCredential(saved.id)).toBe(
+      "provider-key",
+    );
+    expect(() =>
+      runtimes.revealAgentRuntimeCredential(saved.id, "missing"),
+    ).toThrow("not found");
+    expect(() => runtimes.revealAgentRuntimeCredential("missing")).toThrow(
+      "unavailable",
+    );
+    expect(JSON.stringify(runtimes.listAgentRuntimes())).not.toContain(
+      "provider-key",
+    );
   });
 
   it("does not advertise the managed Hermes runtime when the local executable is absent", async () => {

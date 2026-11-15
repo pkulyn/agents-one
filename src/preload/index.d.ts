@@ -416,6 +416,11 @@ interface AgentsOneAPI {
     workspaceId: string,
     content: string,
   ) => Promise<void>;
+  revealAgentRuntimeCredential: (
+    id: string,
+    providerId?: string,
+  ) => Promise<string>;
+  revealVoiceInputCredential: (profile?: string) => Promise<string>;
   getAgentRuntimeCredentialStatus: (id: string) => Promise<{
     required: boolean;
     configured: boolean;

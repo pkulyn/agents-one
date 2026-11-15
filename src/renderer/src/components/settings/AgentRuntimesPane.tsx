@@ -1,3 +1,4 @@
+import CredentialInput from "./CredentialInput";
 import type { RuntimeSkillDescriptor } from "../../../../shared/runtime-skills";
 import { isOneModelApiType } from "../../../../shared/one-model-api";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -2879,21 +2880,21 @@ export default function AgentRuntimesPane({
                           <span className="settings-field-label">
                             {credentialLabel}
                           </span>
-                          <input
-                            className="input"
-                            type="password"
-                            aria-label={credentialLabel}
-                            autoComplete="new-password"
+                          <CredentialInput
+                            key={`${draft.id}:${draft.config.endpoint}:${credentialConfigured}:${savingCredential}:${busy === "save"}`}
+                            label={credentialLabel}
                             value={bearerToken}
-                            onChange={(event) => {
-                              setBearerToken(event.target.value);
+                            configured={credentialConfigured}
+                            disabled={savingCredential}
+                            reveal={() =>
+                              window.agentsOneAPI.revealAgentRuntimeCredential(
+                                draft.id,
+                              )
+                            }
+                            onChange={(value) => {
+                              setBearerToken(value);
                               setCredentialRevision((current) => current + 1);
                             }}
-                            placeholder={
-                              credentialConfigured
-                                ? t("settings.runtimeManager.configured")
-                                : credentialLabel
-                            }
                           />
                           <span className="settings-field-hint">
                             {t("settings.runtimeManager.credentialHint")}

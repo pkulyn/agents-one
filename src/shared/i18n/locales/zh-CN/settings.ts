@@ -564,7 +564,8 @@ export default {
     apiKey: "API Key（可选）",
     apiKeyPlaceholder: "留空表示服务不需要密钥",
     apiKeyConfigured: "已配置（留空可保留现有密钥）",
-    apiKeyHint: "密钥不会显示或写入对话、项目和备份；保存后只能替换或清除。",
+    apiKeyHint:
+      "密钥默认隐藏，点击眼睛可显示；输入新密钥后保存即可替换。密钥不会写入对话或项目。",
     clearKey: "清除已保存密钥",
     keyWillClear: "保存后将清除该 Profile 中保存的密钥。",
     test: "测试连接",

@@ -1,5 +1,6 @@
 import { LoaderCircle, Mic, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import CredentialInput from "./CredentialInput";
 import { useI18n } from "../useI18n";
 
 interface VoiceInputConfig {
@@ -19,8 +20,8 @@ function bridgeUnavailableMessage(t: (key: string) => string): string {
 
 /**
  * Configures an independently hosted, OpenAI-compatible transcription service.
- * The API key only crosses the preload bridge while being saved or tested and
- * is never included in the public configuration readback.
+ * The API key crosses the bridge only on save/test or explicit reveal;
+ * ordinary configuration readback includes only its presence.
  */
 export default function VoiceInputPane(
   props: VoiceInputPaneProps,
@@ -196,22 +197,17 @@ function VoiceInputProfilePane({
         <label className="settings-field-label" htmlFor="voice-service-api-key">
           {t("settings.voice.apiKey")}
         </label>
-        <input
+        <CredentialInput
+          key={`${profile || "default"}:${hasApiKey}:${clearApiKey}:${saving}`}
           id="voice-service-api-key"
-          className="input"
-          type="password"
           value={apiKey}
+          configured={hasApiKey && !clearApiKey}
           disabled={!ready || loading || saving}
-          onChange={(event) => {
-            setApiKey(event.target.value);
+          reveal={() => window.agentsOneAPI.revealVoiceInputCredential(profile)}
+          onChange={(value) => {
+            setApiKey(value);
             setClearApiKey(false);
           }}
-          placeholder={
-            hasApiKey && !clearApiKey
-              ? t("settings.voice.apiKeyConfigured")
-              : t("settings.voice.apiKeyPlaceholder")
-          }
-          autoComplete="new-password"
         />
         <div className="settings-field-hint">
           {t("settings.voice.apiKeyHint")}

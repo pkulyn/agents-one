@@ -13686,6 +13686,40 @@ button.task-collaboration-inline-avatar:focus-visible {
   line-height: 1.5;
 }
 
+.agent-one-provider-brand {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.agent-one-provider-chip-logo,
+.agent-one-provider-logo,
+.agent-one-preset-logo {
+  background: #fff;
+  color: #26364a;
+}
+
+.agent-one-provider-preset {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+}
+
+.agent-one-preset-logo {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+}
+
+.agent-one-provider-preset strong,
+.agent-one-provider-preset small {
+  min-width: 0;
+}
+
 .agent-one-config-head-actions,
 .agent-one-config-actions {
   display: flex;
@@ -21850,7 +21884,7 @@ body.tray-completion-document {
 
 .agents-manager-heading .agents-title {
   margin: 0 0 4px;
-  font-size: 27px;
+  font-size: 22px;
   letter-spacing: -0.02em;
 }
 
@@ -22019,9 +22053,9 @@ body.tray-completion-document {
 }
 
 .agent-one-config-panel-head h3 {
-  font-size: 27px;
+  font-size: 21px;
   line-height: 1.15;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 
@@ -22493,9 +22527,10 @@ body.tray-completion-document {
 
 .agent-one-provider-preset {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 3px;
   padding: 9px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -23156,7 +23191,7 @@ body.tray-completion-document {
   display: grid;
   place-items: center;
   border-radius: 7px;
-  background: var(--accent-subtle);
+  background: #fff;
   color: var(--accent-text);
   font-size: 11px;
   font-weight: 800;

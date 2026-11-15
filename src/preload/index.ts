@@ -559,6 +559,13 @@ const agentsOneAPI = {
       unreadable?: boolean;
     };
   }> => ipcRenderer.invoke("get-agent-runtime-credential-status", id),
+  revealAgentRuntimeCredential: (
+    id: string,
+    providerId?: string,
+  ): Promise<string> =>
+    ipcRenderer.invoke("reveal-agent-runtime-credential", id, providerId),
+  revealVoiceInputCredential: (profile?: string): Promise<string> =>
+    ipcRenderer.invoke("reveal-voice-input-credential", profile),
   getOneProviderCredentialStatus: (
     runtimeId: string,
     providerId: string,
