@@ -62,12 +62,14 @@ One 与 **Codex、Claude Code、Pi Agent、OpenCode** 并列使用。本地接�
 
 ### 1. 安装 Agents One
 
-从 [GitHub Releases](https://github.com/pkulyn/agents-one/releases/latest) 下载 Windows x64 **安装版**或**便携版 EXE**，同时下载对应的 SHA256SUMS.txt。打开前核对文件的 SHA-256：
+从 [GitHub Releases](https://github.com/pkulyn/agents-one/releases/latest) 下载 Windows x64 **安装版**或**便携版 ZIP**，同时下载对应的 SHA256SUMS.txt。打开前核对文件的 SHA-256：
 
 ```powershell
 Get-FileHash .\agents-one-<version>-setup.exe -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
+
+便携版 ZIP 请先完整解压一次，再运行解压目录中的 `agents-one.exe`，保留全部附带文件；后续启动不再解压。便携版数据仍保存在 `%LOCALAPPDATA%\agents-one-portable`，沿用本机旧便携版数据，与安装版隔离。
 
 请替换为实际下载的文件名；便携版以 -portable.exe 结尾。安装版按当前用户安装；便携版无需安装，但数据不保存在 EXE 旁。当前安装包未签名，Windows 可能显示 SmartScreen 提示。可在**设置 → 关于与更新**检查新版，手动下载安装。
 

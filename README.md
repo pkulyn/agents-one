@@ -62,12 +62,14 @@ See what is running, stop a task when needed, and continue from searchable histo
 
 ### 1. Install Agents One
 
-Download the Windows x64 **installer** or **portable EXE**, plus the matching SHA256SUMS.txt, from [GitHub Releases](https://github.com/pkulyn/agents-one/releases/latest). Verify the downloaded file before opening it:
+Download the Windows x64 **installer** or **portable ZIP**, plus the matching SHA256SUMS.txt, from [GitHub Releases](https://github.com/pkulyn/agents-one/releases/latest). Verify the downloaded file before opening it:
 
 ```powershell
 Get-FileHash .\agents-one-<version>-setup.exe -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
+
+For the portable ZIP, extract the entire archive once and run `agents-one.exe` from the extracted folder. Keep all bundled files together. Subsequent launches start directly without extraction. Portable desktop data remains in `%LOCALAPPDATA%\agents-one-portable`, sharing this Windows account's previous portable data while staying separate from the installed app.
 
 Use the filename you downloaded; the portable package ends in -portable.exe. The installer is per-user. The portable build runs without installation but stores data separately from the EXE. Current builds are unsigned, so Windows may show a SmartScreen warning. Updates are checked in **Settings → About & Updates** and installed manually.
 

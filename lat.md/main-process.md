@@ -14,7 +14,7 @@ First launch provides One with the product avatar and no model credentials or de
 
 [[src/main/one-default.ts#initializeDefaultOne]] seeds the dedicated registry once before windows and background work start. Existing One definitions, disabled state, custom appearance, unknown settings and explicit dedicated registries are preserved. The initialization marker prevents a later deletion from being undone. The renderer prefers One when no default agent was selected and opens configuration once for an unconfigured One; connected agents remain in their separate local, remote and web onboarding flow. Task-mode controls use list/workflow glyphs distinct from the model icon.
 
-[[src/main/startup-data-policy.ts#automaticLegacyImportAllowed]] disables both brand-directory and Hermes desktop-data adoption for portable launches, including launches with an explicit user-data override. A portable data root starts empty and receives its own migration marker; existing portable data is retained. Installed launches keep the verified legacy-copy upgrade path.
+[[src/main/startup-data-policy.ts#automaticLegacyImportAllowed]] disables both brand-directory and Hermes desktop-data adoption for legacy launcher and marked ZIP-folder portable launches, including launches with an explicit user-data override. A portable data root starts empty and receives its own migration marker; existing portable data is retained. Installed launches keep the verified legacy-copy upgrade path.
 
 [[src/main/project-folders.ts#listProjectFolders]] also applies that policy to read-time fallback: missing portable project metadata never reads a Hermes project registry. Explicit app-owned registrations persist, including an empty registry after removing the last project.
 

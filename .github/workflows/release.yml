@@ -112,7 +112,7 @@ jobs:
           $commands = @(
             @{ Name = 'public documentation scope'; Run = { npm run docs:check } },
             @{ Name = 'public privacy'; Run = { npm run privacy:test; if ($LASTEXITCODE -ne 0) { throw 'Privacy regression failed' }; npm run privacy:check } },
-            @{ Name = 'release tooling'; Run = { node --test scripts/classify-ci-change.test.mjs scripts/write-windows-release-identity.test.mjs } },
+            @{ Name = 'release tooling'; Run = { node --test scripts/classify-ci-change.test.mjs scripts/write-windows-release-identity.test.mjs scripts/create-windows-portable.test.mjs } },
             @{ Name = 'format'; Run = { npm run format:check } },
             @{ Name = 'typecheck'; Run = { npm run typecheck } },
             @{ Name = 'lint'; Run = { npm run lint -- --no-cache --quiet } },
@@ -141,7 +141,7 @@ jobs:
         run: |
           $expectedNames = @(
             "agents-one-${{ steps.identity.outputs.version }}-setup.exe",
-            "agents-one-${{ steps.identity.outputs.version }}-portable.exe",
+            "agents-one-${{ steps.identity.outputs.version }}-portable.zip",
             "agents-one-${{ steps.identity.outputs.version }}-setup.exe.blockmap",
             'latest.yml'
             'SOURCE_IDENTITY.json'
@@ -177,6 +177,7 @@ jobs:
           retention-days: 14
           path: |
             dist/*.exe
+            dist/*-portable.zip
             dist/*.blockmap
             dist/latest.yml
             dist/SHA256SUMS.txt
@@ -210,6 +211,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             artifacts/*.exe
+            artifacts/*-portable.zip
             artifacts/*.blockmap
             artifacts/latest.yml
             artifacts/SHA256SUMS.txt

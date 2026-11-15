@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { AppUpdater } from "electron-updater";
 import { dirname, join } from "path";
 import { updaterLogger } from "../updater-log";
+import { isPortableLaunch } from "../startup-data-policy";
 
 interface UpdaterDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -52,7 +53,7 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
   const ipcMain = createScopedIpcMain(rawIpcMain, getMainWindow);
   const policy = resolveDesktopUpdatePolicy({
     isPackaged: app.isPackaged,
-    isPortable: !!process.env.PORTABLE_EXECUTABLE_DIR,
+    isPortable: isPortableLaunch(),
     signedBuild:
       typeof __AGENTS_ONE_SIGNED_AUTO_UPDATE_BUILD__ !== "undefined" &&
       __AGENTS_ONE_SIGNED_AUTO_UPDATE_BUILD__,
