@@ -35,6 +35,15 @@ it("connects to a real local MCP server and limits read tasks to declared read-o
   );
   try {
     expect(errors).toEqual([]);
+    expect(bridge.diagnostics).toEqual([
+      {
+        id: "test-mcp",
+        status: "connected",
+        availableToolCount: 1,
+        filteredToolCount: 1,
+        unsupportedToolCount: 0,
+      },
+    ]);
     expect(bridge.tools.map((tool) => tool.label)).toEqual([
       "Test MCP: read_data",
     ]);
@@ -52,6 +61,26 @@ it("connects to a real local MCP server and limits read tasks to declared read-o
         new AbortController().signal,
       ),
     ).resolves.toBe("read-result:ok");
+  } finally {
+    await bridge.close();
+  }
+});
+
+it("distinguishes disabled and unapproved servers without trying to connect them", async () => {
+  const bridge = await connectOneMcpTools(
+    "one-agent",
+    [
+      { ...stdioServer(), enabled: false },
+      { ...stdioServer(), id: "unapproved", allowedTools: [] },
+    ],
+    "read",
+  );
+  try {
+    expect(bridge.tools).toEqual([]);
+    expect(bridge.diagnostics.map((item) => item.status)).toEqual([
+      "disabled",
+      "not_authorized",
+    ]);
   } finally {
     await bridge.close();
   }

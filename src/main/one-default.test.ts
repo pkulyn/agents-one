@@ -4,6 +4,14 @@ import { join } from "path";
 const state = vi.hoisted(() => ({
   config: {} as Record<string, unknown>,
   writes: 0,
+  instructions: [] as unknown[][],
+}));
+vi.mock("./utils", () => ({ getActiveProfileNameSync: () => "default" }));
+vi.mock("./agents-one-data-root", () => ({
+  agentsOneProfileHome: () => "isolated-profile",
+}));
+vi.mock("./one-runtime/memory", () => ({
+  ensureOneAgentsMdFile: (...args: unknown[]) => state.instructions.push(args),
 }));
 vi.mock("./config", () => ({
   readDesktopConfig: () => structuredClone(state.config),
@@ -17,6 +25,7 @@ import { initializeDefaultOne } from "./one-default";
 beforeEach(() => {
   state.config = {};
   state.writes = 0;
+  state.instructions = [];
 });
 describe("One first-run initialization", () => {
   // @lat: [[main-process#One first-run defaults]]
@@ -30,6 +39,12 @@ describe("One first-run initialization", () => {
       }>
     )[0];
     expect(one.id).toBe("one");
+    expect(state.instructions[0]).toEqual([
+      "isolated-profile",
+      "one",
+      undefined,
+      "One",
+    ]);
     expect(state.config.agentRuntimeAppearances).toMatchObject({
       one: { avatar: one.avatar },
     });
@@ -48,6 +63,19 @@ describe("One first-run initialization", () => {
     initializeDefaultOne();
     expect(state.config).toEqual(original);
     expect(state.writes).toBe(1);
+  });
+  it("initializes missing instructions for an already initialized, customized One without rewriting registry data", () => {
+    state.config = {
+      oneDefaultInitialized: true,
+      oneAgentRuntimes: [
+        { id: "one-custom", kind: "one", config: { oneInstructions: "" } },
+      ],
+    };
+    initializeDefaultOne();
+    expect(state.writes).toBe(0);
+    expect(state.instructions).toEqual([
+      ["isolated-profile", "one-custom", "", "One"],
+    ]);
   });
   it("preserves disabled and customized One definitions and unknown settings during upgrade", () => {
     const existing = {

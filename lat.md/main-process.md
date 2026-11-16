@@ -366,7 +366,7 @@ The One settings form distinguishes skill discovery failure from an empty direct
 
 [[src/main/one-runtime/pdf-extract.ts#extractOnePdf]] parses workspace PDFs in a separate bounded process without model credentials. PDF text extraction limits file size, page count, output and duration; empty text is reported as possibly requiring OCR. One also extracts explicitly staged PDF attachments and retains their input hashes; the model receives extracted text as untrusted attachment data.
 
-[[src/main/one-runtime/attachments.ts#prepareOneAttachments]] validates and stages text/PDF/image inputs before dispatch, bounds extracted text and treats attachments as data. Supported PNG/JPEG/GIF/WebP image signatures determine the model and artifact MIME even when a filename or browser MIME is incorrect; original bytes, names and hashes remain intact, and unknown image signatures are rejected. A cancellable preparation handle prevents PDF parsing from continuing after confirmed cancellation.
+[[src/main/one-runtime/attachments.ts#prepareOneAttachments]] validates and stages text/PDF/image/ZIP inputs before dispatch, bounds extracted text and treats attachments as data. [[src/main/one-runtime/zip-input.ts#readOneZip]] reads at most 128 standard ZIP entries in memory, with 64 KiB per-file and 128 KiB combined UTF-8 text limits, CRC checks and bounded inflation; it never extracts, installs or executes entries. Unsafe paths, links, encrypted, binary and credential-named files are skipped with explicit status. Mixed inputs retain readable content and report unreadable items individually; an entirely unreadable message fails with the actual filenames/errors. Supported PNG/JPEG/GIF/WebP image signatures determine the model and artifact MIME even when a filename or browser MIME is incorrect; original bytes, names and hashes remain intact, and unknown image signatures are rejected. A cancellable preparation handle prevents PDF parsing from continuing after confirmed cancellation.
 
 One may send explicitly supplied image attachments only when image input is enabled for the configured default model. Staged copies retain input hashes; the SDK session stores image data, while runtime events omit it. Switching model or endpoint clears the setting, and session-only model overrides do not inherit it. Images are sent to the model provider and remain subject to its capabilities.
 
@@ -470,15 +470,23 @@ Unconfigured One opens a DeepSeek draft with `deepseek-flash`; existing provider
 
 ### One AGENTS.md personalization
 
-One reads a profile- and runtime-specific `AGENTS.md` as its editable system instructions, while retaining legacy `oneInstructions` as a fallback.
+One creates a missing profile- and runtime-specific `AGENTS.md` from the approved default instructions, migrating legacy personalization without overwriting existing user content.
 
-[[src/main/one-runtime/memory.ts#readOneAgentsMdFile]] and [[src/main/one-runtime/memory.ts#writeOneAgentsMdFile]] store the bounded file under the selected Agents One profile and One runtime directory. Main revalidates the runtime before IPC reads and writes; One loads this content for each new task without altering connected agents or history.
+[[src/main/one-runtime/memory.ts#ensureOneAgentsMdFile]] uses exclusive creation at startup, personalization access and task start. It seeds legacy `oneInstructions` when present, including an explicit empty value, otherwise [[src/main/one-runtime/memory.ts#DEFAULT_ONE_INSTRUCTIONS]]. Existing empty files, custom content and other profiles/runtimes are preserved. [[src/main/one-runtime/memory.ts#readOneAgentsMdFile]] and [[src/main/one-runtime/memory.ts#writeOneAgentsMdFile]] store the bounded file under the selected Agents One profile and One runtime directory. Main revalidates the runtime before IPC reads and writes; One loads this content for each new task without altering connected agents or history.
 
 #### Loads and edits per-One AGENTS.md without changing connected agent instructions
 
 The personalization editor reads and saves one `AGENTS.md` for the selected One runtime, isolated from other profiles and connected runtimes.
 
-`memory.test.ts` verifies creation, readback, size limits, and profile/runtime isolation. Legacy `oneInstructions` remains readable until an `AGENTS.md` file is written.
+`memory.test.ts` verifies missing-only defaults, legacy text, deliberate blanks, readback, size limits, and profile/runtime isolation. `one-default.test.ts` checks that upgrade initialization does not rewrite existing runtime definitions. The default title is the fixed product name `# Agents One`; missing files use the effective display name in the standard identity paragraph. Renaming a One through either appearance settings or its stored definition synchronizes only that identity paragraph, leaving custom rules, deliberate blanks, runtime IDs and conversations intact. Failed config persistence restores the prior instructions.
+
+### One configuration self-inspection and built-in skill
+
+One receives concise workspace and permission facts, with detailed application setup instructions loaded only when needed.
+
+[[src/main/one-runtime/task-context.ts#oneTaskContext]] identifies local SDK execution and the current workspace/mode without adding a generic workflow. [[src/main/one-runtime/runtime-info.ts#createOneRuntimeInfo]] exposes read-only `one_runtime_info`: actual personalization/config paths, shell eligibility, model-tool availability, non-secret MCP connection/filter counts and the current tools. It projects explicit fields instead of serializing configuration, credentials, headers or environment values, and grants no filesystem or shell permissions.
+
+[[src/main/one-runtime/skills.ts#loadOneSkills]] always registers the packaged `builtin:agents-one-configuration` resource alongside user-selected skills. Only its metadata enters the prompt; existing `skill_read` reads its full setup/diagnostic guidance on demand without copying or executing it. The skill describes current UI setup for model/MCP/plugin/skill/voice, user-entered protected credentials and next-task configuration reload. The existing explicit shell/full-access and MCP allowlist/read-only boundaries remain in force; project AGENTS.md discovery is unchanged.
 
 ### One plugin import and execution boundary
 

@@ -24,6 +24,7 @@ export function loadOneSkills(
   selectedIds: string[],
   agentsRoot?: string,
   oneRoot?: string,
+  builtInRoot?: string,
 ): OneSkillLoadResult {
   if (
     selectedIds.length > 128 ||
@@ -35,16 +36,26 @@ export function loadOneSkills(
   const resources: OneSkillLoadResult["resources"] = [];
   const revisionInstructions: string[] = [];
   let total = 0;
-  for (const id of selectedIds) {
+  for (const id of [
+    ...(builtInRoot ? ["builtin:agents-one-configuration"] : []),
+    ...selectedIds.filter((id) => !id.startsWith("builtin:")),
+  ]) {
+    const isBuiltIn = id === "builtin:agents-one-configuration";
     const isOne = id.startsWith("one:");
     const isCodex = id.startsWith("user:");
     const isAgents = id.startsWith("agents-user:");
-    if (!isOne && !isCodex && !isAgents) {
+    if (!isBuiltIn && !isOne && !isCodex && !isAgents) {
       skipped.push(id);
       continue;
     }
-    const selectedRoot = isOne ? oneRoot : isCodex ? root : agentsRoot;
-    const name = id.slice(isOne ? 4 : isCodex ? 5 : 12);
+    const selectedRoot = isBuiltIn
+      ? builtInRoot
+      : isOne
+        ? oneRoot
+        : isCodex
+          ? root
+          : agentsRoot;
+    const name = id.slice(isBuiltIn ? 8 : isOne ? 4 : isCodex ? 5 : 12);
     if (
       !selectedRoot ||
       !skillName.test(name) ||

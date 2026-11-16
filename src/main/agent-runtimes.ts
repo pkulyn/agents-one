@@ -10,10 +10,12 @@ import { prepareOneAttachments } from "./one-runtime/attachments";
 import { createOneDocumentTools } from "./one-runtime/document-tools";
 import { createOneWebTools } from "./one-runtime/web-tools";
 import { oneTaskContext } from "./one-runtime/task-context";
+import { createOneRuntimeInfo } from "./one-runtime/runtime-info";
 import { executeOneShell, oneShellTool } from "./one-runtime/shell-tool";
 import {
   readOneMemoryFile,
-  readOneAgentsMdFile,
+  ensureOneAgentsMdFile,
+  oneInstructionsWithName,
   readOneProjectMemoryFile,
   writeOneAgentsMdFile,
   writeOneMemoryFile,
@@ -33,7 +35,10 @@ import {
   verifyOneSessionBinding,
 } from "./one-runtime/revision";
 import { probeOneProvider } from "./one-runtime/probe";
-import { agentsOneProfileHome } from "./agents-one-data-root";
+import {
+  agentsOneDataRoot,
+  agentsOneProfileHome,
+} from "./agents-one-data-root";
 import { startOneWorker } from "./one-runtime/controller";
 import {
   oneSessionProgress,
@@ -2958,9 +2963,11 @@ export function getOneRuntimeMemory(runtimeId: string): string {
 }
 export function getOneAgentAgentsMd(runtimeId: string): string {
   const runtime = requireOneRuntime(runtimeId);
-  const content = readOneAgentsMdFile(
+  const content = ensureOneAgentsMdFile(
     agentsOneProfileHome(getActiveProfileNameSync()),
     runtimeId,
+    runtime.config.oneInstructions,
+    runtime.name,
   );
   return content ?? runtime.config.oneInstructions ?? "";
 }
@@ -4887,6 +4894,42 @@ export function executeAgentRuntimeCommand(
   return result;
 }
 
+/** Keep the standard One identity line consistent; roll it back if config saving fails. */
+function persistWithOneNameChange(
+  previous: AgentRuntimeDefinition | undefined,
+  next: AgentRuntimeDefinition,
+  persist: () => void,
+): void {
+  if (
+    previous?.kind !== "one" ||
+    next.kind !== "one" ||
+    previous.name === next.name
+  ) {
+    persist();
+    return;
+  }
+  const root = agentsOneProfileHome(getActiveProfileNameSync());
+  assertAgentsOneWritesAllowed();
+  const original = ensureOneAgentsMdFile(
+    root,
+    previous.id,
+    previous.config.oneInstructions,
+    previous.name,
+  );
+  const updated = oneInstructionsWithName(original, next.name);
+  if (updated === original) {
+    persist();
+    return;
+  }
+  writeOneAgentsMdFile(root, previous.id, updated);
+  try {
+    persist();
+  } catch (error) {
+    writeOneAgentsMdFile(root, previous.id, original);
+    throw error;
+  }
+}
+
 /** Save desktop-only display metadata for both built-in and user runtimes. */
 export function saveAgentRuntimeAppearance(
   id: string,
@@ -4902,8 +4945,13 @@ export function saveAgentRuntimeAppearance(
   const appearances = runtimeAppearances();
   appearances[id] = normalized;
   config[RUNTIME_APPEARANCE_KEY] = appearances;
-  writeDesktopConfig(config);
-  return applyRuntimeAppearance(runtime, normalized);
+  const base =
+    runtime.kind === "one"
+      ? userRuntimes().find((item) => item.id === id) || runtime
+      : runtime;
+  const updated = applyRuntimeAppearance(base, normalized);
+  persistWithOneNameChange(runtime, updated, () => writeDesktopConfig(config));
+  return updated;
 }
 
 export function saveAgentRuntime(
@@ -4968,7 +5016,12 @@ export function saveAgentRuntime(
   }
   if (existingIndex >= 0) runtimes[existingIndex] = runtime;
   else runtimes.push(runtime);
-  writeUserRuntimes(runtimes);
+  const appearance = runtimeAppearances()[runtime.id];
+  persistWithOneNameChange(
+    previous ? applyRuntimeAppearance(previous, appearance) : undefined,
+    applyRuntimeAppearance(runtime, appearance),
+    () => writeUserRuntimes(runtimes),
+  );
   invalidateRuntimeCommandCatalog(runtime.id);
   return runtime;
 }
@@ -6306,7 +6359,7 @@ export async function startAgentRuntimeTask(
   try {
     const wordInputs = await prepareRuntimeWordInputs(
       task.profile,
-      task.attachments,
+      runtime.kind === "one" ? [] : task.attachments,
     );
     documentContext = wordInputs.context;
     if (wordInputs.artifacts.length) {
@@ -6489,6 +6542,12 @@ export async function startAgentRuntimeTask(
         record.one = undefined;
         textAttachmentContext = prepared.context;
         images = prepared.images;
+        const wordIds = new Set(
+          task.attachments.filter(isWordAttachment).map((item) => item.id),
+        );
+        record.originalWordInputs = prepared.artifacts.filter((item) =>
+          wordIds.has(item.id),
+        );
         record.run = {
           ...record.run,
           inputArtifacts: [
@@ -6506,10 +6565,12 @@ export async function startAgentRuntimeTask(
         task.profile || getActiveProfileNameSync(),
       );
       const stateDir = join(profileRoot, "desktop", "one", runtime.id);
-      const oneInstructions =
-        readOneAgentsMdFile(profileRoot, runtime.id) ??
-        runtime.config.oneInstructions ??
-        "";
+      const oneInstructions = ensureOneAgentsMdFile(
+        profileRoot,
+        runtime.id,
+        runtime.config.oneInstructions,
+        runtime.name,
+      );
       const collaborationWorkspace = collaborationWorkingDirectory(task);
       const binding =
         task.workspace || collaborationWorkspace
@@ -6537,6 +6598,7 @@ export async function startAgentRuntimeTask(
         runtime.config.oneSkills || [],
         join(homedir(), ".agents", "skills"),
         join(stateDir, "skills"),
+        join(__dirname, "../../resources/one-skills"),
       );
       const skillInstructions = skillLoad.instructions;
       const skillReader = createOneSkillReader(skillLoad.resources);
@@ -6656,6 +6718,19 @@ export async function startAgentRuntimeTask(
             ...(task.mode === "full_access" ? [oneShellTool] : []),
             ...mcpBridge.tools,
           ];
+      const runtimeInfo = createOneRuntimeInfo({
+        runtimeId: runtime.id,
+        runtimeName: runtime.name,
+        workspace,
+        mode: task.mode,
+        profileRoot,
+        dataRoot: agentsOneDataRoot(),
+        modelToolsEnabled: toolsEnabled,
+        mcpServers: runtime.config.oneMcpServers || [],
+        mcpStatus: mcpBridge.diagnostics || [],
+        availableTools: availableTools.map((tool) => tool.name),
+      });
+      if (toolsEnabled) availableTools.push(runtimeInfo.tool);
       const writtenFiles = new Map<string, string>();
       const oneProgressCounters: OneSessionProgressCounters = {
         compactions: 0,
@@ -6688,6 +6763,7 @@ export async function startAgentRuntimeTask(
             name: runtime.name,
             modelId,
             endpoint,
+            environment: { workspace, mode: task.mode, toolsEnabled },
           }),
           oneInstructions,
           ...(skillInstructions.length
@@ -6710,19 +6786,21 @@ export async function startAgentRuntimeTask(
         tools: availableTools,
         executeTool: async (name, parameters, signal) => {
           const result =
-            name === "skill_read"
-              ? await skillReader.executeTool(parameters, signal)
-              : name === "web_search" ||
-                  name === "web_fetch" ||
-                  name === "weather_forecast"
-                ? await webTools.executeTool(name, parameters, signal)
-                : name.startsWith("document_")
-                  ? await documentTools.executeTool(name, parameters, signal)
-                  : name === "host_shell" && task.mode === "full_access"
-                    ? await executeOneShell(parameters, workspace, signal)
-                    : name.startsWith("mcp_")
-                      ? await mcpBridge!.executeTool(name, parameters, signal)
-                      : await hostTools.executeTool(name, parameters, signal);
+            name === "one_runtime_info"
+              ? runtimeInfo.execute(signal)
+              : name === "skill_read"
+                ? await skillReader.executeTool(parameters, signal)
+                : name === "web_search" ||
+                    name === "web_fetch" ||
+                    name === "weather_forecast"
+                  ? await webTools.executeTool(name, parameters, signal)
+                  : name.startsWith("document_")
+                    ? await documentTools.executeTool(name, parameters, signal)
+                    : name === "host_shell" && task.mode === "full_access"
+                      ? await executeOneShell(parameters, workspace, signal)
+                      : name.startsWith("mcp_")
+                        ? await mcpBridge!.executeTool(name, parameters, signal)
+                        : await hostTools.executeTool(name, parameters, signal);
           if (name === "workspace_write" || name === "document_create_word") {
             try {
               const file = JSON.parse(result);

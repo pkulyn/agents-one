@@ -121,6 +121,57 @@ async function loadModules(): Promise<{
 }
 
 describe("agent runtime registry", () => {
+  it("syncs One display-name edits into its standard instructions without changing identity or custom rules", async () => {
+    const runtimes = await import("../src/main/agent-runtimes");
+    const one = runtimes.saveAgentRuntime({
+      id: "one-name",
+      name: "One",
+      kind: "one",
+      location: "local",
+      enabled: true,
+      config: { agentTransport: "local-sdk" },
+    });
+    const original = runtimes.getOneAgentAgentsMd(one.id);
+    expect(original).toMatch(/^# Agents One\n/);
+    runtimes.saveOneAgentAgentsMd(
+      one.id,
+      original + "\nCustom rule: One examples stay.\n",
+    );
+    const renamed = runtimes.saveAgentRuntimeAppearance(one.id, {
+      name: "研究员",
+    });
+    expect(renamed.id).toBe(one.id);
+    const content = runtimes.getOneAgentAgentsMd(one.id);
+    expect(content).toContain("工作伙伴 研究员，运行");
+    expect(content).toContain("Custom rule: One examples stay.");
+    expect(content).toMatch(/^# Agents One\n/);
+    const configModule = await import("../src/main/config");
+    const failedSave = vi
+      .spyOn(configModule, "writeDesktopConfig")
+      .mockImplementationOnce(() => {
+        throw new Error("fixture settings write failure");
+      });
+    try {
+      expect(() =>
+        runtimes.saveAgentRuntimeAppearance(one.id, { name: "Failed name" }),
+      ).toThrow("fixture settings write failure");
+      expect(runtimes.getOneAgentAgentsMd(one.id)).toBe(content);
+      expect(
+        runtimes.listAgentRuntimes().find((item) => item.id === one.id)?.name,
+      ).toBe("研究员");
+    } finally {
+      failedSave.mockRestore();
+    }
+    runtimes.saveAgentRuntime({ ...one, name: "Base name" });
+    expect(runtimes.getOneAgentAgentsMd(one.id)).toBe(content);
+    runtimes.saveAgentRuntimeAppearance(one.id, {});
+    expect(runtimes.getOneAgentAgentsMd(one.id)).toContain(
+      "工作伙伴 Base name，运行",
+    );
+    runtimes.saveOneAgentAgentsMd(one.id, "");
+    runtimes.saveAgentRuntimeAppearance(one.id, { name: "New name" });
+    expect(runtimes.getOneAgentAgentsMd(one.id)).toBe("");
+  });
   beforeEach(() => {
     testHome = mkdtempSync(join(tmpdir(), "hermes-agent-runtimes-"));
     testProjectRoot = undefined;
@@ -1890,12 +1941,33 @@ describe("agent runtime registry", () => {
       "web_search",
       "web_fetch",
       "weather_forecast",
+      "skill_read",
       "workspace_list",
       "workspace_read",
       "workspace_search",
       "document_read_word",
       "document_read_pdf",
+      "one_runtime_info",
     ]);
+    const readOnlyWorkerOptions = startOneWorkerMock.mock.calls[2][0];
+    const runtimeInfo = JSON.parse(
+      await readOnlyWorkerOptions.executeTool(
+        "one_runtime_info",
+        {},
+        new AbortController().signal,
+      ),
+    );
+    expect(runtimeInfo.permission).toBe("analysis");
+    expect(runtimeInfo.hostShell.available).toBe(false);
+    expect(runtimeInfo.personalization.exists).toBe(true);
+    const configSkill = JSON.parse(
+      await readOnlyWorkerOptions.executeTool(
+        "skill_read",
+        { id: "builtin:agents-one-configuration" },
+        new AbortController().signal,
+      ),
+    );
+    expect(configSkill.content).toContain("oneMcpServers");
     expect(startOneWorkerMock.mock.calls[0][0].systemPrompt).toContain(
       "请用中文\n保持简洁",
     );

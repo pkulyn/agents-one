@@ -4,6 +4,35 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { createOneSkillReader, loadOneSkills } from "./skills";
 
+it("exposes the shipped configuration skill on demand without user skill selection or copying its body into the prompt", async () => {
+  const loaded = loadOneSkills(
+    "missing-user-root",
+    [],
+    undefined,
+    undefined,
+    join(process.cwd(), "resources/one-skills"),
+  );
+  expect(loaded.resources.map((item) => item.id)).toEqual([
+    "builtin:agents-one-configuration",
+  ]);
+  expect(loaded.instructions.join("\n")).not.toContain("oneMcpServers");
+  const reader = createOneSkillReader(loaded.resources);
+  const body = JSON.parse(
+    await reader.executeTool(
+      { id: "builtin:agents-one-configuration" },
+      new AbortController().signal,
+    ),
+  );
+  expect(body.content).toContain("one_runtime_info");
+  expect(body.content).toContain("oneMcpServers");
+  await expect(
+    reader.executeTool(
+      { id: "builtin:agents-one-configuration", path: "../../outside.json" },
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow();
+});
+
 // @lat: [[main-process#Main Process#One session resume reconciliation#One explicit skill resource loading]]
 it("loads only explicitly selected user skill documents", () => {
   const root = mkdtempSync(join(tmpdir(), "one-skills-"));

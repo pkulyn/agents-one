@@ -17,7 +17,47 @@ import {
   writeOneAgentsMdFile,
   writeOneMemoryFile,
   writeOneProjectMemoryFile,
+  ensureOneAgentsMdFile,
+  DEFAULT_ONE_INSTRUCTIONS,
+  oneInstructionsWithName,
 } from "./memory";
+
+it("keeps the product heading fixed while synchronizing only the standard assistant identity line", () => {
+  const custom =
+    DEFAULT_ONE_INSTRUCTIONS +
+    "\nCustom rule: One examples remain unchanged.\n";
+  const renamed = oneInstructionsWithName(custom, "研究员");
+  expect(renamed).toMatch(/^# Agents One\n/);
+  expect(renamed).toContain("工作伙伴 研究员，运行");
+  expect(renamed).toContain("Custom rule: One examples remain unchanged.");
+  expect(
+    oneInstructionsWithName("# Agents One · One\n\n" + custom, "研究员"),
+  ).not.toContain("# Agents One · One");
+  expect(oneInstructionsWithName("", "研究员")).toBe("");
+  expect(
+    oneInstructionsWithName("My custom unrelated instructions", "研究员"),
+  ).toBe("My custom unrelated instructions");
+});
+
+it("seeds missing One instructions and preserves legacy text, user edits and deliberate blank files", () => {
+  const root = mkdtempSync(join(tmpdir(), "one-default-instructions-"));
+  try {
+    expect(ensureOneAgentsMdFile(root, "one-a")).toBe(DEFAULT_ONE_INSTRUCTIONS);
+    expect(readOneAgentsMdFile(root, "one-a")).toBe(DEFAULT_ONE_INSTRUCTIONS);
+    writeOneAgentsMdFile(root, "one-a", "user changed");
+    expect(ensureOneAgentsMdFile(root, "one-a")).toBe("user changed");
+    writeOneAgentsMdFile(root, "one-a", "");
+    expect(ensureOneAgentsMdFile(root, "one-a")).toBe("");
+    expect(ensureOneAgentsMdFile(root, "one-b", "legacy")).toBe("legacy");
+    expect(ensureOneAgentsMdFile(root, "one-c", "")).toBe("");
+    expect(
+      readOneAgentsMdFile(join(root, "another-profile"), "one-a"),
+    ).toBeNull();
+    expect(() => ensureOneAgentsMdFile(root, "../outside")).toThrow();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 it("keeps editable memory scoped by profile and One identity", () => {
   const root = mkdtempSync(join(tmpdir(), "one-memory-"));
