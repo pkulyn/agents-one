@@ -2,11 +2,51 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { readDesktopConfig, writeDesktopConfig } from "./config";
 import type { AgentRuntimeDefinition } from "../shared/agent-runtimes";
+import { agentsOneProfileHome } from "./agents-one-data-root";
+import { getActiveProfileNameSync } from "./utils";
+import { ensureOneAgentsMdFile } from "./one-runtime/memory";
+
+/** Missing-only initialization also covers existing One definitions on upgrade. */
+function initializeOneInstructions(config: Record<string, unknown>): void {
+  const root = agentsOneProfileHome(getActiveProfileNameSync());
+  for (const entry of [config.oneAgentRuntimes, config.agentRuntimes].flatMap(
+    (items) => (Array.isArray(items) ? items : []),
+  )) {
+    if (
+      !entry ||
+      entry.kind !== "one" ||
+      typeof entry.id !== "string" ||
+      !/^[a-z][a-z0-9-]{1,63}$/.test(entry.id)
+    )
+      continue;
+    ensureOneAgentsMdFile(
+      root,
+      entry.id,
+      typeof entry.config?.oneInstructions === "string"
+        ? entry.config.oneInstructions
+        : undefined,
+      typeof (
+        config.agentRuntimeAppearances as
+          | Record<string, { name?: unknown }>
+          | undefined
+      )?.[entry.id]?.name === "string"
+        ? (config.agentRuntimeAppearances as Record<string, { name: string }>)[
+            entry.id
+          ].name
+        : typeof entry.name === "string"
+          ? entry.name
+          : "One",
+    );
+  }
+}
 
 /** Seed once; upgrades never replace existing One definitions or revive deletion. */
 export function initializeDefaultOne(): void {
   const config = readDesktopConfig();
-  if (config.oneDefaultInitialized === true) return;
+  if (config.oneDefaultInitialized === true) {
+    initializeOneInstructions(config);
+    return;
+  }
   const entries = [config.oneAgentRuntimes, config.agentRuntimes].flatMap(
     (value) => (Array.isArray(value) ? value : []),
   );
@@ -61,4 +101,5 @@ export function initializeDefaultOne(): void {
   }
   config.oneDefaultInitialized = true;
   writeDesktopConfig(config);
+  initializeOneInstructions(config);
 }

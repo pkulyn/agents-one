@@ -12,6 +12,14 @@ export interface OneMcpToolInfo {
   readOnly: boolean;
 }
 
+export interface OneMcpServerStatus {
+  id: string;
+  status: "disabled" | "not_authorized" | "connected" | "failed";
+  availableToolCount: number;
+  filteredToolCount: number;
+  unsupportedToolCount: number;
+}
+
 type McpTool = {
   name: string;
   description?: string;
@@ -230,6 +238,7 @@ export async function connectOneMcpTools(
   signal?: AbortSignal,
 ): Promise<{
   tools: OneWorkerTool[];
+  diagnostics: OneMcpServerStatus[];
   executeTool: (
     name: string,
     parameters: unknown,
@@ -238,12 +247,25 @@ export async function connectOneMcpTools(
   close: () => Promise<void>;
 }> {
   const tools: OneWorkerTool[] = [];
+  const diagnostics: OneMcpServerStatus[] = [];
   const handlers = new Map<
     string,
     { connection: ClientConnection; remoteName: string }
   >();
   const connections: ClientConnection[] = [];
   for (const server of servers) {
+    const diagnostic: OneMcpServerStatus = {
+      id: server.id,
+      status: !server.enabled
+        ? "disabled"
+        : !server.allowedTools.length
+          ? "not_authorized"
+          : "failed",
+      availableToolCount: 0,
+      filteredToolCount: 0,
+      unsupportedToolCount: 0,
+    };
+    diagnostics.push(diagnostic);
     if (signal?.aborted) {
       await Promise.all(
         connections.map((connection) =>
@@ -261,22 +283,27 @@ export async function connectOneMcpTools(
       );
       connections.push(connection);
       const listed = await listAllTools(connection.client, signal);
+      diagnostic.status = "connected";
       for (const tool of listed) {
         if (
           !server.allowedTools.includes(tool.name) ||
           (permission === "read" && tool.annotations?.readOnlyHint !== true)
-        )
+        ) {
+          diagnostic.filteredToolCount++;
           continue;
+        }
         let parameters: Record<string, unknown>;
         try {
           parameters = jsonSchema(tool.inputSchema);
         } catch (error) {
+          diagnostic.unsupportedToolCount++;
           onServerError?.(`${server.name} / ${tool.name}`, error);
           continue;
         }
         const name = safeToolName(server.id, tool.name);
         if (handlers.has(name) || tools.length >= 96) continue;
         handlers.set(name, { connection, remoteName: tool.name });
+        diagnostic.availableToolCount++;
         tools.push({
           name,
           label: `${server.name}: ${tool.name}`.slice(0, 128),
@@ -302,6 +329,7 @@ export async function connectOneMcpTools(
   }
   return {
     tools,
+    diagnostics,
     async executeTool(name, parameters, signal): Promise<string> {
       if (signal.aborted) throw new Error("One task cancelled");
       const handler = handlers.get(name);

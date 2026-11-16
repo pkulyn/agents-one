@@ -4,6 +4,86 @@ import { join } from "node:path";
 import { build } from "esbuild";
 import { PDFDocument } from "pdf-lib";
 import { expect, it, vi } from "vitest";
+import JSZip from "jszip";
+
+it("keeps Markdown plus ZIP text usable and reports unreadable attachments separately", async () => {
+  const root = mkdtempSync(join(tmpdir(), "one-mixed-zip-"));
+  vi.resetModules();
+  vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", root);
+  try {
+    const { stageAttachment } = await import("../attachment-staging");
+    const { prepareOneAttachments } = await import("./attachments");
+    const zip = new JSZip();
+    zip.file("hindsight/SKILL.md", "# Setup guide\nUse configuration UI.");
+    const bytes = await zip.generateAsync({
+      type: "nodebuffer",
+      compression: "DEFLATE",
+    });
+    const zipPath = stageAttachment(
+      "mixed",
+      "skills.zip",
+      bytes.toString("base64"),
+    );
+    const badPath = stageAttachment(
+      "mixed",
+      "bad.zip",
+      Buffer.from("broken archive").toString("base64"),
+    );
+    const badWord = stageAttachment(
+      "mixed",
+      "bad.docx",
+      Buffer.from("broken document").toString("base64"),
+    );
+    const prepared = await prepareOneAttachments(
+      undefined,
+      [
+        {
+          id: "guide",
+          kind: "text-file",
+          name: "guide.md",
+          mime: "text/markdown",
+          size: 5,
+          text: "Connection guide",
+        },
+        {
+          id: "zip",
+          kind: "path-ref",
+          name: "skills.zip",
+          mime: "application/zip",
+          size: bytes.length,
+          path: zipPath,
+        },
+        {
+          id: "bad",
+          kind: "path-ref",
+          name: "bad.zip",
+          mime: "application/zip",
+          size: 14,
+          path: badPath,
+        },
+        {
+          id: "bad-word",
+          kind: "path-ref",
+          name: "bad.docx",
+          mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          size: 15,
+          path: badWord,
+        },
+      ],
+      "",
+      new AbortController().signal,
+    );
+    expect(prepared.context).toContain("Connection guide");
+    expect(prepared.context).toContain("Use configuration UI");
+    expect(prepared.context).toContain("unreadableAttachments");
+    expect(prepared.context).toContain("bad.zip");
+    expect(prepared.context).toContain("bad.docx");
+    expect(prepared.artifacts).toHaveLength(4);
+  } finally {
+    vi.unstubAllEnvs();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 it("extracts explicitly staged PDF input and retains its audit hash", async () => {
   const root = mkdtempSync(join(tmpdir(), "one-pdf-attachment-"));
