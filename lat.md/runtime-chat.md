@@ -128,6 +128,12 @@ Saved assistant replies render verified file references as inline links and deli
 
 [[src/shared/conversation-files.ts#findDocumentReferences]] recognizes document paths in prose, inline code and Markdown links without converting fenced commands. [[src/main/conversation-files.ts#resolveConversationFile]] verifies the exact current-profile reply and regular file before granting a file-scoped action; local paths outside projects need no directory grant. Remote prose never authorizes a same-named local file. Persisted remote artifact ids can restore their downloaded copy after restart through the owning Runtime, with credentials remaining in Main.
 
+## Projectless One delivered documents
+
+Saved One artifact cards resolve within the producing conversation's private workspace, including after restart; an app-owned directory is not a general project grant.
+
+[[src/main/one-runtime/workspace-binding.ts#findOneConversationWorkspace]] reads existing directories only and requires a saved assistant artifact, local One runtime and current profile. Explicit project associations keep their existing authorization boundary. Neighboring conversations, profiles and runtimes, absolute/traversal references and escaping links cannot use the private-workspace fallback.
+
 [[src/renderer/src/components/ConversationFiles.tsx#ConversationFiles]] preserves Markdown structure, exposes hover paths and native menus. Compact document cards show filename, format and size without artifact-summary notes; revision diffs retain their actual line counts. Missing files retain their prose or an unavailable artifact card. No history migration, global filesystem grant or fabricated Undo state is involved. [[tests/conversation-files.test.ts]] covers local references, remote isolation and restored artifact ownership; component tests exercise links, menus, cards and diff headers.
 
 [[tests/ipc-handlers.test.ts]] includes the dedicated conversation-files registration module when checking that every preload invocation has a matching scoped Main handler.

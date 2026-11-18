@@ -17,6 +17,8 @@ import {
 } from "./agent-runtimes";
 import { isAuthorizedMediaPath } from "./media";
 import { getActiveProfileNameSync } from "./utils";
+import { agentsOneProfileHome } from "./agents-one-data-root";
+import { findOneConversationWorkspace } from "./one-runtime/workspace-binding";
 import {
   isAuthorizedWorkspaceRoot,
   resolveAuthorizedWorkspaceId,
@@ -45,6 +47,7 @@ export async function resolveConversationFile(
   let candidate: string | undefined;
   let name: string | undefined;
   let projectRoot: string | undefined;
+  let privateWorkspaceRoot: string | undefined;
   const workspace = conversation.workspaceId
     ? resolveAuthorizedWorkspaceId(conversation.workspaceId)
     : conversation.workspace;
@@ -78,15 +81,25 @@ export async function resolveConversationFile(
         const relativeFile = artifact.relativePath || artifact.label;
         if (
           !candidate &&
-          workspace &&
-          isAuthorizedWorkspaceRoot(workspace) &&
           !isAbsolute(relativeFile) &&
           !/[:\0\r\n]/.test(relativeFile)
         ) {
-          projectRoot = await realpath(workspace).catch(() => undefined);
-          if (projectRoot) {
-            const file = resolve(projectRoot, relativeFile);
-            const rel = relative(projectRoot, file);
+          if (workspace && isAuthorizedWorkspaceRoot(workspace))
+            projectRoot = await realpath(workspace).catch(() => undefined);
+          else if (
+            !conversation.workspaceId &&
+            !conversation.workspace &&
+            runtime?.kind === "one"
+          )
+            privateWorkspaceRoot = findOneConversationWorkspace(
+              agentsOneProfileHome(profile),
+              runtime.id,
+              conversation.id,
+            );
+          const root = projectRoot || privateWorkspaceRoot;
+          if (root) {
+            const file = resolve(root, relativeFile);
+            const rel = relative(root, file);
             if (
               rel &&
               rel !== ".." &&
@@ -151,8 +164,9 @@ export async function resolveConversationFile(
     return null;
   try {
     const path = await realpath(candidate);
-    if (projectRoot) {
-      const rel = relative(projectRoot, path);
+    const root = projectRoot || privateWorkspaceRoot;
+    if (root) {
+      const rel = relative(root, path);
       if (
         !rel ||
         rel === ".." ||
@@ -173,7 +187,8 @@ export async function resolveConversationFile(
       name: name || basename(path),
       path,
       relativePath:
-        relative(workspace || dirname(path), path) || basename(path),
+        relative(workspace || privateWorkspaceRoot || dirname(path), path) ||
+        basename(path),
       size: info.size,
       image: /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(path),
     };
