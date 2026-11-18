@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, writeFile, rm, realpath } from "node:fs/promises";
+import {
+  mkdtemp,
+  writeFile,
+  rm,
+  realpath,
+  mkdir,
+  symlink,
+} from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,6 +15,7 @@ import {
   documentPath,
 } from "../src/shared/conversation-files";
 import { resolveConversationFile } from "../src/main/conversation-files";
+import { resolveOneConversationWorkspace } from "../src/main/one-runtime/workspace-binding";
 import type { RuntimeConversation } from "../src/shared/runtime-conversations";
 const state = vi.hoisted(() => ({
   conversation: {} as Pick<
@@ -19,6 +28,7 @@ const state = vi.hoisted(() => ({
     | "workspaceId"
   >,
   location: "local",
+  kind: "codex",
   profile: "default",
   active: null as { path: string; label: string } | null,
   restore: vi.fn(),
@@ -28,12 +38,17 @@ vi.mock("../src/main/runtime-conversation-store", () => ({
     state.conversation?.id === id ? state.conversation : null,
 }));
 vi.mock("../src/main/agent-runtimes", () => ({
-  listAgentRuntimes: () => [{ id: "agent", location: state.location }],
+  listAgentRuntimes: () => [
+    { id: "agent", kind: state.kind, location: state.location },
+  ],
   resolveAgentRuntimeArtifactPath: () => state.active,
   restoreConversationArtifactFile: state.restore,
 }));
 vi.mock("../src/main/utils", () => ({
   getActiveProfileNameSync: () => state.profile,
+}));
+vi.mock("../src/main/agents-one-data-root", () => ({
+  agentsOneProfileHome: (profile: string) => join(dir, profile),
 }));
 vi.mock("../src/main/media", () => ({ isAuthorizedMediaPath: () => false }));
 vi.mock("../src/main/workspace-authority", () => ({
@@ -44,6 +59,7 @@ let dir: string;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "agents-one-file-"));
   state.location = "local";
+  state.kind = "codex";
   state.profile = "default";
   state.active = null;
   state.restore.mockReset();
@@ -53,6 +69,108 @@ beforeEach(async () => {
     runtimeLocation: "local",
     messages: [{ id: "m", role: "agent", content: "" }],
   };
+});
+
+async function privateOneFile(name = "报告.md"): Promise<string> {
+  state.kind = "one";
+  const workspace = resolveOneConversationWorkspace(
+    join(dir, "default", "desktop", "one", "agent"),
+    { conversationId: "c", runId: "old-run" },
+  ).workspace;
+  await mkdir(join(workspace, "reports"), { recursive: true });
+  const path = join(workspace, "reports", name);
+  await writeFile(path, "generated document");
+  state.conversation.messages[0].content = "文档已生成：`" + name + "`";
+  state.conversation.messages[0].execution = {
+    runId: "old-run",
+    artifacts: [
+      {
+        id: "private-file",
+        kind: "file",
+        label: name,
+        relativePath: "reports/" + name,
+      },
+    ],
+  };
+  return path;
+}
+const privateRef = {
+  conversationId: "c",
+  messageId: "m",
+  artifactId: "private-file",
+};
+
+describe("projectless One document recovery", () => {
+  // @lat: [[runtime-chat#Runtime Chat Rendering#Projectless One delivered documents]]
+  it.each(["中文日报.md", "周报.docx", "图表.png"])(
+    "resolves the saved %s artifact without an in-memory run or project grant",
+    async (name) => {
+      const path = await privateOneFile(name);
+      await expect(resolveConversationFile(privateRef)).resolves.toMatchObject({
+        path: await realpath(path),
+        name,
+        relativePath: join("reports", name),
+        size: 18,
+        image: name.endsWith(".png"),
+      });
+      expect(state.restore).not.toHaveBeenCalled();
+    },
+  );
+  it("does not create missing directories or follow another conversation/profile/runtime", async () => {
+    const path = await privateOneFile();
+    state.conversation.id = "another";
+    await expect(
+      resolveConversationFile({ ...privateRef, conversationId: "another" }),
+    ).resolves.toBeNull();
+    state.conversation.id = "c";
+    state.profile = "other";
+    await expect(resolveConversationFile(privateRef)).resolves.toBeNull();
+    expect(existsSync(join(dir, "other"))).toBe(false);
+    state.profile = "default";
+    state.kind = "codex";
+    await expect(resolveConversationFile(privateRef)).resolves.toBeNull();
+    state.kind = "one";
+    state.location = "remote";
+    state.restore.mockResolvedValue(null);
+    await expect(resolveConversationFile(privateRef)).resolves.toBeNull();
+    state.location = "local";
+    await rm(path);
+    await expect(resolveConversationFile(privateRef)).resolves.toBeNull();
+  });
+  it("keeps artifact ownership and revoked project boundaries", async () => {
+    await privateOneFile();
+    await expect(
+      resolveConversationFile({ ...privateRef, artifactId: "unowned" }),
+    ).resolves.toBeNull();
+    state.conversation.workspaceId = "revoked-project";
+    await expect(resolveConversationFile(privateRef)).resolves.toBeNull();
+    state.conversation.workspaceId = undefined;
+    state.conversation.messages[0].role = "user";
+    await expect(resolveConversationFile(privateRef)).resolves.toBeNull();
+  });
+  it("rejects absolute, traversal and junction targets outside the exact conversation workspace", async () => {
+    const path = await privateOneFile();
+    const workspace = join(path, "..", "..");
+    const outside = join(dir, "outside");
+    await mkdir(outside);
+    await writeFile(join(outside, "secret.md"), "private");
+    await symlink(
+      outside,
+      join(workspace, "escape"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const artifact = state.conversation.messages[0].execution!.artifacts![0];
+    for (const relativePath of [
+      join(outside, "secret.md"),
+      "../../secret.md",
+      "escape/secret.md",
+      "C:\\secret.md",
+      "\\\\server\\share\\secret.md",
+    ]) {
+      artifact.relativePath = relativePath;
+      await expect(resolveConversationFile(privateRef)).resolves.toBeNull();
+    }
+  });
 });
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });

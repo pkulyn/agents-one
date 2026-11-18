@@ -1,9 +1,47 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/** Read an existing conversation directory without creating or authorizing a workspace. */
+export function findOneConversationWorkspace(
+  profileRoot: string,
+  runtimeId: string,
+  conversationId: string,
+): string | undefined {
+  if (
+    !/^[a-z][a-z0-9-]{1,63}$/.test(runtimeId) ||
+    !conversationId ||
+    conversationId.length > 256
+  )
+    return undefined;
+  try {
+    let directory = realpathSync(profileRoot);
+    for (const part of [
+      "desktop",
+      "one",
+      runtimeId,
+      "workspaces",
+      digest("conversation:" + conversationId),
+    ]) {
+      directory = join(directory, part);
+      // Reject linked ancestors, including Windows junctions into another profile or conversation.
+      if (!lstatSync(directory).isDirectory()) return undefined;
+    }
+    return realpathSync(directory);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Resolve a private app-owned workspace, keeping sessions and conversations separate. */
