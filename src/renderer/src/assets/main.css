@@ -1883,10 +1883,20 @@ body {
 }
 
 .sidebar-recent-project {
+  --sidebar-project-color: var(--sidebar-project-base-color);
+
   display: flex;
   flex-direction: column;
   gap: 1px;
   min-width: 0;
+}
+
+[data-theme="dark"] .sidebar-recent-project {
+  --sidebar-project-color: color-mix(
+    in srgb,
+    var(--sidebar-project-base-color) 55%,
+    white
+  );
 }
 
 .sidebar-recent-project-heading-wrap {
@@ -1919,6 +1929,35 @@ body {
 
 .sidebar-recent-project-heading:hover {
   background: var(--bg-tertiary);
+}
+
+.sidebar-recent-project-heading[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--sidebar-project-color) 11%, transparent);
+}
+
+.sidebar-recent-project-heading[aria-expanded="true"]:hover {
+  background: color-mix(in srgb, var(--sidebar-project-color) 17%, transparent);
+}
+
+.sidebar-recent-project-icon {
+  color: var(--sidebar-project-color);
+}
+
+.sidebar-recent-project-heading[aria-expanded="true"]
+  .sidebar-recent-project-icon {
+  fill: currentColor;
+}
+
+.sidebar-recent-project-icon-fold {
+  fill: none;
+  stroke: var(--bg-secondary);
+  stroke-opacity: 0.8;
+  stroke-width: 1.5;
+}
+
+.sidebar-recent-project-tasks:not(:empty) {
+  margin-inline-start: 21px;
+  border-inline-start: 1px solid var(--sidebar-project-color);
 }
 
 .sidebar-recent-project-rename {

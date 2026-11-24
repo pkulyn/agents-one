@@ -17,6 +17,7 @@ export {
   Workflow,
   ExternalLink,
   Folder,
+  FolderOpen,
   KeyRound,
   Layers,
   Loader,

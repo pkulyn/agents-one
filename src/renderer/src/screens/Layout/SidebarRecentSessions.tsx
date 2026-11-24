@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   memo,
+  type CSSProperties,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
@@ -25,6 +26,7 @@ import {
   ChevronDown,
   ChevronRight,
   Folder,
+  FolderOpen,
   Loader,
   MoreHorizontal,
   Plus,
@@ -38,6 +40,13 @@ import SidebarProjectMenu, {
   type SidebarProjectMenuTarget,
 } from "./SidebarProjectMenu";
 import { consumeNativeSessionPage } from "./sidebarSessionPagination";
+import {
+  assignSidebarProjectColors,
+  parseSidebarProjectColors,
+  SIDEBAR_PROJECT_COLORS_KEY,
+  SIDEBAR_PROJECT_PALETTE,
+  sidebarProjectColorKey,
+} from "./sidebarProjectColors";
 import {
   addMigratedEventListener,
   dispatchAgentsOneEvent,
@@ -468,6 +477,17 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const [chatsOpen, setChatsOpen] = useState(() =>
     readStoredOpen(CHATS_OPEN_KEY, LEGACY_CHATS_OPEN_KEY),
   );
+  const [savedProjectColors, setSavedProjectColors] = useState<
+    ReadonlyMap<string, number>
+  >(() => {
+    try {
+      return parseSidebarProjectColors(
+        localStorage.getItem(SIDEBAR_PROJECT_COLORS_KEY),
+      );
+    } catch {
+      return new Map<string, number>();
+    }
+  });
   const [closedProjectFolders, setClosedProjectFolders] = useState<Set<string>>(
     () => readStoredClosedFolders(),
   );
@@ -1022,6 +1042,28 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       ),
     [visibleProjectWorkspaces, visibleSessions, pinnedIds, projectFolders],
   );
+
+  const projectColors = useMemo(
+    () =>
+      assignSidebarProjectColors(
+        projectGroups.map((group) => sidebarProjectColorKey(group.key)),
+        savedProjectColors,
+      ),
+    [projectGroups, savedProjectColors],
+  );
+
+  useEffect(() => {
+    if (projectColors === savedProjectColors) return;
+    setSavedProjectColors(projectColors);
+    try {
+      localStorage.setItem(
+        SIDEBAR_PROJECT_COLORS_KEY,
+        JSON.stringify([...projectColors]),
+      );
+    } catch {
+      // Keep the assignments for this renderer session if storage is unavailable.
+    }
+  }, [projectColors, savedProjectColors]);
 
   // The renderer receives only opaque project references, including in the
   // context-menu move picker. Legacy paths remain display-only migration data.
@@ -1620,8 +1662,20 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                     const projectOpen = !closedProjectFolders.has(group.key);
                     const visible = expanded && projectsOpen && projectOpen;
                     const workspaceId = group.workspaceId;
+                    const ProjectIcon = projectOpen ? FolderOpen : Folder;
+                    const colorSlot =
+                      projectColors.get(sidebarProjectColorKey(group.key)) ?? 0;
                     return (
-                      <div className="sidebar-recent-project" key={group.key}>
+                      <div
+                        className="sidebar-recent-project"
+                        key={group.key}
+                        style={
+                          {
+                            "--sidebar-project-base-color":
+                              SIDEBAR_PROJECT_PALETTE[colorSlot],
+                          } as CSSProperties
+                        }
+                      >
                         <div className="sidebar-recent-project-heading-wrap">
                           {editingProjectPath === group.workspaceId ? (
                             <input
@@ -1671,7 +1725,18 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                               aria-expanded={projectOpen}
                               tabIndex={expanded && projectsOpen ? 0 : -1}
                             >
-                              <Folder size={13} />
+                              <ProjectIcon
+                                className="sidebar-recent-project-icon"
+                                size={16}
+                                aria-hidden="true"
+                              >
+                                {projectOpen && (
+                                  <path
+                                    className="sidebar-recent-project-icon-fold"
+                                    d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20"
+                                  />
+                                )}
+                              </ProjectIcon>
                               <span>{group.name}</span>
                               {projectOpen ? (
                                 <ChevronDown
@@ -1761,7 +1826,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                             projectOpen ? "expanded" : ""
                           }`}
                         >
-                          <div className="sidebar-recent-collapse-inner">
+                          <div className="sidebar-recent-collapse-inner sidebar-recent-project-tasks">
                             {group.sessions.map((s) =>
                               renderSessionButton(s, true, visible),
                             )}
