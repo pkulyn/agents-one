@@ -1867,6 +1867,12 @@ const agentsOneAPI = {
       relativePath,
       maxBytes,
     ),
+  readWorkspaceDocument: (
+    workspaceId: string,
+    relativePath: string,
+  ): Promise<
+    import("../shared/workspace-document-preview").WorkspaceDocumentRead
+  > => ipcRenderer.invoke("read-workspace-document", workspaceId, relativePath),
   readWorkspaceImage: (
     workspaceId: string,
     relativePath: string,

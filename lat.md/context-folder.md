@@ -46,6 +46,12 @@ The `@wesbos/code-icons` SVGs render inside `.worktree-file-icon-wrapper`; CSS o
 
 The context-folder file browser toggle uses the shared 34×34px toolbar button, with an 18px folder-and-magnifier icon and accessible pressed state. Its larger hit target is independent from choosing or clearing the conversation folder.
 
+## Local document preview
+
+The desktop project file viewer renders PDF pages and modern Word, Excel, and PowerPoint content locally. The toolbar opens the original file with the Windows default application on demand.
+
+[[src/main/ipc/workspace-document-preview.ts#readWorkspaceDocument]] reads only supported formats through the authorized workspace-relative path and caps raw bytes. [[src/renderer/src/screens/Chat/WorkspaceDocumentPreview.tsx]] paginates PDF and slide content and switches worksheets. Office package expansion is bounded, external relationships are ignored, and document content becomes text, tables, or embedded raster images. Older, encrypted, oversized, and unreadable documents show a fallback without interpreting binary data as text.
+
 ## Registered project update authority
 
 Project metadata updates can rename or pin existing registrations, but cannot create new filesystem authority.

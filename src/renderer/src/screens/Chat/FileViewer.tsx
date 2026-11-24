@@ -1,8 +1,13 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, memo, lazy, Suspense } from "react";
 import { X, FileCode, ExternalLink } from "lucide-react";
 import hljs from "highlight.js";
 import "highlight.js/styles/github-dark.css";
 import { useI18n } from "../../components/useI18n";
+import { workspaceDocumentFormat } from "../../../../shared/workspace-document-preview";
+
+const WorkspaceDocumentPreview = lazy(
+  () => import("./WorkspaceDocumentPreview"),
+);
 
 interface FileViewerProps {
   filePath: string;
@@ -115,6 +120,19 @@ const BINARY_EXTENSIONS = new Set([
   "ai",
   "eps",
   "pdf",
+  "doc",
+  "docx",
+  "docm",
+  "xls",
+  "xlsx",
+  "xlsm",
+  "ppt",
+  "pptx",
+  "pptm",
+  "rtf",
+  "odt",
+  "ods",
+  "odp",
   "mp4",
   "mov",
   "avi",
@@ -173,16 +191,31 @@ export const FileViewer = memo(function FileViewer({
   const [truncated, setTruncated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [openFailed, setOpenFailed] = useState(false);
+  const [unsupported, setUnsupported] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const codeRef = useRef<HTMLElement>(null);
 
   const fileName = getFileName(filePath);
+  const documentFormat = workspaceId
+    ? workspaceDocumentFormat(fileName)
+    : undefined;
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
     setError(null);
+    setContent(null);
+    setTruncated(false);
+    setUnsupported(false);
+    setOpenFailed(false);
     setImageUrl(null);
+
+    if (documentFormat || isBinaryFile(fileName)) {
+      setUnsupported(!documentFormat);
+      setIsLoading(false);
+      return;
+    }
 
     const loadFile = async (): Promise<void> => {
       // If image file, load as data URL
@@ -192,7 +225,7 @@ export const FileViewer = memo(function FileViewer({
           : await window.agentsOneAPI.readImageFile(filePath);
         if (cancelled) return;
         if (imageData === null) {
-          setError(t("worktree.errorLoading"));
+          setError(t("chat.worktree.previewFailure.unavailable"));
         } else {
           setImageUrl(imageData);
         }
@@ -210,7 +243,9 @@ export const FileViewer = memo(function FileViewer({
         : await window.agentsOneAPI.readFile(filePath, 102400);
       if (cancelled) return;
       if (result === null) {
-        setError(t("worktree.errorLoading"));
+        setError(t("chat.worktree.previewFailure.unavailable"));
+      } else if (result.content.includes("\0")) {
+        setUnsupported(true);
       } else {
         setContent(result.content);
         setTruncated(result.truncated);
@@ -218,11 +253,16 @@ export const FileViewer = memo(function FileViewer({
       setIsLoading(false);
     };
 
-    void loadFile();
+    void loadFile().catch(() => {
+      if (!cancelled) {
+        setError(t("chat.worktree.previewFailure.unavailable"));
+        setIsLoading(false);
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [filePath, t, workspaceId]);
+  }, [documentFormat, fileName, filePath, t, workspaceId]);
 
   // Apply syntax highlighting after content loads
   useEffect(() => {
@@ -248,6 +288,18 @@ export const FileViewer = memo(function FileViewer({
     };
   }, [onClose]);
 
+  async function openInDefaultApplication(): Promise<void> {
+    setOpenFailed(false);
+    try {
+      const opened = workspaceId
+        ? await window.agentsOneAPI.openWorkspaceFile(workspaceId, filePath)
+        : await window.agentsOneAPI.openFileInEditor(filePath);
+      setOpenFailed(!opened);
+    } catch {
+      setOpenFailed(true);
+    }
+  }
+
   return (
     <div className="file-viewer-overlay" onClick={onClose}>
       <div className="file-viewer-modal" onClick={(e) => e.stopPropagation()}>
@@ -260,37 +312,58 @@ export const FileViewer = memo(function FileViewer({
             {(content || imageUrl) && (
               <span className="file-viewer-size">
                 {content ? formatFileSize(content) : imageUrl ? "Image" : ""}
-                {truncated && content && ` (${t("worktree.fileTruncated")})`}
+                {truncated &&
+                  content &&
+                  ` (${t("chat.worktree.fileTruncated")})`}
               </span>
             )}
           </div>
           <div className="file-viewer-actions">
             <button
               className="btn-ghost file-viewer-open"
-              onClick={() =>
-                workspaceId
-                  ? window.agentsOneAPI.openWorkspaceFile(workspaceId, filePath)
-                  : window.agentsOneAPI.openFileInEditor(filePath)
-              }
-              title={t("worktree.openInEditor")}
+              type="button"
+              onClick={() => void openInDefaultApplication()}
+              title={t("chat.worktree.openInEditor")}
             >
               <ExternalLink size={14} />
-              <span className="file-viewer-open-text">Open</span>
+              <span className="file-viewer-open-text">
+                {t("chat.worktree.openInEditor")}
+              </span>
             </button>
             <button
               className="btn-ghost file-viewer-close"
               onClick={onClose}
-              title={t("worktree.closeFile")}
+              title={t("chat.worktree.closeFile")}
             >
               <X size={16} />
             </button>
           </div>
         </div>
 
+        {openFailed && (
+          <div className="file-viewer-truncated" role="alert">
+            {t("chat.worktree.openFailed")}
+          </div>
+        )}
         <div className="file-viewer-content">
-          {isLoading ? (
+          {workspaceId && documentFormat ? (
+            <Suspense
+              fallback={
+                <div className="file-viewer-loading">
+                  {t("chat.worktree.loading")}
+                </div>
+              }
+            >
+              <WorkspaceDocumentPreview
+                key={workspaceId + ":" + filePath}
+                workspaceId={workspaceId}
+                filePath={filePath}
+                format={documentFormat}
+              />
+            </Suspense>
+          ) : isLoading ? (
             <div className="file-viewer-loading">
-              {t("worktree.loading")}...
+              {t("chat.worktree.loading")}...
             </div>
           ) : error ? (
             <div className="file-viewer-error">{error}</div>
@@ -302,25 +375,22 @@ export const FileViewer = memo(function FileViewer({
                 className="file-viewer-image"
               />
             </div>
+          ) : unsupported ? (
+            <div className="file-viewer-binary" role="status">
+              <strong>{t("chat.worktree.unsupportedPreview")}</strong>
+              <span className="file-viewer-binary-hint">
+                {t("chat.worktree.defaultAppHint")}
+              </span>
+            </div>
           ) : content === null ? (
             <div className="file-viewer-error">
-              {t("worktree.errorLoading")}
-            </div>
-          ) : isBinaryFile(fileName) ? (
-            <div className="file-viewer-binary">
-              <div className="file-viewer-binary-icon">📄</div>
-              <div className="file-viewer-binary-text">
-                Binary file cannot be previewed
-              </div>
-              <div className="file-viewer-binary-hint">
-                Click Open to view in default application
-              </div>
+              {t("chat.worktree.previewFailure.unavailable")}
             </div>
           ) : (
             <>
               {truncated && (
                 <div className="file-viewer-truncated">
-                  {t("worktree.fileTruncatedWarning")}
+                  {t("chat.worktree.fileTruncatedWarning")}
                 </div>
               )}
               <pre className="file-viewer-code">
