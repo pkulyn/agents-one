@@ -1943,7 +1943,8 @@ body {
   color: var(--sidebar-project-color);
 }
 
-.sidebar-recent-project-heading[aria-expanded="true"] .sidebar-recent-project-icon {
+.sidebar-recent-project-heading[aria-expanded="true"]
+  .sidebar-recent-project-icon {
   fill: currentColor;
 }
 
