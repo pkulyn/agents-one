@@ -42,6 +42,12 @@ Project/task creation, collaboration badges, the empty-project hint, archive fal
 
 Layout-owned scheduled-task notices, project-folder picker labels, quick-chat-to-task notices, and collaboration setup failures resolve through `collaboration.shell`. Runtime names, schedule names, project names, and provider-authored errors remain user or provider data.
 
+### Project folder colors
+
+The desktop sidebar assigns one of twelve colors to each project. A closed project shows an outlined folder. An open project shows a filled folder, a tinted heading, and a task indent line in the folder's exact color.
+
+[[src/renderer/src/screens/Layout/sidebarProjectColors.ts#assignSidebarProjectColors]] allocates unused colors first and then reuses the least-used colors, preferring separation from neighboring projects. The renderer saves the assignments by workspace key in a dedicated localStorage entry so new tasks, project renames, ordering changes and restarts preserve the project's color. Lightweight legacy groups use a derived key for paths. Disclosure arrows keep their existing placement and direction.
+
 ## Row context menu
 
 Each sidebar session row exposes a ChatGPT-style options menu — Pin, Rename, Move to project, Open in File Explorer, Copy conversation ID, Archive, and Delete — opened from a hover-revealed `…` button or by right-clicking the row.
