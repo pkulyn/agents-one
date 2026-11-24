@@ -1,3 +1,4 @@
+import { readWorkspaceDocument } from "./workspace-document-preview";
 import {
   getOneProjectMemory,
   getOneAgentAgentsMd,
@@ -2661,6 +2662,14 @@ export function registerIpcHandlers(context: IpcContext): void {
         return null;
       }
     },
+  );
+  ipcMain.handle(
+    "read-workspace-document",
+    (_event, workspaceId: string, relativePath: string) =>
+      readWorkspaceDocument(
+        resolveAuthorizedWorkspaceRelativePath(workspaceId, relativePath),
+        relativePath,
+      ),
   );
   ipcMain.handle(
     "read-workspace-image",

@@ -1278,6 +1278,12 @@ interface AgentsOneAPI {
     relativePath: string,
     maxBytes?: number,
   ) => Promise<{ content: string; truncated: boolean } | null>;
+  readWorkspaceDocument: (
+    workspaceId: string,
+    relativePath: string,
+  ) => Promise<
+    import("../shared/workspace-document-preview").WorkspaceDocumentRead
+  >;
   readWorkspaceImage: (
     workspaceId: string,
     relativePath: string,
