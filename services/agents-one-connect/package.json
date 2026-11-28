@@ -15,7 +15,15 @@
     "ws": "^8.20.0"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "prepack": "node ./scripts/stage-owner-contract.mjs"
   },
-  "license": "MIT"
+  "files": [
+    "bin/",
+    "src/",
+    "scripts/",
+    "test/",
+    "packaged-owner-contract/",
+    "README.zh-CN.md"
+  ]
 }

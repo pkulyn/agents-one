@@ -209,7 +209,9 @@ export default {
     oneSaveKey: "保存模型密钥",
     gatewayAddress: "Gateway 地址",
     gatewayAddressHint:
-      "自托管 Gateway v1 的 HTTPS 基础地址。此路径不会创建 Connect 配对记录。",
+      "Gateway v1 任务服务的 HTTPS 基础地址。Connect 配对服务地址由接入环境单独配置；两者可使用不同域名。校验码配对前必填。",
+    gatewayAddressRequired:
+      "请先填写 Gateway 地址（Gateway v1 任务服务基础地址），再进行校验码配对。",
     configured: "已配置",
     gatewayTokenSave: "保存 Gateway Token",
     credentialHint: "手动接入时填写；使用配对码成功后会自动安全保存。",

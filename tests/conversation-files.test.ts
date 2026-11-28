@@ -238,7 +238,15 @@ describe("conversation file references", () => {
     state.restore.mockResolvedValue(path);
     state.conversation.messages[0].execution = {
       runId: "old-run",
-      artifacts: [{ kind: "file", id: "artifact-one", label: "原始文档.md" }],
+      artifacts: [
+        {
+          kind: "file",
+          id: "artifact-one",
+          label: "原始文档.md",
+          size: 8,
+          sha256: "a".repeat(64),
+        },
+      ],
     };
     await expect(
       resolveConversationFile({
@@ -255,7 +263,10 @@ describe("conversation file references", () => {
         artifactId: "artifact-one",
       }),
     ).resolves.toMatchObject({ name: "原始文档.md", size: 8 });
-    expect(state.restore).toHaveBeenCalledWith("agent", "artifact-one");
+    expect(state.restore).toHaveBeenCalledWith("agent", "artifact-one", {
+      size: 8,
+      sha256: "a".repeat(64),
+    });
   });
   it("returns unavailable for moved files and aborts an artifact load when the profile changes", async () => {
     const path = join(dir, "gone.md");

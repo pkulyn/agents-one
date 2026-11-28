@@ -144,6 +144,38 @@ Host 默认只监听 Loopback；`statePath` 用于原子持久化 Run、幂等�
 
 OpenCode Adapter 通过 ACP JSON-RPC 启动受控 CLI，保留真实模型与用量，分别上报 `assistant.*`、`reasoning.summary`、`tool.*` 和 `artifact.created`；它不会把最终答复写进思考事件，也不会接受未经 Host 配置的 Shell 命令或工作区路径。Pi、Codex、Claude Code 的远程 Adapter 复用该 Host 契约，按后续阶段单独交付。
 
+### 家中主机配置入口
+
+用户级启动使用 `bin/remote-cli-host.mjs`。在家中准备 JSON 配置并通过受保护的启动环境提供 `AGENTS_ONE_HOST_TOKEN`。`statePath` 与每个 Runtime 的 `workspaceRoot` 使用家中主机上的绝对路径。
+
+```json
+{
+  "version": 1,
+  "port": 8787,
+  "statePath": "/home/example/agents-one-host/state.json",
+  "runtimes": [
+    {
+      "runtimeId": "home-codex",
+      "displayName": "Codex",
+      "kind": "codex",
+      "options": {
+        "workspaceRoot": "/home/example/test-repo",
+        "allowWorkspaceWrites": true
+      }
+    }
+  ]
+}
+```
+
+```powershell
+node plugins/agents-one-plugin/bin/remote-cli-host.mjs probe ./home-host.json home-codex
+node plugins/agents-one-plugin/bin/remote-cli-host.mjs serve ./home-host.json
+```
+
+Host 只监听 `127.0.0.1`。可在同一份配置中加入 `opencode`、`codex`、`claude-code` 和 `pi`，分别填写 Runtime ID、工作区和本机可执行文件。Pi 需要独立且绝对的 `sessionDirectory`，Claude Code 需要同环境可访问的 `@anthropic-ai/claude-agent-sdk` 包。运行前在家中完成原生登录，再逐个 `probe`。供应商所需的显式环境变量使用 `allowedEnv` 名称清单。Host 启动 JSON 输出的 Runtime ID、kind 和 adapterId 可用于 Connector 配对清单。
+
+Hers 可继续通过自己的 Loopback Gateway 接到同一个 Connector，其他 Runtime 路由至此 Host。先在隔离桌面进程为需要的适配器显式启用 `AGENTS_ONE_REMOTE_OPENCODE_V1`、`AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1`、`AGENTS_ONE_REMOTE_CLAUDE_AGENT_SDK_V1` 或 `AGENTS_ONE_REMOTE_PI_RPC_V1`。
+
 ## 权限模式与删除确认
 
 桌面会在 `execution.permissionMode` 传递 `analysis`、`safe_write` 或 `full_access`，同时保留旧版 `execution.permission` 的 read/write 字段。自动模式允许读取、查询、创建和编辑，删除需要本次确认；完全访问不要求项目目录，删除无需再次确认。完全访问作用于远端执行主机，桌面文件仍通过单独的文件访问通道交接。

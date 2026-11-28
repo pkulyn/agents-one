@@ -7,7 +7,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { homedir } from "node:os";
 import {
   protectForCurrentWindowsUser,
@@ -17,6 +17,14 @@ import {
 const CONNECTOR_DIR = "agents-one/connector";
 
 export function defaultCredentialDirectory(env = process.env) {
+  const override = env.AGENTS_ONE_CONNECTOR_DIR?.trim();
+  if (override) {
+    if (!isAbsolute(override))
+      throw new Error(
+        "AGENTS_ONE_CONNECTOR_DIR must be an absolute directory.",
+      );
+    return override;
+  }
   if (process.platform === "win32") {
     const appData = env.APPDATA?.trim();
     return join(

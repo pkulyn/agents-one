@@ -7,15 +7,18 @@ import type {
   AgentRuntimeTaskInput,
 } from "./agent-runtimes";
 
+import { isRemoteCliPilot } from "./runtime-adapters";
+
 export type RuntimeTaskMode = NonNullable<AgentRuntimeTaskInput["mode"]>;
 
 /** Automatic is the UI default; transport capabilities still bound execution. */
 // @lat: [[runtime-chat#Automatic permission defaults]]
 export function automaticRuntimeTaskMode(
-  runtime: Pick<AgentRuntimeDefinition, "kind" | "location">,
+  runtime: Pick<AgentRuntimeDefinition, "kind" | "location" | "adapterId">,
   _hasWorkspace = false,
 ): "analysis" | "safe_write" {
-  if (runtime.kind === "web-agent") return "analysis";
+  if (runtime.kind === "web-agent" || isRemoteCliPilot(runtime))
+    return "analysis";
   return "safe_write";
 }
 

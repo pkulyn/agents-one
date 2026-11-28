@@ -92,6 +92,14 @@ export function getAgentsOneConnectEndpoint(): string {
   return normalizeConnectEndpoint(configured);
 }
 
+/** Keeps task Gateway routing independent from the Connect pairing origin. */
+export function gatewayEndpointForConnectPairing(
+  gatewayEndpoint: string | undefined,
+  connectEndpoint: string,
+): string {
+  return gatewayEndpoint?.trim() || connectEndpoint;
+}
+
 function route(endpoint: string, path: string): string {
   return `${endpoint.replace(/\/+$/, "")}${path}`;
 }

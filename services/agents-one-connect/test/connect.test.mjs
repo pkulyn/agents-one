@@ -10,6 +10,8 @@ import {
   openConnectorTunnel,
   requestConnectorPairing,
 } from "../../../plugins/agents-one-connector/src/connector-client.mjs";
+import { createLoopbackGatewayAdapter } from "../../../plugins/agents-one-connector/adapters/gateway-v1-loopback.mjs";
+import { createRemoteGatewayPlugin } from "../../../plugins/agents-one-plugin/src/remote-gateway-plugin.mjs";
 import { createRemoteCliHost } from "../../../plugins/agents-one-plugin/src/remote-cli-host.mjs";
 import { createOpenCodeAcpAdapter } from "../../../plugins/agents-one-plugin/src/adapters/opencode-acp.mjs";
 
@@ -95,6 +97,7 @@ async function settleWithin(promise, ms = 3_000) {
   }
 }
 
+// @lat: [[plugin-sdk#Connect tunnel request ownership]]
 test("pairs a device, routes Gateway v1 frames, and revokes the device", async () => {
   const service = createConnectService();
   const address = await service.listen(0);
@@ -224,6 +227,74 @@ test("pairs a device, routes Gateway v1 frames, and revokes the device", async (
     body: { protocolVersion: "1.0" },
   });
 
+  const artifactId = "opencode_123:output/verification.txt";
+  const encodedArtifactPath = "/artifacts/" + encodeURIComponent(artifactId);
+  desktop.send(
+    JSON.stringify({
+      type: "request",
+      requestId: "artifact-path-1",
+      method: "GET",
+      path: encodedArtifactPath,
+    }),
+  );
+  const artifactRequest = await onceMessage(connector);
+  assert.equal(artifactRequest.path, encodedArtifactPath);
+  assert.equal(artifactRequest.runtimeId, "hers-home2");
+  connector.send(
+    JSON.stringify({
+      type: "response",
+      requestId: artifactRequest.requestId,
+      status: 200,
+      body: { id: artifactId, name: "output/verification.txt" },
+    }),
+  );
+  assert.deepEqual(await onceMessage(desktop), {
+    type: "response",
+    requestId: "artifact-path-1",
+    status: 200,
+    body: { id: artifactId, name: "output/verification.txt" },
+  });
+
+  for (const [index, path] of [
+    "/artifacts/runtime:..%2Fsecret.txt",
+    "/artifacts/runtime%3Aoutput%2",
+  ].entries()) {
+    const invalidDesktop = new WebSocket(
+      `ws://127.0.0.1:${address.port}/connect/v1/tunnel`,
+    );
+    await new Promise((resolve, reject) => {
+      invalidDesktop.once("open", resolve);
+      invalidDesktop.once("error", reject);
+    });
+    invalidDesktop.send(
+      JSON.stringify({
+        type: "hello",
+        role: "desktop",
+        protocolVersion: "1.0",
+        runtimeId: "hers-home2",
+        gatewayToken: pairing.gatewayToken,
+      }),
+    );
+    assert.equal((await onceMessage(invalidDesktop)).state, "online");
+    const closed = new Promise((resolve) =>
+      invalidDesktop.once("close", (code, reason) =>
+        resolve({ code, reason: reason.toString() }),
+      ),
+    );
+    invalidDesktop.send(
+      JSON.stringify({
+        type: "request",
+        requestId: `invalid-artifact-path-${index}`,
+        method: "GET",
+        path,
+      }),
+    );
+    assert.deepEqual(
+      await withTimeout(closed, "Invalid Gateway artifact path"),
+      { code: 4000, reason: "invalid tunnel frame" },
+    );
+  }
+
   const revokeResponse = await fetch(
     `${base}/connect/v1/devices/${encodeURIComponent(device.deviceId)}/revoke`,
     {
@@ -299,7 +370,7 @@ test("supports connector-first pairing with a code entered in Agents One", async
   await service.close();
 });
 
-test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", async () => {
+test("runs OpenCode and a Hers Gateway fixture through one Connector", async (t) => {
   const service = createConnectService();
   const store = memoryStore();
   const address = await service.listen(0);
@@ -311,9 +382,14 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
     adapterId: "opencode-acp",
   };
 
+  const hers = {
+    runtimeId: "hers-e2e",
+    displayName: "Hers fixture",
+    kind: "hermes",
+  };
   const requested = await requestConnectorPairing({
     connectEndpoint: connectBase,
-    runtimes: [runtime],
+    runtimes: [runtime, hers],
     store,
   });
   const previewResponse = await fetch(
@@ -327,7 +403,10 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
   assert.equal(previewResponse.status, 200);
   const preview = await previewResponse.json();
   assert.equal("gatewayToken" in preview, false);
-  assert.equal(preview.runtimes[0].runtimeId, runtime.runtimeId);
+  assert.deepEqual(
+    preview.runtimes.map((item) => item.runtimeId),
+    [runtime.runtimeId, hers.runtimeId],
+  );
 
   const claimResponse = await fetch(`${connectBase}/connect/v1/pair/claim`, {
     method: "POST",
@@ -362,10 +441,38 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
   const hostAddress = host.server.address();
   assert.equal(typeof hostAddress?.port, "number");
   const hostBase = `http://127.0.0.1:${hostAddress.port}`;
+  const forward = createLoopbackGatewayAdapter({
+    endpoint: hostBase,
+    token: "host-e2e-token",
+  });
+  let pendingHersApproval;
+  const hersGateway = createRemoteGatewayPlugin({
+    agent: { id: hers.runtimeId, kind: hers.kind },
+    token: "hers-e2e-token",
+    adapter: {
+      async startRun(input, { emit, authorizeTool }) {
+        if (input.input.text === "Hers fixture approval") {
+          pendingHersApproval = authorizeTool("delete_file", {
+            path: "fixture.txt",
+          });
+          return { status: "running" };
+        }
+        emit({ type: "assistant.completed", data: { text: input.input.text } });
+        return { status: "succeeded", sessionId: "hers-fixture-session" };
+      },
+    },
+  });
+  await hersGateway.listen(0);
+  t.after(() => settleWithin(hersGateway.close()));
+  const hersForward = createLoopbackGatewayAdapter({
+    endpoint: "http://127.0.0.1:" + hersGateway.server.address().port,
+    token: "hers-e2e-token",
+  });
   let relayedArtifact;
   const connectorTunnel = openConnectorTunnel({
     store,
     runtimeAdapters: {
+      [hers.runtimeId]: hersForward,
       [runtime.runtimeId]: async (frame) => {
         if (frame.path === "/artifacts") {
           relayedArtifact = frame.body;
@@ -374,50 +481,41 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
             body: { id: "artifact-large-e2e", size: frame.body.size },
           };
         }
-        const response = await fetch(`${hostBase}${frame.path}`, {
-          method: frame.method,
-          headers: {
-            authorization: "Bearer host-e2e-token",
-            "x-agents-one-runtime-id": runtime.runtimeId,
-            ...(frame.method === "POST"
-              ? { "content-type": "application/json" }
-              : {}),
-          },
-          ...(frame.method === "POST"
-            ? { body: JSON.stringify(frame.body || {}) }
-            : {}),
-        });
-        const contentType = response.headers.get("content-type") || "";
-        return {
-          status: response.status,
-          body: contentType.startsWith("text/event-stream")
-            ? await response.text()
-            : await response.json(),
-        };
+        return forward(frame);
       },
     },
   });
+  const openDesktop = async (descriptor) => {
+    const socket = new WebSocket(
+      "ws://127.0.0.1:" + address.port + "/connect/v1/tunnel",
+    );
+    try {
+      await new Promise((resolve, reject) => {
+        socket.once("open", resolve);
+        socket.once("error", reject);
+      });
+      const hello = onceMessage(socket);
+      socket.send(
+        JSON.stringify({
+          type: "hello",
+          role: "desktop",
+          protocolVersion: "1.1",
+          gatewayToken: desktopCredentials.runtimeTokens[descriptor.runtimeId],
+          runtimeId: descriptor.runtimeId,
+        }),
+      );
+      assert.equal((await hello).state, "online");
+      return socket;
+    } catch (cause) {
+      socket.terminate();
+      throw cause;
+    }
+  };
   let desktop;
+  let hersDesktop;
   try {
     await withTimeout(connectorTunnel.ready, "Connector tunnel ready");
-    desktop = new WebSocket(`ws://127.0.0.1:${address.port}/connect/v1/tunnel`);
-    await new Promise((resolve, reject) => {
-      desktop.once("open", resolve);
-      desktop.once("error", reject);
-    });
-    desktop.send(
-      JSON.stringify({
-        type: "hello",
-        role: "desktop",
-        protocolVersion: "1.1",
-        gatewayToken: desktopCredentials.runtimeTokens[runtime.runtimeId],
-        runtimeId: runtime.runtimeId,
-      }),
-    );
-    assert.equal(
-      (await withTimeout(onceMessage(desktop), "Desktop hello ack")).state,
-      "online",
-    );
+    desktop = await openDesktop(runtime);
     desktop.send(
       JSON.stringify({
         type: "request",
@@ -508,6 +606,84 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
     assert.equal(streamed.status, 200);
     assert.match(streamed.body, /event: assistant\.completed/);
     assert.match(streamed.body, /event: run\.completed/);
+    const firstData = streamed.body.match(/^data: (.+)$/m);
+    assert.ok(firstData);
+    const firstEvent = JSON.parse(firstData[1]);
+    assert.equal(firstEvent.type, "run.started");
+    assert.ok(Number.isSafeInteger(firstEvent.sequence));
+
+    await closeSocket(desktop);
+    desktop = await openDesktop(runtime);
+    const resumedEvents = onceMessage(desktop);
+    desktop.send(
+      JSON.stringify({
+        type: "request",
+        requestId: "resumed-events-e2e",
+        method: "GET",
+        path: `/runs/${started.body.id}/events`,
+        runtimeId: runtime.runtimeId,
+        afterSequence: firstEvent.sequence,
+      }),
+    );
+    const replay = await resumedEvents;
+    assert.equal(replay.status, 200);
+    assert.doesNotMatch(replay.body, /event: run\.started/);
+    assert.match(replay.body, /event: run\.completed/);
+
+    hersDesktop = await openDesktop(hers);
+    const createHersRun = async (text, conversationId) => {
+      const result = onceMessage(hersDesktop);
+      hersDesktop.send(
+        JSON.stringify({
+          type: "request",
+          requestId: "run-hers",
+          runtimeId: hers.runtimeId,
+          method: "POST",
+          path: "/runs",
+          body: {
+            conversationId,
+            runtimeId: hers.runtimeId,
+            input: { text },
+            execution: { permissionMode: "safe_write" },
+          },
+        }),
+      );
+      const response = await result;
+      assert.equal(response.status, 202);
+      return response.body;
+    };
+    const hersRun = await createHersRun("Hers fixture over Connect");
+    assert.notEqual(hersRun.id, started.body.id);
+    assert.equal(hersRun.sessionId, "hers-fixture-session");
+    assert.ok(
+      hersRun.events.some(
+        (event) => event.data?.text === "Hers fixture over Connect",
+      ),
+    );
+    const hersContinued = await createHersRun(
+      "Hers fixture resumed",
+      hersRun.conversationId,
+    );
+    assert.equal(hersContinued.conversationId, hersRun.conversationId);
+    assert.equal(hersContinued.sessionId, "hers-fixture-session");
+    const approvalRun = await createHersRun("Hers fixture approval");
+    assert.equal(approvalRun.permissionRequests.length, 1);
+    const approvalPath = `/runs/${approvalRun.id}/permissions/${approvalRun.permissionRequests[0].id}`;
+    for (const expectedStatus of [200, 409]) {
+      const reply = onceMessage(hersDesktop);
+      hersDesktop.send(
+        JSON.stringify({
+          type: "request",
+          requestId: "reply-hers-permission",
+          runtimeId: hers.runtimeId,
+          method: "POST",
+          path: approvalPath,
+          body: { allowed: false },
+        }),
+      );
+      assert.equal((await reply).status, expectedStatus);
+    }
+    assert.equal(await pendingHersApproval, false);
 
     desktop.send(
       JSON.stringify({
@@ -550,6 +726,7 @@ test("runs OpenCode through Connect, Connector and the shared Remote CLI Host", 
     );
     assert.equal(continuedCompleted.status, "succeeded");
   } finally {
+    if (hersDesktop) await closeSocket(hersDesktop);
     if (desktop) {
       await closeSocket(desktop);
       desktop.terminate();

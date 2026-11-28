@@ -96,8 +96,9 @@ async function gracefulMainProcessShutdown(): Promise<void> {
     );
     logErrorDiagnostic("app.shutdown.schedule-timeout");
   }
-  const activeRuntimeCount = activeAgentRuntimeTaskCount();
-  const cancelled = await cancelAllAgentRuntimeTasks();
+  const cancellation = { keepRecoverableGatewayRuns: true };
+  const activeRuntimeCount = activeAgentRuntimeTaskCount(cancellation);
+  const cancelled = await cancelAllAgentRuntimeTasks(cancellation);
   if (cancelled < activeRuntimeCount || !scheduleStopped) {
     console.error(
       "[SHUTDOWN] Runtime or schedule work may still be active; shutdown diagnostics were recorded.",

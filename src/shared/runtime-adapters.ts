@@ -250,12 +250,89 @@ export const BUILTIN_AGENT_RUNTIME_ADAPTER_MANIFESTS: readonly AgentRuntimeAdapt
     },
   ];
 
+export const REMOTE_CLI_PILOT_MANIFESTS: readonly (AgentRuntimeAdapterManifest & {
+  rolloutEnv: string;
+})[] = [
+  {
+    adapterId: "codex-app-server",
+    vendorId: "openai",
+    adapterVersion: "0.1.0",
+    displayName: "Codex",
+    description: "通过 Agents One Gateway v1 接入家中 Codex App Server。",
+    locations: ["remote"],
+    transports: ["gateway-v1"],
+    kinds: ["codex"],
+    fields: [],
+    rolloutEnv: "AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1",
+  },
+  {
+    adapterId: "claude-agent-sdk",
+    vendorId: "anthropic",
+    adapterVersion: "0.1.0",
+    displayName: "Claude Code",
+    description: "通过 Agents One Gateway v1 接入家中 Claude Agent SDK。",
+    locations: ["remote"],
+    transports: ["gateway-v1"],
+    kinds: ["claude-code"],
+    fields: [],
+    rolloutEnv: "AGENTS_ONE_REMOTE_CLAUDE_AGENT_SDK_V1",
+  },
+  {
+    adapterId: "pi-rpc",
+    vendorId: "badlogic",
+    adapterVersion: "0.1.0",
+    displayName: "Pi Agent",
+    description: "通过 Agents One Gateway v1 接入家中 Pi RPC。",
+    locations: ["remote"],
+    transports: ["gateway-v1"],
+    kinds: ["pi"],
+    fields: [],
+    rolloutEnv: "AGENTS_ONE_REMOTE_PI_RPC_V1",
+  },
+  {
+    adapterId: "antigravity-acp",
+    vendorId: "google",
+    adapterVersion: "0.1.0",
+    displayName: "Antigravity",
+    description: "通过 Agents One Gateway v1 接入家中 Antigravity CLI。",
+    locations: ["remote"],
+    transports: ["gateway-v1"],
+    kinds: ["antigravity"],
+    fields: [],
+    rolloutEnv: "AGENTS_ONE_REMOTE_ANTIGRAVITY_ACP_V1",
+  },
+];
+
+export function remoteCliPilotManifest(
+  adapterId: string | undefined,
+): (typeof REMOTE_CLI_PILOT_MANIFESTS)[number] | undefined {
+  return REMOTE_CLI_PILOT_MANIFESTS.find(
+    (manifest) => manifest.adapterId === adapterId,
+  );
+}
+
+export function isRemoteCliPilot(runtime: {
+  adapterId?: string;
+  kind: string;
+  location: AgentRuntimeLocation;
+}): boolean {
+  return (
+    runtime.location === "remote" &&
+    Boolean(
+      remoteCliPilotManifest(runtime.adapterId)?.kinds.includes(runtime.kind),
+    )
+  );
+}
+
 export function manifestForAdapterId(
   adapterId: string | undefined,
 ): AgentRuntimeAdapterManifest | undefined {
   if (!adapterId) return undefined;
-  return BUILTIN_AGENT_RUNTIME_ADAPTER_MANIFESTS.find(
-    (manifest) => manifest.adapterId === adapterId,
+  return (
+    remoteCliPilotManifest(adapterId) ||
+    BUILTIN_AGENT_RUNTIME_ADAPTER_MANIFESTS.find(
+      (manifest) => manifest.adapterId === adapterId,
+    )
   );
 }
 

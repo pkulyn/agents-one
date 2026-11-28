@@ -1,6 +1,8 @@
 import type { AgentRuntimeDefinition } from "../../shared/agent-runtimes";
 import {
   BUILTIN_AGENT_RUNTIME_ADAPTER_MANIFESTS,
+  REMOTE_CLI_PILOT_MANIFESTS,
+  remoteCliPilotManifest,
   type AgentRuntimeAdapterManifest,
 } from "../../shared/runtime-adapters";
 import type { RuntimeAdapter } from "./types";
@@ -31,6 +33,12 @@ export function isRemoteOpenCodeAcpV1Enabled(): boolean {
   return (
     process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development"
   );
+}
+
+export function isRemoteCliPilotEnabled(adapterId: string): boolean {
+  const pilot = remoteCliPilotManifest(adapterId);
+  const flag = pilot && process.env[pilot.rolloutEnv]?.trim().toLowerCase();
+  return flag === "1" || flag === "true" || flag === "on";
 }
 
 function validateManifest(manifest: AgentRuntimeAdapterManifest): void {
@@ -153,6 +161,9 @@ for (const manifest of BUILTIN_AGENT_RUNTIME_ADAPTER_MANIFESTS) {
   );
 }
 
+for (const manifest of REMOTE_CLI_PILOT_MANIFESTS)
+  runtimeAdapterRegistry.register(manifestAdapter(manifest));
+
 export function resolveRuntimeAdapter(
   runtime: Pick<AgentRuntimeDefinition, "adapterId" | "kind">,
 ): RuntimeAdapter | undefined {
@@ -160,21 +171,28 @@ export function resolveRuntimeAdapter(
 }
 
 export function listRuntimeAdapterManifests(): AgentRuntimeAdapterManifest[] {
-  return runtimeAdapterRegistry.manifests().map((manifest) => {
-    if (manifest.adapterId !== "opencode") {
-      return manifest;
-    }
-    if (isRemoteOpenCodeAcpV1Enabled()) {
+  return runtimeAdapterRegistry
+    .manifests()
+    .filter(
+      (manifest) =>
+        !remoteCliPilotManifest(manifest.adapterId) ||
+        isRemoteCliPilotEnabled(manifest.adapterId),
+    )
+    .map((manifest) => {
+      if (manifest.adapterId !== "opencode") {
+        return manifest;
+      }
+      if (isRemoteOpenCodeAcpV1Enabled()) {
+        return {
+          ...manifest,
+          locations: ["local", "remote"] as const,
+          transports: ["local-cli", "gateway-v1"] as const,
+        };
+      }
       return {
         ...manifest,
-        locations: ["local", "remote"] as const,
-        transports: ["local-cli", "gateway-v1"] as const,
+        locations: ["local"] as const,
+        transports: ["local-cli"] as const,
       };
-    }
-    return {
-      ...manifest,
-      locations: ["local"] as const,
-      transports: ["local-cli"] as const,
-    };
-  });
+    });
 }

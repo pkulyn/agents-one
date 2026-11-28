@@ -303,6 +303,7 @@ export function createRemoteCliHost({
       },
     },
     runtimes: entries,
+    requireOwnedProviderSession: true,
     statePath,
   });
 

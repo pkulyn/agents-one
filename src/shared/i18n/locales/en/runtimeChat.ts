@@ -255,6 +255,8 @@ export default {
     auto: "Auto",
     readOnly: "Read only",
     fullAccess: "Full access",
+    workspaceAutoHint:
+      "Use this agent’s supported read and write tools in its remote workspace.",
     autoHint:
       "Read, query, create and edit; document deletion requires confirmation",
     readOnlyHint:

@@ -214,6 +214,8 @@ async function requestJson(
   return { ok: response.ok, status: response.status, body };
 }
 
+const connectRequestQueue = new Map<string, Promise<void>>();
+
 /**
  * Gateway v1 over the managed Connect WebSocket tunnel. A short-lived
  * desktop socket per request keeps the first implementation stateless while
@@ -237,6 +239,39 @@ async function requestConnectJson(
   const wsProtocol = base.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${wsProtocol}//${base.host}/connect/v1/tunnel`;
   const timeoutMs = Math.max(1_000, config.timeoutMs || 10_000);
+  const queueKey = JSON.stringify([wsUrl, connect.runtimeId]);
+  const previous = connectRequestQueue.get(queueKey) ?? Promise.resolve();
+  const response = previous.then(() =>
+    requestConnectSocket(
+      wsUrl,
+      connect.runtimeId,
+      gatewayToken,
+      timeoutMs,
+      path,
+      init,
+    ),
+  );
+  const tail = response.then(
+    () => undefined,
+    () => undefined,
+  );
+  connectRequestQueue.set(queueKey, tail);
+  try {
+    return await response;
+  } finally {
+    if (connectRequestQueue.get(queueKey) === tail)
+      connectRequestQueue.delete(queueKey);
+  }
+}
+
+function requestConnectSocket(
+  wsUrl: string,
+  runtimeId: string,
+  gatewayToken: string,
+  timeoutMs: number,
+  path: string,
+  init?: { method?: "POST"; body?: unknown },
+): Promise<{ ok: boolean; status: number; body: unknown }> {
   const requestId = `desktop-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(wsUrl);
@@ -267,9 +302,16 @@ async function requestConnectJson(
     socket.on("error", (error) =>
       finishReject(error instanceof Error ? error : new Error(String(error))),
     );
-    socket.on("close", () => {
-      if (!settled)
-        finishReject(new Error("Agents One Connect tunnel closed."));
+    socket.on("close", (code) => {
+      if (settled) return;
+      // Connect uses 4001 for rejected or revoked tunnel authorization.
+      finishReject(
+        new Error(
+          code === 4001
+            ? "此 Runtime 的 Connect 授权无效或已撤销（connect_authorization_failed）。"
+            : "Agents One Connect tunnel closed.",
+        ),
+      );
     });
     socket.on("message", (raw) => {
       try {
@@ -327,7 +369,7 @@ async function requestConnectJson(
           type: "hello",
           role: "desktop",
           protocolVersion: AGENTS_ONE_CONNECT_PROTOCOL_VERSION,
-          runtimeId: connect.runtimeId,
+          runtimeId,
           gatewayToken,
         }),
       );
@@ -1031,6 +1073,19 @@ function capabilitiesFrom(value: unknown): AgentRuntimeCapabilities | null {
   if (!/^1(?:\.|$)/.test(root.protocolVersion)) return null;
   const capabilities = object(root.capabilities);
   if (!capabilities) return null;
+  const declaredModes = object(capabilities.permissions)?.modes;
+  const permissionModes = Array.isArray(declaredModes)
+    ? [
+        ...new Set(
+          declaredModes.filter(
+            (mode): mode is "analysis" | "safe_write" | "full_access" =>
+              mode === "analysis" ||
+              mode === "safe_write" ||
+              mode === "full_access",
+          ),
+        ),
+      ]
+    : undefined;
   const conversation = object(capabilities.conversation);
   const tasks = object(capabilities.tasks);
   const orchestration = object(capabilities.orchestration);
@@ -1090,6 +1145,7 @@ function capabilitiesFrom(value: unknown): AgentRuntimeCapabilities | null {
     ),
     artifactUpload: bool(object(capabilities.artifacts)?.upload),
     workspaceAccess,
+    ...(permissionModes ? { permissionModes } : {}),
     commands:
       capabilities.commands === true ||
       Boolean(commands?.catalog && commands?.execute),
@@ -1363,6 +1419,7 @@ export async function getAgentsOneRemoteGatewayArtifact(
   config: AgentsOneRemoteGatewayConfig,
   artifactId: string,
   auth?: AgentsOneRemoteGatewayAuth,
+  expected?: Pick<AgentRuntimeArtifact, "size" | "sha256">,
 ): Promise<AgentsOneRemoteGatewayArtifactDownload> {
   if (
     !artifactId ||
@@ -1383,16 +1440,26 @@ export async function getAgentsOneRemoteGatewayArtifact(
     );
   }
   const metadata = artifactFrom(response.body);
+  if (metadata.id !== artifactId) {
+    throw new Error("Gateway 附件 ID 校验失败。");
+  }
   const content = artifactContentBase64(response.body);
   if (!content)
     throw new Error("Gateway 仅返回了附件元数据，未返回可下载内容。");
   const bytes = decodeArtifactBytes(content);
-  if (metadata.size > 0 && metadata.size !== bytes.length) {
+  const expectedSize = expected?.size ?? 0;
+  if (
+    (metadata.size > 0 && metadata.size !== bytes.length) ||
+    (expectedSize > 0 && expectedSize !== bytes.length)
+  ) {
     throw new Error("Gateway 附件大小校验失败。");
   }
-  if (metadata.sha256) {
+  if (metadata.sha256 || expected?.sha256) {
     const actual = createHash("sha256").update(bytes).digest("hex");
-    if (actual.toLowerCase() !== metadata.sha256.toLowerCase()) {
+    if (
+      (metadata.sha256 && actual !== metadata.sha256.toLowerCase()) ||
+      (expected?.sha256 && actual !== expected.sha256.toLowerCase())
+    ) {
       throw new Error("Gateway 附件 SHA-256 校验失败。");
     }
   }

@@ -41,6 +41,27 @@ agents-one-connector run --adapter ./adapters/hermes-loopback.mjs
 - `--runtime-adapters` 接受一个导出 `runtimeAdapters` 对象的 ES Module，例如 `{ "opencode-main": onOpenCode, "pi-main": onPi }`；Connector 只按服务端授权的 `runtimeId` 转发，不会因本地模块声明而扩大授权范围。单 `--adapter` 仍兼容旧配置。
 - `adapters/gateway-v1-loopback.mjs` 是通用 Gateway v1 Loopback Adapter，只访问本机 `AGENTS_ONE_LOOPBACK_GATEWAY`（默认 `http://127.0.0.1:8642`），不会把本地端口暴露到公网；Hers 只是首个验证对象。旧的 `hermes-loopback.mjs` 仅保留为兼容别名。
 
+## 同一主机的隔离验收
+
+试点在单独的用户进程中设置 `AGENTS_ONE_CONNECTOR_DIR` 为专用绝对目录，使配对、运行、撤销都使用这份凭据。既有 Connector 使用原凭据目录与进程。Home Host 使用独立的 `statePath` 和授权测试工作区，先按 SDK 的 OpenCode ACP 示例启动，再为每个 Runtime 导出独立路由。
+
+```js
+import { createLoopbackGatewayAdapter } from "./plugins/agents-one-connector/adapters/gateway-v1-loopback.mjs";
+
+export const runtimeAdapters = {
+  "hers-pilot": createLoopbackGatewayAdapter({
+    endpoint: process.env.PILOT_HERS_GATEWAY,
+    token: process.env.PILOT_HERS_TOKEN,
+  }),
+  "opencode-pilot": createLoopbackGatewayAdapter({
+    endpoint: process.env.PILOT_OPENCODE_GATEWAY,
+    token: process.env.PILOT_OPENCODE_TOKEN,
+  }),
+};
+```
+
+该模块放在仓库根目录时可使用上述相对导入。先在家中进程环境为两个 Gateway 分别设置地址和凭据，确认配对清单中的 Runtime ID 与模块和本机 Gateway 配置一致，再通过 `request-pairing`、桌面批准、`complete-pairing` 和 `run --runtime-adapters ./runtime-adapters.mjs` 验收。试点准备时可以对照 SDK 的 Host 例子启用已授权的测试工作区，并在单独桌面进程启用 `AGENTS_ONE_REMOTE_OPENCODE_V1=1`。
+
 Windows/Linux 用户级安装脚本：
 
 ```powershell

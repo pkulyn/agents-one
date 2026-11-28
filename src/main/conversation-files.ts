@@ -115,10 +115,21 @@ export async function resolveConversationFile(
     }
     if (!candidate) {
       const runtimeId = message.agentRuntimeId || conversation.runtimeId;
-      const key = JSON.stringify([profile, runtimeId, ref.artifactId]);
+      const expected = { sha256: artifact.sha256, size: artifact.size };
+      const key = JSON.stringify([
+        profile,
+        runtimeId,
+        ref.artifactId,
+        expected.sha256,
+        expected.size,
+      ]);
       let pending = remoteDownloads.get(key);
       if (!pending) {
-        pending = restoreConversationArtifactFile(runtimeId, ref.artifactId);
+        pending = restoreConversationArtifactFile(
+          runtimeId,
+          ref.artifactId,
+          expected,
+        );
         remoteDownloads.set(key, pending);
         if (remoteDownloads.size > 100)
           remoteDownloads.delete(remoteDownloads.keys().next().value!);
@@ -128,8 +139,11 @@ export async function resolveConversationFile(
       else if (!(await stat(candidate).catch(() => null))?.isFile()) {
         remoteDownloads.delete(key);
         candidate =
-          (await restoreConversationArtifactFile(runtimeId, ref.artifactId)) ||
-          undefined;
+          (await restoreConversationArtifactFile(
+            runtimeId,
+            ref.artifactId,
+            expected,
+          )) || undefined;
       }
     }
   } else if (typeof ref.path === "string" && ref.path.length <= 32768) {

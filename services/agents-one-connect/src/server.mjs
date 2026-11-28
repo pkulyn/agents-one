@@ -263,6 +263,15 @@ function tunnelFrame(value) {
     if (value.runtimeId !== undefined && !validRuntimeId(value.runtimeId)) {
       throw new Error("Invalid Runtime route.");
     }
+    if (
+      value.afterSequence !== undefined &&
+      (value.method !== "GET" ||
+        !value.path.endsWith("/events") ||
+        !Number.isSafeInteger(value.afterSequence) ||
+        value.afterSequence < 0)
+    ) {
+      throw new Error("Invalid Gateway event position.");
+    }
     return value;
   }
   if (value.type === "response") {
@@ -289,15 +298,24 @@ function tunnelFrame(value) {
 }
 
 function gatewayPath(path) {
+  if (typeof path !== "string" || path.length > 2048 || !path.startsWith("/")) {
+    return false;
+  }
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(path);
+  } catch {
+    return false;
+  }
   if (
-    typeof path !== "string" ||
-    path.length > 2048 ||
-    !path.startsWith("/") ||
-    path.includes("..")
+    decodedPath.includes("..") ||
+    decodedPath.includes("\\") ||
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u001f\u007f]/.test(decodedPath)
   ) {
     return false;
   }
-  return /^\/(capabilities|commands\/(?:catalog|execute)|runs(?:\/[A-Za-z0-9._:-]+(?:\/events|\/cancel|\/permissions\/[A-Za-z0-9_-]+)?)?|artifacts(?:\/[A-Za-z0-9._:-]+)?|workspace-grants(?:\/[A-Za-z0-9._:-]+(?:\/requests|\/results|\/revoke)?)?)$/.test(
+  return /^\/(capabilities|commands\/(?:catalog|execute)|runs(?:\/[A-Za-z0-9._:-]+(?:\/events|\/cancel|\/permissions\/[A-Za-z0-9_-]+)?)?|artifacts(?:\/(?:[A-Za-z0-9._:-]|%[A-Fa-f0-9]{2})+)?|workspace-grants(?:\/[A-Za-z0-9._:-]+(?:\/requests|\/results|\/revoke)?)?)$/.test(
     path,
   );
 }

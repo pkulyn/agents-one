@@ -5,8 +5,18 @@ import {
   sign,
   randomUUID,
 } from "node:crypto";
+import { existsSync } from "node:fs";
 import { WebSocketServer } from "ws";
-import {
+
+const packagedContract = new URL(
+  "../packaged-owner-contract/owner-tunnel.mjs",
+  import.meta.url,
+);
+const sourceContract = new URL(
+  "../../../contracts/mobile-control/v1/owner-tunnel.mjs",
+  import.meta.url,
+);
+const {
   OWNER_TUNNEL_PATH,
   OWNER_TUNNEL_PROTOCOL,
   canonical,
@@ -15,7 +25,9 @@ import {
   validate,
   validateRequest,
   tunnelError,
-} from "../../../contracts/mobile-control/v1/owner-tunnel.mjs";
+} = await import(
+  existsSync(packagedContract) ? packagedContract : sourceContract
+);
 
 const AUTHORIZATION_ACK_MS = 10_000;
 const MAX_BUFFER = 2 * 1024 * 1024;
