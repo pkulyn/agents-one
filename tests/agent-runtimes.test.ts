@@ -629,6 +629,150 @@ describe("agent runtime registry", () => {
     ).toThrow(/HTTPS/);
   });
 
+  // @lat: [[main-process#Remote Gateway run recovery]]
+  it("resumes an acknowledged Gateway run after main reload without dispatching it again", async () => {
+    vi.stubEnv("AGENTS_ONE_USER_DATA_DIR", testHome);
+    vi.stubEnv("AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1", "1");
+    let terminal = false;
+    const status = {
+      id: "gateway-existing-run",
+      conversationId: "gateway-chat",
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (url, options) => {
+        const path = new URL(String(url)).pathname;
+        if (path.endsWith("/runs") && options?.method === "POST") {
+          return Response.json(
+            { ...status, status: "running" },
+            { status: 202 },
+          );
+        }
+        if (path.endsWith("/permissions/pending-edit")) {
+          expect(JSON.parse(String(options?.body))).toEqual({ allowed: false });
+          return Response.json({ ok: true });
+        }
+        if (path.endsWith("/runs/gateway-existing-run")) {
+          expect(new Headers(options?.headers).get("authorization")).toBe(
+            "Bearer fixture-secret",
+          );
+          if (!terminal)
+            return Response.json({
+              ...status,
+              status: "running",
+              permissionRequests: [
+                {
+                  id: "pending-edit",
+                  name: "Write",
+                  input: { path: "note.txt" },
+                },
+              ],
+            });
+          return Response.json({
+            ...status,
+            status: "succeeded",
+            output: "Answer from the original run",
+            events: [
+              {
+                id: "recovered-final",
+                type: "assistant.completed",
+                sequence: 201,
+                data: { text: "Answer from the original run" },
+              },
+            ],
+          });
+        }
+        throw new Error("Unexpected Gateway request");
+      });
+    try {
+      const { runtimes } = await loadModules();
+      const registration = runtimes.saveAgentRuntime({
+        id: "codex-recovery",
+        name: "Recovery fixture",
+        kind: "codex",
+        adapterId: "codex-app-server",
+        location: "remote",
+        enabled: true,
+        config: {
+          endpoint: "https://original.example/agents-one/v1",
+          remoteGateway: { protocol: "agents-one-v1" },
+        },
+      });
+      runtimes.setAgentRuntimeBearerToken(registration.id, "fixture-secret");
+      const run = await runtimes.startAgentRuntimeTask(registration.id, {
+        prompt: "fixture prompt must stay out of the index",
+        conversation: true,
+      });
+      expect(run.status).toBe("running");
+      const appExit = { keepRecoverableGatewayRuns: true };
+      expect(runtimes.activeAgentRuntimeTaskCount()).toBe(1);
+      expect(runtimes.activeAgentRuntimeTaskCount(appExit)).toBe(0);
+      await expect(runtimes.cancelAllAgentRuntimeTasks(appExit)).resolves.toBe(
+        0,
+      );
+      const { agentsOneDataRoot, agentsOneProfileHome } =
+        await import("../src/main/agents-one-data-root");
+      const contents = readFileSync(
+        join(agentsOneProfileHome("default"), "remote-gateway-runs.json"),
+        "utf8",
+      );
+      expect(contents).not.toMatch(
+        /fixture-secret|fixture prompt|original\.example/,
+      );
+
+      const { runtimes: restarted } = await loadModules();
+      const activeProfile = join(agentsOneDataRoot(), "active_profile");
+      writeFileSync(activeProfile, "other-profile");
+      await expect(restarted.getAgentRuntimeRun(run.id)).resolves.toBeNull();
+      writeFileSync(activeProfile, "default");
+      vi.stubEnv("AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1", "0");
+      await expect(restarted.getAgentRuntimeRun(run.id)).resolves.toBeNull();
+      vi.stubEnv("AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1", "1");
+      restarted.saveAgentRuntime({
+        ...registration,
+        config: {
+          ...registration.config,
+          endpoint: "https://different.example/agents-one/v1",
+        },
+      });
+      await expect(restarted.getAgentRuntimeRun(run.id)).resolves.toBeNull();
+      restarted.saveAgentRuntime(registration);
+      restarted.setAgentRuntimeBearerToken(registration.id, "fixture-secret");
+
+      await expect(restarted.getAgentRuntimeRun(run.id)).resolves.toMatchObject(
+        { status: "running" },
+      );
+      terminal = true;
+      await expect(restarted.getAgentRuntimeRun(run.id)).resolves.toMatchObject(
+        {
+          id: run.id,
+          startedAt: run.startedAt,
+          status: "succeeded",
+          output: "Answer from the original run",
+          sessionId: "gateway-chat",
+          events: expect.arrayContaining([
+            expect.objectContaining({ code: "gateway_history_partial" }),
+          ]),
+        },
+      );
+      writeFileSync(activeProfile, "other-profile");
+      await expect(restarted.getAgentRuntimeRun(run.id)).resolves.toBeNull();
+      expect(
+        fetchMock.mock.calls.map(([url, options]) => [
+          new URL(String(url)).host,
+          options?.method || "GET",
+        ]),
+      ).toEqual([
+        ["original.example", "POST"],
+        ["original.example", "GET"],
+        ["original.example", "POST"], // Denial of the outstanding approval.
+        ["original.example", "GET"],
+      ]);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("probes OpenClaw through the public Gateway v1 contract", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -684,6 +828,182 @@ describe("agent runtime registry", () => {
     }
   });
 
+  it("gates the remote Codex pilot and dispatches its default mode as read-only", async () => {
+    vi.stubEnv("AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1", "0");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (url) => {
+        if (String(url).endsWith("/capabilities")) {
+          return Response.json({
+            protocolVersion: "1.0",
+            capabilities: {
+              conversation: { stream: "sse" },
+              tasks: { start: true },
+            },
+          });
+        }
+        return Response.json(
+          {
+            id: "remote-codex-run",
+            status: "succeeded",
+            conversationId: "remote-codex-conversation",
+            output: "Remote fixture",
+          },
+          { status: 202 },
+        );
+      });
+    try {
+      const { runtimes } = await loadModules();
+      const draft = {
+        id: "codex-pilot",
+        name: "Remote Codex",
+        kind: "codex",
+        adapterId: "codex-app-server",
+        location: "remote" as const,
+        enabled: true,
+        config: {
+          endpoint: "https://gateway.example/agents-one/v1",
+          remoteGateway: { protocol: "agents-one-v1" as const },
+        },
+      };
+      expect(() => runtimes.saveAgentRuntime(draft)).toThrow(/试点入口已关闭/);
+      vi.stubEnv("AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1", "1");
+      expect(runtimes.saveAgentRuntime(draft)).toMatchObject({
+        adapterId: "codex-app-server",
+      });
+      runtimes.setAgentRuntimeBearerToken(draft.id, "fixture-token");
+      await expect(runtimes.probeAgentRuntime(draft.id)).resolves.toMatchObject(
+        {
+          state: "healthy",
+        },
+      );
+      await expect(
+        runtimes.startAgentRuntimeTask(draft.id, {
+          prompt: "read fixture",
+          conversation: true,
+        }),
+      ).resolves.toMatchObject({
+        status: "succeeded",
+        output: "Remote fixture",
+      });
+      const runCall = fetchMock.mock.calls.find(([url]) =>
+        String(url).endsWith("/runs"),
+      );
+      expect(runCall).toBeDefined();
+      expect(JSON.parse(String(runCall?.[1]?.body))).toMatchObject({
+        runtimeId: "codex-pilot",
+        execution: { permission: "read", permissionMode: "analysis" },
+      });
+      await expect(
+        runtimes.startAgentRuntimeTask(draft.id, {
+          prompt: "write fixture",
+          mode: "full_access",
+        }),
+      ).rejects.toThrow(/仅支持只读/);
+      await expect(
+        runtimes.startAgentRuntimeTask(draft.id, {
+          prompt: "write without advertised authority",
+          mode: "safe_write",
+        }),
+      ).resolves.toMatchObject({
+        status: "failed",
+        error: expect.stringContaining("没有声明自动写入权限"),
+      });
+      vi.stubEnv("AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1", "0");
+      await expect(runtimes.probeAgentRuntime(draft.id)).resolves.toMatchObject(
+        {
+          state: "unsupported",
+        },
+      );
+      await expect(
+        runtimes.startAgentRuntimeTask(draft.id, {
+          prompt: "read fixture",
+        }),
+      ).rejects.toThrow(/试点入口已关闭/);
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/runs")),
+      ).toHaveLength(1);
+    } finally {
+      fetchMock.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each([
+    [
+      "claude-code",
+      "claude-agent-sdk",
+      "AGENTS_ONE_REMOTE_CLAUDE_AGENT_SDK_V1",
+    ],
+    ["pi", "pi-rpc", "AGENTS_ONE_REMOTE_PI_RPC_V1"],
+  ] as const)(
+    "routes %s pilot writes through its Gateway capabilities",
+    async (kind, adapterId, flag) => {
+      vi.stubEnv(flag, "1");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(async (url) => {
+          if (String(url).endsWith("/capabilities"))
+            return Response.json({
+              protocolVersion: "1.0",
+              capabilities: {
+                tasks: { start: true },
+                permissions: { modes: ["analysis", "safe_write"] },
+              },
+            });
+          return Response.json(
+            {
+              id: "bounded-write-run",
+              status: "succeeded",
+              output: "Workspace result",
+            },
+            { status: 202 },
+          );
+        });
+      try {
+        const { runtimes } = await loadModules();
+        const runtime = runtimes.saveAgentRuntime({
+          id: adapterId + "-pilot",
+          name: "Remote " + kind,
+          kind,
+          adapterId,
+          location: "remote",
+          enabled: true,
+          config: {
+            remoteGateway: { protocol: "agents-one-v1" },
+            endpoint: "https://gateway.example/agents-one/v1",
+          },
+        });
+        runtimes.setAgentRuntimeBearerToken(runtime.id, "fixture-token");
+        await expect(
+          runtimes.startAgentRuntimeTask(runtime.id, {
+            prompt: "write fixture",
+            mode: "safe_write",
+          }),
+        ).resolves.toMatchObject({
+          status: "succeeded",
+          output: "Workspace result",
+        });
+        expect(
+          fetchMock.mock.calls.map(([url]) => String(url).split("/").at(-1)),
+        ).toEqual(["capabilities", "runs"]);
+        expect(
+          JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body)),
+        ).toMatchObject({
+          runtimeId: runtime.id,
+          execution: { permission: "write", permissionMode: "safe_write" },
+        });
+        vi.stubEnv(flag, "0");
+        await expect(
+          runtimes.probeAgentRuntime(runtime.id),
+        ).resolves.toMatchObject({ state: "unsupported" });
+      } finally {
+        fetchMock.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
   it("probes remote OpenCode through Gateway v1 instead of the desktop ACP", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -702,8 +1022,9 @@ describe("agent runtime registry", () => {
     );
     try {
       const { runtimes } = await loadModules();
-      runtimes.saveAgentRuntime({
+      const saved = runtimes.saveAgentRuntime({
         id: "opencode-remote",
+        adapterId: "opencode-acp",
         name: "Remote OpenCode",
         kind: "opencode",
         location: "remote",
@@ -714,6 +1035,7 @@ describe("agent runtime registry", () => {
           transport: "http",
         },
       });
+      expect(saved.adapterId).toBe("opencode");
       runtimes.setAgentRuntimeBearerToken(
         "opencode-remote",
         "opencode-remote-token",
@@ -4119,7 +4441,7 @@ describe("agent runtime registry", () => {
           }
           if (artifact?.path) rmSync(artifact.path, { force: true });
           if (scenario === "mismatch")
-            expect(artifact?.unavailableReason).toContain("元数据校验失败");
+            expect(artifact?.unavailableReason).toContain("SHA-256 校验失败");
         }
       } finally {
         fetchMock.mockRestore();

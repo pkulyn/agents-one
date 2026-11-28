@@ -1033,6 +1033,97 @@ test("Remote CLI Host routes multiple Runtime IDs through one Gateway", async ()
   await host.close();
 });
 
+test("Remote CLI Host scopes run and persisted artifact access to the selected Runtime", async (t) => {
+  const statePath = join(
+    mkdtempSync(join(tmpdir(), "agents-one-host-scope-")),
+    "state.json",
+  );
+  const adapter = {
+    async startRun(input, { publishArtifact }) {
+      await publishArtifact({
+        id: "artifact_fixture",
+        name: "fixture.txt",
+        mime: "text/plain",
+        bytes: Buffer.from(input.input.text),
+      });
+      return { status: "succeeded" };
+    },
+  };
+  const runtimes = ["test-first", "test-second"].map((runtimeId) => ({
+    runtimeId,
+    displayName: runtimeId,
+    adapter,
+  }));
+  const open = async () => {
+    const host = createRemoteCliHost({
+      token: "test-token",
+      runtimes,
+      statePath,
+    });
+    await host.listen(0);
+    t.after(() => (host.server.listening ? host.close() : undefined));
+    const base = "http://127.0.0.1:" + host.server.address().port;
+    return {
+      host,
+      request: (runtimeId, path, body) =>
+        fetch(base + path, {
+          method: body ? "POST" : "GET",
+          headers: {
+            authorization: "Bearer test-token",
+            "x-agents-one-runtime-id": runtimeId,
+            ...(body ? { "content-type": "application/json" } : {}),
+          },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        }),
+    };
+  };
+  const first = await open();
+  const denied = await first.request("test-first", "/runs", {
+    runtimeId: "test-second",
+    input: { text: "scoped fixture" },
+  });
+  assert.equal(denied.status, 403);
+  assert.equal((await denied.json()).error.code, "runtime_route_mismatch");
+
+  const created = await first.request("test-first", "/runs", {
+    input: { text: "scoped fixture" },
+  });
+  assert.equal(created.status, 202);
+  const run = await created.json();
+  assert.equal(run.runtimeId, "test-first");
+  assert.equal(
+    (await first.request("test-first", "/runs/" + run.id)).status,
+    200,
+  );
+  for (const path of ["/runs/" + run.id, "/runs/" + run.id + "/events"]) {
+    assert.equal((await first.request("test-second", path)).status, 404);
+  }
+  assert.equal(
+    (await first.request("test-second", "/runs/" + run.id + "/cancel", {}))
+      .status,
+    404,
+  );
+  await first.host.close();
+
+  const restored = await open();
+  const owned = await restored.request(
+    "test-first",
+    "/artifacts/artifact_fixture",
+  );
+  assert.equal(owned.status, 200);
+  const artifact = await owned.json();
+  assert.equal(
+    Buffer.from(artifact.contentBase64, "base64").toString(),
+    "scoped fixture",
+  );
+  assert.equal("bytesPath" in artifact, false);
+  assert.equal(
+    (await restored.request("test-second", "/artifacts/artifact_fixture"))
+      .status,
+    404,
+  );
+});
+
 test("Remote CLI Host enforces Adapter trust and per-Runtime concurrency", async () => {
   const adapter = {
     manifest: { adapterId: "opencode-acp", version: "0.1.2" },

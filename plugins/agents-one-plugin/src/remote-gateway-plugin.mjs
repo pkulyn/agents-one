@@ -207,6 +207,7 @@ export function createRemoteGatewayPlugin({
   adapter,
   limits = {},
   runtimes = [],
+  requireOwnedProviderSession = false,
   statePath,
 }) {
   if (!agent?.id || !agent?.kind || !adapter?.startRun) {
@@ -225,6 +226,7 @@ export function createRemoteGatewayPlugin({
     Math.min(Number(limits.maxConcurrentRuns) || 2, 100),
   );
   const publishedArtifacts = new Map();
+  const multiRuntime = runtimes.length > 1;
   const artifactDirectory =
     typeof statePath === "string" && statePath.trim()
       ? `${statePath.trim()}.artifacts`
@@ -232,11 +234,6 @@ export function createRemoteGatewayPlugin({
   const declaredCapabilities =
     adapter.capabilities && typeof adapter.capabilities === "object"
       ? adapter.capabilities
-      : {};
-  const declaredEventStream =
-    declaredCapabilities.eventStream &&
-    typeof declaredCapabilities.eventStream === "object"
-      ? declaredCapabilities.eventStream
       : {};
 
   function persistState() {
@@ -363,6 +360,19 @@ export function createRemoteGatewayPlugin({
     }
   }
 
+  function artifactBelongsToRuntime(artifact, runtimeId) {
+    if (!multiRuntime) return true;
+    if (!runtimeId) return false;
+    if (artifact.runtimeId) return artifact.runtimeId === runtimeId;
+    // Older snapshots recorded ownership in the Run, alongside its artifacts.
+    const owners = new Set(
+      [...runs.values()]
+        .filter((run) => run.artifacts.some((item) => item?.id === artifact.id))
+        .map((run) => run.runtimeId),
+    );
+    return owners.size === 1 && owners.has(runtimeId);
+  }
+
   function artifactPublisher(record) {
     return async (input) => {
       if (!input || typeof input !== "object") {
@@ -390,6 +400,9 @@ export function createRemoteGatewayPlugin({
           ? input.id.trim()
           : `artifact_${randomUUID()}`;
       const existing = publishedArtifacts.get(id);
+      if (existing && !artifactBelongsToRuntime(existing, record.runtimeId)) {
+        throw new Error("Artifact id is already bound to another Runtime.");
+      }
       if (existing && existing.sha256 !== sha256) {
         throw new Error("Artifact id is already bound to different bytes.");
       }
@@ -407,6 +420,7 @@ export function createRemoteGatewayPlugin({
       const bytesPath = persistArtifactBytes(id, bytes);
       publishedArtifacts.set(id, {
         ...artifact,
+        runtimeId: record.runtimeId,
         bytes,
         ...(bytesPath ? { bytesPath } : {}),
       });
@@ -498,6 +512,15 @@ export function createRemoteGatewayPlugin({
     const update = await adapter.getRun(record.vendorRunId, record, {
       publishArtifact,
     });
+    // The dispatch fallback for adapters without getRun() must not settle a
+    // live record; only real adapter statuses may free a Runtime slot.
+    if (
+      update &&
+      typeof update === "object" &&
+      typeof update.error === "string" &&
+      update.error.startsWith("adapter_unavailable")
+    )
+      return;
     applyUpdate(update);
     persistState();
   }
@@ -512,7 +535,16 @@ export function createRemoteGatewayPlugin({
           "Gateway token is invalid.",
         );
       const url = new URL(request.url || "/", "http://localhost");
+      const scopedRuntimeId = requestRuntimeId(request, url);
       if (request.method === "GET" && url.pathname === "/capabilities") {
+        const selected =
+          runtimes.find((runtime) => runtime.runtimeId === scopedRuntimeId) ||
+          (runtimes.length === 1 ? runtimes[0] : undefined);
+        const reported =
+          selected?.adapter?.capabilities || declaredCapabilities;
+        const runtimeAdapter = selected?.adapter || adapter;
+        const permission = reported.permissions || {};
+        const interactive = permission.interactive !== false;
         return json(response, 200, {
           protocolVersion: "1.0",
           plugin: {
@@ -545,28 +577,38 @@ export function createRemoteGatewayPlugin({
               }
             : {}),
           capabilities: {
-            ...declaredCapabilities,
+            ...reported,
             permissions: {
-              interactive: true,
-              deletionConfirmation: true,
+              interactive,
+              deletionConfirmation:
+                interactive && permission.deletionConfirmation !== false,
               policyVersion: 1,
-              modes: ["analysis", "safe_write", "full_access"],
+              modes: permission.modes || [
+                "analysis",
+                "safe_write",
+                "full_access",
+              ],
             },
-            conversation: { stream: "sse", continuation: true },
+            conversation: {
+              stream: "sse",
+              continuation: reported.sessions?.resume !== false,
+            },
             tasks: {
               start: true,
               get: true,
-              cancel: Boolean(adapter.cancelRun),
+              cancel: Boolean(runtimeAdapter.cancelRun),
             },
             artifacts: {
-              ...(declaredCapabilities.artifacts &&
-              typeof declaredCapabilities.artifacts === "object"
-                ? declaredCapabilities.artifacts
+              ...(reported.artifacts && typeof reported.artifacts === "object"
+                ? reported.artifacts
                 : {}),
-              upload: Boolean(adapter.uploadArtifact),
-              download: true,
+              upload: Boolean(runtimeAdapter.uploadArtifact),
+              download: reported.artifacts?.download !== false,
             },
-            eventStream: eventStreamCapability("poll", declaredEventStream),
+            eventStream: eventStreamCapability(
+              "poll",
+              reported.eventStream || {},
+            ),
           },
           limits: {
             maxConcurrentRuns: 2,
@@ -629,9 +671,9 @@ export function createRemoteGatewayPlugin({
           },
           {
             request,
-            runtimeId: requestRuntimeId(request, url),
-            record: requestRuntimeId(request, url)
-              ? { runtimeId: requestRuntimeId(request, url) }
+            runtimeId: scopedRuntimeId,
+            record: scopedRuntimeId
+              ? { runtimeId: scopedRuntimeId }
               : undefined,
           },
         );
@@ -652,11 +694,22 @@ export function createRemoteGatewayPlugin({
       const artifactMatch = url.pathname.match(/^\/artifacts\/([^/]+)$/);
       if (request.method === "GET" && artifactMatch) {
         const artifactId = decodeURIComponent(artifactMatch[1]);
-        const runtimeId = requestRuntimeId(request, url);
+        const runtimeId = scopedRuntimeId;
         const local = publishedArtifacts.get(artifactId);
+        if (local && !artifactBelongsToRuntime(local, runtimeId))
+          return error(
+            response,
+            404,
+            "artifact_not_found",
+            "Artifact was not found.",
+          );
         const localBytes = localArtifactBytes(local);
-        const localDownload =
-          local && localBytes ? { ...local, bytes: localBytes } : undefined;
+        let localDownload;
+        if (local && localBytes) {
+          localDownload = { ...local, bytes: localBytes };
+          delete localDownload.runtimeId;
+          delete localDownload.bytesPath;
+        }
         const downloaded =
           localDownload ||
           (typeof adapter.getArtifact === "function"
@@ -703,6 +756,29 @@ export function createRemoteGatewayPlugin({
         const input = await readJsonBody(request);
         if (!validRunInput(input))
           return error(response, 422, "invalid_run", "input.text is required.");
+        const requestedRuntimeId =
+          (multiRuntime ? scopedRuntimeId : undefined) ||
+          (typeof input.runtimeId === "string"
+            ? input.runtimeId
+            : typeof input.input.runtimeId === "string"
+              ? input.input.runtimeId
+              : undefined);
+        if (
+          multiRuntime &&
+          [input.runtimeId, input.input.runtimeId].some(
+            (value) => value !== undefined && value !== requestedRuntimeId,
+          )
+        ) {
+          return error(
+            response,
+            403,
+            "runtime_route_mismatch",
+            "Run does not match the Runtime route.",
+          );
+        }
+        if (multiRuntime && scopedRuntimeId && input.runtimeId === undefined) {
+          input.runtimeId = scopedRuntimeId;
+        }
         const idempotencyKey = requestIdempotencyKey(request, input);
         if (idempotencyKey) {
           const fingerprint = requestFingerprint(input);
@@ -720,20 +796,12 @@ export function createRemoteGatewayPlugin({
             if (existing) return json(response, 202, runPayload(existing));
           }
         }
-        const activeRuns = [...runs.values()].filter((candidate) =>
-          ["queued", "running", "cancelling"].includes(candidate.status),
-        ).length;
-        const requestedRuntimeId =
-          typeof input.runtimeId === "string"
-            ? input.runtimeId
-            : typeof input.input?.runtimeId === "string"
-              ? input.input.runtimeId
-              : undefined;
-        const activeRuntimeRuns = [...runs.values()].filter(
-          (candidate) =>
-            candidate.runtimeId === requestedRuntimeId &&
-            ["queued", "running", "cancelling"].includes(candidate.status),
-        ).length;
+        const isActive = (candidate) =>
+          ["queued", "running", "cancelling"].includes(candidate.status);
+        let activeRuns = [...runs.values()].filter(isActive);
+        let activeRuntimeRuns = activeRuns.filter(
+          (candidate) => candidate.runtimeId === requestedRuntimeId,
+        );
         const maxRuntimeConcurrentRuns = Math.max(
           1,
           Math.min(
@@ -746,8 +814,24 @@ export function createRemoteGatewayPlugin({
           ),
         );
         if (
-          activeRuns >= maxConcurrentRuns ||
-          (requestedRuntimeId && activeRuntimeRuns >= maxRuntimeConcurrentRuns)
+          activeRuns.length >= maxConcurrentRuns ||
+          (requestedRuntimeId &&
+            activeRuntimeRuns.length >= maxRuntimeConcurrentRuns)
+        ) {
+          // A run that finished while nobody was polling it keeps its stale
+          // record status until an explicit query; reconcile the blocking
+          // records from the adapter before refusing admission so finished
+          // slots are freed instead of leaking the Runtime concurrency slot.
+          for (const candidate of activeRuntimeRuns) await refresh(candidate);
+          activeRuns = activeRuns.filter(isActive);
+          activeRuntimeRuns = activeRuns.filter(
+            (candidate) => candidate.runtimeId === requestedRuntimeId,
+          );
+        }
+        if (
+          activeRuns.length >= maxConcurrentRuns ||
+          (requestedRuntimeId &&
+            activeRuntimeRuns.length >= maxRuntimeConcurrentRuns)
         ) {
           return error(
             response,
@@ -756,32 +840,57 @@ export function createRemoteGatewayPlugin({
             "远程智能体当前运行数已达到上限，请稍后重试。",
           );
         }
-        const id = `run_${randomUUID()}`;
-        // Older desktop clients used a provider session ID as conversationId.
-        // Resolve that alias only within the same Runtime, without rewriting
-        // historical records or changing the incoming idempotency fingerprint.
+        const defaultRuntimeId =
+          requireOwnedProviderSession && runtimes.length === 1
+            ? runtimes[0].runtimeId
+            : undefined;
+        const runtimeRuns = [...runs.values()]
+          .reverse()
+          .filter(
+            (candidate) =>
+              (candidate.runtimeId ?? defaultRuntimeId) ===
+              (requestedRuntimeId ?? defaultRuntimeId),
+          );
+        // Older clients may send a provider session ID as the conversation ID.
+        // Prefer an exact conversation match over the legacy alias.
+        const exactConversation = runtimeRuns.some(
+          (candidate) => candidate.conversationId === input.conversationId,
+        );
         const legacyConversation =
           input.conversationId &&
-          [...runs.values()]
-            .reverse()
-            .find(
-              (candidate) =>
-                candidate.runtimeId === requestedRuntimeId &&
-                candidate.sessionId === input.conversationId,
-            );
+          !exactConversation &&
+          runtimeRuns.find(
+            (candidate) => candidate.sessionId === input.conversationId,
+          );
+        const conversationId =
+          legacyConversation?.conversationId ||
+          input.conversationId ||
+          `conversation_${randomUUID()}`;
+        const previous = runtimeRuns.find(
+          (candidate) =>
+            candidate.conversationId === conversationId &&
+            typeof candidate.sessionId === "string" &&
+            candidate.sessionId,
+        );
+        if (
+          requireOwnedProviderSession &&
+          [input.sessionId, input.input.sessionId].some(
+            (value) => value !== undefined && value !== previous?.sessionId,
+          )
+        ) {
+          return error(
+            response,
+            403,
+            "provider_session_mismatch",
+            "Provider session does not belong to this Runtime conversation.",
+          );
+        }
+        const id = `run_${randomUUID()}`;
         const record = {
           id,
           status: "queued",
-          conversationId:
-            legacyConversation?.conversationId ||
-            input.conversationId ||
-            `conversation_${randomUUID()}`,
-          runtimeId:
-            typeof input.runtimeId === "string"
-              ? input.runtimeId
-              : typeof input.input?.runtimeId === "string"
-                ? input.input.runtimeId
-                : undefined,
+          conversationId,
+          runtimeId: requestedRuntimeId,
           input,
           requestedModel:
             typeof input.model === "string"
@@ -819,16 +928,6 @@ export function createRemoteGatewayPlugin({
           // Bind the adapter's first turn to the exact identity returned by
           // the Gateway. Keep provider session IDs separate from this ID,
           // including after the durable Gateway journal is reopened.
-          const previous = [...runs.values()]
-            .reverse()
-            .find(
-              (candidate) =>
-                candidate !== record &&
-                candidate.runtimeId === runtimeId &&
-                candidate.conversationId === record.conversationId &&
-                typeof candidate.sessionId === "string" &&
-                candidate.sessionId,
-            );
           const adapterInput = {
             ...input,
             conversationId: record.conversationId,
@@ -900,9 +999,13 @@ export function createRemoteGatewayPlugin({
       );
       if (request.method === "POST" && approvalRoute) {
         const owner = runs.get(decodeURIComponent(approvalRoute[1]));
-        const approval = owner?.permissionRequests?.get(
-          decodeURIComponent(approvalRoute[2]),
-        );
+        if (
+          multiRuntime &&
+          (!scopedRuntimeId || owner?.runtimeId !== scopedRuntimeId)
+        )
+          return error(response, 404, "run_not_found", "Run not found.");
+        const requestId = decodeURIComponent(approvalRoute[2]);
+        const approval = owner?.permissionRequests?.get(requestId);
         if (!approval || !["queued", "running"].includes(owner.status))
           return error(
             response,
@@ -918,6 +1021,13 @@ export function createRemoteGatewayPlugin({
             "invalid_permission",
             "allowed must be boolean.",
           );
+        if (owner.permissionRequests?.get(requestId) !== approval)
+          return error(
+            response,
+            409,
+            "permission_unavailable",
+            "Permission request is no longer active.",
+          );
         approval.resolve(body.allowed);
         return json(response, 200, { accepted: true });
       }
@@ -927,7 +1037,11 @@ export function createRemoteGatewayPlugin({
       if (!match)
         return error(response, 404, "not_found", "Resource not found.");
       const record = runs.get(decodeURIComponent(match[1]));
-      if (!record)
+      if (
+        !record ||
+        (multiRuntime &&
+          (!scopedRuntimeId || record.runtimeId !== scopedRuntimeId))
+      )
         return error(response, 404, "run_not_found", "Run not found.");
       if (request.method === "POST" && match[2] === "cancel") {
         if (!adapter.cancelRun)

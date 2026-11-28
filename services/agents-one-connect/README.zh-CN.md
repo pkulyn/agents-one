@@ -16,6 +16,8 @@ $env:CONNECT_PORT = "8788"
 node .\bin\agents-one-connect.mjs
 ```
 
+从仓库构建独立 npm 包时，在此目录运行 npm pack。打包钩子会纳入移动 Owner 隧道所需的共享协议文件。
+
 生产或测试环境可显式启用状态持久化和进程内 TLS：
 
 ```powershell

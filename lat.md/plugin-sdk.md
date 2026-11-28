@@ -46,7 +46,7 @@ The public diagnostic `scripts/diagnose-gateway-sse-post.mjs` selects the Agents
 
 Gateway conversation identity is stable from the first adapter request; provider session identity remains separate and is recovered from durable Runs within the same Runtime.
 
-The SDK passes the generated or supplied conversationId to `adapter.startRun`, preserving the original request fingerprint for idempotency. Follow-up requests receive the latest provider sessionId for that conversation from the persisted Run journal. Older clients that saved a provider ID can resolve that alias within the same Runtime, without rewriting history. Desktop Gateway runs retain conversationId before sessionId so later requests continue using the canonical Gateway identity. `test/conversation.test.mjs` covers first-turn binding, retry idempotency, process restart, Runtime isolation and legacy aliases; `tests/agent-runtimes.test.ts` covers four dispatches with distinct Gateway/provider identities.
+The SDK passes the generated or supplied conversationId to `adapter.startRun`, preserving the original request fingerprint for idempotency. Follow-up requests receive the latest provider sessionId for that conversation from the persisted Run journal. Older clients that saved a provider ID can resolve that alias within the same Runtime, without rewriting history. An existing canonical conversation takes precedence over an alias. The Remote CLI Host rejects an explicit provider session ID unless its durable journal already binds that ID to the same Runtime and conversation. Generic Gateway plugins may still delegate explicit session admission to their adapter. Desktop Gateway runs retain conversationId before sessionId so later requests continue using the canonical Gateway identity. `test/conversation.test.mjs` covers first-turn binding, retry idempotency, process restart, Runtime isolation and legacy aliases; `tests/agent-runtimes.test.ts` covers four dispatches with distinct Gateway/provider identities.
 
 ## ACP continuation and replay
 
@@ -122,10 +122,22 @@ Safe provider IDs retain their exact existing cursor and deduplication behavior.
 
 Each pending Gateway tunnel request belongs to its exact Desktop and Connector connections. Disconnect or replacement settles the affected requests and releases capacity without touching newer connections.
 
+The desktop queues requests sharing a Connect endpoint and Runtime so its short-lived sockets cannot replace one another. Other Runtime routes remain concurrent.
+
 The Connector leg receives an opaque unique correlation ID; responses restore the original Desktop request ID. This prevents late responses from matching a reused ID after reconnection. Responses must match their pending Runtime, and requests for unadvertised Runtimes fail explicitly. Replacing a Desktop closes the old connection instead of transferring its pending work.
+
+The desktop reports Connect WebSocket close code 4001 as invalid or revoked Runtime authorization. Ordinary socket closes retain the transport error.
+
+The Connect Gateway v1 path allowlist preserves URL-encoded Artifact IDs as one route segment, including IDs containing encoded slashes, while malformed escapes and decoded traversal remain rejected before forwarding.
 
 ## Connect shutdown lifecycle
 
 Shutdown rejects new admissions, shares one completion promise and closes all WebSockets, including peers that never authenticate. After a one-second grace period, remaining WebSockets and HTTP connections are terminated.
 
 Outstanding Gateway requests receive a service-stopping transport error before closing. Hello timers are cleared on socket teardown. Mobile shutdown and state-save errors are reported after network cleanup; a failure cannot silently leave the listener or upgraded peers running. Transport shutdown does not certify cancellation of a remote Run.
+
+## Standalone Connect package
+
+The Connect package stages the canonical mobile Owner runtime module and its two JSON contracts during npm prepack.
+
+Installed services load the packaged copy, while a fresh source checkout can load the repository contract directly. The packaged service starts without any checkout-adjacent contract directory.

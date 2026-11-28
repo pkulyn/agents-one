@@ -329,7 +329,8 @@ describe("AgentRuntimesPane", () => {
     expect(screen.getAllByText("健康").length).toBeGreaterThan(0);
   });
 
-  it("pairs a new remote runtime without mixing in self-hosted Gateway fields", async () => {
+  // @lat: [[agent-onboarding#Remote connection profiles#Split Connect and Gateway addresses#Saves the configured Gateway separately]]
+  it("pairs a new remote runtime with a separately configured Gateway endpoint", async () => {
     const api = installHermesAPI([]);
     render(<AgentRuntimesPane />);
 
@@ -337,8 +338,11 @@ describe("AgentRuntimesPane", () => {
     expect(
       screen.getByRole("button", { name: "校验码配对（推荐）" }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.queryByLabelText("Gateway 地址")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Gateway 地址")).toBeInTheDocument();
     expect(screen.queryByLabelText("Gateway Token")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Gateway 地址"), {
+      target: { value: "https://gateway.example.test/agents-one/v1" },
+    });
     fireEvent.change(screen.getByLabelText("输入接入校验码"), {
       target: { value: "ABCD234567" },
     });
@@ -347,7 +351,7 @@ describe("AgentRuntimesPane", () => {
     await waitFor(() => {
       expect(api.previewAgentsOneConnectPairingCode).toHaveBeenCalledWith(
         "ABCD234567",
-        "hermes-gateway",
+        undefined,
       );
     });
     expect(
@@ -362,9 +366,86 @@ describe("AgentRuntimesPane", () => {
           name: "Hermes",
           kind: "hermes",
           location: "remote",
+          config: expect.objectContaining({
+            endpoint: "https://gateway.example.test/agents-one/v1",
+          }),
         }),
       );
     });
+  });
+
+  it("discovers the real Connector primary without using the new draft ID", async () => {
+    const api = installHermesAPI([]);
+    api.previewAgentsOneConnectPairingCode.mockResolvedValueOnce({
+      sessionId: "pair_winpc",
+      runtimeId: "winpc-opencode",
+      displayName: "OpenCode · WinPC",
+      expiresAt: Date.now() + 300_000,
+      deviceFingerprint: "sha256:0123456789abcdef",
+      runtimes: [
+        {
+          runtimeId: "winpc-opencode",
+          displayName: "OpenCode · WinPC",
+          kind: "opencode",
+          adapterId: "opencode-acp",
+        },
+        {
+          runtimeId: "winpc-pi",
+          displayName: "Pi · WinPC",
+          kind: "pi",
+          adapterId: "pi-rpc",
+        },
+        {
+          runtimeId: "winpc-claude-code",
+          displayName: "Claude Code · WinPC",
+          kind: "claude-code",
+          adapterId: "claude-agent-sdk",
+        },
+      ],
+    });
+    render(<AgentRuntimesPane />);
+    await openNewAgentWizard();
+    fireEvent.change(screen.getByLabelText("Gateway 地址"), {
+      target: { value: "https://gateway.example.test/agents-one/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("输入接入校验码"), {
+      target: { value: "ABCD234567" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认配对" }));
+    const preview = await screen.findByTestId("agent-runtime-pairing-preview");
+    expect(preview).toHaveTextContent("winpc-claude-code");
+    expect(api.previewAgentsOneConnectPairingCode).toHaveBeenCalledWith(
+      "ABCD234567",
+      undefined,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "确认接入" }));
+    await waitFor(() =>
+      expect(api.completeAgentsOneConnectPairingPreview).toHaveBeenCalledWith(
+        "pair_winpc",
+        expect.objectContaining({
+          id: "winpc-opencode",
+          kind: "opencode",
+          adapterId: "opencode-acp",
+          name: "OpenCode · WinPC",
+        }),
+      ),
+    );
+  });
+
+  // @lat: [[agent-onboarding#Remote connection profiles#Split Connect and Gateway addresses#Requires the Gateway address in the pairing wizard]]
+  it("blocks verification-code pairing while the Gateway address is empty", async () => {
+    const api = installHermesAPI([]);
+    render(<AgentRuntimesPane />);
+    await openNewAgentWizard();
+    fireEvent.change(screen.getByLabelText("输入接入校验码"), {
+      target: { value: "ABCD234567" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认配对" }));
+    expect(
+      await screen.findByText(/请先填写 Gateway 地址/),
+    ).toBeInTheDocument();
+    expect(api.previewAgentsOneConnectPairingCode).not.toHaveBeenCalled();
+    expect(api.completeAgentsOneConnectPairingPreview).not.toHaveBeenCalled();
   });
 
   it("keeps self-hosted Gateway credentials in their own remote onboarding flow", async () => {
@@ -373,7 +454,7 @@ describe("AgentRuntimesPane", () => {
 
     await openNewAgentWizard();
     expect(screen.getByText("校验码配对")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Gateway 地址")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Gateway 地址")).toBeInTheDocument();
     expect(screen.queryByLabelText("Gateway Token")).not.toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "自托管 Gateway（高级）" }),
@@ -404,7 +485,7 @@ describe("AgentRuntimesPane", () => {
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     expect(screen.getByText("校验码配对")).toBeInTheDocument();
     expect(screen.getByLabelText("输入接入校验码")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Gateway 地址")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Gateway 地址")).toBeInTheDocument();
     expect(screen.queryByLabelText("Gateway Token")).not.toBeInTheDocument();
     // SSH 隧道与兼容模式均已移除（远程统一走 Gateway v1）
     expect(
@@ -1090,7 +1171,7 @@ describe("AgentRuntimesPane", () => {
 
     expect(screen.getByText("校验码配对")).toBeInTheDocument();
     expect(screen.queryByLabelText("可执行文件")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Gateway 地址")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Gateway 地址")).toBeInTheDocument();
   });
 
   it("discovers and adopts an existing local Hermes installation without reinstalling it", async () => {

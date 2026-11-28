@@ -122,6 +122,8 @@ import {
 import {
   manifestForAdapterId,
   manifestForRuntimeKind,
+  isRemoteCliPilot,
+  remoteCliPilotManifest,
 } from "../shared/runtime-adapters";
 import {
   createRuntimeCommandCatalog,
@@ -171,6 +173,11 @@ import {
   startPiProcess,
 } from "./pi-runtime";
 import { randomUUID } from "crypto";
+import {
+  gatewayRunRoute,
+  readGatewayRunReceipt,
+  writeGatewayRunReceipt,
+} from "./remote-gateway-run-index";
 import { getSecret } from "./secrets";
 import {
   deleteEnvValue,
@@ -250,6 +257,7 @@ import {
 } from "./web-agent/policy";
 import {
   isRemoteOpenCodeAcpV1Enabled,
+  isRemoteCliPilotEnabled,
   resolveRuntimeAdapter,
 } from "./runtime-adapters/registry";
 import {
@@ -358,6 +366,9 @@ interface RuntimeRunRecord {
     terminalReconciliationAttempts: number;
     cancelRequestedAt?: number;
     artifactRetryAttempts: Map<string, number>;
+    hasRecoveryReceipt?: boolean;
+    restoredProfile?: string;
+    restoredSnapshotObserved?: boolean;
     collaboration?: {
       taskId: string;
       assignmentId: string;
@@ -475,6 +486,7 @@ export function resolveAgentRuntimeArtifactPath(
 export async function restoreConversationArtifactFile(
   runtimeId: string,
   artifactId: string,
+  expected?: Pick<AgentRuntimeArtifact, "size" | "sha256">,
 ): Promise<string | null> {
   const runtime = listAgentRuntimes().find((item) => item.id === runtimeId);
   if (
@@ -493,6 +505,7 @@ export async function restoreConversationArtifactFile(
       },
       artifactId,
       runtimeAuth(runtime),
+      expected,
     );
     return materializeBytesToTemp(file.bytes, file.name, file.mime);
   } catch {
@@ -2311,6 +2324,19 @@ function runtimeCapabilitySnapshotFrom(
     snapshot[key] = candidate;
     found = true;
   }
+  if (Array.isArray(value.permissionModes)) {
+    snapshot.permissionModes = [
+      ...new Set(
+        value.permissionModes.filter(
+          (mode): mode is "analysis" | "safe_write" | "full_access" =>
+            mode === "analysis" ||
+            mode === "safe_write" ||
+            mode === "full_access",
+        ),
+      ),
+    ];
+    found = true;
+  }
   const eventStream = value.eventStream;
   if (isRecord(eventStream)) {
     const protocol = optionalString(eventStream.protocol, 64);
@@ -2438,7 +2464,15 @@ function runtimeAdapterMetadataFrom(
   | "capabilitySnapshot"
   | "lastProbe"
 > {
-  const explicitAdapterId = optionalString(value.adapterId, 128);
+  const reportedAdapterId = optionalString(value.adapterId, 128);
+  // The Remote Host publishes the ACP implementation ID. Desktop uses a
+  // single OpenCode entry for its local process and Gateway transports.
+  const explicitAdapterId =
+    value.location === "remote" &&
+    kind === "opencode" &&
+    reportedAdapterId === "opencode-acp"
+      ? "opencode"
+      : reportedAdapterId;
   if (explicitAdapterId && !RUNTIME_ADAPTER_ID.test(explicitAdapterId)) {
     throw new Error("Runtime adapterId is invalid.");
   }
@@ -2669,6 +2703,27 @@ function isAgentsOneGatewayRuntime(runtime: AgentRuntimeDefinition): boolean {
     runtime.location === "remote" &&
     runtime.config.remoteGateway?.protocol === "agents-one-v1"
   );
+}
+
+function remoteCliPilotIssue(runtime: {
+  adapterId?: string;
+  kind: string;
+  location: AgentRuntimeLocation;
+  config: AgentRuntimeDefinition["config"];
+}): string | undefined {
+  const pilot = remoteCliPilotManifest(runtime.adapterId);
+  if (!pilot) return undefined;
+  if (!isRemoteCliPilot(runtime))
+    return `${pilot.displayName} 适配器仅用于匹配的远程 Runtime。`;
+  if (!isRemoteCliPilotEnabled(pilot.adapterId))
+    return `远程 ${pilot.displayName} 试点入口已关闭。`;
+  if (
+    runtime.config.remoteGateway?.protocol !== "agents-one-v1" ||
+    (runtime.config.agentTransport &&
+      runtime.config.agentTransport !== "gateway-v1")
+  )
+    return `远程 ${pilot.displayName} 需要使用 Agents One Gateway v1。`;
+  return undefined;
 }
 
 function isRemoteOpenCodeRuntime(runtime: {
@@ -3963,7 +4018,7 @@ export async function getAgentRuntimeCommandCatalog(
           },
           {
             requestId: `catalog-${randomUUID()}`,
-            runtimeId: runtime.id,
+            runtimeId: runtime.config.connect?.runtimeId || runtime.id,
             conversationId: sessionId,
           },
           auth,
@@ -4169,6 +4224,7 @@ async function executeAgentRuntimeCommandOnce(
         },
         {
           ...request,
+          runtimeId: runtime.config.connect?.runtimeId || runtime.id,
           name,
           ...(args ? { args } : {}),
           requestId: request.requestId?.trim() || `command-${randomUUID()}`,
@@ -4960,6 +5016,8 @@ export function saveAgentRuntime(
   // Validate config separately so callers receive the security-specific error
   // instead of a generic invalid-definition result.
   const config = runtimeConfigFrom(draft.config);
+  const pilotIssue = remoteCliPilotIssue({ ...draft, config });
+  if (pilotIssue) throw new Error(pilotIssue);
   if (isRemoteOpenCodeRuntime(draft) && !isRemoteOpenCodeAcpV1Enabled()) {
     throw new Error("远程 OpenCode ACP v1 当前处于灰度关闭状态。");
   }
@@ -5098,6 +5156,9 @@ async function probeRuntimeDefinition(
   if (runtime.needsReauthorization && !transientAuth?.bearerToken) {
     throw new Error("请先为恢复的远程智能体重新保存凭据。");
   }
+  const pilotIssue = remoteCliPilotIssue(runtime);
+  if (pilotIssue)
+    return unsupportedRuntimeProbe(runtime, checkedAt, pilotIssue);
   if (isRemoteOpenCodeRuntime(runtime) && !isRemoteOpenCodeAcpV1Enabled()) {
     return unsupportedRuntimeProbe(
       runtime,
@@ -5112,6 +5173,7 @@ async function probeRuntimeDefinition(
     const result = await probeAgentsOneRemoteGateway(
       {
         endpoint: runtime.config.endpoint,
+        runtimeId: runtime.id,
         timeoutMs: runtime.config.timeoutMs,
         connect: runtime.config.connect,
       },
@@ -5684,6 +5746,7 @@ async function hydrateAgentsOneRemoteGatewayArtifacts(
         config,
         artifact.id,
         auth,
+        artifact,
       );
       const collaboration = record?.remoteGateway?.collaboration;
       if (
@@ -6171,6 +6234,15 @@ export async function startAgentRuntimeTask(
       `${runtime.configurationIssue.message} 当前 Runtime 已暂停执行。`,
     );
   }
+  const pilotIssue = remoteCliPilotIssue(runtime);
+  if (pilotIssue) throw new Error(pilotIssue);
+  if (
+    isRemoteCliPilot(runtime) &&
+    input.mode &&
+    input.mode !== "analysis" &&
+    input.mode !== "safe_write"
+  )
+    throw new Error("远程 CLI 试点仅支持只读和已声明的自动模式。");
   if (isRemoteOpenCodeRuntime(runtime) && !isRemoteOpenCodeAcpV1Enabled()) {
     throw new Error("远程 OpenCode ACP v1 当前处于灰度关闭状态。");
   }
@@ -6248,6 +6320,7 @@ export async function startAgentRuntimeTask(
     );
   }
   const startedAt = Date.now();
+  const runProfile = task.profile || getActiveProfileNameSync();
   const record: RuntimeRunRecord = {
     run: {
       id,
@@ -7169,6 +7242,14 @@ export async function startAgentRuntimeTask(
       connect: runtime.config.connect,
     };
     try {
+      if (isRemoteCliPilot(runtime) && task.mode === "safe_write") {
+        const probe = await probeAgentsOneRemoteGateway(config, auth);
+        if (
+          !probe.healthy ||
+          !probe.capabilities.permissionModes?.includes("safe_write")
+        )
+          throw new Error("远程 Runtime 当前没有声明自动写入权限。");
+      }
       let artifactIds: string[] | undefined;
       if (task.attachments?.length) {
         const probe = await probeAgentsOneRemoteGateway(config, auth);
@@ -7204,7 +7285,7 @@ export async function startAgentRuntimeTask(
       const remoteRun = await startAgentsOneRemoteGatewayRun(
         config,
         {
-          runtimeId: runtime.id,
+          runtimeId: runtime.config.connect?.runtimeId || runtime.id,
           idempotencyKey: id,
           // A chat must stay a Gateway conversation from its first turn. The
           // The first request creates a Gateway conversation identity and
@@ -7241,6 +7322,26 @@ export async function startAgentRuntimeTask(
             }
           : {}),
       };
+      if (!input.collaborationContext) {
+        try {
+          record.remoteGateway.hasRecoveryReceipt = writeGatewayRunReceipt(
+            runProfile,
+            {
+              id,
+              runtimeId,
+              remoteRunId: remoteRun.id,
+              route: gatewayRunRoute(runtime),
+              startedAt,
+            },
+          );
+        } catch {
+          appendRuntimeEvent(
+            record,
+            "progress",
+            "无法保存此远程任务的恢复记录，重启后可能无法接回运行。",
+          );
+        }
+      }
       record.timeout = setTimeout(() => {
         void requestRemoteGatewayCancellation(record, "timed_out");
       }, task.timeoutMs);
@@ -7814,10 +7915,66 @@ export async function startAgentRuntimeTask(
   return { ...record.run };
 }
 
+function runtimeRunForControl(runId: string): RuntimeRunRecord | undefined {
+  const live = runtimeRuns.get(runId);
+  if (live && !live.remoteGateway?.restoredProfile) return live;
+
+  const profile = getActiveProfileNameSync();
+  const receipt = readGatewayRunReceipt(profile, runId);
+  if (!receipt) return undefined;
+  const runtime = listAgentRuntimes().find(
+    ({ id }) => id === receipt.runtimeId,
+  );
+  if (
+    !runtime?.enabled ||
+    !isAgentsOneGatewayRuntime(runtime) ||
+    !runtime.config.endpoint ||
+    remoteCliPilotIssue(runtime) ||
+    gatewayRunRoute(runtime) !== receipt.route ||
+    !runtimeAuth(runtime)?.bearerToken
+  )
+    return undefined;
+  if (live?.remoteGateway?.restoredProfile === profile) return live;
+
+  const record: RuntimeRunRecord = {
+    run: {
+      id: runId,
+      runtimeId: runtime.id,
+      startedAt: receipt.startedAt,
+      status: "running",
+      output: "",
+      events: [],
+    },
+    completionContext: { title: runtime.name, profile },
+    cancelRequested: false,
+    taskTimeoutMs: 0,
+    // Task-specific approvals and local workspace grants are process-scoped.
+    taskMode: "analysis",
+    remoteGateway: {
+      config: {
+        endpoint: runtime.config.endpoint,
+        runtimeId: runtime.id,
+        timeoutMs: runtime.config.timeoutMs,
+        connect: runtime.config.connect,
+      },
+      runId: receipt.remoteRunId,
+      hasRecoveryReceipt: true,
+      restoredProfile: profile,
+      failures: 0,
+      lastSuccessfulPollAt: Date.now(),
+      nextPollAt: 0,
+      terminalReconciliationAttempts: 0,
+      artifactRetryAttempts: new Map(),
+    },
+  };
+  rememberRuntimeRun(record);
+  return record;
+}
+
 export async function getAgentRuntimeRun(
   runId: string,
 ): Promise<AgentRuntimeRun | null> {
-  const record = runtimeRuns.get(runId);
+  const record = runtimeRunForControl(runId);
   if (!record) return null;
   if (record.remoteGateway && record.run.status === "running") {
     if (Date.now() < record.remoteGateway.nextPollAt) {
@@ -7832,8 +7989,35 @@ export async function getAgentRuntimeRun(
         record.remoteGateway.runId,
         runtime ? runtimeAuth(runtime) : undefined,
       );
-      record.remoteGateway.failures = 0;
-      record.remoteGateway.lastSuccessfulPollAt = Date.now();
+      if (
+        record.remoteGateway.restoredProfile &&
+        remoteRun.id !== record.remoteGateway.runId
+      ) {
+        throw new Error("Gateway 返回的运行标识与恢复记录不一致。");
+      }
+      const gateway = record.remoteGateway;
+      if (
+        gateway.restoredProfile &&
+        !gateway.restoredSnapshotObserved &&
+        remoteRun.events?.length
+      ) {
+        gateway.restoredSnapshotObserved = true;
+        const first = remoteRun.events[0];
+        if (
+          first.sequence !== undefined &&
+          first.sequence > 1 &&
+          first.type !== "run.started"
+        ) {
+          appendRuntimeEvent(
+            record,
+            "progress",
+            "已接回远程任务。Gateway 仅返回近期事件，较早的执行记录可能不完整。",
+            { code: "gateway_history_partial" },
+          );
+        }
+      }
+      gateway.failures = 0;
+      gateway.lastSuccessfulPollAt = Date.now();
       record.remoteGateway.nextPollAt = 0;
       return reconcileGatewayCancellation(
         record,
@@ -8031,7 +8215,7 @@ export async function sendAgentRuntimeInput(
 }
 
 export async function cancelAgentRuntimeTask(runId: string): Promise<boolean> {
-  const record = runtimeRuns.get(runId);
+  const record = runtimeRunForControl(runId);
   if (!record || record.run.status !== "running") return false;
   record.cancelRequested = true;
   if (record.remoteGateway) {
@@ -8074,7 +8258,7 @@ export async function requestAgentRuntimeTaskCancellation(
   run: AgentRuntimeRun | null;
   uncertain?: boolean;
 }> {
-  const record = runtimeRuns.get(runId);
+  const record = runtimeRunForControl(runId);
   if (!record) return { accepted: false, run: null };
   if (record.run.status !== "running")
     return { accepted: true, run: structuredClone(record.run) };
@@ -8088,11 +8272,30 @@ export async function requestAgentRuntimeTaskCancellation(
   };
 }
 
-/** Stop every in-process Runtime task before replacing portable user data. */
-export async function cancelAllAgentRuntimeTasks(): Promise<number> {
-  const activeIds = [...runtimeRuns.entries()]
-    .filter(([, record]) => record.run.status === "running")
-    .map(([runId]) => runId);
+interface RuntimeQuiescenceOptions {
+  keepRecoverableGatewayRuns?: boolean;
+}
+
+function runsRequiringCancellation(
+  options?: RuntimeQuiescenceOptions,
+): RuntimeRunRecord[] {
+  return [...runtimeRuns.values()].filter(
+    (record) =>
+      record.run.status === "running" &&
+      !(
+        options?.keepRecoverableGatewayRuns &&
+        record.remoteGateway?.hasRecoveryReceipt &&
+        !record.cancelRequested &&
+        !record.workspaceGateway
+      ),
+  );
+}
+
+/** Stop in-process tasks. App exit can leave recoverable Gateway runs remote. */
+export async function cancelAllAgentRuntimeTasks(
+  options?: RuntimeQuiescenceOptions,
+): Promise<number> {
+  const activeIds = runsRequiringCancellation(options).map(({ run }) => run.id);
   const outcomes = await Promise.allSettled(
     activeIds.map((runId) => cancelAgentRuntimeTask(runId)),
   );
@@ -8102,10 +8305,10 @@ export async function cancelAllAgentRuntimeTasks(): Promise<number> {
 }
 
 /** Number of in-process Runtime writes that must quiesce before export. */
-export function activeAgentRuntimeTaskCount(): number {
-  return [...runtimeRuns.values()].filter(
-    (record) => record.run.status === "running",
-  ).length;
+export function activeAgentRuntimeTaskCount(
+  options?: RuntimeQuiescenceOptions,
+): number {
+  return runsRequiringCancellation(options).length;
 }
 
 /** Subscribe to terminal Runtime outcomes without changing persisted run data. */

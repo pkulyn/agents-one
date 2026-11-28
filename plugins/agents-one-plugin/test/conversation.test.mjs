@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createRemoteCliHost } from "../src/remote-cli-host.mjs";
 import { createRemoteGatewayPlugin } from "../src/remote-gateway-plugin.mjs";
 
 test("first and later Gateway turns bind one conversation to one provider session across restart", async () => {
@@ -82,6 +83,91 @@ test("first and later Gateway turns bind one conversation to one provider sessio
     assert.equal(calls[3].sessionId, "provider-session-1");
   } finally {
     await plugin.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("Remote CLI Host accepts only provider sessions bound to the Runtime conversation", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "host-conversation-"));
+  const calls = [];
+  const runtimes = ["first-cli", "second-cli"].map((runtimeId) => ({
+    runtimeId,
+    displayName: runtimeId,
+    adapter: {
+      async startRun(input) {
+        calls.push(input);
+        return {
+          status: "succeeded",
+          sessionId: input.sessionId || runtimeId + "-native",
+        };
+      },
+    },
+  }));
+  const makeHost = () =>
+    createRemoteCliHost({
+      runtimes,
+      token: "test-token",
+      statePath: join(directory, "gateway.json"),
+    });
+  let host = makeHost();
+  const post = (runtimeId, body) =>
+    fetch("http://127.0.0.1:" + host.server.address().port + "/runs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+        "x-agents-one-runtime-id": runtimeId,
+      },
+      body: JSON.stringify({
+        mode: "conversation",
+        input: { text: "fixture" },
+        ...body,
+      }),
+    });
+  try {
+    await host.listen(0);
+    const first = await post("first-cli", { conversationId: "known-chat" });
+    assert.equal(first.status, 202);
+    await host.close();
+    host = makeHost();
+    await host.listen(0);
+    for (const [runtime, body] of [
+      [
+        "first-cli",
+        { conversationId: "independent-chat", sessionId: "first-cli-native" },
+      ],
+      [
+        "second-cli",
+        { conversationId: "known-chat", sessionId: "first-cli-native" },
+      ],
+      [
+        "first-cli",
+        {
+          conversationId: "known-chat",
+          sessionId: "first-cli-native",
+          input: { text: "fixture", sessionId: "unrelated" },
+        },
+      ],
+    ]) {
+      const rejected = await post(runtime, body);
+      assert.equal(rejected.status, 403);
+      assert.equal(
+        (await rejected.json()).error.code,
+        "provider_session_mismatch",
+      );
+    }
+    assert.equal(calls.length, 1);
+    const continued = await post("first-cli", { conversationId: "known-chat" });
+    assert.equal(continued.status, 202);
+    assert.equal(calls[1].sessionId, "first-cli-native");
+    const legacy = await post("first-cli", {
+      conversationId: "first-cli-native",
+    });
+    assert.equal(legacy.status, 202);
+    assert.equal(calls[2].conversationId, "known-chat");
+    assert.equal(calls[2].sessionId, "first-cli-native");
+  } finally {
+    await host.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

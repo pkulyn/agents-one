@@ -605,3 +605,9 @@ Manual One compaction returns persisted native summary metadata and a post-compa
 ## Execution boundary label
 
 The composer shows the execution boundary as an icon and text without an outlined badge, retaining its accessible label and native execution details.
+
+## Gateway artifact download integrity
+
+A remote artifact download must match the requested ID and any digest or length already recorded for the producing run or saved reply.
+
+The check runs before temporary or project staging and also on retries. History downloads with different expected digests or lengths do not share a cache entry. Legacy descriptors without those fields still use the download response validation.

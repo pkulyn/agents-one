@@ -246,7 +246,7 @@ export async function requestConnectorPairing({
 export async function completeConnectorPairing({
   store = createCredentialStore(),
   fetchImpl = globalThis.fetch,
-}) {
+} = {}) {
   if (!fetchImpl) throw new Error("A global fetch implementation is required.");
   const pending = store.loadPending();
   if (!pending) throw new Error("No pending Connector pairing was found.");
@@ -294,7 +294,7 @@ export async function completeConnectorPairing({
 export async function revokeConnector({
   store = createCredentialStore(),
   fetchImpl = globalThis.fetch,
-}) {
+} = {}) {
   const credentials = store.load();
   if (!credentials) throw new Error("No paired Connector was found.");
   const response = await fetchImpl(

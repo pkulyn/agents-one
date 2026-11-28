@@ -19,6 +19,7 @@ export const AGENT_RUNTIME_KINDS = [
   "pi",
   "opencode",
   "openclaw",
+  "antigravity",
   "web-agent",
 ] as const;
 
@@ -105,6 +106,8 @@ export interface AgentRuntimeCapabilities {
   /** Whether the runtime accepts user attachments through the Artifact API. */
   artifactUpload?: boolean;
   workspaceAccess: boolean;
+  /** Permission modes explicitly offered by the remote Gateway. */
+  permissionModes?: Array<"analysis" | "safe_write" | "full_access">;
   /** Gateway control-plane support, discovered from the live handshake. */
   commands?: boolean;
   modelSelection?: boolean;

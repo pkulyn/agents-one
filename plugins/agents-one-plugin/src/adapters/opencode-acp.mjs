@@ -44,19 +44,19 @@ const SKIP_DIRECTORIES = new Set([
   ".next",
 ]);
 
-function record(value) {
+export function record(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
     ? value
     : {};
 }
 
-function text(value, max = 8_000) {
+export function text(value, max = 8_000) {
   return typeof value === "string" && value.trim()
     ? sanitizeEventText(value, max)
     : undefined;
 }
 
-function contentText(value, depth = 0) {
+export function contentText(value, depth = 0) {
   if (depth > 8) return undefined;
   if (typeof value === "string") return text(value);
   if (Array.isArray(value)) {
@@ -81,7 +81,7 @@ function contentText(value, depth = 0) {
   return undefined;
 }
 
-function model(value) {
+export function model(value) {
   if (typeof value === "string" && value.trim()) {
     const separator = value.indexOf("/");
     return separator > 0
@@ -96,7 +96,7 @@ function model(value) {
     : undefined;
 }
 
-function usage(value) {
+export function usage(value) {
   const source = record(value?.usage || value);
   const result = {};
   for (const [key, target] of [
@@ -112,7 +112,7 @@ function usage(value) {
   return Object.keys(result).length ? result : undefined;
 }
 
-function summarize(value) {
+export function summarize(value) {
   if (value === undefined || value === null) return undefined;
   if (typeof value === "string") return text(value, 4_000);
   try {
@@ -122,7 +122,7 @@ function summarize(value) {
   }
 }
 
-function toolKind(value) {
+export function toolKind(value) {
   const kind = String(value || "").toLowerCase();
   if (kind.includes("mcp")) return "mcp";
   if (kind.includes("skill")) return "skill";
@@ -238,9 +238,13 @@ function changedFiles(before, root, maxFiles = MAX_WORKSPACE_FILES) {
   return [...changed].sort().slice(0, 100);
 }
 
-class AcpClient {
-  constructor(child, { onUpdate, mode, onPermissionDenied, authorizeTool }) {
+export class AcpClient {
+  constructor(
+    child,
+    { onUpdate, mode, onPermissionDenied, authorizeTool, onNonJsonLine },
+  ) {
     this.onPermissionDenied = onPermissionDenied;
+    this.onNonJsonLine = onNonJsonLine;
     this.child = child;
     this.shutdown = createChildShutdown(child);
     this.onUpdate = onUpdate;
@@ -254,8 +258,18 @@ class AcpClient {
     this.lines = createInterface({ input: child.stdout });
     this.lines.on("line", (line) => {
       if (!line.trim()) return;
+      let value;
       try {
-        this.handle(JSON.parse(line));
+        value = JSON.parse(line);
+      } catch {
+        // Some agents print protocol-external text (for example a one-time
+        // OAuth URL) between JSON frames; hand it to the adapter instead of
+        // dropping it.
+        this.onNonJsonLine?.(line);
+        return;
+      }
+      try {
+        this.handle(value);
       } catch {
         // ACP diagnostics are intentionally not copied into user-visible output.
       }
@@ -503,7 +517,7 @@ function modelFromInit(init) {
   return model(option?.currentValue ?? option?.value);
 }
 
-function toolEvent(update) {
+export function toolEvent(update) {
   if (!["tool_call", "tool_call_update"].includes(update.sessionUpdate))
     return undefined;
   const name =
@@ -520,11 +534,14 @@ function toolEvent(update) {
     ...(summarize(update.rawInput)
       ? { inputSummary: summarize(update.rawInput) }
       : {}),
-    ...(summarize(update.content || update.rawOutput || update.output)
+    // ACP content arrives as typed blocks; extract their text instead of
+    // stringifying the whole array into the trace summary.
+    ...(contentText(update.content) ||
+    summarize(update.rawOutput || update.output)
       ? {
-          outputSummary: summarize(
-            update.content || update.rawOutput || update.output,
-          ),
+          outputSummary:
+            contentText(update.content) ||
+            summarize(update.rawOutput || update.output),
         }
       : {}),
   };

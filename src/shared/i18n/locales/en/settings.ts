@@ -220,7 +220,9 @@ export default {
     oneSaveKey: "Save model key",
     gatewayAddress: "Gateway Address",
     gatewayAddressHint:
-      "HTTPS base address of a self-hosted Gateway v1. This path does not create a Connect pairing record.",
+      "HTTPS base address used for Gateway v1 tasks. The Connect pairing service is configured separately; the two services may use different hosts. Required before verification-code pairing.",
+    gatewayAddressRequired:
+      "Enter the Gateway Address (the Gateway v1 task service base URL) before verification-code pairing.",
     configured: "Configured",
     gatewayTokenSave: "Save Gateway Token",
     credentialHint:

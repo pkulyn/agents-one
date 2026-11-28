@@ -1,4 +1,6 @@
+import { once } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { WebSocketServer, type WebSocket } from "ws";
 import {
   explainAgentsOneRemoteGatewayError,
   executeAgentsOneRemoteGatewayCommand,
@@ -14,6 +16,123 @@ import {
 describe("Agents One Remote Gateway run contract", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  // @lat: [[plugin-sdk#Plugin SDK#Connect tunnel request ownership]]
+  it.each([
+    [4001, "connect_authorization_failed"],
+    [1001, "Agents One Connect tunnel closed."],
+  ])(
+    "reports the reason for a Connect handshake close (%s)",
+    async (code, message) => {
+      const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+      server.on("connection", (socket) => {
+        socket.once("message", () => socket.close(code));
+      });
+      vi.stubEnv("AGENTS_ONE_ALLOW_INSECURE_LOOPBACK", "1");
+      try {
+        await once(server, "listening");
+        const address = server.address();
+        if (typeof address === "string" || !address)
+          throw new Error("Missing loopback port.");
+        const endpoint = "http://127.0.0.1:" + address.port;
+        await expect(
+          startAgentsOneRemoteGatewayRun(
+            { endpoint, connect: { endpoint, runtimeId: "fixture" } },
+            {
+              mode: "task",
+              text: "fixture",
+              timeoutSeconds: 30,
+              permission: "read",
+            },
+            { bearerToken: "fixture-token" },
+          ),
+        ).rejects.toThrow(message);
+      } finally {
+        vi.unstubAllEnvs();
+        for (const socket of server.clients) socket.terminate();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
+
+  it("serializes competing sockets on one Connect route without blocking peers", async () => {
+    const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    const sockets = new Map<string, WebSocket>();
+    const requests: string[] = [];
+    let releaseFirst: () => void = () => {};
+    let firstStarted: () => void = () => {};
+    const observedFirst = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    server.on("connection", (socket) => {
+      let runtimeId: string;
+      socket.on("message", (raw) => {
+        const frame = JSON.parse(raw.toString());
+        if (frame.type === "hello") {
+          runtimeId = frame.runtimeId;
+          sockets.get(runtimeId)?.close(4002);
+          sockets.set(runtimeId, socket);
+          socket.send(JSON.stringify({ type: "hello_ack" }));
+          return;
+        }
+        if (frame.type !== "request") return;
+        requests.push(frame.path);
+        const answer = (status: number): void => {
+          if (socket.readyState !== 1) return;
+          socket.send(
+            JSON.stringify({
+              type: "response",
+              requestId: frame.requestId,
+              status,
+              body: { id: frame.path.split("/").at(-1), status: "succeeded" },
+            }),
+          );
+        };
+        if (frame.path === "/runs/first") {
+          releaseFirst = () => answer(503);
+          firstStarted();
+        } else {
+          answer(200);
+        }
+      });
+    });
+    vi.stubEnv("AGENTS_ONE_ALLOW_INSECURE_LOOPBACK", "1");
+    try {
+      await once(server, "listening");
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Missing loopback port.");
+      const endpoint = "http://127.0.0.1:" + address.port;
+      const query = (
+        runtimeId: string,
+        runId: string,
+      ): ReturnType<typeof getAgentsOneRemoteGatewayRun> =>
+        getAgentsOneRemoteGatewayRun(
+          { endpoint, connect: { endpoint, runtimeId }, timeoutMs: 2000 },
+          runId,
+          { bearerToken: "fixture-token" },
+        );
+      const first = expect(query("pi", "first")).rejects.toThrow("HTTP 503");
+      await observedFirst;
+      const second = expect(query("pi", "second")).resolves.toMatchObject({
+        id: "second",
+      });
+      try {
+        await expect(query("opencode", "peer")).resolves.toMatchObject({
+          id: "peer",
+        });
+        expect(requests).toEqual(["/runs/first", "/runs/peer"]);
+      } finally {
+        releaseFirst();
+        await Promise.all([first, second]);
+      }
+      expect(requests).toEqual(["/runs/first", "/runs/peer", "/runs/second"]);
+    } finally {
+      vi.unstubAllEnvs();
+      for (const socket of server.clients) socket.terminate();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
   it("discovers and executes enhanced Gateway commands with one request id", async () => {
@@ -632,6 +751,41 @@ describe("Agents One Remote Gateway run contract", () => {
       "https://relay.example/agents-one/v1/artifacts/artifact-chart",
     );
   });
+
+  // @lat: [[runtime-chat#Runtime Chat Rendering#Gateway artifact download integrity]]
+  it.each([
+    [{}, { sha256: "a".repeat(64) }, /SHA-256 校验失败/],
+    [{}, { size: 123 }, /大小校验失败/],
+    [{ id: "unrelated-artifact" }, {}, /ID 校验失败/],
+  ])(
+    "rejects a download that conflicts with the original artifact descriptor",
+    async (responseOverride, expected, error) => {
+      const bytes = Buffer.from("replacement bytes");
+      const sha256 = (await import("node:crypto"))
+        .createHash("sha256")
+        .update(bytes)
+        .digest("hex");
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        Response.json({
+          id: "artifact-chart",
+          name: "chart.png",
+          mime: "image/png",
+          size: bytes.length,
+          sha256,
+          contentBase64: bytes.toString("base64"),
+          ...responseOverride,
+        }),
+      );
+      await expect(
+        getAgentsOneRemoteGatewayArtifact(
+          { endpoint: "https://relay.example/agents-one/v1" },
+          "artifact-chart",
+          { bearerToken: "fixture-token" },
+          expected,
+        ),
+      ).rejects.toThrow(error);
+    },
+  );
 
   it("parses an event stream snapshot and runtime metadata from a Gateway run", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(

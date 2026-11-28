@@ -224,6 +224,7 @@ export default {
     auto: "自动",
     readOnly: "只读",
     fullAccess: "完全访问",
+    workspaceAutoHint: "可在家中授权工作区使用该智能体提供的读写工具。",
     autoHint: "可读取、查询、创建和编辑，删除文档需要授权确认",
     readOnlyHint: "可调用读取、搜索和查询工具；不可创建、编辑、移动或删除文件",
     unavailable: "当前 Runtime 未声明可用的写入权限",

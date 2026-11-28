@@ -19,6 +19,7 @@ import {
   automaticRuntimeTaskMode,
   isRuntimePermissionFailure,
 } from "../../../../shared/runtime-permissions";
+import { isRemoteCliPilot } from "../../../../shared/runtime-adapters";
 import {
   useCallback,
   useEffect,
@@ -1342,9 +1343,19 @@ export default function RuntimeChat({
   }, [workspace, workspaceId]);
   const [webPreviewVisible, setWebPreviewVisible] = useState(false);
   const [worktreeVisible, setWorktreeVisible] = useState(false);
-  const [accessMode, setAccessMode] = useState<
+  const remotePilot = isRemoteCliPilot(runtime);
+  const [remoteWriteRuntimeId, setRemoteWriteRuntimeId] = useState<string>();
+  const pilotWrites = remotePilot && remoteWriteRuntimeId === runtime.id;
+  const [savedAccessMode, setAccessMode] = useState<
     "auto" | "analysis" | "full_access"
   >(initialAccessMode);
+  const accessMode = remotePilot
+    ? !pilotWrites
+      ? "analysis"
+      : savedAccessMode === "full_access"
+        ? "auto"
+        : savedAccessMode
+    : savedAccessMode;
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [taskRun, setTaskRun] = useState<AgentRuntimeRun | null>(null);
   const [retryingArtifactIds, setRetryingArtifactIds] = useState<
@@ -1809,6 +1820,7 @@ export default function RuntimeChat({
     if (!unifiedRemoteGatewayRuntime && !webAgentRuntime) {
       setRemoteArtifactsSupported(false);
       setRemoteWorkspaceSupported(false);
+      setRemoteWriteRuntimeId(undefined);
       return () => {
         cancelled = true;
       };
@@ -1827,12 +1839,19 @@ export default function RuntimeChat({
             probe.state === "healthy" &&
             probe.capabilities.workspaceAccess;
           setRemoteWorkspaceSupported(workspaceAvailable);
+          setRemoteWriteRuntimeId(
+            probe.state === "healthy" &&
+              probe.capabilities.permissionModes?.includes("safe_write")
+              ? runtime.id
+              : undefined,
+          );
         }
       })
       .catch(() => {
         if (!cancelled) {
           setRemoteArtifactsSupported(false);
           setRemoteWorkspaceSupported(false);
+          setRemoteWriteRuntimeId(undefined);
         }
       });
     return () => {
@@ -2143,10 +2162,8 @@ export default function RuntimeChat({
           setCurrentRunId(null);
           return;
         }
-        const observed = mergeRuntimeRunObservation(
-          taskRunRef.current,
-          current,
-        );
+        const previous = taskRunRef.current;
+        const observed = mergeRuntimeRunObservation(previous, current);
         taskRunRef.current = observed;
         setTaskRun(observed);
         if (
@@ -2171,7 +2188,16 @@ export default function RuntimeChat({
           }
         }
         if (observed.status === "running") {
-          await new Promise((resolve) => setTimeout(resolve, 900));
+          // Each remote poll is one tunnel round trip, so keep the idle
+          // cadence unchanged but follow the stream faster while the runtime
+          // is actively emitting output; the trace then flows smoothly
+          // instead of arriving in fixed one-second bursts.
+          const progressed =
+            observed.output !== previous?.output ||
+            (observed.events?.length ?? 0) > (previous?.events?.length ?? 0);
+          await new Promise((resolve) =>
+            setTimeout(resolve, progressed ? 450 : 900),
+          );
           continue;
         }
         const persistedConversation = conversationIdRef.current
@@ -2586,7 +2612,9 @@ export default function RuntimeChat({
       }
       const collaborationAccessMode =
         accessMode === "auto"
-          ? automaticRuntimeTaskMode(runtime, Boolean(selectedWorkspace))
+          ? pilotWrites
+            ? "safe_write"
+            : automaticRuntimeTaskMode(runtime, Boolean(selectedWorkspace))
           : accessMode;
       const permissionPreflightIssues = collaborationPermissionPreflight(
         configuredBase,
@@ -3877,6 +3905,7 @@ ${reason}`,
       accessMode,
       cancelCollaborationRun,
       appendCollaborationMessage,
+      pilotWrites,
       profile,
       runtime,
       runtimeCatalog,
@@ -4880,7 +4909,9 @@ ${reason}`,
     const hasSelectedWorkspace = Boolean(selectedWorkspace || workspaceId);
     const resolvedAccessMode =
       accessMode === "auto"
-        ? automaticRuntimeTaskMode(runtime, hasSelectedWorkspace)
+        ? pilotWrites
+          ? "safe_write"
+          : automaticRuntimeTaskMode(runtime, hasSelectedWorkspace)
         : accessMode;
     if (analysisBranchRef.current && resolvedAccessMode !== "analysis") {
       chatInputRef.current?.restore(displayText, attachments);
@@ -5799,7 +5830,14 @@ ${reason}`,
                       onSelectRecentWorkspace={selectRecentWorkspaceCapability}
                       onSelectRecentFolder={selectRecentWorkspace}
                     />
-                    {accessControlAvailable ? (
+                    {remotePilot && !pilotWrites ? (
+                      <span className="runtime-permission-trigger">
+                        <ShieldCheck size={14} />
+                        <span className="runtime-permission-label">
+                          {t("runtimeChat.permissions.readOnly")}
+                        </span>
+                      </span>
+                    ) : accessControlAvailable ? (
                       <span className="runtime-permission-control">
                         <button
                           type="button"
@@ -5835,7 +5873,11 @@ ${reason}`,
                                 {t("runtimeChat.permissions.auto")}
                               </strong>
                               <small>
-                                {t("runtimeChat.permissions.autoHint")}
+                                {t(
+                                  pilotWrites
+                                    ? "runtimeChat.permissions.workspaceAutoHint"
+                                    : "runtimeChat.permissions.autoHint",
+                                )}
                               </small>
                             </button>
                             <button
@@ -5854,47 +5896,51 @@ ${reason}`,
                                 {t("runtimeChat.permissions.readOnlyHint")}
                               </small>
                             </button>
-                            <button
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={accessMode === "full_access"}
-                              disabled={
-                                !oneWorkspaceInputs &&
-                                !localFileInputs &&
-                                !unifiedRemoteGatewayRuntime &&
-                                !collaborationWriteRuntimeAvailable
-                              }
-                              title={
-                                !oneWorkspaceInputs &&
-                                !localFileInputs &&
-                                !unifiedRemoteGatewayRuntime &&
-                                !collaborationWriteRuntimeAvailable
-                                  ? t("runtimeChat.permissions.unavailable")
-                                  : undefined
-                              }
-                              onClick={() => {
-                                if (
+                            {!remotePilot ? (
+                              <button
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={accessMode === "full_access"}
+                                disabled={
                                   !oneWorkspaceInputs &&
                                   !localFileInputs &&
                                   !unifiedRemoteGatewayRuntime &&
                                   !collaborationWriteRuntimeAvailable
-                                ) {
-                                  return;
                                 }
-                                setAccessMode("full_access");
-                                setPermissionMenuOpen(false);
-                              }}
-                            >
-                              <strong>
-                                {t("runtimeChat.permissions.fullAccess")}
-                              </strong>
-                              <small>
-                                {unifiedRemoteGatewayRuntime &&
-                                !remoteWorkspaceSupported
-                                  ? t("runtimeChat.permissions.remoteFullHint")
-                                  : t("runtimeChat.permissions.fullHint")}
-                              </small>
-                            </button>
+                                title={
+                                  !oneWorkspaceInputs &&
+                                  !localFileInputs &&
+                                  !unifiedRemoteGatewayRuntime &&
+                                  !collaborationWriteRuntimeAvailable
+                                    ? t("runtimeChat.permissions.unavailable")
+                                    : undefined
+                                }
+                                onClick={() => {
+                                  if (
+                                    !oneWorkspaceInputs &&
+                                    !localFileInputs &&
+                                    !unifiedRemoteGatewayRuntime &&
+                                    !collaborationWriteRuntimeAvailable
+                                  ) {
+                                    return;
+                                  }
+                                  setAccessMode("full_access");
+                                  setPermissionMenuOpen(false);
+                                }}
+                              >
+                                <strong>
+                                  {t("runtimeChat.permissions.fullAccess")}
+                                </strong>
+                                <small>
+                                  {unifiedRemoteGatewayRuntime &&
+                                  !remoteWorkspaceSupported
+                                    ? t(
+                                        "runtimeChat.permissions.remoteFullHint",
+                                      )
+                                    : t("runtimeChat.permissions.fullHint")}
+                                </small>
+                              </button>
+                            ) : null}
                           </span>
                         ) : null}
                       </span>

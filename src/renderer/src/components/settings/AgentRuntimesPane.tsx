@@ -60,6 +60,7 @@ const KIND_LABELS: Record<string, string> = {
   pi: "Pi Agent CLI",
   opencode: "OpenCode",
   openclaw: "OpenClaw",
+  antigravity: "Antigravity",
   "web-agent": "settings.runtimeManager.kindWebAgent",
 };
 
@@ -555,11 +556,15 @@ export default function AgentRuntimesPane({
       .catch(() => setHermesCandidates([]))
       .finally(() => setHermesDiscoveryBusy(false));
   }, [isLocalHermesAdoption]);
-  const manifestForDraft = adapterManifests.find(
-    (manifest) =>
-      manifest.adapterId === draft.adapterId ||
-      manifest.kinds.includes(draft.kind),
-  );
+  const manifestForDraft =
+    adapterManifests.find(
+      (manifest) => manifest.adapterId === draft.adapterId,
+    ) ||
+    adapterManifests.find(
+      (manifest) =>
+        manifest.locations.includes(draft.location) &&
+        manifest.kinds.includes(draft.kind),
+    );
   const dynamicAdapterFields = useMemo(
     () =>
       (manifestForDraft?.fields || []).filter(
@@ -824,7 +829,10 @@ export default function AgentRuntimesPane({
   }
 
   function selectNewAgentKind(kind: AgentRuntimeKind): void {
-    const manifest = adapterManifests.find((item) => item.kinds.includes(kind));
+    const location = newAgentType === "remote" ? "remote" : "local";
+    const manifest = adapterManifests.find(
+      (item) => item.locations.includes(location) && item.kinds.includes(kind),
+    );
     const next = runtimeTemplate(
       kind,
       localCliPaths,
@@ -987,11 +995,22 @@ export default function AgentRuntimesPane({
       setFlash(t("settings.runtimeManager.invalidVerificationCode"));
       return;
     }
+    if (!draft.config.endpoint?.trim()) {
+      // The managed-connect pairing must not silently fall back to the
+      // Connect endpoint as the Gateway task address; that host does not
+      // serve Gateway v1 and leaves every paired card unreachable.
+      setFlash(t("settings.runtimeManager.gatewayAddressRequired"));
+      return;
+    }
     try {
       const preview =
         await window.agentsOneAPI.previewAgentsOneConnectPairingCode(
           code,
-          draft.id.trim() || undefined,
+          isNew
+            ? undefined
+            : selectedRuntime?.config.connect?.runtimeId ||
+                draft.id.trim() ||
+                undefined,
         );
       setConnectorPairingPreview(preview);
       setFlash(t("settings.runtimeManager.pairingPreviewReady"));
@@ -1005,14 +1024,61 @@ export default function AgentRuntimesPane({
 
   async function confirmConnectorPairing(): Promise<void> {
     if (!connectorPairingPreview) return;
+    if (!draft.config.endpoint?.trim()) {
+      setFlash(t("settings.runtimeManager.gatewayAddressRequired"));
+      return;
+    }
+    const primary = isNew
+      ? connectorPairingPreview.runtimes?.find(
+          (runtime) => runtime.runtimeId === connectorPairingPreview.runtimeId,
+        )
+      : undefined;
+    if (
+      isNew &&
+      [
+        connectorPairingPreview.runtimeId,
+        ...(connectorPairingPreview.runtimes || []).map(
+          (runtime) => runtime.runtimeId,
+        ),
+      ].some((id) =>
+        runtimes.some(
+          (runtime) => runtime.id.toLowerCase() === id.toLowerCase(),
+        ),
+      )
+    ) {
+      setFlash(t("settings.runtimeManager.duplicateRuntimeId"));
+      return;
+    }
+    const pairedKind = adapterManifests
+      .flatMap((manifest) => manifest.kinds)
+      .find((kind) => kind === primary?.kind);
+    const pairedManifest = pairedKind
+      ? adapterManifests.find(
+          (manifest) =>
+            manifest.kinds.includes(pairedKind) &&
+            manifest.locations.includes("remote"),
+        )
+      : undefined;
     try {
       const saved =
         await window.agentsOneAPI.completeAgentsOneConnectPairingPreview(
           connectorPairingPreview.sessionId,
           {
             ...draft,
-            id: draft.id.trim(),
-            name: draft.name.trim(),
+            id: isNew ? connectorPairingPreview.runtimeId : draft.id.trim(),
+            name:
+              pairedKind && pairedKind !== draft.kind
+                ? connectorPairingPreview.displayName
+                : draft.name.trim(),
+            ...(pairedKind
+              ? {
+                  kind: pairedKind,
+                  adapterId: primary?.adapterId || pairedManifest?.adapterId,
+                  adapterVersion:
+                    primary?.adapterVersion || pairedManifest?.adapterVersion,
+                  vendorId: pairedManifest?.vendorId,
+                }
+              : {}),
           },
         );
       setConnectorPairingCode("");
@@ -1031,6 +1097,10 @@ export default function AgentRuntimesPane({
   async function startConnectPairing(): Promise<void> {
     if (!draft.id.trim() || !draft.name.trim()) {
       setFlash(t("settings.runtimeManager.pairingIdentityRequired"));
+      return;
+    }
+    if (!draft.config.endpoint?.trim()) {
+      setFlash(t("settings.runtimeManager.gatewayAddressRequired"));
       return;
     }
     try {
@@ -1912,8 +1982,12 @@ export default function AgentRuntimesPane({
                     value={draft.kind}
                     onChange={(event) => {
                       const kind = event.target.value as AgentRuntimeKind;
-                      const manifest = adapterManifests.find((item) =>
-                        item.kinds.includes(kind),
+                      const location =
+                        kind === "web-agent" ? "local" : draft.location;
+                      const manifest = adapterManifests.find(
+                        (item) =>
+                          item.locations.includes(location) &&
+                          item.kinds.includes(kind),
                       );
                       if (isNew) {
                         selectNewAgentKind(kind);
@@ -2699,6 +2773,25 @@ export default function AgentRuntimesPane({
 
                 {remoteConnectionProfile === "managed-connect" ? (
                   <div className="settings-field settings-field--connect-pairing">
+                    <label className="settings-field">
+                      <span className="settings-field-label">
+                        {t("settings.runtimeManager.gatewayAddress")}
+                      </span>
+                      <input
+                        className="input"
+                        type="url"
+                        aria-label={t("settings.runtimeManager.gatewayAddress")}
+                        value={draft.config.endpoint || ""}
+                        onChange={(event) =>
+                          updateConfig("endpoint", event.target.value)
+                        }
+                        placeholder="https://gateway.example.com/agents-one/v1"
+                        disabled={isBuiltin}
+                      />
+                      <span className="settings-field-hint">
+                        {t("settings.runtimeManager.gatewayAddressHint")}
+                      </span>
+                    </label>
                     <span className="settings-field-label">
                       {t("settings.runtimeManager.verificationPairing")}
                     </span>

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   BUILTIN_AGENT_RUNTIME_ADAPTER_MANIFESTS,
   manifestForAdapterId,
@@ -28,7 +28,40 @@ describe("Runtime Adapter Registry", () => {
       "openclaw",
       "web-agent",
     ]);
-    expect(runtimeAdapterRegistry.manifests()).toHaveLength(ids.length);
+    expect(
+      runtimeAdapterRegistry.manifests().map((manifest) => manifest.adapterId),
+    ).toEqual([
+      ...ids,
+      "codex-app-server",
+      "claude-agent-sdk",
+      "pi-rpc",
+      "antigravity-acp",
+    ]);
+  });
+
+  it("exposes the remote Codex manifest only when its own pilot is enabled", () => {
+    try {
+      vi.stubEnv("AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1", "0");
+      const disabled = listRuntimeAdapterManifests();
+      expect(
+        disabled.some((item) => item.adapterId === "codex-app-server"),
+      ).toBe(false);
+      expect(
+        disabled.find((item) => item.adapterId === "codex")?.locations,
+      ).toEqual(["local"]);
+      vi.stubEnv("AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1", "1");
+      expect(
+        listRuntimeAdapterManifests().find(
+          (item) => item.adapterId === "codex-app-server",
+        ),
+      ).toMatchObject({
+        locations: ["remote"],
+        transports: ["gateway-v1"],
+        kinds: ["codex"],
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("resolves legacy kinds and explicit adapter ids", () => {

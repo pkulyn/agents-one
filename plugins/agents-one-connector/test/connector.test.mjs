@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createCredentialStore } from "../src/credential-store.mjs";
+import { fileURLToPath } from "node:url";
+import {
+  createCredentialStore,
+  defaultCredentialDirectory,
+} from "../src/credential-store.mjs";
 import {
   completeConnectorPairing,
   localConnectorStatus,
@@ -20,6 +25,29 @@ import {
 import { createConnectService } from "../../../services/agents-one-connect/src/server.mjs";
 import loopbackGatewayAdapter from "../adapters/gateway-v1-loopback.mjs";
 import WebSocket from "ws";
+
+// @lat: [[remote-cli-host#Remote CLI Host#Multi-Runtime Connector contract]]
+test("no-argument CLI pairing and revoke use the default isolated store", () => {
+  const directory = mkdtempSync(join(tmpdir(), "agents-one-connector-cli-"));
+  const entry = fileURLToPath(
+    new URL("../bin/agents-one-connector.mjs", import.meta.url),
+  );
+
+  for (const [command, expected] of [
+    ["complete-pairing", "No pending Connector pairing was found."],
+    ["revoke", "No paired Connector was found."],
+  ]) {
+    const result = spawnSync(process.execPath, [entry, command], {
+      encoding: "utf8",
+      env: { ...process.env, AGENTS_ONE_CONNECTOR_DIR: directory },
+      timeout: 10_000,
+      windowsHide: true,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr.trim(), expected);
+  }
+});
 
 function protectForWindowsTest(value) {
   return Buffer.from(`bound-user:${value}`, "utf8").toString("base64");
@@ -39,6 +67,22 @@ function createTestCredentialStore(directory) {
       })
     : createCredentialStore(directory);
 }
+
+test("isolated Connector uses an explicit absolute credential directory", () => {
+  const profile = join(tmpdir(), "agents-one-connector-pilot");
+  assert.equal(
+    defaultCredentialDirectory({ AGENTS_ONE_CONNECTOR_DIR: profile }),
+    profile,
+  );
+  assert.throws(
+    () =>
+      defaultCredentialDirectory({
+        AGENTS_ONE_CONNECTOR_DIR: "relative/pilot",
+      }),
+    /must be an absolute directory/,
+  );
+  assert.notEqual(defaultCredentialDirectory({}), profile);
+});
 
 test("pair exchanges a one-time code and stores credentials without exposing the private key in metadata", async () => {
   const store = createTestCredentialStore(

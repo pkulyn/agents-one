@@ -292,6 +292,7 @@ import {
   claimAgentsOneConnectPairingCode,
   previewAgentsOneConnectPairingCode,
   completeAgentsOneConnectPairingPreview,
+  gatewayEndpointForConnectPairing,
 } from "../agents-one-connect";
 import type { SaveRuntimeConversationInput } from "../../shared/runtime-conversations";
 import type {
@@ -467,7 +468,10 @@ function saveClaimedConnectRuntime(
     location: "remote",
     config: {
       ...draft.config,
-      endpoint: claimed.connectEndpoint,
+      endpoint: gatewayEndpointForConnectPairing(
+        draft.config.endpoint,
+        claimed.connectEndpoint,
+      ),
       remoteGateway: { protocol: "agents-one-v1" },
       connect: {
         endpoint: claimed.connectEndpoint,
@@ -499,7 +503,10 @@ function saveClaimedConnectRuntime(
       enabled: descriptor.enabled !== false,
       config: {
         ...draft.config,
-        endpoint: claimed.connectEndpoint,
+        endpoint: gatewayEndpointForConnectPairing(
+          draft.config.endpoint,
+          claimed.connectEndpoint,
+        ),
         remoteGateway: { protocol: "agents-one-v1" },
         connect: {
           endpoint: claimed.connectEndpoint,
@@ -929,7 +936,10 @@ export function registerIpcHandlers(context: IpcContext): void {
         location: "remote",
         config: {
           ...draft.config,
-          endpoint: material.connectEndpoint,
+          endpoint: gatewayEndpointForConnectPairing(
+            draft.config.endpoint,
+            material.connectEndpoint,
+          ),
           remoteGateway: { protocol: "agents-one-v1" },
           connect: {
             endpoint: material.connectEndpoint,

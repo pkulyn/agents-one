@@ -26,6 +26,22 @@ One 在独立的智能体配置入口中管理；智能体接入管理仅列出�
 
 Connector-first 配对现在先做无凭据预览：展示设备指纹摘要、Runtime/能力元数据和过期时间，用户确认后才消费校验码并分发隔离 Token。取消预览不会创建本地 Runtime；预览不得返回任何 Token 或私钥。
 
+### Split Connect and Gateway addresses
+
+Connect pairing and Gateway v1 task traffic may use separate HTTPS hosts, so the pairing form lets the user supply the task Gateway endpoint independently.
+
+#### Saves the configured Gateway separately
+
+After Connect code pairing, each Runtime keeps the configured Gateway task endpoint while its Connect tunnel endpoint remains the pairing service returned by Connect.
+
+#### Requires the Gateway address in the pairing wizard
+
+The verification-code wizard rejects claiming, preview confirmation, and local pairing initiation while the Gateway 地址 field is empty; the silent fallback is unreachable for separately hosted deployments like the official cloud.
+
+#### Preserves same-origin pairing deployments
+
+Non-wizard save paths keep the prior same-origin fallback in [[src/main/agents-one-connect.ts#gatewayEndpointForConnectPairing]] so direct claim flows and already-saved same-origin Runtimes stay readable.
+
 ## Existing local Hermes installation
 
 本地 Hermes 复用现有内置 Runtime 和安装校验能力，产品只补齐已有安装的发现、选择、采用和刷新流程。

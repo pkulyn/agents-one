@@ -557,3 +557,9 @@ An explicitly empty enabled-model list prevents execution, and explicit output-t
 MCP discovery follows bounded pages, expands local JSON pointers within bounded schemas, reports unsupported tools, and forwards cancellation to request initialization and tool calls.
 
 [[src/main/one-runtime/mcp.ts#connectOneMcpTools]] follows at most 32 distinct cursors and accepts at most 256 discovered tools per server. Local schema references are expanded under depth/node limits; remote references are rejected with a tool-specific diagnostic. Main registers a cancellation handle during MCP preparation before creating a model worker. SDK request signals transmit protocol cancellation, but an external server's already committed side effects cannot be undone by a local cancellation. [[src/main/one-runtime/mcp.test.ts]] uses real local MCP servers to verify pagination, local-reference tools, remote-reference diagnostics, repeated cursor rejection, and cancellation during initialization and calls.
+
+## Remote Gateway run recovery
+
+An acknowledged remote run can be queried after desktop restart through its existing conversation run ID.
+
+[[src/main/remote-gateway-run-index.ts#writeGatewayRunReceipt]] saves a bounded profile-local route fingerprint and run ID. Main checks the current route, enabled Runtime, feature gate and credential before reusing the Gateway Run. Normal app exit lets a recoverable Gateway run continue when it has no local workspace grant or pending cancellation. Backup and restore still attempt to cancel all in-process runs. Recovery does not dispatch another task or recreate local workspace grants. Pending write approvals from a previous desktop process fail closed. When the first recovered snapshot indicates omitted earlier events, the timeline labels the history as partial while still reconciling the final result.
