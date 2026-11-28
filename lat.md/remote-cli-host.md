@@ -111,8 +111,16 @@ initialization without waiting indefinitely or exposing child-process output.
 
 Production rollout still requires real OpenCode versions, provider login, Windows/Linux, reconnect, and Connect E2E gates from the unified Runtime PRD.
 
-## First-phase rollout gate
+## Remote CLI rollout gates
 
-Remote OpenCode has an independent rollout gate; Pi, Codex, and Claude Code remain local-only.
+Each remote CLI adapter is enabled by default in packaged builds, so the add-agent flow lists every remote type without a separate setup.
 
-The gate is `AGENTS_ONE_REMOTE_OPENCODE_V1`. Tests and development enable it by default; packaged environments keep it disabled unless deployment explicitly sets the flag to `1`. The registry removes the remote location/transport when disabled, and Main rejects save, probe, and task dispatch for an existing remote OpenCode Runtime.
+| Adapter     | Gate                                    |
+| ----------- | --------------------------------------- |
+| OpenCode    | `AGENTS_ONE_REMOTE_OPENCODE_V1`         |
+| Codex       | `AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1` |
+| Claude Code | `AGENTS_ONE_REMOTE_CLAUDE_AGENT_SDK_V1` |
+| Pi          | `AGENTS_ONE_REMOTE_PI_RPC_V1`           |
+| Antigravity | `AGENTS_ONE_REMOTE_ANTIGRAVITY_ACP_V1`  |
+
+An explicitly set rollout environment value still overrides the default: `1`/`true`/`on` keeps the adapter enabled, while any other non-empty value hides it for deployment, tests, or emergency rollback. When a gate is off, the registry removes the remote location/transport and Main rejects save, probe, and task dispatch for that adapter.

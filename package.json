@@ -1,6 +1,6 @@
 {
   "name": "agents-one",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Agents One — a personal AI agent and a shared desktop workspace for conversations, projects and collaboration across One, Codex, Claude Code, Pi Agent, OpenCode and compatible remote agents",
   "main": "./out/main/index.js",
   "author": "pkulyn",
