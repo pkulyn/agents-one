@@ -19,25 +19,21 @@ const SUPPORTED_TRANSPORTS = new Set([
   "local-sdk",
 ]);
 
-/** Independent rollout switch for the first real remote CLI adapter. It is
- * enabled in tests/development and closed by default in packaged builds;
- * deployment must explicitly set AGENTS_ONE_REMOTE_OPENCODE_V1=1 to expose
- * remote OpenCode to users. */
+/** Remote OpenCode is enabled by default. Deployment/tests may still set the
+ * environment variable explicitly to force it on or off; an unset value keeps
+ * the default. */
 export const REMOTE_OPENCODE_ACP_V1_ENV = "AGENTS_ONE_REMOTE_OPENCODE_V1";
 
 export function isRemoteOpenCodeAcpV1Enabled(): boolean {
   const value = process.env[REMOTE_OPENCODE_ACP_V1_ENV]?.trim().toLowerCase();
-  if (value !== undefined && value !== "") {
-    return value === "1" || value === "true" || value === "on";
-  }
-  return (
-    process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development"
-  );
+  if (value === undefined || value === "") return true;
+  return value === "1" || value === "true" || value === "on";
 }
 
 export function isRemoteCliPilotEnabled(adapterId: string): boolean {
   const pilot = remoteCliPilotManifest(adapterId);
   const flag = pilot && process.env[pilot.rolloutEnv]?.trim().toLowerCase();
+  if (flag === undefined || flag === "") return true;
   return flag === "1" || flag === "true" || flag === "on";
 }
 
