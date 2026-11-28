@@ -115,12 +115,12 @@ Production rollout still requires real OpenCode versions, provider login, Window
 
 Each remote CLI adapter is enabled by default in packaged builds, so the add-agent flow lists every remote type without a separate setup.
 
-| Adapter | Gate |
-| --- | --- |
-| OpenCode | `AGENTS_ONE_REMOTE_OPENCODE_V1` |
-| Codex | `AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1` |
+| Adapter     | Gate                                    |
+| ----------- | --------------------------------------- |
+| OpenCode    | `AGENTS_ONE_REMOTE_OPENCODE_V1`         |
+| Codex       | `AGENTS_ONE_REMOTE_CODEX_APP_SERVER_V1` |
 | Claude Code | `AGENTS_ONE_REMOTE_CLAUDE_AGENT_SDK_V1` |
-| Pi | `AGENTS_ONE_REMOTE_PI_RPC_V1` |
-| Antigravity | `AGENTS_ONE_REMOTE_ANTIGRAVITY_ACP_V1` |
+| Pi          | `AGENTS_ONE_REMOTE_PI_RPC_V1`           |
+| Antigravity | `AGENTS_ONE_REMOTE_ANTIGRAVITY_ACP_V1`  |
 
 An explicitly set rollout environment value still overrides the default: `1`/`true`/`on` keeps the adapter enabled, while any other non-empty value hides it for deployment, tests, or emergency rollback. When a gate is off, the registry removes the remote location/transport and Main rejects save, probe, and task dispatch for that adapter.
